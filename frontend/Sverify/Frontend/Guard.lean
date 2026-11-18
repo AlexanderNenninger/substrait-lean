@@ -504,7 +504,7 @@ theorem Expr.mixed_length {ps : List Expr} (hnp : ∃ q ∈ ps, q.plain = false)
     (ps.filter Expr.plain).length ≠ ps.length := by
   intro h
   obtain ⟨q, hq, hqf⟩ := hnp
-  have := List.filter_eq_self.mp ((List.filter_sublist ps).eq_of_length h) q hq
+  have := List.filter_eq_self.mp (List.filter_sublist.eq_of_length h) q hq
   simp [hqf] at this
 
 omit [Boxes.Ambient] in
