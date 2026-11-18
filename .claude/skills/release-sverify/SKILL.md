@@ -62,6 +62,8 @@ git switch -c release-<version> origin/release/<major>.<minor>
 #   "sverify==<version>"; python/pyproject.toml: the dependency
 #   "sverify-duckdb[run]==<version>" and the extras "sverify-polars[run]==<version>",
 #   "sverify-spark[run]==<version>"
+# python/README.md (the PyPI page): cd python && python scripts/pin_readme_links.py <version>
+#   points its blob/main and tree/main links at the tag
 # CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
 #   changelog.d/*.md fragments (file-name order) under it, then git rm the fragments
 #   (keep changelog.d/README.md)
@@ -102,14 +104,14 @@ gh run list --branch v<version>                                # Wheels and Docs
 
 Tag the commit the dry run tested.
 
-Then merge the release branch back into main, so main gets the version, the folded changelog and any release fixes: open a PR from `release/<major>.<minor>` into `main` and merge it with a merge commit (it goes through a batch like any other). Keep the branch for patch releases (`<major>.<minor>.<patch+1>`): their fixes go into it by PR, and the same steps follow.
+Then merge the release branch back into main, so main gets the version, the folded changelog and any release fixes: open a PR from `release/<major>.<minor>` into `main`, first running `python scripts/pin_readme_links.py <version> --unpin` from `python/` on its branch so the README's links point at main again, and merge it with a merge commit (it goes through a batch like any other). Keep the branch for patch releases (`<major>.<minor>.<patch+1>`): their fixes go into it by PR, and the same steps follow.
 
 ## 4. Afterwards
 
 The macOS wheel jobs can wait a long time for runners, so the publish may take a while. Don't poll in a loop. Check when asked, or on the next wake-up.
 
 - **Wheels:** every job green, then `pip index versions sverify` and `pip index versions sverify-dbt` (or <https://pypi.org/project/sverify/>, <https://pypi.org/project/sverify-dbt/>) show the version.
-- **Notebooks:** the `published` branch has a commit for the version. Ask the user to open one notebook from it on molab and press Run, since CI can't check that molab installs and runs it.
+- **Notebooks:** the `published` branch has a commit for the version, and its README says `sverify <version>`. A `published` branch behind PyPI sends molab readers to old notebooks, so treat a failed `publish-notebooks` like a failed `publish`: tell the user at once. Ask the user to open one notebook from it on molab and press Run, since CI can't check that molab installs and runs it.
 - **Docs:** <https://alexandernenninger.github.io/substrait-lean/> shows the version, and its Skills page lists the skills.
 - Optionally create the GitHub release from the changelog section: `gh release create v<version> --notes-file <section>`. Ask first, since it notifies watchers.
 
