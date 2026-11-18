@@ -331,6 +331,9 @@ class Moves:
     """Copies that left the quarantine for the base table."""
     deleted: int
     """Copies set aside that the batch deletes upstream."""
+    retracted: int = 0
+    """Of `set_aside`, the copies the base table held before: published rows
+    a new duplicate key took out."""
 
 
 def _entries(
@@ -406,6 +409,7 @@ def split_batch(
     all_deletes = rows_of(deletes)
     # Deletes of rows set aside leave the quarantine; the rest, the base table.
     deleted = 0
+    retracted = 0
     removed: dict[str, int] = {}
     if deletes.num_rows and q.entries:
         in_q = weights_in(q.weighted(), rows_of(deletes)).to_pylist()
@@ -472,6 +476,11 @@ def split_batch(
             raise ValueError("changes delete rows that are not in the table")
         second = apply_keys(pool, keys)
         delta = consolidated(second.ok, negated(old))
+        held_before = weights_in(old, rows_of(second.bad)).to_pylist()
+        retracted = sum(
+            min(w, have)
+            for w, have in zip(second.bad.column(WEIGHT).to_pylist(), held_before, strict=True)
+        )
         for k, e in _entries(second, version, at, quarantined):
             q.entries[k] = e
     else:
@@ -494,7 +503,7 @@ def split_batch(
             added.append(Entry(e.row, after - before, e.conditions, e.reason, e.version, e.at))
         else:
             released += before - after
-    return Moves(delta, q, added, released, deleted)
+    return Moves(delta, q, added, released, deleted, retracted)
 
 
 # -- reports -------------------------------------------------------------------
@@ -511,6 +520,9 @@ class QuarantineReport:
             condition, or kept rows a new duplicate key took out.
         by_condition: Of those, how many break each condition, by its label
             as `requires` states it.
+        retracted: Of the rows quarantined, how many the node had published:
+            a new row repeated their key with other values, so the copies
+            left the node (the sink deletes them).
         released: Rows set aside before that went to the node: the key they
             repeated is now on one row.
         deleted: Rows set aside before that the source deleted.
@@ -530,12 +542,19 @@ class QuarantineReport:
     total: int
     examples: pa.Table | None = None
     table: str | None = None
+    retracted: int = 0
 
     def __str__(self) -> str:
         what = ", ".join(f"{n} × {c}" for c, n in self.by_condition.items())
         parts = []
         if self.quarantined:
-            parts.append(f"{self.quarantined} row(s) quarantined" + (f" ({what})" if what else ""))
+            detail = [what] if what else []
+            if self.retracted:
+                detail.append(f"{self.retracted} already published")
+            parts.append(
+                f"{self.quarantined} row(s) quarantined"
+                + (f" ({', '.join(detail)})" if detail else "")
+            )
         if self.released:
             parts.append(f"{self.released} released")
         if self.deleted:
@@ -555,6 +574,7 @@ class QuarantineReport:
         return {
             "source": self.source,
             "quarantined": self.quarantined,
+            "retracted": self.retracted,
             "by_condition": dict(self.by_condition),
             "released": self.released,
             "deleted": self.deleted,
@@ -575,9 +595,10 @@ def report(
     if isinstance(moves_or_q, Moves):
         new, q = moves_or_q.set_aside, moves_or_q.quarantined
         released, deleted = moves_or_q.released, moves_or_q.deleted
+        retracted = moves_or_q.retracted
     else:
         q = moves_or_q
-        new, released, deleted = list(q.entries.values()), 0, 0
+        new, released, deleted, retracted = list(q.entries.values()), 0, 0, 0
     by: dict[str, int] = {}
     for e in new:
         for c in e.conditions:
@@ -595,6 +616,7 @@ def report(
         q.total,
         examples,
         table,
+        retracted,
     )
 
 
