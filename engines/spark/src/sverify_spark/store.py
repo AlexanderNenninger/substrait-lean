@@ -165,7 +165,10 @@ def _part(df: Any, schema: pa.Schema, spark: Any) -> Part:
     """A new part: `df` (the columns of `schema`) written to a directory of
     the state location."""
     path = os.path.join(_state_dir(), f"part-{uuid.uuid4().hex}")
-    df.toDF(*schema.names).write.mode("overwrite").parquet(path)
+    # `coalesce` keeps the writer to a few files: a change from Arrow has a
+    # task per 10,000 rows, and a file each costs more than the rows do.
+    out = df.toDF(*schema.names).coalesce(spark.sparkContext.defaultParallelism)
+    out.write.mode("overwrite").parquet(path)
     return Part(path, schema, spark)
 
 
