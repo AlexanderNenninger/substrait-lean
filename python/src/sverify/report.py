@@ -2102,17 +2102,15 @@ def violation_counts(
     Ibis. Without an `engine`, Ibis counts each condition on the table's own
     backend (`violations`)."""
     if engine is None:
-        return [
-            (
-                c,
-                *(
-                    _run_planned(table, c, "duckdb")
-                    if isinstance(c, PlannedCondition)
-                    else (violations(table, c), None)
-                ),
+        rows: list[tuple[Condition, int, str | None]] = []
+        for c in conds:
+            n, stopped = (
+                _run_planned(table, c, "duckdb")
+                if isinstance(c, PlannedCondition)
+                else (violations(table, c), None)
             )
-            for c in conds
-        ]
+            rows.append((c, n, stopped))
+        return rows
     counts: dict[int, tuple[int, str | None]] = {}
     groups: dict[bool, list[int]] = {True: [], False: []}
     for i, c in enumerate(conds):

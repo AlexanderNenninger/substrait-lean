@@ -61,7 +61,7 @@ def test_a_duckdb_run_with_assumptions_runs_the_plan_once(monkeypatch):
         tables={"t": T},
         requires={"t": [_.x.between(-(10**15), 10**15)]},
     )
-    assert report.assumed
+    assert report.assumed and report.internal_plan
     main = written_plan(report.internal_plan)
     runs: list[str] = []
     real = report_module.run_plan
