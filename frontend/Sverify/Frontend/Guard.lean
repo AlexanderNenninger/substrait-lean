@@ -195,7 +195,7 @@ theorem Expr.andChain_stop (row : Row) (all : Expr) (p : Expr) (post : List Expr
     obtain ⟨h1, h2⟩ := Expr.andChain_stop row all p post hp hbv hf pre (fun r hr => h r (by simp [hr]))
     simp only [List.cons_append, Expr.andChain, Expr.eval, hc, ite_true, Expr.issues,
       Expr.issues_notFalse, firstError_append, hqg.1, Option.or_none, h2]
-    exact ⟨h1, rfl⟩
+    exact ⟨h1, trivial⟩
 
 /-- **G2**: where the first operand that is FALSE or raises is FALSE, the guarded
 conjunction is FALSE and raises nothing, whatever the operands after it do. -/
@@ -274,7 +274,7 @@ theorem Expr.andChain_end (row : Row) (all : Expr) :
     obtain ⟨h1, h2⟩ := Expr.andChain_end row all ps (fun r hr => h r (by simp [hr]))
     simp only [Expr.andChain, Expr.eval, hc, ite_true, Expr.issues, Expr.issues_notFalse,
       firstError_append, hqg.1, Option.or_none, h2, Option.none_or]
-    exact ⟨h1, rfl⟩
+    exact ⟨h1, trivial⟩
 
 /-- **G1, no operand is FALSE or raises**: the guarded conjunction has the eager
 conjunction's outcome. -/
@@ -301,5 +301,182 @@ theorem Expr.andG_none (row : Row) (p : Expr) (ps : List Expr)
   rw [hall', hall]
   simp only [Expr.andG, Expr.eval, Impl.lean, BinFn.apply, h1]
   rcases hv with hv | hv <;> simp [hv, Value.isTrue, Value.numPair]
+
+/-! ### The disjunction -/
+
+/-- An operand that does not raise, is not TRUE, and is FALSE or NULL. -/
+def Expr.GoOr (row : Row) (q : Expr) : Prop :=
+  firstError (q.issues row) = none ∧ q.eval row ≠ .bool true ∧ Expr.BoolVal row q
+
+theorem Expr.go_notTrue {row : Row} {q : Expr} (h : Expr.GoOr row q) :
+    (q.notTrue.eval row).isTrue = true :=
+  (Expr.isTrue_notTrue h.2.2).mpr h.2.1
+
+theorem Expr.orChain_stop (row : Row) (all : Expr) (p : Expr) (post : List Expr)
+    (hp : firstError (p.issues row) = none) (hbv : Expr.BoolVal row p)
+    (ht : p.eval row = .bool true) :
+    ∀ pre : List Expr, (∀ q ∈ pre, Expr.GoOr row q) →
+      (Expr.orChain all (pre ++ p :: post)).eval row = .int 1 ∧
+      firstError ((Expr.orChain all (pre ++ p :: post)).issues row) = none
+  | [], _ => by
+    have hc : ¬((p.notTrue.eval row).isTrue = true) := by
+      rw [Expr.isTrue_notTrue hbv]; simp [ht]
+    simp [Expr.orChain, Expr.eval, Expr.issues, hc, Expr.issues_notTrue, firstError_append, hp]
+  | q :: pre, h => by
+    have hqg := h q (by simp)
+    have hc := Expr.go_notTrue hqg
+    obtain ⟨h1, h2⟩ := Expr.orChain_stop row all p post hp hbv ht pre (fun r hr => h r (by simp [hr]))
+    simp only [List.cons_append, Expr.orChain, Expr.eval, hc, ite_true, Expr.issues,
+      Expr.issues_notTrue, firstError_append, hqg.1, Option.or_none, h2]
+    exact ⟨h1, trivial⟩
+
+/-- **G2 for `OR`**: where the first operand that is TRUE or raises is TRUE, the
+guarded disjunction is TRUE and raises nothing. -/
+theorem Expr.orG_true (row : Row) (pre : List Expr) (p : Expr) (post : List Expr)
+    (hpre : ∀ q ∈ pre, Expr.GoOr row q) (hp : firstError (p.issues row) = none)
+    (hbv : Expr.BoolVal row p) (ht : p.eval row = .bool true) :
+    (Expr.orG (pre ++ p :: post)).refOutcome row = .ok (.bool true) := by
+  obtain ⟨h1, h2⟩ := Expr.orChain_stop row (Expr.disj (pre ++ p :: post)) p post hp hbv ht pre hpre
+  simp [Expr.refOutcome, Expr.orG, Expr.issues, Expr.eval, Impl.lean, BinFn.apply, h1, h2,
+    firstError_append, Value.numPair]
+
+theorem Expr.orChain_error (row : Row) (all : Expr) (p : Expr) (post : List Expr) (k : Issue)
+    (hp : firstError (p.issues row) = some k) :
+    ∀ pre : List Expr, (∀ q ∈ pre, Expr.GoOr row q) →
+      firstError ((Expr.orChain all (pre ++ p :: post)).issues row) = some k
+  | [], _ => by
+    simp [Expr.orChain, Expr.issues, Expr.issues_notTrue, firstError_append, hp]
+  | q :: pre, h => by
+    have hqg := h q (by simp)
+    have hc := Expr.go_notTrue hqg
+    have ih := Expr.orChain_error row all p post k hp pre (fun r hr => h r (by simp [hr]))
+    simp only [List.cons_append, Expr.orChain, Expr.issues, Expr.issues_notTrue,
+      firstError_append, hqg.1, Option.or_none, hc, ite_true, Option.none_or]
+    exact ih
+
+theorem Expr.disj_error (row : Row) (pre : List Expr) (p : Expr) (post : List Expr) (k : Issue)
+    (hpre : ∀ q ∈ pre, Expr.GoOr row q) (hp : firstError (p.issues row) = some k) :
+    firstError ((Expr.disj (pre ++ p :: post)).issues row) = some k := by
+  have hall := Expr.firstError_flatMap_none row pre (fun q hq => (hpre q hq).1)
+  cases pre with
+  | nil => simp [Expr.disj, Expr.issues_foldl_or, firstError_append, hp]
+  | cons q pre =>
+    simp only [List.cons_append, Expr.disj, Expr.issues_foldl_or, List.flatMap_cons,
+      firstError_append] at hall ⊢
+    have hq := (hpre q (by simp)).1
+    simp [hq] at hall ⊢
+    simp [hall, hp, firstError_append]
+
+/-- **G1 for `OR`, an error**. -/
+theorem Expr.orG_error (row : Row) (pre : List Expr) (p : Expr) (post : List Expr) (k : Issue)
+    (hpre : ∀ q ∈ pre, Expr.GoOr row q) (hp : firstError (p.issues row) = some k) :
+    (Expr.orG (pre ++ p :: post)).refOutcome row = .error k ∧
+      (Expr.disj (pre ++ p :: post)).refOutcome row = .error k := by
+  have hc := Expr.orChain_error row (Expr.disj (pre ++ p :: post)) p post k hp pre hpre
+  constructor
+  · simp [Expr.refOutcome, Expr.orG, Expr.issues, firstError_append, hc]
+  · simp [Expr.refOutcome, Expr.disj_error row pre p post k hpre hp]
+
+/-- The eager disjunction of operands that are FALSE or NULL is FALSE or NULL. -/
+theorem Expr.fold_or_go {row : Row} (ps : List Expr) :
+    ∀ (v : Value), (v = .null ∨ v = .bool false) → (∀ q ∈ ps, Expr.GoOr row q) →
+      (ps.foldl (fun v q => or3 v (q.eval row)) v = .null ∨
+        ps.foldl (fun v q => or3 v (q.eval row)) v = .bool false) := by
+  induction ps with
+  | nil => intro v hv _; exact hv
+  | cons q ps ih =>
+    intro v hv h
+    obtain ⟨-, hnt, hbv⟩ := h q (by simp)
+    refine ih (or3 v (q.eval row)) ?_ (fun r hr => h r (by simp [hr]))
+    rcases hbv with hq | ⟨b, hq⟩
+    · rcases hv with rfl | rfl <;> simp [or3, hq]
+    · cases b with
+      | true => exact absurd hq hnt
+      | false => rcases hv with rfl | rfl <;> simp [or3, hq]
+
+theorem Expr.orChain_end (row : Row) (all : Expr) :
+    ∀ ps : List Expr, (∀ q ∈ ps, Expr.GoOr row q) →
+      (Expr.orChain all ps).eval row =
+        (if (UnFn.apply .not (all.eval row)).isTrue then .int 0 else .null) ∧
+      firstError ((Expr.orChain all ps).issues row) = firstError (all.issues row)
+  | [], _ => by
+    cases hc : (UnFn.apply .not (all.eval row)).isTrue <;>
+      simp [Expr.orChain, Expr.eval, Expr.issues, Impl.lean, hc]
+  | q :: ps, h => by
+    have hqg := h q (by simp)
+    have hc := Expr.go_notTrue hqg
+    obtain ⟨h1, h2⟩ := Expr.orChain_end row all ps (fun r hr => h r (by simp [hr]))
+    simp only [Expr.orChain, Expr.eval, hc, ite_true, Expr.issues, Expr.issues_notTrue,
+      firstError_append, hqg.1, Option.or_none, h2, Option.none_or]
+    exact ⟨h1, trivial⟩
+
+/-- **G1 for `OR`, no operand is TRUE or raises**. -/
+theorem Expr.orG_none (row : Row) (p : Expr) (ps : List Expr)
+    (h : ∀ q ∈ p :: ps, Expr.GoOr row q) :
+    (Expr.orG (p :: ps)).refOutcome row = (Expr.disj (p :: ps)).refOutcome row := by
+  obtain ⟨h1, h2⟩ := Expr.orChain_end row (Expr.disj (p :: ps)) (p :: ps) h
+  have hall : firstError ((Expr.disj (p :: ps)).issues row) = none := by
+    simp only [Expr.disj, Expr.issues_foldl_or, firstError_append, (h p (by simp)).1,
+      Option.none_or]
+    exact Expr.firstError_flatMap_none row ps (fun q hq => (h q (by simp [hq])).1)
+  have hv : (Expr.disj (p :: ps)).eval row = .null ∨ (Expr.disj (p :: ps)).eval row = .bool false := by
+    simp only [Expr.disj, Expr.eval_foldl_or]
+    obtain ⟨-, hnt, hbv⟩ := h p (by simp)
+    refine Expr.fold_or_go ps _ ?_ (fun q hq => h q (by simp [hq]))
+    rcases hbv with hq | ⟨b, hq⟩
+    · exact .inl hq
+    · cases b with
+      | true => exact absurd hq hnt
+      | false => exact .inr hq
+  have hall' : firstError ((Expr.orG (p :: ps)).issues row) = none := by
+    simp [Expr.orG, Expr.issues, h2, hall]
+  unfold Expr.refOutcome
+  rw [hall', hall]
+  simp only [Expr.orG, Expr.eval, Impl.lean, BinFn.apply, h1]
+  rcases hv with hv | hv <;> simp [hv, Value.isTrue, Value.numPair, UnFn.apply]
+
+/-! ## Plain expressions
+
+A plain expression raises on no row, so it can guard the operands after it
+without being guarded itself, and an operand that is plain stays outside the
+chain (`Expr.andLift`). -/
+
+/-- Columns and literals, joined by `=`, `<`, `IS NULL`, `NOT`, `AND` and `OR`. -/
+def Expr.plain : Expr → Bool
+  | .lit _ | .field _ => true
+  | .un .not a | .un .isNull a => a.plain
+  | .bin .eq a b | .bin .lt a b | .bin .and a b | .bin .or a b => a.plain && b.plain
+  | _ => false
+
+@[simp] theorem BinFn.issueAll_lt (v w : Value) : BinFn.lt.issueAll v w = none := by
+  simp only [BinFn.issueAll, BinFn.infIssue_none (f := .lt) rfl]
+  cases v <;> cases w <;> simp [BinFn.issue]
+
+/-- **A plain expression raises on no row** (under `Profile.reference`). -/
+theorem Expr.issues_plain (row : Row) : ∀ e : Expr, e.plain = true → e.issues row = []
+  | .lit _, _ | .field _, _ => rfl
+  | .un f a, h => by
+    cases f <;> simp [Expr.plain] at h <;>
+      simp [Expr.issues, Expr.issues_plain row a h]
+  | .bin f a b, h => by
+    cases f <;> simp [Expr.plain] at h <;>
+      simp [Expr.issues, Expr.issues_plain row a h.1, Expr.issues_plain row b h.2]
+  | .ifThen _ _ _, h | .hof _ _ _, h => by simp [Expr.plain] at h
+
+/-- `p₁ AND … AND pₙ` as the frontends lift it: the operands in order, the
+plain ones also outside the chain so that an optimizer still sees them. All
+plain: the eager `AND`, untouched. -/
+def Expr.andLift (ps : List Expr) : Expr :=
+  let plains := ps.filter Expr.plain
+  if plains.length = ps.length then Expr.conj ps
+  else if plains.isEmpty then Expr.andG ps
+  else .bin .and (Expr.conj plains) (Expr.andG ps)
+
+/-- `p₁ OR … OR pₙ` as the frontends lift it. -/
+def Expr.orLift (ps : List Expr) : Expr :=
+  let plains := ps.filter Expr.plain
+  if plains.length = ps.length then Expr.disj ps
+  else if plains.isEmpty then Expr.orG ps
+  else .bin .or (Expr.disj plains) (Expr.orG ps)
 
 end Substrait
