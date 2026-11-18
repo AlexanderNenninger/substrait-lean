@@ -158,7 +158,8 @@ engine's profile (`python/src/sverify/routes.py`).
 Each route ends in `Engine.contract_sound` (#900): the contract holds on the
 rows the engine's model computes for the translated plan, under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference).
 The engine's actual output rests on `Engine.Runs` and the transfer check
-(`Engine.contract_sound_runs`); it fails today at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on every engine, `null_order` without a preference on Polars and Spark, and integer overflow on Polars ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900), PR 3).
+(`Engine.contract_sound_runs`). Which options it fails on, engine by engine,
+is [the realizability table](realizability.md) ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)).
 
 ### D14. Engine versions
 
@@ -212,6 +213,16 @@ While sverify is on 0.x, the reference changes where the design needs it. A
 change to the reference ships in a minor version bump, with a
 `changelog.d/` fragment that says what changed. Bumping the minor version
 costs little, and the fragment tells users which proofs may change.
+
+Amended 2026-11-18 (approved by the maintainer): from 1.0 a change to the
+reference is one of two kinds. An opening only makes more plans proved or
+run: a raise becomes a value, an allowed set grows, a refusal is accepted.
+It ships in a minor version. A changed value, a new raise or a narrower
+allowed set ships in a major version. Each has a `changelog.d/` fragment that
+names the decision.
+
+Why: a plan proved under one minor version stays proved, with the same
+values, under the next.
 
 ### D18. Observations ordered by refinement
 
@@ -348,6 +359,11 @@ Example: `power(-∞, y)` for a non-integer `y` raises in the reference.
 IEEE 754 gives `+∞`, and Polars's `** 0.5` gives NaN through `sqrt`, so
 Polars needs a guard for such plans and no shim.
 
+Note 2026-11-18: [D47](#d47-raise-value-or-open-where-engines-differ) states
+when the reference raises. The `power(-∞, y)` example is a domain raise under
+its rule 2: a negative base with a non-integer exponent is outside the real
+power function's domain, whatever the base's size.
+
 A second example: a constant subexpression that raises (`1 // 0 = 1`)
 counts as raising for the whole plan (#609, under D19), since DuckDB may
 evaluate it when it plans the query.
@@ -387,11 +403,18 @@ therefore a run-time error the user never asked for: a job that refuses
 data because of a bound nobody wrote down. Declaring it puts the decision
 with the user, and the declared form documents it.
 
-`SUM`s assumed to fit 64 bits and operations on doubles assumed to stay
-finite (`Report.assumed`) are not inferred preconditions: they keep their
-checks on the data.
+Amended 2026-11-18 (theory advisor): a condition is inferred when it is a
+condition on single rows of an input that the report prints as a `requires`
+line: a non-zero divisor, a bound on an integer operand, an argument in a
+function's domain. It is assumed when no single input row decides it: a `SUM`
+fits 64 bits (it depends on the group's size), and an operation on doubles
+stays finite (stating it on the inputs needs a bound on every double column).
+Assumed conditions keep their checks on the data (`Report.assumed`,
+`Issue.assumed`). An unmet inferred precondition gives the verdict
+`unproved`, and a plan whose only open conditions are assumed gives
+`proved_with_checks`.
 
-### D24. Tie order belongs to the deterministic profile
+### D24. Tie order is open, and determinism is proved
 
 The reference leaves `tie_order` and `tie_pick` open. Rows that tie in an
 `ORDER BY` or in a window's order come in any order, a `FETCH` takes the
@@ -403,17 +426,19 @@ contract holds on all of them: `contract_sound_all` for postconditions,
 `Rel.keys_sound_all` for keys. An engine's own pick is one of these orders,
 so it runs natively.
 
-The deterministic profile is the reference with one order fixed: a stable
-sort (`List.mergeSort`) and rows in list order, as `Rel.eval` computes them
-(`Rel.eval_orderAllowed`). A consumer that needs a rerun to give the same
-rows asks for it, through `run(reproducible=sv.equivalent())` or a sink's
-`reproducible=` ([D10](#d10-determinism),
-[D20](#d20-two-observations-per-output)). Engines read tables in an order of
-their own, so no shim reproduces list order on them. The deterministic
-profile needs a plan whose order is total, by a tie-break key or a
-uniqueness precondition (`Rel.detPlan`), and
-refuses a plan without one. The refusal names each place where ties stay
-open (`str(report)`, with the keys that would close them in `Report.ties`).
+`Rel.eval` computes one allowed order: a stable sort (`List.mergeSort`) and
+rows in list order (`Rel.eval_orderAllowed`). Determinism is a property the
+checker proves of a plan, not a profile: a plan is determined when every
+result the reference allows is `Rel.eval`'s up to row order (`Rel.detPlan`),
+and D48 states the second level, up to the member of a class of doubles. A
+consumer that needs a rerun to give the same rows asks for it, through
+`run(reproducible=sv.equivalent())` or a sink's `reproducible=`
+([D10](#d10-determinism), [D20](#d20-two-observations-per-output)). Engines
+read tables in an order of their own, so no shim reproduces list order on
+them, and a plan whose order is total, by a tie-break key or a uniqueness
+precondition, is the one that qualifies. A plan without one is refused for
+that requirement, and the refusal names each place where ties stay open
+(`str(report)`, with the keys that would close them in `Report.ties`).
 
 An order-sensitive operator reads one sorted enumeration of its input, and
 its meaning is the set over all of them (`Lin` and `Sem`,
@@ -431,6 +456,21 @@ catalogue and the oracles compared each engine with it, and reported
 legitimate picks as `tie_order` differences. Shims imitated
 `List.mergeSort` on engines, and Polars refused or shimmed picks it could
 run natively.
+
+Amended 2026-11-18 (theory advisor): two refusals predate this decision and
+go.
+
+- Spark's writer refuses a `FETCH` and a window over ties unless the report
+  is deterministic, because no Spark order "can stand for Lean's list order".
+  Spark's own pick is one of the allowed orders, so the plan runs natively.
+  Its rerun row for `tie_order` says what two runs agree on.
+- The parser refuses `MODE` without an `ORDER BY`. Without one every row
+  ties, so any of the most frequent values is allowed (`tie_pick`), and the
+  report names the place.
+
+Each opens when its engine fact exists: Spark's tie behaviour for sorts,
+`LIMIT` and windows, and each engine's `mode` returning one of the most
+frequent values. Until then the refusal's message names the missing fact.
 
 ### D25. Float aggregates are correctly rounded exact sums
 
@@ -803,8 +843,8 @@ with the proleptic Gregorian calendar of `core/Sverify/Core/Time.lean`.
 `date_part`, `strftime`, `time_of_day`, adding months to a timestamp,
 truncation to a week, month, quarter or year, truncation of a date, and
 `date_bin` raise (`Issue.overflow`) where the operand or the result leaves
-the range. They no longer depend on DataFusion's ±2⁶³ nanoseconds (1677 to
-2262) or on chrono's ±262,142 years. 0001-01-01 is a Monday, so no
+the range. They no longer depend on a ±2⁶³ nanosecond range (1677 to 2262)
+or on chrono's ±262,142 years. 0001-01-01 is a Monday, so no
 truncation of a timestamp in range leaves it. A `date_bin` origin outside
 the range is refused when the plan is checked, never at run time.
 
@@ -835,7 +875,6 @@ one guard outside it:
 | Polars | native ([polars-calendar-range](../engines/polars/facts/polars-calendar-range.json)) | computes; the translation guards | `Datetime("us")`; `"ns"` covers only 1677 to 2262 |
 | Spark | native ([spark-calendar-range](../engines/spark/facts/spark-calendar-range.json)) | computes; the SQL guards | `TIMESTAMP_NTZ`, session time zone UTC |
 | Snowflake | reachable by a shim, probe pending: parts in year 1 are right and sverify truncates weeks itself (private facts); month, quarter and year truncation at the ends is not recorded | computes (years 0 to 302024); the SQL guards | `TIMESTAMP_NTZ` |
-| DataFusion | refused: it truncates and bins in nanoseconds ([DF-17](../upstream/bugs/DF-17.json)) | — | — |
 
 The facts record the probe points: 0001-01-01, the leap days 0004-02-29,
 1600-02-29 and 2000-02-29, 1900-02-28 and 1900-03-01, both sides of the
@@ -866,8 +905,8 @@ Consequences:
   9999 run on every 1.0 engine, where they raised before.
 - `strftime`'s `%Y` is always four digits.
 
-Why: the old ranges were DataFusion's, and DataFusion is a tier-3 engine
-(2026-11-08). The SQL standard's timestamps are the reference's dates', which
+Why: the old ranges were DataFusion's, which sverify no longer supports
+(2026-11-09). The SQL standard's timestamps are the reference's dates', which
 every 1.0 engine represents.
 
 ### D33. Unused
@@ -1225,3 +1264,61 @@ gives `windowRows` alone (`windowRowsA_eq`), and every admitted result is
 (`WinFn.pickFixed`), so a plan with a windowed `MIN`, `MAX` or
 `QUANTILE_DISC` over an argument that may be a double is no longer
 certified deterministic.
+
+### D47. Raise, value or open where engines differ
+
+Decided 2026-11-18 (theory advisor).
+
+Where the tier-1 engines differ on an input, the reference answers by the
+first rule that applies.
+
+1. The engines' values compare equal on every engine: the reference allows
+   any of them (D31, D36, D45).
+2. The input is a zero divisor, gives a result outside its type's range, or
+   lies outside the function's real domain: the reference raises (D37, D38,
+   D39). The precondition that excludes it is a standard one on the operands:
+   non-zero, bounded, in the domain. A domain is the real function's, read
+   with one zero, so `power(x, y)` with a negative `x` and a non-integer `y`
+   raises for `x = -∞` as for a finite `x`, where IEEE 754 answers `+∞`.
+3. The function has a defined value there: the difference is an option
+   (D34), and the reference takes a value every tier-1 engine gives natively
+   or by a cheap shim. Of several, it takes the one the most engines give
+   natively, then Substrait's, then IEEE 754's or the SQL standard's. An
+   engine that cannot reach the value has its writer refuse the function.
+4. No value is reachable on every tier-1 engine: the reference raises, when
+   a precondition on the inputs excludes the case and rarely bites real
+   queries (D21), and the frontends refuse the function otherwise. Such a
+   raise narrows as engine facts arrive.
+
+Until a case has its decision, the frontends refuse it under the reference,
+and `semantics="<engine>"` lifts that engine's value from a fact.
+
+Read by this rule: `x / 0.0` and `x / -0.0` (rule 2, with D39's option),
+`power(-∞, y)` (rule 2, D21's example), `power(±1, ±∞)` (rule 3, D40),
+`replace` with an empty pattern (rule 3, D44), `float_to_int` (rule 3, D42),
+`QUANTILE_DISC` of doubles (rule 1, D45), non-ASCII case mapping (rule 4,
+D43).
+
+Why: D21 raised where an engine differs and D40 took an option where two
+engines agree, and no text said which applies when. The raise set stays
+small and guardable, and a value two engines compute alike stays a value.
+
+### D49. A value known from one engine is provisional
+
+Decided 2026-11-18 (theory advisor).
+
+A function whose reference value is stated from DuckDB's facts alone is
+marked "DuckDB-defined" in [the reference semantics](reference-semantics.md).
+It runs on DuckDB only: the other engines' writers refuse it and name
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+When a second tier-1 engine's facts arrive, D47 decides the value under a
+D-number, and the mark goes. The rows marked are `round(x, d)`, the casts from
+a string, `date_diff`, `lpad` and `rpad`; the owner of the table marks every
+other row whose only support is a DuckDB fact.
+
+A release states the count of DuckDB-defined functions.
+
+Why: the reference belongs to no engine, and these rows said "as DuckDB
+computes it" with no decision and no second engine's facts. The mark states
+what is known, and the rule for new functions (Lean and DuckDB first) keeps
+producing such rows.

@@ -272,7 +272,7 @@ except VerificationError as e:
   If rows can tie in the order, the engine decides which comes first:
   `verify` proves the postconditions that hold for every order of the ties,
   `report.deterministic` is `False`, `str(report)` names the window and
-  `report.ties` the key that would close it ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
+  `report.ties` the key that would close it ([tie order](reference-semantics.md#tie-order-and-determinism)).
   A key on the partition and order columns makes the order total, which
   facts such as `prev_ts < ts` and a rerun that must give the same rows
   need.
@@ -1042,7 +1042,7 @@ refresh batch by batch and a recompute agree:
   different values, the one the node held before included. Rows identical in
   every column count once: a redelivered duplicate of a kept row is set aside
   beside it, and the kept row stays. The rule needs no order between rows, so it gives the
-  same answer under every profile ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
+  same answer under every profile ([tie order](reference-semantics.md#tie-order-and-determinism)).
 - `max_rows`, `arrives_within` and the other conditions on a table as a whole
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
@@ -1670,9 +1670,9 @@ list every fact). What to do about one:
   why that one fails.
 
 `report.run(..., reproducible=sv.equivalent())`, like a sink's
-`reproducible=`, asks for the deterministic profile, which fixes the order of
+`reproducible=`, asks for a determined result, which fixes the order of
 ties
-([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)):
+([tie order](reference-semantics.md#tie-order-and-determinism)):
 it refuses a plan whose result is not determined up to row order, and the
 reason names each window, ordered aggregate or `LIMIT` where ties stay open
 (`str(report)`), with the `sv.unique(...)` that would close them
@@ -1921,7 +1921,7 @@ result. The sink states what "the same" means (`reproducible=`,
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
 refused with a `RouteError`; so is a plan whose ties stay open, since the
-sink then needs the deterministic profile, and the error names the
+sink then needs a determined result, and the error names the
 place. Polars's streaming `SUM` of doubles may add in
 another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the

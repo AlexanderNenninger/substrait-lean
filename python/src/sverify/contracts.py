@@ -718,7 +718,7 @@ def verify(
     Ibis expression compiles with sverify's own producer, so it means what
     `docs/reference-semantics.md` ("The Ibis frontend") says, whichever Ibis
     backend it came from; where
-    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on DataFusion, …),
+    Ibis backends disagree (`%` on Polars, `-0.0 == 0.0` on some backends, …),
     no backend's `execute` is guaranteed to match. `sverify.engines.run`
     runs the verified plan with that meaning (or fails) on DuckDB and
     Polars. A SQL string, and a SQL condition, is DuckDB's SQL, lifted by
