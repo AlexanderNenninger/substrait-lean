@@ -846,7 +846,7 @@ model computes for the translated plan (DuckDB's, Polars's, Spark's or the refer
 result the reference allows (`Engine.Sound`), and the contract holds on them.
 The engine's actual output rests on D16's claim (`Engine.Runs`) and the
 transfer check from the engine's table to the reference's
-(`Engine.contract_sound_runs`); it fails today at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on every engine, `null_order` without a preference on Polars and Spark, and integer overflow on Polars ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900), PR 3).
+(`Engine.contract_sound_runs`); it fails today at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on every engine, `null_order` without a preference on Polars and Spark, and integer overflow on Polars ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900), PR 3). For those plans `Engine.contract_sound_runs_near` takes `Rel.FloatOpenSafeP` over the engine's table, which #929's bound owes for a double `SUM` and `AVG`.
 
 ### Obligations, option by option
 

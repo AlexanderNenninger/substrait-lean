@@ -144,22 +144,69 @@ theorem Engine.contract_sound {E : Engine} {side : Catalog → Rel → Prop} (hE
   contract_sound_allowed hcat hS hpre hT hq hsafe hsh hrob hQ hW hproved
     (hE hl hside).postRows
 
-/-- **D16's trusted claim**: what `E` returns for `r` is `out`, a result `E`'s
-table allows for `r`, on the strength of the observation rows `r` relies on,
-each proved or `tested` (`Engine.Refines`). For an engine that runs the plan
-as it is (`lower := some`), `Rel.AllowedE.allowedP` gives the second part from
-`Rel.AllowedE`. -/
-def Engine.Runs (E : Engine) (tested : ObsRow → Prop) (cat : Catalog) (r : Rel)
-    (out : Relation) : Prop :=
-  E.Refines r tested ∧ r.AllowedP E.table cat out
+/-- **D16's trusted claim**: what `E` returns for `r` on `cat` is `out`, a
+result `E`'s table allows. The evidence behind it, each observation row `r`
+reads proved or tested (`Engine.Refines`), is listed in `trusted-base.md`
+and is no hypothesis here. For an engine that runs the plan as it is
+(`lower := some`), `Rel.AllowedE.allowedP` gives it from `Rel.AllowedE`. -/
+def Engine.Runs (E : Engine) (cat : Catalog) (r : Rel) (out : Relation) : Prop :=
+  r.AllowedP E.table cat out
+
+/-- **Every result `t` allows for `r` is, up to `q`, one of the reference's
+orders.** The side condition of a run on doubles: `Rel.FloatOpenSafe` is the
+case of the reference's table (`Rel.floatOpenSafe_iff_reference`), and an
+engine whose choices are the reference's at every option `r` reads has it
+from there (`Rel.floatOpenSafeP_of_transferB`). Where `transferB` fails
+(`sum_order`, `stat_algo`, `quantile_interp`, `zero_sign`) nothing discharges
+it yet: for a double `SUM` and `AVG` it is #929's bound to prove, so the
+open-float form holds of no engine's run by proof today. -/
+def Rel.FloatOpenSafeP (q : Obs) (ctx : ObsCtx) (t : ProfileTable) (cat : Catalog) (r : Rel) :
+    Prop :=
+  ∀ out, r.AllowedP t cat out → ∃ out', r.OrderAllowed cat out' ∧ Relation.Equiv q ctx out' out
+
+theorem Rel.floatOpenSafe_iff_reference {q : Obs} {ctx : ObsCtx} {cat : Catalog} {r : Rel} :
+    r.FloatOpenSafeP q ctx Profile.reference.table cat ↔ r.FloatOpenSafe q ctx cat :=
+  forall_congr' fun _ => imp_congr_left Rel.allowedP_reference
+
+/-- With the reference's choices at every option `r` reads, the reference's
+side condition is the table's. -/
+theorem Rel.floatOpenSafeP_of_transferB {q : Obs} {ctx : ObsCtx} {cat : Catalog} {r : Rel}
+    {t : ProfileTable} (htr : transferB r Profile.reference.table t = true)
+    (h : r.FloatOpenSafe q ctx cat) : r.FloatOpenSafeP q ctx t cat :=
+  fun out ho => h out (Rel.allowedP_reference.mp (Rel.transfer_of_transferB htr ho))
+
+/-- **A verified contract holds on the engine's actual result, open float
+rows included**, where every result `E`'s table allows for `T` is, up to `q`,
+one of the reference's orders (`Rel.FloatOpenSafeP`), and D16's trusted claim
+holds of the result (`Engine.Runs`). Nothing discharges `hsafeE` where
+`transferB` fails: for a double `SUM` and `AVG` it is #929's bound
+(`Rel.FloatOpenSafeP`). -/
+theorem Engine.contract_sound_runs_near {E : Engine}
+    {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
+    {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
+    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
+    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
+    (hT : T.WF cat) {q : Obs} {ctx : ObsCtx} (hq : q.rows = .multiset)
+    (hsafeE : T.FloatOpenSafeP q ctx E.table cat) {sh : Nat → Option Shift}
+    (hsh : ∀ i s, sh i = some s → s.Sound q ctx i)
+    (hrob : ∀ j ∈ mp, (postExpr (T.arity cat) es j).robustB q ctx sh = true)
+    (hQ : (Rel.emit (.project T (es.map (·.narrow sh))) mp).WF cat) {W : WindowKeys}
+    (hW : W.SoundAll cat)
+    (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
+      (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
+        AVal.certainlyTrue = true)
+    {out : Relation} (hrun : E.Runs cat T out) :
+    ∀ row ∈ postRows es mp out, ∀ v ∈ row, v = .bool true := by
+  obtain ⟨t', ht', heq⟩ := hsafeE out hrun
+  exact contract_sound_near hcat hS hpre hT hq hsh hrob hQ hW hproved ht' heq
 
 /-- **A verified contract holds on the engine's actual result**, where `E`'s
 choices are within the reference's at every option `T` reads (`htr`) and D16's
 trusted claim holds of the result (`Engine.Runs`). `htr` fails where an
 engine's choice is not the reference's (`sum_order`, `stat_algo`,
-`quantile_interp`, `zero_sign`); there the result is near one the reference
-allows (#929), the tolerance form of PR 3. -/
-theorem Engine.contract_sound_runs {E : Engine} {tested : ObsRow → Prop}
+`quantile_interp`, `zero_sign`); there `Engine.contract_sound_runs_near`
+takes `Rel.FloatOpenSafeP` over the engine's table instead. -/
+theorem Engine.contract_sound_runs {E : Engine}
     {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
     {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
     (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
@@ -174,10 +221,10 @@ theorem Engine.contract_sound_runs {E : Engine} {tested : ObsRow → Prop}
       (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
         AVal.certainlyTrue = true)
     (htr : transferB T Profile.reference.table E.table = true) {out : Relation}
-    (hrun : E.Runs tested cat T out) :
+    (hrun : E.Runs cat T out) :
     ∀ row ∈ postRows es mp out, ∀ v ∈ row, v = .bool true :=
-  contract_sound_allowed hcat hS hpre hT hq hsafe hsh hrob hQ hW hproved
-    (Rel.allowedP_reference.mp (Rel.transfer_of_transferB htr hrun.2)).postRows
+  Engine.contract_sound_runs_near hcat hS hpre hT hq (Rel.floatOpenSafeP_of_transferB htr hsafe)
+    hsh hrob hQ hW hproved hrun
 
 end Substrait
 
