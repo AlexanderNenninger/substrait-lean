@@ -63,13 +63,16 @@ def _runs(
 ) -> list[tuple[dict[str, str], list[str]]]:
     """The files in the descriptor's order, in runs that one scan reads: files
     named alike (`{physical name: logical name}`, by field id for Iceberg) and
-    partitioned alike, none with deleted positions, which are scanned alone."""
+    partitioned alike, none with deleted positions or under an equality delete,
+    which are scanned alone: the file is tagged with the descriptor's own string,
+    so no match between it and a path Polars reports can fail silently."""
+    alone = set(deleted).union(*(e.applies_to for e in scan.equality))
     out: list[tuple[dict[str, str], list[str]]] = []
     keys: list[tuple[Any, ...]] = []
     for f in scan.files:
         names = _renaming(f, scan)
         key = (names, values.get(f))
-        if out and keys[-1] == key and f not in deleted and out[-1][1][0] not in deleted:
+        if out and keys[-1] == key and f not in alone and out[-1][1][0] not in alone:
             out[-1][1].append(f)
         else:
             out.append((names, [f]))
@@ -147,16 +150,14 @@ def _read(
     constants: dict[str, Any],
     positions: list[int] | None = None,
 ) -> pl.LazyFrame:
-    lf = pl.scan_parquet(
-        files, include_file_paths=_FILE, row_index_name=_POS if positions is not None else None
-    )
+    lf = pl.scan_parquet(files, row_index_name=_POS if positions is not None else None)
     if positions is not None:
         lf = lf.filter(~pl.col(_POS).is_in(positions)).drop(_POS)
-    lf = lf.select(_FILE, *names).rename(names)
+    lf = lf.select(*names).rename(names)
     # The partition values are literals keyed by the descriptor's own file string:
     # no match between it and the path Polars reports can fail silently.
     return lf.select(
-        pl.col(_FILE),
+        pl.lit(files[0] if len(files) == 1 else None, dtype=pl.String).alias(_FILE),
         *(
             (
                 pl.lit(constants[c])

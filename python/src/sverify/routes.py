@@ -667,7 +667,10 @@ def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
 _THRESHOLD = (
     "a filter, grouping key or sort on a double may keep other rows on {engine} than "
     "the reference: its threshold lies within the doubles' bound of their range; "
-    "state a precondition that keeps the values away from it, or compare exact columns"
+    "for a constant threshold, state a precondition that keeps the values away from it; "
+    "for a threshold computed from the data (a mean, a sum), compare exact columns: "
+    "for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact "
+    "mean, not the rounded one, and its product must fit BIGINT"
 )
 
 
