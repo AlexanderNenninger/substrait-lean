@@ -54,7 +54,9 @@ def spark_scan(spark: SparkSession, scan: Scan) -> DataFrame:
     pieces = []
     for renaming, files in _runs(scan, deleted):
         df = spark.read.parquet(*files).select(
-            "*", F.col("_metadata.file_path").alias(_FILE), F.col("_metadata.row_index").alias(_POS)
+            "*",
+            F.regexp_replace(F.col("_metadata.file_path"), "^file:/+", "/").alias(_FILE),
+            F.col("_metadata.row_index").alias(_POS),
         )
         if files[0] in deleted:
             df = df.filter(~F.col(_POS).isin(deleted[files[0]]))
