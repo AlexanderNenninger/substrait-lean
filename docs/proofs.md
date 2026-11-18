@@ -218,6 +218,7 @@ that build as the guard. Engine packages may import it, as
 
 | Module | Job |
 |---|---|
+| `Guard.lean` | D50: `AND`/`OR` over a raising operand as a nested `CASE` chain (`Expr.andLift`, `Expr.orLift`), with the proofs that the guard protects and an error still surfaces |
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `SubstraitJson.lean` | Builders of Substrait's JSON: references, types, casts, literals, calls and measures by anchor, the functions templates call, and the options the parser accepts |
 

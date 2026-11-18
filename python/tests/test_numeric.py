@@ -156,7 +156,7 @@ def errors(expr) -> list[str]:
             T.filter(T.n != 0).filter((T.qty % T.n) > 1),
             ["division by zero"],
         ),
-        ("guard in the same AND", T.filter((T.n != 0) & ((T.qty % T.n) > 1)), ["division by zero"]),
+        ("guard in the same AND", T.filter((T.n != 0) & ((T.qty % T.n) > 1)), []),  # D50
         # `fmod(±inf, 2.5)` would be NaN, which no operation creates (#257).
         ("double modulus, constant", T.select(x=T.amount % 2.5), ["domain error"]),
         (
@@ -244,7 +244,7 @@ def test_duckdb_fails_only_where_reported(i, rows):
     )
     con = connect()
     put_table(con, "t", table)
-    plan = to_substrait_json(expr)
+    plan = written_plan(to_substrait_json(expr))
     try:
         duckdb_rows(plan, {"t": table})
     except duckdb.Error as e:

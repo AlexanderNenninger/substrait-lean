@@ -606,8 +606,6 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
         ("SELECT a // b AS q FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, 2) AS p FROM r WHERE b = -1", polars_engine.Overflow),
         ("SELECT power(a, b) AS p FROM r WHERE b = -1", polars_engine.NegativeExponent),
-        # Both sides of AND are evaluated.
-        ("SELECT a FROM r WHERE b <> 0 AND a % b > 1", polars_engine.DivisionByZero),
         # An unused column is still computed.
         ("SELECT a FROM (SELECT a, a % b AS q FROM r)", polars_engine.DivisionByZero),
         # Wrapping, which an engine may do silently.
