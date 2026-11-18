@@ -130,6 +130,7 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     to_arrow,
     written_plan,
 )
+from sverify.report import refuse_schema
 from sverify_duckdb import DuckDBStore
 
 Row = tuple
@@ -968,9 +969,7 @@ class IncrementalView:
         self._sinks: list = []
         """Where the view keeps its state (`sverify._state`): in DuckDB on
         DuckDB, else in Arrow."""
-        _refuse_schema(
-            self.plan, {t: z for t in self.tables if isinstance(z := con.get(t), pa.Table)}
-        )
+        refuse_schema(json.loads(self.plan), con, self.engine)
         reason = None if resume is None else self._mismatch(resume)
         if resume is not None and reason is None:
             # The schema the engine gives the view, from a run on no rows.

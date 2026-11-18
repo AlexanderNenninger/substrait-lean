@@ -900,45 +900,9 @@ class Report:
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
         """Refuse a table that differs from the schema the plan was verified
-        for (`sverify._run_schema`): a missing column, a type the reader would
-        change, a NULL in a column read as non-null, an integer outside the
-        declared type's range (D46; the engine counts it)."""
-        if self.internal_plan is None:
-            return
-        for t, schemas in declared_columns(json.loads(self.internal_plan)).items():
-            if not con.has(t):
-                continue
-            z = con.get(t)
-            data = z if isinstance(z, pa.Table) else None
-            wide: set[tuple[str, str]] = set()
-            for declared in schemas:
-                found, more = schema_problems(declared, con.schema(t), data)
-                if found:
-                    raise PreconditionError(
-                        f"table {t} differs from the schema the plan was verified for: "
-                        + "; ".join(found)
-                        + ": refused before the run. Declare the column as it is (a wider "
-                        "integer type for a value outside the width), or fix the source"
-                    )
-                wide.update(more)
-            table = con.table(t)
-            for col, key in sorted(wide):
-                lo, hi = int_range(key)
-                x: Any = ibis._[col]
-                cond = x.isnull() | ((x >= lo) & (x <= hi))
-                [(_c, n, error)] = violation_counts(table, [cond], engine)
-                if n or error:
-                    raise PreconditionError(
-                        f"table {t} differs from the schema the plan was verified for: "
-                        + (
-                            f"the range check of column {col!r} raised: {error}"
-                            if error
-                            else range_message(col, key, n, _example(table, cond, col))
-                        )
-                        + ": refused before the run. Declare a wider integer type, or cast in "
-                        "the query",
-                        source=t,
-                    )
+        for (`refuse_schema`)."""
+        if self.internal_plan is not None:
+            refuse_schema(json.loads(self.internal_plan), con, engine)
 
     def _unchecked_requires(self) -> list[str]:
         """The preconditions in `requires` that `_conditions` holds no check
@@ -2320,3 +2284,45 @@ def _example(table: ir.Table, cond: Condition, col: str) -> object:
     """One value of column `col` where `cond` is not TRUE, for a message."""
     rows = violating_rows(table, cond, 1)
     return rows.column(col)[0].as_py() if rows is not None and rows.num_rows else "?"
+
+
+def refuse_schema(plan: object, con: Connection, engine: str | None = None) -> None:
+    """Refuse a table of `con` that differs from the schema `plan` was verified
+    for (`sverify._run_schema`): a missing column, a type the reader would
+    change, a NULL in a column read as non-null, an integer outside the
+    declared type's range (D46). An Arrow table's range is one native pass; a
+    table the engine reads where it is has its range counted on `engine`."""
+    for t, schemas in declared_columns(plan).items():
+        if not con.has(t):
+            continue
+        z = con.get(t)
+        data = z if isinstance(z, pa.Table) else None
+        wide: set[tuple[str, str]] = set()
+        for declared in schemas:
+            found, more = schema_problems(declared, con.schema(t), data)
+            if found:
+                raise PreconditionError(
+                    f"table {t} differs from the schema the plan was verified for: "
+                    + "; ".join(found)
+                    + ": refused before the run. Declare the column as it is (a wider "
+                    "integer type for a value outside the width), or fix the source"
+                )
+            wide.update(more)
+        table = con.table(t)
+        for col, key in sorted(wide):
+            lo, hi = int_range(key)
+            x: Any = ibis._[col]
+            cond = x.isnull() | ((x >= lo) & (x <= hi))
+            [(_c, n, error)] = violation_counts(table, [cond], engine)
+            if n or error:
+                raise PreconditionError(
+                    f"table {t} differs from the schema the plan was verified for: "
+                    + (
+                        f"the range check of column {col!r} raised: {error}"
+                        if error
+                        else range_message(col, key, n, _example(table, cond, col))
+                    )
+                    + ": refused before the run. Declare a wider integer type, or cast in "
+                    "the query",
+                    source=t,
+                )

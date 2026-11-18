@@ -33,3 +33,26 @@ def test_a_batch_outside_the_declared_width_is_refused() -> None:
     with pytest.raises(PreconditionError, match=r"column 'a' is declared int32"):
         view.apply({"t": Changes(inserts=[(2**40,)])})
     view.apply({"t": Changes(inserts=[(3,)])})
+
+
+def test_a_view_range_checks_a_resident_table() -> None:
+    from sverify_duckdb import DuckDBStore
+
+    con = sv.connect()
+    con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, 2**40], pa.int64())})))
+    t = ibis.table({"a": "int32"}, name="t")
+    with pytest.raises(PreconditionError, match=r"column 'a' is declared int32"):
+        Pipeline(con).view("v", t.group_by("a").aggregate(n=t.a.count()))
+
+
+def test_a_transform_on_a_bound_input_declares_the_tables_own_types() -> None:
+    """Nothing to check on a bound input (#1540, A2): the plan's schema there is
+    the bound table's, so a value of its physical width is within it."""
+
+    @sv.transform
+    def widen(t):
+        return t.select(y=t.a)
+
+    con = sv.connect()
+    con.put("t", pa.table({"a": pa.array([1, 2**40], pa.int64())}))
+    assert widen(con.table("t")).execute()["y"].tolist() == [1, 2**40]
