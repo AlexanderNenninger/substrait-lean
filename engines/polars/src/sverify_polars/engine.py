@@ -2895,7 +2895,12 @@ class Translator:
             pair = self.equi_key(c, ex, dtypes, n)
             if pair is None:
                 rest.append(c)
-            else:
+            elif not any(
+                pair[0].meta.eq(kl) and pair[1].meta.eq(kr)
+                for kl, kr in zip(keys_l, keys_r, strict=True)
+            ):
+                # The same equality twice (`a = b AND a = b`) is one key: Polars
+                # refuses to join on a pair of columns twice.
                 keys_l.append(pair[0])
                 keys_r.append(pair[1])
         left = left.with_row_index(_LEFT)
