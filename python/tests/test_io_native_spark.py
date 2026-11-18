@@ -56,6 +56,20 @@ def test_a_delta_scan_over_histories(history, tmp_path_factory):
             agree(snap.scan)
 
 
+@pytest.mark.parametrize("mode", ["name", "id"])
+@settings(
+    max_examples=10, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(history=histories(renames=True, adds=False))
+def test_a_mapped_delta_scan_over_histories(mode, history, tmp_path_factory):
+    path = tmp_path_factory.mktemp("m") / "t"
+    src = build_delta(path, history, mapping=mode)
+    for v in [*range(DeltaTable(str(path)).version() + 1), None]:
+        snap = src._native(v)
+        if snap is not None:
+            agree(snap.scan)
+
+
 @settings(
     max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )

@@ -4,8 +4,10 @@ Arrow in the driver.
 
 Route A of the design note (section 3.4) with public API that classic and Spark
 Connect sessions share: `spark.read.parquet` over the files, grouped by how
-their columns are named (Parquet field ids for Iceberg, read from the footers in
-the driver), `_metadata.row_index` for the positions a file lost, equality deletes
+their columns are named (Parquet field ids for Iceberg, the table's physical
+names for Delta's column mapping, read from the footers in the driver) and by
+their partition values (constants from the log, `Scan.partitions`),
+`_metadata.row_index` for the positions a file lost, equality deletes
 as a null-safe left join, and a cast of each column to the type the Arrow route
 gives it. The session's settings stay the user's. A file column whose type does
 not widen to the schema's (`sverify._scan.widens`) raises `Unsupported`.
@@ -99,14 +101,18 @@ def spark_scan(spark: Any, scan: Scan) -> DataFrame:
             deleted.setdefault(f, []).append(p)
     pieces = []
     connect = is_connect(spark)
-    for renaming, files in _runs(scan, deleted, connect):
+    constant = _constant(scan)
+    values = _partition_values(scan, constant)
+    for renaming, files in _runs(scan, deleted, connect, values):
         # The file is tagged with the descriptor's own string: no match between
         # it and the URI the session reports (`s3a://`, percent-encoding, `file:`
         # with one or three slashes) can fail silently. A file an equality
         # delete applies to is read alone, so the tag names it.
         tag = F.lit(files[0] if len(files) == 1 else None).cast("string")
         df = spark.read.parquet(*files).select(
-            "*", tag.alias(_FILE), F.col("_metadata.row_index").alias(_POS)
+            tag.alias(_FILE),
+            F.col("_metadata.row_index").alias(_POS),
+            *(F.col(f"`{p}`").alias(logical) for p, logical in renaming.items()),
         )
         if files[0] in deleted:
             gone = deleted[files[0]]
@@ -115,15 +121,18 @@ def spark_scan(spark: Any, scan: Scan) -> DataFrame:
             else:
                 pos = spark.createDataFrame(pa.table({"p": pa.array(gone, pa.int64())}))
                 df = df.join(pos, df[_POS] == pos["p"], "left_anti")
-        df = df.drop(_POS)
-        for physical, logical in renaming.items():
-            if physical != logical:
-                df = df.withColumnRenamed(physical, logical)
+        here = dict(zip(constant, values.get(files[0], ()), strict=False))
         pieces.append(
             df.select(
                 F.col(_FILE),
                 *(
-                    (F.col(f"`{c}`") if c in renaming.values() else F.lit(None))
+                    (
+                        F.lit(here[c])
+                        if c in here
+                        else F.col(f"`{c}`")
+                        if c in renaming.values()
+                        else F.lit(None)
+                    )
                     .cast(types[c])
                     .alias(c)
                     for c in names
@@ -150,23 +159,41 @@ def spark_scan(spark: Any, scan: Scan) -> DataFrame:
     )
 
 
+def _constant(scan: Scan) -> list[str]:
+    """The partition columns: their values are the log's, one set per file."""
+    return (
+        [] if scan.partitions is None else [c for c in scan.partitions.column_names if c != "file"]
+    )
+
+
+def _partition_values(scan: Scan, constant: list[str]) -> dict[str, tuple[Any, ...]]:
+    """Each file's partition values, in the order of `constant`."""
+    if scan.partitions is None:
+        return {}
+    cols = [scan.partitions.column(c).to_pylist() for c in constant]
+    return dict(
+        zip(scan.partitions.column("file").to_pylist(), zip(*cols, strict=True), strict=True)
+    )
+
+
 def _runs(
-    scan: Scan, deleted: dict[str, list[int]], connect: bool
+    scan: Scan, deleted: dict[str, list[int]], connect: bool, values: dict[str, tuple[Any, ...]]
 ) -> list[tuple[dict[str, str], list[str]]]:
     """The files in the descriptor's order, in runs that one read covers: files
-    named alike (`{physical name: logical name}`) and typed alike (one read
-    infers one schema), none with deleted positions or under an equality
-    delete, which are read alone."""
+    named alike (`{physical name: logical name}`), typed alike (one read infers
+    one schema) and partitioned alike, none with deleted positions or under an
+    equality delete, which are read alone."""
     alone = set(deleted).union(*(e.applies_to for e in scan.equality))
     out: list[tuple[dict[str, str], list[str]]] = []
-    keys: list[tuple[dict[str, str], tuple[str, ...]]] = []
+    keys: list[tuple[Any, ...]] = []
     for f in scan.files:
         names, kinds = _renaming(f, scan, connect)
-        if out and keys[-1] == (names, kinds) and f not in alone and out[-1][1][0] not in alone:
+        key = (names, kinds, values.get(f))
+        if out and keys[-1] == key and f not in alone and out[-1][1][0] not in alone:
             out[-1][1].append(f)
         else:
             out.append((names, [f]))
-            keys.append((names, kinds))
+            keys.append(key)
     return out
 
 
@@ -178,15 +205,17 @@ def _renaming(file: str, scan: Scan, connect: bool) -> tuple[dict[str, str], tup
         if scan.field_ids is None
         else dict(zip(scan.field_ids, scan.schema.names, strict=True))
     )
+    by_name = dict(zip(scan.physical or scan.schema.names, scan.schema.names, strict=True))
+    constant = _constant(scan)
     out = {}
     kinds = []
     for f in _footer(file, connect):
         if by_id is None:
-            logical = f.name if f.name in scan.schema.names else None
+            logical = by_name.get(f.name)
         else:
             raw = (f.metadata or {}).get(_FIELD_ID)
             logical = by_id.get(int(raw)) if raw is not None else None
-        if logical is None:
+        if logical is None or logical in constant:
             continue
         want = scan.schema.field(logical).type
         if not widens(f.type, want) and not _strings(f.type, want):
