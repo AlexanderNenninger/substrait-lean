@@ -25,7 +25,7 @@ import tempfile
 import uuid
 import weakref
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 import polars as pl
@@ -207,7 +207,7 @@ class PolarsStore(ArrowOps):
             return super().has_negative(z)
         return bool(z.lazy().select((pl.col(WEIGHT) < 0).any()).collect().item())
 
-    def retire(self, view: Any, column: str, cutoff: object) -> int:
+    def retire(self, view: Any, column: str, cutoff: Any) -> int:
         z = view.state
         if not isinstance(z, PolarsState):
             return super().retire(view, column, cutoff)
@@ -226,7 +226,9 @@ class PolarsStore(ArrowOps):
             return super().without_keys(z, columns, keys)
         return self._by_keys(z, columns, keys, "anti")
 
-    def _by_keys(self, z: PolarsState, columns: Sequence[str], keys: Any, how: str) -> State:
+    def _by_keys(
+        self, z: PolarsState, columns: Sequence[str], keys: Any, how: Literal["semi", "anti"]
+    ) -> State:
         left = z.lazy()
         right = _lazy(keys)
         names = right.collect_schema().names()
