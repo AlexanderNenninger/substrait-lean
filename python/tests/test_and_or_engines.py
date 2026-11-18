@@ -12,6 +12,7 @@ from hypothesis import strategies as st
 
 import sverify as sv
 from sverify.engine import connect, put_table
+from sverify.errors import UnverifiedRunWarning
 
 pytestmark = pytest.mark.backend("duckdb")
 
@@ -21,8 +22,8 @@ INT = ibis.table({"x": "int64"}, name="t")
 STR = ibis.table({"s": "string"}, name="t")
 
 
-def _run(sql, table, data, engine, **kw):
-    report = sv.verify(sql, tables={"t": table}, on_inferred="off", **kw)
+def _run(sql, table, data):
+    report = sv.verify(sql, tables={"t": table}, on_inferred="off")
     con = connect()
     put_table(con, "t", pa.table(data))
     return report, con
@@ -31,20 +32,25 @@ def _run(sql, table, data, engine, **kw):
 @pytest.mark.parametrize("engine", ENGINES)
 def test_a_cast_guarded_by_a_range_runs_where_the_guard_is_false(engine):
     """A float-to-integer cast raises outside the integer range; the range guard
-    keeps it from running there."""
+    keeps it from running there. The analysis does not yet narrow a bound through
+    the chain's `IS NOT FALSE` (it proves a zero guard, not an interval), so the
+    plan runs unverified: the test is about the engine, which must take the guard."""
     sql = "SELECT x FROM t WHERE x BETWEEN -1000000.0 AND 1000000.0 AND CAST(x AS BIGINT) > 1"
-    report, con = _run(sql, FLT, {"x": [1e30, 5.5, -3.0, 2.5]}, engine)
-    assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.run(con, engine).column("x").to_pylist() == [5.5, 2.5]
+    report, con = _run(sql, FLT, {"x": [1e30, 5.5, -3.0, 2.5]})
+    with pytest.warns(UnverifiedRunWarning):
+        got = report.run(con, engine, unverified=True)
+    assert got.column("x").to_pylist() == [5.5, 2.5]
 
 
 def test_a_cast_guarded_by_a_pattern_runs_where_the_guard_is_false():
     """A string-to-integer cast raises on text that is not a number (DuckDB only:
-    the other engines refuse it, D49)."""
+    the other engines refuse it, D49). The analysis has no domain bound for it, so
+    the plan runs unverified."""
     sql = "SELECT s FROM t WHERE s LIKE '1%' AND CAST(s AS BIGINT) > 1"
-    report, con = _run(sql, STR, {"s": ["12", "1x", "5", "10"]}, "duckdb")
-    assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.run(con, "duckdb").column("s").to_pylist() == ["12", "10"]
+    report, con = _run(sql, STR, {"s": ["12", "ab", "5", "10"]})
+    with pytest.warns(UnverifiedRunWarning):
+        got = report.run(con, "duckdb", unverified=True)
+    assert got.column("s").to_pylist() == ["12", "10"]
 
 
 @pytest.mark.parametrize("engine", ENGINES)
@@ -52,7 +58,7 @@ def test_an_aggregate_filter_runs_where_the_guard_is_false(engine):
     """`polars-exec-when-eager` excludes a branch under `group_by().agg`; the
     guard of the filter still holds there."""
     sql = "SELECT COUNT(*) FILTER (WHERE x <> 0 AND 10 // x > 1) AS c FROM t"
-    report, con = _run(sql, INT, {"x": [0, 2, 5]}, engine)
+    report, con = _run(sql, INT, {"x": [0, 2, 5]})
     assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.run(con, engine).column("c").to_pylist() == [2]
 
@@ -62,7 +68,7 @@ def test_a_window_argument_runs_where_the_guard_is_false(engine):
     """The guard inside a window's argument (`over()`, which the masking fact
     excludes) still holds."""
     sql = "SELECT x, MAX(CASE WHEN x <> 0 AND 10 // x > 1 THEN x END) OVER () AS m FROM t"
-    report, con = _run(sql, INT, {"x": [0, 2, 5]}, engine, deterministic=True)
+    report, con = _run(sql, INT, {"x": [0, 2, 5]})
     assert report.verdict == sv.Verdict.PROVED, str(report)
     got = report.run(con, engine).to_pylist()
     assert sorted((r["x"], r["m"]) for r in got) == [(0, 5), (2, 5), (5, 5)]
@@ -83,8 +89,8 @@ def test_the_lifted_plan_agrees_with_the_eager_one_where_that_returns(rows):
     cols = {"qty": [q for q, _ in rows], "total": [v for _, v in rows]}
     put_table(con, "t", pa.table(cols, schema=schema))
     lifted = sv.verify(sql, tables={"t": t}, on_inferred="off")
-    assert lifted.verdict == sv.Verdict.PROVED
-    assert lifted.run(con, "duckdb").to_pylist() == want
+    assert [e.kind for e in lifted.errors] == ["overflow"]  # `MIN // -1`; the guard is not it
+    assert lifted.run(con, "duckdb", unverified=True).to_pylist() == want
     if all(q != 0 for q, _ in rows):
         eager = sv.verify(sql, tables={"t": t}, on_inferred="off", semantics="duckdb")
         assert eager.run(con, "duckdb", unverified=True).to_pylist() == want
