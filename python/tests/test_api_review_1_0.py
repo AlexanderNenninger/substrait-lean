@@ -11,6 +11,7 @@ import pytest
 import sverify as sv
 from sverify.contracts import _REPORT_INTERNAL, Report
 from sverify.io import DeltaSink, DeltaSource, SinkChange, StaticSource
+from sverify.report import _REPORT_PRIVATE
 
 #: What `Report` keeps public (B4), besides its methods.
 PUBLIC = {
@@ -36,7 +37,10 @@ PUBLIC = {
 def test_report_fields_are_public_or_internal():
     names = {f.name for f in dataclasses.fields(Report)}
     assert {n for n in names if not n.startswith("_")} == PUBLIC
-    assert {n.removeprefix("_") for n in names if n.startswith("_")} == set(_REPORT_INTERNAL)
+    assert {n.removeprefix("_") for n in names if n.startswith("_")} == {
+        *_REPORT_INTERNAL,
+        *_REPORT_PRIVATE,
+    }
 
 
 def _report() -> Report:
