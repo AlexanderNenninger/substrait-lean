@@ -4,6 +4,7 @@ one release; 1.0 removes them (the API review's section M)."""
 
 import json
 import warnings
+from typing import Any
 
 import ibis
 import pyarrow as pa
@@ -270,3 +271,99 @@ def test_references_takes_to_only() -> None:
 
 def test_connection_datafusion_is_removed() -> None:
     assert not hasattr(sv.connect(), "datafusion")
+
+
+# -- #1540: run checks the data against the schema the plan was verified for ---
+
+ENGINES = ["duckdb", "polars"]
+NON_NULL = pa.schema([pa.field("a", pa.int64(), nullable=False), pa.field("g", pa.int64())])
+
+
+def _con(engine: str, data: dict[str, pa.Table]) -> Any:
+    c = sv.connect(engine)
+    for name, table in data.items():
+        c.put(name, table)
+    return c
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT g, count(a) AS n, min(a) AS m FROM t GROUP BY g",
+        "SELECT a AS y FROM t",
+    ],
+)
+def test_run_refuses_a_null_in_a_non_null_column(engine: str, query: str) -> None:
+    report = sv.verify(query, tables={"t": NON_NULL}, ensures=["TRUE"])
+    data = pa.table({"a": pa.array([1, None], pa.int64()), "g": [1, 1]})
+    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' holds 1 NULL"):
+        report.run(_con(engine, {"t": data}), engine=engine)
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_run_refuses_a_null_in_an_ibis_non_null_column(engine: str) -> None:
+    t = ibis.table({"a": "!int64"}, name="t")
+    report = sv.verify(t.select(y=t.a + 0), ensures=[_.y.notnull()])
+    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' holds 1 NULL"):
+        report.run(
+            _con(engine, {"t": pa.table({"a": pa.array([1, None], pa.int64())})}), engine=engine
+        )
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda t: t.select(y=t.a // 1),
+        lambda t: t.select(y=100 // t.a),
+        lambda t: t.select(y=t.a),
+    ],
+)
+def test_run_refuses_a_double_in_an_integer_column(engine: str, build) -> None:
+    t = ibis.table({"a": "int64"}, name="t")
+    report = sv.verify(build(t), requires=[_.a != 0])
+    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' is double"):
+        report.run(_con(engine, {"t": pa.table({"a": [0.4, 2.0]})}), engine=engine)
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_run_accepts_a_matching_table_with_narrower_integers_and_a_nullable_column(
+    engine: str,
+) -> None:
+    t = ibis.table({"a": "int64", "b": "!int64"}, name="t")
+    report = sv.verify(t.select(y=t.a, z=t.b))
+    data = pa.table({"a": pa.array([1, None], pa.int32()), "b": pa.array([2, 3], pa.int16())})
+    assert report.run(_con(engine, {"t": data}), engine=engine).to_pylist() == [
+        {"y": 1, "z": 2},
+        {"y": None, "z": 3},
+    ]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_run_refuses_an_integer_outside_its_declared_width(engine: str) -> None:
+    """D46: a physical type wider than the declared one gets one range check,
+    on the engine; the refusal names the column, the type and a value."""
+    t = ibis.table({"a": "int32"}, name="t")
+    report = sv.verify(t.select(y=t.a))
+    wide = pa.table({"a": pa.array([1, 2**40], pa.int64())})
+    with pytest.raises(
+        sv.errors.PreconditionError, match=r"column 'a' of t is declared int32.*1099511627776"
+    ):
+        report.run(_con(engine, {"t": wide}), engine=engine)
+    ok = pa.table({"a": pa.array([1, 2**30], pa.int64())})
+    assert len(report.run(_con(engine, {"t": ok}), engine=engine).to_pylist()) == 2
+
+
+def test_run_checks_no_range_when_the_physical_type_fits(monkeypatch) -> None:
+    from sverify import report as report_module
+
+    t = ibis.table({"a": "int32"}, name="t")
+    report = sv.verify(t.select(y=t.a))
+    seen: list[object] = []
+    real = report_module.violation_counts
+    monkeypatch.setattr(
+        report_module, "violation_counts", lambda *args: seen.append(args) or real(*args)
+    )
+    report.run(_con("duckdb", {"t": pa.table({"a": pa.array([1, 2], pa.int16())})}))
+    assert seen == []

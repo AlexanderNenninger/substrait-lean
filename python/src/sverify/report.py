@@ -23,11 +23,14 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 import ibis
 import ibis.expr.types as ir
+import pyarrow as pa
 from ibis.common.deferred import Deferred
 
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
+from sverify._run_schema import declared_columns, int_name, int_range
+from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
@@ -43,8 +46,6 @@ from sverify.observation import Observation, _deterministic_arg
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
-    import pyarrow as pa
-
     from sverify.routes import Route, RouteKind
 from sverify.conditions import (
     DATA_CHECK,
@@ -839,6 +840,7 @@ class Report:
             PreconditionError: A precondition or an assumed `SUM` does not
                 hold on the data.
         """
+        self._check_schema(con, engine)
         for t, conds in self._conditions.items():
             if not con.has(t):
                 continue
@@ -865,6 +867,44 @@ class Report:
                 run_plan(con, written_plan(self.internal_plan), "duckdb")
             except Exception as e:
                 raise self._broken_assumption(e) or e from None
+
+    def _check_schema(self, con: Connection, engine: str | None) -> None:
+        """Refuse a table that differs from the schema the plan was verified
+        for (`sverify._run_schema`): a missing column, a type the reader would
+        change, a NULL in a column read as non-null, an integer outside the
+        declared type's range (D46; the engine counts it)."""
+        if self.internal_plan is None:
+            return
+        for t, declared in declared_columns(json.loads(self.internal_plan)).items():
+            if not con.has(t):
+                continue
+            z = con.get(t)
+            found, wide = schema_problems(
+                declared, con.schema(t), z if isinstance(z, pa.Table) else None
+            )
+            if found:
+                raise PreconditionError(
+                    f"table {t} differs from the schema the plan was verified for: "
+                    + "; ".join(found)
+                    + ": refused before the run. Declare the column as it is, or fix the source"
+                )
+            table = con.table(t)
+            for col, key in wide:
+                lo, hi = int_range(key)
+                x: Any = ibis._[col]
+                cond = x.isnull() | ((x >= lo) & (x <= hi))
+                [(_c, n, error)] = violation_counts(table, [cond], engine)
+                if n or error:
+                    raise PreconditionError(
+                        f"column {col!r} of {t} is declared {int_name(key)} ({lo} to {hi}) and "
+                        + (
+                            f"its range check raised: {error}"
+                            if error
+                            else f"{n} value(s) lie outside it, e.g. {_outside(z, col, lo, hi)}"
+                        )
+                        + ": refused before the run. Declare the wider type, or cast in the query",
+                        source=t,
+                    )
 
     def _unchecked_requires(self) -> list[str]:
         """The preconditions in `requires` that `_conditions` holds no check
@@ -2232,3 +2272,10 @@ def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) ->
         return bad.limit(limit).to_pyarrow()
     except Exception:
         return None
+
+
+def _outside(z: object, col: str, lo: int, hi: int) -> object:
+    """One value of column `col` outside `[lo, hi]`, for a message."""
+    if not isinstance(z, pa.Table):
+        return "?"
+    return next((v for v in z.column(col).to_pylist() if v is not None and not lo <= v <= hi), "?")

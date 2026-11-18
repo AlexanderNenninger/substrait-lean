@@ -237,7 +237,7 @@ def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
     without changing a value (design note #173, section 5.2): the same type;
     a signed integer to a wider signed one (unsigned integers do not widen);
     `float32` to `float64`; a decimal to a greater precision at the same scale;
-    a list whose element widens."""
+    a list whose element widens; one string type to another."""
     types = pa.types
     if actual == expected:
         return True
@@ -249,7 +249,11 @@ def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
         return actual.scale == expected.scale and actual.precision <= expected.precision
     if types.is_list(actual) and types.is_list(expected):
         return widens(actual.value_type, expected.value_type)
-    return False
+    return _is_text(actual) and _is_text(expected)
+
+
+def _is_text(t: pa.DataType) -> bool:
+    return pa.types.is_string(t) or pa.types.is_large_string(t) or pa.types.is_string_view(t)
 
 
 def schema_mismatches(expected: pa.Schema, actual: pa.Schema) -> list[Mismatch]:
