@@ -1164,7 +1164,8 @@ class Report:
                 what = " and ".join(sorted(set(open_)))
                 msg = (
                     f"the margin check and the plan each evaluate {what} whose rows "
-                    "are open (ties, or the rows of a LIMIT): the two may differ"
+                    "are open (ties, or the rows of a LIMIT): the two may differ; pin them with "
+                    "`reproducible=`"
                 )
                 if deterministic:
                     raise PreconditionError(msg)

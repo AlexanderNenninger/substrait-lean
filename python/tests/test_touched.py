@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from _engines import PROFILED, PROFILED_ORDERED
+from _engines import PROFILED
 from _pipelines import recomputed, rows
 from sverify import incremental
 from sverify.io import Changes, StaticSource
@@ -268,7 +268,7 @@ def unique_stream(seed, steps=30):
     return stream(rng, row, row, steps, 3)
 
 
-@pytest.mark.parametrize("engine", PROFILED_ORDERED)
+@pytest.mark.parametrize("engine", PROFILED)
 @pytest.mark.parametrize("seed", range(2))
 def test_touched_partitions_match_a_full_recompute(seed, engine):
     first, batches = unique_stream(seed)

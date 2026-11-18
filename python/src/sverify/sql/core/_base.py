@@ -4575,7 +4575,6 @@ class _Writer:
             )
 
         copies = numbers_copies(Window(i, part, sort, fns)) and not ordered
-        src = self.child(i, self.stable and not copies)
         # `Rel.Allowed` takes one arrangement of the ties for the whole node. Two
         # functions that read it would each see the engine's own, so one inner
         # number fixes it and the node's functions order by that (#1608).
@@ -4604,15 +4603,16 @@ class _Writer:
             return partition, peers, peers
 
         partition, peers, keys = order()
+        inner = ""
         if fixed:
             tie = d.quote("w")
+            src = self.child(i, False)
             inner = self.select(
                 [f"{col(j)} AS {self.c(j)}" for j in range(m)]
                 + [f"{d.row_number(d.over(partition, keys))} AS {tie}"],
                 d.subquery(src, a),
             )
             a = self.alias()
-            src = inner
             partition, peers, _ = order()
             keys = [self.asc(self.ref(a, tie))]
         over = d.over(partition, keys)
@@ -4667,6 +4667,8 @@ class _Writer:
         if ordered:
             # `windowEval` emits the rows in sort order.
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
+        # Written last, so a refusal in an expression comes before the input's.
+        src = inner or self.child(i, self.stable and not copies)
         return self.select(items, d.subquery(src, a))
 
     def framed(

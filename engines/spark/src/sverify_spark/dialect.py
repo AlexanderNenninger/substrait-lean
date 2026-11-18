@@ -413,8 +413,8 @@ class SparkDialect(Dialect):
 
     def row_ordinal(self) -> str:
         raise Unsupported(
-            "Spark tables have no row order, so rows='sequence' cannot follow the "
-            "Lean model's list order (rows='multiset' leaves ties open)"
+            "Spark tables have no row order, so FETCH and windows over a named table "
+            "cannot follow the Lean model's list order (windows run with deterministic=True)"
         )
 
 
