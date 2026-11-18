@@ -4,17 +4,20 @@
 # Usage, from a checkout on the laptop (the script runs on homelab and clones
 # the branch there, so push it first):
 #
-#   ssh homelab 'bash -s -- [--wait] <branch> [poe task ...]' < python/scripts/homelab_qa.sh
+#   ssh homelab 'bash -s -- [--wait] [--slots N | --exclusive] <branch> [poe task ...]' < python/scripts/homelab_qa.sh
 #
-# The script refuses to start while the box is loaded (CLAUDE.md, "homelab"):
-# a 1-minute load above 8, or less than 6 GB available. It exits 75 and says
-# why; with `--wait` it checks again every minute until the load allows (at
-# most HOMELAB_QA_WAIT_MAX seconds, 3 hours by default). Other runs may be
-# going: several run side by side while load and memory allow, each under its
-# memory cap, and the script names those it starts beside. A
-# /tmp/substrait-lean-* directory no process uses is a crashed run's
-# leftover: it gets a warning. The chaos run (prefix `substrait-chaos`,
-# below) is exempt from the load check.
+# Slots (CLAUDE.md, "homelab"): homelab has two slots, a flock on each,
+# held for the life of the run. A QA run takes one (`--slots 1`, the default);
+# `--slots 2` takes both and `--exclusive` is the same, for a regen or a
+# benchmark. If the slots aren't free the script exits 75 and says who holds
+# them; with `--wait` it queues until they are (at most HOMELAB_QA_WAIT_MAX
+# seconds, 3 hours by default). A run that needs both slots goes before runs
+# that arrive after it. The kernel frees the slots when the run ends, crashes
+# or is killed. Once it holds its slots, the script still checks that 6 GB are
+# available (the user's own services share the box), inside the lock. Each
+# holder's info is in ~/.substrait-lean/slots/slot-N.holder, and `capacity
+# homelab` lists holders and waiters. The chaos run (prefix `substrait-chaos`,
+# below) takes no slot.
 #
 # The poe tasks default to `qa`. Each run clones into its own
 # /tmp/<prefix>-<uuid>, which is deleted at exit, also on failure, and the
@@ -30,13 +33,14 @@
 #   HOMELAB_QA_NICE                niceness of the build and the tests (10)
 #   HOMELAB_QA_PREFIX              the run directory's prefix (substrait-lean)
 #   HOMELAB_QA_CHECK_GENERATED     check the generated modules' proofs (true)
+#   HOMELAB_QA_WAIT_MAX            seconds `--wait` waits (10800)
+#   HOMELAB_SESSION                the session's name, written to the holder info
+#   HOMELAB_SLOT_DIR, HOMELAB_MIN_AVAILABLE_GB  the slot directory and memory floor (tests)
 #
 # The background chaos run builds at the 8G default without checking the
 # generated proofs (CI checks them on every PR), and runs its tests with 2
 # workers, 2G, nice 19 and the prefix `substrait-chaos`, so the
-# one-run-at-a-time check skips it (CLAUDE.md). CLAUDE.md has the capacity
-# check to do before starting a run; the script refuses to start when less
-# than 6 GB is available, since the build is as heavy as a QA run.
+# slot check skips it (CLAUDE.md); it still needs 6 GB available.
 #
 # The Lean build and the tests each run in their own systemd user scope with
 # no swap (`ulimit -v`, per process, where user scopes are not available; a
@@ -59,11 +63,17 @@
 set -uo pipefail
 
 wait=false
-if [ "${1:-}" = --wait ]; then
-  wait=true
+slots=1
+while :; do
+  case ${1:-} in
+    --wait) wait=true ;;
+    --slots) slots=$2; shift ;;
+    --exclusive) slots=2 ;;
+    *) break ;;
+  esac
   shift
-fi
-branch=${1:?usage: homelab_qa.sh [--wait] <branch> [poe task ...]}
+done
+branch=${1:?usage: homelab_qa.sh [--wait] [--slots N | --exclusive] <branch> [poe task ...]}
 shift
 tasks=("${@:-qa}")
 
@@ -76,71 +86,127 @@ build_memory_max=${HOMELAB_QA_BUILD_MEMORY_MAX:-$memory_max}
 niceness=${HOMELAB_QA_NICE:-10}
 prefix=${HOMELAB_QA_PREFIX:-substrait-lean}
 check_generated=${HOMELAB_QA_CHECK_GENERATED:-true}
-min_available_kb=$((6 * 1024 * 1024))
-
-max_load=8
 wait_max=${HOMELAB_QA_WAIT_MAX:-10800}
+$wait || wait_max=0
 
-waited=0
+# --- slots:begin (kept identical in agentic-tools' drivers/lib/slots.sh;
+# --- agentic-tools' tests/test-slots.sh compares the two copies)
+# Slot pool for homelab: two slots, a flock on each. Source it on homelab.
+#
+# A run takes an exclusive flock on its slots and keeps the descriptors for its
+# whole life (children inherit them); the kernel releases them when the run
+# exits, crashes or is killed. A normal run takes 1 slot, a regen 2, a
+# benchmark all. Runs queue at a gate lock: while one waits at the gate for its
+# slots, later runs wait behind it, so a run that needs both slots is not
+# starved by single-slot runs arriving after it. Slots are taken in a fixed
+# order (slot-0, then slot-1). Holders and waiters write an info file so that
+# `capacity homelab` can list them.
+slots_dir=${HOMELAB_SLOT_DIR:-$HOME/.substrait-lean/slots}
+slot_count=2
+slots_min_available_kb=$(( ${HOMELAB_MIN_AVAILABLE_GB:-6} * 1024 * 1024 ))
+slots_taken=()
 
-# `busy`: why the box can't take a run now, on stdout; nothing if it can.
-busy() {
-  local load available_kb
-  available_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-  if [ "$available_kb" -lt "$min_available_kb" ]; then
-    echo "only $((available_kb / 1024)) MB available, under 6 GB"
-  fi
-  [ "$prefix" = substrait-chaos ] && return
-  load=$(cut -d' ' -f1 /proc/loadavg)
-  if awk -v l="$load" -v m="$max_load" 'BEGIN { exit !(l > m) }'; then
-    echo "1-minute load $load, over $max_load"
-  fi
+# `slots_info <run id> <slots> <branch> <session> <command>`: the info file text.
+slots_info() {
+  printf 'id=%s\npid=%s\nbranch=%s\nsession=%s\nstart=%s\nslots=%s\ncmd=%s\n' \
+    "$1" "$$" "$3" "$4" "$(date +%s)" "$2" "$(printf '%s' "$5" | tr '\n' ' ' | cut -c1-200)"
 }
 
-# `others`: the runs going beside this one, and crashed runs' leftovers, on
-# stderr.
-others() {
-  local d p cwd pids born age
-  for d in /tmp/substrait-lean-*; do
-    [ -d "$d" ] || continue
-    # The processes working in it: their working directory is inside it.
-    pids=$(for p in /proc/[0-9]*; do
-      cwd=$(readlink "$p/cwd" 2>/dev/null)
-      if [ "$cwd" = "$d" ] || [[ $cwd == "$d"/* ]]; then echo "${p#/proc/}"; fi
-    done | tr '\n' ' ')
-    # Its age from its birth time; the modification time moves as it fills.
-    born=$(stat -c %W "$d")
-    [ "$born" -gt 0 ] || born=$(stat -c %Y "$d")
-    age=$(( ($(date +%s) - born) / 60 ))
-    if [ -n "$pids" ]; then
-      echo "homelab_qa: beside another run in $d, started $age min ago, PIDs $pids" >&2
-    else
-      echo "homelab_qa: WARNING: $d ($age min old) has no process in it: a crashed run's leftover" >&2
-    fi
+# `slots_holders`: who holds the slots now, one line each, for messages.
+slots_holders() {
+  local f pid
+  for f in "$slots_dir"/slot-*.holder; do
+    [ -f "$f" ] || continue
+    pid=$(sed -n 's/^pid=//p' "$f")
+    kill -0 "$pid" 2>/dev/null || continue
+    echo "$(basename "$f" .holder): $(sed -n 's/^id=//p;s/^branch=//p;s/^cmd=//p' "$f" | tr '\n' ' ' | cut -c1-120)"
   done
 }
 
-while reason=$(busy) && [ -n "$reason" ]; do
-  if ! $wait; then
-    echo "homelab_qa: not starting: $reason" | head -1 >&2
-    printf '%s\n' "$reason" | tail -n +2 | sed 's/^/homelab_qa:   also: /' >&2
-    exit 75
-  fi
-  if [ "$waited" -ge "$wait_max" ]; then
-    echo "homelab_qa: still busy after $((waited / 60)) min, giving up: $reason" >&2
-    exit 75
-  fi
-  [ $((waited % 600)) -eq 0 ] && echo "homelab_qa: waiting: $(head -1 <<< "$reason")" >&2
-  sleep 60
-  waited=$((waited + 60))
-done
-others
+# `slots_release`: remove this run's info files (the kernel frees the locks).
+slots_release() {
+  local i
+  rm -f "$slots_dir/waiters/${slots_id:-none}"
+  for i in ${slots_taken[@]+"${slots_taken[@]}"}; do rm -f "$slots_dir/slot-$i.holder"; done
+}
+
+# `slots_acquire <id> <slots> <wait seconds> <branch> <session> <command>`:
+# take <slots> slots (0 wait seconds: a few seconds of grace, then exit
+# status 75). Then check that 6 GB are available (HOMELAB_MIN_AVAILABLE_GB),
+# inside the lock, so two runs can't both pass the check.
+slots_acquire() {
+  local n=$2 wait_max=$3 deadline i fd got=0 avail last=0 now
+  slots_id=$1
+  [ "$n" -ge 1 ] && [ "$n" -le "$slot_count" ] || { echo "slots: --slots must be 1..$slot_count" >&2; return 2; }
+  mkdir -p "$slots_dir/waiters"
+  slots_info "$1" "$n" "$4" "$5" "$6" > "$slots_dir/waiters/$1"
+  now=$(date +%s)
+  deadline=$((now + (wait_max > 0 ? wait_max : 3)))
+  # The gate: one waiter at a time looks for slots, in arrival order.
+  exec 19>"$slots_dir/gate"
+  while ! flock -w 5 19; do
+    now=$(date +%s)
+    [ "$now" -lt "$deadline" ] || { echo "slots: busy: runs are queued for the slots" >&2; exec 19>&-; rm -f "$slots_dir/waiters/$1"; return 75; }
+  done
+  while :; do
+    for ((i = 0; i < slot_count && got < n; i++)); do
+      fd=$((20 + i))
+      case " ${slots_taken[*]-} " in *" $i "*) continue ;; esac
+      eval "exec $fd>\"$slots_dir/slot-$i\""
+      if flock -n "$fd"; then slots_taken+=("$i"); got=$((got + 1)); else eval "exec $fd>&-"; fi
+    done
+    [ "$got" -ge "$n" ] && break
+    now=$(date +%s)
+    if [ "$now" -ge "$deadline" ]; then
+      echo "slots: busy: need $n of $slot_count slots, held by:" >&2
+      slots_holders | sed 's/^/slots:   /' >&2
+      for i in "${slots_taken[@]}"; do eval "exec $((20 + i))>&-"; done
+      slots_taken=(); exec 19>&-; rm -f "$slots_dir/waiters/$1"; return 75
+    fi
+    if [ $((now - last)) -ge 600 ]; then
+      last=$now
+      echo "slots: waiting for $((n - got)) more of $n slot(s); held by:" >&2
+      slots_holders | sed 's/^/slots:   /' >&2
+    fi
+    sleep 1
+  done
+  for i in "${slots_taken[@]}"; do
+    slots_info "$1" "$n" "$4" "$5" "$6" > "$slots_dir/slot-$i.holder.tmp" \
+      && mv -f "$slots_dir/slot-$i.holder.tmp" "$slots_dir/slot-$i.holder"
+  done
+  rm -f "$slots_dir/waiters/$1"
+  exec 19>&-
+  echo "slots: holding slot(s) ${slots_taken[*]} of $slot_count" >&2
+  # The memory check, with the slots held. The user's own services share the box.
+  deadline=$(( $(date +%s) + (wait_max > 0 ? wait_max : 0) ))
+  while :; do
+    avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+    [ "$avail" -ge "$slots_min_available_kb" ] && return 0
+    now=$(date +%s)
+    if [ "$now" -ge "$deadline" ]; then
+      echo "slots: not starting: only $((avail / 1024)) MB available, under $((slots_min_available_kb / 1024 / 1024)) GB" >&2
+      slots_release
+      return 75
+    fi
+    sleep 5
+  done
+}
+# --- slots:end
 
 id=$(uuidgen)
+if [ "$prefix" = substrait-chaos ]; then
+  avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+  if [ "$avail" -lt "$slots_min_available_kb" ]; then
+    echo "homelab_qa: not starting: only $((avail / 1024)) MB available, under 6 GB" >&2
+    exit 75
+  fi
+else
+  slots_acquire "$id" "$slots" "$wait_max" "$branch" "${HOMELAB_SESSION:-}" "poe ${tasks[*]}" || exit $?
+fi
 dir=/tmp/$prefix-$id
 unit=
-trap 'rm -rf "$dir"' EXIT
-trap '[ -n "$unit" ] && systemctl --user stop "$unit" 2>/dev/null; exit 143' TERM HUP INT
+trap 'slots_release; rm -rf "$dir"' EXIT
+trap 'slots_release; [ -n "$unit" ] && systemctl --user stop "$unit" 2>/dev/null; exit 143' TERM HUP INT
 
 # Whether a user scope's MemoryMax reaches its cgroup (the memory controller
 # is delegated to the user's systemd).
