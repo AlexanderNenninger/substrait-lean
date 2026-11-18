@@ -114,6 +114,31 @@ QUERIES = [
     " ON d.name = o.customer WHERE d.region = c.region AND o.id > 1)",
     "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM orders p WHERE p.id = o.id"
     " AND 10 / p.amount > 0)",
+    # #345: a correlated IN and NOT IN, a conjunct of WHERE. `qty` has NULLs
+    # (order 2) and the NULL customer (order 5) correlates with nothing.
+    "SELECT id FROM orders o WHERE o.qty IN (SELECT p.qty FROM orders p"
+    " WHERE p.customer = o.customer)",
+    "SELECT id FROM orders o WHERE o.qty NOT IN (SELECT p.qty FROM orders p"
+    " WHERE p.customer = o.customer)",
+    "SELECT id FROM orders o WHERE o.qty NOT IN (SELECT p.qty FROM orders p"
+    " WHERE p.customer = o.customer AND p.id <> o.id)",
+    # NULL in the subquery's column against a non-NULL needle, and an empty one.
+    "SELECT id FROM orders o WHERE CAST(o.amount AS INTEGER) NOT IN (SELECT p.qty FROM orders p"
+    " WHERE p.customer = o.customer)",
+    "SELECT id FROM orders o WHERE o.qty NOT IN (SELECT p.qty FROM orders p"
+    " WHERE p.customer = o.customer AND p.id < 0)",
+    "SELECT id FROM orders o WHERE o.qty IN (SELECT p.qty FROM orders p"
+    " WHERE p.customer = o.customer AND p.id < 0)",
+    # A needle that is an expression, a condition that is NULL (`price`), a plain
+    # conjunct beside it, and inner-only conjuncts.
+    "SELECT id FROM orders o WHERE o.amount + 1 IN (SELECT p.amount FROM orders p"
+    " WHERE p.price > o.price) AND o.id > 0",
+    "SELECT id FROM orders o WHERE o.id NOT IN (SELECT p.id FROM orders p"
+    " WHERE p.price < o.price AND p.amount > 1)",
+    "SELECT name FROM customers c WHERE c.name IN (SELECT o.customer FROM orders o"
+    " WHERE o.customer = c.name AND o.amount > 5)",
+    "SELECT name FROM customers c WHERE c.name NOT IN (SELECT o.customer FROM orders o"
+    " WHERE o.amount > 5 AND c.region <> 'us')",
 ]
 
 
@@ -174,6 +199,36 @@ def test_sorts_put_nulls_last_unless_told():
             "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer"
             " UNION SELECT 1 FROM customers)",
             "set operation",
+        ),
+        (
+            "SELECT id FROM orders o WHERE amount > 0 OR o.qty IN (SELECT p.qty FROM orders p"
+            " WHERE p.customer = o.customer)",
+            "correlated",
+        ),
+        (
+            "SELECT id, o.qty IN (SELECT p.qty FROM orders p WHERE p.customer = o.customer) AS m"
+            " FROM orders o",
+            "correlated",
+        ),
+        (
+            "SELECT id FROM orders o WHERE o.qty IN (SELECT o.amount FROM orders p"
+            " WHERE p.customer = o.customer)",
+            "reads the outer",
+        ),
+        (
+            "SELECT id FROM orders o WHERE o.qty IN (SELECT p.qty, p.id FROM orders p"
+            " WHERE p.customer = o.customer)",
+            "one column",
+        ),
+        (
+            "SELECT id FROM orders o WHERE o.qty IN (SELECT p.qty FROM orders p"
+            " WHERE p.customer = o.customer UNION SELECT 1 FROM orders)",
+            "set operation",
+        ),
+        (
+            "SELECT id FROM orders o WHERE o.qty NOT IN (SELECT p.qty FROM orders p"
+            " WHERE p.customer = o.customer LIMIT 1)",
+            "LIMIT in a correlated IN",
         ),
         (
             "SELECT id FROM orders o WHERE EXISTS (SELECT 1 FROM customers WHERE name = o.customer"
