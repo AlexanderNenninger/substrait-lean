@@ -488,7 +488,7 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
       | some kc =>
         obtain ⟨k, c⟩ := kc
         intro f hf
-        simp only [hnum, List.mem_singleton] at hf; subst hf
+        simp only [List.mem_singleton] at hf; subst hf
         intro x hx heq
         have hw := Value.numOf?_some hnum
         have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
