@@ -33,13 +33,15 @@ Compile the project, then check it:
 
 ```bash
 dbt docs generate   # writes target/catalog.json, where the column types come from
-dbt compile
+dbt compile --full-refresh   # also after a `dbt run`: a plain compile renders `{{ this }}`
 sverify-dbt check .
 ```
 
 Without the catalog, sverify-dbt takes types from each column's `data_type`
-in the YAML and refuses a model whose inputs have none. After a `dbt run`,
-check incremental models from `dbt compile --full-refresh`.
+in the YAML, and for a seed from the types DuckDB reads in its CSV. It refuses
+a model whose inputs have none. After a `dbt run`, a plain `dbt compile`
+renders each incremental model's `is_incremental()` branch, which reads
+`{{ this }}`; sverify-dbt refuses it and asks for `dbt compile --full-refresh`.
 
 On the sample project in [`examples/shop`](examples/shop):
 

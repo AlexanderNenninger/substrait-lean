@@ -124,11 +124,12 @@ class _Checker:
                 except duckdb.Error as e:
                     why = f"DuckDB cannot plan {r.ref}: {_first_line(e)}"
         else:
-            types = r.declared_types()
+            types = r.declared_types() or self._seed_types(r)
             if types is None:
                 why = (
                     f"{r.ref} has no column types: give each of its columns a data_type in "
-                    "its YAML, or run `dbt docs generate` so that target/catalog.json has them"
+                    "its YAML, or run `dbt seed` (for a seed) and `dbt docs generate` so that "
+                    "target/catalog.json has them"
                 )
             else:
                 cols = ", ".join(f"{_q(c)} {t}" for c, t in types.items())
@@ -138,6 +139,20 @@ class _Checker:
                     why = f"DuckDB does not know the column types of {r.ref}: {_first_line(e)}"
         self.created[r.unique_id] = why
         return why
+
+    def _seed_types(self, r: Relation) -> dict[str, str] | None:
+        """A seed's column types as DuckDB reads its CSV (dbt-duckdb loads the
+        file the same way), when the project has not stated them."""
+        if r.resource_type != "seed" or not r.path:
+            return None
+        csv = self.p.root / r.path
+        if not csv.is_file():
+            return None
+        try:
+            rows = self.con.execute("DESCRIBE SELECT * FROM read_csv(?)", [str(csv)]).fetchall()
+        except duckdb.Error:
+            return None
+        return {row[0]: row[1] for row in rows}
 
     def _not_null(self, r: Relation) -> set[str]:
         """The columns of `r` its tests or contract keep from being NULL."""
@@ -217,11 +232,12 @@ class _Checker:
         for r in inputs:
             why = self._ensure_relation(r)
             if why:
-                return res.refuse(f"it reads {why}")
+                return res.refuse(why)
         try:
             res.sql = _rewrite(
                 m.compiled_code,
                 {r.relation_name: self.names[r.unique_id] for r in inputs if r.relation_name},
+                own=m.relation_name,
             )
         except _Unreadable as e:
             return res.refuse(str(e))
@@ -487,7 +503,7 @@ def _parts(t: sg.exp.Table) -> tuple[str, ...]:
     return tuple(p.lower() for p in (t.catalog, t.db, t.name) if p)
 
 
-def _rewrite(sql: str, inputs: dict[str, str]) -> str:
+def _rewrite(sql: str, inputs: dict[str, str], own: str | None = None) -> str:
     """`sql` with each relation of `inputs` (dbt's `relation_name`) read by
     its input name, keeping what the query calls it (its alias, else its
     table name)."""
@@ -508,6 +524,7 @@ def _rewrite(sql: str, inputs: dict[str, str]) -> str:
         hits = [n for p, n in wanted.items() if p[-len(parts) :] == parts]
         return hits[0] if len(hits) == 1 else None
 
+    own_parts = _parts(sg.exp.to_table(own, dialect="duckdb")) if own else None
     unknown = []
     for t in list(tree.find_all(sg.exp.Table)):
         if not isinstance(t.this, sg.exp.Identifier):
@@ -515,6 +532,12 @@ def _rewrite(sql: str, inputs: dict[str, str]) -> str:
         if not t.db and not t.catalog and t.name.lower() in ctes:
             continue
         name = find(t)
+        if name is None and own_parts and _parts(t) == own_parts:
+            raise _Unreadable(
+                "it reads its own table, `{{ this }}`: this compile rendered the "
+                "`is_incremental()` branch, since the model has run; compile with "
+                "`dbt compile --full-refresh`"
+            )
         if name is None:
             unknown.append(t.sql("duckdb"))
             continue

@@ -153,7 +153,14 @@ class CheckResult:
         """`suggestions` as a dbt properties file, with each test's reason as
         a comment: merge it into the project's YAML (dbt rejects a second
         entry for a relation another file describes)."""
-        return suggestions_yaml(self.suggestions())
+        text = suggestions_yaml(self.suggestions())
+        refused = [m for m in self.models if m.refused]
+        if refused and not self.suggestions():
+            text = (
+                f"# sverify-dbt suggests no tests: {len(refused)} of {len(self.models)} "
+                "model(s) were refused, so nothing was read; see the refusals of `check`\n"
+            )
+        return text
 
     def __getitem__(self, name: str) -> ModelResult:
         for m in self.models:
