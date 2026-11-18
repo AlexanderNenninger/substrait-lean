@@ -479,4 +479,125 @@ def Expr.orLift (ps : List Expr) : Expr :=
   else if plains.isEmpty then Expr.orG ps
   else .bin .or (Expr.disj plains) (Expr.orG ps)
 
+theorem Expr.conj_plain_issues (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, q.plain = true) :
+    (Expr.conj ps).issues row = [] := by
+  cases ps with
+  | nil => rfl
+  | cons p ps =>
+    simp only [Expr.conj, Expr.issues_foldl_and, Expr.issues_plain row p (h p (by simp)),
+      List.nil_append]
+    simp [List.flatMap_eq_nil_iff, fun q hq => Expr.issues_plain row q (h q (by simp [hq]))]
+
+theorem Expr.disj_plain_issues (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, q.plain = true) :
+    (Expr.disj ps).issues row = [] := by
+  cases ps with
+  | nil => rfl
+  | cons p ps =>
+    simp only [Expr.disj, Expr.issues_foldl_or, Expr.issues_plain row p (h p (by simp)),
+      List.nil_append]
+    simp [List.flatMap_eq_nil_iff, fun q hq => Expr.issues_plain row q (h q (by simp [hq]))]
+
+theorem Expr.filter_plain_plain (ps : List Expr) : ∀ q ∈ ps.filter Expr.plain, q.plain = true :=
+  fun q hq => by simpa using (List.mem_filter.mp hq).2
+
+/-- **The lift protects** (G2 for `andLift`): where an operand is FALSE and the
+operands before it do not raise, a lift that has an operand outside the plain
+ones is FALSE, whatever the operands after it would do. -/
+theorem Expr.andLift_false (row : Row) (pre : List Expr) (p : Expr) (post : List Expr)
+    (hpre : ∀ q ∈ pre, Expr.Go row q) (hp : firstError (p.issues row) = none)
+    (hbv : Expr.BoolVal row p) (hf : p.eval row = .bool false)
+    (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
+    (Expr.andLift (pre ++ p :: post)).refOutcome row = .ok (.bool false) := by
+  have hg := Expr.andG_false row pre p post hpre hp hbv hf
+  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
+    intro h
+    obtain ⟨q, hq, hqf⟩ := hnp
+    have := List.filter_length_eq_length.mp h q hq
+    simp_all
+  unfold Expr.andLift
+  dsimp only
+  rw [if_neg hlen]
+  split
+  · exact hg
+  · have hi := Expr.conj_plain_issues row _ (Expr.filter_plain_plain _)
+    simp only [Expr.refOutcome] at hg ⊢
+    split at hg
+    · cases hg
+    · next hn =>
+      have hev : (Expr.andG (pre ++ p :: post)).eval row = .bool false := by
+        simpa using hg
+      simp [Expr.issues, hi, hn, Expr.eval, Impl.lean, BinFn.apply, hev, and3]
+
+theorem Expr.orLift_true (row : Row) (pre : List Expr) (p : Expr) (post : List Expr)
+    (hpre : ∀ q ∈ pre, Expr.GoOr row q) (hp : firstError (p.issues row) = none)
+    (hbv : Expr.BoolVal row p) (ht : p.eval row = .bool true)
+    (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
+    (Expr.orLift (pre ++ p :: post)).refOutcome row = .ok (.bool true) := by
+  have hg := Expr.orG_true row pre p post hpre hp hbv ht
+  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
+    intro h
+    obtain ⟨q, hq, hqf⟩ := hnp
+    have := List.filter_length_eq_length.mp h q hq
+    simp_all
+  unfold Expr.orLift
+  dsimp only
+  rw [if_neg hlen]
+  split
+  · exact hg
+  · have hi := Expr.disj_plain_issues row _ (Expr.filter_plain_plain _)
+    simp only [Expr.refOutcome] at hg ⊢
+    split at hg
+    · cases hg
+    · next hn =>
+      have hev : (Expr.orG (pre ++ p :: post)).eval row = .bool true := by
+        simpa using hg
+      simp [Expr.issues, hi, hn, Expr.eval, Impl.lean, BinFn.apply, hev, or3]
+
+/-- **An error in a reached operand still surfaces** through the lift. -/
+theorem Expr.andLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List Expr) (k : Issue)
+    (hpre : ∀ q ∈ pre, Expr.Go row q) (hp : firstError (p.issues row) = some k)
+    (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
+    (Expr.andLift (pre ++ p :: post)).refOutcome row = .error k := by
+  have hg := (Expr.andG_error row pre p post k hpre hp).1
+  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
+    intro h
+    obtain ⟨q, hq, hqf⟩ := hnp
+    have := List.filter_length_eq_length.mp h q hq
+    simp_all
+  unfold Expr.andLift
+  dsimp only
+  rw [if_neg hlen]
+  split
+  · exact hg
+  · have hi := Expr.conj_plain_issues row _ (Expr.filter_plain_plain _)
+    simp only [Expr.refOutcome] at hg ⊢
+    split at hg
+    · next k' hk =>
+      cases hg
+      simp [Expr.issues, hi, hk, firstError_append]
+    · cases hg
+
+theorem Expr.orLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List Expr) (k : Issue)
+    (hpre : ∀ q ∈ pre, Expr.GoOr row q) (hp : firstError (p.issues row) = some k)
+    (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
+    (Expr.orLift (pre ++ p :: post)).refOutcome row = .error k := by
+  have hg := (Expr.orG_error row pre p post k hpre hp).1
+  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
+    intro h
+    obtain ⟨q, hq, hqf⟩ := hnp
+    have := List.filter_length_eq_length.mp h q hq
+    simp_all
+  unfold Expr.orLift
+  dsimp only
+  rw [if_neg hlen]
+  split
+  · exact hg
+  · have hi := Expr.disj_plain_issues row _ (Expr.filter_plain_plain _)
+    simp only [Expr.refOutcome] at hg ⊢
+    split at hg
+    · next k' hk =>
+      cases hg
+      simp [Expr.issues, hi, hk, firstError_append]
+    · cases hg
+
 end Substrait
