@@ -56,8 +56,8 @@ def generate() -> dict[str, dict]:
 
 
 def lean(g: dict[str, dict]) -> str:
-    def arr(m: dict[int, int]) -> str:
-        return "#[" + ", ".join(f"(0x{k:X}, 0x{v:X})" for k, v in m.items()) + "]"
+    def pairs(m: dict[int, int]) -> str:
+        return "[" + ", ".join(f"(0x{k:X}, 0x{v:X})" for k, v in m.items()) + "]"
 
     def lst(s: list[int]) -> str:
         return "[" + ", ".join(f"0x{c:X}" for c in s) + "]"
@@ -68,9 +68,12 @@ def lean(g: dict[str, dict]) -> str:
         "\nnamespace Substrait.CaseTable\n\nset_option maxRecDepth 20000\n"
         "\n/-- `UPPER` of a scalar value (its code point), where the tier-1 engines agree:\n"
         "sorted by scalar; a scalar not listed maps to itself. -/\n"
-        f"def upperMap : Array (Nat × Nat) := {arr(g['upper']['map'])}\n"
-        "\n/-- `LOWER` of a scalar value, as `upperMap`. -/\n"
-        f"def lowerMap : Array (Nat × Nat) := {arr(g['lower']['map'])}\n"
+        f"def upperList : List (Nat × Nat) := {pairs(g['upper']['map'])}\n"
+        "\n/-- `LOWER` of a scalar value, as `upperList`. -/\n"
+        f"def lowerList : List (Nat × Nat) := {pairs(g['lower']['map'])}\n"
+        "\n/-- The lists as arrays, which `Text.upper` and `Text.lower` search. -/\n"
+        "def upperMap : Array (Nat × Nat) := upperList.toArray\n"
+        "def lowerMap : Array (Nat × Nat) := lowerList.toArray\n"
         "\n/-- The scalar values the engines map differently under `UPPER`. -/\n"
         f"def upperRaise : List Nat := {lst(g['upper']['raise'])}\n"
         "\n/-- The scalar values the engines map differently under `LOWER`, and U+03A3\n"

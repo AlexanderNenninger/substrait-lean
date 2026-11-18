@@ -1243,7 +1243,7 @@ option names no table, so an engine profile states its own mapping.
 The condition is `Text.isAscii`, and for a class regular expression
 `Text.classesDiffer`: ASCII without the vertical tab (`Text.isPlain`). The
 analysis carries it as two flags of `AVal` (`ascii`, `plain`), set by a column
-declared ASCII in the checker's request (`"ascii"`, trusted as the schema's
+declared ASCII in the checker's request (`"text"`, trusted as the schema's
 nullability is) and by a literal's text, and `UnFn.mayIssue` and
 `BinFn.mayIssue` report `nonAscii` unless every text operand has them. For
 each reported issue the checker infers the base-table text columns that must
@@ -1300,21 +1300,28 @@ facts cover every scalar, and a raise stays small and guardable (D47, rule 4).
 ASCII text is in neither set, so a column declared ASCII proves as under D43.
 
 The precondition names the agreed alphabet. Two declared column facts state
-it, one per function (`upper`, `lower` in the checker's request, `AVal.upper`
-and `AVal.lower`): no scalar of that function's set. ASCII gives both
+it, one per function (`upper_agreed` and `lower_agreed` in the checker's
+request, `AVal.upperAgreed` and `AVal.lowerAgreed`): the column is in that
+function's agreed alphabet, none of its scalars in the function's raise set.
+The request holds a list of facts per column, under the key `text`
+(`"ascii"` and `"plain"` are facts in it). ASCII gives both
 (`Text.upperRaises_of_isAscii`, `Text.lowerRaises_of_isAscii`). Python renders
 the inferred precondition as one native regular expression class per engine
 and checks it on the data.
 
 `ILIKE`, `reverse`, `ascii`, `levenshtein` and the regular expressions keep
-D43. Regex classes and `ILIKE` follow by the same method under this number once
-their facts exist.
+D43. Regex classes follow by the same method under this number once their facts
+exist. `ILIKE` stays under D43 until its fold facts exist, one per engine: if
+every engine folds both operands with its own `lower`, it moves under `LOWER`'s
+set, on the pattern as well.
 
 Spark's writer calls `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')`:
 the plain function follows the JVM's default locale (`tr`, `az` and `lt` map
 `i` and `I` otherwise) and the collated form does not. Snowflake's writer
 refuses `UPPER` and `LOWER` of anything but a literal until its facts, kept
-privately, show the table.
+privately, show the table. The ICU bundled with pyspark 4.0 and 4.1 lacks 28 scalars per
+direction that 4.2 and later map; every one is in the raise sets, so the guard holds on all
+of them (`spark-case-collated`).
 
 Why: real text is rarely ASCII, so D43's precondition bites, against D21's own
 condition. The engines agree on almost every letter.

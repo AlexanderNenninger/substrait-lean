@@ -38,11 +38,12 @@ Input (JSON):
       -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
       -- get their error bounds from them (#85)
   "rows_per": {"<table>": [[[<col>, ...], <n>], ...]},
-  "ascii": {"<table>": {"<col>": <fact> | [<fact>, ...]}, <fact> = "ascii" | "plain" | "upper" | "lower"} }
-      -- text columns declared ASCII (`plain`: without a vertical tab either) or
-      -- free of the scalars `UPPER` (`upper`) or `LOWER` (`lower`) raise on, as trusted as
-      -- the schema's nullability; `Issue.nonAscii` and `Issue.caseDiffers` are ruled out
-      -- where every text operand is (`AVal.ascii`, `AVal.upper`, D43, D51)
+  "text": {"<table>": {"<col>": [<fact>, ...]}}, <fact> = "ascii" | "plain" | "upper_agreed" | "lower_agreed" }
+      -- facts of text columns: ASCII (`plain`: without a vertical tab either), or in the
+      -- agreed alphabet of `UPPER` (`upper_agreed`) or `LOWER` (`lower_agreed`), that is, free
+      -- of the scalars the engines map differently; as trusted as the schema's nullability.
+      -- `Issue.nonAscii` and `Issue.caseDiffers` are ruled out where every text operand has
+      -- the fact (`AVal.ascii`, `plain`, `upperAgreed`, `lowerAgreed`; D43, D51)
       -- at most <n> rows per value of the columns (`sv.rows_per`, `RowsPer`):
       -- an aggregate grouping by them has groups of at most <n> rows, which
       -- bound its integer and decimal `SUM`s (`Rel.issuesCapped_sound`)
@@ -229,10 +230,10 @@ def needNe (n : String × Nat × Int) : Json :=
 def needNotNull (n : String × Nat) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2), ("not_null", Lean.toJson true)]
 
-/-- A text column of `table` that must satisfy a `TextNeed` (`ascii`, `plain`, `upper`, `lower`). -/
+/-- A text column of `table` that must satisfy a `TextNeed`. -/
 def needText (n : String × Nat × Infer.TextNeed) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
-    ("ascii", Json.str n.2.2.name)]
+    ("text", Json.str n.2.2.name)]
 
 def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
   Json.mkObj [("needs",
@@ -876,22 +877,19 @@ def ensures : List Plan := match R.transform with
 
 /-- Each table's declared schema, as abstract values. -/
 def schemas (t : String) : List AVal :=
-  let declared := (R.input.getObjVal? "ascii").toOption.bind (·.getObjVal? t |>.toOption)
-  -- A column's facts: one name, or a list of them.
+  let declared := (R.input.getObjVal? "text").toOption.bind (·.getObjVal? t |>.toOption)
   let flags (i : Nat) : List String :=
     match declared.bind fun d => (d.getObjVal? (toString i)).toOption with
-    | some (.str k) => [k]
     | some (.arr ks) => ks.toList.filterMap fun | .str k => some k | _ => none
     | _ => []
   match R.tables.lookup t with
   | some (_, s) => (schemaEnv s).zipIdx.map fun (a, i) =>
-    -- A text column declared ASCII, `plain`, `upper` or `lower` (D43, D51), as trusted as
-    -- its nullability.
+    -- A text column's declared facts (D43, D51), as trusted as its nullability.
     if !a.str then a else (flags i).foldl (fun a k => match k with
       | "plain" => { a with ascii := true, plain := true }
       | "ascii" => { a with ascii := true }
-      | "upper" => { a with upper := true }
-      | "lower" => { a with lower := true }
+      | "upper_agreed" => { a with upperAgreed := true }
+      | "lower_agreed" => { a with lowerAgreed := true }
       | _ => a) a
   | none => []
 

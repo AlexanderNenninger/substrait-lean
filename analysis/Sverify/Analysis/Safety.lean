@@ -145,12 +145,12 @@ def AVal.asciiOk (a : AVal) : Bool := a.ascii || a.plain || !a.str
 /-- Is every string `a` describes ASCII without a vertical tab? -/
 def AVal.plainOk (a : AVal) : Bool := a.plain || !a.str
 
-/-- Does no string `a` describes hold a scalar of `UPPER`'s raise set (`Issue.caseDiffers`,
-D51)? ASCII text has none. -/
-def AVal.upperOk (a : AVal) : Bool := a.upper || a.asciiOk
+/-- Is every string `a` describes in `UPPER`'s agreed alphabet, none a scalar of its raise
+set (`Issue.caseDiffers`, D51)? ASCII text is. -/
+def AVal.upperOk (a : AVal) : Bool := a.upperAgreed || a.asciiOk
 
 /-- As `upperOk`, for `LOWER`. -/
-def AVal.lowerOk (a : AVal) : Bool := a.lower || a.asciiOk
+def AVal.lowerOk (a : AVal) : Bool := a.lowerAgreed || a.asciiOk
 
 omit [Boxes.Ambient] in
 theorem AVal.isAscii_of_asciiOk {a : AVal} {s : String} (h : a.Mem (.str s))

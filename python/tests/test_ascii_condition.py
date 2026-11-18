@@ -35,19 +35,20 @@ SAMPLE = [
 BROKEN = {
     "ascii": {"héllo", "ÉCOLE", "ß", "İ", "ΑΣ", "\U00010d50", "\U00010d70"},
     "plain": {"héllo", "ÉCOLE", "ß", "İ", "ΑΣ", "\U00010d50", "\U00010d70", "a\x0bb", "\x0b"},
-    "upper": {"ß", "\U00010d70"},
-    "lower": {"İ", "ΑΣ", "\U00010d50"},
+    "upper_agreed": {"ß", "\U00010d70"},
+    "lower_agreed": {"İ", "ΑΣ", "\U00010d50"},
 }
 
 
 def _guard(fact: str) -> str:
     d = DuckDBDialect("duckdb")
-    if fact in ("upper", "lower"):
-        return f"(NOT {d.case_differs('"s"', fact)})"
+    if fact in ("upper_agreed", "lower_agreed"):
+        which = "upper" if fact == "upper_agreed" else "lower"
+        return f"(NOT {d.case_differs('"s"', which)})"
     return ascii_text(d, '"s"', fact == "plain")
 
 
-@pytest.mark.parametrize("fact", ["ascii", "plain", "upper", "lower"])
+@pytest.mark.parametrize("fact", ["ascii", "plain", "upper_agreed", "lower_agreed"])
 def test_the_guard_and_the_precondition_are_one_predicate(fact):
     con = duckdb.connect()
     con.execute("CREATE TABLE t (s VARCHAR)")
@@ -74,8 +75,8 @@ def test_the_guard_and_the_precondition_are_one_predicate(fact):
     [
         ("SELECT regexp_matches(s, '\\d') AS u FROM r", "plain"),
         ("SELECT s ILIKE 'a%' AS u FROM r", "ascii"),
-        ("SELECT upper(s) AS u FROM r", "upper"),
-        ("SELECT lower(s) AS u FROM r", "lower"),
+        ("SELECT upper(s) AS u FROM r", "upper_agreed"),
+        ("SELECT lower(s) AS u FROM r", "lower_agreed"),
     ],
 )
 def test_the_reference_raises_where_the_condition_fails(sql, fact):
@@ -101,8 +102,8 @@ def test_the_reference_raises_where_the_condition_fails(sql, fact):
 T = ibis.schema({"s": "string"})
 #: A plan, the fact it needs, a value that breaks it and one that does not.
 PLANS = [
-    ("SELECT upper(s) AS u FROM t", "upper", "ß", "é"),
-    ("SELECT lower(s) AS u FROM t", "lower", "İ", "é"),
+    ("SELECT upper(s) AS u FROM t", "upper_agreed", "ß", "é"),
+    ("SELECT lower(s) AS u FROM t", "lower_agreed", "İ", "é"),
     ("SELECT s ILIKE 'a%' AS u FROM t", "ascii", "é", "c1"),
     ("SELECT regexp_matches(s, '\\d') AS u FROM t", "plain", "é", "c1"),
     ("SELECT regexp_replace(s, '\\d', 'x') AS u FROM t", "plain", "é", "c1"),

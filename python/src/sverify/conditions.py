@@ -986,7 +986,7 @@ class PlannedCondition:
 
 
 #: What a declared text column holds (`Inferred.fact`).
-TextFact = Literal["ascii", "plain", "upper", "lower"]
+TextFact = Literal["ascii", "plain", "upper_agreed", "lower_agreed"]
 
 
 class Inferred(str):
@@ -1000,8 +1000,9 @@ class Inferred(str):
     """The input column it bounds (set by `_render_needs`)."""
     fact: TextFact | None = None
     """For a text column's condition (#1506, D51): `"plain"` also rules out the vertical
-    tab, `"upper"` and `"lower"` the scalars those functions raise on. The request
-    declares the column so (`"ascii"`)."""
+    tab, `"upper_agreed"` and `"lower_agreed"` the scalars `UPPER` and `LOWER` raise on
+    (the column is in the function's agreed alphabet). The request declares the column
+    so (`"text"`)."""
 
     def __new__(cls, sql: str, text: str) -> Inferred:
         out = super().__new__(cls, sql)

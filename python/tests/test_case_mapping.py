@@ -104,7 +104,7 @@ def test_the_run_check_finds_every_member_of_the_set_and_no_agreed_scalar(which,
 
         if not has_java():
             pytest.skip("Spark needs a JVM")
-    cond = _text_condition("s", which)
+    cond = _text_condition("s", "upper_agreed" if which == "upper" else "lower_agreed")
     con = connect()
     for name, scalars, flagged in (
         ("raised", _members(which), True),

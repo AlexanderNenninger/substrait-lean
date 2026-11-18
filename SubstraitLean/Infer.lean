@@ -44,15 +44,16 @@ open FloatCode (minI64 maxI64)
 abbrev Cols := List (Nat × Bound)
 
 /-- What a text column must satisfy for a text issue not to arise: the condition of the
-declared column facts (`AVal.ascii`, `plain`, `upper`, `lower`). `plain` implies
-`ascii`, which implies `upper` and `lower` (`AVal.upperOk`). -/
+declared column facts (`AVal.ascii`, `plain`, `upperAgreed`, `lowerAgreed`). `plain` implies
+`ascii`, which implies both agreed alphabets (`AVal.upperOk`). -/
 inductive TextNeed
-  | ascii | plain | upper | lower
+  | ascii | plain | upperAgreed | lowerAgreed
   deriving BEq, Repr
 
 /-- The condition's name in the checker's JSON, as the request's declared facts. -/
 def TextNeed.name : TextNeed → String
-  | .ascii => "ascii" | .plain => "plain" | .upper => "upper" | .lower => "lower"
+  | .ascii => "ascii" | .plain => "plain" | .upperAgreed => "upper_agreed"
+  | .lowerAgreed => "lower_agreed"
 
 structure Found where
   cols : Cols := []
@@ -458,19 +459,19 @@ columns behind its text operands must satisfy the function's `TextNeed`; a liter
 operand needs nothing if it satisfies it. -/
 def textNeeds (cat : Catalog) (env : List AVal) (r : Rel) (e : Expr) : Bounds :=
   let need : TextNeed := match e with
-    | .un .upper _ => .upper
-    | .un .lower _ => .lower
+    | .un .upper _ => .upperAgreed
+    | .un .lower _ => .lowerAgreed
     | e => if classRegex e then .plain else .ascii
   let literalOk (s : String) : Bool := match need with
     | .plain => Text.isPlain s
     | .ascii => Text.isAscii s
-    | .upper => !Text.upperRaises s
-    | .lower => !Text.lowerRaises s
+    | .upperAgreed => !Text.upperRaises s
+    | .lowerAgreed => !Text.lowerRaises s
   let columnOk (a : AVal) : Bool := match need with
     | .plain => a.plainOk
     | .ascii => a.asciiOk
-    | .upper => a.upperOk
-    | .lower => a.lowerOk
+    | .upperAgreed => a.upperOk
+    | .lowerAgreed => a.lowerOk
   let step := fun (acc : Except String (List (String × Nat × TextNeed))) (x : Expr) => do
     let out ← acc
     match x with
@@ -663,7 +664,7 @@ def mergedNotNull (bs : List (Issue × Expr × Bounds)) : List (String × Nat) :
 
 /-- The base-table text columns that must satisfy a `TextNeed`, for the issues that have
 exact bounds. A column keeps its strongest need: `plain` over `ascii` over the
-function-specific `upper` and `lower` (`ascii` implies both), and those two both
+function-specific `upperAgreed` and `lowerAgreed` (`ascii` implies both), and those two both
 if both are needed. -/
 def mergedText (bs : List (Issue × Expr × Bounds)) : List (String × Nat × TextNeed) :=
   let all := (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.text).flatten
@@ -671,7 +672,7 @@ def mergedText (bs : List (Issue × Expr × Bounds)) : List (String × Nat × Te
     let ks := all.filterMap fun (t', c', k) => if t' == t && c' == c then some k else none
     if ks.contains .plain then [(t, c, .plain)]
     else if ks.contains .ascii then [(t, c, .ascii)]
-    else ([TextNeed.upper, .lower].filter ks.contains).map (t, c, ·)
+    else ([TextNeed.upperAgreed, .lowerAgreed].filter ks.contains).map (t, c, ·)
 
 /-- The values each base-table column must not hold, for the issues that
 have exact bounds. -/

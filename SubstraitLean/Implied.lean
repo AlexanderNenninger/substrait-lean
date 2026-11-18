@@ -295,7 +295,7 @@ theorem AVal.mem_transfer {a b a' : AVal} {u v : Value} (hu : a.Mem u) (hv : b.M
     (hk : u.kind = v.kind) (hn : a'.null = a.null) (htt : a'.tt = (a.tt && (b.tt || b.ff)))
     (hff : a'.ff = (a.ff && (b.tt || b.ff))) (hs : a'.str = (a.str && b.str))
     (hss : a'.strs = a.strs) (hasc : a'.ascii = a.ascii) (hpl : a'.plain = a.plain)
-    (hup : a'.upper = a.upper) (hlo : a'.lower = a.lower) (hnk : a'.nk = a.nk.orElse fun _ => b.nk)
+    (hup : a'.upperAgreed = a.upperAgreed) (hlo : a'.lowerAgreed = a.lowerAgreed) (hnk : a'.nk = a.nk.orElse fun _ => b.nk)
     (hl : a'.list = (a.list && b.list)) (hel : a'.elems = a.elems) (hc : a'.card = a.card)
     (hst : a'.struct = (a.struct && b.struct)) (hfs : a'.fields = a.fields)
     (hi : ∀ (k : NumKind) n, u = k.val n → ∃ c, a'.int = some c ∧ c.Mem (k.norm n)) : a'.Mem u := by

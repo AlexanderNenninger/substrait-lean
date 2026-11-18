@@ -352,18 +352,19 @@ structure AVal where
   /-- every string is ASCII without a vertical tab (`Text.isPlain`): what a
   class of a regular expression asks of text (`Text.classesDiffer`). -/
   plain : Bool := false
-  /-- no string holds a scalar of `UPPER`'s raise set (`Text.upperRaises`): a
-  column declared so, or a literal's text. The condition `Issue.caseDiffers` asks of
-  the operand of `UPPER` (D51). ASCII text has it (`Text.upperRaises_of_isAscii`). -/
-  upper : Bool := false
-  /-- no string holds a scalar of `LOWER`'s raise set (`Text.lowerRaises`). -/
-  lower : Bool := false
+  /-- every string is in `UPPER`'s agreed alphabet: none holds a scalar of its raise set
+  (`Text.upperRaises`). A column declared so, or a literal's text. The condition
+  `Issue.caseDiffers` asks of the operand of `UPPER` (D51). ASCII text has it
+  (`Text.upperRaises_of_isAscii`). -/
+  upperAgreed : Bool := false
+  /-- every string is in `LOWER`'s agreed alphabet (`Text.lowerRaises`). -/
+  lowerAgreed : Bool := false
   deriving Repr, BEq, Inhabited
 
 /-- The text conditions `a` asserts of the string `s`: each flag set implies its predicate. -/
 @[simp] def AVal.textOk (a : AVal) (s : String) : Bool :=
   (!a.ascii || Text.isAscii s) && (!a.plain || Text.isPlain s) &&
-    (!a.upper || !Text.upperRaises s) && (!a.lower || !Text.lowerRaises s)
+    (!a.upperAgreed || !Text.upperRaises s) && (!a.lowerAgreed || !Text.lowerRaises s)
 
 /-- The most strings an abstract value lists (#708); more, and any string may be. -/
 def strCap : Nat := 64
@@ -462,7 +463,7 @@ def AVal.ofValue : Value → AVal
   | .bool false => { ff := true }
   | .str s =>
     { str := true, strs := some [s], ascii := Text.isAscii s, plain := Text.isPlain s,
-      upper := !Text.upperRaises s, lower := !Text.lowerRaises s }
+      upperAgreed := !Text.upperRaises s, lowerAgreed := !Text.lowerRaises s }
   | .list vs => { list := true, card := .exact vs.length }
   | .struct _ => { struct := true }
 
@@ -503,7 +504,8 @@ def AVal.join : AVal → AVal → AVal
       fields := if !st then b.fields else if !b.struct then fs else AVal.joinF fs b.fields,
       -- A side without strings adds none; neither side with strings gives the default.
       ascii := joinFlag a.ascii b.ascii a.str b.str, plain := joinFlag a.plain b.plain a.str b.str,
-      upper := joinFlag a.upper b.upper a.str b.str, lower := joinFlag a.lower b.lower a.str b.str }
+      upperAgreed := joinFlag a.upperAgreed b.upperAgreed a.str b.str,
+      lowerAgreed := joinFlag a.lowerAgreed b.lowerAgreed a.str b.str }
   termination_by structural a => a
 
 /-- Both elements' descriptions joined; any value where one is. -/
@@ -547,10 +549,12 @@ omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_plain : (a.join b).plain = joinFlag a.plain b.plain a.str b.str := by
   cases a; rfl
 omit [Boxes.Ambient] in
-@[simp] theorem AVal.join_upper : (a.join b).upper = joinFlag a.upper b.upper a.str b.str := by
+@[simp] theorem AVal.join_upperAgreed :
+    (a.join b).upperAgreed = joinFlag a.upperAgreed b.upperAgreed a.str b.str := by
   cases a; rfl
 omit [Boxes.Ambient] in
-@[simp] theorem AVal.join_lower : (a.join b).lower = joinFlag a.lower b.lower a.str b.str := by
+@[simp] theorem AVal.join_lowerAgreed :
+    (a.join b).lowerAgreed = joinFlag a.lowerAgreed b.lowerAgreed a.str b.str := by
   cases a; rfl
 omit [Boxes.Ambient] in
 theorem joinFlag_left {fa fb sa sb p : Bool} (hs : sa = true) (h : (!fa || p) = true) :
@@ -563,15 +567,15 @@ theorem joinFlag_right {fa fb sa sb p : Bool} (hs : sb = true) (h : (!fb || p) =
 omit [Boxes.Ambient] in
 theorem AVal.textOk_join_left {a b : AVal} {s : String} (hs : a.str = true)
     (h : a.textOk s = true) : (a.join b).textOk s = true := by
-  simp only [AVal.textOk, Bool.and_eq_true, AVal.join_ascii, AVal.join_plain, AVal.join_upper,
-    AVal.join_lower] at h ⊢
+  simp only [AVal.textOk, Bool.and_eq_true, AVal.join_ascii, AVal.join_plain, AVal.join_upperAgreed,
+    AVal.join_lowerAgreed] at h ⊢
   obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
   exact ⟨⟨⟨joinFlag_left hs h1, joinFlag_left hs h2⟩, joinFlag_left hs h3⟩, joinFlag_left hs h4⟩
 omit [Boxes.Ambient] in
 theorem AVal.textOk_join_right {a b : AVal} {s : String} (hs : b.str = true)
     (h : b.textOk s = true) : (a.join b).textOk s = true := by
-  simp only [AVal.textOk, Bool.and_eq_true, AVal.join_ascii, AVal.join_plain, AVal.join_upper,
-    AVal.join_lower] at h ⊢
+  simp only [AVal.textOk, Bool.and_eq_true, AVal.join_ascii, AVal.join_plain, AVal.join_upperAgreed,
+    AVal.join_lowerAgreed] at h ⊢
   obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
   exact ⟨⟨⟨joinFlag_right hs h1, joinFlag_right hs h2⟩, joinFlag_right hs h3⟩,
     joinFlag_right hs h4⟩
