@@ -484,18 +484,23 @@ theorem nullNeFacts_sound {p q : Expr} {row : Row}
     · rename_i hij
       obtain ⟨rfl, rfl⟩ := hij
       cases hnum : w.numOf? with
-      | none => intro f hf; simp at hf; simp_all
+      | none => intro f hf; simp at hf
       | some kc =>
         obtain ⟨k, c⟩ := kc
         intro f hf
         simp only [hnum, List.mem_singleton] at hf; subst hf
         intro x hx heq
         have hw := Value.numOf?_some hnum
-        have hx' : row[i]?.getD Value.null = k.val x := by
-          rw [← List.getD_eq_getElem?_getD]; exact hx
-        have hn : UnFn.apply .not (BinFn.apply .eq (row[i]?.getD Value.null) w) = .bool false := by
-          rw [hx', hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
-        simp [Expr.eval, List.getD_eq_getElem?_getD, hn, Value.isTrue] at hpq
+        have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
+          rw [hx, hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
+        have hX : (Expr.un .not (.bin .eq (.field i) (.lit w))).eval row = .bool false := hn
+        have hP : (Expr.un .isNull (.un .not (.bin .eq (.field i) (.lit w)))).eval row =
+            .bool false := by
+          show UnFn.apply .isNull ((Expr.un .not (.bin .eq (.field i) (.lit w))).eval row) = _
+          rw [hX]; rfl
+        rcases hpq with h | h
+        · rw [hP] at h; simp [Value.isTrue] at h
+        · rw [hX] at h; simp [Value.isTrue] at h
     · intro f hf; simp at hf
   · intro f hf; simp at hf
 
