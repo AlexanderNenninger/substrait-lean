@@ -382,6 +382,22 @@ def test_the_output_type_of_a_decimal_mean_is_the_one_that_runs():
     assert (declared.precision, declared.scale) == (ran.precision, ran.scale)
 
 
+def test_a_hand_written_decimal_quotient_must_fit_its_declared_type(con):
+    """#1497: `sverify_decimal_div` of a `DECIMAL(10, 2)` by `1` declared `DECIMAL(5, 2)` can
+    hold more digits than it says; declared `DECIMAL(12, 4)` (`p ≥ p₁ + k`) it fits."""
+    import ibis.expr.datatypes as dt
+
+    from sverify.ibis_substrait.core import DecimalDiv
+
+    def quotient(p: int, s: int) -> ibis.Table:
+        one = ibis.literal(1, "int64").op()
+        return T.select(r=DecimalDiv(T.a.op(), one, dt.Decimal(p, s)).to_expr())  # type: ignore[abstract]
+
+    with pytest.raises(Exception, match="declared type does not follow from its operands"):
+        lean(con, quotient(5, 2))
+    assert lean(con, quotient(12, 4))[0] == ("12.3500",)
+
+
 @settings(max_examples=300, deadline=None)
 @given(
     u=st.integers(-(10**30), 10**30),
