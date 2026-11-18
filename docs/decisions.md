@@ -1242,6 +1242,18 @@ Plans with these functions on text not known to be ASCII move from proved to
 an inferred precondition under every `semantics`; a per-engine value, and the
 guard narrowing to the characters that differ, are later and rest on facts.
 
+The option sits on two groups, `str.case` (`upper`, `lower`) and `str.ascii`
+(`reverse`, `ascii`, `levenshtein`, `ilike` and the regular expressions),
+because a profile transfer reads options by group: it gives a call every
+option of its group, so the option sits on the groups whose functions can
+report the issue, and `str.plain` (`length`, `repeat`, trims) and `str.opaque`
+(`md5`, `sha256`) carry none. A `#guard` in `Scopes.lean` ties a function's
+group to the issue. The transfer is static: under `semantics="substrait"`,
+where `non_ascii_text` allows `COMPUTE`, those nine functions are unproved on
+the option whether or not the column is declared ASCII, as `substring_range`
+is on `str.sub`; a transfer that skips a raise option whose issue the analysis
+rules out is a follow-up.
+
 ### D44. `replace` with an empty pattern is the string unchanged
 
 Decided 2026-11-17 (the maintainer, on the theory advisor's recommendation,

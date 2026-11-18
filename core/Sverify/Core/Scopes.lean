@@ -131,7 +131,7 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   -- Strings, dates and lists.
   | "negative_start" => args.any fun | .int a => decide (a < 0) | _ => false
   | "substring_range" => iss == some .domain
-  | "non_ascii_text" => iss == some .nonAscii
+  | "non_ascii_text" => iss == some Issue.nonAscii
   | "case_sensitivity" => true
   | "char_set" => true
   | "null_handling" => args.any (· == .null)
@@ -193,5 +193,20 @@ def scopedOptions : List String :=
 
 -- Every option of the catalogue has its scope here, and nothing else does.
 #guard options.map (·.id) == scopedOptions
+
+-- A profile transfer reads an option by group (`ctorReads`), so
+-- `non_ascii_text` sits on the groups whose functions can report `nonAscii`
+-- (D43): a row's group carries it exactly when its constructor has a `nonAscii`
+-- arm. The regular expressions report it by their pattern (`classesDiffer`), so
+-- they are named.
+#guard letI := Boxes.Ambient.none;
+  let withOption := (Functions.groups.filter fun g => g.2.contains "non_ascii_text").map (·.1)
+  Functions.strings.all fun r =>
+    let reports := if ["regexp_match", "regexp_extract", "regexp_replace"].contains r.name then true
+      else match r.ctor with
+      | some (.un f) => f.issue (.str "é") == some Issue.nonAscii
+      | some (.bin f) => f.issue (.str "é") (.str "é") == some Issue.nonAscii
+      | _ => false
+    withOption.contains r.group == reports
 
 end Substrait

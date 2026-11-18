@@ -133,7 +133,9 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "shift_range"): Choice(("ERROR", "ZERO")),  # R15-shift-*
                 (None, "negative_start"): Choice(("WRAP_FROM_END",)),  # duckdb-R13
                 (None, "substring_range"): Choice(("ERROR",)),  # duckdb-substring-range
-                (None, "non_ascii_text"): Choice(("ERROR", "COMPUTE")),  # the writer's guard raises
+                (None, "non_ascii_text"): Choice(
+                    ("ERROR", "COMPUTE")
+                ),  # uncharacterised; open until a fact pins it
                 (None, "case_sensitivity"): Choice(("CASE_SENSITIVE",)),
                 (None, "char_set"): Choice(("UTF8",)),
                 (None, "null_handling"): Choice(("ACCEPT_NULLS",)),
