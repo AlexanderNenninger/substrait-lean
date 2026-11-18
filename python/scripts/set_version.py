@@ -30,10 +30,12 @@ _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*((a|b|rc)[0-9]+)?(\.dev[0-9]+)?")
 def rewrite(text: str, version: str, pins: list[str]) -> str:
     """`text` with its own version and `pins` at `version`."""
     text, n = re.subn(r'(?m)^(version = ")[^"]*(")', rf"\g<1>{version}\g<2>", text, count=1)
-    assert n == 1, "no version line"
+    if n != 1:
+        raise ValueError("no version line")
     for pin in pins:
         text, n = re.subn(rf'({pin})[^"]*"', rf'\g<1>{version}"', text)
-        assert n, f"no pin {pin}"
+        if not n:
+            raise ValueError(f"no pin {pin}")
     return text
 
 

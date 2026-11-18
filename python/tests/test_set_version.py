@@ -51,3 +51,8 @@ def test_set_version_moves_every_place_at_once(tmp_path, version):
 def test_set_version_refuses_what_is_no_version(tmp_path):
     with pytest.raises(SystemExit):
         _script().set_version("main", tmp_path)
+
+
+def test_a_missing_version_line_raises_even_under_python_O():
+    with pytest.raises(ValueError, match="no version line"):
+        _script().rewrite("name = 'x'\n", "1.0.0", [])
