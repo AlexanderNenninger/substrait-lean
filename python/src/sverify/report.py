@@ -14,7 +14,7 @@ import json
 import math
 import re
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -853,10 +853,11 @@ class Report:
     def check_inputs(
         self, con: Connection, engine: str | None = None, *, assumed_checked: bool = False
     ) -> None:
-        """Check the preconditions (`requires`, the inferred bounds among
-        them) and the `SUM`s assumed to fit (`assumed`) on the tables of
-        `con`, before anything runs: a batch that breaks one is refused
-        with the precondition as the message.
+        """Check the tables of `con` against the schema the plan was verified
+        for (`_check_schema`), the preconditions (`requires`, the inferred
+        bounds among them) and the `SUM`s assumed to fit (`assumed`), before
+        anything runs: a batch that breaks one is refused before the run, with
+        the schema difference or the precondition as the message.
 
         With an `engine`, each table's conditions run there, as one plan the
         checker wrote (`condition_query`): a result that is not TRUE, or a
@@ -1104,8 +1105,8 @@ class Report:
                 )
             self.check_inputs(con, target, assumed_checked=assumed_checked)
         else:
-            # The schema is what the proof is about, not a precondition: it is
-            # checked whatever `check_requires` says.
+            # The proof is about this schema, so it is checked whatever
+            # `check_requires` says.
             self._check_schema(con, target)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
@@ -1661,6 +1662,94 @@ class Report:
         )
 
     def __str__(self) -> str:
+        lines = [self._summary]
+        if self._proved and self._generated_proofs is False:
+            lines[0] += UNCHECKED_CHECKER
+        c = self._plain_contract()
+        if c["guarantees"]:
+            lines += ["The output guarantees:", *[f"  {g}" for g in c["guarantees"]]]
+        if c["checks"]:
+            lines += ["Each run checks on the data:", *[f"  {k}" for k in c["checks"]]]
+        bad = [x for head, more in self._not_proved() for x in (head, *[f"  {m}" for m in more])]
+        if bad:
+            lines += ["Not proved:", *[f"  {b}" for b in bad]]
+        notes = [*self._all_hints(), *self.notes]
+        if notes:
+            lines += ["Notes:", *[f"  {n}" for n in notes]]
+        if self.facts or self.rows is not None:
+            lines.append("Known about the output:")
+            if self.rows is not None:
+                lines.append(f"  rows: at most {self.rows:,}")
+            lines += [f"  {name}: {value}" for name, value in self.facts.items()]
+        return "\n".join(lines)
+
+    def _plain_contract(self, sources: Collection[str] | None = None) -> dict[str, list[str]]:
+        """What the contract means for the data, in words (`sverify.cli.summary`):
+
+        * `guarantees`: what every output row (or the output) meets, proved;
+        * `checks`: what each run checks on the data before it writes (the
+          preconditions on the sources, postconditions checked on the output,
+          sums assumed to fit). With `sources`, only the preconditions on
+          those tables: the others follow from what the transforms feeding
+          them guarantee;
+        * `not_proved`: what is not proved, and the runtime errors it may raise.
+        """
+        from sverify._user_text import plain
+
+        guarantees = [plain(c.label) for c in self.ensures if c.proved and not c.ignores]
+        if self.rows is not None:
+            guarantees.append(f"at most {self.rows:,} rows")
+        checks: list[str] = []
+        needed = _labels_by_table(self.needs)
+        for table, conds in self.requires.items():
+            if sources is not None and table not in sources:
+                continue
+            shown = self._table_params.get(table, table)
+            inferred = {label(c) for c in self._inferred.get(table, [])}
+            checks += [
+                f"{shown}: {plain(c)}" + (self._inferred_note(c) if c in inferred else "")
+                for c in conds
+                if c not in needed.get(table, ())
+            ]
+        checks += [f"output: {plain(c.label)}" for c in self.ensures if c.checked]
+        checks += [f"while it runs: {i.assumption}" for i in self.assumed]
+        not_proved = [head for head, _ in self._not_proved()]
+        return {"guarantees": guarantees, "checks": checks, "not_proved": not_proved}
+
+    def _not_proved(self) -> list[tuple[str, list[str]]]:
+        """What is not proved, each as one line and the lines that go with it:
+        a postcondition that is not proved, or that depends on what the
+        observation ignores (with its counterexample and suggestion), the
+        preconditions it needs, the runtime errors it may raise (with their
+        hints), Substrait's options and the observation's doubles."""
+        from sverify._user_text import plain
+
+        out: list[tuple[str, list[str]]] = []
+        for c in self.ensures:
+            if c.checked or c.portable:
+                continue
+            more = []
+            if c.counterexample is not None:
+                more.append(f"counterexample: {c.counterexample}")
+            if c.suggested:
+                more.append(_would_hold(c))
+            why = c.why if not c.proved else _observation.why(c.ignores)
+            out.append((f"{plain(c.label)}: {why}", more))
+        out += [(n, []) for n in self._needs_lines()]
+        out += [
+            (f"may fail: {i.message}", [f"hint: {i.hint}"] if i.hint else []) for i in self.errors
+        ]
+        if self._transfer:
+            out.append((f"Substrait allows more at {len(self._transfer)} option(s)", []))
+        if self.floats_unmet:
+            out.append((f"doubles: {self.floats_unmet}", []))
+        return out
+
+    def details(self) -> str:
+        """The full text of the report: the preconditions and `needs`, each
+        postcondition with its status, the semantics, the evidence for each engine
+        and the routes, as an auditor reads it. `str(report)` is the contract in
+        plain words."""
         lines = [self._summary]
         if self._proved and self._generated_proofs is False:
             lines[0] += UNCHECKED_CHECKER

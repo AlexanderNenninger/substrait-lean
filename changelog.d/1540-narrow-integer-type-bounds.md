@@ -1,0 +1,1 @@
+A column of a narrow integer type (`TINYINT`, `SMALLINT`, `INTEGER`) is known to lie in its type's range, as a `BIGINT` column already was (D46). `CAST(i AS BIGINT) * 4` over an `INTEGER`, or an `INTEGER` substring offset, no longer needs an inferred precondition on the column's range; the run's schema check (#1540) holds the data to the declared type.

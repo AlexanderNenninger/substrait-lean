@@ -111,8 +111,8 @@ def test_why_a_condition_is_unproved(value, why):
 def test_a_nullable_column_suggests_not_null_only_where_null_alone_fails():
     t = ibis.table({"a": "int64", "s": "string"}, name="t")
     report = sv.verify(t.select(b=t.a), ensures=[_.b >= 0], counterexamples=0)
-    assert "NOT proved: it may be FALSE or NULL on some rows" in str(report)
-    assert ".notnull()" not in str(report)
+    assert "NOT proved: it may be FALSE or NULL on some rows" in report.details()
+    assert ".notnull()" not in report.details()
     only_null = sv.verify(t.select(n=t.s.length()), ensures=[_.n >= 0], counterexamples=0)
     assert _needed(only_null) == {"t": ["_.s.notnull()"]}
 

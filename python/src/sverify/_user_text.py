@@ -650,3 +650,41 @@ def deferred_text(d: Any) -> str:
         return go(d)
     except Exception:  # noqa: BLE001 - a label falls back to Ibis's repr
         return repr(d)
+
+
+_PLAIN_OPS = {"==": "=", "!=": "≠", ">=": "≥", "<=": "≤"}
+
+
+def plain(label: str) -> str:
+    """A condition's label in words: `(_.amount > 10)` is "amount > 10",
+    `_.id.notnull()` "id is never NULL", `unique(id)` "no two rows share
+    id", `max_rows(10)` "at most 10 rows"."""
+    s = label.strip()
+    while s.startswith("(") and s.endswith(")") and _balanced(s[1:-1]):
+        s = s[1:-1].strip()
+    if m := re.fullmatch(r"unique\((.*)\)", s):
+        cols = m.group(1)
+        return f"no two rows share {cols}" if "," not in cols else f"no two rows share ({cols})"
+    if m := re.fullmatch(r"max_rows\((\d+)\)", s):
+        return f"at most {int(m.group(1)):,} rows"
+    if m := re.fullmatch(r"rows_per\(\[(.*)\], at_most=(\d+)\)", s):
+        return f"at most {m.group(2)} rows per {m.group(1)}"
+    if m := re.fullmatch(r"references\((\w+), (\w+)\.(\w+)\)", s):
+        return f"every {m.group(1)} is a {m.group(3)} of {m.group(2)}"
+    if m := re.fullmatch(r"arrives_within\((\w+), (.*)\)", s):
+        return f"rows arrive at most {m.group(2)} late by {m.group(1)}"
+    s = re.sub(r"_\.(\w+)\.notnull\(\)", r"\1 is never NULL", s)
+    s = re.sub(r"_\.(\w+)\.isnull\(\)", r"\1 is NULL", s)
+    s = re.sub(r"\b_\.", "", s)
+    for op, word in _PLAIN_OPS.items():
+        s = s.replace(f" {op} ", f" {word} ")
+    return s.replace(" & ", " and ").replace(" | ", " or ")
+
+
+def _balanced(s: str) -> bool:
+    depth = 0
+    for ch in s:
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if depth < 0:
+            return False
+    return depth == 0

@@ -74,7 +74,7 @@ def test_strict_is_removed() -> None:
 
 def test_an_assumed_sum_says_it_is_checked_at_run_time() -> None:
     report = _quiet(sv.verify, SUM)
-    text = str(report)
+    text = report.details()
     assert "SUM of amount fits 64 bits in every group (checked at run time" in text
     assert "(inferred;" not in text
     # The first line says the proof holds under checks (#1484).
@@ -89,7 +89,7 @@ def test_an_assumed_double_sum_names_the_sum() -> None:
     r = ibis.table({"k": "int64", "temp_c": "float64"}, name="readings")
     both = r.group_by("k").aggregate(s=r.temp_c.sum(), m=r.temp_c.mean(), hi=r.temp_c.max())
     report = _quiet(sv.verify, both, on_inferred="ignore")
-    assert "assumes: sum(temp_c) or mean(temp_c) stays finite" in str(report)
+    assert "assumes: sum(temp_c) or mean(temp_c) stays finite" in report.details()
 
 
 # -- #690: an unproved run raises a VerificationError -------------------------
