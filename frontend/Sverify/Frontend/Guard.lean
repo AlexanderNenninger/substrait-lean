@@ -486,7 +486,8 @@ theorem Expr.conj_plain_issues (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, q
   | cons p ps =>
     simp only [Expr.conj, Expr.issues_foldl_and, Expr.issues_plain row p (h p (by simp)),
       List.nil_append]
-    simp [List.flatMap_eq_nil_iff, fun q hq => Expr.issues_plain row q (h q (by simp [hq]))]
+    simp only [List.flatMap_eq_nil_iff]
+    exact fun q hq => Expr.issues_plain row q (h q (List.mem_cons_of_mem _ hq))
 
 theorem Expr.disj_plain_issues (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, q.plain = true) :
     (Expr.disj ps).issues row = [] := by
@@ -495,8 +496,18 @@ theorem Expr.disj_plain_issues (row : Row) (ps : List Expr) (h : ∀ q ∈ ps, q
   | cons p ps =>
     simp only [Expr.disj, Expr.issues_foldl_or, Expr.issues_plain row p (h p (by simp)),
       List.nil_append]
-    simp [List.flatMap_eq_nil_iff, fun q hq => Expr.issues_plain row q (h q (by simp [hq]))]
+    simp only [List.flatMap_eq_nil_iff]
+    exact fun q hq => Expr.issues_plain row q (h q (List.mem_cons_of_mem _ hq))
 
+omit [Boxes.Ambient] in
+theorem Expr.mixed_length {ps : List Expr} (hnp : ∃ q ∈ ps, q.plain = false) :
+    (ps.filter Expr.plain).length ≠ ps.length := by
+  intro h
+  obtain ⟨q, hq, hqf⟩ := hnp
+  have := List.filter_eq_self.mp ((List.filter_sublist ps).eq_of_length h) q hq
+  simp_all
+
+omit [Boxes.Ambient] in
 theorem Expr.filter_plain_plain (ps : List Expr) : ∀ q ∈ ps.filter Expr.plain, q.plain = true :=
   fun q hq => by simpa using (List.mem_filter.mp hq).2
 
@@ -509,14 +520,11 @@ theorem Expr.andLift_false (row : Row) (pre : List Expr) (p : Expr) (post : List
     (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
     (Expr.andLift (pre ++ p :: post)).refOutcome row = .ok (.bool false) := by
   have hg := Expr.andG_false row pre p post hpre hp hbv hf
-  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
-    intro h
-    obtain ⟨q, hq, hqf⟩ := hnp
-    have := List.filter_length_eq_length.mp h q hq
-    simp_all
+  have hlen := Expr.mixed_length hnp
   unfold Expr.andLift
   dsimp only
-  rw [if_neg hlen]
+  split
+  · next h => exact absurd h hlen
   split
   · exact hg
   · have hi := Expr.conj_plain_issues row _ (Expr.filter_plain_plain _)
@@ -534,14 +542,11 @@ theorem Expr.orLift_true (row : Row) (pre : List Expr) (p : Expr) (post : List E
     (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
     (Expr.orLift (pre ++ p :: post)).refOutcome row = .ok (.bool true) := by
   have hg := Expr.orG_true row pre p post hpre hp hbv ht
-  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
-    intro h
-    obtain ⟨q, hq, hqf⟩ := hnp
-    have := List.filter_length_eq_length.mp h q hq
-    simp_all
+  have hlen := Expr.mixed_length hnp
   unfold Expr.orLift
   dsimp only
-  rw [if_neg hlen]
+  split
+  · next h => exact absurd h hlen
   split
   · exact hg
   · have hi := Expr.disj_plain_issues row _ (Expr.filter_plain_plain _)
@@ -559,14 +564,11 @@ theorem Expr.andLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List
     (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
     (Expr.andLift (pre ++ p :: post)).refOutcome row = .error k := by
   have hg := (Expr.andG_error row pre p post k hpre hp).1
-  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
-    intro h
-    obtain ⟨q, hq, hqf⟩ := hnp
-    have := List.filter_length_eq_length.mp h q hq
-    simp_all
+  have hlen := Expr.mixed_length hnp
   unfold Expr.andLift
   dsimp only
-  rw [if_neg hlen]
+  split
+  · next h => exact absurd h hlen
   split
   · exact hg
   · have hi := Expr.conj_plain_issues row _ (Expr.filter_plain_plain _)
@@ -582,14 +584,11 @@ theorem Expr.orLift_error (row : Row) (pre : List Expr) (p : Expr) (post : List 
     (hnp : ∃ q ∈ pre ++ p :: post, q.plain = false) :
     (Expr.orLift (pre ++ p :: post)).refOutcome row = .error k := by
   have hg := (Expr.orG_error row pre p post k hpre hp).1
-  have hlen : ((pre ++ p :: post).filter Expr.plain).length ≠ (pre ++ p :: post).length := by
-    intro h
-    obtain ⟨q, hq, hqf⟩ := hnp
-    have := List.filter_length_eq_length.mp h q hq
-    simp_all
+  have hlen := Expr.mixed_length hnp
   unfold Expr.orLift
   dsimp only
-  rw [if_neg hlen]
+  split
+  · next h => exact absurd h hlen
   split
   · exact hg
   · have hi := Expr.disj_plain_issues row _ (Expr.filter_plain_plain _)
