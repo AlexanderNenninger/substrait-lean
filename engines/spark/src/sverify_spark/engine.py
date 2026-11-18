@@ -127,11 +127,13 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
 #: The views sverify registered under its own names (`__sverify_<i>`, which
 #: `sverify.engine.run_plan` gives a plan's tables), per session: the Arrow
 #: table each holds. A run over the same table does not send it again.
-_VIEWS: weakref.WeakKeyDictionary[Any, dict[str, pa.Table]] = weakref.WeakKeyDictionary()
+_VIEWS: weakref.WeakKeyDictionary[Any, dict[str, Any]] = weakref.WeakKeyDictionary()
 
 
-def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None) -> None:
-    """Register each table as a temporary view of that name. The columns go
+def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> None:
+    """Register each table as a temporary view of that name. A `Scan` of
+    local files is read by the session itself (`sverify_spark.scan`); the other
+    tables' columns go
     to Spark as Arrow, cast to the types `spark_type` names, so NULL and NaN
     stay apart, and no Python worker runs (a table of 100,000 rows takes a
     quarter of the time it took as Python values). A view of sverify's own
@@ -142,6 +144,13 @@ def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None
         own = name.startswith("__sverify_")
         if own and held.get(name) is table:
             continue
+        if not isinstance(table, pa.Table):
+            from sverify_spark.scan import spark_scan
+
+            spark_scan(spark, table).createOrReplaceTempView(name)
+            if own:
+                held[name] = table
+            continue
         schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
         target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
         spark.createDataFrame(table.cast(target), schema).createOrReplaceTempView(name)
@@ -151,7 +160,7 @@ def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None
 
 def run(
     plan: str | dict,
-    tables: Mapping[str, pa.Table],
+    tables: Mapping[str, Any],
     spark: SparkSession | None = None,
     *,
     deterministic: bool = False,

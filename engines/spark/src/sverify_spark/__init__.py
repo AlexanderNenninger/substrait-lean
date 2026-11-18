@@ -112,8 +112,20 @@ def _run(
     # Spark's temporary views take plain names, not the delta plans' `t$delta`.
     names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
     _rename_tables(plan, names)
-    tables = {alias: con._arrow[t] for t, alias in names.items()}
+    tables = {alias: _table(con, t) for t, alias in names.items()}
     return spark_engine.run(plan, tables, session, deterministic=tie_free, finite=finite)
+
+
+def _table(con: Any, name: str) -> Any:
+    """Table `name` of the connection for Spark: a `Scan` of local files without
+    a `where` as it is (the session reads it, `sverify_spark.scan`), any other
+    table as Arrow."""
+    from sverify._scan import Scan
+
+    table = con.get(name)
+    if isinstance(table, Scan) and table.readable() and table.where is None:
+        return table
+    return con._arrow[name]
 
 
 def _is_session(obj: Any) -> bool:
