@@ -372,6 +372,13 @@ OBSERVATIONS: list[Observation] = [
     _o("dec-from-double", "decimals",
        "SELECT CAST(0.625::DOUBLE AS DECIMAL(3,2)), CAST(-0.125::DOUBLE AS DECIMAL(3,2)),"
        " CAST(2.675::DOUBLE AS DECIMAL(3,2)), CAST('2.675' AS DECIMAL(3,2))"),
+    # A comparison across scales (#1498): both sides go to one DECIMAL(38, s).
+    _o("dec-compare-scale-ok", "decimals",
+       "SELECT 1.5::DECIMAL(38,10) > 1::DECIMAL(38,0), 1::DECIMAL(38,0) = 1.0::DECIMAL(38,10)"),
+    _o("dec-compare-scale-raise", "decimals",
+       "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) > 1.5::DECIMAL(38,10)"),
+    _o("dec-compare-scale-raise-eq", "decimals",
+       "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) = 1.5::DECIMAL(38,10)"),
     _o("dec-divide", "decimals",
        "SELECT 1.00::DECIMAL(10,2) / 8::DECIMAL(10,0), 10::DECIMAL(10,0) / 3::DECIMAL(10,0),"
        " CAST(1.00::DECIMAL(10,2) / 8::DECIMAL(10,0) AS DECIMAL(10,2))"),
@@ -728,6 +735,24 @@ OBSERVATIONS: list[Observation] = [
     _o("minmax-zero-last-positive", "aggregates",
        "SELECT signbit(min(d)), signbit(max(d)), signbit(min(f)), signbit(max(f)) FROM"
        " (VALUES (-0.0::DOUBLE, -0.0::FLOAT), (0.0::DOUBLE, 0.0::FLOAT)) t(d, f)"),
+    # The raw sign of min, max and quantile_disc over frames and groups holding both
+    # zeros, at 1 and at 4 threads (#1512, D45).
+    *(
+        _o(f"minmax-zero-frames-{n}-threads", "aggregates",
+           "SELECT i, signbit(min(x) OVER w), signbit(max(x) OVER w) FROM (VALUES"
+           " (1, 0.0::DOUBLE), (2, -0.0::DOUBLE), (3, 0.0::DOUBLE), (4, -0.0::DOUBLE)) t(i, x)"
+           " WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY i",
+           f"SET threads = {n}")
+        for n in (1, 4)
+    ),
+    *(
+        _o(f"quantile-disc-zero-{n}-threads", "aggregates",
+           "SELECT signbit(quantile_disc(x, 0.0)), signbit(quantile_disc(x, 0.5)),"
+           " signbit(quantile_disc(x, 1.0)) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE),"
+           " (0.0::DOUBLE), (-0.0::DOUBLE)) t(x)",
+           f"SET threads = {n}")
+        for n in (1, 4)
+    ),
     _o("quantile-nan", "aggregates",
        "SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR,"
        " quantile_cont(x, 0.75)::VARCHAR, quantile_disc(x, 0.75)::VARCHAR,"
@@ -735,6 +760,9 @@ OBSERVATIONS: list[Observation] = [
        " ('nan'::DOUBLE), (3.0::DOUBLE)) t(x) UNION ALL SELECT median(x)::VARCHAR,"
        " quantile_cont(x, 0.5)::VARCHAR, NULL, NULL, NULL FROM (VALUES (1.0::DOUBLE),"
        " ('nan'::DOUBLE)) t(x)"),
+    _o("replace-empty-pattern", "strings",
+       "SELECT replace('ab', '', 'x'), replace('', '', 'x'), replace(NULL, '', 'x'),"
+       " replace('ab', '', NULL), replace('', '', NULL), typeof(replace('ab', '', 'x'))"),
     # Collations.
     _o("default-collation-nocase", "strings",
        "SELECT v = 'hello', v LIKE 'h%', v ILIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'),"

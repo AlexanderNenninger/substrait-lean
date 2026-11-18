@@ -6744,6 +6744,27 @@
    "observed": "0.63, -0.13, 2.68, 2.68"
   },
   {
+   "construct": "dec-compare-scale-ok",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 1.5::DECIMAL(38,10) > 1::DECIMAL(38,0), 1::DECIMAL(38,0) = 1.0::DECIMAL(38,10)",
+   "observed": "true, true"
+  },
+  {
+   "construct": "dec-compare-scale-raise",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) > 1.5::DECIMAL(38,10)",
+   "observed": "error ConversionException: Conversion Error: Casting value \"99999999999999999999999999999999999999\" to type DECIMAL(38,10) failed: value is out of range!"
+  },
+  {
+   "construct": "dec-compare-scale-raise-eq",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 99999999999999999999999999999999999999::DECIMAL(38,0) = 1.5::DECIMAL(38,10)",
+   "observed": "error ConversionException: Conversion Error: Casting value \"99999999999999999999999999999999999999\" to type DECIMAL(38,10) failed: value is out of range!"
+  },
+  {
    "construct": "dec-divide",
    "area": "decimals",
    "setup": [],
@@ -7487,11 +7508,54 @@
    "observed": "false, false, false, false"
   },
   {
+   "construct": "minmax-zero-frames-1-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 1"
+   ],
+   "sql": "SELECT i, signbit(min(x) OVER w), signbit(max(x) OVER w) FROM (VALUES (1, 0.0::DOUBLE), (2, -0.0::DOUBLE), (3, 0.0::DOUBLE), (4, -0.0::DOUBLE)) t(i, x) WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY i",
+   "observed": "1, false, false; 2, true, true; 3, false, false; 4, true, true"
+  },
+  {
+   "construct": "minmax-zero-frames-4-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 4"
+   ],
+   "sql": "SELECT i, signbit(min(x) OVER w), signbit(max(x) OVER w) FROM (VALUES (1, 0.0::DOUBLE), (2, -0.0::DOUBLE), (3, 0.0::DOUBLE), (4, -0.0::DOUBLE)) t(i, x) WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY i",
+   "observed": "1, false, false; 2, true, true; 3, false, false; 4, true, true"
+  },
+  {
+   "construct": "quantile-disc-zero-1-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 1"
+   ],
+   "sql": "SELECT signbit(quantile_disc(x, 0.0)), signbit(quantile_disc(x, 0.5)), signbit(quantile_disc(x, 1.0)) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE), (0.0::DOUBLE), (-0.0::DOUBLE)) t(x)",
+   "observed": "false, true, true"
+  },
+  {
+   "construct": "quantile-disc-zero-4-threads",
+   "area": "aggregates",
+   "setup": [
+    "SET threads = 4"
+   ],
+   "sql": "SELECT signbit(quantile_disc(x, 0.0)), signbit(quantile_disc(x, 0.5)), signbit(quantile_disc(x, 1.0)) FROM (VALUES (0.0::DOUBLE), (-0.0::DOUBLE), (0.0::DOUBLE), (-0.0::DOUBLE)) t(x)",
+   "observed": "false, true, true"
+  },
+  {
    "construct": "quantile-nan",
    "area": "aggregates",
    "setup": [],
    "sql": "SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR, quantile_cont(x, 0.75)::VARCHAR, quantile_disc(x, 0.75)::VARCHAR, quantile_cont(x, 1.0)::VARCHAR FROM (VALUES (1.0::DOUBLE), (2.0::DOUBLE), ('nan'::DOUBLE), (3.0::DOUBLE)) t(x) UNION ALL SELECT median(x)::VARCHAR, quantile_cont(x, 0.5)::VARCHAR, NULL, NULL, NULL FROM (VALUES (1.0::DOUBLE), ('nan'::DOUBLE)) t(x)",
    "observed": "'2.5', '2.5', 'nan', '3.0', 'nan'; 'nan', 'nan', NULL, NULL, NULL"
+  },
+  {
+   "construct": "replace-empty-pattern",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT replace('ab', '', 'x'), replace('', '', 'x'), replace(NULL, '', 'x'), replace('ab', '', NULL), replace('', '', NULL), typeof(replace('ab', '', 'x'))",
+   "observed": "'ab', '', NULL, NULL, NULL, 'VARCHAR'"
   },
   {
    "construct": "default-collation-nocase",

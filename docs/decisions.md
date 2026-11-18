@@ -156,7 +156,7 @@ after the transfer check: the checker proves the contract again under the
 engine's profile (`python/src/sverify/routes.py`).
 
 Each route ends in `Engine.contract_sound` (#900): the contract holds on the
-rows the engine's model computes for the translated plan, unless it raises.
+rows the engine's model computes for the translated plan, under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference).
 The engine's actual output rests on `Engine.Runs` and the transfer check
 (`Engine.contract_sound_runs`); it fails today at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on every engine, `null_order` without a preference on Polars and Spark, and integer overflow on Polars ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900), PR 3).
 
@@ -193,9 +193,18 @@ proved to never raise the two agree (`Rel.duckdb_sound`).
 Amended (2026-11-08): `Engine.contract_sound` (`engines/Sverify/Engines/Sound.lean`,
 [#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)) proves
 a proved contract on the rows each engine's model computes for the
-translated plan, unless it raises, through each engine's `Engine.Sound`. That the engine's actual
+translated plan, under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference), through each engine's `Engine.Sound`. That the engine's actual
 result is one its table allows stays trusted, as `Engine.Runs`, resting on the
 tested rows `Engine.Refines` lists ([What is trusted](proofs.md#what-is-trusted)).
+
+Amended (2026-11-17): that the translated plan does not raise is DuckDB's side
+condition (`Engine.NoRaiseSide`), since DuckDB's model is its profile's
+functions where they do not raise (`okImpl`). `Engine.Sound` and
+`Engine.contract_sound` no longer take it: Polars and Spark hold under
+`Engine.GuardFreeSide` and the reference under no condition
+([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484),
+finding 13). A run that raises returns no result, and `Engine.Runs` speaks of
+a result, so the guarantee to a user is the same.
 
 ### D17. Changing the reference
 
@@ -271,11 +280,12 @@ A filter above a join is analysed on the cross product of the join's loose
 inputs (`Rel.loose`), so DuckDB pushing a raising `WHERE` into one side of an
 inner or left join
 (fact `duckdb-exec-filter-pushdown`, #602)
-evaluates it on rows the analysis covers. The one exception is a join whose
-other side is empty: `Rel.HasIssue` then has no pairs, while DuckDB still
-evaluates the pushed filter on the side's rows. `Rel.mayIssues` reports
-the error anyway, since it describes each side's columns by that side's own
-bounds; `Rel.HasIssue` does not model the case yet.
+evaluates it on rows the analysis covers. A join whose other side is empty
+has no pairs, while DuckDB still evaluates the pushed filter on the side's
+rows. `Rel.HasIssueAll` models that case too (#1484 R3): each subexpression a
+condition always evaluates may run on the rows of the join inputs it reads,
+the other inputs' columns NULL (`Rel.ViewAllowed`), and
+`Rel.mayIssues_sound_all` proves that `Rel.mayIssues` reports it.
 
 DuckDB 2.0.0 also evaluates a `CASE`'s constant `WHEN` conditions when it
 plans the query, with the evaluator that raises:
@@ -401,7 +411,7 @@ rows asks for it, through `run(reproducible=sv.equivalent())` or a sink's
 [D20](#d20-two-observations-per-output)). Engines read tables in an order of
 their own, so no shim reproduces list order on them. The deterministic
 profile needs a plan whose order is total, by a tie-break key or a
-uniqueness precondition (`Rel.windowsTotal`, `Rel.fetchesTotal`), and
+uniqueness precondition (`Rel.detPlan`), and
 refuses a plan without one. The refusal names each place where ties stay
 open (`str(report)`, with the keys that would close them in `Report.ties`).
 
@@ -642,6 +652,20 @@ Consequences:
 - A postcondition at a rounding boundary can move by an ulp, which
   `sv.approx` absorbs.
 
+Note (2026-11-16, #1486; no new decision): `StatProps`, the model of
+`GENERIC` and `WELFORD_CHAN`, asked for the reference's own value outside
+`Stat.fits` (more than 2³² values, or one above 2³⁹⁸ in magnitude). For
+finite values that is false: `var_pop([1e150, 3e150])` is
+`1.0000000000000002e+300` exactly rounded and `9.999999999999999e+299` on
+DuckDB 2.0.0 and on streaming Polars 2.1.0. The last branch of `varStat`,
+`covStat` and `corrStat` now splits in three: a NaN or an infinity among the
+values gives the reference's value (`nan_through`, the infinity raise and
+`Stat.nanGuard_varStat` rely on it); finite values inside `Stat.fits` give
+the properties; finite values outside it are open, any double. No verdict
+changes: such a column has no plan bound (`doubleMag`, `statEps`) and the
+route reports it unproved. The reference's value and its promises are
+unchanged.
+
 Why: before D30 the reference stated generic properties for these
 aggregates and let engine profiles refine them, so a plan reading one left
 the engine a choice of value. `Rel.FloatOpenSafe`, `contract_sound_allowed`'s
@@ -737,8 +761,9 @@ raises or leaves the result open where engines disagree."
 - `ORDER BY` is an identity boundary too: it sorts by a total preorder on
   canonical values, and rows tied on it may come in any order (`Allowed`).
 - Where a class has several members, a `DISTINCT` row, a `GROUP BY` key and
-  a `MIN` or `MAX` may be any member of the class present in the input, or
-  the class's canonical value (`IsReps`, `AggFn.Picks`). Spark and DuckDB
+  a `MIN` or `MAX` in a group or a window frame may be any member of the
+  class present in the input, or the class's canonical value (`IsReps`,
+  `AggFn.Picks`, `WinFn.Allowed`; `QUANTILE_DISC` too since D45). Spark and DuckDB
   emit the canonical value, so a group of `-0.0`s comes out as `+0.0`;
   Polars emits a present member. `Rel.eval` keeps one admitted value, the
   raw-least member. Where the keys and arguments hold no doubles, each class
@@ -874,7 +899,7 @@ never narrower; one not pinned down yet is every call.
 | `on_division_by_zero` | the divisor is zero |
 | `division_type` | the operands have opposite signs and the remainder is not zero |
 | `min_mod_neg_one` | `MIN % -1` |
-| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` or `AVG` of `+∞` and `−∞`, a variance, standard deviation, covariance or correlation of an infinity (`AggFn.nanCase`) |
+| `nan_creation` | the arguments are not NaN and the IEEE result is: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `0 / 0`, `fmod(±∞, y)`, `fmod(x, 0)`, a `SUM` or `AVG` of `+∞` and `−∞`, a variance, standard deviation, covariance or correlation of an infinity, a `QUANTILE_CONT` between a `-∞` and a `+∞` neighbour (`AggFn.nanCase`) |
 | `float_overflow` | the arguments are finite and the correctly rounded result is infinite |
 | `zero_sign` | an argument or the reference result is a zero (underflow, `x − x`, a sum rounding to zero) |
 | `round_zero_sign` | the reference result is a zero (`round(-0.4)`, `ceil(-0.4)`) |
@@ -1142,3 +1167,61 @@ each is:
 Why: the rule is that the reference changes only through a recorded decision
 and an option enters the core with its value recorded. The rows whose "Decided by" is this decision were never ruled on in this record; they record the values as of 2026-11-15, and a later decision changes one as D17 describes. A test (`tests/test_decisions_name_options.py`)
 keeps every option of the core named in this file.
+
+### D44. `replace` with an empty pattern is the string unchanged
+
+Decided 2026-11-17 (the maintainer, on the theory advisor's recommendation,
+#1508).
+
+`replace(s, '', r)` is `s`: an empty pattern matches nowhere. It is `NULL`
+where `s` or `r` is `NULL`, as for any pattern. `Text.replace` changes for
+this case only; a non-empty pattern is Rust's `str::replace` as before.
+
+Why: the reference's value is one every engine gives natively or by a cheap
+shim. DuckDB returns the string unchanged
+([duckdb-replace-empty-pattern](../engines/duckdb/facts/duckdb-replace-empty-pattern.json)),
+and so does a constant fold on Polars, whose own `replace_all` inserts the
+replacement at every character boundary
+([polars-string-natives](../engines/polars/facts/polars-string-natives.json)).
+Both frontends take only constant patterns, so the empty pattern is known when
+the plan is written, and the writers fold it. The core gains no option, and the
+raise set stays the small guardable one. The Substrait YAML leaves the case
+unspecified ([ST-17](../upstream/bugs/ST-17.json)).
+
+### D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do
+
+Approved 2026-11-17 by the user, on the theory advisor's proposal (the ruling
+on [#1512](https://github.com/AlexanderNenninger/substrait-lean/issues/1512)'s zero sign).
+
+`QUANTILE_DISC` selects one of its values by comparison, as `MIN` and `MAX`
+do. Where the selected value is a double whose class has more than one member
+(a zero, a NaN), the reference allows the value `AggFn.apply` selects, any
+member of the group in that class, or the class's canonical value
+(`AggFn.Picks`, `AggFn.classPick`). `AggFn.apply` keeps its pick. A value of
+any other kind is alone in its class, so nothing else changes
+(`AggFn.Picks.eq`).
+
+Why: before this decision the reference fixed `QUANTILE_DISC`'s member of a
+class to the raw-least (`sortVals` breaks ties by codes), and DuckDB returns
+`-0.0` or `+0.0` by row order and thread count, outside `Allowed`. D31 already
+opens the class for `MIN` and `MAX`; this extends its rule to the remaining
+order statistic. It widens no verdict: a quantile is neither order-free nor
+sorting, so `Rel.detPlan` already answers false for a plan with one, and the
+contract analysis bounds a double by its canonical code.
+
+Amended 2026-11-17 (the theory advisor's rulings on D45's windows, entries 28
+and 34; the user's approval is pending on the pull request): windows join.
+A window's `MIN`, `MAX` and `QUANTILE_DISC` over a frame allow what
+`AggFn.Picks` allows over the frame's values, in the frame's order
+(`WinFn.Allowed`); every other window function keeps its value, and a
+windowed `QUANTILE_CONT` keeps its pin. `Rel.Allowed`'s and
+`Rel.OrderAllowed`'s window cases admit any such result (`windowRowsA`), and
+`WinFn.AllowedP` no longer pins a window's `MIN` and `MAX`. Why: D31's text
+never named a group, and DuckDB's `duckdb-minmax-zero-sign` contradicts the
+pin. Where the class-picking functions' arguments hold no doubles, a window
+gives `windowRows` alone (`windowRowsA_eq`), and every admitted result is
+`windowRows` up to each window value's class (`windowRowsA_canon`).
+`Rel.detPlan`'s window case gains the aggregate case's guard
+(`WinFn.pickFixed`), so a plan with a windowed `MIN`, `MAX` or
+`QUANTILE_DISC` over an argument that may be a double is no longer
+certified deterministic.

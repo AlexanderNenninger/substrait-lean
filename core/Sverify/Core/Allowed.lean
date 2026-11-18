@@ -68,7 +68,11 @@ theorem AggFn.allowed_of_picks {f : AggFn} {vs : List Value} {v : Value} (h : f.
     f.Allowed vs v := by
   rcases h' : h with h₁ | ⟨hf, _⟩
   · rw [h₁]; exact AggFn.apply_allowed _ _
-  · rcases hf with rfl | rfl <;> exact h
+  · cases f with
+    | quantile cont _ _ => cases cont
+                           · exact h
+                           · simp [AggFn.classPick] at hf
+    | _ => exact h
 
 /-- An aggregate that combines in two phases gives its value, or for `MIN`
 and `MAX` another member of its class. -/
@@ -112,7 +116,20 @@ theorem Measure.allowed_eq {m : Measure} (hm : m.orderFree = true) (hmin : m.fn 
     (hmax : m.fn ≠ .max) {rows : Relation} {v : Value} (h : m.Allowed rows v) : v = m.eval rows := by
   rcases Measure.allowed_picks hm h with hv | ⟨hf, -⟩
   · rw [hv, Measure.eval_eq (AggFn.ne_collect_of_orderFree hm)]
-  · rcases hf with hf | hf <;> contradiction
+  · rcases AggFn.minmax_of_classPick hm hf with hf | hf <;> contradiction
+
+/-- **A measure whose ties agree on its argument allows only its value**: the
+reference fixes its order up to the ties (`sortLe`, no open comparison), and
+the ties change none of its inputs. -/
+theorem Measure.allowed_eq_of_ties {m : Measure} (hs : m.fn.sorts = true) {rows : Relation}
+    (ht : m.TiesAgree rows) {v : Value} (h : m.Allowed rows v) : v = m.eval rows := by
+  obtain ⟨s, hp, hsort, hv⟩ := h
+  have hv' : v = m.fn.apply (m.inputs s) := by
+    cases hf : m.fn <;> simp only [hf, AggFn.sorts, Bool.false_eq_true] at hs <;>
+      simpa [hf, AggFn.Allowed, AggFn.Picks, AggFn.classPick] using hv
+  have hm := List.mergeSort_perm rows (sortLe m.sort)
+  rw [hv', Measure.eval_sorts hs, Measure.inputs_eq_of_sorted (hp.trans hm.symm) (hsort hs)
+    (mergeSort_sorted _ _) (ht.perm hm)]
 
 /-- What an aggregate's output may be, for the input rows `rows` in this
 order: a row per group (in their order of first appearance), each measure
@@ -131,37 +148,45 @@ theorem aggregateEval_allowed (gs : List Expr) (ms : List Measure) (rows : Relat
   · exact ⟨_, canonReps_isReps Row.leRaw_rawOrder _, forall₂_map_self _ fun k _ =>
       ⟨_, rfl, forall₂_map_self ms fun m _ => Measure.eval_allowed m _⟩⟩
 
-/-- **An aggregate of order-free measures allows only its rows**, in some
-order, where its keys and its measures' arguments are alone in their classes
-(no doubles): then there is no value to choose (D31). -/
-theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, m.orderFree = true)
-    {rows out : Relation} (hk : ∀ r ∈ rows, (groupKey gs r).Lone)
+/-- **An aggregate allows only its rows**, in some order, when each measure
+is order-free or its ties agree on its argument, and its keys and its `MIN`s'
+and `MAX`s' arguments are alone in their classes (no doubles): then there is
+no value to choose (D31). -/
+theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} {rows out : Relation}
+    (hms : ∀ m ∈ ms, m.orderFree = true ∨ (m.fn.sorts = true ∧ m.TiesAgreeIn gs rows))
+    (hk : ∀ r ∈ rows, (groupKey gs r).Lone)
     (ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ r ∈ rows, (m.arg.eval r).Lone)
     (h : aggAllowed gs ms rows out) : out.Perm (aggregateEval gs ms rows) := by
-  have hvals : ∀ {grp : Relation}, (∀ r ∈ grp, r ∈ rows) → ∀ {vs : List Value},
+  have hvals : ∀ {grp : Relation}, (∀ r ∈ grp, r ∈ rows) →
+      (∀ m : Measure, m.TiesAgreeIn gs rows → m.TiesAgree grp) → ∀ {vs : List Value},
       Forall2 (fun m v => m.Allowed grp v) ms vs → vs = ms.map (·.eval grp) := by
-    intro grp hg vs hv
+    intro grp hg hgt vs hv
     apply eq_map_of_forall₂
-    have : ∀ {ms' : List Measure}, (∀ m ∈ ms', m.orderFree = true ∧ m ∈ ms) → ∀ {vs : List Value},
+    have : ∀ {ms' : List Measure}, (∀ m ∈ ms', m ∈ ms) → ∀ {vs : List Value},
         Forall2 (fun m v => m.Allowed grp v) ms' vs →
           Forall2 (fun m v => v = m.eval grp) ms' vs := by
       intro ms' hms' vs hv
       induction hv with
       | nil => exact .nil
       | cons hmv _ ih =>
-        obtain ⟨hof, hmem⟩ := hms' _ List.mem_cons_self
-        have hp := Measure.allowed_picks hof hmv
+        have hmem := hms' _ List.mem_cons_self
         refine .cons ?_ (ih fun m' hm' => hms' m' (List.mem_cons_of_mem _ hm'))
-        rw [Measure.eval_eq (AggFn.ne_collect_of_orderFree hof)]
-        rcases hp' : hp with h | ⟨hf, _⟩
-        · exact h
-        refine AggFn.Picks.eq hp fun w hw => ?_
-        obtain ⟨-, y, hy, rfl⟩ := Measure.mem_inputs hw
-        exact ha _ hmem hf y (hg y hy)
-    exact this (fun m hm => ⟨hms m hm, hm⟩) hv
+        rcases hms _ hmem with hof | ⟨hs, ht⟩
+        · have hp := Measure.allowed_picks hof hmv
+          rw [Measure.eval_eq (AggFn.ne_collect_of_orderFree hof)]
+          rcases hp' : hp with h | ⟨hf, _⟩
+          · exact h
+          refine AggFn.Picks.eq hp fun w hw => ?_
+          obtain ⟨-, y, hy, rfl⟩ := Measure.mem_inputs hw
+          exact ha _ hmem (AggFn.minmax_of_classPick hof hf) y (hg y hy)
+        · exact Measure.allowed_eq_of_ties hs (hgt _ ht) hmv
+    exact this (fun m hm => hm) hv
   unfold aggAllowed at h; unfold aggregateEval
   split at h
-  · next hg => obtain ⟨vs, rfl, hv⟩ := h; rw [hvals (fun _ h => h) hv]; simp [hg]
+  · next hg =>
+    obtain ⟨vs, rfl, hv⟩ := h
+    rw [hvals (fun _ h => h) (fun m ht => by rw [List.isEmpty_iff.mp hg] at ht; exact ht.nil) hv]
+    simp [hg]
   · next hg =>
     simp only [hg, Bool.false_eq_true, ite_false]
     obtain ⟨ks, hks, h⟩ := h
@@ -174,7 +199,7 @@ theorem aggAllowed_eq {gs : List Expr} {ms : List Measure} (hms : ∀ m ∈ ms, 
       | nil => exact .nil
       | cons hk _ ih =>
         obtain ⟨vs, rfl, hv⟩ := hk
-        exact .cons (by rw [hvals (fun _ h => (List.mem_filter.mp h).1) hv]; rfl) ih
+        exact .cons (by rw [hvals (fun _ h => (List.mem_filter.mp h).1) (fun m ht => ht.group _) hv]; rfl) ih
     rw [hrow h]
     -- Keys alone in their classes: the representatives are the keys, once each.
     have hkl : ∀ k ∈ rows.map (groupKey gs), ∀ z, Row.canon z = Row.canon k → z = k := fun k hk' => by
@@ -203,9 +228,10 @@ def Rel.Allowed (cat : Catalog) : Rel → Relation → Prop
       | none => i.drop off
       | some n => (i.drop off).take n
   | .unionAll a b, out => ∃ x y, a.Allowed cat x ∧ b.Allowed cat y ∧ out.Perm (x ++ y)
-  -- The window functions over the input in any order its sort allows.
+  -- The window functions over the input in any order its sort allows, a
+  -- class-picking function any member of its class (D45, `WinFn.Allowed`).
   | .window r part sort fns, out => ∃ i, r.Allowed cat i ∧ ∃ s, s.Perm i ∧
-      s.Pairwise (sortLe sort · · = true) ∧ out.Perm (windowRows part fns [] s)
+      s.Pairwise (sortLe sort · · = true) ∧ ∃ o, out.Perm o ∧ windowRowsA part fns [] s o
   | .semi a b anti on, out => ∃ x y, a.Allowed cat x ∧ b.Allowed cat y ∧
       out.Perm (x.filter fun row => hasMatch on y row != anti)
   -- The input sorted, ties and a clustered key's groups in any order.
@@ -224,8 +250,9 @@ theorem Rel.eval_allowed (cat : Catalog) : ∀ r : Rel, r.Allowed cat (r.eval ca
   | .join a b .inner _ | .join a b .left _ =>
     ⟨_, _, eval_allowed cat a, eval_allowed cat b, .refl _⟩
   | .fetch r _ cnt => ⟨_, eval_allowed cat r, by cases cnt <;> rfl⟩
-  | .window r _ sort _ => ⟨_, eval_allowed cat r, _, List.mergeSort_perm _ _,
-      List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total _, .refl _⟩
+  | .window r part sort fns => ⟨_, eval_allowed cat r, _, List.mergeSort_perm _ _,
+      List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total _, _, .refl _,
+      windowRows_windowRowsA part fns [] _⟩
   | .orderBy r keys => ⟨_, eval_allowed cat r, List.mergeSort_perm _ _, .of_sorted <|
       List.pairwise_mergeSort (sortLe_totalPre keys).trans (sortLe_totalPre keys).total _⟩
   | .distinct r => ⟨_, eval_allowed cat r, _, canonReps_isReps Row.leRaw_rawOrder _, .refl _⟩
@@ -311,5 +338,38 @@ theorem Rel.unsorted_refinesBag_not_refines :
       Value.le, Value.canonV, Value.leRaw_def, Value.leScalar])⟩, ho.trans (.swap _ _ _)⟩, fun h => hs ?_⟩
   obtain ⟨i, -, -, hsort⟩ := Rel.refines_iff.1 h _ (List.Perm.refl _)
   exact hsort
+
+/-- **A clustered key leaves its groups in any order** (`SortAllowed`), so a
+`FETCH` over it may take either row, even where its column is a key. -/
+theorem Rel.fetch_clustered_open :
+    let q : Rel := .fetch (.orderBy (.values 1 [[.int 1], [.int 2]])
+      [{ col := 0, clustered := true }]) 0 (some 1)
+    let cat : Catalog := fun _ => { arity := 0, rows := [] }
+    q.Allowed cat [[.int 1]] ∧ q.Allowed cat [[.int 2]] := by
+  intro q cat
+  refine ⟨⟨_, ⟨_, .refl _, .refl _, .of_sorted ?_⟩, rfl⟩,
+    ⟨[[.int 2], [.int 1]], ⟨_, .refl _, .swap _ _ _, fun a b => b.le a,
+      ⟨Value.le_totalPre.flip, fun a b h₁ h₂ => Value.le_antisymm h₂ h₁⟩, ?_⟩, rfl⟩⟩
+  · simp [sortLe, SortKey.le, SortKey.valLe, SortKey.nullRank, lexLe, natLe, SortKey.firstNulls,
+      Value.le, Value.canonV, Value.leRaw_def, Value.leScalar]
+  · simp [sortLeWith, SortKey.leWith, SortKey.valWith, lexLe, nullRankOf, natLe,
+      SortKey.firstNulls, Value.le, Value.canonV, Value.leRaw_def, Value.leScalar]
+
+/-- **`MODE` ordered by its argument is open over doubles**: `0.0` and `-0.0`
+tie in the order (`sortLe`), and `MODE` returns the first of the values
+that tie in count. -/
+theorem Measure.mode_signed_zero_open :
+    let m : Measure := { fn := .mode, arg := .field 0, sort := [{ col := 0 }] }
+    let rows : Relation := [[.float 0], [.float FloatCode.negZero]]
+    m.Allowed rows (.float 0) ∧ m.Allowed rows (.float FloatCode.negZero) := by
+  intro m rows
+  have hz : FloatCode.canon FloatCode.negZero = 0 := fp64.canon_negZero
+  have hne : FloatCode.negZero ≠ 0 := by decide
+  have h0 : fp64.canon 0 = 0 := by decide
+  refine ⟨⟨rows, .refl _, fun _ => ?_, ?_⟩, ⟨rows.reverse, List.reverse_perm _, fun _ => ?_, ?_⟩⟩ <;>
+    simp_all [m, rows, sortLe, SortKey.le, SortKey.valLe, SortKey.nullRank, lexLe, natLe,
+      SortKey.firstNulls, Value.le, Value.canonV, Value.leRaw_def, Value.leScalar, Measure.inputs,
+      Measure.kept, Expr.eval, AggFn.Allowed, AggFn.Picks, AggFn.apply, modeOf, pickFold, dedup,
+      dedupN, List.count_cons, FloatCode.canon, eq_comm (a := (0 : Int))]
 
 end Substrait

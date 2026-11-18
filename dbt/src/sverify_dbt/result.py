@@ -30,6 +30,9 @@ class TestResult:
     """Why it is not proved or not checked."""
     counterexample: str | None = None
     """Inputs meeting every test upstream on which the model breaks it."""
+    skippable: bool = True
+    """Whether `dbt build` may skip the test once it is proved: False for a
+    test of an incremental model whose runs the proof does not cover."""
     would_hold: dict[str, list[tuple[str | None, str]]] = field(default_factory=dict)
     """Tests on the inputs under which it would be proved: per input, the
     column and the test's YAML."""
@@ -164,6 +167,12 @@ class CheckResult:
         return [t for m in self.models for t in m.tests if t.status == "proved"]
 
     @property
+    def skippable(self) -> list[TestResult]:
+        """The proved tests `dbt build` may skip (`proved` less an incremental
+        model's tests that its incremental runs can still break)."""
+        return [t for t in self.proved_tests if t.skippable]
+
+    @property
     def contract_errors(self) -> list[tuple[str, ContractIssue]]:
         return [(m.name, i) for m in self.models for i in m.contract or []]
 
@@ -212,7 +221,7 @@ class CheckResult:
     def selector(self, name: str = "sverify_proved") -> dict[str, Any]:
         """A dbt selector that selects the proved tests, for
         `dbt build --exclude selector:<name>`."""
-        names = sorted({t.name for t in self.proved_tests if t.name})
+        names = sorted({t.name for t in self.skippable if t.name})
         definition: dict[str, Any] = (
             {"union": [{"method": "fqn", "value": n} for n in names]}
             if names
@@ -249,10 +258,14 @@ def _model_lines(m: ModelResult) -> list[str]:
     if m.refused:
         return [head, f"  refused: {m.refused}"]
     out = [head]
-    proved = [t for t in m.tests if t.status == "proved"]
+    proved = [t for t in m.tests if t.status == "proved" and t.skippable]
     if proved:
         out.append("  proved before the model runs (dbt build may skip them):")
         out += [f"    {t.label}" for t in proved]
+    kept = [t for t in m.tests if t.status == "proved" and not t.skippable]
+    if kept:
+        out.append("  proved for the full refresh (dbt build still runs them):")
+        out += [f"    {t.label}" for t in kept]
     unproved = [t for t in m.tests if t.status == "not proved"]
     if unproved:
         out.append("  not proved (dbt build still runs them):")

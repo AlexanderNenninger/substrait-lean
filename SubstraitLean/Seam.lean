@@ -14,7 +14,10 @@ own order takes.
 
 * `Rel.orderAllowed_orderBy`, `Rel.orderAllowed_fetch_orderBy`,
   `Rel.orderAllowed_window`, `Measure.orderAllowed_iff_semBy`:
-  `Rel.OrderAllowed`'s order-sensitive cases are `Lin` and `Sem`.
+  `Rel.OrderAllowed`'s order-sensitive cases are `Lin` and `Sem`. A window
+  reads one enumeration (`LinBy`) and gives a result `windowRowsA` allows
+  over it: `SemBy (windowRows …)` where its class-picking functions'
+  arguments are alone in their classes (`windowRowsA_eq`, D45).
 * `Sem.eq_iff_of_permInv`, `SemBy.eq_iff_of_permInv`: **the lifting
   lemma**. An operator that factors through the multiset has one meaning,
   its value on the multiset, so every theorem about the unordered core holds
@@ -114,8 +117,9 @@ def Measure.op (m : Measure) (rows : Relation) (s : Relation) : Value :=
   if m.fn.sorts then m.eval s else m.eval rows
 
 /-- **`Measure.OrderAllowed` is `SemBy`** over the measure's own order, for a
-measure other than `MIN` and `MAX` (whose member of a class is open, D31). -/
-theorem Measure.orderAllowed_iff_semBy (m : Measure) (hmin : m.fn ≠ .min) (hmax : m.fn ≠ .max)
+measure that does not select by comparison (`MIN`, `MAX` and `QUANTILE_DISC`
+leave the member of a class open, D31, D45). -/
+theorem Measure.orderAllowed_iff_semBy (m : Measure) (hc : m.fn.classPick = false)
     (rows : Relation) (v : Value) :
     m.OrderAllowed rows v ↔ SemBy (m.op rows) (sortLe m.sort) rows v := by
   have key : ∀ s, (if m.fn.sorts then v = m.eval s else m.fn.Picks (m.inputs rows) v) ↔
@@ -125,8 +129,10 @@ theorem Measure.orderAllowed_iff_semBy (m : Measure) (hmin : m.fn ≠ .min) (hma
     · exact Iff.rfl
     · next hs =>
       rw [Measure.eval_eq (by simpa using hs)]
-      exact ⟨fun h => by rcases h with h | ⟨hf, -⟩; · exact h
-                         rcases hf with hf | hf <;> contradiction, Or.inl⟩
+      refine ⟨fun h => ?_, Or.inl⟩
+      rcases h with h | ⟨hf, -⟩
+      · exact h
+      · rw [hc] at hf; cases hf
   exact ⟨fun ⟨s, hp, hs, hv⟩ => ⟨s, ⟨hp, hs⟩, (key s).mp hv⟩,
     fun ⟨s, ⟨hp, hs⟩, hv⟩ => ⟨s, hp, hs, (key s).mpr hv⟩⟩
 
@@ -141,7 +147,11 @@ lifting lemma for measures, `Measure.allowed_eq` for `Measure.OrderAllowed`. -/
 theorem Measure.orderAllowed_eq {m : Measure} (hm : m.orderFree = true) (hmin : m.fn ≠ .min)
     (hmax : m.fn ≠ .max) {rows : Relation} {v : Value} :
     m.OrderAllowed rows v ↔ v = m.eval rows := by
-  rw [Measure.orderAllowed_iff_semBy m hmin hmax,
+  have hc : m.fn.classPick = false := by
+    cases h : m.fn.classPick
+    · rfl
+    · rcases AggFn.minmax_of_classPick hm h with h' | h' <;> contradiction
+  rw [Measure.orderAllowed_iff_semBy m hc,
     SemBy.eq_iff_of_permInv (Measure.op_permInv hm rows) (sortLe_totalPre _)]
   unfold Measure.op; rw [ite_self]
 
@@ -174,14 +184,16 @@ theorem Rel.orderAllowed_fetch_orderBy {cat : Catalog} {r : Rel} {keys : List So
   exact ⟨fun ⟨_, ⟨i, hi, hl⟩, he⟩ => ⟨i, hi, _, hl, he⟩,
     fun ⟨i, hi, L, hl, he⟩ => ⟨L, ⟨i, hi, hl⟩, he⟩⟩
 
-/-- **A window is `SemBy`** of its rows over its own order. -/
+/-- **A window reads one enumeration** of its input under its own order
+(`LinBy`), and gives a result the reference allows over it (`windowRowsA`:
+`windowRows`, each class-picking function any member of its class, D45). -/
 theorem Rel.orderAllowed_window {cat : Catalog} {r : Rel} {part : List Nat}
     {sort : List SortKey} {fns : List WinFn} {out : Relation} :
     (Rel.window r part sort fns).OrderAllowed cat out ↔
-      ∃ i, r.OrderAllowed cat i ∧ ∃ w, SemBy (windowRows part fns []) (sortLe sort) i w ∧
-        out.Perm w :=
-  ⟨fun ⟨i, hi, s, hp, hs, ho⟩ => ⟨i, hi, _, ⟨s, ⟨hp, hs⟩, rfl⟩, ho⟩,
-    fun ⟨i, hi, _, ⟨s, ⟨hp, hs⟩, hw⟩, ho⟩ => ⟨i, hi, s, hp, hs, hw ▸ ho⟩⟩
+      ∃ i, r.OrderAllowed cat i ∧ ∃ L, LinBy (sortLe sort) i L ∧ ∃ o, windowRowsA part fns [] L o ∧
+        out.Perm o :=
+  ⟨fun ⟨i, hi, s, hp, hs, o, ho, hw⟩ => ⟨i, hi, s, ⟨hp, hs⟩, o, hw, ho⟩,
+    fun ⟨i, hi, s, ⟨hp, hs⟩, o, hw, ho⟩ => ⟨i, hi, s, hp, hs, o, ho, hw⟩⟩
 
 /-! ## Forgetting the order: a set of multisets -/
 

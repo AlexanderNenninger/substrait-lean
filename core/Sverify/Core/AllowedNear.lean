@@ -54,7 +54,7 @@ theorem Measure.Allowed.orderAllowed {m : Measure} (hm : m.closedB = true) {rows
   by_cases hs : m.fn.sorts = true
   · obtain ⟨s, hp, hsort, hv⟩ := h
     have key : ∀ f : AggFn, f.sorts = true → ∀ vs v, f.Allowed vs v → v = f.apply vs := by
-      intro f hf vs v h; cases f <;> simp_all [AggFn.sorts, AggFn.Allowed, AggFn.Picks]
+      intro f hf vs v h; cases f <;> simp_all [AggFn.sorts, AggFn.Allowed, AggFn.Picks, AggFn.classPick]
     refine ⟨s, hp, hsort hs, ?_⟩
     simp only [hs, ↓reduceIte]
     rw [Measure.eval_sorts hs, mergeSort_eq_of_sorted (hsort hs)]

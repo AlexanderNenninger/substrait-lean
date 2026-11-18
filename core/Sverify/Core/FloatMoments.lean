@@ -338,12 +338,10 @@ theorem shift_sqSum (c : Int) : ∀ vs : List Int,
     simp only [List.map_cons, List.foldr_cons, List.length_cons, shift_sqSum c vs]
     push_cast; grind
 
-/-- **The Snowflake mean-shift shim keeps the reference's value** (#1023):
-the exact co-moment `n · Σv² − (Σv)²`, which `varOf` rounds once (D30), is
-the same for the values shifted by any constant `c`, so the reference value
-of `VAR_*(x − c)` over a group is that of `VAR_*(x)`. The writer shifts each
-value by its group's `AVG`; the engine's error on the shifted doubles is
-Snowflake's profile bound (recorded privately). -/
+/-- **The exact co-moment is invariant under a shift** (#1023): the co-moment
+`n · Σv² − (Σv)²`, which `varOf` rounds once (D30), is the same for the values
+shifted by any constant `c`, so the reference value of `VAR_*(x − c)` over a
+group is that of `VAR_*(x)`. -/
 theorem momentNum_shift (vs : List Int) (c : Int) : momentNum (vs.map (· - c)) = momentNum vs := by
   simp only [momentNum, shift_sqSum, shift_sum, List.length_map]
   grind

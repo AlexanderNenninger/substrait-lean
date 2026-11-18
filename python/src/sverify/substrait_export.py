@@ -89,6 +89,14 @@ ALIASES: Mapping[str, str] = {
 #: The exit of an export refusal that no option lifts: the proved plan as an
 #: engine's SQL.
 _TO_SQL = "report.to_sql(dialect) writes the proved plan for an engine instead"
+_MALFORMED = (
+    "the plan is malformed or outside what to_substrait reads; export a plan sverify produced"
+)
+_INTERNAL = (
+    "this is an internal error in to_substrait's tables: report it at "
+    "https://github.com/AlexanderNenninger/substrait-lean/issues"
+)
+_REBUILD = "rebuild substrait-check from the same commit as sverify"
 
 
 class ExportError(SverifyError, ValueError):
@@ -96,6 +104,9 @@ class ExportError(SverifyError, ValueError):
     message names the reason, the spec gap where there is one, and the exit."""
 
     code = "export_refused"
+
+    def __init__(self, message: str, hint: str | None = None):
+        super().__init__(f"{message}; {hint}" if hint else message)
 
 
 # -- the YAML table -----------------------------------------------------------
@@ -187,7 +198,10 @@ class Ty:
     def json(self) -> Json:
         key = _YAML_TO_JSON.get(self.name)
         if key is None:
-            raise ExportError(f"to_substrait cannot write the type {self.name}")
+            raise ExportError(
+                f"to_substrait cannot write the type {self.name}",
+                hint=_INTERNAL,
+            )
         body: Json = {"nullability": "NULLABILITY_NULLABLE"}
         p = self.params
         if self.name == "decimal":
@@ -210,7 +224,10 @@ def ty_of(j: Json) -> Ty:
     [(key, body)] = [(k, v) for k, v in j.items() if k != "typeVariationReference"]
     name = _JSON_TO_YAML.get(key)
     if name is None:
-        raise ExportError(f"to_substrait cannot read the type {key}")
+        raise ExportError(
+            f"to_substrait cannot read the type {key}",
+            hint=_MALFORMED,
+        )
     body = body or {}
     if name == "decimal":
         return Ty(name, (int(body.get("precision", 0)), int(body.get("scale", 0))))
@@ -238,7 +255,10 @@ def _tokens(s: str) -> list[str]:
     while i < len(s):
         m = _TOKEN.match(s, i)
         if not m:
-            raise ExportError(f"cannot read the YAML expression {s!r}")
+            raise ExportError(
+                f"cannot read the YAML expression {s!r}",
+                hint=_INTERNAL,
+            )
         out.append(m.group(1))
         i = m.end()
     return out
@@ -260,7 +280,10 @@ class _Expr:
     def take(self, tok: str | None = None) -> str:
         cur = self.peek()
         if cur is None or (tok is not None and cur != tok):
-            raise ExportError(f"cannot read the YAML expression {' '.join(self.t)!r}")
+            raise ExportError(
+                f"cannot read the YAML expression {' '.join(self.t)!r}",
+                hint=_INTERNAL,
+            )
         self.i += 1
         return cur
 
@@ -450,7 +473,10 @@ def _return(impl: Json, env: Mapping[str, Any]) -> Ty:
         scope[name.strip()] = _Expr(rhs, scope).expr()
     out = _Expr(_strip_nullable(lines[-1]), scope).expr()
     if not isinstance(out, Ty):
-        raise ExportError(f"the return type {impl['return']!r} is not a type")
+        raise ExportError(
+            f"the return type {impl['return']!r} is not a type",
+            hint=_INTERNAL,
+        )
     return _close(out, scope)
 
 
@@ -458,7 +484,10 @@ def _close(t: Ty, env: Mapping[str, Any]) -> Ty:
     if t.name.startswith("any") and not t.params:
         bound = env.get(t.name)
         if not isinstance(bound, Ty):
-            raise ExportError(f"the return type {t.name} is not bound")
+            raise ExportError(
+                f"the return type {t.name} is not bound",
+                hint=_INTERNAL,
+            )
         return bound
     params = []
     for p in t.params:
@@ -621,7 +650,10 @@ class _Typer:
 
     def rel(self, r: Json) -> list[Ty]:
         if len(r) != 1:
-            raise ExportError(f"cannot read the relation {sorted(r)}")
+            raise ExportError(
+                f"cannot read the relation {sorted(r)}",
+                hint=_MALFORMED,
+            )
         [(kind, body)] = r.items()
         out = self._rel(kind, body)
         if kind == "aggregate":
@@ -705,7 +737,8 @@ class _Typer:
         ):
             # ST-7: an unspecified direction leaves the NULL order open.
             raise ExportError(
-                "a sort key has no direction (ST-7): Substrait leaves its NULL order open"
+                "a sort key has no direction (ST-7): Substrait leaves its NULL order open",
+                hint="give the sort key a direction (asc or desc)",
             )
         self.sorts.append((s, self.expr(s["expr"], cols)))
 
@@ -731,7 +764,10 @@ class _Typer:
                     t = t.params[0]
                     ref = ref["listElement"].get("child")
                 else:
-                    raise ExportError(f"cannot read the reference {sorted(ref)}")
+                    raise ExportError(
+                        f"cannot read the reference {sorted(ref)}",
+                        hint=_MALFORMED,
+                    )
             return t
         if "literal" in e:
             return _literal(e["literal"])
@@ -833,7 +869,10 @@ class _Typer:
     def call(self, f: Json, cols: list[Ty], kinds: Sequence[str], holder: Json | None = None) -> Ty:
         name = self.names.get(f.get("functionReference", 0))
         if name is None:
-            raise ExportError(f"the plan calls an undeclared function {f.get('functionReference')}")
+            raise ExportError(
+                f"the plan calls an undeclared function {f.get('functionReference')}",
+                hint=_MALFORMED,
+            )
         base = name.split(":")[0]
         base = ALIASES.get(base, base)
         if base in FUNCTION_GAPS:
@@ -850,7 +889,10 @@ class _Typer:
             elif "type" in a:
                 args.append(ty_of(a["type"]))
             else:
-                raise ExportError(f"cannot read an argument of {base}")
+                raise ExportError(
+                    f"cannot read an argument of {base}",
+                    hint=_MALFORMED,
+                )
         if base in _COMPARISONS and len(args) == 2 and args[0] != args[1]:
             args = self._unify(f, args)
         if base in ("shift_left", "shift_right") and len(args) == 2 and args[1] == Ty("i64"):
@@ -938,7 +980,10 @@ def _cast(e: Json, t: Ty) -> Json:
 def _literal(lit: Json) -> Ty:
     keys = [k for k in lit if k not in ("nullable", "typeVariationReference")]
     if not keys:
-        raise ExportError("a literal without a value")
+        raise ExportError(
+            "a literal without a value",
+            hint=_MALFORMED,
+        )
     k = keys[0]
     v = lit[k]
     simple = {
@@ -980,7 +1025,10 @@ def _literal(lit: Json) -> Ty:
         return Ty("struct", tuple(_literal(f) for f in v.get("fields", [])))
     if k in ("varChar", "fixedChar"):
         return Ty("string")
-    raise ExportError(f"to_substrait cannot type the literal {k}")
+    raise ExportError(
+        f"to_substrait cannot type the literal {k}",
+        hint=_MALFORMED,
+    )
 
 
 # -- the options --------------------------------------------------------------
@@ -1054,7 +1102,10 @@ def _dependencies(plan_json: str) -> list[Json]:
 
     code, out, err = run_checker(("--dependencies",), plan_json)
     if code != 0:
-        raise ExportError(f"substrait-check --dependencies failed: {(err or out).strip()}")
+        raise ExportError(
+            f"substrait-check --dependencies failed: {(err or out).strip()}",
+            hint=_REBUILD,
+        )
     return json.loads(out).get("options", [])
 
 
@@ -1131,7 +1182,10 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
         [{k: r[k] for k in ("group", "option", "behaviours", "preferences")} for r in rows],
     )
     if result is None:
-        raise ExportError("this checker has no transfer check (substrait-check --transfer)")
+        raise ExportError(
+            "this checker has no transfer check (substrait-check --transfer)",
+            hint=_REBUILD,
+        )
     tool = {(r["group"], r["option"]): r["tool"] for r in rows}
     assumed_options = set()
     for i in report.assumed:
@@ -1260,7 +1314,10 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
             )
         )
     if problems:
-        raise ExportError("refused for Substrait: " + "; ".join(problems))
+        raise ExportError(
+            "refused for Substrait: " + "; ".join(problems),
+            hint=f"change what the reasons name, or {_TO_SQL}",
+        )
     return h
 
 
@@ -1332,7 +1389,10 @@ def _plan_message(plan: Json) -> Any:
     try:
         return json_format.ParseDict(plan, plan_pb2.Plan())
     except json_format.ParseError as e:
-        raise ExportError(f"the plan is not Substrait {_version()}: {e}") from e
+        raise ExportError(
+            f"the plan is not Substrait {_version()}: {e}",
+            hint="export a plan sverify produced, or fix the field the error names",
+        ) from e
 
 
 def _plan_dict(msg: Any) -> Json:
@@ -1429,7 +1489,10 @@ def contract_json(report: Report, *, shims: Shims = "apply") -> Json:
 
 def _refuse_unverified(report: Report) -> None:
     if report.internal_plan is None or report._contract is None:
-        raise ExportError("this report has no plan to export: it was not made by sv.verify")
+        raise ExportError(
+            "this report has no plan to export: it was not made by sv.verify",
+            hint="export a report that sv.verify returned",
+        )
     if not report._proved:
         reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
         reasons += [f"may fail: {i}" for i in report.errors]
@@ -1438,7 +1501,9 @@ def _refuse_unverified(report: Report) -> None:
         reasons += [f"needs {n}" for n in report._needs_lines()]
         if report.floats_unmet:
             reasons.append(f"no engine meets the observation's doubles: {report.floats_unmet}")
-        raise ExportError("not verified: " + "; ".join(reasons))
+        raise ExportError(
+            "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
+        )
 
 
 def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
@@ -1499,7 +1564,10 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     ens_plans = iter(report._contract.get("ensures", []))
     posts = report._postconditions or []
     if len(posts) != len(report.ensures):
-        raise ExportError("this report keeps no postconditions to export (re-run sv.verify)")
+        raise ExportError(
+            "this report keeps no postconditions to export",
+            hint="re-run sv.verify",
+        )
     from sverify.conditions import TableCondition
 
     for cond, checked in zip(posts, report.ensures, strict=True):
@@ -1705,7 +1773,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     }
     for e in imp.ensures:
         if e.get("kind") == "row":
-            p = _lean_plan(e["plan"])
+            p = _over(request["transform"], _lean_plan(e["plan"]), e["text"])
             p["relations"][0]["root"]["names"] = [e["text"]]
             request["ensures"].append(p)
     request = json.loads(json.dumps(request), parse_float=_num)
@@ -1776,6 +1844,111 @@ def _num(s: str) -> Any:
 
 def _ints(d: Mapping[str, Any]) -> dict[str, int]:
     return {k: int(v) for k, v in d.items()}
+
+
+def _skeleton(rel: Json) -> Json:
+    """A relation's shape without its expressions: the kind of each relation,
+    its emit and its reads. Shims change expressions, and wrap an aggregate
+    in a project (`_substrait_shims._wrap`), so an aggregate's emit and a
+    project right over an aggregate are left out."""
+    [(kind, body)] = rel.items()
+    if kind == "project" and "aggregate" in body["input"]:
+        return _skeleton(body["input"])
+    out: Json = {"kind": kind}
+    if kind != "aggregate":
+        out["emit"] = (body.get("common") or {}).get("emit")
+    for c in ("input", "left", "right"):
+        if c in body:
+            out[c] = _skeleton(body[c])
+    if "inputs" in body:
+        out["inputs"] = [_skeleton(x) for x in body["inputs"]]
+    if kind == "read":
+        out["read"] = {k: body.get(k) for k in ("baseSchema", "namedTable", "virtualTable")}
+    return out
+
+
+def _types(plan: Json, rel: Json) -> list[Any]:
+    """The column types of `rel`, a relation of `plan`."""
+    typer = _Typer(copy.deepcopy(plan))
+    typer.wrap = False
+    return typer.rel(copy.deepcopy(rel))
+
+
+def _over(transform: Json, cond: Json, text: str) -> Json:
+    """`cond`'s selection of its condition over `transform`'s output: the
+    checker proves a postcondition only over the transformation itself
+    (`ContractCheck.postOf`, #1484), and an export's plan carries the shims
+    its postconditions' plans don't. The shims keep the plan's relations
+    (`_skeleton`) and its columns' types, so the condition reads the same
+    columns; an export whose condition reads another relation is refused.
+    The condition's functions join `transform`'s extensions, under new
+    anchors."""
+    reads = cond["relations"][0]["root"]["input"].get("project", {}).get("input")
+    whole = transform["relations"][0]["root"]["input"]
+    if (
+        reads is None
+        or _skeleton(reads) != _skeleton(whole)
+        or _types(cond, reads) != _types(transform, whole)
+    ):
+        raise ValueError(
+            f"the postcondition {text!r} of this export does not select from the exported "
+            "plan, so it cannot be proved of it (#1484); verify the transformation again "
+            "and export it with this version of sverify"
+        )
+    out = copy.deepcopy(transform)
+    urns = out.setdefault("extensionUrns", [])
+    exts = out.setdefault("extensions", [])
+    urn_of = {u["urn"]: u["extensionUrnAnchor"] for u in urns}
+    fn_of = {
+        (f["extensionUrnReference"], f["name"]): f["functionAnchor"]
+        for x in exts
+        if (f := x.get("extensionFunction"))
+    }
+    cond_urns = {u["extensionUrnAnchor"]: u["urn"] for u in cond.get("extensionUrns", [])}
+    anchors: dict[int, int] = {}
+    for x in cond.get("extensions", []):
+        f = x["extensionFunction"]
+        urn = cond_urns[f["extensionUrnReference"]]
+        if urn not in urn_of:
+            urn_of[urn] = max(urn_of.values(), default=0) + 1
+            urns.append({"extensionUrnAnchor": urn_of[urn], "urn": urn})
+        key = (urn_of[urn], f["name"])
+        if key not in fn_of:
+            fn_of[key] = max(fn_of.values(), default=0) + 1
+            exts.append(
+                {
+                    "extensionFunction": {
+                        "functionAnchor": fn_of[key],
+                        "name": f["name"],
+                        "extensionUrnReference": urn_of[urn],
+                    }
+                }
+            )
+        anchors[f.get("functionAnchor", 0)] = fn_of[key]
+
+    if 0 in anchors:
+        # Protobuf's JSON leaves out a `functionReference` of 0.
+        raise ValueError("a postcondition's plan uses function anchor 0; export it again")
+
+    def remap(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {
+                k: anchors[v] if k == "functionReference" else remap(v) for k, v in node.items()
+            }
+        if isinstance(node, list):
+            return [remap(v) for v in node]
+        return node
+
+    project = cond["relations"][0]["root"]["input"]["project"]
+    root = out["relations"][0]["root"]
+    root["input"] = {
+        "project": {
+            **remap({k: v for k, v in project.items() if k != "input"}),
+            "input": root["input"],
+        }
+    }
+    root["names"] = cond["relations"][0]["root"]["names"]
+    return out
 
 
 def _lean_plan(plan: Json) -> Json:

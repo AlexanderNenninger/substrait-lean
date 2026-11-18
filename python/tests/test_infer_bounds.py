@@ -61,8 +61,8 @@ def inferred(report) -> list[str]:
         # Negation and ABS fail on the smallest BIGINT only.
         (T.select(x=-T.amount), [], ["(_.amount >= -9 * 10**18)"]),
         (T.select(x=T.amount.abs()), [], ["(_.amount >= -9 * 10**18)"]),
-        # Narrower integers at their width.
-        (T.select(x=T.q * 2), [], ["(_.q >= -2**30)", "(_.q < 2**30)"]),
+        # A narrow integer widened by Ibis's cast is 64-bit arithmetic: its type's bounds (#1541).
+        (T.select(x=T.q * 2), [], ["(_.q >= -2_147_483_648)", "(_.q <= 2_147_483_647)"]),
         # Truncation of a computed timestamp or date (#379), to whole years. A
         # column read lies in 0001 to 9999 by its type and needs none (D32).
         (
@@ -358,3 +358,42 @@ def test_null_passes_an_inferred_bound():
         "(_.amount >= -2**62)",
         "(_.amount < 2**62)",
     ]
+
+
+INT32 = ["(_.i >= -2_147_483_648)", "(_.i <= 2_147_483_647)"]
+
+
+def test_a_widening_cast_has_its_targets_width():
+    """`CAST(i AS BIGINT) * 4` of an `INTEGER` is 64-bit arithmetic: the bound
+    it needs is the column's own type, not the `|i| < 2**29` of `WRAP32`
+    (#1541)."""
+    report = verify("SELECT CAST(i AS BIGINT) * 4 AS y FROM t", tables={"t": {"i": "int32"}})
+    assert report.verdict == sv.Verdict.PROVED and not report.errors, report
+    assert inferred(report) == INT32
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CAST(i AS BIGINT) + 1099511627776 AS y FROM t",
+        "SELECT CAST(i AS BIGINT) + CAST(i AS BIGINT) AS y FROM t",
+    ],
+)
+def test_a_widened_sum_is_not_a_32_bit_wrap(sql):
+    report = verify(sql, tables={"t": {"i": "int32"}}, on_inferred="off")
+    assert "WRAP32" not in str(report), report
+
+
+def test_arithmetic_without_the_cast_still_wraps_at_the_columns_width():
+    report = verify("SELECT i * 4 AS y FROM t", tables={"t": {"i": "int32"}}, on_inferred="off")
+    assert report.verdict == sv.Verdict.UNPROVED and any(
+        "WRAP32" in str(i) for i in report.errors
+    ), report
+
+
+def test_a_tinyint_cast_to_smallint_multiplies_at_16_bits():
+    tables = {"t": {"v": "int8"}}
+    ok = verify("SELECT CAST(v AS SMALLINT) * 4 AS y FROM t", tables=tables)
+    assert ok.verdict == sv.Verdict.PROVED and inferred(ok) == ["(_.v >= -128)", "(_.v <= 127)"], ok
+    big = verify("SELECT CAST(v AS SMALLINT) * CAST(1000 AS SMALLINT) AS y FROM t", tables=tables)
+    assert big.verdict == sv.Verdict.UNPROVED and any("WRAP16" in str(i) for i in big.errors), big

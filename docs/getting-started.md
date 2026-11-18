@@ -231,9 +231,7 @@ meets leaves the plan unproved, with the reason and a tolerance that would
 do.
 
 ```python
-tight = sv.verify(
-    mean_x, requires=bounded, ensures=[sv.equivalent(floats=sv.within(abs=1e-12))]
-)
+tight = sv.verify(mean_x, requires=bounded, ensures=[sv.equivalent(floats=sv.within(abs=1e-12))])
 print(tight.verdict == sv.Verdict.PROVED)
 # False
 print(tight)
@@ -318,15 +316,18 @@ every sink.
 across only where Polars's choices are within DuckDB's on every option the
 plan reads (the checker's transfer check, `Rel.transfer_of_transferB`), and
 names the options and facts where they are not. A comparison reads `zero_sign`,
-where DuckDB gives one zero and Polars IEEE's two, so a filter on a double is
-proved again under Polars's profile:
+where DuckDB gives one zero and Polars IEEE's two, so a filter on a double
+fails the transfer check. A re-check under Polars's profile would take it, and
+the checker cannot do that yet:
 
 ```python
 t = con.table("orders")
 filtered = sv.verify(t.filter(t.total > 50).select("id", "total"), semantics="duckdb")
-filtered.run(con, "polars", route="auto")
-print(filtered.routes["polars"])
-# exact; recheck: proved again under semantics="polars"
+try:
+    filtered.run(con, "polars", route="auto")
+except RouteError as e:
+    print(e)
+# refused on polars: verify with semantics='reference' to run on polars...
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -338,14 +339,19 @@ try:
 except RouteError as e:
     print(e)
 # refused on polars: the transfer check fails on cmp's zero_sign: duckdb gives ONE_ZERO, polars gives IEEE ...
-divided.run(con, "polars", route="auto")
-print(divided.routes["polars"])
-# exact; recheck: proved again under semantics="polars"
+try:
+    divided.run(con, "polars", route="auto")
+except RouteError as e:
+    print(e)
+# refused on polars: verify with semantics='reference' to run on polars...
 ```
 
-The transfer check fails on the comparison's zero and the division's options, so `route="auto"` goes on to the
-re-check: the checker proves the plan again under `semantics="polars"`, and
-Polars runs it with the shim of example 4. [engine-profiles.md](engine-profiles.md) describes the
+The transfer check fails on the comparison's zero and the division's options. A
+re-check would prove the plan again under Polars's profile, which the checker
+cannot do yet
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)), so the
+refusal names the reference as the way: it runs on Polars with the shim of
+example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with
 each profile's choice.
 
@@ -380,14 +386,19 @@ where the two profiles differ, published in
 one, which Substrait could close with an option, are on the
 [upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html) as `ST` entries.
 
-## 9. A plan checked under Polars's profile
+## 9. Polars's profile, still pending
 
-`semantics="polars"` checks a plan under what Polars does: its integer `//`
-and `%` floor, so `-7 % 2` is `1`. The plan states `division_type: FLOOR`,
-which the checker reads as Polars's remainder (`Profile.polars_imod` in
-[Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean)), and Polars runs
-its own `%` with no shim (route `native`). A postcondition that holds only
-of the floored remainder is proved:
+Polars floors integer `//` and `%`, so `-7 % 2` is `1` there. A plan checked
+under Polars's own profile (`Profile.polars_imod` in
+[Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean)) would
+prove a postcondition that holds only of the floored remainder. The checker
+does not report under that profile yet
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271),
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)), so
+`semantics="polars"` gives the reference's report with a
+`ProfilePendingWarning`. The plan still states `division_type: FLOOR`, which
+the core reads as the floored remainder, so the proof holds, and the plan runs
+on Polars by the translated route:
 
 ```python
 con.put("signed", pa.table({"x": [-7, -2, 3, 8]}))
@@ -396,28 +407,21 @@ notnull = {"signed": [_.x.notnull()]}
 parity = sv.verify(
     s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0], semantics="polars"
 )
+print(parity.semantics)
+# reference
 print(parity.verdict)
 # proved
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
-print(parity.routes["polars"])
-# exact...; native: verified under semantics="polars"
-print(sv.verify(s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0]).verdict)
-# unproved
-try:
-    parity.run(con, "duckdb", route="auto")
-except RouteError as e:
-    print(e)
-# refused on duckdb: verify with semantics='reference' to run on duckdb (the plan was verified with semantics='polars', whose proof does not carry over to duckdb)...
+print(parity.routes["polars"].kind)
+# translated
 ```
 
-Under the reference `-7 % 2` is `-1`, as on DuckDB, so the postcondition
-does not hold there, and the route to DuckDB is refused: the proof under
-Polars's profile does not carry over to DuckDB's. The written plan itself
-states the floor, and sverify's SQL computes it on every SQL engine. A zero divisor and integer
-overflow raise under `Profile.polars` as under the reference, so `verify`
-infers the same preconditions. [engine-profiles.md](engine-profiles.md#polars-as-a-profile)
-says which choices the profile takes from Polars.
+Only the report's profile is pending: the floored remainder holds on the
+run. A zero divisor and integer
+overflow raise under the reference, so `verify` infers the same preconditions.
+[engine-profiles.md](engine-profiles.md#polars-as-a-profile) says which choices
+the profile takes from Polars.
 
 ## 10. A proved plan for any Substrait consumer
 

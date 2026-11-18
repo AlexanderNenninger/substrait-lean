@@ -13,7 +13,16 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, register_refusals, table_rules
-from sverify.plan_json import Json, Unsupported, call, chain, if_then, literal, substring_left
+from sverify.plan_json import (
+    Json,
+    ProducerUnsupported,
+    Unsupported,
+    call,
+    chain,
+    if_then,
+    literal,
+    substring_left,
+)
 
 _URL_PARTS = ("Authority", "File", "Fragment", "Host", "Path", "Protocol", "Query", "UserInfo")
 
@@ -25,7 +34,7 @@ def _string_contains(x: Exprs, op: Any) -> Json:
 def _like(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         if op.escape is not None:
-            raise Unsupported(f"{name.upper()} with an escape character is not supported")
+            raise ProducerUnsupported(f"{name.upper()} with an escape character is not supported")
         return call(name, [x(op.arg), x(op.pattern)])
 
     return rule
@@ -39,7 +48,7 @@ def _trim(name: str) -> Callable[[Exprs, Any], Json]:
 def _substring(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0, and from the end for negative starts.
     if isinstance(op.length, ops.Literal) and op.length.value < 0:
-        raise Unsupported("substring with a negative length")
+        raise ProducerUnsupported("substring with a negative length")
     start = call("add", [x(op.start, dt.int64), literal(1, dt.int64)])
     start = if_then(
         [(call("gte", [start, literal(1, dt.int64)]), start)],
@@ -168,7 +177,7 @@ def _hex_digest(x: Exprs, op: Any) -> Json:
 def _string_find(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0 (-1 when absent): one less than `strpos`.
     if op.end is not None:
-        raise Unsupported("find with an end is not supported")
+        raise ProducerUnsupported("find with an end is not supported")
     arg, sub, one = x(op.arg), x(op.substr), literal(1, dt.int64)
     if op.start is None:
         return call("subtract", [call("strpos", [arg, sub]), one])

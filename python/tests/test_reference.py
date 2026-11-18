@@ -353,6 +353,21 @@ def issues(plan: str) -> list[str]:
     return [i["kind"] for i in json.loads(out)["issues"]]
 
 
+def test_a_postcondition_must_select_from_the_transformation():
+    """The checker proves a postcondition only over the transformation: a
+    plan in `ensures` that selects from another relation is refused
+    (`ContractCheck.postOf`, #1484)."""
+    con = connect()
+    put_table(con, "i", pa.table({"a": pa.array([1, 2], pa.int64())}))
+    transform = json.loads(substrait_json(con, "SELECT a FROM i WHERE a > 1"))
+    other = json.loads(substrait_json(con, "SELECT a >= 1 AS c FROM i"))
+    contract = {"requires": [], "ensures": [other], "transform": transform, "keys": {},
+                "ensures_keys": [], "references": {}}  # fmt: skip
+    code, _, err = run_checker(("--contract",), json.dumps(contract))
+    assert code not in (0, 4)
+    assert "postcondition 1" in err
+
+
 @pytest.mark.parametrize("op", ["//", "%"])
 def test_integer_division_by_zero_may_ask_for_null(op):
     con = connect()
@@ -765,8 +780,12 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     # And proved: DuckDB's `0 · inf` is NaN, which the lift's `CASE` writes
     # and `verify` sees guards the product (#702).
     assert duck.verdict == sv.Verdict.PROVED
-    out = duck.run(con, engine)
-    assert out.column("v").to_pylist() == [INF, 2.0]
+    if engine == "polars":
+        # A DuckDB proof reaches Polars by a re-check, which waits for #271.
+        with pytest.raises(RouteError, match="semantics='reference'"):
+            duck.run(con, engine)
+    else:
+        assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]
     ref = sv.verify(sql, tables=tables)
     assert [i.kind for i in ref.assumed] == [INFINITE]
     # Not proved (`x * y` may be 0 · inf), so refused unless asked (#655);

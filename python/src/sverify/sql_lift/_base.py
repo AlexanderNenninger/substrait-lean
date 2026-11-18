@@ -25,6 +25,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
+from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
     SqlUnsupported,
@@ -378,9 +379,16 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             quote_identifiers=False,
         )
     except sg.errors.OptimizeError as e:
+        message = str(e).splitlines()[0]
+        missing = re.search(r"Column '([^']+)' could not be resolved", message)
+        close = (
+            did_you_mean(missing[1], [c for schema in schemas.values() for c in schema])
+            if missing
+            else ""
+        )
         raise SqlUnsupported(
-            f"cannot resolve the SQL's names: {str(e).splitlines()[0]}",
-            hint="check the table and column names against the schemas you declared",
+            f"cannot resolve the SQL's names: {message}",
+            hint="check the table and column names against the schemas you declared" + close,
         ) from e
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__))
@@ -1033,7 +1041,7 @@ class _Lift:
                 n = arg(f.this)
                 if not (n.constant and isinstance(n.value, int) and n.value > 0):
                     raise Unsupported("ntile needs a positive integer constant")
-                return self.ntile(w, n.value, scope, bound, column)
+                args = [literal(n.value, dt.int64)]
         elif isinstance(f, sge.Lag | sge.Lead):
             name = "lag" if isinstance(f, sge.Lag) else "lead"
             x = arg(f.this)
@@ -1138,46 +1146,6 @@ class _Lift:
         if len(key_types) == 1 and (guard := _bound_guard(fr, sorts[0], key_types[0])):
             self.guards[id(w)] = guard
         return {"windowFunction": fn}
-
-    def ntile(
-        self,
-        w: sge.Window,
-        k: int,
-        scope: list[Column],
-        bound: Mapping[sge.Expression, E],
-        column: Callable[[E], Json],
-    ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
-        """DuckDB's `NTILE(k)`, the SQL standard's: of `n` rows, the first
-        `n % k` buckets have `n // k + 1` rows, the rest `n // k`. (The
-        model's `ntile` is DataFusion's, ⌊i · min(k, n) / n⌋ + 1.) From the
-        row's number `i` (from 0) and `n`, the partition's count: with
-        `q = n // k` and `r = n % k`, `i // (q + 1) + 1` for `i < r · (q + 1)`,
-        else `(i - r) // q + 1`."""
-        whole = {
-            "lowerBound": {"unbounded": {}},
-            "upperBound": {"unbounded": {}},
-            "boundsType": "BOUNDS_TYPE_ROWS",
-        }
-        rn = self.window_json(w, "row_number", [], scope, bound, column)
-        count = self.window_json(w, "count", [], scope, bound, column, whole)
-        count["windowFunction"]["sorts"] = []
-        i64 = dt.int64
-
-        def value(refs: list[Json]) -> E:
-            one, kk = literal(1, i64), literal(k, i64)
-
-            def f(name: str, *a: Json) -> Json:
-                return _fn(name, list(a), i64)
-
-            i, n = f("subtract", refs[0], one), refs[1]
-            q, r = f("divide", n, kk), f("modulus", n, kk)
-            big = f("add", f("divide", i, f("add", q, one)), one)
-            # `greatest`: q is 0 only where every row is in the first branch.
-            small = f("add", f("divide", f("subtract", i, r), f("greatest", q, one)), one)
-            first = _fn("lt", [i, f("multiply", r, f("add", q, one))], dt.boolean)
-            return E(if_then([(first, big)], small), i64)
-
-        return [(rn, i64), (count, i64)], value
 
     def nested(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, list[Column]]:
         """A subquery inside an expression over `scope`."""

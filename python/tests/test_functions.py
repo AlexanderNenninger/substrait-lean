@@ -128,6 +128,8 @@ def test_engine_tables(engine: str) -> None:
     rows = tables["observations"][engine]
     for r in rows:
         for fact in (r["row"]["evidence"] or {}).get("tested", []):
+            if "::" in fact:  # a test, which `test_realizability` checks
+                continue
             doc = _facts().facts_dir(engine) / f"{fact}.json"
             assert doc.exists(), fact
             assert json.loads(doc.read_text())["engine_version"].removeprefix("py-") == version

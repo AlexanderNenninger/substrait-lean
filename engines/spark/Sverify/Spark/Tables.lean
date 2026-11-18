@@ -54,7 +54,7 @@ def Profile.spark.table : ProfileTable where
     -- frame anew; a segment tree only with `segmentTree.enabled` (spark-window-agg).
     (none, "window_sum_algo", .oneOf ["RECOMPUTE", "RUNNING_ADD", "TREE"]),
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
-    (none, "quantile_interp", .oneOf ["LINEAR"]),
+    (none, "quantile_interp", .oneOf ["LINEAR_DIFF"]),
     (none, "avg_int_result", .oneOf ["FP64"]),
     (none, "empty_group_aggregates", .oneOf ["NULL"]),
     -- First for an ascending key, last for a descending one.
@@ -145,7 +145,10 @@ def Profile.spark.obs : ObsTable := [
     rerun := some { floats := .within "plan" },
     note := "Welford's update with Chan's merge meets StatProps on finite values (FloatBounds.StdModel.core_var_chan); a NaN among the values gives NaN, one NaN included (spark-var-pop-one-nan), so the written plan carries no NaN guard; an infinity raises first (#257)." }).proved
     "FloatBounds.StdModel.core_var_chan"),
-  (none, "quantile_interp", (ObsRow.native ["spark-quantile"]).tracking 900),
+  -- `lo + (hi - lo) · w`, as Polars's: NaN with a `-∞` lower neighbour, `+∞` where `hi - lo` overflows (spark-quantile).
+  (none, "quantile_interp", ({ ObsRow.native ["spark-quantile"] with
+    cls := .refused
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, spark-quantile)." }).tracking 900),
   (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
   -- where its type keeps the scale, and a type past 38 digits at a scale

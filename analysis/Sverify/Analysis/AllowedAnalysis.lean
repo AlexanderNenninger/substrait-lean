@@ -24,11 +24,54 @@ namespace Substrait
 /-! ## Plans without choices -/
 
 variable [Boxes.Ambient]
-/-- Does `r` leave the engine no choice but the order of its rows? No
-`FETCH` (which rows come first), each window's ties broken alike
-(`Rel.windowsTotal`'s checks), and aggregates that are functions of their
-values (`Measure.orderFree`: `COUNT`, `SUM`, `AVG` of doubles too (D25),
-`MIN`, `MAX`). -/
+/-- Does the order of the measure `m` (of an aggregate over `r` grouped by
+`gs`) fix its inputs: do rows that tie in it agree on its argument? Its
+argument is a sort column without doubles, or the group's and the sort's
+columns contain a key (`Measure.keyedIn`). -/
+def Measure.tiesFixed (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+  (m.sort.any (m.arg == .field ·.col) && (m.arg.abs (r.aeval cat A F .none)).noDoubles) ||
+    m.keyedIn cat A F K r gs
+
+/-- Is the measure `m` (of an aggregate over `r` grouped by `gs`) a function
+of its group's rows: order-free, or sorting them in an order that fixes its
+inputs? -/
+def Measure.detIn (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+  m.orderFree || (m.fn.sorts && m.tiesFixed cat A F K r gs)
+
+/-- Does the measure `m` over `r` pick one value: not a function that picks
+any member of a class (`AggFn.classPick`: `MIN`, `MAX`, `QUANTILE_DISC`; D31,
+D45), or over an argument without doubles? -/
+def Measure.pickFixed (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (r : Rel)
+    (m : Measure) : Bool :=
+  !m.fn.classPick || (m.arg.abs (r.aeval cat A F .none)).noDoubles
+
+/-- Does the window function `f` over `r` pick one value: a windowed
+aggregate as `Measure.pickFixed` checks it (D45), every other function. -/
+def WinFn.pickFixed (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (r : Rel) :
+    WinFn → Bool
+  | .agg m _ _ => m.pickFixed cat A F r
+  | _ => true
+
+/-- Does the window over `r` give one result for every order of its ties: do
+its partition and sort columns contain a key of `r` (`window_tiebreak`), are
+its functions tie-free (`window_tieFree`), or does its partition cover every
+column, without doubles (`Rel.window_allColumns`)? -/
+def Rel.windowDetAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) (r : Rel) (part : List Nat) (sort : List SortKey)
+    (fns : List WinFn) : Bool :=
+  (r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
+    fns.all (WinFn.tieFree sort) ||
+    ((List.range (r.arity cat)).all (· ∈ part) && (r.aeval cat A F .none).all AVal.noDoubles)
+
+/-- Does `r` leave the engine no choice but the order of its rows? A `FETCH`
+only over an `ORDER BY` whose columns contain a key and none clustered
+(`Rel.fetchTotalAt`), each window's ties broken alike (`Rel.windowsTotal`'s
+checks), and aggregates whose measures are functions of their values
+(`Measure.orderFree`: `COUNT`, `SUM`, `AVG` of integers and of doubles
+(D25), `MIN`, `MAX`) or sort their rows in an order that fixes their inputs
+(`Measure.tiesFixed`). -/
 def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : String → List (List Nat)) : Rel → Bool
   | .read _ | .values _ _ => true
@@ -37,23 +80,59 @@ def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List 
   -- `DISTINCT` keeps any member of a class of rows (D31): none to choose
   -- without doubles.
   | .distinct r => r.detPlan cat A F K && (r.aeval cat A F .none).all AVal.noDoubles
+  | .fetch (.orderBy i keys) _ _ => i.detPlan cat A F K && Rel.fetchTotalAt cat A F K i keys
   | .fetch _ _ _ => false
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.detPlan cat A F K && b.detPlan cat A F K
-  | .window r part sort fns =>
-      r.detPlan cat A F K && ((r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
-        fns.all (WinFn.tieFree sort) ||
-        ((List.range (r.arity cat)).all (· ∈ part) && (r.aeval cat A F .none).all AVal.noDoubles))
+  -- A windowed `MIN`, `MAX` or `QUANTILE_DISC` keeps any member of a class
+  -- (D45): none to choose without doubles.
+  | .window r part sort fns => r.detPlan cat A F K && Rel.windowDetAt cat A F K r part sort fns &&
+      fns.all (WinFn.pickFixed cat A F r)
   -- Keys and `MIN`/`MAX` keep any member of a class: none to choose without
   -- doubles.
-  | .aggregate r gs ms => r.detPlan cat A F K && ms.all (·.orderFree) &&
+  | .aggregate r gs ms => r.detPlan cat A F K &&
+      ms.all (Measure.detIn cat A F K r gs) &&
       gs.all (fun g => (g.abs (r.aeval cat A F .none)).noDoubles) &&
-      ms.all (fun m => !(m.fn matches .min | .max) || (m.arg.abs (r.aeval cat A F .none)).noDoubles)
+      ms.all (Measure.pickFixed cat A F r)
 
 omit [Boxes.Ambient] in
 theorem crossRows_perm {xs xs' ys ys' : Relation} (hx : xs.Perm xs') (hy : ys.Perm ys') :
     (crossRows xs ys).Perm (crossRows xs' ys') :=
   (crossRows_perm_right hy).trans (hx.flatMap_right _)
+
+/-- A measure whose order fixes its inputs: rows of one group that tie in it
+agree on its argument. -/
+theorem Measure.tiesAgreeIn_of_tiesFixed {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} (hwf : r.WF cat) {gs : List Expr}
+    {m : Measure} (h : m.tiesFixed cat A F K r gs = true) {rows : Relation}
+    (hp : rows.Perm (r.eval cat)) : m.TiesAgreeIn gs rows := by
+  intro x hx y hy hg hxy hyx
+  have hc := List.map_inj_left.mp (sortLe_antisymm hxy hyx)
+  simp only [Measure.tiesFixed, Bool.or_eq_true, Bool.and_eq_true] at h
+  rcases h with ⟨hs, hnd⟩ | hk
+  · obtain ⟨kk, hkk, he⟩ := List.any_eq_true.mp hs
+    have harg : m.arg = .field kk.col := by simpa using he
+    have hlone : (m.arg.eval y).Lone := AVal.lone_of_noDoubles hnd (Expr.abs_sound
+      (Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf
+        (fun h => by cases h) y (hp.mem_iff.mp hy)) m.arg)
+    exact hlone _ (by rw [harg]; simpa [Expr.eval] using hc kk hkk)
+  · obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
+    have hK : KeyOn k rows := (Rel.keys_sound hcat hA hF hK hwf k hk).perm hp.symm fun h => Ne.symm h
+    rw [KeyOn.eq_of_keyOf hK hx hy ?_]
+    simp only [keyOf, List.map_inj_left]
+    intro c hc'
+    simp only [List.all_eq_true, Bool.or_eq_true] at hsub
+    rcases hsub c hc' with hgc | hsc
+    · have hgc : Expr.field c ∈ gs := by simpa using hgc
+      have := List.map_inj_left.mp (by simpa [groupKey, Row.canon, List.map_map] using hg)
+        (Expr.field c) hgc
+      simpa [Expr.eval] using this
+    · obtain ⟨kk, hkk, he⟩ := List.any_eq_true.mp hsc
+      have he : kk.col = c := by simpa using he
+      rw [← he]; exact hc kk hkk
 
 /-- **A plan without choices allows only `Rel.eval`'s rows**, in any order. -/
 theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
@@ -84,16 +163,49 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     have hy' := allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy
     exact h.trans ((flatMap_perm_congr fun z _ => leftJoinRow_perm z hy').trans
       (hx'.flatMap_right _))
-  | .fetch _ _ _, _, hd, _, _ => by simp [detPlan] at hd
+  | .fetch (.orderBy i keys) _ cnt, hwf, hd, _, ⟨o, ⟨i', hi', hpo, cmp, _, hsort⟩, he⟩ => by
+    simp only [detPlan, Rel.fetchTotalAt, Bool.and_eq_true] at hd
+    obtain ⟨hdi, hk, hcl⟩ := hd
+    have hp : o.Perm (i.eval cat) := hpo.trans (allowed_perm_eval hcat hA hF hK hwf.1 hdi hi')
+    rw [sortLeWith_unclustered cmp hcl] at hsort
+    obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
+    have hko : KeyOn (keys.map (·.col)) o :=
+      ((keys_sound hcat hA hF hK hwf.1 k hk).superset fun c hc => by
+        obtain ⟨kk, hkk, he⟩ := List.any_eq_true.mp (List.all_eq_true.mp hsub c hc)
+        exact List.mem_map.mpr ⟨kk, hkk, by simpa using he⟩).perm hp.symm fun h => Ne.symm h
+    have ho : o = (i.eval cat).mergeSort (sortLe keys) :=
+      eq_of_perm_of_pairwise (hp.trans (List.mergeSort_perm _ _).symm) hsort (mergeSort_sorted _ _)
+        fun x hx y hy hxy hyx => KeyOn.eq_of_keyOf hko hx hy (by
+          simpa [keyOf, Function.comp_def] using sortLe_antisymm hxy hyx)
+    subst ho he
+    cases cnt <;> exact .refl _
+  | .fetch (.read _) _ _, _, hd, _, _ | .fetch (.values _ _) _ _, _, hd, _, _
+  | .fetch (.filter _ _) _ _, _, hd, _, _ | .fetch (.project _ _) _ _, _, hd, _, _
+  | .fetch (.emit _ _) _ _, _, hd, _, _ | .fetch (.cross _ _) _ _, _, hd, _, _
+  | .fetch (.join _ _ _ _) _ _, _, hd, _, _ | .fetch (.fetch _ _ _) _ _, _, hd, _, _
+  | .fetch (.unionAll _ _) _ _, _, hd, _, _ | .fetch (.window _ _ _ _) _ _, _, hd, _, _
+  | .fetch (.semi _ _ _ _) _ _, _, hd, _, _ | .fetch (.distinct _) _ _, _, hd, _, _
+  | .fetch (.aggregate _ _ _) _ _, _, hd, _, _ | .fetch (.unnest _ _) _ _, _, hd, _, _ => by
+    simp [detPlan] at hd
   | .unionAll a b, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
     simp only [detPlan, Bool.and_eq_true] at hd
     exact h.trans ((allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx).append
       (allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy))
-  | .window r part sort fns, hwf, hd, _, ⟨i, hi, s, hs, hsort, h⟩ => by
-    simp only [detPlan, Bool.and_eq_true, Bool.or_eq_true] at hd
-    have hp : s.Perm (r.eval cat) := hs.trans (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hi)
+  | .window r part sort fns, hwf, hd, _, ⟨i, hi, s, hs, hsort, o, h, ho⟩ => by
+    simp only [detPlan, windowDetAt, Bool.and_eq_true, Bool.or_eq_true] at hd
+    obtain ⟨⟨hdr, hd⟩, hpf⟩ := hd
+    have hp : s.Perm (r.eval cat) := hs.trans (allowed_perm_eval hcat hA hF hK hwf.1 hdr hi)
+    -- No class to pick from: the reference allows `windowRows` alone.
+    have hl : WinFn.ClassArgsLone fns ([] ++ s) := fun f hf m _ _ he hc x hx => by
+      have := List.all_eq_true.mp hpf f hf
+      subst he
+      simp only [WinFn.pickFixed, Measure.pickFixed, hc, Bool.not_true, Bool.false_or] at this
+      exact AVal.lone_of_noDoubles this (Expr.abs_sound (Rel.aeval_sound (sz := false) hcat hA hF
+        (WindowKeys.none_soundAll cat) hwf.1 (fun h => by cases h) x
+        (hp.mem_iff.mp (by simpa using hx))) m.arg)
+    rw [windowRowsA_eq hl ho] at h
     refine h.trans ?_
-    rcases hd.2 with (hk | hf) | hc
+    rcases hd with (hk | hf) | hc
     · obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
       simp only [List.all_eq_true, decide_eq_true_eq] at hsub
       exact window_tiebreak ((keys_sound hcat hA hF hK hwf.1 k hk).superset hsub) hp hsort
@@ -130,6 +242,11 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     simp only [detPlan, Bool.and_eq_true, List.all_eq_true] at hd
     obtain ⟨⟨⟨hd1, hof⟩, hgs⟩, hmm⟩ := hd
     have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd1 hi
+    have hms : ∀ {rows : Relation}, rows.Perm (r.eval cat) → ∀ m ∈ ms,
+        m.orderFree = true ∨ (m.fn.sorts = true ∧ m.TiesAgreeIn gs rows) := fun hrows m hm => by
+      have := hof m hm
+      simp only [Measure.detIn, Bool.or_eq_true, Bool.and_eq_true] at this
+      exact this.imp_right fun h => ⟨h.1, Measure.tiesAgreeIn_of_tiesFixed hcat hA hF hK hwf.1 h.2 hrows⟩
     have henv : ∀ x ∈ i, EnvMem (r.aeval cat A F .none) x := fun x hx =>
       Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
         (fun h => by cases h) x (hp.mem_iff.mp hx)
@@ -140,9 +257,10 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     have ha : ∀ m ∈ ms, (m.fn = .min ∨ m.fn = .max) → ∀ x ∈ i,
         (m.arg.eval x).Lone := fun m hm hf x hx => by
       have := hmm m hm
-      rcases hf with hf | hf <;> simp only [hf, Bool.not_true, Bool.false_or] at this <;>
+      rcases hf with hf | hf <;>
+        simp only [Measure.pickFixed, hf, AggFn.classPick, Bool.not_true, Bool.false_or] at this <;>
         exact AVal.lone_of_noDoubles this (Expr.abs_sound (henv x hx) m.arg)
-    exact h.trans ((aggAllowed_eq hof hk ha ho).trans (aggregateEval_perm hof hp))
+    exact h.trans ((aggAllowed_eq (hms hp) hk ha ho).trans (aggregateEval_perm_of (hms .rfl) hp))
   | .unnest r _, hwf, hd, _, ⟨i, hi, h⟩ =>
     h.trans ((allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).flatMap_right _)
 

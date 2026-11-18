@@ -65,7 +65,6 @@ inside the Lean model. `unique` checks always run through Ibis.
 
 from __future__ import annotations
 
-import difflib
 import functools
 import inspect
 import json
@@ -92,6 +91,7 @@ from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double 
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyWarning
+from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
 from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DATA_ONLY,
@@ -516,6 +516,26 @@ def _not_null_condition(col: str) -> Inferred:
     return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
 
 
+def _ascii_condition(col: str, classes: bool = False) -> Inferred:
+    """`col` holds ASCII text (NULL passes): the precondition under which the
+    black boxes `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii` and
+    `levenshtein` agree across engines (#1506). With `classes` (a regular
+    expression with `\\w`, `\\d`, `\\s` or `\\b`), no vertical tab either:
+    `Text.classesDiffer`. Its SQL is the writers' guard (`ascii_text`) in the
+    default engine's dialect, the one the data is checked on; its Ibis form is
+    one regular expression with the same characters."""
+    from sverify import _engines, profiles
+    from sverify.sql.core import ascii_text
+
+    dialect = profiles.plugins()[_engines.default()].dialect
+    assert dialect is not None
+    sql = '"' + col.replace('"', '""') + '"'
+    plain = ascii_text(dialect(), sql, classes)
+    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
+    bad = r"[^\x00-\x7f]|\x0b" if classes else r"[^\x00-\x7f]"
+    return Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+
+
 def _suggested(
     bound: dict | None, schemas: Mapping[str, ibis.Schema], assumable: Container[str]
 ) -> dict[str, list[Condition]]:
@@ -651,12 +671,9 @@ def requires_by_input(
     for key in requires:
         if key in inputs:
             continue
-        lower = {i.lower(): i for i in inputs}
-        close = [lower[k] for k in difflib.get_close_matches(str(key).lower(), lower, n=1)]
-        hint = f"; did you mean {close[0]!r}?" if close else ""
         raise error(
             f"requires: unknown {kind} {key!r}; the inputs are: {', '.join(inputs) or 'none'}"
-            + hint
+            + did_you_mean(key, inputs)
         )
     return {t: expand_keys(cs) for t, cs in requires.items()}
 
@@ -1688,6 +1705,8 @@ def _verify_once(
         _postconditions=list(ensures),
         inputs=dict(schemas),
     )
+    from sverify._vacuity import contradictions
+
     if not isinstance(transform, str) and report.issues:
         report._hints = overflow_hints(transform, requires, report)
     report._hints += and_or_hints(report.issues, transform)
@@ -1699,6 +1718,7 @@ def _verify_once(
         if plugin is None or not plugin.floor_division:
             # An engine whose `//` and `%` floor computes them as the plan states.
             report._hints += division_hints(transform)
+    report._hints += contradictions(requires, schemas)
     return report, out["inferred"], schemas
 
 
@@ -2604,6 +2624,25 @@ def register_view(table: ir.Table, contract: ViewContract) -> None:
         _register(table.op(), contract.provenance)
 
 
+def _declared_schemas(
+    fn: Callable[..., Any], schemas: Mapping[str, Any] | None
+) -> dict[str, ibis.Schema] | None:
+    """`transform(schemas=)` as `ibis.Schema`s, once, at decoration: it names
+    only parameters of `fn` and gives each of them (a missing or unknown
+    parameter is a `TypeError`, as in `requires`)."""
+    if schemas is None:
+        return None
+    params = list(inspect.signature(fn).parameters)
+    if (unknown := [k for k in schemas if k not in params]) or (
+        missing := [p for p in params if p not in schemas]
+    ):
+        raise TypeError(
+            f"schemas of {fn.__name__} must name each parameter {params}; "
+            + (f"unknown: {unknown}" if unknown else f"missing: {missing}")
+        )
+    return {k: v if isinstance(v, ibis.Schema) else ibis.schema(v) for k, v in schemas.items()}
+
+
 class ContractedTransform:
     """A transformation with a contract; see `transform`.
 
@@ -2630,8 +2669,13 @@ class ContractedTransform:
         semantics: Semantics = "reference",
         on_inferred: OnInferred = "error",
         on_violation: Policy | None = None,
+        schemas: Mapping[str, Any] | None = None,
     ):
         self.fn, self.ensures = fn, expand_keys(ensures)
+        self.schemas: dict[str, ibis.Schema] | None = _declared_schemas(fn, schemas)
+        """The input schemas the decorator declares (`transform(schemas=)`),
+        by parameter name; None when it declares none. `sverify check`
+        proves the contract on them when the file never applies it."""
         self.on_violation: Policy | None = check_policy(on_violation)
         """What a refresh does with a batch of a source that breaks this
         transform's preconditions; None: the source's setting."""
@@ -3063,6 +3107,7 @@ def transform(
     semantics: Semantics = "reference",
     on_inferred: OnInferred = "error",
     on_violation: Policy | None = None,
+    schemas: Mapping[str, Any] | None = None,
 ) -> Callable[[Callable[..., ir.Table]], ContractedTransform]:
     """Decorate a function from Ibis tables to an Ibis table with a contract.
 
@@ -3126,11 +3171,20 @@ def transform(
             breaks one of these preconditions, inferred ones included:
             `"error"` raises `PreconditionError`; `"quarantine"`
             sets the offending rows aside with the reason, in the node's
-            quarantine table, and the rest flows; `"hold"` commits nothing
+            quarantine table, and the rest flows (of a key on two different
+            rows, both go; rows identical in every column count once, so a
+            redelivered duplicate is set aside and the kept row stays);
+            `"hold"` commits nothing
             for the batch and holds the node at its versions until a later
             version of the source meets the preconditions. Default None:
             the source's `on_violation`, else `"error"`. Where two
             transforms state the same condition, the stricter holds.
+        schemas: The schema of each input, by parameter name, as an
+            `ibis.Schema` or a mapping from column name to type
+            (`{"orders": {"id": "int64", "total": "int64"}}`). They let
+            `sverify check file.py` prove the contract of a transform the
+            file never applies, which is `fn.check(**schemas)`
+            (`ContractedTransform.check`). Calls ignore them. Default: none.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.
@@ -3226,4 +3280,5 @@ def transform(
         semantics=semantics,
         on_inferred=on_inferred,
         on_violation=on_violation,
+        schemas=schemas,
     )

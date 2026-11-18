@@ -57,11 +57,7 @@ CASES: list[Case] = [
     case("strings", "host", R, lambda: t.select(x=t.name.host())),
 ]
 
-#: Rust's `replace` puts the replacement around every character for an empty
-#: pattern; the SQL engines return the string unchanged.
-_EMPTY_PATTERN = "replace with an empty pattern differs between engines"
 REFUSED: dict[str, dict[str, str]] = {
-    "replace ''": {"duckdb": _EMPTY_PATTERN, "snowflake": _EMPTY_PATTERN, "spark": _EMPTY_PATTERN},
     # DuckDB only until the generated lowerings (#271).
     "re_extract": DUCKDB_ONLY,
     "re_replace": DUCKDB_ONLY,
@@ -71,7 +67,6 @@ REFUSED: dict[str, dict[str, str]] = {
 }
 
 NO_DUCKDB_SQL = {
-    "replace ''": "DuckDB's replace with an empty pattern changes nothing",
     "find from": "Ibis's DuckDB SQL of `find` from a negative start counts otherwise",
     "levenshtein": "DuckDB's levenshtein counts otherwise on non-ASCII text",
     "find_in_set": "Ibis's DuckDB SQL gives -1 where the plan gives NULL",

@@ -52,6 +52,18 @@ open scoped Substrait.DuckDB
 
 open Rel
 
+/-! ## The writer's anchors under DuckDB's black boxes
+
+Each anchor and name once, each in its area's range (`Write.areas`). They are
+checked here so that the writer, and the verdict that imports it, depend on no
+engine module (#1484, S1; `tests/test_lean_layers.py`). -/
+
+example : ((@Write.declared DuckDB.boxes).map (·.1)).Nodup := nodup_of_nodupB (by decide +kernel)
+example : ((@Write.declared DuckDB.boxes).map (·.2)).Nodup := nodup_of_nodupB (by decide +kernel)
+example : (@Write.areas DuckDB.boxes).all fun (fs, lo) =>
+    fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
+  decide +kernel
+
 /-- `orders(id, customer, amount)` -/
 def orders : Table :=
   { arity := 3
@@ -192,6 +204,7 @@ end Substrait.Examples
 #print axioms Substrait.Rel.zeval_terms
 #print axioms Substrait.contract_sound
 #print axioms Substrait.Rel.mayIssues_sound
+#print axioms Substrait.Rel.mayIssues_sound_all
 #print axioms Substrait.Rel.noIssue_of_sumsFit
 #print axioms Substrait.floatSumCR_mem
 #print axioms Substrait.floatAvgCR_mem
@@ -217,6 +230,20 @@ end Substrait.Examples
 #print axioms Substrait.Knowledge.contract_sound
 #print axioms Substrait.Knowledge.contract_sound_all
 #print axioms Substrait.ContractCheck.check_proved_sound
+#print axioms Substrait.ContractCheck.check_proved_rows
+#print axioms Substrait.ContractCheck.check_proved_conds
+#print axioms Substrait.ContractCheck.check_deterministic_sound
+#print axioms Substrait.ContractCheck.tiesIn_eq_nil
+#print axioms Substrait.ContractCheck.Request.deterministicIn_eq
+#print axioms Substrait.ContractCheck.check_deterministic_iff
+#print axioms Substrait.Rel.fetch_clustered_open
+#print axioms Substrait.Measure.mode_signed_zero_open
+#print axioms Substrait.Measure.allowed_eq_of_ties
+#print axioms Substrait.map_eq_of_perm_of_pairwise
+#print axioms Substrait.ContractCheck.check_keys_sound
+#print axioms Substrait.ContractCheck.check_issues_sound
+#print axioms Substrait.ContractCheck.check_guard_free_sound
+#print axioms Substrait.ContractCheck.check_optimized_sound
 #print axioms Substrait.Knowledge.mayIssues_sound
 #print axioms Substrait.Rel.orderAllowed_capReads
 #print axioms Substrait.Rel.duckdb_refines
@@ -354,5 +381,9 @@ end Substrait.Examples
 #print axioms Substrait.Engine.spark_sound
 #print axioms Substrait.Engine.contract_sound
 #print axioms Substrait.Engine.contract_sound_runs
+#print axioms Substrait.Engine.example_contract
+#print axioms Substrait.Engine.duckdb_contract_example
+#print axioms Substrait.Engine.polars_contract_example
+#print axioms Substrait.Engine.spark_contract_example
 #print axioms Substrait.Refresh.no_corruption
 #print axioms Substrait.Refresh.record_describes_table

@@ -37,16 +37,18 @@ _ROOTS = {"SverifyError", "UnsupportedError", "Unsupported", "Refused", "Produce
 _HELPER = re.compile(r"refus|unsupported", re.I)
 #: Classes whose message always ends with an action (`SqlUnsupported` adds a
 #: rewrite, or "write this step in Ibis").
-_OWN_EXIT = {"SqlUnsupported"}
+_OWN_EXIT = {"SqlUnsupported", "WriterUnsupported", "ProducerUnsupported", "refused"}
 
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"
     "cast|wrap|drop|remove|pin|enable|try|switch|upgrade|read|select|take|order|name|put|"
-    "build|compare"
+    "build|compare|re-run|compute|check|rebuild|change"
 )
 EXIT = re.compile(
-    r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|"
-    rf"\b({_VERBS})\b[^.]{{0,60}}(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis)",
+    r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|to_sql\(|"
+    rf"(?:; |, or )({_VERBS})\b|"
+    rf"(?<![-\w])({_VERBS})\b[^.]{{0,60}}"
+    r"(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis|another engine|fix it)",
     re.I,
 )
 HINT = re.compile(r"; [a-z]|\bonly\b|\binstead\b|\bmust\b|\bneeds?\b|\bexpects?\b|\bunless\b", re.I)
@@ -58,12 +60,14 @@ class Site:
     line: int
     cls: str
     message: str
+    hint: str = ""
 
     @property
     def tier(self) -> str:
-        if self.cls in _OWN_EXIT or EXIT.search(self.message):
+        text = f"{self.message}; {self.hint}" if self.hint else self.message
+        if self.cls in _OWN_EXIT or EXIT.search(text):
             return "exit"
-        return "hint" if HINT.search(self.message) else "unnamed"
+        return "hint" if HINT.search(text) else "unnamed"
 
 
 def _text(node: ast.AST, consts: dict[str, str]) -> str:
@@ -71,7 +75,14 @@ def _text(node: ast.AST, consts: dict[str, str]) -> str:
         return node.value
     if isinstance(node, ast.JoinedStr):
         return "".join(
-            _text(v, consts) if isinstance(v, ast.Constant) else "{}" for v in node.values
+            _text(v, consts)
+            if isinstance(v, ast.Constant)
+            else _text(v.value, consts)
+            if isinstance(v, ast.FormattedValue)
+            and isinstance(v.value, ast.Name)
+            and v.value.id in consts
+            else "{}"
+            for v in node.values
         )
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add | ast.Mod):
         return _text(node.left, consts) + _text(node.right, consts)
@@ -131,7 +142,8 @@ def sites(root: Path = SRC) -> list[Site]:
                     for k in n.exc.keywords
                     if k.arg in ("message", "reason", "msg")
                 )
-            out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip()))
+            hint = next((_text(k.value, consts) for k in n.exc.keywords if k.arg == "hint"), "")
+            out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint))
     return out
 
 

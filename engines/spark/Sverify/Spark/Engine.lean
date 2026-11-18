@@ -267,7 +267,7 @@ def Engine.spark : Engine where
 reference's value wherever the reference reports no issue
 (`Profile.sparkWritten_okImpl_faithful`), so guard elimination applies. -/
 theorem Engine.spark_sound : Engine.spark.Sound Engine.GuardFreeSide := by
-  intro cat r r' hl _ ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
+  intro cat r r' hl ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
   cases hl
   show r.Allowed cat (r.eval cat Profile.sparkWritten.okImpl)
   rw [Rel.spark_sound hcat hA hF hT hwf hsmall hs hm]; exact r.eval_allowed cat
@@ -278,16 +278,15 @@ namespace Substrait
 section Example
 attribute [local instance] Engine.exampleBoxes
 
-/-- `Engine.spark_sound` applies to the example of `Sound.lean`: Spark computes
-`Rel.eval`'s rows for it, which the reference allows. -/
-theorem Engine.spark_sound_example :
-    Engine.examplePlan.Allowed Engine.exampleCat
-      (Engine.examplePlan.eval Engine.exampleCat Engine.spark.impl) := by
-  refine Engine.spark_sound (r' := Engine.examplePlan) rfl ?_ Engine.guardFreeSide_example
-  simp [Rel.Raises, Engine.examplePlan]
-  intro x hx
-  have : x = [.int 1] ∨ x = [.int 2] := by simpa [Rel.eval, Engine.exampleCat] using hx
-  rcases this with rfl | rfl <;>
-    (unfold Expr.RaisesOn; decide +kernel)
+/-- Spark on the example of `Sound.lean`: `Engine.contract_sound`'s hypotheses
+hold (`Engine.example_contract`), so the postcondition holds on the rows
+Spark's functions compute. -/
+theorem Engine.spark_contract_example :
+    ∀ row ∈ postRows Engine.examplePost [2]
+        (Engine.examplePlan.eval Engine.exampleCat Engine.spark.impl),
+      ∀ v ∈ row, v = .bool true := by
+  exact Engine.example_contract Engine.spark_sound (T' := Engine.examplePlan) rfl
+    Engine.guardFreeSide_example
+
 end Example
 end Substrait

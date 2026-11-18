@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 import sverify as sv
 from _pipelines import integer_powers
 from _repo import ROOT
+from _zero import one_zero
 from sverify.engine import (
     connect,
     plan_json,
@@ -63,12 +64,6 @@ SETTINGS = settings(
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture, HealthCheck.too_slow],
 )
-
-
-def _one_zero(rows: list) -> str:
-    """The rows' text with `-0.0` as `0.0`: the DuckDB writer prints raw values
-    (D31) where Polars's writer still makes one zero."""
-    return repr([tuple(v + 0.0 if isinstance(v, float) else v for v in r) for r in rows])
 
 
 def rows_of(table: pa.Table) -> list[tuple]:
@@ -475,12 +470,14 @@ def test_unwritten_plans_are_refused():
         polars_engine.to_lazy(raw, {"r": pa.table({"a": [1], "b": [1], "c": [1]})})
 
 
-def test_string_order_is_refused():
-    """`BinFn.lt` is undefined on strings in the model, unlike in SQL."""
+def test_strings_order_by_code_point():
+    """`BinFn.lt` orders strings by code point, as SQL does (#1492)."""
     con = connect()
-    con.create("o", ibis.schema({"name": "string"}), [("ada",)])
-    with pytest.raises(polars_engine.Unsupported, match="lt of String"):
-        polars_rows(con, "SELECT name FROM o WHERE name < 'b'")
+    con.create(
+        "o", ibis.schema({"name": "string"}), [("ada",), ("b",), ("\U0001f600",), ("\uffff",)]
+    )
+    rows = polars_rows(con, "SELECT name FROM o WHERE name < 'b'")
+    assert sorted(rows) == [("ada",)]
 
 
 def test_unknown_function_is_refused():
@@ -565,7 +562,7 @@ def test_rounding_matches_duckdb_bit_for_bit():
                     elif x is not None:
                         assert repr(x) == repr(y), sql
         else:
-            assert _one_zero(duck) == _one_zero(pl_rows), sql
+            assert one_zero(duck) == one_zero(pl_rows), sql
 
 
 def test_round_to_digits_matches_duckdb_bit_for_bit():
@@ -576,7 +573,7 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
     sql = "SELECT f, round(f, 1) AS x, round(f, 22) AS w FROM r"
     plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
     duck = rows_of(run_plan(con, plan, "duckdb"))
-    assert _one_zero(rows_of(run_plan(con, plan, "polars"))) == _one_zero(duck)
+    assert one_zero(rows_of(run_plan(con, plan, "polars"))) == one_zero(duck)
     # Polars is exact for 0 ≤ d ≤ 22 only; other digits are refused
     # (polars-round-digits, #1270).
     for d in (-1, -5, -400, 23, 400):
@@ -793,3 +790,32 @@ def test_variance_of_a_nan_through_the_written_plan(xs):
     assert (vs is None) == (len([x for x in xs if x is not None]) == 1)
     ((_, lvp, lsp, lvs),) = lean_on(json.loads(plan), {"t": t})
     assert math.isnan(lvp) and math.isnan(lsp) and (lvs is None) == (vs is None)
+
+
+@pytest.mark.parametrize("grouped", [False, True], ids=["ungrouped", "grouped"])
+def test_variance_of_finite_values_that_polars_makes_nan_is_refused(grouped):
+    """polars-var-bound: over 100000 values of 1e308 the streaming kernel
+    returns NaN (the reference: 0.0, and no NaN from finite values). The
+    ungrouped plan raises `VarianceNaN`, the engine's limit, with or without
+    guards, as `SubnormalDivisor` does for a division; grouped by a constant key
+    the kernel gives the reference's 0.0 at every size. At 100,000 values the
+    ungrouped kernel gives NaN on the default thread count and on one thread
+    (`POLARS_MAX_THREADS=1`, read when Polars is imported), so the test holds on both;
+    smaller sizes depend on the thread count (polars-var-bound)."""
+    n = 100_000
+    con = connect()
+    t = pa.table({"g": pa.array([1] * n, pa.int64()), "x": pa.array([1e308] * n, pa.float64())})
+    put_table(con, "t", t)
+    sql = (
+        "SELECT g, var_pop(x) AS vp FROM t GROUP BY g"
+        if grouped
+        else ("SELECT var_pop(x) AS vp FROM t")
+    )
+    plan = written_plan(substrait_json(con, sql))
+    tables = {"t": con._arrow["t"]}
+    for guards in (True, False):
+        if grouped:  # a constant key gives 0.0 at every size: nothing to refuse
+            assert polars_engine.run(plan, tables, guards=guards)["vp"].to_pylist() == [0.0]
+        else:
+            with pytest.raises(polars_engine.VarianceNaN):
+                polars_engine.run(plan, tables, guards=guards)
