@@ -2,8 +2,8 @@
   "id": "duckdb-avg-int",
   "engine": "duckdb",
   "engine_version": "2.0.0",
-  "title": "`AVG` of integers: a `DOUBLE` from the exact sum",
-  "verdict": "`DOUBLE`; exact integer sum, one division (in `long double` for `INTEGER` and `BIGINT`)",
+  "title": "`AVG` of integers: a `DOUBLE` within a bound of the exact mean",
+  "verdict": "`DOUBLE`; for exact sum s and count n: |s| <= 2^53, one of the two doubles around s/n (s/n itself when it is a double); |s| > 2^53, within a relative bound of s/n that covers every path (constant open)",
   "area": "aggregates",
   "options": [
     "avg_int_result",
@@ -45,6 +45,7 @@
   ],
   "settings": {},
   "description": [
+    "For the non-NULL values with exact sum `s` and count `n`, `avg` of `INTEGER` or `BIGINT` returns a double `r` with: `|s| <= 2^53`, `r` is one of the two doubles around `s / n`, and `s / n` itself when that is a double; `|s| > 2^53`, `r` is within a relative bound of `s / n` that covers every path below (the sum rounded to a double, then divided; the 80-bit quotient rounded again; the two-rounding cast of a negative sum). Fable's estimate of the constant is 4 * 2^-53; the owner of the profile change (12d-2) derives and proves it. Which member of the set comes back depends on the platform's `long double`, on the plan's shape, on sibling aggregates, on statistics and on optimizer settings, so the set is the fact and no shape is. The paragraphs below are the evidence.",
     "`avg` has one overload per integer width it names, `SMALLINT`, `INTEGER`, `BIGINT` and `HUGEINT`, and each returns `DOUBLE`; there is no integer result. `TINYINT` has none: the binder takes the overload with the cheapest implicit cast, and a cast to `BIGINT` costs 101 against 110 for `SMALLINT`, so `avg(TINYINT)` runs the `BIGINT` one.",
     "`SMALLINT`: the sum is an `int64_t` (`RegularAdd`, unchecked, out of reach below 2^48 rows) and the result `double(sum) / double(count)`. `INTEGER` and `BIGINT`: the sum is an exact `HUGEINT` (`AddToHugeint`) and the native finalize is `long double(sum) / long double(count)`, rounded to `DOUBLE`. `long double` is 80-bit on x86-64 Linux and the same as `double` on arm64 macOS and MSVC, so the last bit of a mean can depend on the platform.",
     "No values gives NULL. The width dispatch is one template instantiation per width (`GetAverageAggregate`), which is what lets this reading cover `i8` to `i64`.",
