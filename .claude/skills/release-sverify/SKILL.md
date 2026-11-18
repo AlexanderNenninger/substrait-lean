@@ -56,12 +56,9 @@ The version bump is a PR into the release branch:
 
 ```bash
 git switch -c release-<version> origin/release/<major>.<minor>
-# python/pyproject.toml: version = "<version>"
-# dbt/pyproject.toml: version = "<version>", and the dependency "sverify==<version>"
-# engines/{duckdb,polars,spark}/pyproject.toml: version = "<version>", and
-#   "sverify==<version>"; python/pyproject.toml: the dependency
-#   "sverify-duckdb[run]==<version>" and the extras "sverify-polars[run]==<version>",
-#   "sverify-spark[run]==<version>"
+cd python && python scripts/set_version.py <version> && cd ..
+#   the nine places (the version of python/, dbt/ and each engine package, and
+#   the `==` pins between them); main carries `<next minor>.0.dev0` (#1606)
 # python/README.md (the PyPI page): cd python && python scripts/pin_readme_links.py <version>
 #   points its blob/main and tree/main links at the tag
 # CHANGELOG.md: rename "## Unreleased" to "## <version> (<YYYY-MM-DD>)", append the
@@ -72,7 +69,7 @@ uv run python -m sverify_dev.formats tests/formats/<version>   # the formats thi
 uv run pytest tests/test_formats.py && cd ..                     # every earlier release's still read
 git add python/tests/formats/<version>
 cd dbt && uv lock && cd ..           # sverify-dbt's and the sverify it pins
-git diff --stat                      # these eight files, the removed fragments and the fixtures
+git diff --stat                      # these files, the removed fragments and the fixtures
 git commit -am "Release <version>"
 git push -u origin release-<version>
 gh pr create --base release/<major>.<minor> --title "Release <version>" --body "…"
@@ -104,7 +101,19 @@ gh run list --branch v<version>                                # Wheels and Docs
 
 Tag the commit the dry run tested.
 
-Then merge the release branch back into main, so main gets the version, the folded changelog and any release fixes: open a PR from `release/<major>.<minor>` into `main`, first running `python scripts/pin_readme_links.py <version> --unpin` from `python/` on its branch so the README's links point at main again, and merge it with a merge commit (it goes through a batch like any other). Keep the branch for patch releases (`<major>.<minor>.<patch+1>`): their fixes go into it by PR, and the same steps follow.
+Then merge the release branch back into main, so main gets the folded changelog and any release fixes, and reopen main at the next development version (#1606: main never carries a release's version, so a build from main cannot be mistaken for the release on PyPI). Cut a branch from the release branch, set the dev version, and open the PR from it into `main`:
+
+```bash
+git switch -c reopen-main-<version> origin/release/<major>.<minor>
+cd python
+python scripts/set_version.py <major>.<minor+1>.0.dev0      # e.g. 0.9.0.dev0
+python scripts/pin_readme_links.py <version> --unpin        # the README's links point at main again
+uv lock && cd ../dbt && uv lock && cd ..
+git commit -am "Reopen main at <major>.<minor+1>.0.dev0"
+gh pr create --base main --title "Merge release <version> into main" --body "…"
+```
+
+Merge it with a merge commit (it goes through a batch like any other). Editing `pyproject.toml` and `uv.lock` makes every worktree's next `uv run` rebuild, so announce the merge and tell sessions to use `.venv/bin` tools. Keep the release branch for patch releases (`<major>.<minor>.<patch+1>`): their fixes go into it by PR, the version bump is the same `set_version.py` call, and the merge-back conflicts only on the version lines, which keep main's dev version.
 
 ## 4. Afterwards
 
