@@ -88,7 +88,7 @@ orders them: Substrait's `AggregateFunction.sorts`, Ibis's
 input), and the group's rows are sorted stably before they are collected.
 Without a sort, `Rel.eval` collects in list order, the deterministic
 profile's order; the reference allows every order
-([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
+([tie order](reference-semantics.md#tie-order-and-determinism)).
 Such a plan still checks, and its postconditions are proved for every
 order. The abstract value of the result says nothing about its elements, so
 no fact about element order is proved, and the differential tests compare

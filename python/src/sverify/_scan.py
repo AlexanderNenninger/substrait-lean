@@ -140,8 +140,11 @@ class Resident(Native):
 class EqualityDelete:
     """An Iceberg equality delete file: the rows of `applies_to` (data files,
     as local paths) that match one of its rows on `columns` are deleted, NULL
-    matching NULL (the table spec's rule; the data files the descriptor lists
-    are the ones of a lower sequence number than the delete file).
+    matching NULL. The Iceberg table spec ("Equality Delete Files", "Scan
+    Planning") applies an equality delete to a data file of a strictly lower
+    data sequence number in the same partition, and says "null values in an
+    equality-delete column match null values"; `applies_to` lists the data
+    files of a lower sequence number than the delete file.
 
     Attributes:
         file: The delete file, a local path.
