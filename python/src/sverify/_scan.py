@@ -237,8 +237,7 @@ def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
     without changing a value (design note #173, section 5.2): the same type;
     a signed integer to a wider signed one (unsigned integers do not widen);
     `float32` to `float64`; a decimal to a greater precision at the same scale;
-    a list whose element widens; one string type to another;
-    a date32 to a date64 (not the reverse: a date64 may hold a time of day)."""
+    a list whose element widens; one string type to another."""
     types = pa.types
     if actual == expected:
         return True
@@ -250,13 +249,7 @@ def widens(actual: pa.DataType, expected: pa.DataType) -> bool:
         return actual.scale == expected.scale and actual.precision <= expected.precision
     if types.is_list(actual) and types.is_list(expected):
         return widens(actual.value_type, expected.value_type)
-    return (_is_text(actual) and _is_text(expected)) or (
-        pa.types.is_date32(actual) and _is_date(expected)
-    )
-
-
-def _is_date(t: pa.DataType) -> bool:
-    return pa.types.is_date32(t) or pa.types.is_date64(t)
+    return _is_text(actual) and _is_text(expected)
 
 
 def _is_text(t: pa.DataType) -> bool:

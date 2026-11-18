@@ -875,21 +875,23 @@ class Report:
         declared type's range (D46; the engine counts it)."""
         if self.internal_plan is None:
             return
-        for t, declared in declared_columns(json.loads(self.internal_plan)).items():
+        for t, schemas in declared_columns(json.loads(self.internal_plan)).items():
             if not con.has(t):
                 continue
             z = con.get(t)
-            found, wide = schema_problems(
-                declared, con.schema(t), z if isinstance(z, pa.Table) else None
-            )
-            if found:
-                raise PreconditionError(
-                    f"table {t} differs from the schema the plan was verified for: "
-                    + "; ".join(found)
-                    + ": refused before the run. Declare the column as it is, or fix the source"
-                )
+            data = z if isinstance(z, pa.Table) else None
+            wide: set[tuple[str, str]] = set()
+            for declared in schemas:
+                found, more = schema_problems(declared, con.schema(t), data)
+                if found:
+                    raise PreconditionError(
+                        f"table {t} differs from the schema the plan was verified for: "
+                        + "; ".join(found)
+                        + ": refused before the run. Declare the column as it is, or fix the source"
+                    )
+                wide.update(more)
             table = con.table(t)
-            for col, key in wide:
+            for col, key in sorted(wide):
                 lo, hi = int_range(key)
                 x: Any = ibis._[col]
                 cond = x.isnull() | ((x >= lo) & (x <= hi))
@@ -1010,8 +1012,10 @@ class Report:
                 breaks one (`check_inputs`), as
                 `transform(check_requires=)` does on bound inputs. Default
                 True. False skips the check, for a caller that has made it
-                already: the report's guarantee then holds only on data that
-                meets them, and a batch that does not may raise on the
+                already (the tables are still checked against the schema the
+                plan was verified for: types, NULLs, integer widths). The
+                report's guarantee then holds only on data that meets the
+                preconditions, and a batch that does not may raise on the
                 engine. With the check, a guard-free plan on the reference's
                 route runs without the per-row checks the checker discharged
                 on data that meets them, on an engine whose writer a theorem
@@ -1098,6 +1102,10 @@ class Report:
                     + " of this report: refused before the run (check_requires=False skips them)"
                 )
             self.check_inputs(con, target, assumed_checked=assumed_checked)
+        else:
+            # The schema is what the proof is about, not a precondition: it is
+            # checked whatever `check_requires` says.
+            self._check_schema(con, target)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)

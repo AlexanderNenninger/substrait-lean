@@ -66,17 +66,19 @@ class Declared:
         return actual
 
 
-def declared_columns(plan: object) -> dict[str, list[Declared]]:
-    """Each named table of a plan with the columns its `baseSchema` declares
-    (top-level columns; a table read twice has one schema)."""
-    found: dict[str, list[Declared]] = {}
+def declared_columns(plan: object) -> dict[str, list[list[Declared]]]:
+    """Each named table of a plan with the columns each distinct `baseSchema`
+    of its reads declares (top-level columns): a table read twice with two
+    declarations is checked against both."""
+    found: dict[str, list[list[Declared]]] = {}
 
     def walk(node: object) -> None:
         if isinstance(node, dict):
             if "namedTable" in node and isinstance(node.get("baseSchema"), dict):
-                found.setdefault(
-                    ".".join(node["namedTable"]["names"]), _columns(node["baseSchema"])
-                )
+                cols = _columns(node["baseSchema"])
+                seen = found.setdefault(".".join(node["namedTable"]["names"]), [])
+                if cols not in seen:
+                    seen.append(cols)
             for v in node.values():
                 walk(v)
         elif isinstance(node, list):
@@ -141,8 +143,8 @@ def problems(
     (missing columns, types, NULLs in a non-null column), and the integer
     columns, as `(column, declared type)`, whose physical type is wider than
     declared and whose values still have to be range-checked. `data` is None
-    for a table the engine reads where it is: its NULLs and values are then
-    not counted."""
+    for a table the engine reads where it is: its NULLs are then not counted
+    (its values are range-checked on the engine all the same)."""
     expected = pa.schema(
         [
             pa.field(d.name, d.arrow(schema.field(i).type if i >= 0 else pa.null()))
