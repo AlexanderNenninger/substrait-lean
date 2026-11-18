@@ -25,6 +25,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
+from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
     SqlUnsupported,
@@ -378,9 +379,16 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             quote_identifiers=False,
         )
     except sg.errors.OptimizeError as e:
+        message = str(e).splitlines()[0]
+        missing = re.search(r"Column '([^']+)' could not be resolved", message)
+        close = (
+            did_you_mean(missing[1], [c for schema in schemas.values() for c in schema])
+            if missing
+            else ""
+        )
         raise SqlUnsupported(
-            f"cannot resolve the SQL's names: {str(e).splitlines()[0]}",
-            hint="check the table and column names against the schemas you declared",
+            f"cannot resolve the SQL's names: {message}",
+            hint="check the table and column names against the schemas you declared" + close,
         ) from e
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__))

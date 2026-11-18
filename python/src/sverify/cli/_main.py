@@ -370,7 +370,20 @@ def cmd_check(args: argparse.Namespace) -> int:
     }
     lines = []
     if not plan.fixes:
-        lines.append("No preconditions to add: no proof in the file needs one.")
+        other = [
+            f"  {c.name}: {h}"
+            for c in check.checked
+            if c.report is not None
+            for h in dict.fromkeys(c.report._all_hints())
+        ]
+        if other:
+            lines.append(
+                "No preconditions to add (nothing in `requires` rules these out); "
+                "the reports suggest:"
+            )
+            lines += other
+        else:
+            lines.append("No preconditions to add: no proof in the file needs one.")
     for f in plan.fixes:
         lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
         if f.reason:

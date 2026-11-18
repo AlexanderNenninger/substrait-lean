@@ -199,6 +199,26 @@ def test_diff_shows_the_fix_and_fix_writes_it(tmp_path, capsys):
     assert code == 0
 
 
+SUM_ONLY = """
+@sv.transform(ensures=[_.total > 0])
+def per_customer(orders):
+    return orders.group_by("customer").agg(total=orders.amount.sum() * 2 + 1)
+
+
+p = orders.pipe(per_customer)
+"""
+
+
+def test_diff_names_the_other_fixes_where_no_precondition_helps(tmp_path, capsys):
+    """An unbounded SUM needs a row cap, not a `requires` the checker infers:
+    `--diff` prints the report's hint instead of a dead end (#1485)."""
+    path = write(tmp_path, SUM_ONLY)
+    code, out = run(capsys, "check", str(path), "--diff")
+    assert "No preconditions to add: no proof" not in out
+    assert "sv.max_rows(" in out
+    assert "$" not in out
+
+
 @pytest.mark.parametrize(
     "decorator",
     [
