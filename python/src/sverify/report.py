@@ -55,6 +55,7 @@ from sverify.conditions import (
     Inferred,
     Key,
     MaxRows,
+    PlannedCondition,
     PreconditionError,
     References,
     RelationRows,
@@ -94,6 +95,7 @@ Condition = (
     | MaxRows
     | RowsPer
     | Observation
+    | PlannedCondition
     | Callable[[ir.Table], ir.BooleanValue]
 )
 
@@ -812,11 +814,26 @@ class Report:
             raise routes.RouteError(chosen)
         return d, self.semantics == "reference" or chosen.kind == "translated"
 
-    def check_inputs(self, con: Connection) -> None:
+    def check_inputs(
+        self, con: Connection, engine: str | None = None, *, assumed_checked: bool = False
+    ) -> None:
         """Check the preconditions (`requires`, the inferred bounds among
         them) and the `SUM`s assumed to fit (`assumed`) on the tables of
         `con`, before anything runs: a batch that breaks one is refused
         with the precondition as the message.
+
+        With an `engine`, each table's conditions run there, as one plan the
+        checker wrote (`condition_query`): a result that is not TRUE, or a
+        plan that raises, is a violation, and a condition the engine's writer
+        refuses refuses the check. Without one, Ibis counts on the table's own
+        backend.
+
+        Args:
+            con: The connection holding the tables.
+            engine: The engine to check the conditions on.
+            assumed_checked: The run's route checks the assumed issues as it
+                runs (DuckDB's proved translation), so they are not run once
+                more here.
 
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
@@ -826,16 +843,20 @@ class Report:
             if not con.has(t):
                 continue
             table = con.table(t)
-            for c in conds:
-                if n := violations(table, c):
+            for c, n, error in violation_counts(table, conds, engine):
+                if n or error:
+                    what = (
+                        f"{label(c)} raised on {t}: {error}"
+                        if error
+                        else f"{n} row(s) of {t} violate {label(c)}"
+                    )
                     raise PreconditionError(
-                        f"{n} row(s) of {t} violate {label(c)}: refused before the run"
-                        + self._source(t, c),
+                        f"{what}: refused before the run" + self._source(t, c),
                         source=t,
                         condition=c,
                         rows=violating_rows(table, c),
                     )
-        if self.assumed and self.internal_plan is not None:
+        if self.assumed and self.internal_plan is not None and not assumed_checked:
             # The proved DuckDB translation checks each assumption as it runs:
             # a SUM as it adds up, an operation on finite doubles as it gives
             # its result (#575). It runs first, so a batch that breaks one is
@@ -843,13 +864,35 @@ class Report:
             try:
                 run_plan(con, written_plan(self.internal_plan), "duckdb")
             except Exception as e:
-                message = str(e)
-                if "overflow in SUM" not in message and "overflow to infinity" not in message:
-                    raise
-                broken = ", ".join(_assumption(i) for i in self.assumed)
-                raise PreconditionError(
-                    f"the batch breaks an assumed precondition, {broken}: refused before the run"
-                ) from e
+                raise self._broken_assumption(e) or e from None
+
+    def _unchecked_requires(self) -> list[str]:
+        """The preconditions in `requires` that `_conditions` holds no check
+        for, as `table: label`."""
+        have = {t: [label(c) for c in cs] for t, cs in self._conditions.items()}
+        out = []
+        for t, labs in self.requires.items():
+            left = list(have.get(t, []))
+            for lab in labs:
+                if lab in left:
+                    left.remove(lab)
+                else:
+                    out.append(f"{t}: {lab}")
+        return out
+
+    def _broken_assumption(self, e: Exception) -> PreconditionError | None:
+        """The refusal for an error of DuckDB's proved translation that says an
+        assumed `SUM` or operation on finite doubles failed on the data; None
+        for any other error."""
+        message = str(e)
+        if "overflow in SUM" not in message and "overflow to infinity" not in message:
+            return None
+        broken = ", ".join(_assumption(i) for i in self.assumed)
+        err = PreconditionError(
+            f"the batch breaks an assumed precondition, {broken}: refused before the run"
+        )
+        err.__cause__ = e
+        return err
 
     def _source(self, table: str, c: Condition) -> str:
         """Where a precondition the data breaks came from, and what to do,
@@ -998,8 +1041,23 @@ class Report:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
+        # DuckDB's proved translation checks each assumption as it runs.
+        assumed_checked = (
+            check_requires
+            and chosen is not None
+            and chosen.engine == "duckdb"
+            and kind == "translated"
+        )
         if check_requires:
-            self.check_inputs(con)
+            # A precondition with no check would let the run drop guards on
+            # data it never looked at: refuse before anything runs.
+            if unchecked := self._unchecked_requires():
+                raise PreconditionError(
+                    "no run-time check for the precondition(s) "
+                    + ", ".join(unchecked)
+                    + " of this report: refused before the run (check_requires=False skips them)"
+                )
+            self.check_inputs(con, target, assumed_checked=assumed_checked)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)
@@ -1021,26 +1079,33 @@ class Report:
         # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
         name = chosen.engine if chosen is not None else ""
         theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
-        if (
-            check_requires
-            and kind == "translated"
-            and self.semantics == "reference"
-            and self._guard_free
-            and theorem is not None
-        ):
-            out = run_guard_free(
-                con, written_plan(self.internal_plan), name, theorem, finite=finite
-            )
-        else:
-            out = run_plan(
-                con,
-                written_plan(self.internal_plan),
-                engine,
-                finite=finite,
-                # A proved report's `deterministic` justifies Spark's windows
-                # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                tie_free=self.deterministic and kind != "unverified",
-            )
+        try:
+            if (
+                check_requires
+                and kind == "translated"
+                and self.semantics == "reference"
+                and self._guard_free
+                and theorem is not None
+            ):
+                out = run_guard_free(
+                    con, written_plan(self.internal_plan), name, theorem, finite=finite
+                )
+            else:
+                out = run_plan(
+                    con,
+                    written_plan(self.internal_plan),
+                    engine,
+                    finite=finite,
+                    # A proved report's `deterministic` justifies Spark's windows
+                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                    tie_free=self.deterministic and kind != "unverified",
+                )
+        except Exception as e:
+            # The translation's own checks of the assumptions, which `check_inputs`
+            # did not run first, refuse the batch as that run would have.
+            if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
+                raise refusal from e
+            raise
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
@@ -1282,10 +1347,14 @@ class Report:
         out: dict[str, list[Condition]] = {}
         for t, cs in self._conditions.items():
             out[t] = [c for c in cs if not isinstance(c, Inferred)]
-        for n in self._inferred_needs():
-            have = out.setdefault(n.table, [])
-            if n.condition is not None and n.label not in {label(c) for c in have}:
-                have.append(n.condition)
+        # The bounds a hint names, which a proof confirmed (`_confirm_hints`).
+        extra = [(n.table, n.condition, n.label) for n in self._inferred_needs()]
+        for i in self.issues:
+            extra += [(t, c, label(c)) for t, cs in i.hint_needs.items() for c in cs]
+        for t, c, lab in extra:
+            have = out.setdefault(t, [])
+            if c is not None and lab not in {label(x) for x in have}:
+                have.append(c)
         return {t: cs for t, cs in out.items() if cs}
 
     @property
@@ -1450,10 +1519,18 @@ class Report:
 
     @property
     def _summary(self) -> str:
-        """The report's first line: "proved", or "NOT proved: " and what is
-        missing, counted ("1 of 2 postconditions not proved, 1 possible
-        runtime error")."""
-        return "proved" if self._proved else f"NOT proved: {', '.join(self._counts())}"
+        """The report's first line, by the verdict: "proved"; "proved with
+        checks: " and the assumptions that run time checks ("2 assumptions");
+        or "NOT proved: " and what is missing, counted ("1 of 2
+        postconditions not proved, 1 possible runtime error")."""
+        match self.verdict:
+            case Verdict.PROVED:
+                return "proved"
+            case Verdict.PROVED_WITH_CHECKS:
+                k = len(self.assumed)
+                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+            case _:
+                return f"NOT proved: {', '.join(self._counts())}"
 
     def _counts(self) -> list[str]:
         """What keeps the plan from being proved, counted."""
@@ -2025,6 +2102,102 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def violation_counts(
+    table: ir.Table, conds: Sequence[Condition], engine: str | None = None
+) -> list[tuple[Condition, int, str | None]]:
+    """Each condition of `conds` with the rows of `table` that break it (a
+    result that is not TRUE) and the error that stopped its check, if one did.
+
+    With an `engine`, the row-wise conditions that are SQL strings run there
+    as one plan, and the Ibis ones as another (`conditions_query`): one plan
+    per table where each condition had one. A plan that raises is a violation
+    of the first condition that raises alone. A condition the writer refuses
+    for the engine refuses the check (`SverifyError`), with no fallback to
+    Ibis. Without an `engine`, Ibis counts each condition on the table's own
+    backend (`violations`)."""
+    if engine is None:
+        rows: list[tuple[Condition, int, str | None]] = []
+        for c in conds:
+            n, stopped = (
+                _run_planned(table, c, "duckdb")
+                if isinstance(c, PlannedCondition)
+                else (violations(table, c), None)
+            )
+            rows.append((c, n, stopped))
+        return rows
+    counts: dict[int, tuple[int, str | None]] = {}
+    groups: dict[bool, list[int]] = {True: [], False: []}
+    for i, c in enumerate(conds):
+        if isinstance(c, TableCondition):
+            counts[i] = (c.violations(table), None)
+        elif isinstance(c, PlannedCondition):
+            counts[i] = _run_planned(table, c, engine)
+        else:
+            groups[isinstance(c, str)].append(i)
+    con = connection_of(table)
+    for idxs in groups.values():
+        if not idxs:
+            continue
+        if con is None:
+            raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
+        try:
+            out = _run_conditions(con, table, [conds[i] for i in idxs], engine)
+            for k, i in enumerate(idxs):
+                counts[i] = (_not_true(out.column(k)), None)
+        except SverifyError:
+            raise
+        except Exception:
+            # Which condition raised: run them one by one.
+            for i in idxs:
+                try:
+                    counts[i] = (
+                        _not_true(_run_conditions(con, table, [conds[i]], engine).column(0)),
+                        None,
+                    )
+                except SverifyError:
+                    raise
+                except Exception as e:
+                    counts[i] = (0, str(e).splitlines()[0] if str(e) else type(e).__name__)
+    return [(c, *counts[i]) for i, c in enumerate(conds)]
+
+
+def _run_planned(table: ir.Table, cond: PlannedCondition, engine: str) -> tuple[int, str | None]:
+    """The rows of `table` that break a condition read from an export, from its
+    own plan run on `engine`; a plan that raises is a violation."""
+    con = connection_of(table)
+    if con is None:
+        raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
+    try:
+        return _not_true(run_plan(con, written_plan(cond.plan), engine).column(0)), None
+    except SverifyError:
+        raise
+    except Exception as e:
+        return 0, str(e).splitlines()[0] if str(e) else type(e).__name__
+
+
+def _not_true(column: Any) -> int:
+    return sum(v is not True for v in column.to_pylist())
+
+
+def _run_conditions(
+    con: Connection, table: ir.Table, conds: Sequence[Condition], engine: str
+) -> pa.Table:
+    """The columns of `conds` over `table`, from one checker-written plan run
+    on `engine`: SQL conditions as one `SELECT`, Ibis ones as one `select`."""
+    if all(isinstance(c, str) for c in conds):
+        items = ", ".join(f'({c}) AS "c{i}"' for i, c in enumerate(conds))
+        query = f'SELECT {items} FROM {{}} AS "t"'
+        from sverify.ibis_substrait import SQLModel, sql_model_schema
+
+        query = query.format('"t"')
+        schema = sql_model_schema(query, {"t": table.schema()}, "reference")
+        inputs: Any = (table.op(),)  # a table's op is the relation the model reads
+        q = SQLModel(query, inputs, ("t",), schema, "duckdb", "reference").to_expr()
+    else:
+        q = table.select(**{f"c{i}": resolve(c, table) for i, c in enumerate(conds)})
+    return run_plan(con, written_plan(plan_json(con, q)), engine)
 
 
 def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) -> pa.Table | None:

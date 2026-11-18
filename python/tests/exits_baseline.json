@@ -5,7 +5,7 @@
   "incremental.py": 3,
   "io/_secrets.py": 4,
   "nodes.py": 3,
-  "report.py": 8,
+  "report.py": 7,
   "routes.py": 1,
   "sql/snowflake.py": 1,
   "sql_model.py": 2

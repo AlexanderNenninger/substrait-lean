@@ -381,6 +381,7 @@ end Substrait.Examples
 #print axioms Substrait.Engine.spark_sound
 #print axioms Substrait.Engine.contract_sound
 #print axioms Substrait.Engine.contract_sound_runs
+#print axioms Substrait.Engine.contract_sound_runs_near
 #print axioms Substrait.Engine.example_contract
 #print axioms Substrait.Engine.duckdb_contract_example
 #print axioms Substrait.Engine.polars_contract_example

@@ -4097,6 +4097,8 @@ class _Writer:
                     on = self.expr(r.on, side, ks, "bool")
                 join = "INNER JOIN" if r.type == "inner" else "LEFT JOIN"
                 return self.select(items, f"{lsub} {join} {rsub} ON {on}")
+            case Fetch(input=OrderBy(input=src, keys=sort), offset=off, count=cnt) if sort:
+                return self.top_n(src, sort, off, cnt, n, ordered)
             case Fetch(input=i, offset=off, count=cnt):
                 a = self.alias()
                 # The rows that stay are the first of the input's order, where it has one.
@@ -4442,6 +4444,43 @@ class _Writer:
         if kind == "float":
             return d.float_extreme(f, v, "")
         return f"{f}({v})"
+
+    def top_n(
+        self,
+        src: Rel,
+        sort: Sequence[SortKey],
+        off: int,
+        cnt: int | None,
+        n: int,
+        ordered: bool,
+    ) -> str:
+        """`Fetch` of an `OrderBy`: the sort and the limit in one SELECT, which
+        engines run as a top-N, rather than numbering the whole input first.
+        Ties keep their input order (`sort_keys`). The output's ordinal, if
+        wanted, numbers the few rows that stay."""
+        d = self.d
+        a = self.alias()
+        ks = kinds(src)
+        if any(k.col >= n for k in sort):
+            raise WriterUnsupported(
+                "a sort key refers to a column beyond its input", hint=MALFORMED_PLAN
+            )
+        keys = self.sort_keys(a, sort, ks)
+        items = self.passthrough(a, n, False)
+        if not self.tie_free:
+            items.append(f"{self.ordinal(a)} AS {d.quote(ORD)}")
+        rest = "ORDER BY " + ", ".join(keys)
+        if lo := d.limit_offset(off, cnt):
+            rest += " " + lo
+        top = self.select(items, d.subquery(self.rel(src, not self.tie_free), a), rest)
+        if not ordered:
+            return top
+        b = self.alias()
+        items = self.passthrough(b, n, False)
+        items.append(
+            f"{d.row_number(self.order_by(self.sort_keys(b, sort, ks)))} AS {d.quote(ORD)}"
+        )
+        return self.select(items, d.subquery(top, b))
 
     def sort_keys(self, a: str, sort: Sequence[SortKey], ks: list[Kind | None]) -> list[str]:
         """ORDER BY keys for `sortLe sort` over subquery `a`, ties broken by its

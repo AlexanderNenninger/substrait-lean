@@ -134,6 +134,29 @@ theorem Measure.tiesAgreeIn_of_tiesFixed {cat : Catalog} (hcat : cat.WF) {A : St
       have he : kk.col = c := by simpa using he
       rw [← he]; exact hc kk hkk
 
+/-- **A window whose ties fall alike gives `windowEval`'s rows** for every
+sorted order of its input (`Rel.windowDetAt`). -/
+theorem Rel.window_perm_of_detAt {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} {part : List Nat} {sort : List SortKey}
+    {fns : List WinFn} (hwf : r.WF cat) (hd : Rel.windowDetAt cat A F K r part sort fns = true)
+    {s : Relation} (hp : s.Perm (r.eval cat)) (hsort : s.Pairwise (sortLe sort · · = true)) :
+    (windowRows part fns [] s).Perm ((Rel.window r part sort fns).eval cat) := by
+  simp only [windowDetAt, Bool.or_eq_true, Bool.and_eq_true] at hd
+  rcases hd with (hk | hf) | hc
+  · obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
+    simp only [List.all_eq_true, decide_eq_true_eq] at hsub
+    exact window_tiebreak ((keys_sound hcat hA hF hK hwf k hk).superset hsub) hp hsort
+  · exact window_tieFree hf hp hsort
+  · obtain ⟨hc, hnd⟩ := hc
+    simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
+    refine Substrait.window_allColumns (Rel.eval_arity hcat hwf) hc (fun x hx => ?_) hp
+    exact Row.canon_of_env (Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf
+      (fun h => by cases h) x hx) (by simpa using hnd)
+      (by rw [Rel.aeval_length hwf, Rel.eval_arity hcat hwf x hx])
+
 /-- **A plan without choices allows only `Rel.eval`'s rows**, in any order. -/
 theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
@@ -192,7 +215,7 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     exact h.trans ((allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx).append
       (allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy))
   | .window r part sort fns, hwf, hd, _, ⟨i, hi, s, hs, hsort, o, h, ho⟩ => by
-    simp only [detPlan, windowDetAt, Bool.and_eq_true, Bool.or_eq_true] at hd
+    simp only [detPlan, Bool.and_eq_true] at hd
     obtain ⟨⟨hdr, hd⟩, hpf⟩ := hd
     have hp : s.Perm (r.eval cat) := hs.trans (allowed_perm_eval hcat hA hF hK hwf.1 hdr hi)
     -- No class to pick from: the reference allows `windowRows` alone.
@@ -204,18 +227,7 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
         (WindowKeys.none_soundAll cat) hwf.1 (fun h => by cases h) x
         (hp.mem_iff.mp (by simpa using hx))) m.arg)
     rw [windowRowsA_eq hl ho] at h
-    refine h.trans ?_
-    rcases hd with (hk | hf) | hc
-    · obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
-      simp only [List.all_eq_true, decide_eq_true_eq] at hsub
-      exact window_tiebreak ((keys_sound hcat hA hF hK hwf.1 k hk).superset hsub) hp hsort
-    · exact window_tieFree hf hp hsort
-    · obtain ⟨hc, hnd⟩ := hc
-      simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at hc
-      refine Substrait.window_allColumns (Rel.eval_arity hcat hwf.1) hc (fun x hx => ?_) hp
-      exact Row.canon_of_env (Rel.aeval_sound (sz := false) hcat hA hF (WindowKeys.none_soundAll cat) hwf.1
-        (fun h => by cases h) x hx) (by simpa using hnd)
-        (by rw [Rel.aeval_length hwf.1, Rel.eval_arity hcat hwf.1 x hx])
+    exact h.trans (Rel.window_perm_of_detAt hcat hA hF hK hwf.1 hd hp hsort)
   | .semi a b _ on, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
     simp only [detPlan, Bool.and_eq_true] at hd
     have hx' := allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx
@@ -263,6 +275,264 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     exact h.trans ((aggAllowed_eq (hms hp) hk ha ho).trans (aggregateEval_perm_of (hms .rfl) hp))
   | .unnest r _, hwf, hd, _, ⟨i, hi, h⟩ =>
     h.trans ((allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi).flatMap_right _)
+
+/-! ## Determined up to the class (D48)
+
+`Rel.detPlan` is the exact level: every result the reference allows is
+`Rel.eval`'s up to row order. `Rel.detClass` is the class level: up to row
+order and the member of each class of D31 (`Row.canon`). A place that only
+picks a member of a class (a `GROUP BY` or `DISTINCT` key over doubles, `MIN`,
+`MAX`, `QUANTILE_DISC`, D45's windows) leaves a plan determined at the class
+level. An operator above a pick must read its input up to the class; stage 1
+admits only those with a congruence lemma: `emit`, `ORDER BY`, `DISTINCT`,
+`UNION ALL`, a filter whose condition is `Expr.canonSafe`, and a projection of
+columns and literals (`Expr.classCongr`). Any other operator needs inputs
+determined exactly. -/
+
+/-- Does the expression read a row only up to the class of each value: a
+column or a literal? -/
+def Expr.classCongr : Expr → Bool
+  | .field _ | .lit _ => true
+  | _ => false
+
+/-- **Does `r` leave the engine no choice but the order of its rows and the
+member of a class** (D31, D48)? `Rel.detPlan` without its three class guards
+(`DISTINCT`'s and the `GROUP BY` keys' `noDoubles`, `Measure.pickFixed` and
+`WinFn.pickFixed`), every tie condition kept, and above a class-level input
+only operators that read it up to the class. -/
+def Rel.detClass (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : String → List (List Nat)) : Rel → Bool
+  | .read _ | .values _ _ => true
+  | .filter r c => r.detClass cat A F K && (r.detPlan cat A F K || c.canonSafe)
+  | .project r es => r.detClass cat A F K && (r.detPlan cat A F K || es.all Expr.classCongr)
+  | .emit r _ | .orderBy r _ | .distinct r => r.detClass cat A F K
+  | .unionAll a b => a.detClass cat A F K && b.detClass cat A F K
+  | .window r part sort fns => r.detPlan cat A F K && Rel.windowDetAt cat A F K r part sort fns
+  | .aggregate r gs ms => r.detPlan cat A F K && ms.all (Measure.detIn cat A F K r gs)
+  | r@(.fetch _ _ _) | r@(.cross _ _) | r@(.join _ _ _ _) | r@(.semi _ _ _ _)
+  | r@(.unnest _ _) => r.detPlan cat A F K
+
+/-- The exact level implies the class level. -/
+theorem Rel.detClass_of_detPlan {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
+    {K : String → List (List Nat)} :
+    ∀ {r : Rel}, r.detPlan cat A F K = true → r.detClass cat A F K = true
+  | .read _, _ | .values _ _, _ => rfl
+  | .filter r _, h | .project r _, h => by
+    simp only [detPlan] at h
+    simp [detClass, detClass_of_detPlan (r := r) h, h]
+  | .emit r _, h | .orderBy r _, h => by
+    simp only [detPlan] at h
+    simp only [detClass]; exact detClass_of_detPlan (r := r) h
+  | .distinct r, h => by
+    simp only [detPlan, Bool.and_eq_true] at h
+    simp only [detClass]; exact detClass_of_detPlan (r := r) h.1
+  | .unionAll a b, h => by
+    simp only [detPlan, Bool.and_eq_true] at h
+    simp [detClass, detClass_of_detPlan (r := a) h.1, detClass_of_detPlan (r := b) h.2]
+  | .window r _ _ _, h => by
+    simp only [detPlan, Bool.and_eq_true] at h
+    simp [detClass, h.1.1, h.1.2]
+  | .aggregate r _ _, h => by
+    simp only [detPlan, Bool.and_eq_true] at h
+    simp [detClass, h.1.1.1, h.1.1.2]
+  | .fetch _ _ _, h | .cross _ _, h | .join _ _ _ _, h | .semi _ _ _ _, h | .unnest _ _, h => by
+    simpa [detClass] using h
+
+omit [Boxes.Ambient] in
+/-- **A map that reads its argument up to `c` carries a permutation up to
+`c`.** -/
+theorem perm_filterMap_of_perm_map {α β γ : Type} [DecidableEq α] {c : α → β}
+    {F : α → Option γ} (hF : ∀ x y, c x = c y → F x = F y) :
+    ∀ {l l' : List α}, (l.map c).Perm (l'.map c) → (l.filterMap F).Perm (l'.filterMap F)
+  | [], l', h => by
+    have : l' = [] := List.map_eq_nil_iff.mp (List.Perm.nil_eq h).symm
+    subst this; exact .refl _
+  | x :: l, l', h => by
+    obtain ⟨y, hy, hyx⟩ := List.mem_map.mp (h.subset List.mem_cons_self)
+    have hl' := List.perm_cons_erase hy
+    have h2 : (c x :: l.map c).Perm (c x :: (l'.erase y).map c) := by
+      have := h.trans (hl'.map c); simpa only [List.map_cons, hyx] using this
+    have ih := perm_filterMap_of_perm_map hF h2.cons_inv
+    refine List.Perm.trans ?_ (hl'.filterMap F).symm
+    rw [List.filterMap_cons, List.filterMap_cons, hF x y hyx.symm]
+    cases F y with
+    | none => exact ih
+    | some b => exact ih.cons b
+
+omit [Boxes.Ambient] in
+theorem perm_map_of_perm_map {α β γ : Type} [DecidableEq α] {c : α → β} {F : α → γ}
+    (hF : ∀ x y, c x = c y → F x = F y) {l l' : List α} (h : (l.map c).Perm (l'.map c)) :
+    (l.map F).Perm (l'.map F) := by
+  have := perm_filterMap_of_perm_map (F := fun x => some (F x)) (fun x y hxy => by rw [hF x y hxy]) h
+  simpa [List.filterMap_eq_map] using this
+
+omit [Boxes.Ambient] in
+theorem filter_map_eq_filterMap {α γ : Type} (p : α → Bool) (f : α → γ) (l : List α) :
+    (l.filter p).map f = l.filterMap fun x => if p x then some (f x) else none := by
+  induction l with
+  | nil => rfl
+  | cons x l ih => by_cases hp : p x <;> simp [hp, ih]
+
+omit [Boxes.Ambient] in
+/-- Representatives of lists equal up to `c` are equal up to `c`. -/
+theorem IsReps.map_subset {α : Type} {c : α → α} {l l' reps reps' : List α}
+    (h : IsReps c l reps) (h' : IsReps c l' reps') (hs : ∀ z ∈ l.map c, z ∈ l'.map c) :
+    ∀ z ∈ reps.map c, z ∈ reps'.map c := by
+  intro z hz
+  obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hz
+  obtain ⟨y, hy, he⟩ := h.class_mem hx
+  obtain ⟨y', hy', he'⟩ := List.mem_map.mp (hs _ (List.mem_map_of_mem hy))
+  obtain ⟨x', hx', he''⟩ := h'.2.2 y' hy'
+  exact List.mem_map.mpr ⟨x', hx', by rw [he'', he', he]⟩
+
+omit [Boxes.Ambient] in
+theorem IsReps.map_perm {α : Type} {c : α → α} {l l' reps reps' : List α}
+    (h : IsReps c l reps) (h' : IsReps c l' reps') (hp : (l.map c).Perm (l'.map c)) :
+    (reps.map c).Perm (reps'.map c) :=
+  (List.perm_ext_iff_of_nodup (List.nodup_iff_pairwise_ne.mpr (List.pairwise_map.mpr h.1))
+    (List.nodup_iff_pairwise_ne.mpr (List.pairwise_map.mpr h'.1))).mpr fun z =>
+    ⟨h.map_subset h' (fun _ hz => hp.subset hz) z, h'.map_subset h (fun _ hz => hp.symm.subset hz) z⟩
+
+omit [Boxes.Ambient] in
+theorem Row.canon_append (a b : Row) : (a ++ b).canon = a.canon ++ b.canon := by
+  simp [Row.canon]
+
+/-- **An allowed measure is `Measure.eval`'s up to the class of its value.** -/
+theorem Measure.allowed_canon {m : Measure} {grp : Relation}
+    (hm : m.orderFree = true ∨ (m.fn.sorts = true ∧ m.TiesAgree grp)) {v : Value}
+    (h : m.Allowed grp v) : v.canonV = (m.eval grp).canonV := by
+  rcases hm with hof | ⟨hs, ht⟩
+  · rw [Measure.eval_eq (AggFn.ne_collect_of_orderFree hof)]
+    exact (Measure.allowed_picks hof h).canon
+  · rw [Measure.allowed_eq_of_ties hs ht h]
+
+/-- **An aggregate allows its rows up to the classes**: `aggAllowed_eq`
+without its `Lone` hypotheses, the keys and the measures' values up to their
+classes. -/
+theorem aggAllowed_canon {gs : List Expr} {ms : List Measure} {rows out : Relation}
+    (hms : ∀ m ∈ ms, m.orderFree = true ∨ (m.fn.sorts = true ∧ m.TiesAgreeIn gs rows))
+    (h : aggAllowed gs ms rows out) :
+    (out.map Row.canon).Perm ((aggregateEval gs ms rows).map Row.canon) := by
+  have hvals : ∀ {grp : Relation}, (∀ m : Measure, m.TiesAgreeIn gs rows → m.TiesAgree grp) →
+      ∀ {vs : List Value}, Forall2 (fun m v => m.Allowed grp v) ms vs →
+        vs.map Value.canonV = (ms.map (·.eval grp)).map Value.canonV := by
+    intro grp hg vs hv
+    have : ∀ {ms' : List Measure}, (∀ m ∈ ms', m ∈ ms) → ∀ {vs : List Value},
+        Forall2 (fun m v => m.Allowed grp v) ms' vs →
+          vs.map Value.canonV = (ms'.map (·.eval grp)).map Value.canonV := by
+      intro ms' hsub vs hv
+      induction hv with
+      | nil => rfl
+      | cons hmv _ ih =>
+        simp only [List.map_cons, List.cons.injEq]
+        exact ⟨Measure.allowed_canon ((hms _ (hsub _ List.mem_cons_self)).imp_right
+          fun ⟨hs, ht⟩ => ⟨hs, hg _ ht⟩) hmv, ih fun m hm => hsub m (List.mem_cons_of_mem _ hm)⟩
+    exact this (fun m hm => hm) hv
+  unfold aggAllowed at h; unfold aggregateEval
+  split at h
+  · next hg =>
+    obtain ⟨vs, rfl, hv⟩ := h
+    simp only [hg, ite_true, List.map_cons, List.map_nil, Row.canon]
+    rw [hvals (fun m ht => by rw [List.isEmpty_iff.mp hg] at ht; exact ht.nil) hv]
+  · next hg =>
+    simp only [hg, Bool.false_eq_true, ite_false]
+    obtain ⟨ks, hks, h⟩ := h
+    let G : Row → Row := fun k => Row.canon (k ++ ms.map (·.eval (groupRows gs rows k)))
+    have hgr : ∀ k k' : Row, k.canon = k'.canon → groupRows gs rows k = groupRows gs rows k' :=
+      fun k k' he => by simp only [groupRows, he]
+    have hG : ∀ k k' : Row, k.canon = k'.canon → G k = G k' := fun k k' he => by
+      simp only [G, Row.canon_append, hgr k k' he]; rw [he]
+    have hout : ∀ {ks : List Row} {out : Relation}, Forall2 (fun k row => ∃ vs, row = k ++ vs ∧
+        Forall2 (fun m v => m.Allowed (groupRows gs rows k) v) ms vs) ks out →
+        out.map Row.canon = ks.map G := by
+      intro ks out h
+      induction h with
+      | nil => rfl
+      | cons hk _ ih =>
+        obtain ⟨vs, rfl, hv⟩ := hk
+        simp only [List.map_cons, ih, G, Row.canon_append, List.cons.injEq, and_true]
+        congr 1
+        exact hvals (fun m ht => ht.group _) hv
+    rw [hout h, List.map_map]
+    exact perm_map_of_perm_map (c := Row.canon) hG
+      (hks.map_perm (canonReps_isReps Row.leRaw_rawOrder _) (.refl _))
+
+/-- **A plan determined up to the class allows only `Rel.eval`'s rows up to
+row order and the member of each class** (D48). -/
+theorem Rel.allowed_canon_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
+    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
+    ∀ {r : Rel}, r.WF cat → r.detClass cat A F K = true → ∀ {out : Relation},
+      r.Allowed cat out → (out.map Row.canon).Perm ((r.eval cat).map Row.canon)
+  | .read _, _, _, _, h | .values _ _, _, _, _, h => h.map _
+  | .filter r c, hwf, hd, _, ⟨i, hi, rfl⟩ => by
+    simp only [detClass, Bool.and_eq_true, Bool.or_eq_true] at hd
+    rcases hd.2 with hdp | hcs
+    · exact ((allowed_perm_eval hcat hA hF hK hwf.1 hdp hi).filter _).map _
+    · have ih := allowed_canon_perm_eval hcat hA hF hK hwf.1 hd.1 hi
+      simp only [Rel.eval, filter_map_eq_filterMap]
+      exact perm_filterMap_of_perm_map (c := Row.canon) (fun x y hxy => by
+        rw [Expr.canonSafe_eval hxy c hcs, hxy]) ih
+  | .project r es, hwf, hd, _, ⟨i, hi, rfl⟩ => by
+    simp only [detClass, Bool.and_eq_true, Bool.or_eq_true] at hd
+    rcases hd.2 with hdp | hcs
+    · exact ((allowed_perm_eval hcat hA hF hK hwf.1 hdp hi).map _).map _
+    · have ih := allowed_canon_perm_eval hcat hA hF hK hwf.1 hd.1 hi
+      simp only [Rel.eval, List.map_map]
+      refine perm_map_of_perm_map (c := Row.canon) (fun x y hxy => ?_) ih
+      simp only [Function.comp_apply, Row.canon_append]
+      rw [hxy]; congr 1
+      simp only [Row.canon, List.map_map]
+      refine List.map_congr_left fun e he => ?_
+      have hc := List.all_eq_true.mp hcs e he
+      cases e with
+      | field j => exact getD_canonV_of_canon hxy j
+      | lit v => rfl
+      | _ => simp [Expr.classCongr] at hc
+  | .emit r m, hwf, hd, _, ⟨i, hi, rfl⟩ => by
+    simp only [detClass] at hd
+    have ih := allowed_canon_perm_eval hcat hA hF hK hwf.1 hd hi
+    simp only [Rel.eval, List.map_map]
+    refine perm_map_of_perm_map (c := Row.canon) (fun x y hxy => ?_) ih
+    simp only [Function.comp, Row.canon, List.map_map]
+    exact List.map_congr_left fun j _ => getD_canonV_of_canon hxy j
+  | .orderBy r keys, hwf, hd, _, ⟨i, hi, hp, _⟩ => by
+    simp only [detClass] at hd
+    exact (hp.map _).trans ((allowed_canon_perm_eval hcat hA hF hK hwf.1 hd hi).trans
+      ((List.mergeSort_perm _ _).symm.map _))
+  | .distinct r, hwf, hd, _, ⟨i, hi, d, hd', hp⟩ => by
+    simp only [detClass] at hd
+    exact (hp.map _).trans (hd'.map_perm (canonReps_isReps Row.leRaw_rawOrder _)
+      (allowed_canon_perm_eval hcat hA hF hK (r := r) hwf hd hi))
+  | .unionAll a b, hwf, hd, _, ⟨x, y, hx, hy, h⟩ => by
+    simp only [detClass, Bool.and_eq_true] at hd
+    simp only [Rel.eval]
+    exact (h.map _).trans (by
+      rw [List.map_append, List.map_append]
+      exact (allowed_canon_perm_eval hcat hA hF hK hwf.1 hd.1 hx).append
+        (allowed_canon_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy))
+  | .window r part sort fns, hwf, hd, _, ⟨i, hi, s, hs, hsort, o, h, ho⟩ => by
+    simp only [detClass, Bool.and_eq_true] at hd
+    have hp : s.Perm (r.eval cat) := hs.trans (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hi)
+    refine (h.map _).trans ?_
+    rw [windowRowsA_map_canon ho Row.canon fun _ _ h => h]
+    exact (Rel.window_perm_of_detAt hcat hA hF hK hwf.1 hd.2 hp hsort).map _
+  | .aggregate r gs ms, hwf, hd, _, ⟨i, hi, o, h, ho⟩ => by
+    simp only [detClass, Bool.and_eq_true, List.all_eq_true] at hd
+    obtain ⟨hdr, hof⟩ := hd
+    have hp := allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hdr hi
+    have hms : ∀ {rows : Relation}, rows.Perm (r.eval cat) → ∀ m ∈ ms,
+        m.orderFree = true ∨ (m.fn.sorts = true ∧ m.TiesAgreeIn gs rows) := fun hrows m hm => by
+      have := hof m hm
+      simp only [Measure.detIn, Bool.or_eq_true, Bool.and_eq_true] at this
+      exact this.imp_right fun h => ⟨h.1, Measure.tiesAgreeIn_of_tiesFixed hcat hA hF hK hwf.1 h.2 hrows⟩
+    exact (h.map _).trans ((aggAllowed_canon (hms hp) ho).trans
+      ((aggregateEval_perm_of (hms .rfl) hp).map _))
+  | .fetch _ _ _, hwf, hd, _, h | .cross _ _, hwf, hd, _, h | .join _ _ _ _, hwf, hd, _, h
+  | .semi _ _ _ _, hwf, hd, _, h | .unnest _ _, hwf, hd, _, h =>
+    (allowed_perm_eval hcat hA hF hK hwf (by simpa [detClass] using hd) h).map _
 
 /-- A rewrite to a plan without choices whose rows are the original's
 refines it up to the order of rows, whatever choices the original leaves. -/
@@ -358,6 +628,50 @@ theorem Row.EquivFrom.length_eq {q : Obs} {ctx : ObsCtx} :
   | _, _ :: _, _ :: _, ⟨_, t⟩ => by simp [Row.EquivFrom.length_eq t]
   | _, [], _ :: _, h | _, _ :: _, [], h => h.elim
 
+/-- **Contracts hold on a result near one of an order's.** On data meeting the
+preconditions, the postconditions `es` of the transformation `T`, selected by
+`mp`, hold on the rows `t`, when `t` is, under the observation `q` (rows as a
+multiset), the result `t'` of one of the reference's orders, the
+postconditions are `Expr.robustB` under `q` with the shifts `sh`, and the
+checker proves them narrowed by `sh` on every order (`contract_sound_all`).
+`contract_sound_allowed` takes `t` from `Rel.Allowed`, and an engine's run
+takes it from its table (`Engine.contract_sound_runs_near`). -/
+theorem contract_sound_near {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
+    {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
+    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
+    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
+    (hT : T.WF cat) {q : Obs} {ctx : ObsCtx} (hq : q.rows = .multiset) {sh : Nat → Option Shift}
+    (hsh : ∀ i s, sh i = some s → s.Sound q ctx i)
+    (hrob : ∀ j ∈ mp, (postExpr (T.arity cat) es j).robustB q ctx sh = true)
+    (hQ : (Rel.emit (.project T (es.map (·.narrow sh))) mp).WF cat) {W : WindowKeys}
+    (hW : W.SoundAll cat)
+    (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
+      (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
+        AVal.certainlyTrue = true)
+    {t t' : Relation} (ht' : T.OrderAllowed cat t') (heq : Relation.Equiv q ctx t' t) :
+    ∀ row ∈ (t.map fun row => row ++ es.map (·.eval row)).map (fun row => mp.map (row.getD · .null)),
+      ∀ v ∈ row, v = .bool true := by
+  intro row hrow v hv
+  unfold Relation.Equiv at heq; rw [hq] at heq
+  obtain ⟨p, hf, hpt⟩ := heq
+  -- The row of `T` it comes from, and its partner in an order's result.
+  simp only [List.map_map, List.mem_map, Function.comp] at hrow
+  obtain ⟨x, hx, rfl⟩ := hrow
+  obtain ⟨x', hx', hxx⟩ := Forall2.mem_right hf (hpt.mem_iff.mpr hx)
+  have hlen' : x'.length = T.arity cat := Rel.orderAllowed_arity hcat hT ht' x' hx'
+  have hlen : x.length = T.arity cat := (Row.EquivFrom.length_eq hxx).symm.trans hlen'
+  -- The narrowed postconditions hold on the partner (`contract_sound_all`).
+  have hall := contract_sound_all hcat hS hpre hQ hW hproved
+    (out := (t'.map fun row => row ++ (es.map (·.narrow sh)).map (·.eval row)).map
+      fun row => mp.map (row.getD · .null)) ⟨_, ⟨t', ht', rfl⟩, rfl⟩
+  obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hv
+  have h' := hall (mp.map ((x' ++ (es.map (·.narrow sh)).map (·.eval x')).getD · .null))
+    (List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨x', hx', rfl⟩, rfl⟩) _
+    (List.mem_map.mpr ⟨j, hj, rfl⟩)
+  rw [postExpr_eval hlen', postExpr_narrow] at h'
+  rw [postExpr_eval hlen, ← Value.isTrue_iff]
+  exact Expr.narrow_sound hsh _ (hrob j hj) hxx (Value.isTrue_iff.mpr h')
+
 /-- **Contracts hold on every allowed result.** On data meeting the
 preconditions, the postconditions `es` of the transformation `T`, selected
 by `mp`, hold on every result the reference allows (`Rel.Allowed`, every
@@ -383,27 +697,9 @@ theorem contract_sound_allowed {cat : Catalog} (hcat : cat.WF) {S : String → L
         AVal.certainlyTrue = true) :
     ∀ {out : Relation}, (Rel.emit (.project T es) mp).Allowed cat out →
       ∀ row ∈ out, ∀ v ∈ row, v = .bool true := by
-  rintro out ⟨_, ⟨t, ht, rfl⟩, rfl⟩ row hrow v hv
+  rintro out ⟨_, ⟨t, ht, rfl⟩, rfl⟩
   obtain ⟨t', ht', heq⟩ := hsafe t ht
-  unfold Relation.Equiv at heq; rw [hq] at heq
-  obtain ⟨p, hf, hpt⟩ := heq
-  -- The row of `T` it comes from, and its partner in an order's result.
-  simp only [List.map_map, List.mem_map, Function.comp] at hrow
-  obtain ⟨x, hx, rfl⟩ := hrow
-  obtain ⟨x', hx', hxx⟩ := Forall2.mem_right hf (hpt.mem_iff.mpr hx)
-  have hlen' : x'.length = T.arity cat := Rel.orderAllowed_arity hcat hT ht' x' hx'
-  have hlen : x.length = T.arity cat := (Row.EquivFrom.length_eq hxx).symm.trans hlen'
-  -- The narrowed postconditions hold on the partner (`contract_sound_all`).
-  have hall := contract_sound_all hcat hS hpre hQ hW hproved
-    (out := (t'.map fun row => row ++ (es.map (·.narrow sh)).map (·.eval row)).map
-      fun row => mp.map (row.getD · .null)) ⟨_, ⟨t', ht', rfl⟩, rfl⟩
-  obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hv
-  have h' := hall (mp.map ((x' ++ (es.map (·.narrow sh)).map (·.eval x')).getD · .null))
-    (List.mem_map.mpr ⟨_, List.mem_map.mpr ⟨x', hx', rfl⟩, rfl⟩) _
-    (List.mem_map.mpr ⟨j, hj, rfl⟩)
-  rw [postExpr_eval hlen', postExpr_narrow] at h'
-  rw [postExpr_eval hlen, ← Value.isTrue_iff]
-  exact Expr.narrow_sound hsh _ (hrob j hj) hxx (Value.isTrue_iff.mpr h')
+  exact contract_sound_near hcat hS hpre hT hq hsh hrob hQ hW hproved ht' heq
 
 /-- **Contracts hold on every allowed result of a closed plan** (D25): the
 side condition of `contract_sound_allowed` replaced by the decidable

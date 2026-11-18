@@ -51,6 +51,7 @@ the project's one axiom (the trusted table below).
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which nothing discharges yet where `transferB` fails (#929) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
@@ -95,6 +96,7 @@ place, and what retires it.
 | CLI glue | `"class_basis": "computed"`, `"sorted_basis": "computed"` | `SubstraitLean/Realize.lean` | The class and the sort per engine are computed from the rows; no theorem connects them to the engine's refinement | A theorem that does |
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `SubstraitLean/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
+| Python glue | `Report.check_inputs`, `Report._unchecked_requires` | `python/src/sverify/report.py` | On Polars (and Spark) a guard-free plan runs without its per-row guards, which rests on `check_inputs` deciding `Rel.polars_sound`'s `hpre` on the data: each `requires` is checked on the run's engine, a report read back with `Report.from_substrait` carries its preconditions as plans (`PlannedCondition`), and a run refuses a report with a precondition it holds no check for | A theorem that ties the checks to `hpre` |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
 | engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `engines/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
 | size hypothesis | `Rel.Small`, `Text.sizeCap` | `analysis/Sverify/Analysis/Contracts/Sound.lean`, `core/Sverify/Core/Text.lean` | Fewer than 2⁶² rows a window reads, strings under 2³² characters ([the size hypothesis](reference-semantics.md#overrides)) | |
@@ -213,14 +215,20 @@ place, and what retires it.
      `E.lower` of it;
   3. the runtime checks: the schema read against `E.table`, the session
      pinned to the profile, the engine's version against the tested rows;
-  4. the engine facts and replays behind each tested row of `Engine.Refines`,
-     and the claim that the engine runs its model (`Engine.Runs`): the engine's actual result is one its
-     table allows. `Engine.contract_sound_runs` carries the contract to that
+  4. the claim that the engine runs its model (`Engine.Runs`): the engine's
+     actual result is one its table allows. Its evidence is the engine facts
+     and replays behind each tested row of `Engine.Refines`, which the theorem
+     does not carry. `Engine.contract_sound_runs` carries the contract to that
      result where `transferB T Profile.reference.table E.table` holds; it
      fails at `sum_order`, `stat_algo`, `quantile_interp` and `zero_sign` on
      every engine, `null_order` without a preference on Polars and Spark, and
-     integer overflow on Polars; a tolerance form that covers them is
-     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
+     integer overflow on Polars. There `Engine.contract_sound_runs_near` takes
+     `Rel.FloatOpenSafeP` over the engine's table instead: every result the
+     table allows is, up to the plan's observation, one of the reference's
+     orders. Nothing discharges that hypothesis yet where `transferB` fails;
+     for a double `SUM` and `AVG` it is the tolerance bound
+     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929),
+     so the open-float form holds of no engine's run by proof today.
 
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside `Engine.Runs`. Raising only where the reference may is a separate claim

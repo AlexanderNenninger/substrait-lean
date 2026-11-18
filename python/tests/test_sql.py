@@ -810,3 +810,30 @@ def test_open_ties_write_no_row_ordinal():
         if not order:
             assert "ROW_NUMBER" not in open_
     assert "rowid" in to_sql(json.loads(to_substrait_json(t.limit(3))), DUCKDB)
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [
+        lambda t: t.order_by([t.v.desc(), t.id]).limit(3),
+        lambda t: t.order_by([t.v, t.id]).limit(2, offset=1),
+        lambda t: t.order_by([t.v.desc(), t.id]).limit(4).order_by(t.id.desc()).limit(2),
+    ],
+    ids=["desc then id", "offset", "sort of a limit"],
+)
+def test_order_by_limit_is_a_top_n(limit):
+    """`ORDER BY .. LIMIT n` is one sorted SELECT with a LIMIT, which DuckDB
+    runs as a top-N, and no `ROW_NUMBER` numbers the table before the limit
+    (#1608). The rows and their order are the reference's."""
+    t = ibis.table({"id": "int64", "v": "int64"}, name="t")
+    expr = limit(t)
+    rows = [(i, (i * 7) % 5) for i in range(1, 12)]
+    sql = to_sql(json.loads(to_substrait_json(expr)), DUCKDB)
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t(id BIGINT, v BIGINT)")
+    con.executemany("INSERT INTO t VALUES (?, ?)", rows)
+    assert "Top N" in con.execute("EXPLAIN " + sql).fetchall()[0][1]
+    want = ibis.duckdb.from_connection(con).execute(expr)
+    assert [tuple(r) for r in con.execute(sql).fetchall()] == [
+        tuple(r) for r in want.itertuples(index=False)
+    ]
