@@ -95,14 +95,14 @@ jobs:
     outputs:
       light: ${{ steps.pick.outputs.light }}
     steps:
-      - id: default
-        run: echo 'light="ubuntu-latest"' >> "$GITHUB_OUTPUT"
       - id: pick
         continue-on-error: true
         timeout-minutes: 4
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # GitHub's runners unless the loop below finds an AWS one.
+          echo 'light="ubuntu-latest"' >> "$GITHUB_OUTPUT"
           # `aws-probe` runs only for events of this repository (a fork's pull
           # request skips it: never on the AWS runners). Spot launch and boot
           # take about a minute; past 3 minutes the probe is still queued
