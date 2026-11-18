@@ -238,3 +238,22 @@ def test_a_scan_the_route_does_not_cover_depends_on_the_session(tmp_path):
     for spark in (_Connect(), _Classic("spark://cluster:7077")):
         with pytest.raises(Unsupported, match="N12"):
             _table(Con(), "t", spark)
+
+
+def test_a_scan_of_remote_files_reads_through_arrow_on_a_local_session(tmp_path):
+    from sverify_spark import _table
+
+    f = tmp_path / "a.parquet"
+    pq.write_table(pa.table({"id": [1, 2]}), f)
+    remote = Scan(("s3://bucket/a.parquet",), pa.schema([("id", pa.int64())]))
+
+    class Con:
+        def get(self, name):
+            return remote
+
+        _arrow = {"t": pa.table({"id": [1, 2]})}
+
+    remote.readable = lambda: True  # type: ignore[method-assign]
+    assert isinstance(_table(Con(), "t", _Classic("local[2]")), pa.Table)
+    with pytest.raises(Unsupported, match="N12"):
+        _table(Con(), "t", _Connect())

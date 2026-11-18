@@ -120,9 +120,9 @@ def _run(
 def _table(con: Any, name: str, spark: Any) -> Any:
     """Table `name` of the connection for Spark: a `Scan` of local files as it is
     (the session reads it, `sverify_spark.scan`) where this route covers it, any
-    other table as Arrow. A scan it does not cover (a `where`, which is DuckDB
-    SQL, or partition constants or a column mapping) reads through Arrow on a
-    session that shares the driver's filesystem, and is refused on a Spark
+    other table as Arrow. A scan it does not cover (a `where`, which is
+    DuckDB SQL, partition constants, a column mapping, or files that are not
+    local) reads through Arrow on a session that shares the driver's filesystem, and is refused on a Spark
     Connect or non-local-master session: the server-side read is N12 of #173."""
     from sverify._scan import Scan
     from sverify._unsupported import Unsupported
@@ -131,10 +131,14 @@ def _table(con: Any, name: str, spark: Any) -> Any:
     table = con.get(name)
     if not isinstance(table, Scan) or not table.readable():
         return con._arrow[name]
+    from sverify._scan import local_path
+
+    files = [*table.files, *(e.file for e in table.equality)]
     covered = (
         table.where is None
         and not getattr(table, "partitions", None)
         and not getattr(table, "physical", None)
+        and all(local_path(f) is not None for f in files)
     )
     if covered:
         return table
