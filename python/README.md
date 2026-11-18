@@ -100,9 +100,11 @@ and `sverify-spark` with their runtimes; either package alone
 writes its SQL without the runtime. Sverify finds every installed engine
 through its plugin (`sverify.profiles.ProfilePlugin`, the entry-point group
 `sverify.profiles`). Wheels bundle the checker as a small native binary for Linux (x86_64,
-aarch64) and macOS (arm64), Python 3.12 and later. Elsewhere (Windows, an Intel Mac) pip
-builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
-starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
+aarch64) and macOS (arm64), Python 3.12 and later. Elsewhere (Windows, an Intel Mac) the
+sdist's build stops with a message; use WSL2 or a Linux container, or set
+`SVERIFY_BUILD_FROM_SOURCE=1` to build from source, which needs
+[elan](https://github.com/leanprover/elan) and starts a full `lake build` of every generated Lean module,
+minutes of work that can load every core.
 Contributors with a built checker set `SVERIFY_PREBUILT_CHECKER=<path to substrait-check>`, and an editable install links it instead.
 
 ## In CI
