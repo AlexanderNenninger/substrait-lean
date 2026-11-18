@@ -143,8 +143,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         if rounding != "TRUNCATE":
             raise Unsupported(
                 f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
-                "model's casts (they truncate) cannot state yet; use semantics='reference', "
-                "or round() first"
+                "model's casts (they truncate) cannot state yet; use semantics='reference'"
             )
     if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
         raise SqlUnsupported(
