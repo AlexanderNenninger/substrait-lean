@@ -1486,9 +1486,12 @@ def _verify_once(
             semantics,
         ).to_expr()
 
-    req_conds = [
-        (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
-    ]
+    def planned(c: Condition) -> bool:
+        """A precondition that is a plan. A table condition is its own entry, and an
+        ASCII condition is declared to the checker (`"ascii"` below)."""
+        return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.ascii)
+
+    req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
 
     def query(where: str, n: int, table: Transform, c: Condition) -> Transform:
         """`condition_query`, with an Ibis error named by the condition it
@@ -1508,8 +1511,7 @@ def _verify_once(
     req_plans = []
     for t, cs in requires.items():
         for n, c in enumerate(cs, start=1):
-            # An ASCII condition is declared to the checker (`"ascii"` below), not a plan.
-            if not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.ascii):
+            if planned(c):
                 req_plans.append(plan(query(f"requires {t}", n, table_ref(t, c), c)))
     ens_plans = []
     for n, c in enumerate(ensures, start=1):
