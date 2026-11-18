@@ -1037,16 +1037,19 @@ refresh batch by batch and a recompute agree:
 
 - A row on which a row condition is FALSE or NULL (ranges, NOT NULL, value
   sets, inferred bounds).
-- Among the other rows, every row of a key that occurs more than once
-  (`sv.unique`, `sv.key`): both copies of a repeated `id`, the one the node
-  held before included. The rule needs no order between rows, so it gives the
+- Among the other rows, every row of a key that occurs on more than one
+  distinct row (`sv.unique`, `sv.key`): both rows of a repeated `id` with
+  different values, the one the node held before included. Rows identical in
+  every column count once: a redelivered duplicate of a kept row is set aside
+  beside it, and the kept row stays. The rule needs no order between rows, so it gives the
   same answer under every profile ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
 - `max_rows`, `arrives_within` and the other conditions on a table as a whole
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
 
 Every precondition holds on the rows kept: `Catalog.kept_sound` in
-[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule,
+[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule
+(on the snapshot with identical rows collapsed),
 so the node's contract (`contract_sound`, `Rel.keys_sound`) holds on what it
 reads. The batch checks then run on the kept rows as on any batch, and a row
 the rule let through by mistake would raise.
