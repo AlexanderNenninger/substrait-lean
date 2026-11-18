@@ -24,12 +24,17 @@ from sverify._unsupported import Unsupported
 if TYPE_CHECKING:
     from sverify._scan import EqualityDelete, Scan
 
-_FILE, _POS = "__sverify_file", "__sverify_pos"
+_FILE, _POS, _HIT = "__sverify_file", "__sverify_pos", "__sverify_hit"
 _FIELD_ID = b"PARQUET:field_id"
 
 
 def lazy_scan(scan: Scan) -> pl.LazyFrame:
-    """The scan's rows as a lazy frame in the dtypes of its Arrow schema."""
+    """The scan's rows as a lazy frame in the dtypes of its Arrow schema, in
+    the descriptor's file order. A scan with a `where` is refused: a source's
+    `where` is DuckDB SQL (`sverify.io._common.filter_rows`), which Polars's SQL
+    does not read alike."""
+    if scan.where is not None:
+        raise Unsupported(f"{scan.origin}: a `where` is DuckDB SQL, which Polars does not read")
     dtypes = pl.from_arrow(scan.schema.empty_table()).schema  # type: ignore[union-attr]
     if not scan.files:
         return pl.LazyFrame(schema=dtypes)
@@ -42,31 +47,29 @@ def lazy_scan(scan: Scan) -> pl.LazyFrame:
         ):
             deleted.setdefault(f, []).append(p)
     pieces = []
-    for names, files in _groups(scan):
-        plain = [f for f in files if f not in deleted]
-        if plain:
-            pieces.append(_read(plain, names, scan, dtypes))
-        for f in files:
-            if f in deleted:
-                pieces.append(_read([f], names, scan, dtypes, deleted[f]))
+    for names, files in _runs(scan, deleted):
+        if files[0] in deleted:
+            pieces.append(_read(files, names, scan, dtypes, deleted[files[0]]))
+        else:
+            pieces.append(_read(files, names, scan, dtypes))
     lf = pl.concat(pieces, how="vertical")
     for e in scan.equality:
         lf = _equality(lf, e, dtypes)
-    lf = lf.drop(_FILE)
-    return lf.filter(pl.sql_expr(scan.where)) if scan.where is not None else lf
+    return lf.drop(_FILE)
 
 
-def _groups(scan: Scan) -> list[tuple[dict[str, str], list[str]]]:
-    """The files by the renaming of their columns to the schema's, in file
-    order: `{physical name: logical name}` (field ids), identity by name."""
-    out: dict[tuple, list[str]] = {}
-    maps: dict[tuple, dict[str, str]] = {}
+def _runs(scan: Scan, deleted: dict[str, list[int]]) -> list[tuple[dict[str, str], list[str]]]:
+    """The files in the descriptor's order, in runs that one scan reads: files
+    named alike (`{physical name: logical name}`, by field id for Iceberg),
+    none with deleted positions, which are scanned alone."""
+    out: list[tuple[dict[str, str], list[str]]] = []
     for f in scan.files:
         names = _renaming(f, scan)
-        key = tuple(sorted(names.items()))
-        out.setdefault(key, []).append(f)
-        maps[key] = names
-    return [(maps[k], fs) for k, fs in out.items()]
+        if out and out[-1][0] == names and f not in deleted and out[-1][1][0] not in deleted:
+            out[-1][1].append(f)
+        else:
+            out.append((names, [f]))
+    return out
 
 
 def _renaming(file: str, scan: Scan) -> dict[str, str]:
@@ -97,21 +100,15 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
 
 
 def _same_family(have: pa.DataType, want: pa.DataType) -> bool:
-    """Types `widens` does not cover that Polars reads as the schema's: strings,
-    large strings, and the nested and temporal types (cast by Polars)."""
+    """The one conversion `widens` leaves out that Polars reads as the schema's:
+    between the string types (`string`, `large_string`, `string_view`, which
+    delta-rs writes)."""
     t = pa.types
-    return (
-        (t.is_string(have) or t.is_large_string(have))
-        and (t.is_string(want) or t.is_large_string(want))
-        or (
-            not t.is_integer(have)
-            and not t.is_floating(have)
-            and not t.is_decimal(have)
-            and not t.is_integer(want)
-            and not t.is_floating(want)
-            and not t.is_decimal(want)
-        )
-    )
+
+    def string(x: pa.DataType) -> bool:
+        return t.is_string(x) or t.is_large_string(x) or t.is_string_view(x)
+
+    return string(have) and string(want)
 
 
 def _read(
@@ -138,20 +135,19 @@ def _read(
 
 def _equality(lf: pl.LazyFrame, e: EqualityDelete, dtypes: pl.Schema) -> pl.LazyFrame:
     """Rows of `e.applies_to` that match a row of the delete file on `e.columns`
-    (NULLs equal) leave."""
+    (NULLs equal) leave; the order of the rows stays."""
     delete = (
         pl.scan_parquet(e.file)
         .rename(dict(zip(_physical(e), e.columns, strict=True)))
         .select([pl.col(c).cast(dtypes[c]) for c in e.columns])
+        .unique()
+        .with_columns(pl.lit(True).alias(_HIT))
     )
-    hit = pl.col(_FILE).is_in(list(e.applies_to))
-    return pl.concat(
-        [
-            lf.filter(hit).join(delete, on=list(e.columns), how="anti", nulls_equal=True),
-            lf.filter(~hit),
-        ],
-        how="vertical",
+    joined = lf.join(
+        delete, on=list(e.columns), how="left", nulls_equal=True, maintain_order="left"
     )
+    gone = pl.col(_FILE).is_in(list(e.applies_to)) & pl.col(_HIT).is_not_null()
+    return joined.filter(~gone).drop(_HIT)
 
 
 def _physical(e: EqualityDelete) -> list[str]:

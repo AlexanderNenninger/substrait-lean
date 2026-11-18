@@ -51,12 +51,12 @@ def _run(
 
 
 def _table(con: Any, name: str) -> Any:
-    """Table `name` of the connection for Polars: a `Scan` of local files as a
-    lazy scan (`sverify_polars.scan`), any other table as Arrow."""
+    """Table `name` of the connection for Polars: a `Scan` of local files without a
+    `where` as a lazy scan (`sverify_polars.scan`), any other table as Arrow."""
     from sverify._scan import Scan
 
     table = con.get(name)
-    if isinstance(table, Scan) and table.readable():
+    if isinstance(table, Scan) and table.readable() and table.where is None:
         from sverify_polars.scan import lazy_scan
 
         return lazy_scan(table)

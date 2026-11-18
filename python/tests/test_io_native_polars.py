@@ -41,6 +41,13 @@ def bag(t: pa.Table) -> Counter:
     )
 
 
+def ordered(t: pa.Table) -> list:
+    return [
+        tuple("nan" if isinstance(v, float) and v != v else v for v in r.values())
+        for r in t.to_pylist()
+    ]
+
+
 def agree(scan: Scan) -> None:
     """Polars's scan of `scan` and its ingestion of `scan.to_arrow()` give the same rows."""
     plan = plan_of(scan.schema)
@@ -48,6 +55,8 @@ def agree(scan: Scan) -> None:
     want = E.run(plan, {"t": scan.to_arrow()})
     assert got.schema.equals(want.schema)
     assert bag(got) == bag(want)
+    # The descriptor's file order, rows in the files' order, as DuckDB reads them.
+    assert ordered(lazy_scan(scan).collect().to_arrow()) == ordered(scan.to_arrow())
 
 
 @settings(
@@ -122,3 +131,34 @@ def test_a_narrower_integer_widens(tmp_path):
         2,
     ]
     assert isinstance(pl.scan_parquet(f), pl.LazyFrame)
+
+
+def test_a_string_column_is_not_read_as_a_date(tmp_path):
+    f = tmp_path / "a.parquet"
+    pq.write_table(pa.table({"d": pa.array(["2024-01-01"], pa.string())}), f)
+    for want in (pa.date32(), pa.timestamp("us"), pa.bool_()):
+        with pytest.raises(Unsupported, match="column 'd'"):
+            lazy_scan(Scan((str(f),), pa.schema([("d", want)])))
+    # large strings are the one extra pair
+    assert lazy_scan(Scan((str(f),), pa.schema([("d", pa.large_string())]))).collect().rows() == [
+        ("2024-01-01",)
+    ]
+
+
+def test_a_where_is_duckdb_sql_and_stays_on_the_arrow_route(tmp_path):
+    from sverify_polars import _table
+
+    f = tmp_path / "a.parquet"
+    pq.write_table(pa.table({"id": [1, 2, 3], "d": [None, 5, 7]}), f)
+    scan = Scan((str(f),), pa.schema([("id", pa.int64()), ("d", pa.int64())]), where="d > 4")
+    with pytest.raises(Unsupported, match="DuckDB SQL"):
+        lazy_scan(scan)
+
+    class Con:
+        def get(self, name):
+            return scan
+
+        _arrow = {"t": scan.to_arrow()}
+
+    got = _table(Con(), "t")
+    assert isinstance(got, pa.Table) and got.column("id").to_pylist() == [2, 3]
