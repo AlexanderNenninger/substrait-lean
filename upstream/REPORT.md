@@ -2,7 +2,7 @@
 
 <!-- Generated from `bugs/*.json` by `python -m sverify_dev.bugs --write`. -->
 
-Sverify's upstream ledger holds 88 entries ([README](README.md)). 32 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
+Sverify's upstream ledger holds 89 entries ([README](README.md)). 33 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
 
 ## To report
 
@@ -32,6 +32,7 @@ Sverify's upstream ledger holds 88 entries ([README](README.md)). 32 are bugs to
 | [IB-3](bugs/IB-3.json) | Ibis | DuckDB: `argmin` and `argmax` of a group whose keys are all NULL return a value | ibis-framework 12.0.0, ibis main 6d40f963, duckdb 2.0.0 (2026-11-07) |
 | [IB-4](bugs/IB-4.json) | Ibis | A negative `following` or `preceding` writes `-1 following`, which DuckDB refuses | ibis-framework 12.0.0, ibis main 6d40f963, duckdb 2.0.0 (2026-11-07) |
 | [DL-2](bugs/DL-2.json) | delta-rs | `history()` after `load_as_version` lists the latest commits, numbered from the loaded version | deltalake 1.6.6, delta-rs main ca279b73 (2026-11-07) |
+| [DL-3](bugs/DL-3.json) | delta-rs | `DeltaTable.to_pyarrow_table()` and `to_pyarrow_dataset()` read every column of a column-mapped table as NULL | deltalake 1.6.6, pyarrow 26.0.1 (2026-11-18) |
 | [DF-15](bugs/DF-15.json) | DataFusion | Grouped `MIN` of `+inf` values is `f64::MAX`, and grouped `MAX` skips a NaN that ungrouped `MAX` returns | datafusion 55.0.0 (2026-11-08) |
 | [DF-17](bugs/DF-17.json) | DataFusion | `date_trunc` to a month fails on a microsecond timestamp outside ±2⁶³ ns | datafusion 55.0.0 (2026-11-08) |
 | [DF-19](bugs/DF-19.json) | DataFusion | The Substrait consumer takes an equality of two columns of one join input for a join key | datafusion 55.0.0 (2026-11-08) |
@@ -62,10 +63,10 @@ An open upstream issue covers these; the case is worth a comment there.
 | Spark | 5 | 2 | 0 | 0 | 0 | 0 | 0 | 7 |
 | SQLGlot | 2 | 0 | 7 | 0 | 1 | 0 | 0 | 10 |
 | Ibis | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
-| delta-rs | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 2 |
+| delta-rs | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 3 |
 | DataFusion | 5 | 5 | 6 | 3 | 5 | 0 | 1 | 25 |
 | Substrait | 3 | 0 | 0 | 0 | 0 | 14 | 0 | 17 |
-| total | 32 | 11 | 15 | 5 | 10 | 14 | 1 | 88 |
+| total | 33 | 11 | 15 | 5 | 10 | 14 | 1 | 89 |
 
 The classes:
 
