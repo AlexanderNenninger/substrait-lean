@@ -71,6 +71,7 @@ import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from sverify._plan_read import SUBSTR_MAX
 from sverify.sql.core import Dec, Dialect, GuardIssue, Kind, Lst, Unsupported, _timestamp_text
@@ -400,6 +401,14 @@ class SnowflakeDialect(Dialect):
 
     def regex_search(self, s: str, pattern: str) -> str:
         return f"(REGEXP_INSTR({s}, {self.str_lit(pattern)}) > 0)"
+
+    def case_differs(self, s: str, which: Literal["upper", "lower"]) -> str:
+        # Snowflake's case mapping is recorded privately; until its table is, `UPPER` and
+        # `LOWER` of anything but a literal are refused (D51).
+        raise self.to_duckdb(
+            f"the snowflake writer does not run {which.upper()} on non-literal text yet: "
+            "Snowflake's case mapping is recorded privately (D51)"
+        )
 
     # Logic
 

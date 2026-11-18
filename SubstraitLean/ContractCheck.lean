@@ -38,10 +38,11 @@ Input (JSON):
       -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
       -- get their error bounds from them (#85)
   "rows_per": {"<table>": [[[<col>, ...], <n>], ...]},
-  "ascii": {"<table>": {"<col>": "ascii" | "plain"}} }
-      -- text columns declared ASCII (`plain`: without a vertical tab either),
-      -- as trusted as the schema's nullability; `Issue.nonAscii` is ruled out
-      -- where every text operand is (`AVal.ascii`, D43)
+  "ascii": {"<table>": {"<col>": <fact> | [<fact>, ...]}, <fact> = "ascii" | "plain" | "upper" | "lower"} }
+      -- text columns declared ASCII (`plain`: without a vertical tab either) or
+      -- free of the scalars `UPPER` (`upper`) or `LOWER` (`lower`) raise on, as trusted as
+      -- the schema's nullability; `Issue.nonAscii` and `Issue.caseDiffers` are ruled out
+      -- where every text operand is (`AVal.ascii`, `AVal.upper`, D43, D51)
       -- at most <n> rows per value of the columns (`sv.rows_per`, `RowsPer`):
       -- an aggregate grouping by them has groups of at most <n> rows, which
       -- bound its integer and decimal `SUM`s (`Rel.issuesCapped_sound`)
@@ -225,15 +226,15 @@ def needNe (n : String × Nat × Int) : Json :=
 def needNotNull (n : String × Nat) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2), ("not_null", Lean.toJson true)]
 
-/-- A text column of `table` that must be ASCII, without a vertical tab if `plain`. -/
-def needAscii (n : String × Nat × Bool) : Json :=
+/-- A text column of `table` that must satisfy a `TextNeed` (`ascii`, `plain`, `upper`, `lower`). -/
+def needText (n : String × Nat × Infer.TextNeed) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
-    ("ascii", Json.str (if n.2.2 then "plain" else "ascii"))]
+    ("ascii", Json.str n.2.2.name)]
 
 def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
   Json.mkObj [("needs",
       Json.arr (b.needs.map need ++ b.nes.map needNe ++ b.notNull.map needNotNull ++
-        b.ascii.map needAscii).toArray),
+        b.text.map needText).toArray),
     ("split", Lean.toJson b.split),
     ("why", match b.why with | some w => Lean.toJson w | none => .null)]
 
@@ -337,7 +338,7 @@ structure Report where
   /-- The base-table columns `bounds` need not NULL (a divisor's `COUNT`). -/
   inferredNotNull : List (String × Nat) := []
   /-- The base-table text columns `bounds` need ASCII (D43). -/
-  inferredAscii : List (String × Nat × Bool) := []
+  inferredText : List (String × Nat × Infer.TextNeed) := []
   /-- Predicates the transformation implies on its base tables (#81): for
   each table, abstract rows (as column bounds) one of which every row that
   reaches the output lies in (`Rel.need`, `Rel.need_eval`). -/
@@ -441,7 +442,7 @@ def Report.json (r : Report) : Json :=
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
     ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe ++
-      r.inferredNotNull.map needNotNull ++ r.inferredAscii.map needAscii).toArray),
+      r.inferredNotNull.map needNotNull ++ r.inferredText.map needText).toArray),
     ("implied", Json.arr (r.implied.map fun (t, Es) =>
       Json.mkObj [("table", Lean.toJson t), ("any", Json.arr (Es.map fun E =>
         Json.arr (E.map fun (j, b) => need (t, j, b)).toArray).toArray)]).toArray),
@@ -873,15 +874,22 @@ def ensures : List Plan := match R.transform with
 /-- Each table's declared schema, as abstract values. -/
 def schemas (t : String) : List AVal :=
   let declared := (R.input.getObjVal? "ascii").toOption.bind (·.getObjVal? t |>.toOption)
-  let flag (i : Nat) : Option String :=
-    declared.bind fun d => (d.getObjValAs? String (toString i)).toOption
+  -- A column's facts: one name, or a list of them.
+  let flags (i : Nat) : List String :=
+    match declared.bind fun d => (d.getObjVal? (toString i)).toOption with
+    | some (.str k) => [k]
+    | some (.arr ks) => ks.toList.filterMap fun | .str k => some k | _ => none
+    | _ => []
   match R.tables.lookup t with
   | some (_, s) => (schemaEnv s).zipIdx.map fun (a, i) =>
-    -- A text column declared ASCII (D43), as trusted as its nullability.
-    if !a.str then a else match flag i with
-      | some "plain" => { a with ascii := true, plain := true }
-      | some "ascii" => { a with ascii := true }
-      | _ => a
+    -- A text column declared ASCII, `plain`, `upper` or `lower` (D43, D51), as trusted as
+    -- its nullability.
+    if !a.str then a else (flags i).foldl (fun a k => match k with
+      | "plain" => { a with ascii := true, plain := true }
+      | "ascii" => { a with ascii := true }
+      | "upper" => { a with upper := true }
+      | "lower" => { a with lower := true }
+      | _ => a) a
   | none => []
 
 def preOf (t : String) : List Expr := (R.pre.filter (·.1 == t)).flatMap (·.2)
@@ -1335,8 +1343,8 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     inferredNotNull :=
       Infer.mergedNotNull (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
-    inferredAscii :=
-      Infer.mergedAscii (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
+    inferredText :=
+      Infer.mergedText (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree
     constant
     underAndOr := issuesUnderAndOr transform issues

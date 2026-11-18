@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, ClassVar, Literal
 
-from sverify import _decimals, _functions, _plan_read, _support, black_box
+from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
 from sverify._unsupported import Unsupported as _Unsupported
@@ -57,6 +57,7 @@ GuardIssue = Literal[
     "raised",
     "infinite",
     "nonAscii",
+    "caseDiffers",
     "quantilePosition",
 ]
 
@@ -686,6 +687,12 @@ class Dialect:
         Regular expressions are black boxes in Lean; each engine has its
         own dialect, which agrees with Rust's on simple patterns."""
         raise self.not_written("regular expressions")
+
+    def case_differs(self, s: str, which: Literal["upper", "lower"]) -> str:
+        """Does `s` hold a scalar of `which`'s raise set (D51)? The one predicate of the
+        writers' guard (`_Writer.case_only`) and, negated, of the inferred precondition
+        `Report.check_inputs` checks."""
+        return self.regex_search(s, case_class(which))
 
     def regex_extract(self, s: str, pattern: str, group: int) -> str:
         """`UnFn.regexExtract` (#50): group `group` of the first match of the
@@ -5193,6 +5200,17 @@ class _Writer:
         fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "nonAscii")
         return d.case_when(f"(NOT {ascii_text(d, x, classes)})", fail, value)
 
+    def case_only(self, x: str, value: str, which: Literal["upper", "lower"]) -> str:
+        """`value`, the engine's `UPPER` or `LOWER` of the string `x` (`which`), where the
+        engines agree: an error on a scalar they map differently (`Issue.caseDiffers`,
+        D51). The report lists the issue, and a plan whose text is declared free of
+        those scalars (or ASCII) has it proved away."""
+        d = self.d
+        fail = d.raise_(
+            f"{which.upper()} of a scalar the engines map differently", x, "str", "caseDiffers"
+        )
+        return d.case_when(d.case_differs(x, which), fail, value)
+
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
     ) -> str:
@@ -5359,6 +5377,30 @@ def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
         return plain
     # No ESCAPE clause: the pattern has no backslash, and the SQL lift reads the form without one.
     return f"({plain} AND NOT ({x} LIKE {d.str_lit(VERTICAL_TAB_PATTERN)}))"
+
+
+def case_class(which: Literal["upper", "lower"]) -> str:
+    """The regular expression class of the scalars `UPPER` (`which`) raises on
+    (`_case_tables`, D51), as code points, in the syntax RE2, Java's `Pattern` and Rust's
+    `regex` share: `[\\x{DF}\\x{149}-\\x{14A}…]`."""
+    runs: list[list[int]] = []
+    for c in _case_tables.raise_set(which):
+        if runs and runs[-1][1] + 1 == c:
+            runs[-1][1] = c
+        else:
+            runs.append([c, c])
+    return "[" + "".join(_class_run(lo, hi) for lo, hi in runs) + "]"
+
+
+def case_raises(text: str, which: Literal["upper", "lower"]) -> bool:
+    """Does `text` hold a scalar of `which`'s raise set (`Text.upperRaises`, `lowerRaises`)?"""
+    raised = frozenset(_case_tables.raise_set(which))
+    return any(ord(c) in raised for c in text)
+
+
+def _class_run(lo: int, hi: int) -> str:
+    one = f"\\x{{{lo:X}}}"
+    return one if lo == hi else f"{one}-\\x{{{hi:X}}}"
 
 
 def like_pattern(p: str) -> str:

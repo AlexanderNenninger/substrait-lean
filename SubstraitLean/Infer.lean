@@ -43,6 +43,17 @@ open FloatCode (minI64 maxI64)
 /-- Columns of a relation's input and the ranges they must stay in. -/
 abbrev Cols := List (Nat × Bound)
 
+/-- What a text column must satisfy for a text issue not to arise: the condition of the
+declared column facts (`AVal.ascii`, `plain`, `upper`, `lower`). `plain` implies
+`ascii`, which implies `upper` and `lower` (`AVal.upperOk`). -/
+inductive TextNeed
+  | ascii | plain | upper | lower
+  deriving BEq, Repr
+
+/-- The condition's name in the checker's JSON, as the request's declared facts. -/
+def TextNeed.name : TextNeed → String
+  | .ascii => "ascii" | .plain => "plain" | .upper => "upper" | .lower => "lower"
+
 structure Found where
   cols : Cols := []
   /-- An arbitrary choice was made (two unbounded operands). -/
@@ -61,9 +72,9 @@ structure Bounds where
   why : Option String := none
   /-- Base-table columns that must not be NULL (a divisor's `COUNT` of them). -/
   notNull : List (String × Nat) := []
-  /-- Base-table text columns that must be ASCII (`plain`: without a vertical
-  tab either) for a `nonAscii` issue not to arise (D43). -/
-  ascii : List (String × Nat × Bool) := []
+  /-- Base-table text columns that must hold the `TextNeed` for a `nonAscii` or
+  `caseDiffers` issue not to arise (D43, D51). -/
+  text : List (String × Nat × TextNeed) := []
 
 def Found.append (a b : Found) : Found := ⟨a.cols ++ b.cols, a.split || b.split, a.nes ++ b.nes⟩
 
@@ -442,22 +453,36 @@ def textOperands : Expr → List Expr
   | .bin _ a b => [a, b]
   | _ => []
 
-/-- What keeps an issue `nonAscii` away: the base-table columns behind its
-text operands must be ASCII; a literal operand needs nothing if it is ASCII. -/
-def asciiNeeds (cat : Catalog) (env : List AVal) (r : Rel) (e : Expr) : Bounds :=
-  let plain := classRegex e
-  let step := fun (acc : Except String (List (String × Nat × Bool))) (x : Expr) => do
+/-- What keeps a text issue away (`nonAscii`, D43; `caseDiffers`, D51): the base-table
+columns behind its text operands must satisfy the function's `TextNeed`; a literal
+operand needs nothing if it satisfies it. -/
+def textNeeds (cat : Catalog) (env : List AVal) (r : Rel) (e : Expr) : Bounds :=
+  let need : TextNeed := match e with
+    | .un .upper _ => .upper
+    | .un .lower _ => .lower
+    | e => if classRegex e then .plain else .ascii
+  let literalOk (s : String) : Bool := match need with
+    | .plain => Text.isPlain s
+    | .ascii => Text.isAscii s
+    | .upper => !Text.upperRaises s
+    | .lower => !Text.lowerRaises s
+  let columnOk (a : AVal) : Bool := match need with
+    | .plain => a.plainOk
+    | .ascii => a.asciiOk
+    | .upper => a.upperOk
+    | .lower => a.lowerOk
+  let step := fun (acc : Except String (List (String × Nat × TextNeed))) (x : Expr) => do
     let out ← acc
     match x with
     | .lit (.str s) =>
-      if (if plain then Text.isPlain s else Text.isAscii s) then pure out
-      else throw "it reads a literal that is not ASCII"
+      if literalOk s then pure out
+      else throw "it reads a literal that the text function treats differently on engines"
     | .field j =>
-      if (if plain then (env.getD j AVal.top).plainOk else (env.getD j AVal.top).asciiOk) then pure out
-      else pure (out ++ (← pullText cat r j).map fun (t, c) => (t, c, plain))
+      if columnOk (env.getD j AVal.top) then pure out
+      else pure (out ++ (← pullText cat r j).map fun (t, c) => (t, c, need))
     | _ => throw "it reads computed text, which the inference does not look into"
   match (textOperands e).foldl step (pure []) with
-  | .ok out => { ascii := out }
+  | .ok out => { text := out }
   | .error why => { why := some why }
 
 /-- What keeps column `i` of `r` from holding `k` (`Pulled`). -/
@@ -533,7 +558,7 @@ def onRows (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
   let env := r.aeval cat A F T true
   let fs := r.facts cat F T
   (e.mayIssues env fs).map fun ie =>
-    (ie.1, ie.2, if ie.1 == .nonAscii then asciiNeeds cat env r ie.2 else
+    (ie.1, ie.2, if ie.1 == .nonAscii || ie.1 == .caseDiffers then textNeeds cat env r ie.2 else
       match atIssue env fs ie with
       | .ok f => pullAll cat A F T r f
       | .error why => { why := some why })
@@ -636,13 +661,17 @@ exact bounds. -/
 def mergedNotNull (bs : List (Issue × Expr × Bounds)) : List (String × Nat) :=
   (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.notNull).flatten.eraseDups
 
-/-- The base-table text columns that must be ASCII, for the issues that have
-exact bounds; a column an issue needs without a vertical tab keeps that
-(`plain` implies ASCII). -/
-def mergedAscii (bs : List (Issue × Expr × Bounds)) : List (String × Nat × Bool) :=
-  let all := (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.ascii).flatten
-  (all.map fun (t, c, _) => (t, c)).eraseDups.map fun (t, c) =>
-    (t, c, all.any fun (t', c', p) => t' == t && c' == c && p)
+/-- The base-table text columns that must satisfy a `TextNeed`, for the issues that have
+exact bounds. A column keeps its strongest need: `plain` over `ascii` over the
+function-specific `upper` and `lower` (`ascii` implies both), and those two both
+if both are needed. -/
+def mergedText (bs : List (Issue × Expr × Bounds)) : List (String × Nat × TextNeed) :=
+  let all := (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.text).flatten
+  (all.map fun (t, c, _) => (t, c)).eraseDups.flatMap fun (t, c) =>
+    let ks := all.filterMap fun (t', c', k) => if t' == t && c' == c then some k else none
+    if ks.contains .plain then [(t, c, .plain)]
+    else if ks.contains .ascii then [(t, c, .ascii)]
+    else ([TextNeed.upper, .lower].filter ks.contains).map (t, c, ·)
 
 /-- The values each base-table column must not hold, for the issues that
 have exact bounds. -/

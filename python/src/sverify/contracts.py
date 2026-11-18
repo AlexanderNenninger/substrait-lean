@@ -77,7 +77,7 @@ from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import ibis
 import ibis.expr.operations as ops
@@ -110,6 +110,7 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     RelationRows,
     RowsPer,
     TableCondition,
+    TextFact,
     Unique,
     _check_approx,
     _count,
@@ -516,25 +517,29 @@ def _not_null_condition(col: str) -> Inferred:
     return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
 
 
-def _ascii_condition(col: str, classes: bool = False) -> Inferred:
-    """`col` holds ASCII text (NULL passes): the precondition under which the
-    black boxes `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii` and
-    `levenshtein` agree across engines (#1506). With `classes` (a regular
-    expression with `\\w`, `\\d`, `\\s` or `\\b`), no vertical tab either:
-    `Text.classesDiffer`. Its SQL is the writers' guard (`ascii_text`) in the
-    default engine's dialect, the one the data is checked on; its Ibis form is
-    one regular expression with the same characters."""
+def _text_condition(col: str, fact: TextFact) -> Inferred:
+    """`col` holds text of the declared `fact` (NULL passes): `"ascii"`, the precondition
+    under which `ILIKE`, `reverse`, `ascii` and `levenshtein` agree across engines
+    (#1506); `"plain"` for a regular expression with `\\w`, `\\d`, `\\s` or `\\b`, no
+    vertical tab either (`Text.classesDiffer`); `"upper"` and `"lower"`, no scalar the
+    engines' `UPPER` or `LOWER` map differently (`Text.upperRaises`, `lowerRaises`, D51).
+    Its SQL is the writers' guard in the default engine's dialect, the one the data is
+    checked on; its Ibis form is one regular expression with the same characters."""
     from sverify import _engines, profiles
-    from sverify.sql.core import ascii_text
+    from sverify.sql.core import ascii_text, case_class
 
     dialect = profiles.plugins()[_engines.default()].dialect
     assert dialect is not None
     sql = '"' + col.replace('"', '""') + '"'
-    plain = ascii_text(dialect(), sql, classes)
     ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    bad = r"[^\x00-\x7f]|\x0b" if classes else r"[^\x00-\x7f]"
-    out = Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
-    out.ascii = "plain" if classes else "ascii"
+    if fact in ("upper", "lower"):
+        bad = case_class(fact)
+        cond = f"NOT {dialect().case_differs(sql, fact)}"
+    else:
+        bad = r"[^\x00-\x7f]|\x0b" if fact == "plain" else r"[^\x00-\x7f]"
+        cond = ascii_text(dialect(), sql, fact == "plain")
+    out = Inferred(f"{sql} IS NULL OR {cond}", f"(~{ref}.re_search({bad!r}))")
+    out.fact = fact
     return out
 
 
@@ -544,25 +549,34 @@ def _squeeze(code: str) -> str:
     return code[1:-1] if code.startswith("(") and code.endswith(")") else code
 
 
-def _declared_ascii(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, str]:
-    """The text columns `conds` declare ASCII (`"ascii"`) or plain (`"plain"`),
-    by column position, for the request (#1506): the inferred condition, or
-    the user's own copy of its Ibis code (`_ascii_condition`'s `text`)."""
-    out: dict[str, str] = {}
+def _declared_text(
+    columns: Sequence[str], conds: Sequence[Condition]
+) -> dict[str, str | list[str]]:
+    """The facts `conds` declare about the text columns, by column position, for the
+    request (#1506, D51): the inferred conditions', or those of the user's own copy of
+    their Ibis code (`_text_condition`'s `text`). A column keeps its strongest fact:
+    `"plain"` over `"ascii"` over `"upper"` and `"lower"` (ASCII implies both)."""
+    found: dict[str, set[str]] = {}
     for c in conds:
         if isinstance(c, TableCondition):
             continue
         if isinstance(c, Inferred):
-            if c.ascii and c.column is not None and c.column in columns:
-                out[str(list(columns).index(c.column))] = c.ascii
+            if c.fact and c.column is not None and c.column in columns:
+                found.setdefault(str(list(columns).index(c.column)), set()).add(c.fact)
             continue
         shown = _squeeze(label(c))
         for col in columns:
-            for classes in (False, True):
-                if shown == _squeeze(_ascii_condition(col, classes).text):
-                    kind = "plain" if classes else "ascii"
-                    pos = str(list(columns).index(col))
-                    out[pos] = "plain" if out.get(pos) == "plain" else kind
+            for fact in get_args(TextFact):
+                if shown == _squeeze(_text_condition(col, fact).text):
+                    found.setdefault(str(list(columns).index(col)), set()).add(fact)
+    out: dict[str, str | list[str]] = {}
+    for pos, facts in found.items():
+        for strongest in ("plain", "ascii"):
+            if strongest in facts:
+                out[pos] = strongest
+                break
+        else:
+            out[pos] = sorted(facts)[0] if len(facts) == 1 else sorted(facts)
     return out
 
 
@@ -591,7 +605,7 @@ def _render_needs(
         col = list(schema)[n["col"]]
         have = out.setdefault(n["table"], [])
         if "ascii" in n:
-            new = [_ascii_condition(col, n["ascii"] == "plain")]
+            new = [_text_condition(col, n["ascii"])]
         elif n.get("not_null"):
             new = [_not_null_condition(col)] if schema[col].nullable else []
         elif "ne" in n:
@@ -1537,7 +1551,7 @@ def _verify_once(
     def planned(c: Condition) -> bool:
         """A precondition that is a plan. A table condition is its own entry, and an
         ASCII condition is declared to the checker (`"ascii"` below)."""
-        return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.ascii)
+        return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.fact)
 
     req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
 
@@ -1599,7 +1613,7 @@ def _verify_once(
         "references": foreign_keys,
         "max_rows": caps,
         "rows_per": per_key,
-        "ascii": {t: _declared_ascii(names(t), cs) for t, cs in requires.items()},
+        "ascii": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 
     if observed is not None:

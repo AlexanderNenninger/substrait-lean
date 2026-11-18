@@ -145,13 +145,20 @@ def AVal.asciiOk (a : AVal) : Bool := a.ascii || a.plain || !a.str
 /-- Is every string `a` describes ASCII without a vertical tab? -/
 def AVal.plainOk (a : AVal) : Bool := a.plain || !a.str
 
+/-- Does no string `a` describes hold a scalar of `UPPER`'s raise set (`Issue.caseDiffers`,
+D51)? ASCII text has none. -/
+def AVal.upperOk (a : AVal) : Bool := a.upper || a.asciiOk
+
+/-- As `upperOk`, for `LOWER`. -/
+def AVal.lowerOk (a : AVal) : Bool := a.lower || a.asciiOk
+
 omit [Boxes.Ambient] in
 theorem AVal.isAscii_of_asciiOk {a : AVal} {s : String} (h : a.Mem (.str s))
     (ho : a.asciiOk = true) : Text.isAscii s = true := by
   simp only [AVal.Mem, AVal.MemR] at h
   simp only [AVal.asciiOk] at ho
   cases hx : a.ascii <;> cases hy : a.plain <;> cases hz : a.str <;>
-    simp_all [Text.isPlain]
+    simp_all [AVal.textOk, Text.isPlain]
 
 omit [Boxes.Ambient] in
 theorem AVal.isPlain_of_plainOk {a : AVal} {s : String} (h : a.Mem (.str s))
@@ -159,7 +166,25 @@ theorem AVal.isPlain_of_plainOk {a : AVal} {s : String} (h : a.Mem (.str s))
   simp only [AVal.Mem, AVal.MemR] at h
   simp only [AVal.plainOk] at ho
   cases hx : a.ascii <;> cases hy : a.plain <;> cases hz : a.str <;>
-    simp_all [Text.isPlain]
+    simp_all [AVal.textOk, Text.isPlain]
+
+omit [Boxes.Ambient] in
+theorem AVal.not_upperRaises_of_upperOk {a : AVal} {s : String} (h : a.Mem (.str s))
+    (ho : a.upperOk = true) : Text.upperRaises s = false := by
+  simp only [AVal.upperOk, Bool.or_eq_true] at ho
+  rcases ho with ho | ho
+  · simp only [AVal.Mem, AVal.MemR, AVal.textOk, ho, Bool.and_eq_true] at h
+    simpa using h.2.1.2
+  · exact Text.upperRaises_of_isAscii (AVal.isAscii_of_asciiOk h ho)
+
+omit [Boxes.Ambient] in
+theorem AVal.not_lowerRaises_of_lowerOk {a : AVal} {s : String} (h : a.Mem (.str s))
+    (ho : a.lowerOk = true) : Text.lowerRaises s = false := by
+  simp only [AVal.lowerOk, Bool.or_eq_true] at ho
+  rcases ho with ho | ho
+  · simp only [AVal.Mem, AVal.MemR, AVal.textOk, ho, Bool.and_eq_true] at h
+    simpa using h.2.2
+  · exact Text.lowerRaises_of_isAscii (AVal.isAscii_of_asciiOk h ho)
 
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.within minI64 maxI64 then [] else [.wraps]
@@ -171,8 +196,9 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
       (if !Text.regexClasses p.toList || aa.plainOk then [] else [.nonAscii])
   | .regexExtract p _, aa, _ | .regexReplace p _ _, aa, _ =>
     if !Text.regexClasses p.toList || aa.plainOk then [] else [.nonAscii]
-  | .upper, aa, _ | .lower, aa, _ | .reverse, aa, _ | .ascii, aa, _ =>
-    if aa.asciiOk then [] else [.nonAscii]
+  | .upper, aa, _ => if aa.upperOk then [] else [.caseDiffers]
+  | .lower, aa, _ => if aa.lowerOk then [] else [.caseDiffers]
+  | .reverse, aa, _ | .ascii, aa, _ => if aa.asciiOk then [] else [.nonAscii]
   | .dateTrunc u, aa, ar =>
     if u.calendar then (if tsFits aa ar then [] else [.overflow])
     else if ar.within minI64 maxI64 then [] else [.wraps]
@@ -1002,7 +1028,27 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
         · have := Text.classesDiffer_of_isPlain p (AVal.isPlain_of_plainOk ha hok)
           simp_all
       · simp
-  case upper | lower | reverse | ascii =>
+  case upper =>
+    cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+    rename_i s
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i hn
+    simp only [UnFn.mayIssue]
+    split
+    · rename_i hok
+      exact absurd hn (by rw [AVal.not_upperRaises_of_upperOk ha hok]; simp)
+    · simp
+  case lower =>
+    cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+    rename_i s
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i hn
+    simp only [UnFn.mayIssue]
+    split
+    · rename_i hok
+      exact absurd hn (by rw [AVal.not_lowerRaises_of_lowerOk ha hok]; simp)
+    · simp
+  case reverse | ascii =>
     cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
     rename_i s
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
