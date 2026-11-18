@@ -121,10 +121,24 @@ def _one_of(mem: str, *stream: str) -> Callable[[str, str], bool]:
     return lambda m, s: m == mem and s in stream
 
 
+def _zero_sign(mem: str, stream: str) -> bool:
+    """`s-zero-sign-literal`: the in-memory counts and the 6000-row streaming
+    counts are fixed (the literal kernels' shortcuts); the 4-row streaming counts
+    follow how many one-row morsels the machine's threads make (polars-zero-sign-streaming:
+    10 cores give 0, 0, 2, 0, a runner with fewer give 2, 2, 2, 2), so each is
+    between 0 (IEEE) and 2 (the shortcut)."""
+    # Both columns hold the same observation: the probe collects both engines itself.
+    return mem == stream and (
+        (m := ast.literal_eval(mem))["in-memory 4"] == [2] * 4
+        and m["in-memory 6000"] == m["streaming 6000"] == [3000] * 4
+        and all(0 <= n <= 2 for n in m["streaming 4"])
+    )
+
+
 #: Observations whose result varies from run to run, and the property each
 #: keeps (of the in-memory and the streaming result). Scheduling decides the
 #: order of a float sum's partials (on a few rows, each row may be a morsel of
-#: its own), of a sort's ties and of the groups.
+#: its own), of a sort's ties and of the groups, and the machine's thread count.
 VARYING: dict[str, Callable[[str, str], bool]] = {
     "s-fsum-runs": _runs,
     "s-group-fsum-runs": _runs,
@@ -137,9 +151,15 @@ VARYING: dict[str, Callable[[str, str], bool]] = {
     "s-group-fsum-f32": _one_of("16777218.0", "16777216.0", "16777218.0"),
     "s-group-mean-cancel": _one_of("0.5", "0.0", "0.25", "0.5"),
     "s-group-var": lambda m, s: m == "1.6666666666666667" and abs(float(s) - float(m)) < 1e-8,
-    # Which tied row `arg_min` picks on streaming depends on the morsels.
+    "s-zero-sign-literal": _zero_sign,
+    # Which order a semi join's rows come back in follows the morsels.
+    "s-set-operations": lambda m, s: (
+        _rows(m) == _rows(s) and m.count("True") == s.count("True") == 2
+    ),
+    # Which tied row `arg_max` and `arg_min` pick on streaming depends on the morsels:
+    # either of the two 3s, either of the two 1s.
     "arg-min-max-ties": lambda m, s: (
-        m == "[(1, 0)]" and re.fullmatch(r"\[\(1, \d+\)\]", s) is not None
+        m == "[(1, 0)]" and re.fullmatch(r"\[\([12], [03]\)\]", s) is not None
     ),
 }
 
