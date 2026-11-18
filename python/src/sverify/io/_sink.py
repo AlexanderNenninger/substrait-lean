@@ -145,8 +145,10 @@ class Sink:
 
     When two processes refresh the same sink, `write` must fail for the one
     that commits second: raise `sverify.errors.ConcurrentWriteError` if the
-    sink no longer holds what `contract` returned. Its next refresh then
-    writes the whole table, or skips the state the other writer committed.
+    sink no longer holds what `contract` returned. If the sink then holds the
+    state this refresh was writing, the refresh reports it as already
+    committed; otherwise the error reaches the caller, and the next refresh
+    writes the whole table.
 
     Args:
         name: The stored table's name in the plans that read it.
@@ -428,7 +430,13 @@ class Sink:
             # Not committed: the sink holds another writer's state, so the
             # next write replaces it (or skips, if it is this state).
             self._pending, self._written = None, None
-            raise
+            now = self.contract()
+            if now is None or _state_key(now) != _state_key(contract):
+                raise
+            # The other writer committed this very state: nothing is left to
+            # write, and this refresh reports what the next one would.
+            self._keep(view, contract, None)
+            return SinkWrite("skipped", self._version(), contract)
         self._pending = None
         if out is None:
             mode = "overwrite" if change.replace else "update"
