@@ -47,6 +47,13 @@ def Measure.pickFixed (cat : Catalog) (A : String → List AVal) (F : String →
     (m : Measure) : Bool :=
   !m.fn.classPick || (m.arg.abs (r.aeval cat A F .none)).noDoubles
 
+/-- Does the window function `f` over `r` pick one value: a windowed
+aggregate as `Measure.pickFixed` checks it (D45), every other function. -/
+def WinFn.pickFixed (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (r : Rel) :
+    WinFn → Bool
+  | .agg m _ _ => m.pickFixed cat A F r
+  | _ => true
+
 /-- Does the window over `r` give one result for every order of its ties: do
 its partition and sort columns contain a key of `r` (`window_tiebreak`), are
 its functions tie-free (`window_tieFree`), or does its partition cover every
@@ -77,7 +84,10 @@ def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List 
   | .fetch _ _ _ => false
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
       a.detPlan cat A F K && b.detPlan cat A F K
-  | .window r part sort fns => r.detPlan cat A F K && Rel.windowDetAt cat A F K r part sort fns
+  -- A windowed `MIN`, `MAX` or `QUANTILE_DISC` keeps any member of a class
+  -- (D45): none to choose without doubles.
+  | .window r part sort fns => r.detPlan cat A F K && Rel.windowDetAt cat A F K r part sort fns &&
+      fns.all (WinFn.pickFixed cat A F r)
   -- Keys and `MIN`/`MAX` keep any member of a class: none to choose without
   -- doubles.
   | .aggregate r gs ms => r.detPlan cat A F K &&
@@ -181,11 +191,21 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     simp only [detPlan, Bool.and_eq_true] at hd
     exact h.trans ((allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hx).append
       (allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy))
-  | .window r part sort fns, hwf, hd, _, ⟨i, hi, s, hs, hsort, h⟩ => by
+  | .window r part sort fns, hwf, hd, _, ⟨i, hi, s, hs, hsort, o, h, ho⟩ => by
     simp only [detPlan, windowDetAt, Bool.and_eq_true, Bool.or_eq_true] at hd
-    have hp : s.Perm (r.eval cat) := hs.trans (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hi)
+    obtain ⟨⟨hdr, hd⟩, hpf⟩ := hd
+    have hp : s.Perm (r.eval cat) := hs.trans (allowed_perm_eval hcat hA hF hK hwf.1 hdr hi)
+    -- No class to pick from: the reference allows `windowRows` alone.
+    have hl : WinFn.ClassArgsLone fns ([] ++ s) := fun f hf m _ _ he hc x hx => by
+      have := List.all_eq_true.mp hpf f hf
+      subst he
+      simp only [WinFn.pickFixed, Measure.pickFixed, hc, Bool.not_true, Bool.false_or] at this
+      exact AVal.lone_of_noDoubles this (Expr.abs_sound (Rel.aeval_sound (sz := false) hcat hA hF
+        (WindowKeys.none_soundAll cat) hwf.1 (fun h => by cases h) x
+        (hp.mem_iff.mp (by simpa using hx))) m.arg)
+    rw [windowRowsA_eq hl ho] at h
     refine h.trans ?_
-    rcases hd.2 with (hk | hf) | hc
+    rcases hd with (hk | hf) | hc
     · obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
       simp only [List.all_eq_true, decide_eq_true_eq] at hsub
       exact window_tiebreak ((keys_sound hcat hA hF hK hwf.1 k hk).superset hsub) hp hsort

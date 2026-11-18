@@ -5013,13 +5013,19 @@ class _Writer:
         )
         return d.case_when(bad, fail, r)
 
-    def ascii_only(self, x: str, value: str, what: str, kind: Kind = "str") -> str:
+    def ascii_only(
+        self, x: str, value: str, what: str, kind: Kind = "str", *, classes: bool = False
+    ) -> str:
         """`value`, a black box of the string `x` that the engine computes as
         Rust does on ASCII text only, or an error where `x` is not ASCII
-        (#70). Not one of `Safety.lean`'s issues, so `guards=False` keeps it."""
+        (#70). With `classes` (a regular expression with `\\w`, `\\d`, `\\s`
+        or `\\b`), the vertical tab is out too, where Rust's `\\s` and RE2's
+        differ: `Text.classesDiffer`, and the same predicate as
+        `ascii_text`. Not one of `Safety.lean`'s issues, so `guards=False`
+        keeps it."""
         d = self.d
         fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "asciiOnly")
-        return d.case_when(f"(NOT {d.is_ascii(x)})", fail, value)
+        return d.case_when(f"(NOT {ascii_text(d, x, classes)})", fail, value)
 
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
@@ -5171,6 +5177,21 @@ TS_MIN, TS_MAX = -62135596800000000, 253402300799999999
 #: What leaving the reference's dates or timestamps is called in an error.
 OUTSIDE_DATES = "outside the reference's dates (0001-01-01 to 9999-12-31)"
 OUTSIDE_TS = "outside the reference's timestamps (0001-01-01 to 9999-12-31)"
+
+
+#: `LIKE` pattern of a string with a vertical tab in it.
+VERTICAL_TAB_PATTERN = "%\x0b%"
+
+
+def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
+    """The SQL of `x` being ASCII (and, with `vertical_tab_out`, holding no
+    vertical tab, the condition of a regular expression with classes): the
+    one predicate of the writers' guard (`ascii_only`) and of the inferred
+    precondition `Report.check_inputs` checks (`ascii_condition`)."""
+    plain = d.is_ascii(x)
+    if not vertical_tab_out:
+        return plain
+    return f"({plain} AND NOT {d.like(x, d.str_lit(VERTICAL_TAB_PATTERN))})"
 
 
 def like_pattern(p: str) -> str:

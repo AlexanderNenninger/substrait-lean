@@ -202,7 +202,7 @@ def core : List FnRow := [
   { name := "sverify_pair", anchor := 123, group := "sverify", ctor := some (.bin .pair),
     reads := .plain, pretty := "PAIR" },
   -- `GREATEST`/`LEAST` of two values, skipping `NULL`s (`BinFn.greatest`,
-  -- #340): untyped, as DataFusion writes its own and the parser reads them;
+  -- #340): untyped, which the parser reads;
   -- Substrait's typed ones propagate `NULL`s.
   { name := "greatest", anchor := 124, group := "cmp", ctor := some (.bin .greatest),
     pretty := "GREATEST" },
@@ -291,7 +291,7 @@ def nested : List FnRow := [
     pretty := "TRANSFORM" },
   { name := "filter", anchor := 405, group := "list.plain", ctor := some (.hof .filter),
     pretty := "FILTER" },
-  -- DuckDB's list functions (#812), new functions run on DuckDB only (#271).
+  -- The list functions (#812).
   { name := "list_prepend", anchor := 406, group := "list.plain", ctor := some (.bin (.listFn .prepend)),
     reads := .plain, pretty := "LIST_PREPEND" },
   { name := "list_concat", anchor := 407, group := "list.plain", ctor := some (.bin (.listFn .concat)),
@@ -394,8 +394,8 @@ def groups : List (String × List String) := [
   ("fp.mod", ["division_type", "on_division_by_zero", "nan_creation", "zero_sign"]),
   ("fp.elem", ["rounding", "on_domain_error", "pow_one_inf", "zero_sign"]),
   ("fp.log", ["rounding", "on_domain_error", "on_log_zero"]),
-  -- A `BIGINT` result where an engine's `floor`, `ceil` or `round` returns
-  -- one (Spark's): `float_to_int`, the conversion.
+  -- A `BIGINT` result where `floor`, `ceil` or `round` returns one:
+  -- `float_to_int`, the conversion.
   ("fp.round", ["rounding", "round_zero_sign", "float_to_int"]),
   ("fp.floor", ["round_zero_sign", "float_to_int"]),
   ("cmp", ["nan_equality", "nan_order", "zero_sign"]), ("sverify", []),

@@ -1079,8 +1079,9 @@ theorem Rel.aeval_sound_allSz {cat : Catalog} (hcat : cat.WF) {A : String → Li
       rcases List.mem_append.mp (h.mem_iff.mp hr) with h | h
       · exact (aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).1) hx row h).zip_left
       · exact (aeval_sound_allSz hcat hA hF hT hwf.2.1 (fun h => (hsz h).2) hy row h).zip_right
-  | .window r _ _ fns, hwf, hsz, _, ⟨i, hi, s, hp, hs, h⟩, row, hr => by
-      obtain ⟨b, x, a, hsplit, rfl, _, _, hin⟩ := mem_windowRows_sorted hs (h.mem_iff.mp hr)
+  | .window r _ _ fns, hwf, hsz, _, ⟨i, hi, s, hp, hs, o, h, ho⟩, row, hr => by
+      obtain ⟨b, x, a, vs, hsplit, rfl, hvs, _, _, hin⟩ := mem_windowRowsA_sorted hs ho (h.mem_iff.mp hr)
+      refine EnvMem.of_canon ?_ (WinFn.allowed_canon_row hvs)
       have hall : ∀ y, (y = x ∨ y ∈ b ∨ y ∈ a) → EnvMem (r.aeval cat A F T sz) y :=
         fun y hy => aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi y
           (hp.mem_iff.mp (hin y hy))

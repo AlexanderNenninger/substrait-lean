@@ -228,9 +228,10 @@ def Rel.Allowed (cat : Catalog) : Rel → Relation → Prop
       | none => i.drop off
       | some n => (i.drop off).take n
   | .unionAll a b, out => ∃ x y, a.Allowed cat x ∧ b.Allowed cat y ∧ out.Perm (x ++ y)
-  -- The window functions over the input in any order its sort allows.
+  -- The window functions over the input in any order its sort allows, a
+  -- class-picking function any member of its class (D45, `WinFn.Allowed`).
   | .window r part sort fns, out => ∃ i, r.Allowed cat i ∧ ∃ s, s.Perm i ∧
-      s.Pairwise (sortLe sort · · = true) ∧ out.Perm (windowRows part fns [] s)
+      s.Pairwise (sortLe sort · · = true) ∧ ∃ o, out.Perm o ∧ windowRowsA part fns [] s o
   | .semi a b anti on, out => ∃ x y, a.Allowed cat x ∧ b.Allowed cat y ∧
       out.Perm (x.filter fun row => hasMatch on y row != anti)
   -- The input sorted, ties and a clustered key's groups in any order.
@@ -249,8 +250,9 @@ theorem Rel.eval_allowed (cat : Catalog) : ∀ r : Rel, r.Allowed cat (r.eval ca
   | .join a b .inner _ | .join a b .left _ =>
     ⟨_, _, eval_allowed cat a, eval_allowed cat b, .refl _⟩
   | .fetch r _ cnt => ⟨_, eval_allowed cat r, by cases cnt <;> rfl⟩
-  | .window r _ sort _ => ⟨_, eval_allowed cat r, _, List.mergeSort_perm _ _,
-      List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total _, .refl _⟩
+  | .window r part sort fns => ⟨_, eval_allowed cat r, _, List.mergeSort_perm _ _,
+      List.pairwise_mergeSort (sortLe_totalPre sort).trans (sortLe_totalPre sort).total _, _, .refl _,
+      windowRows_windowRowsA part fns [] _⟩
   | .orderBy r keys => ⟨_, eval_allowed cat r, List.mergeSort_perm _ _, .of_sorted <|
       List.pairwise_mergeSort (sortLe_totalPre keys).trans (sortLe_totalPre keys).total _⟩
   | .distinct r => ⟨_, eval_allowed cat r, _, canonReps_isReps Row.leRaw_rawOrder _, .refl _⟩

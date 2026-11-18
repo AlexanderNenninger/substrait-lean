@@ -6,8 +6,7 @@ import Sverify.Core.Aggregate
 `ROW_NUMBER`, `LAG`, `LEAD`, the ranks (`RANK`, `DENSE_RANK`,
 `PERCENT_RANK`, `CUME_DIST`, `NTILE`), and aggregates and `FIRST_VALUE`,
 `LAST_VALUE` and `NTH_VALUE` over a frame, all over `PARTITION BY … ORDER BY
-…`. DataFusion writes them as `windowFunction` expressions in a `ProjectRel`;
-here a window is a relation of its own (`Rel.window`) that appends one column
+…`. Here a window is a relation of its own (`Rel.window`) that appends one column
 per function.
 
 **Semantics.** The input is sorted by the sort keys with a stable merge sort.
@@ -185,8 +184,7 @@ def floatRatio (a b : Nat) : Value := .float (FloatCode.fdiv (FloatCode.ofInt a)
 
 /-- The SQL standard's `NTILE(k)` of the `i`-th (from 0) of `n` rows: `k`
 buckets of `n / k` rows, the first `n % k` of them one row larger; with fewer
-rows than buckets, a bucket for each row. (DataFusion's own formula,
-`i · min(k, n) / n + 1`, spreads the larger buckets out instead.) -/
+rows than buckets, a bucket for each row. -/
 def ntileOf (i k n : Nat) : Nat :=
   let q := n / k
   let r := n % k
