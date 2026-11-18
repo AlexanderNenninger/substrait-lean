@@ -30,5 +30,9 @@ def test_sqlglot_is_pinned_below_the_break():
     except metadata.PackageNotFoundError:
         pytest.skip("sverify is not installed")
     (sqlglot,) = [r for r in map(Requirement, requires) if r.name == "sqlglot" and not r.marker]
-    assert "30.17.0" in sqlglot.specifier
+    # From the oldest version the lift's tests pass with (the one SQLMesh pins),
+    # to the last before the break.
+    assert "30.8.0" in sqlglot.specifier
+    assert "30.7.9" not in sqlglot.specifier
+    assert "30.17.9" in sqlglot.specifier
     assert "30.18.0" not in sqlglot.specifier
