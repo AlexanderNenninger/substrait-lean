@@ -484,9 +484,9 @@ def AVal.join : AVal → AVal → AVal
       card := if !l then b.card else if !b.list then c else c.join b.card,
       struct := st || b.struct,
       fields := if !st then b.fields else if !b.struct then fs else AVal.joinF fs b.fields,
-      -- A side without strings adds none.
-      ascii := (a.ascii || !a.str) && (b.ascii || !b.str),
-      plain := (a.plain || !a.str) && (b.plain || !b.str) }
+      -- A side without strings adds none; neither side with strings gives the default.
+      ascii := (a.ascii || !a.str) && (b.ascii || !b.str) && (a.str || b.str),
+      plain := (a.plain || !a.str) && (b.plain || !b.str) && (a.str || b.str) }
   termination_by structural a => a
 
 /-- Both elements' descriptions joined; any value where one is. -/
@@ -525,10 +525,10 @@ omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_strs : (a.join b).strs = joinStrs a b := by cases a; rfl
 omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_ascii :
-    (a.join b).ascii = ((a.ascii || !a.str) && (b.ascii || !b.str)) := by cases a; rfl
+    (a.join b).ascii = ((a.ascii || !a.str) && (b.ascii || !b.str) && (a.str || b.str)) := by cases a; rfl
 omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_plain :
-    (a.join b).plain = ((a.plain || !a.str) && (b.plain || !b.str)) := by cases a; rfl
+    (a.join b).plain = ((a.plain || !a.str) && (b.plain || !b.str) && (a.str || b.str)) := by cases a; rfl
 omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_nk : (a.join b).nk = joinNk a b := by cases a; rfl
 omit [Boxes.Ambient] in

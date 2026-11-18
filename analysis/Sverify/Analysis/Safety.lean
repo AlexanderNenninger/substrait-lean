@@ -999,7 +999,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
         simp only [Bool.or_eq_true, Bool.not_eq_true'] at hok
         rcases hok with hok | hok
         · simp [Text.classesDiffer, hok] at hc
-        · have := Text.classesDiffer_of_isPlain _ (AVal.isPlain_of_plainOk ha hok)
+        · have := Text.classesDiffer_of_isPlain p (AVal.isPlain_of_plainOk ha hok)
           simp_all
       · simp
   case upper | lower | reverse | ascii =>
