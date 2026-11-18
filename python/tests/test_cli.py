@@ -492,7 +492,7 @@ def test_summary_of_a_report():
     s = summary(report)
     assert s["guarantees"] == ["amount > 10"]
     assert s["checks"] == ["orders: amount ≥ 0", "orders: amount < 100"]
-    assert s["not_proved"][0].startswith("id is never NULL: not proved")
+    assert s["not_proved"][0].startswith("id is never NULL: it may be")
 
 
 def test_the_entry_point():

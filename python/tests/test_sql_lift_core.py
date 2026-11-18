@@ -276,7 +276,7 @@ def test_verify_states_and_takes_its_semantics():
     ref = sv.verify(sql, tables={"t": t}, on_inferred="off")
     duck = sv.verify(sql, tables={"t": t}, semantics="duckdb", on_inferred="off")
     assert (ref.semantics, duck.semantics) == ("reference", "duckdb")
-    assert "semantics: reference" in str(ref).splitlines()
+    assert "semantics: reference" in ref.details().splitlines()
     assert any("zero" in str(i) for i in ref.issues)
     assert not any("zero" in str(i) for i in duck.issues)
     with pytest.raises(ValueError, match="semantics must be"):

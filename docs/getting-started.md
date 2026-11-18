@@ -88,11 +88,14 @@ prices.refresh()  # run on DuckDB
 print(sorted(prices.to_arrow().to_pylist(), key=lambda r: r["id"]))
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}]
 print(unit_prices.report)
-# requires orders: (_.qty > 0)
-# requires orders: (_.total >= 0)
-# requires orders: unique(id)
-# ensures (_.unit >= 0): proved
-# ensures unique(id): proved
+# proved
+# The output guarantees:
+#   unit ≥ 0
+#   no two rows share id
+# Each run checks on the data:
+#   orders: qty > 0
+#   orders: total ≥ 0
+#   orders: no two rows share id
 ```
 
 [How to](tasks.md#contracts) has the rest of the report and what
@@ -142,7 +145,8 @@ undeclared = sv.verify(t.select(t.id, unit=t.total // t.qty))
 print(undeclared.verdict)
 # unproved
 print(undeclared)
-# needs: (_.total >= -9 * 10**18) and (_.qty != 0) on orders, inferred from `total // qty` (overflow or division by zero otherwise): declare them in requires ...
+# Not proved:
+#   (_.total >= -9 * 10**18) and (_.qty != 0) on orders, inferred from `total // qty` (overflow or division by zero otherwise): declare them in requires ...
 # ...
 ```
 
@@ -237,7 +241,7 @@ do.
 tight = sv.verify(mean_x, requires=bounded, ensures=[sv.equivalent(floats=sv.within(abs=1e-12))])
 print(tight.verdict == sv.Verdict.PROVED)
 # False
-print(tight)
+print(tight.details())
 # observes: equivalent(floats=within(abs=1e-12)); the plan's bound on its doubles is 1.1e-10; NOT met: no engine meets the tolerance
 #   on duckdb: agg.fsum's sum_order: mean_x is within abs=1.11577e-10 of the reference, and the postcondition asks within(abs=1e-12): state sv.equivalent(floats=sv.within(abs=2e-10)) or looser in ensures, ...
 ```
@@ -376,7 +380,7 @@ plus_one = sv.verify(
 )
 print(plus_one.verdict)
 # unproved
-print(str(plus_one).splitlines()[3])
+print(plus_one.details().splitlines()[3])
 #   not proved under semantics="substrait": int.arith's overflow allows ERROR, SILENT, SATURATE, the reference only ERROR
 ```
 

@@ -76,13 +76,13 @@ def test_a_floor_division_is_one_issue_as_written() -> None:
         "overflow: (price - cost) * 100 // price",
         "overflow: price * qty",
     ], shown
-    assert "+ 1" not in str(report) and "- 1)" not in str(report)
+    assert "+ 1" not in report.details() and "- 1)" not in report.details()
 
 
 def test_a_window_value_is_named_not_numbered() -> None:
     report = sv.verify(sessionize(CLICKS), on_inferred="off")
     assert [str(i) for i in report.errors] == ["overflow: seq - lag(seq)"]
-    assert "$" not in str(report)
+    assert "$" not in report.details()
 
 
 def test_a_sum_in_sql_is_named_by_its_measure() -> None:
@@ -91,8 +91,8 @@ def test_a_sum_in_sql_is_named_by_its_measure() -> None:
     SELECT customer_id, revenue, rank() OVER (ORDER BY revenue DESC) AS r FROM per
     """
     report = sv.verify(sql, tables={"orders": ORDERS}, requires={"orders": ["amount >= 0"]})
-    assert "assumes: sum(amount) stays finite on finite inputs" in str(report)
-    assert "$" not in str(report)
+    assert "assumes: sum(amount) stays finite on finite inputs" in report.details()
+    assert "$" not in report.details()
 
 
 def test_aggregates_over_one_column_are_named_together() -> None:
@@ -100,7 +100,7 @@ def test_aggregates_over_one_column_are_named_together() -> None:
         m=READINGS.temp_c.mean(), s=READINGS.temp_c.std(), lo=READINGS.temp_c.min()
     )
     report = sv.verify(expr, requires={"readings": [_.temp_c.between(-90, 60)]})
-    assert "assumes: mean(temp_c) or std(temp_c) stays finite on finite inputs" in str(report)
+    assert "assumes: mean(temp_c) or std(temp_c) stays finite on finite inputs" in report.details()
 
 
 def test_a_decimal_cast_reads_as_the_cast() -> None:
@@ -111,7 +111,7 @@ def test_a_decimal_cast_reads_as_the_cast() -> None:
         "cast out of range: CAST(amount AS DECIMAL(10, 2))",
         "overflow: CAST(amount AS DECIMAL(10, 2))",
     ]
-    assert "TO_DECIMAL" not in str(report)
+    assert "TO_DECIMAL" not in report.details()
 
 
 def test_an_interval_reads_as_written() -> None:
@@ -119,8 +119,8 @@ def test_an_interval_reads_as_written() -> None:
     # needs a bound for.
     later = PAYMENTS.ts + ibis.interval(minutes=5)
     report = sv.verify(PAYMENTS.select(m=later.truncate("M")))
-    assert "inferred from `DATE_TRUNC_month((ts + ibis.interval(minutes=5)))`" in str(report)
-    assert "300000000" not in str(report)
+    assert "inferred from `DATE_TRUNC_month((ts + ibis.interval(minutes=5)))`" in report.details()
+    assert "300000000" not in report.details()
 
 
 def test_conditions_keep_their_short_values() -> None:
@@ -129,7 +129,7 @@ def test_conditions_keep_their_short_values() -> None:
         requires={"payments": [_.ts.notnull(), _.ts < dt.datetime(9999, 1, 1)]},
         ensures=[(_.dup_ts - _.first_ts) <= ibis.interval(seconds=300)],
     )
-    text = str(report)
+    text = report.details()
     assert "requires payments: (_.ts < datetime(9999, 1, 1))" in text
     assert "ensures ((_.dup_ts - _.first_ts) <= ibis.interval(seconds=300)): proved" in text
     assert "datetime.datetime" not in text and "<scalar" not in text
@@ -144,7 +144,7 @@ def test_a_report_starts_with_its_verdict(monkeypatch: pytest.MonkeyPatch) -> No
     proved = sv.verify(ITEMS.select(x=ITEMS.price), ensures=[_.x.isnull() | _.x.notnull()])
     assert str(proved).splitlines()[0] == "proved"
     report = sv.verify(margins(ITEMS), ensures=[_.revenue >= 0], counterexamples=0)
-    assert str(report).splitlines()[0] == (
+    assert report.details().splitlines()[0] == (
         "NOT proved: 1 of 1 postcondition not proved, 2 possible runtime errors, "
         "1 precondition needed"
     )
@@ -167,7 +167,7 @@ def test_the_exception_counts_then_lists_one_line_per_finding() -> None:
         "may fail",
     ]
     assert "known about the output" not in str(e.value)
-    assert "known about the output" in str(e.value.report)
+    assert "known about the output" in e.value.report.details()
     assert all(len(line) < 400 for line in lines)
 
 
@@ -183,7 +183,7 @@ def test_the_needs_line_alone_names_on_inferred() -> None:
 def test_the_and_or_hint_appears_once_and_only_for_the_users_and() -> None:
     """The producer writes `//` with an AND; that AND is not the user's."""
     report = sv.verify(margins(ITEMS), counterexamples=0)
-    assert "AND or OR" not in str(report)
+    assert "AND or OR" not in report.details()
     t = ibis.table({"qty": "int64", "total": "int64"}, name="t")
     report = sv.verify(t.filter((t.qty != 0) & (t.total // t.qty > 1)))
     assert [h for h in report._hints if "AND or OR" in h] == [
@@ -205,7 +205,7 @@ def test_route_lines_lead_with_the_class_in_plain_words() -> None:
     report = sv.verify(t.select(q=t.x // 2), requires={"t": [_.x.between(-100, 100)]})
     report.run(con, "polars")
     report.run(con, "duckdb")
-    text = str(report)
+    text = report.details()
     assert "route on polars: shim (integer division rewritten to truncate); evidence" in text
     assert "route on duckdb: exact; evidence" in text
     for internal in ("Lowering", "lower_correct", "polars_engine", "Rel.eval", "Lean"):
@@ -224,12 +224,12 @@ def test_an_observed_route_rounds_its_bound() -> None:
 def test_the_ties_note_names_functions_in_the_users_language() -> None:
     sql = "SELECT customer_id, row_number() OVER (ORDER BY amount DESC) AS r FROM orders"
     report = sv.verify(sql, tables={"orders": ORDERS})
-    note = next(line for line in str(report).splitlines() if line.startswith("note:"))
+    note = next(line for line in report.details().splitlines() if line.startswith("note:"))
     assert "FIRST, LAST, STRING_AGG, MODE, ARG_MIN or ARG_MAX" in note
     assert "group_concat()" not in note and "D24" not in note
     w = ibis.window(order_by=ORDERS.amount)
     report = sv.verify(ORDERS.mutate(r=ibis.row_number().over(w)))
-    note = next(line for line in str(report).splitlines() if line.startswith("note:"))
+    note = next(line for line in report.details().splitlines() if line.startswith("note:"))
     assert "first(), last(), group_concat()" in note and "STRING_AGG" not in note
 
 
@@ -297,7 +297,7 @@ def test_a_key_lost_through_a_self_join_is_not_advice_to_declare_it() -> None:
         "the preconditions do not make it a key: `dup_txn` comes from payments.txn_id, whose "
         "key unique(txn_id) is lost on the way: a join, a union or an UNNEST can repeat a value"
     )
-    assert "sv.unique('dup_txn')" not in str(report)
+    assert "sv.unique('dup_txn')" not in report.details()
 
 
 def test_a_key_lost_through_a_join_names_the_input_that_has_it() -> None:
@@ -369,7 +369,7 @@ def test_the_ties_hint_names_a_key_that_determines_the_result() -> None:
     expr = ORDERS.mutate(r=ibis.row_number().over(w))
     report = sv.verify(expr)
     assert report.ties == {"orders": ["unique(customer_id, amount)"]}
-    assert "declare `unique(customer_id, amount)` in the requires of 'orders'" in str(report)
+    assert "declare `unique(customer_id, amount)` in the requires of 'orders'" in report.details()
     again = sv.verify(expr, requires={"orders": [sv.unique("customer_id", "amount")]})
     assert again.deterministic
 
@@ -429,6 +429,33 @@ def test_a_report_names_the_parameter_not_the_upstream_node():
     raw = ibis.table({"id": "int64", "amount": "int64"}, name="raw")
     with pytest.raises(VerificationError) as caught:
         downstream(latest(raw))
-    text = str(caught.value.report)
+    text = caught.value.report.details()
     assert "requires orders: (_.total >= 0)" in text
     assert "requires latest" not in text
+
+
+def test_str_is_the_plain_contract_and_details_the_full_text():
+    # `print(report)` says what holds, what each run checks and what is not
+    # proved; the semantics and the evidence per engine are in `details()` (#1485).
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, _.amount < 10**9, sv.unique("id")]},
+        ensures=[_.total >= 0, _.total < 10],
+        on_unproved="warn",
+    )
+    def totals(orders):
+        return orders.group_by("id").aggregate(total=orders.amount.sum())
+
+    raw = ibis.table({"id": "int64", "amount": "int64"}, name="raw")
+    with pytest.warns(sv.errors.UnprovedWarning):
+        totals(raw)
+    report = totals.report
+    assert report is not None
+    lines = str(report).splitlines()
+    assert lines[0].startswith("NOT proved")
+    assert "The output guarantees:" in lines and "  total ≥ 0" in lines
+    assert "Each run checks on the data:" in lines and "  orders: no two rows share id" in lines
+    assert "Not proved:" in lines and any("total < 10" in line for line in lines)
+    assert not any(line.startswith(("semantics:", "evidence:", "route on")) for line in lines)
+    full = report.details().splitlines()
+    assert "semantics: reference" in full
+    assert "requires orders: unique(id)" in full

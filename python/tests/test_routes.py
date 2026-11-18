@@ -28,7 +28,7 @@ def test_native_and_reference(con) -> None:
         r = report.routes[engine]
         assert r.kind == "translated" and r.profile == "reference", r
         assert sorted(out.column("j").to_pylist()) == [-6, 3, 4]
-    assert "route on polars: exact" in str(report)
+    assert "route on polars: exact" in report.details()
     duck = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": t}, semantics="duckdb")
     assert routes.choose(duck, "duckdb").kind == "native"
 
@@ -116,7 +116,7 @@ def test_run_refuses_an_unproved_plan_unless_asked(con) -> None:
         out = report.run(con, unverified=True)
     assert out.schema.metadata[b"sverify.verified"] == b"false"
     assert report.routes["duckdb"].kind == "unverified"
-    assert "route on duckdb: unverified: not verified" in str(report)
+    assert "route on duckdb: unverified: not verified" in report.details()
 
 
 def test_determinism_is_reported_and_required_on_request() -> None:
@@ -216,7 +216,7 @@ def test_the_route_carries_the_checker_s_evidence(con) -> None:
     assert _on_polars(report, evidence="tested").evidence == "tested"
     r = _on_polars(report, theorems=["Polars.a", "Polars.b"], facts=["polars-a"])
     assert (r.evidence, r.theorems, r.facts) == ("proved", ("Polars.a", "Polars.b"), ("polars-a",))
-    assert "evidence: polars exact, proved by Polars.a, Polars.b" in str(report)
+    assert "evidence: polars exact, proved by Polars.a, Polars.b" in report.details()
     from sverify import report_json
 
     assert report_json.route(report_json.route_json(r)) == r
@@ -239,7 +239,9 @@ def test_a_proof_of_the_engine_s_model_names_its_facts(con) -> None:
     assert str(r).endswith(
         "; evidence proved by Rel.polars_sound on polars's model (facts polars-int-arith)"
     )
-    assert "evidence: polars exact, proved by Rel.polars_sound on polars's model" in str(report)
+    assert (
+        "evidence: polars exact, proved by Rel.polars_sound on polars's model" in report.details()
+    )
     from sverify import report_json
 
     assert report_json.route(report_json.route_json(r)) == r

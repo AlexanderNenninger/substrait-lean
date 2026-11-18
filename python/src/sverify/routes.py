@@ -1216,7 +1216,7 @@ def not_verified(report: Report) -> str:
         first = next(ps[0] for ps in report._floats_on.values() if ps)
         want = "exact doubles" if report.observation.floats == "exact" else "tolerance on doubles"
         parts.append(f"no engine meets the observation's {want}: {first}")
-        see.append("str(report)")
+        see.append("report.details()")
     if report.needs:
         see.append("report.needs")
     if report._transfer:
@@ -1224,8 +1224,8 @@ def not_verified(report: Report) -> str:
             "the reference's proof does not carry over to Substrait's semantics on "
             + ", ".join(_where(f.get("group"), f["option"]) for f in report._transfer)
         )
-        if "str(report)" not in see:
-            see.append("str(report)")
+        if "report.details()" not in see:
+            see.append("report.details()")
     where = f" (see {', '.join(see)})" if see else ""
     return (
         "not verified: "
