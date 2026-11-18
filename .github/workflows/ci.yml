@@ -508,7 +508,7 @@ jobs:
   # Lint and typecheck need no Lean: they skip installing sverify itself (poe's
   # default executor would `uv run`, which installs it).
   static:
-    
+
     needs: route
     runs-on: ${{ fromJSON(needs.route.outputs.light) }}
     timeout-minutes: 20
