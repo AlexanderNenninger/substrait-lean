@@ -1177,7 +1177,7 @@ to it, so links to an entry here still land.
 - <a id="d21-tighten-the-reference-where-it-stays-practical"></a>[D21. Tighten the reference where it stays practical](decisions.md#d21-tighten-the-reference-where-it-stays-practical)
 - <a id="d22-four-route-classes-and-tolerances-are-observations"></a>[D22. Four route classes, and tolerances are observations](decisions.md#d22-four-route-classes-and-tolerances-are-observations)
 - <a id="d23-inferred-preconditions-are-errors-by-default"></a>[D23. Inferred preconditions are errors by default](decisions.md#d23-inferred-preconditions-are-errors-by-default)
-- <a id="d24-tie-order-is-open-and-determinism-is-proved"></a>[D24. Tie order is open, and determinism is proved](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)
+- <a id="d24-tie-order-belongs-to-the-deterministic-profile"></a><a id="d24-tie-order-is-open-and-determinism-is-proved"></a>[D24. Tie order is open, and determinism is proved](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)
 - <a id="d25-float-aggregates-are-correctly-rounded-exact-sums"></a>[D25. Float aggregates are correctly rounded exact sums](decisions.md#d25-float-aggregates-are-correctly-rounded-exact-sums)
 - <a id="d26-two-equalities-for-null"></a>[D26. Two equalities for NULL](decisions.md#d26-two-equalities-for-null)
 - <a id="d27-the-size-hypothesis-is-the-only-size-assumption"></a>[D27. The size hypothesis is the only size assumption](decisions.md#d27-the-size-hypothesis-is-the-only-size-assumption)

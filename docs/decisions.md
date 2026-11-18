@@ -429,8 +429,7 @@ so it runs natively.
 `Rel.eval` computes one allowed order: a stable sort (`List.mergeSort`) and
 rows in list order (`Rel.eval_orderAllowed`). Determinism is a property the
 checker proves of a plan, not a profile: a plan is determined when every
-result the reference allows is `Rel.eval`'s up to row order (`Rel.detPlan`),
-and D48 states the second level, up to the member of a class of doubles. A
+result the reference allows is `Rel.eval`'s up to row order (`Rel.detPlan`). A
 consumer that needs a rerun to give the same rows asks for it, through
 `run(reproducible=sv.equivalent())` or a sink's `reproducible=`
 ([D10](#d10-determinism), [D20](#d20-two-observations-per-output)). Engines
@@ -461,10 +460,12 @@ Amended 2026-11-18 (theory advisor): two refusals predate this decision and
 go.
 
 - Spark's writer refuses a `FETCH` and a window over ties unless the report
-  is deterministic, because no Spark order "can stand for Lean's list order".
+  is deterministic, because no Spark order "can stand for Lean's list order"
+  (`engines/spark/src/sverify_spark/dialect.py`).
   Spark's own pick is one of the allowed orders, so the plan runs natively.
   Its rerun row for `tie_order` says what two runs agree on.
-- The parser refuses `MODE` without an `ORDER BY`. Without one every row
+- The parser refuses `MODE` without an `ORDER BY`
+  (`frontend/Sverify/Frontend/Parse.lean`). Without one every row
   ties, so any of the most frequent values is allowed (`tie_pick`), and the
   report names the place.
 
