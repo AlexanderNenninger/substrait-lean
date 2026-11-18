@@ -91,13 +91,16 @@ def _error(code: str, e: BaseException | str, kind: str | None = None) -> dict[s
 
 def _classify(e: BaseException) -> tuple[int, str]:
     """The exit code and the error's code for an exception."""
-    from sverify.errors import (
-        AuditError,
-        PostconditionError,
-        PreconditionError,
-        UnsupportedError,
-        VerificationError,
-    )
+    try:
+        from sverify.errors import (
+            AuditError,
+            PostconditionError,
+            PreconditionError,
+            UnsupportedError,
+            VerificationError,
+        )
+    except Exception:  # noqa: BLE001 - the import failure is the error being classified (#1585)
+        return ERROR, "error"
 
     if isinstance(e, BudgetExceeded):
         return BUDGET, "memory" if e.what == "memory" else "timeout"

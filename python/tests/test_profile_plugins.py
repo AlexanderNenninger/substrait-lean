@@ -186,3 +186,20 @@ def test_the_state_store_is_the_engine_s(installed: None) -> None:
         Store()  # type: ignore[abstract]
     with pytest.raises(ValueError, match=r"'snowflake' keeps no pipeline state"):
         store_for("snowflake")
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars", "spark"])
+def test_an_engine_beside_a_sverify_of_another_build_says_which_to_align(engine):
+    """A build from main carries the release's version, so only the plugin
+    interface revision tells it from PyPI's sverify (#1585)."""
+    import importlib
+    import subprocess
+    import sys
+
+    pytest.importorskip(f"sverify_{engine}")
+    code = f"from sverify import _meta; del _meta.PLUGIN_API\nimport sverify_{engine}\n"
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "ImportError" in p.stderr and "from the same release" in p.stderr
+    assert "TypeError" not in p.stderr
+    importlib.import_module(f"sverify_{engine}")  # the real pair still imports

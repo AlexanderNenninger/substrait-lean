@@ -20,10 +20,23 @@ from __future__ import annotations
 import json
 import threading
 from collections.abc import Sequence
+
+# An engine built from main beside PyPI's sverify of the same version number
+# fails deep inside sverify with a TypeError (#1585): check the interface first.
+from importlib.metadata import version as _version
 from typing import Any
 
 import duckdb
 import pyarrow as pa
+
+from sverify import _meta
+
+if getattr(_meta, "PLUGIN_API", None) != 1:
+    raise ImportError(
+        f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
+        f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
+        "install both from the same release (`pip install -U sverify sverify-duckdb`)"
+    )
 
 from sverify import _duckdb, black_box
 from sverify._arrow_state import ArrowOps
