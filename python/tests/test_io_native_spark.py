@@ -94,7 +94,7 @@ def test_equality_deletes_and_a_rename(tmp_path):
     assert snap is not None and snap.scan.equality
     agree(snap.scan)
     got = spark_scan(session(), snap.scan).toArrow()
-    assert sorted(got["id"].to_list()) == [2, 3, 4]
+    assert sorted(got.column("id").to_pylist()) == [2, 3, 4]
 
 
 def test_a_type_that_does_not_widen_raises(tmp_path):
