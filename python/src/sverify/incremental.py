@@ -65,10 +65,10 @@ import pyarrow as pa
 import sqlglot as sg
 
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched
+from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
-from sverify._engines import LOCAL
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import Merger, State, Store, arrow_of, by_keys, store_for
 from sverify._unsupported import SverifyError
