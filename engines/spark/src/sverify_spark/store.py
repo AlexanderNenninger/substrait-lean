@@ -227,7 +227,7 @@ class SparkStore(ArrowOps):
 
         return z.df.filter(F.col(WEIGHT) < 0).limit(1).count() > 0
 
-    def retire(self, view: Any, column: str, cutoff: object) -> int:
+    def retire(self, view: Any, column: str, cutoff: Any) -> int:
         z = view.state
         if not isinstance(z, SparkState):
             return super().retire(view, column, cutoff)
