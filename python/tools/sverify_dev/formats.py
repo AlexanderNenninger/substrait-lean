@@ -143,7 +143,7 @@ def _write_substrait(out: Path) -> None:
     folder = out / "substrait"
     folder.mkdir(parents=True)
     for name, report in cases.items():
-        assert report.proved, f"{name}: {report}"
+        assert report._proved, f"{name}: {report}"
         text = report.to_substrait()
         (folder / f"{name}.json").write_text(_pretty(text))
     (folder / "row_and_table.bin").write_bytes(cases["row_and_table"].to_substrait(format="binary"))

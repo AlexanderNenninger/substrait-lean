@@ -22,7 +22,7 @@ def con() -> sv.engine.Connection:
 def test_native_and_reference(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]})
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     for engine in ("duckdb", "polars"):
         out = report.run(con, engine, route="auto")
         r = report.routes[engine]
@@ -99,7 +99,7 @@ def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
 def test_unproved_plan_is_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i * t.i), on_inferred="off")
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     reason = routes.choose(report, "duckdb").reason
     assert reason.startswith("not verified: may fail: overflow: i * i (see report.errors)")
     assert "unverified=True" in reason
@@ -123,7 +123,7 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     t = ibis.table({"k": "int64", "o": "int64", "v": "int64"}, name="t")
     expr = t.group_by("k").aggregate(f=t.v.first(order_by=t.o))
     report = sv.verify(expr)
-    assert report.proved and not report.deterministic
+    assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     r = routes.choose(report, "duckdb")
     assert r.kind == "translated" and not r.deterministic
     assert any("ties stay open" in w for w in r.warnings)

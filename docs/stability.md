@@ -15,7 +15,7 @@ Jobs and tools read these formats that sverify writes:
 |---|---|---|---|
 | The sink's contract record | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` 2 in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
 | The Substrait contract metadata | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` 2 in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
-| The report's JSON | `Report.to_json()`, read back by `Report.from_json()` | `format` 2 in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
+| The report's JSON | `Report.to_json()`, read back by `Report.from_json()` | `format` 3 in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
 | The command line's JSON | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` 1 in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
 | The quarantine table | a Delta or Iceberg table next to a node's sink; each write's record in a Delta commit's `commitInfo`, or an Iceberg snapshot's summary, under the key `sverify.quarantine` | `format` 1 in the record | [`quarantine.schema.json`](../python/src/sverify/schemas/quarantine.schema.json) |
 | The refresh report's JSON | `Refresh.to_json()` | `format` 1 in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
@@ -29,8 +29,8 @@ Within 1.x each format follows these rules:
 - Every 1.x release reads what every earlier 1.x release wrote, and the
   records of the releases before 1.0 that the fixtures hold, from 0.4.0 on.
 - Each format keeps the version the table gives throughout 1.x: 2 for
-  the sink's contract record, the Substrait metadata and the report's JSON,
-  which 1.0 renamed,
+  the sink's contract record and the Substrait metadata, which 1.0 renamed,
+  3 for the report's JSON, which 1.0 renamed and then gave a verdict,
   and 1 for the command line's JSON, the quarantine record and the refresh
   report, which have had one shape since they were added. A reader refuses a
   format newer than it knows, with an error that says to upgrade sverify.
@@ -48,7 +48,10 @@ sink's record or a manifest of format 1:
   for `semantics`, `equivalence` and `equivalence_components`.
 
 The report's JSON of format 1 was in no release, and `Report.from_json`
-refuses it. In format 2 its postconditions, issues and assumptions take the
+refuses it. Format 3 replaced `Report.proved` with `Report.verdict`: `verdict`
+holds `proved`, `proved_with_checks` or `unproved`, where format 2 held the
+report's first line, which `summary` holds now; `proved` stays, derived from
+`verdict`, until 2.0. `Report.from_json` reads format 2 as well. In format 2 its postconditions, issues and assumptions take the
 shape of a SARIF 2.1.0 result, so that `sverify check --format sarif` only
 wraps them in a run:
 `ruleId`, the code in snake_case (`may_be_false`, `division_by_zero`);

@@ -1549,7 +1549,11 @@ def _(ibis, sv):
     _requires = {"readings": [_.temp >= -50.0, _.temp <= 60.0, sv.max_rows(1_000_000)]}
     exact_claim = sv.verify(_avg, requires=_requires, ensures=[_.avg_temp <= 60.0])
     approx_claim = sv.verify(_avg, requires=_requires, ensures=[sv.approx(_.avg_temp <= 60.0)])
-    assert exact_claim.proved and not exact_claim.ensures[0].robust and approx_claim.proved
+    assert (
+        exact_claim.verdict == sv.Verdict.PROVED
+        and not exact_claim.ensures[0].robust
+        and approx_claim.verdict == sv.Verdict.PROVED
+    )
     print(_routes.choose(exact_claim, "duckdb"))
     return (approx_claim,)
 
@@ -1691,7 +1695,7 @@ def _(mo):
 def _(con_lines, sv):
     _lines = con_lines.table("lines")
     _totals = sv.verify(_lines.select("id", total=_lines.price * _lines.qty))
-    assert _totals.proved
+    assert _totals.verdict == sv.Verdict.PROVED
     {"total": str(_totals.output["total"]), "rows": _totals.run(con_lines, "duckdb").to_pylist()}
     return
 

@@ -131,7 +131,7 @@ RANKED = T.mutate(rn=ibis.row_number().over(W))
 
 def test_the_reference_proves_every_order_and_runs_natively() -> None:
     report = sv.verify(RANKED, ensures=[_.rn >= 0])
-    assert report.proved and not report.deterministic
+    assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     r = routes.choose(report, "duckdb")
     assert not r.refused
     assert any("ties stay open:" in w for w in r.warnings)
@@ -207,7 +207,7 @@ def test_a_key_is_seen_through_the_columns_a_join_equates(side) -> None:
     report = sv.verify(
         q, tables=SQL_TABLES, requires=SQL_REQUIRES, ensures=[sv.unique("customer_id")]
     )
-    assert report.proved, str(report)
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_a_key_through_a_join_breaks_the_ties_of_a_window() -> None:

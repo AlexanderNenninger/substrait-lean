@@ -1493,7 +1493,7 @@ def _refuse_unverified(report: Report) -> None:
             "this report has no plan to export: it was not made by sv.verify",
             hint="export a report that sv.verify returned",
         )
-    if not report.proved:
+    if not report._proved:
         reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
         reasons += [f"may fail: {i}" for i in report.errors]
         if report._transfer:

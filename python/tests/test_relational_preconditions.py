@@ -37,7 +37,7 @@ def verify(q, requires, ensures, tables=None):
 def test_a_filter_selects_the_disjunct(requires, ensures):
     q = t.filter(_.a > 0).select("a", "b")
     report = verify(q, {"t": requires}, ensures)
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.facts["b"] == "an integer ≤ -1"
 
 
@@ -45,41 +45,41 @@ def test_a_filter_selects_the_disjunct(requires, ensures):
 def test_an_ensures_that_restates_a_requires_is_proved(not_null):
     requires = [IMPLIES, *NOT_NULL] if not_null else [IMPLIES]
     report = verify(t.select("a", "b"), {"t": requires}, [IMPLIES])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_a_case_branch_selects_the_disjunct():
     report = verify(t.select("a", "b"), {"t": [IMPLIES]}, [ibis.ifelse(_.a > 0, _.b < 0, True)])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_a_case_branch_narrows_a_computed_column():
     # In the branch where `a > 0`, `b < 0`, so `-b` is positive.
     q = t.select(d=ibis.ifelse(_.a > 0, -_.b, 1))
     report = verify(q, {"t": [IMPLIES, *NOT_NULL, _.b > -1000]}, [_.d >= 1])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
     assert report.facts["d"] == "an integer in [1, 999]"
 
 
 def test_a_projection_renames_the_columns_of_a_fact():
     q = t.select(x=_.a, y=_.b)
     report = verify(q, {"t": [IMPLIES]}, [(_.x <= 0) | (_.y < 0)])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_a_projection_that_drops_a_column_drops_its_facts():
     q = t.select(y=_.b)
     report = verify(q, {"t": [IMPLIES, *NOT_NULL]}, [_.y < 0])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_a_union_keeps_the_facts_of_both_inputs():
     q = t.union(u)
     tables = {"t": t, "u": u}
     both = verify(q, {"t": [IMPLIES], "u": [IMPLIES]}, [IMPLIES], tables)
-    assert both.proved
+    assert both.verdict == sv.Verdict.PROVED
     one = verify(q, {"t": [IMPLIES]}, [IMPLIES], tables)
-    assert not one.proved
+    assert one.verdict == sv.Verdict.UNPROVED
 
 
 def test_the_right_side_of_a_left_join_loses_its_facts():
@@ -88,18 +88,18 @@ def test_the_right_side_of_a_left_join_loses_its_facts():
     q = t.left_join(s, t.a == s.a).select(t.a, t.b, s.c)
     tables = {"t": t, "s": s}
     report = verify(q, {"s": [(_.a <= 0) | (_.c > 0)]}, [(_.a <= 0) | (_.c > 0)], tables)
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
 
 
 def test_a_filter_keeps_its_own_condition_whole():
     q = t.filter((_.a <= 0) | (_.b < 0)).select("a", "b")
     report = verify(q, {}, [IMPLIES])
-    assert report.proved
+    assert report.verdict == sv.Verdict.PROVED
 
 
 def test_without_the_filter_the_disjunct_stays_open():
     report = verify(t.select("a", "b"), {"t": [IMPLIES, *NOT_NULL]}, [_.b < 0])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert report.unproved[0].counterexample is not None
 
 
@@ -108,5 +108,5 @@ def test_a_product_needs_more_than_the_implication():
     # row of #597's table does not hold.
     requires = [IMPLIES, *NOT_NULL, _.a.between(-100, 100), _.b.between(-100, 100)]
     report = verify(t.select("a", "b"), {"t": requires}, [_.a * _.b <= 0])
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert report.unproved[0].counterexample is not None

@@ -384,7 +384,7 @@ def probe_contract(
     # SQL names its tables: `verify` needs their schemas.
     inputs = tables(schemas, q.dataset, profile) if isinstance(query, str) else None
     report = sverify.verify(query, requires=requires, ensures=ensures, tables=inputs)
-    out: dict[str, Any] = {"proved": report.proved, "guard_free": report._guard_free}
+    out: dict[str, Any] = {"proved": report._proved, "guard_free": report._guard_free}
     if not report._windows_total:
         # Rows may tie in a window, and the engine breaks the ties its own way.
         out["deterministic"] = False

@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+import sverify as sv
 from _repo import ROOT, needs_repo
 
 pytestmark = needs_repo
@@ -31,7 +32,7 @@ def _load(name: str):
 
 def test_the_contract_is_proved_and_applies() -> None:
     orders = _load("orders")
-    assert orders.prove().proved
+    assert orders.prove().verdict == sv.Verdict.PROVED
     import pyarrow as pa
 
     out = orders.run(pa.table({"id": [1, 2, 3], "amount": [5, 20, 50]}))

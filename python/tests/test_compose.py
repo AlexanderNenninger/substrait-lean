@@ -35,7 +35,7 @@ def positive(t):
 def test_composed_contracts_connect():
     result = doubled(paid(orders))
     report = doubled.report
-    assert report is not None and report.proved
+    assert report is not None and report.verdict == sv.Verdict.PROVED
     # `doubled` was proved against `paid`'s guarantees, not against `orders`.
     assert report.requires == {
         "paid": ["(_.amount >= 0)", "(_.amount < 1000000000)", "_.amount.notnull()"]

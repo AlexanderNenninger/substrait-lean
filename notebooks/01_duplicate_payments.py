@@ -238,11 +238,11 @@ def _(mo):
 
 
 @app.cell
-def _(DeltaSource, duplicate_payments, lake):
+def _(DeltaSource, duplicate_payments, lake, sv):
     transactions = DeltaSource(str(lake / "transactions"))
     dups = transactions.pipe(duplicate_payments)
     report = duplicate_payments.report
-    assert report.proved and not report.issues
+    assert report.verdict == sv.Verdict.PROVED and not report.issues
     first_refresh = dups.refresh()
     return dups, first_refresh, report, transactions
 

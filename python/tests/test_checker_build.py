@@ -30,13 +30,13 @@ def _verify(monkeypatch: pytest.MonkeyPatch, answer: bool | None) -> Report:
 
 def test_checked_build(monkeypatch: pytest.MonkeyPatch) -> None:
     report = _verify(monkeypatch, True)
-    assert report.proved and str(report).splitlines()[0] == "proved"
+    assert report.verdict == sv.Verdict.PROVED and str(report).splitlines()[0] == "proved"
     assert json.loads(report.to_json())["checker"] == {"generated_proofs": True}
 
 
 def test_unchecked_build_names_itself(monkeypatch: pytest.MonkeyPatch) -> None:
     report = _verify(monkeypatch, False)
-    assert report.proved and report.verdict == "proved"
+    assert report.verdict == sv.Verdict.PROVED
     assert str(report).splitlines()[0] == "proved" + UNCHECKED_CHECKER
     back = Report.from_json(report.to_json())
     assert str(back).splitlines()[0] == "proved" + UNCHECKED_CHECKER

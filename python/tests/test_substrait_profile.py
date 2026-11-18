@@ -101,7 +101,7 @@ def test_verify_carries_over(con: Connection) -> None:
     )
     assert report.semantics == "substrait"
     assert report._transfer == []
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
 
 
 def test_verify_fails_where_substrait_is_looser(con: Connection) -> None:
@@ -113,14 +113,14 @@ def test_verify_fails_where_substrait_is_looser(con: Connection) -> None:
     under_ref = sv.verify(
         expr, requires={"t": [_.k.between(0, 10), _.i.between(-10, 10)]}, ensures=[_.n >= -10]
     )
-    assert under_ref.proved
+    assert under_ref.verdict == sv.Verdict.PROVED
     report = sv.verify(
         expr,
         requires={"t": [_.k.between(0, 10), _.i.between(-10, 10)]},
         ensures=[_.n >= -10],
         semantics="substrait",
     )
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert any(f["option"] == "overflow" for f in report._transfer or ())
     assert 'not proved under semantics="substrait": int.arith\'s overflow' in str(report)
 

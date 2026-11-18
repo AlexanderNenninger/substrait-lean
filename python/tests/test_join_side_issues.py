@@ -118,10 +118,10 @@ def test_duckdb_and_the_report_on_a_condition_above_a_join_with_an_empty_side(
     # Whatever DuckDB does with the data, the report lists the issue without
     # the precondition, and proves the plan with it.
     without = sv.verify(sql, tables=TABLES, counterexamples=0)
-    assert not without.proved
+    assert without.verdict == sv.Verdict.UNPROVED
     assert without.needs or without.errors
     with_it = sv.verify(sql, tables=TABLES, requires=requires, counterexamples=0)
-    assert with_it.proved
+    assert with_it.verdict == sv.Verdict.PROVED
 
 
 def test_duckdb_raises_with_the_other_side_empty_but_not_when_it_is_unmatched():
@@ -148,7 +148,7 @@ def test_a_constant_raising_condition_over_an_empty_table_is_reported():
     sql = "SELECT a.id FROM a WHERE 10 // 0 > 1"
     assert _duckdb("a").execute(sql).fetchall() == []
     report = sv.verify(sql, tables=TABLES, counterexamples=0)
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert [i.kind for i in report.errors] == ["division by zero"]
 
 
@@ -157,5 +157,5 @@ def test_declaring_a_side_empty_does_not_change_the_report(empty):
     """`sv.max_rows(0)` on a side: the abstract evaluation never uses emptiness,
     so the issue is still reported (`Rel.mayIssues` over-approximates)."""
     report = sv.verify(BASE, tables=TABLES, requires={empty: [sv.max_rows(0)]}, counterexamples=0)
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert [n.label for n in report.needs] == ["(_.x != 0)"]

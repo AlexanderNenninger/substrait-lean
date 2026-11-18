@@ -63,7 +63,7 @@ def test_the_public_attributes_do_not_warn(recwarn):
     report = _report()
     for name in PUBLIC - {"observation"}:
         getattr(report, name)
-    for name in ("verdict", "proved", "unproved", "needs", "errors", "notes", "suggestions"):
+    for name in ("verdict", "unproved", "needs", "errors", "notes", "suggestions"):
         getattr(report, name)
     assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
 

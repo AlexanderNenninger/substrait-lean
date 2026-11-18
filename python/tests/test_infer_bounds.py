@@ -91,7 +91,7 @@ def inferred(report) -> list[str]:
 )
 def test_inferred_bounds_prove_the_contract(expr, requires, bounds):
     report = verify(expr, requires={"orders": requires}, ensures=[])
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
     assert inferred(report) == bounds
     # They are assumed like the rest of `requires`, and shown as inferred.
     assert all(b in report.requires["orders"] for b in bounds)
@@ -113,13 +113,13 @@ def test_abs_of_a_narrow_integer_is_bounded_within_its_type(dtype, bounds):
     BIGINT's, and no bound reaches 2**63, which the lift reads as a HUGEINT
     (#616)."""
     report = verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": dtype}})
-    assert report.proved, report
+    assert report.verdict == sv.Verdict.PROVED, report
     assert inferred(report) == bounds
 
 
 def test_abs_of_the_smallest_tinyint_may_fail():
     report = verify("SELECT abs(v) AS a FROM t", tables={"t": {"v": "int8"}}, on_inferred="off")
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert any("WRAP8" in str(i) for i in report.errors), report
 
 
@@ -127,7 +127,7 @@ def test_without_inference_the_hint_names_the_bound():
     report = verify(
         T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]}, on_inferred="off"
     )
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert report._inferred == {}
     [issue] = report.errors
     assert issue.hint == "state `(_.amount < 2**62)` in the requires of 'orders'"
@@ -158,7 +158,7 @@ def test_without_inference_the_hint_names_the_bound():
 )
 def test_limits_are_suggested_not_assumed(expr, hint):
     report = verify(expr, requires={"orders": [_.amount >= 0]})
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert report._inferred == {}
     assert any(i.hint == hint for i in report.errors), report.errors
 
@@ -173,7 +173,7 @@ def test_a_wrong_inference_fails_the_proof(monkeypatch):
     monkeypatch.setattr(contracts, "_render_needs", too_weak)
     report = verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]})
     assert inferred(report) == ["(_.amount < 9 * 10**18)"]
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert [i.kind for i in report.errors] == ["overflow"]
 
 
@@ -234,7 +234,7 @@ def test_an_eager_table_gets_the_inferred_bound():
     orders = ibis.memtable(pa.table({"id": [1, 2], "amount": pa.array([10, 20], pa.int64())}))
     out = mutated(orders)
     report = mutated.report
-    assert report is not None and report.proved
+    assert report is not None and report.verdict == sv.Verdict.PROVED
     assert inferred(report) == ["(_.amount < 2**62)"]
     assert discharged(report.preconditions)[("orders", "(_.amount < 2**62)")] == ON_DATA
     assert sorted(out.to_pyarrow().column("doubled").to_pylist()) == [20, 40]
@@ -301,7 +301,7 @@ def test_inferred_bounds_compose_through_nodes():
     shop = StaticSource(pa.table({"id": [1], "customer": ["a"], "amount": [5]}), name="orders")
     paid(shop).pipe(twice)  # `paid` guarantees `amount < 1_000_000_000`
     assert twice.report is not None
-    assert twice.report.proved and twice.report._inferred == {}
+    assert twice.report.verdict == sv.Verdict.PROVED and twice.report._inferred == {}
 
 
 def test_strict_requires_explicit_bounds():
@@ -321,7 +321,7 @@ def test_strict_requires_explicit_bounds():
         return orders.select(x=orders.amount * 2)
 
     src.pipe(stated)
-    assert stated.report is not None and stated.report.proved
+    assert stated.report is not None and stated.report.verdict == sv.Verdict.PROVED
 
 
 def test_a_timestamp_column_needs_no_bound():
@@ -368,7 +368,7 @@ def test_a_widening_cast_has_its_targets_width():
     it needs is the column's own type, not the `|i| < 2**29` of `WRAP32`
     (#1541)."""
     report = verify("SELECT CAST(i AS BIGINT) * 4 AS y FROM t", tables={"t": {"i": "int32"}})
-    assert report.proved and not report.errors, report
+    assert report.verdict == sv.Verdict.PROVED and not report.errors, report
     assert inferred(report) == INT32
 
 
@@ -386,12 +386,14 @@ def test_a_widened_sum_is_not_a_32_bit_wrap(sql):
 
 def test_arithmetic_without_the_cast_still_wraps_at_the_columns_width():
     report = verify("SELECT i * 4 AS y FROM t", tables={"t": {"i": "int32"}}, on_inferred="off")
-    assert not report.proved and any("WRAP32" in str(i) for i in report.errors), report
+    assert report.verdict == sv.Verdict.UNPROVED and any(
+        "WRAP32" in str(i) for i in report.errors
+    ), report
 
 
 def test_a_tinyint_cast_to_smallint_multiplies_at_16_bits():
     tables = {"t": {"v": "int8"}}
     ok = verify("SELECT CAST(v AS SMALLINT) * 4 AS y FROM t", tables=tables)
-    assert ok.proved and inferred(ok) == ["(_.v >= -128)", "(_.v <= 127)"], ok
+    assert ok.verdict == sv.Verdict.PROVED and inferred(ok) == ["(_.v >= -128)", "(_.v <= 127)"], ok
     big = verify("SELECT CAST(v AS SMALLINT) * CAST(1000 AS SMALLINT) AS y FROM t", tables=tables)
-    assert not big.proved and any("WRAP16" in str(i) for i in big.errors), big
+    assert big.verdict == sv.Verdict.UNPROVED and any("WRAP16" in str(i) for i in big.errors), big

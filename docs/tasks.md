@@ -202,7 +202,7 @@ except VerificationError as e:
 
   ```python
   report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
-  if report.proved:
+  if report.verdict == sv.Verdict.PROVED:
       result = report.run(con)
   ```
 * `requires` maps each input to its conditions. A transformation with one
@@ -587,7 +587,7 @@ def unit_price(orders):
 
 
 report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
-print(report.proved, [n.label for n in report.needs])
+print(report.verdict == sv.Verdict.PROVED, [n.label for n in report.needs])
 # False ['(_.qty != 0)']
 print(report.ensures[0].message)
 # NOT proved: it may be FALSE or NULL on some rows
@@ -1448,8 +1448,8 @@ upstream = openlineage.read("events.jsonl").dataset(paid_sink)
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(upstream.verified, doubled_paid.check(paid=upstream.schema).proved)
-# True True
+print(upstream.verified, doubled_paid.check(paid=upstream.schema).verdict)
+# True proved
 ```
 
 To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
@@ -1865,8 +1865,8 @@ paid_contract = odcs.read("paid.odcs.yaml")
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(doubled_paid.check(paid=paid_contract.schema()).proved)
-# True
+print(doubled_paid.check(paid=paid_contract.schema()).verdict)
+# proved
 ```
 
 ```bash

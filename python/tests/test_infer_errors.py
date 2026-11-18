@@ -66,10 +66,12 @@ def inferred(report: sv.Report) -> list[str]:
 )
 def test_inferred_preconditions_prove_the_plan(expr, conds):
     report = verify(expr, counterexamples=0)
-    assert report.proved, str(report)
+    # Proved with the inferred preconditions; a case that also assumes a `SUM`
+    # fits is `proved_with_checks`.
+    assert report.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS), str(report)
     assert inferred(report) == conds
     off = verify(expr, counterexamples=0, on_inferred="off")
-    assert not off.proved
+    assert off.verdict == sv.Verdict.UNPROVED
     assert all(i.hint for i in off.errors)
 
 
@@ -84,7 +86,7 @@ def test_inferred_preconditions_prove_the_plan(expr, conds):
 )
 def test_choices_are_suggested_not_assumed(expr, hint):
     report = verify(expr, counterexamples=0)
-    assert not report.proved
+    assert report.verdict == sv.Verdict.UNPROVED
     assert any(i.hint and i.hint.startswith(hint) for i in report.errors), report.errors
 
 

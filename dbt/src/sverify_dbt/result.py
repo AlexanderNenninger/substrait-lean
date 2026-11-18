@@ -162,7 +162,7 @@ class CheckResult:
         raise KeyError(name)
 
     @property
-    def proved(self) -> list[TestResult]:
+    def proved_tests(self) -> list[TestResult]:
         """The tests proved before any model runs: `dbt build` may skip them."""
         return [t for m in self.models for t in m.tests if t.status == "proved"]
 
@@ -170,7 +170,7 @@ class CheckResult:
     def skippable(self) -> list[TestResult]:
         """The proved tests `dbt build` may skip (`proved` less an incremental
         model's tests that its incremental runs can still break)."""
-        return [t for t in self.proved if t.skippable]
+        return [t for t in self.proved_tests if t.skippable]
 
     @property
     def contract_errors(self) -> list[tuple[str, ContractIssue]]:
