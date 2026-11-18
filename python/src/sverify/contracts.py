@@ -1508,7 +1508,8 @@ def _verify_once(
     req_plans = []
     for t, cs in requires.items():
         for n, c in enumerate(cs, start=1):
-            if not isinstance(c, TableCondition):
+            # An ASCII condition is declared to the checker (`"ascii"` below), not a plan.
+            if not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.ascii):
                 req_plans.append(plan(query(f"requires {t}", n, table_ref(t, c), c)))
     ens_plans = []
     for n, c in enumerate(ensures, start=1):

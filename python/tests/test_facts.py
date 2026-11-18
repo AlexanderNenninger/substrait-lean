@@ -80,7 +80,7 @@ def test_checklist_items_are_unique_and_cover_the_core_options():
     assert found["execution"][0] == "evaluation_order"
     areas = json.loads(facts.AREAS.read_text())["areas"]
     options = [i["id"] for a in areas for i in a["items"] if i["kind"] == "option"]
-    assert len(options) == 42
+    assert len(options) == 43
 
 
 def test_coverage_lists_facts_per_item(tmp_path):
