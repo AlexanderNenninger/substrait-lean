@@ -34,7 +34,8 @@ instead.
   satisfies the postconditions, and a run stops where a check fails on the
   data. Anything else is `unproved`. `bool(report.verdict)` raises
   `TypeError`: compare the value you expect. `str(report)` starts with the
-  verdict in words, `proved` or `NOT proved:` and what is missing, counted.
+  verdict in words: `proved`, `proved with checks:` and the number of
+  assumptions a run checks, or `NOT proved:` and what is missing, counted.
 - The assumptions. `report.requires` lists the preconditions per input
   table, the ones you stated and the ones sverify inferred and assumed;
   `report.assumed` the `SUM`s assumed to fit their type, which the run
