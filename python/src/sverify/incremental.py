@@ -69,6 +69,7 @@ from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
+from sverify._run_schema import table_problems
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import Merger, State, Store, arrow_of, by_keys, store_for
 from sverify._unsupported import SverifyError
@@ -543,6 +544,14 @@ def _facts_within(facts: Sequence[Fact], names: Sequence[str]) -> list[Fact]:
     return out
 
 
+def _refuse_schema(plan: str, tables: Mapping[str, pa.Table], source: str | None = None) -> None:
+    """Refuse rows of `tables` that differ from the schema `plan` was verified
+    for (`sverify._run_schema`): a NULL in a non-null column, a changed type, an
+    integer outside its declared width (D46)."""
+    if bad := table_problems(json.loads(plan), tables):
+        raise PreconditionError("; ".join(bad) + ": refused before the run", source=source)
+
+
 def plan_digest(plan: str) -> str:
     """sha256 of a plan as Lean wrote it; sinks record it."""
     return hashlib.sha256(plan.encode()).hexdigest()
@@ -959,6 +968,9 @@ class IncrementalView:
         self._sinks: list = []
         """Where the view keeps its state (`sverify._state`): in DuckDB on
         DuckDB, else in Arrow."""
+        _refuse_schema(
+            self.plan, {t: z for t in self.tables if isinstance(z := con.get(t), pa.Table)}
+        )
         reason = None if resume is None else self._mismatch(resume)
         if resume is not None and reason is None:
             # The schema the engine gives the view, from a run on no rows.
@@ -1941,6 +1953,9 @@ class Pipeline:
             conds = self.requires.get(t, [])
             rowwise = [c for c in conds if not (isinstance(c, TableCondition) and c.batched)]
             inserts = rows_of(positive(ch))
+            for v in self._views:
+                if t in v.tables:
+                    _refuse_schema(v.plan, {t: inserts}, t)
             if rowwise and inserts.num_rows:
                 name = t + "$inserts"
                 put_table(self.con, name, inserts)
