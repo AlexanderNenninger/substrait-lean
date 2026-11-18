@@ -4161,7 +4161,9 @@ class _Writer:
                 # projection; one that reads another binding goes a layer higher.
                 level: dict[str, int] = {}
                 for name, text in binds:
-                    level[name] = 1 + max((level[n] for n in level if f'"{n}"' in text), default=0)
+                    level[name] = 1 + max(
+                        (level[n] for n in level if d.quote(n) in text), default=0
+                    )
                 for k in range(1, max(level.values(), default=0) + 1):
                     inner = self.passthrough(a, m, ordered)
                     for name, text in binds:
