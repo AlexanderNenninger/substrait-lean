@@ -416,6 +416,7 @@ def test_a_seed_takes_its_types_from_the_catalog_of_the_loaded_table(make_projec
         }
     )
     why = sverify_dbt.check(root, counterexamples=0)["stg"].refused
+    assert why is not None
     assert why.startswith("ref('raw_orders') has no column types") and "`dbt seed`" in why
     dbt(root, "seed")
     dbt(root, "docs", "generate")
@@ -435,7 +436,8 @@ def test_a_missing_column_type_message_parses(make_project):
         ),
         counterexamples=0,
     )
-    assert res["p"].refused.startswith("source('raw', 'payments') has no column types")
+    why = res["p"].refused
+    assert why is not None and why.startswith("source('raw', 'payments') has no column types")
 
 
 def test_an_incremental_model_compiled_after_its_run_asks_for_full_refresh(make_project):
