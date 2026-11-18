@@ -4,14 +4,15 @@
 # Usage, from a checkout on the laptop (the script runs on homelab and clones
 # the branch there, so push it first):
 #
-#   ssh homelab 'bash -s -- [--wait] [--slots N | --exclusive] <branch> [poe task ...]' < python/scripts/homelab_qa.sh
+#   ssh homelab 'bash -s -- [--wait] [--slots 1|2|3 | --exclusive] <branch> [poe task ...]' < python/scripts/homelab_qa.sh
 #
-# Slots (CLAUDE.md, "homelab"): homelab has two slots, a flock on each,
-# held for the life of the run. A QA run takes one (`--slots 1`, the default);
-# `--slots 2` takes both and `--exclusive` is the same, for a regen or a
-# benchmark. If the slots aren't free the script exits 75 and says who holds
-# them; with `--wait` it queues until they are (at most HOMELAB_QA_WAIT_MAX
-# seconds, 3 hours by default). A run that needs both slots goes before runs
+# Slots (CLAUDE.md, "homelab"): homelab has three slots of about 4 GB, a flock
+# on each, held for the life of the run. A full `poe qa` takes two
+# (`--slots 2`, the default: the Lean build peaks at 4.2-4.8 GB); `--slots 1`
+# suits a light task, `--slots 3` a regen and `--exclusive` a benchmark. If
+# the slots aren't free the script exits 75 and says who holds them; with
+# `--wait` it queues until they are (at most HOMELAB_QA_WAIT_MAX seconds, 3
+# hours by default). A run that needs several slots goes before smaller runs
 # that arrive after it. The kernel frees the slots when the run ends, crashes
 # or is killed. Once it holds its slots, the script still checks that 6 GB are
 # available (the user's own services share the box), inside the lock. Each
@@ -63,17 +64,17 @@
 set -uo pipefail
 
 wait=false
-slots=1
+slots=2
 while :; do
   case ${1:-} in
     --wait) wait=true ;;
     --slots) slots=$2; shift ;;
-    --exclusive) slots=2 ;;
+    --exclusive) slots=all ;;
     *) break ;;
   esac
   shift
 done
-branch=${1:?usage: homelab_qa.sh [--wait] [--slots N | --exclusive] <branch> [poe task ...]}
+branch=${1:?usage: homelab_qa.sh [--wait] [--slots 1|2|3 | --exclusive] <branch> [poe task ...]}
 shift
 tasks=("${@:-qa}")
 
@@ -91,18 +92,18 @@ $wait || wait_max=0
 
 # --- slots:begin (kept identical in agentic-tools' drivers/lib/slots.sh;
 # --- agentic-tools' tests/test-slots.sh compares the two copies)
-# Slot pool for homelab: two slots, a flock on each. Source it on homelab.
+# Slot pool for homelab: three slots of about 4 GB, a flock on each. Source it on homelab.
 #
 # A run takes an exclusive flock on its slots and keeps the descriptors for its
 # whole life (children inherit them); the kernel releases them when the run
-# exits, crashes or is killed. A normal run takes 1 slot, a regen 2, a
-# benchmark all. Runs queue at a gate lock: while one waits at the gate for its
-# slots, later runs wait behind it, so a run that needs both slots is not
+# exits, crashes or is killed. Light runs take 1 slot, a Lean build 2, a
+# regen 3, a benchmark all. Runs queue at a gate lock: while one waits at the gate for its
+# slots, later runs wait behind it, so a run that needs several slots is not
 # starved by single-slot runs arriving after it. Slots are taken in a fixed
-# order (slot-0, then slot-1). Holders and waiters write an info file so that
+# order (slot-0, slot-1, slot-2). Holders and waiters write an info file so that
 # `capacity homelab` can list them.
 slots_dir=${HOMELAB_SLOT_DIR:-$HOME/.substrait-lean/slots}
-slot_count=2
+slot_count=3
 slots_min_available_kb=$(( ${HOMELAB_MIN_AVAILABLE_GB:-6} * 1024 * 1024 ))
 slots_taken=()
 
@@ -192,6 +193,7 @@ slots_acquire() {
   done
 }
 # --- slots:end
+[ "$slots" = all ] && slots=$slot_count
 
 id=$(uuidgen)
 if [ "$prefix" = substrait-chaos ]; then

@@ -130,7 +130,7 @@ laptop. Start an expensive task (`poe qa`, `lake build`, the full pytest
 suite, notebook runs, wheel builds) only when the machine it runs on has
 spare capacity. This applies to the laptop as much as to `homelab`. On the
 laptop, several builds and test runs may go at once while load and memory
-allow, each under its memory cap (`lean -M`). On homelab, two slots decide
+allow, each under its memory cap (`lean -M`). On homelab, three slots decide
 (below).
 
 - **Laptop** (10 cores, 16 GB RAM): check `uptime` and `memory_pressure | tail -1`.
@@ -178,19 +178,20 @@ The script clones the branch into `/tmp/substrait-lean-<uuid>`, reuses a
 warm Lean build, runs `poe qa` (or the poe tasks named after the branch)
 under memory caps, and deletes the directory at exit. Its header documents
 its options. Several agents and the user's own services share the box, and
-two uncapped runs once hung it. Homelab has two slots: builds take one,
-regens two, benchmarks all. A run takes an exclusive `flock` on its slots
-(`~/.substrait-lean/slots/`) and holds it until it ends; the kernel frees it
-on exit, crash or kill. A load check was racy: on 2026-11-18 five sessions
-passed it within 16 seconds, and five Lean builds took the box to load 118.
-The script exits 75 and names the holders when the slots are taken, and
-`--wait` (before the branch) queues for them. A run that needs both slots goes
-before runs that arrive after it. Once it holds its slots it still needs 6 GB
-available, checked inside the lock. `--slots 2` (regens) and `--exclusive`
-(benchmarks) take more; `homelab-run` has the same options. `capacity
-homelab` lists the holders and waiters.
+two uncapped runs once hung it. Homelab has three slots of about 4 GB:
+light runs take one, builds two, regens three, benchmarks all. A run takes
+an exclusive `flock` on its slots (`~/.substrait-lean/slots/`) and holds it
+until it ends; the kernel frees it on exit, crash or kill. A load check was
+racy: on 2026-11-18 five sessions passed it within 16 seconds, and five Lean
+builds took the box to load 118. The script exits 75 and names the holders
+when the slots are taken, and `--wait` (before the branch) queues for them. A
+run that needs several slots goes before smaller runs that arrive after it.
+Once it holds its slots it still needs 6 GB available, checked inside the
+lock. `--slots N` and `--exclusive` choose the weight (the script's full
+`poe qa` takes 2, a light task `--slots 1`); `homelab-run` has the same
+options. `capacity homelab` lists the holders and waiters.
 
-- **Two slots.** A `/tmp/substrait-lean-*` directory means a run is going.
+- **Three slots.** A `/tmp/substrait-lean-*` directory means a run is going.
   Long jobs that aren't QA (a replay, fuzzing, TLC) go through `homelab-run`
   and take a slot too. The chaos run (the `chaos-run` skill) takes none.
 - **Cap workers** with `PYTEST_XDIST_AUTO_NUM_WORKERS=2`, the script's
