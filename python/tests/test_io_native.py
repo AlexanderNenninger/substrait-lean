@@ -349,8 +349,11 @@ def test_iceberg_added_and_renamed_columns(catalog):
     check_versions(src, [2])
     with src.table().update_schema() as update:
         update.rename_column("a", "c")
-    # The old files have the column as `a`: only pyiceberg reads it by id.
-    assert src._native() is None
+    # The old file has the column as `a`: read by field id, as pyiceberg does
+    # (once a snapshot is written under the new schema, which it needs).
+    src.table().append(pa.table({"id": [4], "c": [40], "b": ["y"]}))
+    check_versions(src, [3])
+    assert native(src).schema.names == ["id", "c", "b"]
 
 
 def test_iceberg_partitions_fall_back_to_arrow(catalog):
@@ -398,7 +401,7 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
 # Property 5.1 of the native-scan design (#173): a scan of the descriptor is the
 # Arrow route's rows, over generated table histories (`_table_histories`). A
 # source falls back to Arrow where a native read does not cover the history yet
-# (partitions, a rename); the property then pins that.
+# (partitions); the property then pins that.
 
 
 def agree_or_fall_back(src, versions):
@@ -425,7 +428,7 @@ def test_a_delta_scan_equals_the_arrow_route_over_histories(history, tmp_path_fa
 @settings(
     max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
-@given(history=histories())
+@given(history=histories(renames=True))
 def test_an_iceberg_scan_equals_the_arrow_route_over_histories(history, tmp_path_factory):
     warnings.filterwarnings("ignore", module="pyiceberg")
     root = tmp_path_factory.mktemp("i")

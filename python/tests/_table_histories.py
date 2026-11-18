@@ -10,8 +10,8 @@ A `Delete` rewrites the files it touches (delta-rs writes no deletion vectors,
 Iceberg no position deletes here): those are covered by the fixture and the sink
 tests in `test_io_native.py`.
 
-Histories go beyond what a native read covers today (partitions, an Iceberg
-rename): a source falls back to Arrow there, and the property says so. As a
+Histories go beyond what a native read covers today (partitions): a source
+falls back to Arrow there, and the property says so. As a
 native read learns a case, the test that pins the fallback turns into one that
 compares the rows.
 """
@@ -50,7 +50,15 @@ class AddColumn:
     name: str
 
 
-Step = Append | Delete | AddColumn
+RENAME = "<rename x to y>"
+
+
+@dataclass(frozen=True)
+class Rename:
+    """Rename the double column `x` to `y` (Iceberg: files written before keep `x`)."""
+
+
+Step = Append | Delete | AddColumn | Rename
 
 
 @dataclass(frozen=True)
@@ -62,7 +70,8 @@ class History:
 
     def columns(self, upto: int | None = None) -> list[str]:
         extra = [s.name for s in self.steps[:upto] if isinstance(s, AddColumn)]
-        return ["id", "k", "x", *extra]
+        renamed = any(isinstance(s, Rename) for s in self.steps[:upto])
+        return ["id", "k", "y" if renamed else "x", *extra]
 
 
 def rows(history: History, ids: tuple[int, ...], upto: int) -> pa.Table:
@@ -70,7 +79,7 @@ def rows(history: History, ids: tuple[int, ...], upto: int) -> pa.Table:
     data = {
         "id": pa.array(ids, pa.int64()),
         "k": pa.array([KS[i % 3] for i in ids], pa.string()),
-        "x": pa.array([XS[i % len(XS)] for i in ids], pa.float64()),
+        history.columns(upto)[2]: pa.array([XS[i % len(XS)] for i in ids], pa.float64()),
     }
     for name in history.columns(upto)[3:]:
         data[name] = pa.array([f"{name}{i}" for i in ids], pa.string())
@@ -78,19 +87,25 @@ def rows(history: History, ids: tuple[int, ...], upto: int) -> pa.Table:
 
 
 @st.composite
-def histories(draw, max_steps: int = 5, partitioned: bool | None = None) -> History:
+def histories(
+    draw, max_steps: int = 5, partitioned: bool | None = None, renames: bool = False
+) -> History:
     """Histories that start with an append, so no table is empty at creation
     (an empty table is its own test)."""
     ids = st.integers(0, 40)
     first = Append(tuple(draw(st.lists(ids, min_size=1, max_size=6, unique=True))))
     steps: list[Step] = [first]
-    added = 0
+    added, renamed = 0, False
     for _ in range(draw(st.integers(0, max_steps - 1))):
-        kind = draw(st.sampled_from(["append", "append", "delete", "add"]))
+        kind = draw(st.sampled_from(["append", "append", "delete", "add", *(["rename"] * renames)]))
         if kind == "append":
             steps.append(Append(tuple(draw(st.lists(ids, min_size=1, max_size=6, unique=True)))))
         elif kind == "delete":
             steps.append(Delete(draw(st.integers(0, 41))))
+        elif kind == "rename":
+            if not renamed:
+                steps.append(Rename())
+                renamed = True
         elif added < 2:
             steps.append(AddColumn(f"c{added}"))
             added += 1
@@ -116,7 +131,7 @@ def build_delta(path: Path, history: History) -> DeltaSource:
                 created = True
             case Delete(below):
                 DeltaTable(str(path)).delete(f"id < {below}")
-            case AddColumn():
+            case AddColumn() | Rename():
                 pass  # the column appears with the next append (schema merge)
     return DeltaSource(str(path))
 
@@ -133,7 +148,7 @@ def build_iceberg(catalog, name: str, history: History) -> IcebergSource:
         with table.update_spec() as update:
             update.add_identity("k")
     table.append(data)
-    # A column is added just before the next append: pyiceberg's own read of a
+    # A column is added (or renamed) just before the next append: pyiceberg's own read of a
     # snapshot older than the schema fails (test_iceberg_added_and_renamed_columns).
     pending: list[str] = []
     for n, step in enumerate(history.steps[1:], 1):
@@ -141,11 +156,16 @@ def build_iceberg(catalog, name: str, history: History) -> IcebergSource:
             case Append(ids):
                 for col in pending:
                     with table.update_schema() as update:
-                        update.add_column(col, StringType())
+                        if col == RENAME:
+                            update.rename_column("x", "y")
+                        else:
+                            update.add_column(col, StringType())
                 pending.clear()
                 table.append(rows(history, ids, n))
             case Delete(below):
                 table.delete(f"id < {below}")
             case AddColumn(col):
                 pending.append(col)
+            case Rename():
+                pending.append(RENAME)
     return IcebergSource(catalog, name)

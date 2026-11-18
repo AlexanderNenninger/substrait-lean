@@ -17,11 +17,12 @@ table's schema and the source's filter. DuckDB reads it with `read_parquet`
 (`attach`), so the table never passes through Python; any other consumer gets
 the same rows as an Arrow table (`to_arrow`).
 
-The files are read by column name. A column no file has is NULL, and every
-column is cast to the type DuckDB gives the schema's Arrow type, so a plan
-sees the types it sees on the Arrow table of the same rows. Sources build a
-scan only where reading by name gives the rows their own reader gives (no
-partition values kept outside the files, no renamed columns).
+The files are read by column name, or by Parquet field id where the scan has
+`field_ids` (Iceberg). A column no file has is NULL, and every column is cast
+to the type DuckDB gives the schema's Arrow type, so a plan sees the types it
+sees on the Arrow table of the same rows. Sources build a scan only where
+reading gives the rows their own reader gives (no partition values kept
+outside the files).
 """
 
 from __future__ import annotations
@@ -135,6 +136,26 @@ class Resident(Native):
         return f"Resident({self.name!r}, {self.kind})"
 
 
+@dataclass(frozen=True)
+class EqualityDelete:
+    """An Iceberg equality delete file: the rows of `applies_to` (data files,
+    as local paths) that match one of its rows on `columns` are deleted, NULL
+    matching NULL (the table spec's rule; the data files the descriptor lists
+    are the ones of a lower sequence number than the delete file).
+
+    Attributes:
+        file: The delete file, a local path.
+        ids: The Iceberg field ids the file's rows are compared on.
+        columns: The table's column of each id, by name in `Scan.schema`.
+        applies_to: The data files it applies to.
+    """
+
+    file: str
+    ids: tuple[int, ...]
+    columns: tuple[str, ...]
+    applies_to: tuple[str, ...]
+
+
 @dataclass(eq=False)
 class Scan(Native):
     """The rows of a table at one version, as files to read.
@@ -148,6 +169,10 @@ class Scan(Native):
         where: A SQL condition on the columns: the rows are those on which
             it is TRUE. None: every row.
         origin: Where the rows come from, such as `orders@v3`.
+        field_ids: The Parquet field id of each column of `schema`, in order
+            (Iceberg): the files are read by id, so a column renamed since a
+            file was written is still found. None: by name.
+        equality: Iceberg equality deletes, applied to their data files.
     """
 
     files: tuple[str, ...]
@@ -155,6 +180,8 @@ class Scan(Native):
     deleted: pa.Table | None = None
     where: str | None = None
     origin: str = ""
+    field_ids: tuple[int, ...] | None = None
+    equality: tuple[EqualityDelete, ...] = ()
 
     def attach(
         self,
