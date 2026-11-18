@@ -236,6 +236,8 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
             # (`sverify._exact_sum.finish`).
             out[m.name] = s
         elif m.kind == "avg":
+            # The sum and count are table columns here, so the parser reads the quotient as
+            # the checked decimal, and the check cannot fire on a maintained state.
             mean = DecimalDiv(s.op(), n.op(), m.to).to_expr()  # type: ignore[abstract]
             out[m.name] = ibis.ifelse(n == 0, ibis.null(m.to), mean)
         else:
