@@ -402,19 +402,24 @@ def test_needs_become_suggested_source_tests(make_project, capsys) -> None:
     assert capsys.readouterr().out == text
 
 
-def test_a_seed_without_column_types_is_read_from_its_csv(make_project):
-    """The dbt default: a seed states no types. Its CSV gives them, so the
-    models on it are read rather than refused (#1586)."""
-    res = sverify_dbt.check(
-        make_project(
-            {
-                "seeds/raw_orders.csv": "id,cents\n1,100\n2,250\n",
-                "models/stg.sql": "select id, cents from {{ ref('raw_orders') }}\n",
-            }
-        ),
-        counterexamples=0,
+def test_a_seed_takes_its_types_from_the_catalog_of_the_loaded_table(make_project):
+    """The dbt default: a seed states no types. Once `dbt seed` has loaded it,
+    `dbt docs generate` records the table's real types; before, the refusal
+    says what to run (#1586). The CSV is not sniffed: DuckDB reads `1` as
+    BIGINT where dbt-duckdb loads INTEGER."""
+    from conftest import dbt
+
+    root = make_project(
+        {
+            "seeds/raw_orders.csv": "id,cents\n1,100\n2,250\n",
+            "models/stg.sql": "select id, cents from {{ ref('raw_orders') }}\n",
+        }
     )
-    assert res["stg"].refused is None
+    why = sverify_dbt.check(root, counterexamples=0)["stg"].refused
+    assert why.startswith("ref('raw_orders') has no column types") and "`dbt seed`" in why
+    dbt(root, "seed")
+    dbt(root, "docs", "generate")
+    assert sverify_dbt.check(root, counterexamples=0)["stg"].refused is None
 
 
 def test_a_missing_column_type_message_parses(make_project):
@@ -451,6 +456,7 @@ def test_an_incremental_model_compiled_after_its_run_asks_for_full_refresh(make_
     )
     dbt(root, "seed")
     dbt(root, "run")
+    dbt(root, "docs", "generate")
     dbt(root, "compile")
     why = sverify_dbt.check(root, counterexamples=0)["p"].refused
     assert why and "dbt compile --full-refresh" in why and "{{ this }}" in why

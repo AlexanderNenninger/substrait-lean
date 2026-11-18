@@ -38,8 +38,8 @@ sverify-dbt check .
 ```
 
 Without the catalog, sverify-dbt takes types from each column's `data_type`
-in the YAML, and for a seed from the types DuckDB reads in its CSV. It refuses
-a model whose inputs have none. After a `dbt run`, a plain `dbt compile`
+in the YAML. A seed has types in the catalog once `dbt seed` has loaded it and
+`dbt docs generate` has run. It refuses a model whose inputs have none. After a `dbt run`, a plain `dbt compile`
 renders each incremental model's `is_incremental()` branch, which reads
 `{{ this }}`; sverify-dbt refuses it and asks for `dbt compile --full-refresh`.
 

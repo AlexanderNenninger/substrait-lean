@@ -124,12 +124,12 @@ class _Checker:
                 except duckdb.Error as e:
                     why = f"DuckDB cannot plan {r.ref}: {_first_line(e)}"
         else:
-            types = r.declared_types() or self._seed_types(r)
+            types = r.declared_types()
             if types is None:
                 why = (
                     f"{r.ref} has no column types: give each of its columns a data_type in "
-                    "its YAML, or run `dbt seed` (for a seed) and `dbt docs generate` so that "
-                    "target/catalog.json has them"
+                    "its YAML, or run `dbt seed` (for a seed) and then `dbt docs generate`, so "
+                    "that target/catalog.json has the types of the loaded table"
                 )
             else:
                 cols = ", ".join(f"{_q(c)} {t}" for c, t in types.items())
@@ -139,20 +139,6 @@ class _Checker:
                     why = f"DuckDB does not know the column types of {r.ref}: {_first_line(e)}"
         self.created[r.unique_id] = why
         return why
-
-    def _seed_types(self, r: Relation) -> dict[str, str] | None:
-        """A seed's column types as DuckDB reads its CSV (dbt-duckdb loads the
-        file the same way), when the project has not stated them."""
-        if r.resource_type != "seed" or not r.path:
-            return None
-        csv = self.p.root / r.path
-        if not csv.is_file():
-            return None
-        try:
-            rows = self.con.execute("DESCRIBE SELECT * FROM read_csv(?)", [str(csv)]).fetchall()
-        except duckdb.Error:
-            return None
-        return {row[0]: row[1] for row in rows}
 
     def _not_null(self, r: Relation) -> set[str]:
         """The columns of `r` its tests or contract keep from being NULL."""
