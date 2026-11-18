@@ -3,11 +3,138 @@
 > Sverify is a working prototype. Its Lean proofs, its checker and its Python
 > code still need a human audit before anyone relies on their results.
 
-Sverify proves a data pipeline's contracts before it runs, takes the proof to
-[DuckDB](https://duckdb.org), [Polars](https://pola.rs) and
-[Spark](https://spark.apache.org) by a route that says what carries over,
-and keeps the result up to date from Delta
-Lake and Iceberg change feeds.
+Sverify proves a data pipeline's contracts in Lean before it runs, keeps the
+result up to date from Delta and Iceberg changes, and runs the checked plan on
+DuckDB, Polars and Spark.
+
+It finds the bugs that tests on sample data miss:
+
+* A duplicate that arrives late, or a payment that is reversed, in an
+  incremental job
+  ([the tour's first notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/01_duplicate_payments.py)).
+* Ties and NaN readings that change a window's result, and SQL that only
+  runs alike on some engines
+  ([second notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/02_sensor_alerts.py)).
+* A dbt test on a point-in-time join to a type-2 dimension, proved as a
+  contract, and the promises a left join's NULL padding
+  breaks
+  ([third notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/03_orders_mart.py),
+  [what a left join keeps](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#contracts)).
+* Division by zero, integer overflow and bad casts
+  ([the runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#runtime-errors)).
+
+[How sverify compares](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/comparison.md) with dbt tests, Great Expectations,
+Soda and data contracts says what it does not do.
+
+## In thirty lines
+
+```python
+import pyarrow as pa
+import sverify as sv
+from ibis import _
+from sverify.io import Changes, StaticSource
+
+orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same way
+    pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
+)
+
+
+# The upper bound on amount keeps `amount * 2` within 64 bits. Leave it out and
+# the report names the bound to declare.
+@sv.transform(
+    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
+    ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
+)
+def big_orders(orders):
+    return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
+
+
+big = orders.pipe(big_orders)  # proved here, before any data runs
+big.refresh()  # computed, on DuckDB by default
+orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
+big.refresh(engine="polars", route="auto")  # updated from the changes alone, on Polars
+assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
+print(big_orders.report)
+# requires orders: (_.amount >= 0)
+# requires orders: (_.amount < 1000000000)
+# requires orders: unique(id)
+# ensures (_.doubled >= 22): proved
+# ...
+```
+
+The report goes on with the evidence for each engine; `sverify check` prints the contract in plain words.
+
+A postcondition that doesn't follow is refused before anything runs:
+
+```python
+@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
+def plus_one(orders):
+    return orders.select(orders.id, total=orders.amount + 1)
+
+
+from sverify.errors import VerificationError
+
+try:
+    plus_one(orders)
+except VerificationError as e:
+    print(e)
+# 1 of 1 postcondition not proved, 1 precondition needed (e.report has the details)
+#   ...
+#   not proved: (_.total > 5): it may be FALSE on some rows ...
+#     would hold with `(_.amount >= 5)` in the requires of 'orders'
+```
+
+## Install
+
+```bash
+pip install sverify                # or: uv add sverify
+pip install 'sverify[all]'         # with every engine in the 1.x promise and both table formats
+```
+
+The core runs on DuckDB and writes DuckDB and Snowflake SQL; `sverify[spark]` adds Spark SQL (`report.to_sql("spark")` raises `unknown dialect` without it). Extras:
+`polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
+`flight`, `testing`, `odcs`, `openlineage`, or `all`.
+The `polars` and `spark` extras install the engine packages `sverify-polars`
+and `sverify-spark` with their runtimes; either package alone
+(`pip install sverify-spark`) verifies under its engine's semantics and
+writes its SQL without the runtime. Sverify finds every installed engine
+through its plugin (`sverify.profiles.ProfilePlugin`, the entry-point group
+`sverify.profiles`). Wheels bundle the checker as a small native binary for Linux (x86_64,
+aarch64) and macOS (arm64), Python 3.12 and later. Elsewhere (Windows, an Intel Mac) pip
+builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
+starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
+Contributors with a built checker set `SVERIFY_PREBUILT_CHECKER=<path to substrait-check>`, and an editable install links it instead.
+
+## In CI
+
+`sverify check` proves every transform and node in a pipeline file and
+exits 0 when all are proved, 1 when one is not, and 3 when a construct is
+outside sverify's model (the other codes are in
+[the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md#the-command-line)). `--format sarif` writes a
+report for GitHub's code scanning.
+
+```bash
+sverify check pipelines/orders.py
+```
+
+## Go on from here
+
+[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes in ten steps from a first contract to
+Substrait's own semantics, each feature in a few lines.
+
+The [API reference](https://alexandernenninger.github.io/substrait-lean/)
+documents every public function and class of the released version, with the
+[examples](https://alexandernenninger.github.io/substrait-lean/examples/examples.html)
+and the [ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/):
+the upstream bugs and Substrait spec gaps sverify found, and each engine's
+characterization, searchable by id, engine, function and option. For
+coding agents, the site also publishes
+[skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for
+writing contracts, pipelines and engine code with sverify
+(`npx skills add https://alexandernenninger.github.io/substrait-lean/`); they
+ship in the wheel too, under `sverify/skills/`.
+
+## What sverify proves
 
 In sverify you write a data transformation as usual, in
 [Ibis](https://ibis-project.org) or SQL, and state what it assumes about its
@@ -43,14 +170,7 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   equal to a full recompute ([`Rel.delta_correct`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#incremental-view-maintenance)), read from Delta's Change Data Feed or Iceberg's
   appends, and written to sinks exactly once, with the contract attached.
 
-[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes in ten steps from a first contract to
-Substrait's own semantics, each feature in a few lines.
-
-We aim to make sverify an assistant that makes data engineering more joyful: fewer
-3 a.m. pages, fewer surprises between engines, more trust in the tables you
-hand on.
-
-Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
+## Reference semantics and engines
 
 Sverify checks every plan against a reference semantics, written in Lean,
 whose four principles and choices are in
@@ -77,24 +197,11 @@ list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `fir
 `string_agg`, `median`, the quantiles, `mode`, `arg_min`, `arg_max`, the covariances,
 `corr`, and variances over a window), the black boxes, and `MIN` and `MAX` of doubles.
 
-```bash
-pip install sverify                # or: uv add sverify
-pip install 'sverify[all]'         # with every engine in the 1.x promise and both table formats
-```
+## Status
 
-The core runs on DuckDB and writes DuckDB, Snowflake and Spark SQL. Extras:
-`polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
-`flight`, `testing`, `odcs`, `openlineage`, or `all`.
-The `polars` and `spark` extras install the engine packages `sverify-polars`
-and `sverify-spark` with their runtimes; either package alone
-(`pip install sverify-spark`) verifies under its engine's semantics and
-writes its SQL without the runtime. Sverify finds every installed engine
-through its plugin (`sverify.profiles.ProfilePlugin`, the entry-point group
-`sverify.profiles`). Wheels bundle the checker as a small native binary for Linux (x86_64,
-aarch64) and macOS (arm64), Python 3.12 and later; elsewhere pip
-builds from the sdist, which needs [elan](https://github.com/leanprover/elan) and
-starts a full `lake build` of every generated Lean module, minutes of work that can load every core.
-Contributors with a built checker set `SVERIFY_PREBUILT_CHECKER=<path to substrait-check>`, and an editable install links it instead.
+Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is deprecated for one release, with a `DeprecationWarning` that says what replaces it ([the changelog](https://github.com/AlexanderNenninger/substrait-lean/blob/main/CHANGELOG.md) lists each move), and the 1.0 release candidate removes the ones left ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
+
+## Nightly builds
 
 Each night, when `main` has changed, the
 [`nightly` pre-release](https://github.com/AlexanderNenninger/substrait-lean/releases/tag/nightly) gets its wheels, versioned
@@ -120,75 +227,6 @@ the newest. Copy a URL from the release page:
 ```bash
 pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-<version>-py3-none-<platform>.whl"
 ```
-
-The [API reference](https://alexandernenninger.github.io/substrait-lean/)
-documents every public function and class of the released version, with the
-[examples](https://alexandernenninger.github.io/substrait-lean/examples/examples.html)
-and the [ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/):
-the upstream bugs and Substrait spec gaps sverify found, and each engine's
-characterization, searchable by id, engine, function and option. For
-coding agents, the site also publishes
-[skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for
-writing contracts, pipelines and engine code with sverify
-(`npx skills add https://alexandernenninger.github.io/substrait-lean/`); they
-ship in the wheel too, under `sverify/skills/`.
-
-## In thirty lines
-
-```python
-import pyarrow as pa
-import sverify as sv
-from ibis import _
-from sverify.io import Changes, StaticSource
-
-orders = StaticSource(  # in memory; DeltaSource and IcebergSource work the same way
-    pa.table({"id": [1, 2], "customer": ["ada", "bob"], "amount": [30, 5]}), name="orders"
-)
-
-
-@sv.transform(
-    requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},
-    ensures=[_.doubled >= 22, _.doubled.notnull(), sv.unique("id")],
-)
-def big_orders(orders):
-    return orders.filter(orders.amount > 10).select(orders.id, doubled=orders.amount * 2)
-
-
-big = orders.pipe(big_orders)  # proved here, before any data runs
-big.refresh()  # computed, on DuckDB by default
-orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
-big.refresh(engine="polars", route="auto")  # updated from the changes alone, on Polars
-assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
-print(big_orders.report)
-# requires orders: (_.amount >= 0)
-# requires orders: (_.amount < 1000000000)
-# requires orders: unique(id)
-# ensures (_.doubled >= 22): proved
-```
-
-A postcondition that doesn't follow is refused before anything runs:
-
-```python
-@sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.total > 5])
-def plus_one(orders):
-    return orders.select(orders.id, total=orders.amount + 1)
-
-
-from sverify.errors import VerificationError
-
-try:
-    plus_one(orders)
-except VerificationError as e:
-    print(e)
-# 1 of 1 postcondition not proved, 1 precondition needed (e.report has the details)
-#   ...
-#   not proved: (_.total > 5): it may be FALSE on some rows ...
-#     would hold with `(_.amount >= 5)` in the requires of 'orders'
-```
-
-[Getting started](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/getting-started.md) goes on from here: SQL, inferred
-preconditions, routes and their classes, tolerances for doubles,
-reproducible sinks, engine profiles and Substrait's own semantics.
 
 ## Testing with pytest
 
@@ -244,6 +282,7 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 ]
 ```
 
+`sverify check` reads a Python file or a dbt project; a bare `.sql` file is not checked yet, so put the query in `sv.sql` in a `.py` file, or use [sverify-dbt](https://github.com/AlexanderNenninger/substrait-lean/blob/main/dbt/README.md).
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
 through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
@@ -273,7 +312,6 @@ adds three guides, to contracts, to pipelines and engines, and to running it in 
 
 ```python
 import ibis
-from sverify.engines import to_sql
 from sverify.io import DeltaSink, DeltaSource  # IcebergSource, IcebergSink likewise
 
 sv.verify(
@@ -281,7 +319,8 @@ sv.verify(
     tables={"orders": ibis.table({"id": "int64", "amount": "int64"}, name="orders")},
     ensures=["amount > 0"],
 )  # SQL, checked; returns the report
-to_sql(big.internal_plan, "snowflake")  # or "duckdb", "spark"; or sverify.engines.UnsupportedError
+# the checked plan as SQL: "snowflake", "duckdb" or "spark", or sverify.engines.UnsupportedError
+big.to_sql("snowflake")
 
 # p = DeltaSource("s3://.../orders").pipe(paid).write(DeltaSink("s3://.../paid"))  # stored
 # r = p.pipe(revenue, regions=regions).write(DeltaSink("s3://.../revenue"))

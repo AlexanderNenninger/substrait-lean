@@ -141,7 +141,7 @@ gyr = ibis.table({"device": "!int64", "ts": "!timestamp", "gx": "float64"}, name
         "acc": [sv.unique("device", "ts"), _.ts >= datetime(2000, 1, 1)],
         "gyr": [sv.unique("device", "ts")],
     },
-    ensures=[sv.unique("device", "ts"), _.ts_right.isnull() | (_.ts_right <= _.ts)],
+    ensures=[_.ts_right.isnull() | (_.ts_right <= _.ts)],
 )
 def aligned(acc, gyr):
     return sv.asof_join(acc, gyr, on="ts", by="device", tolerance=ibis.interval(milliseconds=10))

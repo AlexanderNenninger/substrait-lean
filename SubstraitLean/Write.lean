@@ -1,6 +1,5 @@
 import Sverify.Frontend.Parse
 import Sverify.Analysis.Weighted
-import Sverify.DuckDB.Boxes
 
 /-!
 # Writing `Rel` back out as Substrait JSON
@@ -23,7 +22,8 @@ open Lean (Json toJson)
 
 Every function the writer can emit has a fixed anchor, from its area's table
 in `core/Sverify/Core/Functions.lean` (black boxes from the black-box
-catalogue in scope, DuckDB's in `engines/duckdb/Sverify/DuckDB/Boxes.lean`). Anchors below 100 predate the areas' ranges
+catalogue in scope, DuckDB's in `engines/duckdb/Sverify/DuckDB/Boxes.lean`,
+checked in `SubstraitLean/Examples.lean`). Anchors below 100 predate the areas' ranges
 and stay as they are. The checks below reject a duplicate anchor or name and
 an anchor outside its area's range; `Functions.lean` checks its rows.
 
@@ -60,15 +60,8 @@ def declared : List (Nat × String) := (areas.flatMap (·.1)).eraseDups
 /-- `(anchor, Substrait name)` for every function the writer can emit, by anchor. -/
 def functions : List (Nat × String) := declared.mergeSort fun a b => a.1 ≤ b.1
 
--- With DuckDB's black boxes: each anchor and name once, each in its area's range.
-omit [Boxes.Ambient] in
-example : ((@declared DuckDB.boxes).map (·.1)).Nodup := nodup_of_nodupB (by decide +kernel)
-omit [Boxes.Ambient] in
-example : ((@declared DuckDB.boxes).map (·.2)).Nodup := nodup_of_nodupB (by decide +kernel)
-omit [Boxes.Ambient] in
-example : (@areas DuckDB.boxes).all fun (fs, lo) =>
-    fs.all fun (a, _) => a < 100 || (lo ≤ a && a < lo + 100) := by
-  decide +kernel
+-- The anchors under DuckDB's black boxes are checked in `Examples.lean`:
+-- this module, and the verdict that imports it, depend on no engine (#1484, S1).
 
 theorem declared_rows : Functions.all.all fun r => declared.contains (r.anchor, r.name) := by
   have h0 := fnAreas_rows

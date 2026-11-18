@@ -31,14 +31,12 @@ inductive Issue where
   | badRegex
   /-- `+`, `-`, `*` or negation whose result does not fit its declared width:
   64 bits, or narrower integers (`UnFn.wrap`). With `overflow` omitted or
-  `ERROR`, the reference raises (#202), as DuckDB and Spark do
-  (duckdb-int-narrow, spark-int-arith); Polars wraps around instead
-  (polars-int-arith), which an error allows (a refinement). -/
+  `ERROR`, the reference raises (#202; duckdb-int-narrow, spark-int-arith);
+  wrapping around instead (polars-int-arith) is allowed by an error (a
+  refinement). -/
   | wraps
   /-- A `SUM` leaving its type (`Measure.sumOk`): 64 bits for integers, the
-  result's precision for decimals (#316). The reference raises, and so does
-  the SQL sverify writes, which keeps its check while the job runs (DuckDB
-  raises on a decimal `SUM` that leaves 38 digits). An error like any other:
+  result's precision for decimals (#316). The reference raises. An error like any other:
   a plan that may raise is not proved, unless the input's rows and the
   argument's range bound the sum (`Measure.sumFits`). Kept apart from
   `wraps` because it comes from a group's rows, not from one row:
@@ -48,8 +46,7 @@ inductive Issue where
   `sqrt` of a negative, a logarithm of zero or a negative, `asin` or `acos`
   outside `[-1, 1]`, `atan2(0, 0)`, `logb` to a base that is not positive or
   is 1, a shift count outside `0`–`63`, a `substring` offset outside
-  `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336,
-  where DuckDB raises too). The reference raises (Substrait's
+  `[-2³², 2³²)` or length of `2³²` or more (`Text.substrInRange`, #336). The reference raises (Substrait's
   `on_domain_error` = ERROR); an engine that gives NaN, ±∞ or a wrapped
   shift instead refines it (epic #185). -/
   | domain
@@ -64,8 +61,8 @@ inductive Issue where
   bounds where they do it (`Measure.abs`) and otherwise checked on the data
   while the job runs (`Issue.assumed`, `Report.assumed`). `Rel.eval` and
   `Profile.reference` keep the IEEE value, `±∞`, on the rows the precondition
-  excludes (`Issue.isError` is false for it), so the lift of DuckDB's SQL and
-  the lowering state DuckDB's result exactly. -/
+  excludes (`Issue.isError` is false for it), so that a profile that returns `±∞` there is
+  stated exactly. -/
   | infinite
   deriving Repr, DecidableEq
 
@@ -141,7 +138,7 @@ def UnFn.issue : UnFn → Value → Option Issue
     else wrapIf (Time.trunc u ts)
   | .dayTrunc u, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.truncDay u d)
   | .addMonths m false, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.addMonths m d)
-  -- The reference's dates (#807); DuckDB raises past its timestamps' years.
+  -- The reference's dates (#807).
   | .dateTime, .date d => rangeIssue Time.dayMin Time.dayMax d d
   -- The calendar on the reference's timestamps (D32).
   | .addMonths m true, .ts ts => rangeIssue Time.tsMin Time.tsMax ts (Time.addMonthsUs m ts)
@@ -208,8 +205,8 @@ def quantileOpposite (num scale : Nat) (vs : List Value) : Bool :=
 /-- The inputs on which IEEE 754 makes a double aggregate NaN though no input
 is NaN (#257): a `SUM` or `AVG` of `+∞` and `-∞`, a variance of an infinity
 (`∞ - ∞` in its deviations), a covariance or correlation of a pair holding
-one, and `QUANTILE_CONT` between `-∞` and `+∞` (DuckDB gives the NaN, the
-model's clamp `+∞`; the reference raises, D21). The reference raises on
+one, and `QUANTILE_CONT` between `-∞` and `+∞` (the model's clamp is `+∞`; the
+reference raises, D21). The reference raises on
 these, as `nanCase` has it for scalars. -/
 def AggFn.nanCase : AggFn → List Value → Bool
   | .fsum, vs | .avg, vs => vs.contains (.float FloatCode.posInf) && vs.contains (.float FloatCode.negInf)
@@ -253,9 +250,8 @@ theorem fdiv_of_nanCase_ieee {a b : Int} (h : nanCase .fdivIeee a b = true) :
     simp [za, zb, ia, ib]
 
 /-- `power(-∞, y)` for a finite `y` that is not an integer. IEEE 754 gives
-`+∞` for `y > 0` and `0` for `y < 0`, as DuckDB does, but Polars's `** 0.5`
-is a square root, NaN. The reference raises (a domain error, as for a finite
-negative base), so a verified plan never meets it and no engine needs a shim. -/
+`+∞` for `y > 0` and `0` for `y < 0`; the tier-1 engines differ (D21). The
+reference raises (a domain error, as for a finite negative base). -/
 def negInfPow (a b : Int) : Bool :=
   decide (a = FloatCode.negInf) && decide (FloatCode.negInf < b) && decide (b < FloatCode.posInf) &&
     FloatCode.floor b != b
@@ -357,6 +353,47 @@ def Expr.issues (row : Row) : Expr → List (Issue × Expr)
   | .ifThen c t e => c.issues row ++ if (c.eval row).isTrue then t.issues row else e.issues row
   -- The lambda runs on every element.
   | .hof _ l b => l.issues row ++ (l.eval row).elems.flatMap fun x => b.issues (x :: row)
+
+/-- The subexpressions that evaluating `e` always evaluates: the arguments of
+its calls, a `CASE`'s condition and a lambda's list, and theirs. -/
+def Expr.eager : Expr → List Expr
+  | .lit _ | .field _ => []
+  | .un _ a => a :: a.eager
+  | .bin _ a b => a :: b :: (a.eager ++ b.eager)
+  | .ifThen c _ _ => c :: c.eager
+  | .hof _ l _ => l :: l.eager
+
+/-- The issues of a subexpression evaluating `e` always evaluates are among
+`e`'s. -/
+theorem Expr.issues_eager {row : Row} {p : Issue × Expr} :
+    ∀ {e d : Expr}, d ∈ e.eager → p ∈ d.issues row → p ∈ e.issues row
+  | .lit _, _, hd, _ | .field _, _, hd, _ => by simp [eager] at hd
+  | .un f a, _, hd, hp => by
+    simp only [eager, List.mem_cons] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | hd
+    · exact .inl hp
+    · exact .inl (issues_eager (e := a) hd hp)
+  | .bin f a b, _, hd, hp => by
+    simp only [eager, List.mem_cons, List.mem_append] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | rfl | hd | hd
+    · exact .inl (.inl hp)
+    · exact .inl (.inr hp)
+    · exact .inl (.inl (issues_eager (e := a) hd hp))
+    · exact .inl (.inr (issues_eager (e := b) hd hp))
+  | .ifThen c t e, _, hd, hp => by
+    simp only [eager, List.mem_cons] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | hd
+    · exact .inl hp
+    · exact .inl (issues_eager (e := c) hd hp)
+  | .hof f l b, _, hd, hp => by
+    simp only [eager, List.mem_cons] at hd
+    simp only [Expr.issues, List.mem_append]
+    rcases hd with rfl | hd
+    · exact .inl hp
+    · exact .inl (issues_eager (e := l) hd hp)
 
 -- `AND` and `OR` evaluate both operands (D19, #604): `x <> 0 AND 10 / x > 1`
 -- divides by zero on `x = 0`; guarding the division with a `CASE` does not.

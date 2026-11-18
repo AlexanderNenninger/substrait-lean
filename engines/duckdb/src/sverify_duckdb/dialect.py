@@ -35,9 +35,21 @@ BC), which `date_trunc` leaves as it is.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from fractions import Fraction
+from typing import ClassVar
 
 from sverify.black_box import BlackBox
-from sverify.sql.core import I64_MAX, I64_MIN, Dialect, Kind, Lst
+from sverify.sql.core import (
+    I64_MAX,
+    I64_MIN,
+    Dec,
+    Dialect,
+    GuardIssue,
+    Kind,
+    Lst,
+    Unsupported,
+    raised_issue,
+)
 
 
 @dataclass(frozen=True)
@@ -45,6 +57,9 @@ class DuckDBDialect(Dialect):
     # DuckDB computes decimals exactly (#27): `+`, `-` and `×` at the types the
     # reference gives them, casts rounding half away from zero.
     decimals: bool = True
+    # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
+    canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
+    orders_text: bool = True
 
     def type_name(self, kind: Kind) -> str:
         return "DOUBLE" if kind == "float" else super().type_name(kind)
@@ -61,7 +76,7 @@ class DuckDBDialect(Dialect):
     def float_lt(self, a: str, b: str) -> str:
         return f"({a} < {b})"
 
-    def raise_(self, message: str, dep: str, kind: Kind) -> str:
+    def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"
         return self.cast(f"error({text})", kind)
 
@@ -98,7 +113,7 @@ class DuckDBDialect(Dialect):
         sql = lowering.render(
             fn,
             args,
-            lambda message, dep: self.raise_(message, dep, kind),
+            lambda message, dep: self.raise_(message, dep, kind, raised_issue(message)),
             self.float_lit,
             self.int_lit,
             self.guards,
@@ -119,10 +134,62 @@ class DuckDBDialect(Dialect):
     def row_ordinal(self) -> str:
         return "rowid"
 
+    @staticmethod
+    def _unscaled(x: str, s: int) -> str:
+        """The integer `x · 10ˢ` of a decimal of scale `s`, as a HUGEINT, without
+        the product (DuckDB's `DECIMAL(38) * 10ˢ` raises where `x` has more
+        than `38 - s` integer digits): the integer part, then the fraction."""
+        if not s:
+            return f"CAST({x} AS HUGEINT)"
+        whole = f"CAST(TRUNC({x}) AS HUGEINT) * {10**s}"
+        return f"({whole} + CAST(({x} - TRUNC({x})) * {10**s} AS HUGEINT))"
+
+    def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
+        """As the base writes it, with the quotient `⌊(2·|u|·10ᵏ + |n|) / 2|n|⌋`
+        split as `|u| = q·|n| + r`, so that no product passes 38 digits
+        where the result fits (#1497)."""
+        u = self._unscaled(a, sa)
+        n = f"CAST({b} AS HUGEINT)"
+        sign = f"CASE WHEN ({u} < 0) <> ({n} < 0) THEN -1 ELSE 1 END"
+        f = 10 ** (k.s - sa)
+        mag = (
+            f"((ABS({u}) // ABS({n})) * {f} + (2 * (ABS({u}) % ABS({n})) * {f} + ABS({n})) "
+            f"// (2 * ABS({n})))"
+        )
+        q = self.cast(f"({sign} * {mag})", Dec(38, 0))
+        scaled = f"{q} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
+        return self.case_when(f"{n} = 0", self.null(k), self.cast(scaled, k))
+
+    def decimal_compare(self, op: str, a: str, ka: Kind | None, b: str, kb: Kind | None) -> str:
+        """Decimals of different scales compared as integers: DuckDB casts both
+        sides to one `DECIMAL(38, s)` and raises on a value that does not fit
+        (duckdb-decimal-compare-scale, #1498). With `m = 10ᵏ` for the scale
+        gap, the low-scale side `L` and the high-scale side `H` as unscaled
+        integers: `L·m < H` is `L < ⌊H/m⌋ ∨ (L = ⌊H/m⌋ ∧ H mod m > 0)`,
+        `L·m = H` is `L = ⌊H/m⌋ ∧ H mod m = 0`, and `H < L·m` is `⌊H/m⌋ < L`."""
+
+        def scale(k: Kind | None) -> int | None:
+            return k.s if isinstance(k, Dec) else 0 if k == "int" else None
+
+        sa, sb = scale(ka), scale(kb)
+        if sa is None or sb is None or sa == sb:
+            return super().decimal_compare(op, a, ka, b, kb)
+        lo_is_a = sa < sb
+        (low, sl), (high, sh) = ((a, sa), (b, sb)) if lo_is_a else ((b, sb), (a, sa))
+        m = 10 ** (sh - sl)
+        ul, uh = self._unscaled(low, sl), self._unscaled(high, sh)
+        q = f"({uh} // {m} - CASE WHEN {uh} % {m} < 0 THEN 1 ELSE 0 END)"
+        r = f"({uh} - {q} * {m})"
+        if op == "eq":
+            return f"({ul} = {q} AND {r} = 0)"
+        if lo_is_a:  # L·m < H
+            return f"({ul} < {q} OR ({ul} = {q} AND {r} > 0))"
+        return f"({q} < {ul})"  # H < L·m
+
     def int_sum(self, v: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.
         total = f"SUM({v})"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return (
             f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
@@ -136,7 +203,7 @@ class DuckDBDialect(Dialect):
     def window_int_sum(self, v: str, over: str) -> str:
         # SUM of BIGINT is a HUGEINT: exact.
         total = f"SUM({v}) {over}"
-        fail = self.raise_("integer overflow in SUM", total, "int")
+        fail = self.raise_("integer overflow in SUM", total, "int", "sumWraps")
         inside = f"{total} BETWEEN {I64_MIN} AND {I64_MAX}"
         return (
             f"(CASE WHEN {total} IS NULL THEN {self.null('int')} WHEN {inside} "
@@ -144,8 +211,10 @@ class DuckDBDialect(Dialect):
         )
 
     def float_extreme(self, fn: str, v: str, over: str) -> str:
-        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371).
-        return f"{fn}({v}) {over}" if over else f"{fn}({v})"
+        # DuckDB orders doubles as the codes do: NaN above `+∞` (#371). Of equal
+        # zeros it keeps the one it read last (duckdb-minmax-zero-sign): the
+        # class's canonical value stands for it.
+        return self.zero_rep(f"{fn}({v}) {over}" if over else f"{fn}({v})", "extreme")
 
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         # DuckDB's own `first`/`last` of the non-NULL values: the group's
@@ -162,20 +231,84 @@ class DuckDBDialect(Dialect):
         return f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
 
     def quantile(self, cont: bool, v: str, q: str) -> str:
-        # DuckDB reads a decimal fraction exactly (#53). Its interpolation
-        # `lo·(1−d) + hi·d` may round past the values: the model keeps it
-        # between them, and so does the clamp. Between -inf and +inf it is
-        # NaN, which no operation creates (#561): raise where it is NaN and
-        # no value is (NaN sorts above every number, so `MAX` is NaN exactly
-        # then) (`duckdb-quantile-cont-interpolation`).
+        # DuckDB reads a decimal fraction exactly (#53). Its `RN = (n - 1)·q`
+        # is a double and its interpolation `lo·(1 - d) + hi·d` rounds, so
+        # `QUANTILE_CONT` leaves the model's neighbours in two places
+        # (`duckdb-quantile-cont-interpolation`, #900):
+        # - where the exact position is whole and its double is not, it
+        #   interpolates toward the next value: the written plan takes
+        #   `quantile_disc`, whose index `⌈n·q⌉ - 1` is the whole position
+        #   (the decimal `q` is read exactly) and so the model's neighbour;
+        # - where the lower neighbour is the first value, the weight rounds
+        #   and the result can pass the upper neighbour, which the clamp to
+        #   `[MIN, MAX]` does not catch below the maximum: the second
+        #   smallest value, `min(x, 2)[2]`, bounds it.
+        # The guards read `COUNT` and the decimal `q` in integers. A dyadic
+        # `q` needs none: its double position is exact.
+        # Elsewhere `RN`'s double is within `(n - 1)·2^-51` of the exact
+        # position `P`. Outside the band `d·2^51 <= (n - 1)·den`, with `d`
+        # the distance of `P` to the nearest whole position, its floor and
+        # ceiling are the exact ones and the clamp keeps the result between
+        # the neighbours. In the band (whole positions included) the engine's
+        # pair holds the nearest whole position `m`, and the written plan
+        # takes `quantile_disc` of `q` moved by 10^-15 toward 1/2: its index
+        # `⌈n·q'⌉ - 1` is `m` for `n <= 10^14` (the decimal is read exactly,
+        # `duckdb-quantile-cont-interpolation`). Past that count it raises.
+        # Between -inf and +inf the interpolation is NaN, which no operation
+        # creates (#561): raise where it is NaN and no value is (NaN sorts
+        # above every number, so `MAX` is NaN exactly then). In the band the
+        # same cases are the neighbours `s[k] = -inf`, `s[k + 1] = +inf` at a
+        # fractional position, counted below.
         if not cont:
             return f"quantile_disc({v}, {q})"
         qc = f"quantile_cont({v}, {q})"
         value = f"LEAST(GREATEST({qc}, MIN({v})), MAX({v}))"
-        if not self.guards:
+        frac = Fraction(q)
+        num, den = frac.numerator, frac.denominator
+        dyadic = den & (den - 1) == 0
+        n1 = f"CAST(COUNT({v}) - 1 AS HUGEINT)"
+        if not dyadic:
+            first = f"({n1} * {num} < {den})"
+            value = self.case_when(first, f"LEAST({value}, ({self.second_smallest(v)}))", value)
+        fail = self.raise_("domain error", f"MIN({v})", "float", "domain")
+        if self.guards:
+            made = f"({self.is_nan(qc)} AND NOT {self.is_nan(f'MAX({v})')})"
+            value = self.case_when(made, fail, value)
+        if dyadic:
             return value
-        made = f"({self.is_nan(qc)} AND NOT {self.is_nan(f'MAX({v})')})"
-        return self.case_when(made, self.raise_("domain error", f"MIN({v})", "float"), value)
+        scale = next(s for s in range(1000) if (frac * 10**s).denominator == 1)
+        if scale > 21:
+            raise Unsupported(
+                f"quantile fraction {q} has {scale} decimals; DuckDB's quantile writes "
+                "at most 21 (#900), use a shorter fraction"
+            )
+        shifted = frac + (Fraction(1, 10**15) if 2 * num < den else -Fraction(1, 10**15))
+        digits = max(scale, 15)
+        disc = f"quantile_disc({v}, 0.{int(shifted * 10**digits):0{digits}d})"
+        rest = f"({n1} * {num} % {den})"
+        if self.guards:
+            k = f"({n1} * {num} // {den})"
+            inf = "CAST('inf' AS DOUBLE)"
+            opposite = (
+                f"({rest} <> 0 AND COUNT(*) FILTER (WHERE {v} = -{inf}) = {k} + 1"
+                f" AND COUNT(*) FILTER (WHERE {v} < {inf}) = {k} + 1"
+                f" AND COUNT(*) FILTER (WHERE {v} = {inf}) > 0)"
+            )
+            disc = self.case_when(opposite, fail, disc)
+        band = f"(LEAST({rest}, {den} - {rest}) <= {n1} * {den} // {2**51})"
+        value = self.case_when(band, disc, value)
+        # An engine limit the reference does not have, so a `guard_free`
+        # report cannot prove it absent: it is written with `guards=False`
+        # too, like integer `SUM`'s check and `finite`.
+        beyond = f"({n1} >= {10**14})"
+        raise_ = self.raise_(
+            "quantile count beyond 10^14", f"COUNT({v})", "float", "quantilePosition"
+        )
+        return self.case_when(beyond, raise_, value)
+
+    def second_smallest(self, v: str) -> str:
+        """The second value of the column `v` in order, NULLs skipped."""
+        return f"min({v}, 2)[2]"
 
     def mode(self, v: str, order: Sequence[str]) -> str:
         # Its input in this order, DuckDB keeps the value seen first of those

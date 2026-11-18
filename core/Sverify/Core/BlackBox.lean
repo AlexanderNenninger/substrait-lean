@@ -21,8 +21,7 @@ catalogue** (`Boxes`) declares of it:
   (`Law`), such as "not NULL" or "at least 0";
 * the function itself, `eval`, which the engine package supplies (#1189).
 
-The core holds the mechanism only. The rows are an engine package's:
-DuckDB's are `Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`).
+The core holds the mechanism only. The rows are an engine package's (#1189).
 
 ## What is proved and what is assumed
 
@@ -227,7 +226,7 @@ end Boxes
 allowed results and its theorems take it as an instance argument, so they
 are parametric in the catalogue: the core and engines-common declare no
 instance. An engine package declares its catalogue as a `scoped instance` in
-its namespace (DuckDB's: `open scoped Substrait.DuckDB`), and only a file
+its namespace, and only a file
 that opens that namespace states theorems about it. -/
 class Boxes.Ambient where
   boxes : Boxes

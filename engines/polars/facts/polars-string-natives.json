@@ -3,7 +3,7 @@
   "engine": "polars",
   "engine_version": "py-2.1.0",
   "title": "Native forms of `replace`, `reverse`, `ascii` and `repeat`; `replace` takes no pattern per row",
-  "verdict": "exact with a literal pattern; a pattern per row is refused by Polars",
+  "verdict": "exact with a non-empty literal pattern; the empty literal is folded to the string (D44); a pattern per row is refused by Polars",
   "area": "strings",
   "options": [
     "char_set"
@@ -23,7 +23,7 @@
     ]
   },
   "description": "Polars has no `ascii` or `repeat` and reverses grapheme clusters (polars-string-functions-missing, polars-reverse), but these expressions give the reference's values. `str.replace_all(p, r, literal=True)` with a literal `p` replaces every occurrence as Python's `str.replace` does: the empty pattern matches at every character boundary (`-a-b-c-`), and `r` is taken literally (`\\1` stays). `str.split(\"\")` splits into code points (`split_chars`), so `list.reverse` and `list.join(\"\")` reverse by code point. `str.slice(0, 1).str.encode(\"hex\").str.to_integer(base=16)` is the first character's UTF-8 bytes as an integer, NULL for `''`, which decodes exactly to its code point. `repeat_by(n).list.join(\"\")` is `s` repeated `n` times, `''` for `n` = 0, but `''` (not NULL) for a NULL `s`. A pattern per row is refused: `replace_all` with a column pattern raises `ComputeError: dynamic pattern length in 'str.replace' expressions is not supported yet` (a six-row frame once did not raise; 20,000 rows did, on both engines).",
-  "reference": "`Text.replace` is `str.replace`, `Text.reverse` reverses the code points, `Text.ascii` is the first code point (0 for `''`), `Text.repeatStr` repeats `n` times (`''` for `n` ≤ 0); NULL in, NULL out.",
+  "reference": "`Text.replace` is `str.replace` for a non-empty pattern (an empty one matches nowhere, D44: the plan folds it to `s`, a constant fold and not a shim, so this fact's empty-pattern row is not used), `Text.reverse` reverses the code points, `Text.ascii` is the first code point (0 for `''`), `Text.repeatStr` repeats `n` times (`''` for `n` ≤ 0); NULL in, NULL out.",
   "status": "no-finding",
   "evidence": "probe",
   "provenance": [

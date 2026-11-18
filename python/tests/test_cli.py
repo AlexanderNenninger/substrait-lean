@@ -199,6 +199,26 @@ def test_diff_shows_the_fix_and_fix_writes_it(tmp_path, capsys):
     assert code == 0
 
 
+SUM_ONLY = """
+@sv.transform(ensures=[_.total > 0])
+def per_customer(orders):
+    return orders.group_by("customer").agg(total=orders.amount.sum() * 2 + 1)
+
+
+p = orders.pipe(per_customer)
+"""
+
+
+def test_diff_names_the_other_fixes_where_no_precondition_helps(tmp_path, capsys):
+    """An unbounded SUM needs a row cap, not a `requires` the checker infers:
+    `--diff` prints the report's hint instead of a dead end (#1485)."""
+    path = write(tmp_path, SUM_ONLY)
+    code, out = run(capsys, "check", str(path), "--diff")
+    assert "No preconditions to add: no proof" not in out
+    assert "sv.max_rows(" in out
+    assert "$" not in out
+
+
 @pytest.mark.parametrize(
     "decorator",
     [
@@ -233,6 +253,45 @@ def test_a_transform_never_applied_is_not_proved(tmp_path, capsys):
     code, doc = run_json(capsys, "check", str(write(tmp_path, body)))
     assert code == 1
     assert doc["unchecked"] == ["paid"]
+
+
+def test_declared_schemas_let_check_prove_an_unapplied_transform(tmp_path, capsys):
+    body = """
+    @sv.transform(
+        requires=[_.amount >= 0, _.amount < 2**62],
+        ensures=[_.amount >= 0],
+        schemas={"orders": {"id": "int64", "amount": "int64"}},
+    )
+    def paid(orders):
+        return orders.filter(orders.amount > 10)
+    """
+    code, doc = run_json(capsys, "check", str(write(tmp_path, body)))
+    assert code == 0
+    assert doc["unchecked"] == []
+    [item] = doc["items"]
+    assert (item["name"], item["status"]) == ("paid", "proved")
+
+
+def test_declared_schemas_report_what_is_not_proved(tmp_path, capsys):
+    body = """
+    @sv.transform(
+        ensures=[_.amount > 10], schemas={"orders": {"id": "int64", "amount": "int64"}}
+    )
+    def paid(orders):
+        return orders.filter(orders.amount > 0)
+    """
+    code, doc = run_json(capsys, "check", str(write(tmp_path, body)))
+    assert code == 1
+    [item] = doc["items"]
+    assert item["status"] == "not_proved"
+
+
+def test_schemas_must_name_the_parameters():
+    with pytest.raises(TypeError, match="must name each parameter"):
+
+        @sv.transform(schemas={"other": {"id": "int64"}})
+        def paid(orders):
+            return orders
 
 
 def test_a_broken_link_is_reported(tmp_path, capsys):

@@ -222,16 +222,32 @@ theorem Measure.combine_eval {m : Measure} (hm : m.fn.decomposable = true) {ss :
 theorem groupRows_perm {gs : List Expr} {xs ys : Relation} (h : xs.Perm ys) (k : Row) :
     (groupRows gs xs k).Perm (groupRows gs ys k) := h.filter _
 
-theorem aggregateEval_perm {gs : List Expr} {ms : List Measure}
-    (hms : ∀ m ∈ ms, m.orderFree = true) {xs ys : Relation} (h : xs.Perm ys) :
-    (aggregateEval gs ms xs).Perm (aggregateEval gs ms ys) := by
+/-- An aggregate of the same rows in another order gives the same rows, when
+each measure is order-free or its ties agree on its argument. -/
+theorem aggregateEval_perm_of {gs : List Expr} {ms : List Measure} {xs ys : Relation}
+    (hms : ∀ m ∈ ms, m.orderFree = true ∨ (m.fn.sorts = true ∧ m.TiesAgreeIn gs ys))
+    (h : xs.Perm ys) : (aggregateEval gs ms xs).Perm (aggregateEval gs ms ys) := by
+  have hm : ∀ m ∈ ms, ∀ {g g' : Relation}, g.Perm g' →
+      (∀ m : Measure, m.TiesAgreeIn gs ys → m.TiesAgree g') → m.eval g = m.eval g' :=
+    fun m hm' _ _ hp hg => by
+      rcases hms m hm' with hof | ⟨hs, ht⟩
+      · exact Measure.eval_perm hof hp
+      · exact Measure.eval_perm_of_ties hs hp (hg m ht)
   unfold aggregateEval
   split
-  · exact .of_eq (by rw [List.map_congr_left fun m hm => Measure.eval_perm (hms m hm) h])
+  · next hg =>
+    exact .of_eq (by
+      rw [List.map_congr_left fun m hm' => hm m hm' h fun m ht => by
+        rw [List.isEmpty_iff.mp hg] at ht; exact ht.nil])
   · refine ((canonReps_perm Row.leRaw_rawOrder (h.map _)).map _).trans
       (.of_eq (List.map_congr_left fun k _ => ?_))
     · congr 1
-      exact List.map_congr_left fun m hm => Measure.eval_perm (hms m hm) (groupRows_perm h k)
+      exact List.map_congr_left fun m hm' => hm m hm' (groupRows_perm h k) fun m ht => ht.group k
+
+theorem aggregateEval_perm {gs : List Expr} {ms : List Measure}
+    (hms : ∀ m ∈ ms, m.orderFree = true) {xs ys : Relation} (h : xs.Perm ys) :
+    (aggregateEval gs ms xs).Perm (aggregateEval gs ms ys) :=
+  aggregateEval_perm_of (fun m hm => .inl (hms m hm)) h
 
 /-! ## Aggregates of parts with no group in common -/
 

@@ -9,14 +9,17 @@ A stage's base table for source `t` holds `kept(S)` of the source's snapshot
 
 - `R(S)`: the rows on which every row condition is TRUE (a FALSE or NULL
   breaks it, as `violations` counts).
-- For each key `unique(k)` in turn: the rows whose key occurs once among the
-  rows left. Every row of a repeated key is set aside, so `kept` needs no
-  order between rows and is a function of the snapshot (D24), the same
-  whether computed in full or batch by batch.
+- For each key `unique(k)` in turn: the rows whose key occurs on one
+  distinct row among the rows left. Rows identical in every column count
+  once, so a redelivered duplicate of a kept row is set aside beside it and
+  the kept row stays. Every row of a key that occurs on two different rows
+  is set aside, so `kept` needs no order between rows and is a function of
+  the snapshot (D24), the same whether computed in full or batch by batch.
 
 Each condition is closed under subsets, so `kept(S)` meets every one
-(`SubstraitLean/Quarantine.lean`), and the node's contract theorem
-(`contract_sound`) holds on it. The pipeline's batch checks run unchanged on
+(`SubstraitLean/Quarantine.lean`, applied to the snapshot with identical
+rows collapsed), and the node's contract theorem (`contract_sound`) holds
+on it. The pipeline's batch checks run unchanged on
 the kept change after the split: a mistake here raises rather than letting a
 row through.
 
@@ -243,25 +246,42 @@ class _Split:
     reasons: list[str]
 
 
+def _with_weight(z: pa.Table, weight: Any) -> pa.Table:
+    return z.set_column(z.num_columns - 1, WEIGHT, weight)
+
+
 def apply_keys(pool: pa.Table, keys: Sequence[Any]) -> _Split:
     """The rows of the consolidated weighted table `pool` whose key occurs
-    once, for each key in turn among the rows left; the others, with why."""
+    on one distinct row, for each key in turn among the rows left; the
+    others, with why. Identical rows count once: one copy of such a row is
+    kept (a redelivered duplicate is not a second row) and the other copies
+    are set aside."""
     bad_parts: list[pa.Table] = []
     conditions: list[list[str]] = []
     reasons: list[str] = []
     ok = pool
     for k in keys:
-        counts = _key_counts(ok, k.cols)
-        if not counts:
+        once = _with_weight(ok, pa.repeat(pa.scalar(1, pa.int64()), ok.num_rows))
+        distinct = _key_counts(once, k.cols)
+        if not distinct:
             continue
-        mask = pa.array([n > 1 for n in counts])
+        copies = _key_counts(ok, k.cols)
+        mask = pa.array([n > 1 for n in distinct])
         bad = ok.filter(mask)
         if bad.num_rows:
             bad_parts.append(bad)
-            for r, n in zip(bad.to_pylist(), [n for n in counts if n > 1], strict=True):
+            counted = [n for n, m in zip(copies, distinct, strict=True) if m > 1]
+            for r, n in zip(bad.to_pylist(), counted, strict=True):
                 conditions.append([k.label])
                 reasons.append(f"{_show_key(r, k.cols)} is on {n} rows")
         ok = ok.filter(_call("invert", mask))
+        extra = ok.filter(_call("greater", ok.column(WEIGHT), 1))
+        if extra.num_rows:
+            bad_parts.append(_with_weight(extra, _call("subtract", extra.column(WEIGHT), 1)))
+            for r in extra.to_pylist():
+                conditions.append([k.label])
+                reasons.append(f"{_show_key(r, k.cols)} repeats a row already kept")
+            ok = _with_weight(ok, pa.repeat(pa.scalar(1, pa.int64()), ok.num_rows))
     bad = concat(bad_parts) if bad_parts else pool.slice(0, 0)
     return _Split(ok, bad, conditions, reasons)
 

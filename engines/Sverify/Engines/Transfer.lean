@@ -312,7 +312,7 @@ below `ANY` (#633), and at every other option the order is equality. -/
 /-- The pairs `b ⊑ b'` at an option, each with its lemma below. -/
 def orderPairs : List (String × Behaviour × Behaviour) :=
   [("sum_order", "SEQUENTIAL", "ANY"), ("sum_order", "PAIRWISE", "ANY"),
-   ("stat_algo", "WELFORD_CHAN", "GENERIC"), ("quantile_interp", "LINEAR", "BETWEEN")]
+   ("stat_algo", "WELFORD_CHAN", "GENERIC")]
 
 /-- `b ⊑ b'` at the option `o`. -/
 def behaviourLe (o b b' : String) : Bool := b == b' || orderPairs.contains (o, b, b')
@@ -326,14 +326,14 @@ theorem behaviourLe_eq {o b b' : String} (ho : o ∉ aggInterpreted) (h : behavi
   · exfalso; apply ho
     simp only [orderPairs, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
     simp only [aggInterpreted, List.mem_cons, List.not_mem_nil, or_false]
-    rcases h with ⟨rfl, _⟩ | ⟨rfl, _⟩ | ⟨rfl, _⟩ | ⟨rfl, _⟩ <;> simp
+    rcases h with ⟨rfl, _⟩ | ⟨rfl, _⟩ | ⟨rfl, _⟩ <;> simp
 
 omit [Boxes.Ambient] in
 theorem SumOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = true) {vs : List Value}
     {c : Int} (hs : SumOrder b vs c) : SumOrder b' vs c := by
   simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
     List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
-  rcases h with rfl | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩ | ⟨h, -⟩
+  rcases h with rfl | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩
   · exact hs
   · simp only [SumOrder] at hs ⊢
     obtain ⟨hb, ws, hp, rfl⟩ := hs
@@ -349,7 +349,7 @@ theorem AvgOrder.mono {b b' : Behaviour} (h : behaviourLe "sum_order" b b' = tru
   · have hne : b ≠ "EXACT" ∧ b' ≠ "EXACT" := by
       simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
         List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
-      rcases h with h | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩ | ⟨h, -⟩
+      rcases h with h | ⟨-, rfl, rfl⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩
       · exact absurd h e
       all_goals simp_all
     simp only [AvgOrder, hne.1, hne.2, ↓reduceIte] at hs ⊢
@@ -360,7 +360,7 @@ theorem StatAlgo.mono {b b' : Behaviour} (h : behaviourLe "stat_algo" b b' = tru
     {vs : List Value} {v : Value} (hs : StatAlgo b f vs v) : StatAlgo b' f vs v := by
   simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
     List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
-  rcases h with rfl | ⟨h, -⟩ | ⟨h, -⟩ | ⟨-, rfl, rfl⟩ | ⟨h, -⟩
+  rcases h with rfl | ⟨h, -⟩ | ⟨h, -⟩ | ⟨-, rfl, rfl⟩
   · exact hs
   all_goals first | simp at h | simpa [StatAlgo] using hs
 
@@ -370,7 +370,7 @@ theorem QuantInterp.mono {b b' : Behaviour} (h : behaviourLe "quantile_interp" b
     QuantInterp b' num scale vs v := by
   simp only [behaviourLe, Bool.or_eq_true, beq_iff_eq, List.contains_iff_mem, orderPairs,
     List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at h
-  rcases h with rfl | ⟨h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩ | ⟨-, rfl, rfl⟩
+  rcases h with rfl | ⟨h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩
   · exact hs
   all_goals first | simp at h | simpa [QuantInterp] using hs
 
@@ -461,8 +461,8 @@ theorem WinFn.AllowedP.monoOn {f : WinFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {p
   | agg m sort fr =>
     simp only [WinFn.AllowedP]
     split
-    · refine Or.imp (fun ⟨ha, hb⟩ => ⟨Measure.AllowedP.monoOn
-        (fun p hp => h p (List.mem_append_left _ hp)) ha, hb⟩) fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
+    · refine Or.imp (Measure.AllowedP.monoOn fun p hp => h p (List.mem_append_left _ hp))
+        fun ⟨hf, hb⟩ => ⟨hf, ?_⟩
       · have hp : ("win.agg", "window_sum_algo", ([] : List String)) ∈ (WinFn.agg m sort fr).reads := by
           simp only [WinFn.reads, List.mem_append]
           exact .inr (by simp only [hf, ↓reduceIte]; exact List.mem_singleton_self _)

@@ -320,10 +320,12 @@ def test_strings_escape_backslashes():
 def test_raise_of_a_string_raises():
     # A cast to VARCHAR never fails: the raise goes through a NUMBER
     # (Snowflake behaviour recorded privately).
-    sql = parses(SNOWFLAKE.raise_("UPPER of non-ASCII text differs between engines", "x", "str"))
+    sql = parses(
+        SNOWFLAKE.raise_("UPPER of non-ASCII text differs between engines", "x", "str", "asciiOnly")
+    )
     assert sql.startswith("TO_VARCHAR(CAST(") and sql.endswith("AS NUMBER(38,0)))")
     assert "AS VARCHAR)" not in sql
-    assert parses(SNOWFLAKE.raise_("e", "x", "float")).endswith("AS FLOAT)")
+    assert parses(SNOWFLAKE.raise_("e", "x", "float", "raised")).endswith("AS FLOAT)")
 
 
 def test_substring_positions_fit_32_bits():

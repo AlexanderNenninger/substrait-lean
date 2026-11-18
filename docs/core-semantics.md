@@ -305,7 +305,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate` |
 | aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate` |
 | aggregates | `agg.order` | `min`, `max`, `quantile_disc`, `median` of non-numbers | `nan_order`, `zero_sign`, `list_null_order` |
-| aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_order` |
+| aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_creation`, `nan_order` |
 | aggregates | `agg.pick` | `first`, `last`, `arg_min`, `arg_max`, `mode` | `tie_pick` |
 | aggregates | `agg.seq` | `string_agg`, `array_agg` | `tie_order` |
 | aggregates | `agg.plain` | `count`, `bit_and`, `bit_or`, `bit_xor` | none (`count`'s `overflow` is out of reach by the size hypothesis) |
@@ -701,7 +701,7 @@ is a choice that accepts every value the plan states.
 | `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `EXACT` | choose |
 | `window_sum_algo` | all others | `RECOMPUTE`, `TREE`, `RUNNING_ADD`, `SLIDING` | `RECOMPUTE` | choose |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
-| `quantile_interp` | all others | `BETWEEN`, `LINEAR` | `BETWEEN` | leave open |
+| `quantile_interp` | all others | `BETWEEN`, `LINEAR`, `LINEAR_DIFF` | `BETWEEN` | leave open |
 | `tie_pick` | all others | `ANY_ROW`, `FIRST_READ` | `ANY_ROW` | leave open |
 | `null_order` | all others | `NULLS_FIRST`, `NULLS_LAST` | `NULLS_FIRST`, `NULLS_LAST`; `NULLS_LAST` by default | choose |
 | `float_to_int` | all others | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | `TRUNCATE` | choose |
@@ -841,8 +841,8 @@ few plans verify there ([Terminology](#terminology)). Translations are linear
 in the number of engines: one per engine, from the reference.
 
 For the second way, `Engine.contract_sound` (`engines/Sverify/Engines/Sound.lean`)
-is the theorem: unless the translated plan raises, the rows the engine's
-model computes for it (DuckDB's, Polars's, Spark's or the reference's) are a
+is the theorem: under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference), the rows the engine's
+model computes for the translated plan (DuckDB's, Polars's, Spark's or the reference's) are a
 result the reference allows (`Engine.Sound`), and the contract holds on them.
 The engine's actual output rests on D16's claim (`Engine.Runs`) and the
 transfer check from the engine's table to the reference's
@@ -1196,3 +1196,5 @@ to it, so links to an entry here still land.
 - <a id="d40-power1--is-cs-pow"></a>[D40. `power(±1, ±∞)` is C's `pow`](decisions.md#d40-power1--is-cs-pow)
 - <a id="d41-modulus-of-doubles-accepts-division_type-floor"></a>[D41. `modulus` of doubles accepts `division_type: FLOOR`](decisions.md#d41-modulus-of-doubles-accepts-division_type-floor)
 - <a id="d42-the-references-value-of-the-options-no-earlier-decision-states"></a>[D42. The reference's value of the options no earlier decision states](decisions.md#d42-the-references-value-of-the-options-no-earlier-decision-states)
+- <a id="d44-replace-with-an-empty-pattern-is-the-string-unchanged"></a>[D44. `replace` with an empty pattern is the string unchanged](decisions.md#d44-replace-with-an-empty-pattern-is-the-string-unchanged)
+- <a id="d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do"></a>[D45. `QUANTILE_DISC` picks a member of a class, as `MIN` and `MAX` do](decisions.md#d45-quantile_disc-picks-a-member-of-a-class-as-min-and-max-do), amended 2026-11-17 for windows

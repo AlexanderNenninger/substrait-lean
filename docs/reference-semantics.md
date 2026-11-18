@@ -57,10 +57,14 @@ proves its postconditions and keys over every order
 (`Rel.OrderAllowed`, `contract_sound_all`, `core/Sverify/Core/OrderAllowed.lean`, `analysis/Sverify/Analysis/Contracts.lean`), and
 `Rel.eval`'s order is the
 [deterministic profile's](#tie-order-and-the-deterministic-profile).
-`Report.deterministic` is false where rows may tie in the order of a window,
-of `FIRST`, `LAST`, `STRING_AGG` or `MODE`, or of a `FETCH`
-(`Rel.windowsTotal`, `Rel.fetchesTotal`), `str(report)` names each place, and
-`Report.ties` gives the keys that would close them.
+`Report.deterministic` is true when every result the reference allows is
+`Rel.eval`'s up to row order (`Rel.detPlan`, `check_deterministic_sound`). It
+is false where rows may tie in the order of a window, of `FIRST`, `LAST`,
+`STRING_AGG` or `MODE`, or of a `FETCH`, where the reference leaves a value
+open (the median of doubles, which member of a class of doubles a `DISTINCT`,
+a group key, `MIN`, `MAX` or `QUANTILE_DISC` keeps, D31, D45), and where an
+aggregate is not proved a function of its values. `str(report)` names each place (`tiesIn_eq_nil`), and
+`Report.ties` gives the keys that would close the ties.
 `RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` over the window's own
 order need no key: tied rows get the same value in every arrangement
 (`window_tieFree`). A key on one column of a pair an inner join's or a filter's
@@ -90,7 +94,7 @@ result, so a proved postcondition holds whichever value the engine picks.
 |---|---|---|
 | `tie_order` | the order of rows that tie in an `ORDER BY` or a window's order, and of the values `STRING_AGG` and `collect` gather | any order |
 | `tie_pick` | the row `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value` and `MODE` take among ties | any row of the tie |
-| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them |
+| `quantile_interp` | the value `QUANTILE_CONT` interpolates between neighbours | any double between them; Polars and Spark (`LINEAR_DIFF`, `lo + (hi − lo)·w`) also give NaN with a `-∞` lower neighbour and `+∞` where `hi − lo` overflows (`[-1e308, 1e308]`), and take the neighbours of their double position `(n − 1)·q` (`contNeighboursD`) |
 | `round_zero_sign` | which zero `round` and `ceil` give a negative value that rounds to zero | either |
 | one zero, one NaN | which member a `GROUP BY` key, a `DISTINCT` row, a `MIN` or a `MAX` returns when its class holds `-0.0` and `0.0`, or NaNs of both signs | any member present, or the canonical value |
 | the sign of a NaN | the sign of a NaN an operation produces (under a profile that lets one be created) | either |
@@ -276,6 +280,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | Characters | Unicode code points (Lean `Char`); `length`, `substring`, `strpos` count them. Strings compare by code point, which is UTF-8 byte order. | ✓ |
 | `substring` with a negative start | `negative_start` omitted means `WRAP_FROM_END`: `substring('hello', -2, 2) = 'lo'`. A plan that sets `LEFT_OF_BEGINNING` gets that. | ✓ (R13) |
 | `substring` range | An offset outside `[-2³², 2³²)` or a length of `2³²` or more is an error, as in DuckDB ("Substring offset outside of supported range"); NULL arguments give NULL. `verify` reports it as a domain error unless the offset's bounds rule it out, for example `_.start >= -2**32` and `_.start < 2**32` in `requires`. | ✓: `Text.substrInRange`, `Issue.domain`; DuckDB raises itself, and the written plan guards the offset its wrap-around arithmetic shifts |
+| `replace` with an empty pattern | The string unchanged, NULL for a NULL replacement, as DuckDB's ([duckdb-replace-empty-pattern](../engines/duckdb/facts/duckdb-replace-empty-pattern.json), [ST-17](../upstream/bugs/ST-17.json)). Polars's own `replace_all` inserts the replacement at every character; the plan folds the empty pattern to the string. | ✓ |
 | Matching | Case-sensitive only (`case_sensitivity` = `CASE_SENSITIVE`); `LIKE` has `%`, `_` and a backslash escape. | ✓ |
 | Black boxes | `upper`, `lower`, `ilike`, regular expressions and the digests `md5` and `sha256` are opaque to the proofs: no proof depends on what they compute, only on their types, that NULL in gives NULL out, and that equal inputs give equal outputs. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator maps ASCII case only, and evaluates regular expressions with RE2's meaning (`core/Sverify/Core/Regex.lean`) where it agrees with Rust's, which is everywhere but `\d`, `\w`, `\s` and `\b` on non-ASCII text (and `\s` on `\v`); there `substrait-check` refuses to print rows rather than print wrong ones. | ✓ |
 | `regexp_extract`, `regexp_replace` | A constant pattern that `Text.simpleRegex` accepts, or the plan is refused. `regexp_extract(s, p, g)` is group `g` (0 to 9; DuckDB raises past 9) of the leftmost-first match, `''` where nothing matches, the group took no part, or `p` has fewer groups. `regexp_replace` replaces the first match, or every match with the flag `'g'` (an empty match right after the previous one is skipped); in the replacement, `\0` … `\9` are groups and `\\` a backslash, and other escapes are refused. On DuckDB only. | ✓ |
@@ -393,8 +398,12 @@ core needs no square roots. The bounds are proved for the two-pass algorithm
 and for DuckDB's Welford update with Chan's merge in any
 tree ([`float-bounds.md`](float-bounds.md)), and a property test checks
 DuckDB's results against them (`tests/test_float_bounds.py`). The textbook
-formula `Σx² − (Σx)²/n` cancels and is outside them. Outside the finite range
-the reference's own value is the one allowed. An engine profile may name a
+formula `Σx² − (Σx)²/n` cancels and is outside them. A NaN or an infinity
+among the values gives the reference's own value. Finite values outside the
+range above (`Stat.fits`) allow any double: an engine's algorithm may overflow
+on the way or round differently there (`var_pop([1e150, 3e150])` is
+`1.0000000000000002e+300` exactly rounded, `9.999999999999999e+299` on DuckDB
+and streaming Polars; [D30](decisions.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)). An engine profile may name a
 stricter algorithm (`Profile.statAlgo`, `Profile.sumAlgo`, `AggAlgo`); without
 one, the generic properties hold. No profile names one yet. Engines differ
 from the reference where it raises: DuckDB and Polars give NaN for an
@@ -589,7 +598,7 @@ the first column are the names the tables below use.
 | `on_domain_error` (`sqrt`, `asin`, `acos`, `atanh`, `acosh`, logs, `atan2`, `divide`) | `NAN`, `NULL`, `ERROR` | `NAN`, `ERROR` (logs and integer `divide` add `NULL`) | `ERROR` | `NAN` ([R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json)); `atan2(0, 0)` is `0` ([R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json)) |
 | `on_log_zero` | `NAN`, `ERROR`, `MINUS_INFINITY` | the three | `ERROR` | `MINUS_INFINITY` (R15-math-domain) |
 | `nan_creation` (sverify's: `∞ − ∞`, `0 · ∞`, `∞ / ∞`, `fmod(±∞, y)`, a `SUM` or `AVG` of `+∞` and `−∞`, a variance, standard deviation, covariance or correlation of an infinity) | `NAN`, raise | IEEE: NaN | raise | `NAN` ([R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json), [nonfinite-aggregates](../engines/duckdb/facts/duckdb-nonfinite-aggregates.json)) |
-| `zero_sign` (sverify's) | `IEEE` (two zeros), `ONE_ZERO` | IEEE; grouping and order of `-0.0` unspecified | `ONE_ZERO` at the identity boundaries, IEEE's signed zeros elsewhere (an override) | `IEEE` in arithmetic (`1.0 / -0.0 = -∞`) and kept through a sort, where `-0.0` and `0.0` are peers; the written plan prints raw values, and DuckDB reads the zeros as one at its identity boundaries ([R14](../engines/duckdb/facts/duckdb-R14.json)) |
+| `zero_sign` (sverify's) | `IEEE` (two zeros), `ONE_ZERO` | IEEE; grouping and order of `-0.0` unspecified | `ONE_ZERO` at the identity boundaries, IEEE's signed zeros elsewhere (an override) | `ONE_ZERO`: values are IEEE's (`1.0 / -0.0 = -∞` under `on_division_by_zero = IEEE`) and the zeros are peers at `=`, `<`, keys and sort keys; the written plan prints raw values, and `+ 0.0` where DuckDB's pick among equal zeros depends on row order (`MIN`, `MAX`, keys) ([R14](../engines/duckdb/facts/duckdb-R14.json)) |
 | `round_zero_sign` (sverify's: which zero `round` and `ceil` give a negative value that rounds to zero) | `ANY`, `IEEE` (`-0.0`), `POSITIVE` (`+0.0`) | unspecified | `ANY`, observed up to `canon`; `eval` gives `+0.0` | `IEEE` (`round(-0.4)` is `-0.0`, [R15-round](../engines/duckdb/facts/duckdb-R15-round.json)); the written plan prints the proved template (`0.0`). Polars too; Spark gives `+0.0` ([spark-round](../engines/spark/facts/spark-round.json)), and its `ceil` is a `BIGINT` ([spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json)) |
 | `pow_one_inf` (sverify's: `power(±1, ±∞)` and `power(1, NaN)`) | `ONE`, `NAN` | unspecified | `ONE`, C's `pow` (D40) | `ONE` ([pow-one-inf](../engines/duckdb/facts/duckdb-pow-one-inf.json)); Polars too ([pow-one-inf](../engines/polars/facts/polars-pow-one-inf.json)); Spark's `StrictMath.pow` gives `NAN` ([math-domain](../engines/spark/facts/spark-math-domain.json)), and its writer refuses double `power` |
 | `nan_equality` (sverify's for `=`, grouping, `DISTINCT`, joins; Substrait's for `index_in`) | `NAN_IS_NAN`, `NAN_IS_NOT_NAN` | IEEE `=` (NaN unequal); `index_in` takes the option | `NAN_IS_NAN` (an override) | `NAN_IS_NAN`, either sign ([nan-equality](../engines/duckdb/facts/duckdb-nan-equality.json)) |
@@ -619,7 +628,7 @@ the first column are the names the tables below use.
 | `empty_group_aggregates` (sverify's: `SUM` of no values or of NULLs only) | `NULL`, `ZERO` | `sum` is `NULL`, `sum0` is `0` | `NULL` | `NULL` natively (no fact); Polars's integer `sum` gives `0` ([polars-sum-int](../engines/polars/facts/polars-sum-int.json)) |
 | `stat_degenerate` (sverify's: `CORR` of one pair or a constant side) | `NULL`, `NAN`, raise | not specified | `NULL` for `CORR` (D30); a statistical aggregate of `±∞` is `nan_creation`'s (D37, `AggFn.nanCase`) | `NAN` for a constant side (duckdb-corr) |
 | `avg_int_result` (sverify's: `avg` of integers) | the declared output type: `fp64` or `i64` truncated | `avg` of `i64` returns `i64` | follows the declared type | `DOUBLE` natively, the exact sum divided in `double` or `long double` ([avg-int](../engines/duckdb/facts/duckdb-avg-int.json)); sverify's SQL writes the `HUGEINT` sum `//` the count for `i64` ([R6](../engines/duckdb/facts/duckdb-R6.json)) |
-| `quantile_interp` (sverify's: `QUANTILE_CONT` between neighbours) | any double between them | `quantile` has `rounding` | any double between them (`contAllowed`) | `lo·(1−d) + hi·d`, may round past; clamped ([quantile-cont-interpolation](../engines/duckdb/facts/duckdb-quantile-cont-interpolation.json)) |
+| `quantile_interp` (sverify's: `QUANTILE_CONT` between neighbours) | any double between them | `quantile` has `rounding` | any double between them (`contAllowed`) | `lo·(1−d) + hi·d` at the neighbours of its double position `(n − 1)·q`, an ulp past them where the lower neighbour is first (`LINEAR`); the written plan takes `quantile_disc` at a whole exact position and bounds a first lower neighbour (`quantile_guard`, #900) ([quantile-cont-interpolation](../engines/duckdb/facts/duckdb-quantile-cont-interpolation.json)) |
 | `tie_pick` (sverify's: `FIRST`, `LAST`, `ARG_MIN`, `ARG_MAX`, `any_value`, `MODE`, ranks over ties) | any row of the tie | `any_value` "selects an arbitrary value" | any row; each measure may take its own | the row it read first, which depends on parallelism ([mode-ties](../engines/duckdb/facts/duckdb-mode-ties.json), arg-min-nulls) |
 | `tie_order` (sverify's: `STRING_AGG`, `collect`, a sort, a window's order) | any order of the ties | not specified | any order | not stable (mode-ties) |
 | `null_order` (a sort key) | `NULLS_FIRST`, `NULLS_LAST` | stated by the key's direction; `UNSPECIFIED` leaves it open | as the key states; `NULLS_LAST` for `UNSPECIFIED` | `NULLS_LAST` by default ([F2](../engines/duckdb/facts/duckdb-F2.json)); either when the SQL states it |

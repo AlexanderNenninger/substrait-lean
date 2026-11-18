@@ -149,13 +149,37 @@ def test_the_zeros_are_one_key_at_the_identity_boundaries() -> None:
     assert written(member, rows) == model(member, rows) == [(0, True), (1, True), (2, True)]
 
 
-def test_min_and_max_keep_the_stored_zero() -> None:
-    """D31 leaves a `MIN` or `MAX` of equal zeros open; the written plan
-    prints DuckDB's own, as the model does for `-0.0` alone."""
-    rows = [(0, NEG_ZERO), (1, NEG_ZERO)]
-    for fn in ("min", "max"):
-        expr = T.aggregate(v=getattr(X, fn)()).mutate(k=ibis.literal(0)).select("k", "v")
+@pytest.mark.parametrize("order", [[0, 1, 2], [2, 1, 0], [1, 2, 0]])
+def test_the_representative_of_a_zero_class_is_canonical_whatever_the_row_order(order) -> None:
+    """D31 leaves the zero of a `MIN`, `MAX`, group key or `DISTINCT` row open
+    (a member of the class, or its canonical value): DuckDB's pick depends on
+    row order, so the writer prints the class's canonical `+0.0` and a rerun
+    gives the same sign (`Dialect.zero_rep`)."""
+    base = [(0, NEG_ZERO), (1, 0.0), (2, NEG_ZERO)]
+    rows = [base[i] for i in order]
+    for agg in (X.min(), X.max()):
+        expr = T.aggregate(v=agg).mutate(k=ibis.literal(0)).select("k", "v")
+        assert written(expr, rows) == [(0, (0.0, 1.0))]
+        assert model(expr, rows)[0][1][0] == 0.0  # either member of the class
+    keys = T.group_by("x").aggregate(n=T.k.count()).select(k=_.n, v=_.x)
+    assert written(keys, rows) == [(3, (0.0, 1.0))]
+    distinct = T.select(T.k * 0, v=X).distinct()
+    assert written(distinct, rows) == [(0, (0.0, 1.0))]
+
+
+@pytest.mark.parametrize("pair", [(NEG_ZERO, 0.0), (0.0, NEG_ZERO)])
+def test_least_and_greatest_of_both_zeros_keep_the_first_argument(pair) -> None:
+    """The reference keeps the first argument unless the second is strictly
+    better (`Value.pick`), so `greatest(-0.0, 0.0)` is `-0.0` and
+    `greatest(0.0, -0.0)` is `0.0`; DuckDB's written plan does the same."""
+    rows = [(0, pair[0])]
+    other = ibis.literal(pair[1])
+    for expr in (
+        T.select(T.k, v=ibis.least(X, other)),
+        T.select(T.k, v=ibis.greatest(X, other)),
+    ):
         assert written(expr, rows) == model(expr, rows)
+        assert written(expr, rows)[0][1][1] == math.copysign(1.0, pair[0])
 
 
 def test_sum_and_average_of_negative_zeros_are_positive_in_the_model_and_on_duckdb() -> None:
@@ -163,3 +187,64 @@ def test_sum_and_average_of_negative_zeros_are_positive_in_the_model_and_on_duck
     for fn in ("sum", "mean"):
         expr = T.aggregate(v=getattr(X, fn)()).mutate(k=ibis.literal(0)).select("k", "v")
         assert written(expr, rows) == model(expr, rows) == [(0, (0.0, 1.0))]
+
+
+@pytest.mark.parametrize("threads", [1, 4])
+@pytest.mark.parametrize("order", [[0, 1, 2, 3], [1, 0, 3, 2], [3, 2, 1, 0], [2, 0, 3, 1]])
+def test_quantiles_and_median_of_mixed_zeros_are_the_canonical_zero(order, threads) -> None:
+    """DuckDB's quantiles and `median` of equal zeros pick one by row order and
+    threads; the reference allows both (`contAllowed`, D45), so the writer prints `+0.0`."""
+    base = [(0, NEG_ZERO), (1, 0.0), (2, NEG_ZERO), (3, 0.0)]
+    rows = [base[i] for i in order]
+    for agg in (X.quantile(0.5), X.median(), X.quantile(0.0), X.quantile(1.0)):
+        expr = T.aggregate(v=agg).mutate(k=ibis.literal(0)).select("k", "v")
+        sql = to_sql(written_plan(json.dumps(to_substrait(expr))), "duckdb")
+        db = duckdb.connect()
+        db.execute(f"SET threads = {threads}")
+        db.execute("CREATE TABLE t(k BIGINT, x DOUBLE)")
+        db.executemany("INSERT INTO t VALUES (?, ?)", rows)
+        assert [(k, signed(v)) for k, v in db.execute(sql).fetchall()] == [(0, (0.0, 1.0))], agg
+
+
+@pytest.mark.parametrize("threads", [1, 4])
+@pytest.mark.parametrize("order", [[0, 1, 2, 3], [1, 0, 3, 2], [3, 2, 1, 0], [2, 0, 3, 1]])
+def test_a_grouped_quantile_disc_of_mixed_zeros_is_the_canonical_zero(order, threads) -> None:
+    """`quantile_disc` of equal zeros picks one by row order and threads (D45); the
+    writer prints the canonical `+0.0`."""
+    from sverify.engine import connect, plan_json
+
+    base = [(0, NEG_ZERO), (0, 0.0), (1, NEG_ZERO), (1, 0.0)]
+    rows = [base[i] for i in order]
+    con = connect()
+    con.create("t", SCHEMA, rows)
+    for q in ("0.0", "0.5", "1.0"):
+        plan = plan_json(con, f"SELECT k, quantile_disc(x, {q}) AS v FROM t GROUP BY k", "duckdb")
+        sql = to_sql(written_plan(plan), "duckdb")
+        db = duckdb.connect()
+        db.execute(f"SET threads = {threads}")
+        db.execute("CREATE TABLE t(k BIGINT, x DOUBLE)")
+        db.executemany("INSERT INTO t VALUES (?, ?)", rows)
+        got = sorted((k, signed(v)) for k, v in db.execute(sql).fetchall())
+        assert got == [(0, (0.0, 1.0)), (1, (0.0, 1.0))], q
+        # The model returns one member of the class (D45); the zeros are equal.
+        model_rows = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+        assert sorted((k, v) for k, v in model_rows) == [(0, 0.0), (1, 0.0)], q
+
+
+@pytest.mark.parametrize("threads", [1, 4])
+@pytest.mark.parametrize("order", [[0, 1, 2, 3], [1, 0, 3, 2], [3, 2, 1, 0], [2, 0, 3, 1]])
+def test_a_framed_min_and_max_of_mixed_zeros_print_the_canonical_zero(order, threads) -> None:
+    """DuckDB keeps the zero it read last in a frame; the writer prints `+0.0`. The
+    model's frames are compared after the windows PR of D45; this is the engine's side."""
+    base = [(0, NEG_ZERO), (1, 0.0), (2, NEG_ZERO), (3, 0.0)]
+    rows = [base[i] for i in order]
+    w = ibis.window(order_by=T.k, preceding=1, following=0)
+    for agg in (X.min(), X.max()):
+        expr = T.select(T.k, v=agg.over(w))
+        sql = to_sql(written_plan(json.dumps(to_substrait(expr))), "duckdb")
+        db = duckdb.connect()
+        db.execute(f"SET threads = {threads}")
+        db.execute("CREATE TABLE t(k BIGINT, x DOUBLE)")
+        db.executemany("INSERT INTO t VALUES (?, ?)", rows)
+        got = sorted((k, signed(v)) for k, v in db.execute(sql).fetchall())
+        assert got == [(k, (0.0, 1.0)) for k in range(4)], agg

@@ -168,7 +168,7 @@ Over the 136 queries that verify (some only as DOUBLE):
 | polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
 | snowflake: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
 | snowflake: refused: MAX of doubles is not yet supported on snowflake; run it with engine='duckdb' (see #271, https://gith | 2 |
-| snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses | 2 |
+| snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses; rewrite this step | 2 |
 | polars: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
 | snowflake: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
 | polars: refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not r | 1 |

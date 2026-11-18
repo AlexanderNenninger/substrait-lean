@@ -232,7 +232,9 @@ class Check:
                 lines += [f"  {line}" for line in str(r).splitlines()[1:]]
                 lines += [f"  composition: {m}" for m in c.links]
         lines += [
-            f"{t}: not checked, the file never applies it  [unchecked]" for t in self.unchecked
+            f"{t}: not checked, the file never applies it; declare its input schemas with "
+            "@sv.transform(schemas=...)  [unchecked]"
+            for t in self.unchecked
         ]
         if self.error is not None:
             lines.append(f"{self.error['code']}: {self.error['message']}  [{self.error['code']}]")
@@ -368,7 +370,20 @@ def cmd_check(args: argparse.Namespace) -> int:
     }
     lines = []
     if not plan.fixes:
-        lines.append("No preconditions to add: no proof in the file needs one.")
+        other = [
+            f"  {c.name}: {h}"
+            for c in check.checked
+            if c.report is not None
+            for h in dict.fromkeys(c.report._all_hints())
+        ]
+        if other:
+            lines.append(
+                "No preconditions to add (nothing in `requires` rules these out); "
+                "the reports suggest:"
+            )
+            lines += other
+        else:
+            lines.append("No preconditions to add: no proof in the file needs one.")
     for f in plan.fixes:
         lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
         if f.reason:

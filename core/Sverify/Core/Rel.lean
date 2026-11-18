@@ -122,8 +122,7 @@ def leftJoinRow (on : Expr) (rightArity : Nat) (ys : Relation) (x : Row)
   if ms.isEmpty then [x ++ List.replicate rightArity .null] else ms
 
 /-- `UNNEST` on one row: a row per element of the list in column `c`, with
-the element in its place; none for an empty list or NULL (as DataFusion and
-DuckDB do; Polars' `explode` gives a row of NULL instead). -/
+the element in its place; none for an empty list or NULL. -/
 def unnestRow (c : Nat) (x : Row) : Relation :=
   match x.getD c .null with
   | .list vs => vs.map (x.set c ·)

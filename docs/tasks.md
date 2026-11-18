@@ -845,12 +845,11 @@ them. `sv.sql(query, semantics=...)` attaches the choice to the query.
 it for the SQL they lift themselves: a SQL transformation and SQL conditions.
 An `sv.sql` expression inside an Ibis transformation keeps its own. The report
 says which semantics it used (`Report.semantics`, a `semantics:` line).
-`semantics="polars"` reads an Ibis transformation as Polars computes it:
-integer `//` and `%` floor, so `-7 % 2` is `1`, and the plan states
-`division_type: FLOOR` on each, which Polars runs natively and the SQL
-writer computes from truncating operations; a zero divisor and integer overflow still raise, so `verify`
-infers the same preconditions as under the reference
-([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
+`semantics="polars"` is pending like Spark's: Polars floors integer `//` and
+`%`, so `-7 % 2` is `1` there, and until the checker reports under Polars's own
+profile ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271))
+the report is the reference's, with the stated `FLOOR` read by the core, and a
+`ProfilePendingWarning` says so ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode, and doubles that overflow are ±inf with no precondition.
 Until the checker reports under Spark's own profile
@@ -1038,16 +1037,19 @@ refresh batch by batch and a recompute agree:
 
 - A row on which a row condition is FALSE or NULL (ranges, NOT NULL, value
   sets, inferred bounds).
-- Among the other rows, every row of a key that occurs more than once
-  (`sv.unique`, `sv.key`): both copies of a repeated `id`, the one the node
-  held before included. The rule needs no order between rows, so it gives the
+- Among the other rows, every row of a key that occurs on more than one
+  distinct row (`sv.unique`, `sv.key`): both rows of a repeated `id` with
+  different values, the one the node held before included. Rows identical in
+  every column count once: a redelivered duplicate of a kept row is set aside
+  beside it, and the kept row stays. The rule needs no order between rows, so it gives the
   same answer under every profile ([tie order](reference-semantics.md#tie-order-and-the-deterministic-profile)).
 - `max_rows`, `arrives_within` and the other conditions on a table as a whole
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
 
 Every precondition holds on the rows kept: `Catalog.kept_sound` in
-[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule,
+[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule
+(on the snapshot with identical rows collapsed),
 so the node's contract (`contract_sound`, `Rel.keys_sound`) holds on what it
 reads. The batch checks then run on the kept rows as on any batch, and a row
 the rule let through by mistake would raise.
@@ -1108,8 +1110,10 @@ tables. A table format plays four roles:
   On DuckDB, a local table is never loaded into Python: the pipeline holds
   the Parquet files of its version, with the rows that deletion vectors or
   position delete files remove, and DuckDB reads them with `read_parquet`.
-  Partitioned tables, Delta column mapping, renamed Iceberg columns,
-  equality deletes, object stores and the other engines read through Arrow;
+  Iceberg files are read by field id, so a renamed column is found, and
+  equality deletes apply to the files written before them. Partitioned
+  tables, Delta column mapping, object stores and the other engines read
+  through Arrow;
   native scans for them are tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/173).
 * A source of preconditions. `requires` conditions are proved from
   schema nullability, Delta CHECK constraints and per-file statistics:
@@ -1267,7 +1271,7 @@ Each refresh report names what it trusted: that the change feed turns the
 old snapshot into the new one, and that writers and file statistics are
 correct (Delta's millisecond timestamp maxima are widened by 999 µs; with
 deletion vectors the statistics cover deleted rows too, which still bounds
-the live ones). Iceberg tables with equality deletes can't be read. What is
+the live ones). Iceberg tables with equality deletes are read on DuckDB from local Parquet files without partition fields, and otherwise can't be read. What is
 proved is listed under [Table formats](proved-theorems.md#table-formats).
 
 ### Credentials
@@ -1598,7 +1602,6 @@ defines it. On `x = -7`, with `d = 2`:
 |---|---|---|---|
 | Ibis, `semantics="reference"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
 | SQL through `sv.sql` or `sv.verify`, reference | -3 (truncated) | -1 | yes |
-| Ibis, `semantics="polars"` | -4 | 1 | yes |
 
 A plan that splits milliseconds into seconds and a remainder with `t.ms // 1000`
 and `t.ms % 1000` gets the identity only for non-negative `ms`. State
@@ -1612,7 +1615,6 @@ reproduces the table.
 
 A proof is about the plan under one semantics, a profile: sverify's
 reference by default, `semantics="duckdb"` for what DuckDB does,
-`semantics="polars"` for what Polars does, or
 `semantics="substrait"` for Substrait's extension YAMLs, open wherever they
 say nothing. Each profile refines one core that does a superset of
 operations ([core, profiles and engines](core-and-profiles.md)). An engine computes its own semantics, so running a proved
@@ -1623,7 +1625,7 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB, `semantics="polars"` on Polars, `semantics="spark"` on Spark) |
+| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending until #1288 and #271) |
 | `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
 | `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
 | `recheck` | the checker proves the plan again under the engine's profile |

@@ -155,6 +155,10 @@ def _truncates(expr: str) -> bool:
     return any(f in expr for f in ("DATE_TRUNC_", "DAY_TRUNC_", "BUCKET_"))
 
 
+#: What `str(report)` adds to "proved" when the checker's generated proofs
+#: were not checked (`substrait-check --build`, `docs/trusted-base.md`).
+UNCHECKED_CHECKER = " by a checker whose generated proofs are unchecked"
+
 #: How a report explains a `SUM` that may overflow: an error like any other,
 #: which the job also checks while it runs.
 RUNTIME_CHECK = (
@@ -399,19 +403,25 @@ class Report:
     established about them (`facts`), in the output's order. A stored node
     of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
-    """False when rows may tie in the ORDER BY of a window or of an ordered
-    aggregate (`first`, `last`, `group_concat`; without an `order_by` every
-    row ties), or when a `LIMIT` takes rows that tie in its `ORDER BY`, or
-    has none. The engine then picks an order, and a rerun may pick another.
-    The postconditions are proved for every order; the
-    deterministic profile (`run(reproducible=sv.equivalent())`, a sink's
-    `reproducible=`) refuses such a plan and names `tie_places`."""
+    """True when every result the reference allows is one up to row order
+    (`check_deterministic_sound`). False when rows may tie in the ORDER BY
+    of a window or of an ordered aggregate (`first`, `last`,
+    `group_concat`; without an `order_by` every row ties), when a `LIMIT`
+    takes rows that tie in its `ORDER BY` or has none, when the reference
+    leaves a value open (the median of doubles, which member of a class of
+    doubles a `DISTINCT`, a group key, `MIN`, `MAX` or `QUANTILE_DISC`
+    keeps), or where the checker has not proved an aggregate a function of its values. The
+    engine then picks, and a rerun may pick another. The postconditions
+    are proved for every choice; the deterministic profile
+    (`run(reproducible=sv.equivalent())`, a sink's `reproducible=`)
+    refuses such a plan and names `tie_places`."""
     _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
     _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
-    """Where the plan leaves the order of ties open (D24), one entry per
-    window, ordered aggregate or `LIMIT`; empty when `deterministic`."""
+    """Where the plan leaves its result open, one entry per window, ordered
+    aggregate, `LIMIT` or value the reference leaves open; empty exactly
+    when `deterministic` (`Request.deterministicIn_eq`)."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, SUM overflows among them, the checker could not rule out; when
     empty, the transformation provably runs without them."""
@@ -544,6 +554,10 @@ class Report:
     over the options the proof depends on, the theorems and facts, the shims,
     the options realized only up to an observation, what refuses it, and the
     transfer check from each other profile. None from a checker without it."""
+    _generated_proofs: bool | None = field(default=None, repr=False, compare=False)
+    """Whether the checker that made this report had checked its generated
+    lift and lowering proofs (`substrait-check --build`); None where it does
+    not say. A checker without them proves with `sorry` in their place."""
     _sorted: bool | None = field(default=None, repr=False, compare=False)
     """Whether the plan's result comes out of a sort, as the checker reads it."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
@@ -1492,6 +1506,8 @@ class Report:
 
     def __str__(self) -> str:
         lines = [self._summary]
+        if self._proved and self._generated_proofs is False:
+            lines[0] += UNCHECKED_CHECKER
         needed = _labels_by_table(self.needs)
         for table, conds in self.requires.items():
             inferred = {label(c) for c in self._inferred.get(table, [])}
@@ -1610,6 +1626,7 @@ _REPORT_INTERNAL = [
     "margin_flags",
     "engines",
     "sorted",
+    "generated_proofs",
     "conditions",
     "dialect",
     "on_inferred",
@@ -1644,9 +1661,9 @@ _ORDERED = {
 
 
 TIES_HINT = (
-    "rows may tie in the ORDER BY of a window, of a LIMIT or of {}, so the engine "
-    "decides their order and a rerun may give other rows. The postconditions are "
-    "proved for every order"
+    "rows may tie in the ORDER BY of a window, of a LIMIT or of {}, or the reference "
+    "leaves a value open, so the engine decides and a rerun may give other rows. The "
+    "postconditions are proved for every choice"
 )
 
 
@@ -1963,6 +1980,11 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
         return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
+    if isinstance(table, ir.Join):
+        # Ibis merges a select over a join into the join's own select
+        # (`Join.select`); the checker wants the condition over the
+        # transformation as it is (#1484, `ContractCheck.postOf`).
+        table = ir.Table(table.op())
     return table.select(c=resolve(cond, table))
 
 

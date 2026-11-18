@@ -39,9 +39,9 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 4 | 26 | 1 | 4 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 14 | 1 | 6 | 8 | 1 | 15 | 7 |
-| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 27 | 1 | 5 | 3 | 1 | 14 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 5 | 25 | 1 | 4 | 4 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 6 | 8 | 2 | 15 | 7 |
+| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 26 | 1 | 5 | 3 | 2 | 14 | 0 |
 
 Rows per evidence level:
 
@@ -58,6 +58,7 @@ Rows per evidence level:
 | DuckDB | `MIN % -1 written out` | expression | `min_mod_neg_one` |
 | DuckDB | `round: 0.0 for a negative value that rounds to zero` | expression | `round_zero_sign` |
 | DuckDB | `nan_through` | expression | agg.var: `stat_algo` |
+| DuckDB | `quantile_guard` | expression | `quantile_interp` |
 | DuckDB | `ORDER BY the keys` | sort | `clustered` |
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
 | Polars | `int_div_trunc` | expression | int.div: `division_type` |
@@ -82,7 +83,7 @@ Rows per evidence level:
 
 ## DuckDB 2.0.0
 
-4 shims (3 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
+5 shims (4 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -105,7 +106,7 @@ Rows per evidence level:
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | fuzz | tested: [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json) |
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
-| every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | fuzz | tested: [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json) |
+| every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | fuzz | tested: [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-nonfinite-aggregates](../engines/duckdb/facts/duckdb-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | probe | tested: [duckdb-R14](../engines/duckdb/facts/duckdb-R14.json), [duckdb-float-signs](../engines/duckdb/facts/duckdb-float-signs.json), [duckdb-minmax-zero-sign](../engines/duckdb/facts/duckdb-minmax-zero-sign.json) |
 | every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `round: 0.0 for a negative value that rounds to zero` (expression) | probe | tested: [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [duckdb-R15-round-digits](../engines/duckdb/facts/duckdb-R15-round-digits.json) |
 | every | `pow_one_inf` | choose | `ONE` | `ONE` | native | probe | tested: [duckdb-pow-one-inf](../engines/duckdb/facts/duckdb-pow-one-inf.json) |
@@ -127,7 +128,7 @@ Rows per evidence level:
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `TREE`, `RUNNING_ADD`, `RECOMPUTE` | observed: within the plan's bound | probe | tested: [duckdb-window-sum-order](../engines/duckdb/facts/duckdb-window-sum-order.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `EXACT_TRUNCATE` | native | probe | tested: [duckdb-R6](../engines/duckdb/facts/duckdb-R6.json) |
-| every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [duckdb-quantile-cont-interpolation](../engines/duckdb/facts/duckdb-quantile-cont-interpolation.json) |
+| every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | shim `quantile_guard` (expression) | probe | tested: [duckdb-quantile-cont-interpolation](../engines/duckdb/facts/duckdb-quantile-cont-interpolation.json), `tests/test_duckdb_quantile_900.py::test_the_whole_positions_the_double_misses_give_the_model_value`, `tests/test_duckdb_quantile_900.py::test_a_random_group_stays_between_the_neighbours` |
 | every | `tie_pick` | open | `ANY_ROW` | `FIRST_READ` | native | probe | tested: [duckdb-mode-ties](../engines/duckdb/facts/duckdb-mode-ties.json), [duckdb-arg-min-nulls](../engines/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `tie_order` | open | `ANY` | `ANY` | native | probe | tested: [duckdb-sort-ties](../engines/duckdb/facts/duckdb-sort-ties.json), [duckdb-mode-ties](../engines/duckdb/facts/duckdb-mode-ties.json) |
 | every | `null_order` | choose | `NULLS_LAST` | `NULLS_LAST` | native | engine_test | tested: [duckdb-F2](../engines/duckdb/facts/duckdb-F2.json) |
@@ -170,7 +171,7 @@ Rows per evidence level:
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
-| every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.polars_sound`; [polars-double-arith](../engines/polars/facts/polars-double-arith.json) |
+| every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.polars_sound`; [polars-double-arith](../engines/polars/facts/polars-double-arith.json), [polars-nonfinite-aggregates](../engines/polars/facts/polars-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign](../engines/polars/facts/polars-zero-sign.json), [polars-zero-order](../engines/polars/facts/polars-zero-order.json) |
 | agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-order](../engines/polars/facts/polars-zero-order.json), [polars-min-max-zero](../engines/polars/facts/polars-min-max-zero.json) |
 | fp.arith | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign](../engines/polars/facts/polars-zero-sign.json), [polars-zero-add](../engines/polars/facts/polars-zero-add.json) |
@@ -195,7 +196,7 @@ Rows per evidence level:
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../engines/polars/facts/polars-avg-int.json) |
-| every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | probe | tested: [polars-quantile](../engines/polars/facts/polars-quantile.json) |
+| every | `quantile_interp` | open | `BETWEEN` | `LINEAR_DIFF` | refused | probe | tested: [polars-quantile](../engines/polars/facts/polars-quantile.json) |
 | every | `tie_pick` | open | `ANY_ROW` | `FIRST_READ` | native | probe | tested: [polars-first-last](../engines/polars/facts/polars-first-last.json) |
 | every | `tie_order` | open | `ANY` | `ANY` | native | proof | proved `Polars.tie_order`; [polars-sort-stability](../engines/polars/facts/polars-sort-stability.json), [polars-first-last](../engines/polars/facts/polars-first-last.json) |
 | every | `null_order` | choose | `NULLS_LAST` | `NULLS_FIRST` | shim `null_order` (argument) | proof | proved `Shim.null_order`; [polars-null-order](../engines/polars/facts/polars-null-order.json) |
@@ -271,7 +272,7 @@ Refused on Polars, with no expression there:
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RECOMPUTE`, `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [spark-window-agg](../engines/spark/facts/spark-window-agg.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `int_avg_decimal` (expression) | proof | proved `Shim.avg_trunc`; [spark-avg-int](../engines/spark/facts/spark-avg-int.json) |
-| every | `quantile_interp` | open | `BETWEEN` | `LINEAR` | native | fuzz | tested: [spark-quantile](../engines/spark/facts/spark-quantile.json) |
+| every | `quantile_interp` | open | `BETWEEN` | `LINEAR_DIFF` | refused | fuzz | tested: [spark-quantile](../engines/spark/facts/spark-quantile.json) |
 | every | `tie_pick` | open | `ANY_ROW` | `ANY_ROW` | native | probe | tested: [spark-first-last](../engines/spark/facts/spark-first-last.json) |
 | every | `tie_order` | open | `ANY` | `ANY` | native | probe | tested: [spark-sort-stability](../engines/spark/facts/spark-sort-stability.json), [spark-window-values](../engines/spark/facts/spark-window-values.json), [spark-rank](../engines/spark/facts/spark-rank.json) |
 | every | `null_order` | choose | `NULLS_LAST` | `NULLS_FIRST` | shim `null_order` (argument) | proof | proved `Shim.null_order`; [spark-null-order](../engines/spark/facts/spark-null-order.json) |

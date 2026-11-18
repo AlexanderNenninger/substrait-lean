@@ -32,9 +32,14 @@ pip install sverify-dbt dbt-duckdb
 Compile the project, then check it:
 
 ```bash
+dbt docs generate   # writes target/catalog.json, where the column types come from
 dbt compile
 sverify-dbt check .
 ```
+
+Without the catalog, sverify-dbt takes types from each column's `data_type`
+in the YAML and refuses a model whose inputs have none. After a `dbt run`,
+check incremental models from `dbt compile --full-refresh`.
 
 On the sample project in [`examples/shop`](examples/shop):
 
@@ -168,7 +173,13 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   ([the guide](../docs/guide.md#contracts)).
 - Python models, and models whose inputs have no column types, are refused.
 - An incremental model is checked as its full refresh, as `dbt compile`
-  renders it.
+  renders it; its `is_incremental()` block is taken to only filter that query.
+  Its tests are skippable (`--selectors`) only under `merge` or `delete+insert`
+  on a `unique_key` that a proved `unique` test names, and then only the
+  row-level tests (`not_null`, `accepted_values`, `accepted_range`,
+  `expression_is_true`) and `unique` over that key or more columns: other
+  proved tests are listed as proved for the full refresh, and `dbt build`
+  still runs them.
 
 ## Development
 

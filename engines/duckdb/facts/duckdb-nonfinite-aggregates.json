@@ -30,6 +30,14 @@
       "types": [
         "fp64"
       ]
+    },
+    {
+      "group": "agg.quant",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -51,7 +59,8 @@
     "One value: `var_samp` is NULL, `var_pop` 0, `corr(x, x)` NaN.",
     "The docs are silent on NaN and infinity in every aggregate: a docs gap. No upstream test pins `fsum` and `favg` of `[inf, 1]`; it may change between versions.",
     "`COVAR_*` follow the same rule: a NaN or ±inf on either side, or two equal infinities, make every moment NaN, without an error.",
-    "`nan_creation` of `sum` and `avg` of doubles (#341): `+inf` with `-inf` gives NaN, ungrouped, grouped and over a framed window; one kind of infinity with finite values gives that infinity; no error. A framed window sums each frame anew: a frame holding `-inf` and 1 after a frame that held `inf` and `-inf` is `-inf`, so no frame's NaN reaches the next. `fsum` and `favg` give NaN once a finite value follows an infinity, so their result depends on the order (`fsum` of 1, `inf` is `inf`, of `inf`, 1 NaN), and `favg` of one `inf` alone is NaN where `fsum` of it is `inf` (Kahan's error term `inf - inf`)."
+    "`nan_creation` of `sum` and `avg` of doubles (#341): `+inf` with `-inf` gives NaN, ungrouped, grouped and over a framed window; one kind of infinity with finite values gives that infinity; no error. A framed window sums each frame anew: a frame holding `-inf` and 1 after a frame that held `inf` and `-inf` is `-inf`, so no frame's NaN reaches the next. `fsum` and `favg` give NaN once a finite value follows an infinity, so their result depends on the order (`fsum` of 1, `inf` is `inf`, of `inf`, 1 NaN), and `favg` of one `inf` alone is NaN where `fsum` of it is `inf` (Kahan's error term `inf - inf`).",
+    "`quantile_cont` and `median` over values holding both `-inf` and `+inf` give NaN at a fraction between the two infinite neighbours: the NaN is `nan_creation`'s (the reference raises, D37)."
   ],
   "reference": "`AggFn.var` and `AggFn.corr` of the same rows; the reference's handling of ±inf in these aggregates is part of #85. `nan_creation` is `ERROR` in the reference: a variance, covariance or correlation of an infinity, and a double `SUM` or `AVG` (grouped or over a window frame) of `+∞` and `-∞` is a domain error (D37, #257); `Profile.duckdb` has `NAN`, and #341 states DuckDB's NaN in the DuckDB lift.",
   "status": "decided",
@@ -183,6 +192,16 @@
         }
       ],
       "notes": "Read at tag v2.0.0; the test was not run. It sums `+inf` and `-inf` only together with NaN inputs, so `inf + -inf` alone rests on the probe above."
+    },
+    {
+      "checked_at": "2026-11-15",
+      "method": "manual-repro",
+      "checked_by": "session optimistic-hopper-2d1785 (±∞ aggregate cleanup, PR 2), probe scripts pq.py, pq2.py (Polars), spq3.py (Spark on homelab-run)",
+      "evidence": [
+        {
+          "note": "DuckDB 2.0.0 (duckdb Python 2.0.0): `quantile_cont(x, p)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] it is -inf at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: -inf, 1, +inf at 0.25, 0.5, 0.75; of [1, +inf]: +inf. The interpolation `lo·(1 − w) + hi·w` makes a NaN only where both neighbours are infinite and opposite."
+        }
+      ]
     }
   ],
   "issues": [

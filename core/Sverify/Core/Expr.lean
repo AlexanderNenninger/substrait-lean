@@ -24,8 +24,8 @@ Doubles are integer *codes* (see `core/Sverify/Core/Float.lean`), so they share
 operators (`fadd`, …), computed with native floats; rounding a double to an
 integer is exact (see `core/Sverify/Core/Rounding.lean`).
 
-Integer division and remainder truncate toward zero; the writers shim an
-engine whose division floors (Polars). Where
+Integer division and remainder truncate toward zero unless the plan asks
+for `division_type` = `FLOOR`. Where
 an operation raises an error (division by zero, a cast out of range, a domain
 error, …) the value here is `null`; `analysis/Sverify/Analysis/Safety.lean` says when
 that happens.
@@ -107,8 +107,8 @@ inductive UnFn where
   | ftoi
   /-- `CAST(x AS INT)` of an integer to `bits` bits (32, or 16 for `SMALLINT`
   and 8 for `TINYINT`): the value itself, or `NULL` where it does not fit,
-  which raises (`badCast` in `Safety.lean`), as DuckDB, Polars and Spark do
-  (duckdb-int-narrow, polars-cast-int, spark-cast-int-narrow). -/
+  which raises (`badCast` in `Safety.lean`; duckdb-int-narrow,
+  polars-cast-int, spark-cast-int-narrow). -/
   | narrow (bits : Nat)
   /-- `TRY_CAST(x AS BIGINT)` of a double (#58): `ftoi`, or `NULL` where that
   fails (NaN, `±∞`, outside 64 bits), which is then no error. -/
@@ -118,8 +118,8 @@ inductive UnFn where
   | narrowOrNull (bits : Nat)
   /-- Integer arithmetic at `bits` bits (`INT`, `SMALLINT`, `TINYINT`): the
   value itself, like 64-bit arithmetic. Where it does not fit it raises
-  (`wraps` in `Safety.lean`): DuckDB and Spark raise (duckdb-int-narrow,
-  spark-int-arith), Polars wraps around (polars-int-arith). -/
+  (`wraps` in `Safety.lean`; duckdb-int-narrow, spark-int-arith). The
+  `overflow` option opens wrapping around (polars-int-arith). -/
   | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
@@ -177,8 +177,16 @@ inductive UnFn where
   2 is `1234`), so this is the value itself: it gives the expression its kind,
   and a value of more than `p` digits is an overflow (`Safety.lean`). -/
   | decimal (p s : Nat)
-  /-- `DECIMAL(p, s)` without the check, where the value cannot have more
-  digits: an average has no more than the values it averages (#27). -/
+  /-- `DECIMAL(p, s)` without the overflow check. The parser builds it in two
+  uses. A quotient (`Parse.decimalAvgs`): an average has no more digits than the
+  values it averages (#27), and the parser checks that its `DECIMAL(p + 4, s + 4)`
+  fits 38 digits (`checkDecimalAvgWidth`, #1497). A comparison's side
+  (`decimalCall`): the operand upscaled to the larger scale, whose precision
+  bounds nothing and which only the scale is read from (`Expr.eval` and
+  `Kind.comparable`), so the model compares the exact values (#1498). And
+  `sverify_decimal_div` read back in `decimalCall`: the bound holds for the plan
+  the writer makes from an `AVG`, and is unchecked for a hand-written call
+  (#1497). -/
   | dkind (p s : Nat)
   /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
   rounding half away from zero (`roundDiv10`). -/
@@ -202,9 +210,8 @@ inductive UnFn where
   /-- `cardinality(l)`: the number of elements, NULL ones included
   (`functions_list.yaml`). -/
   | cardinality
-  /-- A shim's guard (#185): always raises (`Issue.raised` in `Safety.lean`),
-  with the message `msg` and the value of its argument; DuckDB's `error()`.
-  Its value, which nobody sees, is `NULL`. -/
+  /-- A guard (#185): always raises (`Issue.raised`), with the message `msg`
+  and the value of its argument. Its value, which nobody sees, is `NULL`. -/
   | raise (msg : String)
   /-- `+`, `-`, `×` or negation with `overflow` = `SILENT` or `SATURATE`
   (#241), applied to the exact result (`BinFn.dadd`, `dsub`, `dmul`): wrapped
@@ -218,13 +225,12 @@ inductive UnFn where
   the table's row `name`. -/
   | bbox (name : String)
   /-- `flatten(l)`: the elements of `l`'s lists, in order; a `NULL` inner
-  list adds none, and a `NULL` `l` is `NULL` (DuckDB, #810). `list(x)` keeps
+  list adds none, and a `NULL` `l` is `NULL` (#810). `list(x)` keeps
   `x`'s NULLs as `flatten(array_agg([x]))`. -/
   | flatten
   deriving Repr, DecidableEq
 
-/-- DuckDB's list functions of two arguments (#812), new functions that run
-on DuckDB only (#271). One `BinFn` constructor holds them all, so that
+/-- The list functions of two arguments (#812). One `BinFn` constructor holds them all, so that
 `BinFn.apply` gains one case. -/
 inductive ListOp where
   /-- `list_prepend(x, l)`: `x` before the list's elements, NULL elements
@@ -232,14 +238,14 @@ inductive ListOp where
   `list_prepend(a, list_prepend(b, []))`. -/
   | prepend
   /-- `list_concat(l, m)`: the elements of both; a `NULL` list is empty, so
-  two `NULL`s give `[]` (DuckDB 2.0). -/
+  two `NULL`s give `[]` (#812). -/
   | concat
   /-- `list_contains(l, x)`: whether an element equals `x`, NULL elements
   equal to nothing; `NULL` for a `NULL` list or a `NULL` `x`. -/
   | contains
   /-- `list_position(l, x)`: the position, from 1, of the first element
   equal to `x`, a `NULL` `x` finding the first `NULL` element; `NULL` when
-  none is, and for a `NULL` list (DuckDB 2.0). -/
+  none is, and for a `NULL` list (#812). -/
   | position
   deriving Repr, DecidableEq
 
@@ -266,8 +272,8 @@ inductive BinFn where
   | substr (n : Option Nat) (wrap : Bool)
   /-- `btrim`, `ltrim` and `rtrim` of a string and a set of characters. -/
   | trim (left right : Bool)
-  /-- `repeat(s, n)`: `''` for `n ≤ 0`, as DuckDB and Spark give
-  (duckdb-repeat-nonpositive, spark-repeat-nonpositive). Beyond
+  /-- `repeat(s, n)`: `''` for `n ≤ 0` (duckdb-repeat-nonpositive,
+  spark-repeat-nonpositive). Beyond
   `Text.repeatMax` bytes it raises (`Text.repeatFits`), and its value there
   is `''`. -/
   | strRepeat
@@ -300,7 +306,7 @@ inductive BinFn where
   | greatest | least
   /-- A scalar black box of two arguments (`core/Sverify/Core/BlackBox.lean`, #325). -/
   | bbox2 (name : String)
-  /-- DuckDB's list functions of two arguments (`ListOp`, #812). -/
+  /-- A list function of two arguments (`ListOp`, #812). -/
   | listFn (op : ListOp)
   deriving Repr, DecidableEq
 
@@ -374,7 +380,7 @@ def Value.listElement (off : Int) (vs : List Value) : Value :=
 #guard Value.listElement (-4) [.int 1, .int 2, .int 3] == .null
 #guard Value.listElement 0 [] == .null
 
-/-- DuckDB's `flatten(l)` (#810). -/
+/-- `flatten(l)` (#810). -/
 def Value.flatten : Value → Value
   | .list vs => .list (vs.flatMap fun | .list ws => ws | _ => [])
   | _ => .null
@@ -675,13 +681,13 @@ def Value.pick (better : Value → Value → Bool) : Value → Value → Value
   | a, .null => a
   | a, b => if better a b then b else a
 
-/-- DuckDB's `list_prepend(x, l)`: a `NULL` list is empty (#812). -/
+/-- `list_prepend(x, l)`: a `NULL` list is empty (#812). -/
 def Value.listPrepend (x : Value) : Value → Value
   | .list vs => .list (x :: vs)
   | .null => .list [x]
   | _ => .null
 
-/-- DuckDB 2.0's `list_concat(l, m)`: a `NULL` list is empty (#812). -/
+/-- `list_concat(l, m)`: a `NULL` list is empty (#812). -/
 def Value.listConcat : Value → Value → Value
   | .list vs, .list ws => .list (vs ++ ws)
   | .list vs, .null => .list vs
@@ -689,12 +695,12 @@ def Value.listConcat : Value → Value → Value
   | .null, .null => .list []
   | _, _ => .null
 
-/-- DuckDB's `list_contains(l, x)` (#812). -/
+/-- `list_contains(l, x)` (#812). -/
 def Value.listContains : Value → Value → Value
   | .list vs, x => if x = .null then .null else .bool (vs.contains x)
   | _, _ => .null
 
-/-- DuckDB 2.0's `list_position(l, x)`, from 1 (#812). -/
+/-- `list_position(l, x)`, from 1 (#812). -/
 def Value.listPosition : Value → Value → Value
   | .list vs, x => match vs.findIdx? (· == x) with
     | some i => .int (i + 1)
@@ -731,7 +737,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .mul, .int a, .int b => .int (a * b)
   | .eq, .bool a, .bool b => .bool (a == b)
   | .eq, .str a, .str b => .bool (a == b)
-  -- Lists are equal element by element, NULL elements equal (DuckDB), doubles
+  -- Lists are equal element by element, NULL elements equal, doubles
   -- by their canonical codes.
   | .eq, .list a, .list b | .eq, .struct a, .struct b =>
     .bool (decide (a.map Value.canonV = b.map Value.canonV))
@@ -906,8 +912,8 @@ def Expr.subst (cols : List Expr) : Expr → Expr
   | .ifThen c t e => .ifThen (c.subst cols) (t.subst cols) (e.subst cols)
   | .hof f l b => .hof f (l.subst cols) (b.subst (.field 0 :: cols.map (·.shift 0)))
 
-/-- `a // b` of integers with `division_type` = `FLOOR` (Polars's `//`,
-`engines/polars/Sverify/Polars/Profile.lean`), in the reference's truncating
+/-- `a // b` of integers with `division_type` = `FLOOR` (the expression a plan with that
+`division_type` means), in the reference's truncating
 operations: with the signs apart, `(a + 1) / b - 1` for `a < 0 < b` and
 `(a - 1) / b - 1` for `b < 0 < a`, so that no step overflows; otherwise the
 truncated quotient. Each condition compares one argument with zero, `a`
@@ -924,7 +930,7 @@ def Expr.floorDivOf (a b : Expr) : Expr :=
         (.bin .idiv a b))
       (.bin .idiv a b))
 
-/-- `a % b` of integers with `division_type` = `FLOOR` (Polars's `%`): the
+/-- `a % b` of integers with `division_type` = `FLOOR`: the
 remainder takes the divisor's sign. With the signs apart it is
 `(b - 1) - (-1 - a) % b` for `a < 0 < b` and `(a - 1) % b + (b + 1)` for
 `b < 0 < a`, each a remainder of a dividend that is not negative, so that the
@@ -941,8 +947,8 @@ def Expr.floorModOf (a b : Expr) : Expr :=
         (.bin .imod a b))
       (.bin .imod a b))
 
-/-- `a % b` of doubles with `division_type` = `FLOOR` (Polars's `%`,
-`engines/polars/Sverify/Polars/Profile.lean`): `a - b * floor(a / b)`, in the
+/-- `a % b` of doubles with `division_type` = `FLOOR` (the expression a plan with that
+`division_type` means): `a - b * floor(a / b)`, in the
 reference's double operations. A zero divisor raises, and so does a finite
 `a % ±∞` (`∞ * 0` is a NaN). `Write` keeps the four calls: only `floorDivOf` and
 `floorModOf` are written back as one call. -/
@@ -1073,5 +1079,15 @@ theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)
     simp only [eval, ihl he.1 hlen]
     congr 1; funext x
     exact ihb (row := x :: row) he.2 (by simp [hlen])
+
+/-- The columns `e` reads; a lambda's body reads none of the row's. -/
+def Expr.cols : Expr → List Nat
+  | .lit _ => []
+  | .field i => [i]
+  | .un _ a => a.cols
+  | .bin _ a b => a.cols ++ b.cols
+  | .ifThen c t e => c.cols ++ t.cols ++ e.cols
+  -- A lambda's body reads its parameter as field 0 and the row from 1 (D28).
+  | .hof _ l b => l.cols ++ b.cols.filterMap fun i => if i = 0 then none else some (i - 1)
 
 end Substrait

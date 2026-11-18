@@ -131,8 +131,8 @@ def options : List OptionSpec := [
     extra := [("NAN", "duckdb-corr")] },
   { id := "avg_int_result", substrait := none, core := ["DECLARED_TYPE", "FP64", "EXACT_TRUNCATE"],
     extra := [("FP64", "polars-avg-int"), ("EXACT_TRUNCATE", "duckdb-R6")] },
-  { id := "quantile_interp", substrait := none, core := ["BETWEEN", "LINEAR"],
-    extra := [("LINEAR", "duckdb-quantile-cont-interpolation")] },
+  { id := "quantile_interp", substrait := none, core := ["BETWEEN", "LINEAR", "LINEAR_DIFF"],
+    extra := [("LINEAR", "duckdb-quantile-cont-interpolation"), ("LINEAR_DIFF", "polars-quantile")] },
   { id := "tie_pick", substrait := none, core := ["ANY_ROW", "FIRST_READ"],
     extra := [("FIRST_READ", "duckdb-mode-ties")] },
   { id := "tie_order", substrait := none, core := ["ANY"] },
@@ -472,7 +472,7 @@ def Profile.reference.table : ProfileTable where
     (some "fp.div", "on_division_by_zero", .asked ["ERROR", "IEEE", "NULL", "LIMIT"] ["ERROR"]),
     -- The remainder takes the dividend's sign (`Int.tmod`, `FloatCode.fmod`):
     -- `TRUNCATE`. Integer `//` and `%` floor when the plan asks (`FLOOR`,
-    -- Polars's, `Expr.floorDivOf`, `engines/polars/Sverify/Polars/Profile.lean`),
+    -- `Expr.floorDivOf`),
     -- and so does `%` of doubles (`Expr.floorFmodOf`).
     (none, "division_type", .asked ["TRUNCATE"] ["TRUNCATE"]),
     (some "int.div", "division_type", .asked ["TRUNCATE", "FLOOR"] ["TRUNCATE"]),

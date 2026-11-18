@@ -27,7 +27,9 @@ from ibis import _
 
 import sverify as sv
 from sverify import routes
-from sverify.errors import PreconditionError, RouteError
+from sverify.errors import PreconditionError, ProfilePendingWarning, RouteError
+
+pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
 
 ENGINES = ("duckdb", "polars")
 DIVIDENDS = [-7, 2, 4, 3, -1, 5, 6]
@@ -420,8 +422,10 @@ def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
 
 
 def _floor_report(con, **kw) -> sv.Report:
-    """`i % j` and `i // j` verified under `Profile.polars`, whose integer `%`
-    and `//` floor (`engines/polars/Sverify/Polars/Profile.lean`)."""
+    """`i % j` and `i // j` requested under `semantics="polars"`, which the
+    checker reports as pending until #271: the report is the reference's. The
+    producer still states `division_type: FLOOR`, which the core reads as the
+    floored `//` and `%`."""
     t = con.table("t")
     return sv.verify(
         t.select("k", m=t.i % t.j, q=t.i // t.j),
@@ -431,72 +435,34 @@ def _floor_report(con, **kw) -> sv.Report:
     )
 
 
-def test_f1_verified_under_polars_runs_natively(con) -> None:
-    """Route (a): a plan verified under `Profile.polars` runs natively. Its
-    `%` floors, as Polars's does: the plan states `division_type: FLOOR`,
-    the checker reads it as the floored remainder, and Polars runs its own
-    `%` and `//`, with no shim."""
-    report = _floor_report(con)
-    assert report.verdict == sv.Verdict.PROVED and report.semantics == "polars", str(report)
-    assert '"FLOOR"' in (report.internal_plan or "")
-    # Lean writes the calls back as they were, so Polars sees them.
-    assert '"FLOOR"' in sv.engine.written_plan(report.internal_plan or "")
+def test_f1_a_polars_request_runs_translated_on_polars(con) -> None:
+    """Route (a): the request is reported under the reference (#271), so the
+    plan reaches Polars by the translation, which computes the stated `FLOOR`."""
+    with pytest.warns(ProfilePendingWarning):
+        report = _floor_report(con)
+    assert report.verdict == sv.Verdict.PROVED and report.semantics == "reference", str(report)
     out = report.run(con, "polars", route="auto")
     r = report.routes["polars"]
-    assert (r.kind, r.profile, r.cls) == ("native", "polars", "exact")
-    assert not r.shims
+    assert (r.kind, r.profile) == ("translated", "reference")
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
     assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
     assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
 
 
-def test_f1b_floor_plan_runs_on_duckdb(con) -> None:
-    """The same plan on DuckDB, whose `%` truncates: the SQL writer computes
-    the stated `FLOOR`, so the written plan gives Polars's values there. The
-    route stays refused, by the transfer check: the proof under
-    `semantics="polars"` does not carry over to DuckDB's profile. Verified
-    under the reference, the same expression truncates and runs on both."""
+def test_f1b_the_same_report_runs_translated_on_duckdb(con) -> None:
+    """The report is the reference's, so DuckDB takes it by the translation too."""
     report = _floor_report(con)
     r = routes.choose(report, "duckdb")
-    assert r.refused and "division_type: polars gives FLOOR" in r.reason, r
-    with pytest.raises(RouteError, match="refused on duckdb"):
-        report.run(con, "duckdb", route="auto")
-    out = sv.engine.run_plan(con, sv.engine.written_plan(report.internal_plan or ""), "duckdb")
+    assert r.kind == "translated", r
+    out = report.run(con, "duckdb", route="auto")
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
     assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
     assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
-    t = con.table("t")
-    ref = sv.verify(
-        t.select("k", m=t.i % t.j),
-        requires={"t": [_.i.between(-100, 100), _.j.between(-100, 100), _.j != 0]},
-    )
-    assert ref.verdict == sv.Verdict.PROVED and '"FLOOR"' not in (ref.internal_plan or "")
-    out = ref.run(con, "duckdb", route="auto")
-    assert sorted(out.column("m").to_pylist()) == sorted(
-        int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
-    )
 
 
-def test_f1c_polars_contract_reads_floored_values(con) -> None:
-    """A postcondition that holds only of the floored remainder: with a
-    positive divisor it is never negative. Proved under `Profile.polars`; not
-    under the reference, where `-7 % 2` is `-1`."""
-    t = con.table("t")
-    expr = t.select(m=t.i % 2)
-    req = {"t": [_.i.between(-100, 100)]}
-    polars = sv.verify(expr, requires=req, ensures=[_.m >= 0], semantics="polars")
-    assert polars.verdict == sv.Verdict.PROVED, str(polars)
-    reference = sv.verify(expr, requires=req, ensures=[_.m >= 0])
-    assert reference.verdict == sv.Verdict.UNPROVED
-    out = polars.run(con, "polars", route="auto")
-    assert min(out.column("m").to_pylist()) >= 0
-
-
-def test_f1d_zero_divisor_is_a_precondition_under_polars(con) -> None:
-    """Polars gives NULL for `i % 0`; `Profile.polars` raises there, as the
-    reference does (D21), so `verify` infers `j != 0` and checks it on the
-    data before the run. With no bounds on `i` and `j` the floored remainder
-    cannot overflow, which the range analysis sees."""
+def test_f1d_zero_divisor_is_a_precondition_under_a_polars_request(con) -> None:
+    """Polars gives NULL for `i % 0`; the reference raises there (D21), so
+    `verify` infers `j != 0` and checks it on the data before the run."""
     t = con.table("t")
     report = sv.verify(t.select(m=t.i % t.j), semantics="polars", on_inferred="ignore")
     assert report.verdict == sv.Verdict.PROVED, str(report)
@@ -507,29 +473,27 @@ def test_f1d_zero_divisor_is_a_precondition_under_polars(con) -> None:
         report.run(bad, "polars", route="auto")
 
 
-def test_f1e_recheck_targets_polars(con) -> None:
-    """Route (d): the checker proves a reference plan again under
-    `Profile.polars`. The plan's `%` states no `FLOOR`, so it truncates, which
-    the translation to Polars shims."""
+def test_f1e_recheck_is_unavailable_for_polars_until_271(con) -> None:
+    """Route (d): the checker cannot prove again under `Profile.polars` yet."""
     t = con.table("t")
     report = sv.verify(
         t.select("k", m=t.i % t.j),
         requires={"t": [_.i.between(-100, 100), _.j.between(-100, 100), _.j != 0]},
     )
     ok, why = routes.recheck(report, "polars")
-    assert ok, why
-    out = report.run(con, "polars", route="recheck")
-    assert report.routes["polars"].kind == "recheck"
+    assert not ok and 'semantics="polars"' in why
+    out = report.run(con, "polars")
+    assert report.routes["polars"].kind == "translated"
     assert sorted(out.column("m").to_pylist()) == sorted(
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
     )
 
 
 @classes
-def test_f2_duckdb_plan_is_rechecked_on_polars(con) -> None:
+def test_f2_duckdb_plan_is_refused_on_polars_until_271(con) -> None:
     """Double arithmetic allowed to reach `±∞`, verified under `Profile.duckdb`:
     DuckDB's `zero_sign` is `ONE_ZERO` and Polars's `IEEE`, so the transfer
-    check fails and Polars proves the plan again (a `recheck`, exact)."""
+    check fails, and the re-check under Polars's profile waits for #271."""
     big = sv.connect()
     big.put("u", pa.table({"x": [1e200, 2.0, -3.0], "y": [1e200, 3.0, 0.5]}))
     report = sv.verify(
@@ -541,9 +505,8 @@ def test_f2_duckdb_plan_is_rechecked_on_polars(con) -> None:
     assert report.verdict == sv.Verdict.PROVED, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     r = routes.choose(report, "polars")
-    assert (r.kind, r.cls) == ("recheck", "exact"), r
-    out = run_both(report, big)
-    assert math.inf in out["polars"].column("z").to_pylist()
+    assert r.refused and "semantics='reference'" in r.reason, r
+    assert math.inf in report.run(big, "duckdb").column("z").to_pylist()
 
 
 # Needs the engines' choices (the transfer check), not their classes: it holds
