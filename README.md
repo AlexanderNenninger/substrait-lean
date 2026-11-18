@@ -5,9 +5,11 @@ A formal model of [Substrait](https://substrait.io) relational plans in
 Sverify proves a data pipeline's contracts before it runs, gets the same
 result on DuckDB, Polars and Spark up to the plan's stated tolerance, and keeps
 it up to date from Delta Lake and Iceberg change feeds. Sverify proves the
-agreement against a model of each engine's scalar functions (for Polars and
-Spark under guard elimination's side condition); that the models match the
-engines rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). This README is for people working on the
+agreement against a model of each engine's scalar functions, from the
+checker's own report (`check_proved_on`): for a plan without open measures
+(`closed`), on DuckDB a guard-free report without issues under the reference,
+on Polars and Spark a guard-free one. That the models match the engines
+rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). This README is for people working on the
 project. Users start at [python/README.md](python/README.md), which is also
 sverify's PyPI page.
 
@@ -16,7 +18,7 @@ fewer 3 a.m. pages over an unexpected NULL, fewer afternoons spent finding out
 why two engines disagree, and more trust in the tables you hand to the next
 team.
 
-Sverify is purely observational. It's a tool to explore and compare database semantics. Although it is already quite useful, production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
+Sverify is a working prototype of a pipeline tool: it proves contracts and runs the checked plan. Production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.
 
 ## Principles
 

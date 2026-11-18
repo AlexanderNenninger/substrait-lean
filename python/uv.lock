@@ -4443,7 +4443,7 @@ wheels = [
 
 [[package]]
 name = "sverify"
-version = "0.8.0"
+version = "0.9.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
@@ -4546,7 +4546,7 @@ requires-dist = [
     { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
-    { name = "sqlglot", specifier = "~=30.17.0" },
+    { name = "sqlglot", specifier = ">=30.8.0,<30.18" },
     { name = "substrait", specifier = ">=0.37.0" },
     { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
     { name = "sverify-duckdb", extras = ["run"], editable = "../engines/duckdb" },
@@ -4579,7 +4579,7 @@ docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 
 [[package]]
 name = "sverify-duckdb"
-version = "0.8.0"
+version = "0.9.0.dev0"
 source = { editable = "../engines/duckdb" }
 dependencies = [
     { name = "sverify" },
@@ -4599,7 +4599,7 @@ provides-extras = ["run"]
 
 [[package]]
 name = "sverify-polars"
-version = "0.8.0"
+version = "0.9.0.dev0"
 source = { editable = "../engines/polars" }
 dependencies = [
     { name = "sverify" },
@@ -4621,7 +4621,7 @@ provides-extras = ["run"]
 
 [[package]]
 name = "sverify-spark"
-version = "0.8.0"
+version = "0.9.0.dev0"
 source = { editable = "../engines/spark" }
 dependencies = [
     { name = "sverify" },

@@ -15,7 +15,20 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Mapping, Sequence
+
+# An engine built from main beside PyPI's sverify of the same version number
+# fails deep inside sverify with a TypeError (#1585): check the interface first.
+from importlib.metadata import version as _version
 from typing import Any
+
+from sverify import _meta
+
+if getattr(_meta, "PLUGIN_API", None) != 2:
+    raise ImportError(
+        f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
+        f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
+        "install both from the same release (`pip install -U sverify sverify-polars`)"
+    )
 
 from sverify.profiles import ProfilePlugin, Setting
 from sverify_polars.store import ArrowStore
@@ -46,8 +59,28 @@ def _run(
 ) -> Any:
     from sverify.engine import read_tables
 
-    tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
+    tables = {t: _table(con, t) for t in read_tables(json.loads(plan_json))}
     return _run_tables(plan_json, tables, finite=finite)
+
+
+def _table(con: Any, name: str) -> Any:
+    """Table `name` of the connection for Polars: a `Scan` of local files without a
+    `where`, partition values or physical names as a lazy scan
+    (`sverify_polars.scan`), any other table as Arrow."""
+    from sverify._scan import Scan
+
+    table = con.get(name)
+    if (
+        isinstance(table, Scan)
+        and table.readable()
+        and table.where is None
+        and table.partitions is None
+        and table.physical is None
+    ):
+        from sverify_polars.scan import lazy_scan
+
+        return lazy_scan(table)
+    return con._arrow[name]
 
 
 def _run_tables(

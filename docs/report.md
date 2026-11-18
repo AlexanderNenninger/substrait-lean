@@ -34,7 +34,8 @@ instead.
   satisfies the postconditions, and a run stops where a check fails on the
   data. Anything else is `unproved`. `bool(report.verdict)` raises
   `TypeError`: compare the value you expect. `str(report)` starts with the
-  verdict in words, `proved` or `NOT proved:` and what is missing, counted.
+  verdict in words: `proved`, `proved with checks:` and the number of
+  assumptions a run checks, or `NOT proved:` and what is missing, counted.
 - The assumptions. `report.requires` lists the preconditions per input
   table, the ones you stated and the ones sverify inferred and assumed;
   `report.assumed` the `SUM`s assumed to fit their type, which the run
@@ -93,8 +94,10 @@ the names of the proofs.
 ## Running is separate
 
 A report proves; it runs nothing. `report.run(con, engine)` runs the plan
-it checked: it checks the preconditions on the data first, refuses a batch
-that breaks one (`PreconditionError`), chooses a route to the engine and
+it checked: it checks the tables against the schema the plan was proved for
+(a missing column, a changed type, a NULL in a non-null column, an integer
+outside its declared width), then the preconditions on the data, refuses a
+batch that breaks one (`PreconditionError`), chooses a route to the engine and
 records it in `report.routes`. A report that is not proved is refused
 there too (`UnverifiedRunError`) unless `unverified=True` says otherwise.
 `report.to_json()` writes the report for another tool, and

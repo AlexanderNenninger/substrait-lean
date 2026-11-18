@@ -125,6 +125,11 @@ class ProfilePlugin:
     `runner(con, plan_json, session, *, keep, finite, tie_free)`, with
     `session` the object `session` recognised (None: the engine's own).
     None: `sverify.engines.run` does not run on the engine."""
+    rows: Literal["sequence", "multiset"] = "sequence"
+    """What its runner and its dialect write for the rows (`to_sql`'s `rows`):
+    `"sequence"` carries Lean's row order in an ordinal column, so two
+    statements over one input pick the same tied rows; `"multiset"` leaves ties
+    and the rows of a `LIMIT` open, and each statement picks its own."""
     local: bool = False
     """A `Connection` takes the engine as the one it runs plans on."""
     session: Callable[[Any], bool] | None = None

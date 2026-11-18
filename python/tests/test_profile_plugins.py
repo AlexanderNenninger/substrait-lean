@@ -186,3 +186,68 @@ def test_the_state_store_is_the_engine_s(installed: None) -> None:
         Store()  # type: ignore[abstract]
     with pytest.raises(ValueError, match=r"'snowflake' keeps no pipeline state"):
         store_for("snowflake")
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars", "spark"])
+def test_an_engine_beside_a_sverify_of_another_build_says_which_to_align(engine):
+    """A build from main carries the release's version, so only the plugin
+    interface revision tells it from PyPI's sverify (#1585)."""
+    import importlib
+    import subprocess
+    import sys
+
+    pytest.importorskip(f"sverify_{engine}")
+    code = f"from sverify import _meta; del _meta.PLUGIN_API\nimport sverify_{engine}\n"
+    p = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "ImportError" in p.stderr and "from the same release" in p.stderr
+    assert "TypeError" not in p.stderr
+    importlib.import_module(f"sverify_{engine}")  # the real pair still imports
+
+
+#: PLUGIN_API and ProfilePlugin's fields; change both together.
+PINNED = (
+    2,
+    (
+        "engine",
+        "versions",
+        "translation",
+        "checker",
+        "settings",
+        "shim_text",
+        "installed_version",
+        "restore",
+        "runner",
+        "rows",
+        "local",
+        "session",
+        "modules",
+        "read_settings",
+        "dialect",
+        "title",
+        "functions",
+        "window_functions",
+        "refuses",
+        "guards",
+        "run_tables",
+        "guard_free_theorem",
+        "profile",
+        "fallbacks",
+        "floor_division",
+        "store",
+        "refuse_declared_types",
+        "default",
+    ),
+)
+
+
+def test_plugin_api_is_bumped_with_the_plugin_fields():
+    """Engine packages check `_meta.PLUGIN_API` (#1585). Changing
+    `ProfilePlugin`'s fields means bumping it, and the pin below with it."""
+    import dataclasses
+
+    from sverify import _meta
+    from sverify.profiles import ProfilePlugin
+
+    fields = tuple(f.name for f in dataclasses.fields(ProfilePlugin))
+    assert (_meta.PLUGIN_API, fields) == PINNED

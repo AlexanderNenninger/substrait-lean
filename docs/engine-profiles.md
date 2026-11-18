@@ -671,9 +671,15 @@ the engine:
   agree with `core/Sverify/Core/Time.lean` (ISO weeks, `dow` from Sunday,
   milliseconds within the minute), and the SQL raises where the reference's
   calendar truncation fails;
-* below a `FETCH`, a window or a sort, an ordinal column carries Lean's list
-  order, so `LIMIT` and ties in sorts and windows pick Lean's rows, and a
-  sorted result comes out in Lean's order.
+* where the observation's `rows` is `"sequence"`, an ordinal column carries
+  Lean's list order below a `FETCH`, a window or a sort, so `LIMIT` and ties
+  pick Lean's rows and a sorted result comes out in Lean's order. Under the
+  default `rows="multiset"` ties are open as `Rel.Allowed` leaves them: the
+  sort's keys order the rows, and only a plan's last sort orders its result.
+  A window node whose functions read the order of tied rows, two or more of
+  them, numbers its rows once (`ROW_NUMBER` over the keys) and orders by that
+  number, so they share one arrangement; `first`, `last`, `string_agg` and
+  `collect` sort by their own keys.
 
 Engine differences go through the hooks of a `Dialect`
 (`sverify/sql/core/_base.py`). DuckDB's is `sverify_duckdb/dialect.py`.
@@ -709,7 +715,7 @@ Snowflake's documented behaviour differs:
 Where Snowflake can't match, the plan is refused (`UnsupportedError`) or the query
 raises when it would answer differently:
 
-* FETCH over a named table is refused: Snowflake tables have no row order.
+* `rows="sequence"` is refused: Snowflake tables have no row order.
   A `SUM` or `AVG` of doubles runs natively, within the plan's bound of the
   reference's correctly rounded sum
   ([correctly rounded sums](reference-semantics.md#of-doubles));
@@ -759,9 +765,8 @@ Spark differs:
 * backslashes and control characters in strings are escaped, and every
   identifier is quoted with backticks.
 
-Spark refuses, as Snowflake does, FETCH and sorts or windows over a named
-table without `deterministic=True` (tables have no row order), and so `SUM` or
-`AVG` of doubles over one. It also refuses `POWER` of doubles, which is Java's
+Spark refuses, as Snowflake does, `rows="sequence"` (tables have no row
+order). It also refuses `POWER` of doubles, which is Java's
 `Math.pow` (within 1 ulp of C's).
 
 String columns must use the default `UTF8_BINARY` collation (code point

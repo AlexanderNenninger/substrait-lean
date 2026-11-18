@@ -72,7 +72,7 @@ from sverify.io._common import (
     q,
 )
 from sverify.io._sink import SinkChange, _TableSink
-from sverify.io._storage import Options, resolve
+from sverify.io._storage import Options, Storage, resolve
 from sverify.observation import Observation
 
 CONSTRAINT = "Delta constraint"
@@ -95,10 +95,24 @@ def _deletion_vectors(dt: DeltaTable) -> bool:
     return "deletionVectors" in (dt.protocol().reader_features or [])
 
 
+def _mapping(dt: DeltaTable) -> str:
+    """The table's `delta.columnMapping.mode`: `none`, `name` or `id`."""
+    return dt.metadata().configuration.get("delta.columnMapping.mode", "none")
+
+
+def _physical(dt: DeltaTable) -> dict[str, str]:
+    """Each column's name in the files and the log's statistics and partition
+    values: the column mapping's physical name, or the column's own."""
+    fields = json.loads(dt.schema().to_json())["fields"]
+    if _mapping(dt) == "none":
+        return {f["name"]: f["name"] for f in fields}
+    return {f["name"]: f["metadata"]["delta.columnMapping.physicalName"] for f in fields}
+
+
 def _read(dt: DeltaTable) -> pa.Table:
-    if _deletion_vectors(dt):
-        # delta-rs's Arrow reader refuses deletion vectors; its DataFusion
-        # reader applies them.
+    if _deletion_vectors(dt) or _mapping(dt) != "none":
+        # delta-rs's Arrow reader refuses deletion vectors, and reads a column
+        # mapping's columns as NULL; its DataFusion reader gets both right.
         reader = QueryBuilder().register("t", dt).execute("SELECT * FROM t")
         return pa.table(reader.read_all()).cast(_arrow_schema(dt))
     return pa.table(dt.to_pyarrow_table()).cast(_arrow_schema(dt))
@@ -119,17 +133,17 @@ def file_stats(dt: DeltaTable) -> dict[str, dict[str, ColumnStats]]:
     as the protocol does not say that it counts the same rows as the NULL
     count."""
     actions = pa.table(dt.get_add_actions(flatten=True)).to_pylist()
-    names = _arrow_schema(dt).names
+    physical = _physical(dt)
     exact = not _deletion_vectors(dt)
     return {
         a["path"]: {
             c: ColumnStats(
-                a.get(f"min.{c}"),
-                a.get(f"max.{c}"),
-                a.get(f"null_count.{c}"),
+                a.get(f"min.{p}"),
+                a.get(f"max.{p}"),
+                a.get(f"null_count.{p}"),
                 a.get("num_records") if exact else None,
             )
-            for c in names
+            for c, p in physical.items()
         }
         for a in actions
     }
@@ -227,21 +241,71 @@ def _basename(uri: str) -> str:
     return base.replace(".", "_")
 
 
-# Reader features after which a Delta table's files hold its rows by column
-# name: `_native` reads deletion vectors itself.
+# Reader features `_native` reads: deletion vectors itself, the others change no
+# row.
 _NATIVE_FEATURES = {"deletionVectors", "timestampNtz", "v2Checkpoint", "vacuumProtocolCheck"}
 
 
-def _local_files(root: str, paths: Iterable[str]) -> dict[str, str] | None:
-    """Each add action's path, to the file's local path; None if one is
-    not local."""
-    out = {}
+def _file_uris(root: str, paths: Iterable[str]) -> dict[str, str] | None:
+    """Each add action's path, to the file's local path, or to its URI in an
+    object store (`root` is the table's URI there); None if one is somewhere
+    else."""
+    out: dict[str, str] = {}
+    remote = local_path(root) is None
     for p in paths:
-        local = local_path(p) if urlparse(p).scheme else os.path.join(root, unquote(p))
-        if local is None:
+        if urlparse(p).scheme:
+            uri = p if remote else local_path(p)
+        elif remote:
+            uri = root.rstrip("/") + "/" + p
+        else:
+            uri = os.path.join(root, unquote(p))
+        if uri is None:
             return None
-        out[p] = local
+        out[p] = uri
     return out
+
+
+def _storage(options: Options) -> Storage:
+    return options if isinstance(options, Storage) else Storage(options)
+
+
+def _store_readable(options: Options) -> bool:
+    """Whether DuckDB can read an S3 table opened with `options` (its extensions)."""
+    from sverify_duckdb.scan import readable_here
+
+    return readable_here(_storage(options).options())
+
+
+def _constant_type(t: pa.DataType) -> bool:
+    """Whether the log's partition value of a column of type `t` is the value
+    the rows have (Delta partitions by these types)."""
+    return (
+        pa.types.is_integer(t)
+        or pa.types.is_string(t)
+        or pa.types.is_boolean(t)
+        or pa.types.is_date32(t)
+    )
+
+
+def _partitions(
+    dt: DeltaTable, schema: pa.Schema, physical: dict[str, str], paths: dict[str, str]
+) -> pa.Table:
+    """The partition columns' value in each kept file (`Scan.partitions`), from
+    the add actions: a `file` column of local paths and one per column."""
+    actions = pa.table(dt.get_add_actions(flatten=True))
+    actions = actions.filter(
+        pa.array([p in paths for p in actions["path"].to_pylist()], pa.bool_())
+    )
+    cols = {"file": pa.array([paths[p] for p in actions["path"].to_pylist()], pa.string())}
+    for c in dt.metadata().partition_columns:
+        # delta-rs names the column by its logical name, the log's keys are physical.
+        key = (
+            f"partition.{c}"
+            if f"partition.{c}" in actions.column_names
+            else f"partition.{physical[c]}"
+        )
+        cols[c] = actions[key].cast(schema.field(c).type)
+    return pa.table(cols)
 
 
 def _deleted(dt: DeltaTable, paths: dict[str, str]) -> pa.Table | None:
@@ -412,8 +476,8 @@ class DeltaSource(_TableSource):
         if self.where is None:
             return _read(dt), files
         keep = self._keep(files, _arrow_schema(dt))
-        if _deletion_vectors(dt):
-            table = _read(dt)  # delta-rs reads deletion vectors only whole
+        if _deletion_vectors(dt) or _mapping(dt) != "none":
+            table = _read(dt)  # delta-rs reads deletion vectors and column mapping only whole
         else:
             dataset = dt.to_pyarrow_dataset()
             frags = [f for f in dataset.get_fragments() if any(f.path.endswith(p) for p in keep)]
@@ -427,30 +491,48 @@ class DeltaSource(_TableSource):
         """The snapshot at `version` as the Parquet files DuckDB reads
         itself (#173): the files `where` does not rule out, with their
         deletion vectors, and the same facts as `snapshot`. None where
-        reading the files by column name may not give delta-rs's rows:
-        partition columns (kept in the log, not the files), column mapping,
-        other reader features, and object stores."""
+        reading the files may not give delta-rs's rows: other reader
+        features, partition columns of types the log's values do not give
+        exactly, column mapping over nested columns, and object stores."""
         root = local_path(self.uri)
-        if root is None:
+        remote = root is None
+        if remote and (
+            urlparse(self.uri).scheme != "s3" or not _store_readable(self.storage_options)
+        ):
             return None
         dt = self._read_at(self._at(version))
         meta = dt.metadata()
         features = set(dt.protocol().reader_features or [])
-        mapping = meta.configuration.get("delta.columnMapping.mode", "none")
-        if meta.partition_columns or mapping != "none" or features - _NATIVE_FEATURES:
+        if features - _NATIVE_FEATURES or (remote and "deletionVectors" in features):
+            return None
+        schema = _arrow_schema(dt)
+        mode = _mapping(dt)
+        if mode != "none" and any(pa.types.is_nested(f.type) for f in schema):
+            return None  # nested fields have physical names of their own
+        if any(not _constant_type(schema.field(c).type) for c in meta.partition_columns):
             return None
         files = file_stats(dt)
-        keep = self._keep(files, _arrow_schema(dt))
-        paths = _local_files(root, keep)
+        keep = self._keep(files, schema)
+        paths = _file_uris(root or self.uri, keep)
         if paths is None:
             return None
+        physical = _physical(dt)
+        fields = json.loads(dt.schema().to_json())["fields"]
         v = dt.version()
         scan = Scan(
             tuple(sorted(paths.values())),
-            _arrow_schema(dt),
+            schema,
             _deleted(dt, paths),
             self.where,
             f"{self.name}@v{v}",
+            field_ids=(
+                tuple(f["metadata"]["delta.columnMapping.id"] for f in fields)
+                if mode == "id"
+                else None
+            ),
+            physical=tuple(physical.values()) if mode == "name" else None,
+            partitions=_partitions(dt, schema, physical, paths) if meta.partition_columns else None,
+            storage=_storage(self.storage_options) if remote else None,
         )
         kept = {p: s for p, s in files.items() if p in keep}
         return ScanSnapshot(v, scan, self._facts(dt, kept, f"file stats @v{v}"))
@@ -1133,7 +1215,7 @@ class DeltaSink(_TableSink[DeltaTable]):
                 dt.alter.add_constraint(missing)
                 dt = DeltaTable(self.uri, storage_options=resolve(self.storage_options))
             if gone:
-                logged = _local_files(root, file_stats(dt)) or {}
+                logged = _file_uris(root, file_stats(dt)) or {}
                 by_local = {v: k for k, v in logged.items()}
                 for file, at in gone.items():
                     name = f"part-{uuid.uuid4()}-sverify.parquet"

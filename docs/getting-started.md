@@ -4,7 +4,9 @@ Sverify proves what a data transformation promises before any data runs,
 takes the proof to DuckDB, Polars and Spark, and keeps the result up to date
 from the changes. This page goes from the install to a proved plan exported
 for any Substrait consumer, in ten steps, each a step up from the one
-before. Then it lists what goes wrong without a checker, sketches how the
+before. Steps 1 to 3, a contract, SQL and the preconditions a plan needs, are
+the first hour; steps 4 to 10 go further, into engines, doubles, sinks, profiles and
+Substrait consumers, and each can wait. Then it lists what goes wrong without a checker, sketches how the
 checker works, and points to the tour and the task pages.
 
 The inputs are a few rows in memory. Every Python block runs as written, in
@@ -126,8 +128,9 @@ division, and `/` would give a double.
 ## 3. The preconditions a plan needs, declared and checked before the run
 
 Leave out `requires`, and Sverify works out the preconditions under which
-the plan cannot fail: here that `qty` is never zero, and that `total` stays
-far enough from the smallest integer for the division not to overflow. It
+the plan cannot fail: here that `qty` is never zero, and that `total` is
+above a bound just short of the smallest 64-bit integer, which divided by
+`-1` would overflow. It
 reports the plan as not proved and asks you to declare them
 ([why inferred preconditions are errors](reference-semantics.md#errors)):
 

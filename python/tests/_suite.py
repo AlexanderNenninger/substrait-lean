@@ -47,7 +47,12 @@ import hashlib
 import json
 import os
 import shutil
+import socket
+import subprocess
+import sys
 import tempfile
+import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -270,3 +275,58 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if path := os.environ.get("SVERIFY_TEST_TIMINGS"):
         with open(path, "a") as f:
             f.write(json.dumps({"test": report.nodeid, "s": round(report.duration, 4)}) + "\n")
+
+
+# A moto S3 server and a bucket on it, for the tests that read or write an object
+# store. The server runs in another process: delta-rs hangs against one in this
+# process (`upstream/bugs/DL-1.json`).
+@pytest.fixture(scope="module")
+def endpoint():
+    pytest.importorskip("moto.server")
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = subprocess.Popen(
+        [sys.executable, "-m", "moto.server", "-p", str(port)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    url = f"http://127.0.0.1:{port}"
+    try:
+        for _ in range(100):
+            try:
+                socket.create_connection(("127.0.0.1", port), timeout=0.1).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            pytest.fail("moto's server did not start")
+        yield url
+    finally:
+        server.kill()
+        server.wait()
+
+
+@pytest.fixture
+def lake(endpoint):
+    """A new bucket, and the storage options to reach it."""
+    from sverify.io import Storage
+
+    boto3 = pytest.importorskip("boto3")
+    bucket = f"lake-{uuid.uuid4().hex[:12]}"
+    boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id="test",
+        aws_secret_access_key="test",
+        region_name="us-east-1",
+    ).create_bucket(Bucket=bucket)
+    options = {
+        "AWS_ENDPOINT_URL": endpoint,
+        "AWS_ACCESS_KEY_ID": "test",
+        "AWS_SECRET_ACCESS_KEY": "test",
+        "AWS_REGION": "us-east-1",
+        "AWS_ALLOW_HTTP": "true",
+        "AWS_CONDITIONAL_PUT": "etag",
+    }
+    return f"s3://{bucket}", Storage(options)

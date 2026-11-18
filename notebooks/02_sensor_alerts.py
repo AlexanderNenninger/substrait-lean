@@ -90,7 +90,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from pyiceberg.catalog.sql import SqlCatalog
-    from sverify.engines import ENGINES, UnsupportedError, to_sql
+    from sverify.engines import ENGINES, UnsupportedError
     from sverify.errors import PreconditionError
     from sverify.io import IcebergSink, IcebergSource
 
@@ -143,7 +143,6 @@ def _():
         readings_batch,
         readings_table,
         sv,
-        to_sql,
     )
 
 
@@ -351,16 +350,16 @@ def _(mo):
     The alerts may run on a laptop today and in a warehouse tomorrow.
     DuckDB and Polars run the checked plan with the same rows, whichever
     `engine=` the node is refreshed with ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)). Snowflake
-    and Spark tables have no row order, so sverify refuses to write a window
-    for them unless you promise that the order keys have no ties. The
-    report's `deterministic` is that promise, proved from the key, so it can
-    be passed on:
+    and Spark tables have no row order, so the SQL sverify writes for them
+    leaves ties in a window open, as the reference does. The report's
+    `deterministic` says whether a rerun can return other rows, and it is
+    proved from the key:
     """)
     return
 
 
 @app.cell
-def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
+def _(ENGINES, alerts, alerts_node, naive, readings):
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -368,22 +367,17 @@ def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
         _rows[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _rows.values()}) == 1
 
-    try:
-        to_sql(alerts_node.internal_plan, "snowflake")
-    except UnsupportedError as e:
-        refused = str(e)
-    _sql = to_sql(alerts_node.internal_plan, "snowflake", deterministic=report.deterministic)
-    assert _sql.startswith("SELECT")
-    refused
+    assert naive.to_sql("snowflake").startswith("SELECT")
+    assert alerts_node.to_sql("snowflake").startswith("SELECT")
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    With `deterministic=True` the SQL is written. Without the key, `deterministic`
-    would be `False`, and passing `deterministic=True` anyway would be an
-    unproved promise.
+    The key proved `deterministic`, so `alerts_node.to_sql("snowflake")` gives
+    the same rows on every run. The plain function has no such proof: its
+    node writes the SQL too, with ties open.
 
     ## 6. New readings, and a sensor that sends twice
 

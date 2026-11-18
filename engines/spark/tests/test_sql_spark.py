@@ -87,10 +87,11 @@ def test_refusals():
         SPARK.float_pow("a", "b")
     with pytest.raises(Unsupported, match="ORDER BY"):
         SPARK.over(["`c0`"], [])
-    with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["window"], SPARK)
-    with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["fetch"], SPARK, deterministic=True)
+    for name in ("window", "fetch"):
+        with pytest.raises(Unsupported, match="no row order"):
+            to_sql(NAMED_ORDERED[name], SPARK, rows="sequence")
+        # Ties and a LIMIT's rows are open under the default observation (#1608).
+        assert to_sql(NAMED_ORDERED[name], SPARK, rows="multiset")
 
 
 # ------------------------------------------------------------ on Spark

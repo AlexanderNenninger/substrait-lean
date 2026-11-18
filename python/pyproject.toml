@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.8.0"
+version = "0.9.0.dev0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, Spark and Snowflake"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
@@ -18,14 +18,15 @@ dependencies = [
     # before. For now the base needs it, and DuckDB with it: an engine-free
     # base (#1288) waits on a table store that does not.
     "duckdb>=2.0.0",
-    "sverify-duckdb[run]==0.8.0",
+    "sverify-duckdb[run]==0.9.0.dev0",
     "ibis-framework[duckdb]>=12.0.0",
     "pyarrow>=26.0.0",
     # sverify's SQL lift is built on SQLGlot. From 30.18, SQLGlot reads a
     # DROP's names from `expressions`, so Ibis 12's DuckDB `create_table`
     # writes `DROP VIEW IF EXISTS` without one and fails (#442,
-    # upstream/bugs/SG-7.json).
-    "sqlglot~=30.17.0",
+    # upstream/bugs/SG-7.json). The lift's tests pass from 30.8, the one
+    # SQLMesh 0.235 and later pin (#1485, 16).
+    "sqlglot>=30.8.0,<30.18",
     "substrait>=0.37.0",
 ]
 
@@ -35,10 +36,10 @@ dependencies = [
 [project.optional-dependencies]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
 # sverify at its version; `run` brings `polars` and `numpy`.
-polars = ["sverify-polars[run]==0.8.0"]
+polars = ["sverify-polars[run]==0.9.0.dev0"]
 # Spark is a package of its own (`engines/spark/`, #1189), released with
 # sverify at its version; `run` brings PySpark.
-spark = ["sverify-spark[run]==0.8.0"]
+spark = ["sverify-spark[run]==0.9.0.dev0"]
 delta = ["deltalake>=1.6.6"]
 # `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
 iceberg = ["pyiceberg[pyarrow,sql-sqlite]>=0.12.0"]
@@ -108,6 +109,9 @@ exclude = ["build", "src/sverify/_bin"]
 "../SubstraitCheckExamples" = "lean/SubstraitCheckExamples"
 "../SubstraitLean.lean" = "lean/SubstraitLean.lean"
 "../SubstraitLean" = "lean/SubstraitLean"
+# `SubstraitLean/Statements.lean` reads it with `include_str`;
+# `tests/test_sdist_inputs.py` checks every such file is here.
+"../tests/contracts/int_division.json" = "lean/tests/contracts/int_division.json"
 "../core/lakefile.toml" = "lean/core/lakefile.toml"
 "../core/lake-manifest.json" = "lean/core/lake-manifest.json"
 "../core/lean-toolchain" = "lean/core/lean-toolchain"
@@ -180,7 +184,7 @@ sverify-duckdb = { path = "../engines/duckdb", editable = true }
 
 [tool.uv]
 # fakesnow 0.12 needs `sqlglot~=30.22.0`, so development and the main CI
-# run 30.22; the wheel's tests resolve the `~=30.17.0` users get (#442).
+# run 30.22; the wheel's tests resolve the `<30.18` users get (#442).
 override-dependencies = ["sqlglot~=30.22.0"]
 
 [tool.pytest.ini_options]
@@ -353,8 +357,8 @@ help = "Write the site's generated pages (examples/, ledgers/) from docs/ and th
 cmd = "python scripts/docs_pages.py"
 
 [tool.poe.tasks.docs]
-help = "Build the API reference site into great-docs/_site (needs Quarto and the docs group)"
-sequence = ["docs_pages", { cmd = "great-docs build" }]
+help = "Build the API reference site into great-docs/_site, with its version badge (needs Quarto and the docs group)"
+sequence = ["docs_pages", { cmd = "great-docs build" }, { cmd = "python scripts/docs_version_label.py" }]
 
 [tool.poe.tasks.docs_preview]
 help = "Build the API reference site and serve it locally"

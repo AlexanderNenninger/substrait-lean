@@ -13,6 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
@@ -122,14 +123,14 @@ def no_python_reads(monkeypatch):
     monkeypatch.setattr(Scan, "to_arrow", fail)
 
 
-def follow(make_source, steps, monkeypatch, view=lambda t: t.filter(t.x > 0.0)):
+def follow(make_source, steps, monkeypatch, view=lambda t: t.filter(t.x > 0.0), engine="duckdb"):
     """Run `view` over the source natively and on the Arrow path, through
     each of `steps` (functions changing the table, each followed by a
     refresh), and compare the views after each. The native pipeline never
     reads the table into Python."""
     pipes = []
     for src in (make_source(), ArrowOnly(make_source())):
-        pipe = Pipeline(sv.connect())
+        pipe = Pipeline(sv.connect(engine))
         v = pipe.view("v", view(pipe.source("t", src)))
         pipes.append((pipe, v))
     (native_pipe, native_view), (arrow_pipe, arrow_view) = pipes
@@ -203,20 +204,71 @@ def test_delta_where_prunes_the_same_files(tmp_path):
     check_versions(src, [0, 1])
 
 
-def test_delta_partitions_fall_back_to_arrow(tmp_path):
-    write_deltalake(tmp_path / "p", pa.table({"id": [1, 2], "k": ["a", "b"]}), partition_by=["k"])
+def test_delta_partitions_are_read_from_the_log(tmp_path):
+    table = pa.table(
+        {
+            "id": [1, 2, 3, 4],
+            "k": ["a", "b", None, "a b"],
+            "n": pa.array([1, None, 3, 4], pa.int32()),
+            "day": pa.array([1, 2, 3, None], pa.date32()),
+            "ok": [True, False, None, True],
+        }
+    )
+    write_deltalake(tmp_path / "p", table, partition_by=["k", "n", "day", "ok"])
     src = DeltaSource(str(tmp_path / "p"))
-    assert src._native() is None
+    scan = native(src)
+    assert scan.partitions is not None and scan.partitions.num_rows == 4
+    check_versions(src, [0])
     pipe = Pipeline(sv.connect())
     pipe.source("p", src)
-    assert isinstance(pipe.con.get("p"), pa.Table)
+    assert isinstance(pipe.con.get("p"), Scan)
 
 
-def test_other_engines_get_arrow(tmp_path):
+@pytest.mark.parametrize("mode", ["name", "id"])
+def test_a_column_mapped_table_reads_its_values_and_its_renames(tmp_path, mode):
+    """delta-rs's Arrow reader reads a mapped column as NULL; the Arrow route
+    uses its DataFusion reader, and the scan reads the files by physical name or
+    field id, so a logical rename (a metadata commit) leaves them alone."""
+    from _table_histories import rename_logically
+
+    table = pa.table({"id": [1, 2, 3], "k": ["a", "b", "a"], "x": [0.5, -0.0, None]})
+    write_deltalake(
+        tmp_path / "m", table, partition_by=["k"], configuration={"delta.columnMapping.mode": mode}
+    )
+    rename_logically(tmp_path / "m", "x", "y")
+    src = DeltaSource(str(tmp_path / "m"))
+    want = pa.table({"id": [1, 2, 3], "k": ["a", "b", "a"], "y": [0.5, 0.0, None]})
+    assert same_rows(src.snapshot().table.select(want.column_names), want)
+    assert same_rows(native(src).to_arrow(), want)
+    stats = src.snapshot().facts
+    assert any("y" in str(f) for f in stats)  # the file statistics reach the renamed column
+
+
+def test_delta_partitions_of_other_types_fall_back_to_arrow(tmp_path):
+    table = pa.table({"id": [1, 2], "t": pa.array([1.5, None], pa.float64())})
+    write_deltalake(tmp_path / "p", table, partition_by=["t"])
+    assert DeltaSource(str(tmp_path / "p"))._native() is None
+
+
+def test_polars_gets_a_scan_too(tmp_path):
     write_deltalake(tmp_path / "t", pa.table({"id": [1]}))
     pipe = Pipeline(sv.connect("polars"))
     pipe.source("t", DeltaSource(str(tmp_path / "t")))
-    assert isinstance(pipe.con.get("t"), pa.Table)
+    assert isinstance(pipe.con.get("t"), Scan)
+
+
+@pytest.mark.backend("polars")
+def test_polars_refreshes_match_the_arrow_path(tmp_path, monkeypatch):
+    path = tmp_path / "t"
+    write_deltalake(path, flat(range(0, 20)), configuration=CDF)
+
+    def append():
+        write_deltalake(path, flat(range(20, 30), x=2.5), mode="append")
+
+    def delete():
+        DeltaTable(str(path)).delete("id % 5 = 1")
+
+    follow(lambda: DeltaSource(str(path)), [append, delete], monkeypatch, engine="polars")
 
 
 def test_delta_refreshes_match_the_arrow_path(tmp_path, monkeypatch):
@@ -398,13 +450,116 @@ def test_nans_beyond_the_file_statistics(tmp_path, monkeypatch):
     assert t.filter(t.x > 100.0).count().execute() == 1
 
 
+# Object stores (#173 N2): DuckDB reads s3:// files through `httpfs` and a temporary
+# secret made from the `Storage`.
+
+
+@pytest.fixture
+def httpfs():
+    """DuckDB's `httpfs` extension, installed for the test where it is missing
+    (sverify itself installs nothing); the test skips where that fails."""
+    from sverify_duckdb.scan import _loadable
+
+    if not _loadable("httpfs"):
+        try:
+            duckdb.connect().execute("INSTALL httpfs")
+        except duckdb.Error:
+            pytest.skip("DuckDB's httpfs extension is not installed")
+        _loadable.cache_clear()
+
+
+def s3_orders(root, store, name="orders"):
+    """A partitioned, column-mapped Delta table on the moto bucket `root`."""
+    table = pa.table({"id": [1, 2, 3, 4], "k": ["a", "b", "a", None], "x": [0.5, -0.0, None, 2.5]})
+    write_deltalake(
+        f"{root}/{name}",
+        table,
+        partition_by=["k"],
+        storage_options=store.options(),
+        configuration={"delta.columnMapping.mode": "name"},
+    )
+    return DeltaSource(f"{root}/{name}", storage_options=store)
+
+
+def test_an_s3_delta_table_is_scanned_by_duckdb(lake, httpfs):
+    root, store = lake
+    src = s3_orders(root, store)
+    scan = native(src)
+    assert all(f.startswith("s3://") for f in scan.files)
+    assert same_rows(scan.to_arrow(), src.snapshot().table)
+    pipe = Pipeline(sv.connect())
+    pipe.source("orders", src)
+    assert isinstance(pipe.con.get("orders"), Scan)
+    t = pipe.con.table("orders")
+    assert t.filter(t.x > 0.0).count().execute() == 2
+
+
+class Spy:
+    """A DuckDB connection that keeps the SQL it is given."""
+
+    def __init__(self):
+        self.db = duckdb.connect()
+        self.seen: list[str] = []
+
+    def execute(self, sql, params=None):
+        self.seen.append(sql)
+        return self.db.execute(sql) if params is None else self.db.execute(sql, params)
+
+    def __getattr__(self, name):
+        return getattr(self.db, name)
+
+
+def test_an_s3_scan_keeps_credentials_out_of_sql_repr_and_logs(lake, httpfs, caplog):
+    from sverify.io import Storage
+    from sverify_duckdb.scan import attach_scan
+
+    root, store = lake
+    src = s3_orders(root, store)
+    sentinel = "sentinel-token-7d3f"
+    scan = native(src)
+    scan.storage = Storage({**store.options(), "AWS_SESSION_TOKEN": sentinel})
+    spy = Spy()
+    with caplog.at_level("DEBUG"):
+        attach_scan(scan, spy, "t")()  # type: ignore[arg-type]
+    seen = "\n".join(spy.seen) + repr(scan) + str(scan) + repr(scan.storage) + caplog.text
+    assert sentinel not in seen
+    # A read that fails does not echo it either.
+    scan.storage = Storage(
+        {**store.options(), "AWS_ENDPOINT_URL": "http://127.0.0.1:1", "AWS_SESSION_TOKEN": sentinel}
+    )
+    with pytest.raises(duckdb.Error) as e:
+        scan.to_arrow()
+    assert sentinel not in str(e.value)
+
+
+def test_the_default_credential_chain_needs_duckdbs_aws_extension(lake, httpfs):
+    """Without explicit keys the scan needs `aws`; where DuckDB lacks it, the source
+    keeps the Arrow route (sverify installs nothing)."""
+    from sverify.io import Storage
+    from sverify_duckdb.scan import readable_here
+
+    root, store = lake
+    src = s3_orders(root, store)
+    chain = {
+        k: v
+        for k, v in store.options().items()
+        if not k.startswith("AWS_ACCESS") and k != "AWS_SECRET_ACCESS_KEY"
+    }
+    assert readable_here(store.options())
+    if readable_here(chain):
+        pytest.skip("DuckDB's aws extension is installed")
+    assert DeltaSource(src.uri, storage_options=Storage(chain))._native() is None
+
+
 # Property 5.1 of the native-scan design (#173): a scan of the descriptor is the
 # Arrow route's rows, over generated table histories (`_table_histories`). A
 # source falls back to Arrow where a native read does not cover the history yet
 # (partitions); the property then pins that.
 
 
-def agree_or_fall_back(src, versions):
+def agree(src, versions):
+    """The native scan and the Arrow route give the same rows at each version
+    (Iceberg's partitioned tables still fall back to Arrow)."""
     for v in versions:
         snap = src._native(v)
         if snap is None:
@@ -420,9 +575,20 @@ def test_a_delta_scan_equals_the_arrow_route_over_histories(history, tmp_path_fa
     path = tmp_path_factory.mktemp("h") / "t"
     src = build_delta(path, history)
     n = DeltaTable(str(path)).version()
-    agree_or_fall_back(src, [*range(n + 1), None])
-    if history.partitioned:
-        assert src._native() is None
+    agree(src, [*range(n + 1), None])
+
+
+@pytest.mark.parametrize("mode", ["name", "id"])
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(history=histories(renames=True, adds=False))
+def test_a_mapped_delta_scan_equals_the_arrow_route_over_histories(mode, history, tmp_path_factory):
+    path = tmp_path_factory.mktemp("m") / "t"
+    src = build_delta(path, history, mapping=mode)
+    n = DeltaTable(str(path)).version()
+    agree(src, [*range(n + 1), None])
+    assert src._native() is not None  # column mapping is read natively
 
 
 @settings(
@@ -435,7 +601,7 @@ def test_an_iceberg_scan_equals_the_arrow_route_over_histories(history, tmp_path
     cat = SqlCatalog("test", uri=f"sqlite:///{root}/catalog.db", warehouse=f"file://{root}")
     cat.create_namespace("db")
     src = build_iceberg(cat, "db.t", history)
-    agree_or_fall_back(src, [None])
+    agree(src, [None])
     if history.partitioned:
         assert src._native() is None
 

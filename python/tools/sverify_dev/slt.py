@@ -1194,15 +1194,16 @@ KNOWN: tuple[Known, ...] = (
     Known("duckdb-R15-math-domain", ("types/float/nan_functions.test",), r"\b(a?sin|a?cos|tan)\("),
     # SUM of +inf and -inf: NaN in DuckDB, a domain error in the written plan.
     Known("#341", ("types/float/nan_aggregate.test",), r"\bsum\("),
-    # list_sum past 64 bits, list elements, list comparison with NULLs.
+    # list_sum past 64 bits: DuckDB's is a HUGEINT, the model's a BIGINT that
+    # raises, as `SUM`.
     Known(
-        "#909",
-        (
-            "function/list/aggregates/bigints_sum_avg.test",
-            "function/list/aggregates/sum.test",
-            "types/nested/list/list_comparison_stale_positions.test",
-        ),
+        "duckdb-list-sum",
+        ("function/list/aggregates/bigints_sum_avg.test", "function/list/aggregates/sum.test"),
+        r"\blist_sum\(",
     ),
+    # A NULL element in a list comparison: DuckDB orders it last, the reference
+    # gives NULL.
+    Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
 )
 
 

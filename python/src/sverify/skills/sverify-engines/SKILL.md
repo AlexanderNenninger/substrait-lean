@@ -5,8 +5,7 @@ description: >
   write their plans as DuckDB, Snowflake or Spark SQL with the same
   semantics. Use when a user wants the same result on several engines, moves
   a job between engines or to a warehouse, gets
-  `sverify.engines.UnsupportedError` and wants to know why, needs
-  `deterministic=True`, or aligns two time series with `asof_join`.
+  `sverify.engines.UnsupportedError` and wants to know why, or aligns two time series with `asof_join`.
 ---
 
 # sverify engines: one plan, the same answer everywhere
@@ -77,38 +76,23 @@ any plan in sverify's internal form, and is outside the 1.x promise.
 answering differently from the model:
 
 ```python
-from sverify.engines import UnsupportedError
-
-
 @sv.transform()
 def numbered(orders):
     w = ibis.window(group_by="id", order_by="amount")
     return orders.mutate(rn=ibis.row_number().over(w))
 
 
-try:
-    numbered(orders).to_sql("snowflake")
-except UnsupportedError as e:
-    print(str(e).split(",")[0])
-# Snowflake tables have no row order
-
-
-@sv.transform(requires={"orders": [sv.unique("id")]})
-def numbered_by_id(orders):
-    w = ibis.window(group_by="id", order_by="amount")
-    return orders.mutate(rn=ibis.row_number().over(w))
-
-
-print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is deterministic
+print(numbered(orders).to_sql("snowflake")[:6])  # ties are open: the report is not deterministic
 # SELECT
 ```
 
-* **Snowflake and Spark tables have no row order**, so sorts, `LIMIT` and
-  windows are refused unless the report is `deterministic` (a key on the
-  partition and order columns rules out ties), and so is `SUM` or `AVG` of
-  doubles (the rounding depends on the order of additions). `node.to_sql` and
-  `report.to_sql` read it from the report; `sverify.engines.to_sql` takes
-  `deterministic=True`, which you pass only when a report says so.
+* **Snowflake and Spark tables have no row order.** Under the default
+  observation (`rows="multiset"`) the SQL leaves ties and the rows of a
+  `LIMIT` open, as the reference does, and writes no ordinal: a plan's last
+  sort orders its result, and the report's `deterministic` says whether a
+  rerun can return other rows. An observation with `rows="sequence"` asks for
+  the model's list order, which these engines refuse. `SUM` or `AVG` of
+  doubles is Spark's own, within the plan's bound of the reference's sum.
 * **Snowflake has no interval type**: interval-valued expressions are refused.
 * **Warehouse setup the SQL assumes:** Snowflake time columns are
   `TIMESTAMP_NTZ`, strings have no collation, names are quoted lower case;

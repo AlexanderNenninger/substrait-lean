@@ -52,6 +52,11 @@ from sverify.sql.core import (
 )
 
 
+def _order_by(order: Sequence[str]) -> str:
+    """` ORDER BY …` of an ordered aggregate, nothing when it has no keys."""
+    return f" ORDER BY {', '.join(order)}" if order else ""
+
+
 @dataclass(frozen=True)
 class DuckDBDialect(Dialect):
     # DuckDB computes decimals exactly (#27): `+`, `-` and `×` at the types the
@@ -106,7 +111,9 @@ class DuckDBDialect(Dialect):
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
         return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
 
-    def lowered(self, fn: str, args: list[str], kind: Kind) -> str | None:
+    def lowered(
+        self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
+    ) -> str | None:
         # The generated, proved templates (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
         from sverify.sql import lowering
 
@@ -117,6 +124,7 @@ class DuckDBDialect(Dialect):
             self.float_lit,
             self.int_lit,
             self.guards,
+            consts,
         )
         # Wrap-arounds compute in HUGEINT: the result is a BIGINT again.
         return self.cast(sql, "int") if sql is not None and kind == "int" else sql
@@ -219,16 +227,16 @@ class DuckDBDialect(Dialect):
     def pick(self, fn: str, v: str, order: Sequence[str]) -> str:
         # DuckDB's own `first`/`last` of the non-NULL values: the group's
         # values are not gathered into a list (4x faster on 5M rows, #810).
-        return f"{fn}({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
+        return f"{fn}({v}{_order_by(order)}) FILTER (WHERE {v} IS NOT NULL)"
 
     def window_pick(self, fn: str, v: str, w: str) -> str:
         return f"{'FIRST' if fn == 'first' else 'LAST'}_VALUE({v} IGNORE NULLS) {w}"
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
-        return f"string_agg({v}, {sep} ORDER BY {', '.join(order)})"
+        return f"string_agg({v}, {sep}{_order_by(order)})"
 
     def collect(self, v: str, order: Sequence[str]) -> str:
-        return f"list({v} ORDER BY {', '.join(order)}) FILTER (WHERE {v} IS NOT NULL)"
+        return f"list({v}{_order_by(order)}) FILTER (WHERE {v} IS NOT NULL)"
 
     def quantile(self, cont: bool, v: str, q: str) -> str:
         # DuckDB reads a decimal fraction exactly (#53). Its `RN = (n - 1)·q`

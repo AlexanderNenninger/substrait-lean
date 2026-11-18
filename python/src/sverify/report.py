@@ -23,11 +23,14 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 import ibis
 import ibis.expr.types as ir
+import pyarrow as pa
 from ibis.common.deferred import Deferred
 
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
+from sverify._run_schema import declared_columns, int_name, int_range
+from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
@@ -43,8 +46,6 @@ from sverify.observation import Observation, _deterministic_arg
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
-    import pyarrow as pa
-
     from sverify.routes import Route, RouteKind
 from sverify.conditions import (
     DATA_CHECK,
@@ -55,6 +56,7 @@ from sverify.conditions import (
     Inferred,
     Key,
     MaxRows,
+    PlannedCondition,
     PreconditionError,
     References,
     RelationRows,
@@ -94,6 +96,7 @@ Condition = (
     | MaxRows
     | RowsPer
     | Observation
+    | PlannedCondition
     | Callable[[ir.Table], ir.BooleanValue]
 )
 
@@ -116,9 +119,9 @@ UnprovedReason = Literal[
 
 @dataclass(frozen=True)
 class TiePlace:
-    """A place where the plan leaves the order of ties open: a window,
-    an ordered aggregate (`first`, `group_concat`, …) or a `LIMIT` whose
-    order is not total on the input's keys."""
+    """A place where the plan leaves its result open: a window, an ordered
+    aggregate (`first`, `group_concat`, …) or a `LIMIT` whose order is not
+    total on the input's keys, or a value picked from a class of doubles."""
 
     relation: int
     """The relation's index in the plan, in pre-order (`Report.relations`)."""
@@ -126,14 +129,31 @@ class TiePlace:
     """The relation's operator: `window`, `aggregate` or `fetch`."""
     what: str
     """What is open there, with columns as `$i` of the relation's input."""
+    kind: Literal["tie", "class", "open"] = "tie"
+    """`"class"`: the place only picks a member of a class of doubles
+    (`-0.0` or `0.0`, a NaN; D31), which an observation that reads one zero
+    and one NaN cannot tell apart (D48); `"tie"`: the order of ties is open;
+    `"open"`: what the class level leaves open, a tie or an expression that
+    reads a picked value (`Report.deterministic`)."""
 
     def __str__(self) -> str:
         return f"the {self.op} at relation {self.relation}: {self.what}"
 
 
 def tie_places(out: Mapping[str, Any]) -> list[TiePlace]:
-    """The `tie_places` of `substrait-check`'s report."""
-    return [TiePlace(t["relation"], t["op"], t["what"]) for t in out.get("tie_places", [])]
+    """The `tie_places` of `substrait-check`'s report: the exact level's."""
+    return [
+        TiePlace(t["relation"], t["op"], t["what"], t.get("kind", "tie"))
+        for t in out.get("tie_places", [])
+    ]
+
+
+def class_places(out: Mapping[str, Any]) -> list[TiePlace]:
+    """The `class_places` of `substrait-check`'s report: what the class
+    level leaves open (D48). A checker without them gives the exact level's."""
+    if "class_places" not in out:
+        return tie_places(out)
+    return [TiePlace(t["relation"], t["op"], t["what"], "open") for t in out["class_places"]]
 
 
 #: What a report suggests for an overflow it cannot rule out (#202).
@@ -404,24 +424,37 @@ class Report:
     of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
     """True when every result the reference allows is one up to row order
-    (`check_deterministic_sound`). False when rows may tie in the ORDER BY
-    of a window or of an ordered aggregate (`first`, `last`,
+    and up to the member of each class of doubles (`-0.0` and `0.0`; every
+    NaN; D31, D48): `check_class_determined_sound`. A `DISTINCT` or a group
+    key over doubles, `MIN`, `MAX` and `QUANTILE_DISC` only pick a member of
+    a class, which leaves the result determined. False when rows may tie in
+    the ORDER BY of a window or of an ordered aggregate (`first`, `last`,
     `group_concat`; without an `order_by` every row ties), when a `LIMIT`
-    takes rows that tie in its `ORDER BY` or has none, when the reference
-    leaves a value open (the median of doubles, which member of a class of
-    doubles a `DISTINCT`, a group key, `MIN`, `MAX` or `QUANTILE_DISC`
-    keeps), or where the checker has not proved an aggregate a function of its values. The
-    engine then picks, and a rerun may pick another. The postconditions
-    are proved for every choice; the deterministic profile
-    (`run(reproducible=sv.equivalent())`, a sink's `reproducible=`)
-    refuses such a plan and names `tie_places`."""
+    takes rows that tie in its `ORDER BY` or has none, when an expression
+    reads a picked double and can tell the members apart (`atan2`), when the
+    reference leaves a value open (the median of doubles), or where the
+    checker has not proved an aggregate a function of its values. The
+    engine then picks, and a rerun may pick another. The postconditions are
+    proved for every choice. A rerun that must reproduce the result
+    (`run(reproducible=sv.equivalent())`, a refresh, a sink's
+    `reproducible=`) refuses such a plan and names each place; one whose
+    observation reads the members of a class (exact doubles and zeros) also
+    refuses each class pick (D48)."""
+    _exact: bool = field(default=True, repr=False)
+    """Every result the reference allows is one up to row order, members of
+    a class included (`check_deterministic_sound`): `deterministic` with no
+    class pick. The SQL writers' tie-free windows read this level."""
+    _class_places: list[TiePlace] = field(default_factory=list, repr=False)
+    """What the class level leaves open, one entry per place; empty exactly
+    when `deterministic` (`Request.classDeterminedIn_eq`)."""
     _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
     _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
     """Where the plan leaves its result open, one entry per window, ordered
-    aggregate, `LIMIT` or value the reference leaves open; empty exactly
-    when `deterministic` (`Request.deterministicIn_eq`)."""
+    aggregate, `LIMIT` or value the reference leaves open, class picks
+    included (kind `"class"`); empty exactly when `_exact`
+    (`Request.deterministicIn_eq`)."""
     issues: list[Issue] = field(default_factory=list)
     """Runtime errors, SUM overflows among them, the checker could not rule out; when
     empty, the transformation provably runs without them."""
@@ -726,8 +759,8 @@ class Report:
         `dialect`.
 
         The SQL keeps every run-time check, as `run` does. Where the report
-        is `deterministic` (no window ties on data that meets the
-        preconditions), windows need no row-order tiebreak, so Snowflake and
+        is determined up to row order with no class pick (no window ties on
+        data that meets the preconditions), windows need no row-order tiebreak, so Snowflake and
         Spark take them. A plan verified under an engine's semantics
         (`semantics="duckdb"`) is written only for an engine its route
         reaches (`sverify.routes.choose`). Snowflake takes plans verified
@@ -767,7 +800,11 @@ class Report:
             raise ValueError("this report has no plan: it was not made by sv.verify")
         d, finite = self._sql_route(dialect)
         return to_sql(
-            written_plan(self.internal_plan), d, deterministic=self.deterministic, finite=finite
+            written_plan(self.internal_plan),
+            d,
+            deterministic=self._exact,
+            finite=finite,
+            rows="sequence" if self.observation.rows == "sequence" else "multiset",
         )
 
     def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
@@ -808,30 +845,50 @@ class Report:
             raise routes.RouteError(chosen)
         return d, self.semantics == "reference" or chosen.kind == "translated"
 
-    def check_inputs(self, con: Connection) -> None:
+    def check_inputs(
+        self, con: Connection, engine: str | None = None, *, assumed_checked: bool = False
+    ) -> None:
         """Check the preconditions (`requires`, the inferred bounds among
         them) and the `SUM`s assumed to fit (`assumed`) on the tables of
         `con`, before anything runs: a batch that breaks one is refused
         with the precondition as the message.
 
+        With an `engine`, each table's conditions run there, as one plan the
+        checker wrote (`condition_query`): a result that is not TRUE, or a
+        plan that raises, is a violation, and a condition the engine's writer
+        refuses refuses the check. Without one, Ibis counts on the table's own
+        backend.
+
+        Args:
+            con: The connection holding the tables.
+            engine: The engine to check the conditions on.
+            assumed_checked: The run's route checks the assumed issues as it
+                runs (DuckDB's proved translation), so they are not run once
+                more here.
+
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
                 hold on the data.
         """
+        self._check_schema(con, engine)
         for t, conds in self._conditions.items():
             if not con.has(t):
                 continue
             table = con.table(t)
-            for c in conds:
-                if n := violations(table, c):
+            for c, n, error in violation_counts(table, conds, engine):
+                if n or error:
+                    what = (
+                        f"{label(c)} raised on {t}: {error}"
+                        if error
+                        else f"{n} row(s) of {t} violate {label(c)}"
+                    )
                     raise PreconditionError(
-                        f"{n} row(s) of {t} violate {label(c)}: refused before the run"
-                        + self._source(t, c),
+                        f"{what}: refused before the run" + self._source(t, c),
                         source=t,
                         condition=c,
                         rows=violating_rows(table, c),
                     )
-        if self.assumed and self.internal_plan is not None:
+        if self.assumed and self.internal_plan is not None and not assumed_checked:
             # The proved DuckDB translation checks each assumption as it runs:
             # a SUM as it adds up, an operation on finite doubles as it gives
             # its result (#575). It runs first, so a batch that breaks one is
@@ -839,13 +896,75 @@ class Report:
             try:
                 run_plan(con, written_plan(self.internal_plan), "duckdb")
             except Exception as e:
-                message = str(e)
-                if "overflow in SUM" not in message and "overflow to infinity" not in message:
-                    raise
-                broken = ", ".join(_assumption(i) for i in self.assumed)
-                raise PreconditionError(
-                    f"the batch breaks an assumed precondition, {broken}: refused before the run"
-                ) from e
+                raise self._broken_assumption(e) or e from None
+
+    def _check_schema(self, con: Connection, engine: str | None) -> None:
+        """Refuse a table that differs from the schema the plan was verified
+        for (`sverify._run_schema`): a missing column, a type the reader would
+        change, a NULL in a column read as non-null, an integer outside the
+        declared type's range (D46; the engine counts it)."""
+        if self.internal_plan is None:
+            return
+        for t, schemas in declared_columns(json.loads(self.internal_plan)).items():
+            if not con.has(t):
+                continue
+            z = con.get(t)
+            data = z if isinstance(z, pa.Table) else None
+            wide: set[tuple[str, str]] = set()
+            for declared in schemas:
+                found, more = schema_problems(declared, con.schema(t), data)
+                if found:
+                    raise PreconditionError(
+                        f"table {t} differs from the schema the plan was verified for: "
+                        + "; ".join(found)
+                        + ": refused before the run. Declare the column as it is, or fix the source"
+                    )
+                wide.update(more)
+            table = con.table(t)
+            for col, key in sorted(wide):
+                lo, hi = int_range(key)
+                x: Any = ibis._[col]
+                cond = x.isnull() | ((x >= lo) & (x <= hi))
+                [(_c, n, error)] = violation_counts(table, [cond], engine)
+                if n or error:
+                    raise PreconditionError(
+                        f"column {col!r} of {t} is declared {int_name(key)} ({lo} to {hi}) and "
+                        + (
+                            f"its range check raised: {error}"
+                            if error
+                            else f"{n} value(s) lie outside it, e.g. {_example(table, cond, col)}"
+                        )
+                        + ": refused before the run. Declare the wider type, or cast in the query",
+                        source=t,
+                    )
+
+    def _unchecked_requires(self) -> list[str]:
+        """The preconditions in `requires` that `_conditions` holds no check
+        for, as `table: label`."""
+        have = {t: [label(c) for c in cs] for t, cs in self._conditions.items()}
+        out = []
+        for t, labs in self.requires.items():
+            left = list(have.get(t, []))
+            for lab in labs:
+                if lab in left:
+                    left.remove(lab)
+                else:
+                    out.append(f"{t}: {lab}")
+        return out
+
+    def _broken_assumption(self, e: Exception) -> PreconditionError | None:
+        """The refusal for an error of DuckDB's proved translation that says an
+        assumed `SUM` or operation on finite doubles failed on the data; None
+        for any other error."""
+        message = str(e)
+        if "overflow in SUM" not in message and "overflow to infinity" not in message:
+            return None
+        broken = ", ".join(_assumption(i) for i in self.assumed)
+        err = PreconditionError(
+            f"the batch breaks an assumed precondition, {broken}: refused before the run"
+        )
+        err.__cause__ = e
+        return err
 
     def _source(self, table: str, c: Condition) -> str:
         """Where a precondition the data breaks came from, and what to do,
@@ -923,8 +1042,10 @@ class Report:
                 breaks one (`check_inputs`), as
                 `transform(check_requires=)` does on bound inputs. Default
                 True. False skips the check, for a caller that has made it
-                already: the report's guarantee then holds only on data that
-                meets them, and a batch that does not may raise on the
+                already (the tables are still checked against the schema the
+                plan was verified for: types, NULLs, integer widths). The
+                report's guarantee then holds only on data that meets the
+                preconditions, and a batch that does not may raise on the
                 engine. With the check, a guard-free plan on the reference's
                 route runs without the per-row checks the checker discharged
                 on data that meets them, on an engine whose writer a theorem
@@ -994,8 +1115,27 @@ class Report:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
+        # DuckDB's proved translation checks each assumption as it runs.
+        assumed_checked = (
+            check_requires
+            and chosen is not None
+            and chosen.engine == "duckdb"
+            and kind == "translated"
+        )
         if check_requires:
-            self.check_inputs(con)
+            # A precondition with no check would let the run drop guards on
+            # data it never looked at: refuse before anything runs.
+            if unchecked := self._unchecked_requires():
+                raise PreconditionError(
+                    "no run-time check for the precondition(s) "
+                    + ", ".join(unchecked)
+                    + " of this report: refused before the run (check_requires=False skips them)"
+                )
+            self.check_inputs(con, target, assumed_checked=assumed_checked)
+        else:
+            # The schema is what the proof is about, not a precondition: it is
+            # checked whatever `check_requires` says.
+            self._check_schema(con, target)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)
@@ -1017,26 +1157,33 @@ class Report:
         # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
         name = chosen.engine if chosen is not None else ""
         theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
-        if (
-            check_requires
-            and kind == "translated"
-            and self.semantics == "reference"
-            and self._guard_free
-            and theorem is not None
-        ):
-            out = run_guard_free(
-                con, written_plan(self.internal_plan), name, theorem, finite=finite
-            )
-        else:
-            out = run_plan(
-                con,
-                written_plan(self.internal_plan),
-                engine,
-                finite=finite,
-                # A proved report's `deterministic` justifies Spark's windows
-                # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                tie_free=self.deterministic and kind != "unverified",
-            )
+        try:
+            if (
+                check_requires
+                and kind == "translated"
+                and self.semantics == "reference"
+                and self._guard_free
+                and theorem is not None
+            ):
+                out = run_guard_free(
+                    con, written_plan(self.internal_plan), name, theorem, finite=finite
+                )
+            else:
+                out = run_plan(
+                    con,
+                    written_plan(self.internal_plan),
+                    engine,
+                    finite=finite,
+                    # A proved report's exact level justifies Spark's windows
+                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                    tie_free=self._exact and kind != "unverified",
+                )
+        except Exception as e:
+            # The translation's own checks of the assumptions, which `check_inputs`
+            # did not run first, refuse the batch as that run would have.
+            if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
+                raise refusal from e
+            raise
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
@@ -1058,14 +1205,18 @@ class Report:
         The check and the plan must read one snapshot: each input the check
         reads is an Arrow table, a `Resident` table or a `Scan` pinned to a
         version (`_pinned`). Another input warns (`InferredWarning`), and
-        refuses the run with `deterministic` (the deterministic profile,
-        `reproducible=`).
+        refuses the run with `deterministic` (a rerun that must reproduce
+        the result, `reproducible=`).
 
         Raises:
             PreconditionError: A check flags a group, and the report was not
                 verified with `on_inferred="warn"`; or, with `deterministic`,
                 an input the check reads is not pinned to one version.
         """
+
+        from sverify import profiles
+        from sverify.sql import parse_plan
+        from sverify.sql.core import open_choices
 
         total = 0
         for chk in self._margin_checks:
@@ -1083,12 +1234,41 @@ class Report:
                 if deterministic:
                     raise PreconditionError(msg)
                 warnings.warn(InferredWarning(msg, self), stacklevel=3)
+            plan = written_plan(json.dumps(chk["plan"]))
+            # Where the runner leaves ties and a LIMIT's rows open (`ProfilePlugin.rows`),
+            # the check and the run each pick their own: its count says nothing
+            # about the run's sums. The ordinal of `rows="sequence"` makes them one.
+            runner = profiles.find(target)
+            if (
+                runner is not None
+                and runner.rows == "multiset"
+                and not self.deterministic
+                and (open_ := open_choices(parse_plan(json.loads(plan)).root))
+            ):
+                what = " and ".join(sorted(set(open_)))
+                if self._on_inferred != "warn":
+                    raise PreconditionError(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open (ties, or the rows of a LIMIT): the check's count may "
+                        "miss groups the run sums differently; pin the rows with `reproducible=`, "
+                        "order by a key that makes the order total, or run with "
+                        '`on_inferred="warn"`'
+                    )
+                warnings.warn(
+                    InferredWarning(
+                        f"the margin check and the run each evaluate {what} on {target}, whose "
+                        "rows are open: the check's count may miss groups the run sums "
+                        "differently",
+                        self,
+                    ),
+                    stacklevel=3,
+                )
             # Without the overflow checks of #575: the margin is at most `A`, and
             # a `v − t` past the largest double is farther than any bound.
-            # Its windows aggregate whole partitions, so no row order matters.
-            res = run_plan(
-                con, written_plan(json.dumps(chk["plan"])), engine, finite=False, tie_free=True
-            )
+            # Its own windows aggregate whole partitions, so no row order matters there;
+            # the relations below the sum can hold open choices (above), and
+            # `tie_free=True` drops their tiebreak on an engine that reads it.
+            res = run_plan(con, plan, engine, finite=False, tie_free=True)
             k = int(res.column(0)[0].as_py() or 0)
             if not k:
                 continue
@@ -1278,10 +1458,14 @@ class Report:
         out: dict[str, list[Condition]] = {}
         for t, cs in self._conditions.items():
             out[t] = [c for c in cs if not isinstance(c, Inferred)]
-        for n in self._inferred_needs():
-            have = out.setdefault(n.table, [])
-            if n.condition is not None and n.label not in {label(c) for c in have}:
-                have.append(n.condition)
+        # The bounds a hint names, which a proof confirmed (`_confirm_hints`).
+        extra = [(n.table, n.condition, n.label) for n in self._inferred_needs()]
+        for i in self.issues:
+            extra += [(t, c, label(c)) for t, cs in i.hint_needs.items() for c in cs]
+        for t, c, lab in extra:
+            have = out.setdefault(t, [])
+            if c is not None and lab not in {label(x) for x in have}:
+                have.append(c)
         return {t: cs for t, cs in out.items() if cs}
 
     @property
@@ -1446,10 +1630,18 @@ class Report:
 
     @property
     def _summary(self) -> str:
-        """The report's first line: "proved", or "NOT proved: " and what is
-        missing, counted ("1 of 2 postconditions not proved, 1 possible
-        runtime error")."""
-        return "proved" if self._proved else f"NOT proved: {', '.join(self._counts())}"
+        """The report's first line, by the verdict: "proved"; "proved with
+        checks: " and the assumptions that run time checks ("2 assumptions");
+        or "NOT proved: " and what is missing, counted ("1 of 2
+        postconditions not proved, 1 possible runtime error")."""
+        match self.verdict:
+            case Verdict.PROVED:
+                return "proved"
+            case Verdict.PROVED_WITH_CHECKS:
+                k = len(self.assumed)
+                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+            case _:
+                return f"NOT proved: {', '.join(self._counts())}"
 
     def _counts(self) -> list[str]:
         """What keeps the plan from being proved, counted."""
@@ -1482,7 +1674,7 @@ class Report:
 
         out = TIES_HINT.format(_ORDERED.get(self._dialect, _ORDERED["ibis"]))
         plan = json.loads(self.internal_plan) if self.internal_plan else None
-        places = [named(t.what, plan) for t in self._tie_places]
+        places = [named(t.what, plan) for t in self._class_places]
         if places and all(places):
             out += f" ({'; '.join(dict.fromkeys(p for p in places if p))})"
         if self.ties:
@@ -1597,6 +1789,8 @@ class Report:
 _REPORT_INTERNAL = [
     "windows_total",
     "tie_places",
+    "exact",
+    "class_places",
     "guard_free",
     "unchecked",
     "optimized",
@@ -2023,6 +2217,102 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     return _count(count)
 
 
+def violation_counts(
+    table: ir.Table, conds: Sequence[Condition], engine: str | None = None
+) -> list[tuple[Condition, int, str | None]]:
+    """Each condition of `conds` with the rows of `table` that break it (a
+    result that is not TRUE) and the error that stopped its check, if one did.
+
+    With an `engine`, the row-wise conditions that are SQL strings run there
+    as one plan, and the Ibis ones as another (`conditions_query`): one plan
+    per table where each condition had one. A plan that raises is a violation
+    of the first condition that raises alone. A condition the writer refuses
+    for the engine refuses the check (`SverifyError`), with no fallback to
+    Ibis. Without an `engine`, Ibis counts each condition on the table's own
+    backend (`violations`)."""
+    if engine is None:
+        rows: list[tuple[Condition, int, str | None]] = []
+        for c in conds:
+            n, stopped = (
+                _run_planned(table, c, "duckdb")
+                if isinstance(c, PlannedCondition)
+                else (violations(table, c), None)
+            )
+            rows.append((c, n, stopped))
+        return rows
+    counts: dict[int, tuple[int, str | None]] = {}
+    groups: dict[bool, list[int]] = {True: [], False: []}
+    for i, c in enumerate(conds):
+        if isinstance(c, TableCondition):
+            counts[i] = (c.violations(table), None)
+        elif isinstance(c, PlannedCondition):
+            counts[i] = _run_planned(table, c, engine)
+        else:
+            groups[isinstance(c, str)].append(i)
+    con = connection_of(table)
+    for idxs in groups.values():
+        if not idxs:
+            continue
+        if con is None:
+            raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
+        try:
+            out = _run_conditions(con, table, [conds[i] for i in idxs], engine)
+            for k, i in enumerate(idxs):
+                counts[i] = (_not_true(out.column(k)), None)
+        except SverifyError:
+            raise
+        except Exception:
+            # Which condition raised: run them one by one.
+            for i in idxs:
+                try:
+                    counts[i] = (
+                        _not_true(_run_conditions(con, table, [conds[i]], engine).column(0)),
+                        None,
+                    )
+                except SverifyError:
+                    raise
+                except Exception as e:
+                    counts[i] = (0, str(e).splitlines()[0] if str(e) else type(e).__name__)
+    return [(c, *counts[i]) for i, c in enumerate(conds)]
+
+
+def _run_planned(table: ir.Table, cond: PlannedCondition, engine: str) -> tuple[int, str | None]:
+    """The rows of `table` that break a condition read from an export, from its
+    own plan run on `engine`; a plan that raises is a violation."""
+    con = connection_of(table)
+    if con is None:
+        raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
+    try:
+        return _not_true(run_plan(con, written_plan(cond.plan), engine).column(0)), None
+    except SverifyError:
+        raise
+    except Exception as e:
+        return 0, str(e).splitlines()[0] if str(e) else type(e).__name__
+
+
+def _not_true(column: Any) -> int:
+    return sum(v is not True for v in column.to_pylist())
+
+
+def _run_conditions(
+    con: Connection, table: ir.Table, conds: Sequence[Condition], engine: str
+) -> pa.Table:
+    """The columns of `conds` over `table`, from one checker-written plan run
+    on `engine`: SQL conditions as one `SELECT`, Ibis ones as one `select`."""
+    if all(isinstance(c, str) for c in conds):
+        items = ", ".join(f'({c}) AS "c{i}"' for i, c in enumerate(conds))
+        query = f'SELECT {items} FROM {{}} AS "t"'
+        from sverify.ibis_substrait import SQLModel, sql_model_schema
+
+        query = query.format('"t"')
+        schema = sql_model_schema(query, {"t": table.schema()}, "reference")
+        inputs: Any = (table.op(),)  # a table's op is the relation the model reads
+        q = SQLModel(query, inputs, ("t",), schema, "duckdb", "reference").to_expr()
+    else:
+        q = table.select(**{f"c{i}": resolve(c, table) for i, c in enumerate(conds)})
+    return run_plan(con, written_plan(plan_json(con, q)), engine)
+
+
 def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) -> pa.Table | None:
     """Up to `limit` rows of the bound `table` where `cond` is not TRUE, or
     for `unique`, the rows of a repeated key; None for a condition on the
@@ -2055,3 +2345,9 @@ def violating_rows(table: ir.Table, cond: Condition, limit: int = ROWS_SHOWN) ->
         return bad.limit(limit).to_pyarrow()
     except Exception:
         return None
+
+
+def _example(table: ir.Table, cond: Condition, col: str) -> object:
+    """One value of column `col` where `cond` is not TRUE, for a message."""
+    rows = violating_rows(table, cond, 1)
+    return rows.column(col)[0].as_py() if rows is not None and rows.num_rows else "?"
