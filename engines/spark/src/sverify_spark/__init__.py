@@ -23,11 +23,11 @@ from collections.abc import Mapping, Sequence
 # An engine built from main beside PyPI's sverify of the same version number
 # fails deep inside sverify with a TypeError (#1585): check the interface first.
 from importlib.metadata import version as _version
-from typing import Any
+from typing import Any, Literal
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 1:
+if getattr(_meta, "PLUGIN_API", None) != 2:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -171,6 +171,10 @@ def _dialect() -> Any:
     return SPARK
 
 
+#: What the runner writes for the rows (`ProfilePlugin.rows`): Spark tables have
+#: no row order, so ties and the rows of a `LIMIT` are open.
+ROWS: Literal["sequence", "multiset"] = "multiset"
+
 PLUGIN = ProfilePlugin(
     "spark",
     store=ArrowStore,
@@ -183,6 +187,7 @@ PLUGIN = ProfilePlugin(
     installed_version=_version,
     restore=_restore,
     runner=_run,
+    rows=ROWS,
     session=_is_session,
     modules=("pyspark",),
     read_settings=_read_settings,

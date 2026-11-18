@@ -39,7 +39,7 @@ from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
 from sverify.io import Changes
 from sverify.sql import Unsupported, parse_plan, to_sql
-from sverify.sql.core import kinds, order_matters
+from sverify.sql.core import kinds, open_choices, order_matters
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import (
     EPOCH,
@@ -867,17 +867,21 @@ def _tied(expr):
 def test_tied_window_is_numbered_in_key_order():
     """On tied data the written window keeps what `Rel.Allowed` states (#1608):
     `ROW_NUMBER` numbers each partition in key order, `LAG` follows that one
-    arrangement, and which of the tied rows comes first is open."""
+    arrangement (the previous row's id is the id of rank - 1, so one inner
+    number fixes the ties for both), and which of the tied rows comes first is
+    open."""
     t = ibis.table({"id": "int64", "g": "string", "v": "int64"}, name="t")
     w = ibis.window(group_by=t.g, order_by=t.v)
-    rows = _tied(t.mutate(rn=ibis.row_number().over(w), prev=t.v.lag().over(w)))
+    expr = t.mutate(rn=ibis.row_number().over(w), prev=t.id.lag().over(w))
+    assert '"w"' in to_sql(json.loads(to_substrait_json(expr)), DUCKDB, rows="multiset")
+    rows = _tied(expr)
     assert sorted(r[0] for r in rows) == [r[0] for r in TIED]
     for g in "ab":
         part = sorted((r for r in rows if r[1] == g), key=lambda r: r[3])
         assert [r[3] for r in part] == list(range(len(part)))
         assert [r[2] for r in part] == sorted(r[2] for r in part)
         assert part[0][4] is None
-        assert [r[4] for r in part[1:]] == [r[2] for r in part[:-1]]
+        assert [r[4] for r in part[1:]] == [r[0] for r in part[:-1]]
 
 
 def test_tied_limit_takes_a_prefix_of_the_keys():
@@ -894,6 +898,24 @@ def test_tied_limit_takes_a_prefix_of_the_keys():
     # a filter between the sort and the LIMIT keeps the sort's order
     f = _tied(t.order_by(t.v).filter(t.id != 3).limit(3))
     assert [r[2] for r in f] == sorted(r[2] for r in TIED if r[0] != 3)[:3]
+
+
+def test_open_choices_names_the_limits_and_windows_of_a_plan():
+    """A margin check re-evaluates the plan below its sum, and is refused where the
+    runner leaves open the rows of a LIMIT or of a window that reads the order
+    of ties (#1608)."""
+    t = ibis.table({"id": "int64", "g": "string", "v": "int64"}, name="t")
+    w = ibis.window(group_by=t.g, order_by=t.v)
+    for expr, want in [
+        (t.filter(t.v > 1).group_by("g").aggregate(s=t.v.sum()), []),
+        (t.order_by(t.v).limit(3).group_by("g").aggregate(s=t.v.sum()), ["a LIMIT"]),
+        (t.mutate(rn=ibis.row_number().over(w)).filter(t.v > 0), ["a window"]),
+        # Ranks and whole-partition sums have one result whatever the ties.
+        (t.mutate(r=ibis.rank().over(w)), []),
+        (t.mutate(s=t.v.sum().over(group_by=t.g)), []),
+    ]:
+        root = parse_plan(json.loads(to_substrait_json(expr))).root
+        assert open_choices(root) == want
 
 
 FOLD_ROWS = pa.table(
