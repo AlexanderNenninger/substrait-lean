@@ -1,0 +1,1 @@
+The guard of `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein` and class regexes tests one predicate (`ascii_text`), shared with the ASCII precondition the report will infer; a regular expression with `\w`, `\d`, `\s` or `\b` also raises on a vertical tab, where Rust's classes and RE2's differ (`Text.classesDiffer`).
