@@ -1471,6 +1471,25 @@ Polars's masking excludes a branch under `group_by().agg` and `over()`; an
 aggregate's `FILTER` and a window's argument are tested in
 `tests/test_and_or_engines.py`.
 
+Interim limits, until step D50-d (a gate for 1.0):
+
+- Only the top three levels of a nest of `AND` and `OR` are lifted
+  (`LIFT_LEVELS`, `plan_json.py`; a connective's level is one more than the lifted
+  ones enclosing it). Below that the connective is the eager `AND` or `OR`: a
+  guard there does not protect the next operand, so the guarded operation is
+  reported as an inferred precondition, as before D50. The cap exists because a
+  lift nested in a lift multiplies the size: with a guarded leaf, depth 3 of
+  alternating connectives measured 29 times the eager plan's characters, and
+  depth 4 took 5,171 s in the checker. Since the lift has the eager value
+  wherever the eager reading returns (`Expr.andLift_refines`), a plan proved
+  under the cap stays proved when D50-d lifts the lower levels.
+- The analysis proves zero and null guards (`x <> c`, `0 <= c < x`). A range
+  guard before a cast (`x BETWEEN a AND b AND CAST(x AS BIGINT) > 1`) and a
+  pattern guard before a string cast run correctly on the engines, but are
+  reported as inferred preconditions; step D50-e (before 1.0) adds a
+  refinement through `p IS NOT FALSE` for the range guard. A pattern guard stays
+  unproved.
+
 Why: the eager reading made the commonest guard in SQL unprovable, and the
 engines that short-circuit give the value the user meant.
 
