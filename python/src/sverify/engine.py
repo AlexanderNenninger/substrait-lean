@@ -256,6 +256,7 @@ class Connection:
             return
         _check_times(table.schema)
         _check_calendar(table)
+        table = _widen_timestamps(table)
         self._tables[name] = table
         self._ibis.con.register(name, table)
 
@@ -733,6 +734,19 @@ def _calendar_error(column: str, what: str, count: int, example: str) -> Excepti
         f"{column} holds {what} outside 0001–9999 ({count}, e.g. {example}); the reference's "
         "calendar covers 0001–9999. Filter them, or read the column as text."
     )
+
+
+def _widen_timestamps(table: pa.Table) -> pa.Table:
+    """Read the second and millisecond timestamp columns as microseconds (D61):
+    exact, since `_check_calendar` holds every value in 0001–9999. No engine
+    then sees two units in one operation."""
+    fields = [
+        pa.field(f.name, pa.timestamp("us", tz=f.type.tz), f.nullable, f.metadata)
+        if pa.types.is_timestamp(f.type) and f.type.unit in ("s", "ms")
+        else f
+        for f in table.schema
+    ]
+    return table.cast(pa.schema(fields)) if fields != list(table.schema) else table
 
 
 def _check_calendar(table: pa.Table) -> None:

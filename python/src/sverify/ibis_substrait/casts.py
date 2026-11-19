@@ -40,7 +40,19 @@ def _from_varchar(x: Exprs, op: Any, try_: bool) -> Json | None:
     return None
 
 
+def _narrow_timestamp(x: Exprs, op: Any) -> Json | None:
+    """A cast to a second or millisecond timestamp floors on the timeline: the
+    reference's timestamps count microseconds (D61), so it is `date_trunc`."""
+    to, src = op.to, op.arg.dtype
+    if not (to.is_timestamp() and src.is_timestamp() and to.scale in (0, 3)):
+        return None
+    unit = "second" if to.scale == 0 else "millisecond"
+    return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
+
+
 def _cast(x: Exprs, op: Any) -> Json:
+    if narrowed := _narrow_timestamp(x, op):
+        return narrowed
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
     return _from_varchar(x, op, False) or cast_json(x(op.arg), op.to)
@@ -48,6 +60,8 @@ def _cast(x: Exprs, op: Any) -> Json:
 
 def _try_cast(x: Exprs, op: Any) -> Json:
     """`TRY_CAST`: NULL where the cast fails (#58)."""
+    if narrowed := _narrow_timestamp(x, op):
+        return narrowed
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
     return _from_varchar(x, op, True) or cast_json(x(op.arg), op.to, or_null=True)
@@ -92,7 +106,9 @@ def _typeof(x: Exprs, op: Any) -> Json:
             "typeof is only supported of a column; select the expression as a column first"
         )
     t = cast("dt.DataType", column.dtype)
-    name = duckdb_type_name(t)
+    # A second or millisecond column is read as microseconds (D61): its type
+    # in the run is TIMESTAMP, which the declared type's name does not say.
+    name = None if t.is_timestamp() and t.scale in (0, 3) else duckdb_type_name(t)
     if name is None:
         raise Unsupported(
             f"typeof of a {t} column is not supported; write the type's name as a constant"
