@@ -39,9 +39,7 @@ def of(c: Checked) -> list[dict[str, Any]]:
     if r is None:
         return [_finding(c, "timeout", "the time budget ran out while proving it")]
     out = []
-    for cond in r.ensures:
-        if cond.portable or cond.checked:
-            continue
+    for cond in r._unmet_ensures():
         code = _explain.code_of(cond.reason or "unknown")
         extra: dict[str, Any] = {"condition": cond.label}
         if cond.counterexample is not None:

@@ -51,25 +51,28 @@ stg_orders (models/staging/stg_orders.sql)
     not_null(order_id)
     unique(order_id)
     not_null(customer_id)
+    accepted_values(status)
     dbt_utils.accepted_range(amount)
-  not proved (dbt build still runs them):
-    accepted_values(status): sverify cannot rule out a row that fails it, from the tests upstream
 
 customer_revenue_by_category (models/marts/customer_revenue_by_category.sql)
-  not proved (dbt build still runs them):
-    dbt_utils.accepted_range(books): sverify cannot rule out a row that fails it, from the tests upstream
+  proved before the model runs (dbt build may skip them):
+    dbt_utils.accepted_range(books)
   contract: columns and types match
     primary_key(customer_id): proved
+  note: rows may tie in an ORDER BY of a window or ordered aggregate, so DuckDB picks the order: a test that depends on it is not proved
+
+orders_with_city (models/marts/orders_with_city.sql)
+  proved before the model runs (dbt build may skip them):
+    not_null(order_id)
+  not proved (dbt build still runs them):
+    unique(order_id): the tests upstream do not make it a key
 
 org_depth (models/marts/org_depth.sql)
-  refused: sverify cannot read WITH RECURSIVE yet
+  refused: sverify cannot read WITH RECURSIVE yet (#320)
 
 subscription_arr (models/marts/subscription_arr.sql)
-  not proved (dbt build still runs them):
-    dbt_utils.accepted_range(arr): proved only with the source tests listed under 'needs'
-  needs these tests before anything is proved:
-    on source('app', 'subscriptions'), column mrr: dbt_utils.accepted_range: {arguments: {max_value: 700000000000000000, inclusive: false}}
-      (overflow in `mrr * 12` otherwise)
+  proved before the model runs (dbt build may skip them):
+    dbt_utils.accepted_range(arr)
 ```
 
 `--selectors` adds a selector, `sverify_proved`, to the project's
@@ -179,6 +182,10 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   what is inside a string (`LIKE`, lengths) is not tracked
   ([the guide](../docs/guide.md#contracts)).
 - Python models, and models whose inputs have no column types, are refused.
+- What each materialization gets: a table or view is checked; an incremental
+  model as its full refresh (below); an ephemeral model is inlined, so its
+  readers are read through it and it prints a note, with no test run on it; a
+  snapshot is an input only. Python models are refused.
 - An incremental model is checked as its full refresh, as `dbt compile`
   renders it; its `is_incremental()` block is taken to only filter that query.
   Its tests are skippable (`--selectors`) only under `merge` or `delete+insert`

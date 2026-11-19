@@ -205,7 +205,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   }
  },
  "fin-dormant-reactivation": {
@@ -1130,7 +1130,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   },
   "contract": {
    "proved": true,
@@ -1147,7 +1147,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   },
   "contract": {
    "proved": true,
@@ -1181,7 +1181,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   },
   "contract": {
    "proved": false,
@@ -1201,7 +1201,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   },
   "contract": {
    "proved": true,
@@ -1515,7 +1515,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   },
   "contract": {
    "proved": true,
@@ -1634,7 +1634,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   },
   "contract": {
    "proved": true,
@@ -1711,7 +1711,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
   }
  },
  "win-above-group-average": {

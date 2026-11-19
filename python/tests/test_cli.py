@@ -493,6 +493,39 @@ def test_a_dbt_project_gets_the_flags_sverify_dbt_parses(tmp_path, capsys, monke
     assert seen[-1][-4:] == ["--timeout", "5", "--memory-limit", "1GB"]
 
 
+def test_a_source_with_a_schema_is_checked_without_its_table(tmp_path, capsys):
+    """`DeltaSource(uri, schema=...)` lets `check` prove a transform over a table
+    that does not exist here: no credentials, no network (#1485, 18)."""
+    path = tmp_path / "pipeline.py"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            import pyarrow as pa
+            import sverify as sv
+            from ibis import _
+            from sverify.io import DeltaSource
+
+            orders = DeltaSource(
+                "s3://no-such-bucket/orders",
+                schema=pa.schema([("id", pa.int64()), ("amount", pa.int64())]),
+            )
+
+
+            @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount > 10])
+            def paid(orders):
+                return orders.filter(orders.amount > 10)
+
+
+            p = orders.pipe(paid)
+            """
+        )
+    )
+    code, doc = run_json(capsys, "check", str(path))
+    assert code == 0, doc
+    [item] = doc["items"]
+    assert (item["name"], item["status"]) == ("paid", "proved")
+
+
 def test_split_target():
     assert split_target("a/b.py:paid") == (Path("a/b.py"), "paid")
     assert split_target("a/b.py") == (Path("a/b.py"), None)

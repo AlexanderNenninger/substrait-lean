@@ -355,6 +355,11 @@ class IcebergSource(_TableSource):
             `on_violation` of their own: `"error"`, `"quarantine"` or
             `"hold"` (see `sverify.transform`). Default: None,
             `"error"`.
+        schema: The table's schema. With it, building a node and `sverify
+            check` prove the transform without loading the table (no
+            credentials, no network); every refresh reads the table's schema
+            and raises `SchemaError` if it is not this one. Default: the
+            table's.
 
     Attributes:
         catalog: The catalog.
@@ -372,17 +377,21 @@ class IcebergSource(_TableSource):
         where: str | None = None,
         name: str | None = None,
         on_violation: _quarantine.Policy | None = None,
+        schema: pa.Schema | None = None,
     ):
         self.catalog, self.identifier = catalog, identifier
         self.on_violation = _quarantine.check_policy(on_violation)
-        super().__init__(name or identifier.rsplit(".", 1)[-1], where)
+        super().__init__(name or identifier.rsplit(".", 1)[-1], where, schema)
 
     def table(self) -> Table:
         """The table as the catalog loads it now (a `pyiceberg.table.Table`)."""
         return self.catalog.load_table(self.identifier)
 
     def schema(self) -> pa.Schema:
-        """The table's current schema, as Arrow."""
+        """The table's current schema, as Arrow; the declared one (`schema=`)
+        without opening the table."""
+        if self._declared is not None:
+            return self._declared
         return _arrow_schema(self.table())
 
     def latest(self) -> int:
@@ -396,7 +405,9 @@ class IcebergSource(_TableSource):
         return _table_id(self.table())
 
     def _read_at(self, t: Table, version: int) -> None:
-        """Remember the id of the table read at `version`."""
+        """Remember the id of the table read at `version`, and check its schema
+        is the declared one."""
+        self._verify_declared(_arrow_schema(t))
         self._seen(version, _table_id(t))
 
     def _facts(self, t: Table, files: list[dict[str, Any]], source: str) -> list[Fact]:
