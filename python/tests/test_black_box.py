@@ -139,8 +139,8 @@ def test_the_laws_prove_contracts(query, ensures, semantics):
     assert not report.errors
     # The report names the laws the proof may assume, from the checker (#1484).
     name = "entropy" if "entropy" in query else "base64"
-    assert f"assumes: black box {name} keeps its declared laws" in str(report)
     assert [b["name"] for b in report._black_boxes] == [name]
+    assert f"assumes: black box {name} keeps its declared laws" in report.details()
 
 
 def test_what_the_laws_do_not_say_stays_unproved():
