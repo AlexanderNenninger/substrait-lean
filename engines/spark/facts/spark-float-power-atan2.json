@@ -25,6 +25,14 @@
         "fp32"
       ],
       "evidence": "probe"
+    },
+    {
+      "group": "fp.pow",
+      "option": "zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [

@@ -16,6 +16,14 @@
         "fp64"
       ],
       "evidence": "probe"
+    },
+    {
+      "group": "fp.elem",
+      "option": "zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
     }
   ],
   "constructs": [
@@ -48,6 +56,10 @@
         {
           "sql": "SELECT k, sqrt(x), sin(x), tan(x), asin(x), atan(x), cos(x), exp(x) FROM t, where t holds (0, -0.0) and (1, 0.0) as DOUBLE",
           "observed": "k = 0: -0.0, -0.0, -0.0, -0.0, -0.0, 1.0, 1.0; k = 1: 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0 (the sign of each result read with copysign)"
+        },
+        {
+          "sql": "SELECT sqrt(-CAST(0 AS FLOAT)), sin(-CAST(0 AS FLOAT)), tan(-CAST(0 AS FLOAT)), asin(-CAST(0 AS FLOAT)), atan(-CAST(0 AS FLOAT)), typeof(sqrt(-CAST(0 AS FLOAT)))",
+          "observed": "-0.0 for each of the five, and the type is double: a FLOAT argument is promoted"
         }
       ],
       "notes": [
