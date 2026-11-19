@@ -15,6 +15,7 @@ import sverify as sv
 from sverify._state import Merger
 from sverify.engine import plan_json, written_plan
 from sverify_polars import engine as E
+from sverify_polars.store import PolarsStore
 
 ROWS = st.lists(
     st.tuples(
@@ -74,7 +75,7 @@ def test_the_merge_plan_as_a_bag_is_the_merge_plan(a, b):
     schema = pa.schema(
         [("k", pa.int64()), ("s", pa.string()), ("x", pa.float64()), ("__weight", pa.int64())]
     )
-    plan = Merger(sv.connect("polars"), schema).plan()
+    plan = Merger(sv.connect("polars"), schema, PolarsStore()).plan()
     assert plan is not None
     tables = {
         "$merge_a": table(a).rename_columns(schema.names),

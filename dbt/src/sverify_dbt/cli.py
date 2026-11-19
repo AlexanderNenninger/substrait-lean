@@ -9,13 +9,16 @@ import sys
 from importlib.metadata import version as _version
 from pathlib import Path
 
+from sverify.errors import UnsupportedError
+
 from sverify_dbt import formats
 from sverify_dbt.check import check
 from sverify_dbt.manifest import ProjectError
 from sverify_dbt.result import CheckResult
 
-#: The exit code of a check past its time or memory budget, as `sverify check` has it.
-BUDGET = 4
+#: The exit codes of `sverify check`: 0 holds, 1 not proved, 2 usage, 3 a model
+#: refused (`--fail-on refused`) or the check unsupported, 4 a budget, 6 an error.
+NOT_PROVED, USAGE, REFUSED, BUDGET, ERROR = 1, 2, 3, 4, 6
 
 
 def _hard_stop() -> None:
@@ -98,11 +101,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     c.add_argument(
         "--fail-on",
-        choices=["contract", "unproved", "never"],
+        choices=["contract", "unproved", "refused", "never"],
         default="contract",
-        help="exit with status 1 on a contract that does not match or a constraint not "
-        "proved (contract, the default), also on any test not proved or model refused "
-        "(unproved), or never",
+        help="exit 1 on a contract that does not match or a constraint not proved "
+        "(contract, the default); unproved: also on any test not proved; refused: all of "
+        "that, and exit 3 when a model was refused (sverify cannot read it); or never",
     )
     g = sub.add_parser(
         "suggest",
@@ -138,14 +141,18 @@ def main(argv: list[str] | None = None) -> int:
     except _limits.BudgetExceeded as e:
         print(f"sverify-dbt: {e}", file=sys.stderr)
         return BUDGET
+    except UnsupportedError as e:
+        print(f"sverify-dbt: {e}", file=sys.stderr)
+        return REFUSED
     except (ProjectError, ValueError) as e:
         print(f"sverify-dbt: {e}", file=sys.stderr)
-        return 2
+        return USAGE
     except Exception as e:
         if _limits.is_out_of_memory(e):
             print(f"sverify-dbt: memory budget exceeded ({e})", file=sys.stderr)
             return BUDGET
-        raise
+        print(f"sverify-dbt: error: {type(e).__name__}: {e}", file=sys.stderr)
+        return ERROR
     print(_render(result, args.format))
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
@@ -155,13 +162,27 @@ def main(argv: list[str] | None = None) -> int:
             "`dbt build --exclude selector:sverify_proved` to skip them",
             file=sys.stderr,
         )
+    return _exit_code(result, args.fail_on)
+
+
+def _exit_code(result: CheckResult, fail_on: str) -> int:
+    """1 where something is not proved (`--fail-on`), else 3 where a model is
+    refused and `--fail-on refused` asks, else 0. A refused model's tests and
+    constraints are not checked, and its reason is the refusal, not a failed
+    gate (#891, 1.3)."""
+    if fail_on == "never":
+        return 0
     failed = bool(result.contract_errors or result.unproved_constraints)
-    if args.fail_on == "unproved":
+    if fail_on in ("unproved", "refused"):
         failed = failed or any(
-            m.refused or m.by_status("not proved") or m.by_status("not checked")
+            m.by_status("not proved") or (not m.refused and m.by_status("not checked"))
             for m in result.models
         )
-    return 1 if failed and args.fail_on != "never" else 0
+    if failed:
+        return NOT_PROVED
+    if fail_on == "refused" and any(m.refused for m in result.models):
+        return REFUSED
+    return 0
 
 
 def _suggest(args: argparse.Namespace) -> int:

@@ -171,8 +171,9 @@ An incremental view's state is a weighted table: its rows, each once, with
 their number of copies (`sverify._weighted`). On DuckDB, DuckDB holds it
 between refreshes (`sverify._state.DuckDBStore`, a `Resident` table in the
 process's one DuckDB database, which the engine and every connection's Ibis
-backend share), and the view's rows are a DuckDB view of it. On the other
-engines it is an Arrow table. Either way, states and changes are added up by
+backend share), and the view's rows are a DuckDB view of it. On Polars and
+Spark it is a list of Parquet parts that the engine writes and reads
+(`sverify._parts`). Either way, states and changes are added up by
 one plan Lean checks: the union of two weighted tables, grouped by every
 column, with the weights summed and the groups of weight 0 left out
 (`sverify._state.Merger`). Each engine's lowering groups rows as the reference
@@ -189,6 +190,33 @@ before the commit, by a view recomputed on the new tables or by the audit,
 is merged in full. Each view keeps a log of its changes for the sinks that
 have not written them yet, and a sink writes their sum
 (`IncrementalView.changes_since`), so no old state is kept.
+
+On Polars and Spark, a refresh writes the change as a new part and leaves
+the state's other parts where they are, so the state stays out of the Python
+process (#1329). Sverify adds the parts up, with the same merge plan, when
+something reads the table (the view's rows, a sink, `rows()`), when a change
+deletes a row, and when the rows added since the last sum are as many as the
+sum holds or there are more than 16 parts, so the files on disk stay within
+about twice the added-up state. A refresh that only inserts costs the change.
+On Polars, with a state of 2 or 8 million rows, inserting 100,000 rows takes
+0.1 s at either size, a refresh that deletes a row takes 0.4 s and 1.6 s, and
+the first read of the table after four inserts takes 0.2 s and 0.5 s
+([#1712](https://github.com/AlexanderNenninger/substrait-lean/pull/1712)).
+On Spark each change is a Spark job that writes Parquet, so a refresh costs
+more than it did while the state sat in the driver: four inserts of a quarter
+of the rows each into a filter view take about 2.9 times as long on a local
+session (17.3 s against 6.0 s for 2 million rows), and the driver peaks at
+525 MB where it peaked at 708 MB, and at 1104 MB where it peaked at 1849 MB
+for 8 million rows
+([#1680](https://github.com/AlexanderNenninger/substrait-lean/pull/1680)). On
+Spark, inserting 100,000 rows into a built state takes 1.0 s at 2 or 8
+million rows, a refresh that deletes a row takes 2.8 s and 9.3 s, and the
+first read of the table after four inserts takes 2.9 s and 10.1 s. On both
+engines, a read after every refresh and a refresh that deletes a row pay the
+merge over the whole state each time.
+`SVERIFY_STATE_LOCATION` names where the parts live: a directory, or a URI
+that the driver and every executor read and write
+([Environment variables](tasks.md#environment-variables)).
 
 A node on DuckDB has DuckDB write its Delta and Iceberg sinks
 (`sverify.io._engine`). DuckDB writes the Parquet files of the state or of

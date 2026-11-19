@@ -259,6 +259,24 @@
         }
       }
     },
+    "dialect_differences": {
+      "description": "For SQL, where the reference reads the text differently from DuckDB: the construct, where it is, both readings, an example and the spellings that mean the same under both semantics.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "construct", "where", "here", "dialect", "example", "spellings"],
+        "properties": {
+          "key": {"enum": ["corr_degenerate"]},
+          "construct": {"type": "string"},
+          "where": {"type": "string"},
+          "here": {"type": "string"},
+          "dialect": {"type": "string"},
+          "example": {"type": "string"},
+          "spellings": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
     "rewrites": {
       "description": "The rewrites of the optimized plan.",
       "type": "array",

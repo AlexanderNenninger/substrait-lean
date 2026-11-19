@@ -11,6 +11,7 @@ import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
 from sverify._decimals import EXACT
+from sverify._dialect import REFUSED
 from sverify.plan_json import (
     SqlUnsupported,
     Unsupported,
@@ -20,6 +21,7 @@ from sverify.plan_json import (
 )
 from sverify.sql_lift._base import (
     DIALECT,
+    DUCKDB,
     Column,
     E,
     Sub,
@@ -81,17 +83,28 @@ def _in_filtered_aggregate(node: sge.Expression) -> bool:
 _ROUNDED = {sge.Round: "round", sge.Floor: "floor", sge.Ceil: "ceil"}
 
 
+def _rounding(node: sge.Cast) -> str | None:
+    """`round`, `floor` or `ceil` (no digit count) when `node` casts one of them,
+    through any parentheses: its operand is integral, so both readings of the
+    cast agree. `round(x, 2)` is not: it leaves a fraction."""
+    inner = node.this
+    while isinstance(inner, sge.Paren):
+        inner = inner.this
+    name = _ROUNDED.get(type(inner))
+    return None if name is None or inner.args.get("decimals") is not None else name
+
+
 def _rounded_to_bigint(lf: _Lift, node: sge.Cast, a: E, t: Any, sub: Sub) -> E | None:
     """`CAST(round(x) AS BIGINT)`, and of `floor(x)` and `ceil(x)`, of a double
     under DuckDB's semantics: the argument is integral, so DuckDB's half-to-even
     cast is the model's truncating one (the generated table's
     `CAST(round(DOUBLE) AS BIGINT)`, #1655). None for any other cast."""
+    name = _rounding(node)
+    if name is None or not (a.type.is_float64() and _same(t, dt.int64)):
+        return None
     inner = node.this
-    name = _ROUNDED.get(type(inner))
-    if name is None or inner.args.get("decimals") is not None:
-        return None
-    if not (a.type.is_float64() and _same(t, dt.int64)):
-        return None
+    while isinstance(inner, sge.Paren):
+        inner = inner.this
     return _generated(lf, f"CAST({name}(DOUBLE) AS BIGINT)", [sub(inner.this)])
 
 
@@ -167,10 +180,18 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     # Other casts: pending generation (#268).
     if t.is_integer() and (a.type.is_float64() or a.type.is_decimal()):
         rounding = lf.profile.float_to_int if a.type.is_float64() else lf.profile.decimal_to_int
+        key = "float_to_int" if a.type.is_float64() else "decimal_to_int"
         if rounding != "TRUNCATE":
-            raise Unsupported(
+            raise SqlUnsupported(
                 f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
-                "model's casts (they truncate) cannot state yet; use semantics='reference'"
+                f"model's casts (they truncate) cannot state yet (#322); {REFUSED[key]}"
+            )
+        # `round`, `floor` and `ceil` leave an integral double: both readings agree.
+        if _rounding(node) is None:
+            raise SqlUnsupported(
+                f"CAST of a {a.type} to {t} is DuckDB's cast, which rounds "
+                f"({getattr(DUCKDB, key)}); sverify's reference truncates (R9); "
+                f"{REFUSED[key]}"
             )
     if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
         raise SqlUnsupported(

@@ -62,6 +62,7 @@ import Sverify.Core.Ties
 import SubstraitLean.Seam
 import Sverify.Analysis.Knowledge
 import SubstraitLean.Choices
+import SubstraitLean.ChoicesSound
 import Sverify.DuckDB.SQL
 import Sverify.DuckDB.LiftHint
 import Sverify.DuckDB.LiftCache
