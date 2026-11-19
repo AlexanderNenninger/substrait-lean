@@ -20,10 +20,26 @@ from test_negzero_writer import T, X
 
 pytestmark = pytest.mark.backend("spark")
 
-#: The most ulps from libm's value that spark-elem-rounding's probes found, rounded up.
-ULPS = 2
+#: S + R per function in ulps (`EngineProfile.elemUlps`, spark-ulp-libm): the plan's bound
+#: from libm's value, which Python's `math` calls.
+ULPS = {"ln": 2, "log10": 3, "log2": 4.5, "log(3)": 5, "sin": 2, "cos": 2, "tan": 4,
+        "asin": 2, "acos": 2, "atan": 2, "exp": 2}  # fmt: skip
 
-INPUTS = [0.1, 0.5, 0.9, 1.0, 1.5, 2.0, 3.7, 10.0, 123.456, 1e-5, 700.0]
+INPUTS = [
+    1.0000000000000002,
+    0.9999999999999999,
+    0.1,
+    0.5,
+    0.9,
+    1.0,
+    1.5,
+    2.0,
+    3.7,
+    10.0,
+    123.456,
+    1e-5,
+    700.0,
+]
 UNIT = [-0.9, -0.5, -0.1, 0.0, 0.3, 0.75, 1.0]
 
 #: label -> (expression, libm's value, inputs inside the domain).
@@ -33,8 +49,8 @@ FUNCS: dict[str, tuple[Callable, Callable[[float], float], list[float]]] = {
     "log10": (lambda: X.log10(), math.log10, INPUTS),
     "log2": (lambda: X.log2(), math.log2, INPUTS),
     "log(3)": (lambda: X.log(3.0), lambda x: math.log(x) / math.log(3.0), INPUTS),
-    "sin": (lambda: X.sin(), math.sin, [*INPUTS, -2.5]),
-    "cos": (lambda: X.cos(), math.cos, [*INPUTS, -2.5]),
+    "sin": (lambda: X.sin(), math.sin, [*INPUTS, -2.5, math.pi, 1048576.0, 1.5707963267948966]),
+    "cos": (lambda: X.cos(), math.cos, [*INPUTS, -2.5, math.pi / 2, 1048576.0]),
     "tan": (lambda: X.tan(), math.tan, [*INPUTS, -2.5]),
     "asin": (lambda: X.asin(), math.asin, UNIT),
     "acos": (lambda: X.acos(), math.acos, UNIT),
@@ -55,7 +71,12 @@ def test_spark_is_within_ulps_of_libm(label: str) -> None:
     got = on_spark(T.select(T.k, v=make()), xs)
     for x, g in zip(xs, got, strict=True):
         want = libm(x)
-        assert g is not None and abs(g - want) <= ULPS * math.ulp(want), (label, x, g, want)
+        assert g is not None and abs(g - want) <= ULPS[label] * math.ulp(want) + 1e-300, (
+            label,
+            x,
+            g,
+            want,
+        )
 
 
 @pytest.mark.parametrize(

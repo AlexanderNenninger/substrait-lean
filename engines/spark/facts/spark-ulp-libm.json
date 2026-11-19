@@ -1,0 +1,75 @@
+{
+ "id": "spark-ulp-libm",
+ "engine": "spark",
+ "engine_version": "4.3.0",
+ "title": "Elementary functions: Spark's distance from the exact value, and from libm's",
+ "verdict": "each function within 1 ulp of exact (log2, log(b, x): by formula 2.5); measured at most 1.24 ulp, on macOS arm64 and Linux x86_64",
+ "area": "doubles",
+ "options": [
+  "rounding"
+ ],
+ "rows": [
+  {
+   "group": "fp.elem",
+   "option": "rounding",
+   "types": [
+    "fp64"
+   ]
+  },
+  {
+   "group": "fp.log",
+   "option": "rounding",
+   "types": [
+    "fp64"
+   ]
+  }
+ ],
+ "constructs": [
+  "ln",
+  "log10",
+  "log2",
+  "log",
+  "sin",
+  "cos",
+  "tan",
+  "asin",
+  "acos",
+  "atan"
+ ],
+ "settings": {
+  "platform": [
+   "macOS arm64",
+   "Linux x86_64"
+  ]
+ },
+ "description": [
+  "S, Spark's distance from the exact value, in ulps, by source: `ln`, `log10`: 1 (`StrictMath`, fdlibm; Java SE `Math.log`: 'within 1 ulp of the exact result'); `log2` is `ln x / ln 2`: 1 + 1 + 0.5 = 2.5 by formula; `log(b, x)` is `ln x / ln b`: 2.5; `sin`, `cos`, `tan`, `asin`, `acos`, `atan`: 1 (Java SE `Math`: within 1 ulp of the exact result, for every argument). Java 17 and 21, the JVMs Spark 4.3 runs on, give the same sentences. R, the reference's own distance (its `libm`), is in duckdb-ulp-libm: ln 1, log10 2, log2 2, sin, cos, asin, acos, atan 1, tan 3 (2.4 measured on macOS), `log(b, x)` 2.5 by its formula. The plan's bound uses S + R per call (`EngineProfile.elemUlps`, ruling 132).",
+  "Measured against the correctly rounded value (mpmath, 300 bits; `sverify_dev.probe_spark_ulp`, DOUBLE inputs, 1 500 draws per function on macOS arm64 under JDK 21, 3 000 on Linux x86_64, glibc 2.39), the largest distance in ulps. macOS: exp 0.78, ln 0.61, log10 0.63, log2 0.89, log(b, x) 1.09, sin 0.98, cos 0.91, tan 0.71, asin 0.67, acos 0.82, atan 0.71; sin, cos, tan of arguments up to 1e300: 0.94, 0.95, 0.72. Linux: exp 0.78, ln 0.61, log10 0.63, log2 1.00, log(b, x) 1.24, sin 0.51, cos 0.50, tan 0.51, asin 0.70, acos 0.82, atan 0.71; huge arguments of sin, cos, tan: 0.50, 0.50, 0.54. Every maximum is below S. The difference against the reference binary is not measured yet.",
+  "The plan's bound for `sin`, `cos` and `tan` is stated for |x| up to 2^20 only (`Epsilon.trigArgMax`): Java gives them one ulp for every argument, but the reference's glibc errs by up to 14 ulp at huge ones (duckdb-ulp-libm). glibc's switch to its large-argument reduction was not checked in its source."
+ ],
+ "reference": "The reference's value is the platform's libm (`FMath.apply`); the bound is the sum of both distances, tested and not proved (ruling 132, #271).",
+ "status": "open",
+ "evidence": "probe",
+ "issues": [
+  271
+ ],
+ "provenance": [
+  {
+   "checked_at": "2026-11-19",
+   "method": "docs",
+   "checked_by": "Spark math session (#271)",
+   "evidence": [
+    {
+     "url": "https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Math.html",
+     "note": "sin, cos, tan, asin, acos, atan, log, log10: each result within 1 ulp of the exact result"
+    }
+   ]
+  },
+  {
+   "checked_at": "2026-11-19",
+   "method": "probe",
+   "checked_by": "sverify_dev.probe_spark_ulp on macOS arm64 and homelab (Spark math session, #271)",
+   "notes": "Spark 4.3.0 local[2], ANSI on; seeds fixed by function name."
+  }
+ ]
+}
