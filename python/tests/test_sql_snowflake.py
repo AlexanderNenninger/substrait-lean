@@ -27,6 +27,7 @@ import pytest
 import sqlglot
 
 import sverify as sv
+from _repo import needs_repo
 from sverify.engine import run_checker
 from sverify.engines import substrait_json
 from sverify.ibis_substrait import to_substrait_json
@@ -220,6 +221,19 @@ def test_pipeline_snapshot(name: str):
     sql = snowflake_sql(ALL_PLANS[name], tie_free=name in TIE_FREE)
     assert not sql.startswith("-- Unsupported"), sql  # the incremental fragment all maps
     check_snapshot(f"pipeline_{name}", sql)
+
+
+@needs_repo
+def test_every_snapshot_has_a_test():
+    """Each Snowflake and Spark snapshot is a fixture's or a pipeline's, so
+    none outlives the test that wrote it (#211 left twelve behind)."""
+    names = {p.stem for p in accepted_fixtures()} | {f"pipeline_{n}" for n in ALL_PLANS}
+    for dialect in ("snowflake", "spark"):
+        suffix = f".{dialect}.sql"
+        orphans = [
+            p.name for p in SNAPSHOTS.glob(f"*{suffix}") if p.name.removesuffix(suffix) not in names
+        ]
+        assert not orphans, orphans
 
 
 # ------------------------------------------------------------ hooks on their own
