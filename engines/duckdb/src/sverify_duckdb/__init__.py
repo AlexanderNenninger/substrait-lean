@@ -184,6 +184,8 @@ def _version() -> str | None:
 
 
 def _read_settings(names: Sequence[str], session: Any) -> dict[str, Any]:
+    if find_spec("duckdb") is None:
+        return {}  # no DuckDB session to read: nothing runs on it either
     from sverify_duckdb import engine as duckdb_engine
 
     return duckdb_engine.settings(names)
