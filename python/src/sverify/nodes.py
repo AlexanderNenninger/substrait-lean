@@ -1405,7 +1405,8 @@ class Group:
                     entry = StageRefresh(n.name, None, held=f"waiting for {', '.join(blocked)}")
                     waiting[id(n)] = n.name
                     done.append(entry)
-                    _log.info("%s", entry.summary())
+                    if _log.isEnabledFor(logging.INFO):
+                        _log.info("%s", entry.summary())
                     if runs is not None:
                         runs.start(n)
                         runs.complete(n, entry)
@@ -1418,7 +1419,8 @@ class Group:
                 if entry.held is not None and n._stage is None:
                     waiting[id(n)] = n.name
                 done.append(entry)
-                _log.info("%s", entry.summary())
+                if _log.isEnabledFor(logging.INFO):
+                    _log.info("%s", entry.summary())
             return Refresh(done)
         except BaseException as e:
             if runs is not None:

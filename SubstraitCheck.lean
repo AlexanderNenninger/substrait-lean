@@ -45,8 +45,8 @@ JSON list per row. `sverify_dev.probe` compares them with DuckDB (#242).
 
 `substrait-check --raises plan.json`: the first error the reference raises
 anywhere in the plan, its name on one line, or nothing: every filter,
-projection and aggregate evaluates its expressions on the rows its input
-gives. What `sverify.testing.lean_values` reads to raise `LeanRaised`.
+projection, join and aggregate evaluates its expressions on the rows its
+input gives. What `sverify.testing.lean_values` reads to raise `LeanRaised`.
 
 `substrait-check --rows plan.json`: the default check's well-formedness
 verdict and rows only, without the plan, its round trip or its other
@@ -162,19 +162,24 @@ def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String 
 
 /-- The first error the reference profile `p` raises in the plan: each
 filter, projection and aggregate evaluates its expressions on the rows its
-input gives (`Rel.evalFast`, which equals `Rel.eval`), inputs first. An aggregate's argument is evaluated
-on the rows its filter keeps. Joins and windows are not looked into: a join's
-condition would be evaluated on the cross product, quadratic where
-`Rel.evalFast` hashes (`test_eval_fast`), and the inputs use `evalFast` for the
-same reason. -/
+input gives (`Rel.evalFast`, which equals `Rel.eval`), inputs first. An
+aggregate's argument is evaluated on the rows its filter keeps. A join's or
+semi join's condition is evaluated on the pairs `Rel.evalFast` tests, the left
+row with the right rows of its equi-join keys (`JoinIndex.candidates`; all of
+them where the condition has none), not on the cross product, which is
+quadratic (`test_eval_fast`). A window's aggregates are not looked into: a
+frame may leave a row out. -/
 def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .read _ | .values _ _ => none
   | .filter r c => relRaised cat p r <|> firstError p (r.evalFast cat) [c]
   | .project r es => relRaised cat p r <|> firstError p (r.evalFast cat) es
   | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
     relRaised cat p r
-  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
-    relRaised cat p a <|> relRaised cat p b
+  | .cross a b | .unionAll a b => relRaised cat p a <|> relRaised cat p b
+  | .join a b _ on | .semi a b _ on =>
+    let index := JoinIndex.make on (a.arity cat) (b.evalFast cat)
+    relRaised cat p a <|> relRaised cat p b <|> (a.evalFast cat).findSome? fun x =>
+      firstError p ((index.candidates x).map (x ++ ·)) [on]
   | .aggregate r gs ms =>
     let rows := r.evalFast cat
     relRaised cat p r <|> firstError p rows gs <|> ms.findSome? fun m =>
