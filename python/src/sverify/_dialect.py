@@ -46,16 +46,16 @@ class DialectDifference:
 
 
 #: The `Profile` fields the lift refuses under the reference instead of listing
-#: (D54, the user's choice on #1484): the hint names the spellings that lift for
+#: (D54, the user's choice on #1484): the message names the spellings that lift for
 #: the source type and mean the same under both semantics.
 REFUSED: dict[str, str] = {
     "float_to_int": (
-        "write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
+        "CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
         "which mean the same on both"
     ),
     "decimal_to_int": (
-        "round, floor and ceil of a DECIMAL are not lifted yet; "
-        "write CAST(round(CAST(d AS DOUBLE)) AS BIGINT), which means the same on both"
+        "CAST(round(CAST(d AS DOUBLE)) AS BIGINT), which means the same on both "
+        "(round, floor and ceil of a DECIMAL are not lifted yet)"
     ),
 }
 

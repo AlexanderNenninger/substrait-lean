@@ -173,15 +173,14 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         if rounding != "TRUNCATE":
             raise SqlUnsupported(
                 f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
-                "model's casts (they truncate) cannot state yet (#322)",
-                hint=REFUSED[key],
+                f"model's casts (they truncate) cannot state yet (#322); write {REFUSED[key]}"
             )
         # `round`, `floor` and `ceil` leave an integral double: both readings agree.
         if not isinstance(node.this, (sge.Round, sge.Floor, sge.Ceil)):
             raise SqlUnsupported(
                 f"CAST of a {a.type} to {t} is DuckDB's cast, which rounds "
-                f"({getattr(DUCKDB, key)}); sverify's reference truncates (R9)",
-                hint=REFUSED[key],
+                f"({getattr(DUCKDB, key)}); sverify's reference truncates (R9); "
+                f"write {REFUSED[key]}"
             )
     if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
         raise SqlUnsupported(
