@@ -1,137 +1,33 @@
-"""Polars's store (#173 N6, #1329): a view's state as a generation of Parquet
+"""Polars's store (#173 N6, #1329, N14): a view's state as parts of Parquet
 files that Polars writes and scans lazily, never as a table in the Python
 process.
 
-The handle (`PolarsState`) is a Parquet file in a state directory and the
-Arrow schema of the weighted table it holds. Every operation makes a new
-generation: Polars computes it as a lazy frame and streams it into a file
-(`sink_parquet`), so a state larger than memory is never held whole. A
-generation's file is deleted once nothing refers to its handle, which is how
-generation n-1 goes after epoch n has replaced it. DuckDB reads the same file
-(`attach`), so the view's rows are a table of the `Connection` like any
-other.
-
-Merges run the merge plan on Polars (`Store.merge`). Only answers cross into
-Arrow: `to_arrow` reads a generation back.
+The parts, their lifetimes, the compaction rule and the exits that add them up
+are `sverify._parts`; this module is what Polars supplies to it
+(`PolarsBackend`). Polars computes a frame lazily and streams it into a file
+(`sink_parquet`), so a state larger than memory is never held whole.
 """
 
 from __future__ import annotations
 
-import atexit
-import contextlib
+import glob
 import os
-import shutil
-import tempfile
-import uuid
-import weakref
-from collections.abc import Callable, Sequence
-from typing import Any, Literal
+from collections.abc import Sequence
+from typing import Any
 
-import duckdb
 import polars as pl
 import pyarrow as pa
-import pyarrow.parquet as pq
 
-from sverify._arrow_state import ArrowOps
-from sverify._scan import Native, _q
-from sverify._store import MERGE_A, MERGE_B, State
+from sverify._parts import Backend, Lazy, Part, PartsStore
+from sverify._store import MERGE_A, MERGE_B
 from sverify._weighted import WEIGHT
 from sverify_polars import engine, shims
 
-_DIR: str | None = None
+_OVERFLOW = "a row's weight sum leaves 64 bits"
 
 
-def _state_dir() -> str:
-    """The process's state directory, removed at exit."""
-    global _DIR
-    if _DIR is None:
-        _DIR = tempfile.mkdtemp(prefix="sverify-polars-state-")
-        atexit.register(shutil.rmtree, _DIR, ignore_errors=True)
-    return _DIR
-
-
-class PolarsState(Native):
-    """A weighted table held as a Parquet file in the state directory.
-
-    Attributes:
-        path: The file.
-        schema: The table's Arrow schema, with `WEIGHT` where it has one.
-    """
-
-    def __init__(self, path: str, schema: pa.Schema, owner: PolarsState | None = None):
-        self.path, self.schema, self._owner = path, schema, owner
-        if owner is None:
-            weakref.finalize(self, _remove, path)
-
-    def lazy(self) -> pl.LazyFrame:
-        """The table as a lazy frame over its file: its columns, which can be
-        fewer than the file's (`owner` holds the file)."""
-        return pl.scan_parquet(self.path).select(self.schema.names)
-
-    def columns(self, names: Sequence[str]) -> PolarsState:
-        """The table's columns `names`, over the same file (kept while it is
-        read)."""
-        schema = pa.schema([self.schema.field(c) for c in names])
-        return PolarsState(self.path, schema, owner=self._owner or self)
-
-    def attach(
-        self, db: duckdb.DuckDBPyConnection, name: str, *, table: bool = False
-    ) -> Callable[[], None]:
-        kind = "TABLE" if table else "VIEW"
-        cols = ", ".join(_q(c) for c in self.schema.names)
-        path = self.path.replace("'", "''")
-        db.execute(
-            f"CREATE OR REPLACE TEMP {kind} {_q(name)} AS SELECT {cols} FROM read_parquet('{path}')"
-        )
-
-        def drop() -> None:
-            db.execute(f"DROP {kind} IF EXISTS {_q(name)}")
-
-        return drop
-
-    def to_arrow(self) -> pa.Table:
-        return pq.read_table(self.path).select(self.schema.names).cast(self.schema)
-
-    def readable(self) -> bool:
-        return os.path.exists(self.path)
-
-
-def _remove(path: str) -> None:
-    with contextlib.suppress(OSError):
-        os.unlink(path)
-
-
-class LazyState:
-    """A weighted table Polars has not computed yet: the result of a run, or
-    weights set on one. A merge writes it as a generation, once."""
-
-    def __init__(self, lf: pl.LazyFrame, schema: pa.Schema):
-        self.lf, self.schema = lf, schema
-
-
-def _lazy(z: Any) -> pl.LazyFrame:
-    """A weighted table of any shape the store meets as a lazy frame."""
-    if isinstance(z, PolarsState):
-        return z.lazy()
-    if isinstance(z, LazyState):
-        return z.lf
-    if isinstance(z, pl.LazyFrame):
-        return z
-    return pl.from_arrow(z).lazy()  # type: ignore[union-attr]
-
-
-def _write(lf: pl.LazyFrame, schema: pa.Schema) -> PolarsState:
-    """A new generation: `lf` (the columns of `schema`, in its types) streamed
-    into a file."""
-    path = os.path.join(_state_dir(), f"gen-{uuid.uuid4().hex}.parquet")
-    engine.sink_parquet(lf, path)
-    return PolarsState(path, schema)
-
-
-def lazy_plan(lf: pl.LazyFrame) -> LazyState:
-    """The result of a translated plan, to be written by the merge that adds
-    it to the state: its Arrow schema from the frame's own (an empty collect)."""
-    return LazyState(lf, lf.head(0).collect().to_arrow().schema)
+def _dtype(f: pa.Field) -> pl.DataType:
+    return pl.from_arrow(pa.schema([f]).empty_table()).schema[f.name]  # type: ignore[union-attr]
 
 
 def _key(e: pl.Expr, t: pa.DataType) -> pl.Expr:
@@ -140,112 +36,104 @@ def _key(e: pl.Expr, t: pa.DataType) -> pl.Expr:
     return shims.one_zero(e) if pa.types.is_floating(t) else e
 
 
-_OVERFLOW = "a row's weight sum leaves 64 bits"
+def _files(path: str) -> list[str]:
+    return sorted(glob.glob(os.path.join(path, "*.parquet")))
 
 
-class PolarsStore(ArrowOps):
-    """A view's state as generations of Parquet files that Polars scans
-    (`PolarsState`). A weighted table that is an Arrow table (a change, the
-    state per group) is handled as the Arrow store does."""
+class PolarsBackend(Backend):
+    """Polars's frames (`LazyFrame`)."""
 
-    keep = True
-
-    def merge(
-        self, plan: str, schema: pa.Schema, a: State, b: State, *, keep: bool
-    ) -> State | pa.Table:
-        # The plan's own overflow guard (a callback per batch) is left out: a
-        # weight sum that leaves 64 bits comes out NULL, which is checked
-        # natively on the result, one `any()` over the written weights.
-        lf = engine.to_lazy(
-            plan, {MERGE_A: _lazy(a), MERGE_B: _lazy(b)}, guards=False, rows="multiset"
+    def write(
+        self, frame: pl.LazyFrame, schema: pa.Schema, path: str, *, merged: bool = False
+    ) -> None:
+        names = frame.collect_schema().names()
+        frame = frame.select(
+            [pl.col(n).cast(_dtype(f)).alias(f.name) for n, f in zip(names, schema, strict=True)]
         )
-        lf = lf.select([pl.col(f.name).cast(_dtype(f)) for f in schema])
-        if keep:
-            out = _write(lf, schema)
-            if out.lazy().select(pl.col(WEIGHT).is_null().any()).collect().item():
-                raise engine.SumOverflow(_OVERFLOW)
-            return out
-        table = engine.collect(lf).to_arrow().cast(schema)
-        if table.column(WEIGHT).null_count:
+        os.makedirs(path)
+        file = os.path.join(path, "part.parquet")
+        engine.sink_parquet(frame, file)
+        # The merge runs with its own guard off: a weight sum that leaves 64
+        # bits comes out NULL, which is checked natively on the written
+        # weights, one `any()`.
+        if merged and pl.scan_parquet(file).select(pl.col(WEIGHT).is_null().any()).collect().item():
+            raise engine.SumOverflow(_OVERFLOW)
+
+    def read(self, parts: Sequence[Part], schema: pa.Schema) -> pl.LazyFrame:
+        files = [f for p in parts for f in _files(p.path)]
+        return pl.scan_parquet(files).select(schema.names)
+
+    def run(self, plan: str, schema: pa.Schema, a: pl.LazyFrame, b: pl.LazyFrame) -> pl.LazyFrame:
+        return engine.to_lazy(plan, {MERGE_A: a, MERGE_B: b}, guards=False, rows="multiset")
+
+    def arrow(self, frame: pl.LazyFrame, schema: pa.Schema, *, merged: bool = False) -> pa.Table:
+        table = engine.collect(frame).to_arrow().rename_columns(schema.names).cast(schema)
+        if merged and WEIGHT in schema.names and table.column(WEIGHT).null_count:
             raise engine.SumOverflow(_OVERFLOW)
         return table
 
-    def kept(self, table: pa.Table) -> State:
-        return _write(_lazy(table), table.schema)
+    def frame(self, table: pa.Table) -> pl.LazyFrame:
+        return pl.from_arrow(table).lazy()  # type: ignore[union-attr]
 
-    def weighted(self, rows: Any, weight: int = 1) -> State:
-        if not isinstance(rows, PolarsState | LazyState):
-            return super().weighted(rows, weight)
-        out = pa.schema([*rows.schema, pa.field(WEIGHT, pa.int64())])
-        lf = _lazy(rows).with_columns(pl.lit(weight, pl.Int64).alias(WEIGHT))
-        return LazyState(lf, out)
+    def measure(self, path: str, weighted: bool) -> tuple[int, int | None, int | None]:
+        lf = pl.scan_parquet(_files(path))
+        if not weighted:
+            return int(lf.select(pl.len()).collect().item()), None, None
+        r = lf.select(pl.len(), pl.col(WEIGHT).min(), pl.col(WEIGHT).max()).collect().row(0)
+        return int(r[0]), r[1], r[2]
 
-    def negated(self, z: State) -> State:
-        if not isinstance(z, PolarsState | LazyState):
-            return super().negated(z)
-        return LazyState(_lazy(z).with_columns(-pl.col(WEIGHT)), z.schema)
+    def with_weight(self, frame: pl.LazyFrame, weight: int) -> pl.LazyFrame:
+        return frame.with_columns(pl.lit(weight, pl.Int64).alias(WEIGHT))
 
-    def expanded(self, z: State) -> pa.Table | PolarsState:
-        """Each row as many times as its weight, as a generation of its own
-        (without `WEIGHT`)."""
-        if not isinstance(z, PolarsState):
-            return super().expanded(z)
-        names = [c for c in z.schema.names if c != WEIGHT]
-        schema = pa.schema([z.schema.field(c) for c in names])
-        if not z.lazy().select((pl.col(WEIGHT) != 1).any()).collect().item():
-            return z.columns(names)  # every row once: the state's own file
-        lf = (
-            z.lazy()
-            .with_columns(pl.int_ranges(0, pl.col(WEIGHT)).alias("__copy"))
+    def negate(self, frame: pl.LazyFrame) -> pl.LazyFrame:
+        return frame.with_columns(-pl.col(WEIGHT))
+
+    def copies(self, frame: pl.LazyFrame, names: Sequence[str]) -> pl.LazyFrame:
+        return (
+            frame.with_columns(pl.int_ranges(0, pl.col(WEIGHT)).alias("__copy"))
             .explode("__copy")
-            .select(names)
+            .select(list(names))
         )
-        return _write(lf, schema)
 
-    def has_negative(self, z: State) -> bool:
-        if not isinstance(z, PolarsState):
-            return super().has_negative(z)
-        return bool(z.lazy().select((pl.col(WEIGHT) < 0).any()).collect().item())
-
-    def retire(self, view: Any, column: str, cutoff: Any) -> int:
-        z = view.state
-        if not isinstance(z, PolarsState):
-            return super().retire(view, column, cutoff)
-        lf = z.lazy()
-        gone = lf.filter(pl.col(column) <= cutoff).select(pl.col(column).n_unique()).collect()
-        view.state = _write(lf.filter(pl.col(column) > cutoff), z.schema)
-        return int(gone.item())
-
-    def with_keys(self, z: State, columns: Sequence[str], keys: Any) -> State:
-        if not isinstance(z, PolarsState):
-            return super().with_keys(z, columns, keys)
-        return self._by_keys(z, columns, keys, "semi")
-
-    def without_keys(self, z: State, columns: Sequence[str], keys: Any) -> State:
-        if not isinstance(z, PolarsState):
-            return super().without_keys(z, columns, keys)
-        return self._by_keys(z, columns, keys, "anti")
-
-    def _by_keys(
-        self, z: PolarsState, columns: Sequence[str], keys: Any, how: Literal["semi", "anti"]
-    ) -> State:
-        left = z.lazy()
-        right = _lazy(keys)
-        names = right.collect_schema().names()
-        types = [z.schema.field(c).type for c in columns]
+    def filtered(
+        self,
+        left: pl.LazyFrame,
+        schema: pa.Schema,
+        columns: Sequence[str],
+        keys: pl.LazyFrame,
+        *,
+        anti: bool,
+    ) -> pl.LazyFrame:
+        names = keys.collect_schema().names()
+        types = [schema.field(c).type for c in columns]
         lk = [f"__k{i}" for i in range(len(columns))]
-        left_marked = left.with_columns(
+        marked = left.with_columns(
             [_key(pl.col(c), t).alias(k) for c, t, k in zip(columns, types, lk, strict=True)]
         )
-        right_marked = right.select(
+        right = keys.select(
             [
-                _key(pl.col(n).cast(_dtype(z.schema.field(c))), t).alias(k)
+                _key(pl.col(n).cast(_dtype(schema.field(c))), t).alias(k)
                 for n, c, t, k in zip(names, columns, types, lk, strict=True)
             ]
         ).unique()
-        out = left_marked.join(right_marked, on=lk, how=how, nulls_equal=True).drop(lk)
-        return _write(out, z.schema)
+        return marked.join(right, on=lk, how="anti" if anti else "semi", nulls_equal=True).drop(lk)
+
+    def split(self, frame: pl.LazyFrame, column: str, cutoff: Any) -> tuple[int, pl.LazyFrame]:
+        gone = frame.filter(pl.col(column) <= cutoff).select(pl.col(column).n_unique()).collect()
+        return int(gone.item()), frame.filter(pl.col(column) > cutoff)
 
 
-def _dtype(f: pa.Field) -> pl.DataType:
-    return pl.from_arrow(pa.schema([f]).empty_table()).schema[f.name]  # type: ignore[union-attr]
+BACKEND = PolarsBackend()
+
+
+def lazy_plan(lf: pl.LazyFrame) -> Lazy:
+    """The result of a translated plan, to be written by the merge that adds
+    it to the state: its Arrow schema from the frame's own (an empty collect)."""
+    return Lazy(lf, lf.head(0).collect().to_arrow().schema, BACKEND)
+
+
+class PolarsStore(PartsStore):
+    """A view's state as parts of Parquet files that Polars writes."""
+
+    def default_backend(self) -> Backend:
+        return BACKEND
