@@ -110,6 +110,15 @@ def test_lean_does_not_evaluate_entropy():
     assert result.stage == "oracle A" and "black box Lean does not evaluate" in result.detail
 
 
+def test_a_law_break_is_refused():
+    # A black box whose function breaks a declared law (non-NULL, and it gives
+    # NULL): the model keeps the row's sample there, and the checker refuses
+    # the rows instead of showing it (#1484).
+    code, out, err = run_checker(("--law-break-selftest",), "x")
+    assert code == 1 and out == ""
+    assert "rows not evaluated: black box law_break_selftest broke a declared law" in err
+
+
 @pytest.mark.parametrize("semantics", ["duckdb", "reference"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
@@ -128,6 +137,10 @@ def test_the_laws_prove_contracts(query, ensures, semantics):
     )
     assert report.verdict == sv.Verdict.PROVED, report
     assert not report.errors
+    # The report names the laws the proof may assume, from the checker (#1484).
+    name = "entropy" if "entropy" in query else "base64"
+    assert f"assumes: black box {name} keeps its declared laws" in str(report)
+    assert [b["name"] for b in report._black_boxes] == [name]
 
 
 def test_what_the_laws_do_not_say_stays_unproved():

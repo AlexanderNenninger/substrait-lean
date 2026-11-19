@@ -580,6 +580,11 @@ class Report:
     its bound's margin of the threshold (`Rel.marginCheck`). `run` runs each
     on the engine before the plan (`check_margins`); `rows_exact` holds
     given them."""
+    _black_boxes: list[dict[str, Any]] = field(default_factory=list, repr=False, compare=False)
+    """The black boxes the transformation calls, each with the laws its row
+    declares (`{"name", "laws"}`), as the checker prints them (#1484): the
+    proofs assume of a black box only these, and a test that finds one broken
+    affects the reports that list it."""
     _margin_flags: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
     """After a run with `on_inferred="warn"`, per engine, the groups the
     margin checks flagged (#929): for those, the contract holds up to the
@@ -1812,6 +1817,11 @@ class Report:
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
+        lines += [
+            f"assumes: black box {b['name']} keeps its declared laws"
+            + (f" ({', '.join(' '.join(map(str, law)) for law in b['laws'])})" if b["laws"] else "")
+            for b in self._black_boxes
+        ]
         lines += [f"checks at run time: {c['label']}" for c in self._margin_checks]
         for i in self.errors:
             lines.append(f"may fail: {i.message}")
@@ -1891,7 +1901,7 @@ class Report:
 
 
 #: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = ["table_params"]
+_REPORT_PRIVATE = ["table_params", "black_boxes"]
 
 _REPORT_INTERNAL = [
     "windows_total",

@@ -33,9 +33,12 @@ well-formedness `Boxes.WF`: each sample keeps its row's laws, which an engine
 package proves by reflection (`Reflect.lean`). There is no `axiom`.
 
 What is assumed is that an engine computes its rows' functions: that the
-engine's function keeps the laws, and is the one the plan calls. That is
+engine's function keeps the laws (`Boxes.Lawful`, under which the clamp never
+applies: `Boxes.Lawful.call`), and is the one the plan calls. That is
 `Impl.Faithful` (`Guards.lean`) and the profile's agreement with the engine,
-the hypotheses the theorems about engines already take.
+the hypotheses the theorems about engines already take. Where a row's function
+breaks a law the compiled checker panics, so it refuses the rows instead of
+showing the sample (#1484).
 -/
 
 namespace Substrait.BlackBox
@@ -242,21 +245,30 @@ namespace BlackBox
 /-! ## The functions -/
 
 /-- The model's value of a scalar black box: NULL for a NULL argument of a
-strict one, else the function where it keeps the laws. -/
+strict one, else the function where it keeps the laws. Where it breaks one,
+the value is the row's `sample` in the kernel, and the compiled checker
+panics, so it refuses the rows (`runOn`, #70) instead of showing the sample
+(#1484). -/
 def Scalar.call (f : Scalar) (vs : List Value) : Value :=
   if f.strict && vs.contains .null then .null else
     let v := f.eval vs
-    if ok f.result f.laws (!vs.contains .null) v then v else f.sample
+    if ok f.result f.laws (!vs.contains .null) v then v else
+      letI : Inhabited Value := ⟨f.sample⟩
+      panic! s!"black box {f.name} broke a declared law {repr f.laws}: {repr v}"
 
 /-- Does the scalar raise on these arguments? -/
 def Scalar.raisesOn (f : Scalar) (vs : List Value) : Bool :=
   f.raises == .sometimes && !vs.contains .null && f.raises? vs
 
-/-- The model's value of an aggregate black box of non-NULL values. -/
+/-- The model's value of an aggregate black box of non-NULL values; where the
+function breaks a law, the sample in the kernel and a panic in the compiled
+checker, as `Scalar.call`. -/
 def Aggregate.call (f : Aggregate) (vs : List Value) : Value :=
   if vs.isEmpty then f.empty else
     let v := f.eval vs
-    if ok f.result f.laws true v then v else f.sample
+    if ok f.result f.laws true v then v else
+      letI : Inhabited Value := ⟨f.sample⟩
+      panic! s!"black box {f.name} broke a declared law {repr f.laws}: {repr v}"
 
 /-- Does the aggregate raise on these values? -/
 def Aggregate.raisesOn (f : Aggregate) (vs : List Value) : Bool :=
@@ -359,3 +371,39 @@ theorem aggMayRaise_of_aggRaisesOn {B : Boxes} {name : String} {vs : List Value}
   cases hs : B.aggregate? name <;> simp_all [Aggregate.raisesOn]
 
 end Substrait.BlackBox
+
+namespace Substrait
+
+/-! ## What the clamp assumes -/
+
+open BlackBox in
+/-- **The catalogue's functions keep their declared laws** (#1484): each
+scalar's where it is not NULL by strictness, each aggregate's over values. It
+is part of D16's trusted claim that an engine computes the model
+(`Engine.Runs`), tested by `python/tests/test_black_box.py`; no theorem takes
+it as a hypothesis but `Boxes.Lawful.call`. -/
+def Boxes.Lawful (B : Boxes) : Prop :=
+  (∀ f ∈ B.scalars, ∀ vs, (f.strict && vs.contains .null) = false →
+      ok f.result f.laws (!vs.contains .null) (f.eval vs) = true) ∧
+    ∀ f ∈ B.aggregates, ∀ vs, vs ≠ [] → ok f.result f.laws true (f.eval vs) = true
+
+open BlackBox in
+/-- **Under `Boxes.Lawful` the model's value is the function's**: the clamp
+of `Scalar.call` and `Aggregate.call` (the sample where a law breaks) never
+applies, so `Lawful` is exactly what the clamp assumes of the engine. -/
+theorem Boxes.Lawful.call {B : Boxes} (h : B.Lawful) :
+    (∀ f ∈ B.scalars, ∀ vs,
+      f.call vs = if f.strict && vs.contains .null then .null else f.eval vs) ∧
+    ∀ f ∈ B.aggregates, ∀ vs, f.call vs = if vs.isEmpty then f.empty else f.eval vs := by
+  refine ⟨fun f hf vs => ?_, fun f hf vs => ?_⟩
+  · unfold Scalar.call
+    cases hs : (f.strict && vs.contains .null)
+    · simp only [Bool.false_eq_true, ↓reduceIte, h.1 f hf vs hs]
+    · rfl
+  · unfold Aggregate.call
+    cases he : vs.isEmpty
+    · have hne : vs ≠ [] := fun e => by simp [e] at he
+      simp only [Bool.false_eq_true, ↓reduceIte, h.2 f hf vs hne]
+    · rfl
+
+end Substrait

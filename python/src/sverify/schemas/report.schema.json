@@ -334,6 +334,17 @@
         "null"
       ]
     },
+    "black_boxes": {
+      "description": "The black boxes the transformation calls, each with the laws its row declares: what the proofs assume of them (substrait-check --contract's \"black_boxes\", #1484).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "laws": {"type": "array"}
+        }
+      }
+    },
     "floats_on": {
       "description": "Per engine, why its doubles may not meet the equivalence (empty where they do).",
       "type": "object",
