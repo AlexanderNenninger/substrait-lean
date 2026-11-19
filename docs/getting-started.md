@@ -125,7 +125,12 @@ print(report.run(con).to_pylist())
 with a `RouteError`; `report.run(con, unverified=True)` runs it anyway.
 
 The SQL is DuckDB's dialect, read with sverify's reference semantics
-(`semantics="duckdb"` reads it as DuckDB computes it). `//` is integer
+(`semantics="duckdb"` reads it as DuckDB computes it). Where the two differ on
+a value, the lift refuses the construct and names a spelling with one meaning
+(`CAST(x AS BIGINT)` of a double rounds on DuckDB and truncates in the
+reference; write `CAST(round(x) AS BIGINT)`), or `report.dialect_differences`
+lists it ([the list](reference-semantics.md#duckdb-sql-under-the-reference)).
+`//` is integer
 division, and `/` would give a double.
 
 ## 3. The preconditions a plan needs, declared and checked before the run
@@ -500,7 +505,7 @@ The most common, and what sverify does about each:
 
 | Pitfall | What the engines do | sverify |
 |---|---|---|
-| Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Snowflake and Spark SQL is only written with a proved `deterministic=True` |
+| Ties in `ROW_NUMBER`, `LAG`, `LIMIT`, top-N, dedup (44 of the 139 queries) | no engine promises an order among ties; Snowflake and Spark tables have no row order at all | without a key that rules ties out, nothing is proved (`deterministic=False`); Spark SQL is written with ties and a `LIMIT`'s rows open, as the reference allows; asking for Lean's row order (`rows="sequence"`) needs a proved `deterministic=True` |
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the reference's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | PostgreSQL truncates; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |

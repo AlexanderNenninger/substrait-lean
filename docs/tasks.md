@@ -680,6 +680,12 @@ not hide the next. A `refresh()` in the file belongs under
 `if __name__ == "__main__":`; while sverify checks the file, it raises. A
 directory with a `dbt_project.yml` goes to `sverify-dbt check`.
 
+A `DeltaSource` or `IcebergSource` opens its table to learn its schema, which
+on a pull request means credentials and a network. Declare it instead,
+`DeltaSource(uri, schema=pa.schema([...]))`: `check` proves from the declared
+schema and opens nothing, and every refresh compares the table's schema with
+the declared one and raises `SchemaError` where they differ, or where a column declared NOT NULL is nullable in the table.
+
 The output starts with the contract in plain words, for a pull request's
 comment or a phone's screen: what the output guarantees, what each refresh
 checks on the data, and what is not proved, each finding with a code.
@@ -758,6 +764,7 @@ given wins over the variable, and the variable over the default.
 | `SVERIFY_TIMEOUT` | `--timeout` | | 30 | seconds for proof, planning and checking; 0 turns it off |
 | `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | none | DuckDB's `memory_limit`, such as `2GB` |
 | `SVERIFY_TEMP_DIRECTORY` | | | a directory under the system's temporary one | DuckDB's `temp_directory`, where it spills past the memory limit |
+| `SVERIFY_STATE_LOCATION` | | | a directory under the system's temporary one | where Polars and Spark write an incremental view's state as Parquet parts: a directory, or a URI (`s3://bucket/state`) that the driver and every executor read and write |
 | `SVERIFY_CACHE` | | | on | `off`, `0`, `false` or `no` turns the proof cache off ([Checking without running](#checking-without-running)) |
 | `SVERIFY_CACHE_DIR` | | | `$XDG_CACHE_HOME/sverify`, else `~/.cache/sverify` | where the proof cache lives |
 | `SVERIFY_SECRETS` | | `Resolver.from_config(path)` | the nearest `pyproject.toml` | the TOML file whose `[tool.sverify.secrets]` table configures named secrets ([Credentials](#credentials)) |
@@ -1604,8 +1611,10 @@ the following about the warehouse:
   `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time zone, NTZ
   timestamps, case-sensitive names), and strings use the default
   `UTF8_BINARY` collation.
-* Both have no row order, so sorts, `LIMIT` and windows are refused unless
-  the report is `deterministic` (a key on the order columns in the
+* Both have no row order. `to_sql` writes sorts, `LIMIT` and windows with ties
+  and a `LIMIT`'s rows open, as the reference allows (`rows="multiset"`, the
+  default for these engines), and refuses `rows="sequence"`, Lean's list order,
+  unless the report is `deterministic` (a key on the order columns in the
   contract, which `to_sql` reads from the report). A `SUM` or `AVG` of
   doubles runs natively, within the plan's bound of the reference's correctly
   rounded sum. Snowflake has no interval type, so interval-valued

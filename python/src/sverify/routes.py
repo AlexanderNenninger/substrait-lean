@@ -1187,15 +1187,7 @@ def verified(report: Report) -> bool:
     """Whether a run may take the plan: it is proved (`Report.verdict`), or
     its only unproved postconditions are checked on the output data
     (`on_unproved="check"`)."""
-    if report._proved:
-        return True
-    return (
-        not report.errors
-        and not report._transfer
-        and not report.needs
-        and not report.floats_unmet
-        and all(c.portable or c.checked for c in report.ensures)
-    )
+    return report._verified
 
 
 def not_verified(report: Report) -> str:
@@ -1204,9 +1196,7 @@ def not_verified(report: Report) -> str:
     the report keeps them, and how to run it anyway."""
     parts = [f"may fail: {i}" for i in report.errors]
     see = ["report.errors"] if report.errors else []
-    for c in report.ensures:
-        if c.portable or c.checked:
-            continue
+    for c in report._unmet_ensures():
         if not c.proved:
             parts.append(f"ensures {c.label} is not proved: {c.why}")
         else:

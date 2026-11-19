@@ -14,9 +14,8 @@ Snowflake SQL is generated for every case too (and parsed).
 
 The Spark SQL of every case runs on a local Spark session (`spark_session`,
 one JVM for the whole test) and agrees with DuckDB, row for row where the
-order is part of the result. Spark refuses what needs a table's row order;
-the cases of `TIE_FREE` run with `tie_free=True` on the tables drawn here,
-whose timestamps are distinct.
+order is part of the result. Spark has no table row order, so its SQL leaves
+ties and a `LIMIT`'s rows open (`to_sql`'s default `rows` for it).
 """
 
 import datetime as dt
@@ -50,7 +49,7 @@ from sverify_spark.dialect import SPARK
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
 
 #: Cases an engine refuses, with the reason (`sverify_dev.coverage` says why).
-REFUSED, TIE_FREE = coverage.REFUSED, coverage.TIE_FREE
+REFUSED = coverage.REFUSED
 
 T0 = dt.datetime(2024, 2, 28, 23, 0)
 STAMPS = [
@@ -237,19 +236,46 @@ def approximately(rows: list[tuple]) -> list[tuple]:
     return [tuple(float(f"{v:.9g}") if isinstance(v, float) else v for v in r) for r in rows]
 
 
+#: The cases that sort on a key with ties or number rows: Spark's SQL leaves their ties
+#: open (`rows="multiset"`), so they agree with DuckDB as multisets.
+TIES_OPEN = {
+    "order_by",
+    "order_by expression",
+    "limit",
+    "limit with offset",
+    "order_by + limit",
+    "row_number",
+    "lag",
+    "rank",
+    "dense_rank",
+    "cumsum",
+    "ntile",
+    "first",
+    "percent_rank, cume_dist",
+    "rolling sum (range)",
+    "rolling sum (interval)",
+    "sum over group",
+    "running mean",
+    "rolling mean (rows)",
+    "rolling mean (interval)",
+    "min over a sliding frame",
+    "window sum of an expression",
+    "last, nth",
+    "max, count over frame",
+    "scalar subquery, one row",
+    "rolling sum by time",
+}
+
+
 def engine_sql(case, engine: str, dialect, read: str) -> str | None:
-    """The SQL of a case for a dialect that refuses what needs row order: the
-    query, None where it is refused, or the `tie_free` query of `TIE_FREE`.
-    It parses as `read` SQL (sqlglot)."""
+    """The SQL of a case in the dialect's own `rows`: the query, or None where
+    the dialect refuses it. It parses as `read` SQL (sqlglot)."""
     plan = json.loads(written_plan(to_substrait_json(case.build())))
     if engine in REFUSED.get(case.label, {}):
         with pytest.raises(Unsupported, match=REFUSED[case.label][engine]):
             plan_sql(plan, dialect)
-        if case.label not in TIE_FREE:
-            return None
-        sql = plan_sql(plan, dialect, deterministic=True)
-    else:
-        sql = plan_sql(plan, dialect)
+        return None
+    sql = plan_sql(plan, dialect)
     sqlglot.parse_one(sql, read=read)
     return sql
 
@@ -292,7 +318,7 @@ def test_spark_agrees_with_duckdb(con, data):
         if case.label in coverage.APPROXIMATE:
             got, duck = approximately(got), approximately(duck)
         root = parse_plan(json.loads(plan)).root
-        ordered = order_matters(root) and case.label not in TIE_FREE
+        ordered = order_matters(root) and case.label not in TIES_OPEN
         assert same(got, duck) if ordered else canonical(got) == canonical(duck), case.label
 
 

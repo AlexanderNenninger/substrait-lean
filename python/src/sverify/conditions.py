@@ -26,7 +26,7 @@ from ibis.common.deferred import Deferred
 
 from sverify import observation as _observation
 from sverify._duration import Duration, duration
-from sverify._unsupported import SverifyError
+from sverify._unsupported import ROWS_ASIDE, ROWS_HELD, SverifyError
 from sverify.counterexample import Counterexample
 from sverify.observation import Observation
 
@@ -158,7 +158,7 @@ class Unique(TableCondition):
 
         if inserts.num_rows and (clash := duplicate_keys(new, self.cols, inserts)):
             raise PreconditionError(
-                f"{clash} inserted key(s) of {t} violate {self.label}",
+                f"{clash} inserted key(s) of {t} violate {self.label}{ROWS_ASIDE}",
                 source=t,
                 condition=self,
                 rows=_duplicate_rows(inserts, new, self.cols),
@@ -445,7 +445,9 @@ class MaxRows(TableCondition):
 
         if (n := row_count(new)) > self.n:
             raise PreconditionError(
-                f"{n - self.n} row(s) of {t} violate {self.label}", source=t, condition=self
+                f"{n - self.n} row(s) of {t} violate {self.label}{ROWS_HELD}",
+                source=t,
+                condition=self,
             )
         return Discharged(t, self.label, ON_DATA)
 
@@ -824,8 +826,8 @@ class CheckedCondition:
     """Proved on every result the reference allows, not only on the orders
     `proved` covers (`contract_sound_allowed`, or `contract_sound_allowed_closed`
     for a plan without open measures, `core/Sverify/Core/AllowedNear.lean`): the
-    plan has no open measure the condition reads (since D25 a double `SUM` or
-    `AVG` is not one; a statistical aggregate still is)."""
+    plan has no open measure the condition reads (since D25 and D30 a double `SUM`,
+    `AVG` or statistical aggregate is not one; `QUANTILE_CONT` still is)."""
     depends: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     """The components of an observation the condition's value depends on,
     as the checker computes them from the columns it reads (`Expr.depends`,

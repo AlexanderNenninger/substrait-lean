@@ -108,6 +108,27 @@ class _Checker:
 
     # ---- inputs -------------------------------------------------------------
 
+    def _inputs(self, m: Relation) -> list[Relation]:
+        """The relations `m`'s compiled SQL reads: its dependencies, with each
+        ephemeral model replaced by what it reads, transitively. dbt inlines an
+        ephemeral model into its consumer as a CTE, so the consumer's SQL names
+        the ephemeral's inputs and never the ephemeral model."""
+        out: dict[str, Relation] = {}
+
+        def add(unique_id: str) -> None:
+            r = self.p.relations.get(unique_id)
+            if r is None or unique_id in out:
+                return
+            if r.is_model and r.materialized == "ephemeral":
+                for d in r.depends_on:
+                    add(d)
+            else:
+                out[unique_id] = r
+
+        for d in m.depends_on:
+            add(d)
+        return list(out.values())
+
     def _ensure_relation(self, r: Relation) -> str | None:
         """Make `r` a table (sources, seeds) or view (models) of the scratch
         DuckDB database, with the project's column types; None when done,
@@ -207,6 +228,18 @@ class _Checker:
 
     def _model(self, m: Relation) -> ModelResult:
         res = ModelResult(name=m.name, unique_id=m.unique_id, path=m.path, ref=m.ref)
+        if m.materialized == "ephemeral":
+            readers = sorted(r.name for r in self.p.models if m.unique_id in r.depends_on)
+            res.notes.append(
+                "ephemeral: dbt inlines it into "
+                + (", ".join(readers) if readers else "no model")
+                + " and runs no test on it; it is checked there"
+            )
+            for t in self.p.tests_on(m.unique_id):
+                tr = TestResult(test=t.unique_id, name=t.name, label=t.short, kind="test")
+                tr.skip("dbt runs no test on an ephemeral model")
+                res.tests.append(tr)
+            return res
         if m.language != "sql":
             return res.refuse(
                 f"a {m.language} model: sverify reads SQL models only; dbt still runs its tests"
@@ -216,7 +249,7 @@ class _Checker:
                 "no compiled SQL in the manifest: run `dbt compile` (or `dbt build`) first; "
                 "`dbt parse`, `dbt ls` and a `dbt test` without the model leave it out"
             )
-        inputs = [self.p.relations[d] for d in m.depends_on if d in self.p.relations]
+        inputs = self._inputs(m)
         for r in inputs:
             why = self._ensure_relation(r)
             if why:

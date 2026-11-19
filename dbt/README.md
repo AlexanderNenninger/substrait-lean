@@ -51,25 +51,28 @@ stg_orders (models/staging/stg_orders.sql)
     not_null(order_id)
     unique(order_id)
     not_null(customer_id)
+    accepted_values(status)
     dbt_utils.accepted_range(amount)
-  not proved (dbt build still runs them):
-    accepted_values(status): sverify cannot rule out a row that fails it, from the tests upstream
 
 customer_revenue_by_category (models/marts/customer_revenue_by_category.sql)
-  not proved (dbt build still runs them):
-    dbt_utils.accepted_range(books): sverify cannot rule out a row that fails it, from the tests upstream
+  proved before the model runs (dbt build may skip them):
+    dbt_utils.accepted_range(books)
   contract: columns and types match
     primary_key(customer_id): proved
+  note: rows may tie in an ORDER BY of a window or ordered aggregate, so DuckDB picks the order: a test that depends on it is not proved
+
+orders_with_city (models/marts/orders_with_city.sql)
+  proved before the model runs (dbt build may skip them):
+    not_null(order_id)
+  not proved (dbt build still runs them):
+    unique(order_id): the tests upstream do not make it a key
 
 org_depth (models/marts/org_depth.sql)
-  refused: sverify cannot read WITH RECURSIVE yet
+  refused: sverify cannot read WITH RECURSIVE yet (#320)
 
 subscription_arr (models/marts/subscription_arr.sql)
-  not proved (dbt build still runs them):
-    dbt_utils.accepted_range(arr): proved only with the source tests listed under 'needs'
-  needs these tests before anything is proved:
-    on source('app', 'subscriptions'), column mrr: dbt_utils.accepted_range: {arguments: {max_value: 700000000000000000, inclusive: false}}
-      (overflow in `mrr * 12` otherwise)
+  proved before the model runs (dbt build may skip them):
+    dbt_utils.accepted_range(arr)
 ```
 
 `--selectors` adds a selector, `sverify_proved`, to the project's
@@ -97,11 +100,15 @@ The other options of `check`:
 | Option | What it does |
 |---|---|
 | `--select MODEL ...` | Report on these models (their upstream models are checked too) |
-| `--format text\|json` | How to print the result (default `text`), the flag `sverify check` forwards |
+| `--format text\|json\|github\|sarif\|junit` | How to print the result (default `text`): `github` is one annotation per finding on the model's file, `sarif` a code-scanning log, `junit` a suite per model; `sverify check` forwards its own |
+| `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 4 past it |
+| `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
 | `--json` | Print the result as JSON (`--format json`) |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |
-| `--fail-on` | Exit with status 1 on a contract mismatch or an unproved constraint (`contract`, the default), also on any unproved test or refused model (`unproved`), or `never` |
+| `--fail-on` | Exit 1 on a contract mismatch or an unproved constraint (`contract`, the default); `unproved`: also on any unproved test; `refused`: all of that, and exit 3 when a model was refused (sverify cannot read it); `never` |
 | `--target-path` | The target directory, if not `target` |
+
+Exit codes, as in `sverify check`: 0 holds, 1 something is not proved, 2 usage (no manifest, an unknown model, another adapter), 3 a model is refused under `--fail-on refused` or the check is unsupported, 4 past `--timeout` or `--memory-limit`, 6 an error (the checker is missing, an I/O failure) with its message on stderr.
 
 The same from Python:
 
@@ -175,6 +182,10 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   what is inside a string (`LIKE`, lengths) is not tracked
   ([the guide](../docs/guide.md#contracts)).
 - Python models, and models whose inputs have no column types, are refused.
+- What each materialization gets: a table or view is checked; an incremental
+  model as its full refresh (below); an ephemeral model is inlined, so its
+  readers are read through it and it prints a note, with no test run on it; a
+  snapshot is an input only. Python models are refused.
 - An incremental model is checked as its full refresh, as `dbt compile`
   renders it; its `is_incremental()` block is taken to only filter that query.
   Its tests are skippable (`--selectors`) only under `merge` or `delete+insert`

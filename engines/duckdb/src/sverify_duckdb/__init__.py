@@ -33,7 +33,7 @@ import pyarrow as pa
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 2:
+if getattr(_meta, "PLUGIN_API", None) != 3:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -41,9 +41,8 @@ if getattr(_meta, "PLUGIN_API", None) != 2:
     )
 
 from sverify import _duckdb, black_box
-from sverify._arrow_state import ArrowOps
 from sverify._scan import Resident, _q
-from sverify._store import State
+from sverify._store import State, Store
 from sverify._unsupported import RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
 from sverify.profiles import ProfilePlugin, Setting
@@ -202,7 +201,7 @@ def _dialect() -> Any:
     return DUCKDB
 
 
-class DuckDBStore(ArrowOps):
+class DuckDBStore(Store[Any]):
     # Its handle: a table DuckDB holds (`Resident`), or an Arrow batch read in.
     """The state as a table DuckDB holds (`Resident`): merges leave their
     result in DuckDB, and the view's rows are a DuckDB view of it.
@@ -229,6 +228,18 @@ class DuckDBStore(ArrowOps):
             db.execute(f"CREATE {kind} main.{_q(name)} AS {sql}")
             schema = db.sql(f"SELECT * FROM main.{_q(name)} LIMIT 0").to_arrow_table().schema
         return Resident(name, schema, kind, reads)
+
+    def merge(
+        self, plan: str, schema: pa.Schema, a: State, b: State, *, keep: bool
+    ) -> State | pa.Table:
+        from sverify._store import MERGE_A, MERGE_B
+        from sverify_duckdb import engine as duckdb_engine
+
+        tables = {MERGE_A: a, MERGE_B: b}
+        if keep:
+            return duckdb_engine.run(plan, tables, keep=True)
+        out = duckdb_engine.run(plan, tables)
+        return out.rename_columns(schema.names).cast(schema)
 
     def kept(self, table: pa.Table) -> State:
         return self.keep_table(table)
@@ -371,6 +382,7 @@ PLUGIN = ProfilePlugin(
     # The package writes DuckDB SQL without DuckDB; running plans needs it
     # (`pip install sverify[duckdb]`).
     local=find_spec("duckdb") is not None,
+    checks_assumed=True,
     read_settings=_read_settings,
     dialect=_dialect,
     run_tables=_run_tables,

@@ -511,40 +511,55 @@ def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
   | .ifThen _ t e => max (t.bits cols) (e.bits cols)
   | _ => 64
 
-def _root_.Substrait.Rel.bits (tables : Tables) : Rel → List Nat
+def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
   | .read t => match tables.lookup t with
     | some (_, s) => schemaBits s
     | none => []
   | .values n rows => match tables.lookup (valuesKey n rows) with
     | some (_, s) => schemaBits s
     | none => List.replicate n 64
-  | .filter r _ | .fetch r _ _ => r.bits tables
+  | .filter r _ | .fetch r _ _ => r.bitsBy eb tables
   | .project r es =>
-      let bs := r.bits tables
-      bs ++ es.map (·.bits bs)
+      let bs := r.bitsBy eb tables
+      bs ++ es.map (eb bs)
   | .emit r m =>
-      let bs := r.bits tables
+      let bs := r.bitsBy eb tables
       m.map (bs.getD · 64)
-  | .cross a b | .join a b _ _ => a.bits tables ++ b.bits tables
-  | .unionAll a _ => a.bits tables
+  | .cross a b | .join a b _ _ => a.bitsBy eb tables ++ b.bitsBy eb tables
+  | .unionAll a _ => a.bitsBy eb tables
   | .window r _ _ fns =>
-      let bs := r.bits tables
+      let bs := r.bitsBy eb tables
       bs ++ fns.map fun
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           bs.getD c 64
         | .agg m _ _ => match m.fn with
-          | .min | .max => m.arg.bits bs
+          | .min | .max => eb bs m.arg
           | _ => 64
         | _ => 64
-  | .semi a _ _ _ => a.bits tables
-  | .orderBy r _ | .distinct r => r.bits tables
+  | .semi a _ _ _ => a.bitsBy eb tables
+  | .orderBy r _ | .distinct r => r.bitsBy eb tables
   -- A list element's width is not tracked.
-  | .unnest r c => (r.bits tables).set c 64
+  | .unnest r c => (r.bitsBy eb tables).set c 64
   | .aggregate r gs ms =>
-      let bs := r.bits tables
-      gs.map (·.bits bs) ++ ms.map fun m => match m.fn with
-        | .min | .max => m.arg.bits bs
+      let bs := r.bitsBy eb tables
+      gs.map (eb bs) ++ ms.map fun m => match m.fn with
+        | .min | .max => eb bs m.arg
         | _ => 64
+
+/-- The width of each column of a relation's rows as the parser tracks it. -/
+def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.bits tables
+
+/-- An expression's width in the plan the writer writes: a column keeps its declared width,
+every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
+them so). -/
+def _root_.Substrait.Expr.outBits (cols : List Nat) : Expr → Nat
+  | .field i => cols.getD i 64
+  | _ => 64
+
+/-- The width of each column of the result as the written plan and its run give it
+(`Report.output`'s integers, #1484). -/
+def _root_.Substrait.Rel.outBits (tables : Tables) (r : Rel) : List Nat :=
+  r.bitsBy Expr.outBits tables
 
 /-- Does the expression read a column of the row, past `k` lambda
 parameters? -/
@@ -2744,7 +2759,7 @@ def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
   let cat : Catalog := fun t => match tables.lookup t with
     | some (n, _) => ⟨n, []⟩
     | none => ⟨0, []⟩
-  (r.keys cat (fun _ => []) (fun _ => []) (fun _ => [])).contains []
+  (r.keys cat (fun _ => []) (fun _ => []) ⟨fun _ => []⟩).contains []
 
 /-- `inp` with one more column: the value of the subquery `sq` on each row.
 

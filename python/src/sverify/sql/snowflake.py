@@ -446,10 +446,7 @@ class SnowflakeDialect(Dialect):
     # Relations
 
     def row_ordinal(self) -> str:
-        raise Unsupported(
-            "Snowflake tables have no row order, so FETCH and windows over a named table "
-            "cannot follow the Lean model's list order (windows run with deterministic=True)"
-        )
+        raise self.no_row_order("Snowflake")
 
     def limit_offset(self, offset: int, count: int | None) -> str:
         if count is None:

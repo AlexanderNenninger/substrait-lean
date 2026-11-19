@@ -29,7 +29,7 @@ variable [Boxes.Ambient]
 argument is a sort column without doubles, or the group's and the sort's
 columns contain a key (`Measure.keyedIn`). -/
 def Measure.tiesFixed (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+    (K : TableCond) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
   (m.sort.any (m.arg == .field ·.col) && (m.arg.abs (r.aeval cat A F .none)).noDoubles) ||
     m.keyedIn cat A F K r gs
 
@@ -37,7 +37,7 @@ def Measure.tiesFixed (cat : Catalog) (A : String → List AVal) (F : String →
 of its group's rows: order-free, or sorting them in an order that fixes its
 inputs? -/
 def Measure.detIn (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+    (K : TableCond) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
   m.orderFree || (m.fn.sorts && m.tiesFixed cat A F K r gs)
 
 /-- Does the measure `m` over `r` pick one value: not a function that picks
@@ -59,7 +59,7 @@ its partition and sort columns contain a key of `r` (`window_tiebreak`), are
 its functions tie-free (`window_tieFree`), or does its partition cover every
 column, without doubles (`Rel.window_allColumns`)? -/
 def Rel.windowDetAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (part : List Nat) (sort : List SortKey)
+    (K : TableCond) (r : Rel) (part : List Nat) (sort : List SortKey)
     (fns : List WinFn) : Bool :=
   (r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
     fns.all (WinFn.tieFree sort) ||
@@ -73,7 +73,7 @@ checks), and aggregates whose measures are functions of their values
 (D25), `MIN`, `MAX`) or sort their rows in an order that fixes their inputs
 (`Measure.tiesFixed`). -/
 def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → Bool
+    (K : TableCond) : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _
   | .unnest r _ => r.detPlan cat A F K
@@ -105,8 +105,8 @@ agree on its argument. -/
 theorem Measure.tiesAgreeIn_of_tiesFixed {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} (hwf : r.WF cat) {gs : List Expr}
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {r : Rel} (hwf : r.WF cat) {gs : List Expr}
     {m : Measure} (h : m.tiesFixed cat A F K r gs = true) {rows : Relation}
     (hp : rows.Perm (r.eval cat)) : m.TiesAgreeIn gs rows := by
   intro x hx y hy hg hxy hyx
@@ -139,8 +139,8 @@ sorted order of its input (`Rel.windowDetAt`). -/
 theorem Rel.window_perm_of_detAt {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} {part : List Nat} {sort : List SortKey}
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {r : Rel} {part : List Nat} {sort : List SortKey}
     {fns : List WinFn} (hwf : r.WF cat) (hd : Rel.windowDetAt cat A F K r part sort fns = true)
     {s : Relation} (hp : s.Perm (r.eval cat)) (hsort : s.Pairwise (sortLe sort · · = true)) :
     (windowRows part fns [] s).Perm ((Rel.window r part sort fns).eval cat) := by
@@ -161,8 +161,8 @@ theorem Rel.window_perm_of_detAt {cat : Catalog} (hcat : cat.WF) {A : String →
 theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) :
     ∀ {r : Rel}, r.WF cat → r.detPlan cat A F K = true → ∀ {out : Relation},
       r.Allowed cat out → out.Perm (r.eval cat)
   | .read _, _, _, _, h | .values _ _, _, _, _, h => h
@@ -301,7 +301,7 @@ member of a class** (D31, D48)? `Rel.detPlan` without its three class guards
 `WinFn.pickFixed`), every tie condition kept, and above a class-level input
 only operators that read it up to the class. -/
 def Rel.detClass (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → Bool
+    (K : TableCond) : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r c => r.detClass cat A F K && (r.detPlan cat A F K || c.canonSafe)
   | .project r es => r.detClass cat A F K && (r.detPlan cat A F K || es.all Expr.classCongr)
@@ -314,7 +314,7 @@ def Rel.detClass (cat : Catalog) (A : String → List AVal) (F : String → List
 
 /-- The exact level implies the class level. -/
 theorem Rel.detClass_of_detPlan {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
-    {K : String → List (List Nat)} :
+    {K : TableCond} :
     ∀ {r : Rel}, r.detPlan cat A F K = true → r.detClass cat A F K = true
   | .read _, _ | .values _ _, _ => rfl
   | .filter r _, h | .project r _, h => by
@@ -462,8 +462,8 @@ row order and the member of each class** (D48). -/
 theorem Rel.allowed_canon_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) :
     ∀ {r : Rel}, r.WF cat → r.detClass cat A F K = true → ∀ {out : Relation},
       r.Allowed cat out → (out.map Row.canon).Perm ((r.eval cat).map Row.canon)
   | .read _, _, _, _, h | .values _ _, _, _, _, h => h.map _
@@ -539,8 +539,8 @@ refines it up to the order of rows, whatever choices the original leaves. -/
 theorem Rel.refines_of_perm {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {q r : Rel} (hwf : q.WF cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {q r : Rel} (hwf : q.WF cat)
     (hd : q.detPlan cat A F K = true) (h : (q.eval cat).Perm (r.eval cat)) : q.RefinesBag cat r :=
   Rel.refinesBag_iff.2 fun _ hq => ⟨r.eval cat, r.eval_allowed cat,
     (allowed_perm_eval hcat hA hF hK hwf hd hq).trans h⟩

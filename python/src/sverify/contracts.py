@@ -88,6 +88,7 @@ from ibis.common.graph import Node
 from sverify import _decimals, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
+from sverify._dialect import DialectDifference
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import ConditionError, SverifyWarning
@@ -138,7 +139,7 @@ from sverify.engine import (
     Connection,
     Engine,
     checker_failed,
-    plan_json_over,
+    plan_and_differences,
     run_checker,
 )
 from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
@@ -768,6 +769,10 @@ def verify(
     `sverify.sql_lift` with `semantics`: the reference semantics by default,
     or what DuckDB computes with `semantics="duckdb"`. The report says
     which (`Report.semantics`).
+    Where the reference reads the SQL differently from DuckDB on a value, the
+    lift refuses it with a hint (`CAST(x AS BIGINT)` of a double: write
+    `CAST(round(x) AS BIGINT)`) or the report lists it
+    (`Report.dialect_differences`).
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
@@ -1558,8 +1563,12 @@ def _prove_once(
         own = not (isinstance(query, str) and semantics in _profile_requests())
         return semantics if own else "reference"
 
-    def plan(query: Transform) -> Any:
-        return json.loads(plan_json_over(sql_schemas, query, lift(query)))
+    differences: dict[DialectDifference, None] = {}
+
+    def plan(query: Transform, where: str = "the query") -> Any:
+        text, found = plan_and_differences(sql_schemas, query, lift(query))
+        differences.update(dict.fromkeys(replace(d, where=where) for d in found))
+        return json.loads(text)
 
     def table_ref(name: str, cond: Condition) -> Transform:
         if isinstance(transform, str) and isinstance(cond, str):
@@ -1596,11 +1605,11 @@ def _prove_once(
 
     from ibis.common.exceptions import IbisError
 
-    def condition_plan(table: Transform, c: Condition) -> Any:
+    def condition_plan(table: Transform, c: Condition, where: str) -> Any:
         """The plan of a condition; one sverify cannot read is collected, so
         that `ConditionError` names every such condition at once (#699)."""
         try:
-            return plan(condition_query(table, c, lift(c)))
+            return plan(condition_query(table, c, lift(c)), where)
         except _Unsupported as e:
             unreadable[label(c)] = e
         except IbisError as e:  # the condition does not type-check (#687)
@@ -1612,13 +1621,14 @@ def _prove_once(
     req_plans = []
     for t, cs in requires.items():
         for c in cs:
-            if planned(c) and (p := condition_plan(table_ref(t, c), c)):
+            where = f"the requires condition {label(c)}"
+            if planned(c) and (p := condition_plan(table_ref(t, c), c, where)):
                 req_plans.append(p)
     ens_plans = []
     for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = condition_plan(output(c), c)
+        p = condition_plan(output(c), c, f"the ensures condition {label(c)}")
         if p is not None:
             p["relations"][0]["root"]["names"] = [label(c)]
             ens_plans.append(p)
@@ -1837,6 +1847,7 @@ def _prove_once(
             # An engine whose `//` and `%` floor computes them as the plan states.
             report._hints += division_hints(transform)
     report._hints += contradictions(requires, schemas)
+    report.dialect_differences = tuple(differences)
     return report, out["inferred"], schemas
 
 
@@ -2115,19 +2126,32 @@ def rounding_hints(
     return hints
 
 
+_INT_TYPES = {8: dt.int8, 16: dt.int16, 32: dt.int32, 64: dt.int64}
+
+
+def _checker_type(ty: Any, k: dict) -> Any:
+    """One column's type as the checker types it (`outputKinds`)."""
+    match k["kind"]:
+        case "dec":
+            return dt.Decimal(k["precision"], k["scale"], nullable=ty.nullable)
+        case "int" if k["bits"] in _INT_TYPES:
+            return _INT_TYPES[k["bits"]](nullable=ty.nullable)
+        case "time" if ty.is_timestamp() and ty.timezone is None:
+            return dt.Timestamp(scale=6, nullable=ty.nullable)
+        case "instant" if ty.is_timestamp():
+            return dt.Timestamp(timezone="UTC", scale=6, nullable=ty.nullable)
+    return ty
+
+
 def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> dict[str, Any]:
-    """`dtypes` with each decimal column as the checker types it
-    (`outputKinds`, from `Write.relKinds`): Ibis's `AVG` and `SUM` of a decimal
-    differ from the reference's. A checker without the field, or with another
-    number of columns, leaves Ibis's types as they are."""
+    """`dtypes` as the run returns them (`outputKinds`, from `Write.relKinds`
+    and `Rel.outBits`): a decimal `AVG` or `SUM` and an integer's width differ
+    from Ibis's (a computed integer is 64 bits, a passed-through column keeps its
+    declared width), and a timestamp has microseconds. A checker without the
+    field, or with another number of columns, leaves Ibis's types as they are."""
     if kinds is None or len(kinds) != len(dtypes):
         return dtypes
-    return {
-        name: dt.Decimal(k["precision"], k["scale"], nullable=ty.nullable)
-        if k["kind"] == "dec"
-        else ty
-        for (name, ty), k in zip(dtypes.items(), kinds, strict=True)
-    }
+    return {name: _checker_type(ty, k) for (name, ty), k in zip(dtypes.items(), kinds, strict=True)}
 
 
 def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
@@ -2595,7 +2619,9 @@ class CompositionError(VerificationError):
         given = ", ".join(guarantees) or "nothing"
         Exception.__init__(
             self,
-            f"{consumer} needs {needs} on {param!r}; {producer} only guarantees {given}",
+            f"{consumer} needs {needs} on {param!r}; {producer} only guarantees {given}; "
+            f"state it in {producer}'s `ensures`, "
+            'or set `on_unproved="check"` to check it on the data',
         )
 
 

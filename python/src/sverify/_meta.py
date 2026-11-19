@@ -20,4 +20,4 @@ PROTOCOL = 2
 #: package imports from sverify. Bump it with any change to either; each engine
 #: package checks it at import, since a build from main carries the release's
 #: version and an `==` pin cannot tell the two apart (#1585).
-PLUGIN_API = 2
+PLUGIN_API = 3

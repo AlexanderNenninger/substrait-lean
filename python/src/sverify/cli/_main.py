@@ -148,7 +148,10 @@ class Check:
         if budget.exceeded and self.code != BUDGET:
             self.code = BUDGET
             self.error = self.error or _error(
-                "timeout", f"time budget exceeded ({budget.seconds:g} s)", "BudgetExceeded"
+                "timeout",
+                f"time budget exceeded ({budget.seconds:g} s); "
+                "raise it with `--timeout` or `SVERIFY_TIMEOUT`",
+                "BudgetExceeded",
             )
 
     @property
@@ -410,12 +413,12 @@ def _dbt(args: argparse.Namespace, path: Path) -> int:
         message = "a dbt project: install sverify-dbt to check it (pip install sverify-dbt)"
         result = {"file": str(path), "error": _error("usage", message, "UsageError")}
         return _emit(args, USAGE, result, lambda: message)
-    if args.format not in ("text", "json"):
-        message = f"a dbt project prints text or json, not {args.format}"
-        result = {"file": str(path), "error": _error("usage", message, "UsageError")}
-        return _emit(args, USAGE, result, lambda: message)
     project = path if path.is_dir() else path.parent
     flags = [] if args.format == "text" else ["--format", args.format]
+    if args.timeout is not None:
+        flags += ["--timeout", f"{args.timeout:g}"]
+    if args.memory_limit is not None:
+        flags += ["--memory-limit", args.memory_limit]
     return subprocess.call([exe, "check", str(project), *flags])
 
 
