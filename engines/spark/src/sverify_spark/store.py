@@ -58,6 +58,9 @@ class SparkBackend(Backend):
 
     @contextlib.contextmanager
     def sized(self, parts: Sequence[Part]) -> Iterator[None]:
+        """Sets `spark.sql.shuffle.partitions` on the session while the parts are added
+        up and restores it after. The session is shared: a query that runs at the
+        same time sees the setting too."""
         key = "spark.sql.shuffle.partitions"
         n = self.shuffle_partitions(parts)
         before = self.spark.conf.get(key, None)
