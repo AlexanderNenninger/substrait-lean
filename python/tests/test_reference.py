@@ -94,6 +94,16 @@ NAN = float("nan")
 
 # R4 (#203): `modulus` of doubles is C's `fmod`
 # (the integer one read the codes): the sign of the dividend; by zero, an error.
+def test_modulus_of_infinity_is_a_domain_error_in_the_reference(con):
+    """`fmod(inf, 2.0)` is NaN on DuckDB; the reference raises."""
+    sql = "SELECT CAST('inf' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1"
+    with pytest.raises(LeanRaised, match="domain"):
+        lean(con, sql)
+    assert nan_equal([tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]) == nan_equal(
+        [(NAN,)]
+    )
+
+
 @pytest.mark.parametrize(
     ("sql", "expected"),
     [
@@ -101,7 +111,6 @@ NAN = float("nan")
         ("SELECT -x % 2.0 AS m FROM f", [(-1.5,), (0.0,), (None,)]),
         ("SELECT x % -2.0 AS m FROM f", [(1.5,), (0.0,), (None,)]),
         ("SELECT x % CAST('inf' AS DOUBLE) AS m FROM f", [(7.5,), (0.0,), (None,)]),
-        ("SELECT CAST('inf' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1", [(NAN,)]),
         ("SELECT CAST('nan' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1", [(NAN,)]),
         # The filter proves the divisor is not zero.
         ("SELECT x % x AS m FROM f WHERE x <> 0.0", [(0.0,)]),
