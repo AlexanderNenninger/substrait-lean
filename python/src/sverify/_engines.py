@@ -11,7 +11,8 @@ their own is the checker's (`substrait-check --options`, `"profiles"`);
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from sverify.profiles import plugins
 
@@ -49,6 +50,22 @@ def default() -> str:
             "pip install 'sverify[duckdb]' or 'sverify[polars]'"
         )
     return (named or local)[0]
+
+
+def sql_dialect() -> Callable[[], Any]:
+    """The SQL dialect of the engine that runs plans, or where it has none (or
+    none is installed: `verify` needs no engine), DuckDB's, which every
+    install writes."""
+    from sverify import profiles
+
+    found = profiles.plugins()
+    try:
+        dialect = found[default()].dialect
+    except ValueError:
+        dialect = None
+    dialect = dialect or found["duckdb"].dialect
+    assert dialect is not None
+    return dialect
 
 
 def translations() -> dict[str, str]:

@@ -169,7 +169,8 @@ class LeanRaised(Exception):
 
 def _raised(plan_json: str) -> str | None:
     """The first error the reference raises anywhere in the plan (`--raises`:
-    filters, projections and aggregates); None where it raises none."""
+    filters, projections, joins on the pairs the hash join tests, and
+    aggregates); None where it raises none."""
     code, out, _ = run_checker(("--raises",), plan_json)
     return (out.strip() or None) if code == 0 else None
 
@@ -178,10 +179,12 @@ def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
     decimals and a `d` (so only approximately). The rows are `Rel.eval`'s,
     which has a value where the reference raises: that raises `LeanRaised`
-    (exported by `sverify.testing`), as the reference does (`--raises`: filters,
-    projections and aggregates; joins and windows are not looked into). `rows_only`
-    asks the checker for the rows alone (`--rows`), without the plan's other
-    facts and without that check."""
+    (exported by `sverify.testing`), for a raise in a filter, a projection or an
+    aggregate (`--raises`). A join's condition is checked on the pairs the
+    checker's hash join tests only, so a raise on a pair without matching keys
+    can be missed; a window's aggregates are not looked into. Every error it
+    raises is the reference's. `rows_only` asks the checker for the rows alone
+    (`--rows`), without the plan's other facts and without that check."""
     if not rows_only and (err := _raised(plan_json)) is not None:
         raise LeanRaised(err)
     out = _checked(plan_json, ("--rows",) if rows_only else ())
