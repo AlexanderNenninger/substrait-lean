@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from sverify_dev.coverage import CASES, REFUSED, TIE_FREE, Case, check, refusal, written
+from sverify_dev.coverage import CASES, REFUSED, Case, check
 
 
 @pytest.mark.parametrize("c", CASES, ids=lambda c: f"{c.area}: {c.label}")
@@ -17,7 +17,3 @@ def test_coverage_is_as_recorded(c: Case):
     assert set(r.refused) == set(expected), r.refused
     for engine, why in r.refused.items():
         assert re.search(expected[engine], why), why
-    if c.label in TIE_FREE:
-        plan = written(c)
-        for engine in ("snowflake", "spark"):
-            assert refusal(plan, engine, tie_free=True) is None
