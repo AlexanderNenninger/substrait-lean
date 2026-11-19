@@ -1609,10 +1609,9 @@ R9 stays the reference's rule: the model's cast of a double or decimal truncates
 and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
 which rounds, so the SQL lift refuses it under the reference until #322 gives
 the model a rounding cast (the user's choice on #1484, 2026-11-19). The hint
-names the spellings with one meaning under both semantics:
-`CAST(round(x) AS BIGINT)`, `floor` and `ceil` for a double, and
-`CAST(round(CAST(d AS DOUBLE)) AS BIGINT)` for a decimal, whose own `round`,
-`floor` and `ceil` do not lift yet. `corr` stays a listed exception: the
+for a double names the spellings with one meaning under both semantics,
+`CAST(round(x) AS BIGINT)`, `floor` and `ceil` (`round(x, 2)` is not one: it
+leaves a fraction); the hint for a decimal points at #322 and names none. `corr` stays a listed exception: the
 readings differ only on one pair or a constant side (ST-3), and refusing it
 would refuse every `corr`. `Report.dialect_differences` shows it with the
 construct, where it is, both readings, an example and the spellings.

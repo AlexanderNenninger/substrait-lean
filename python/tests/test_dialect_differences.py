@@ -45,14 +45,58 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
     ("sql", "spelling"),
     [
         ("SELECT CAST(x AS BIGINT) AS a FROM t", "CAST(round(x) AS BIGINT)"),
-        ("SELECT CAST(2.7 AS BIGINT) AS a FROM t", "CAST(round(CAST(d AS DOUBLE)) AS BIGINT)"),
-        ("SELECT CAST(d AS BIGINT) AS a FROM t", "CAST(round(CAST(d AS DOUBLE)) AS BIGINT)"),
+        ("SELECT CAST(2.7 AS BIGINT) AS a FROM t", "#322"),
+        ("SELECT CAST(d AS BIGINT) AS a FROM t", "#322"),
     ],
 )
 def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
     with pytest.raises(UnsupportedError) as e:
         lift(sql, SCHEMA, "reference")
     assert spelling in str(e.value)
+    assert "round(CAST(d AS DOUBLE))" not in str(e.value)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CAST(round(x, 2) AS BIGINT) AS a FROM t",
+        "SELECT CAST((round(x, 2)) AS BIGINT) AS a FROM t",
+    ],
+)
+def test_a_round_with_digits_is_not_integral_and_is_refused(sql: str) -> None:
+    """`round(2.567, 2)` is 2.57, which DuckDB's cast rounds to 3 and the plan truncates to 2."""
+    with pytest.raises(UnsupportedError, match="DuckDB's cast"):
+        lift(sql, SCHEMA, "reference")
+
+
+def test_a_parenthesised_round_lifts() -> None:
+    assert _found("SELECT CAST((round(x)) AS BIGINT) AS a FROM t") == []
+
+
+def test_the_where_of_each_plan_is_named(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`where` is the query, or the requires or ensures condition the lift read."""
+    from sverify import contracts
+    from sverify._dialect import difference
+
+    real = contracts.plan_and_differences
+
+    def stub(schemas, query, semantics):
+        text, _ = real(schemas, query, semantics)
+        return text, (difference("corr_degenerate", "corr(x, y)"),)
+
+    monkeypatch.setattr(contracts, "plan_and_differences", stub)
+    r = sv.verify(
+        "SELECT x FROM t WHERE x > 0",
+        tables={"t": {"x": "DOUBLE"}},
+        requires=["x < 10"],
+        ensures=["x < 100"],
+        counterexamples=0,
+    )
+    assert sorted(d.where for d in r.dialect_differences) == [
+        "the ensures condition x < 100",
+        "the query",
+        "the requires condition x < 10",
+    ]
 
 
 def test_the_corr_construct_is_listed() -> None:

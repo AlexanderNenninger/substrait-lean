@@ -369,8 +369,8 @@ construct or lists it:
   hint names `CAST(round(x) AS BIGINT)`, `floor` and `ceil`, which mean the same
   on both.
 - `decimal_to_int`: the cast of a decimal rounds half away from zero on DuckDB;
-  the lift refuses it. `round`, `floor` and `ceil` of a decimal are not lifted
-  yet; `CAST(round(CAST(d AS DOUBLE)) AS BIGINT)` means the same on both.
+  the lift refuses it until #322, and names no spelling: the model has no
+  rounding cast of a decimal yet.
 - `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
   is NULL here and NaN on DuckDB. `Report.dialect_differences` lists it.
 

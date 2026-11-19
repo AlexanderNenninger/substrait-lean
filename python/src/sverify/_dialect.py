@@ -50,13 +50,10 @@ class DialectDifference:
 #: the source type and mean the same under both semantics.
 REFUSED: dict[str, str] = {
     "float_to_int": (
-        "CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
+        "write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
         "which mean the same on both"
     ),
-    "decimal_to_int": (
-        "CAST(round(CAST(d AS DOUBLE)) AS BIGINT), which means the same on both "
-        "(round, floor and ceil of a DECIMAL are not lifted yet)"
-    ),
+    "decimal_to_int": "see #322: the model has no rounding cast of a decimal yet",
 }
 
 #: Each `Profile` field the lift lists: how the two readings differ, with an
