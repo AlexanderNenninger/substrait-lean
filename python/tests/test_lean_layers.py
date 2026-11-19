@@ -158,6 +158,7 @@ ROOT_CHECKER = {
 ROOT_THEOREMS = {
     "ProvedOn": "imports ContractCheck and the three engines' Engine modules",
     "Statements": "imports ProvedOn",
+    "IssuesAll": "a theorem about the checker's verdict: imports ContractCheck",
 }
 # Each module still waiting to move, with what it waits for. #1444 closes
 # when this is empty.
