@@ -130,7 +130,7 @@ def _(SPARK, con, display, mo, rollup):
 @app.cell(hide_code=True)
 def _(mo, results):
     mo.md(f"""
-    All {len(results)} agree, and the plan didn't change between them. What differs
+    {"Both" if len(results) == 2 else "All three"} agree, and the plan didn't change between them. What differs
     is how each engine reaches the proof:
     """)
     return
