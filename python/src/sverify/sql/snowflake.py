@@ -70,7 +70,6 @@ recorded privately.
 from __future__ import annotations
 
 import datetime as dt
-import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -137,17 +136,6 @@ class SnowflakeDialect(Dialect):
         for c, e in (("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t"), ("\0", "\\0")):
             s = s.replace(c, e)
         return "'" + "".join(f"\\u{ord(c):04x}" if ord(c) < 32 else c for c in s) + "'"
-
-    def float_lit(self, f: float) -> str:
-        if math.isnan(f):
-            return NAN
-        if math.isinf(f):
-            return "CAST('inf' AS FLOAT)" if f > 0 else "CAST('-inf' AS FLOAT)"
-        if f == 0:
-            # `-0.0` keeps its sign (D31); the text '-0.0' casts to -0 (Snowflake
-            # behaviour recorded privately).
-            return "CAST('-0.0' AS FLOAT)" if math.copysign(1.0, f) < 0 else "CAST('0.0' AS FLOAT)"
-        return f"CAST('{f!r}' AS FLOAT)"
 
     def int_lit(self, i: int) -> str:
         return str(i) if i >= 0 else f"({i})"
