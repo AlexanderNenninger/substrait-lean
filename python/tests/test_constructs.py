@@ -4,8 +4,8 @@
 name as the user writes it) and otherwise the SQL keywords in upper case
 (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`). `sverify_dev.exits` counts the
 refusals of `sql_lift/` and `ibis_substrait/` that set none, per file;
-`construct_baseline.json` holds the count and only goes down, to `{}` when
-every site sets one. The lowered count is written with
+`construct_baseline.json` holds the count and only goes down; it is `{}`, so
+every site sets one. A new one is written with
 
     python -m sverify_dev.exits --write-baseline
 """
@@ -81,3 +81,12 @@ def test_an_ibis_aggregate_refusal_names_its_function():
     with pytest.raises(sv.errors.UnsupportedError) as e:
         sv.verify(t.group_by("k").agg(n=t.v.approx_nunique()))
     assert e.value.construct == "function approx_nunique" and e.value.sql is None
+
+
+def test_the_sql_lift_names_the_fragment_it_refused():
+    import sverify as sv
+
+    with pytest.raises(sv.errors.UnsupportedError) as e:
+        sv.verify("select md5(x) as h from t", tables={"t": {"x": "BIGINT"}})
+    assert e.value.construct == "function md5"
+    assert "MD5" in (e.value.sql or "").upper()
