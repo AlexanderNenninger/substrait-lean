@@ -432,10 +432,10 @@ theorem corrState_sound {m : Measure} (hf : m.fn = .corr) (hd : m.distinct = fal
     | some _ => rfl
     | none => simp [coComomentNum, prodSumOf_eq, scaledSum_fst, scaledSum_snd]
 
+omit [Boxes.Ambient] in
 /-- **The limbs are the integer.** A piece `v` at bit `p` of an exact moment
 adds `v · 2^(p mod 32)` to limb `p / 32`; weighted by that limb's `2^(32 j)`
 it is `v · 2^p` again, so the limbs add up to the integer the moment is. -/
-omit [Boxes.Ambient] in
 theorem limbs_sum (ps : List (Nat × Int)) :
     (ps.map fun q => q.2 * 2 ^ (q.1 % 32) * 2 ^ (32 * (q.1 / 32))).sum
       = (ps.map fun q => q.2 * 2 ^ q.1).sum := by
