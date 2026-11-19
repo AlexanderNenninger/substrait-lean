@@ -155,20 +155,21 @@ def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String 
 
 /-- The first error the reference profile `p` raises in the plan: each
 filter, projection and aggregate evaluates its expressions on the rows its
-input gives (`Rel.eval`), inputs first. An aggregate's argument is evaluated
+input gives (`Rel.evalFast`, which equals `Rel.eval`), inputs first. An aggregate's argument is evaluated
 on the rows its filter keeps. Joins and windows are not looked into: a join's
 condition would be evaluated on the cross product, quadratic where
-`Rel.evalFast` hashes (`test_eval_fast`). -/
+`Rel.evalFast` hashes (`test_eval_fast`), and the inputs use `evalFast` for the
+same reason. -/
 def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .read _ | .values _ _ => none
-  | .filter r c => relRaised cat p r <|> firstError p (r.eval cat) [c]
-  | .project r es => relRaised cat p r <|> firstError p (r.eval cat) es
+  | .filter r c => relRaised cat p r <|> firstError p (r.evalFast cat) [c]
+  | .project r es => relRaised cat p r <|> firstError p (r.evalFast cat) es
   | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
     relRaised cat p r
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
     relRaised cat p a <|> relRaised cat p b
   | .aggregate r gs ms =>
-    let rows := r.eval cat
+    let rows := r.evalFast cat
     relRaised cat p r <|> firstError p rows gs <|> ms.findSome? fun m =>
       firstError p rows m.filter.toList <|> firstError p (m.kept rows) [m.arg]
 
