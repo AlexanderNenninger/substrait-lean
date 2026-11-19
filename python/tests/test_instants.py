@@ -386,7 +386,11 @@ def test_an_incremental_cursor_on_an_instant_column(tmp_path):
     class Feed:
         def since(self, ts):
             table = pa.Table.from_pylist(rows)
-            return table if ts is None else table.filter(pc.greater(table["ts"], ts))
+            return (
+                table
+                if ts is None
+                else table.filter(pc.call_function("greater", [table["ts"], ts]))
+            )
 
     f = Feed()
 

@@ -79,7 +79,7 @@ def test_a_constant_that_raises_in_a_lambdas_body_is_reported_too():
     constant under a guard that no row passes was proved."""
     xs = ibis.table({"id": "int64", "xs": "array<int64>"}, name="t")
     zero = ibis.literal(0, "int64")
-    body = xs.xs.map(lambda e: e + (ibis.literal(1, "int64") // zero))
+    body = xs.xs.map(lambda e: e + (1 // zero))  # type: ignore[operator]
     guarded = xs.select(r=ibis.ifelse(xs.id > 5, body, None))
     report = verify(guarded, requires=[ibis._.id < 0])
     assert report.verdict == sv.Verdict.UNPROVED
