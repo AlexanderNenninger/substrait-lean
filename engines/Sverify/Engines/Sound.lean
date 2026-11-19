@@ -108,6 +108,29 @@ theorem Engine.Sound.allowedP {E : Engine} {side : Catalog → Rel → Prop} (hE
     (hs : side cat r) (hw : E.RefWithin r) : r.AllowedP E.table cat (r'.eval cat E.impl) :=
   Rel.AllowedP_transfer hw (Rel.allowedP_reference.mpr (hE hl hs))
 
+/-! ## Determined plans (#1285)
+
+A plan determined up to an observation (`Rel.DeterminedUpTo`) has one observed
+answer, the reference's. Every sound engine gives it. -/
+
+/-- **A sound engine gives the one observed answer of a determined plan**: its
+model's rows are `Equiv o ctx` to the reference's value. -/
+theorem Engine.Sound.equiv_eval {E : Engine} {side : Catalog → Rel → Prop} (hE : E.Sound side)
+    {cat : Catalog} {r r' : Rel} (hl : E.lower r = some r') (hs : side cat r) {o : Obs}
+    {ctx : ObsCtx} (hd : r.DeterminedUpTo o ctx cat) :
+    Relation.Equiv o ctx (r'.eval cat E.impl) (r.eval cat) :=
+  hd _ (hE hl hs)
+
+/-- **Two sound engines agree on a determined plan** up to the observation, in
+the context where `ctx` composes with itself (`Comp ctx ctx ctx` for an exact
+tolerance; a tolerance `t` agrees within `2t`). -/
+theorem Engine.sound_agree {E F : Engine} {sE sF : Catalog → Rel → Prop} (hE : E.Sound sE)
+    (hF : F.Sound sF) {cat : Catalog} {r r' r'' : Rel} (hl : E.lower r = some r')
+    (hl' : F.lower r = some r'') (hs : sE cat r) (hs' : sF cat r) {o : Obs} {ctx ctx' : ObsCtx}
+    (hc : ctx.WF) (hcomp : ObsCtx.Comp ctx ctx ctx') (hd : r.DeterminedUpTo o ctx cat) :
+    Relation.Equiv o ctx' (r'.eval cat E.impl) (r''.eval cat F.impl) :=
+  hd.pair hc hcomp (hE hl hs) (hF hl' hs')
+
 /-! ## Contracts on an engine -/
 
 /-- The postcondition columns `mp` of `es`, as the contract query computes
@@ -151,6 +174,18 @@ and is no hypothesis here. For an engine that runs the plan as it is
 (`lower := some`), `Rel.AllowedE.allowedP` gives it from `Rel.AllowedE`. -/
 def Engine.Runs (E : Engine) (cat : Catalog) (r : Rel) (out : Relation) : Prop :=
   r.AllowedP E.table cat out
+
+/-- **An engine's actual result is the one observed answer of a determined
+plan**, where `E`'s choices are within the reference's at every option the
+plan reads (`htr`) and D16's trusted claim holds of the result
+(`Engine.Runs`). Where `htr` fails (`sum_order`, `stat_algo`,
+`quantile_interp`, `zero_sign`) the near form is #929's; no theorem is stated
+for it. -/
+theorem Engine.Runs.equiv_eval {E : Engine} {cat : Catalog} {r : Rel} {out : Relation}
+    (hrun : E.Runs cat r out) (htr : transferB r Profile.reference.table E.table = true)
+    {o : Obs} {ctx : ObsCtx} (hd : r.DeterminedUpTo o ctx cat) :
+    Relation.Equiv o ctx out (r.eval cat) :=
+  hd _ (Rel.allowedP_reference.mp (Rel.transfer_of_transferB htr hrun))
 
 /-- **Every result `t` allows for `r` is, up to `q`, one of the reference's
 orders.** The side condition of a run on doubles: `Rel.FloatOpenSafe` is the
