@@ -536,22 +536,22 @@ rows of a customer end where or before the other begins. The data check is one
 query over the ranges ordered by start; its count is the rows that break it.
 
 ```python
-orders = ibis.table({"order_id": "!int64", "customer_id": "!int64", "ts": "!int64"}, name="orders")
-history = ibis.table(
+facts = ibis.table({"order_id": "!int64", "customer_id": "!int64", "ts": "!int64"}, name="facts")
+versions = ibis.table(
     {"customer_id": "!int64", "valid_from": "!int64", "valid_to": "int64", "city": "string"},
-    name="history",
+    name="versions",
 )
-on = (
-    (orders.customer_id == history.customer_id)
-    & (history.valid_from <= orders.ts)
-    & (history.valid_to.isnull() | (orders.ts < history.valid_to))
+during = (
+    (facts.customer_id == versions.customer_id)
+    & (versions.valid_from <= facts.ts)
+    & (versions.valid_to.isnull() | (facts.ts < versions.valid_to))
 )
-q = orders.left_join(history, on).select(orders.order_id, history.city)
+city_of = facts.left_join(versions, during).select(facts.order_id, versions.city)
 report = sv.verify(
-    q,
+    city_of,
     requires={
-        "orders": [sv.unique("order_id")],
-        "history": [sv.non_overlapping("valid_from", "valid_to", by="customer_id")],
+        "facts": [sv.unique("order_id")],
+        "versions": [sv.non_overlapping("valid_from", "valid_to", by="customer_id")],
     },
     ensures=[sv.unique("order_id")],
 )
