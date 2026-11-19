@@ -15,6 +15,7 @@ import pyarrow.compute as pc
 import pytest
 
 import sverify as sv
+from _engines import PROFILED
 from _zero import one_zero
 from sverify import _duckdb
 from sverify._arrow_state import ArrowOps as ArrowStore
@@ -113,14 +114,14 @@ def orders(n=0):
 
 
 def pipeline(engine):
-    con = sv.connect(engine)
+    con = sv.connect(engine if engine in installed_engines() else None)
     schema = pa.schema([("id", pa.int64()), ("c", pa.string()), ("x", pa.float64())])
     put_table(
         con,
         "o",
         pa.Table.from_pylist([dict(zip(schema.names, r, strict=True)) for r in orders()], schema),
     )
-    pipe = Pipeline(con)
+    pipe = Pipeline(con, engine)
     o = con.table("o")
     big = pipe.view("big", o.filter(o.x >= 1.0).select(o.c, o.x))
     by_c = pipe.view("by_c", big.table.group_by("c").aggregate(n=big.table.c.count()))
@@ -128,7 +129,7 @@ def pipeline(engine):
     return pipe, [big, by_c, small]
 
 
-@pytest.mark.parametrize("engine", installed_engines())
+@pytest.mark.parametrize("engine", PROFILED)
 def test_views_keep_their_state_where_their_engine_reads_it(engine):
     pipe, views = pipeline(engine)
     held: type = pa.Table
@@ -138,6 +139,10 @@ def test_views_keep_their_state_where_their_engine_reads_it(engine):
         from sverify_polars.store import PolarsState
 
         held = PolarsState
+    elif engine == "spark":
+        from sverify_spark.store import SparkState
+
+        held = SparkState
     for step in range(3):
         deletes = orders()[2 * step : 2 * step + 2]
         pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
@@ -151,18 +156,21 @@ def test_views_keep_their_state_where_their_engine_reads_it(engine):
 ANSWER_SITES = {"_linear_change"}
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", PROFILED)
 def test_a_refresh_does_not_read_a_views_state_into_the_driver(engine, monkeypatch):
     """The state stays in its engine (#1329): during a refresh nothing reads a
     handle into Arrow except the answer sites above."""
     import inspect
 
-    classes = [Resident]
+    classes: list[type] = [Resident]
     if engine == "polars":
-        pytest.importorskip("sverify_polars")
         from sverify_polars.store import PolarsState
 
         classes = [PolarsState]
+    elif engine == "spark":
+        from sverify_spark.store import SparkState
+
+        classes = [SparkState]
     pipe, _ = pipeline(engine)
 
     def poisoned(cls):
