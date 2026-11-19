@@ -26,7 +26,7 @@ from ibis.common.deferred import Deferred
 
 from sverify import observation as _observation
 from sverify._duration import Duration, duration
-from sverify._unsupported import SverifyError
+from sverify._unsupported import ROWS_ASIDE, ROWS_HELD, SverifyError
 from sverify.counterexample import Counterexample
 from sverify.observation import Observation
 
@@ -158,7 +158,7 @@ class Unique(TableCondition):
 
         if inserts.num_rows and (clash := duplicate_keys(new, self.cols, inserts)):
             raise PreconditionError(
-                f"{clash} inserted key(s) of {t} violate {self.label}",
+                f"{clash} inserted key(s) of {t} violate {self.label}{ROWS_ASIDE}",
                 source=t,
                 condition=self,
                 rows=_duplicate_rows(inserts, new, self.cols),
@@ -445,7 +445,9 @@ class MaxRows(TableCondition):
 
         if (n := row_count(new)) > self.n:
             raise PreconditionError(
-                f"{n - self.n} row(s) of {t} violate {self.label}", source=t, condition=self
+                f"{n - self.n} row(s) of {t} violate {self.label}{ROWS_HELD}",
+                source=t,
+                condition=self,
             )
         return Discharged(t, self.label, ON_DATA)
 
