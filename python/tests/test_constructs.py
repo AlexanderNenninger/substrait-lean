@@ -104,6 +104,7 @@ def test_the_producer_never_spells_a_construct_from_an_ibis_class_name():
     for p in (exits.SRC / "ibis_substrait").rglob("*.py"):
         for n in ast.walk(ast.parse(p.read_text())):
             if isinstance(n, ast.keyword) and n.arg == "construct":
-                if "__name__" in ast.unparse(n.value) or ".upper()" in ast.unparse(n.value):
-                    bad.append(f"{p.name}:{n.value.lineno}: {ast.unparse(n.value)}")
+                text = ast.unparse(n.value)
+                if "__name__" in text or ".upper()" in text:
+                    bad.append(f"{p.name}:{n.value.lineno}: {text}")
     assert not bad, "\n".join(bad)
