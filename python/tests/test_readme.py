@@ -4,7 +4,7 @@ Each file's ```python blocks are run in order, in one namespace and in a
 fresh working directory, so an example may build on the ones before it. A
 block that fails, or a printed line that its `# ...` comment does not
 show, fails the test; "..." in a comment elides part of the line.
-A block that cannot run says why in its fence, ```python skip="a reason"```;
+A block that cannot run says why in its first line, `# skip: a reason`;
 the test prints each reason (`pytest -s`). A page with a Python block
 that is in neither `READMES` nor `EXEMPT` fails `test_every_page_is_listed`.
 The tour's notebooks are checked by `poe notebooks`.
@@ -36,17 +36,17 @@ EXEMPT = {
     "CHANGELOG.md": "the release notes quote old versions of the API",
     "dbt/API-NOTES.md": "notes on the API for contributors: fragments with their own setup",
 }
-FENCE = r'^```python(?: skip="([^"]+)")?\n(.*?)^```'
+FENCE = r"^```python\n(# skip: ([^\n]+)\n)?(.*?)^```"
 
 
 def python_blocks(text: str) -> list[str]:
     """The ```python blocks that run, in order: those with no skip reason."""
-    return [body for reason, body in re.findall(FENCE, text, re.S | re.M) if not reason]
+    return [body for _, reason, body in re.findall(FENCE, text, re.S | re.M) if not reason]
 
 
 def skipped_blocks(text: str) -> list[str]:
     """The reasons of the ```python blocks that carry one."""
-    return [reason for reason, _ in re.findall(FENCE, text, re.S | re.M) if reason]
+    return [reason for _, reason, _ in re.findall(FENCE, text, re.S | re.M) if reason]
 
 
 def shown_output(block: str) -> list[str]:
