@@ -116,7 +116,7 @@ on 2026-11-07.
 | A DuckDB-only construct on another writer (TRY_CAST, lists, black boxes, ...) | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
 | "the E writer does not write integer division yet" and other writer hooks | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
 | "the E writer does not write overflow = X yet" | SQL for an engine | `engine="duckdb"`; lifted by [#241] |
-| "tables have no row order" on Spark | SQL for an engine | `deterministic=True` |
+| "tables have no row order" on Spark | SQL for an engine with `rows="sequence"` | the default `rows="multiset"`, or `deterministic=True` |
 | "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
 | Spark's LN, POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |

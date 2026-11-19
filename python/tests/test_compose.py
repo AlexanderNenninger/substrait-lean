@@ -57,7 +57,8 @@ def test_broken_link_names_both_sides():
         doubled(not_null(orders))
     msg = str(e.value)
     assert msg.startswith("doubled needs (_.amount >= 0) (it may be FALSE on some rows), ")
-    assert msg.endswith("not_null only guarantees _.amount.notnull()")
+    assert "not_null only guarantees _.amount.notnull(); state it in not_null's `ensures`" in msg
+    assert msg.endswith('or set `on_unproved="check"` to check it on the data')
 
 
 def test_obligation_may_follow_from_more_than_the_ensures():

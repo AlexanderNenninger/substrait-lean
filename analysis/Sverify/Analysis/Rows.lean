@@ -35,7 +35,7 @@ variable [Boxes.Ambient]
 /-- Each join that determines a key of its right side, wrapped in a `FETCH`
 of as many rows as `Rel.maxRows` bounds its left side by. -/
 def Rel.capJoins (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → Rel
+    (K : TableCond) : Rel → Rel
   | .read t => .read t
   | .values n rows => .values n rows
   | .filter r c => .filter (r.capJoins cat A F K) c
@@ -59,7 +59,7 @@ def Rel.capJoins (cat : Catalog) (A : String → List AVal) (F : String → List
 
 section
 variable {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
-  {K : String → List (List Nat)}
+  {K : TableCond}
 
 theorem Rel.capJoins_arity : ∀ r : Rel, (r.capJoins cat A F K).arity cat = r.arity cat
   | .read _ | .values _ _ | .emit _ _ | .aggregate _ _ _ => rfl
@@ -105,7 +105,7 @@ theorem Rel.capJoins_wf : ∀ {r : Rel}, r.WF cat → (r.capJoins cat A F K).WF 
 theorem Rel.capJoins_eval (hcat : cat.WF)
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row)
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
+    (hK : K.Hold cat) :
     ∀ {r : Rel}, r.WF cat → (r.capJoins cat A F K).eval cat = r.eval cat
   | .read _, _ | .values _ _, _ => rfl
   | .filter r _, h | .project r _, h | .emit r _, h | .window r _ _ _, h | .orderBy r _, h
@@ -141,7 +141,7 @@ theorem Rel.capJoins_eval (hcat : cat.WF)
 theorem Rel.capJoins_small (hcat : cat.WF)
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row)
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
+    (hK : K.Hold cat) :
     ∀ {r : Rel}, r.WF cat → r.Small cat → (r.capJoins cat A F K).Small cat
   | .read _, _, h | .values _ _, _, h => h
   | .filter r _, hw, h | .project r _, hw, h | .emit r _, hw, h | .orderBy r _, hw, h
@@ -269,8 +269,8 @@ joins. -/
 theorem Rel.sumWraps_capJoins {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) :
     ∀ {u : Bool} {r : Rel} {e : Expr}, r.WF cat → r.HasIssue cat u (.sumWraps, e) →
       (r.capJoins cat A F K).HasIssue cat u (.sumWraps, e)
   | _, .read _, _, _, h | _, .values _ _, _, _, h => h.elim
@@ -460,12 +460,12 @@ theorem le_leastOf {L : Nat} : ∀ {ns : List Nat} {n : Nat}, (∀ m ∈ ns, L �
 
 section
 variable {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
-  {K : String → List (List Nat)} {P : String → List (List Nat × Nat)}
+  {K : TableCond} {P : String → List (List Nat × Nat)}
 
 /-- Bounds on the rows per key of a plan's result, from the tables' bounds
 `P` and keys `K`: `(k, n)` says at most `n` rows agree on the columns `k`. -/
 def Rel.perKey (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (P : String → List (List Nat × Nat)) :
+    (K : TableCond) (P : String → List (List Nat × Nat)) :
     Rel → List (List Nat × Nat)
   | .read t => P t
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ =>
@@ -485,7 +485,7 @@ def Rel.perKey (cat : Catalog) (A : String → List AVal) (F : String → List F
 theorem Rel.perKey_sound (hcat : cat.WF)
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row)
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows)
+    (hK : K.Hold cat)
     (hP : ∀ t, ∀ kn ∈ P t, RowsPer kn.1 kn.2 (cat t).rows) :
     ∀ {r : Rel}, r.WF cat → ∀ kn ∈ r.perKey cat A F K P, RowsPer kn.1 kn.2 (r.eval cat)
   | .read t, _, kn, h => hP t kn h
@@ -569,7 +569,7 @@ theorem Rel.perKey_sound (hcat : cat.WF)
 rows per key of `r` whose columns are all grouping expressions; none if
 nothing bounds them. -/
 def Rel.groupRows (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (P : String → List (List Nat × Nat)) (r : Rel)
+    (K : TableCond) (P : String → List (List Nat × Nat)) (r : Rel)
     (gs : List Expr) : Option Nat :=
   leastOf (((r.perKey cat A F K P ++ (r.keys cat A F K).map (·, 1)).filter
     fun kn : List Nat × Nat => coveredBy gs kn.1).map fun kn : List Nat × Nat => kn.2)
@@ -626,7 +626,7 @@ theorem length_le_of_rowsPer {k : List Nat} {n : Nat} {rows grp : Relation}
 theorem Rel.groupRows_sound (hcat : cat.WF)
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row)
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows)
+    (hK : K.Hold cat)
     (hP : ∀ t, ∀ kn ∈ P t, RowsPer kn.1 kn.2 (cat t).rows) {r : Rel} (hw : r.WF cat)
     {gs : List Expr} {grp : Relation} (hg : grp ∈ aggGroups gs (r.eval cat)) :
     ∀ n, r.groupRows cat A F K P gs = some n → grp.length ≤ n := fun n hn => by
@@ -645,7 +645,7 @@ theorem Rel.groupRows_sound (hcat : cat.WF)
 `Rel.groupRows`: those of windows, and those of aggregates whose groups and
 values do not keep them within it (`Measure.sumFits`). -/
 def Rel.sumsPer (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
-    (K : String → List (List Nat)) (P : String → List (List Nat × Nat)) : Rel → List Expr
+    (K : TableCond) (P : String → List (List Nat × Nat)) : Rel → List Expr
   | .read _ | .values _ _ => []
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ => r.sumsPer cat A F T K P
@@ -661,7 +661,7 @@ def Rel.sumsPer (cat : Catalog) (A : String → List AVal) (F : String → List 
 theorem Rel.sumsPer_sound (hcat : cat.WF)
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows)
+    (hK : K.Hold cat)
     (hP : ∀ t, ∀ kn ∈ P t, RowsPer kn.1 kn.2 (cat t).rows) :
     ∀ {u : Bool} {r : Rel} {e : Expr}, r.WF cat → r.Small cat → r.HasIssue cat u (.sumWraps, e) →
       e ∈ r.sumsPer cat A F T K P
@@ -740,7 +740,7 @@ end
 
 /-- The plan with capped reads and joins. -/
 def Rel.capped (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (caps : String → Option Nat) (r : Rel) : Rel :=
+    (K : TableCond) (caps : String → Option Nat) (r : Rel) : Rel :=
   (r.capReads caps).capJoins cat A F K
 
 /-- `Rel.mayIssues`, decided on the plan with capped reads, and its integer
@@ -748,7 +748,7 @@ def Rel.capped (cat : Catalog) (A : String → List AVal) (F : String → List F
 counts and the bounds on its rows per key (`Rel.sumsPer`) leave them
 possible. -/
 def Rel.issuesCapped (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (T : WindowKeys) (K : String → List (List Nat)) (caps : String → Option Nat)
+    (T : WindowKeys) (K : TableCond) (caps : String → Option Nat)
     (P : String → List (List Nat × Nat)) (r : Rel) : List (Issue × Expr) :=
   ((r.capReads caps).mayIssues cat A F T false).filter (·.1 != .sumWraps) ++
     ((r.capped cat A F K caps).mayIssues cat A F T false).filter fun p =>
@@ -762,7 +762,7 @@ theorem Rel.issuesCapped_sound {cat : Catalog} (hcat : cat.WF) {A : String → L
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    {K : String → List (List Nat)} (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows)
+    {K : TableCond} (hK : K.Hold cat)
     {caps : String → Option Nat} (hcap : ∀ t n, caps t = some n → (cat t).rows.length ≤ n)
     {P : String → List (List Nat × Nat)} (hP : ∀ t, ∀ kn ∈ P t, RowsPer kn.1 kn.2 (cat t).rows)
     {r : Rel} (hwf : r.WF cat) (hsm : r.Small cat) (p : Issue × Expr)

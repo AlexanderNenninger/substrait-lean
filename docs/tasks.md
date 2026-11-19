@@ -1604,8 +1604,10 @@ the following about the warehouse:
   `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time zone, NTZ
   timestamps, case-sensitive names), and strings use the default
   `UTF8_BINARY` collation.
-* Both have no row order, so sorts, `LIMIT` and windows are refused unless
-  the report is `deterministic` (a key on the order columns in the
+* Both have no row order. `to_sql` writes sorts, `LIMIT` and windows with ties
+  and a `LIMIT`'s rows open, as the reference allows (`rows="multiset"`, the
+  default for these engines), and refuses `rows="sequence"`, Lean's list order,
+  unless the report is `deterministic` (a key on the order columns in the
   contract, which `to_sql` reads from the report). A `SUM` or `AVG` of
   doubles runs natively, within the plan's bound of the reference's correctly
   rounded sum. Snowflake has no interval type, so interval-valued

@@ -130,7 +130,7 @@ def eqPair (n : Nat) : Expr → Option (Nat × Nat)
 variable [Boxes.Ambient]
 /-- Does every left row of `a ⟕ b ON on` have a match, by a foreign key? -/
 def Rel.fkMatch (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (R : ForeignKeys) (a b : Rel) (on : Expr) : Bool :=
+    (K : TableCond) (R : ForeignKeys) (a b : Rel) (on : Expr) : Bool :=
   match eqPair (a.arity cat) on with
   | some (i, j) => match a.origin cat i, b.cover cat j with
     | some (t, c), some (s, p) =>
@@ -144,7 +144,7 @@ key of the right side (at most one partner per left row), and for an inner
 join a foreign key gives every left row one. Returns the rewrite's name, the
 left side and the right side's arity. -/
 def Rel.joinElim (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (R : ForeignKeys) : Rel → Option (String × Rel × Nat)
+    (K : TableCond) (R : ForeignKeys) : Rel → Option (String × Rel × Nat)
   | .join a b ty on =>
     if (b.keys cat A F K).any (determines on (a.arity cat)) then
       match ty with
@@ -161,7 +161,7 @@ def nullRow (n : Nat) : List AVal := List.replicate n (AVal.ofValue .null)
 
 /-- What the abstract evaluation knows about `c` on the rows of `r`. -/
 def Rel.condVal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (c : Expr) : AVal :=
+    (K : TableCond) (r : Rel) (c : Expr) : AVal :=
   let T := Rel.keyedWindows cat A F K
   c.absD (r.aeval cat A F T) (r.facts cat F T)
 
@@ -203,8 +203,8 @@ def copyFds (n : Nat) (es : List Expr) : List (List Nat × Nat) :=
 /-- Functional dependencies of a plan's output: from the input keys, the
 grouping columns of an aggregate, equalities in filters and inner joins, and
 copied columns. -/
-def Rel.fds (cat : Catalog) (K : String → List (List Nat)) : Rel → List (List Nat × Nat)
-  | .read t => keyFds (K t) (cat t).arity
+def Rel.fds (cat : Catalog) (K : TableCond) : Rel → List (List Nat × Nat)
+  | .read t => keyFds (K.keys t) (cat t).arity
   | .aggregate _ gs ms => keyFds [List.range gs.length] (gs.length + ms.length)
   | .filter r c => r.fds cat K ++ eqFds c.eqCols
   | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => r.fds cat K
@@ -255,7 +255,7 @@ def fdEmit (qs drops : List Nat) (n m : Nat) : List Nat :=
 /-- `GROUP BY gs` as `GROUP BY` the kept columns, carrying the ones they
 determine through `MIN` (all values of a group agree on them). -/
 def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (ms : List Measure) :
+    (K : TableCond) (r : Rel) (gs : List Expr) (ms : List Measure) :
     Option (String × Rel) :=
   let fds := r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat)
   let qs := keepCols fds gs
@@ -285,7 +285,7 @@ def eagerCols (n : Nat) (gs : List Expr) (out k : Nat) : List Expr :=
 /-- `GROUP BY` of left columns over a join on a key of the right side, as the
 join of the left side's groups with the right side. -/
 def Rel.eagerAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (ms : List Measure) :
+    (K : TableCond) (r : Rel) (gs : List Expr) (ms : List Measure) :
     Option (String × Rel) :=
   match r with
   | .join a b .inner on =>
@@ -304,7 +304,7 @@ def Rel.eagerAgg (cat : Catalog) (A : String → List AVal) (F : String → List
 
 /-- One rewrite at the root, and its name for the report. -/
 def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (R : ForeignKeys) : Rel → Option (String × Rel)
+    (K : TableCond) (R : ForeignKeys) : Rel → Option (String × Rel)
   | .filter r c =>
     let a := r.condVal cat A F K c
     if a.certainlyTrue then some ("filter implied by the contract", r)
@@ -350,7 +350,7 @@ def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fac
 /-- Apply `rule` at the root while it fires (`fuel` times at most), logging
 the names. -/
 def Rel.stepN (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (R : ForeignKeys) : Nat → Rel → List String → Rel × List String
+    (K : TableCond) (R : ForeignKeys) : Nat → Rel → List String → Rel × List String
   | 0, r, log => (r, log)
   | fuel + 1, r, log =>
     match r.rule cat A F K R with
@@ -358,13 +358,13 @@ def Rel.stepN (cat : Catalog) (A : String → List AVal) (F : String → List Fa
     | none => (r, log)
 
 def Rel.step (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (R : ForeignKeys) (r : Rel) (log : List String) :
+    (K : TableCond) (R : ForeignKeys) (r : Rel) (log : List String) :
     Rel × List String :=
   r.stepN cat A F K R 4 log
 
 /-- Rewrite bottom-up; also return the names of the rewrites applied. -/
 def Rel.optimize (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (R : ForeignKeys) : Rel → Rel × List String
+    (K : TableCond) (R : ForeignKeys) : Rel → Rel × List String
   | .read t => (.read t, [])
   | .values n rows => (.values n rows, [])
   | .filter r c => step cat A F K R (.filter (r.optimize cat A F K R).1 c) (r.optimize cat A F K R).2
@@ -1020,8 +1020,8 @@ theorem flatMap_opt {A : Relation} {M : Row → Relation}
 section
 variable {cat : Catalog} (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
   (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-  (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-  (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {R : ForeignKeys} (hR : R.Hold cat)
+  (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+  (hK : K.Hold cat) {R : ForeignKeys} (hR : R.Hold cat)
 include hcat hA hF hK hR
 
 omit hA hF hR in
@@ -1916,8 +1916,8 @@ allowed results, not only its rows. -/
 theorem Rel.refines_of_same {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r s : Rel} (h : Same cat r s)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {r s : Rel} (h : Same cat r s)
     (hd : s.detPlan cat A F K = true) : s.RefinesBag cat r :=
   Rel.refines_of_perm hcat hA hF hK h.wf hd (h.eval ▸ .refl _)
 
@@ -1926,8 +1926,8 @@ gives leaves no choices. -/
 theorem Rel.optimize_refines {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {R : ForeignKeys} (hR : R.Hold cat) {r : Rel}
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {R : ForeignKeys} (hR : R.Hold cat) {r : Rel}
     (hwf : r.WF cat) (hd : (r.optimize cat A F K R).1.detPlan cat A F K = true) :
     (r.optimize cat A F K R).1.RefinesBag cat r :=
   Rel.refines_of_same hcat hA hF hK (Rel.optimize_sound hcat hA hF hK hR hwf) hd
