@@ -103,21 +103,34 @@ def base_calls() -> dict[tuple[str, str], tuple[dict, int]]:
     return found
 
 
-def collapses(written: dict[str, str]) -> list[list[str]]:
-    """The values the checker writes alike while it writes another apart: the
-    parser reads them as one value. (If all are alike, the call does not read
-    the option.)"""
+def collapses(written: dict[str, str], default: str) -> list[list[str]]:
+    """The accepted values the checker writes alike while it writes another
+    apart, and the values written as the plan without the option when more than
+    one is: the parser reads them as one value. `default` is the plan written
+    without the option, which at most one value can stand for."""
     groups = collections.defaultdict(list)
     for value, text in written.items():
         groups[text].append(value)
-    return [vs for vs in groups.values() if len(vs) > 1] if len(groups) > 1 else []
+    out = [vs for vs in groups.values() if len(vs) > 1] if len(groups) > 1 else []
+    as_default = [v for v, text in written.items() if text == default]
+    return out + ([as_default] if len(as_default) > 1 and as_default not in out else [])
+
+
+#: Pairs (function, option) whose option changes nothing for the call's kind:
+#: the choice of `on_domain_error` for an integer `power` is `any`
+#: (`Options.lean`, group `int.pow`), so every value is accepted and written as
+#: the plan without it.
+NO_EFFECT = {("power", "on_domain_error")}
 
 
 def test_a_collapse_is_two_values_written_alike_beside_another():
-    assert collapses({"A": "x", "B": "x", "C": "y"}) == [["A", "B"]]
-    assert collapses({"A": "x", "B": "y", "C": "z"}) == []
+    assert collapses({"A": "x", "B": "x", "C": "y"}, "z") == [["A", "B"]]
+    assert collapses({"A": "x", "B": "y", "C": "z"}, "w") == []
     # An option the call does not read: every value is written alike.
-    assert collapses({"A": "x", "B": "x"}) == []
+    assert collapses({"A": "x", "B": "x"}, "w") == []
+    # Two values read as the default, with two values only.
+    assert collapses({"A": "d", "B": "d"}, "d") == [["A", "B"]]
+    assert collapses({"A": "d", "B": "y"}, "d") == []
 
 
 def with_option(plan: dict, index: int, option: str, value: str) -> dict:
@@ -131,19 +144,27 @@ def with_option(plan: dict, index: int, option: str, value: str) -> dict:
 
 
 def test_every_option_value_is_refused_or_written_back():
+    """What it checks: of the values of an option a call reads, those the
+    checker accepts are written as different plans, at most one of them as the
+    plan without the option (the default), and a value the written plan states
+    is stated as itself. What it cannot see: an option with one accepted value
+    (the others refused: most options, 44 of 65 triples of function, kind and
+    option), an option the writer drops while the plan differs from the default
+    (the writer rewrites some calls, `divide` with `NULL` for one), and a value
+    the parser reads as another in a way the written plan does not show."""
     reads, values = checker_options()
-    wrong, accepted, refused = [], 0, 0
+    wrong, accepted = [], 0
     calls_ = base_calls()
     # The coverage cases reach most of the functions that read options.
     assert len({n for n, _ in calls_} & set(reads)) >= 30
     for (name, kind), (plan, index) in sorted(calls_.items()):
+        default = json.dumps(json.loads(written_plan(json.dumps(plan))), sort_keys=True)
         for option in sorted(reads.get(name, ())):
             written: dict[str, str] = {}
             for value in sorted(values.get(option, ())):
                 try:
                     out = written_plan(json.dumps(with_option(plan, index, option, value)))
                 except UnsupportedError:
-                    refused += 1
                     continue
                 accepted += 1
                 written[value] = json.dumps(json.loads(out), sort_keys=True)
@@ -151,8 +172,10 @@ def test_every_option_value_is_refused_or_written_back():
                 for (_, o, pref), _ in (stated(json.loads(out)) - stated(plan)).items():
                     if o == option and pref != (value,):
                         wrong.append(f"{name}({kind}) {option}={value} is written as {pref}")
-            wrong += [
-                f"{name}({kind}) {option}: {vs} are written alike" for vs in collapses(written)
-            ]
-    assert accepted and refused is not None
+            if (name, option) not in NO_EFFECT:
+                wrong += [
+                    f"{name}({kind}) {option}: {vs} are written alike"
+                    for vs in collapses(written, default)
+                ]
+    assert accepted
     assert not wrong, "\n".join(wrong)

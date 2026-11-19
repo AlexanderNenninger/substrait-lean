@@ -73,7 +73,7 @@ What a test checks and no proof does.
 | What | The test |
 |---|---|
 | The writer loses nothing: every plan the checker writes parses back to the same `Rel` (`parse (write r) = r`) | The CLI's own round trip (`Write.roundtrips`), and the golden tests, `tests/run.sh` (`tests/fixtures/`) |
-| The parser reads each option of a call as the plan states it: for a call of every function that reads options and every value of each option, the checker refuses the plan or writes a different plan | `python/tests/test_parse_options.py`: one plan per function, option and value, from the coverage cases' calls (about 370 plans, 5 s) |
+| The parser reads an option's values apart: for a call of each function that reads options (33 of 36), the values of each option the checker accepts are written as different plans, at most one of them as the plan without the option. It does not see an option with one accepted value (44 of 65 cases), or a value read as another that the written plan does not show | `python/tests/test_parse_options.py`: one plan per function, option and value, from the coverage cases' calls (about 370 plans, 5 s) |
 | The checker's answers to `--contract` requests | `tests/contracts/` (`tests/run.sh`) |
 | The Python mirror of the function tables (`sverify._functions`) | `python/tests/test_functions.py` against `substrait-check --functions` |
 | The engine facts each engine profile states | Their probes (`engines/duckdb/replay/probes.json`, `engines/polars/probes/` and `engines/spark/probes/`), checked by `sverify_dev.facts` and the engine jobs |
