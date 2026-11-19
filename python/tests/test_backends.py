@@ -244,12 +244,12 @@ def engine_sql(case, engine: str, dialect, read: str) -> str | None:
     plan = json.loads(written_plan(to_substrait_json(case.build())))
     if engine in REFUSED.get(case.label, {}):
         with pytest.raises(Unsupported, match=REFUSED[case.label][engine]):
-            plan_sql(plan, dialect)
+            plan_sql(plan, dialect, rows="sequence")
         if case.label not in TIE_FREE:
             return None
-        sql = plan_sql(plan, dialect, deterministic=True)
+        sql = plan_sql(plan, dialect, deterministic=True, rows="sequence")
     else:
-        sql = plan_sql(plan, dialect)
+        sql = plan_sql(plan, dialect, rows="sequence")
     sqlglot.parse_one(sql, read=read)
     return sql
 

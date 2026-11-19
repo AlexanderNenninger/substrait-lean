@@ -1,1 +1,1 @@
--- Unsupported: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)
+-- Unsupported: Snowflake tables have no row order, so rows="sequence" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows="multiset" (ties and the rows of a LIMIT are open, as the reference allows), or run a report whose windows have no ties (deterministic=True), which writes them with the sort keys alone
