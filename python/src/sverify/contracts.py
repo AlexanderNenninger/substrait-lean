@@ -2126,19 +2126,32 @@ def rounding_hints(
     return hints
 
 
+_INT_TYPES = {8: dt.int8, 16: dt.int16, 32: dt.int32, 64: dt.int64}
+
+
+def _checker_type(ty: Any, k: dict) -> Any:
+    """One column's type as the checker types it (`outputKinds`)."""
+    match k["kind"]:
+        case "dec":
+            return dt.Decimal(k["precision"], k["scale"], nullable=ty.nullable)
+        case "int" if k["bits"] in _INT_TYPES:
+            return _INT_TYPES[k["bits"]](nullable=ty.nullable)
+        case "time" if ty.is_timestamp() and ty.timezone is None:
+            return dt.Timestamp(scale=6, nullable=ty.nullable)
+        case "instant" if ty.is_timestamp():
+            return dt.Timestamp(timezone="UTC", scale=6, nullable=ty.nullable)
+    return ty
+
+
 def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> dict[str, Any]:
-    """`dtypes` with each decimal column as the checker types it
-    (`outputKinds`, from `Write.relKinds`): Ibis's `AVG` and `SUM` of a decimal
-    differ from the reference's. A checker without the field, or with another
-    number of columns, leaves Ibis's types as they are."""
+    """`dtypes` as the run returns them (`outputKinds`, from `Write.relKinds`
+    and `Rel.outBits`): a decimal `AVG` or `SUM` and an integer's width differ
+    from Ibis's (a computed integer is 64 bits, a passed-through column keeps its
+    declared width), and a timestamp has microseconds. A checker without the
+    field, or with another number of columns, leaves Ibis's types as they are."""
     if kinds is None or len(kinds) != len(dtypes):
         return dtypes
-    return {
-        name: dt.Decimal(k["precision"], k["scale"], nullable=ty.nullable)
-        if k["kind"] == "dec"
-        else ty
-        for (name, ty), k in zip(dtypes.items(), kinds, strict=True)
-    }
+    return {name: _checker_type(ty, k) for (name, ty), k in zip(dtypes.items(), kinds, strict=True)}
 
 
 def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
