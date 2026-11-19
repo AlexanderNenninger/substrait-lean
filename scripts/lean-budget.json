@@ -99,15 +99,15 @@
   },
   "SubstraitLean.EngineRobust": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2691
   },
   "SubstraitLean.EngineTables": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2840
   },
   "SubstraitLean.Epsilon": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2721
   },
   "Sverify.Core.EvalFast": {
    "cpu_s": 30,
@@ -355,7 +355,7 @@
   },
   "SubstraitLean.Realize": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2704
   },
   "SubstraitLean.Refresh": {
    "cpu_s": 30,
