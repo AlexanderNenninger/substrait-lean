@@ -83,13 +83,20 @@ def checkPlan (plan : Plan) : Option (UInt32 × String) :=
   else if (plan.root.inferKinds cat plan.tableKinds).isNone then some (2, "well-kinded: no")
   else none
 
+/-- Why a plan has no delta rule: each operator that blocks it (`Rel.blockers`)
+with the tables it reads, e.g. `aggregate over orders; left join over a, b`. -/
+def blockedMessage (bs : List (String × List String)) : String :=
+  let one := fun (k, ts) =>
+    if ts.isEmpty then k else s!"{k} over {", ".intercalate ts.eraseDups}"
+  s!"not incrementally maintainable: no delta rule for {"; ".intercalate (bs.map one)}"
+
 variable [Boxes.Ambient]
 def delta (plan : Plan) : IO UInt32 := do
   if let some (code, msg) := checkPlan plan then
     IO.eprintln msg; return code
   -- `isIncremental_iff`: this decides `Rel.Incremental`.
   if !plan.root.isIncremental then
-    IO.eprintln "not incrementally maintainable (left join, fetch or window)"; return 3
+    IO.eprintln (blockedMessage plan.root.blockers); return 3
   let d := plan.root.delta Write.deltaName
   -- `Rel.weighted_eval` needs the delta plan to be incremental and well-formed.
   if !d.isIncremental || !d.checkWF (Write.deltaCatalog plan) then

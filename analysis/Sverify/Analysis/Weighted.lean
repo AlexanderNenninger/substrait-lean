@@ -305,17 +305,27 @@ theorem weighted_read_plain {cat E : Catalog} {isW : String → Bool} {t : Strin
     ((Rel.read t).weighted cat isW).eval E = ZSet.encode (ZSet.lift (E t).rows) := by
   simp [Rel.weighted, h, Rel.eval, Expr.eval, ZSet.encode, ZSet.lift, wrow]
 
-def Rel.isIncremental : Rel → Bool
-  | .read _ | .values _ _ => true
-  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.isIncremental
-  | .cross a b | .unionAll a b | .join a b .inner _ => a.isIncremental && b.isIncremental
-  | .join _ _ .left _ | .fetch _ _ _ | .window _ _ _ _ | .semi _ _ _ _ | .distinct _
-  | .aggregate _ _ _ | .unnest _ _ => false
+/-- The operators that have no delta rule (`Rel.Incremental` is false at
+them), outermost first and left before right, each with the tables read under
+it: what a user has to change for the plan to be maintained by deltas. -/
+def Rel.blockers : Rel → List (String × List String)
+  | .read _ | .values _ _ => []
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => r.blockers
+  | .cross a b | .unionAll a b | .join a b .inner _ => a.blockers ++ b.blockers
+  | r@(.join a b .left _) => ("left join", r.tables) :: (a.blockers ++ b.blockers)
+  | r@(.semi a b _ _) => ("semi or anti join", r.tables) :: (a.blockers ++ b.blockers)
+  | r@(.fetch x _ _) => ("fetch", r.tables) :: x.blockers
+  | r@(.window x _ _ _) => ("window", r.tables) :: x.blockers
+  | r@(.distinct x) => ("distinct", r.tables) :: x.blockers
+  | r@(.aggregate x _ _) => ("aggregate", r.tables) :: x.blockers
+  | r@(.unnest x _) => ("unnest", r.tables) :: x.blockers
+
+def Rel.isIncremental (r : Rel) : Bool := r.blockers.isEmpty
 
 omit [Boxes.Ambient] in
 theorem Rel.isIncremental_iff {r : Rel} : r.isIncremental = true ↔ r.Incremental := by
   induction r with
-  | join a b ty _ iha ihb => cases ty <;> simp_all [isIncremental, Incremental]
-  | _ => simp_all [isIncremental, Incremental]
+  | join a b ty _ iha ihb => cases ty <;> simp_all [isIncremental, blockers, Incremental]
+  | _ => simp_all [isIncremental, blockers, Incremental]
 
 end Substrait
