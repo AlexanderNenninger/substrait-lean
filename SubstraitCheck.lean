@@ -355,7 +355,7 @@ def lawsJson (ls : List BlackBox.Law) : Lean.Json :=
 
 /-- The calls of a plan's window measures, which `Rel.ctors` and
 `Rel.aggFns` leave out. -/
-def Rel.windowCtors : Rel → List Functions.Ctor
+def _root_.Substrait.Rel.windowCtors : Rel → List Functions.Ctor
   | .read _ | .values _ _ => []
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ | .aggregate r _ _ => r.windowCtors
@@ -363,8 +363,8 @@ def Rel.windowCtors : Rel → List Functions.Ctor
   | .window r _ _ fns => r.windowCtors ++ (WinFn.aggs fns).flatMap fun m => .agg m.fn :: m.ctors
 
 /-- The black boxes a plan calls, by name, once each. -/
-def Rel.blackBoxNames (r : Rel) : List String :=
-  ((r.ctors ++ r.aggFns.map .agg ++ r.windowCtors).filterMap fun
+def _root_.Substrait.Rel.blackBoxNames (r : Rel) : List String :=
+  ((r.ctors ++ r.aggFns.map Functions.Ctor.agg ++ r.windowCtors).filterMap fun
     | .un (.bbox n) | .bin (.bbox2 n) | .agg (.bbox n) => some n
     | _ => none).eraseDups
 
