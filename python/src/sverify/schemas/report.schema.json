@@ -335,7 +335,7 @@
       ]
     },
     "black_boxes": {
-      "description": "The black boxes the transformation calls, each with the laws its row declares: what the proofs assume of them (substrait-check --contract's \"black_boxes\", #1484).",
+      "description": "The black boxes the transformation calls, in the order of first call, each with the laws its row declares: what the proofs trust of them (substrait-check --contract's \"black_boxes\", #1484). Report.black_boxes maps each name to its laws.",
       "type": "array",
       "items": {
         "type": "object",
