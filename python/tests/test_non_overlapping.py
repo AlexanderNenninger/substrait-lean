@@ -69,13 +69,12 @@ def test_a_closed_end_has_no_rule():
     assert not proves_unique(join(closed), [RANGES])
 
 
-def test_a_join_on_other_columns_has_no_rule():
-    other = lambda o, h: (  # noqa: E731
-        (o.order_id == h.customer_id)
-        & (h.valid_from <= o.ts)
-        & (h.valid_to.isnull() | (o.ts < h.valid_to))
+def test_a_join_that_does_not_equate_the_by_columns_has_no_rule():
+    """Versions of other customers match too: the ranges do not apart them."""
+    no_customer = lambda o, h: (  # noqa: E731
+        (h.valid_from <= o.ts) & (h.valid_to.isnull() | (o.ts < h.valid_to))
     )
-    assert not proves_unique(join(other), [RANGES])
+    assert not proves_unique(join(no_customer), [RANGES])
 
 
 def test_ranges_of_other_columns_have_no_rule():
