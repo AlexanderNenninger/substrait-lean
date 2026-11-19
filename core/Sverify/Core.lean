@@ -10,6 +10,7 @@ import Sverify.Core.Digest
 import Sverify.Core.Expr
 import Sverify.Core.Float
 import Sverify.Core.FloatArith
+import Sverify.Core.FloatAround
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatFormat
 import Sverify.Core.FloatMoments
