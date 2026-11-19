@@ -1011,8 +1011,9 @@ own.
 - `ANY` and `PAIRWISE` keep their trees (`FloatSums`) and `SEQUENTIAL` its
   permuted sequential sum, each with the bound.
 - `COMPENSATED` (Kahan's sum, Polars) and `SCALED_CONSTANT` (a constant run's
-  `fl(k · x)`, DuckDB) were any double. They are now the bound alone: no
-  theorem of the core reads their shape (`TreeSum.const` is float-bounds').
+  `fl(k · x)`, DuckDB) were any double. They are now the bound alone and
+  exactness on small integers: no theorem of the core reads their shape
+  (`TreeSum.const` is float-bounds').
 - `AvgOrder` follows: a sum within the bound, divided by the count.
 - `EXACT`, the reference's order (D25), is unchanged.
 - Window sums take their frame's `SumOrder` (`WinFn.AllowedP`): `TREE` and
@@ -1035,6 +1036,21 @@ are bounded. `SumOrder.bound` reads the bound as a range the abstract domain
 computes (finite, in `[sumLo, sumHi]`), which cuts `nan_creation`,
 `float_overflow` and the NaN cases of a comparison downstream (D34), and the
 margin check's theorem over its plan reads the same set.
+
+Amended 2026-11-19 (#1608 12b-1): in `SumOrder`, the behaviours with no
+shape (`SCALED_CONSTANT`, `COMPENSATED`) are the bound and exactness on small
+integers: where every double of `vs` is an integer and `Σ |vᵢ| ≤ 2⁵³`
+(`SmallInts`), `canon c` is the exact sum's. `AvgOrder` inherits it through
+its sum. The shaped behaviours prove it (`SumOrder.int_exact`), and a mean
+of such values is the reference's (`AvgOrder.int_exact`), so a double `SUM`
+or `AVG` of converted integers with `N · max M 1 ≤ 2⁵²` has no tolerance
+(`Epsilon.intMeanExact`). `float-bounds` backs the conjunct as
+`Summed.near` backs the bound: `StdModel.Summed.int_exact`, under the model
+hypothesis `StdModel.ExactInts` (integers up to `2⁵³` round to
+themselves). The reference's `EXACT`, `Rel.eval` and the reference's
+`Rel.Allowed` do not change. Engine profiles narrow on such sums, on each
+engine's evidence (`engines/*/tests/test_*int_sums.py` over
+`python/tests/_int_sums.py`; Snowflake's recorded privately).
 
 ### D36. Doubles have one zero and one NaN
 

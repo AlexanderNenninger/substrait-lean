@@ -10,8 +10,23 @@
     "rounding"
   ],
   "rows": [
-    {"group": "agg.fsum", "option": "sum_order", "types": ["fp32", "fp64"]},
-    {"group": "agg.fsum", "option": "rounding", "types": ["fp32", "fp64"], "evidence": "source"}
+    {
+      "group": "agg.fsum",
+      "option": "sum_order",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "rounding",
+      "types": [
+        "fp32",
+        "fp64"
+      ],
+      "evidence": "source"
+    }
   ],
   "constructs": [
     "mean",
@@ -127,10 +142,23 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "track A's Lean worker (#1608 12b-1, D35 amended 2026-11-19), polars Python package, macOS arm64",
+      "evidence": [
+        {
+          "file": "engines/polars/tests/test_polars_int_sums.py",
+          "note": "mean, streaming over seven chunks and grouped in memory: the exact mean rounded once in every case"
+        }
+      ],
+      "notes": "Exactness on small integers: where every value is an integer-valued double and the magnitudes sum to at most 2^53, the engine's sum is the exact sum and its mean the exact mean rounded once (python/tests/_int_sums.py's cases). This is the evidence for D35's amendment on this engine's sum_order row."
     }
   ],
   "issues": [
     54,
-    85
+    85,
+    1608
   ]
 }

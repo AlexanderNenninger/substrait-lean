@@ -22,6 +22,10 @@ give (`Measure.abs`, `floatBound`):
 * so the engine's result is within the sum of the two: `"abs"`, as a
   double, rounded up. `StdModel.epsilon_sum_cr` and `StdModel.epsilon_avg_cr`
   in `float-bounds/FloatBounds/Epsilon.lean` prove it;
+* a `SUM` or `AVG` of converted integers (`itof e`) with `N · max M 1 ≤ 2⁵²`
+  adds exactly on every engine and in every order, and a mean divides once
+  as the reference does: tolerance `0`, proved (`intMeanExact`,
+  `SumOrder.int_exact`, `AvgOrder.int_exact`; D35 amended 2026-11-19);
 * where the argument's values have one sign nothing cancels, and the bound
   is also relative (`relEps`): `"rel"`, `StdModel.epsilon_sum_rel` and, for a
   mean of values at least `2⁻¹⁰²²` in magnitude, `StdModel.epsilon_avg_rel`,
@@ -95,6 +99,19 @@ def relEps (k : Nat) : Float :=
 def upJsonZ (f : Float) : Json := if f == 0.0 then toJson (0 : Nat) else upJson f
 
 variable [Boxes.Ambient]
+/-- A `SUM` or `AVG` of converted integers that every engine computes
+exactly (#1608 12b-1): the argument is `itof e`, `e`'s values at most `M`
+in magnitude, at most `N` rows, and `N · max M 1 ≤ 2⁵²`. Then the values'
+`Σ |xᵢ| ≤ 2⁵³` and every order adds exactly (`SumOrder.int_exact`), and a
+mean divides once as the reference does (`AvgOrder.int_exact`), whatever
+the engine's `sum_order` behaviour. -/
+def intMeanExact (env : List AVal) (m : Measure) (rows : Option Nat) : Bool :=
+  match m.arg, rows with
+  | .un .itof e, some n => match (e.absD env []).int with
+    | some ⟨some lo, some hi⟩ => n * max (max lo.natAbs hi.natAbs) 1 ≤ 2 ^ 52
+    | _ => false
+  | _, _ => false
+
 /-- The bound for a double measure over rows described by `env`, at most
 `rows` of them: absolute, and relative where the values have one sign, with
 whether the relative bound is one `epsilon_avg_rel` covers (an `AVG`'s
@@ -102,6 +119,7 @@ values at least `2⁻¹⁰²¹` in magnitude, so its decoded doubles and mean at
 least `2⁻¹⁰²²`). -/
 def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
     Option (Float × Option (Float × Bool)) := do
+  if intMeanExact env m rows then return (0.0, some (0.0, true))
   let a := m.arg.absD env []
   guard a.intsOnly
   let b ← a.int
@@ -554,7 +572,7 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
           let n ← r.maxRows
           -- The order's bound is proved for the same doubles on both sides.
           return (order + (if m.fn = .avg then ea else Float.ofNat n * ea),
-            ea == 0.0 && pa && pf && ordersProved es)
+            ea == 0.0 && pa && pf && (intMeanExact env m r.maxRows || ordersProved es))
         | .count => return (0.0, pf)
         | .min | .max => return (ea, pa && pf)
         -- D30: an engine's statistic is within the plan's bound of the

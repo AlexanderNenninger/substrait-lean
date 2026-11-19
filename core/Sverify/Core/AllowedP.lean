@@ -71,18 +71,28 @@ def SumBound (vs : List Value) (c : Int) : Prop :=
       (FloatCode.scaled c - exactSum vs).natAbs * (2 ^ 53 * (2 ^ 53 - vs.length)) ≤
         (vs.length * 2 ^ 53 + (2 ^ 53 - vs.length)) * (scaledAbsSum vs + vs.length * 2 ^ 52)
 
+/-- Every value of `vs` a finite double that is an integer, and
+`Σ |vᵢ| ≤ 2⁵³`: a sum of them, in any order, adds exactly (D35, amended
+2026-11-19). -/
+def SmallInts (vs : List Value) : Prop :=
+  (∀ v ∈ vs, ∃ c, v = .float c ∧ FloatCode.IsFin c ∧ ∃ k : Int, FloatCode.scaled c = k * FloatCode.unitK) ∧
+    scaledAbsSum vs ≤ 2 ^ 53 * FloatCode.unitK
+
 /-- The doubles a `SUM` of `vs` gives under a `sum_order` behaviour: the
 correctly rounded exact sum for `EXACT`, the reference's (D25); for every
 other behaviour a sum within `SumBound` (D35) and, where the behaviour has
 one, of its shape: a tree (`ANY`, `PAIRWISE`) or a sequential sum in some
 order (`SEQUENTIAL`). Kahan's compensated sum (`COMPENSATED`) and a constant
-run's product (`SCALED_CONSTANT`) are the bound alone. -/
+run's product (`SCALED_CONSTANT`) are the bound and exactness on small
+integers (D35, amended 2026-11-19): where `vs` are `SmallInts`, the exact
+sum. The shapes prove that (`SumOrder.int_exact`); here it is trusted, as
+the bound is. -/
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "EXACT" then c = floatSumCR vs
   else SumBound vs c ∧
     if b = "ANY" ∨ b = "PAIRWISE" then FloatSums vs c
     else if b = "SEQUENTIAL" then ∃ ws, ws.Perm vs ∧ c = floatSum ws
-    else True
+    else SmallInts vs → FloatCode.canon c = FloatCode.canon (floatSumCR vs)
 
 /-- The doubles an `AVG` of `vs` gives under a `sum_order` behaviour: the
 exact mean rounded once for `EXACT`, else a sum `SumOrder` allows divided by

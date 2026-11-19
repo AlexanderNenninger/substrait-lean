@@ -10,8 +10,20 @@
     "rounding"
   ],
   "rows": [
-    {"group": "agg.fsum", "option": "sum_order", "types": ["fp64"]},
-    {"group": "agg.fsum", "option": "rounding", "types": ["fp64"]}
+    {
+      "group": "agg.fsum",
+      "option": "sum_order",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "agg.fsum",
+      "option": "rounding",
+      "types": [
+        "fp64"
+      ]
+    }
   ],
   "constructs": [
     "avg"
@@ -78,7 +90,10 @@
       "method": "docs",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "avg: affected by ordering; silent on the algorithm and the constant-run product"}
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "avg: affected by ordering; silent on the algorithm and the constant-run product"
+        }
       ]
     },
     {
@@ -86,13 +101,32 @@
       "method": "engine-test",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L8-L17", "note": "avg(9007199254740992.0, 1.0) → 4503599627370496: the plain double sum, then one division"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_avg.test#L19-L23", "note": "AVG(3::DOUBLE) → 3, AVG(NULL::DOUBLE) → NULL"}
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L8-L17",
+          "note": "avg(9007199254740992.0, 1.0) → 4503599627370496: the plain double sum, then one division"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_avg.test#L19-L23",
+          "note": "AVG(3::DOUBLE) → 3, AVG(NULL::DOUBLE) → NULL"
+        }
       ]
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "track A's Lean worker (#1608 12b-1, D35 amended 2026-11-19), duckdb 2.0.0 Python package, macOS arm64",
+      "evidence": [
+        {
+          "file": "engines/duckdb/tests/test_duckdb_int_sums.py",
+          "note": "avg(x) of DOUBLE over the same inputs: the exact mean rounded once in every case"
+        }
+      ],
+      "notes": "Exactness on small integers: where every value is an integer-valued double and the magnitudes sum to at most 2^53, the engine's sum is the exact sum and its mean the exact mean rounded once (python/tests/_int_sums.py's cases). This is the evidence for D35's amendment on this engine's sum_order row."
     }
   ],
   "issues": [
     54,
-    85
+    85,
+    1608
   ]
 }
