@@ -4448,6 +4448,7 @@ source = { editable = "." }
 dependencies = [
     { name = "ibis-framework" },
     { name = "pyarrow" },
+    { name = "pyarrow-hotfix" },
     { name = "sqlglot" },
     { name = "substrait" },
     { name = "sverify-duckdb" },
@@ -4552,6 +4553,7 @@ requires-dist = [
     { name = "openlineage-python", marker = "extra == 'openlineage'", specifier = ">=1.55.0,<2" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
+    { name = "pyarrow-hotfix", specifier = ">=0.6" },
     { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
