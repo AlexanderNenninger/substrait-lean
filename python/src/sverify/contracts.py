@@ -91,7 +91,8 @@ from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double 
 from sverify._dialect import DialectDifference
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
-from sverify._unsupported import SverifyWarning
+from sverify._unsupported import ConditionError, SverifyWarning
+from sverify._unsupported import Unsupported as _Unsupported
 from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
 from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
@@ -1600,38 +1601,39 @@ def _prove_once(
 
     req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
 
-    def query(where: str, n: int, table: Transform, c: Condition) -> Transform:
-        """`condition_query`, with an Ibis error named by the condition it
-        is in (#687)."""
-        from ibis.common.exceptions import IbisError
+    unreadable: dict[str, _Unsupported] = {}
 
+    from ibis.common.exceptions import IbisError
+
+    def condition_plan(table: Transform, c: Condition, where: str) -> Any:
+        """The plan of a condition; one sverify cannot read is collected, so
+        that `ConditionError` names every such condition at once (#699)."""
         try:
-            return condition_query(table, c, lift(c))
-        except IbisError as e:
-            msg = f"{where} condition {n}, {label(c)}, does not type-check: {e}"
-            try:
-                err = type(e)(msg)
-            except Exception:  # noqa: BLE001 - an error class with another signature
-                err = TypeError(msg)
-            raise err from e
+            return plan(condition_query(table, c, lift(c)), where)
+        except _Unsupported as e:
+            unreadable[label(c)] = e
+        except IbisError as e:  # the condition does not type-check (#687)
+            unreadable[label(c)] = _Unsupported(f"does not type-check: {e}")
+        except AttributeError as e:  # a column the table lacks
+            unreadable[label(c)] = _Unsupported(str(e))
+        return None
 
     req_plans = []
     for t, cs in requires.items():
-        for n, c in enumerate(cs, start=1):
-            if planned(c):
-                req_plans.append(
-                    plan(
-                        query(f"requires {t}", n, table_ref(t, c), c),
-                        f"the requires condition {label(c)}",
-                    )
-                )
+        for c in cs:
+            where = f"the requires condition {label(c)}"
+            if planned(c) and (p := condition_plan(table_ref(t, c), c, where)):
+                req_plans.append(p)
     ens_plans = []
-    for n, c in enumerate(ensures, start=1):
+    for c in ensures:
         if isinstance(c, TableCondition):
             continue
-        p = plan(query("ensures", n, output(c), c), f"the ensures condition {label(c)}")
-        p["relations"][0]["root"]["names"] = [label(c)]
-        ens_plans.append(p)
+        p = condition_plan(output(c), c, f"the ensures condition {label(c)}")
+        if p is not None:
+            p["relations"][0]["root"]["names"] = [label(c)]
+            ens_plans.append(p)
+    if unreadable:
+        raise ConditionError(unreadable)
     transform_plan = plan(transform)
     out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
     out_types = _output_types(transform, schemas) if counterexamples else None
