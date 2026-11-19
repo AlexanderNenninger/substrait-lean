@@ -210,4 +210,138 @@ theorem around_err {V : Int} {n : Nat} (hn : 0 < n) (hV : V.natAbs ≤ n * 2 ^ 1
     · rename_i hneg; rw [Int.neg_mul, hmn']; have := hVQ.1 hneg; omega
     · rename_i hneg; rw [hmn']; have := hVQ.2 hneg; omega
 
+set_option exponentiation.threshold 2200 in
+/-- **A mean of integers compared with an integer** (#1608 12b-2): where the
+values are at most `M` in magnitude over `n ≤ N` rows and `N · max M 1 ≤ 2⁵²`,
+every double around the mean `s / n` compares with the double of any integer
+`k` as the exact mean does. The grid at the mean is finer than `1 / N`, so no
+double around a mean that is not `k` reaches `k`, and a mean that is `k` is on
+the grid. -/
+theorem around_cmp_int {s : Int} {n M N : Nat} (hn : 0 < n) (hnN : n ≤ N) (hsM : s.natAbs ≤ n * M)
+    (hNM : N * max M 1 ≤ 2 ^ 52) {r : Int} (hr : Around (s * unitK) n r) (k : Int) :
+    (scaled (ofInt k) < scaled r ↔ k * n < s) ∧ (scaled r < scaled (ofInt k) ↔ s < k * n) ∧
+      (scaled r = scaled (ofInt k) ↔ s = k * n) := by
+  have hU : unitK = 2 ^ 1074 := rfl
+  have hUpos := unitK_pos
+  have hM1 : max M 1 ≤ N * max M 1 := Nat.le_mul_of_pos_left _ (by omega)
+  have hM52 : M ≤ 2 ^ 52 := by omega
+  have hMN : M * N ≤ 2 ^ 52 := by
+    have := Nat.mul_le_mul_left N (Nat.le_max_left M 1); rw [Nat.mul_comm M N]; omega
+  have hVabs : (s * unitK).natAbs = s.natAbs * unitK := by rw [Int.natAbs_mul, Int.natAbs_natCast]
+  have hsMU : s.natAbs * unitK ≤ n * M * unitK := Nat.mul_le_mul_right _ hsM
+  have hV : (s * unitK).natAbs ≤ n * 2 ^ 1127 := by
+    rw [hVabs]
+    have h1 : n * M * unitK ≤ n * 2 ^ 52 * unitK := Nat.mul_le_mul_right _ (Nat.mul_le_mul_left _ hM52)
+    have h2 : n * 2 ^ 52 * unitK ≤ n * 2 ^ 1127 := by
+      rw [Nat.mul_assoc, hU, ← Nat.pow_add]
+      exact Nat.mul_le_mul_left _ (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  obtain ⟨herr, hex⟩ := around_err hn hV hr
+  -- The grid step is below `1 / N`: `2^g · N ≤ 2¹⁰⁷⁴`.
+  have hstep : 2 ^ gridExp (s * unitK).natAbs n * N ≤ unitK := by
+    by_cases hg0 : gridExp (s * unitK).natAbs n = 0
+    · rw [hg0, Nat.pow_zero, Nat.one_mul]
+      have : 2 ^ 52 ≤ unitK := by rw [hU]; exact Nat.pow_le_pow_right (by omega) (by omega)
+      have : N ≤ N * max M 1 := Nat.le_mul_of_pos_right _ (by omega)
+      omega
+    · have hge := le_of_gridExp (a := (s * unitK).natAbs) (n := n) (by omega)
+      have hq : (s * unitK).natAbs / n ≤ M * unitK :=
+        Nat.div_le_of_le_mul (by rw [hVabs, ← Nat.mul_assoc]; exact hsMU)
+      rw [Nat.pow_add] at hge
+      generalize 2 ^ gridExp (s * unitK).natAbs n = P at hge ⊢
+      have h1 : P * 2 ^ 52 * N ≤ M * unitK * N := Nat.mul_le_mul_right _ (Nat.le_trans hge hq)
+      have h2 : M * unitK * N ≤ 2 ^ 52 * unitK := by
+        rw [Nat.mul_right_comm]; exact Nat.mul_le_mul_right _ hMN
+      have e : 2 ^ 52 * (P * N) = P * 2 ^ 52 * N := by rw [Nat.mul_left_comm, ← Nat.mul_assoc]
+      have h3 : 2 ^ 52 * (P * N) ≤ 2 ^ 52 * unitK := by rw [e]; exact Nat.le_trans h1 h2
+      exact Nat.le_of_mul_le_mul_left h3 (Nat.two_pow_pos _)
+  generalize hg : gridExp (s * unitK).natAbs n = g at herr hex hstep
+  have hgn : 2 ^ g * n ≤ unitK := Nat.le_trans (Nat.mul_le_mul_left _ hnN) hstep
+  have hgU : 2 ^ g ≤ unitK := Nat.le_trans (Nat.le_mul_of_pos_right _ hn) hgn
+  -- `r` against `k · 2¹⁰⁷⁴`, by the sign of `s − k n`.
+  generalize hR : scaled r = R at herr hex ⊢
+  have hkn : (k * n : Int) * unitK = (k * unitK) * n := by rw [Int.mul_right_comm]
+  have hEU : ∀ E : Int, 1 ≤ E → (unitK : Int) ≤ E * unitK := fun E hE => by
+    have := Int.mul_le_mul_of_nonneg_right hE (Int.natCast_nonneg unitK); simpa using this
+  have herr' : R * n - s * unitK < ((2 ^ g * n : Nat) : Int) ∧ -((2 ^ g * n : Nat) : Int) < R * n - s * unitK := by
+    rcases Int.natAbs_eq (R * n - s * unitK) with h | h <;> omega
+  have hgn' : ((2 ^ g * n : Nat) : Int) ≤ unitK := by exact_mod_cast hgn
+  have hpos : ∀ x y : Int, x * n < y * n → x < y := fun x y h =>
+    Int.lt_of_mul_lt_mul_right h (Int.natCast_nonneg n)
+  have hgt : k * n < s → k * unitK < R := fun h => by
+    have := hEU (s - k * n) (by omega)
+    rw [Int.sub_mul, hkn] at this
+    exact hpos _ _ (by omega)
+  have hlt : s < k * n → R < k * unitK := fun h => by
+    have := hEU (k * n - s) (by omega)
+    rw [Int.sub_mul, hkn] at this
+    exact hpos _ _ (by omega)
+  have heq : s = k * n → R = k * unitK := fun h => by
+    -- The mean is `k`, on the grid: `2^g` divides `2¹⁰⁷⁴`.
+    have hg1074 : g ≤ 1074 := by
+      rw [hU] at hgU; exact (Nat.pow_le_pow_iff_right (by omega)).mp hgU
+    have hdvd : 2 ^ g * n ∣ (s * unitK).natAbs := by
+      rw [hVabs, h, Int.natAbs_mul, Int.natAbs_natCast, hU,
+        show 2 ^ 1074 = 2 ^ g * 2 ^ (1074 - g) by rw [← Nat.pow_add]; congr 1; omega]
+      rw [Nat.mul_comm]
+      exact Nat.mul_dvd_mul (Nat.dvd_mul_left _ _) (Nat.dvd_mul_right _ _)
+    have := hex (Nat.mod_eq_zero_of_dvd hdvd)
+    rw [h, hkn] at this
+    exact Int.eq_of_mul_eq_mul_right (by omega) this
+  -- The integer's double.
+  rcases Nat.lt_or_ge (2 ^ 53) k.natAbs with hbig | hsmall
+  · -- Beyond `2⁵³`, past every value in `[-M, M]`, as `r` is.
+    have hRb : R * n < ((M + 1) * unitK : Nat) * n ∧ -(((M + 1) * unitK : Nat) * n : Int) < R * n := by
+      have : ((s.natAbs * unitK : Nat) : Int) ≤ ((n * M * unitK : Nat) : Int) := by exact_mod_cast hsMU
+      have e1 : (((M + 1) * unitK : Nat) * n : Int) = ((n * M * unitK : Nat) : Int) + (unitK * n : Nat) := by
+        push_cast; rw [Int.add_mul, Int.add_mul, Int.one_mul]; ac_rfl
+      have e2 : ((unitK * n : Nat) : Int) ≥ ((2 ^ g * n : Nat) : Int) := by
+        exact_mod_cast Nat.mul_le_mul_right _ hgU
+      rcases Int.natAbs_eq (s * unitK) with h | h <;> rw [hVabs] at h <;> omega
+    have hMU : (((M + 1) * unitK : Nat) : Int) ≤ ((2 ^ 53 : Nat) : Int) * unitK := by
+      rw [← Int.natCast_mul]; exact Int.ofNat_le.mpr (Nat.mul_le_mul_right _ (by omega))
+    have hMU' : -(((2 ^ 53 : Nat) : Int) * unitK) = -((2 ^ 53 : Nat) : Int) * unitK := (Int.neg_mul _ _).symm
+    have hRM : R < ((M + 1) * unitK : Nat) ∧ -(((M + 1) * unitK : Nat) : Int) < R := by
+      constructor
+      · exact hpos _ _ hRb.1
+      · exact hpos _ _ (by rw [Int.neg_mul]; exact hRb.2)
+    have hs : s.natAbs < k.natAbs * n := by
+      have : n * M < n * k.natAbs := Nat.mul_lt_mul_of_pos_left (by omega) hn
+      rw [Nat.mul_comm n k.natAbs] at this; omega
+    rcases Int.lt_or_le 0 k with hk | hk
+    · have hc : ((2 ^ 53 : Nat) : Int) * unitK ≤ scaled (ofInt k) := by
+        have := scaled_mono (ofInt_mono (show ((2 ^ 53 : Nat) : Int) ≤ k by omega))
+        rwa [ofInt_exact (i := ((2 ^ 53 : Nat) : Int)) (by rw [Int.natAbs_natCast]; exact Nat.le_refl _), scaled_exactCode] at this
+      have : k * n > s := by
+        have : (k.natAbs : Int) = k := Int.natAbs_of_nonneg (by omega)
+        have : ((k.natAbs * n : Nat) : Int) = k * n := by push_cast; rw [this]
+        omega
+      refine ⟨⟨fun h => by omega, fun h => by omega⟩, ⟨fun _ => by omega, fun _ => by omega⟩,
+        ⟨fun h => by omega, fun h => by omega⟩⟩
+    · have hc : scaled (ofInt k) ≤ -((2 ^ 53 : Nat) : Int) * unitK := by
+        have := scaled_mono (ofInt_mono (show k ≤ -((2 ^ 53 : Nat) : Int) by omega))
+        rwa [ofInt_exact (i := -((2 ^ 53 : Nat) : Int)) (by rw [Int.natAbs_neg, Int.natAbs_natCast]; exact Nat.le_refl _),
+          scaled_exactCode] at this
+      have : k * n < s := by
+        have : (k.natAbs : Int) = -k := Int.ofNat_natAbs_of_nonpos hk
+        have : ((k.natAbs * n : Nat) : Int) = -(k * n) := by push_cast; rw [this, Int.neg_mul]
+        omega
+      refine ⟨⟨fun _ => by omega, fun _ => by omega⟩, ⟨fun h => by omega, fun h => by omega⟩,
+        ⟨fun h => by omega, fun h => by omega⟩⟩
+  · rw [ofInt_exact hsmall, scaled_exactCode]
+    refine ⟨⟨fun h => ?_, fun h => by have := hgt h; omega⟩,
+      ⟨fun h => ?_, fun h => by have := hlt h; omega⟩, ⟨fun h => ?_, fun h => heq h⟩⟩
+    · rcases Int.lt_trichotomy (k * n) s with h' | h' | h'
+      · exact h'
+      · have := heq h'.symm; omega
+      · have := hlt h'; omega
+    · rcases Int.lt_trichotomy (k * n) s with h' | h' | h'
+      · have := hgt h'; omega
+      · have := heq h'.symm; omega
+      · exact h'
+    · rcases Int.lt_trichotomy (k * n) s with h' | h' | h'
+      · have := hgt h'; omega
+      · exact h'.symm
+      · have := hlt h'; omega
+
 end Substrait.FloatCode
