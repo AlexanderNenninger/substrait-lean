@@ -1177,6 +1177,12 @@ refuses double `power`, so no portable plan meets it there. The scope is
 Why: an option states both engines' values, where a raise would take `1` from
 the plans that DuckDB and Polars compute alike.
 
+Note (2026-11-19, theory advisor, ruling 163): `pow_one_inf` is `power`'s alone, so
+`power` of doubles is the group `fp.pow` and `atan2` the group `fp.atan2`, where both were
+in `fp.elem`; the unary functions stay there, without `pow_one_inf`. Routes class by
+(group, option), so every unary function had inherited Spark's refusal of an option it
+never reads. No reference value or allowed set changes.
+
 Also decided: `float_to_int`'s scope reaches `floor`, `ceil` and one-argument
 `round` (`fp.floor`, `fp.round`), where an engine returns a `BIGINT` (Spark: NaN
 is `0`; `±∞` and values past 64 bits overflow,

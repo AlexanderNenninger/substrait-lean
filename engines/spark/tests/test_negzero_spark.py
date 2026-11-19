@@ -96,28 +96,34 @@ def test_group_keys_and_distinct_rows_are_canonical_on_spark() -> None:
     assert on_spark(T.select(T.k * 0, v=X).distinct(), rows) == [(0, (0.0, 1.0))]
 
 
-@pytest.mark.parametrize("which", ["sqrt", "atan2"])
-def test_a_plan_with_sqrt_or_atan2_is_refused_on_spark(which: str) -> None:
-    """The verdict today: `fp.elem` reads `pow_one_inf`, which Spark refuses
-    (spark-math-domain, spark-elem-rounding), so a plan with `sqrt` or `atan2`
-    does not run on Spark, and its `zero_sign` row is not what refuses it."""
+@pytest.mark.parametrize("fn", ["sqrt", "exp", "sin", "cos", "tan", "asin", "acos", "atan", "ln"])
+def test_the_unary_functions_route_to_spark(fn: str) -> None:
+    """`fp.elem` has no `pow_one_inf` (ruling 163): `sqrt`, `exp` and the trigonometric
+    functions reach Spark, as the logarithms do."""
     con = sv.connect()
     con.create("t", ibis.schema({"k": "int64", "x": "float64"}), [])
     t = con.table("t")
-    expr = t.select(t.k, v=t.x.abs().sqrt() if which == "sqrt" else t.x.atan2(-1.0))
-    report = sv.verify(expr, requires={"t": [_.x.between(-100, 100)]})
+    arg = t.x.abs() + 1.0 if fn in {"ln"} else t.x.abs() / 200.0
+    route = routes.choose(
+        sv.verify(t.select(t.k, v=getattr(arg, fn)()), requires={"t": [_.x.between(-100, 100)]}),
+        "spark",
+    )
+    assert not route.refused, route
+
+
+@pytest.mark.parametrize(
+    ("which", "group", "option"),
+    [("power", "fp.pow", "pow_one_inf"), ("atan2", "fp.atan2", "zero_sign")],
+)
+def test_power_and_atan2_are_refused_on_spark_by_their_own_group(
+    which: str, group: str, option: str
+) -> None:
+    """Spark's `power` is `StrictMath.pow` (`pow(1, ±∞)` is NaN) and its `atan2` adds `0.0`
+    to its arguments (`atan2(-0.0, -1)` is π): each is refused, naming its group."""
+    con = sv.connect()
+    con.create("t", ibis.schema({"k": "int64", "x": "float64"}), [])
+    t = con.table("t")
+    expr = t.select(t.k, v=t.x**2.5 if which == "power" else t.x.atan2(-1.0))
+    report = sv.verify(expr, requires={"t": [_.x.between(1, 100)]})
     route = routes.choose(report, "spark")
-    assert route.refused and "pow_one_inf" in route.reason, route
-
-
-def test_only_the_logarithms_route_to_spark_today() -> None:
-    """`ln`, `log10`, `log2` and `log(b, x)` (`fp.log`) reach Spark; `exp` and the
-    trigonometric functions (`fp.elem`) wait on `pow_one_inf`, which Spark refuses."""
-    con = sv.connect()
-    con.create("t", ibis.schema({"k": "int64", "x": "float64"}), [])
-    t = con.table("t")
-    req = {"t": [_.x.between(1.0, 100.0)]}
-    ln = routes.choose(sv.verify(t.select(t.k, v=t.x.ln()), requires=req), "spark")
-    assert not ln.refused, ln
-    sin = routes.choose(sv.verify(t.select(t.k, v=t.x.sin()), requires=req), "spark")
-    assert sin.refused and "pow_one_inf" in sin.reason, sin
+    assert route.refused and group in route.reason and option in route.reason, route

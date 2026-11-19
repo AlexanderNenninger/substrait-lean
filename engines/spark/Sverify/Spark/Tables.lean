@@ -41,7 +41,7 @@ def Profile.spark.table : ProfileTable where
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["ONE_ZERO"]),
     -- Spark adds `0.0` to `atan2`'s arguments (spark-zero-sign): `atan2(-0.0, -1)` is `π`.
-    (some "fp.elem", "zero_sign", .oneOf ["IEEE"]),
+    (some "fp.atan2", "zero_sign", .oneOf ["IEEE"]),
     (none, "round_zero_sign", .oneOf ["POSITIVE"]),
     -- `StrictMath.pow(1, ±∞)` is NaN (spark-math-domain, D40).
     (none, "pow_one_inf", .oneOf ["NAN"]),
@@ -95,10 +95,18 @@ def Profile.spark.obs : ObsTable := [
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions; MIN and MAX keep whichever zero came first, a member of the class.
   (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 271),
-  -- `atan2` of a zero: `π` where the reference gives `-π`; the writer refuses
-  -- double `atan2` (`BinFn.sparkWritten`).
-  (some "fp.elem", "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["spark-zero-sign"] with
-    shim := some "atan2 refused" }).tracking 271),
+  -- `atan2` of a zero: `π` where the reference gives `-π`, a difference in value that
+  -- `zeros := .canon` does not describe: refused (the writer refuses it too,
+  -- `BinFn.sparkWritten`). `power` and `atan2` are refused at `rounding` too, so neither
+  -- inherits the unary functions' row (ruling 163).
+  -- The unary functions keep a zero's sign (spark-unary-zero-sign).
+  (some "fp.elem", "zero_sign", (ObsRow.native ["spark-unary-zero-sign"]).tracking 271),
+  (some "fp.atan2", "zero_sign", ({ ObsRow.native ["spark-zero-sign", "spark-float-power-atan2"] with
+    cls := .refused }).tracking 271),
+  (some "fp.atan2", "rounding", ({ ObsRow.native ["spark-elem-rounding"] with
+    cls := .refused }).tracking 271),
+  (some "fp.pow", "rounding", ({ ObsRow.native ["spark-elem-rounding"] with
+    cls := .refused }).tracking 271),
   -- `round` emits `+0.0` through a decimal; `ceil` is a `BIGINT`, which the
   -- written plan casts back to a double.
   (none, "round_zero_sign", (ObsRow.native ["spark-round", "spark-floor-ceil-bigint"]).tracking 271),
@@ -111,7 +119,7 @@ def Profile.spark.obs : ObsTable := [
   -- within the ulps of spark-elem-rounding of libm's value, which the reference
   -- takes (tested, not proved, as Polars's `fp.log`).
   (some "fp.elem", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding", "spark-ulp-libm"] with
-    note := "StrictMath and java.lang.Math, S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps); sin, cos and tan only up to |x| ≤ 2²⁰; atan2 and power stay refused." }).tracking 271),
+    note := "StrictMath and java.lang.Math, S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps); sin, cos and tan only up to |x| ≤ 2²⁰." }).tracking 271),
   (some "fp.log", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding", "spark-ulp-libm"] with
     note := "StrictMath's logarithms, and log2 as ln x / ln 2 (two roundings), S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps)." }).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
@@ -167,8 +175,7 @@ def Profile.spark.obs : ObsTable := [
 /-- What each shim Spark's rows name costs at run time. -/
 def Profile.spark.shimCosts : List (String × ShimCost) :=
   [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-   ("atan2 refused", .expression), ("null_order", .argument), ("sort on the keys", .sort),
-   ("decimal_negate_sub", .expression)]
+   ("null_order", .argument), ("sort on the keys", .sort), ("decimal_negate_sub", .expression)]
 
 theorem Profile.spark_leB : Profile.spark.table.leB Profile.core.table = true := by
   decide +kernel

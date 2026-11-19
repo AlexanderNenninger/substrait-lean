@@ -143,7 +143,7 @@ def core : List FnRow := [
     reads := .plain, pretty := "%" },
   { name := "power", anchor := 19, group := "int.pow", ctor := some (.bin .ipow),
     reads := .plain, pretty := "^" },
-  { name := "power", anchor := 19, group := "fp.elem", ctor := some (.bin .fpow), reads := .float,
+  { name := "power", anchor := 19, group := "fp.pow", ctor := some (.bin .fpow), reads := .float,
     pretty := "^." },
   { name := "nanvl", anchor := 41, group := "cmp" },
   { name := "sqrt", anchor := 100, group := "fp.elem", ctor := some (.un (.fmath .sqrt)),
@@ -168,7 +168,7 @@ def core : List FnRow := [
     reads := .float, pretty := "ACOS" },
   { name := "atan", anchor := 110, group := "fp.elem", ctor := some (.un (.fmath .atan)),
     reads := .float, pretty := "ATAN" },
-  { name := "atan2", anchor := 111, group := "fp.elem", ctor := some (.bin .fatan2),
+  { name := "atan2", anchor := 111, group := "fp.atan2", ctor := some (.bin .fatan2),
     reads := .float, pretty := "ATAN2" },
   { name := "logb", anchor := 112, group := "fp.log", ctor := some (.bin .flogb), reads := .float,
     pretty := "LOGB" },
@@ -394,7 +394,11 @@ def groups : List (String × List String) := [
   ("fp.div", ["rounding", "on_division_by_zero", "on_domain_error", "nan_creation", "zero_sign",
     "float_overflow"]),
   ("fp.mod", ["division_type", "on_division_by_zero", "nan_creation", "zero_sign"]),
-  ("fp.elem", ["rounding", "on_domain_error", "pow_one_inf", "zero_sign"]),
+  -- `pow_one_inf` is `power`'s alone (D40, `optionScope`): a group of its own, as `atan2`,
+  -- whose `zero_sign` is a different fact from the unary functions' (ruling 163).
+  ("fp.pow", ["rounding", "on_domain_error", "pow_one_inf", "zero_sign"]),
+  ("fp.atan2", ["rounding", "on_domain_error", "zero_sign"]),
+  ("fp.elem", ["rounding", "on_domain_error", "zero_sign"]),
   ("fp.log", ["rounding", "on_domain_error", "on_log_zero"]),
   -- A `BIGINT` result where `floor`, `ceil` or `round` returns one:
   -- `float_to_int`, the conversion.

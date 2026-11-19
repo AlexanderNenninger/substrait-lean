@@ -1071,7 +1071,7 @@ def optionGroup (base : String) (float : Bool) : Option String :=
   match base with
   | "add" | "subtract" | "multiply" => some (if float then "fp.arith" else "int.arith")
   | "negate" => some (if float then "fp.neg" else "int.arith")
-  | "power" => some (if float then "fp.elem" else "int.pow")
+  | "power" => some (if float then "fp.pow" else "int.pow")
   | "divide" => some (if float then "fp.div" else "int.div")
   | "modulus" => some (if float then "fp.mod" else "int.mod")
   | "abs" => if float then none else some "int.abs"

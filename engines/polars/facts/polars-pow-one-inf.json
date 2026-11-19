@@ -10,7 +10,7 @@
   ],
   "rows": [
     {
-      "group": "fp.elem",
+      "group": "fp.pow",
       "option": "pow_one_inf",
       "types": [
         "fp64"
