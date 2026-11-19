@@ -24,8 +24,10 @@ import tempfile
 import threading
 import warnings
 from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
-import duckdb
+if TYPE_CHECKING:
+    import duckdb
 
 _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.RLock()
@@ -35,6 +37,19 @@ _LOCK = threading.RLock()
 _GONE: list[tuple[str, str]] = []
 #: What forgets a cursor of the database kept elsewhere (`on_reset`).
 _FORGET: list[Callable[[], None]] = []
+
+
+def module() -> Any:
+    """The `duckdb` module, or an `ImportError` that names the extra: the base
+    install verifies without DuckDB, and what runs on it needs it (#1288)."""
+    try:
+        import duckdb
+    except ImportError as e:
+        raise ImportError(
+            "this needs DuckDB, which sverify does not install by default: "
+            "pip install 'sverify[duckdb]'"
+        ) from e
+    return duckdb
 
 
 def limits() -> dict[str, bool | float | int | list[str] | str]:
@@ -63,7 +78,7 @@ def cursor() -> duckdb.DuckDBPyConnection:
     global _DB
     with _LOCK:
         if _DB is None:
-            _DB = duckdb.connect(config=limits())
+            _DB = module().connect(config=limits())
         return _DB.cursor()
 
 
