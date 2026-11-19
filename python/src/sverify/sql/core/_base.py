@@ -834,11 +834,18 @@ class Dialect:
         scaled = f"{q} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
         return self.case_when(f"{n} = 0", self.null(k), self.cast(scaled, k))
 
+    def decimal_pair(self, what: str, ka: Kind | None, kb: Kind | None) -> None:
+        """Called for a comparison, `GREATEST` or `LEAST` with a decimal operand, before
+        the engine brings the two to one type. A dialect whose common type rounds an
+        operand (Spark, past 38 digits, #1484) refuses the pair here; an operand of
+        unknown kind (a `NULL` literal) is not checked. Default: nothing."""
+
     def decimal_compare(self, op: str, a: str, ka: Kind | None, b: str, kb: Kind | None) -> str:
         """`a = b` or `a < b` (`op` is `eq` or `lt`) of decimals or integers, exactly, at
         any scales (#27). The engine's own comparison casts both sides to one
         type, which raises where a value does not fit it (#1498); a dialect
         that does so writes the comparison without the cast."""
+        self.decimal_pair("comparison", ka, kb)
         return self.eq(a, b) if op == "eq" else self.lt(a, b)
 
     def decimal_avg(self, v: str, a: Dec, k: Dec) -> str:
@@ -5171,6 +5178,8 @@ class _Writer:
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
                 d.require_ordered(k)
+                if isinstance(ka, Dec) or isinstance(kb, Dec):
+                    d.decimal_pair(op.upper(), ka, kb)
                 ca = ka if isinstance(ka, Dec) else k
                 cb = kb if isinstance(kb, Dec) else k
                 sa, sb = go(a, ca), go(b, cb)
