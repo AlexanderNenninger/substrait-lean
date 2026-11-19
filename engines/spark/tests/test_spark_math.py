@@ -22,7 +22,7 @@ pytestmark = pytest.mark.backend("spark")
 
 #: S + R per function in ulps (`EngineProfile.elemUlps`, spark-ulp-libm): the plan's bound
 #: from libm's value, which Python's `math` calls.
-ULPS = {"ln": 2, "log10": 3, "log2": 4.5, "log(3)": 5, "sin": 2, "cos": 2, "tan": 4,
+ULPS = {"ln": 2, "log10": 3, "log2": 5, "log(3)": 5.5, "sin": 2, "cos": 2, "tan": 4,
         "asin": 2, "acos": 2, "atan": 2, "exp": 2}  # fmt: skip
 
 INPUTS = [

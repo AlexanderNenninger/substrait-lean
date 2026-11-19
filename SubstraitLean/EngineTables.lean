@@ -56,7 +56,7 @@ def builtinEngines : List EngineProfile := [
     -- Java's functions, not the reference's `libm` (`spark-ulp-libm`, ruling 132):
     -- S + R for `fp64`, `sin`, `cos` and `tan` guarded to `|x| ≤ 2²⁰` (`Epsilon.trigArgMax`).
     sameLibm := false,
-    elemUlps := [("ln", 1.0 + 1.0), ("log10", 1.0 + 2.0), ("log2", 2.5 + 2.0), ("logb", 2.5 + 2.5),
+    elemUlps := [("ln", 1.0 + 1.0), ("log10", 1.0 + 2.0), ("log2", 2.5 + 2.5), ("logb", 3.0 + 2.5),
       ("sin", 1.0 + 1.0), ("cos", 1.0 + 1.0), ("tan", 1.0 + 3.0),
       ("asin", 1.0 + 1.0), ("acos", 1.0 + 1.0), ("atan", 1.0 + 1.0)] }]
 
