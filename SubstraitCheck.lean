@@ -160,6 +160,34 @@ def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String 
     | .error k => some (toString (repr k))
     | .ok _ => none
 
+/-- The first error the reference profile `p` raises in the arguments and filters
+of a window's aggregates, each on the frame of each row (`WinFn.valueIn`):
+`before` are the sorted rows already visited. -/
+def windowRaised (p : Profile) (part : List Nat) (fns : List WinFn) :
+    List Row → List Row → Option String
+  | _, [] => none
+  | before, x :: after =>
+    let pb := before.filter (samePart part x)
+    let pa := after.filter (samePart part x)
+    (fns.findSome? fun
+      | .agg m sort fr =>
+        let frame := fr.rows sort pb x pa
+        firstError p frame m.filter.toList <|> firstError p (m.kept frame) [m.arg]
+      | _ => none) <|> windowRaised p part fns (before ++ [x]) after
+
+-- A window aggregate raises only on the rows a frame holds: `12.35` (a `DECIMAL(3, 2)` of
+-- 4 digits) is the last row, so `1 PRECEDING` holds it in no frame, and the whole
+-- partition holds it in the last row's.
+section
+local instance : Boxes.Ambient := Boxes.Ambient.none
+private def windowRows' : Relation := [[.int 1, .dec 2 5], [.int 2, .dec 2 1235]]
+private def windowAgg (fr : Frame) : List WinFn :=
+  [.agg { fn := .sum, arg := .un (.decimal 3 2) (.field 1) } [{ col := 0 }] fr]
+#guard (windowRaised Profile.reference [] (windowAgg ⟨false, .preceding 1, .preceding 1⟩) []
+  windowRows').isNone
+#guard (windowRaised Profile.reference [] (windowAgg Frame.all) [] windowRows').isSome
+end
+
 /-- The first error the reference profile `p` raises in the plan: each
 filter, projection and aggregate evaluates its expressions on the rows its
 input gives (`Rel.evalFast`, which equals `Rel.eval`), inputs first. An
@@ -170,14 +198,17 @@ them where the condition has none), not on the cross product, which is
 quadratic (`test_eval_fast`). So a raise on a pair the key index drops can be
 missed: the reference evaluates `on` eagerly on every pair (D19), and no
 theorem says `evalFast` raises where `Rel.eval` does (`candidates_eq` says only
-that a dropped pair's `on` is not TRUE). Every error reported is real. A window's aggregates are not looked into: a
-frame may leave a row out. -/
+that a dropped pair's `on` is not TRUE). Every error reported is real. A window's
+aggregates are evaluated on the frame of each row, as `WinFn.valueIn` does: a row
+that no frame holds raises nothing (`windowRaised`). -/
 def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .read _ | .values _ _ => none
   | .filter r c => relRaised cat p r <|> firstError p (r.evalFast cat) [c]
   | .project r es => relRaised cat p r <|> firstError p (r.evalFast cat) es
-  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
     relRaised cat p r
+  | .window r part sort fns =>
+    relRaised cat p r <|> windowRaised p part fns [] ((r.evalFast cat).mergeSort (sortLe sort))
   | .cross a b | .unionAll a b => relRaised cat p a <|> relRaised cat p b
   | .join a b _ on | .semi a b _ on =>
     let index := JoinIndex.make on (a.arity cat) (b.evalFast cat)

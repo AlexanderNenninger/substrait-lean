@@ -186,8 +186,9 @@ inductive UnFn where
   `Parse.Rel.settleDivs` keeps `dkind` where that holds and reads the checked
   `decimal` otherwise, and `checkDecimalAvgWidth` holds the `AVG` to 38 digits (#1497). A comparison's
   side (`decimalCall`): the operand upscaled to the larger scale, whose precision
-  bounds nothing and which only the scale is read from (`Expr.eval` and
-  `Kind.comparable`), so the model compares the exact values (#1498). -/
+  nothing reads: evaluation takes only the scale (`UnFn.apply_dkind_precision`), as
+  do `Kind.comparable` and the contract transfer. The model compares the exact
+  values, and the writers do too (#1523, #1498). -/
   | dkind (p s : Nat)
   /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
   rounding half away from zero (`roundDiv10`). -/
@@ -485,6 +486,10 @@ def UnFn.apply : UnFn → Value → Value
   | .fit _ _, v => v
   | .bbox n, v => BlackBox.callScalar Boxes.Ambient.boxes n [v]
   | _, _ => .null
+
+/-- Evaluation does not read a `dkind`'s precision: only the scale (#1484). -/
+theorem UnFn.apply_dkind_precision (p q s : Nat) (v : Value) :
+    UnFn.apply (.dkind p s) v = UnFn.apply (.dkind q s) v := rfl
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
 def and3 : Value → Value → Value

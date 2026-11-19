@@ -1227,10 +1227,26 @@ class Report:
             if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
                 raise refusal from e
             raise
+        out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
         return out
+
+    def _declared_widths(self, out: pa.Table) -> pa.Table:
+        """`out` with each integer column at the width `output` states: a
+        passed-through narrow column Polars widened to int64 goes back to its
+        declared width (a native cast, exact: the values came from that width,
+        ruling 121)."""
+        want = dict(self.output)
+        fields = []
+        for f in out.schema:
+            ty = want.get(f.name)
+            if ty is not None and ty.is_integer() and pa.types.is_integer(f.type):
+                f = f.with_type(ty.to_pyarrow())
+            fields.append(f)
+        schema = pa.schema(fields, metadata=out.schema.metadata)
+        return out if schema.equals(out.schema) else out.cast(schema)
 
     def check_margins(
         self, con: Connection, engine: Any, target: str, deterministic: bool = False
@@ -2348,7 +2364,7 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         plan = written_plan(plan_json(con, condition_query(table, cond)))
         return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
     if isinstance(cond, TableCondition):
-        return cond.violations(table)
+        return _table_violations(table, cond, engine)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -2360,6 +2376,51 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None) -> int:
+    """Rows of the bound `table` that break the table condition `cond`, from its
+    count as a plan run by the engine (the connection's, unless one is named):
+    the count has the reference's meaning on every engine, and a condition the
+    engine's writer refuses refuses the check (`SverifyError`)."""
+    return _table_counts(table, [cond], engine)[0]
+
+
+def _table_counts(
+    table: ir.Table, conds: Sequence[TableCondition], engine: str | None
+) -> list[int]:
+    """`_table_violations` for several table conditions on one table, from one
+    plan where the writer takes it: their counts as the rows of a union, each
+    tagged with its position. Where it does not, one plan each. A table of the
+    caller's own Ibis backend is counted there, by the same relations."""
+    con = connection_of(table)
+    if con is None:
+        # The caller's own Ibis backend (a database, a memtable): its rows stay
+        # there, and it counts the same relations (`Report.run`'s engines work
+        # on a connection's tables).
+        backend = ibis.get_backend(table)
+        return [
+            c.settle(c.count_query(table, backend.table).to_pyarrow().column(0)[0].as_py())
+            for c in conds
+        ]
+    on = engine or con.engine
+    queries = [c.count_query(table, con.table) for c in conds]
+    if len(queries) > 1:
+        tagged = [
+            q.select(i=ibis.literal(i, "int64"), v=q.v.cast("int64")) for i, q in enumerate(queries)
+        ]
+        try:
+            plan = written_plan(plan_json(con, ibis.union(*tagged, distinct=False)))
+            out = run_plan(con, plan, on)
+        except SverifyError:
+            pass  # a writer that takes one count at a time, below
+        else:
+            got = dict(zip(out.column(0).to_pylist(), out.column(1).to_pylist(), strict=True))
+            return [c.settle(got[i]) for i, c in enumerate(conds)]
+    return [
+        c.settle(run_plan(con, written_plan(plan_json(con, q)), on).column(0)[0].as_py())
+        for c, q in zip(conds, queries, strict=True)
+    ]
 
 
 def violation_counts(
@@ -2375,22 +2436,27 @@ def violation_counts(
     for the engine refuses the check (`SverifyError`), with no fallback to
     Ibis. Without an `engine`, Ibis counts each condition on the table's own
     backend (`violations`)."""
+    counts: dict[int, tuple[int, str | None]] = {}
+    on_table = [i for i, c in enumerate(conds) if isinstance(c, TableCondition)]
+    if on_table:
+        table_conds = [c for c in conds if isinstance(c, TableCondition)]
+        for i, n in zip(on_table, _table_counts(table, table_conds, engine), strict=True):
+            counts[i] = (n, None)
     if engine is None:
-        rows: list[tuple[Condition, int, str | None]] = []
-        for c in conds:
-            n, stopped = (
+        for i, c in enumerate(conds):
+            if i in counts:
+                continue
+            counts[i] = (
                 _run_planned(table, c, "duckdb")
                 if isinstance(c, PlannedCondition)
                 else (violations(table, c), None)
             )
-            rows.append((c, n, stopped))
-        return rows
-    counts: dict[int, tuple[int, str | None]] = {}
+        return [(c, *counts[i]) for i, c in enumerate(conds)]
     groups: dict[bool, list[int]] = {True: [], False: []}
     for i, c in enumerate(conds):
-        if isinstance(c, TableCondition):
-            counts[i] = (c.violations(table), None)
-        elif isinstance(c, PlannedCondition):
+        if i in counts:
+            continue
+        if isinstance(c, PlannedCondition):
             counts[i] = _run_planned(table, c, engine)
         else:
             groups[isinstance(c, str)].append(i)

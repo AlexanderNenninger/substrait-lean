@@ -113,7 +113,7 @@ place, and what retires it.
 
 ## The trusted parts in detail
 
-- The `evalChoices` oracle. `Rel.evalChoices` (`lean_choices`) and the Python matching of rows to its choices (`allows_rows`) check engine results against the rows the reference allows. `Rel.evalChoices_allowed` proves that what it accepts is allowed by the reference, for the plans `Rel.ChoicesSupported` holds of: those without a `fetch`, a `window` or an `aggregate` with a measure that sorts its rows (`FIRST`, `LAST`, `STRING_AGG`, `collect`, `MODE`). For the others the oracle rests on tests. The converse is false (an allowed result can be rejected where a class pick reaches a sign-sensitive expression, or an `ORDER BY` has a clustered key), so a rejection is a false alarm at worst.
+- The `evalChoices` oracle. `Rel.evalChoices` (`lean_choices`) and the Python matching of rows to its choices (`allows_rows`) check engine results against the rows the reference allows. `Rel.evalChoices_allowed` proves that what it accepts is allowed by the reference, for the plans `Rel.ChoicesSupported` holds of: those without an `aggregate` with a measure that sorts its rows (`FIRST`, `LAST`, `STRING_AGG`, `collect`, `MODE`). For the others the oracle rests on tests. The converse is false (an allowed result can be rejected where a class pick reaches a sign-sensitive expression, or an `ORDER BY` has a clustered key), so a rejection is a false alarm at worst.
 
 - The size hypothesis. Every string has fewer than 2³² characters
   (`Text.sizeCap`, as DuckDB's strings hold fewer than 2³² bytes), every relation a window reads

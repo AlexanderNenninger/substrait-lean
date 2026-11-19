@@ -92,11 +92,12 @@ except VerificationError as e:
 ## Install
 
 ```bash
-pip install sverify                # or: uv add sverify
+pip install sverify                # or: uv add sverify; verifies, runs nothing
+pip install 'sverify[duckdb]'      # and runs plans on DuckDB, the default engine
 pip install 'sverify[all]'         # with every engine in the 1.x promise and both table formats
 ```
 
-The core runs on DuckDB and writes DuckDB and Snowflake SQL; `sverify[spark]` adds Spark SQL (`report.to_sql("spark")` raises `unknown dialect` without it). Extras:
+The core verifies without an engine and writes DuckDB and Snowflake SQL; `sverify[spark]` adds Spark SQL (`report.to_sql("spark")` raises `unknown dialect` without it). Extras:
 `polars`, `spark` (needs Java 17 or 21), `delta`, `iceberg`,
 `flight`, `testing`, `odcs`, `openlineage`, or `all`.
 The `polars` and `spark` extras install the engine packages `sverify-polars`
