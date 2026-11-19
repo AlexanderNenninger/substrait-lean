@@ -261,8 +261,8 @@ exact level of determinism, D48). -/
 theorem Rel.bags_iff_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} (hwf : r.WF cat)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {r : Rel} (hwf : r.WF cat)
     (hd : r.detPlan cat A F K = true) {B : Relation} :
     r.Bags cat B ↔ B.Perm (r.eval cat) :=
   ⟨fun ⟨_, ho, hb⟩ =>

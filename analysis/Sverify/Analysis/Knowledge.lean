@@ -57,7 +57,8 @@ def Sound (K : KnowledgeEnv) (cat : Catalog) : Prop := ∀ t, (K t).Mem (cat t).
 
 abbrev cols (K : KnowledgeEnv) (t : String) : List AVal := (K t).cols
 abbrev facts (K : KnowledgeEnv) (t : String) : List Fact := (K t).facts
-abbrev keys (K : KnowledgeEnv) (t : String) : List (List Nat) := (K t).keys
+/-- The tables' keys, as the analyses take them. -/
+abbrev keys (K : KnowledgeEnv) : TableCond := ⟨fun t => (K t).keys⟩
 
 /-- Which windows have a key of their input among their partition and sort
 columns: derived from the keys, so no longer an oracle the caller supplies. -/
@@ -72,7 +73,7 @@ theorem Sound.cols (h : K.Sound cat) : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (
 theorem Sound.facts (h : K.Sound cat) : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (K.facts t) row :=
   fun t => (h t).2.1
 
-theorem Sound.keys (h : K.Sound cat) : ∀ t, ∀ k ∈ K.keys t, KeyOn k (cat t).rows :=
+theorem Sound.keys (h : K.Sound cat) : K.keys.Hold cat :=
   fun t => (h t).2.2.1
 
 theorem Sound.windows (hcat : cat.WF) (h : K.Sound cat) : (K.windows cat).SoundAll cat :=
