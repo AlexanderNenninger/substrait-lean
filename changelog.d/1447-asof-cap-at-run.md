@@ -1,0 +1,3 @@
+### The as-of join's cap holds for every table, counted at the run
+
+`sv.asof_join`'s `max_pairs` used to count the pairs only when both tables were Arrow tables held by a `sverify.connect()` connection; a join over Parquet files or an engine's own tables ran with no bound. The checker now reads each as-of join off the plan and writes the count of its pairs as a plan of its own, which `Report.run` evaluates on the engine before the join, whatever the tables are. The refusal above `max_pairs`, with the same exits, now comes from the run instead of from `asof_join` ([#1447](https://github.com/AlexanderNenninger/substrait-lean/issues/1447)).
