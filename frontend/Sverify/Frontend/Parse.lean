@@ -151,7 +151,10 @@ partial def typeKind (ty : Json) : Kind :=
   else if has "timestamp" then .time
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
     if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
-  else if has "precisionTimestampTz" || has "timestampTz" then .timeTz
+  -- An instant (#1725): microseconds, as the naive kind.
+  else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then
+    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .timeTz else .other
+  else if has "timestampTz" then .timeTz
   else if has "date" then .date
   else if has "time" then .tod
   else if let some t := (ty.getObjVal? "precisionTime").toOption then
@@ -166,6 +169,9 @@ partial def typeKind (ty : Json) : Kind :=
   else if let some d := (ty.getObjVal? "decimal").toOption then
     .dec ((d.getObjValAs? Nat "precision").toOption.getD 38) ((d.getObjValAs? Nat "scale").toOption.getD 0)
   else .other
+
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
 
 /-- A decimal of scale 0 and at least 19 digits holds every 64-bit integer
 exactly, and adding, subtracting or multiplying such decimals is exact, so the
@@ -195,6 +201,7 @@ def argSig : String → ArgSig
   | "fp32" | "fp64" => .kind .float
   | "dec" | "decimal" => .kind (.dec 0 0)
   | "ts" | "pts" => .kind .time
+  | "tstz" | "ptstz" => .kind .timeTz
   | "date" => .kind .date
   | "str" | "vchar" | "fchar" => .kind .str
   | "bool" => .kind .bool
@@ -693,16 +700,26 @@ def calendarInterval (l : Json) : J Bool := do
     return m != 0 || (← (field? c "intervalDayToSecond").elim (pure false) days)
   return false
 
+/-- What a plan may do with a timestamp with the time zone UTC, an instant
+(`.timeTz`, D53, #1725): it is read, compared with other instants, used as a
+key and carried through; the rest is refused, and says so. -/
+def instantRefusal (what : String) : String :=
+  s!"{what} is not supported yet (#1725): a timestamp with a time zone can be read, compared \
+    with other such columns, used as a key and written back; literals, conversions and \
+    calendar functions follow"
+
 def parseConstLiteral (j : Json) : J Const := do
   if ["i8", "i16", "i32", "i64"].any (fun k => (field? j k).isSome) &&
       (field? j "typeVariationReference").any (·.getNat?.toOption != some 0) then
     throw "unsigned integers are not supported"
   let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "fixedChar",
     "varChar", "null", "decimal",
-    "precisionTimestamp", "timestamp", "date", "precisionTime", "time", "intervalDayToSecond",
-    "intervalYearToMonth",
+    "precisionTimestamp", "timestamp", "precisionTimestampTz", "timestampTz", "date",
+    "precisionTime", "time", "intervalDayToSecond", "intervalYearToMonth",
     "intervalCompound"]
   match ← oneof "literal" j keys with
+  | ("precisionTimestampTz", _) | ("timestampTz", _) =>
+    throw (instantRefusal "a literal timestamp with a time zone")
   | ("boolean", b) => return .bool (← b.getBool?)
   | ("string", s) => return .str (← s.getStr?)
   -- `CHAR(n)` literals (Calcite types `'abc'` as `CHAR(3)`) hold exactly their
@@ -887,6 +904,12 @@ def stringFns : List (String × List Nat) :=
 /-- Functions on booleans. -/
 def booleanFns : List String := ["and", "or", "not", "xor"]
 
+/-- The scalar functions that take an instant: comparisons, NULL tests, `coalesce`. -/
+def instantFns : List String := comparisonFns ++ ["is_null", "is_not_null", "coalesce"]
+
+/-- The aggregates and window functions that take an instant. -/
+def instantMeasures : List String := ["min", "max", "count"]
+
 def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit := do
   let base := baseName name
   let sigs := (sigTokens name).map argSig
@@ -902,12 +925,18 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     -- A day of a zoned timestamp is 23 or 25 hours across a switch to or from
     -- daylight saving time.
     if ks.any (· == some .timeTz) then
-      throw s!"{name}: arithmetic on timestamps with a time zone is not in the Lean model (daylight saving time)"
+      throw (instantRefusal s!"{name}: arithmetic on a timestamp with a time zone (daylight saving time)")
+  -- Refused by default (S2): one list holds what takes an instant.
+  if ks.any (· == some .timeTz) && !instantFns.contains base then
+    throw (instantRefusal s!"{name} of a timestamp with a time zone")
   if comparisonFns.contains base then
     let known := ((ks.filterMap id).filter (· != .other)) ++
       sigs.filterMap (fun | .kind k => some k | _ => none)
     if let k :: rest := known then
       if rest.any (·.numeric != k.numeric) then throw s!"{name}: compares values of different types"
+      -- An instant is not comparable with a naive timestamp or an integer.
+      if known.contains .timeTz && known.any (· != .timeTz) then
+        throw (instantRefusal s!"{name}: compares a timestamp with a time zone with another kind")
   -- `Rel.eval` gives `NULL` for a string or boolean function of anything
   -- else; DataFusion would cast the argument (`1 || 'a'` is `'1a'`).
   let want (k : Nat) : Option Kind :=
@@ -939,6 +968,12 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
 #guard letI := Boxes.Ambient.none; (checkArgKinds "add:date_iday" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
 #guard letI := Boxes.Ambient.none; (checkArgKinds "add" [.timeTz] [.field 0, .lit (.int 86400000000)]).toBool == false
 #guard letI := Boxes.Ambient.none; (checkArgKinds "add" [.date] [.field 0, .lit (.int 86400000000)]).toBool == false
+-- Two columns of the two kinds are refused: `Kind.numeric` changes decimals only.
+#guard letI := Boxes.Ambient.none; (checkArgKinds "lt" [.time, .timeTz] [.field 0, .field 1]).toBool == false
+-- An instant (#1725) is compared with another instant, never with a naive timestamp.
+#guard letI := Boxes.Ambient.none; (checkArgKinds "lt" [.timeTz, .timeTz] [.field 0, .field 1]).toBool
+#guard letI := Boxes.Ambient.none; (checkArgKinds "lt" [.timeTz, .time] [.field 0, .field 1]).toBool == false
+#guard letI := Boxes.Ambient.none; (checkArgKinds "equal" [.time, .timeTz] [.field 0, .field 1]).toBool == false
 #guard letI := Boxes.Ambient.none; (checkArgKinds "lt:date_date" [.date] [.field 0, .field 0]).toBool
 #guard letI := Boxes.Ambient.none; (checkArgKinds "lt:date_pts" [.date] [.field 0, .lit (.int 0)]).toBool == false
 #guard letI := Boxes.Ambient.none; (checkArgKinds "lt" [.date, .time] [.field 0, .field 1]).toBool == false
@@ -1795,9 +1830,16 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- the codes (#206). Producers cast one side; a plan that does not is refused.
     if comparisonFns.contains (baseName name) then
       let ks := ((argJs.zip parsed).map fun (j, e) => argKind cols j e).filter
-        ([Kind.date, .time, .tod].contains ·)
+        ([Kind.date, .time, .tod, .timeTz].contains ·)
       if let k :: rest := ks then
         if rest.any (· != k) then throw s!"{name}: compares a {repr k} with another kind of time"
+      -- `COALESCE` of an instant and another kind is the same mix.
+      let ksAll := (argJs.zip parsed).map fun (j, e) => argKind cols j e
+      if baseName name == "coalesce" && ksAll.contains .timeTz && ksAll.any (· != .timeTz) then
+        throw (instantRefusal "COALESCE of a timestamp with a time zone and another kind")
+      -- An instant against any other kind: the conversion waits for #1725.
+      if ks.contains .timeTz && ks.any (· != .timeTz) then
+        throw (instantRefusal s!"{name}: compares a timestamp with a time zone with another kind")
     let onFloats :=
       (argJs.zip parsed).any (fun (j, e) => e.kind cols == .float || doubleJ fns j) ||
       typeKind ((field? f "outputType").getD .null) == .float
@@ -1831,9 +1873,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if o < Time.tsMin || o > Time.tsMax then
         throw "date_bin's origin is outside the reference's timestamps (0001-01-01 to 9999-12-31)"
       let ts ← parseExpr fns cols bits tj
+      if ts.kind cols == .timeTz then
+        throw (instantRefusal "date_bin of a timestamp with a time zone")
       if ts.kind cols != .time then throw "date_bin is only supported on timestamps"
       return .un (.bucket k.toNat o) ts
     if ["strftime", "to_char", "date_format"].contains (baseName name) then
+      if (parsed.getD 0 (.lit .null)).kind cols == .timeTz then
+        throw (instantRefusal s!"{baseName name} of a timestamp with a time zone")
       if (parsed.getD 0 (.lit .null)).kind cols != .time then
         throw s!"{baseName name} is only supported on timestamps"
     if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
@@ -1861,6 +1907,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             throw s!"date_trunc of a date to a {u.name} is not supported"
           return .un (.dayTrunc u) a
         | e => return e
+      | .timeTz => throw (instantRefusal s!"{baseName name} of a timestamp with a time zone")
       | _ => throw s!"{baseName name} is only supported on timestamps and dates"
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
@@ -1973,6 +2020,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let rest' := rest.foldr (fun (c, x) acc => .ifThen c x acc) els
       -- A boolean `CASE` may become `AND`/`OR`: every branch is evaluated.
       let thens := els :: clauses.map (·.2)
+      -- An instant keeps its kind or the plan is refused (#1725): a NULL branch, a
+      -- literal and `NULLIF` have another kind, which `KT.join` turns into `.other`.
+      if thens.any (·.kind cols == .timeTz) && !thens.all (·.kind cols == .timeTz) then
+        throw (instantRefusal "a CASE with a timestamp with a time zone and a branch of another kind (a NULL, a literal or NULLIF)")
       if thens.any (·.kind cols == .bool) then
         return .ifThen (eagerly c (thens ++ rest.map (·.1))) x rest'
       return .ifThen c x rest'
@@ -1995,6 +2046,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if unsignedType target then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
+    -- An instant (`.timeTz`) is read, compared and ordered; the conversions and
+    -- the calendar's casts wait for #1725.
+    if (k == .timeTz || target == .timeTz) && !(k == .timeTz && target == .timeTz) then
+      throw (instantRefusal "a cast to or from a timestamp with a time zone")
+    if k == .timeTz && target == .timeTz then return e
     if k == .int && wideIntDecimal (← field c "type") then return e
     -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
     -- checking the precision. To a smaller scale rounds half away from zero;
@@ -2059,6 +2115,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if v.kind cols == .float then
         if let some (.int i) ← constOf? fns o then return Expr.lit (.float (FloatCode.ofInt i))
       parseExpr fns cols bits o
+    -- An instant against another kind (a naive timestamp, a literal): refused (#1725).
+    let ks := ((field? l "value").toList ++ (← arrD l "options")).zip (v :: opts) |>.map
+      fun (j, e) => argKind cols j e
+    if ks.contains .timeTz && ks.any (· != .timeTz) then
+      throw (instantRefusal "IN of a timestamp with a time zone against another kind")
     match opts.map (.bin .eq v) with
     | [] => return .lit (.bool false)
     | e :: es => return es.foldl (.bin .or) e
@@ -2096,7 +2157,8 @@ checks that 38 digits hold it: `p ≤ 34` (a double output has no such limit) an
 def checkDecimalAvgWidth (p s : Nat) (dbl : Bool) : J Unit := do
   if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
   if !dbl && 34 < p then
-    throw "avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) result does not fit 38 digits"
+    throw ("avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) " ++
+      "result does not fit 38 digits; cast the argument to DECIMAL(34, s) or narrower first")
 
 #guard (checkDecimalAvgWidth 34 4 false).toBool && (checkDecimalAvgWidth 38 4 true).toBool
 #guard (checkDecimalAvgWidth 35 0 false).toBool == false && (checkDecimalAvgWidth 20 35 true).toBool == false
@@ -2203,6 +2265,9 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
   let valueArgs := if ["string_agg", "quantile_cont", "quantile_disc", "arg_min", "arg_max"].contains name
     then args.take 1 else args
   let k : Kind := if valueArgs.any (doubleJ fns) then .float else arg.kind cols
+  -- An instant takes `MIN`, `MAX` and `COUNT` (#1725).
+  if k == .timeTz && !instantMeasures.contains name then
+    throw (instantRefusal s!"{name} of a timestamp with a time zone")
   let mopts ← checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` of a `DECIMAL(p, s)` (#27) is its `SUM` here, divided by a `COUNT`
   -- in `decimalAvgs`: a decimal, or a double if the plan says so (as DuckDB
@@ -2232,8 +2297,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "avg", .int => pure (if intOut then (.iavg, arg) else (.avg, .un .itof arg))
     | "avg", .float => pure (.avg, arg)
     | "avg", .dec p s => pure (.sum, .un (.decimal p s) arg)
-    | "min", _ => if minMax k then pure (.min, arg) else throw "min of this type is not supported"
-    | "max", _ => if minMax k then pure (.max, arg) else throw "max of this type is not supported"
+    | "min", _ => if minMax k || k == .timeTz then pure (.min, arg) else throw "min of this type is not supported"
+    | "max", _ => if minMax k || k == .timeTz then pure (.max, arg) else throw "max of this type is not supported"
     | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
     -- NULLs are skipped (`Measure.inputs`), as with Ibis's
     -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
@@ -2361,6 +2426,13 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
   let sort ← (← arrD w "sorts").mapM (parseSortKey fns cols)
   -- A variance's distribution may be a leading enum argument (`parseMeasure`).
   let args := (← arrD w "arguments").filterMap (field? · "value")
+  -- An instant takes `MIN`, `MAX` and `COUNT` (#1725): every other window function over one
+  -- is refused, `LAG` and `FIRST_VALUE` among them.
+  if !instantMeasures.contains (baseName name) then
+    for a in args do
+      if let .ok e := parseExpr fns cols bits a then
+        if e.kind cols == .timeTz then
+          throw (instantRefusal s!"{baseName name} over a timestamp with a time zone")
   -- `LAG(c [, offset [, default]])`; a double column's default is a code.
   let shifted (args : List Json) : J (Nat × Nat × Value) := do
     let some c := args.head? | throw s!"{name} needs a column"
@@ -2931,6 +3003,14 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       | _ => throw s!"UNNEST of column {c}, which is not a list"
     | _ =>
       let inputs ← (← arrD r "inputs").mapM (parseRel fns)
+      -- A column that is an instant in one input is one in every input (#1725).
+      let tables ← get
+      let kindsOf := inputs.map (·.kinds tables)
+      let width := (kindsOf.head?.map (·.length)).getD 0
+      for i in List.range width do
+        let ks := kindsOf.map (·.getD i .other)
+        if ks.contains .timeTz && ks.any (· != .timeTz) then
+          throw (instantRefusal s!"a set operation over column {i}, a timestamp with a time zone in one input and another kind in another")
       let union ← match inputs with
         | a :: as => pure (as.foldl .unionAll a)
         | [] => throw "SetRel without inputs"

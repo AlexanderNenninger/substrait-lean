@@ -1122,19 +1122,22 @@ tables. A table format plays four roles:
   files that changed are diffed, and the report says so.
   `refresh(audit=True)` also compares the batch with the new snapshot and
   every node with a recompute, before committing anything (`AuditError`).
-  On DuckDB, a Delta table, local or on S3, and a local Iceberg table are never
-  loaded into Python: the pipeline holds the Parquet files of its version,
-  with the rows that deletion vectors or position delete files remove, and
-  DuckDB reads them with `read_parquet`. A Delta table's partition values come
-  from its log, and its column mapping by name or by id is followed, so a
-  renamed column is found. Iceberg files are read by field id, and equality
-  deletes apply to the files written before them. S3 tables are read through
-  DuckDB's `httpfs` with a temporary secret made from the `Storage`, kept out
-  of SQL text and logs; with no explicit key, DuckDB's `aws` extension is
-  needed, and without it the table reads through Arrow (sverify installs
-  nothing). Partitioned Iceberg tables, Delta deletion vectors on S3, other
-  object stores and the other engines read through Arrow;
-  native scans for them are tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/173).
+  A Delta table, local or on S3, and a local Iceberg table are never loaded
+  into Python: the pipeline holds the Parquet files of its version, with the
+  rows that deletion vectors or position delete files remove, and each engine
+  reads them itself (#173): DuckDB with `read_parquet`, Polars with
+  `scan_parquet` on the streaming engine, Spark with its Parquet reader. A
+  Delta table's partition values come from its log, and its column mapping by
+  name or by id is followed, so a renamed column is found. Iceberg files are
+  read by field id, and equality deletes apply to the files written before
+  them. S3 tables are read through DuckDB's `httpfs` with a temporary secret
+  made from the `Storage`, kept out of SQL text and logs; with no explicit
+  key, DuckDB's `aws` extension is needed, and without it the table reads
+  through Arrow (sverify installs nothing). A table the scan cannot describe
+  also reads through Arrow: a Delta table with other reader features, column
+  mapping over nested columns, partition columns whose type the log's values
+  do not give exactly, or deletion vectors on S3; stores other than S3; an
+  Iceberg table whose files are not local Parquet or have no field ids.
 * A source of preconditions. `requires` conditions are proved from
   schema nullability, Delta CHECK constraints and per-file statistics:
   min/max of integers, doubles (only where the files count no NaN), dates

@@ -27,7 +27,17 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("project", nargs="?", default=".", help="the dbt project's directory")
     c.add_argument("--target-path", default="target", help="the target directory (default target)")
     c.add_argument("--select", "-s", nargs="+", metavar="MODEL", help="models to report on")
-    c.add_argument("--json", action="store_true", help="print the result as JSON")
+    c.add_argument(
+        "--format",
+        "--output-format",
+        dest="format",
+        choices=["text", "json"],
+        default="text",
+        help="how to print the result (default text); `sverify check` passes its --format",
+    )
+    c.add_argument(
+        "--json", dest="format", action="store_const", const="json", help="--format json"
+    )
     c.add_argument(
         "--selectors",
         nargs="?",
@@ -75,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ProjectError, ValueError) as e:
         print(f"sverify-dbt: {e}", file=sys.stderr)
         return 2
-    print(json.dumps(result.to_dict(), indent=2) if args.json else result)
+    print(json.dumps(result.to_dict(), indent=2) if args.format == "json" else result)
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
         n = len({t.name for t in result.skippable})

@@ -43,6 +43,11 @@ over a `VALUES`, each row's outcomes under the reference profile
 (`Expr.evalP`): the value (doubles as their codes) or the error raised, one
 JSON list per row. `sverify_dev.probe` compares them with DuckDB (#242).
 
+`substrait-check --raises plan.json`: the first error the reference raises
+anywhere in the plan, its name on one line, or nothing: every filter,
+projection and aggregate evaluates its expressions on the rows its input
+gives. What `sverify.testing.lean_values` reads to raise `LeanRaised`.
+
 `substrait-check --rows plan.json`: the default check's well-formedness
 verdict and rows only, without the plan, its round trip or its other
 facts: what the counterexample search reads (#825).
@@ -83,13 +88,20 @@ def checkPlan (plan : Plan) : Option (UInt32 × String) :=
   else if (plan.root.inferKinds cat plan.tableKinds).isNone then some (2, "well-kinded: no")
   else none
 
+/-- Why a plan has no delta rule: each operator that blocks it (`Rel.blockers`)
+with the tables it reads, e.g. `aggregate over orders; left join over a, b`. -/
+def blockedMessage (bs : List (String × List String)) : String :=
+  let one := fun (k, ts) =>
+    if ts.isEmpty then k else s!"{k} over {", ".intercalate ts.eraseDups}"
+  s!"not incrementally maintainable: no delta rule for {"; ".intercalate (bs.map one)}"
+
 variable [Boxes.Ambient]
 def delta (plan : Plan) : IO UInt32 := do
   if let some (code, msg) := checkPlan plan then
     IO.eprintln msg; return code
   -- `isIncremental_iff`: this decides `Rel.Incremental`.
   if !plan.root.isIncremental then
-    IO.eprintln "not incrementally maintainable (left join, fetch or window)"; return 3
+    IO.eprintln (blockedMessage plan.root.blockers); return 3
   let d := plan.root.delta Write.deltaName
   -- `Rel.weighted_eval` needs the delta plan to be incremental and well-formed.
   if !d.isIncremental || !d.checkWF (Write.deltaCatalog plan) then
@@ -139,6 +151,40 @@ def outcomes (p : Profile := Profile.reference) (plan : Plan) : IO UInt32 := do
       | .ok v => Lean.Json.mkObj [("ok", valueJson v)]
       | .error k => Lean.Json.mkObj [("error", toString (repr k))]
     IO.println (Lean.Json.arr outs.toArray).compress
+  return 0
+
+/-- The first error the reference profile `p` raises evaluating `es` on `rows`
+(`Expr.evalP`), as its name. -/
+def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String :=
+  rows.findSome? fun row => es.findSome? fun e => match e.evalP p row with
+    | .error k => some (toString (repr k))
+    | .ok _ => none
+
+/-- The first error the reference profile `p` raises in the plan: each
+filter, projection and aggregate evaluates its expressions on the rows its
+input gives (`Rel.evalFast`, which equals `Rel.eval`), inputs first. An aggregate's argument is evaluated
+on the rows its filter keeps. Joins and windows are not looked into: a join's
+condition would be evaluated on the cross product, quadratic where
+`Rel.evalFast` hashes (`test_eval_fast`), and the inputs use `evalFast` for the
+same reason. -/
+def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
+  | .read _ | .values _ _ => none
+  | .filter r c => relRaised cat p r <|> firstError p (r.evalFast cat) [c]
+  | .project r es => relRaised cat p r <|> firstError p (r.evalFast cat) es
+  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
+    relRaised cat p r
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
+    relRaised cat p a <|> relRaised cat p b
+  | .aggregate r gs ms =>
+    let rows := r.evalFast cat
+    relRaised cat p r <|> firstError p rows gs <|> ms.findSome? fun m =>
+      firstError p rows m.filter.toList <|> firstError p (m.kept rows) [m.arg]
+
+/-- `--raises`: the first error the reference raises anywhere in the plan
+(`relRaised`), printed as its name; nothing where it raises none. -/
+def raises (plan : Plan) : IO UInt32 := do
+  if let some e := relRaised plan.catalog Profile.reference plan.root then
+    IO.println e
   return 0
 
 /-- `spec`: evaluate with `Rel.eval`, the specification, in place of
@@ -311,6 +357,7 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
     | "--delta" => pure delta
     | "--write" => pure write
     | "--outcomes" => pure (outcomes Profile.reference)
+    | "--raises" => pure raises
     -- Internal stopgap; converges to `semantics="duckdb"` (#1288).
     | "--outcomes-duckdb-stopgap" => pure (outcomes (Profile.duckdb {}))
     | "--dependencies" => pure fun plan => do
@@ -466,14 +513,14 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     return 0
   | [path] => runOn es "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write", "--shard", "--outcomes",
+    if ["--delta", "--contract", "--write", "--shard", "--outcomes", "--raises",
         "--outcomes-duckdb-stopgap", "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
       return ← runOn es flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

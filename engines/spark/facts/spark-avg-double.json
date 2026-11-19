@@ -101,10 +101,23 @@
         "aggregates[0]: 300 rows, `sum(x)`, `avg(x)`, `max(x)`, `min(x)`, 2880 of 2880 results as the fact says.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "track A's Lean worker (#1608 12b-1, D35 amended 2026-11-19), pyspark local session on homelab (x86-64 Linux), homelab-run 1119-012139-7628ee",
+      "evidence": [
+        {
+          "file": "engines/spark/tests/test_spark_int_sums.py",
+          "note": "avg(x) of DoubleType over the same inputs: the exact mean rounded once in every case"
+        }
+      ],
+      "notes": "Exactness on small integers: where every value is an integer-valued double and the magnitudes sum to at most 2^53, the engine's sum is the exact sum and its mean the exact mean rounded once (python/tests/_int_sums.py's cases, 18 passed). Spark's sum_order is ANY, which the core proves exact on such values (FloatSums.int_exact); this records the engine's agreement."
     }
   ],
   "issues": [
     54,
-    85
+    85,
+    1608
   ]
 }

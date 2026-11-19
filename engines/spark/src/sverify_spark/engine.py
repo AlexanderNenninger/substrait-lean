@@ -97,7 +97,7 @@ def spark_type(t: pa.DataType) -> str:
         return SPARK.type_name("float")
     if pa.types.is_timestamp(t):
         if t.tz is not None:
-            raise TypeError(f"{t}: only timestamps without a time zone (TIMESTAMP_NTZ)")
+            raise TypeError(f"{t}: only timestamps without a time zone (TIMESTAMP_NTZ; #1725)")
         return SPARK.type_name("time")
     if pa.types.is_date(t):
         return SPARK.type_name("date")
@@ -158,14 +158,19 @@ def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> 
             if own:
                 held[name] = table
             continue
-        schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
-        target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
-        # One chunk: `createDataFrame` of a table with an empty chunk loses the
-        # rows after it (SP-8).
-        data = table.cast(target).combine_chunks()
-        spark.createDataFrame(data, schema).createOrReplaceTempView(name)
+        arrow_frame(table, spark).createOrReplaceTempView(name)
         if own:
             held[name] = table
+
+
+def arrow_frame(table: pa.Table, spark: SparkSession) -> Any:
+    """An Arrow table as a `DataFrame` of `spark_type` columns. The frame
+    holds the rows only as long as something refers to it: no view names it."""
+    schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
+    target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
+    # One chunk: `createDataFrame` of a table with an empty chunk loses the
+    # rows after it (SP-8).
+    return spark.createDataFrame(table.cast(target).combine_chunks(), schema)
 
 
 def run(

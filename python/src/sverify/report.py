@@ -565,7 +565,9 @@ class Report:
     with the behaviours the profile allows. Empty when it carries over; None
     under every other profile."""
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
-    """The output's columns with their Ibis types."""
+    """The output's columns with their Ibis types, a decimal's precision and
+    scale as the reference types them (`docs/reference-semantics.md`, Decimals):
+    the checker's, which a run returns, not Ibis's."""
     _epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
@@ -2020,7 +2022,7 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         # at `a`'s), and the model computes exactly.
         same = dtype.is_decimal() and dtype.scale == scale and dtype.precision is not None
         precision = max(dtype.precision, dec["precision"]) if same else dec["precision"]
-        show = lambda k: f"{Decimal(k).scaleb(-scale):.{scale}f}"  # noqa: E731
+        show = lambda k: f"{_decimals.scaled(k, -scale):.{scale}f}"  # noqa: E731
         noun = f"a decimal({precision}, {scale})"
     elif dtype.is_floating():
         show: Callable[[int], str] = lambda k: repr(decode_double(k))  # noqa: E731

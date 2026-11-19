@@ -83,6 +83,8 @@ from sverify_polars import shims
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 US = pl.Datetime("us")
+INSTANT = pl.Datetime("us", "UTC")
+"""An instant: a UTC-zoned timestamp (#1725)."""
 INTERVAL = pl.Duration("us")
 _LEFT, _RIGHT = "__sv_left", "__sv_right"
 
@@ -261,6 +263,10 @@ def null_type(t: dict) -> DType:
             if p != 6:
                 raise Unsupported("only microsecond timestamps are supported")
             return US
+        case "instant", p:
+            if p != 6:
+                raise Unsupported("only microsecond timestamps are supported")
+            return INSTANT
         case "date", _:
             return pl.Date
         case "tod", _:
@@ -336,7 +342,7 @@ def lit_expr(value: Any, dtype: DType) -> pl.Expr:
 
 # --- Expressions -----------------------------------------------------------
 
-INTEGRAL = (pl.Int64, US, INTERVAL)
+INTEGRAL = (pl.Int64, US, INSTANT, INTERVAL)
 #: The types `<`, `GREATEST` and `LEAST` order, as the model does (`Value.ltB`): strings by
 #: code point (UTF-8 byte order) and booleans `FALSE < TRUE` among them.
 ORDERED = (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.String, pl.Boolean)
@@ -1835,6 +1841,29 @@ def guard(lf: pl.LazyFrame, vals: list[Val], checks: frozenset[str] = ALL_GUARDS
 Frame = tuple[pl.LazyFrame, list[DType]]
 
 
+def _nested_names(t: dict) -> int:
+    """How many names a type adds to a schema's flattened `names` below its own:
+    the fields of a struct (and theirs), the elements of lists and maps."""
+    ((kind, body),) = t.items()
+    if kind == "struct":
+        return sum(1 + _nested_names(c) for c in body.get("types", []))
+    if kind == "list":
+        return _nested_names(body["type"])
+    if kind == "map":
+        return _nested_names(body["key"]) + _nested_names(body["value"])
+    return 0
+
+
+def top_level_names(schema: dict) -> list[str]:
+    """The column names of a read's `baseSchema`, whose `names` list the fields
+    of nested types after their own column."""
+    names, out, i = schema.get("names", []), [], 0
+    for t in schema.get("struct", {}).get("types", []):
+        out.append(names[i])
+        i += 1 + _nested_names(t)
+    return out
+
+
 def positional(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.rename({c: col(i) for i, c in enumerate(lf.collect_schema().names())})
 
@@ -1852,6 +1881,8 @@ def type_of(t: dict) -> DType:
             return pl.Boolean
         case "time", _:
             return US
+        case "instant", _:
+            return INSTANT
         case "date", _:
             return pl.Date
         case "tod", _:
@@ -1936,7 +1967,11 @@ class Measure:
     @property
     def values(self) -> pl.Expr:
         """The argument on the kept rows, NULL elsewhere (times as integers)."""
-        a = self.arg.expr.to_physical() if self.arg.dtype in (US, pl.Date) else self.arg.expr
+        a = (
+            self.arg.expr.to_physical()
+            if self.arg.dtype in (US, INSTANT, pl.Date)
+            else self.arg.expr
+        )
         return a if self.filter is None else pl.when(is_true(self.filter.expr)).then(a)
 
     def result(self, values: pl.Expr) -> pl.Expr:
@@ -2009,7 +2044,7 @@ class Measure:
             # `pickFold`: equal values are the same value, so which of them
             # is kept does not show. Times aggregate as their integers.
             agg = v.min() if self.fn == "min" else v.max()
-            temporal = self.arg.dtype in (US, pl.Date)
+            temporal = self.arg.dtype in (US, INSTANT, pl.Date)
             return NativeAgg({name: agg}, r.cast(self.arg.dtype) if temporal else r)
         if self.fn in ("bit_and", "bit_or", "bit_xor"):
             # `AggFn.bit`; NULL for no values, as Polars gives.
@@ -2118,7 +2153,7 @@ _LIMB = 10**18
 _WINDOW_IDS = itertools.count()
 #: The keys a RANGE frame's offsets apply to (`Parse.parseFrame`): integers,
 #: timestamps (microseconds) and dates (days).
-_RANGE_KEYS = (pl.Int64, US, pl.Date)
+_RANGE_KEYS = (pl.Int64, US, INSTANT, pl.Date)
 
 
 class Windows:
@@ -2473,10 +2508,20 @@ class Translator:
             if isinstance(src, pa.Table):
                 src = pl.from_arrow(src)
             assert isinstance(src, pl.DataFrame | pl.LazyFrame)
-            lf = positional(src.lazy())
+            lf = src.lazy()
+            if len(lf.collect_schema().names()) != len(types):
+                # A plan reads the columns it mentions (a struct it never uses is left
+                # out of it): the table's others are not read.
+                names = top_level_names(schema)
+                missing = [n for n in names if n not in lf.collect_schema().names()]
+                if missing:
+                    raise Unsupported(
+                        f"table {name} has {len(lf.collect_schema().names())} columns, "
+                        f"the plan {len(types)}"
+                    )
+                lf = lf.select(names)
+            lf = positional(lf)
             have = list(lf.collect_schema().dtypes())
-            if len(have) != len(types):
-                raise Unsupported(f"table {name} has {len(have)} columns, the plan {len(types)}")
             lf = lf.select(
                 [
                     conform(pl.col(col(i)), h, w, f"{name} column {i}").alias(col(i))
@@ -2849,7 +2894,7 @@ class Translator:
         elif name == "avg" and t == pl.Int64 and _int_output(m):
             fn = "iavg"
         elif name in ("min", "max") and (
-            t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date) or is_decimal(t)
+            t in (pl.Int64, pl.String, pl.Boolean, US, INSTANT, pl.Date) or is_decimal(t)
         ):
             fn = name
         elif name in ("min", "max") and t == pl.Float64:

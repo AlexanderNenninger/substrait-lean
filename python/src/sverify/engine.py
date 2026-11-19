@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import warnings
-from collections.abc import Iterable, Iterator, MutableMapping
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -42,6 +42,7 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     run_checker,
 )
 from sverify._scan import Native, Resident, Scan
+from sverify._store import instants_in_utc
 from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
 
@@ -290,9 +291,22 @@ def plan_json(con: Connection, query: ir.Table | str, semantics: str = "referenc
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through sverify's lift
     (`substrait_json`) with `semantics`."""
+    schemas = (
+        {name: ibis.Schema.from_pyarrow(con.schema(name)) for name in con._arrow}
+        if isinstance(query, str)
+        else {}
+    )
+    return plan_json_over(schemas, query, semantics)
+
+
+def plan_json_over(
+    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "reference"
+) -> str:
+    """`plan_json` for a query over the tables `schemas` names, with no
+    connection: the verifier holds no table, only schemas."""
     with _stages.stage("lift"):
         if isinstance(query, str):
-            return substrait_json(con, query, semantics)
+            return lift_sql(schemas, query, semantics)
         return to_substrait_json(query, semantics)
 
 
@@ -320,18 +334,22 @@ def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> s
             `ValueError`), saying what.
     """
 
+    schemas = {name: ibis.Schema.from_pyarrow(con.schema(name)) for name in con._arrow}
+    return lift_sql(schemas, sql, semantics)
+
+
+def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference") -> str:
+    """`substrait_json` over the tables `schemas` names: those the SQL reads
+    are the lift's inputs."""
     from sverify.sql_lift import lift
 
     try:
         read = {t.name.lower() for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
     except sg.errors.ParseError:
         read = set()  # the lift says why
-    schemas = {
-        name: ibis.Schema.from_pyarrow(con.schema(name))
-        for name in con._arrow
-        if name.lower() in read
-    }
-    return json.dumps(lift(sql, schemas, semantics).plan)
+    return json.dumps(
+        lift(sql, {n: s for n, s in schemas.items() if n.lower() in read}, semantics).plan
+    )
 
 
 def quote(name: str) -> str:
@@ -602,7 +620,8 @@ def run_plan(
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
-    return plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
+    out = plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
+    return instants_in_utc(out) if isinstance(out, pa.Table) else out
 
 
 def run_guard_free(

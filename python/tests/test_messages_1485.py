@@ -21,6 +21,26 @@ def test_an_overflow_after_an_aggregate_names_the_measure():
     assert "overflow: sum(amount) * 2 + 1" in str(report)
 
 
+def test_an_overflow_over_a_column_that_never_reaches_the_output_names_what_it_computes():
+    """`a` is computed by one project, read by the next and dropped by the last:
+    the plan never names it, so the message shows `amount * 2`, not `$2`."""
+    t = ORDERS.mutate(a=ORDERS.amount * 2).mutate(b=_.a * 3 + 1).select("order_id", y="b")
+    assert "inferred from `amount * 2 * 3 + 1` (overflow" in str(sv.verify(t, ensures=[]))
+
+
+def test_an_earlier_relation_with_the_same_operator_does_not_rename_the_column():
+    """`amount * 2` and `a * 3` are both `x * literal`: told apart by the literal."""
+    t = (
+        ORDERS.mutate(a=ORDERS.amount * 2)
+        .select("order_id", "a")
+        .mutate(b=_.a * 3 + 1)
+        .select("order_id", y="b")
+    )
+    report = str(sv.verify(t, ensures=[]))
+    assert "$" not in report
+    assert "inferred from `amount * 2 * 3 + 1` (overflow" in report
+
+
 @pytest.mark.parametrize(
     ("requires", "vacuous"),
     [

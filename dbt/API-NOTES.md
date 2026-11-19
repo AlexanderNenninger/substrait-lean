@@ -423,3 +423,7 @@ would give suggestions for more kinds of postcondition.
 ### sverify's `Report.proved` is gone
 
 `Report.verdict` (`sverify.Verdict`: `proved`, `proved_with_checks`, `unproved`) replaces `Report.proved` with no alias. For one name per concept, `CheckResult.proved` (the list of tests proved before any model runs) is now `CheckResult.proved_tests`. `CheckedCondition.proved` stays a boolean.
+
+### `Report.output` types a decimal as the reference does
+
+`Report.output` gives a decimal column the precision and scale the checker types it with (`SUM` is `DECIMAL(min(38, p + 10), s)`, `AVG` is `DECIMAL(min(38, p + 4), s + 4)`), where it gave Ibis's. The contract check compares `Report.output` with DuckDB's type for the compiled SQL, so a model that sums a decimal now carries the note "sverify's plan has type DECIMAL(20,2), and DuckDB's SQL gives DECIMAL(38,2)". The note is true: dbt's own SQL builds DuckDB's native type, and the contract check keeps using DuckDB's.

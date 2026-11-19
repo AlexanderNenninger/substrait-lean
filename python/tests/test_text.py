@@ -34,6 +34,7 @@ from ibis import _
 
 import sverify as sv
 from sverify._checker import run_checker
+from sverify._lean_eval import LeanRaised
 from sverify._unsupported import UnsupportedError
 from sverify.engine import (
     connect,
@@ -235,14 +236,18 @@ def test_repeat_reverse_replace_match_the_reference(sql, rows):
     clusters, so there Lean, the reference, stands alone (#1138)."""
     con = connect()
     con.create("r", R, rows)
-    expected = lean_rows(con, sql, rows)
+    try:
+        expected = lean_rows(con, sql, rows)
+    except LeanRaised:
+        # The reference raises on non-ASCII text (`Issue.nonAscii`).
+        expected = None
     if sql in (REPLACE, EMPTY_PATTERN):
         assert canonical(oracle(con, sql)) == expected
     plan = written_plan(plan_of(con, sql))
     if sql == LEVENSHTEIN:
         with pytest.raises(UnsupportedError, match="no levenshtein"):
             run_plan(con, plan, "polars")
-    else:
+    elif expected is not None:
         got = run_plan(con, plan, "polars").to_pylist()
         assert canonical(tuple(x.values()) for x in got) == expected
     non_ascii = any(not v.isascii() for r in rows for v in r[:2] if isinstance(v, str))
@@ -252,6 +257,8 @@ def test_repeat_reverse_replace_match_the_reference(sql, rows):
         non_ascii = any(
             not (r[0] + r[1]).isascii() for r in rows if r[0] is not None and r[1] is not None
         )
+    if expected is None:
+        assert sql in (ASCII_IN_DUCKDB, LEVENSHTEIN) and non_ascii
     if sql in (ASCII_IN_DUCKDB, LEVENSHTEIN) and non_ascii:
         with pytest.raises(Exception, match="non-ASCII text differs between engines"):
             run_plan(con, plan, "duckdb")

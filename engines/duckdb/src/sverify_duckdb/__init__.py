@@ -10,7 +10,9 @@ cursor leaves it alone; `SET GLOBAL` reaches it, and that is what the check
 sees. Not checked, since no choice depends on them: display settings, threads
 (the order of a double `SUM`, `sum_order`, which every route allows within
 the plan's bound), and `TimeZone` and `Calendar`, which the written SQL never
-reads (plans with time-zone-aware timestamps are refused, duckdb-time-zones).
+reads: an instant (a UTC-zoned timestamp, #1725) is only compared, ordered,
+grouped and aggregated, which are zone-free (duckdb-time-zones), and its
+conversions and calendar functions are refused.
 `dialect_compatibility_mode` and `regex_match_operator_semantics` wait on a
 check of DuckDB's source.
 """

@@ -1011,8 +1011,9 @@ own.
 - `ANY` and `PAIRWISE` keep their trees (`FloatSums`) and `SEQUENTIAL` its
   permuted sequential sum, each with the bound.
 - `COMPENSATED` (Kahan's sum, Polars) and `SCALED_CONSTANT` (a constant run's
-  `fl(k · x)`, DuckDB) were any double. They are now the bound alone: no
-  theorem of the core reads their shape (`TreeSum.const` is float-bounds').
+  `fl(k · x)`, DuckDB) were any double. They are now the bound alone and
+  exactness on small integers: no theorem of the core reads their shape
+  (`TreeSum.const` is float-bounds').
 - `AvgOrder` follows: a sum within the bound, divided by the count.
 - `EXACT`, the reference's order (D25), is unchanged.
 - Window sums take their frame's `SumOrder` (`WinFn.AllowedP`): `TREE` and
@@ -1035,6 +1036,21 @@ are bounded. `SumOrder.bound` reads the bound as a range the abstract domain
 computes (finite, in `[sumLo, sumHi]`), which cuts `nan_creation`,
 `float_overflow` and the NaN cases of a comparison downstream (D34), and the
 margin check's theorem over its plan reads the same set.
+
+Amended 2026-11-19 (#1608 12b-1): in `SumOrder`, the behaviours with no
+shape (`SCALED_CONSTANT`, `COMPENSATED`) are the bound and exactness on small
+integers: where every double of `vs` is an integer and `Σ |vᵢ| ≤ 2⁵³`
+(`SmallInts`), `canon c` is the exact sum's. `AvgOrder` inherits it through
+its sum. The shaped behaviours prove it (`SumOrder.int_exact`), and a mean
+of such values is the reference's (`AvgOrder.int_exact`), so a double `SUM`
+or `AVG` of converted integers with `N · max M 1 ≤ 2⁵²` has no tolerance
+(`Epsilon.intMeanExact`). `float-bounds` backs the conjunct as
+`Summed.near` backs the bound: `StdModel.Summed.int_exact`, under the model
+hypothesis `StdModel.ExactInts` (integers up to `2⁵³` round to
+themselves). The reference's `EXACT`, `Rel.eval` and the reference's
+`Rel.Allowed` do not change. Engine profiles narrow on such sums, on each
+engine's evidence (`engines/*/tests/test_*int_sums.py` over
+`python/tests/_int_sums.py`; Snowflake's recorded privately).
 
 ### D36. Doubles have one zero and one NaN
 
@@ -1468,3 +1484,42 @@ Why: the reference belongs to no engine, and these rows said "as DuckDB
 computes it" with no decision and no second engine's facts. The mark states
 what is known, and the rule for new functions (Lean and DuckDB first) keeps
 producing such rows.
+
+### D53. A timestamp with the time zone UTC is an instant
+
+Decided 2026-11-19 (theory advisor).
+
+A timestamp with the time zone UTC is an instant. `Kind.timeTz` holds
+microseconds since 1970-01-01 00:00 UTC, the value the naive kind holds. The
+reference computes with an instant wherever no zone is read: comparison with
+another instant, `IS [NOT] DISTINCT FROM`, ordering, `MIN`, `MAX`, `COUNT`,
+`DISTINCT`, grouping, join keys, window keys, and `CASE`, `COALESCE` and
+`NULLIF` among instants. Everything that reads a calendar field of an instant
+is refused and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
+arithmetic with intervals, the difference of two instants, `date_trunc`,
+`extract`, a cast to a date or a string. A comparison of an instant with a
+naive timestamp is refused. Zones other than UTC are refused. The conversion is
+a function of the core that returns its argument; nothing else in `Rel.eval` and
+`Rel.Allowed` changes.
+
+Read in steps: an instant column is read, computed with and written back as an
+instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`); the conversion
+between an instant and a naive timestamp at UTC (`x AT TIME ZONE 'UTC'`), a
+literal with an offset and DuckDB's session-zone casts wait for the second
+step of #1725 (they need an `UnFn` that changes the kind).
+
+No option and no profile entry: the operations above read no zone, so the
+engines agree on them under every session zone
+([duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json),
+[polars-datetime-zone](../engines/polars/facts/polars-datetime-zone.json),
+[spark-time-zones](../engines/spark/facts/spark-time-zones.json)). DuckDB and
+Polars have a map for the instant; Spark and Snowflake refuse it and name the
+issue.
+
+Recomputes sinks: no
+
+Why: a Delta `timestamp` is an instant, and read as the naive kind it would
+return `timestamp_ntz` columns and let calendar functions run unstated, which a
+later kind would change. A refusal lifted later is a minor change, a corrected
+rule a major one. D53 gives a meaning to plans that had none, so no stored node
+changes its meaning.

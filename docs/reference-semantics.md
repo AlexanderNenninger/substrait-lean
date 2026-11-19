@@ -308,7 +308,8 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | Topic | Reference | Status |
 |---|---|---|
 | `date` | Days since 1970-01-01, proleptic Gregorian. | ✓ |
-| `timestamp` | Microseconds since 1970-01-01 00:00, no time zone. Time-zone-aware timestamps (`timestampTz`) are a separate kind the model does not compute with. | ✓ |
+| `timestamp` | Microseconds since 1970-01-01 00:00, no time zone. | ✓ |
+| `timestampTz` (an instant) | A timestamp with the time zone UTC: microseconds since 1970-01-01 00:00 UTC, its own kind ([D53](decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)). Compared, ordered, grouped, joined on and aggregated (`MIN`, `MAX`, `COUNT`) as an instant, and written back as one; calendar functions, interval arithmetic, casts, a naive timestamp in the same comparison, literals and other zones are refused ([#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725)). DuckDB and Polars. | ✓ |
 | Intervals | Day-to-second intervals are microseconds; year-to-month intervals are months. Adding months keeps the day of month. | ✓ |
 | Time of day (`TIME`) | Microseconds since midnight, from 0 to a day less one microsecond. | ✓ |
 | Time of day ± interval | The time plus the interval's microseconds, modulo a day (Euclidean, `Time.timeOfDay` of the sum): it wraps around midnight both ways, so `TIME '23:30' + INTERVAL 1 HOUR` is `00:30` and `TIME '00:30' - INTERVAL 1 HOUR` is `23:30`. The interval is a constant of days or less; one with months is refused. DuckDB computes the same and drops an interval's months ([`duckdb-time-plus-interval`](../engines/duckdb/facts/duckdb-time-plus-interval.json)). | ✓ on DuckDB |
@@ -446,7 +447,7 @@ The rules for decimals are in [Decimals](#decimals).
 |---|---|---|---|
 | `MIN`, `MAX` | the argument's type | | ✓ |
 | `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact; raises past the precision, an inferred assumption like integer `SUM` overflow. | ✓ |
-| `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
+| `AVG` | `DECIMAL(p + 4, s + 4)` | Rounded half away from zero. A precision over 34 or a scale over 34 is refused, since the result must fit 38 digits; cast the argument to `DECIMAL(34, s)` or narrower first. | ✓ |
 | `AVG` with an `fp64` result (DuckDB's type) | `fp64` | The exact sum converted to a double, divided by the count as a double (`CAST(n AS DOUBLE)`); NULL without values. DuckDB's native `AVG` divides once and may differ in the last bit. Over a window too. | ✓ |
 
 ### NULLs and order

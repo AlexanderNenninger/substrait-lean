@@ -76,16 +76,16 @@ import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Any, Literal
 
 import ibis
+import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _hooks, _pipe, _stages
+from sverify import _decimals, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._hooks import COLLECTING, Collected
@@ -136,8 +136,7 @@ from sverify.engine import (
     Connection,
     Engine,
     checker_failed,
-    connect,
-    plan_json,
+    plan_json_over,
     run_checker,
 )
 from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
@@ -378,7 +377,7 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
         scale = dtype.scale
 
         def dec(k: int) -> str:
-            text = f"{Decimal(k).scaleb(-scale):.{scale}f}"
+            text = f"{_decimals.scaled(k, -scale):.{scale}f}"
             if scale == 0 and abs(k) >= 2**63:
                 # A whole number past 64 bits reads as a HUGEINT, which the
                 # lift refuses (#1252); cast from a string it stays a decimal.
@@ -503,7 +502,7 @@ def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
     elif dtype.is_floating():
         v = repr(decode_double(k))
     elif dtype.is_decimal() and dtype.scale is not None:
-        v = f"{Decimal(k).scaleb(-dtype.scale):.{dtype.scale}f}"
+        v = f"{_decimals.scaled(k, -dtype.scale):.{dtype.scale}f}"
     else:
         return None
     return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
@@ -1476,7 +1475,43 @@ def _output_types(transform: Transform, schemas: Mapping[str, ibis.Schema]) -> l
         return None
 
 
+def _as_arrow_gives(schemas: Mapping[str, ibis.Schema]) -> dict[str, ibis.Schema]:
+    """The input schemas as a table made from them reads back: through Arrow
+    (a `timestamp` is `timestamp(6)`), as DuckDB gave them before `verify`
+    held no connection."""
+    return {n: ibis.Schema.from_pyarrow(s.to_pyarrow()) for n, s in schemas.items()}
+
+
+def _mentioned_names(
+    transform: Transform, requires: Mapping[str, Sequence[Condition]], ensures: Sequence[Condition]
+) -> set[str]:
+    """The column names the transformation and the conditions mention (a
+    column no one mentions is not written into any plan, `ibis_substrait.prune`),
+    or `EVERYTHING`."""
+    from sverify.ibis_substrait.prune import EVERYTHING, mentions, sql_mentions
+
+    own = sql_mentions(transform) if isinstance(transform, str) else mentions(transform)
+    if own is None:
+        return {EVERYTHING}
+    conditions = [*(c for cs in requires.values() for c in cs), *ensures]
+    return {*own, *(w for c in conditions for w in re.findall(r"\w+", label(c)))}
+
+
 def _verify_once(
+    transform: Transform,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    *args: Any,
+    **kwargs: Any,
+) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
+    """`_prove_once` with every plan written over the columns some plan mentions."""
+    from sverify.ibis_substrait.prune import mentioning
+
+    with mentioning(_mentioned_names(transform, requires, ensures)):
+        return _prove_once(transform, requires, ensures, *args, **kwargs)
+
+
+def _prove_once(
     transform: Transform,
     requires: Mapping[str, Sequence[Condition]],
     ensures: Sequence[Condition],
@@ -1489,6 +1524,8 @@ def _verify_once(
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
+    from sverify.ibis_substrait.prune import drop_unmentioned, mentioned
+
     if semantics in _profile_requests() and isinstance(transform, str):
         raise ValueError(
             f"semantics={semantics!r} checks Ibis transformations; "
@@ -1497,9 +1534,11 @@ def _verify_once(
     schemas = {name: input_schema(s) for name, s in (tables or {}).items()}
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
-    con = connect()
-    for name, schema in schemas.items():
-        con.create(name, schema)
+    schemas = drop_unmentioned(schemas, mentioned())
+    # The verifier holds schemas, not tables: unbound Ibis tables, and for SQL
+    # the schemas as Arrow gives them back.
+    sql_schemas = _as_arrow_gives(schemas)
+    unbound = {name: ibis.table(schema, name=name) for name, schema in sql_schemas.items()}
 
     def lift(query: Any) -> Semantics:
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
@@ -1508,12 +1547,12 @@ def _verify_once(
         return semantics if own else "reference"
 
     def plan(query: Transform) -> Any:
-        return json.loads(plan_json(con, query, lift(query)))
+        return json.loads(plan_json_over(sql_schemas, query, lift(query)))
 
     def table_ref(name: str, cond: Condition) -> Transform:
         if isinstance(transform, str) and isinstance(cond, str):
             return f"SELECT * FROM {q(name)}"
-        return con.table(name)
+        return unbound[name]
 
     def output(cond: Condition) -> Transform:
         """The transformation as `cond` reads it: an Ibis condition on a SQL
@@ -1524,7 +1563,7 @@ def _verify_once(
         from sverify.ibis_substrait import SQLModel, sql_model_schema
 
         names = tuple(schemas)
-        inputs: Any = tuple(con.table(n).op() for n in names)
+        inputs: Any = tuple(unbound[n].op() for n in names)
         return SQLModel(
             transform,
             inputs,
@@ -1648,7 +1687,7 @@ def _verify_once(
         if isinstance(transform, str)
         else transform.schema()
     )
-    dtypes = dict(result.items())
+    dtypes = _checker_decimals(dict(result.items()), out.get("outputKinds"))
 
     def describe(f: dict) -> str:
         dtype = dtypes.get(f["name"])
@@ -2057,6 +2096,21 @@ def rounding_hints(
                 f"{k:g} (#85); state it as sv.approx({c.label})"
             )
     return hints
+
+
+def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> dict[str, Any]:
+    """`dtypes` with each decimal column as the checker types it
+    (`outputKinds`, from `Write.relKinds`): Ibis's `AVG` and `SUM` of a decimal
+    differ from the reference's. A checker without the field, or with another
+    number of columns, leaves Ibis's types as they are."""
+    if kinds is None or len(kinds) != len(dtypes):
+        return dtypes
+    return {
+        name: dt.Decimal(k["precision"], k["scale"], nullable=ty.nullable)
+        if k["kind"] == "dec"
+        else ty
+        for (name, ty), k in zip(dtypes.items(), kinds, strict=True)
+    }
 
 
 def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
@@ -2674,6 +2728,12 @@ class ViewContract:
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
     `requires` (`Provenance.policies`)."""
+    profile: str = "reference"
+    """The profile the transformation was verified under (`Report.semantics`)."""
+    deterministic: bool = False
+    """The report proves the result determined up to row order and the members of
+    a class (`Report.deterministic`): two engines hold the same rows of it. False
+    where no single report speaks for the view."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -2704,6 +2764,8 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.checked) if prov else [],
         list(prov.report.not_null) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
+        profile=prov.report.semantics if prov else "reference",
+        deterministic=bool(prov and prov.report.deterministic),
     )
 
 

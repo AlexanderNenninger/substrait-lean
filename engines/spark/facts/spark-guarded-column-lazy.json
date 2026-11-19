@@ -1,0 +1,38 @@
+{
+  "id": "spark-guarded-column-lazy",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "A guarded column is lazy over stacked projections",
+  "verdict": "raises on no row its reach excludes",
+  "area": "execution",
+  "constructs": [
+    "CASE WHEN",
+    "project"
+  ],
+  "settings": {
+    "optimizer": "default on"
+  },
+  "description": [
+    "`c_i := CASE WHEN r_i THEN p_i END` with `r_i := r_(i-1) AND (c_(i-1) IS NULL OR c_(i-1))`, stacked as one projection per level, with the optimizer on: `p_i` (a strict cast of the text `bad`) raises on no row where `r_i` is FALSE. Probed: a stacked chain of 4 levels read plainly, under a selective filter on `id`, under a filter on the chain's value, under an aggregate, a reach folded from a constant (`1 = 0`), a reach false on every row only by data (`s IS NULL AND s IS NOT NULL`), a constant raising operand `CAST('bad' AS INT)` under a column reach and under a false reach, and one inside a column-reading operand (`id > CAST('bad' AS INT)`). All ten cases give the expected rows and none raises. An unguarded `CAST('bad' AS INT)` raises, so the probe sees a raise."
+  ],
+  "reference": "`CASE WHEN r THEN p END` evaluates `p` only where `r` holds, also over stacked projections (`Expr.issues`: an `ifThen` raises what its taken branch raises). A guarded column of the D50-d chain therefore raises on no row whose reach is FALSE.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.guarded_columns (worker 4), on homelab, branch claude/d50d-probes",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/guarded_columns.py",
+          "note": "`python -m sverify_dev.guarded_columns p1 --engine spark`: PySpark 4.3.0, local[2], ANSI on, Linux x86_64 (homelab); the P1 cases also ran on macOS arm64 for DuckDB and Polars with the same result."
+        }
+      ],
+      "notes": "Issue #1719 (D50-d). Probe rows: 3000, every third one the text `bad`, which a strict cast rejects."
+    }
+  ],
+  "issues": [
+    1719
+  ]
+}

@@ -37,8 +37,30 @@ MERGE_A, MERGE_B = "$merge_a", "$merge_b"
 """The names of the two tables the merge plan reads (`sverify._state.Merger`)."""
 
 
+def instants_schema(schema: pa.Schema) -> pa.Schema:
+    """`schema` with each timestamp that has a time zone labelled UTC (#1725): an
+    engine labels an instant with its session's or the host's zone (DuckDB gives
+    `tz=Europe/Berlin` under that `TimeZone`), and the instant is the same."""
+    return pa.schema(
+        [
+            pa.field(f.name, pa.timestamp(f.type.unit, tz="UTC"), f.nullable, f.metadata)
+            if pa.types.is_timestamp(f.type) and f.type.tz not in (None, "UTC")
+            else f
+            for f in schema
+        ],
+        metadata=schema.metadata,
+    )
+
+
+def instants_in_utc(table: pa.Table) -> pa.Table:
+    """`table` with its instants labelled UTC (`instants_schema`): a native
+    relabelling of the type, no loop over the values."""
+    schema = instants_schema(table.schema)
+    return table if schema.equals(table.schema) else table.cast(schema)
+
+
 def arrow_of(z: pa.Table | Native) -> pa.Table:
-    return z.to_arrow() if isinstance(z, Native) else z
+    return instants_in_utc(z.to_arrow() if isinstance(z, Native) else z)
 
 
 class Store[S](ABC):

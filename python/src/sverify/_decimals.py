@@ -16,9 +16,20 @@ Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
 from __future__ import annotations
 
 from collections.abc import Iterable
+from decimal import Context, Decimal
 
 #: The most digits a decimal has (DuckDB's and the model's).
 MAX_DIGITS = 38
+
+#: A context past 38 digits and any scale, in which nothing a decimal holds rounds.
+#: Python's default context rounds to 28 digits.
+EXACT = Context(prec=100)
+
+
+def scaled(value: Decimal | int | str, exp: int) -> Decimal:
+    """`value` times `10 ** exp`, exactly (`Decimal.scaleb` rounds to 28 digits)."""
+    return EXACT.scaleb(Decimal(value), exp)
+
 
 type Digits = tuple[int, int]
 """A decimal type as `(precision, scale)`."""
