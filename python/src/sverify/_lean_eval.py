@@ -168,24 +168,18 @@ class LeanRaised(Exception):
 
 
 def _raised(plan_json: str) -> str | None:
-    """The first error the reference raises in a projection over a `VALUES`
-    (`--outcomes`); None where it raises none, or the plan is another shape."""
-    code, out, _ = run_checker(("--outcomes",), plan_json)
-    if code != 0:
-        return None
-    for line in out.splitlines():
-        for cell in json.loads(line):
-            if "error" in cell:
-                return cell["error"]
-    return None
+    """The first error the reference raises anywhere in the plan (`--raises`:
+    filters, projections and aggregates); None where it raises none."""
+    code, out, _ = run_checker(("--raises",), plan_json)
+    return (out.strip() or None) if code == 0 else None
 
 
 def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
     decimals and a `d` (so only approximately). The rows are `Rel.eval`'s,
-    which has a value where the reference raises: a projection over a
-    `VALUES` raises `LeanRaised` (exported by `sverify.testing`) there, as the
-    reference does (`--outcomes`; other shapes are not checked). `rows_only`
+    which has a value where the reference raises: that raises `LeanRaised`
+    (exported by `sverify.testing`), as the reference does (`--raises`: filters,
+    projections and aggregates; joins and windows are not looked into). `rows_only`
     asks the checker for the rows alone (`--rows`), without the plan's other
     facts and without that check."""
     if not rows_only and (err := _raised(plan_json)) is not None:
