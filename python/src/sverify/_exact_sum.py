@@ -45,8 +45,8 @@ _HALF = 27
 """A mantissa of 53 bits splits into two halves below `2²⁷`."""
 
 _WEIGHT = 2**8
-"""Weights below this go the vectorised way: a product of two halves times a
-weight is below `2⁶²`, and `_CHUNK` of them add up in `decimal128(38)`."""
+"""A digit of a weight is below this: a product of two halves times a digit
+is below `2⁶²`, and `_CHUNK` of them add up in `decimal128(38)`."""
 
 _CHUNK = 2**20
 
@@ -141,6 +141,31 @@ def _parts(x: pa.Array, ok: pa.Array) -> tuple[pa.Array, pa.Array, pa.Array]:
     return _c("shift_right", mant, _HALF), _c("bit_wise_and", mant, (1 << _HALF) - 1), shift
 
 
+_SPECIAL = {1: MAX_MAG + 2, 2: MAX_MAG + 1, 3: -(MAX_MAG + 1)}
+"""Lean's `scaled` of NaN (class 1), `+∞` (2) and `-∞` (3); a finite value is
+class 0."""
+
+
+def _class(x: pa.Array) -> pa.Array:
+    """0 for a finite double, 1 for NaN, 2 for `+∞`, 3 for `-∞`."""
+    inf = _c("if_else", _c("greater", x, 0.0), 2, 3)
+    return _c("if_else", _c("is_nan", x), 1, _c("if_else", _c("is_inf", x), inf, 0)).cast(pa.int8())
+
+
+def _digits(w: pa.Array) -> list[tuple[int, pa.Array, pa.Array]]:
+    """`w = Σ dₖ · 2^(8k)` with each `|dₖ| < 2⁸`: `(8k, dₖ, rows where dₖ ≠ 0)`.
+    One digit, the weight itself, where every weight is small."""
+    if _c("max", _c("abs", w)).as_py() < _WEIGHT:
+        return [(0, w, _c("not_equal", w, 0))]
+    sign = _c("sign", w)
+    mag = _c("abs_checked", w)
+    out = []
+    for k in range(8):
+        d = _c("multiply", sign, _c("bit_wise_and", _c("shift_right", mag, 8 * k), _WEIGHT - 1))
+        out.append((8 * k, d, _c("not_equal", d, 0)))
+    return out
+
+
 def _fold(
     kind: Kind,
     out: dict[tuple, Moments],
@@ -148,21 +173,42 @@ def _fold(
     values: Sequence[pa.Array],
     weights: pa.Array,
 ) -> None:
+    """Add a chunk's moments to `out`. Arrow sums each group's terms; Python
+    sees one row per group, class and exponent, never a row of the input.
+
+    A value is its finite part plus its class's constant (`_SPECIAL`), one of
+    them zero, so with the classes in the group key each sum splits into a
+    sum of finite parts (as halves of the mantissa times a digit of the
+    weight, added in `decimal128(38)` per exponent) and constants times the
+    group's weight."""
     xs = [_c("coalesce", v, 0.0).cast(pa.float64()) for v in values]
     valid = _c("is_valid", values[0])
     for v in values[1:]:
         valid = _c("and", valid, _c("is_valid", v))
-    w = _c("coalesce", weights, 0).cast(pa.int64())
-    fast = _c("and", valid, _c("less", _c("abs", w), _WEIGHT))
-    for x in xs:
-        fast = _c("and", fast, _c("is_finite", x))
-    parts = {"x": _parts(xs[0], fast)}
-    if len(xs) > 1:
-        parts["y"] = _parts(xs[1], fast)
+    keys, xs = keys.filter(valid), [x.filter(valid) for x in xs]
+    w = _c("coalesce", weights, 0).cast(pa.int64()).filter(valid)
+    if not keys.num_rows:
+        return
     names = keys.column_names
-    # Each sum on the fast rows, as terms `t · 2^c` per row at `2^shift`,
-    # added per group and shift in `decimal128(38)`, then put in place.
-    for j, term in enumerate(TERMS[kind]):
+    pair = len(xs) > 1
+    cls = [_class(x) for x in xs]
+    classes = ["__cx", "__cy"][: len(cls)]
+    group = canonical_keys(keys, names)
+    for name, c in zip(classes, cls, strict=True):
+        group = group.append_column(name, c)
+    by = [*names, *classes]
+    parts = {"x": _parts(xs[0], _c("equal", cls[0], 0))}
+    if pair:
+        parts["y"] = _parts(xs[1], _c("equal", cls[1], 0))
+    # Per (group, classes): the weight, and each term's sum of finite parts.
+    weighted = group.append_column("__w", w.cast(_DEC))
+    weight = weighted.group_by([*names, *classes]).aggregate([("__w", "sum")])
+    buckets: dict[tuple, dict[str, int]] = {}
+    for r in weight.to_pylist():
+        buckets[key_of([r[n] for n in by])] = {"W": int(r["__w_sum"])}
+    singles = ["x", "y"] if pair else ["x"]
+    products = [t for t in TERMS[kind] if len(t) == 2]
+    for term in singles + products:
         if len(term) == 1:
             hi, lo, shift = parts[term]
             terms = [(_HALF, hi), (0, lo)]
@@ -175,43 +221,43 @@ def _fold(
                 (0, mul(la, lb)),
             ]
             shift = _c("add", sa, sb)
-        tab = keys.append_column("__shift", shift)
-        cols = []
-        for c, (_, t) in enumerate(terms):
-            weighted = _c("if_else", fast, _c("multiply", t, w), 0)
-            tab = tab.append_column(f"__t{c}", weighted.cast(_DEC))
-            cols.append(f"__t{c}")
-        tab = tab.filter(fast)
-        if not tab.num_rows:
-            continue
-        keyed = canonical_keys(tab, names)
-        agg = keyed.group_by([*names, "__shift"]).aggregate([(c, "sum") for c in cols])
-        sums = [agg.column(f"{c}_sum").to_pylist() for c in cols]
-        for i, (k, sh) in enumerate(
-            zip(agg.select(names).to_pylist(), agg.column("__shift").to_pylist(), strict=True)
-        ):
-            part = sum(int(sums[c][i]) << terms[c][0] for c in range(len(cols)))
-            acc = _at(out, kind, key_of(list(k.values())))
-            acc[j] += part << sh
-    # The rest one at a time: large weights, NaN and infinities.
-    rest = _c("indices_nonzero", _c("and", valid, _c("invert", fast)))
-    if len(rest):
-        rows = keys.take(rest).to_pylist()
-        columns = [x.take(rest).to_pylist() for x in xs]
-        ws = w.take(rest).to_pylist()
-        nt = len(TERMS[kind])
-        for r, wi, *vs in zip(rows, ws, *columns, strict=True):
-            acc = _at(out, kind, key_of(list(r.values())))
-            sv = {"x": scaled(vs[0]), "y": scaled(vs[-1])}
-            for j, term in enumerate(TERMS[kind]):
-                acc[j] += wi * math.prod(sv[t] for t in term)
-            for v in vs:
-                if math.isnan(v):
-                    acc[nt] += wi
-                elif v == math.inf:
-                    acc[nt + 1] += wi
-                elif v == -math.inf:
-                    acc[nt + 2] += wi
+        for k, d, nonzero in _digits(w):
+            tab = group.append_column("__shift", _c("add", shift, k))
+            cols = []
+            for c, (_, t) in enumerate(terms):
+                tab = tab.append_column(f"__t{c}", _c("multiply", t, d).cast(_DEC))
+                cols.append(f"__t{c}")
+            tab = tab.filter(nonzero)
+            if not tab.num_rows:
+                continue
+            agg = tab.group_by([*names, *classes, "__shift"]).aggregate([(c, "sum") for c in cols])
+            sums = [agg.column(f"{c}_sum").to_pylist() for c in cols]
+            for i, (b, sh) in enumerate(
+                zip(agg.select(by).to_pylist(), agg.column("__shift").to_pylist(), strict=True)
+            ):
+                part = sum(int(sums[c][i]) << terms[c][0] for c in range(len(cols)))
+                acc = buckets[key_of([b[n] for n in by])]
+                acc[term] = acc.get(term, 0) + (part << sh)
+    # Each bucket's moments, from its finite sums and its classes' constants.
+    nt = len(TERMS[kind])
+    for b, acc in buckets.items():
+        cx = b[len(names)]
+        cy = b[len(names) + 1] if pair else cx
+        s = {"x": _SPECIAL.get(cx, 0), "y": _SPECIAL.get(cy, 0)}
+        f = {"x": acc.get("x", 0), "y": acc.get("y", 0) if pair else acc.get("x", 0)}
+        W = acc["W"]
+        mo = _at(out, kind, b[: len(names)])
+        for j, term in enumerate(TERMS[kind]):
+            if len(term) == 1:
+                mo[j] += f[term] + s[term] * W
+            else:
+                a, c = term
+                # `(fa + sa)(fc + sc)`: a finite part is zero where its
+                # constant is not, so `fa · fc` comes only from finite pairs.
+                mo[j] += acc.get(term, 0) + f[a] * s[c] + s[a] * f[c] + s[a] * s[c] * W
+        for c in [cx, cy] if pair else [cx]:
+            if c:
+                mo[nt + c - 1] += W
 
 
 def _at(d: dict[tuple, Moments], kind: Kind, k: tuple) -> Moments:
