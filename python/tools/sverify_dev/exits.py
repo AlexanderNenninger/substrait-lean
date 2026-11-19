@@ -155,8 +155,23 @@ def _sites(root: Path) -> tuple[Site, ...]:
             hint = next((_text(k.value, consts) for k in n.exc.keywords if k.arg == "hint"), "")
             if not re.sub(r"[{}\s]|\w+(?=})", "", msg) and not hint:
                 continue  # forwards a message another site built (`raise RouteError(refused)`)
+            if _wraps_caught(n.exc.args[0] if n.exc.args else None) and not hint:
+                continue  # a prefix on the caught error (`f"condition {c!r}: {e}"`)
             out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint))
     return tuple(out)
+
+
+def _wraps_caught(node: ast.AST | None) -> bool:
+    """An f-string that ends in the caught error (`{e}`, `{err}`): a prefix on
+    another site's message, which names its own exit."""
+    if not isinstance(node, ast.JoinedStr) or not node.values:
+        return False
+    last = node.values[-1]
+    return (
+        isinstance(last, ast.FormattedValue)
+        and isinstance(last.value, ast.Name)
+        and last.value.id in {"e", "err", "exc", "error"}
+    )
 
 
 def sites(root: Path = SRC) -> list[Site]:
