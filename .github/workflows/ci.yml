@@ -384,7 +384,7 @@ jobs:
     needs: [route, changes]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -546,7 +546,7 @@ jobs:
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     # Spark stays on GitHub's runners for now: its runs were reclaimed twice on spot (#1737).
     runs-on: ${{ contains(matrix.backends, 'spark') && 'ubuntu-latest' || fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 45
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -619,7 +619,7 @@ jobs:
         # The files split four ways (`--shard`); the benchmarks run in the first.
         shard: [1/4, 2/4, 3/4, 4/4]
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 30
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
