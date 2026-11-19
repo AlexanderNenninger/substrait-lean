@@ -68,10 +68,10 @@ matches its engine is tested against the engine and trusted.
 
 [Engines](stability.md#engines) says which engines sverify supports and
 which are in the 1.x promise; the [realizability table](realizability.md)
-gives each engine's class on every option, its shims and its translation
-theorem. DuckDB, Polars and Spark each have a profile, with the
-translation from the reference proved (`Rel.duckdb_refines`,
-`Rel.polars_sound`, `Rel.spark_sound`).
+gives each engine's class on every option, its shims and the theorem that
+its run is sound. DuckDB, Polars and Spark each have a profile, with their
+runs proved sound against the reference (`Engine.duckdb_sound`,
+`Engine.polars_sound`, `Engine.spark_sound`).
 
 SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
 with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
@@ -465,20 +465,23 @@ refused. Tested, and trusted: that Spark computes as the model says
 ## Engine profiles from outside
 
 A package can add an engine profile without changing sverify. The checker
-takes its engines as a list of `EngineProfile`s (`engines/Sverify/Engines/Tables.lean`):
-each one's choices, observation rows, the theorem its translation from the
-reference rests on, and its shims' costs. `builtinEngines` holds DuckDB's,
-Polars's and Spark's, and every engine-wide fact (`Epsilon.statsProvedOn`,
-`EngineRobust.signKeptOn`, the `--options` and `--realizability` tables) is
-computed over the list.
+takes its engines as a list of `EngineEntry`s (`engines/Sverify/Engines/Entry.lean`):
+each one's `Engine` value, the side condition its run is sound under, the
+proof `Engine.Sound` of that as a term, and its shims' costs. An entry whose
+theorem does not state its engine's soundness does not type-check.
+`builtinEntries` holds DuckDB's, Polars's and Spark's; their tables
+(`builtinEngines`, each entry's `EngineEntry.rows`) are what every
+engine-wide fact (`Epsilon.statsProvedOn`, `EngineRobust.signKeptOn`, the
+`--options` and `--realizability` tables) is computed over.
 
-The package's Lean side requires this repository, states its entry, and
-checks it with `#check_engine_profiles`, which fails the build unless every
-theorem its rows name exists and its rows are well-formed, within the core,
-consistent and evidenced. It then builds a checker of its own,
-`Substrait.Checker.checkerMain (builtinEngines ++ [its entry])`, a superset of
+The package's Lean side requires this repository, proves its engine sound,
+writes its entry with `engine_entry%` from that theorem, and checks it with
+`#check_engine_profiles`, which fails the build unless every theorem its rows
+name exists and its rows are well-formed, within the core, consistent,
+evidenced and tracked. It then builds a checker of its own,
+`Substrait.Checker.checkerMain (builtinEntries ++ [its entry])`, a superset of
 `substrait-check`. [`SubstraitCheckExamples/DummyEngine.lean`](../SubstraitCheckExamples/DummyEngine.lean)
-does this for a test profile.
+is the file such a package copies.
 
 Its Python side registers a `sverify.profiles.ProfilePlugin` under the
 entry-point group `sverify.profiles`. That group is where sverify finds
@@ -502,7 +505,7 @@ Every field but `engine` is optional:
 | `engine` | the engine's name, its profile's in the checker's tables |
 | `versions` | the versions its facts were probed at; empty for a profile whose versions the checker carries, as sverify's own |
 | `translation` | the translation from the reference, as a route line names it; empty for none, so a route takes the reference's |
-| `checker` | a `substrait-check` built over `builtinEngines` and this profile |
+| `checker` | a `substrait-check` built over `builtinEntries` and this profile |
 | `settings` | the engine settings the profile assumes (`Setting`), checked before a routed run |
 | `shim_text` | what each of its shims does, as a route line says it |
 | `installed_version` | the engine version this process runs |

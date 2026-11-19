@@ -156,6 +156,12 @@ def Profile.spark.obs : ObsTable := [
   (some "dec.arith", "overflow", (ObsRow.shimmed "decimal_negate_sub"
     ["spark-decimal-negate", "spark-decimal-arith"]).proved "Spark.decimal_negate_sub")]
 
+/-- What each shim Spark's rows name costs at run time. -/
+def Profile.spark.shimCosts : List (String × ShimCost) :=
+  [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
+   ("atan2 refused", .expression), ("null_order", .argument), ("sort on the keys", .sort),
+   ("decimal_negate_sub", .expression)]
+
 theorem Profile.spark_leB : Profile.spark.table.leB Profile.core.table = true := by
   decide +kernel
 

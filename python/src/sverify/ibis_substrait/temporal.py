@@ -105,8 +105,6 @@ def _temporal_add(name: str) -> Callable[[Exprs, Any], Json]:
         else:
             left, right = op.left, op.right
         iv = _interval(x, right)
-        if op.left.dtype.is_timestamp() and "scalarFunction" in iv:
-            raise ProducerUnsupported("a timestamp plus a column's interval is not supported")
         return call(name, [x(left), iv])
 
     return rule

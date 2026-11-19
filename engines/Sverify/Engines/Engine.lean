@@ -16,8 +16,8 @@ for a plan: the table's choices with `E.impl`'s functions, inside
   reference's where it does: within `t` (`Profile.okImpl_within`), and the
   same as `p.impl` on every plan that does not raise (`Rel.eval_okImpl`).
 * `Engine.reference` takes Lean's functions. Each engine's own value is in
-  its package (`SubstraitLean/Engine.lean` for DuckDB, Polars and Spark until
-  #1189's step 5 moves them).
+  its package (`Engine.duckdb`, `Engine.polars`, `Engine.spark`), and the
+  checker's registry holds it with its soundness proof (`EngineEntry`).
 * `Engine.Refines E r tested`: every observation row the plan relies on is
   proved, or `tested` (the trusted layer's claim, D16): the per-plan
   certificate of which tested rows a result rests on.
