@@ -155,7 +155,9 @@ def _class(x: pa.Array) -> pa.Array:
 def _digits(w: pa.Array) -> list[tuple[int, pa.Array, pa.Array | None]]:
     """`w = Σ dₖ · 2^(8k)` with each `|dₖ| < 2⁸`, as `(8k, dₖ, rows)`: the
     first digit over every row (a small weight is its own), the others only
-    over the rows whose weight is large (`rows`; None: every row)."""
+    over the rows whose weight is large (`rows`; None: every row). A weight
+    is a multiplicity, far from `-2⁶³`, the one `int64` whose magnitude
+    `abs_checked` refuses."""
     large = _c("greater_equal", _c("abs_checked", w), _WEIGHT)
     if not _c("any", large).as_py():
         return [(0, w, None)]
@@ -196,17 +198,15 @@ def _fold(
     valid = _c("is_valid", values[0])
     for v in values[1:]:
         valid = _c("and", valid, _c("is_valid", v))
-    keys, xs = keys.filter(valid), [x.filter(valid) for x in xs]
-    w = _c("coalesce", weights, 0).cast(pa.int64()).filter(valid)
+    w = _c("coalesce", weights, 0).cast(pa.int64())
+    keys, xs, w = _rows(valid, keys, xs, w)
     finite = _c("is_finite", xs[0])
     for x in xs[1:]:
         finite = _c("and", finite, _c("is_finite", x))
     buckets: dict[tuple, dict[str, int]] = {}
-    _sums(
-        kind, buckets, keys.filter(finite), [x.filter(finite) for x in xs], w.filter(finite), False
-    )
-    rest = _c("invert", finite)
-    _sums(kind, buckets, keys.filter(rest), [x.filter(rest) for x in xs], w.filter(rest), True)
+    _sums(kind, buckets, *_rows(finite, keys, xs, w), special=False)
+    if not _c("all", finite).as_py():
+        _sums(kind, buckets, *_rows(_c("invert", finite), keys, xs, w), special=True)
     # Each bucket's moments, from its finite sums and its classes' constants.
     names, pair, nt = keys.column_names, len(xs) > 1, len(TERMS[kind])
     for b, acc in buckets.items():
@@ -229,12 +229,23 @@ def _fold(
                 mo[nt + c - 1] += W
 
 
+def _rows(
+    mask: pa.Array, keys: pa.Table, xs: Sequence[pa.Array], w: pa.Array
+) -> tuple[pa.Table, list[pa.Array], pa.Array]:
+    """The rows where `mask` holds, without a copy when it holds on every row
+    (the common case: no NULL, no NaN, no infinity)."""
+    if _c("all", mask).as_py():
+        return keys, list(xs), w
+    return keys.filter(mask), [x.filter(mask) for x in xs], w.filter(mask)
+
+
 def _sums(
     kind: Kind,
     buckets: dict[tuple, dict[str, int]],
     keys: pa.Table,
     xs: Sequence[pa.Array],
     w: pa.Array,
+    *,
     special: bool,
 ) -> None:
     """Each bucket's sums of finite parts per term, and with `special` its
