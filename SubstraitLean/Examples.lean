@@ -2,7 +2,7 @@ import Sverify.Core.Kinds
 import SubstraitLean.Refresh
 import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Profile
-import SubstraitLean.Rewrites
+import Sverify.Core.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
 import SubstraitLean.Terms
@@ -17,7 +17,7 @@ import SubstraitLean.IncrementalSemi
 import Sverify.Analysis.Safety
 import Sverify.Analysis.Keys
 import Sverify.Analysis.Rows
-import SubstraitLean.Completeness
+import Sverify.Core.Completeness
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Pruning
@@ -36,9 +36,13 @@ import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Analysis.Refines
 import Sverify.Engines.Rewrite
+import SubstraitLean.RunPlan
+import SubstraitLean.Statements
 import SubstraitLean.Engine
 import SubstraitLean.ContractCheck
 import SubstraitLean.ProvedOn
+import SubstraitLean.OpenSums
+import SubstraitLean.Statements
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatMoments
 
@@ -249,6 +253,13 @@ end Substrait.Examples
 #print axioms Substrait.map_eq_of_perm_of_pairwise
 #print axioms Substrait.ContractCheck.check_keys_sound
 #print axioms Substrait.ContractCheck.check_issues_sound
+#print axioms Substrait.Rel.floatOpenSafeP_aggregate
+#print axioms Substrait.Engine.polars_sum_example
+#print axioms Substrait.SumOrder.near_tol
+#print axioms Substrait.Measure.sumNear_of_tol
+#print axioms Substrait.Engine.polars_sum_openSafe_tol
+#print axioms Substrait.ContractCheck.check_issues_sound_all
+#print axioms Substrait.ContractCheck.checked_issues_all
 #print axioms Substrait.ContractCheck.check_guard_free_sound
 #print axioms Substrait.ContractCheck.check_optimized_sound
 #print axioms Substrait.Knowledge.mayIssues_sound
@@ -386,6 +397,15 @@ end Substrait.Examples
 #print axioms Substrait.Engine.contract_sound_runs_rewrite
 #print axioms Substrait.Engine.Sound.runPlan
 #print axioms Substrait.Engine.Sound.runPlanBag
+#print axioms Substrait.ContractCheck.check_run_plan_sound
+#print axioms Substrait.Rel.belowOrder_refines
+#print axioms Substrait.Rel.rule_small
+#print axioms Substrait.Rel.optimize_small
+#print axioms Substrait.transferB_of_reads_sub
+#print axioms Substrait.ContractCheck.run_plan_noRaise_duckdb
+#print axioms Substrait.ContractCheck.Request.issuesIn_sound
+#print axioms Substrait.ContractCheck.verified_holds_run_plan
+#print axioms Substrait.ContractCheck.verified_holds_run_plan_duckdb
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
 #print axioms Substrait.Expr.robust_of_robustB
 #print axioms Substrait.Expr.narrow_sound

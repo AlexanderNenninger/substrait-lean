@@ -17,8 +17,9 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from _repo import ROOT, needs_repo
 from sverify.engine import checker_path
-from sverify.observation import _COMPONENTS, EXACT, Observation, Within
+from sverify.observation import _COMPONENTS, EXACT, PLAN_BOUND, Observation, Within
 
 T = ibis.table({"k": "int64", "x": "float64", "s": "string", "ts": "timestamp"}, name="t")
 
@@ -208,7 +209,7 @@ def test_without_an_observation_nothing_changes() -> None:
     plain = sv.verify(expr, requires=req, ensures=[_.y >= 1], counterexamples=0)
     observed = sv.verify(expr, requires=req, ensures=[sv.equivalent(), _.y >= 1], counterexamples=0)
     assert plain.verdict == sv.Verdict.PROVED and observed.verdict == sv.Verdict.PROVED
-    assert plain.observation == sv.equivalent(floats="plan")
+    assert plain.observation == PLAN_BOUND
     assert observed.observation == Observation()
     assert "observes" not in str(plain)
 
@@ -269,3 +270,17 @@ def test_one_zero_unless_the_observation_reads_the_members(zero, negative_zero):
     assert sv.equivalent(zeros="canon").equal(a, b)
     assert sv.equivalent().reads_members and not sv.equivalent().equal(a, b)
     assert not sv.equivalent(floats="plan").reads_members
+
+
+@needs_repo
+def test_the_docs_state_the_default_observation() -> None:
+    """`docs/core-semantics.md` has one row per component with `PLAN_BOUND`'s level."""
+    text = (ROOT / "docs" / "core-semantics.md").read_text()
+    section = text.split("### The default observation", 1)[1].split("\n### ", 1)[0]
+    rows = {
+        cells[0].strip("` "): cells[1].strip("` ")
+        for line in section.splitlines()
+        if line.startswith("| `")
+        and len(cells := [c.strip() for c in line.strip("|").split("|")]) > 2
+    }
+    assert rows == {name: str(getattr(PLAN_BOUND, name)) for name, _ in _COMPONENTS}

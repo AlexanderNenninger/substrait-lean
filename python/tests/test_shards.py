@@ -40,4 +40,4 @@ def test_the_committed_tables_split_the_way_ci_does():
     tests = json.loads((shard_durations.TESTS).read_text())
     files = json.loads((shard_durations.ORACLE).read_text())
     assert tests["n"] == 3 and set(tests["shard"].values()) == {1, 2, 3}
-    assert files["n"] == 4 and set(files["shard"].values()) == {1, 2, 3, 4}
+    assert files["n"] == 2 and set(files["shard"].values()) == {1, 2}

@@ -1,0 +1,63 @@
+{
+  "id": "duckdb-coerce-varchar-number",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "A VARCHAR against a number is cast to the number, and raises on a string that is not one",
+  "verdict": "a string compared with an integer is cast to the integer (leading blanks and zeros accepted); a non-number raises; sverify refuses the comparison",
+  "area": "strings",
+  "options": [
+    "implicit_casts"
+  ],
+  "layer": "frontend",
+  "constructs": [
+    "=",
+    "IN",
+    "||",
+    "CASE",
+    "UNION"
+  ],
+  "settings": {},
+  "description": [
+    "`s = i` with `s = '01'` or `' 1'` and `i = 1` is true, and `s IN (1)` as well: the string is cast to the integer. A string that is not a number raises: `'abc' = 1` is `Could not convert string 'abc' to INT32`. `||` casts a number to text (`'01' || 1` is `'011'`), `UNION ALL` of an integer and a string is a VARCHAR column, and `CASE` mixing them is a binder error (`an explicit cast is required`)."
+  ],
+  "reference": [
+    "Sverify refuses each of these: the lift says `equal of string, int32 is not supported`, `IN of string, int32, int32`, `CASE of int32, string`, `UNION of int32, string`, `|| of a int32`, `add of string and int32`. No plan carries the coercion."
+  ],
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session claude/duckdb-coercions, #1484 census)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-varchar-number"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-varchar-number-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-varchar-case-union"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-varchar-case-raise"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` records each query as it comes."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (sverify.sql_lift.lift, semantics=\"duckdb\", on origin/main b28e14ff)",
+      "notes": "Checked with `sverify.sql_lift.lift` on `SELECT s = i32, s IN (1, 2), CASE WHEN b THEN i32 ELSE s END, NULLIF(i32, s), i32 UNION ALL s`: each refused with `SqlUnsupported`. A string literal against a column (`s = 1`, `i32 = '1'`) is refused as well."
+    }
+  ],
+  "issues": [
+    1484
+  ]
+}

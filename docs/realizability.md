@@ -37,11 +37,11 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 ## Summary
 
-| Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
-|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 5 | 25 | 1 | 4 | 4 | 0 | 17 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 26 | 1 | 5 | 3 | 2 | 16 | 0 |
+| Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 5 | 25 | 1 | 4 | 4 | 0 | 17 | 0 |
+| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 6 | 26 | 1 | 5 | 3 | 2 | 16 | 0 |
 
 Rows per evidence level:
 
@@ -83,7 +83,7 @@ Rows per evidence level:
 
 ## DuckDB 2.0.0
 
-5 shims (4 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
+5 shims (4 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -146,7 +146,7 @@ Rows per evidence level:
 
 ## Polars 2.1.0
 
-14 shims (2 argument, 11 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
+14 shims (2 argument, 11 expression, 1 sort). Its run is proved sound by `Engine.polars_sound`, under `Engine.GuardFreeSide`.
 
 | Group | Option | Reference's tool | Reference | Polars | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -228,7 +228,7 @@ Refused on Polars, with no expression there:
 
 ## Spark 4.3.0
 
-6 shims (1 argument, 4 expression, 1 sort). The translation as a whole rests on `Rel.spark_sound`.
+6 shims (1 argument, 4 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.GuardFreeSide`.
 
 | Group | Option | Reference's tool | Reference | Spark | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|

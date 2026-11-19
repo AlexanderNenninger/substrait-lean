@@ -27,7 +27,7 @@ same order, faster:
   hash map, both in order of first occurrence.
 
 The executables evaluate data with it (`substrait-check` with inlined data,
-and through it the oracle tests and DuckDB's sqllogictest replay).
+and through it the oracle tests and the sqllogictest replay).
 -/
 
 namespace Substrait

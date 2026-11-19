@@ -1,0 +1,75 @@
+{
+  "id": "duckdb-coerce-int-decimal",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "An integer against a decimal is cast to the decimal's width, and raises where it does not fit",
+  "verdict": "an integer next to a DECIMAL is cast to the common DECIMAL(38, s) type; a value too wide for it raises",
+  "area": "decimals",
+  "options": [
+    "implicit_casts"
+  ],
+  "layer": "semantics",
+  "constructs": [
+    "=",
+    "<",
+    "+",
+    "CAST"
+  ],
+  "settings": {},
+  "description": [
+    "A comparison or `+` of an integer and a decimal casts the integer to a DECIMAL wide enough for the decimal's scale: `BIGINT + DECIMAL(18,3)` is `DECIMAL(23,3)`, `INTEGER + DECIMAL(18,3)` is `DECIMAL(19,3)`, `TINYINT + DECIMAL(3,2)` is `DECIMAL(6,2)`, `INTEGER + DECIMAL(38,37)` is `DECIMAL(38,37)`. Where the integer has more digits than `38 - s`, the cast raises: `9223372036854775807::BIGINT = 1::DECIMAL(38,30)` and `9007199254740993::BIGINT + 1.5::DECIMAL(38,30)` raise `Could not cast value ... to DECIMAL(38,30)`, while `5::INTEGER < 5.5::DECIMAL(38,37)` is true. Two decimals of 38 digits behave alike: `1000000000000000000000000000::DECIMAL(28,0) + 1.5::DECIMAL(38,10)` is exact, with 31 integer digits it raises. A decimal against a double is a double.",
+    "The docs are silent on the common type: a docs gap (see duckdb-decimal-compare-scale for two decimals)."
+  ],
+  "reference": [
+    "The reference compares and adds the exact values. A comparison of an integer with a decimal is written through `Dialect.decimal_compare`, which treats an integer as scale 0 and compares as integers, so no cast runs. The lift writes no cast for a decimal operation (`i32 + d18_3`, `d18_3 + d38_10` plan with 0 casts), so the SQL of `+` and `-` leaves the common-type cast to DuckDB, which raises on a wide operand. The model checks the result only, which misses a cancelling sum: see `duckdb-decimal-addsub-operand-cast`. No test compares the two at the digit limits yet."
+  ],
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session claude/duckdb-coercions, #1484 census)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-int-decimal-compare-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-int-decimal-compare-ok"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-int-decimal-arith-types"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-int-decimal-arith-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-decimal-digits-limit"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-decimal-digits-limit-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-int-double-compare"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` records each query as it comes."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (sverify.sql_lift.lift, semantics=\"duckdb\", on origin/main b28e14ff)",
+      "notes": "`lift(\"SELECT i32 + d18_3 ...\")` and `d18_3 + d38_10`, `d38_0 + i64`, `d18_3 = i64` plan with 0 casts; the output types match DuckDB's (19,3), (38,10), (38,0). `i32 BETWEEN 0.5 AND 2` plans an INT32 against a decimal literal without a cast."
+    }
+  ],
+  "issues": [
+    1484
+  ]
+}

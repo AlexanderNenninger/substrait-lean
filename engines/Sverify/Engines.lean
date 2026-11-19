@@ -1,4 +1,5 @@
 import Sverify.Engines.Engine
+import Sverify.Engines.Entry
 import Sverify.Engines.Generated
 import Sverify.Engines.Lowering
 import Sverify.Engines.LoweringHint

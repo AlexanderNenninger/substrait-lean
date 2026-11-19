@@ -808,7 +808,10 @@ def test_a_constraint_of_another_writer_is_kept(tmp_path):
     src.pipe(as_text).write(DeltaSink(uri)).refresh()
     DeltaTable(uri).alter.add_constraint({"named": "customer IS NOT NULL"})
     _, other = job1(tmp_path, src)
-    with pytest.raises(ValueError, match="constraints the view does not guarantee"):
+    with pytest.raises(
+        ValueError,
+        match=r"constraints the view does not guarantee.*add them to the view.s `ensures`",
+    ):
         other.refresh()
     assert delta_rows(uri) == [("ada", "5")]
 
