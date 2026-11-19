@@ -18,8 +18,10 @@ dependencies = [
     # `verify` needs. Running plans on DuckDB is the `duckdb` extra (#1288).
     "sverify-duckdb==0.9.0.dev0",
     "ibis-framework>=12.0.0",
-    # Ibis imports it with its Arrow formats; only its DuckDB extra brought it.
+    # Ibis imports both unconditionally (its Arrow formats, its SQL compilers);
+    # only its DuckDB extra brought them.
     "pyarrow-hotfix>=0.6",
+    "packaging>=23",
     "pyarrow>=26.0.0",
     # sverify's SQL lift is built on SQLGlot. From 30.18, SQLGlot reads a
     # DROP's names from `expressions`, so Ibis 12's DuckDB `create_table`

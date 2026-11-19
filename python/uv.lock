@@ -4447,6 +4447,7 @@ version = "0.9.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "ibis-framework" },
+    { name = "packaging" },
     { name = "pyarrow" },
     { name = "pyarrow-hotfix" },
     { name = "sqlglot" },
@@ -4551,6 +4552,7 @@ requires-dist = [
     { name = "ibis-framework", extras = ["duckdb"], marker = "extra == 'duckdb'", specifier = ">=12.0.0" },
     { name = "keyring", marker = "extra == 'secrets-keychain'", specifier = ">=25" },
     { name = "openlineage-python", marker = "extra == 'openlineage'", specifier = ">=1.55.0,<2" },
+    { name = "packaging", specifier = ">=23" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
     { name = "pyarrow-hotfix", specifier = ">=0.6" },
