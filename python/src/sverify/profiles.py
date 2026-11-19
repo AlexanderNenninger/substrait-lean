@@ -132,6 +132,10 @@ class ProfilePlugin:
     and the rows of a `LIMIT` open, and each statement picks its own."""
     local: bool = False
     """A `Connection` takes the engine as the one it runs plans on."""
+    ibis_backend: Callable[[], Any] | None = None
+    """An Ibis backend on the engine that holds a `Connection`'s tables where
+    DuckDB is not installed (the connection's bound tables run their table
+    conditions there). None: the connection holds the tables and nothing else."""
     session: Callable[[Any], bool] | None = None
     """Recognises a session of the engine passed as `engine=` in place of
     its name (a Spark session)."""

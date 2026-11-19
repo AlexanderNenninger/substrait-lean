@@ -54,6 +54,14 @@ SETTINGS: tuple[Setting, ...] = (
 _ENV = {"engine_affinity": ("POLARS_ENGINE_AFFINITY", "auto")}
 
 
+def _ibis_backend() -> Any:
+    """Polars's Ibis backend, which holds a `Connection`'s tables where DuckDB
+    is not installed."""
+    import ibis
+
+    return ibis.polars.connect()
+
+
 def _run(
     con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
 ) -> Any:
@@ -137,6 +145,7 @@ PLUGIN = ProfilePlugin(
     restore=_restore,
     runner=_run,
     local=True,
+    ibis_backend=_ibis_backend,
     modules=("polars", "numpy"),
     read_settings=_read_settings,
     run_tables=_run_tables,

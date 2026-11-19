@@ -58,10 +58,36 @@ ENGINES: tuple[Engine, ...] = _engines.LOCAL
 `sverify.engines.run` also takes `"spark"` or a Spark session."""
 
 
-def _ibis_backend() -> Any:
-    """An Ibis DuckDB backend on a cursor of its own to the process's
-    database (`sverify._duckdb`), where the tables DuckDB holds live too."""
-    return ibis.duckdb.from_connection(_duckdb.cursor())
+class _TablesOnly:
+    """What bound Ibis tables name as their `source` where DuckDB is not
+    installed: the connection that holds the tables, and nothing to run an
+    Ibis expression on. A plan runs on the connection's engine
+    (`Report.run(con, engine)`); the Ibis expression is for planning."""
+
+    def __init__(self, engine: str):
+        self._engine = engine
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__"):
+            raise AttributeError(name)
+        raise AttributeError(
+            f"a {self._engine} connection without DuckDB has no Ibis backend to run `{name}` "
+            "on: run the plan on the engine (`report.run(con, engine)`), or install "
+            "'sverify[duckdb]'"
+        )
+
+
+def _ibis_backend(plugin: Any) -> tuple[Any, str]:
+    """The Ibis backend a connection's bound tables read through, and what it
+    is: `"duckdb"`, a backend on a cursor of its own to the process's database
+    (`sverify._duckdb`), where the tables DuckDB holds live too; `"engine"`,
+    the engine's own where DuckDB is not installed (`ProfilePlugin.ibis_backend`);
+    or `"none"`, a holder of the connection that runs nothing (`_TablesOnly`)."""
+    if _importable("duckdb"):
+        return ibis.duckdb.from_connection(_duckdb.cursor()), "duckdb"
+    if plugin.ibis_backend is not None:
+        return plugin.ibis_backend(), "engine"
+    return _TablesOnly(plugin.engine), "none"
 
 
 class _Arrow(MutableMapping[str, pa.Table]):
@@ -148,7 +174,7 @@ class Connection:
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
         self._arrow: MutableMapping[str, pa.Table] = _Arrow(self)
-        self._ibis: Any = _ibis_backend()
+        self._ibis, self._backend = _ibis_backend(plugin)
         # A bound table keeps its backend alive, and the backend its connection.
         self._ibis._sverify_connection = self
 
@@ -245,7 +271,7 @@ class Connection:
                 table = replace(table, schema=plain_schema(table.schema))
             self._tables[name] = table
             # A scan whose files were removed is held, but cannot be read.
-            if table.readable():
+            if self._backend == "duckdb" and table.readable():
                 self._views[name] = table.attach(self._ibis.con, name)
                 try:
                     _check_calendar_view(self._ibis.con, name, table)
@@ -256,7 +282,10 @@ class Connection:
         _check_times(table.schema)
         _check_calendar(table)
         self._tables[name] = table
-        self._ibis.con.register(name, table)
+        if self._backend == "duckdb":
+            self._ibis.con.register(name, table)
+        elif self._backend == "engine":
+            self._ibis.create_table(name, table, overwrite=True)
 
     def drop(self, name: str) -> None:
         """Remove table `name`; nothing happens if there is none."""
@@ -265,7 +294,10 @@ class Connection:
         if (drop := self._views.pop(name, None)) is not None:
             drop()
         elif isinstance(table, pa.Table):
-            self._ibis.con.unregister(name)
+            if self._backend == "duckdb":
+                self._ibis.con.unregister(name)
+            elif self._backend == "engine":
+                self._ibis.drop_table(name, force=True)
 
 
 def _importable(module: str) -> bool:
