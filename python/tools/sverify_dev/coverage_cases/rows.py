@@ -6,7 +6,6 @@ import ibis
 from ibis import _
 
 from sverify_dev.coverage_cases._common import (
-    NO_ROW_ORDER,
     Case,
     M,
     R,
@@ -54,12 +53,4 @@ CASES: list[Case] = [
     ),
 ]
 
-REFUSED: dict[str, dict[str, str]] = {
-    "order_by": NO_ROW_ORDER,
-    "order_by expression": NO_ROW_ORDER,
-    "limit": NO_ROW_ORDER,
-    "limit with offset": NO_ROW_ORDER,
-    "order_by + limit": NO_ROW_ORDER,
-}
-
-TIE_FREE = {"order_by", "order_by expression"}
+REFUSED: dict[str, dict[str, str]] = {}

@@ -276,8 +276,8 @@ structure Report where
   facts : List (String × String × Json)
   /-- The output columns' types as the writer types them (`Write.relKinds`, the
   reference's: a decimal `SUM` is `DECIMAL(min(38, p + 10), s)`, an `AVG` is
-  `DECIMAL(p + 4, s + 4)`, p up to 34), as `outputKindJson` renders them, in the
-  output's order. Empty where the transformation is not well-formed. -/
+  `DECIMAL(p + 4, s + 4)`, p up to 34; an integer carries its width, a computed
+  one is 64), as `outputKindJson` renders them, in the output's order. Empty where the transformation is not well-formed. -/
   outputKinds : List Json := []
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -764,27 +764,17 @@ def combineIgnores (noOpen : Bool) (pre : List (Option (List String × List Stri
 
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
 `T.select(…)` from every order to every allowed result: `T` is closed
-(`Rel.closedB`, `contract_sound_allowed_closed`: no `VAR_*`, `STDDEV_*`,
-`COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is order-free
-since D25), or an aggregate whose open measures are double `SUM`s and `AVG`s
-over a closed plan (`Rel.floatOpenSafe_aggregate`), and the column is robust
-under that context without a tolerance (`Expr.robustB`), so it reads no open
-measure. A comparison of an open sum needs
-the shift of its tolerance (#929). -/
+(`Rel.closedB`, `contract_sound_allowed_closed`: no `QUANTILE_CONT`; a double
+`SUM`, `AVG` or statistical aggregate is order-free since D25 and D30), and the
+column is robust under the empty context without a tolerance (`Expr.robustB`),
+so it reads no open measure. A comparison of an open sum needs the shift of
+its tolerance (#929). -/
 def postAllowed (cat : Catalog) (r : Rel) (n : Nat) : List Bool :=
   match r with
   | .emit (.project t es) m =>
-    let ctx? : Option ObsCtx :=
-      if t.closedB then some {} else match t with
-        | .aggregate r gs ms =>
-          if r.closedB && ms.all (fun m => m.closedB || m.openB) then some (aggCtx gs.length ms)
-          else none
-        | _ => none
-    match ctx? with
-    | some ctx =>
-      if m.length != n then List.replicate n false
-      else m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan ctx (fun _ => none)
-    | none => List.replicate n false
+    if t.closedB && m.length == n then
+      m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan {} (fun _ => none)
+    else List.replicate n false
   | _ => List.replicate n false
 
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/
@@ -871,10 +861,11 @@ def parse (input : Json) : Except String Request := do
   return { input, posts, requires, transform, tables, pre }
 
 /-- One output column's type for the report: a decimal with its precision and
-scale, otherwise the kind's name. -/
-def outputKindJson : Write.WKind → Json
+scale, an integer with its width in bits (`Rel.outBits`), otherwise the kind's
+name. -/
+def outputKindJson (k : Write.WKind) (bits : Nat) : Json := match k with
   | .dec p s => Json.mkObj [("kind", "dec"), ("precision", Lean.toJson p), ("scale", Lean.toJson s)]
-  | .int => Json.mkObj [("kind", "int")]
+  | .int => Json.mkObj [("kind", "int"), ("bits", Lean.toJson bits)]
   | .float => Json.mkObj [("kind", "float")]
   | .str => Json.mkObj [("kind", "str")]
   | .bool => Json.mkObj [("kind", "bool")]
@@ -1322,7 +1313,9 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
   let outputKinds := match transform with
     | some p =>
       if p.root.checkWF cat then
-        (Write.relKinds (Write.planSchemas p) cat p.root).map outputKindJson
+        let ks := Write.relKinds (Write.planSchemas p) cat p.root
+        let bits := p.root.outBits tables
+        (ks.zipIdx.map fun (k, i) => outputKindJson k (bits.getD i 64))
       else []
     | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).

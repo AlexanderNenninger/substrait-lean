@@ -378,7 +378,6 @@ end Substrait.Examples
 #print axioms Substrait.Expr.narrow_sound
 #print axioms Substrait.Expr.robust_of_depends
 #print axioms Substrait.contract_sound_allowed
-#print axioms Substrait.Rel.floatOpenSafe_aggregate
 #print axioms Substrait.Rel.floatOpenSafe_of_closed
 #print axioms Substrait.contract_sound_allowed_closed
 #print axioms Substrait.Engine.duckdb_sound

@@ -5,7 +5,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "pyiceberg[sql-sqlite]",
-#     "sverify[polars,iceberg]",
+#     "sverify[duckdb,polars,iceberg]",
 # ]
 #
 # [tool.uv.sources]

@@ -8,7 +8,7 @@ import ibis
 
 from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
-    NO_ROW_ORDER,
+    NO_ORDER_BY,
     Case,
     V,
     case,
@@ -140,43 +140,14 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
-    "row_number": NO_ROW_ORDER,
-    "lag": NO_ROW_ORDER,
-    "rank": NO_ROW_ORDER,
-    "dense_rank": NO_ROW_ORDER,
-    "cumsum": NO_ROW_ORDER,
-    "ntile": NO_ROW_ORDER,
-    "first": NO_ROW_ORDER,
-    "percent_rank, cume_dist": NO_ROW_ORDER,
-    "rolling sum (range)": NO_ROW_ORDER,
-    "rolling sum (interval)": NO_ROW_ORDER,
-    "sum over group": NO_ROW_ORDER,
-    "running mean": NO_ROW_ORDER,
-    "rolling mean (rows)": NO_ROW_ORDER,
-    "rolling mean (interval)": NO_ROW_ORDER,
-    "min over a sliding frame": NO_ROW_ORDER,
-    "window sum of an expression": NO_ROW_ORDER,
-    "last, nth": NO_ROW_ORDER,
-    "max, count over frame": NO_ROW_ORDER,
+    # A window with no ORDER BY has no SQL form on these dialects yet (#271); it
+    # surfaced when the row-order refusal, which came first, went.
+    "sum over group": NO_ORDER_BY,
+    "window sum of an expression": NO_ORDER_BY,
     "stddev over group": DUCKDB_ONLY,
     "rolling variance (rows)": DUCKDB_ONLY,
 }
 
-TIE_FREE = {
-    "row_number",
-    "lag",
-    "rank",
-    "dense_rank",
-    "cumsum",
-    "ntile",
-    "first",
-    "percent_rank, cume_dist",
-    "rolling sum (range)",
-    "rolling sum (interval)",
-    "last, nth",
-    "max, count over frame",
-    "min over a sliding frame",
-}
 
 # A plan's frame and Ibis's own SQL may sum in another order, so variances
 # agree to the last digit only up to rounding (#54).

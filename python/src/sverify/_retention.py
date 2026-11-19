@@ -39,8 +39,16 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.graph import Node
 
-from sverify._arrow_state import _scalar, after, buckets, through  # noqa: F401  (re-exported: incremental calls them here)
-from sverify._weighted import _call, negative, positive, rows_of
+from sverify._weighted import (  # noqa: F401  (`after`, `buckets`, `through` are called from here by incremental)
+    _call,
+    _scalar,
+    after,
+    buckets,
+    negative,
+    positive,
+    rows_of,
+    through,
+)
 from sverify.contracts import ArrivesWithin, Condition, label, show_duration
 from sverify.plan_json import INSTANT_NOTE
 

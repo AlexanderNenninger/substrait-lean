@@ -129,3 +129,26 @@ def test_hash_join_on_thousands_of_rows():
     assert rows == [(2500, 5, 7)]
     # Under a second on a laptop; `Rel.eval` takes over 8.
     assert took < 4, f"{took:.1f} s"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("partitions", [1, 60])
+def test_a_window_over_hundreds_of_rows_is_not_slower_to_check_than_to_evaluate(partitions):
+    """`lean_values` also looks for a raise in each window aggregate's frame
+    (`--raises`, `windowRaised`): one pass over each partition's rows beside
+    `windowEval`'s own, so the call costs about twice `rows_only`. An unbounded
+    frame holds the whole partition for each row, so a partition of `p` rows is
+    `O(p²)` in both, as in the reference."""
+    con = connect()
+    con.create("w", pa.schema([("k", pa.int64()), ("o", pa.int64()), ("x", pa.int64())]))
+    rows = [(i % partitions, i, i % 7) for i in range(600)]
+    sql = "SELECT k, sum(x) OVER (PARTITION BY k ORDER BY o) AS s FROM w"
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"w": rows})
+    text = json.dumps(plan)
+    start = time.perf_counter()
+    lean_values(text, rows_only=True)
+    spec = time.perf_counter() - start
+    start = time.perf_counter()
+    lean_values(text)
+    checked = time.perf_counter() - start
+    assert checked < max(4 * spec, 4), f"rows only {spec:.1f} s, with --raises {checked:.1f} s"
