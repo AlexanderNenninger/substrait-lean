@@ -1,7 +1,7 @@
 import SubstraitLean.Compose
 import Sverify.Core.Ties
 import Sverify.Core.Robust
-import SubstraitLean.FloatNear
+import Sverify.Core.FloatNear
 import Sverify.Analysis.Knowledge
 
 /-!

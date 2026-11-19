@@ -2,7 +2,7 @@ import Sverify.Core.Kinds
 import SubstraitLean.Refresh
 import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Profile
-import SubstraitLean.Rewrites
+import Sverify.Core.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
 import SubstraitLean.Terms
@@ -17,7 +17,7 @@ import SubstraitLean.IncrementalSemi
 import Sverify.Analysis.Safety
 import Sverify.Analysis.Keys
 import Sverify.Analysis.Rows
-import SubstraitLean.Completeness
+import Sverify.Core.Completeness
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Pruning
