@@ -56,6 +56,26 @@
       "description": "The id of each source table that has one (a Delta table's metaData.id), at its version in `sources`.",
       "type": "object",
       "additionalProperties": {"type": "string"}
+    },
+    "engine": {
+      "description": "The engine that computed the state (sverify.engines). Absent in records written before these fields.",
+      "type": "string"
+    },
+    "engine_version": {
+      "description": "The version of the engine's library.",
+      "type": "string"
+    },
+    "sverify": {
+      "description": "The version of sverify that wrote the record: its facts and checker are those of the release.",
+      "type": "string"
+    },
+    "profile": {
+      "description": "The profile the plan was verified under (verify(semantics=...)). The plan's digest includes it unless it is \"reference\".",
+      "type": "string"
+    },
+    "package": {
+      "description": "For an engine that comes from another package than sverify, that package as name==version: its facts ship with it.",
+      "type": "string"
     }
   },
   "additionalProperties": true

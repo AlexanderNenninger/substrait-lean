@@ -44,7 +44,7 @@ import functools
 import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields, replace
-from importlib.metadata import entry_points
+from importlib.metadata import PackageNotFoundError, entry_points, version
 from pathlib import Path
 from typing import Any, Literal
 
@@ -275,6 +275,43 @@ def find(engine: Any) -> ProfilePlugin | None:
     if isinstance(engine, str):
         return plugins().get(engine.lower())
     return next((p for p in plugins().values() if p.session and p.session(engine)), None)
+
+
+#: What a sink records about the engine and the release that wrote a state
+#: (`Contract.engine` …); a record without them reads as unknown.
+RUNTIME_FIELDS = ("engine", "engine_version", "sverify", "package")
+
+
+def runtime(engine: Any) -> dict[str, str | None]:
+    """The engine's name and library version, the version of sverify, and, for an
+    engine that comes from another package than sverify (its facts ship with it),
+    that package as `name==version`. A field is None where it is unknown."""
+    from sverify import _meta
+
+    plugin = find(engine)
+    out: dict[str, str | None] = dict.fromkeys(RUNTIME_FIELDS)
+    out["sverify"] = _meta.VERSION
+    out["engine"] = plugin.engine if plugin else (engine if isinstance(engine, str) else None)
+    if plugin is None:
+        return out
+    for module in plugin.modules or (plugin.engine,):
+        try:
+            out["engine_version"] = version(module.split(".")[0])
+            break
+        except PackageNotFoundError:
+            continue
+    for ep in entry_points(group=GROUP):
+        dist = getattr(ep, "dist", None)
+        if dist is None or dist.name.lower().replace("_", "-") == "sverify":
+            continue
+        try:
+            loaded = ep.load()
+        except Exception:  # noqa: BLE001 - a broken plugin is skipped, as in `plugins`
+            continue
+        if isinstance(loaded, ProfilePlugin) and loaded.engine == plugin.engine:
+            out["package"] = f"{dist.name}=={dist.version}"
+            break
+    return out
 
 
 def checker() -> Path | None:

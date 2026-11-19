@@ -2696,6 +2696,12 @@ class ViewContract:
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
     `requires` (`Provenance.policies`)."""
+    profile: str = "reference"
+    """The profile the transformation was verified under (`Report.semantics`)."""
+    deterministic: bool = False
+    """The report proves the result determined up to row order and the members of
+    a class (`Report.deterministic`): two engines hold the same rows of it. False
+    where no single report speaks for the view."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -2726,6 +2732,8 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.checked) if prov else [],
         list(prov.report.not_null) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
+        profile=prov.report.semantics if prov else "reference",
+        deterministic=bool(prov and prov.report.deterministic),
     )
 
 
