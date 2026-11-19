@@ -18,13 +18,18 @@ app = marimo.App(width="compact", app_title="7. Engines")
 
 @app.cell(hide_code=True)
 def _():
+    import os
+    import shutil
+
     import ibis
     import marimo as mo
     import sqlglot
     import sverify as sv
     from sverify import display
 
-    return display, ibis, mo, sqlglot, sv
+    # Spark runs in a JVM; without one its cells are skipped (a molab sandbox, say).
+    SPARK = shutil.which("java") is not None or bool(os.environ.get("JAVA_HOME"))
+    return SPARK, display, ibis, mo, sqlglot, sv
 
 
 @app.cell(hide_code=True)
@@ -99,16 +104,25 @@ def _(mo):
 
 
 @app.cell
-def _(con, display, rollup):
+def _(SPARK, con, display, mo, rollup):
     results = {}
-    for _engine in ["duckdb", "polars", "spark"]:
+    for _engine in ["duckdb", "polars", *(["spark"] if SPARK else [])]:
         _table = rollup.run(con, _engine, route="auto")
         results[_engine] = sorted(tuple(r.values()) for r in _table.to_pylist())
-    display.side_by_side(
-        *(
-            display.table(rows, ["customer", "total", "lines"], title=name)
-            for name, rows in results.items()
-        )
+    mo.vstack(
+        [
+            display.side_by_side(
+                *(
+                    display.table(rows, ["customer", "total", "lines"], title=name)
+                    for name, rows in results.items()
+                )
+            ),
+            *(
+                []
+                if SPARK
+                else [mo.md("Spark needs Java, and none is installed here: its run is skipped.")]
+            ),
+        ]
     )
     return (results,)
 
@@ -175,7 +189,7 @@ def _(con, ibis, sv):
         )
     )
     try:
-        numbered.run(con, "spark", route="auto")
+        numbered.to_sql("spark")  # the writer refuses, with no JVM involved
     except Exception as _e:
         print(f"{type(_e).__name__}: {_e}")
     return (numbered,)
@@ -208,7 +222,7 @@ def _(mo):
 
 
 @app.cell
-def _(con, ibis, sv):
+def _(SPARK, con, ibis, mo, sv):
     _orders = con.table("orders")
     ordered = sv.verify(
         _orders.select(
@@ -217,7 +231,13 @@ def _(con, ibis, sv):
             line=ibis.row_number().over(group_by=_orders.customer, order_by=_orders.item),
         )
     )
-    sorted(tuple(r.values()) for r in ordered.run(con, "spark", route="auto").to_pylist())
+    if SPARK:
+        _out = sorted(
+            tuple(r.values()) for r in ordered.run(con, "spark", route="auto").to_pylist()
+        )
+    else:
+        _out = mo.md("Spark needs Java, and none is installed here: its run is skipped.")
+    _out
     return
 
 
