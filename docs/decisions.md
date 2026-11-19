@@ -1660,6 +1660,7 @@ each engine's boundary (month, quarter and year are the next step).
 
 Recomputes sinks: no
 
-Why: DuckDB is the default oracle and Ibis documents the delta as the number of
-unit boundaries crossed. The refused units are those where engines place the
+Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duckdb/facts/duckdb-timestamp-date-diff.json))
+and Ibis documents the delta as the number of unit boundaries crossed
+([`TimestampValue.delta`](https://ibis-project.org/reference/expression-timestamps#ibis.expr.types.temporal.TimestampValue.delta)). The refused units are those where engines place the
 boundary differently.

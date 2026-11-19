@@ -21,6 +21,7 @@
 """
 
 import json
+import re
 from datetime import date, datetime, timedelta
 
 import duckdb
@@ -32,6 +33,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from _repo import ROOT, needs_repo
 from sverify.engine import (
     connect,
     put_table,
@@ -299,6 +301,53 @@ SINCE_2000 = T.ts.between(datetime(2000, 1, 1), datetime(2100, 1, 1))
 )
 def test_runtime_issues(label, expr, errs, warns):
     assert kinds(expr) == (errs, warns), label
+
+
+def _delta_probes() -> list[tuple[str, datetime, datetime, int]]:
+    """The probe pairs of the fact `duckdb-timestamp-date-diff`: DuckDB's
+    `date_diff(unit, start, end)`, as (unit, start, end, observed)."""
+    path = ROOT / "engines/duckdb/facts/duckdb-timestamp-date-diff.json"
+    if not path.is_file():
+        return []
+    fact = json.loads(path.read_text())
+    pat = re.compile(r"date_diff\('(\w+)', TIMESTAMP '([^']+)', TIMESTAMP '([^']+)'\)")
+    out = []
+    for ev in fact["provenance"][0]["evidence"]:
+        unit, a, b = pat.search(ev["sql"]).groups()
+        out.append(
+            (unit, datetime.fromisoformat(a), datetime.fromisoformat(b), int(ev["observed"]))
+        )
+    return out
+
+
+@needs_repo
+@pytest.mark.parametrize("reverse", [False, True], ids=["forward", "reversed"])
+@pytest.mark.parametrize("probe", _delta_probes())
+def test_timestamp_delta_matches_the_fact(probe, reverse):
+    """`a.delta(b, unit)` is the unit boundaries crossed from `b` to `a`
+    (D58): Lean's floor from the epoch and DuckDB's `date_diff` (the writer
+    swaps its arguments) give the fact's numbers, 1 µs across a boundary,
+    almost a unit inside one, before 1970 and at an exact boundary, and
+    the opposite order gives the negation."""
+    unit, start, end, observed = probe
+    a, b, expected = (start, end, -observed) if reverse else (end, start, observed)
+    # `a.delta(b)` is `a - b`: DuckDB's `date_diff(start, end)` is `end - start`.
+    r = ibis.table({"a": "timestamp", "b": "timestamp"}, name="r")
+    plan = to_substrait_json(r.select(x=r.a.delta(r.b, unit=unit)))
+    rows = inline_tables(json.loads(plan), {"r": [(_micros(a), _micros(b))]})
+    assert lean_values(json.dumps(rows)) == [(expected,)]
+    con = connect()
+    put_table(
+        con,
+        "r",
+        pa.table({"a": pa.array([a], pa.timestamp("us")), "b": pa.array([b], pa.timestamp("us"))}),
+    )
+    out = run_plan(con, written_plan(plan), "duckdb")
+    assert out.column("x").to_pylist() == [expected]
+
+
+def _micros(t: datetime) -> int:
+    return (t - datetime(1970, 1, 1)) // timedelta(microseconds=1)
 
 
 def test_years_and_truncations_grow_with_the_timestamp():

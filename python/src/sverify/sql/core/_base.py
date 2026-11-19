@@ -5378,7 +5378,9 @@ class _Writer:
         k = expr_kind(e, cols)
         if k == "interval":
             # Intervals are integer microseconds in the model (D58's delta
-            # divides the microseconds between two timestamps).
+            # divides the microseconds between two timestamps). The writer's
+            # interval kind never carries months (`Const` refuses them), so
+            # no month interval reaches the dialect's `interval_micros`.
             if isinstance(e, Lit) and isinstance(e.value, int):
                 return self.d.int_lit(e.value)
             return self.d.interval_micros(self.expr(e, ref, cols, "interval"))
