@@ -17,7 +17,7 @@
     ]
   },
   "description": [
-    "`pl.when(r).then(p).otherwise(None)` over stacked `with_columns`, on the streaming engine with the default optimizations: `p` (a strict cast of the text `bad`) raises on no row where `r` is FALSE, for every case probed with a column operand: a stacked chain of 4 levels read plainly, under a selective filter on `id`, under a filter on the chain's value, under an aggregate, and with a reach that is FALSE on every row by data only (`s IS NULL AND s IS NOT NULL`). The rows match the reference. A constant-only operand is the exception: see polars-guarded-constant-eager."
+    "`pl.when(r).then(p).otherwise(None)` over stacked `with_columns`, on the streaming engine with the default optimizations: `p` (a strict cast of the text `bad`) raises on no row where `r` is FALSE, for every case probed with a column operand: a stacked chain of 4 levels read plainly, under a selective filter on `id`, under a filter on the chain's value, under an aggregate, and with a reach that is FALSE on every row by data only (`s IS NULL AND s IS NOT NULL`). The rows match the reference. A constant-only operand is the exception: see polars-exec-when-eager."
   ],
   "reference": "`CASE WHEN r THEN p END` evaluates `p` only where `r` holds, also over stacked projections (`Expr.issues`: an `ifThen` raises what its taken branch raises). A guarded column of the D50-d chain therefore raises on no row whose reach is FALSE.",
   "status": "no-finding",
