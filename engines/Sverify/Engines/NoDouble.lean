@@ -345,4 +345,208 @@ theorem NoDoubles.cross {x y : Relation} (hx : NoDoubles x) (hy : NoDoubles y) :
 
 end
 
+/-! ## The plan -/
+
+section
+variable {t : ProfileTable} {I : Impl} {cat : Catalog} {tk : String → List Kind}
+
+omit [Boxes.Ambient] in
+/-- The rows of a table whose kinds hold no double hold none. -/
+theorem Catalog.noDoubles_read (hcat : cat.WF) (hk : cat.HasKinds tk) {tb : String}
+    (hd : (fitKinds (cat tb).arity (tk tb)).any Kind.mayDouble = false) : NoDoubles (cat tb).rows := by
+  intro row hrow v hv
+  obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.mp hv
+  have hkind := hk tb row hrow i
+  rw [List.getD_eq_getElem?_getD (l := row), List.getElem?_eq_getElem hi, Option.getD_some] at hkind
+  refine Value.hasDouble_of_hasKind hkind ?_
+  simp only [List.any_eq_false] at hd
+  have hmem : (tk tb).getD i .other ∈ fitKinds (cat tb).arity (tk tb) :=
+    List.mem_map.mpr ⟨i, List.mem_range.mpr (hcat tb row hrow ▸ hi), rfl⟩
+  simpa using hd _ hmem
+
+omit [Boxes.Ambient] in
+theorem flatMap_congr_mem {α β : Type} {l : List α} {f g : α → List β} (h : ∀ a ∈ l, f a = g a) :
+    l.flatMap f = l.flatMap g := by
+  induction l with
+  | nil => rfl
+  | cons a l ih => simp only [List.flatMap_cons, h a (List.mem_cons_self ..),
+      ih fun b hb => h b (List.mem_cons_of_mem _ hb)]
+
+omit [Boxes.Ambient] in
+theorem NoDoubles.append_row {x y : Row} (hx : ∀ v ∈ x, v.hasDouble = false)
+    (hy : ∀ v ∈ y, v.hasDouble = false) : ∀ v ∈ x ++ y, v.hasDouble = false := fun v hv => by
+  rcases List.mem_append.mp hv with h | h
+  · exact hx v h
+  · exact hy v h
+
+/-- **The induction**: under `t` and functions within it, a plan without
+doubles gives what the reference gives, and no double. -/
+theorem Rel.allowedI_noDouble (hI : I.Within t) (hcat : cat.WF) (hk : cat.HasKinds tk) :
+    ∀ {r : Rel}, r.mayDouble cat tk = false → (∀ p ∈ r.reads, NearRef t p) → ∀ {out : Relation},
+      r.AllowedI t I cat out → r.AllowedI Profile.reference.table Impl.lean cat out ∧ NoDoubles out
+  | .read _, hd, _, _, h => ⟨h, (Catalog.noDoubles_read hcat hk hd).perm h⟩
+  | .values _ rows, hd, _, _, h => ⟨h, NoDoubles.perm (fun row hrow v hv => by
+      simp only [Rel.mayDouble, List.any_eq_false] at hd
+      have := hd row hrow
+      simp only [List.any_eq_true, not_exists, not_and, Bool.not_eq_true] at this
+      exact this v hv) h⟩
+  | .filter r c, hd, hl, _, ⟨i, hi, ho⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble hI hcat hk hd.1
+      (fun p hp => hl p (List.mem_append_left _ hp)) hi
+    have hc : ∀ x ∈ c.ctors, ∀ p ∈ ctorReads x, NearRef t p := fun x hx p hp =>
+      hl p (Rel.ctorReads_sub (r := .filter r c) (List.mem_append_right _ hx) p hp)
+    have heq : (i.filter fun row => (c.eval row I).isTrue) = i.filter fun row => (c.eval row).isTrue :=
+      List.filter_congr fun row hrow => by rw [Expr.evalI_noDouble hI hd.2 hc (hn row hrow)]
+    exact ⟨⟨i, hi', ho.trans heq⟩, ho ▸ hn.sub fun _ h => (List.mem_filter.mp h).1⟩
+  | .project r es, hd, hl, _, ⟨i, hi, ho⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble hI hcat hk hd.1
+      (fun p hp => hl p (List.mem_append_left _ hp)) hi
+    have hc : ∀ x ∈ es.flatMap Expr.ctors, ∀ p ∈ ctorReads x, NearRef t p := fun x hx p hp =>
+      hl p (Rel.ctorReads_sub (r := .project r es) (List.mem_append_right _ hx) p hp)
+    have heq : (i.map fun row => row ++ es.map (·.eval row I)) =
+        i.map fun row => row ++ es.map (·.eval row) :=
+      List.map_congr_left fun row hrow => by rw [evalI_noDouble_list hI hd.2 hc (hn row hrow)]
+    refine ⟨⟨i, hi', ho.trans heq⟩, ?_⟩
+    rw [ho, heq]
+    intro row hrow
+    obtain ⟨row0, h0, rfl⟩ := List.mem_map.mp hrow
+    exact NoDoubles.append_row (hn row0 h0) (eval_hasDouble_list hd.2 (hn row0 h0))
+  | .emit r _, hd, hl, _, ⟨i, hi, ho⟩ => by
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble (r := r) hI hcat hk hd hl hi
+    refine ⟨⟨i, hi', ho⟩, ?_⟩
+    rw [ho]
+    intro row hrow v hv
+    obtain ⟨row0, h0, rfl⟩ := List.mem_map.mp hrow
+    obtain ⟨j, -, rfl⟩ := List.mem_map.mp hv
+    exact hasDouble_getD (hn row0 h0) j
+  | .cross a b, hd, hl, _, ⟨x, y, hx, hy, ho⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hx', hnx⟩ := Rel.allowedI_noDouble hI hcat hk hd.1
+      (fun p hp => hl p (List.mem_append_left _ hp)) hx
+    obtain ⟨hy', hny⟩ := Rel.allowedI_noDouble hI hcat hk hd.2
+      (fun p hp => hl p (List.mem_append_right _ hp)) hy
+    exact ⟨⟨x, y, hx', hy', ho⟩, (NoDoubles.cross hnx hny).perm ho⟩
+  | .unionAll a b, hd, hl, _, ⟨x, y, hx, hy, ho⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hx', hnx⟩ := Rel.allowedI_noDouble hI hcat hk hd.1
+      (fun p hp => hl p (List.mem_append_left _ hp)) hx
+    obtain ⟨hy', hny⟩ := Rel.allowedI_noDouble hI hcat hk hd.2
+      (fun p hp => hl p (List.mem_append_right _ hp)) hy
+    refine ⟨⟨x, y, hx', hy', ho⟩, NoDoubles.perm (fun row hrow => ?_) ho⟩
+    rcases List.mem_append.mp hrow with h | h
+    · exact hnx row h
+    · exact hny row h
+  | .join a b .inner on, hd, hl, _, ⟨x, y, hx, hy, ho⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hx', hnx⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.1
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inl (.inl hp)))) hx
+    obtain ⟨hy', hny⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.2
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inl (.inr hp)))) hy
+    have hc : ∀ c ∈ on.ctors, ∀ p ∈ ctorReads c, NearRef t p := fun c hc p hp =>
+      hl p (Rel.ctorReads_sub (r := .join a b .inner on) (List.mem_append_right _ hc) p hp)
+    have hcr := NoDoubles.cross hnx hny
+    have heq : ((crossRows x y).filter fun row => (on.eval row I).isTrue) =
+        (crossRows x y).filter fun row => (on.eval row).isTrue :=
+      List.filter_congr fun row hrow => by rw [Expr.evalI_noDouble hI hd.2 hc (hcr row hrow)]
+    refine ⟨⟨x, y, hx', hy', heq ▸ ho⟩, ?_⟩
+    exact (hcr.sub fun _ h => (List.mem_filter.mp h).1).perm ho
+  | .join a b .left on, hd, hl, _, ⟨x, y, hx, hy, ho⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hx', hnx⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.1
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inl (.inl hp)))) hx
+    obtain ⟨hy', hny⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.2
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inl (.inr hp)))) hy
+    have hc : ∀ c ∈ on.ctors, ∀ p ∈ ctorReads c, NearRef t p := fun c hc p hp =>
+      hl p (Rel.ctorReads_sub (r := .join a b .left on) (List.mem_append_right _ hc) p hp)
+    have hm : ∀ row ∈ x, NoDoubles (y.map (row ++ ·)) := fun row hrow r hr => by
+      obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hr
+      exact NoDoubles.append_row (hnx row hrow) (hny z hz)
+    have heq : ∀ row ∈ x, leftJoinRow on (b.arity cat) y row I = leftJoinRow on (b.arity cat) y row :=
+      fun row hrow => by
+        unfold leftJoinRow
+        rw [List.filter_congr fun r hr => by rw [Expr.evalI_noDouble hI hd.2 hc (hm row hrow r hr)]]
+    refine ⟨⟨x, y, hx', hy', (flatMap_congr_mem heq) ▸ ho⟩, NoDoubles.perm (fun r hr => ?_) ho⟩
+    obtain ⟨row, hrow, hr⟩ := List.mem_flatMap.mp hr
+    unfold leftJoinRow at hr
+    dsimp only at hr
+    split at hr
+    · rw [List.mem_singleton.mp hr]
+      refine NoDoubles.append_row (hnx row hrow) fun v hv => ?_
+      rw [List.eq_of_mem_replicate hv]; exact Value.hasDouble_null
+    · exact hm row hrow r (List.mem_filter.mp hr).1
+  | .fetch r _ cnt, hd, hl, _, ⟨i, hi, ho⟩ => by
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble (r := r) hI hcat hk hd hl hi
+    refine ⟨⟨i, hi', ho⟩, ?_⟩
+    subst ho
+    cases cnt with
+    | none => exact hn.sub fun _ h => List.mem_of_mem_drop h
+    | some n => exact hn.sub fun _ h => List.mem_of_mem_drop (List.mem_of_mem_take h)
+  | .window r part sort fns, hd, hl, _, ⟨i, hi, s, hs, hsort, o, hp, hw⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble hI hcat hk hd.1
+      (fun p hp => hl p (List.mem_append_left _ hp)) hi
+    obtain ⟨hw', hno⟩ := windowRowsP_noDouble hd.2
+      (fun p hp => hl p (by simp only [Rel.reads, windowReads, List.mem_append]; exact .inr (.inl (.inl hp))))
+      (before := []) (fun _ h => by simp at h) (hn.perm hs) hw
+    exact ⟨⟨i, hi', s, hs, hsort, o, hp, hw'⟩, hno.perm hp⟩
+  | .semi a b anti on, hd, hl, _, ⟨x, y, hx, hy, ho⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hx', hnx⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.1
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inl (.inl hp)))) hx
+    obtain ⟨hy', hny⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.2
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inl (.inr hp)))) hy
+    have hc : ∀ c ∈ on.ctors, ∀ p ∈ ctorReads c, NearRef t p := fun c hc p hp =>
+      hl p (Rel.ctorReads_sub (r := .semi a b anti on) (List.mem_append_right _ hc) p hp)
+    have heq : (x.filter fun row => hasMatch on y row I != anti) =
+        x.filter fun row => hasMatch on y row != anti :=
+      List.filter_congr fun row hrow => by
+        unfold hasMatch
+        rw [any_congr_mem fun z hz => by
+          rw [Expr.evalI_noDouble hI hd.2 hc (NoDoubles.append_row (hnx row hrow) (hny z hz))]]
+    exact ⟨⟨x, y, hx', hy', heq ▸ ho⟩, (hnx.sub fun _ h => (List.mem_filter.mp h).1).perm ho⟩
+  | .orderBy r _, hd, hl, _, ⟨i, hi, hp, hs⟩ => by
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble (r := r) hI hcat hk hd
+      (fun p hp => hl p (List.mem_append_left _ hp)) hi
+    exact ⟨⟨i, hi', hp, SortedP.monoOn (fun p hp' =>
+      (hl p (List.mem_append_right _ hp')).of_refAt (sortReads_not_floatOnly p hp')) hs⟩, hn.perm hp⟩
+  | .distinct r, hd, hl, _, ⟨i, hi, d, hrep, hp⟩ => by
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble (r := r) hI hcat hk hd
+      (fun p hp => hl p (List.mem_append_left _ hp)) hi
+    exact ⟨⟨i, hi', d, hrep, hp⟩, (hrep.noDoubles hn).perm hp⟩
+  | .aggregate r gs ms, hd, hl, _, ⟨i, hi, o, hp, ha⟩ => by
+    simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.1
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inl (.inl hp)))) hi
+    obtain ⟨ha', hno⟩ := aggAllowedP_noDouble hI hd.1.2 hd.2
+      (fun c hc p hp => hl p (Rel.ctorReads_sub (r := .aggregate r gs ms)
+        (by simp only [Rel.ctors, List.mem_append]; exact .inl (.inr hc)) p hp))
+      (fun p hp => hl p (by simp only [Rel.reads, List.mem_append]; exact .inl (.inr hp))) hn ha
+    exact ⟨⟨i, hi', o, hp, ha'⟩, hno.perm hp⟩
+  | .unnest r c, hd, hl, _, ⟨i, hi, ho⟩ => by
+    obtain ⟨hi', hn⟩ := Rel.allowedI_noDouble (r := r) hI hcat hk hd hl hi
+    refine ⟨⟨i, hi', ho⟩, NoDoubles.perm (fun row hrow v hv => ?_) ho⟩
+    obtain ⟨x, hx, hrow⟩ := List.mem_flatMap.mp hrow
+    obtain ⟨vs, w, hget, hw, rfl⟩ := mem_unnestRow hrow
+    rcases List.mem_or_eq_of_mem_set hv with h | rfl
+    · exact hn x hx v h
+    · have := hasDouble_getD (hn x hx) c
+      rw [hget, Value.hasDouble_list] at this
+      exact Value.anyDouble_eq_false.mp this v hw
+
+/-- **A plan without doubles transfers to the reference** (ruling 154, K5):
+every result a profile's table `t` allows for `r` the reference allows, where
+`t` with the reference's choices at `floatOnlyOptions` is within the reference
+at every option `r` reads (`transferB`, decided per plan). -/
+theorem Rel.transfer_of_noDouble (hcat : cat.WF) (hk : cat.HasKinds tk) {r : Rel}
+    (hd : r.mayDouble cat tk = false)
+    (htr : transferB r Profile.reference.table (t.refAt floatOnlyOptions) = true) {out : Relation} :
+    r.AllowedP t cat out → r.AllowedP Profile.reference.table cat out := by
+  rintro ⟨I, hI, ho⟩
+  exact ⟨Impl.lean, Impl.lean_within _, (Rel.allowedI_noDouble hI hcat hk hd
+    (fun p hp => ProfileTable.leAt_of_leAtB (List.all_eq_true.mp htr p hp)) ho).1⟩
+
+end
+
 end Substrait
