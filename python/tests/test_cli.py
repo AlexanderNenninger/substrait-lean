@@ -471,9 +471,10 @@ def test_a_dbt_project_needs_sverify_dbt(tmp_path, capsys, monkeypatch):
     assert "sverify-dbt" in doc["error"]["message"]
 
 
-def test_a_dbt_project_takes_the_format_sverify_dbt_does(tmp_path, capsys, monkeypatch):
-    """`sverify check <dbt dir> --format json` hands sverify-dbt flags it
-    parses (#891), and `--format github` is refused here, not by its parser."""
+def test_a_dbt_project_gets_the_flags_sverify_dbt_parses(tmp_path, capsys, monkeypatch):
+    """`sverify check <dbt dir>` hands sverify-dbt the format, the timeout and
+    the memory limit, each a flag its parser takes (#891): a rejected flag
+    would raise `SystemExit`."""
     sverify_dbt_cli = pytest.importorskip("sverify_dbt.cli")
     (tmp_path / "dbt_project.yml").write_text("name: x\n")
     monkeypatch.setattr("shutil.which", lambda _: "sverify-dbt")
@@ -481,13 +482,48 @@ def test_a_dbt_project_takes_the_format_sverify_dbt_does(tmp_path, capsys, monke
 
     def call(argv: list[str]) -> int:
         seen.append(argv)
-        return sverify_dbt_cli.main(argv[1:])  # SystemExit on a flag it rejects
+        return sverify_dbt_cli.main(argv[1:])
 
     monkeypatch.setattr("subprocess.call", call)
-    code, out = run(capsys, "check", str(tmp_path), "--format", "json")
-    assert code == 2 and seen[0][-2:] == ["--format", "json"]  # no target/manifest.json
-    code, out = run(capsys, "check", str(tmp_path), "--format", "github")
-    assert code == 2 and "text or json" in out and len(seen) == 1
+    for fmt in ("json", "github", "sarif"):
+        code, _ = run(capsys, "check", str(tmp_path), "--format", fmt)
+        assert code == 2 and seen[-1][-2:] == ["--format", fmt]  # no target/manifest.json
+    code, _ = run(capsys, "check", str(tmp_path), "--timeout", "5", "--memory-limit", "1GB")
+    assert code == 2
+    assert seen[-1][-4:] == ["--timeout", "5", "--memory-limit", "1GB"]
+
+
+def test_a_source_with_a_schema_is_checked_without_its_table(tmp_path, capsys):
+    """`DeltaSource(uri, schema=...)` lets `check` prove a transform over a table
+    that does not exist here: no credentials, no network (#1485, 18)."""
+    path = tmp_path / "pipeline.py"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            import pyarrow as pa
+            import sverify as sv
+            from ibis import _
+            from sverify.io import DeltaSource
+
+            orders = DeltaSource(
+                "s3://no-such-bucket/orders",
+                schema=pa.schema([("id", pa.int64()), ("amount", pa.int64())]),
+            )
+
+
+            @sv.transform(requires={"orders": [_.amount >= 0]}, ensures=[_.amount > 10])
+            def paid(orders):
+                return orders.filter(orders.amount > 10)
+
+
+            p = orders.pipe(paid)
+            """
+        )
+    )
+    code, doc = run_json(capsys, "check", str(path))
+    assert code == 0, doc
+    [item] = doc["items"]
+    assert (item["name"], item["status"]) == ("paid", "proved")
 
 
 def test_split_target():

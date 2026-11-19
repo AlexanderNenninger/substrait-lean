@@ -680,6 +680,12 @@ not hide the next. A `refresh()` in the file belongs under
 `if __name__ == "__main__":`; while sverify checks the file, it raises. A
 directory with a `dbt_project.yml` goes to `sverify-dbt check`.
 
+A `DeltaSource` or `IcebergSource` opens its table to learn its schema, which
+on a pull request means credentials and a network. Declare it instead,
+`DeltaSource(uri, schema=pa.schema([...]))`: `check` proves from the declared
+schema and opens nothing, and every refresh compares the table's schema with
+the declared one and raises `SchemaError` where they differ, or where a column declared NOT NULL is nullable in the table.
+
 The output starts with the contract in plain words, for a pull request's
 comment or a phone's screen: what the output guarantees, what each refresh
 checks on the data, and what is not proved, each finding with a code.
