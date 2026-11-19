@@ -2,6 +2,8 @@
 `requires` keeps the left side's keys through a point-in-time join (`Rel.keys`,
 `rangedKeys`), and its data check agrees with the pair definition."""
 
+from typing import Literal
+
 import ibis
 import pyarrow as pa
 import pytest
@@ -26,7 +28,7 @@ RANGES = sv.non_overlapping("valid_from", "valid_to", by="customer_id")
 UNIQUE_ORDERS = sv.unique("order_id")
 
 
-def join(predicate, how="left"):
+def join(predicate, how: Literal["left", "inner"] = "left"):
     return ORDERS.join(HISTORY, predicate(ORDERS, HISTORY), how=how).select(
         ORDERS.order_id, ORDERS.customer_id, HISTORY.city
     )
