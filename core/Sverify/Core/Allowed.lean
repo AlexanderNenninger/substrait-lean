@@ -349,12 +349,6 @@ theorem Rel.DeterminedUpTo.pair {o : Obs} {ctx ctx' : ObsCtx} (hc : ctx.WF)
     (hb : r.Allowed cat b) : Relation.Equiv o ctx' a b :=
   Relation.Equiv.trans hcomp (hr a ha) (Relation.Equiv.symm hc (hr b hb))
 
-/-- **Every allowed result is equal to `r.eval`'s up to `o`, when `r` is
-determined** (the definition, as an iff with `eval` allowed). -/
-theorem Rel.determinedUpTo_iff {o : Obs} {ctx : ObsCtx} {cat : Catalog} {r : Rel} :
-    r.DeterminedUpTo o ctx cat ↔
-      ∀ out, r.Allowed cat out → Relation.Equiv o ctx out (r.eval cat) := Iff.rfl
-
 /-- **A refinement of a determined plan is determined** (the contexts compose
 twice: the conclusion about `q.eval` passes through `r.eval` on both sides).
 `q` refines `r` up to `o` in `c₁`, `r` is determined in `c₂`, and `c₃` is

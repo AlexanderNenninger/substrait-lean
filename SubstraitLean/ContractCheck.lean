@@ -1677,7 +1677,7 @@ theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `deterministic` is a theorem** (#1484, finding 9). When
 `check` reports the transformation deterministic, every result the reference
-allows for it, every order of the ties (`Rel.OrderAllowed`), is `Rel.eval`'s
+allows for it (`Rel.Allowed`), is `Rel.eval`'s
 up to the order of its rows, for any data that meets the request
 (`DataMeets`): through `Rel.detPlan` (`check_deterministic`) and
 `Rel.allowed_perm_eval`. -/
@@ -1685,7 +1685,7 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out → out.Perm (T.root.eval data) := by
+    ∀ {out : Relation}, T.root.Allowed data out → out.Perm (T.root.eval data) := by
   intro out ho
   rw [check_deterministic hR hc] at hdet
   simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
@@ -1694,7 +1694,17 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detPlan_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd ho
+
+/-- **A deterministic report means one result up to `Obs.members`** (the instance
+of `Rel.DeterminedUpTo` at the exact level, in every context: a multiset of rows
+is a permutation, `Relation.Equiv_multiset_perm`). -/
+theorem check_deterministic_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) (ctx : ObsCtx) :
+    T.root.DeterminedUpTo Obs.members ctx data :=
+  fun _ h => Relation.Equiv_multiset_perm.2 (check_deterministic_sound hR hc hD hT hdet h)
 
 /-- The report's `class_determined` is `Request.classDeterminedIn`'s. -/
 theorem check_classDetermined {input : Json} {R : Request} {rep : Report}
@@ -1710,7 +1720,7 @@ theorem check_classPlaces {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `class_determined` is a theorem** (D48). When `check`
 reports the transformation determined up to the class, every result the
-reference allows for it, every order of the ties (`Rel.OrderAllowed`), is
+reference allows for it (`Rel.Allowed`), is
 `Rel.eval`'s up to the order of its rows and the member of each class of D31
 (`Row.canon`), for any data that meets the request (`DataMeets`): through
 `Rel.detClass` and `Rel.allowed_canon_perm_eval`. -/
@@ -1718,7 +1728,7 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out →
+    ∀ {out : Relation}, T.root.Allowed data out →
       (out.map Row.canon).Perm ((T.root.eval data).map Row.canon) := by
   intro out ho
   rw [check_classDetermined hR hc] at hdet
@@ -1728,7 +1738,22 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detClass data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detClass_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd ho
+
+/-- **A class-determined report means one result up to `Obs.classes`** (the
+instance of `Rel.DeterminedUpTo` at the class level), in a context that reads
+every double of `Rel.eval`'s result as a double (`Relation.DoublesKinded`): the
+bridge `Relation.Equiv_classes_of_canon_perm` from `Row.canon`. The converse
+of the bridge fails (one kind per column), so `check_class_determined_sound`
+stays the primary theorem. -/
+theorem check_class_determined_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) (ctx : ObsCtx)
+    (hk : Relation.DoublesKinded ctx (T.root.eval data)) :
+    T.root.DeterminedUpTo Obs.classes ctx data :=
+  fun _ h => Relation.Equiv_classes_of_canon_perm
+    (check_class_determined_sound hR hc hD hT hdet h) hk
 
 /-! ### The other fields the engine theorems read (#1484, A4)
 

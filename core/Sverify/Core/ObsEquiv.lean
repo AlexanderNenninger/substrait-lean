@@ -669,6 +669,124 @@ theorem Relation.Equiv_multiset_perm {a b : Relation} :
 
 end
 
+/-! ## The class level: `Row.canon` and `Obs.classes` -/
+
+/-- Every double of `rel`, at any depth of a list or struct, sits in a column
+`ctx` reads as a double. One kind per column: a struct column with a double
+field and an integer field has kind `double`, and `IntEquiv` then compares its
+integer field through `fp64.canon` too, which `Row.canon` leaves alone. So
+`Relation.Equiv_classes_of_canon_perm` is not an iff, and the checker's
+`Perm` statements stay the primary theorems. -/
+def Relation.DoublesKinded (ctx : ObsCtx) (rel : Relation) : Prop :=
+  ∀ row ∈ rel, ∀ i v, row[i]? = some v → v.hasDouble = true → ctx.kind i = .double
+
+theorem ObsCtx.reflAt_classes (ctx : ObsCtx) : ctx.ReflAt Obs.classes :=
+  ⟨fun n h => by simp [Obs.classes] at h, fun s h hne => by simp [Obs.classes] at h; exact absurd h.symm hne⟩
+
+mutual
+/-- Two values with one canonical form are equal up to `Obs.classes` where
+every double of the second sits in a double column. -/
+theorem Value.Equiv.of_canon {ctx : ObsCtx} {col : Nat} :
+    ∀ (w v : Value), v.canonV = w.canonV → (w.hasDouble = true → ctx.kind col = .double) →
+      Value.Equiv Obs.classes ctx col v w
+  | .float c, v, h, hk => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq, Value.float.injEq] at h
+    next c' =>
+      have hd := hk (by simp only [Value.hasDouble])
+      show IntEquiv Obs.classes ctx col c' c
+      unfold IntEquiv
+      rw [hd]
+      exact h
+  | .list ws, v, h, hk => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq, Value.list.injEq] at h
+    next vs =>
+      exact Value.EquivList.of_canon ws vs h (by
+        intro hd; apply hk; simp only [Value.hasDouble]; exact hd)
+  | .struct ws, v, h, hk => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq, Value.struct.injEq] at h
+    next vs =>
+      exact Value.EquivList.of_canon ws vs h (by
+        intro hd; apply hk; simp only [Value.hasDouble]; exact hd)
+  | .null, v, h, _ | .bool _, v, h, _ | .int _, v, h, _ | .date _, v, h, _ | .ts _, v, h, _
+  | .tod _, v, h, _ | .dec _ _, v, h, _ | .str _, v, h, _ => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq] at h <;> (try cases h) <;>
+      exact Value.Equiv.refl (ObsCtx.reflAt_classes ctx) _
+
+theorem Value.EquivList.of_canon {ctx : ObsCtx} {col : Nat} :
+    ∀ (ws vs : List Value), vs.map Value.canonV = ws.map Value.canonV →
+      (Value.anyDouble ws = true → ctx.kind col = .double) →
+      Value.EquivList Obs.classes ctx col vs ws
+  | [], [], _, _ => trivial
+  | [], _ :: _, h, _ => by simp at h
+  | _ :: _, [], h, _ => by simp at h
+  | w :: ws, v :: vs, h, hk => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    exact ⟨Value.Equiv.of_canon w v h.1 (fun hd => hk (by simp [Value.anyDouble, hd])),
+      Value.EquivList.of_canon ws vs h.2 (fun hd => hk (by simp [Value.anyDouble, hd]))⟩
+end
+
+theorem Row.EquivFrom.of_canon {ctx : ObsCtx} :
+    ∀ (i : Nat) (s r : Row), r.map Value.canonV = s.map Value.canonV →
+      (∀ j v, s[j]? = some v → v.hasDouble = true → ctx.kind (i + j) = .double) →
+      Row.EquivFrom Obs.classes ctx i r s
+  | _, [], [], _, _ => trivial
+  | _, [], _ :: _, h, _ => by simp at h
+  | _, _ :: _, [], h, _ => by simp at h
+  | i, b :: bs, a :: as, h, hk => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    refine ⟨Value.Equiv.of_canon b a h.1 (fun hd => hk 0 b rfl hd), 
+      Row.EquivFrom.of_canon (i + 1) bs as h.2 fun j v hv hd => ?_⟩
+    rw [show i + 1 + j = i + (j + 1) by omega]
+    exact hk (j + 1) v hv hd
+
+/-- Rows are as many as their images and each keeps its image: a permutation of
+`b` with the images of `a`. -/
+theorem exists_perm_map_eq {α β : Type _} (f : α → β) [DecidableEq β] :
+    ∀ (as bs : List α), (as.map f).Perm (bs.map f) → ∃ p : List α, p.Perm bs ∧ p.map f = as.map f
+  | [], bs, h => by
+    have : bs.map f = [] := (List.Perm.nil_eq h).symm
+    have hb : bs = [] := by simpa using this
+    exact ⟨[], by simp [hb], rfl⟩
+  | a :: as, bs, h => by
+    classical
+    have hmem : f a ∈ bs.map f := h.subset (by simp)
+    obtain ⟨b, hb, hfb⟩ := List.mem_map.1 hmem
+    have hp : bs.Perm (b :: bs.erase b) := List.perm_cons_erase hb
+    have h2 : (f a :: as.map f).Perm (f b :: (bs.erase b).map f) := by
+      have := h.trans ((hp.map f))
+      simpa using this
+    rw [hfb] at h2
+    obtain ⟨p', hp', hm⟩ := exists_perm_map_eq f as (bs.erase b) ((List.perm_cons (f a)).1 h2)
+    exact ⟨b :: p', (hp'.cons b).trans hp.symm, by simp [hm, hfb]⟩
+
+/-- **Rows equal up to their canonical forms are equal up to `Obs.classes`**,
+where every double of the second relation sits in a double column
+(`Relation.DoublesKinded`): the bridge from `Row.canon` (D31, D48) to
+`Relation.Equiv`. It needs no `ctx.WF`: at this observation floats and strings
+are exact, so `ctx.ReflAt` holds for every context. -/
+theorem Relation.Equiv_classes_of_canon_perm {ctx : ObsCtx} {a b : Relation}
+    (h : (a.map Row.canon).Perm (b.map Row.canon)) (hk : Relation.DoublesKinded ctx b) :
+    Relation.Equiv Obs.classes ctx a b := by
+  classical
+  obtain ⟨p, hp, hm⟩ := exists_perm_map_eq Row.canon a b h
+  refine ⟨p, ?_, hp⟩
+  have key : ∀ (a p : Relation), p.map Row.canon = a.map Row.canon →
+      (∀ s ∈ p, ∀ j v, s[j]? = some v → v.hasDouble = true → ctx.kind j = .double) →
+      Forall2 (Row.Equiv Obs.classes ctx) a p := by
+    intro a
+    induction a with
+    | nil => intro p h _; cases p with
+      | nil => exact .nil
+      | cons _ _ => simp at h
+    | cons x xs ih => intro p h hk; cases p with
+      | nil => simp at h
+      | cons y ys =>
+        simp only [List.map_cons, List.cons.injEq] at h
+        refine .cons ?_ (ih ys h.2 fun s hs => hk s (List.mem_cons_of_mem _ hs))
+        exact Row.EquivFrom.of_canon 0 y x h.1.symm (by
+          simpa using hk y (List.mem_cons_self ..))
+  exact key a p hm fun s hs j v hv hd => hk s (hp.subset hs) j v hv hd
+
 /-! ## Near: a tolerance in codes -/
 
 /-- A per-column tolerance in codes, an ulp count (`none`: exact). -/
@@ -769,6 +887,20 @@ example : Value.Equiv { zeros := .canon } { kind := fun _ => .double } 0 (.int f
   show fp64.canon fp64.negZero = fp64.canon 0
   rw [fp64.canon_negZero, fp64.canon_eq_self]
   have := fp64.negZero_eq; have := fp64.negNan_eq; omega
+
+/-- The bridge's side condition is met: `-0.0` and `+0.0` as `.float` values in a
+double column, equal up to `Obs.classes` through `Relation.Equiv_classes_of_canon_perm`. -/
+example : Relation.Equiv Obs.classes { kind := fun _ => .double }
+    [[.float fp64.negZero]] [[.float 0]] := by
+  refine Relation.Equiv_classes_of_canon_perm ?_ ?_
+  · have e : fp64.canon fp64.negZero = fp64.canon 0 := by
+      rw [fp64.canon_negZero, fp64.canon_eq_self]
+      have := fp64.negZero_eq; have := fp64.negNan_eq; omega
+    have e' : FloatCode.canon fp64.negZero = FloatCode.canon 0 := e
+    simp only [List.map_cons, List.map_nil, Row.canon, Value.canonV, e']
+    exact .refl _
+  · intro row hr i v hv hd
+    rfl
 
 example : ¬ Value.Equiv {} { kind := fun _ => .double } 0 (.int fp64.negZero) (.int 0) := by
   show ¬ fp64.negZero = 0; have := fp64.negZero_eq; omega
