@@ -1593,6 +1593,10 @@ def _prove_once(
         return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.fact)
 
     req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
+    for t, cs in requires.items():
+        for c in cs:
+            if isinstance(c, NonOverlapping) and t in schemas:
+                c.check_types(t, schemas[t])
 
     def query(where: str, n: int, table: Transform, c: Condition) -> Transform:
         """`condition_query`, with an Ibis error named by the condition it

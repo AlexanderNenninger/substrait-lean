@@ -1475,10 +1475,31 @@ theorem partners_le_one {B : Relation} {n : Nat} {on : Expr} {kb : List Nat} {x 
   rw [List.pairwise_filter, List.pairwise_map]
   exact hkB.imp fun hne ht ht' => hne (determines_sound hd hx ht ht')
 
-/-- Does the join condition determine a key of the right side? -/
+/-- Does the join give each left row at most one partner: does the condition
+determine a key of the right side, or pick the one range of the right side's
+rows that holds a left expression (`rangeJoin`)? -/
 def Rel.keyedJoin (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : TableCond) (a b : Rel) (on : Expr) : Bool :=
-  (b.keys cat A F K).any (determines on (a.arity cat))
+  (b.keys cat A F K).any (determines on (a.arity cat)) ||
+    (b.ranges cat K).any (rangeJoin on (a.arity cat))
+
+/-- **A single-match join**: each left row has at most one partner. -/
+theorem Rel.keyedJoin_partners {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {a b : Rel} {on : Expr} (ha : a.WF cat) (hb : b.WF cat)
+    (hkey : Rel.keyedJoin cat A F K a b on = true) :
+    ∀ x ∈ a.eval cat,
+      (((b.eval cat).map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 := by
+  intro x hx
+  rcases Bool.or_eq_true_iff.1 hkey with hk | hr
+  · obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hk
+    exact partners_le_one (Rel.eval_arity hcat ha x hx)
+      (Rel.keys_sound hcat hA hF hK hb kb hkb) hd
+  · obtain ⟨c, hc, hj⟩ := List.any_eq_true.1 hr
+    exact partners_le_one_range (Rel.eval_arity hcat ha x hx)
+      (Rel.ranges_sound_all hcat hK hb c hc (Rel.eval_orderAllowed cat b)) hj
 
 /-- **A join on a key does not fan out**: inner or left, it has at most as
 many rows as its left side. -/
@@ -1489,11 +1510,7 @@ theorem Rel.join_length_le_of_keyed {cat : Catalog} (hcat : cat.WF) {A : String 
     (hK : K.Hold cat) {a b : Rel} {ty : JoinType} {on : Expr}
     (hwf : (Rel.join a b ty on).WF cat) (hkey : Rel.keyedJoin cat A F K a b on = true) :
     ((Rel.join a b ty on).eval cat).length ≤ (a.eval cat).length := by
-  obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hkey
-  have hkB := Rel.keys_sound hcat hA hF hK hwf.2.1 kb hkb
-  have hp : ∀ x ∈ a.eval cat,
-      (((b.eval cat).map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 :=
-    fun x hx => partners_le_one (Rel.eval_arity hcat hwf.1 x hx) hkB hd
+  have hp := Rel.keyedJoin_partners hcat hA hF hK hwf.1 hwf.2.1 hkey
   refine Nat.le_trans ?_ (Nat.le_of_eq (Nat.mul_one _))
   cases ty with
   | inner =>

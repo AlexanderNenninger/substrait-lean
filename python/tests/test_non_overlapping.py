@@ -164,3 +164,34 @@ def test_incremental_views_refuse_it():
     )
     with pytest.raises(ValueError, match="non_overlapping"):
         src.pipe(latest).refresh()
+
+
+@pytest.mark.parametrize("dtype", ["float64", "string"])
+def test_a_range_of_doubles_or_strings_is_refused(dtype):
+    t = ibis.table({"k": "!int64", "lo": dtype, "hi": dtype}, name="t")
+    with pytest.raises(sv.errors.UnsupportedError, match=r"column 'lo' is .*must be integers"):
+        sv.verify(
+            t.select(t.k),
+            requires={"t": [sv.non_overlapping("lo", "hi", by="k")]},
+            ensures=[],
+        )
+
+
+@pytest.mark.parametrize("dtype", ["int32", "decimal(10, 2)", "date", "timestamp", "time"])
+def test_ordered_numbers_are_accepted(dtype):
+    t = ibis.table({"k": "!int64", "lo": dtype, "hi": dtype}, name="t")
+    report = sv.verify(
+        t.select(t.k), requires={"t": [sv.non_overlapping("lo", "hi", by="k")]}, ensures=[]
+    )
+    assert report.verdict is not None
+
+
+def test_a_range_join_gives_the_output_the_left_sides_row_bound():
+    """Single match: the join has at most as many rows as its left side, so a
+    cap on the orders bounds it though the history has none."""
+    q = join(point_in_time)
+    capped = [UNIQUE_ORDERS, sv.max_rows(10)]
+    with_ranges = sv.verify(q, requires={"orders": capped, "history": [RANGES]}, ensures=[])
+    without = sv.verify(q, requires={"orders": capped, "history": []}, ensures=[])
+    assert with_ranges.rows == 10
+    assert without.rows is None

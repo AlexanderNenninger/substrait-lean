@@ -648,6 +648,26 @@ class NonOverlapping(TableCondition):
                     bad.append(a)
         return bad
 
+    def check_types(self, t: str, schema: Any) -> None:
+        """Refuse a range whose columns `<` does not order as numbers: doubles
+        (NaN, two zeros) and strings (collation) have no rule in v1."""
+        from sverify._unsupported import UnsupportedError
+
+        for c in (self.lo, self.hi):
+            dtype = schema[c] if c in schema.names else None
+            if dtype is not None and not (
+                dtype.is_integer()
+                or dtype.is_decimal()
+                or dtype.is_date()
+                or dtype.is_timestamp()
+                or dtype.is_time()
+            ):
+                raise UnsupportedError(
+                    f"{self.label} on {t}: column {c!r} is {dtype}; the ranges' columns must be "
+                    "integers, decimals, dates, timestamps or times (cast the column in the "
+                    "source query)"
+                )
+
     def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
         cols = names(t)
         missing = [c for c in (self.lo, self.hi, *self.by) if c not in cols]

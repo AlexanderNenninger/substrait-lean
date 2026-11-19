@@ -152,7 +152,7 @@ alone too. -/
 theorem Rel.keyedJoin_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) (a b : Rel) (on : Expr) :
     Rel.keyedJoin c A F K a b on = Rel.keyedJoin cat A F K a b on := by
-  simp only [keyedJoin, keys_congr h A F K b, arity_congr h a]
+  simp only [keyedJoin, keys_congr h A F K b, ranges_congr h K b, arity_congr h a]
 
 theorem Rel.perKey_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) (P : String → List (List Nat × Nat)) :
