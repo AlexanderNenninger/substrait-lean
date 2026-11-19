@@ -1975,17 +1975,6 @@ theorem twoPhaseSum_near {L : List (List Int)} {ws : List Int} {Bs : Nat}
   omega
 
 omit [Boxes.Ambient] in
-set_option exponentiation.threshold 2100 in
-/-- The scaled value of an integer's exact code. -/
-theorem scaled_exactCode (n : Nat) : FloatCode.scaled (FloatCode.exactCode n) = n * 2 ^ 1074 := by
-  simp only [FloatCode.exactCode, FloatFormat.exactCode, fp64_scale, Int.natAbs_natCast]
-  unfold FloatCode.scaled
-  by_cases h0 : n = 0
-  · subst h0; simp
-  · simp only [show (n : Int) ≠ 0 by omega, show ¬ (n : Int) < 0 by omega, ↓reduceIte]
-    split <;> omega
-
-omit [Boxes.Ambient] in
 /-- `2⁵¹ |Q n K − R K| ≤ 2 |R| K + 2⁵⁰ n K` without the scale `K`. -/
 theorem cancel_scale {Q Rs K : Int} {n : Nat} (hK : 0 < K)
     (h : 2 ^ 51 * (Q * (n * K) - Rs * K).natAbs ≤
@@ -2071,8 +2060,8 @@ theorem twoPhaseAvg_near {L : List (List Int)} {ws : List Int} {Bs : Nat} (hne :
   have hcount : FloatCode.ofInt ws.length = FloatCode.exactCode ws.length :=
     FloatCode.ofInt_exact (by
       rw [Int.natAbs_natCast]; exact Nat.le_trans h32 (Nat.pow_le_pow_right (by omega) (by omega)))
-  have hsc : FloatCode.scaled (FloatCode.exactCode ws.length) = ws.length * 2 ^ 1074 :=
-    scaled_exactCode ws.length
+  have hsc : FloatCode.scaled (FloatCode.exactCode ws.length) = ws.length * 2 ^ 1074 := by
+    rw [FloatCode.scaled_exactCode, FloatCode.unitK, Int.natCast_pow]; rfl
   have hfinN : FloatCode.IsFin (FloatCode.exactCode ws.length) := isFin_of_scaled_le (by
     rw [hsc]
     have : ws.length * 2 ^ 1074 ≤ 2 ^ 32 * 2 ^ 1074 := Nat.mul_le_mul_right _ h32

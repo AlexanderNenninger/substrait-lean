@@ -20,6 +20,7 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
+from sverify._lean_eval import LeanRaised
 from sverify.engine import connect, put_table, run_checker, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
@@ -142,6 +143,14 @@ def test_avg_over_a_window(con):
         (2, "-0.050000"),
         (3, None),
     ]
+
+
+def test_lean_values_raises_where_the_reference_raises(con):
+    """`Rel.eval` goes on with a value where a cast does not fit; `lean_values`
+    raises as the reference does (`--outcomes`), and gives the rows where it fits."""
+    with pytest.raises(LeanRaised, match="overflow"):
+        lean(con, "SELECT CAST(a AS DECIMAL(3, 2)) AS r FROM t")
+    assert lean(con, "SELECT CAST(a AS DECIMAL(4, 2)) AS r FROM t")[0] == ("12.35",)
 
 
 @pytest.mark.parametrize(

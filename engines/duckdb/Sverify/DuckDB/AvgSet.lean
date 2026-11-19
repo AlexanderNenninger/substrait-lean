@@ -92,23 +92,6 @@ theorem aroundLo_le_hi (a n : Nat) : aroundLo a n ≤ aroundHi a n := by
   · exact Nat.le_refl _
   · exact Nat.mul_le_mul_right _ (Nat.le_succ _)
 
-/-- `ofExactDiv` does not see a common factor. -/
-theorem ofExactDiv_mul_mul (v : Int) {k n : Nat} (hk : 0 < k) :
-    ofExactDiv (k * v) (k * n) = ofExactDiv v n := by
-  have hg : gridExp (k * v.natAbs) (k * n) = gridExp v.natAbs n := by
-    unfold gridExp; rw [Nat.mul_div_mul_left _ _ hk]
-  have hr : roundMagDiv (k * v.natAbs) (k * n) = roundMagDiv v.natAbs n := by
-    unfold roundMagDiv; rw [hg, Nat.mul_assoc, rndDiv_mul_left _ _ hk]
-  unfold ofExactDiv
-  rw [Int.natAbs_mul, Int.natAbs_natCast, hr]
-  have : (k : Int) * v < 0 ↔ v < 0 := by
-    constructor
-    · intro h; rcases Int.lt_or_le v 0 with h' | h'
-      · exact h'
-      · exact absurd h (Int.not_lt.mpr (Int.mul_nonneg (Int.natCast_nonneg k) h'))
-    · intro h; exact Int.mul_neg_of_pos_of_neg (Int.ofNat_lt.mpr hk) h
-  simp only [this]
-
 /-- A quotient of at least one rounds to a nonzero magnitude. -/
 theorem roundMagDiv_pos {a n : Nat} (hn : 0 < n) (h : n ≤ a) : 0 < roundMagDiv a n := by
   unfold roundMagDiv
@@ -165,20 +148,6 @@ theorem fdiv_zero_left {b : Int} (hb : IsFin b) (hb0 : 0 < scaled b) : fdiv 0 b 
   simp [isNanCode, isInfCode, isZeroCode, zeroOf, hbn, h0, h1, h2, h3, h4, h5,
     show (0 : Int) ≠ nan by have := nan_eq; omega, show (0 : Int) ≠ negNan by have := negNan_eq'; omega,
     show (0 : Int) ≠ posInf by have := posInf_eq; omega, show (0 : Int) ≠ negInf by have := negInf_eq; omega]
-
-theorem scaled_exactCode (i : Int) : scaled (exactCode i) = i * (unitK : Int) := by
-  simp only [scaled, exactCode, FloatFormat.exactCode, fp64_scale, unitK]
-  split
-  · subst_vars; simp
-  · split <;> omega
-
-theorem unitK_pos : 0 < unitK := Nat.two_pow_pos _
-
-/-- Dividing `v · 2¹⁰⁷⁴` by `n · 2¹⁰⁷⁴` rounds as `v / n` does. -/
-theorem ofExactDiv_unitK (v : Int) (n : Nat) :
-    ofExactDiv (v * unitK * unitK) (n * unitK) = ofExactDiv (v * unitK) n := by
-  rw [← ofExactDiv_mul_mul (v * unitK) (k := unitK) (n := n) unitK_pos, Int.mul_comm (v * unitK),
-    Nat.mul_comm n]
 
 /-- The rounded quotient of a nonzero `V` by a count `n ≤ |V|`, as `fdiv`
 computes it from the doubles of `V / 2¹⁰⁷⁴` and `n`, when both are exact. -/
