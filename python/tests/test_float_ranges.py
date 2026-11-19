@@ -72,11 +72,23 @@ def test_a_bound_with_one_end_proves_the_headline_case():
     assert report.verdict != sv.Verdict.UNPROVED
     assert report.facts["v"] == "a double ≥ 1.0"
     assert sv.verify(t.select(v=t.amount + 1), counterexamples=0).facts["v"] == "a double ≥ 1.0"
-    # `amount * 3` can be `0`, and the ends below `0` are not kept: a difference has no lower end.
+    # `amount * 3` can be `0`, and the ends below `0` are not kept.
     assert sv.verify(
         t.select(v=t.amount * 3), ensures=[ibis._.v > 0], counterexamples=0
     ).verdict == (sv.Verdict.UNPROVED)
-    assert sv.verify(t.select(v=t.amount - 1), counterexamples=0).facts["v"] == "any double"
+    # A difference keeps the lower end too, where the subtrahend is a finite range
+    # (`FloatCode.fsub_lower`); a subtrahend with no upper end keeps nothing.
+    assert sv.verify(t.select(v=t.amount - 1), counterexamples=0).facts["v"] == "a double ≥ -1.0"
+    assert sv.verify(t.select(v=t.amount - t.amount), counterexamples=0).facts["v"] == "any double"
+
+
+def test_a_quotient_of_a_non_negative_dividend_by_a_positive_divisor_is_at_least_zero():
+    """`x / y` with `x >= 0` and `y >= 1`, each with one end only (`FloatCode.fdiv_nonneg_open`).
+    The upper end is not kept: `y` may be NaN, which is above every bound."""
+    t = ibis.table({"x": "!float64", "y": "!float64"}, name="t")
+    t = t.filter((t.x >= 0) & (t.y >= 1))
+    assert sv.verify(t.select(v=t.x / t.y), counterexamples=0).facts["v"] == "a double ≥ 0.0"
+    assert sv.verify(t.select(v=10 / t.y), counterexamples=0).facts["v"] == "a double ≥ 0.0"
 
 
 def test_a_one_ended_bound_is_sound_at_infinity_and_nan_on_data():
