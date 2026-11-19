@@ -6,7 +6,7 @@ it:
 
     python scripts/check_packages.py base         # sverify alone: no DuckDB, no engine
     python scripts/check_packages.py duckdb       # sverify[duckdb]
-    python scripts/check_packages.py polars       # sverify[polars] (brings DuckDB)
+    python scripts/check_packages.py polars       # sverify[polars]: Polars, no DuckDB
     python scripts/check_packages.py spark        # sverify[spark] (brings DuckDB)
     python scripts/check_packages.py spark-light  # sverify[duckdb] and sverify-spark, no PySpark
     python scripts/check_packages.py dbt          # sverify and sverify-dbt
@@ -111,6 +111,39 @@ def base() -> None:
     print(f"engines {sorted(profiles.plugins())}; verified and wrote SQL; pinned {pinned()}")
 
 
+def polars_only() -> None:
+    """sverify[polars]: no DuckDB; a connection on Polars holds a table, a
+    plan verifies, runs on Polars and refuses a batch that breaks a
+    precondition."""
+    import ibis
+    import pyarrow as pa
+
+    import sverify as sv
+    from sverify import profiles
+
+    assert importlib.util.find_spec("duckdb") is None, "duckdb is installed with sverify[polars]"
+    assert importlib.util.find_spec("pyspark") is None
+    found = {e for e, p in profiles.plugins().items() if p.local}
+    assert found == {"polars"}, found
+    con = sv.connect()
+    assert con.engine == "polars"
+    con.put("t", pa.table({"a": [1, 5, 7]}))
+    t = ibis.table({"a": "int64"}, name="t")
+    report = sv.verify(
+        t.filter(t.a > 2), requires={"t": [sv.unique("a")]}, ensures=[sv.unique("a")]
+    )
+    assert report.verdict == "proved", report
+    assert rows(report.run(con)) == [5, 7]
+    con.put("t", pa.table({"a": [5, 5]}))
+    try:
+        report.run(con)
+    except sv.errors.PreconditionError:
+        pass
+    else:
+        raise AssertionError("a batch with a duplicate key was not refused")
+    print(f"engines {sorted(profiles.plugins())}; ran on Polars; pinned {pinned()}")
+
+
 def spark_light() -> None:
     """sverify-spark without PySpark: it writes Spark SQL, and a run on Spark
     names the extra that brings PySpark."""
@@ -140,7 +173,7 @@ def main() -> None:
     elif which == "duckdb":
         check({"duckdb"}, absent=("polars", "pyspark", "sverify_polars", "sverify_spark"))
     elif which == "polars":
-        check({"duckdb", "polars"}, absent=("pyspark",))
+        polars_only()
     elif which == "spark":
         check({"duckdb", "spark"}, absent=("polars",))
     elif which == "spark-light":

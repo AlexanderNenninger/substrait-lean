@@ -1098,10 +1098,7 @@ class Report:
         # runs (`ProfilePlugin.checks_assumed`).
         run_on = profiles.find(chosen.engine) if chosen is not None else None
         assumed_checked = (
-            check_requires
-            and run_on is not None
-            and run_on.checks_assumed
-            and kind == "translated"
+            check_requires and run_on is not None and run_on.checks_assumed and kind == "translated"
         )
         if check_requires:
             # A precondition with no check would let the run drop guards on

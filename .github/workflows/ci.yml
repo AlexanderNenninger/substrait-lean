@@ -635,6 +635,9 @@ jobs:
           PY
           uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
             --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
+          uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with-editable engines/polars --with polars --with numpy --with pytest --with hypothesis \
+            pytest -p no:cacheprovider python/tests/test_no_duckdb.py
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
   # the benchmarks and on every sqllogictest file the ledgers decided a query

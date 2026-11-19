@@ -91,3 +91,31 @@ def test_an_engine_that_is_installed_is_not_told_to_install_it() -> None:
         """
     )
     assert "sverify[spark]" not in out
+
+
+def test_a_polars_connection_needs_no_duckdb() -> None:
+    """With only Polars, a connection holds tables, the Ibis conditions on them
+    run on Polars's backend, a plan runs on Polars, and a batch that breaks a
+    precondition is refused (#1764)."""
+    import pytest
+
+    pytest.importorskip("polars")
+    out = run(
+        """
+        import ibis, pyarrow as pa, sverify as sv
+        from ibis import _
+        con = sv.connect("polars")
+        con.put("t", pa.table({"a": [1, 5, 7]}))
+        t = ibis.table({"a": "int64"}, name="t")
+        r = sv.verify(t.filter(t.a > 2), requires={"t": [sv.unique("a"), _.a >= 0]},
+                      ensures=[sv.unique("a")])
+        print(r.verdict, r.run(con).column("a").to_pylist())
+        con.put("t", pa.table({"a": [5, 5]}))
+        try:
+            r.run(con)
+        except sv.errors.PreconditionError as e:
+            print("refused")
+        print(con.table("t").count().to_pyarrow().as_py())
+        """
+    )
+    assert out.splitlines() == ["proved [5, 7]", "refused", "2"]
