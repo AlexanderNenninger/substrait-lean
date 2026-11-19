@@ -259,7 +259,8 @@ def allows_rows(
 
     What the oracle accepts is allowed by the reference
     (`Rel.evalChoices_allowed`) for plans without an ordered aggregate (`FIRST`,
-    `LAST`, `STRING_AGG`, `collect`, `MODE`); for the others it is tested (`docs/trusted-base.md`)."""
+    `LAST`, `STRING_AGG`, `collect`, `MODE`); for the others it is tested
+    (`docs/trusted-base.md`)."""
 
     def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:
         pos = 0
