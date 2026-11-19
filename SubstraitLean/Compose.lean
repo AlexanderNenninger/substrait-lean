@@ -102,15 +102,15 @@ def RowsSat (es : List Expr) (rows : Relation) : Prop :=
 
 /-- What the checker assumes about table `t`: its rows match the schema
 `S t` and satisfy the preconditions `pre t`, and the columns of every
-`k ∈ K t` are a key. -/
-def Spec (S : String → List AVal) (pre : String → List Expr) (K : String → List (List Nat))
+`k ∈ K.keys t` are a key. -/
+def Spec (S : String → List AVal) (pre : String → List Expr) (K : TableCond)
     (t : String) (rows : Relation) : Prop :=
-  (∀ row ∈ rows, EnvMem (S t) row) ∧ RowsSat (pre t) rows ∧ ∀ k ∈ K t, KeyOn k rows
+  (∀ row ∈ rows, EnvMem (S t) row) ∧ RowsSat (pre t) rows ∧ ∀ k ∈ K.keys t, KeyOn k rows
 
 theorem Spec.intro {A : String → Relation → Prop} {q : Query} {S : String → List AVal}
-    {pre : String → List Expr} {K : String → List (List Nat)} {x : String}
+    {pre : String → List Expr} {K : TableCond} {x : String}
     (hS : Triple A q fun rows => ∀ row ∈ rows, EnvMem (S x) row) (hpre : Triple A q (RowsSat (pre x)))
-    (hK : Triple A q fun rows => ∀ k ∈ K x, KeyOn k rows) : Triple A q (Spec S pre K x) :=
+    (hK : Triple A q fun rows => ∀ k ∈ K.keys x, KeyOn k rows) : Triple A q (Spec S pre K x) :=
   fun cat hcat hA hwf => ⟨hS cat hcat hA hwf, hpre cat hcat hA hwf, hK cat hcat hA hwf⟩
 
 /-- The abstract environment and facts the checker starts from. -/
@@ -121,12 +121,12 @@ def Spec.facts (pre : String → List Expr) (t : String) : List Fact :=
   (pre t).flatMap Expr.factsOf
 
 theorem Spec.env_sound {S : String → List AVal} {pre : String → List Expr}
-    {K : String → List (List Nat)} {cat : Catalog} (h : Sat (Spec S pre K) cat) :
+    {K : TableCond} {cat : Catalog} (h : Sat (Spec S pre K) cat) :
     ∀ t, ∀ row ∈ (cat t).rows, EnvMem (Spec.env S pre t) row :=
   fun t row hr => tableEnv_sound ((h t).1 row hr) ((h t).2.1 row hr)
 
 theorem Spec.facts_sound {S : String → List AVal} {pre : String → List Expr}
-    {K : String → List (List Nat)} {cat : Catalog} (h : Sat (Spec S pre K) cat) :
+    {K : TableCond} {cat : Catalog} (h : Sat (Spec S pre K) cat) :
     ∀ t, ∀ row ∈ (cat t).rows, FactsHold (Spec.facts pre t) row := by
   intro t row hr f hf
   simp only [Spec.facts, List.mem_flatMap] at hf
@@ -153,7 +153,7 @@ theorem Rel.post_eval {cat : Catalog} (hcat : cat.WF) {r : Rel} (hwf : r.WF cat)
 postcondition certainly TRUE (for some sound window-key oracle), then
 `{Spec} r {RowsSat es}`. -/
 theorem Triple.of_contract {S : String → List AVal} {pre : String → List Expr}
-    {K : String → List (List Nat)} {r : Rel} {es : List Expr}
+    {K : TableCond} {r : Rel} {es : List Expr}
     (h : ∀ cat : Catalog, cat.WF → Sat (Spec S pre K) cat → r.WF cat →
       ∃ T : WindowKeys, T.SoundAll cat ∧ (r.post (r.arity cat) es).WF cat ∧
         ((r.post (r.arity cat) es).aeval cat (Spec.env S pre) (Spec.facts pre) T).all
@@ -169,7 +169,7 @@ theorem Triple.of_contract {S : String → List AVal} {pre : String → List Exp
 
 /-- What `Rel.keys_sound` proves, as a triple. -/
 theorem Triple.of_keys {S : String → List AVal} {pre : String → List Expr}
-    {K : String → List (List Nat)} {r : Rel} {ks : List (List Nat)}
+    {K : TableCond} {r : Rel} {ks : List (List Nat)}
     (h : ∀ cat : Catalog, cat.WF → Sat (Spec S pre K) cat → r.WF cat →
       ∀ k ∈ ks, k ∈ r.keys cat (Spec.env S pre) (Spec.facts pre) K) :
     Triple (Spec S pre K) r.query fun rows => ∀ k ∈ ks, KeyOn k rows :=
@@ -180,7 +180,7 @@ theorem Triple.of_keys {S : String → List AVal} {pre : String → List Expr}
 /-- What `Rel.aeval_sound` proves, as a triple: the output rows match any
 schema `Sx` that admits every value the abstract evaluation admits. -/
 theorem Triple.of_aeval {S : String → List AVal} {pre : String → List Expr}
-    {K : String → List (List Nat)} {r : Rel} {Sx : List AVal}
+    {K : TableCond} {r : Rel} {Sx : List AVal}
     (h : ∀ cat : Catalog, cat.WF → Sat (Spec S pre K) cat → r.WF cat →
       ∃ T : WindowKeys, T.SoundAll cat ∧ ∀ i v,
         ((r.aeval cat (Spec.env S pre) (Spec.facts pre) T).getD i AVal.top).Mem v →
@@ -196,7 +196,7 @@ keys, from `g`'s own preconditions); `f` is proved from that contract. Then
 `f ∘ g` satisfies `f`'s postconditions whenever the base tables satisfy
 `g`'s preconditions, and `f`'s other inputs satisfy `f`'s. -/
 theorem Triple.compose_spec {S S' : String → List AVal} {pre pre' : String → List Expr}
-    {K K' : String → List (List Nat)} {f g : Query} {x : String} {B : Relation → Prop}
+    {K K' : TableCond} {f g : Query} {x : String} {B : Relation → Prop}
     (hg : Triple (Spec S pre K) g (Spec S' pre' K' x)) (hf : Triple (Spec S' pre' K') f B)
     (hother : ∀ t, t ≠ x → ∀ rows, Spec S pre K t rows → Spec S' pre' K' t rows) :
     Triple (Spec S pre K) (f.after x g) B :=
@@ -243,10 +243,10 @@ theorem KeyOn.update {k : List Nat} {old kept del ins new : Relation} (hold : Ke
 the inserted rows match the schema and satisfy the row conditions, and their
 keys clash with neither each other nor the kept rows. -/
 theorem Spec.update {S : String → List AVal} {pre : String → List Expr}
-    {K : String → List (List Nat)} {t : String} {old kept del ins new : Relation}
+    {K : TableCond} {t : String} {old kept del ins new : Relation}
     (hold : Spec S pre K t old) (hkept : (kept ++ del).Perm old) (hnew : new.Perm (kept ++ ins))
     (hS : ∀ row ∈ ins, EnvMem (S t) row) (hpre : RowsSat (pre t) ins)
-    (hK : ∀ k ∈ K t, KeyOn k ins ∧ ∀ x ∈ ins, ∀ y ∈ kept, keyOf k x ≠ keyOf k y) :
+    (hK : ∀ k ∈ K.keys t, KeyOn k ins ∧ ∀ x ∈ ins, ∀ y ∈ kept, keyOf k x ≠ keyOf k y) :
     Spec S pre K t new := by
   refine ⟨fun row hr => ?_, hold.2.1.update hkept hnew hpre, fun k hk =>
     (hold.2.2 k hk).update hkept hnew (hK k hk).1 (hK k hk).2⟩
@@ -258,12 +258,12 @@ theorem Spec.update {S : String → List AVal} {pre : String → List Expr}
 of the old catalog met its contract and every table's batch passed the checks
 of `Spec.update`, the view's proved postconditions hold on the new catalog. -/
 theorem Triple.maintained {S : String → List AVal} {pre : String → List Expr}
-    {K : String → List (List Nat)} {q : Query} {B : Relation → Prop} {cat cat' : Catalog}
+    {K : TableCond} {q : Query} {B : Relation → Prop} {cat cat' : Catalog}
     (hq : Triple (Spec S pre K) q B) (hcat' : cat'.WF) (hwf : q.WF cat')
     (hold : Sat (Spec S pre K) cat)
     (hbatch : ∀ t, ∃ kept del ins, (kept ++ del).Perm (cat t).rows ∧
       (cat' t).rows.Perm (kept ++ ins) ∧ (∀ row ∈ ins, EnvMem (S t) row) ∧
-      RowsSat (pre t) ins ∧ ∀ k ∈ K t, KeyOn k ins ∧ ∀ x ∈ ins, ∀ y ∈ kept, keyOf k x ≠ keyOf k y) :
+      RowsSat (pre t) ins ∧ ∀ k ∈ K.keys t, KeyOn k ins ∧ ∀ x ∈ ins, ∀ y ∈ kept, keyOf k x ≠ keyOf k y) :
     B (q.out cat').rows :=
   hq cat' hcat' (fun t => by
     obtain ⟨kept, del, ins, hkept, hnew, hS, hpre, hK⟩ := hbatch t
