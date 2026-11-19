@@ -72,3 +72,15 @@ def test_an_integer_cast_of_a_constant_string_is_refused():
     sql = "SELECT CASE WHEN x > 0 THEN 1 WHEN CAST('a' AS INTEGER) = 1 THEN 2 END AS v FROM t"
     with pytest.raises(ValueError, match="cannot cast"):
         verify(sql, tables={"t": T})
+
+
+def test_a_constant_that_raises_in_a_lambdas_body_is_reported_too():
+    """K5 of ruling 100: `Expr.constIssues` read a lambda's list and not its body, so a raising
+    constant under a guard that no row passes was proved."""
+    xs = ibis.table({"id": "int64", "xs": "array<int64>"}, name="t")
+    zero = ibis.literal(0, "int64")
+    body = xs.xs.map(lambda e: e + (ibis.literal(1, "int64") // zero))
+    guarded = xs.select(r=ibis.ifelse(xs.id > 5, body, None))
+    report = verify(guarded, requires=[ibis._.id < 0])
+    assert report.verdict == sv.Verdict.UNPROVED
+    assert "division by zero" in [i.kind for i in report.errors]
