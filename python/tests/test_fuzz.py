@@ -2,8 +2,7 @@
 
 Every random query and input either falls outside the model or gives no
 finding that an open issue (`sverify_dev.fuzz.KNOWN`) does not explain. The
-findings the generator turned up are pinned below as strict `xfail`s, so a
-fix shows up as an XPASS. The examples are fixed (`derandomize`); `poe fuzz`
+examples are fixed (`derandomize`); `poe fuzz`
 runs a long, random budget and prints the shrunk findings.
 """
 

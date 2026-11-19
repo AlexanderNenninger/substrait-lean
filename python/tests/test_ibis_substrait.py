@@ -37,8 +37,6 @@ from sverify_dev.coverage import (
 )
 
 VERIFIED = [c for c in CASES if c.expected == "verified"]
-#: Known gaps between Lean and DuckDB, fixed elsewhere.
-KNOWN_GAPS: dict[str, str] = {}
 #: Regular expressions are black boxes in Lean's semantics: not evaluated.
 OPAQUE = {"re_search"}
 #: LIMIT without a total order keeps whichever rows come first.
@@ -113,13 +111,7 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
 
 @pytest.mark.parametrize(
     "case",
-    [
-        pytest.param(c, marks=pytest.mark.xfail(reason=KNOWN_GAPS[c.label], strict=True))
-        if c.label in KNOWN_GAPS
-        else c
-        for c in VERIFIED
-        if c.label not in OPAQUE and c.label not in NO_DUCKDB_SQL
-    ],
+    [c for c in VERIFIED if c.label not in OPAQUE and c.label not in NO_DUCKDB_SQL],
     ids=lambda c: c.label,
 )
 @settings(
