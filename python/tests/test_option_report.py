@@ -387,7 +387,7 @@ def test_epsilon_per_engine(monkeypatch):
     # Below the smallest normal `1 / y` overflows on Polars: the plan has no bound there.
     sv.verify(t.select(s=t.x / 1e-300, d=t.x / 1e-310), requires=req, on_inferred="warn")
     eps = json.loads(seen["out"])["epsilon_by_engine"]["polars"]
-    assert "s" in eps and "d" not in eps
+    assert eps["s"]["proved"] == {"abs": True} and eps["d"]["abs"] is None
     sv.verify(t.select(r=t.y.ln()), requires=req)
     eps = json.loads(seen["out"])["epsilon_by_engine"]
     assert eps["duckdb"]["r"]["proved"] == {"abs": False}
