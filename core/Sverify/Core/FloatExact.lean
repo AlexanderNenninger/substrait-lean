@@ -400,6 +400,23 @@ theorem ofExact_rel {S : Int} (h : S.natAbs ≤ 2 ^ 2097) :
   simp only [Int.natCast_one, Int.one_mul, Nat.one_mul] at hw hu
   exact ⟨hfin, by omega⟩
 
+/-- `ofExactDiv` does not see a common factor. -/
+theorem ofExactDiv_mul_mul (v : Int) {k n : Nat} (hk : 0 < k) :
+    ofExactDiv (k * v) (k * n) = ofExactDiv v n := by
+  have hg : gridExp (k * v.natAbs) (k * n) = gridExp v.natAbs n := by
+    unfold gridExp; rw [Nat.mul_div_mul_left _ _ hk]
+  have hr : roundMagDiv (k * v.natAbs) (k * n) = roundMagDiv v.natAbs n := by
+    unfold roundMagDiv; rw [hg, Nat.mul_assoc, rndDiv_mul_left _ _ hk]
+  unfold ofExactDiv
+  rw [Int.natAbs_mul, Int.natAbs_natCast, hr]
+  have : (k : Int) * v < 0 ↔ v < 0 := by
+    constructor
+    · intro h; rcases Int.lt_or_le v 0 with h' | h'
+      · exact h'
+      · exact absurd h (Int.not_lt.mpr (Int.mul_nonneg (Int.natCast_nonneg k) h'))
+    · intro h; exact Int.mul_neg_of_pos_of_neg (Int.ofNat_lt.mpr hk) h
+  simp only [this]
+
 end Substrait.FloatCode
 
 namespace Substrait

@@ -235,7 +235,7 @@ def test_min_and_max_of_doubles_are_proved():
         requires={"samples": [_.cpu >= 0, _.cpu <= 100]},
         ensures=[_.hi <= 100, _.lo >= 0, _.lo <= _.hi, _.hi.notnull()],
     )
-    assert report.verdict == sv.Verdict.PROVED, str(report)
+    assert report.verdict == sv.Verdict.PROVED, report.details()
 
 
 def test_rollup_contract_is_proved():
@@ -251,7 +251,7 @@ def test_rollup_contract_is_proved():
         ensures=[_.mx.notnull(), _.mx <= 1000, _.lo <= _.mx, _.avg.notnull()],
         on_inferred="ignore",  # the truncated ts's bound
     )
-    assert report.verdict == sv.Verdict.PROVED, str(report)
+    assert report.verdict == sv.Verdict.PROVED, report.details()
     assert report.facts["mx"] == "an integer in [0, 1000]"
     # The reference rounds the exact mean once (D25), so it stays within the
     # inputs' bound (#1160). Its relation to the group's own max is not tracked.
@@ -280,7 +280,7 @@ def test_decimal_avg_is_bounded_by_its_inputs():
     report = sv.verify(
         g, requires={"lineitem": [_.q >= 1, _.q <= 50]}, ensures=[_.avg_q >= 1, _.avg_q <= 50]
     )
-    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, report.details()
 
 
 def test_avg_of_a_nullable_column_may_be_null():
@@ -299,12 +299,12 @@ def test_integer_sum_overflow_is_assumed_and_checked_on_the_data():
     report = sv.verify(orders.aggregate(total=orders.amount.sum()))
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
     assert [str(i) for i in report.assumed] == ["SUM overflow: sum(amount)"]
-    assert "assumes: SUM of amount fits 64 bits in every group" in str(report)
+    assert "assumes: SUM of amount fits 64 bits in every group" in report.details()
     # Without inference it is an error like any other.
     strict = sv.verify(orders.aggregate(total=orders.amount.sum()), on_inferred="off")
     assert [str(i) for i in strict.errors] == ["SUM overflow: sum(amount)"]
     assert strict.verdict == sv.Verdict.UNPROVED and not strict.assumed
-    assert "checks it while it runs" in str(strict)
+    assert "checks it while it runs" in strict.details()
 
 
 def test_a_sum_of_a_flag_fits_by_the_row_bound():
@@ -315,12 +315,12 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     flag = (jobs.conclusion == "success").ifelse(1, 0)
     t = jobs.group_by("workflow").aggregate(passed=flag.sum())
     for report in (sv.verify(t), sv.verify(t, on_inferred="off")):
-        assert report.verdict == sv.Verdict.PROVED, str(report)
+        assert report.verdict == sv.Verdict.PROVED, report.details()
         assert not report.issues and not report.assumed and not report.warnings
         assert not any(h.startswith("SUM of") for h in report._hints)
     sign = (jobs.conclusion == "success").ifelse(1, -1)
     report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), on_inferred="off")
-    assert report.verdict == sv.Verdict.PROVED and not report.issues, str(report)
+    assert report.verdict == sv.Verdict.PROVED and not report.issues, report.details()
     # Values in [0, 2] still need a row cap: 2 · (2^63 - 1) leaves 64 bits.
     double = (jobs.conclusion == "success").ifelse(2, 0)
     t = jobs.group_by("workflow").aggregate(points=double.sum())
@@ -353,14 +353,14 @@ def test_an_assumed_sum_names_its_column():
         )
         for h in report._hints
     )
-    assert "assumes: SUM of amount_cents fits 64 bits in every group" in str(report)
+    assert "assumes: SUM of amount_cents fits 64 bits in every group" in report.details()
     assert assumed in report._repr_markdown_()
-    assert "$" not in str(report) + report._repr_markdown_()
+    assert "$" not in report.details() + report._repr_markdown_()
     # A SUM of an expression names it in the user's terms (#655).
     t = ibis.table({"k": "!int64", "b": "int64"}, name="t")
     report = sv.verify(t.group_by("k").aggregate(s=(t.b * 2).sum()))
     assert [(i.expr, i.column) for i in report.assumed] == [("($1 * 2)", None)]
-    assert "assumes: SUM of b * 2 fits" in str(report)
+    assert "assumes: SUM of b * 2 fits" in report.details()
 
 
 def test_a_bounded_sum_over_bounded_rows_is_proved_outright():
@@ -371,7 +371,7 @@ def test_a_bounded_sum_over_bounded_rows_is_proved_outright():
     report = sv.verify(
         first.aggregate(total=first.amount.sum()), requires=bounded, on_inferred="off"
     )
-    assert report.verdict == sv.Verdict.PROVED, str(report)
+    assert report.verdict == sv.Verdict.PROVED, report.details()
     assert not report.assumed
     # Without the bound on the values, or on the rows, it may overflow.
     report = sv.verify(first.aggregate(total=first.amount.sum()), on_inferred="off")
@@ -400,7 +400,7 @@ def test_aggregate_postconditions_are_proved():
             sv.unique("customer"),
         ],
     )
-    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, report.details()
     # Nothing bounds a group's rows (#219): the SUM is assumed to fit.
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
     assert report.facts["n"] == "an integer ≥ 1"
@@ -419,7 +419,7 @@ def test_sum_has_no_upper_bound():
 
 def test_a_global_aggregate_has_one_row():
     report = sv.verify(orders.aggregate(n=orders.count()), ensures=[sv.unique()])
-    assert report.verdict == sv.Verdict.PROVED, str(report)
+    assert report.verdict == sv.Verdict.PROVED, report.details()
 
 
 def test_errors_in_measures_are_reported():
@@ -993,7 +993,7 @@ def test_quantiles_lie_between_the_smallest_and_largest_value():
             _.a.isnull() | ((_.a >= 0) & (_.a <= 10)),
         ],
     )
-    assert report.verdict == sv.Verdict.PROVED, str(report)
+    assert report.verdict == sv.Verdict.PROVED, report.details()
 
 
 def test_arg_min_is_determined_by_a_key_and_mode_by_its_value():

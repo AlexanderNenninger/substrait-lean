@@ -23,11 +23,11 @@ from collections.abc import Mapping, Sequence
 # An engine built from main beside PyPI's sverify of the same version number
 # fails deep inside sverify with a TypeError (#1585): check the interface first.
 from importlib.metadata import version as _version
-from typing import Any
+from typing import Any, Literal
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 1:
+if getattr(_meta, "PLUGIN_API", None) != 2:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -36,7 +36,7 @@ if getattr(_meta, "PLUGIN_API", None) != 1:
 
 from sverify._unsupported import ISSUE_271, RANGE_GUARD
 from sverify.profiles import ProfilePlugin, Setting
-from sverify_spark.store import ArrowStore
+from sverify_spark.store import SparkStore
 
 #: The settings Spark's profile assumes.
 SETTINGS: tuple[Setting, ...] = (
@@ -125,8 +125,46 @@ def _run(
     # Spark's temporary views take plain names, not the delta plans' `t$delta`.
     names = {t: f"__sverify_{i}" for i, t in enumerate(read_tables(plan))}
     _rename_tables(plan, names)
-    tables = {alias: con._arrow[t] for t, alias in names.items()}
+    spark = session if session is not None else spark_engine.session()
+    tables = {alias: _table(con, t, spark) for t, alias in names.items()}
+    if keep:
+        from sverify_spark.store import lazy_plan
+
+        df = spark_engine.run_df(plan, tables, spark, deterministic=tie_free, finite=finite)
+        return lazy_plan(df, spark)
     return spark_engine.run(plan, tables, session, deterministic=tie_free, finite=finite)
+
+
+def _table(con: Any, name: str, spark: Any) -> Any:
+    """Table `name` of the connection for Spark: a `Scan` of local files as it is
+    (the session reads it, `sverify_spark.scan`) where this route covers it, any
+    other table as Arrow. A scan it does not cover (a `where`, which is
+    DuckDB SQL, or files that are not local) reads through Arrow on a session that
+    shares the driver's filesystem, and is refused on a Spark Connect or non-local-master session:
+    the server-side read is N12 of #173."""
+    from sverify._parts import PartsState
+    from sverify._scan import Scan
+    from sverify._unsupported import Unsupported
+    from sverify_spark.scan import shares_filesystem
+
+    table = con.get(name)
+    if isinstance(table, PartsState):  # a state's files, as they are
+        return table
+    if not isinstance(table, Scan) or not table.readable():
+        return con._arrow[name]
+    from sverify._scan import local_path
+
+    files = [*table.files, *(e.file for e in table.equality)]
+    covered = table.where is None and all(local_path(f) is not None for f in files)
+    if covered:
+        return table
+    if shares_filesystem(spark):
+        return con._arrow[name]
+    raise Unsupported(
+        f"{name}: a table with a `where` or remote files is read through "
+        "Arrow on a local Spark session only; reading it on a Spark Connect or cluster session "
+        "is N12 of #173"
+    )
 
 
 def _is_session(obj: Any) -> bool:
@@ -171,9 +209,13 @@ def _dialect() -> Any:
     return SPARK
 
 
+#: What the runner writes for the rows (`ProfilePlugin.rows`): Spark tables have
+#: no row order, so ties and the rows of a `LIMIT` are open.
+ROWS: Literal["sequence", "multiset"] = "multiset"
+
 PLUGIN = ProfilePlugin(
     "spark",
-    store=ArrowStore,
+    store=SparkStore,
     title="Spark",
     profile=True,
     translation="sverify's Spark SQL writer, with shims where Spark differs from the "
@@ -183,6 +225,7 @@ PLUGIN = ProfilePlugin(
     installed_version=_version,
     restore=_restore,
     runner=_run,
+    rows=ROWS,
     session=_is_session,
     modules=("pyspark",),
     read_settings=_read_settings,

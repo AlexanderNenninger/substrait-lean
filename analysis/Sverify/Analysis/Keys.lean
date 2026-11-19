@@ -533,7 +533,7 @@ theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (
       simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
       rcases hs with hs | hs
       · simp_all
-      · exact strsDisjoint_false hs ha.2 hb.2
+      · exact strsDisjoint_false hs ha.1.1.2 hb.1.1.2
 
 /-- The first column on which the descriptions `ea` and `eb` share no value. -/
 def apartCol (ea eb : List AVal) : Option Nat :=

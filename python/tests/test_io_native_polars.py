@@ -55,8 +55,10 @@ def agree(scan: Scan) -> None:
     want = E.run(plan, {"t": scan.to_arrow()})
     assert got.schema.equals(want.schema)
     assert bag(got) == bag(want)
-    # The descriptor's file order, rows in the files' order, as DuckDB reads them.
-    assert ordered(lazy_scan(scan).collect().to_arrow()) == ordered(scan.to_arrow())
+    # The descriptor's file order, rows in the files' order, as DuckDB reads them
+    # (its join with the partition values may reorder, so those scans compare as bags).
+    if scan.partitions is None:
+        assert ordered(lazy_scan(scan).collect().to_arrow()) == ordered(scan.to_arrow())
 
 
 @settings(
@@ -70,10 +72,20 @@ def test_a_delta_scan_over_histories(history, tmp_path_factory):
         snap = src._native(v)
         if snap is None:
             continue
-        if snap.scan.partitions is not None:
-            with pytest.raises(Unsupported):
-                lazy_scan(snap.scan)
-        else:
+        agree(snap.scan)
+
+
+@pytest.mark.parametrize("mode", ["name", "id"])
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(history=histories(renames=True, adds=False))
+def test_a_mapped_delta_scan_over_histories(mode, history, tmp_path_factory):
+    path = tmp_path_factory.mktemp("m") / "t"
+    src = build_delta(path, history, mapping=mode)
+    for v in [*range(DeltaTable(str(path)).version() + 1), None]:
+        snap = src._native(v)
+        if snap is not None:
             agree(snap.scan)
 
 
@@ -169,9 +181,7 @@ def test_a_where_is_duckdb_sql_and_stays_on_the_arrow_route(tmp_path):
     assert isinstance(got, pa.Table) and got.column("id").to_pylist() == [2, 3]
 
 
-def test_a_partitioned_delta_table_reads_on_polars_through_arrow(tmp_path):
-    """Polars does not read partition values yet, so `_table` hands such a scan to
-    Polars as Arrow: the rows are the table's, and `lazy_scan` still refuses."""
+def test_a_partitioned_delta_table_reads_natively_on_polars(tmp_path):
     import sverify as sv
     from sverify.incremental import Pipeline
     from sverify.io.delta import DeltaSource
@@ -183,8 +193,61 @@ def test_a_partitioned_delta_table_reads_on_polars_through_arrow(tmp_path):
     pipe.source("p", DeltaSource(str(tmp_path / "p")))
     scan = pipe.con.get("p")
     assert isinstance(scan, Scan) and scan.partitions is not None
-    with pytest.raises(Unsupported):
-        lazy_scan(scan)
-    got = _table(pipe.con, "p")
-    assert isinstance(got, pa.Table)
+    assert isinstance(_table(pipe.con, "p"), pl.LazyFrame)
+    assert bag(lazy_scan(scan).collect().to_arrow()) == bag(scan.to_arrow())
+
+
+def test_partition_values_with_awkward_characters_reach_their_rows(tmp_path):
+    """Delta percent-encodes `k=a%20b/` directories; the values are keyed by the
+    descriptor's own file string, so no spelling of a path decides a row's value."""
+    from sverify.io.delta import DeltaSource
+
+    ks = ["a b", "50%", "x=y", "p/q", "é"]
+    t = pa.table({"id": list(range(len(ks))), "k": ks})
+    write_deltalake(tmp_path / "p", t, partition_by=["k"])
+    snap = DeltaSource(str(tmp_path / "p"))._native()
+    assert snap is not None
+    scan = snap.scan
+    assert scan.partitions is not None
+    got = lazy_scan(scan).collect().to_arrow()
+    assert sorted(zip(got["id"].to_pylist(), got["k"].to_pylist(), strict=True)) == list(
+        enumerate(ks)
+    )
+
+
+def test_a_file_without_partition_values_raises(tmp_path):
+    from dataclasses import replace
+
+    from sverify.io.delta import DeltaSource
+
+    write_deltalake(tmp_path / "p", pa.table({"id": [1, 2], "k": ["a", "b"]}), partition_by=["k"])
+    snap = DeltaSource(str(tmp_path / "p"))._native()
+    assert snap is not None
+    scan = snap.scan
+    assert scan.partitions is not None
+    short = replace(scan, partitions=scan.partitions.slice(1))
+    with pytest.raises(ValueError, match="no partition values for"):
+        lazy_scan(short)
+
+
+def test_equality_deletes_find_a_file_whose_path_has_a_space_and_percent(tmp_path):
+    """The delete applies to the files the descriptor names, by its own strings: a
+    path with a space and `%25` matches, and a file it does not name keeps its rows."""
+    from sverify._scan import EqualityDelete
+
+    d = tmp_path / "dir with space%25"
+    d.mkdir()
+    data, other, dele = d / "data file.parquet", d / "other.parquet", d / "del.parquet"
+    schema = pa.schema([pa.field("id", pa.int64(), metadata={"PARQUET:field_id": "1"})])
+    pq.write_table(pa.table({"id": [1, 2, 3]}, schema=schema), data)
+    pq.write_table(pa.table({"id": [2, 4]}, schema=schema), other)
+    pq.write_table(pa.table({"id": [2]}, schema=schema), dele)
+    scan = Scan(
+        (str(data), str(other)),
+        pa.schema([("id", pa.int64())]),
+        field_ids=(1,),
+        equality=(EqualityDelete(str(dele), (1,), ("id",), (str(data),)),),
+    )
+    got = lazy_scan(scan).collect().to_arrow()
+    assert got.column("id").to_pylist() == [1, 3, 2, 4]
     assert bag(got) == bag(scan.to_arrow())

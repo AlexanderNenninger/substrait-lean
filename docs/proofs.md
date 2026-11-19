@@ -61,6 +61,7 @@ contract's preconditions.
 | DuckDB, under its default settings, computes the reference | `eval` | `Rel.duckdb_sound` | `DuckDB/Profile.lean` |
 | The generated DuckDB lowering computes the reference | `eval`, `AllowedP` | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | A DuckDB SQL function the lift reads means what DuckDB computes: the template it lifts to agrees with `DuckDB/SQL.lean`'s meaning under each semantics, the proof in each generated `LiftEntry`'s `agree` field (checked when `check_generated` is on) | `eval` | `LiftEntry.of₁`, `LiftEntry.of₂` | `DuckDB/LiftSearch.lean`, `DuckDB/Lift/Duckdb/*.lean`, `DuckDB/Lift/Reference/*.lean` |
+| DuckDB's native `avg` of integers gives one of the doubles `duckdb-avg-int` states, a set the lifted plan's value is in; an integer mean of small integers is exact, and every member is within one unit in the last place of the plan's value, or `16 · 2⁻⁵³` of it past `2⁵³` | `eval` | `DuckAgg.eval_allowed`, `DuckAgg.avgBigint_exact`, `DuckAgg.avgBigint_near`, `AggEntry.allowed_near` | `DuckDB/AvgSet.lean` |
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `DuckDB/Lowering.lean`, `DuckDB/LoweringOn/Guards.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `DuckDB/Lowering.lean` |
@@ -84,6 +85,7 @@ contract's preconditions.
 | A result one profile allows, another allows too, option by option | `AllowedP` | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | An engine's double `SUM` under a non-`EXACT` order (D35) is finite and in a range computed from its inputs' range and row bound | `AllowedP` | `SumOrder.bound` | `SumBound.lean` |
 | An engine's double `AVG` under every `sum_order` (D35) is finite and in a range computed from its inputs' range and row bound; each sum and mean `AllowedP` allows is within `2(n + 1) · Σ(\|xᵢ\| + 2⁻¹⁰²²) · 2⁻⁵³` of the exact sum (times `n` for a mean, plus one more rounding) | `AllowedP` | `AvgOrder.bound`, `SumOrder.near`, `AvgOrder.near` | `MarginSound.lean` |
+| An engine's double `SUM` of integers with `Σ \|xᵢ\| ≤ 2⁵³` is the exact sum under every `sum_order`, and its `AVG` the reference's (D35, amended 2026-11-19), so a measure of converted integers with `N · max M 1 ≤ 2⁵²` has no tolerance | `AllowedP` | `SumOrder.int_exact`, `AvgOrder.int_exact`, `FloatSums.int_exact`, `floatSum_int` | `MarginSound.lean` |
 | The margin check of a threshold filter on a double `SUM` or `AVG` (#929), in the core's doubles: a group's row `marginCount` does not flag passes the check, and a group passing it on one sum or mean `AllowedP` allows has every allowed sum or mean, and the reference's, strictly on one side of `t` | `AllowedP` | `margin_row`, `check_sum`, `check_avg`, `margin_sum`, `margin_avg` | `MarginSound.lean` |
 | A delta plan computes the change of the view | `zeval` | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
 | `Rel.eval` is weighted evaluation over `Nat`: every unordered arm (filter, project, emit, cross, joins, union, sort, `DISTINCT`, semi and anti joins, unnest) at once, with the ordered and aggregate nodes read through the seam | `eval` | `Rel.eval_eq_evalK` | `WSet.lean` |
@@ -107,6 +109,7 @@ contract's preconditions.
 | Algebraic rewrites keep the result: filters merge (`Filter(Filter(r,p),q) = Filter(r, p AND q)`, under three-valued logic too), a true filter and a fetch of zero rows go, filters distribute over `UNION ALL` and push below a `ProjectRel` or into a side of a `CrossRel`, `UNION ALL` commutes up to bag equivalence, an inner join is a filtered cross product, and emitting a `ProjectRel`'s input columns removes it | `eval` | `filter_filter`, `filter_true`, `fetch_zero_none`, `filter_unionAll`, `unionAll_comm`, `join_inner_eq_filter_cross`, `filter_project_pushdown`, `filter_cross_pushdown_left`, `emit_project_identity` | `Rewrites.lean` |
 | Rewrites from contract facts and keys keep the result | `eval` | `Rel.optimize_sound` | `Semantic.lean` |
 | A double `SUM` or `AVG` is within the reported `epsilon` | the reals (`float-bounds/`) | `StdModel.epsilon_sum_cr`, `StdModel.epsilon_avg_cr` (against the reference's correctly rounded value, D25), `StdModel.epsilon_sum_rel`, `StdModel.epsilon_avg_rel` | `float-bounds/FloatBounds/Epsilon.lean` |
+| Every summation order the engines' facts record adds integers with `Σ \|xᵢ\| ≤ 2⁵³` exactly, under `StdModel.ExactInts` (D35, amended 2026-11-19) | the reals (`float-bounds/`) | `StdModel.Summed.int_exact`, `StdModel.kahan_int`, `StdModel.TreeSum.int_exact` | `float-bounds/FloatBounds/IntExact.lean` |
 | Sharded double sums are near the sequential sum | the reals (`float-bounds/`) | `StdModel.sharded_near`, `StdModel.sharded_avg_near` | `float-bounds/FloatBounds/Shard.lean` |
 | A group's double sum, in any order an engine adds, is within `(γₙ + u) · Σ(\|xᵢ\| + tiny)` of the reference's; a group passing the engine-computed check `\|fl(v − t)\| > fl(cₙ · fl(A + n · tiny))` is farther than twice that from `t`, so every evaluation of its sum lies on the reference's side of `t` | the reals (`float-bounds/`) | `StdModel.epsilon_group`, `StdModel.mag_le_absSummed`, `StdModel.check_sound`, `margin_sound`, `StdModel.margin_check`, `StdModel.epsilon_group_avg`, `StdModel.check_sound_avg`, `StdModel.margin_check_avg` | `float-bounds/FloatBounds/Margin.lean` |
 | A sink's refreshes, with crashes, late writes of crashed processes, lost acknowledgements, racing writers, other applications' commits and deploys, never apply a change to a table it was not computed from, and the sink's record names its table. They assume only that the state is reachable (`Reachable`), for a durable source and writers deciding as `Refresh.next` (`tests/test_refresh_next.py`). [models/refresh](../models/refresh/README.md)'s `Refresh.tla` model-checks the same protocol with TLC at small scopes, sources that cannot restore included | the refresh protocol | `Refresh.no_corruption`, `Refresh.record_describes_table` | `Refresh.lean` |
@@ -266,6 +269,7 @@ build as the guard. The modules below import it as `Sverify.DuckDB.*`.
 | `DuckDB/Engine.lean` | `Engine.duckdb`, its functions within DuckDB's table (`Profile.duckdb_withinOk`), and `Engine.duckdb_sound` |
 | `DuckDB/LiftHint.lean` | The hints that tell the lift search which template to try first |
 | `DuckDB/LiftCache.lean` | The lift hints (generated) |
+| `DuckDB/AvgSet.lean` | DuckDB's `avg` of integers as the set of doubles `duckdb-avg-int` states (`DuckAgg.Allowed`): the model's value is in it (`DuckAgg.eval_allowed`), an integer mean is its one member (`DuckAgg.avgBigint_exact`), every member is near the model's value (`DuckAgg.avgBigint_near`), and so near every lifted aggregate's (`AggEntry.allowed_near`) |
 | `DuckDB/SumGuard.lean` | DuckDB's `SUM` and `AVG` of doubles as a guarded sum and the extremes: `SumGuard.agree` (it is the aggregate's value, for every group) and `SumGuard.noNan` (no measure has a domain error, #341) |
 | `DuckDB/LiftSearch.lean` | `generate_lift`, the lift search |
 | `DuckDB/Lift.lean` | The lift's tables and their exports |
@@ -373,7 +377,7 @@ build as the guard.
 | `ProvedOn.lean` | From the checker's verdict to each engine's model (#1484, A6): `check_proved_on` and its DuckDB, Polars and Spark corollaries, the side conditions taken from the report |
 | `Engine.lean` | The engines' `Engine` values together: the check that each one's certificate is non-empty, and DuckDB's side condition from an empty `Rel.mayIssues` |
 | `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
-| `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, and the range of an engine's double `AVG` (`AvgOrder.bound`) |
+| `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, the range of an engine's double `AVG` (`AvgOrder.bound`), and its exactness on small integers (`AvgOrder.int_exact`) |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
@@ -418,6 +422,7 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `Kahan.lean` | Kahan's compensated sum |
 | `Core.lean` | The core's trusted sum and mean bounds, proved |
 | `Epsilon.lean` | The `epsilon` bounds `--contract` reports |
+| `IntExact.lean` | Every summation order adds small integers exactly, under `StdModel.ExactInts` (D35, amended 2026-11-19) |
 | `Propagate.lean` | `epsilon` through double arithmetic |
 | `Shard.lean` | Sharded sums against the sequential sum |
 | `Margin.lean` | A threshold's margin, checked on the data: a group's sum against the reference's, and the check the engine computes |

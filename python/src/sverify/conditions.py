@@ -17,7 +17,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import ibis
 import ibis.expr.operations as ops
@@ -462,7 +462,8 @@ def max_rows(n: int) -> MaxRows:
 
     With a cap, an integer `SUM` of values in `[-m, m]` over at most `n`
     rows, with `n · m < 2⁶³`, is proved to fit 64 bits, and needs no
-    check on the data. Error bounds of floating-point aggregates grow with
+    check on the data, and a `COUNT` is at most `n`, so `x * COUNT(y)`
+    with `x` in `[-m, m]` fits as well. Error bounds of floating-point aggregates grow with
     the number of rows, so `SUM` and `AVG` of doubles get their bounds only
     from inputs with a cap: a sum of at most `n` values in `[lo, hi]` lies
     within the proved tolerance of `[min(lo, n·lo), max(hi, n·hi)]`, and
@@ -994,6 +995,9 @@ class Inferred(str):
     text: str
     column: str | None = None
     """The input column it bounds (set by `_render_needs`)."""
+    ascii: Literal["ascii", "plain"] | None = None
+    """For a text column's ASCII condition (#1506): `"plain"` also rules out
+    the vertical tab. The request declares the column so (`"ascii"`)."""
 
     def __new__(cls, sql: str, text: str) -> Inferred:
         out = super().__new__(cls, sql)

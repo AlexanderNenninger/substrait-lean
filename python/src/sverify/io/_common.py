@@ -23,7 +23,7 @@ import ibis
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _deprecated
+from sverify import _deprecated, profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
 from sverify._unsupported import SverifyError
@@ -392,6 +392,20 @@ class Contract:
     `metaData.id`), at its version in `sources`. A table dropped and created
     again at the same location has a new id, and versions that start over:
     a state recorded from the old table is not one of the new table's."""
+    engine: str | None = None
+    """The engine that computed the state (`sverify.engines`), None where the
+    record does not say: one written before these fields."""
+    engine_version: str | None = None
+    """The version of the engine's library."""
+    sverify: str | None = None
+    """The version of sverify that wrote the record. Its facts and checker are
+    those of the release."""
+    profile: str | None = None
+    """The profile the plan was verified under (`verify(semantics=...)`); the
+    plan's digest includes it unless it is `"reference"`."""
+    package: str | None = None
+    """For an engine that comes from another package than sverify, that package
+    as `name==version`: its facts ship with it."""
     format: int = CONTRACT_FORMAT
     """The version of the record's format (`CONTRACT_FORMAT`,
     `sverify/schemas/sink-contract.schema.json`). It changes only with a
@@ -406,7 +420,7 @@ class Contract:
             A JSON object with the contract's fields, keys sorted, in the
             format of `sverify/schemas/sink-contract.schema.json`.
         """
-        return json.dumps(self.__dict__, sort_keys=True)
+        return json.dumps({k: v for k, v in self.__dict__.items() if v is not None}, sort_keys=True)
 
     @staticmethod
     def from_json(text: str) -> Contract:
@@ -526,7 +540,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
     not_null += [c for c in view.not_null if c in names and c not in not_null]
     return Contract(
         node=view.name,
-        plan=plan_digest(view.plan),
+        plan=plan_digest(view.plan, profile=view.profile),
         sources=versions,
         epoch=sum(versions.values()),
         not_null=not_null,
@@ -535,6 +549,11 @@ def view_contract_record(view: IncrementalView) -> Contract:
         digests=view.pipeline.digests(view.name),
         cursors=_cursors(view, versions),
         table_ids=_table_ids(view, versions),
+        profile=view.profile,
+        engine=(rt := profiles.runtime(view.engine))["engine"],
+        engine_version=rt["engine_version"],
+        sverify=rt["sverify"],
+        package=rt["package"],
     )
 
 

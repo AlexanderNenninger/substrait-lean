@@ -103,6 +103,7 @@ place, and what retires it.
 | CLI glue | `"class_basis": "computed"`, `"sorted_basis": "computed"` | `SubstraitLean/Realize.lean` | The class and the sort per engine are computed from the rows; no theorem connects them to the engine's refinement | A theorem that does |
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `SubstraitLean/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
+| Python glue | `Observation.reads_members`, `routes.reproducibility` | `python/src/sverify/observation.py`, `python/src/sverify/routes.py` | The step from an observation to a level of determinism (D48): an observation that reads one zero and one NaN (`zeros="canon"`, `floats="plan"` or a tolerance) is met by `Report.deterministic`, the class level (`check_class_determined_sound`); one that reads the members asks for the exact level (`check_deterministic_sound`) | A bridge from `Row.canon` to `Relation.Equiv` for `zeros = .canon` (`core/Sverify/Core/ObsEquiv.lean`) |
 | Python glue | `Report.check_inputs`, `Report._unchecked_requires` | `python/src/sverify/report.py` | On Polars (and Spark) a guard-free plan runs without its per-row guards, which rests on `check_inputs` deciding `Rel.polars_sound`'s `hpre` on the data: each `requires` is checked on the run's engine, a report read back with `Report.from_substrait` carries its preconditions as plans (`PlannedCondition`), and a run refuses a report with a precondition it holds no check for | A theorem that ties the checks to `hpre` |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
 | engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `engines/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
@@ -153,7 +154,13 @@ place, and what retires it.
   `--serve` loop and `runOn` that call `check` and print its report, and
   `underProfile`, which labels the reference's report with the profile a
   request names for an out-of-tree engine marked `asReference` (no built-in one: Polars's report is pending until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). On the Python side, the glue of
-  incremental views (change tables, consolidation, merge).
+  incremental views (change tables, consolidation, merge, and the finish that
+  turns the state back into the view's rows). The checker parses and writes
+  each maintenance plan (`init`, `contrib`, `merge`, `regroup`, the finish and
+  those of `_semi.py` and `_touched.py`) and does not contract-check them. A
+  view's report is its batch query's, so a refresh can raise where the report
+  lists no issue (`contrib`'s product at the edge of a type, `merge`'s partial
+  sums); the refresh then applies nothing.
 - The exact state of a maintained `SUM` or `AVG` of doubles
   (`python/src/sverify/_exact_sum.py`). Lean proves that the state, an
   integer per group, finishes to `floatSumCR` of the current rows after any

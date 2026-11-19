@@ -47,11 +47,19 @@ summary; its JSON's `status` says `"quarantined"` or `"held"`, with
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from pathlib import Path
 
 from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._main import main
-from sverify.cli._text import summary
+from sverify.report import Report
+
+
+def summary(report: Report, sources: Collection[str] | None = None) -> dict[str, list[str]]:
+    """The plain-language contract of a report, as `check` prints it: its
+    `guarantees`, what each run `checks` on the data, and what is `not_proved`.
+    With `sources`, the checks cover those tables only."""
+    return report._plain_contract(sources)
 
 
 def discover(path: str | Path) -> Discovery:

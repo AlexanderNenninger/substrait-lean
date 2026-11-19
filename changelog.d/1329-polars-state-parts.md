@@ -1,0 +1,3 @@
+### Polars keeps a pipeline view's state in Parquet parts, as Spark does
+
+On Polars, a refresh now writes the change as a new Parquet part and leaves the state's other parts where they are; the Lean merge plan adds the parts up when something reads the table or they pass a size bound (#1329, #173). A weight sum that leaves 64 bits is raised at the later read that adds the parts up, not at the refresh that caused it. Polars and Spark share one implementation of the parts (`sverify._parts`). Four inserts of a quarter of the rows each into a filter view peak at 695 MB where they peaked at 947 MB over two million rows, and at 1369 MB where they peaked at 2314 MB over eight million; a refresh of a built state costs the change, 0.1 s for 100,000 rows at either size.

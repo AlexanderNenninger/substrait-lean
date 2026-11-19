@@ -54,7 +54,7 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     assert absent.observation == plan.observation == sv.equivalent(floats="plan")
     assert absent.observation.bound == plan.observation.bound == bound
     assert str(absent.observation) == f"equivalent(floats=plan, ≤ {bound.abs:.1e})"
-    assert f"observes: equivalent(floats=plan, ≤ {bound.abs:.1e})" in str(absent)
+    assert f"observes: equivalent(floats=plan, ≤ {bound.abs:.1e})" in absent.details()
     assert (
         absent.verdict == sv.Verdict.PROVED
         and plan.verdict == sv.Verdict.PROVED
@@ -62,7 +62,7 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     )
     assert absent._floats_on == plan._floats_on == {}
     assert all(not ps for ps in stated._floats_on.values())
-    assert f"the plan's bound on its doubles is {bound.abs:.1e}" in str(stated)
+    assert f"the plan's bound on its doubles is {bound.abs:.1e}" in stated.details()
 
     runs = []
     for report in (absent, plan, stated):
@@ -127,7 +127,7 @@ def test_a_tolerance_below_the_bound_is_refused_at_verify(con, tol) -> None:
     report = verify(con, [sv.equivalent(floats=tol)])
     assert report.verdict == sv.Verdict.UNPROVED
     assert report._floats_on and all(report._floats_on.values())
-    text = str(report)
+    text = report.details()
     assert f"observes: equivalent(floats={tol}); the plan's bound on its doubles is " in text
     assert "NOT met: no engine meets the tolerance" in text
     assert "or looser in ensures" in text
@@ -140,7 +140,7 @@ def test_a_tolerance_below_the_bound_is_refused_at_verify(con, tol) -> None:
 def test_exact_doubles_say_which_engines_give_them(con) -> None:
     mean = verify(con, [sv.equivalent(floats="exact")])
     assert mean.verdict == sv.Verdict.UNPROVED
-    assert "NOT met: no engine meets exact doubles" in str(mean)
+    assert "NOT met: no engine meets exact doubles" in mean.details()
 
     r = con.table("readings")
     doubled = sv.verify(
@@ -148,7 +148,7 @@ def test_exact_doubles_say_which_engines_give_them(con) -> None:
     )
     assert doubled.verdict == sv.Verdict.PROVED
     assert doubled._floats_on == {"duckdb": [], "polars": [], "spark": []}
-    assert "duckdb, polars, spark meet exact doubles" in str(doubled)
+    assert "duckdb, polars, spark meet exact doubles" in doubled.details()
 
 
 # -- what routes and the manifest print ---------------------------------------

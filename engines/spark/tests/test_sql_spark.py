@@ -87,10 +87,11 @@ def test_refusals():
         SPARK.float_pow("a", "b")
     with pytest.raises(Unsupported, match="ORDER BY"):
         SPARK.over(["`c0`"], [])
-    with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["window"], SPARK)
-    with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["fetch"], SPARK, deterministic=True)
+    for name in ("window", "fetch"):
+        with pytest.raises(Unsupported, match="no row order"):
+            to_sql(NAMED_ORDERED[name], SPARK, rows="sequence")
+        # Ties and a LIMIT's rows are open under the default observation (#1608).
+        assert to_sql(NAMED_ORDERED[name], SPARK, rows="multiset")
 
 
 # ------------------------------------------------------------ on Spark
@@ -374,3 +375,24 @@ def test_date_trunc_matches_lean(spark, values):
         sql = f"SELECT date_trunc('{unit}', ts) AS x FROM r"
         got = spark_rows([as_micros(SPARK.date_trunc(unit, "ts"))], vs)
         assert canonical(got) == canonical(polars_rows(sql, vs)), unit
+
+
+def test_nested_bound_operations_resolve_on_spark(spark):
+    """`(x * x + x) / y` binds `x * x`, then `x * x + x`, one layer higher
+    each (#1608): the layers are told apart by the dialect's own quoting
+    (backticks here), or Spark cannot resolve a column defined beside its use."""
+    import json
+
+    import ibis
+
+    from sverify.ibis_substrait import to_substrait_json
+    from sverify_spark.engine import put_tables
+
+    t = ibis.table({"x": "float64", "y": "float64"}, name="t")
+    plan = json.loads(to_substrait_json(t.select(r=(t.x * t.x + t.x) / t.y)))
+    sql = to_sql(plan, SPARK, rows="multiset")
+    assert "`b1`" in sql
+    xs, ys = [1.5, -7.25, 0.0, 3.0], [2.0, 4.0, 0.5, 8.0]
+    put_tables({"t": pa.table({"x": xs, "y": ys})}, spark)
+    got = [r[0] for r in spark.sql(sql).collect()]
+    assert got == pytest.approx([(x * x + x) / y for x, y in zip(xs, ys, strict=True)])

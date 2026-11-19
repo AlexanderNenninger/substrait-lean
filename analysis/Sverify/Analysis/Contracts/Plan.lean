@@ -345,9 +345,10 @@ theorem floatBound_sound {avg : Bool} {b : Bound} {rows : Option Nat} {cs : List
     (floatBound avg b rows).Mem (if avg then avgCode cs else floatSumCR (cs.map .float)) :=
   Bound.mem_meet (signBound_sound hne hb) (crBound_sound hne hb hrows)
 /-- A measure over rows described by `env` and `fs`: a count is a natural
-number, a sum of integers keeps their sign, `MIN`, `MAX` and an integer
-`AVG` are within the argument's values, and the other measures are doubles. All but
-`COUNT` may be NULL, unless a group has a value (`grouped`, #372). -/
+number, at most `rows`, a sum of integers keeps their sign, `MIN`, `MAX` and
+an integer `AVG` are within the argument's values, and the other measures are
+doubles. All but `COUNT` may be NULL, unless a group has a value (`grouped`,
+#372). -/
 def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool := false)
     (rows : Option Nat := none) : AVal :=
   let a := m.arg.absD env fs
@@ -355,7 +356,8 @@ def Measure.abs (env : List AVal) (fs : List Fact) (m : Measure) (grouped : Bool
   -- without a filter has a value: `COUNT(*)` per group is at least 1.
   let valued := grouped && m.filter.isNone && !a.null
   match m.fn with
-  | .count => { int := some (Bound.ge (if valued then 1 else 0)), nk := some .int }
+  -- With at most `rows` rows, at most that many (12e of #1608).
+  | .count => { int := some ⟨some (if valued then 1 else 0), rows.map Int.ofNat⟩, nk := some .int }
   -- A sum is over at least one input (none: NULL), so with integer inputs
   -- it is at least the smallest one, if that is not negative.
   -- With at most `rows` rows, at most `rows` times the largest value (#470).

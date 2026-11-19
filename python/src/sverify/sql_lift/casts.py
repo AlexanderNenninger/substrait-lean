@@ -10,6 +10,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
+from sverify._decimals import EXACT
 from sverify.plan_json import SqlUnsupported, Unsupported, cast_json, literal, type_json
 from sverify.sql_lift._base import (
     DIALECT,
@@ -69,6 +70,25 @@ def _in_filtered_aggregate(node: sge.Expression) -> bool:
     return False
 
 
+#: The roundings whose `CAST(... AS BIGINT)` of a double lifts as one function
+#: of the generated table (#1655), by sqlglot's node.
+_ROUNDED = {sge.Round: "round", sge.Floor: "floor", sge.Ceil: "ceil"}
+
+
+def _rounded_to_bigint(lf: _Lift, node: sge.Cast, a: E, t: Any, sub: Sub) -> E | None:
+    """`CAST(round(x) AS BIGINT)`, and of `floor(x)` and `ceil(x)`, of a double
+    under DuckDB's semantics: the argument is integral, so DuckDB's half-to-even
+    cast is the model's truncating one (the generated table's
+    `CAST(round(DOUBLE) AS BIGINT)`, #1655). None for any other cast."""
+    inner = node.this
+    name = _ROUNDED.get(type(inner))
+    if name is None or inner.args.get("decimals") is not None:
+        return None
+    if not (a.type.is_float64() and _same(t, dt.int64)):
+        return None
+    return _generated(lf, f"CAST({name}(DOUBLE) AS BIGINT)", [sub(inner.this)])
+
+
 def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     try_ = isinstance(node, sge.TryCast) or bool(node.args.get("safe"))
     if node.args.get("format"):
@@ -121,8 +141,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             raise SqlUnsupported(f"CAST of {text!r} to {t} is not supported")
         if v.is_finite():
             # DuckDB rounds the digits past the scale half away from zero.
-            with localcontext() as ctx:
-                ctx.prec = 100
+            with localcontext(EXACT):
                 v = v.quantize(Decimal(1).scaleb(-t.scale), rounding=ROUND_HALF_UP)
         if not (v.is_finite() and _fits(v, t)):
             raise SqlUnsupported(
@@ -130,6 +149,8 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
                 hint="write a value that fits the type, or a wider type",
             )
         return E(literal(v, t), t, v)
+    if not a.constant and (rounded := _rounded_to_bigint(lf, node, a, t, sub)) is not None:
+        return rounded
     if not a.constant:
         for src, to, sql in (
             (dt.float64, dt.int64, "DOUBLE AS BIGINT"),
@@ -143,8 +164,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         if rounding != "TRUNCATE":
             raise Unsupported(
                 f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
-                "model's casts (they truncate) cannot state yet; use semantics='reference', "
-                "or round() first"
+                "model's casts (they truncate) cannot state yet; use semantics='reference'"
             )
     if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
         raise SqlUnsupported(

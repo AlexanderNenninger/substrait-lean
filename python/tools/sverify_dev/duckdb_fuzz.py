@@ -41,6 +41,7 @@ from hypothesis import HealthCheck, find, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 
+from sverify._lean_eval import LeanRaised
 from sverify_dev import fuzz, slt
 from sverify_dev.fuzz import BOOL, DOUBLE, INT
 
@@ -208,6 +209,8 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
     try:
         lean_rows = s.lean(plan)
         lean = _rows(lean_rows)
+    except LeanRaised as e:
+        lean = "error: " + str(e)
     except subprocess.CalledProcessError as e:
         lean = "error: " + slt._clip(((e.stderr or "") + (e.output or "")).strip()[-200:], 200)
     db = connect()

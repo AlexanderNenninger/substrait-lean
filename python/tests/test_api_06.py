@@ -74,7 +74,7 @@ def test_strict_is_removed() -> None:
 
 def test_an_assumed_sum_says_it_is_checked_at_run_time() -> None:
     report = _quiet(sv.verify, SUM)
-    text = str(report)
+    text = report.details()
     assert "SUM of amount fits 64 bits in every group (checked at run time" in text
     assert "(inferred;" not in text
     # The first line says the proof holds under checks (#1484).
@@ -89,7 +89,7 @@ def test_an_assumed_double_sum_names_the_sum() -> None:
     r = ibis.table({"k": "int64", "temp_c": "float64"}, name="readings")
     both = r.group_by("k").aggregate(s=r.temp_c.sum(), m=r.temp_c.mean(), hi=r.temp_c.max())
     report = _quiet(sv.verify, both, on_inferred="ignore")
-    assert "assumes: sum(temp_c) or mean(temp_c) stays finite" in str(report)
+    assert "assumes: sum(temp_c) or mean(temp_c) stays finite" in report.details()
 
 
 # -- #690: an unproved run raises a VerificationError -------------------------
@@ -348,7 +348,7 @@ def test_run_refuses_an_integer_outside_its_declared_width(engine: str) -> None:
     report = sv.verify(t.select(y=t.a))
     wide = pa.table({"a": pa.array([1, 2**40], pa.int64())})
     with pytest.raises(
-        sv.errors.PreconditionError, match=r"column 'a' of t is declared int32.*1099511627776"
+        sv.errors.PreconditionError, match=r"column .a. is declared int32.*1099511627776"
     ):
         report.run(_con(engine, {"t": wide}), engine=engine)
     ok = pa.table({"a": pa.array([1, 2**30], pa.int64())})
@@ -385,7 +385,7 @@ def _int32_report() -> sv.Report:
 @pytest.mark.parametrize("engine", ENGINES)
 def test_run_checks_the_schema_without_check_requires(engine: str) -> None:
     wide = pa.table({"a": pa.array([1, 2**40], pa.int64())})
-    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' of t is declared int32"):
+    with pytest.raises(sv.errors.PreconditionError, match=r"column .a. is declared int32"):
         _int32_report().run(_con(engine, {"t": wide}), engine=engine, check_requires=False)
 
 
@@ -394,7 +394,7 @@ def test_run_range_checks_a_resident_table() -> None:
 
     con = sv.connect()
     con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, 2**40], pa.int64())})))
-    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' of t is declared int32"):
+    with pytest.raises(sv.errors.PreconditionError, match=r"column .a. is declared int32"):
         _int32_report().run(con)
 
 
@@ -443,3 +443,40 @@ def test_run_adds_at_the_edge_of_a_narrower_physical_width(engine: str) -> None:
     report = sv.verify(t.select(y=t.a + t.a), requires=[_.a < 2**40, _.a > -(2**40)])
     data = pa.table({"a": pa.array([32767], pa.int16())})
     assert report.run(_con(engine, {"t": data}), engine=engine).to_pylist() == [{"y": 65534}]
+
+
+def test_run_counts_the_nulls_of_a_resident_table() -> None:
+    from sverify_duckdb import DuckDBStore
+
+    t = ibis.table({"a": "!int64"}, name="t")
+    report = sv.verify(t.select(y=t.a))
+    con = sv.connect()
+    con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, None], pa.int64())})))
+    with pytest.raises(sv.errors.PreconditionError, match=r"column 'a' holds 1 NULL"):
+        report.run(con)
+    con.put("t", DuckDBStore().keep_table(pa.table({"a": pa.array([1, 2], pa.int64())})))
+    assert len(report.run(con).to_pylist()) == 2
+
+
+def test_run_checks_a_native_table_in_one_plan(monkeypatch) -> None:
+    from sverify import report as report_module
+    from sverify_duckdb import DuckDBStore
+
+    t = ibis.table({"a": "!int32", "b": "!int32"}, name="t")
+    report = sv.verify(t.select(y=t.a, z=t.b))
+    con = sv.connect()
+    con.put(
+        "t",
+        DuckDBStore().keep_table(
+            pa.table({"a": pa.array([1], pa.int64()), "b": pa.array([2], pa.int64())})
+        ),
+    )
+    calls: list[int] = []
+    real = report_module.violation_counts
+    monkeypatch.setattr(
+        report_module,
+        "violation_counts",
+        lambda table, conds, *rest: calls.append(len(conds)) or real(table, conds, *rest),
+    )
+    report.run(con)
+    assert calls[0] == 4  # two NULL counts and two ranges, in one call

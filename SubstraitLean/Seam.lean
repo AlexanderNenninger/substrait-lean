@@ -256,8 +256,8 @@ theorem Rel.bags_fetch {cat : Catalog} {r : Rel} {off : Nat} {cnt : Option Nat} 
   unfold Rel.Bags; simp only [Rel.orderAllowed_fetch]
   exact ⟨fun ⟨_, ⟨i, hi, he⟩, hb⟩ => ⟨i, hi, he ▸ hb⟩, fun ⟨i, hi, hb⟩ => ⟨_, ⟨i, hi, rfl⟩, hb⟩⟩
 
-/-- **A plan without choices has one multiset**, `Rel.eval`'s (D24's
-deterministic profile). -/
+/-- **A plan without choices has one multiset**, `Rel.eval`'s (D24: the
+exact level of determinism, D48). -/
 theorem Rel.bags_iff_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)

@@ -76,16 +76,16 @@ import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Any, Literal
 
 import ibis
+import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _hooks, _pipe, _stages
+from sverify import _decimals, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._hooks import COLLECTING, Collected
@@ -136,8 +136,7 @@ from sverify.engine import (
     Connection,
     Engine,
     checker_failed,
-    connect,
-    plan_json,
+    plan_json_over,
     run_checker,
 )
 from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
@@ -378,7 +377,7 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
         scale = dtype.scale
 
         def dec(k: int) -> str:
-            text = f"{Decimal(k).scaleb(-scale):.{scale}f}"
+            text = f"{_decimals.scaled(k, -scale):.{scale}f}"
             if scale == 0 and abs(k) >= 2**63:
                 # A whole number past 64 bits reads as a HUGEINT, which the
                 # lift refuses (#1252); cast from a string it stays a decimal.
@@ -503,7 +502,7 @@ def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
     elif dtype.is_floating():
         v = repr(decode_double(k))
     elif dtype.is_decimal() and dtype.scale is not None:
-        v = f"{Decimal(k).scaleb(-dtype.scale):.{dtype.scale}f}"
+        v = f"{_decimals.scaled(k, -dtype.scale):.{dtype.scale}f}"
     else:
         return None
     return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
@@ -533,7 +532,37 @@ def _ascii_condition(col: str, classes: bool = False) -> Inferred:
     plain = ascii_text(dialect(), sql, classes)
     ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
     bad = r"[^\x00-\x7f]|\x0b" if classes else r"[^\x00-\x7f]"
-    return Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+    out = Inferred(f"{sql} IS NULL OR {plain}", f"(~{ref}.re_search({bad!r}))")
+    out.ascii = "plain" if classes else "ascii"
+    return out
+
+
+def _squeeze(code: str) -> str:
+    """Ibis code without spaces or one pair of outer parentheses."""
+    code = "".join(code.split())
+    return code[1:-1] if code.startswith("(") and code.endswith(")") else code
+
+
+def _declared_ascii(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, str]:
+    """The text columns `conds` declare ASCII (`"ascii"`) or plain (`"plain"`),
+    by column position, for the request (#1506): the inferred condition, or
+    the user's own copy of its Ibis code (`_ascii_condition`'s `text`)."""
+    out: dict[str, str] = {}
+    for c in conds:
+        if isinstance(c, TableCondition):
+            continue
+        if isinstance(c, Inferred):
+            if c.ascii and c.column is not None and c.column in columns:
+                out[str(list(columns).index(c.column))] = c.ascii
+            continue
+        shown = _squeeze(label(c))
+        for col in columns:
+            for classes in (False, True):
+                if shown == _squeeze(_ascii_condition(col, classes).text):
+                    kind = "plain" if classes else "ascii"
+                    pos = str(list(columns).index(col))
+                    out[pos] = "plain" if out.get(pos) == "plain" else kind
+    return out
 
 
 def _suggested(
@@ -560,7 +589,9 @@ def _render_needs(
             continue
         col = list(schema)[n["col"]]
         have = out.setdefault(n["table"], [])
-        if n.get("not_null"):
+        if "ascii" in n:
+            new = [_ascii_condition(col, n["ascii"] == "plain")]
+        elif n.get("not_null"):
             new = [_not_null_condition(col)] if schema[col].nullable else []
         elif "ne" in n:
             c = _ne_condition(col, schema[col], int(n["ne"]))
@@ -1444,7 +1475,43 @@ def _output_types(transform: Transform, schemas: Mapping[str, ibis.Schema]) -> l
         return None
 
 
+def _as_arrow_gives(schemas: Mapping[str, ibis.Schema]) -> dict[str, ibis.Schema]:
+    """The input schemas as a table made from them reads back: through Arrow
+    (a `timestamp` is `timestamp(6)`), as DuckDB gave them before `verify`
+    held no connection."""
+    return {n: ibis.Schema.from_pyarrow(s.to_pyarrow()) for n, s in schemas.items()}
+
+
+def _mentioned_names(
+    transform: Transform, requires: Mapping[str, Sequence[Condition]], ensures: Sequence[Condition]
+) -> set[str]:
+    """The column names the transformation and the conditions mention (a
+    column no one mentions is not written into any plan, `ibis_substrait.prune`),
+    or `EVERYTHING`."""
+    from sverify.ibis_substrait.prune import EVERYTHING, mentions, sql_mentions
+
+    own = sql_mentions(transform) if isinstance(transform, str) else mentions(transform)
+    if own is None:
+        return {EVERYTHING}
+    conditions = [*(c for cs in requires.values() for c in cs), *ensures]
+    return {*own, *(w for c in conditions for w in re.findall(r"\w+", label(c)))}
+
+
 def _verify_once(
+    transform: Transform,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    *args: Any,
+    **kwargs: Any,
+) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
+    """`_prove_once` with every plan written over the columns some plan mentions."""
+    from sverify.ibis_substrait.prune import mentioning
+
+    with mentioning(_mentioned_names(transform, requires, ensures)):
+        return _prove_once(transform, requires, ensures, *args, **kwargs)
+
+
+def _prove_once(
     transform: Transform,
     requires: Mapping[str, Sequence[Condition]],
     ensures: Sequence[Condition],
@@ -1457,6 +1524,8 @@ def _verify_once(
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
+    from sverify.ibis_substrait.prune import drop_unmentioned, mentioned
+
     if semantics in _profile_requests() and isinstance(transform, str):
         raise ValueError(
             f"semantics={semantics!r} checks Ibis transformations; "
@@ -1465,9 +1534,11 @@ def _verify_once(
     schemas = {name: input_schema(s) for name, s in (tables or {}).items()}
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
-    con = connect()
-    for name, schema in schemas.items():
-        con.create(name, schema)
+    schemas = drop_unmentioned(schemas, mentioned())
+    # The verifier holds schemas, not tables: unbound Ibis tables, and for SQL
+    # the schemas as Arrow gives them back.
+    sql_schemas = _as_arrow_gives(schemas)
+    unbound = {name: ibis.table(schema, name=name) for name, schema in sql_schemas.items()}
 
     def lift(query: Any) -> Semantics:
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
@@ -1476,12 +1547,12 @@ def _verify_once(
         return semantics if own else "reference"
 
     def plan(query: Transform) -> Any:
-        return json.loads(plan_json(con, query, lift(query)))
+        return json.loads(plan_json_over(sql_schemas, query, lift(query)))
 
     def table_ref(name: str, cond: Condition) -> Transform:
         if isinstance(transform, str) and isinstance(cond, str):
             return f"SELECT * FROM {q(name)}"
-        return con.table(name)
+        return unbound[name]
 
     def output(cond: Condition) -> Transform:
         """The transformation as `cond` reads it: an Ibis condition on a SQL
@@ -1492,7 +1563,7 @@ def _verify_once(
         from sverify.ibis_substrait import SQLModel, sql_model_schema
 
         names = tuple(schemas)
-        inputs: Any = tuple(con.table(n).op() for n in names)
+        inputs: Any = tuple(unbound[n].op() for n in names)
         return SQLModel(
             transform,
             inputs,
@@ -1502,9 +1573,12 @@ def _verify_once(
             semantics,
         ).to_expr()
 
-    req_conds = [
-        (t, c) for t, cs in requires.items() for c in cs if not isinstance(c, TableCondition)
-    ]
+    def planned(c: Condition) -> bool:
+        """A precondition that is a plan. A table condition is its own entry, and an
+        ASCII condition is declared to the checker (`"ascii"` below)."""
+        return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.ascii)
+
+    req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
 
     def query(where: str, n: int, table: Transform, c: Condition) -> Transform:
         """`condition_query`, with an Ibis error named by the condition it
@@ -1524,7 +1598,7 @@ def _verify_once(
     req_plans = []
     for t, cs in requires.items():
         for n, c in enumerate(cs, start=1):
-            if not isinstance(c, TableCondition):
+            if planned(c):
                 req_plans.append(plan(query(f"requires {t}", n, table_ref(t, c), c)))
     ens_plans = []
     for n, c in enumerate(ensures, start=1):
@@ -1564,6 +1638,7 @@ def _verify_once(
         "references": foreign_keys,
         "max_rows": caps,
         "rows_per": per_key,
+        "ascii": {t: _declared_ascii(names(t), cs) for t, cs in requires.items()},
     }
 
     if observed is not None:
@@ -1612,7 +1687,7 @@ def _verify_once(
         if isinstance(transform, str)
         else transform.schema()
     )
-    dtypes = dict(result.items())
+    dtypes = _checker_decimals(dict(result.items()), out.get("outputKinds"))
 
     def describe(f: dict) -> str:
         dtype = dtypes.get(f["name"])
@@ -2021,6 +2096,21 @@ def rounding_hints(
                 f"{k:g} (#85); state it as sv.approx({c.label})"
             )
     return hints
+
+
+def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> dict[str, Any]:
+    """`dtypes` with each decimal column as the checker types it
+    (`outputKinds`, from `Write.relKinds`): Ibis's `AVG` and `SUM` of a decimal
+    differ from the reference's. A checker without the field, or with another
+    number of columns, leaves Ibis's types as they are."""
+    if kinds is None or len(kinds) != len(dtypes):
+        return dtypes
+    return {
+        name: dt.Decimal(k["precision"], k["scale"], nullable=ty.nullable)
+        if k["kind"] == "dec"
+        else ty
+        for (name, ty), k in zip(dtypes.items(), kinds, strict=True)
+    }
 
 
 def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
@@ -2638,6 +2728,12 @@ class ViewContract:
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
     `requires` (`Provenance.policies`)."""
+    profile: str = "reference"
+    """The profile the transformation was verified under (`Report.semantics`)."""
+    deterministic: bool = False
+    """The report proves the result determined up to row order and the members of
+    a class (`Report.deterministic`): two engines hold the same rows of it. False
+    where no single report speaks for the view."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -2668,6 +2764,8 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.checked) if prov else [],
         list(prov.report.not_null) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
+        profile=prov.report.semantics if prov else "reference",
+        deterministic=bool(prov and prov.report.deterministic),
     )
 
 
@@ -3045,6 +3143,7 @@ class ContractedTransform:
         external: dict[str, list[Condition]] = {}
         policies: Policies = {}
         unproved_links: list[str] = []
+        table_params: dict[str, str] = {}  # placeholder table -> the parameter
         taken = set(leaf_tables(result))
         for param, value in inputs.items():
             if not isinstance(value, ir.Table):
@@ -3069,6 +3168,7 @@ class ContractedTransform:
                 prov = _lookup(op)
                 name = _fresh(prov.transform.name if prov else param, taken)
                 placeholders[op] = (name, link.assumptions[param])
+                table_params[name] = param
                 if prov is None:
                     plain[name] = (param, value)
         abstraction = _abstract(result, placeholders, taken)
@@ -3095,9 +3195,12 @@ class ContractedTransform:
                 param, value = bound_inputs[t]
             if self.check_requires:
                 self._check_on_data(value, param, conds, found)
-        if found:
-            # The report may be cached and shared by calls: this call's copy.
-            report = self.report = replace(report, preconditions=found)
+        # The report may be cached and shared by calls: this call's copy.
+        report = self.report = replace(
+            report,
+            preconditions=found or report.preconditions,
+            _table_params={**{t: p for t, (p, _) in bound_inputs.items()}, **table_params},
+        )
         checked: list[Condition] = []
         if not report._proved and raise_unproved:
             # Runtime errors cannot be checked on the data beforehand: in

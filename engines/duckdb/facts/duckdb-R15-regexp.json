@@ -6,7 +6,11 @@
   "verdict": "the reference (RE2's meaning, #50)",
   "area": "strings",
   "options": [
-    "regex_dialect"
+    "regex_dialect",
+    "non_ascii_text"
+  ],
+  "rows": [
+    {"group": "str.ascii", "option": "non_ascii_text", "types": ["string"]}
   ],
   "constructs": [
     "regexp_extract",

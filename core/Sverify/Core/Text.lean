@@ -231,8 +231,16 @@ def levenshtein (s t : String) : Nat :=
 
 /-! ## Black boxes -/
 
+/-- Is every character ASCII? The one definition behind `Issue.nonAscii`
+(`UnFn.issue`, `BinFn.issue`) and the evaluator's refusal below. -/
+def isAscii (s : String) : Bool := s.toList.all fun c => c.toNat < 128
+
+/-- ASCII without the vertical tab: the text on which RE2's classes and
+Rust's agree (`classesDiffer`). -/
+def isPlain (s : String) : Bool := isAscii s && !s.toList.contains '\x0b'
+
 def asciiOnly (f : String → String) (what : String) (s : String) : String :=
-  if s.toList.all fun c => c.toNat < 128 then f s
+  if isAscii s then f s
   else panic! s!"{what} of non-ASCII text is not evaluated in Lean"
 
 def upperAscii (s : String) : String := asciiOnly String.toUpper "UPPER" s
@@ -244,7 +252,7 @@ def lowerAscii (s : String) : String := asciiOnly String.toLower "LOWER" s
 @[implemented_by lowerAscii] opaque lower : String → String
 
 def ilikeAscii (s p : String) : Bool :=
-  if (s ++ p).toList.all fun c => c.toNat < 128 then like s.toLower p.toLower
+  if isAscii s && isAscii p then like s.toLower p.toLower
   else panic! s!"ILIKE of non-ASCII text is not evaluated in Lean"
 
 /-- `s ILIKE p`: `LIKE` with Unicode's simple case folding. -/
@@ -260,6 +268,20 @@ def regexClasses : List Char → Bool
 `s`? Rust's are Unicode classes, and its `\\s` includes `\\v`. -/
 def classesDiffer (s p : String) : Bool :=
   regexClasses p.toList && s.toList.any fun c => 128 ≤ c.toNat || c == '\x0b'
+
+theorem classesDiffer_of_isPlain {s : String} (p : String) (h : isPlain s = true) :
+    classesDiffer s p = false := by
+  simp only [isPlain, isAscii, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq,
+    Bool.not_eq_true'] at h
+  obtain ⟨h1, h2⟩ := h
+  have : s.toList.any (fun c => 128 ≤ c.toNat || c == '\x0b') = false := by
+    simp only [Bool.eq_false_iff, ne_eq, List.any_eq_true, not_exists, not_and, Bool.or_eq_true,
+      decide_eq_true_eq, beq_iff_eq]
+    intro c hc hor
+    rcases hor with hor | hor
+    · have := h1 c hc; omega
+    · subst hor; simp_all
+  simp [classesDiffer, this]
 
 /-- `f ()`, or a panic where the meaning of `p` on `s` is engine-specific.
 The message depends on the pattern, so it is not a constant the compiler

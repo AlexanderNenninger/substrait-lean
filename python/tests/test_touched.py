@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from _engines import PROFILED, PROFILED_ORDERED
+from _engines import PROFILED
 from _pipelines import recomputed, rows
 from sverify import incremental
 from sverify.io import Changes, StaticSource
@@ -68,20 +68,8 @@ def random_batches(seed, steps=40):
     )
 
 
-#: Spark loses a NULL-key group in seeds 1 and 2 (#1006).
-NULL_KEY_GROUPS = pytest.mark.xfail(
-    strict=True, reason="Spark's touched-groups refresh loses a NULL-key group (#1006)"
-)
-
-
-@pytest.mark.parametrize(
-    ("seed", "engine"),
-    [
-        (s, e) if not (e == "spark" and s in (1, 2)) else pytest.param(s, e, marks=NULL_KEY_GROUPS)
-        for s in range(3)
-        for e in PROFILED
-    ],
-)
+@pytest.mark.parametrize("seed", range(3))
+@pytest.mark.parametrize("engine", PROFILED)
 def test_touched_groups_match_a_full_recompute(seed, engine):
     first, batches = random_batches(seed)
     src = StaticSource(samples(first), name="samples")
@@ -268,8 +256,8 @@ def unique_stream(seed, steps=30):
     return stream(rng, row, row, steps, 3)
 
 
-@pytest.mark.parametrize("engine", PROFILED_ORDERED)
 @pytest.mark.parametrize("seed", range(2))
+@pytest.mark.parametrize("engine", PROFILED)
 def test_touched_partitions_match_a_full_recompute(seed, engine):
     first, batches = unique_stream(seed)
     src = StaticSource(samples(first), name="samples")
@@ -337,14 +325,14 @@ def _double_sums(samples):
             SCHEMA,
             "recompute and diff",
             "recomputed and diffed",
-            "recomputed (not incrementally maintainable (left join",
+            "recomputed (not incrementally maintainable: no delta rule for left join over",
         ),
         (
             _running,
             SCHEMA,
             "touched groups",
             "1 touched group(s) recomputed",
-            "no delta rules: not incrementally maintainable (left join, fetch or window)",
+            "no delta rules: not incrementally maintainable: no delta rule for window over",
         ),
         (
             _integer_avg,

@@ -284,6 +284,14 @@ capped build "$build_memory_max" \
 status=$?
 echo "homelab_qa: Lean build took $(( $(date +%s) - start )) s (exit $status)"
 
+# The clone gives every source a fresh mtime, and a build that finds nothing to
+# do leaves the cached binary's old one. sverify's staleness check
+# (`stale_checker`) compares the two and would fail every test that re-checks
+# freshness, so a build Lake has just judged current (by hash) gets a new mtime.
+if [ $status -eq 0 ]; then
+  touch .lake/build/bin/substrait-check
+fi
+
 if [ $status -eq 0 ]; then
   capped test "$memory_max" bash -c 'cd python && exec uv run poe "$@"' bash "${tasks[@]}"
   status=$?

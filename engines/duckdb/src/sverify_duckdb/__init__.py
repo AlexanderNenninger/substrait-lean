@@ -31,7 +31,7 @@ import pyarrow as pa
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 1:
+if getattr(_meta, "PLUGIN_API", None) != 2:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -224,6 +224,9 @@ class DuckDBStore(ArrowOps):
             db.execute(f"CREATE {kind} main.{_q(name)} AS {sql}")
             schema = db.sql(f"SELECT * FROM main.{_q(name)} LIMIT 0").to_arrow_table().schema
         return Resident(name, schema, kind, reads)
+
+    def kept(self, table: pa.Table) -> State:
+        return self.keep_table(table)
 
     def keep_table(self, table: pa.Table) -> Resident:
         """An Arrow table, held by DuckDB."""

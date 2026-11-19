@@ -146,9 +146,8 @@ def test_substring_out_of_range_is_an_error(sql):
 
 def test_substring_in_range_is_proved_safe():
     assert _kinds("SELECT substring(customer, 4294967295, 4294967295) AS s FROM orders") == []
-    # The analysis reads no bound from a column's type: even an INTEGER
-    # offset needs one in `requires`.
-    assert "domain error" in _kinds("SELECT substring(customer, qty, 2) AS s FROM orders")
+    # A column's type gives its bound (D46): an INTEGER offset is in range.
+    assert "domain error" not in _kinds("SELECT substring(customer, qty, 2) AS s FROM orders")
     sql = "SELECT substring(customer, amount, 2) AS s FROM orders"
     within = {"orders": ["amount >= -4294967296", "amount < 4294967296"]}
     assert "domain error" not in _kinds(sql, requires=within)

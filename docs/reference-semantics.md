@@ -65,13 +65,18 @@ proves its postconditions and keys over every order
 `Rel.eval`'s order is one of the allowed
 orders ([tie order](#tie-order-and-determinism)).
 `Report.deterministic` is true when every result the reference allows is
-`Rel.eval`'s up to row order (`Rel.detPlan`, `check_deterministic_sound`). It
-is false where rows may tie in the order of a window, of `FIRST`, `LAST`,
-`STRING_AGG` or `MODE`, or of a `FETCH`, where the reference leaves a value
-open (the median of doubles, which member of a class of doubles a `DISTINCT`,
-a group key, `MIN`, `MAX` or `QUANTILE_DISC` keeps, D31, D45), and where an
-aggregate is not proved a function of its values. `str(report)` names each place (`tiesIn_eq_nil`), and
-`Report.ties` gives the keys that would close the ties.
+`Rel.eval`'s up to row order and up to the member of each class of doubles
+(`Rel.detClass`, `check_class_determined_sound`, [D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)).
+Which member of a class a `DISTINCT`, a group key, `MIN`, `MAX` or
+`QUANTILE_DISC` keeps (D31, D45) leaves it true. It is false where rows may
+tie in the order of a window, of `FIRST`, `LAST`, `STRING_AGG` or `MODE`, or
+of a `FETCH`, where an expression reads a picked double and can tell the
+members apart (`atan2`), where the reference leaves a value open (the median
+of doubles), and where an aggregate is not proved a function of its values.
+`str(report)` names each place (`classIn_eq_nil`), and `Report.ties` gives
+the keys that would close the ties. An observation that reads the members of
+a class asks for the exact level, every result `Rel.eval`'s up to row order
+(`Rel.detPlan`, `check_deterministic_sound`).
 `RANK`, `DENSE_RANK`, `PERCENT_RANK` and `CUME_DIST` over the window's own
 order need no key: tied rows get the same value in every arrangement
 (`window_tieFree`). A key on one column of a pair an inner join's or a filter's
@@ -290,7 +295,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `substring` range | An offset outside `[-2³², 2³²)` or a length of `2³²` or more is an error, as in DuckDB ("Substring offset outside of supported range"); NULL arguments give NULL. `verify` reports it as a domain error unless the offset's bounds rule it out, for example `_.start >= -2**32` and `_.start < 2**32` in `requires`. | ✓: `Text.substrInRange`, `Issue.domain`; DuckDB raises itself, and the written plan guards the offset its wrap-around arithmetic shifts |
 | `replace` with an empty pattern | The string unchanged, NULL for a NULL replacement, as DuckDB's ([duckdb-replace-empty-pattern](../engines/duckdb/facts/duckdb-replace-empty-pattern.json), [ST-17](../upstream/bugs/ST-17.json)). Polars's own `replace_all` inserts the replacement at every character; the plan folds the empty pattern to the string. | ✓ |
 | Matching | Case-sensitive only (`case_sensitivity` = `CASE_SENSITIVE`); `LIKE` has `%`, `_` and a backslash escape. | ✓ |
-| Black boxes | `upper`, `lower`, `ilike`, regular expressions and the digests `md5` and `sha256` are opaque to the proofs: no proof depends on what they compute, only on their types, that NULL in gives NULL out, and that equal inputs give equal outputs. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator maps ASCII case only, and evaluates regular expressions with RE2's meaning (`core/Sverify/Core/Regex.lean`) where it agrees with Rust's, which is everywhere but `\d`, `\w`, `\s` and `\b` on non-ASCII text (and `\s` on `\v`); there `substrait-check` refuses to print rows rather than print wrong ones. | ✓ |
+| Black boxes | `upper`, `lower`, `ilike`, regular expressions and the digests `md5` and `sha256` are opaque to the proofs: no proof depends on what they compute, only on their types, that NULL in gives NULL out, and that equal inputs give equal outputs. Their meaning is Rust's (`str::to_uppercase`, the `regex` crate). Lean's evaluator maps ASCII case only, and evaluates regular expressions with RE2's meaning (`core/Sverify/Core/Regex.lean`) where it agrees with Rust's, which is everywhere but `\d`, `\w`, `\s` and `\b` on non-ASCII text (and `\s` on `\v`). The reference raises the issue `nonAscii` on those texts ([D43](decisions.md)), so a proof needs the column declared ASCII, and `substrait-check` prints an error instead of rows. | ✓ |
 | `regexp_extract`, `regexp_replace` | A constant pattern that `Text.simpleRegex` accepts, or the plan is refused. `regexp_extract(s, p, g)` is group `g` (0 to 9; DuckDB raises past 9) of the leftmost-first match, `''` where nothing matches, the group took no part, or `p` has fewer groups. `regexp_replace` replaces the first match, or every match with the flag `'g'` (an empty match right after the previous one is skipped); in the replacement, `\0` … `\9` are groups and `\\` a backslash, and other escapes are refused. On DuckDB only. | ✓ |
 | `regexp_matches`, `regexp_full_match` | Whether a constant pattern matches somewhere in the string, or all of it (the pattern in `^(?:…)$`); NULL for a NULL string. Both are `array_length(regexp_match(s, p)) > 0`. Options, and patterns outside `Text.simpleRegex`, are refused, and so is the operator `~`: SQLGlot reads it as a full match, DuckDB as a match anywhere ([SG-10](../upstream/bugs/SG-10.json)). | ✓ |
 | `right`, `lpad`, `rpad` | DuckDB-defined (runs on DuckDB only until a second engine decides the value). Of a constant count, in characters. `right(s, n)` is the last `n` characters, or all but the first `-n` for a negative `n`. `lpad(s, n, p)` and `rpad(s, n, p)` are the first `n` characters of `s`, or `s` filled to `n` with the constant `p` repeated and cut, as DuckDB pads; `''` for `n ≤ 0`. An empty `p` is refused, as DuckDB raises where `s` is shorter. | ✓ |
@@ -441,7 +446,7 @@ The rules for decimals are in [Decimals](#decimals).
 |---|---|---|---|
 | `MIN`, `MAX` | the argument's type | | ✓ |
 | `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact; raises past the precision, an inferred assumption like integer `SUM` overflow. | ✓ |
-| `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
+| `AVG` | `DECIMAL(p + 4, s + 4)` | Rounded half away from zero. A precision over 34 or a scale over 34 is refused, since the result must fit 38 digits; cast the argument to `DECIMAL(34, s)` or narrower first. | ✓ |
 | `AVG` with an `fp64` result (DuckDB's type) | `fp64` | The exact sum converted to a double, divided by the count as a double (`CAST(n AS DOUBLE)`); NULL without values. DuckDB's native `AVG` divides once and may differ in the last bit. Over a window too. | ✓ |
 
 ### NULLs and order
@@ -621,6 +626,7 @@ the first column are the names the tables below use.
 | `substring_range` (sverify's: an offset outside `[-2³², 2³²)`) | raise, compute | no limit | raise | raises ([substring-range](../engines/duckdb/facts/duckdb-substring-range.json)) |
 | `case_sensitivity` (`like`, `contains`, `starts_with`, `ends_with`, `strpos`, regexes) | the three of the YAML | `CASE_SENSITIVE`, `CASE_INSENSITIVE`, `CASE_INSENSITIVE_ASCII` | `CASE_SENSITIVE` | `CASE_SENSITIVE` (no fact) |
 | `char_set` (`upper`, `lower`) | `UTF8`, `ASCII_ONLY` | the two | `UTF8`, a black box (Rust's `str::to_uppercase`) | `UTF8` with simple one-to-one mappings (`ß` → `ẞ`); the written plan raises on non-ASCII text ([case-mapping](../engines/duckdb/facts/duckdb-case-mapping.json), [ST-10](../upstream/bugs/ST-10.json)) |
+| `non_ascii_text` (`upper`, `lower`, `ilike`, `reverse`, `ascii`, `levenshtein`, regex classes) | raise, compute | not specified | raise: the issue `nonAscii`, on non-ASCII text (and on a vertical tab for a regex class); declare the column ASCII to rule it out ([D43](decisions.md)) | the engine's own mapping, in its facts; the written plan guards where the engines differ |
 | `null_handling` (`concat`) | `IGNORE_NULLS`, `ACCEPT_NULLS` | the two | `ACCEPT_NULLS`; the other refused | `ACCEPT_NULLS` for `\|\|`; `concat` skips NULLs ([null-concat](../engines/duckdb/facts/duckdb-null-concat.json)) |
 | `date_range` (sverify's: date arithmetic past 0001-01-01 … 9999-12-31) | raise, compute | no limit | raise | wider dates, to 5881580 AD; the written plan guards ([date-range](../engines/duckdb/facts/duckdb-date-range.json)) |
 | `time_interval_months` (sverify's: `TIME ± INTERVAL` with months) | drop the months, raise | not specified | refused | drops them ([time-plus-interval](../engines/duckdb/facts/duckdb-time-plus-interval.json)) |

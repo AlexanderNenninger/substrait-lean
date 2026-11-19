@@ -42,10 +42,10 @@ def test_rows_per_group_prove_a_sum_fits():
     report = sv.verify(per_customer(ORDERS), requires={"orders": [*BOUNDED, per_key]})
     # 10¹² rows per customer of at most 10⁶ each: below 2⁶³. The table itself
     # has no bound.
-    assert not sum_risks(report), str(report)
+    assert not sum_risks(report), report.details()
     assert report.verdict == sv.Verdict.PROVED
     assert report.rows is None
-    assert "requires orders: rows_per(customer, at_most=1000000000000)" in str(report)
+    assert "requires orders: rows_per(customer, at_most=1000000000000)" in report.details()
 
 
 def test_too_many_rows_per_group_leave_the_sum_checked():
@@ -91,7 +91,7 @@ def test_a_join_on_a_key_of_its_right_side_keeps_the_bound():
     per_key = sv.rows_per("customer", at_most=1000)
     requires = {"orders": [*BOUNDED, per_key], "customers": [sv.unique("id")]}
     report = sv.verify(q, requires=requires)
-    assert not sum_risks(report), str(report)
+    assert not sum_risks(report), report.details()
     # Without the key, a customer may match many rows.
     report = sv.verify(q, requires={"orders": [*BOUNDED, per_key]})
     assert sum_risks(report)
@@ -122,7 +122,7 @@ def test_a_decimal_sum_scaled_after_a_capped_aggregate_fits():
     report = sv.verify(
         q, requires={"t": [_.c.between(1, 1000), sv.max_rows(1000)]}, ensures=[], on_inferred="off"
     )
-    assert report.errors == [], str(report)
+    assert report.errors == [], report.details()
     lo, hi = report._bounds.get("s", (None, None)) if report._bounds else (None, None)
     assert lo is None or lo >= 0
 
@@ -134,7 +134,7 @@ def test_rows_per_bounds_a_decimal_sum():
     report = sv.verify(
         q, requires={"t": [*bounded, sv.rows_per("g", at_most=1000)]}, on_inferred="off"
     )
-    assert report.errors == [] and report.assumed == [], str(report)
+    assert report.errors == [] and report.assumed == [], report.details()
     report = sv.verify(q, requires={"t": bounded}, on_inferred="off")
     assert [i.kind for i in report.errors] == [SUM_OVERFLOW]
 

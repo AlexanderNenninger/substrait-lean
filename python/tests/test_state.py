@@ -15,9 +15,11 @@ import pyarrow.compute as pc
 import pytest
 
 import sverify as sv
+from _engines import PROFILED
 from _zero import one_zero
 from sverify import _duckdb
 from sverify._arrow_state import ArrowOps as ArrowStore
+from sverify._parts import PartsState
 from sverify._scan import Resident
 from sverify._state import Merger, arrow_of
 from sverify._weighted import WEIGHT, consolidated, negated
@@ -113,14 +115,14 @@ def orders(n=0):
 
 
 def pipeline(engine):
-    con = sv.connect(engine)
+    con = sv.connect(engine if engine in installed_engines() else None)
     schema = pa.schema([("id", pa.int64()), ("c", pa.string()), ("x", pa.float64())])
     put_table(
         con,
         "o",
         pa.Table.from_pylist([dict(zip(schema.names, r, strict=True)) for r in orders()], schema),
     )
-    pipe = Pipeline(con)
+    pipe = Pipeline(con, engine)
     o = con.table("o")
     big = pipe.view("big", o.filter(o.x >= 1.0).select(o.c, o.x))
     by_c = pipe.view("by_c", big.table.group_by("c").aggregate(n=big.table.c.count()))
@@ -128,16 +130,53 @@ def pipeline(engine):
     return pipe, [big, by_c, small]
 
 
-@pytest.mark.parametrize("engine", installed_engines())
+@pytest.mark.parametrize("engine", PROFILED)
 def test_views_keep_their_state_where_their_engine_reads_it(engine):
     pipe, views = pipeline(engine)
-    held = Resident if engine == "duckdb" else pa.Table
+    held: type = pa.Table
+    if engine == "duckdb":
+        held = Resident
+    elif engine in ("polars", "spark"):
+        held = PartsState
     for step in range(3):
         deletes = orders()[2 * step : 2 * step + 2]
         pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
         for v in views:
             assert isinstance(v.state, held)
             assert one_zero(v.rows()) == one_zero(v.recompute())
+
+
+#: The refresh code that may read a piece of state into Arrow: the state's rows of
+#: the groups a change touches, which the change bounds (`with_keys`).
+ANSWER_SITES = {"_linear_change"}
+
+
+@pytest.mark.parametrize("engine", PROFILED)
+def test_a_refresh_does_not_read_a_views_state_into_the_driver(engine, monkeypatch):
+    """The state stays in its engine (#1329): during a refresh nothing reads a
+    handle into Arrow except the answer sites above."""
+    import inspect
+
+    classes: list[type] = [Resident]
+    if engine in ("polars", "spark"):
+        classes = [PartsState]
+    pipe, _ = pipeline(engine)
+
+    def poisoned(cls):
+        read = cls.to_arrow
+
+        def to_arrow(self):
+            caller = [f.function for f in inspect.stack()[1:6]]
+            assert ANSWER_SITES & set(caller), f"state read into Arrow by {caller}"
+            return read(self)
+
+        return to_arrow
+
+    for cls in classes:
+        monkeypatch.setattr(cls, "to_arrow", poisoned(cls))
+    for step in range(2):
+        deletes = orders()[2 * step : 2 * step + 2]
+        pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
 
 
 def resident_names(db) -> set[str]:

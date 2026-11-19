@@ -483,10 +483,11 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
         ("else", writeExpr cols (wkind cols a'') a'')])])
   -- `a / b` at scale `s`, rounded half away from zero (`Parse.decimalCall`'s
   -- `sverify_decimal_div`): a decimal `AVG` over a window.
-  | .un (.dkind p s) (.bin .ddiv (.bin .dmul a (.lit (.int n))) b) =>
+  | .un (.dkind p s) (.bin .ddiv (.bin .dmul a (.lit (.int n))) b)
+  | .un (.decimal p s) (.bin .ddiv (.bin .dmul a (.lit (.int n))) b) =>
     callTyped (fn "sverify_decimal_div") [upscaled n (writeExpr cols (wkind cols a) a), writeExpr cols (wkind cols b) b]
       (decType p s)
-  | .un (.dkind p s) (.bin .ddiv a b) =>
+  | .un (.dkind p s) (.bin .ddiv a b) | .un (.decimal p s) (.bin .ddiv a b) =>
     callTyped (fn "sverify_decimal_div") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
   | .un (.decimal p s) (.bin .dadd (.bin .dmul x (.lit (.int n))) b) =>
     let wa := upscaled n (writeExpr cols (wkind cols x) x)

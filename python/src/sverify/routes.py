@@ -45,10 +45,12 @@ Each engine profile records the engine versions its facts were probed at
 A plan whose result is not determined up to row order
 (`Report.deterministic`) runs natively, with the engine's own order of the
 ties: the reference allows every order, and the proofs hold for each.
-Where a rerun must give the same result, the deterministic profile applies:
-`choose(..., reproducible=sv.equivalent())`, an incremental refresh or a sink's
-`reproducible=`. It refuses such a plan and names each place where
-ties stay open (`Report.tie_places`).
+Where a rerun must give the same result (`choose(..., reproducible=...)`,
+an incremental refresh or a sink's `reproducible=`), determinism is a
+certificate (D24, D48): such a plan is refused, and the refusal names each
+place where ties stay open. A plan that only picks a member of a class of
+doubles is determined, and is refused only under an observation that reads
+the members.
 """
 
 from __future__ import annotations
@@ -665,7 +667,11 @@ def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
 _THRESHOLD = (
     "a filter, grouping key or sort on a double may keep other rows on {engine} than "
     "the reference: its threshold lies within the doubles' bound of their range; "
-    "state a precondition that keeps the values away from it, or compare exact columns"
+    "for a constant threshold, state a precondition that keeps the values away from it; "
+    "for a threshold computed from the data (a mean, a sum), compare exact columns: "
+    "for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact "
+    "mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row "
+    "cap (`sv.max_rows`) prove it"
 )
 
 
@@ -1027,8 +1033,8 @@ def ties_fix(report: Report) -> str:
     """How to make the report's result determined up to row order: an
     `ORDER BY` for a `LIMIT` without one, the `sv.unique(...)` it needs
     (`Report.ties`), or `TIES`."""
-    unordered = any(p.op == "fetch" and "no ORDER BY" in p.what for p in report._tie_places)
-    if unordered and not report.ties and all(p.op == "fetch" for p in report._tie_places):
+    unordered = any(p.op == "fetch" and "no ORDER BY" in p.what for p in report._class_places)
+    if unordered and not report.ties and all(p.op == "fetch" for p in report._class_places):
         return UNORDERED_FETCH
     fix = _unique_fix(report)
     return f"{UNORDERED_FETCH}; {fix}" if unordered else fix
@@ -1052,6 +1058,14 @@ def _unique_fix(report: Report) -> str:
 UNORDERED_FETCH = (
     "order the rows before the LIMIT, with order_by(...) on columns that sv.unique(...) "
     "makes a key, so a rerun takes the same rows"
+)
+
+#: The two ways out of a class pick under an observation that reads the
+#: members (D48).
+CLASS_PICKS = (
+    "pass an observation that reads one zero and one NaN, such as the default "
+    "sv.equivalent(floats='plan') or sv.equivalent(zeros='canon'), or change the plan so "
+    "it picks no double"
 )
 
 #: How to make a result determined up to row order.
@@ -1086,11 +1100,15 @@ def reproducibility(
     """Whether a rerun of the plan on `engine` reproduces its result up to
     `required` (what a rerun must reproduce).
 
-    The result must be determined up to row order (`Report.deterministic`):
-    the deterministic profile fixes the order of ties, so an open
-    choice (ties in an ORDER BY, a LIMIT without one) fails every
-    requirement, and the problem names each place (`Report.tie_places`).
-    Then, on each option the plan depends on, the engine's run-to-run
+    The result must be determined up to row order and the member of each
+    class of doubles (`Report.deterministic`, D48): an open choice (ties in
+    an ORDER BY, a LIMIT without one) fails every requirement, and the
+    problem names each place. A place that only picks a member of a class
+    (`-0.0` or `0.0`, a NaN: a group key over doubles, `MIN`, `MAX`) fails a
+    requirement that reads the members (`Observation.reads_members`): the
+    reference leaves the member open, and the check is the plan's, reading
+    no engine fact; the problem names each pick and the two ways out. Then,
+    on each option the plan depends on, the engine's run-to-run
     variation (the `"rerun_observation"` column of its
     choices, `"rerun"` from an older checker, component
     levels as in an observation, `{}` where it is exact; `{"floats": {"bound":
@@ -1107,10 +1125,18 @@ def reproducibility(
     problems: list[str] = []
     if not report.deterministic:
         problems.append(
-            "the result is not determined up to row order: the deterministic profile needs a "
-            "total order, and the plan leaves open "
-            + ("; ".join(map(str, report._tie_places)) or "a place the report does not name")
+            "the result is not determined up to row order: the plan leaves open "
+            + ("; ".join(map(str, report._class_places)) or "a place the report does not name")
             + ", so no rerun is sure to reproduce it"
+        )
+    elif not report._exact and required.reads_members:
+        # Before `_resolve`: `"plan"` reads one zero and one NaN, also where
+        # the plan has no bound and `_resolve` makes it exact (D48).
+        picks = [p for p in report._tie_places if p.kind == "class"]
+        problems.append(
+            f"{required} reads the members of a class of doubles, and the plan picks one at "
+            + ("; ".join(map(str, picks)) or "a place the report does not name")
+            + f", which the reference leaves open: {CLASS_PICKS}"
         )
     if depends is None:
         depends = report._depends
@@ -1194,7 +1220,7 @@ def not_verified(report: Report) -> str:
         first = next(ps[0] for ps in report._floats_on.values() if ps)
         want = "exact doubles" if report.observation.floats == "exact" else "tolerance on doubles"
         parts.append(f"no engine meets the observation's {want}: {first}")
-        see.append("str(report)")
+        see.append("report.details()")
     if report.needs:
         see.append("report.needs")
     if report._transfer:
@@ -1202,8 +1228,8 @@ def not_verified(report: Report) -> str:
             "the reference's proof does not carry over to Substrait's semantics on "
             + ", ".join(_where(f.get("group"), f["option"]) for f in report._transfer)
         )
-        if "str(report)" not in see:
-            see.append("str(report)")
+        if "report.details()" not in see:
+            see.append("report.details()")
     where = f" (see {', '.join(see)})" if see else ""
     return (
         "not verified: "

@@ -471,6 +471,25 @@ def test_a_dbt_project_needs_sverify_dbt(tmp_path, capsys, monkeypatch):
     assert "sverify-dbt" in doc["error"]["message"]
 
 
+def test_a_dbt_project_takes_the_format_sverify_dbt_does(tmp_path, capsys, monkeypatch):
+    """`sverify check <dbt dir> --format json` hands sverify-dbt flags it
+    parses (#891), and `--format github` is refused here, not by its parser."""
+    sverify_dbt_cli = pytest.importorskip("sverify_dbt.cli")
+    (tmp_path / "dbt_project.yml").write_text("name: x\n")
+    monkeypatch.setattr("shutil.which", lambda _: "sverify-dbt")
+    seen: list[list[str]] = []
+
+    def call(argv: list[str]) -> int:
+        seen.append(argv)
+        return sverify_dbt_cli.main(argv[1:])  # SystemExit on a flag it rejects
+
+    monkeypatch.setattr("subprocess.call", call)
+    code, out = run(capsys, "check", str(tmp_path), "--format", "json")
+    assert code == 2 and seen[0][-2:] == ["--format", "json"]  # no target/manifest.json
+    code, out = run(capsys, "check", str(tmp_path), "--format", "github")
+    assert code == 2 and "text or json" in out and len(seen) == 1
+
+
 def test_split_target():
     assert split_target("a/b.py:paid") == (Path("a/b.py"), "paid")
     assert split_target("a/b.py") == (Path("a/b.py"), None)
@@ -492,7 +511,7 @@ def test_summary_of_a_report():
     s = summary(report)
     assert s["guarantees"] == ["amount > 10"]
     assert s["checks"] == ["orders: amount ≥ 0", "orders: amount < 100"]
-    assert s["not_proved"][0].startswith("id is never NULL: not proved")
+    assert s["not_proved"][0].startswith("id is never NULL: it may be")
 
 
 def test_the_entry_point():

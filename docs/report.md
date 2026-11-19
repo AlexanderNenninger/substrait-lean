@@ -13,7 +13,8 @@ row is read. The result is a `Report`:
 
 ```python
 report = sv.verify(expr, requires={"orders": [...]}, ensures=[...])
-print(report)          # the whole report, as text
+print(report)          # the contract in plain words: what holds, what each run checks, what is not proved
+print(report.details())  # the whole report, with the semantics, the evidence per engine and the routes
 report.verdict == Verdict.PROVED          # True when everything holds
 ```
 

@@ -65,9 +65,9 @@
       "disagree": 0
     },
     "string": {
-      "agree": 82,
+      "agree": 80,
       "refused": 201,
-      "disagree": 39
+      "disagree": 41
     },
     "window": {
       "agree": 6,
@@ -75,9 +75,9 @@
       "disagree": 0
     },
     "all": {
-      "agree": 636,
+      "agree": 634,
       "refused": 620,
-      "disagree": 61
+      "disagree": 63
     }
   },
   "unread": [],
@@ -769,6 +769,24 @@
       "runs": "1 of 0",
       "kind": "case",
       "ref": "ST-15"
+    },
+    {
+      "case": "string/reverse.test: reverse('ææããa'::str) = 'aããææ'::str",
+      "options": {},
+      "got": "{\"error\": \"Substrait.Issue.nonAscii\"}",
+      "runs": "1 of 1",
+      "kind": "model",
+      "ref": "#1506",
+      "note": "D43: the reference raises nonAscii on non-ASCII text, where engines reverse by code point, by grapheme cluster or by byte"
+    },
+    {
+      "case": "string/reverse.test: reverse('😔😄'::str) = '😄😔'::str",
+      "options": {},
+      "got": "{\"error\": \"Substrait.Issue.nonAscii\"}",
+      "runs": "1 of 1",
+      "kind": "model",
+      "ref": "#1506",
+      "note": "D43: the reference raises nonAscii on non-ASCII text, where engines reverse by code point, by grapheme cluster or by byte"
     },
     {
       "case": "string/rtrim.test: rtrim('aaaaabccccc'::str, 'c'::str) [spaces_only:FALSE] = 'aaaaab'::str",

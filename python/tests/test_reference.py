@@ -15,6 +15,7 @@ import pytest
 
 import sverify as sv
 from _engines import PROFILED
+from sverify._lean_eval import LeanRaised
 from sverify._unsupported import Unsupported
 from sverify.engine import (
     connect,
@@ -93,6 +94,16 @@ NAN = float("nan")
 
 # R4 (#203): `modulus` of doubles is C's `fmod`
 # (the integer one read the codes): the sign of the dividend; by zero, an error.
+def test_modulus_of_infinity_is_a_domain_error_in_the_reference(con):
+    """`fmod(inf, 2.0)` is NaN on DuckDB; the reference raises."""
+    sql = "SELECT CAST('inf' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1"
+    with pytest.raises(LeanRaised, match="domain"):
+        lean(con, sql)
+    assert nan_equal([tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]) == nan_equal(
+        [(NAN,)]
+    )
+
+
 @pytest.mark.parametrize(
     ("sql", "expected"),
     [
@@ -100,7 +111,6 @@ NAN = float("nan")
         ("SELECT -x % 2.0 AS m FROM f", [(-1.5,), (0.0,), (None,)]),
         ("SELECT x % -2.0 AS m FROM f", [(1.5,), (0.0,), (None,)]),
         ("SELECT x % CAST('inf' AS DOUBLE) AS m FROM f", [(7.5,), (0.0,), (None,)]),
-        ("SELECT CAST('inf' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1", [(NAN,)]),
         ("SELECT CAST('nan' AS DOUBLE) % 2.0 AS m FROM f LIMIT 1", [(NAN,)]),
         # The filter proves the divisor is not zero.
         ("SELECT x % x AS m FROM f WHERE x <> 0.0", [(0.0,)]),
@@ -755,15 +765,18 @@ def test_not_in_subquery_means_what_sql_means():
 
 def test_lean_prints_integers_beyond_64_bits():
     """`Rel.eval`'s integers are unbounded: `MAX + 1` is printed as itself, not
-    as a double's code (#72)."""
+    as a double's code (#72). `lean_values` raises there, as the reference does
+    (the `rows_only` read shows the unbounded value)."""
     c = connect()
     put_table(c, "mx", pa.table({"a": pa.array([2**63 - 1], pa.int64())}))
     plan = json.loads(substrait_json(c, "SELECT a + 1 AS s, -a AS n FROM mx WHERE a > 0"))
-    assert lean_values(json.dumps(inline_tables(plan, {"mx": [(2**63 - 1,)]}))) == [
-        (2**63, -(2**63) + 1)
-    ]
+    inlined = json.dumps(inline_tables(plan, {"mx": [(2**63 - 1,)]}))
+    assert lean_values(inlined, rows_only=True) == [(2**63, -(2**63) + 1)]
     plan = json.loads(substrait_json(c, "SELECT -a AS n FROM mx"))
-    assert lean_values(json.dumps(inline_tables(plan, {"mx": [(-(2**63),)]}))) == [(2**63,)]
+    inlined = json.dumps(inline_tables(plan, {"mx": [(-(2**63),)]}))
+    assert lean_values(inlined, rows_only=True) == [(2**63,)]
+    with pytest.raises(LeanRaised, match="wraps"):
+        lean_values(inlined)
 
 
 @pytest.mark.parametrize("engine", PROFILED)

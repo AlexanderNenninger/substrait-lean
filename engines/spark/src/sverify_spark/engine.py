@@ -9,8 +9,9 @@ release.
 are Lean's `Rel.eval`, see `sverify_spark.dialect`) and runs it on a Spark
 session holding the given tables as temporary views. `session()` is a local
 session with the settings of `SPARK_CONF`; on a cluster or Databricks, pass
-your own session, configured the same way. Plans that need a table's row
-order are refused (`Unsupported`) unless `deterministic=True`.
+your own session, configured the same way. Ties and the rows of a `LIMIT`
+are open, as `Rel.Allowed` leaves them (`rows="multiset"`): a plan's last
+sort orders its result.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from sverify.sql import to_sql
+from sverify_spark import ROWS
 from sverify_spark.dialect import SPARK, SPARK_CONF
 
 try:
@@ -127,11 +129,13 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
 #: The views sverify registered under its own names (`__sverify_<i>`, which
 #: `sverify.engine.run_plan` gives a plan's tables), per session: the Arrow
 #: table each holds. A run over the same table does not send it again.
-_VIEWS: weakref.WeakKeyDictionary[Any, dict[str, pa.Table]] = weakref.WeakKeyDictionary()
+_VIEWS: weakref.WeakKeyDictionary[Any, dict[str, Any]] = weakref.WeakKeyDictionary()
 
 
-def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None) -> None:
-    """Register each table as a temporary view of that name. The columns go
+def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> None:
+    """Register each table as a temporary view of that name. A `Scan` of
+    local files is read by the session itself (`sverify_spark.scan`); the other
+    tables' columns go
     to Spark as Arrow, cast to the types `spark_type` names, so NULL and NaN
     stay apart, and no Python worker runs (a table of 100,000 rows takes a
     quarter of the time it took as Python values). A view of sverify's own
@@ -142,16 +146,31 @@ def put_tables(tables: Mapping[str, pa.Table], spark: SparkSession | None = None
         own = name.startswith("__sverify_")
         if own and held.get(name) is table:
             continue
+        if not isinstance(table, pa.Table):
+            from sverify._scan import Scan
+            from sverify_spark.scan import spark_scan
+
+            if not isinstance(table, Scan):  # a state's files (`PartsState`)
+                table.view(spark).createOrReplaceTempView(name)
+                held.pop(name, None)  # the view no longer holds the Arrow table sent last
+                continue
+            spark_scan(spark, table).createOrReplaceTempView(name)
+            if own:
+                held[name] = table
+            continue
         schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
         target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
-        spark.createDataFrame(table.cast(target), schema).createOrReplaceTempView(name)
+        # One chunk: `createDataFrame` of a table with an empty chunk loses the
+        # rows after it (SP-8).
+        data = table.cast(target).combine_chunks()
+        spark.createDataFrame(data, schema).createOrReplaceTempView(name)
         if own:
             held[name] = table
 
 
 def run(
     plan: str | dict,
-    tables: Mapping[str, pa.Table],
+    tables: Mapping[str, Any],
     spark: SparkSession | None = None,
     *,
     deterministic: bool = False,
@@ -183,12 +202,24 @@ def run(
 
     Raises:
         sverify.engines.UnsupportedError: Spark SQL cannot express the plan with
-            Lean's meaning, for example a plan that needs a table's row order
-            without `deterministic=True`.
+            Lean's meaning.
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
+    return run_df(plan, tables, spark, deterministic=deterministic, finite=finite).toArrow()
+
+
+def run_df(
+    plan: str | dict,
+    tables: Mapping[str, Any],
+    spark: SparkSession | None = None,
+    *,
+    deterministic: bool = False,
+    finite: bool = True,
+) -> Any:
+    """`run`, but the result stays a Spark `DataFrame`: nothing is collected.
+    A table is an Arrow table or a handle on files (`sverify_spark.store`)."""
     spark = spark or session()
-    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
+    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows=ROWS)
     put_tables(tables, spark)
-    return spark.sql(sql).toArrow()
+    return spark.sql(sql)

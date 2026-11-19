@@ -55,14 +55,19 @@ orders.apply(Changes(inserts=[(3, "cy", 50)], deletes=[(1, "ada", 30)]))
 big.refresh(engine="polars", route="auto")  # updated from the changes alone, on Polars
 assert big.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 print(big_orders.report)
-# requires orders: (_.amount >= 0)
-# requires orders: (_.amount < 1000000000)
-# requires orders: unique(id)
-# ensures (_.doubled >= 22): proved
+# proved
+# The output guarantees:
+#   doubled ≥ 22
+#   doubled is never NULL
+#   no two rows share id
+# Each run checks on the data:
+#   orders: amount ≥ 0
+#   orders: amount < 1000000000
+#   orders: no two rows share id
 # ...
 ```
 
-The report goes on with the evidence for each engine; `sverify check` prints the contract in plain words.
+`print(big_orders.report.details())` goes on with the evidence for each engine; `sverify check` prints the same contract.
 
 A postcondition that doesn't follow is refused before anything runs:
 

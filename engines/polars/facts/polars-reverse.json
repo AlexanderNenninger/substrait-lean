@@ -6,7 +6,11 @@
   "verdict": "graphemes, where the reference reverses code points",
   "area": "strings",
   "options": [
-    "char_set"
+    "char_set",
+    "non_ascii_text"
+  ],
+  "rows": [
+    {"group": "str.ascii", "option": "non_ascii_text", "types": ["string"]}
   ],
   "constructs": [
     "str.reverse"

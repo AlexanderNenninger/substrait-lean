@@ -72,7 +72,12 @@ def test_on_unproved_warn_refreshes_unverified(tmp_path) -> None:
 # -- doubles into a sink ------------------------------------------------------
 
 
-@sv.transform(requires={"orders": [_.amount >= 0, _.amount <= 1000, sv.max_rows(1000)]})
+#: Amounts up to `2^43` over 1000 rows: `N · M > 2^52`, so engines may differ
+#: in the mean's last bits (below it, a mean of integers is exact, #1608).
+BIG = 2**43
+
+
+@sv.transform(requires={"orders": [_.amount >= 0, _.amount <= BIG, sv.max_rows(1000)]})
 def mean(orders):
     return orders.group_by("customer").aggregate(m=orders.amount.cast("float64").mean())
 
@@ -100,24 +105,23 @@ def test_exact_doubles_into_a_sink_are_asked_for(tmp_path) -> None:
 
 def test_a_postcondition_on_a_double_keeps_it_exact_unless_every_engine_meets_it() -> None:
     """`_.m >= 0` holds of every value within the mean's bound and of its sign,
-    so it runs (#1045). `_.m <= 1000` is proved of the reference's mean, the
+    so it runs (#1045). `_.m <= BIG` is proved of the reference's mean, the
     exact mean rounded once (D25, #1160), but an engine's may exceed it by up
-    to the bound (1.1e-10), so the run asks for `sv.approx` or a stated
-    tolerance. With room for the bound (`<= 1000 + 1.5e-10`) every engine
-    meets it."""
+    to the bound (0.98), so the run asks for `sv.approx` or a stated
+    tolerance. With room for the bound (`<= BIG + 2`) every engine meets it."""
     c = sv.connect()
     c.put("orders", pa.table({"id": [1], "customer": ["ada"], "amount": [5]}))
     o = c.table("orders")
     expr = o.group_by("customer").aggregate(m=o.amount.cast("float64").mean())
-    req = {"orders": [_.amount >= 0, _.amount <= 1000, sv.max_rows(1000)]}
+    req = {"orders": [_.amount >= 0, _.amount <= BIG, sv.max_rows(1000)]}
     sign = sv.verify(expr, requires=req, ensures=[_.m >= 0])
     assert sign.verdict == sv.Verdict.PROVED and sign.ensures[0].robust
     assert sign.run(c, "polars").num_rows == 1
-    tight = sv.verify(expr, requires=req, ensures=[_.m <= 1000])
+    tight = sv.verify(expr, requires=req, ensures=[_.m <= BIG])
     assert tight.verdict == sv.Verdict.PROVED and not tight.ensures[0].robust
     with pytest.raises(RouteError, match=r"reads m.*sv.approx"):
         tight.run(c, "polars")
-    room = sv.verify(expr, requires=req, ensures=[_.m <= 1000 + 1.5e-10])
+    room = sv.verify(expr, requires=req, ensures=[_.m <= BIG + 2])
     assert room.verdict == sv.Verdict.PROVED and room.ensures[0].robust
 
 
@@ -142,7 +146,7 @@ def test_the_plan_bound_level() -> None:
 def test_an_inferred_precondition_says_where_it_came_from(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(t.k, per=t.total // t.qty), on_inferred="ignore")
-    assert "requires t: (_.qty != 0) (inferred from total // qty)" in str(report)
+    assert "requires t: (_.qty != 0) (inferred from total // qty)" in report.details()
     with pytest.raises(
         PreconditionError,
         match=r"1 row\(s\) of t violate \(_.qty != 0\): refused before the run\. The "
@@ -158,7 +162,7 @@ def test_an_inferred_precondition_says_where_it_came_from(con) -> None:
 def test_issues_name_columns_and_operators(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(t.k, y=t.x / 0))
-    text = str(report)
+    text = report.details()
     assert "may fail: division by zero: x / 0" in text
     assert "it divides by the constant 0" in text
     # The error and the assumption about the same operation no longer both show.
@@ -179,7 +183,9 @@ def test_the_and_or_hint_writes_out_the_guard(con) -> None:
 def test_a_double_sum_names_its_cause(con) -> None:
     t = con.table("t")
     report = sv.verify(t.group_by("k").aggregate(s=t.x.sum()))
-    assert "may fail: domain error: sum(x) (NaN where x holds both +inf and -inf" in str(report)
+    assert (
+        "may fail: domain error: sum(x) (NaN where x holds both +inf and -inf" in report.details()
+    )
 
 
 def test_null_and_key_hints(con) -> None:
@@ -189,7 +195,7 @@ def test_null_and_key_hints(con) -> None:
         tables={"t": t},
         ensures=["qty > 3", sv.unique("k")],
     )
-    text = str(report)
+    text = report.details()
     assert "declare" not in text.split("ensures qty > 3")[1].split("\n")[0]
     assert "`k` comes from t.k: declare `sv.unique('k')` in the requires of 't'" in text
     # FALSE is possible too, so NOT NULL alone would not prove it (#655).

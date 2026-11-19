@@ -37,7 +37,11 @@ Input (JSON):
       -- checked on the plan with these reads capped (`Rel.capReads`), which is the plan
       -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
       -- get their error bounds from them (#85)
-  "rows_per": {"<table>": [[[<col>, ...], <n>], ...]} }
+  "rows_per": {"<table>": [[[<col>, ...], <n>], ...]},
+  "ascii": {"<table>": {"<col>": "ascii" | "plain"}} }
+      -- text columns declared ASCII (`plain`: without a vertical tab either),
+      -- as trusted as the schema's nullability; `Issue.nonAscii` is ruled out
+      -- where every text operand is (`AVal.ascii`, D43)
       -- at most <n> rows per value of the columns (`sv.rows_per`, `RowsPer`):
       -- an aggregate grouping by them has groups of at most <n> rows, which
       -- bound its integer and decimal `SUM`s (`Rel.issuesCapped_sound`)
@@ -69,7 +73,7 @@ open Parse
 
 /-- What a column's declared type allows: a list's elements and a struct's
 fields by their types (#925), `depth` levels down. -/
-def typeEnvD : Nat → Json → AVal
+def typeEnv : Nat → Json → AVal
   | 0, _ => AVal.top
   | depth + 1, ty =>
     -- Numbers: integers, doubles (by their codes, `core/Sverify/Core/Float.lean`), timestamps and dates.
@@ -89,8 +93,14 @@ def typeEnvD : Nat → Json → AVal
     -- reference lies in 0001-01-01 … 9999-12-31 by its type (D32,
     -- `Value.InCalendar`): what makes `date_part` of a column read safe. The
     -- source read checks it (`sverify.engine.Connection.put`).
+    -- The same for a narrow integer: its type's range (D46), which the run's
+    -- schema check holds the data to (#1540).
+    let width : Option Nat := match kind with
+      | "i8" => some 7 | "i16" => some 15 | "i32" => some 31 | _ => none
     if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
+    else if let some w := width then
+      { null := nullable, int := some ⟨some (-(2 ^ w : Int)), some (2 ^ w - 1)⟩, nk := nk }
     else if ["precisionTimestamp", "timestamp"].contains kind then
       { null := nullable, int := some ⟨some Time.tsMin, some Time.tsMax⟩, nk := nk }
     else if kind == "date" then
@@ -106,18 +116,15 @@ def typeEnvD : Nat → Json → AVal
       let sc := (body.getObjValAs? Nat "scale").toOption.getD 0
       { null := nullable, int := some ⟨some (1 - 10 ^ p), some (10 ^ p - 1)⟩, nk := some (.dec sc) }
     else if kind == "list" then
-      { null := nullable, list := true, elems := some (typeEnvD depth (body.getObjValD "type")) }
+      { null := nullable, list := true, elems := some (typeEnv depth (body.getObjValD "type")) }
     else if kind == "struct" then
       let tys := ((body.getObjValAs? (Array Json) "types").toOption.getD #[]).toList
-      { null := nullable, struct := true, fields := some (tys.map (typeEnvD depth)) }
+      { null := nullable, struct := true, fields := some (tys.map (typeEnv depth)) }
     else AVal.top
-
-/-- What a column's declared type allows. -/
-def typeEnv (ty : Json) : AVal := typeEnvD 8 ty
 
 def schemaEnv (schema : Json) : List AVal :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
-  | some tys => tys.toList.map typeEnv
+  | some tys => tys.toList.map (typeEnv 8)
   | none => []
 
 /-- Bounds near the 64-bit limits every `BIGINT` has go without saying
@@ -221,9 +228,15 @@ def needNe (n : String × Nat × Int) : Json :=
 def needNotNull (n : String × Nat) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2), ("not_null", Lean.toJson true)]
 
+/-- A text column of `table` that must be ASCII, without a vertical tab if `plain`. -/
+def needAscii (n : String × Nat × Bool) : Json :=
+  Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
+    ("ascii", Json.str (if n.2.2 then "plain" else "ascii"))]
+
 def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
   Json.mkObj [("needs",
-      Json.arr (b.needs.map need ++ b.nes.map needNe ++ b.notNull.map needNotNull).toArray),
+      Json.arr (b.needs.map need ++ b.nes.map needNe ++ b.notNull.map needNotNull ++
+        b.ascii.map needAscii).toArray),
     ("split", Lean.toJson b.split),
     ("why", match b.why with | some w => Lean.toJson w | none => .null)]
 
@@ -259,6 +272,11 @@ structure Report where
   (`contract_sound_allowed`, `postAllowed`), beside `proved`'s every order. -/
   allowed : List Bool := []
   facts : List (String × String × Json)
+  /-- The output columns' types as the writer types them (`Write.relKinds`, the
+  reference's: a decimal `SUM` is `DECIMAL(min(38, p + 10), s)`, an `AVG` is
+  `DECIMAL(p + 4, s + 4)`, p up to 34), as `outputKindJson` renders them, in the
+  output's order. Empty where the transformation is not well-formed. -/
+  outputKinds : List Json := []
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
   /-- Does the transformation leave the engine no choice but the order of its
@@ -326,6 +344,8 @@ structure Report where
   inferredNes : List (String × Nat × Int) := []
   /-- The base-table columns `bounds` need not NULL (a divisor's `COUNT`). -/
   inferredNotNull : List (String × Nat) := []
+  /-- The base-table text columns `bounds` need ASCII (D43). -/
+  inferredAscii : List (String × Nat × Bool) := []
   /-- Predicates the transformation implies on its base tables (#81): for
   each table, abstract rows (as column bounds) one of which every row that
   reaches the output lies in (`Rel.need`, `Rel.need_eval`). -/
@@ -403,6 +423,7 @@ def Report.json (r : Report) : Json :=
           | none => .null)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
+    ("outputKinds", Json.arr r.outputKinds.toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
@@ -429,7 +450,7 @@ def Report.json (r : Report) : Json :=
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
     ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe ++
-      r.inferredNotNull.map needNotNull).toArray),
+      r.inferredNotNull.map needNotNull ++ r.inferredAscii.map needAscii).toArray),
     ("implied", Json.arr (r.implied.map fun (t, Es) =>
       Json.mkObj [("table", Lean.toJson t), ("any", Json.arr (Es.map fun E =>
         Json.arr (E.map fun (j, b) => need (t, j, b)).toArray).toArray)]).toArray),
@@ -847,6 +868,22 @@ def parse (input : Json) : Except String Request := do
     pre := (t, cs) :: pre
   return { input, posts, requires, transform, tables, pre }
 
+/-- One output column's type for the report: a decimal with its precision and
+scale, otherwise the kind's name. -/
+def outputKindJson : Write.WKind → Json
+  | .dec p s => Json.mkObj [("kind", "dec"), ("precision", Lean.toJson p), ("scale", Lean.toJson s)]
+  | .int => Json.mkObj [("kind", "int")]
+  | .float => Json.mkObj [("kind", "float")]
+  | .str => Json.mkObj [("kind", "str")]
+  | .bool => Json.mkObj [("kind", "bool")]
+  | .date => Json.mkObj [("kind", "date")]
+  | .time => Json.mkObj [("kind", "time")]
+  | .interval => Json.mkObj [("kind", "interval")]
+  | .tod => Json.mkObj [("kind", "tod")]
+  | .list _ => Json.mkObj [("kind", "list")]
+  | .struct _ => Json.mkObj [("kind", "struct")]
+  | .other => Json.mkObj [("kind", "other")]
+
 namespace Request
 
 variable (R : Request)
@@ -859,8 +896,17 @@ def ensures : List Plan := match R.transform with
   | none => []
 
 /-- Each table's declared schema, as abstract values. -/
-def schemas (t : String) : List AVal := match R.tables.lookup t with
-  | some (_, s) => schemaEnv s
+def schemas (t : String) : List AVal :=
+  let declared := (R.input.getObjVal? "ascii").toOption.bind (·.getObjVal? t |>.toOption)
+  let flag (i : Nat) : Option String :=
+    declared.bind fun d => (d.getObjValAs? String (toString i)).toOption
+  match R.tables.lookup t with
+  | some (_, s) => (schemaEnv s).zipIdx.map fun (a, i) =>
+    -- A text column declared ASCII (D43), as trusted as its nullability.
+    if !a.str then a else match flag i with
+      | some "plain" => { a with ascii := true, plain := true }
+      | some "ascii" => { a with ascii := true }
+      | _ => a
   | none => []
 
 def preOf (t : String) : List Expr := (R.pre.filter (·.1 == t)).flatMap (·.2)
@@ -1266,6 +1312,12 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         fnames.zip ((fenv.zip (decs ++ List.replicate fenv.length none)).map fun (a, d) =>
           (a.render d, a.json d))
     | none => []
+  let outputKinds := match transform with
+    | some p =>
+      if p.root.checkWF cat then
+        (Write.relKinds (Write.planSchemas p) cat p.root).map outputKindJson
+      else []
+    | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
   -- Windows that order their partitions totally: otherwise a rerun may give
   -- other rows (D10).
@@ -1302,6 +1354,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
     ignores
     allowed
     facts
+    outputKinds
     keys
     windowsTotal := windowsDet
     issues
@@ -1314,6 +1367,8 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     inferredNotNull :=
       Infer.mergedNotNull (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
+    inferredAscii :=
+      Infer.mergedAscii (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree
     constant
     underAndOr := issuesUnderAndOr transform issues
