@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+import sverify
 import yaml
 
 import sverify_dbt
@@ -133,6 +134,17 @@ def test_dbt_excludes_the_proved_tests(shop: Path, result: sverify_dbt.CheckResu
     assert res.success
     assert set(res.result) == {t.name for t in result.proved_tests}
     dbt(shop, "compile")  # the selectors file parses
+
+
+def test_the_readmes_sample_is_what_check_prints(shop: Path) -> None:
+    """Each model's block in the README's sample output is a block of what
+    `check` prints on `examples/shop` (#891, 1.7)."""
+    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    start = readme.index("On the sample project in")
+    sample = readme[readme.index("```\n", start) + 4 :].split("\n```")[0]
+    printed = str(sverify_dbt.check(shop, counterexamples=0)).split("\n\n")
+    for block in sample.split("\n\n"):
+        assert block.strip() in [b.strip() for b in printed], block
 
 
 def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -503,3 +515,34 @@ def test_an_incremental_model_compiled_after_its_run_asks_for_full_refresh(make_
     assert why and "dbt compile --full-refresh" in why and "{{ this }}" in why
     dbt(root, "compile", "--full-refresh")
     assert sverify_dbt.check(root, counterexamples=0)["p"].refused is None
+
+
+def test_a_manifest_of_another_schema_version_warns(tmp_path: Path) -> None:
+    """sverify-dbt reads manifest v12; an older one reads, with a warning (#891, 1.8)."""
+    import json
+
+    from sverify_dbt.manifest import ProjectError, load
+
+    (tmp_path / "target").mkdir()
+    meta = {"dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v11.json"}
+    (tmp_path / "target" / "manifest.json").write_text(json.dumps({"metadata": meta}))
+    with pytest.warns(UserWarning, match="schema v12.*v11"), pytest.raises(ProjectError):
+        load(tmp_path)  # the adapter check follows
+
+
+def test_sverify_dbt_and_sverify_are_one_version() -> None:
+    assert sverify_dbt.__version__ == sverify.__version__
+
+
+def test_a_sverify_of_another_version_stops_the_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib
+    import importlib.metadata
+
+    real = importlib.metadata.version
+    monkeypatch.setattr(
+        importlib.metadata, "version", lambda n: "0.0.1" if n == "sverify-dbt" else real(n)
+    )
+    with pytest.raises(ImportError, match="needs sverify"):
+        importlib.reload(sverify_dbt)
+    monkeypatch.undo()
+    importlib.reload(sverify_dbt)
