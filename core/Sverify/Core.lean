@@ -30,6 +30,7 @@ import Sverify.Core.Observations
 import Sverify.Core.Options
 import Sverify.Core.Order
 import Sverify.Core.OrderAllowed
+import Sverify.Core.Pretty
 import Sverify.Core.Profile
 import Sverify.Core.Reflect
 import Sverify.Core.Regex

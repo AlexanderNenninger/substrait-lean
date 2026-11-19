@@ -1,5 +1,5 @@
 import Sverify.Analysis.Safety
-import SubstraitLean.Pretty
+import Sverify.Core.Pretty
 
 /-!
 # Inferring the bounds a contract needs (#244)
