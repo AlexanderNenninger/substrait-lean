@@ -12,6 +12,10 @@
   (the contract's key on `o_orderkey` determines the rest).
 * Eager aggregation (`Rel.eagerAgg`): line items joined with orders on the
   order key and grouped by it, as written and aggregated before the join.
+* Each other rule of `Rel.rule` (#1787, item 2's gate): one query it fires on,
+  as written and rewritten, on Polars and DuckDB, with the written SQL's size.
+
+`rules` alone runs the per-rule cases: `bench_optimizations.py [rows] rules`.
 
 Prints the median of 5 runs of each.
 """
@@ -26,6 +30,9 @@ import ibis
 import numpy as np
 import pyarrow as pa
 from ibis import _
+
+from sverify.sql import to_sql
+from sverify_duckdb.dialect import DUCKDB
 
 import sverify as sv
 from sverify.engine import connect, create_table, plan_json, substrait_json, written_plan
@@ -146,9 +153,110 @@ def eager(n: int) -> None:
         )
 
 
+def rule_case(
+    label: str, expr: object, requires: dict, data: dict[str, pa.Table], rule: str
+) -> None:
+    """One rule of `Rel.rule`: the plan as written and as rewritten, on Polars
+    and DuckDB, and the written SQL's characters."""
+    report = sv.verify(expr, requires=requires)
+    assert rule in report._rewrites, (label, report._rewrites)
+    assert report.internal_plan is not None and report._optimized is not None
+    p = json.loads(written_plan(report.internal_plan))
+    q = report._optimized
+    sql_p, sql_q = len(to_sql(p, DUCKDB)), len(to_sql(q, DUCKDB))
+    for name, run in [("polars", polars_engine.run), ("duckdb", duckdb_engine.run)]:
+        as_written = median_ms(lambda run=run: run(p, data))
+        rewritten = median_ms(lambda run=run: run(q, data))
+        print(
+            f"rule {label:14} {name:7}: {as_written:8.1f} ms as written, {rewritten:8.1f} ms"
+            f" rewritten ({as_written / rewritten:.2f}x); SQL {sql_p} -> {sql_q} chars"
+        )
+
+
+def rules(n: int) -> None:
+    rng = np.random.default_rng(0)
+    m = max(n // 4, 1)
+    t = ibis.table({"id": "int64", "g": "int64", "a": "int64"}, name="t")
+    tdata = {
+        "t": pa.table(
+            {"id": np.arange(n), "g": rng.integers(0, 100, n), "a": rng.integers(0, 1000, n)}
+        )
+    }
+    key = {"t": [sv.unique("id"), _.a >= 0, _.a <= 1000]}
+    rule_case(
+        "implied-filter", t.filter(t.a >= 0), key, tdata, "filter implied by the contract"
+    )
+    rule_case(
+        "empty-filter", t.filter(t.a < 0), key, tdata, "filter the contract rules out"
+    )
+    rule_case("distinct-key", t.distinct(), key, tdata, "DISTINCT on a key")
+    rule_case(
+        "group-key",
+        t.group_by(["id", (t.g + 1).name("h")]).aggregate(),
+        key,
+        tdata,
+        "GROUP BY a key",
+    )
+    rule_case(
+        "distinct-agg",
+        t.group_by("g").aggregate(n=t.id.nunique()),
+        key,
+        tdata,
+        "DISTINCT aggregate of a key",
+    )
+    o = ibis.table({"id": "int64", "cust": "int64", "amount": "int64"}, name="o")
+    c = ibis.table({"cid": "int64", "name": "string"}, name="c")
+    jdata = {
+        "o": pa.table(
+            {
+                "id": np.arange(n),
+                "cust": rng.integers(0, m, n),
+                "amount": rng.integers(0, 1000, n),
+            }
+        ),
+        "c": pa.table({"cid": np.arange(m), "name": pa.array([f"c{i % 97}" for i in range(m)])}),
+    }
+    fk = {
+        "o": [_.cust.notnull(), sv.references("cust", to=("c", "cid"))],
+        "c": [sv.unique("cid")],
+    }
+    rule_case(
+        "left-fk",
+        o.left_join(c, o.cust == c.cid).select(o.id, o.amount, c.name),
+        fk,
+        jdata,
+        "left join on a foreign key",
+    )
+    rule_case(
+        "left-null-rej",
+        o.left_join(c, o.cust == c.cid).filter(c.name.notnull()).select(o.id, c.name),
+        {},
+        jdata,
+        "left join under a filter rejecting NULLs",
+    )
+    rule_case(
+        "join-fk-unused",
+        o.join(c, o.cust == c.cid).select(o.id, o.amount),
+        fk,
+        jdata,
+        "join on a foreign key, no column used",
+    )
+    rule_case(
+        "left-key-unused",
+        o.left_join(c, o.cust == c.cid).select(o.id, o.amount),
+        {"c": [sv.unique("cid")]},
+        jdata,
+        "left join on a key, no column used",
+    )
+
+
 if __name__ == "__main__":
     rows = int(sys.argv[1]) if len(sys.argv) > 1 else 1_000_000
+    if sys.argv[2:] == ["rules"]:
+        rules(rows)
+        sys.exit()
     guards(rows)
     sharded(rows)
     group_by_fd(rows)
     eager(rows)
+    rules(rows)
