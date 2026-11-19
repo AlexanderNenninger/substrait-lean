@@ -113,6 +113,7 @@ Exit codes, as in `sverify check`: 0 holds, 1 something is not proved, 2 usage (
 The same from Python:
 
 ```python
+# skip: needs a compiled dbt project at path/to/project
 import sverify_dbt
 
 result = sverify_dbt.check("path/to/project")
