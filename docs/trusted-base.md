@@ -259,7 +259,10 @@ place, and what retires it.
      discharges it from `Rel.SumsNear` (each double `SUM` and `AVG` the table
      allows is near the correctly rounded one over the groups it reads), and
      `Engine.polars_sum_example` applies the theorem to a double `SUM` on
-     Polars with only `Engine.Runs` open. Other shapes (a double `SUM` read by
+     Polars with only `Engine.Runs` open. For a `SUM`, the checker's own
+     tolerance covers D35's bound where `SumTolCovers` holds
+     (`Measure.sumNear_of_tol`); for an `AVG`, `Rel.SumsNear` stays a
+     hypothesis until track A's follow-up (rulings 135 (b) and 146). Other shapes (a double `SUM` read by
      a filter, a join or a key) are the tolerance bound
      [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
 

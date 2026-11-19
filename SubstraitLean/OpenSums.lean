@@ -338,7 +338,12 @@ side; `SumTolCovers` is the check that `sumTolScaled` covers that bound,
 decided by evaluation. It fails only for magnitudes below the smallest
 normal double (a constant-zero column among them), where D35's subnormal
 slack `(n + 1) · n · 2⁵²` exceeds `sumTolScaled`'s `n² · 2⁵²` by up to
-`n / 2` units of `2⁻¹⁰⁷⁴`. -/
+`n / 2` units of `2⁻¹⁰⁷⁴`.
+
+The corollary is for a double `SUM` only. For an `AVG`, `Measure.SumNear`
+stays a hypothesis (ruling 146): `AvgOrder.near` is about twice
+`avgTolScaled`, and the tighter lemma that closes it is track A's follow-up
+with ruling 135 (b). -/
 
 /-- The most D35's bound (`SumBound`) lets a `SUM` of `n` doubles, each at
 most `bs` scaled, be from the exact sum, in units of `2⁻¹⁰⁷⁴`. -/
