@@ -313,7 +313,7 @@ class _Checker:
                 return go(
                     requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
                 )
-            except ConditionError as e:  # one condition: drop it, prove the rest (#699)
+            except ConditionError as e:  # drop the conditions it names, prove the rest (#699)
                 if not self._drop(e, res, requires, ensures):
                     res.refuse(_refusal(e))
                     return None
@@ -346,20 +346,23 @@ class _Checker:
 
     @staticmethod
     def _drop(e: ConditionError, res: ModelResult, requires: dict, ensures: list) -> bool:
-        """Drop the condition `e` names, with its reason; False if none is."""
-        for t, cs in requires.items():
-            hit = [c for c in cs if _named(c) == e.condition]
-            if hit:
-                requires[t] = [c for c in cs if c not in hit]
-                res.not_assumed.append(
-                    f"{t}: {_label(hit[0])}: sverify cannot read it ({e.reason})"
-                )
-                return True
-        for tr, cs in ensures:
-            if tr.status != "not checked" and any(_named(c) == e.condition for c in cs):
-                tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
-                return True
-        return False
+        """Drop every condition `e` names, with its reason; False if it
+        names none that is still there."""
+        dropped = False
+        for name, err in e.errors.items():
+            for t, cs in requires.items():
+                hit = [c for c in cs if _named(c) == name]
+                if hit:
+                    requires[t] = [c for c in cs if c not in hit]
+                    res.not_assumed.append(
+                        f"{t}: {_label(hit[0])}: sverify cannot read it ({_first_line(err)})"
+                    )
+                    dropped = True
+            for tr, cs in ensures:
+                if tr.status != "not checked" and any(_named(c) == name for c in cs):
+                    tr.skip(f"sverify cannot read its condition: {_first_line(err)}")
+                    dropped = True
+        return dropped
 
     def _read(self, report: Any, m: Relation, res: ModelResult, ensures: list) -> None:
         # `report.ensures` is in the order of the conditions given, each
@@ -608,7 +611,7 @@ def _why(c: Any) -> str:
 
 
 def _named(c: Any) -> str:
-    """A condition as `ConditionError.condition` names it."""
+    """A condition as the keys of `ConditionError.errors` name it."""
     return condition_label(c)
 
 

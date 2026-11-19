@@ -275,16 +275,27 @@ def test_an_ibis_type_error_names_its_condition() -> None:
 )
 def test_a_condition_verify_cannot_read_names_itself(kwargs, condition, reason) -> None:
     """#699: an unknown column, SQL that does not parse and a construct the lift
-    does not read each raise `ConditionError` naming the condition; the query
-    itself reads fine."""
+    does not read each raise `ConditionError`, keyed by the condition; the
+    query itself reads fine."""
     tables = {"t": {"x": "BIGINT"}}
     assert sv.verify("select x from t", tables=tables).verdict is sv.Verdict.PROVED
     with pytest.raises(sv.errors.ConditionError) as e:
         sv.verify("select x from t", tables=tables, **kwargs)
-    assert e.value.condition == condition
-    assert reason in e.value.reason
+    assert list(e.value.errors) == [condition]
+    assert reason in str(e.value.errors[condition])
     assert isinstance(e.value, sv.errors.UnsupportedError)
     assert "the query is not refused" in str(e.value)
+
+
+def test_every_unreadable_condition_is_named_at_once() -> None:
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify(
+            "select x from t",
+            tables={"t": {"x": "BIGINT"}},
+            requires={"t": ["qq > 0"]},
+            ensures=["x > 0", "zz > 1", "md5(x) > 1"],
+        )
+    assert list(e.value.errors) == ["qq > 0", "zz > 1", "md5(x) > 1"]
 
 
 def test_a_stale_checker_build_says_so(tmp_path, monkeypatch) -> None:

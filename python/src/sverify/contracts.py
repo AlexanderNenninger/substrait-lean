@@ -1607,26 +1607,32 @@ def _prove_once(
                 err = TypeError(msg)
             raise err from e
 
+    unreadable: dict[str, _Unsupported] = {}
+
     def condition_plan(where: str, n: int, table: Transform, c: Condition) -> Any:
-        """The plan of a condition; a condition sverify cannot read raises
-        `ConditionError` naming it (#699), not a refusal of the query."""
+        """The plan of a condition; one sverify cannot read is collected, so
+        that `ConditionError` names every such condition at once (#699)."""
         try:
             return plan(query(where, n, table, c))
         except _Unsupported as e:
-            raise ConditionError(label(c), str(e), f"{where} condition {n}") from e
+            unreadable[label(c)] = e
+            return None
 
     req_plans = []
     for t, cs in requires.items():
         for n, c in enumerate(cs, start=1):
-            if planned(c):
-                req_plans.append(condition_plan(f"requires {t}", n, table_ref(t, c), c))
+            if planned(c) and (p := condition_plan(f"requires {t}", n, table_ref(t, c), c)):
+                req_plans.append(p)
     ens_plans = []
     for n, c in enumerate(ensures, start=1):
         if isinstance(c, TableCondition):
             continue
         p = condition_plan("ensures", n, output(c), c)
-        p["relations"][0]["root"]["names"] = [label(c)]
-        ens_plans.append(p)
+        if p is not None:
+            p["relations"][0]["root"]["names"] = [label(c)]
+            ens_plans.append(p)
+    if unreadable:
+        raise ConditionError(unreadable)
     transform_plan = plan(transform)
     out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
     out_types = _output_types(transform, schemas) if counterexamples else None
