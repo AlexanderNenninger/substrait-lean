@@ -24,7 +24,7 @@ from sverify.plan_json import (
     literal,
     make_date_json,
 )
-from sverify.sql_lift._base import _KNOWN, Column, E, Sub, _fn, _Lift, _shown, register
+from sverify.sql_lift._base import _KNOWN, DIALECT, Column, E, Sub, _fn, _Lift, _shown, register
 from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
 
 
@@ -90,9 +90,19 @@ def _temporal(e: E, t: Any) -> E:
         v = dt_.datetime.fromisoformat(text)
     except (TypeError, ValueError) as err:
         raise Unsupported(f"cannot read {text!r} as a {t}") from err
+    if t.is_timestamp() and t.timezone is not None:
+        # A TIMESTAMPTZ literal (D53): an instant only where its text says which, by an offset.
+        if v.tzinfo is None:
+            raise SqlUnsupported(
+                f"{text!r} as a TIMESTAMPTZ reads the session time zone; write an offset "
+                "('2024-01-01 12:00:00+00') or the timestamp's AT TIME ZONE 'UTC' (#1725)"
+            )
+        it = dt.Timestamp(timezone="UTC", scale=6)
+        return E(literal(v, it), it, v.astimezone(dt_.UTC))
     if v.tzinfo is not None:
         raise SqlUnsupported(
-            f"a literal timestamp with a time zone is not supported yet {INSTANT_NOTE}"
+            f"{text!r} has a time zone, which a TIMESTAMP does not: write TIMESTAMPTZ "
+            f"or the timestamp's AT TIME ZONE 'UTC' (#1725)"
         )
     ts = dt.timestamp(scale=6)
     return E(literal(v, ts), ts, v)
@@ -140,6 +150,33 @@ _INTERVAL_UNITS = {
     "quarter": (3, 0),
     "year": (12, 0),
 }
+
+
+def _at_time_zone(lf: _Lift, node: sge.AtTimeZone, sub: Sub, scope: list[Column]) -> E:
+    """`x AT TIME ZONE 'UTC'` (D53): a timestamp as the instant at that wall clock in UTC,
+    an instant as its UTC wall clock; the same microseconds. No other zone is read."""
+    zone = node.args.get("zone")
+    text = zone.name if isinstance(zone, sge.Literal) and zone.is_string else None
+    if text is None or text.upper() not in {"UTC", "ETC/UTC", "Z"}:
+        raise SqlUnsupported(
+            f"AT TIME ZONE {zone.sql(DIALECT) if zone is not None else '?'}: only 'UTC' is "
+            f"read, in the same way as a timestamp with a time zone {INSTANT_NOTE}"
+        )
+    a = sub(node.this)
+    naive, instant = dt.timestamp(scale=6), dt.Timestamp(timezone="UTC", scale=6)
+    if a.type.is_timestamp() and a.type.timezone is None:
+        out, value = instant, a.value
+        if a.constant and value is not None:
+            value = value.replace(tzinfo=dt_.UTC)
+            return E(literal(value, instant), instant, value)
+    elif a.type.is_timestamp():
+        out, value = naive, a.value
+        if a.constant and value is not None:
+            value = value.astimezone(dt_.UTC).replace(tzinfo=None)
+            return E(literal(value, naive), naive, value)
+    else:
+        raise SqlUnsupported(f"AT TIME ZONE 'UTC' of a {a.type} is not supported {INSTANT_NOTE}")
+    return E(cast_json(a.json, out), out, None if a.value is None else a.value)
 
 
 def _interval(lf: _Lift, node: sge.Interval, sub: Sub, scope: list[Column]) -> E:
@@ -493,6 +530,7 @@ def _isodow_rule(lf: _Lift, node: sge.DayOfWeekIso, sub: Sub, scope: list[Column
 register(
     {
         sge.TimestampTrunc: _date_trunc,
+        sge.AtTimeZone: _at_time_zone,
         sge.Interval: _interval,
         sge.Extract: _extract,
         sge.Anonymous: _anonymous,
