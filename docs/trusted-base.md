@@ -58,7 +58,7 @@ the project's one axiom (the trusted table below).
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which nothing discharges yet where `transferB` fails (#929) | `Sound.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
@@ -251,10 +251,13 @@ place, and what retires it.
      integer overflow on Polars. There `Engine.contract_sound_runs_near` takes
      `Rel.FloatOpenSafeP` over the engine's table instead: every result the
      table allows is, up to the plan's observation, one of the reference's
-     orders. Nothing discharges that hypothesis yet where `transferB` fails;
-     for a double `SUM` and `AVG` it is the tolerance bound
-     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929),
-     so the open-float form holds of no engine's run by proof today.
+     orders. For an aggregate at the root, `Rel.floatOpenSafeP_aggregate`
+     discharges it from `Rel.SumsNear` (each double `SUM` and `AVG` the table
+     allows is near the correctly rounded one over the groups it reads), and
+     `Engine.polars_sum_example` applies the theorem to a double `SUM` on
+     Polars with only `Engine.Runs` open. Other shapes (a double `SUM` read by
+     a filter, a join or a key) are the tolerance bound
+     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
 
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside `Engine.Runs`. Raising only where the reference may is a separate claim
