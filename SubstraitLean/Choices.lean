@@ -85,7 +85,7 @@ def Rel.evalChoices (cat : Catalog) : Rel → Option (List (List TieChoice))
   | .aggregate r gs ms => do
     let rows ← exactRows (← r.evalChoices cat)
     let groups := if gs.isEmpty then [([], rows)] else
-      (dedup (rows.map (groupKey gs))).map fun k => (k, groupRows gs rows k)
+      (distinctRows (rows.map (groupKey gs))).map fun k => (k, groupRows gs rows k)
     groups.mapM fun (k, grp) => do
       let cells ← ms.mapM (·.choice grp)
       pure (k.map .val ++ cells)
@@ -125,7 +125,7 @@ def Rel.evalChoices (cat : Catalog) : Rel → Option (List (List TieChoice))
     let rows ← exactRows (← r.evalChoices cat)
     pure (toChoices (rows.filter fun row => (c.eval row).isTrue))
   | .distinct r => do
-    pure (toChoices (dedup (← exactRows (← r.evalChoices cat))))
+    pure (toChoices (distinctRows (← exactRows (← r.evalChoices cat))))
   | .unnest r c => do
     pure (toChoices ((← exactRows (← r.evalChoices cat)).flatMap (unnestRow c)))
   | .cross a b => do
