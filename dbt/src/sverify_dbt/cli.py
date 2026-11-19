@@ -119,6 +119,8 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--select", "-s", nargs="+", metavar="MODEL", help="models to check")
     g.add_argument("--output", "-o", metavar="FILE", help="write the YAML to FILE")
     args = parser.parse_args(argv)
+    if args.command == "check" and args.selectors and args.select:
+        parser.error("--selectors needs a check of the whole project: drop --select")
     if args.command == "suggest":
         return _suggest(args)
     from sverify.cli import _limits

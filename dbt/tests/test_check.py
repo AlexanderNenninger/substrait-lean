@@ -551,6 +551,19 @@ def test_an_incremental_model_compiled_after_its_run_asks_for_full_refresh(make_
     assert sverify_dbt.check(root, counterexamples=0)["p"].refused is None
 
 
+def test_selectors_need_a_check_of_the_whole_project(shop: Path, tmp_path: Path) -> None:
+    """A selector written from `--select` would drop every other model's proved
+    tests, so `dbt build` would run them again (#891, 1.6)."""
+    partial = sverify_dbt.check(shop, select=["stg_orders"], counterexamples=0)
+    with pytest.raises(ValueError, match="whole project"):
+        partial.write_selectors(tmp_path / "selectors.yml")
+    with pytest.raises(SystemExit) as e:
+        main(["check", str(shop), "--select", "stg_orders", "--selectors"])
+    assert e.value.code == 2
+    full = sverify_dbt.check(shop, counterexamples=0)
+    assert full.write_selectors(tmp_path / "selectors.yml").is_file()
+
+
 def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     """#699: `verify` names the condition it cannot read; sverify-dbt drops it
     and proves the others, in one retry per bad condition (no dbt needed)."""

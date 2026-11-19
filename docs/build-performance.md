@@ -90,7 +90,7 @@ times.
 ## CI's shards
 
 CI splits the `core` tests three ways (`SVERIFY_SHARD`) and oracle A's
-replay four ways (`--shard`). [`python/tests/shards.json`](../python/tests/shards.json)
+replay two ways (`--shard`). [`python/tests/shards.json`](../python/tests/shards.json)
 and [`oracle_shards.json`](../python/tools/sverify_dev/oracle_shards.json)
 assign each test of at least 0.05 s, and each replayed file, to a shard,
 longest first to the least loaded, from durations a CI run recorded
