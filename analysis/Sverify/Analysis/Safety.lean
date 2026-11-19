@@ -37,11 +37,9 @@ this model (`docs/proofs.md`, "What is trusted"). `Rel.HasIssue` assumes:
   counts as `AND`/`OR`, so `CASE WHEN b <> 0 THEN a / b > 1 ELSE false END`
   fails on `b = 0`. The parser makes those eager (`Parse.eagerly`);
   `Expr.ifThen` itself is lazy. Polars evaluates `coalesce`, `&` and `|` on
-  every row (`polars-exec-when-eager`); DataFusion's simplifier rewrites a
-  boolean `CASE` into `AND`/`OR`.
-* On DataFusion, `ABS` fails on the smallest integer (the parser writes `-a`
-  as `a / -1`), and the simplifier makes `POWER(x, 0)` the constant 1, so it
-  never fails.
+  every row (`polars-exec-when-eager`); an optimizer that rewrites a boolean
+  `CASE` into `AND`/`OR` does the same.
+* `ABS` fails on the smallest integer (the parser writes `-a` as `a / -1`).
 * Optimizers merge filters and push them down through projections and
   joins, so a filter condition may be evaluated on rows that a filter below it
   would remove: `t.filter(b != 0).filter(a / b > 1)` fails on `b = 0`.
@@ -1554,7 +1552,7 @@ def Rel.loose : Rel → Rel
   | .orderBy r _ | .distinct r => r.loose
   | .aggregate r gs ms => .aggregate r gs ms
   -- A filter on the other columns may run below an `UNNEST`, on rows whose
-  -- lists are empty (DataFusion's optimizer does): the loose rows are both.
+  -- lists are empty (an optimizer may do that): the loose rows are both.
   | .unnest r c => .unionAll (.unnest r.loose c) r.loose
 
 omit [Boxes.Ambient] in
