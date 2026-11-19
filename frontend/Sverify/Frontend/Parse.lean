@@ -258,6 +258,8 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
   | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
+  | .un (.atUtc true) _ => .timeTz
+  | .un (.atUtc false) _ => .time
   | .un .length _ | .un .ascii _ | .un (.regexMatch _) _ | .un (.datePart _) _ | .un (.dayPart _) _ => .int
   | .un (.dateTrunc _) a => if a.kind cols == .tod then .tod else .time
   | .un .toDate _ | .un (.dayTrunc _) _ => .date
@@ -849,11 +851,15 @@ partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) 
   if let some l := field? j "literal" then
     -- A list or a struct is no constant to fold: `parseExpr` reads it.
     if ["list", "emptyList", "struct"].any (field? l · |>.isSome) then return none
+    -- An instant literal is the conversion of a timestamp: `parseExpr` reads it (D53).
+    if ["precisionTimestampTz", "timestampTz"].any (field? l · |>.isSome) then return none
     -- Months are not microseconds: `temporalArith` reads these.
     if let some (m, _) ← intervalLit? j then
       if m != 0 then return none
     return some (← parseConstLiteral l)
   if let some c := field? j "cast" then
+    -- A cast to an instant keeps its kind: `parseExpr` reads it as the conversion.
+    if typeKind (← field c "type") == .timeTz then return none
     let some x ← constOf? fns (← field c "input") | return none
     return some (← castConst (← field c "type") x)
   if let some f := field? j "scalarFunction" then
@@ -929,7 +935,7 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
   let base := baseName name
   let sigs := (sigTokens name).map argSig
   -- `none` for expressions of literals.
-  let ks := args.map fun e => if e.readsField then some (e.kind cols) else none
+  let ks := args.map fun e => if e.readsField || e.kind cols == .timeTz then some (e.kind cols) else none
   let strict := arithmeticFns.contains base || comparisonFns.contains base
   if strict then
     if let some t := sigs.findSome? (fun | .unknown t => some t | _ => none) then
@@ -948,10 +954,10 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     let known := ((ks.filterMap id).filter (· != .other)) ++
       sigs.filterMap (fun | .kind k => some k | _ => none)
     if let k :: rest := known then
-      if rest.any (·.numeric != k.numeric) then throw s!"{name}: compares values of different types"
       -- An instant is not comparable with a naive timestamp or an integer.
       if known.contains .timeTz && known.any (· != .timeTz) then
         throw (instantRefusal s!"{name}: compares a timestamp with a time zone with another kind")
+      if rest.any (·.numeric != k.numeric) then throw s!"{name}: compares values of different types"
   -- `Rel.eval` gives `NULL` for a string or boolean function of anything
   -- else; DataFusion would cast the argument (`1 || 'a'` is `'1a'`).
   let want (k : Nat) : Option Kind :=
@@ -1229,12 +1235,14 @@ def argKind (cols : List Kind) (j : Json) (e : Expr) : Kind :=
   | some l, _ =>
     if (field? l "date").isSome then .date
     else if (field? l "precisionTimestamp").isSome || (field? l "timestamp").isSome then .time
+    else if (field? l "precisionTimestampTz").isSome || (field? l "timestampTz").isSome then .timeTz
     else if (field? l "precisionTime").isSome || (field? l "time").isSome then .tod
     else .other
   -- A constant cast (`DATE '2024-01-31'` is a cast of a string).
   | none, some c => match typeKind ((field? c "type").getD .null) with
     | .date => .date
     | .time => .time
+    | .timeTz => .timeTz
     | _ => .other
   | none, none => .other
 
@@ -1527,6 +1535,7 @@ partial def declaredKind (fns : List (Nat × String)) (j : Json) : Kind :=
       else if (field? l "varChar").isSome then .str
       -- Read as microseconds whatever their precision (0 counts seconds).
       else if (field? l "precisionTimestamp").isSome then .time
+      else if (field? l "precisionTimestampTz").isSome || (field? l "timestampTz").isSome then .timeTz
       else if (field? l "precisionTime").isSome then .tod
       else typeKind l
   else if let some c := field? j "cast" then typeKind ((field? c "type").getD .null)
@@ -1747,6 +1756,16 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let vs ← (← arrD sj "fields").mapM fun e => do
         return (← parseExpr fns [] [] (Json.mkObj [("literal", e)])).eval []
       return .lit (.struct vs)
+  -- An instant literal: the conversion at UTC of the timestamp literal (D53, `UnFn.atUtc`).
+  if let some l := field? j "literal" then
+    if let some t := field? l "precisionTimestampTz" then
+      let p ← natD t "precision"
+      let v ← getInt (← field t "value")
+      if p ≤ 6 then return .un (.atUtc true) (.lit (.ts (v * 10 ^ (6 - p))))
+      else if v % 10 ^ (p - 6) == 0 then return .un (.atUtc true) (.lit (.ts (v / 10 ^ (p - 6))))
+      else throw "timestamps finer than microseconds are not supported"
+    if let some us := field? l "timestampTz" then
+      return .un (.atUtc true) (.lit (.ts (← getInt us)))
   if let some c ← constOf? fns j then return ← constExpr c
   if (field? j "literal").isSome then
     throw "month and year intervals are only supported added to a date or timestamp"
@@ -2063,9 +2082,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     let k := e.kind cols
     -- An instant (`.timeTz`) is read, compared and ordered; the conversions and
     -- the calendar's casts wait for #1725.
-    if (k == .timeTz || target == .timeTz) && !(k == .timeTz && target == .timeTz) then
-      throw (instantRefusal "a cast to or from a timestamp with a time zone")
+    if k == .time && target == .timeTz then return .un (.atUtc true) e
+    if k == .timeTz && target == .time then return .un (.atUtc false) e
     if k == .timeTz && target == .timeTz then return e
+    if k == .timeTz || target == .timeTz then
+      throw (instantRefusal "a cast to or from a timestamp with a time zone, but at UTC to a timestamp,")
     if k == .int && wideIntDecimal (← field c "type") then return e
     -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
     -- checking the precision. To a smaller scale rounds half away from zero;
