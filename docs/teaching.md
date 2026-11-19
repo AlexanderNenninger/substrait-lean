@@ -118,7 +118,7 @@ on 2026-11-07.
 | "the E writer does not write overflow = X yet" | SQL for an engine | `engine="duckdb"`; lifted by [#241] |
 | "tables have no row order" on Spark | SQL for an engine with `rows="sequence"` | the default `rows="multiset"`, or `deterministic=True` |
 | "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
-| Spark's LN, POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
+| Spark's POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |
 | Spark decimal negation, division, double to DECIMAL | Engines | A cast to fewer digits (to DOUBLE for an AVG), or `engine="duckdb"`; lifted by [#27] |
 | Snowflake's libm, MOD, VAR, decimals, intervals | Engines | `engine="duckdb"`; Snowflake behaviour recorded privately; lifted by [#852] |
