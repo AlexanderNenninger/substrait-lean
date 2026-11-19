@@ -41,7 +41,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 5 | 25 | 1 | 4 | 4 | 0 | 17 | 0 |
 | Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 6 | 26 | 1 | 5 | 3 | 2 | 16 | 0 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 6 | 26 | 1 | 7 | 3 | 2 | 16 | 0 |
 
 Rows per evidence level:
 
@@ -49,7 +49,7 @@ Rows per evidence level:
 |---|---|---|---|---|---|---|---|
 | DuckDB | 6 | 13 | 18 | 2 | 0 | 0 | 17 |
 | Polars | 29 | 2 | 17 | 0 | 0 | 0 | 17 |
-| Spark | 17 | 13 | 13 | 0 | 0 | 0 | 16 |
+| Spark | 17 | 15 | 13 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -248,6 +248,8 @@ Refused on Polars, with no expression there:
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | fuzz | tested: [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json) |
+| fp.elem | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json), [spark-ulp-libm](../engines/spark/facts/spark-ulp-libm.json) |
+| fp.log | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json), [spark-ulp-libm](../engines/spark/facts/spark-ulp-libm.json) |
 | agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json), [spark-sum-double](../engines/spark/facts/spark-sum-double.json), [spark-avg-double](../engines/spark/facts/spark-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN`, `NULL` | precondition: every argument is in its function's domain | proof | proved `Rel.spark_sound`; [spark-math-domain](../engines/spark/facts/spark-math-domain.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-math-domain](../engines/spark/facts/spark-math-domain.json) |
