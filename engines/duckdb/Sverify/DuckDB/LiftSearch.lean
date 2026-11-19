@@ -689,6 +689,11 @@ def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAg
   let rows := aggSampleGroups g.arg
   let mut passed := 0
   for (ms, fin, kinds) in aggCandidates g do
+    -- D52: where DuckDB's construct is a set around the plan's value, the finish carries the mark.
+    let fin := match DuckAgg.mark s g with
+      | some k => (callJ? "sverify_approx:fp64_i64" [fin, litJ "i64" (toJson (toString k))] []
+          "fp64").getD fin
+      | none => fin
     let some (measures, finish) := parseAgg g ms fin kinds | continue
     let ok := rows.all fun vs => LoweringSearch.Outcome.agreeB
       (finish.evalP Profile.reference (measures.map (·.eval (vs.map ([·]))))) (.ok (g.eval s vs))

@@ -371,6 +371,16 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
   | .un .fneg a => exprEps engine env cols a
   | .un .itof a => (exprEps engine env cols a).bind fun (x, p) =>
     if x == 0.0 then some (0.0, p) else none
+  -- D52: a source mark. The source's construct is within `k · 2⁻⁵³` of the
+  -- plan's value, relatively (`DuckAgg.avgBigint_nearRel` for `avg(BIGINT)`):
+  -- that band over the argument's range, rounded up, where the argument is
+  -- exact; no bound otherwise. It does not test `engine`: one bound, whoever
+  -- runs the SQL (ruling 82).
+  | .un (.approx k) a => (exprEps engine env cols a).bind fun (x, p) => do
+    guard (x == 0.0)
+    let m ← doubleMag env a
+    let band := Float.ofNat k * Float.scaleB 1.0 (-53) * m
+    return (band * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074), p)
   | .bin .lt a b | .bin .eq a b => do
     -- `rule_threshold`: where the ranges, widened by `ε`, do not straddle, the
     -- comparison has one outcome on both sides.

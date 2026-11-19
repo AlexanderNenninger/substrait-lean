@@ -1468,3 +1468,26 @@ Why: the reference belongs to no engine, and these rows said "as DuckDB
 computes it" with no decision and no second engine's facts. The mark states
 what is known, and the rule for new functions (Lean and DuckDB first) keeps
 producing such rows.
+
+### D52. A source mark carries a construct's band
+
+Decided 2026-11-19 (#1608 12d-4, ruling 85): approved by the theory advisor.
+
+`UnFn.approx k` is the identity in `Rel.eval` under every profile. It records
+that the source a plan was lifted from computes this value with a construct
+of its own, and that the construct's value lies within `k · 2⁻⁵³`, relatively,
+of the plan's. `Rel.Allowed` and the options do not change, and no profile
+reads the mark. The checker's tolerance analysis reads it (`Epsilon.exprEps`):
+over an exact argument, the band over the argument's range. The reference's
+values do not move. Substrait carries it as sverify's own function
+`sverify_approx(x, k)` with `k` a literal; every engine's lowering erases it,
+so the written SQL is unchanged.
+
+The first construct is DuckDB's `avg` of integers under `semantics="duckdb"`,
+a set of doubles around the plan's value (`DuckAgg.Allowed`, `duckdb-avg-int`).
+The lift marks that entry's finish with `DuckAgg.nearRel`, the band
+`DuckAgg.avgBigint_nearRel` proves (`DuckAgg.mark`).
+
+Why the core: a tier-1 engine's SQL returns one of several doubles where the
+lifted plan can state one. The mark is what lets the checker bound the
+others. It names no engine.

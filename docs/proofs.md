@@ -267,7 +267,7 @@ build as the guard. The modules below import it as `Sverify.DuckDB.*`.
 | `DuckDB/Engine.lean` | `Engine.duckdb`, its functions within DuckDB's table (`Profile.duckdb_withinOk`), and `Engine.duckdb_sound` |
 | `DuckDB/LiftHint.lean` | The hints that tell the lift search which template to try first |
 | `DuckDB/LiftCache.lean` | The lift hints (generated) |
-| `DuckDB/AvgSet.lean` | DuckDB's `avg` of integers as the set of doubles `duckdb-avg-int` states (`DuckAgg.Allowed`): the model's value is in it (`DuckAgg.eval_allowed`), an integer mean is its one member (`DuckAgg.avgBigint_exact`), every member is near the model's value (`DuckAgg.avgBigint_near`), and so near every lifted aggregate's (`AggEntry.allowed_near`) |
+| `DuckDB/AvgSet.lean` | DuckDB's `avg` of integers as the set of doubles `duckdb-avg-int` states (`DuckAgg.Allowed`): the model's value is in it (`DuckAgg.eval_allowed`), an integer mean is its one member (`DuckAgg.avgBigint_exact`), every member is near the model's value (`DuckAgg.avgBigint_near`), and so near every lifted aggregate's (`AggEntry.allowed_near`); every member within `DuckAgg.nearRel · 2⁻⁵³` of the plan's value, the band of D52's mark (`DuckAgg.avgBigint_nearRel`) |
 | `DuckDB/SumGuard.lean` | DuckDB's `SUM` and `AVG` of doubles as a guarded sum and the extremes: `SumGuard.agree` (it is the aggregate's value, for every group) and `SumGuard.noNan` (no measure has a domain error, #341) |
 | `DuckDB/LiftSearch.lean` | `generate_lift`, the lift search |
 | `DuckDB/Lift.lean` | The lift's tables and their exports |

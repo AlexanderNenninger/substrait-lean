@@ -874,4 +874,17 @@ def DuckAgg.eval : Semantics → DuckAgg → List Value → Value
   | _, .sumDouble, vs => AggFn.apply .fsum (vs.filter (· != .null))
   | _, .avgDouble, vs => AggFn.apply .avg (vs.filter (· != .null))
 
+/-- The band D52's mark carries on a lifted `avg(BIGINT)` (#1608 12d-4): every
+value DuckDB may give is within `nearRel · 2⁻⁵³` of the plan's, relative to
+the plan's (`DuckAgg.avgBigint_nearRel`, `DuckDB/AvgSet.lean`). -/
+def DuckAgg.nearRel : Nat := 17
+
+/-- The source mark of the aggregate `g` lifted under `s` (D52): `nearRel`
+where DuckDB's construct is a set around the plan's value (`avg(BIGINT)`
+under DuckDB's semantics), none where the plan states it exactly. The lift
+wraps the entry's finish in `.un (.approx k)` (`LiftSearch.liftAgg`). -/
+def DuckAgg.mark : Semantics → DuckAgg → Option Nat
+  | .duckdb, .avgBigint => some DuckAgg.nearRel
+  | _, _ => none
+
 end Substrait
