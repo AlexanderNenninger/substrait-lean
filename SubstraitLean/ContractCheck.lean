@@ -1740,6 +1740,21 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
     exact hdet.2
   exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd ho
 
+/-- **A class-determined report means one result up to `Obs.classes`** (the
+instance of `Rel.DeterminedUpTo` at the class level), in a context that reads
+every double of `Rel.eval`'s result as a double (`Relation.DoublesKinded`): the
+bridge `Relation.Equiv_classes_of_canon_perm` from `Row.canon`. The converse
+of the bridge fails (one kind per column), so `check_class_determined_sound`
+stays the primary theorem. -/
+theorem check_class_determined_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) (ctx : ObsCtx)
+    (hk : Relation.DoublesKinded ctx (T.root.eval data)) :
+    T.root.DeterminedUpTo Obs.classes ctx data :=
+  fun _ h => Relation.Equiv_classes_of_canon_perm
+    (check_class_determined_sound hR hc hD hT hdet h) hk
+
 /-! ### The other fields the engine theorems read (#1484, A4)
 
 Each report field an engine's theorem reads is a theorem of the checker, in
