@@ -565,7 +565,10 @@ def read_rel(name: str, schema: Any) -> Json:
         try:
             types.append(type_json(t, t.nullable))
         except Unsupported as e:
-            raise Unsupported(f"column {column!r} of {name!r}: {e}") from e
+            raise Unsupported(
+                f"column {column!r} of {name!r}: {e}; "
+                "only a column the query never reads is left out"
+            ) from e
     struct = {"types": types, "nullability": "NULLABILITY_REQUIRED"}
     return {
         "read": {
