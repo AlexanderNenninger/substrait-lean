@@ -35,7 +35,6 @@ from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
     Engine,
-    connect,
     connection_of,
     plan_json,
     read_tables,
@@ -2300,28 +2299,23 @@ def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None)
     return _table_counts(table, [cond], engine)[0]
 
 
-def _held(table: ir.Table, conds: Sequence[TableCondition]) -> tuple[Connection, ir.Table]:
-    """A connection holding `table` (a table of the caller's own Ibis backend)
-    and the tables the conditions refer to, so that its conditions are counted
-    by an engine as any bound table's are."""
-    con = connect()
-    backend = ibis.get_backend(table)
-    con.put("__sverify_input", table.to_pyarrow())
-    for c in conds:
-        if isinstance(c, References) and not con.has(c.table):
-            con.put(c.table, backend.table(c.table).to_pyarrow())
-    return con, con.table("__sverify_input")
-
-
 def _table_counts(
     table: ir.Table, conds: Sequence[TableCondition], engine: str | None
 ) -> list[int]:
     """`_table_violations` for several table conditions on one table, from one
     plan where the writer takes it: their counts as the rows of a union, each
-    tagged with its position. Where it does not, one plan each."""
+    tagged with its position. Where it does not, one plan each. A table of the
+    caller's own Ibis backend is counted there, by the same relations."""
     con = connection_of(table)
     if con is None:
-        con, table = _held(table, conds)
+        # The caller's own Ibis backend (a database, a memtable): its rows stay
+        # there, and it counts the same relations (`Report.run`'s engines work
+        # on a connection's tables).
+        backend = ibis.get_backend(table)
+        return [
+            c.settle(c.count_query(table, backend.table).to_pyarrow().column(0)[0].as_py())
+            for c in conds
+        ]
     on = engine or con.engine
     queries = [c.count_query(table, con.table) for c in conds]
     if len(queries) > 1:

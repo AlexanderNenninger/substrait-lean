@@ -97,3 +97,21 @@ def test_a_condition_the_writer_refuses_refuses_the_check(table, monkeypatch):
     monkeypatch.setattr(report_module, "run_plan", refuse)
     with pytest.raises(UnsupportedError):
         violation_counts(table.table("t"), CONDS, table.engine)
+
+
+def test_a_table_of_the_callers_own_backend_is_counted_there(monkeypatch):
+    """Its rows stay in that backend (no copy through Python into a connection),
+    and the counts are the same."""
+    pytest.importorskip("duckdb")
+    import ibis
+
+    backend = ibis.duckdb.connect()
+    backend.create_table("t", pa.table(ROWS))
+    backend.create_table("p", pa.table({"id": [5, 6]}))
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a table of the caller's backend was copied into a connection")
+
+    monkeypatch.setattr(sv, "connect", refuse)
+    got = [n for _, n, _ in violation_counts(backend.table("t"), CONDS, None)]
+    assert got == WANT
