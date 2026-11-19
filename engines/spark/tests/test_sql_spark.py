@@ -88,10 +88,12 @@ def test_refusals():
     with pytest.raises(Unsupported, match="ORDER BY"):
         SPARK.over(["`c0`"], [])
     for name in ("window", "fetch"):
-        with pytest.raises(Unsupported, match="no row order"):
+        with pytest.raises(Unsupported, match=r'no row order.*rows="multiset"'):
             to_sql(NAMED_ORDERED[name], SPARK, rows="sequence")
-        # Ties and a LIMIT's rows are open under the default observation (#1608).
-        assert to_sql(NAMED_ORDERED[name], SPARK, rows="multiset")
+        # Ties and a LIMIT's rows are open under the default observation (#1608), which
+        # is what `to_sql` writes for Spark when it is not told (`ProfilePlugin.rows`).
+        multiset = to_sql(NAMED_ORDERED[name], SPARK, rows="multiset")
+        assert multiset and to_sql(NAMED_ORDERED[name], SPARK) == multiset
 
 
 # ------------------------------------------------------------ on Spark

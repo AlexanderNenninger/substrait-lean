@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from sverify.sql import to_sql
-from sverify_spark import ROWS
 from sverify_spark.dialect import SPARK, SPARK_CONF
 
 try:
@@ -220,6 +219,6 @@ def run_df(
     """`run`, but the result stays a Spark `DataFrame`: nothing is collected.
     A table is an Arrow table or a handle on files (`sverify_spark.store`)."""
     spark = spark or session()
-    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows=ROWS)
+    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
     put_tables(tables, spark)
     return spark.sql(sql)

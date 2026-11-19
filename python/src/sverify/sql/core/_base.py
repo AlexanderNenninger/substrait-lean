@@ -1066,6 +1066,17 @@ class Dialect:
         used where Lean's list order matters (below FETCH and windows)."""
         raise WriterUnsupported(f"{self.name} has no stable row order for tables")
 
+    def no_row_order(self, engine: str) -> Unsupported:
+        """The refusal of `row_ordinal` for an engine whose tables have no row
+        order, naming the two ways on."""
+        return Unsupported(
+            f'{engine} tables have no row order, so rows="sequence" cannot follow the Lean '
+            "model's list order for FETCH and windows over a named table; write "
+            'rows="multiset" (ties and the rows of a LIMIT are open, as the reference allows), '
+            "or run a report whose windows have no ties (deterministic=True), which writes "
+            "them with the sort keys alone"
+        )
+
     def subquery(self, select: str, alias: str) -> str:
         return f"({select}) AS {alias}"
 
@@ -5580,7 +5591,7 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
-    rows: Literal["sequence", "multiset"] = "sequence",
+    rows: Literal["sequence", "multiset"] | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -5595,11 +5606,15 @@ def to_sql(
     requires). Then windows need no ordinal tiebreak, so engines without a
     stable scan order can run them; FETCH still needs one.
 
-    `rows="multiset"` leaves the order of rows open where `Rel.Allowed` does
-    (the observation's `rows` of anything but `"sequence"`): ties in a sort
-    and the rows a LIMIT keeps among them are the engine's choice, and the
-    result is ordered only where the plan's last sort orders it. The default
-    writes Lean's order, ties by the input's row order.
+    `rows` says what the SQL promises about the order of rows. `"multiset"`
+    leaves it open where `Rel.Allowed` does (the observation's `rows` of
+    anything but `"sequence"`): ties in a sort and the rows a LIMIT keeps among
+    them are the engine's choice, and the result is ordered only where the
+    plan's last sort orders it. `"sequence"` writes Lean's order, ties by the
+    input's row order, which needs a scan order the engine may not have. The
+    default is what the engine's runner writes (`ProfilePlugin.rows`):
+    `"multiset"` for Spark, `"sequence"` for DuckDB and for a dialect no
+    engine provides.
 
     `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
     pass it for a plan whose contract report is `guard_free`, and run the
@@ -5666,6 +5681,13 @@ def to_sql(
         dialect = dialect_of(dialect)
     if isinstance(plan, str):
         plan = json.loads(plan)
+    if rows is None:
+        # What the engine's runner writes (`ProfilePlugin.rows`); a dialect no
+        # plugin provides keeps Lean's row order.
+        from sverify import profiles
+
+        found = profiles.find(dialect.name)
+        rows = found.rows if found is not None else "sequence"
     if not guards:
         dialect = replace(dialect, guards=False)
     if not finite:
