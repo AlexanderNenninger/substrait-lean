@@ -184,15 +184,6 @@ ROOT_WAITING = {
     "Infer": "#1765 edits it; then analysis",
     "Write": "#1813 and #1765 edit it; then frontend",
     "Bind": "#1444's engines-common move",
-    "Choices": "#1444's analysis move",
-    "ChoicesSound": "#1444's analysis move",
-    "Quarantine": "#1444's analysis move",
-    "Retention": "#1444's analysis move",
-    "TouchedGroups": "#1444's analysis move",
-    "TouchedFrames": "#1444's analysis move",
-    "Seam": "#1444's analysis move",
-    "Terms": "#1444's analysis move",
-    "Refresh": "#1444's core move",
 }
 
 

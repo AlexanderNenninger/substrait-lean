@@ -1,5 +1,5 @@
 """`Sink._commit`'s decision, case by case, against `Refresh.next` in
-`SubstraitLean/Refresh.lean` (#933).
+`core/Sverify/Core/Refresh.lean` (#933).
 
 `Refresh.no_corruption` and `Refresh.record_describes_table` are proved of a
 transition system whose writers decide with `Refresh.next`; they say something

@@ -1,4 +1,4 @@
-import SubstraitLean.Choices
+import Sverify.Analysis.Choices
 import Sverify.Core.OrderAllowed
 
 /-!

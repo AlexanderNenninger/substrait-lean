@@ -465,7 +465,7 @@ determinism has two levels: up to the member of each class of doubles
 
 An order-sensitive operator reads one sorted enumeration of its input, and
 its meaning is the set over all of them (`Lin` and `Sem`,
-`SubstraitLean/Seam.lean`, #928). Below an unordered operator, as with a
+`analysis/Sverify/Analysis/Seam.lean`, #928). Below an unordered operator, as with a
 `FETCH` without a total `ORDER BY` under a join, the order is forgotten and
 the result is a set of multisets (`Rel.Bags`): this is where the tie order's
 nondeterminism lives. `verify` and `run` allow such a plan, and the proofs

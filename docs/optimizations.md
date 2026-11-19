@@ -574,7 +574,7 @@ A window of aggregates over bounded RANGE frames of one time column
 (`sverify._touched.Framed`) is maintained by recomputing the rows near the
 change. A window row depends only on the rows of its partition whose time
 lies in its frame (`TouchedFrames.outRow_local` in
-[`SubstraitLean/TouchedFrames.lean`](../SubstraitLean/TouchedFrames.lean)).
+[`analysis/Sverify/Analysis/TouchedFrames.lean`](../analysis/Sverify/Analysis/TouchedFrames.lean)).
 So for frames from `start` to `end` around each row, `start ≤ 0 ≤ end`, and
 a batch whose changed rows lie in the touched partitions at times
 `[t0, t1]`, the output rows outside `[t0 - end, t1 - start]` keep their
