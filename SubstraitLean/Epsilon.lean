@@ -1,6 +1,6 @@
 import SubstraitLean.ShardCheck
 import SubstraitLean.EngineTables
-import SubstraitLean.MarginCheck
+import Sverify.Core.MarginCheck
 
 /-!
 # The float tolerance of a plan's outputs (#444, #85)

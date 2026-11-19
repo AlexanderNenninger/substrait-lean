@@ -36,6 +36,7 @@ names the old place of the engine facts.
 | [notebooks/04_contracts.py](../notebooks/04_contracts.py) | Contracts in depth: keys, relations, runtime errors, composition |
 | [notebooks/05_pipelines_and_engines.py](../notebooks/05_pipelines_and_engines.py) | Pipelines and engines: delta rules, quarantine, routes, doubles |
 | [notebooks/06_running_in_production.py](../notebooks/06_running_in_production.py) | Running it in production: the command in CI, tests, credentials, lineage, late rows |
+| [notebooks/07_engines.py](../notebooks/07_engines.py) | Engines: one proved plan on DuckDB, Polars and Spark, SQL for a warehouse, refusals and their exits |
 
 The notebooks run on molab from the `published` branch, which follows the
 release on PyPI.

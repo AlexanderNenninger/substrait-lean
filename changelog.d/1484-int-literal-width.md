@@ -1,0 +1,3 @@
+### An integer literal next to a TINYINT or SMALLINT column has the column's type
+
+DuckDB types an integer literal next to a narrower integer operand as that operand when the value fits, so `tiny_col + 100` is a `TINYINT` and raises past 127. The SQL lift widened the column to `INTEGER` and would not have raised. It now follows DuckDB in arithmetic, `COALESCE`, `CASE`, `GREATEST`, `LEAST` and `NULLIF`; a literal that does not fit widens the column as before (`tiny_col + 200` is an `INTEGER`). Any other query that puts an integer literal next to a `TINYINT` or `SMALLINT` (a list literal, a `lag` default) is refused, naming `CAST(100 AS INTEGER)` ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), `duckdb-coerce-int-literal-width`).

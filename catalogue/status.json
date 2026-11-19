@@ -1100,7 +1100,7 @@
  "ts-local-day-revenue": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "orders.order_ts AT TIME ZONE 'Europe/Berlin' is not supported yet; write this step in Ibis",
+  "detail": "AT TIME ZONE 'Europe/Berlin': only 'UTC' is read, in the same way as a timestamp with a time zone (#1725): a timestamp with a time zone can be read, compared with other such columns, used as a key and",
   "native": "runs"
  },
  "ts-overlapping-bookings": {

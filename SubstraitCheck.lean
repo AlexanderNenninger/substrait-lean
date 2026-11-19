@@ -5,7 +5,7 @@ import SubstraitLean
 well-formed, and evaluate it.
 
 `substrait-check --eval-spec plan.json`: the same, evaluated with `Rel.eval`
-(the specification) in place of `Rel.evalFast` (`SubstraitLean/EvalFast.lean`),
+(the specification) in place of `Rel.evalFast` (`core/Sverify/Core/EvalFast.lean`),
 which is faster and proved equal; for tests.
 
 `substrait-check --delta plan.json`: print the Substrait JSON plan an engine
@@ -160,6 +160,34 @@ def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String 
     | .error k => some (toString (repr k))
     | .ok _ => none
 
+/-- The first error the reference profile `p` raises in the arguments and filters
+of a window's aggregates, each on the frame of each row (`WinFn.valueIn`):
+`before` are the sorted rows already visited. -/
+def windowRaised (p : Profile) (part : List Nat) (fns : List WinFn) :
+    List Row → List Row → Option String
+  | _, [] => none
+  | before, x :: after =>
+    let pb := before.filter (samePart part x)
+    let pa := after.filter (samePart part x)
+    (fns.findSome? fun
+      | .agg m sort fr =>
+        let frame := fr.rows sort pb x pa
+        firstError p frame m.filter.toList <|> firstError p (m.kept frame) [m.arg]
+      | _ => none) <|> windowRaised p part fns (before ++ [x]) after
+
+-- A window aggregate raises only on the rows a frame holds: `12.35` (a `DECIMAL(3, 2)` of
+-- 4 digits) is the last row, so `1 PRECEDING` holds it in no frame, and the whole
+-- partition holds it in the last row's.
+section
+local instance : Boxes.Ambient := Boxes.Ambient.none
+private def windowRows' : Relation := [[.int 1, .dec 2 5], [.int 2, .dec 2 1235]]
+private def windowAgg (fr : Frame) : List WinFn :=
+  [.agg { fn := .sum, arg := .un (.decimal 3 2) (.field 1) } [{ col := 0 }] fr]
+#guard (windowRaised Profile.reference [] (windowAgg ⟨false, .preceding 1, .preceding 1⟩) []
+  windowRows').isNone
+#guard (windowRaised Profile.reference [] (windowAgg Frame.all) [] windowRows').isSome
+end
+
 /-- The first error the reference profile `p` raises in the plan: each
 filter, projection and aggregate evaluates its expressions on the rows its
 input gives (`Rel.evalFast`, which equals `Rel.eval`), inputs first. An
@@ -170,14 +198,17 @@ them where the condition has none), not on the cross product, which is
 quadratic (`test_eval_fast`). So a raise on a pair the key index drops can be
 missed: the reference evaluates `on` eagerly on every pair (D19), and no
 theorem says `evalFast` raises where `Rel.eval` does (`candidates_eq` says only
-that a dropped pair's `on` is not TRUE). Every error reported is real. A window's aggregates are not looked into: a
-frame may leave a row out. -/
+that a dropped pair's `on` is not TRUE). Every error reported is real. A window's
+aggregates are evaluated on the frame of each row, as `WinFn.valueIn` does: a row
+that no frame holds raises nothing (`windowRaised`). -/
 def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .read _ | .values _ _ => none
   | .filter r c => relRaised cat p r <|> firstError p (r.evalFast cat) [c]
   | .project r es => relRaised cat p r <|> firstError p (r.evalFast cat) es
-  | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
     relRaised cat p r
+  | .window r part sort fns =>
+    relRaised cat p r <|> windowRaised p part fns [] ((r.evalFast cat).mergeSort (sortLe sort))
   | .cross a b | .unionAll a b => relRaised cat p a <|> relRaised cat p b
   | .join a b _ on | .semi a b _ on =>
     let index := JoinIndex.make on (a.arity cat) (b.evalFast cat)
@@ -277,10 +308,8 @@ reference's proof carries over when the transfer check passes on the
 transformation: Substrait allows only behaviours the reference allows at every
 option it meets (`Rel.transfer_of_transferB`). Where it does not, no
 postcondition or key is proved under Substrait, and `"transfer"` names the
-options. An engine of `es` marked `asReference` (an out-of-tree one; none of
-the built-in ones) gets the reference's report under its name: a plan states
-its choices as the reference's templates. An engine whose profile is its own
-(DuckDB's, Polars's, Spark's) has no report under it yet (#1288, #271): its
+options. An engine of `es` (DuckDB, Polars, Spark, or one from outside)
+has no report under its profile yet (#1288, #271): its
 request gets the reference's report, labelled `"reference"`, with `"pending"`
 naming the profile asked for. Polars's plan is built with `division_type:
 FLOOR`, which the parser reads as the reference's templates
@@ -290,8 +319,6 @@ not know gets the reference's report alone. -/
 def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : Bool) :
     Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"
-  if (engineNamed? es name).any (·.asReference) then
-    return (report.setObjVal! "profile" name, proved)
   unless name == "substrait" do
     let report := report.setObjVal! "profile" "reference"
     return (if (engineNamed? es name).isSome then report.setObjVal! "pending" name else report,
@@ -341,7 +368,13 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
         let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
-        let base := report.json |>.setObjVal! "depends" depends
+        -- The plan an engine runs, or the gate that keeps the plan as
+        -- written (#1787, `SubstraitLean/RunPlan.lean`).
+        let runPlan := match ContractCheck.parse j with
+          | .ok R => R.runPlanJson
+          | .error _ => []
+        let base := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
+            |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
             |>.setObjVal! "margin_checks" margins
@@ -458,9 +491,10 @@ def blackBoxJson : Lean.Json :=
       ("args", Lean.Json.arr #[ty f.arg]), ("result", ty f.result),
       ("empty", Write.writeValue f.empty), ("laws", laws f.laws)])).toArray
 
-/-- The checker over the engine profiles `es`: `substrait-check`'s `main`
-with `builtinEngines`, or a package's own checker with its profile added. -/
-def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
+/-- The checker over the engines `entries`: `substrait-check`'s `main` with
+`builtinEntries`, or a package's own checker with its engine added. -/
+def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 := do
+  let es := entries.map (·.rows)
   match args with
   | ["--serve"] => serve es
   | ["--version"] => do
@@ -491,6 +525,11 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     -- The black boxes' table (#325), for sverify.black_box's test.
     IO.println blackBoxJson.compress
     return 0
+  | ["--rules"] => do
+    -- The rewrite rules and the gate's defaults (#1787), for
+    -- `docs/optimizations.md`'s table test.
+    IO.println ContractCheck.rulesJson.compress
+    return 0
   | ["--functions"] => do
     -- The function tables (#544, #269), for the Python mirror's agreement test.
     IO.println Functions.tableJson.compress
@@ -512,7 +551,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     return 0
   | ["--realizability"] => do
     -- `obligations reference E` per engine: the realizability table (#444, step 3b).
-    IO.println (realizabilityJson es).compress
+    IO.println (realizabilityJson entries).compress
     return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB (#241); a golden test.
@@ -528,7 +567,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

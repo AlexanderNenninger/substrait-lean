@@ -166,6 +166,11 @@ def Profile.duckdb.obs : ObsTable := [
     precondition := "(COUNT(x) − 1)·10^scale < 2^52 for the decimal fraction's scale, checked on the data (the written plan raises past it)",
     note := "`LINEAR` states DuckDB's own `quantile_cont`, which leaves the model's neighbours at a whole exact position its double misses and where the lower neighbour is first; the written plan takes `quantile_disc` at a whole exact position and bounds the first lower neighbour by the second smallest value (python/tests/test_duckdb_quantile_900.py)." }).tracking 900)]
 
+/-- What each shim DuckDB's rows name costs at run time. -/
+def Profile.duckdb.shimCosts : List (String × ShimCost) :=
+  [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
+   ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression)]
+
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/
 theorem Profile.duckdb_leB (s : DuckDBSettings) :

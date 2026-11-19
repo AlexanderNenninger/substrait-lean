@@ -28,7 +28,7 @@
     "Calendar arithmetic follows the zone: `+ INTERVAL 1 DAY` across the spring change keeps the wall clock (`12:00:00+02`), `+ INTERVAL 24 HOUR` does not (`13:00:00+02`); `date_trunc('day', …)`, `date_part` and a cast to `DATE` use the local date; `date_diff('hour', …)` over the change counts 23. An unknown zone raises (`Not implemented Error: Unknown TimeZone`).",
     "The docs are silent on DST gaps and overlaps: a docs gap."
   ],
-  "reference": "Time-zone-aware timestamps are a kind the model does not compute with (reference-semantics.md, Temporal): plans with them are refused, and the reference's `timestamp` has no zone. The written SQL never reads `TimeZone`.",
+  "reference": "A timestamp with the time zone UTC is an instant (D53, reference-semantics.md, Temporal): compared, ordered, grouped and aggregated without a zone; interval arithmetic, calendar functions and casts to a date or a string are refused, and the conversion with a naive timestamp is by the epoch (`duckdb-instant-conversion`). The written SQL never reads `TimeZone`.",
   "status": "open",
   "evidence": "probe",
   "provenance": [

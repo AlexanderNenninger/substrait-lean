@@ -167,7 +167,7 @@ class No:
 
 
 #: The SQL writer's kinds of results that are not booleans (`UN_KINDS`).
-FixedKind = Literal["int", "float", "str", "time", "date", "tod"]
+FixedKind = Literal["int", "float", "str", "time", "instant", "date", "tod"]
 #: A function's arguments and result, as the SQL writer's kinds.
 ArgKind = Literal["str", "int", "float"]
 ResultKind = Literal["str", "int", "float", "bool"]

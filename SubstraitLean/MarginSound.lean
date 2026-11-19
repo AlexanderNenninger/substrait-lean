@@ -1,5 +1,5 @@
-import SubstraitLean.MarginCheck
-import SubstraitLean.SumBound
+import Sverify.Core.MarginCheck
+import Sverify.Core.SumBound
 import Sverify.Core.FloatArith
 import Sverify.Analysis.Partition
 

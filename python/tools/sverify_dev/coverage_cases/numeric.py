@@ -31,9 +31,9 @@ CASES: list[Case] = [
             e=t.amount.asin(),
             f=t.amount.acos(),
             g=t.amount.atan(),
-            h=t.amount.atan2(t.qty),
         ),
     ),
+    case("math", "atan2", V, lambda: t.select(x=t.amount.atan2(t.qty))),
     case(
         "math", "degrees, radians", V, lambda: t.select(x=t.amount.degrees(), y=t.amount.radians())
     ),
@@ -58,6 +58,7 @@ REFUSED: dict[str, dict[str, str]] = {
     "log10, log2": LIBM,
     "log(base)": LIBM,
     "trigonometry": LIBM,
+    "atan2": {**LIBM, "spark": "StrictMath"},
     "shifts": {"snowflake": "not 64-bit"},
 }
 
@@ -66,7 +67,9 @@ REFUSED: dict[str, dict[str, str]] = {
 #: libm in the last bit: `log10(0.5)` is -0.30102999566398114 on Polars 2.1.0
 #: and -0.3010299956639812 on libm, 1 ulp apart. The comparison is to nine
 #: significant digits (`test_backends.approximately`), far wider than 2.1 ulp.
-APPROXIMATE = {"log10, log2"}
+#: Spark's functions are Java's (`spark-ulp-libm`), a few ulps from libm's, so `exp`, `ln`,
+#: `log(base)` and the trigonometric functions are compared the same way.
+APPROXIMATE = {"exp", "ln", "log10, log2", "log(base)", "trigonometry"}
 
 NO_DUCKDB_SQL = {
     "sign": "DuckDB's sign of NaN is 0, the plan's NaN",

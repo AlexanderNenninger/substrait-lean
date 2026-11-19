@@ -73,6 +73,25 @@ RouteKind = Literal["native", "translated", "transfer", "recheck"]
 #: A route taken, or `"unverified"`: a plan that is not proved, run with
 #: `unverified=True`.
 Taken = Literal["native", "translated", "transfer", "recheck", "unverified"]
+#: Which routes run the checker's plan to run (`Report._plan_to_run`, #1787,
+#: ruling 129): the translated and transfer routes rest on the reference
+#: report, whose rewrite the checker proved to refine the plan as written. A
+#: native or re-checked run rests on a check under the engine's profile, and an
+#: unverified run runs what the user wrote: they run the plan as written.
+RUNS_REWRITE: dict[str, bool] = {
+    "translated": True,
+    "transfer": True,
+    "native": False,
+    "recheck": False,
+    "unverified": False,
+}
+
+
+def runs_rewrite(kind: str | None) -> bool:
+    """Does a run on the route `kind` take the checker's plan to run?"""
+    return RUNS_REWRITE.get(kind or "", False)
+
+
 Class = Literal["exact", "observed", "shim", "refused"]
 Evidence = Literal["proved", "tested"]
 #: The classes, best first (#568): a plan takes the worst of its options'.

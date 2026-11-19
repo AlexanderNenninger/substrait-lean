@@ -193,6 +193,18 @@
         }
       ],
       "notes": "Spark's SQL query tests at tag v4.3.0: the golden files under results/ run with ANSI on, those under results/nonansi/ with it off."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (pyspark 4.3.0, OpenJDK 21, local[1]; #1484, ruling 131)",
+      "evidence": [
+        {
+          "sql": "SELECT typeof(a + b), a + b FROM (SELECT CAST('10000000000000000000000000000' AS DECIMAL(38,0)) AS a, CAST('-0.0000000001' AS DECIMAL(38,10)) AS b)",
+          "observed": "decimal(38,6), 10000000000000000000000000000.000000 under spark.sql.ansi.enabled true and false, both operand orders: the scale borrowed to 6 digits rounds the -0.0000000001 away; no raise, no NULL"
+        }
+      ],
+      "notes": "The cancelling sum of `duckdb-decimal-addsub-operand-cast`: Spark gives a value at its own result type (`Add.resultDecimalType` with precision loss), which differs from the exact sum by the rounded term."
     }
   ],
   "issues": [

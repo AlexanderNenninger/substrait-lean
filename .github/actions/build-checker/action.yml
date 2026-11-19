@@ -1,0 +1,34 @@
+name: Build substrait-check
+description: >-
+  substrait-check from the cache keyed on every Lean input, or built with lake
+  on a miss, uploaded as the run's `substrait-check` artifact that
+  `./.github/actions/checker` downloads. The lake build skips the generated
+  proofs (`lean` checks them), so it restores the lake cache without saving it.
+outputs:
+  cache-hit:
+    description: Whether the checker came from the cache (no lake build ran)
+    value: ${{ steps.cache.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: checker-bin
+        key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'frontend/lakefile.toml', 'frontend/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', 'engines/substrait/lakefile.toml', 'engines/substrait/lake-manifest.json', '**/*.lean') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: ./.github/actions/setup-lean
+      with:
+        save: "false"
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        lake build substrait-check
+        mkdir -p checker-bin
+        cp .lake/build/bin/substrait-check checker-bin/
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: substrait-check
+        path: checker-bin/substrait-check
+        retention-days: 3
+        if-no-files-found: error

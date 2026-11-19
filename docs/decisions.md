@@ -1567,19 +1567,29 @@ naive timestamp is refused. Zones other than UTC are refused. The conversion is
 a function of the core that returns its argument; nothing else in `Rel.eval` and
 `Rel.Allowed` changes.
 
-Read in steps: an instant column is read, computed with and written back as an
-instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`); the conversion
-between an instant and a naive timestamp at UTC (`x AT TIME ZONE 'UTC'`), a
-literal with an offset and DuckDB's session-zone casts wait for the second
-step of #1725 (they need an `UnFn` that changes the kind).
+Read in two steps. Step 1 read an instant column, computed with it and wrote it
+back as an instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`). Step 2
+adds the conversion between an instant and a naive timestamp at UTC
+(`UnFn.atUtc`: `x AT TIME ZONE 'UTC'` in SQL, the cast between `timestamp('UTC')`
+and `timestamp` in Ibis) and instant literals: a literal is an instant when its
+text or Python value carries an explicit offset, which is folded to UTC
+microseconds; it is the conversion of a timestamp literal, so it has the kind of
+every other instant expression. A literal without an offset reads the session
+zone and is refused; so are DuckDB's `CAST(tstz AS TIMESTAMP)`, `tstz::DATE` and
+`CAST(ts AS TIMESTAMPTZ)`, and a comparison, `IN`, `COALESCE`, `CASE` or set
+operation that mixes an instant with a naive timestamp, which DuckDB brings to
+the session's zone. The Ibis frontend refuses a mix too, and an explicit Ibis
+cast between the two kinds is the conversion.
 
 No option and no profile entry: the operations above read no zone, so the
 engines agree on them under every session zone
 ([duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json),
 [polars-datetime-zone](../engines/polars/facts/polars-datetime-zone.json),
 [spark-time-zones](../engines/spark/facts/spark-time-zones.json)). DuckDB and
-Polars have a map for the instant; Spark and Snowflake refuse it and name the
-issue.
+Polars have a map for the instant, and a fact for each spelling of the conversion
+([duckdb-instant-conversion](../engines/duckdb/facts/duckdb-instant-conversion.json),
+[polars-instant-conversion](../engines/polars/facts/polars-instant-conversion.json));
+Spark and Snowflake refuse it and name the issue.
 
 Recomputes sinks: no
 
@@ -1637,3 +1647,33 @@ Why: a proof is about the plan the lift writes. A user reads it as a statement
 about the SQL they wrote, so where the plan's value differs from the text's
 the report says so. A refusal lifted later is a minor change, a changed value a
 major one (D17), so the casts are refused before a release and `corr` is listed.
+
+### D58. A timestamp's delta counts the unit boundaries crossed
+
+Decided 2026-11-19 (theory advisor, ruling 137).
+
+`a.delta(b, unit)` is `idx(a) - idx(b)`, an `int64`, where `idx(t)` is the
+floor of `t`'s microseconds divided by the unit's microseconds, for
+`microsecond`, `millisecond`, `second`, `minute`, `hour` and `day`. The floor
+puts a value before 1970 where `date_trunc` puts it. Two timestamps 1 µs apart
+across a boundary differ by 1; two almost a unit apart inside one unit differ
+by 0. NULL in gives NULL out, and nothing raises beyond the timestamps' own
+range (D32).
+
+DuckDB's `date_diff(part, start, end)` counts the same way with its arguments
+the other way round. The Ibis frontend writes the delta from existing
+functions: each side floored with `date_bin` from the epoch, the difference
+divided by the unit's microseconds, so Lean's model has no new function.
+
+`week`, `month`, `quarter`, `year` and `nanosecond` are refused until facts pin
+each engine's boundary (month, quarter and year are the next step).
+
+The delta of dates and times follows the same rule and is refused until built,
+and a time-zone-aware timestamp's delta is refused.
+
+Recomputes sinks: no
+
+Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duckdb/facts/duckdb-timestamp-date-diff.json))
+and Ibis documents the delta as the number of unit boundaries crossed
+([`TimestampValue.delta`](https://ibis-project.org/reference/expression-timestamps#ibis.expr.types.temporal.TimestampValue.delta)). The refused units are those where engines place the
+boundary differently.

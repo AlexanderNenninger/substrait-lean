@@ -704,6 +704,13 @@ OBSERVATIONS: list[Observation] = [
        "pl.col('x').dt.strftime('%Y-%m-%d %H:%M:%S%.f %j %a %U %V')).item()"),
     _o("time-plus-duration", "temporal",
        "df(x=[dt.time(23, 0)]).select(pl.col('x') + pl.duration(hours=2)).item()"),
+    # The conversion at UTC (D53): the wall clock kept, the zone set or dropped.
+    _o("instant-conversion", "temporal",
+       "(lambda s: (s.dt.replace_time_zone('UTC').dtype,"
+       " s.dt.replace_time_zone('UTC').dt.epoch('us').to_list(),"
+       " s.dt.replace_time_zone('UTC').dt.replace_time_zone(None).to_list(),"
+       " s.dt.epoch('us').to_list()))("
+       "df(x=[dt.datetime(2024, 3, 31, 2, 30), dt.datetime(1, 1, 1), None]).to_series())"),
     _o("tz-nonexistent", "temporal",
        "df(x=[dt.datetime(2024, 3, 31, 2, 30)]).select("
        "pl.col('x').dt.replace_time_zone('Europe/Berlin')).item()"),

@@ -94,6 +94,11 @@ theorem Measure.eval_allowed (m : Measure) (rows : Relation) : m.Allowed rows (m
   · refine ⟨rows, .refl _, fun h => absurd h hs, ?_⟩
     rw [Measure.eval_eq (by simpa using hs)]; exact AggFn.apply_allowed _ _
 
+/-- A measure allows the same values on a permutation of its rows. -/
+theorem Measure.Allowed.perm {m : Measure} {rows rows' : Relation} {v : Value}
+    (h : m.Allowed rows v) (hp : rows.Perm rows') : m.Allowed rows' v :=
+  let ⟨s, hs, ho, hv⟩ := h; ⟨s, hs.trans hp, ho, hv⟩
+
 /-- An order-free measure allows its value, or for `MIN` and `MAX` another
 member of its class. -/
 theorem Measure.allowed_picks {m : Measure} (hm : m.orderFree = true) {rows : Relation}
@@ -316,6 +321,53 @@ theorem Rel.Refines.trans {cat : Catalog} {p q r : Rel} (h₁ : p.Refines cat q)
 theorem Rel.RefinesBag.trans {cat : Catalog} {p q r : Rel} (h₁ : p.RefinesBag cat q)
     (h₂ : q.RefinesBag cat r) : p.RefinesBag cat r :=
   Rel.RefinesUpTo.trans (.self .default fun _ _ _ _ _ e₁ e₂ => e₁.trans e₂) h₁ h₂
+
+/-! ## Determinism -/
+
+/-- **`r` is determined up to the observation `o`** (#1285): every result the
+reference allows is, up to `o`, `Rel.eval`'s. The allowed set quotiented by
+`o`'s equality is then the one class of `r.eval cat`, which is the sense of
+"verified" for a plan whose contract is proved: an engine whose model is sound
+(`Engine.Sound`) gives that one observed answer. The statement is centred on
+`r.eval` because the plan's tolerance bounds each engine against the
+reference's value, so no tolerance is added twice; `DeterminedUpTo.pair`
+gives two results equal to each other in the composed context. -/
+def Rel.DeterminedUpTo (o : Obs) (ctx : ObsCtx) (cat : Catalog) (r : Rel) : Prop :=
+  ∀ out, r.Allowed cat out → Relation.Equiv o ctx out (r.eval cat)
+
+/-- Determined up to a finer observation is determined up to a coarser one. -/
+theorem Rel.DeterminedUpTo.mono {o' o : Obs} {ctx : ObsCtx} (hc : ctx.WF) (h : o'.le o = true)
+    {cat : Catalog} {r : Rel} (hr : r.DeterminedUpTo o' ctx cat) : r.DeterminedUpTo o ctx cat :=
+  fun out ho => Relation.Equiv_mono hc h (hr out ho)
+
+/-- **Any two allowed results are equal up to `o`**, in the context where
+`ctx` composes with itself (`Comp ctx ctx ctx` is transitivity; a tolerance
+`t` composes to `2t`). -/
+theorem Rel.DeterminedUpTo.pair {o : Obs} {ctx ctx' : ObsCtx} (hc : ctx.WF)
+    (hcomp : ObsCtx.Comp ctx ctx ctx') {cat : Catalog} {r : Rel}
+    (hr : r.DeterminedUpTo o ctx cat) {a b : Relation} (ha : r.Allowed cat a)
+    (hb : r.Allowed cat b) : Relation.Equiv o ctx' a b :=
+  Relation.Equiv.trans hcomp (hr a ha) (Relation.Equiv.symm hc (hr b hb))
+
+/-- **Every allowed result is equal to `r.eval`'s up to `o`, when `r` is
+determined** (the definition, as an iff with `eval` allowed). -/
+theorem Rel.determinedUpTo_iff {o : Obs} {ctx : ObsCtx} {cat : Catalog} {r : Rel} :
+    r.DeterminedUpTo o ctx cat ↔
+      ∀ out, r.Allowed cat out → Relation.Equiv o ctx out (r.eval cat) := Iff.rfl
+
+/-- **A refinement of a determined plan is determined** (the contexts compose
+twice: the conclusion about `q.eval` passes through `r.eval` on both sides).
+`q` refines `r` up to `o` in `c₁`, `r` is determined in `c₂`, and `c₃` is
+`c₁` then `c₂`; `q` is then determined in `c₃` then `c₃`. -/
+theorem Rel.RefinesUpTo.determined {o : Obs} {c₁ c₂ c₃ c₄ : ObsCtx} (h₁₂ : ObsCtx.Comp c₁ c₂ c₃)
+    (h₃ : c₃.WF) (h₃₃ : ObsCtx.Comp c₃ c₃ c₄) {cat : Catalog} {q r : Rel}
+    (hq : q.RefinesUpTo o c₁ cat r) (hr : r.DeterminedUpTo o c₂ cat) :
+    q.DeterminedUpTo o c₄ cat := by
+  intro out ho
+  obtain ⟨o', h', e⟩ := hq out ho
+  obtain ⟨p', hp', ep⟩ := hq (q.eval cat) (Rel.eval_allowed cat q)
+  exact Relation.Equiv.trans h₃₃ (Relation.Equiv.trans h₁₂ e (hr o' h'))
+    (Relation.Equiv.symm h₃ (Relation.Equiv.trans h₁₂ ep (hr p' hp')))
 
 /-- A refinement is one up to the order of rows. -/
 theorem Rel.Refines.bag {cat : Catalog} {q r : Rel} (h : q.Refines cat r) : q.RefinesBag cat r :=
