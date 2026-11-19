@@ -5,6 +5,7 @@ calendar function, other zone and literal is refused naming the issue."""
 import datetime as dt
 import json
 import os
+import sys
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -168,7 +169,12 @@ def test_a_plan_gives_the_same_rows_and_schema_under_any_session_or_host_zone(
     assert all(f.type == UTC for f in results[0][0] if pa.types.is_timestamp(f.type))
 
 
-def test_a_delta_table_of_instants_and_naive_timestamps_round_trips_through_a_sink(tmp_path):
+def test_a_delta_table_of_instants_and_naive_timestamps_round_trips_through_a_sink(
+    tmp_path, monkeypatch
+):
+    # DuckDB fetches a TIMESTAMPTZ as a Python value only with `pytz`, which sverify does
+    # not need: the file statistics read the epoch instead.
+    monkeypatch.setitem(sys.modules, "pytz", None)
     write_deltalake(tmp_path / "src", TABLE)
 
     @sv.transform()

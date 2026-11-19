@@ -25,7 +25,7 @@ import json
 import math
 import threading
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import duckdb
@@ -194,6 +194,8 @@ def _stat(v: Any, t: pa.DataType) -> Any:
     for none (NaN and infinities, which JSON cannot hold)."""
     if v is None:
         return None
+    if _is_instant(t) and isinstance(v, int):
+        v = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=v)
     if isinstance(v, float):
         return v if math.isfinite(v) else None
     if isinstance(v, datetime):
@@ -204,6 +206,11 @@ def _stat(v: Any, t: pa.DataType) -> Any:
     if isinstance(v, date):
         return v.isoformat()
     return v
+
+
+def _is_instant(t: pa.DataType) -> bool:
+    """A timestamp with a time zone (an instant, D53)."""
+    return pa.types.is_timestamp(t) and t.tz is not None  # type: ignore[attr-defined]
 
 
 def _bounded(t: pa.DataType) -> bool:
@@ -255,7 +262,12 @@ def delta_stats(path: str, schema: pa.Schema) -> str:
         parts.append(f"count(*) - count({c})")
         if _bounded(f.type):
             keep = f" FILTER (WHERE NOT isnan({c}))" if pa.types.is_floating(f.type) else ""
-            parts += [f"min({c}){keep}", f"max({c}){keep}"]
+            # An instant's bounds as microseconds: fetching a TIMESTAMPTZ as a Python
+            # datetime needs `pytz`, and the epoch reads no time zone (#1725).
+            if _is_instant(f.type):
+                parts += [f"epoch_us(min({c})){keep}", f"epoch_us(max({c})){keep}"]
+            else:
+                parts += [f"min({c}){keep}", f"max({c}){keep}"]
     with _LOCK:
         row = (
             _db().execute(f"SELECT {', '.join(parts)} FROM read_parquet({lit(path)})").fetchall()[0]
