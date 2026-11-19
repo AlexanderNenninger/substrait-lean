@@ -170,7 +170,7 @@ class LeanRaised(Exception):
 
 def _raised(plan_json: str) -> str | None:
     """The first error the reference raises anywhere in the plan (`--raises`:
-    filters, projections and aggregates); None where it raises none."""
+    filters, projections, joins and aggregates); None where it raises none."""
     code, out, _ = run_checker(("--raises",), plan_json)
     return (out.strip() or None) if code == 0 else None
 
@@ -180,7 +180,7 @@ def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     decimals and a `d` (so only approximately). The rows are `Rel.eval`'s,
     which has a value where the reference raises: that raises `LeanRaised`
     (exported by `sverify.testing`), as the reference does (`--raises`: filters,
-    projections and aggregates; joins and windows are not looked into). `rows_only`
+    projections, joins and aggregates; a window's aggregates are not looked into). `rows_only`
     asks the checker for the rows alone (`--rows`), without the plan's other
     facts and without that check."""
     if not rows_only and (err := _raised(plan_json)) is not None:
