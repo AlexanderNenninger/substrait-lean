@@ -548,7 +548,7 @@
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
@@ -645,7 +645,7 @@
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
@@ -684,7 +684,7 @@
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
@@ -725,7 +725,7 @@
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
@@ -912,7 +912,7 @@
           "robust only by the engine's facts (#1045)",
           "row tested: fp.arith's rounding (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
@@ -1367,7 +1367,7 @@
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
-        "class": "shim",
+        "class": "observed",
         "outcome": "tested"
       },
       "snowflake": {
