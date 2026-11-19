@@ -1,0 +1,66 @@
+{
+  "id": "duckdb-nullif-type",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "NULLIF has the type of its first argument, whichever common type it compares in",
+  "verdict": "`NULLIF(a, b)` is typed as `a`, though it compares in the common type; the lift types it as the common type",
+  "area": "nulls",
+  "options": [
+    "implicit_casts"
+  ],
+  "layer": "frontend",
+  "constructs": [
+    "NULLIF"
+  ],
+  "settings": {},
+  "description": [
+    "`NULLIF(1::INTEGER, 1.5::DOUBLE)` is an INTEGER, `NULLIF(1::BIGINT, 1::INTEGER)` a BIGINT and `NULLIF(1::INTEGER, 1::BIGINT)` an INTEGER. The comparison runs in the common type; the result keeps the first argument's, so `NULLIF(1::INTEGER, 1.5::DOUBLE) + 9223372036854775807::BIGINT` raises `Overflow in addition of INT64`."
+  ],
+  "reference": [
+    "The lift's `_nullif` (`sql_lift/core.py`) casts both arguments to `common` and types the result with it: `NULLIF(i32, f64)` is a float64 in the plan, `NULLIF(i32, i64)` an int64. The value is the same; the type is not, so arithmetic on the result differs (a double sum where DuckDB raises an integer overflow, a 64-bit sum where DuckDB's is 32-bit). The plan should compare in the common type and cast the result back to the first argument's type."
+  ],
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session claude/duckdb-coercions, #1484 census)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-nullif-type"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-nullif-int-overflow"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-literal-contexts"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` records each query as it comes."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (sverify.sql_lift.lift, semantics=\"duckdb\", on origin/main b28e14ff)",
+      "notes": "`lift(\"SELECT NULLIF(i32, f64) AS x FROM t\", semantics=\"duckdb\")`: output float64, one cast to fp64, DuckDB's `typeof` is INTEGER."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "source-reading",
+      "checked_by": "session claude/duckdb-coercions (DuckDB v2.0.0 source)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/catalog/default/default_functions.cpp#L127",
+          "note": "`nullif` is the macro `CASE WHEN a=b THEN NULL ELSE a END`: the comparison binds in the common type, the result is `a`"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    1484
+  ]
+}
