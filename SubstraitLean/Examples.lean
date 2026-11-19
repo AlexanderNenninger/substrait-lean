@@ -36,6 +36,8 @@ import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Analysis.Refines
 import Sverify.Engines.Rewrite
+import SubstraitLean.RunPlan
+import SubstraitLean.Statements
 import SubstraitLean.Engine
 import SubstraitLean.ContractCheck
 import SubstraitLean.ProvedOn
@@ -389,6 +391,15 @@ end Substrait.Examples
 #print axioms Substrait.Engine.contract_sound_runs_rewrite
 #print axioms Substrait.Engine.Sound.runPlan
 #print axioms Substrait.Engine.Sound.runPlanBag
+#print axioms Substrait.ContractCheck.check_run_plan_sound
+#print axioms Substrait.Rel.belowOrder_refines
+#print axioms Substrait.Rel.rule_small
+#print axioms Substrait.Rel.optimize_small
+#print axioms Substrait.transferB_of_reads_sub
+#print axioms Substrait.ContractCheck.run_plan_noRaise_duckdb
+#print axioms Substrait.ContractCheck.Request.issuesIn_sound
+#print axioms Substrait.ContractCheck.verified_holds_run_plan
+#print axioms Substrait.ContractCheck.verified_holds_run_plan_duckdb
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
 #print axioms Substrait.Expr.robust_of_robustB
 #print axioms Substrait.Expr.narrow_sound

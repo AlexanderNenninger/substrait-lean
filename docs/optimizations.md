@@ -355,6 +355,48 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   join to a small keyed table is cheap in both engines, so aggregating first
   saves little.
 
+### The gate
+
+Every rule above is proved for every plan (`Rel.optimize_sound`), and the
+report shows the rewrite (`optimized`, `rewrites`). An engine runs the rewrite
+in place of the plan as written only where its rule is on and every check of
+`Request.runPlanIn` passes (`SubstraitLean/RunPlan.lean`, #1787): the
+request is under the reference, the rewrite refines the plan (up to the
+order of rows for a `multiset` observation, exactly under an `ORDER BY`
+otherwise), adds no issue, stays guard-free, reads no option and calls no
+function the plan does not, and no double occurs where the observation
+compares doubles within a bound. The report names the check that kept the
+plan as written (`run_gate`), and `check_run_plan_sound` proves the rest.
+`Report.run` and `Report.to_sql` take the rewrite on the translated and
+transfer routes (`routes.RUNS_REWRITE`).
+
+A rule is on by default only with a measured gain on one engine, in run time
+or written SQL, and no loss beyond the bench's run-to-run spread on DuckDB,
+Polars and Spark. Snowflake was not measured. Eager aggregation keeps no bound
+on the rows it aggregates (`Rule.keepsSmall`), so the plan to run never uses
+it.
+
+Benchmark (`scripts/bench_optimizations.py 1000000 rules`, homelab, 12
+cores, 10⁶ rows, the median of 7 runs, as written / rewritten, with the
+spread, (max − min) / median, of the slower side in brackets; Spark times the
+query over views registered once). The `on` column is what `substrait-check
+--rules` prints, and `tests/test_run_plan.py` checks the two agree. Every rule
+is off until the proposed defaults are agreed (#1787, "Decisions to take").
+
+| Rule | Default | Polars | DuckDB | Spark | Written SQL | Proposed |
+|---|---|---|---|---|---|---|
+| filter implied by the contract | off | 2.1× (±77 %) | 1.15× (±21 %) | 1.20× (±23 %) | 244 → 122 | on |
+| filter the contract rules out | off | 2.3× (±42 %) | 1.9× (±29 %) | 15× (±129 %) | 238 → 175 | on |
+| left join under a filter rejecting NULLs | off | 1.32× (±26 %) | 0.89× (±44 %) | 0.97× (±24 %) | 505 → 506 | off: no gain beyond the spread |
+| left join on a foreign key | off | 1.14× (±35 %) | 0.87× (±43 %) | 1.04× (±24 %) | 399 → 400 | off: no gain beyond the spread |
+| DISTINCT on a key | off | 423× (±13 %) | 2.6× (±38 %) | 1.27× (±23 %) | 227 → 122 | on |
+| GROUP BY a key | off | 12.6× (±26 %) | 2.5× (±16 %) | 1.01× (±31 %) | 276 → 301 | on |
+| DISTINCT aggregate of a key | off | 8.2× (±19 %) | 3.7× (±48 %) | 1.28× (±39 %) | 244 → 235 | on |
+| join on a foreign key, no column used | off | 106× (±18 %) | 4.0× (±55 %) | 1.30× (±36 %) | 364 → 172 | on |
+| left join on a key, no column used | off | 119× (±21 %) | 4.0× (±41 %) | 1.14× (±28 %) | 363 → 172 | on |
+| GROUP BY columns that others determine | off | slower | slower | not measured | | off: slower above |
+| aggregate below a join on a key | off | slower | slower | not measured | | off: slower above |
+
 ## 4. Partition and file pruning
 
 `sverify.io` reads Delta and Iceberg with per-file statistics, and
