@@ -1597,22 +1597,25 @@ The text of a SQL query reads as DuckDB's under both semantics (`/`, `//`, NULL
 order, `replace`); the semantics is what the functions do. The two profiles
 differ in five fields. In two the reference raises where DuckDB gives NaN or
 `-inf` (`domain_error`, `log_zero`): a raise is visible and the inferred
-preconditions guard it. In three the reference gives another value, and each is
-a listed exception, shown in `Report.dialect_differences` with the construct,
-where it is, both readings, an example and the spellings that mean the same
-under both semantics:
+preconditions guard it. In three the reference gives another value:
 
-| `Profile` field | reference | DuckDB | where |
-|---|---|---|---|
-| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` |
-| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` |
-| `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side |
+| `Profile` field | reference | DuckDB | where | the lift |
+|---|---|---|---|---|
+| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
+| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | refuses, with a hint |
+| `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
 
-`corr` stays a listed exception: the readings differ only on one pair or a
-constant side (ST-3), and refusing it would refuse every `corr`. Whether the
-two casts keep truncating with an entry in the list, or mean DuckDB's rounding
-once #322 gives the model a rounding cast and are refused with a hint until
-then, is the user's to decide; until then nothing is refused.
+R9 stays the reference's rule: the model's cast of a double or decimal truncates,
+and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
+which rounds, so the SQL lift refuses it under the reference until #322 gives
+the model a rounding cast (the user's choice on #1484, 2026-11-19). The hint
+names the spellings with one meaning under both semantics:
+`CAST(round(x) AS BIGINT)`, `floor` and `ceil` for a double, and
+`CAST(round(CAST(d AS DOUBLE)) AS BIGINT)` for a decimal, whose own `round`,
+`floor` and `ceil` do not lift yet. `corr` stays a listed exception: the
+readings differ only on one pair or a constant side (ST-3), and refusing it
+would refuse every `corr`. `Report.dialect_differences` shows it with the
+construct, where it is, both readings, an example and the spellings.
 
 L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
 `Profile.reference`, and the verdict gains no value: the list says what the
@@ -1625,5 +1628,4 @@ Recomputes sinks: no
 Why: a proof is about the plan the lift writes. A user reads it as a statement
 about the SQL they wrote, so where the plan's value differs from the text's
 the report says so. A refusal lifted later is a minor change, a changed value a
-major one (D17), so the list comes first and a refusal waits for the user's
-answer.
+major one (D17), so the casts are refused before a release and `corr` is listed.

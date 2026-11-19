@@ -11,7 +11,7 @@ import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
 from sverify._decimals import EXACT
-from sverify._dialect import difference
+from sverify._dialect import REFUSED
 from sverify.plan_json import (
     SqlUnsupported,
     Unsupported,
@@ -169,16 +169,20 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     # Other casts: pending generation (#268).
     if t.is_integer() and (a.type.is_float64() or a.type.is_decimal()):
         rounding = lf.profile.float_to_int if a.type.is_float64() else lf.profile.decimal_to_int
-        if rounding != "TRUNCATE":
-            raise Unsupported(
-                f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
-                "model's casts (they truncate) cannot state yet; use semantics='reference'"
-            )
         key = "float_to_int" if a.type.is_float64() else "decimal_to_int"
+        if rounding != "TRUNCATE":
+            raise SqlUnsupported(
+                f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
+                "model's casts (they truncate) cannot state yet (#322)",
+                hint=REFUSED[key],
+            )
         # `round`, `floor` and `ceil` leave an integral double: both readings agree.
-        integral = isinstance(node.this, (sge.Round, sge.Floor, sge.Ceil))
-        if getattr(lf.profile, key) != getattr(DUCKDB, key) and not integral:
-            lf.differences.append(difference(key, node.sql(DIALECT)))
+        if not isinstance(node.this, (sge.Round, sge.Floor, sge.Ceil)):
+            raise SqlUnsupported(
+                f"CAST of a {a.type} to {t} is DuckDB's cast, which rounds "
+                f"({getattr(DUCKDB, key)}); sverify's reference truncates (R9)",
+                hint=REFUSED[key],
+            )
     if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
         raise SqlUnsupported(
             f"CAST of a {a.type} to {t} rounds, which is not supported yet", issue=322

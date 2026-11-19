@@ -266,7 +266,7 @@
         "type": "object",
         "required": ["key", "construct", "where", "here", "dialect", "example", "spellings"],
         "properties": {
-          "key": {"enum": ["float_to_int", "decimal_to_int", "corr_degenerate"]},
+          "key": {"enum": ["corr_degenerate"]},
           "construct": {"type": "string"},
           "where": {"type": "string"},
           "here": {"type": "string"},

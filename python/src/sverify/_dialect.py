@@ -2,14 +2,14 @@
 
 `sv.verify(sql)` reads the text as DuckDB's and the functions as the
 reference's. The reference gives a value DuckDB does not in the fields of
-`Profile` below, and the report lists each place the lift read one of them
-(`Report.dialect_differences`). The raises of the reference (`domain_error`,
+`Profile` below. The lift refuses the casts (`REFUSED`, with a hint) and the
+report lists `corr` (`Report.dialect_differences`). The raises of the reference (`domain_error`,
 `log_zero`) are not here: a raise is visible and the inferred preconditions
 name its inputs.
 
 One table, keyed by the `Profile` field. `tests/test_dialect_differences.py`
 derives the key set from `REFERENCE` and `DUCKDB` and fails when a field joins
-it with no row.
+it neither refused nor listed.
 """
 
 from __future__ import annotations
@@ -45,27 +45,23 @@ class DialectDifference:
         return f"{out}; {self.spellings}" if self.spellings else out
 
 
-#: Each `Profile` field's entry: how the two readings differ, with an example
-#: and the spellings that lift under the reference and mean the same on both.
+#: The `Profile` fields the lift refuses under the reference instead of listing
+#: (D54, the user's choice on #1484): the hint names the spellings that lift for
+#: the source type and mean the same under both semantics.
+REFUSED: dict[str, str] = {
+    "float_to_int": (
+        "write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
+        "which mean the same on both"
+    ),
+    "decimal_to_int": (
+        "round, floor and ceil of a DECIMAL are not lifted yet; "
+        "write CAST(round(CAST(d AS DOUBLE)) AS BIGINT), which means the same on both"
+    ),
+}
+
+#: Each `Profile` field the lift lists: how the two readings differ, with an
+#: example and the spellings that mean the same.
 TABLE: dict[str, dict[str, str]] = {
-    "float_to_int": {
-        "here": "truncates toward zero",
-        "dialect": "rounds to nearest, ties to even",
-        "example": "CAST(1.5 AS BIGINT) is 1 here and 2 on DuckDB",
-        "spellings": (
-            "CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) and "
-            "CAST(ceil(x) AS BIGINT) mean the same on both"
-        ),
-    },
-    "decimal_to_int": {
-        "here": "truncates toward zero",
-        "dialect": "rounds half away from zero",
-        "example": "CAST(2.5::DECIMAL(2, 1) AS BIGINT) is 2 here and 3 on DuckDB",
-        "spellings": (
-            "round, floor and ceil of a DECIMAL are not lifted yet; "
-            "CAST(round(CAST(d AS DOUBLE)) AS BIGINT) means the same on both, through a double"
-        ),
-    },
     "corr_degenerate": {
         "here": "NULL",
         "dialect": "NaN",

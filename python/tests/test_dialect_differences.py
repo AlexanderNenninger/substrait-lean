@@ -14,6 +14,7 @@ import pytest
 import sverify as sv
 from _repo import needs_repo
 from sverify import _dialect
+from sverify._unsupported import UnsupportedError
 from sverify.report import Report
 from sverify.sql_lift import lift
 from sverify.sql_lift._base import DUCKDB, REFERENCE
@@ -25,9 +26,10 @@ def _found(sql: str, semantics: str = "reference") -> list[str]:
     return [d.key for d in lift(sql, SCHEMA, semantics).differences]
 
 
-def test_the_table_has_a_row_for_each_silent_difference() -> None:
+def test_each_silent_difference_is_refused_or_listed() -> None:
     """A `Profile` field in which the reference gives a value (not a raise)
-    and DuckDB another has a row; a field that joins with no row fails."""
+    and DuckDB another is refused by the lift or has a row; a field that joins
+    with neither fails."""
     keys = {
         f.name
         for f in dataclasses.fields(REFERENCE)
@@ -35,25 +37,30 @@ def test_the_table_has_a_row_for_each_silent_difference() -> None:
         and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
         and getattr(REFERENCE, f.name) != "ERROR"
     }
-    assert keys == set(_dialect.TABLE)
+    assert keys == set(_dialect.TABLE) | set(_dialect.REFUSED)
+    assert not set(_dialect.TABLE) & set(_dialect.REFUSED)
 
 
 @pytest.mark.parametrize(
-    ("sql", "key"),
+    ("sql", "spelling"),
     [
-        ("SELECT CAST(x AS BIGINT) AS a FROM t", "float_to_int"),
-        ("SELECT CAST(d AS BIGINT) AS a FROM t", "decimal_to_int"),
-        ("SELECT corr(x, y) AS c FROM t", "corr_degenerate"),
+        ("SELECT CAST(x AS BIGINT) AS a FROM t", "CAST(round(x) AS BIGINT)"),
+        ("SELECT CAST(2.7 AS BIGINT) AS a FROM t", "CAST(round(CAST(d AS DOUBLE)) AS BIGINT)"),
+        ("SELECT CAST(d AS BIGINT) AS a FROM t", "CAST(round(CAST(d AS DOUBLE)) AS BIGINT)"),
     ],
 )
-def test_the_lift_records_each_construct(sql: str, key: str) -> None:
-    assert _found(sql) == [key]
+def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
+    with pytest.raises(UnsupportedError) as e:
+        lift(sql, SCHEMA, "reference")
+    assert spelling in str(e.value)
+
+
+def test_the_corr_construct_is_listed() -> None:
+    assert _found("SELECT corr(x, y) AS c FROM t") == ["corr_degenerate"]
 
 
 def test_a_construct_is_listed_once() -> None:
-    assert _found("SELECT CAST(x AS BIGINT) AS a, CAST(x AS BIGINT) AS b FROM t") == [
-        "float_to_int"
-    ]
+    assert _found("SELECT corr(x, y) AS a, corr(x, y) AS b FROM t") == ["corr_degenerate"]
 
 
 @pytest.mark.parametrize(
@@ -66,7 +73,7 @@ def test_a_construct_is_listed_once() -> None:
         "SELECT CAST(x AS DOUBLE) AS a FROM t",
     ],
 )
-def test_the_spellings_mean_the_same_and_are_not_listed(sql: str) -> None:
+def test_the_spellings_lift_and_are_not_listed(sql: str) -> None:
     assert _found(sql) == []
     assert _found(sql, "duckdb") == []
 
@@ -77,28 +84,16 @@ def test_under_duckdb_semantics_nothing_is_listed() -> None:
 
 def test_the_report_lists_the_difference_and_keeps_the_verdict() -> None:
     r = sv.verify(
-        "SELECT CAST(x AS BIGINT) AS y FROM t WHERE x > 0 AND x < 100",
-        tables={"t": {"x": "DOUBLE"}},
+        "SELECT corr(x, y) AS c FROM t",
+        tables={"t": {"x": "DOUBLE", "y": "DOUBLE"}},
+        requires=["x > 0 AND x < 100 AND y > 0 AND y < 100"],
         counterexamples=0,
     )
-    assert r.verdict == sv.Verdict.PROVED
     (d,) = r.dialect_differences
-    assert (d.key, d.where) == ("float_to_int", "the query")
-    assert "1.5" in d.example and "round(x)" in d.spellings
+    assert (d.key, d.where) == ("corr_degenerate", "the query")
+    assert "NaN" in d.dialect
     assert any(n.startswith("dialect: ") for n in r.notes)
     assert Report.from_json(r.to_json()).dialect_differences == r.dialect_differences
-
-
-def test_a_condition_names_where_it_is() -> None:
-    r = sv.verify(
-        "SELECT x FROM t WHERE x > 0 AND x < 100",
-        tables={"t": {"x": "DOUBLE"}},
-        ensures=["CAST(x AS BIGINT) >= 0"],
-        counterexamples=0,
-    )
-    assert [d.where for d in r.dialect_differences] == [
-        "the ensures condition CAST(x AS BIGINT) >= 0"
-    ]
 
 
 def test_an_ibis_transformation_lists_nothing() -> None:

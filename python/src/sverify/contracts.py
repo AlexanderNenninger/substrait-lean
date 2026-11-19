@@ -770,7 +770,9 @@ def verify(
     or what DuckDB computes with `semantics="duckdb"`. The report says
     which (`Report.semantics`).
     Where the reference reads the SQL differently from DuckDB on a value, the
-    report lists it (`Report.dialect_differences`).
+    lift refuses it with a hint (`CAST(x AS BIGINT)` of a double: write
+    `CAST(round(x) AS BIGINT)`) or the report lists it
+    (`Report.dialect_differences`).
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
