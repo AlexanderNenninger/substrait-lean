@@ -566,35 +566,87 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
         | _ => if ea == 0.0 then some (0.0, false) else none
   | _ => none
 
+/-! ### Decisions on a marked value (D52, ruling 104)
+
+A source mark (`.un (.approx k) _`) says the lifted source computes a value
+within a band of the plan's. A row decision (a filter, sort key, `DISTINCT`,
+join condition, grouping key or measure filter) that reads such a value has
+one outcome over the band only where `rowsExact`'s check clears it; elsewhere
+the source may keep other rows than the verified plan. -/
+
+/-- Does `e` contain a mark at any depth, or read a column `d` marks? A
+lambda's body reads the row shifted by one, so a lambda over a marked row
+counts as marked. -/
+def Expr.markDep (d : List Bool) : Expr → Bool
+  | .lit _ => false
+  | .field i => d.getD i true
+  | .un (.approx _) _ => true
+  | .un _ a => Expr.markDep d a
+  | .bin _ a b => Expr.markDep d a || Expr.markDep d b
+  | .ifThen c t e => Expr.markDep d c || Expr.markDep d t || Expr.markDep d e
+  | .hof _ l body => Expr.markDep d l || Expr.markDep (true :: d) body || d.any id
+
+/-- Which columns of `r` depend on a mark (M1, M2): every constructor has a
+rule, and an operator whose columns this does not trace taints them all. -/
+def Rel.markDeps (cat : Catalog) : Rel → List Bool
+  | .read t => List.replicate (cat t).arity false
+  | .values n _ => List.replicate n false
+  | .filter r _ | .orderBy r _ | .fetch r _ _ | .distinct r | .unnest r _ => Rel.markDeps cat r
+  | .project r es => let d := Rel.markDeps cat r; d ++ es.map (Expr.markDep d)
+  | .emit r m => let d := Rel.markDeps cat r; m.map (d.getD · true)
+  | .aggregate r gs ms =>
+    let d := Rel.markDeps cat r
+    gs.map (Expr.markDep d) ++
+      ms.map fun m => Expr.markDep d m.arg || m.filter.any (Expr.markDep d) ||
+        m.sort.any fun k => d.getD k.col true
+  | .window r _ _ fns => let d := Rel.markDeps cat r; d ++ fns.map fun _ => d.any id
+  | .cross a b | .join a b _ _ => Rel.markDeps cat a ++ Rel.markDeps cat b
+  | .semi a _ _ _ => Rel.markDeps cat a
+  | .unionAll a b => List.zipWith (· || ·) (Rel.markDeps cat a) (Rel.markDeps cat b)
+
+/-- Every row decision of the plan on `engine`: whether `rowsExact`'s check
+passes there, whether it reads a value a mark taints, and what it is.
+`rowsExact` is that every site passes. -/
+def rowSites (es : List EngineProfile) (engine : String) (cat : Catalog) (A : String → List AVal)
+    (F : String → List Fact) (T : WindowKeys) : Rel → List (Bool × Bool × String)
+  | .read _ | .values _ _ => []
+  | .filter r c => rowSites es engine cat A F T r ++
+      [((colEps es engine cat A F T r).any fun cs =>
+        exactP (exprEps engine (r.aeval cat A F T) cs c) ||
+          marginCovered es engine cat (r.aeval cat A F T) cs r c,
+        Expr.markDep (Rel.markDeps cat r) c, s!"the filter {c.render}")]
+  | .orderBy r keys => rowSites es engine cat A F T r ++
+      [((colEps es engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none),
+        keys.any (fun k => (Rel.markDeps cat r).getD k.col true), "a sort key")]
+  | .distinct r => rowSites es engine cat A F T r ++
+      [((colEps es engine cat A F T r).any fun cs => cs.all exactP, (Rel.markDeps cat r).any id,
+        "DISTINCT")]
+  | .fetch r _ _ | .emit r _ | .project r _ | .window r _ _ _ | .unnest r _ =>
+    rowSites es engine cat A F T r
+  | .cross a b | .unionAll a b => rowSites es engine cat A F T a ++ rowSites es engine cat A F T b
+  | .join a b _ on | .semi a b _ on =>
+    rowSites es engine cat A F T a ++ rowSites es engine cat A F T b ++
+      [(match colEps es engine cat A F T a, colEps es engine cat A F T b with
+        | some ca, some cb =>
+          exactP (exprEps engine (a.aeval cat A F T ++ b.aeval cat A F T) (ca ++ cb) on)
+        | _, _ => false,
+        Expr.markDep (Rel.markDeps cat a ++ Rel.markDeps cat b) on, s!"the join condition {on.render}")]
+  | .aggregate r gs ms => rowSites es engine cat A F T r ++
+      [((colEps es engine cat A F T r).any fun cs =>
+        let env := r.aeval cat A F T
+        gs.all (fun g => exactP (exprEps engine env cs g)) &&
+          ms.all fun m => m.filter.all fun c => exactP (exprEps engine env cs c),
+        gs.any (Expr.markDep (Rel.markDeps cat r)) ||
+          ms.any (fun m => m.filter.any (Expr.markDep (Rel.markDeps cat r))),
+        "a grouping key or measure filter")]
+
 /-- Does every filter, sort key, `DISTINCT`, grouping key and measure filter
 of the plan read values that are the same on `engine` as on the reference,
 or a comparison whose outcome is (`rule_threshold`)? Then the engine keeps
 the same rows and groups, and the columns' bounds compare like with like. -/
 def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : String → List AVal)
-    (F : String → List Fact) (T : WindowKeys) : Rel → Bool
-  | .read _ | .values _ _ => true
-  | .filter r c => rowsExact es engine cat A F T r &&
-      (colEps es engine cat A F T r).any fun cs =>
-        exactP (exprEps engine (r.aeval cat A F T) cs c) ||
-          marginCovered es engine cat (r.aeval cat A F T) cs r c
-  | .orderBy r keys => rowsExact es engine cat A F T r &&
-      (colEps es engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
-  | .distinct r => rowsExact es engine cat A F T r &&
-      (colEps es engine cat A F T r).any fun cs => cs.all exactP
-  | .fetch r _ _ | .emit r _ | .project r _ | .window r _ _ _ | .unnest r _ =>
-    rowsExact es engine cat A F T r
-  | .cross a b | .unionAll a b => rowsExact es engine cat A F T a && rowsExact es engine cat A F T b
-  | .join a b _ on | .semi a b _ on =>
-    rowsExact es engine cat A F T a && rowsExact es engine cat A F T b &&
-      match colEps es engine cat A F T a, colEps es engine cat A F T b with
-      | some ca, some cb =>
-        exactP (exprEps engine (a.aeval cat A F T ++ b.aeval cat A F T) (ca ++ cb) on)
-      | _, _ => false
-  | .aggregate r gs ms => rowsExact es engine cat A F T r &&
-      (colEps es engine cat A F T r).any fun cs =>
-        let env := r.aeval cat A F T
-        gs.all (fun g => exactP (exprEps engine env cs g)) &&
-          ms.all fun m => m.filter.all fun c => exactP (exprEps engine env cs c)
+    (F : String → List Fact) (T : WindowKeys) (r : Rel) : Bool :=
+  (rowSites es engine cat A F T r).all (·.1)
 
 /-- Does the plan read or write a single-precision column? Polars sums
 `Float32` in single precision (polars-sum-float), which no bound here covers. -/
@@ -859,23 +911,6 @@ def statCols : Rel → Option (List (Option (Option Measure)))
   | _ => none
 
 
-/-- An expression that is a source mark (D52), `.un (.approx k) _`, or chooses
-between such and other values. -/
-def markedExpr : Expr → Bool
-  | .un (.approx _) _ => true
-  -- The lift's guard for a group of NULLs keeps the mark in a branch.
-  | .ifThen _ a b => markedExpr a || markedExpr b
-  | _ => false
-
-/-- Which output columns are a source mark (D52), as a projection computes it
-and emits, filters and sorts hand it on. -/
-def markedCols (cat : Catalog) : Rel → List Bool
-  | .project r es => markedCols cat r ++ es.map markedExpr
-  | .emit r m => let cs := markedCols cat r; m.map (cs.getD · false)
-  | .filter r _ | .orderBy r _ | .fetch r _ _ => markedCols cat r
-  -- Below a projection nothing is marked: one `false` per column.
-  | r => List.replicate (r.arity cat) false
-
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,
 `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}`.
@@ -908,9 +943,9 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded why => some (name, Json.mkObj [("abs", Json.null), ("why", toJson why)])
     | .other => none
-  -- D52: a marked column's band (`exprEps`'s rule), the largest on any
-  -- engine, proved where every engine's is.
-  let mk := markedCols cat root
+  -- D52: a column that reads a marked value: its band (`exprEps`'s rule), the
+  -- largest on any engine, proved where every engine's is (ruling 104's C-out).
+  let mk := Rel.markDeps cat root
   let mnames := if plan.names.length == mk.length then plan.names
     else (List.range mk.length).map (s!"#{·}")
   let perEngine := (es.map (·.name)).map fun engine => colEps es engine cat A F T root

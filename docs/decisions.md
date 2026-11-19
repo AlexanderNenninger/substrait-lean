@@ -1491,3 +1491,8 @@ The lift marks that entry's finish with `DuckAgg.nearRel`, the band
 Why the core: a tier-1 engine's SQL returns one of several doubles where the
 lifted plan can state one. The mark is what lets the checker bound the
 others. It names no engine.
+
+2026-11-19 (ruling 104): a plan that carries a mark is proved only where every
+decision that reads a marked value has one outcome over the band and every
+output column that reads one has a bound in the report. Elsewhere the report
+carries an error issue (`source_threshold`, `EngineRobust.sourceIssues`).

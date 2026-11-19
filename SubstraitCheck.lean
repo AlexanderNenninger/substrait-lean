@@ -287,12 +287,17 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
         let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
-        let base := report.json |>.setObjVal! "depends" depends
+        -- A decision on a marked value (D52, ruling 104): an error issue.
+        let source := (EngineRobust.sourceIssues es j).toOption.getD []
+        let issues := ((report.json.getObjValAs? (Array Lean.Json) "issues").toOption.getD #[]) ++
+          source.toArray
+        let base := report.json |>.setObjVal! "issues" (Lean.Json.arr issues)
+            |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
             |>.setObjVal! "margin_checks" margins
         match underProfile es j (engines.foldl (fun r (k, v) => r.setObjVal! k v) base)
-            report.allProved with
+            (report.allProved && source.isEmpty) with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>
           IO.println out.compress
