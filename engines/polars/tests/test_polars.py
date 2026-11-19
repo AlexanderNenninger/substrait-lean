@@ -410,7 +410,8 @@ def test_null_order_in_windows(direction):
 
 def test_float_window_order_has_one_zero_and_one_nan():
     """-inf < 0.0 < inf < NaN: -0.0 is 0.0 and -NaN is NaN, so they tie and
-    keep their input order (DataFusion's total order would split them)."""
+    keep their input order (DataFusion's total order would split them). The values stay
+    raw (D31, #1461): the `-0.0` row is still `-0.0`."""
     con = connect()
     schema = ibis.schema({"x": "float64"})
     xs = [math.nan, 0.0, -math.inf, -0.0, math.inf, -math.nan, None]
@@ -421,7 +422,7 @@ def test_float_window_order_has_one_zero_and_one_nan():
         [
             (-math.inf, 1),
             (0.0, 2),
-            (0.0, 3),
+            (-0.0, 3),
             (math.inf, 4),
             (math.nan, 5),
             (math.nan, 6),

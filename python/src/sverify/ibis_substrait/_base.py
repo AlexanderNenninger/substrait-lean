@@ -22,6 +22,7 @@ import ibis.expr.types as ir
 from sverify import _decimals, _functions
 from sverify.ibis_substrait._constructs import class_construct, op_construct
 from sverify.plan_json import (
+    INSTANT_NOTE,
     Json,
     ProducerUnsupported,
     Unsupported,
@@ -134,6 +135,15 @@ def register(rules: Mapping[Any, Callable[[Exprs, Any], Json]]) -> None:
 
 
 def _common(*types: Any) -> Any:
+    stamps = [t for t in types if t.is_timestamp()]
+    if any(t.timezone is not None for t in stamps) and any(t.timezone is None for t in stamps):
+        # D53: Ibis leaves the two kinds as they are, and DuckDB or Spark would bring the
+        # naive side to the session's zone; the conversion is written, not guessed.
+        raise Unsupported(
+            "a timestamp with a time zone and a timestamp without one are compared or combined "
+            "(#1725): "
+            'convert one with .cast("timestamp(\'UTC\', 6)") or .cast("timestamp") ' + INSTANT_NOTE
+        )
     return dt.highest_precedence([t for t in types if not t.is_null()] or [dt.null])
 
 
@@ -218,9 +228,25 @@ def exact(op: Any) -> Any:
     return _exact(op)
 
 
+def _branches(op: Any) -> list[Any]:
+    """The operands of `op` that its result takes the type of: a `CASE`'s results, the
+    arguments of `COALESCE`, `GREATEST`, `LEAST` and `NULLIF`."""
+    match op:
+        case ops.IfElse():
+            return [op.true_expr, op.false_null_expr]
+        case ops.SearchedCase() | ops.SimpleCase():
+            return [*op.results, op.default]
+        case ops.Coalesce() | ops.Greatest() | ops.Least():
+            return list(op.arg)
+        case ops.NullIf():
+            return [op.arg, op.null_if_expr]
+    return []
+
+
 @functools.cache
 def _exact(op: Any) -> Any:
     t = op.dtype
+    _common(*(b.dtype for b in _branches(op)))  # refuses an instant mixed with a timestamp
     if not t.is_decimal():
         return t
     match op:

@@ -94,6 +94,11 @@ theorem Measure.eval_allowed (m : Measure) (rows : Relation) : m.Allowed rows (m
   · refine ⟨rows, .refl _, fun h => absurd h hs, ?_⟩
     rw [Measure.eval_eq (by simpa using hs)]; exact AggFn.apply_allowed _ _
 
+/-- A measure allows the same values on a permutation of its rows. -/
+theorem Measure.Allowed.perm {m : Measure} {rows rows' : Relation} {v : Value}
+    (h : m.Allowed rows v) (hp : rows.Perm rows') : m.Allowed rows' v :=
+  let ⟨s, hs, ho, hv⟩ := h; ⟨s, hs.trans hp, ho, hv⟩
+
 /-- An order-free measure allows its value, or for `MIN` and `MAX` another
 member of its class. -/
 theorem Measure.allowed_picks {m : Measure} (hm : m.orderFree = true) {rows : Relation}

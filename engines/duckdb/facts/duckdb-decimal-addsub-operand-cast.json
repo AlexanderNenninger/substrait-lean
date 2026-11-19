@@ -1,0 +1,77 @@
+{
+  "id": "duckdb-decimal-addsub-operand-cast",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Decimal + and - cast each operand to the result type and raise there, also where the exact sum fits",
+  "verdict": "`DECIMAL(38,0) + DECIMAL(38,10)` casts the first operand to `DECIMAL(38,10)` and raises when it has more than 28 integer digits, though `a + b` may fit",
+  "area": "decimals",
+  "options": [
+    "implicit_casts"
+  ],
+  "layer": "semantics",
+  "constructs": [
+    "+",
+    "-"
+  ],
+  "settings": {},
+  "description": [
+    "`ResolveDecimalArithmeticTypes` gives `+` and `-` the type `DECIMAL(max(pᵢ - sᵢ) + max s + 1, max s)`, capped at 38 digits, and casts every operand to it. With `a DECIMAL(38,0) = 10^28` and `b DECIMAL(38,10) = -0.0000000001` the result is `DECIMAL(38,10)`; `a + b`, and `a - b` with `b = 0.0000000001`, raise `Casting value \"10000000000000000000000000000\" to type DECIMAL(38,10) failed`, although the exact sum, 9999999999999999999999999999.9999999999, has 38 digits. It can happen only where the precision is capped and the scales differ: an operand with `pᵢ + (s - sᵢ) > 38`. Large operands that do not cancel raise in any model."
+  ],
+  "reference": [
+    "The model checks the result only: `Parse.decimalCall` upscales both operands as exact integers and wraps the sum in `UnFn.decimal p s`, so it returns the exact value and reports no overflow where DuckDB raises (#1498's shape for `+` and `-`). The planned fix is a checked rescale of the operand in the reference's reading (D56, held for the user); explicit casts in the writer do not help, since DuckDB raises on the cast written or implied."
+  ],
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session claude/duckdb-coercions, #1484 census)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-decimal-cancel-type"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-decimal-cancel-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-decimal-cancel-sub-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-decimal-digits-limit"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-decimal-digits-limit-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-int-decimal-arith-raise"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` records each query as it comes."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "source-reading",
+      "checked_by": "session claude/duckdb-coercions (DuckDB v2.0.0 source)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L328-L362",
+          "note": "`DecimalArithmeticResultType`: width `max(scale + width-over-scale, width) + 1`, capped at 38 with `check_overflow`"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/scalar/operator/arithmetic.cpp#L365-L388",
+          "note": "`ResolveDecimalArithmeticTypes`: \"we cast all input types to the specified type\""
+        }
+      ]
+    }
+  ],
+  "issues": [
+    1484
+  ]
+}

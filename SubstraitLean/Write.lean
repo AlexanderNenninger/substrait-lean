@@ -334,15 +334,14 @@ def writeMonths (m : Int) : Json :=
 /-- A constant of a virtual table, as a literal of its column's type `ty`
 (integers of the column's width). -/
 def valuesLit (ty : Json) (v : Value) : Json :=
-  let narrow := ["i8", "i16", "i32"].find? fun k => (ty.getObjVal? k).toOption.isSome
-  match narrow, v with
-  | some k, .int i => obj [("literal", obj [(k, toJson i)])]
+  match Parse.narrowIntBits? ty, v with
+  | some n, .int i => obj [("literal", obj [(Parse.intTagFor n, toJson i)])]
   -- A literal, which a virtual table's fields must be.
   | _, _ => obj [("literal", writeLitBody (.ofKind (Parse.typeKind ty)) v)]
 
 /-- `CAST(j AS INT<n>)` that raises where the value does not fit. -/
 def checkedNarrow (n : Nat) (j : Json) : Json :=
-  let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+  let ty := Parse.intTagFor n
   obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
     ("input", j), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
 
@@ -350,7 +349,7 @@ def checkedNarrow (n : Nat) (j : Json) : Json :=
 def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
   match x with
   | .lit (.int i) =>
-    obj [("literal", obj [(if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32", toJson i)])]
+    obj [("literal", obj [(Parse.intTagFor n, toJson i)])]
   | _ => j
 
 /-- An argument of arithmetic at width `w`: a literal at that width. -/
@@ -522,7 +521,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     castTo (decType p s) (writeExpr cols (wkind cols a) a)
   | .un (.decimal p s) a => castTo (decType p s) (writeExpr cols (wkind cols a) a)
   | .un (.narrow n) (.un (.dtrunc _) a) =>
-    let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else if n ≤ 32 then "i32" else "i64"
+    let ty := Parse.intTagFor n
     castTo (obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]) (writeExpr cols (wkind cols a) a)
   | .un (.dtrunc _) a => castTo i64Type (writeExpr cols (wkind cols a) a)
   | .un (.dtof _) a => castTo fp64Type (writeExpr cols (wkind cols a) a)
@@ -560,14 +559,14 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .ftoi a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.narrow n) a =>
-    let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+    let ty := Parse.intTagFor n
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   -- `TRY_CAST` (#58).
   | .un .ftoiOrNull a => obj [("cast", obj [("type", i64Type), ("input", writeExpr cols .float a),
       ("failureBehavior", "FAILURE_BEHAVIOR_RETURN_NULL")])]
   | .un (.narrowOrNull n) a =>
-    let ty := if n ≤ 8 then "i8" else if n ≤ 16 then "i16" else "i32"
+    let ty := Parse.intTagFor n
     obj [("cast", obj [("type", obj [(ty, obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_RETURN_NULL")])]
   -- Arithmetic at `n` bits: its integer literals are written at that width,
@@ -586,6 +585,10 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     callOpt (BinFn.anchor f) [fitArg w x (writeExpr cols .int x), fitArg w y (writeExpr cols .int y)]
       "overflow" m.name
   | .un .widen a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .float a)])]
+  | .un (.atUtc inst) a =>
+    obj [("cast", obj [("type", kindType (if inst then .timeTz else .time)),
+      ("input", writeExpr cols (if inst then .time else .instant) a),
+      ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>

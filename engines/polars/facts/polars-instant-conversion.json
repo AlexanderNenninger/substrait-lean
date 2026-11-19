@@ -1,0 +1,31 @@
+{
+  "id": "polars-instant-conversion",
+  "engine": "polars",
+  "engine_version": "2.1.0",
+  "title": "`dt.replace_time_zone('UTC')` and `dt.replace_time_zone(None)` keep the wall clock of a UTC instant",
+  "verdict": "a naive Datetime becomes the UTC instant of the same microseconds, and back",
+  "area": "temporal",
+  "constructs": [
+    "dt.replace_time_zone",
+    "dt.epoch"
+  ],
+  "description": [
+    "`replace_time_zone('UTC')` of a naive `Datetime(\"us\")` gives `Datetime(\"us\", \"UTC\")` with the same epoch microseconds (including year 1 and NULL), and `replace_time_zone(None)` of that gives the naive timestamp back: both directions at UTC, which has no DST, so no gap or overlap arises."
+  ],
+  "reference": "`UnFn.atUtc` (D53) returns its argument; Polars gives it natively.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars (polars 2.1.0, macOS arm64; #1725)",
+      "evidence": [
+        {
+          "sql": "(lambda s: (s.dt.replace_time_zone('UTC').dtype, s.dt.replace_time_zone('UTC').dt.epoch('us').to_list(), s.dt.replace_time_zone('UTC').dt.replace_time_zone(None).to_list(), s.dt.epoch('us').to_list()))(df(x=[dt.datetime(2024, 3, 31, 2, 30), dt.datetime(1, 1, 1), None]).to_series())",
+          "observed": "(Datetime(time_unit='us', time_zone='UTC'), [1711852200000000, -62135596800000000, None], [datetime.datetime(2024, 3, 31, 2, 30), datetime.datetime(1, 1, 1, 0, 0), None], [1711852200000000, -62135596800000000, None])"
+        }
+      ]
+    }
+  ]
+}

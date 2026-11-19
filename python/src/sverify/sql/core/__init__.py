@@ -11,7 +11,7 @@ defaults:
   references are unambiguous whatever the input tables call their columns.
 * Integers are `BIGINT`: operands are cast, and arithmetic must raise on
   overflow (Lean's integers are unbounded; a wrapped result would be wrong).
-  Division and remainder truncate. Where DataFusion fails at run time
+  Division and remainder truncate. Where an engine may fail at run time
   (division by zero, `MIN / -1`, a bad `POWER` or `CAST(double AS BIGINT)`),
   Lean's value is NULL and `analysis/Sverify/Analysis/Safety.lean` says when that can
   happen; the SQL raises there too (`Dialect.raise_`).
