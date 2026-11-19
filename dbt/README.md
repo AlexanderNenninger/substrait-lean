@@ -98,7 +98,7 @@ The other options of `check`:
 |---|---|
 | `--select MODEL ...` | Report on these models (their upstream models are checked too) |
 | `--format text\|json\|github\|sarif\|junit` | How to print the result (default `text`): `github` is one annotation per finding on the model's file, `sarif` a code-scanning log, `junit` a suite per model; `sverify check` forwards its own |
-| `--timeout SECONDS` | Seconds for the whole check (default `$SVERIFY_TIMEOUT` or 30; 0 turns it off); exit 4 past it |
+| `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 4 past it |
 | `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
 | `--json` | Print the result as JSON (`--format json`) |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |

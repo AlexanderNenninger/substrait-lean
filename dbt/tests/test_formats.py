@@ -73,3 +73,13 @@ def test_a_check_past_its_time_budget_exits_4(tmp_path, monkeypatch, capsys) -> 
 def test_a_bad_memory_limit_is_a_usage_error(tmp_path, capsys) -> None:
     assert main(["check", str(tmp_path), "--memory-limit", "lots"]) == 2
     assert "memory limit" in capsys.readouterr().err
+
+
+def test_the_time_budget_is_off_unless_asked_for(tmp_path, monkeypatch) -> None:
+    from sverify_dbt.cli import _timeout_asked
+
+    monkeypatch.delenv("SVERIFY_TIMEOUT", raising=False)
+    assert not _timeout_asked(None)
+    assert _timeout_asked(5.0)
+    monkeypatch.setenv("SVERIFY_TIMEOUT", "60")
+    assert _timeout_asked(None)

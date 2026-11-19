@@ -24,6 +24,11 @@ def _hard_stop() -> None:
     os._exit(BUDGET)
 
 
+def _timeout_asked(arg: float | None) -> bool:
+    """Whether `--timeout` or `$SVERIFY_TIMEOUT` sets a time budget."""
+    return arg is not None or bool(os.environ.get("SVERIFY_TIMEOUT", "").strip())
+
+
 def _render(result: CheckResult, fmt: str) -> str:
     if fmt == "json":
         return json.dumps(result.to_dict(), indent=2)
@@ -82,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         "--timeout",
         type=float,
         default=None,
-        help="seconds for the whole check (default: $SVERIFY_TIMEOUT or 30; 0 turns it off); "
+        help="seconds for the whole project check (default: $SVERIFY_TIMEOUT, else no limit); "
         "exit 4 past it",
     )
     c.add_argument(
@@ -117,7 +122,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         _limits.memory_limit_from(args.memory_limit)
-        budget = _limits.Budget(_limits.timeout_from(args.timeout), _hard_stop)
+        # Off unless asked for: a project check is many models, and no limit
+        # existed before; `sverify check`'s 30 s is per file.
+        seconds = _limits.timeout_from(args.timeout) if _timeout_asked(args.timeout) else 0.0
+        budget = _limits.Budget(seconds, _hard_stop)
         with budget.armed():
             result = check(
                 args.project,
