@@ -586,7 +586,7 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
 def test_casts_to_bigint_truncate_and_refuse_nan():
     con = connect()
     con.create("r", F, [(x,) for x in DOUBLES])
-    sql = "SELECT f, CAST(f AS BIGINT) AS i FROM r"
+    sql = "SELECT f, CAST(floor(f) AS BIGINT) AS i FROM r"
     duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
     assert duck == pl_rows
     con.create("r", F, [(1.0,), (math.nan,)])
