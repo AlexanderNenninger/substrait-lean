@@ -134,7 +134,7 @@ def window(x: Exprs, op: Any) -> Json:
         if not isinstance(func.arg, ops.Field):
             raise Unsupported(
                 "first/last/nth of an expression is not supported; use a column",
-                construct="function first_value",
+                construct="function first",
             )
         if isinstance(func, ops.First | ops.Last):
             # Ibis's DataFusion SQL is a plain FIRST_VALUE/LAST_VALUE whatever
@@ -142,7 +142,7 @@ def window(x: Exprs, op: Any) -> Json:
             if func.where is not None or func.order_by:
                 raise ProducerUnsupported(
                     "first/last with where or order_by is not supported",
-                    construct="function first_value",
+                    construct="function first",
                 )
             name = "first_value" if isinstance(func, ops.First) else "last_value"
             args = [x(func.arg)]
@@ -150,7 +150,7 @@ def window(x: Exprs, op: Any) -> Json:
             nth = func.nth.value if isinstance(func.nth, ops.Literal) else None
             if not isinstance(nth, int) or nth < 0:
                 raise Unsupported(
-                    "nth must be a non-negative integer constant", construct="function nth_value"
+                    "nth must be a non-negative integer constant", construct="function nth"
                 )
             name, args = "nth_value", [x(func.arg), literal(nth + 1, dt.int64)]
     elif isinstance(func, ops.Reduction):

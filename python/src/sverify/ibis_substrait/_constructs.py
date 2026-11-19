@@ -20,6 +20,8 @@ OP_METHODS = {
     "BitOr": "bit_or",
     "BitXor": "bit_xor",
     "Correlation": "corr",
+    "DateFromYMD": "date",
+    "DateNow": "today",
     "Count": "count",
     "CountDistinct": "nunique",
     "CountDistinctStar": "nunique",
@@ -45,12 +47,23 @@ OP_METHODS = {
     "MinRank": "rank",
     "RowNumber": "row_number",
     "StandardDev": "std",
+    "StringToDate": "to_date",
+    "StringToTimestamp": "to_timestamp",
     "Sum": "sum",
+    "TimeFromHMS": "time",
+    "TimestampFromYMDHMS": "timestamp",
+    "TimestampNow": "now",
     "Variance": "var",
 }
 
 
-def op_construct(op: Any) -> str | None:
-    """`function <method>` for an Ibis operation the user calls by a method, else None."""
-    method = OP_METHODS.get(type(op).__name__)
+def class_construct(name: str) -> str | None:
+    """`function <method>` for the Ibis operation class `name` if the user calls it by a
+    method, else None."""
+    method = OP_METHODS.get(name)
     return None if method is None else f"function {method}"
+
+
+def op_construct(op: Any) -> str | None:
+    """`class_construct` of an operation."""
+    return class_construct(type(op).__name__)

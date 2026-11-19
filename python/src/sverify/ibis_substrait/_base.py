@@ -20,7 +20,7 @@ import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
 from sverify import _decimals, _functions
-from sverify.ibis_substrait._constructs import op_construct
+from sverify.ibis_substrait._constructs import class_construct, op_construct
 from sverify.plan_json import (
     Json,
     ProducerUnsupported,
@@ -99,7 +99,7 @@ class Exprs:
             raise ProducerUnsupported(
                 f"{_OP_LABELS.get(name, name)} is not supported"
                 + (f": {reason}" if reason else f" yet ({_ISSUE_60})"),
-                construct=name.upper(),
+                construct=class_construct(name),
             )
         return rule(self, op)
 

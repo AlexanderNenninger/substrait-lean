@@ -93,3 +93,17 @@ def test_the_op_table_names_real_ibis_operations_by_one_spelling():
         n for n in OP_METHODS if not hasattr(ops, n)
     ]
     assert all(exits.CONSTRUCT_FORM.fullmatch(f"function {m}") for m in OP_METHODS.values())
+
+
+def test_the_producer_never_spells_a_construct_from_an_ibis_class_name():
+    """`type(op).__name__` is Ibis's class (`StringToTimestamp`), not what the user writes
+    (`to_timestamp`): `op_construct` and `class_construct` map it through `OP_METHODS`."""
+    import ast
+
+    bad = []
+    for p in (exits.SRC / "ibis_substrait").rglob("*.py"):
+        for n in ast.walk(ast.parse(p.read_text())):
+            if isinstance(n, ast.keyword) and n.arg == "construct":
+                if "__name__" in ast.unparse(n.value) or ".upper()" in ast.unparse(n.value):
+                    bad.append(f"{p.name}:{n.value.lineno}: {ast.unparse(n.value)}")
+    assert not bad, "\n".join(bad)
