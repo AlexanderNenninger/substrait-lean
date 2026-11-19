@@ -509,6 +509,7 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     """#699: `verify` names the condition it cannot read; sverify-dbt drops it
     and proves the others, in one retry per bad condition (no dbt needed)."""
     from types import SimpleNamespace
+    from typing import Any, cast
 
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
@@ -518,7 +519,10 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     res.sql = "SELECT x FROM t"
     ensures = [(bad, ["zz > 1"]), (good, ["x IS NOT NULL"])]
     report = _Checker._verify(
-        SimpleNamespace(counterexamples=0, _drop=_Checker._drop),
+        cast(
+            Any,
+            SimpleNamespace(counterexamples=0, _drop=_Checker._drop, _isolate=_Checker._isolate),
+        ),
         res,
         {"t": {"x": "BIGINT NOT NULL"}},
         {},
@@ -527,3 +531,21 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     assert bad.status == "not checked" and "cannot read" in (bad.why or "")
     assert good.status == "pending" and report is not None
     assert [r.condition for r in report.ensures] == ["x IS NOT NULL"]
+
+
+def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
+    """A refusal `ConditionError` does not name (the checker's) skips only the
+    test whose conditions fail; the others are proved."""
+    from sverify_dbt.check import _Checker
+    from sverify_dbt.result import ModelResult, TestResult
+
+    bad, good = TestResult(None, None, "bad", "test"), TestResult(None, None, "good", "test")
+    res = ModelResult("m", "model.p.m", None, "m")
+
+    def go(req: dict, ens: list) -> str:
+        if "boom" in ens:
+            raise ValueError("the checker refuses boom")
+        return "report"
+
+    out = _Checker._isolate(go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], ValueError("x"))
+    assert out == "report" and bad.status == "not checked" and good.status == "pending"
