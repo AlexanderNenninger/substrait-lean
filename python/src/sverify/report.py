@@ -33,6 +33,7 @@ from sverify._dialect import DialectDifference
 from sverify._run_schema import declared_columns, int_range, null_message, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning, UnsupportedError
+from sverify.black_box import Law
 from sverify.engine import (
     Connection,
     Engine,
@@ -139,6 +140,18 @@ class TiePlace:
 
     def __str__(self) -> str:
         return f"the {self.op} at relation {self.relation}: {self.what}"
+
+
+def black_boxes_from_json(rows: Sequence[Mapping[str, Any]] | None) -> dict[str, tuple[Law, ...]]:
+    """`Report.black_boxes` from the checker's `"black_boxes"` rows
+    (`[{"name", "laws"}]`, each law a list such as `["at_least", 0]`); an
+    absent key, from an older checker, reads as none."""
+    return {b["name"]: tuple(tuple(law) for law in b.get("laws") or ()) for b in rows or ()}
+
+
+def black_boxes_json(boxes: Mapping[str, tuple[Law, ...]]) -> list[dict[str, Any]]:
+    """`Report.black_boxes` as the checker writes it, for `to_json`."""
+    return [{"name": n, "laws": [list(law) for law in laws]} for n, laws in boxes.items()]
 
 
 def tie_places(out: Mapping[str, Any]) -> list[TiePlace]:
@@ -599,6 +612,15 @@ class Report:
     its bound's margin of the threshold (`Rel.marginCheck`). `run` runs each
     on the engine before the plan (`check_margins`); `rows_exact` holds
     given them."""
+    black_boxes: Mapping[str, tuple[Law, ...]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    """The black boxes the transformation calls, in the order of first call,
+    each with the laws its row declares, as `sverify.black_box.Law` tuples
+    (`("non_null",)`, `("at_least", 0)`), from the checker (#1484). The proofs
+    trust a black box for these laws, its signature and its strictness, and
+    `test_black_box.py` tests them (D16); no run checks them on the data. The
+    verdict does not read this field."""
     _margin_flags: dict[str, int] = field(default_factory=dict, repr=False, compare=False)
     """After a run with `on_inferred="warn"`, per engine, the groups the
     margin checks flagged (#929): for those, the contract holds up to the
@@ -1782,6 +1804,7 @@ class Report:
         bad = [x for head, more in self._not_proved() for x in (head, *[f"  {m}" for m in more])]
         if bad:
             lines += ["Not proved:", *[f"  {b}" for b in bad]]
+        lines += self._trusts_lines()
         notes = [*self._all_hints(), *self.notes]
         if notes:
             lines += ["Notes:", *[f"  {n}" for n in notes]]
@@ -1791,6 +1814,15 @@ class Report:
                 lines.append(f"  rows: at most {self.rows:,}")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
         return "\n".join(lines)
+
+    def _trusts_lines(self) -> list[str]:
+        """One `trusts:` line per black box the plan calls, with its laws:
+        trusted, not checked on the data (`assumes:` is for those)."""
+        return [
+            f"trusts: black box {name} keeps its declared laws"
+            + (f" ({', '.join(' '.join(map(str, law)) for law in laws)})" if laws else "")
+            for name, laws in self.black_boxes.items()
+        ]
 
     def _plain_contract(self, sources: Collection[str] | None = None) -> dict[str, list[str]]:
         """What the contract means for the data, in words (`sverify.cli.summary`):
@@ -1877,6 +1909,7 @@ class Report:
             if c.suggested:
                 lines.append(f"  {_would_hold(c)}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
+        lines += self._trusts_lines()
         lines += [f"checks at run time: {c['label']}" for c in self._margin_checks]
         for i in self.errors:
             lines.append(f"may fail: {i.message}")

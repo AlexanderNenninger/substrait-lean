@@ -338,6 +338,17 @@
         "null"
       ]
     },
+    "black_boxes": {
+      "description": "The black boxes the transformation calls, in the order of first call, each with the laws its row declares: what the proofs trust of them (substrait-check --contract's \"black_boxes\", #1484). Report.black_boxes maps each name to its laws.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "laws": {"type": "array"}
+        }
+      }
+    },
     "floats_on": {
       "description": "Per engine, why its doubles may not meet the equivalence (empty where they do).",
       "type": "object",
