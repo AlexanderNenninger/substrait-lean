@@ -50,13 +50,9 @@ class SparkBackend(Backend):
         return frame.toArrow().select(schema.names).cast(schema)
 
     def frame(self, table: pa.Table) -> Any:
-        import uuid
-
         from sverify_spark import engine
 
-        name = f"__sverify_tmp_{uuid.uuid4().hex}"
-        engine.put_tables({name: table}, self.spark)
-        return self.spark.table(name)
+        return engine.arrow_frame(table, self.spark)
 
     def measure(self, path: str, weighted: bool) -> tuple[int, int | None, int | None]:
         from pyspark.sql import functions as F
