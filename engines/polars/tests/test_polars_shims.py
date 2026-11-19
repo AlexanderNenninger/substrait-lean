@@ -753,7 +753,7 @@ def test_a_fractional_power_of_minus_infinity_is_refused():
     """Polars computes `x ** 0.5` as `sqrt(x)`: NaN for `-inf`, where IEEE's
     `pow` gives `+inf`. The reference refuses a negative base, `-inf`
     included, to a fractional power, so the guard does, on the streaming
-    engine; `(-0.0) ** 0.5` is `-0.0` in Polars and the one zero here."""
+    engine; `(-0.0) ** 0.5` is `-0.0` in Polars, `+0.0` as libm's `pow` (`ieee_zero_power`)."""
     lf = pl.LazyFrame({"x": [-math.inf, -0.0, 4.0]})
     assert math.isnan(lf.select(pl.col("x").pow(0.5)).collect(engine="streaming").item(0, 0))
     con = connect()

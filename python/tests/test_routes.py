@@ -271,7 +271,7 @@ def test_q_refinement_against_the_postcondition(con) -> None:
     postcondition that observes zeros only if it says `zeros="canon"`, or
     through the row's shim."""
     t = con.table("t")
-    exact = sv.verify(t.select("k"))
+    exact = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="plan")])
     canon = sv.verify(t.select("k"), ensures=[sv.equivalent(zeros="canon")])
     zeros = [_observed("zero_sign", {"zeros": "canon"})]
     r = _on_polars(exact, cls="observed", observed=zeros)

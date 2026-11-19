@@ -151,6 +151,36 @@ def one_zero(e: pl.Expr) -> pl.Expr:
     return pl.when(e == 0.0).then(pl.lit(0.0, pl.Float64)).otherwise(e)
 
 
+def is_negative_zero(e: pl.Expr) -> pl.Expr:
+    """Is `e` `-0.0` (NULL for NULL)? `1 / e` is `-inf` only there."""
+    return (e == 0.0) & ((pl.lit(1.0, pl.Float64) / e) < 0.0)
+
+
+def ieee_zero_sum(r: pl.Expr, x: pl.Expr, y: pl.Expr, subtract: bool) -> pl.Expr:
+    """`r`, the sum or difference `x ± y`, with IEEE's sign where it is zero:
+    `-0.0` only for `-0.0 + -0.0` and `-0.0 - 0.0`, else `0.0`. Polars's literal
+    kernels return `-0.0 + 0.0` as `-0.0` and `0.0 - 0.0` as `-0.0`, and a
+    one-row morsel of the streaming engine gives `0.0` for two columns
+    (polars-zero-sign, polars-zero-sign-streaming)."""
+    neg = is_negative_zero(x) & (
+        (y == 0.0) & ~is_negative_zero(y) if subtract else is_negative_zero(y)
+    )
+    return (
+        pl.when(r == 0.0)
+        .then(pl.when(neg).then(pl.lit(-0.0, pl.Float64)).otherwise(0.0))
+        .otherwise(r)
+    )
+
+
+def ieee_zero_power(r: pl.Expr, x: pl.Expr, y: pl.Expr) -> pl.Expr:
+    """`r`, `x ** y`, with libm's zero sign: `-0.0` only for a negative base (or
+    `-0.0`) to an odd integer power. Polars computes `x ** 0.5` as `sqrt(x)`, so
+    `(-0.0) ** 0.5` is `-0.0` there, where `pow` gives `+0.0`."""
+    odd = (y.abs() % 2.0) == 1.0
+    keeps = ((x < 0.0) | is_negative_zero(x)) & odd
+    return pl.when(is_negative_zero(r) & ~keeps).then(pl.lit(0.0, pl.Float64)).otherwise(r)
+
+
 def round_half_away(e: pl.Expr) -> pl.Expr:
     """`ROUND` to an integer, halves away from zero (`roundMag`); Polars's
     default rounds them to even (polars-round)."""

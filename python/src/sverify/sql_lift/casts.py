@@ -143,6 +143,15 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
+    # DuckDB casts to and from a timestamp with a time zone in the session's zone (D53).
+    in_tz = a.type.is_timestamp() and a.type.timezone is not None
+    to_tz = t.is_timestamp() and t.timezone is not None
+    if (in_tz and not to_tz) or (to_tz and not in_tz and not (a.type.is_string() and a.constant)):
+        raise SqlUnsupported(
+            f"{node.sql(DIALECT)} follows the session time zone in DuckDB; write "
+            "x AT TIME ZONE 'UTC' to convert between a timestamp and a timestamp with a "
+            "time zone at UTC (#1725)"
+        )
     from_string = a.type.is_string() and not t.is_string() and (try_ or not a.constant)
     if from_string and not try_ and _in_filtered_aggregate(node):
         raise Unsupported(

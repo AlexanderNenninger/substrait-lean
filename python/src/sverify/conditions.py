@@ -67,9 +67,18 @@ class TableCondition:
     def label(self) -> str:
         raise NotImplementedError
 
-    def violations(self, table: ir.Table) -> int:
-        """How many rows of the bound `table` break it."""
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        """A relation of one row and one column, `v`, that counts how many rows
+        of the bound `table` break it, before `settle`; `tables` gives the other
+        tables of the connection by name. It is an ordinary Ibis relation: the
+        engine that runs the plan counts it, with the reference's meaning
+        (`sverify.report.violations`)."""
         raise NotImplementedError
+
+    def settle(self, v: int | None) -> int:
+        """The number of violations from the `v` its `count_query` gives (NULL
+        for a sum over no groups)."""
+        return int(v or 0)
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         """The `rows` that break it, with values compared by `key`, and
@@ -111,7 +120,7 @@ def _positions(cols: Sequence[str], names: Sequence[str]) -> list[int]:
 def _count(count: ir.Scalar) -> int:
     """The value of an Ibis count, fetched through Arrow: Ibis 12 converts
     `execute()`'s scalar through pandas, which warns under pandas 3.1
-    (#479)."""
+    (#479). For the row-wise conditions Ibis counts itself."""
     return int(count.to_pyarrow().as_py())
 
 
@@ -133,10 +142,10 @@ class Unique(TableCondition):
     def label(self) -> str:
         return f"unique({', '.join(self.cols)})"
 
-    def violations(self, table: ir.Table) -> int:
-        total: Any = table.count()
-        distinct: Any = table.select(*self.cols).distinct().count()
-        return _count(total) - _count(distinct)
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        # Rows beyond the first of each key (NULLs are one key).
+        keys = table.group_by(list(self.cols)).aggregate(n=ibis._.count())
+        return keys.aggregate(v=(keys.n - 1).sum())
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         keys = Counter(key(tuple(r[c] for c in self.cols)) for r in rows)
@@ -247,11 +256,11 @@ class References(TableCondition):
     def label(self) -> str:
         return f"references({self.col}, {self.table}.{self.other})"
 
-    def violations(self, table: ir.Table) -> int:
-        other = ibis.get_backend(table).table(self.table)
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        other = tables(self.table)
         present = table.filter(table[self.col].notnull())
-        missing: Any = present.anti_join(other, [present[self.col] == other[self.other]]).count()
-        return _count(missing)
+        missing = present.anti_join(other, [present[self.col] == other[self.other]])
+        return missing.aggregate(v=missing.count())
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         present = {key(r[self.other]) for r in other(self.table)}
@@ -332,11 +341,11 @@ class ArrivesWithin(TableCondition):
     def label(self) -> str:
         return f"arrives_within({self.col}, {show_duration(self.lateness)})"
 
-    def violations(self, table: ir.Table) -> int:
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
         # On one snapshot, only the NULLs break it; batches are checked by
         # the pipeline against the watermark.
-        nulls: Any = table.filter(table[self.col].isnull()).count()
-        return _count(nulls)
+        nulls = table.filter(table[self.col].isnull())
+        return nulls.aggregate(v=nulls.count())
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         return [r for r in rows if r[self.col] is None]
@@ -422,9 +431,11 @@ class MaxRows(TableCondition):
     def label(self) -> str:
         return f"max_rows({self.n})"
 
-    def violations(self, table: ir.Table) -> int:
-        rows: Any = table.count()
-        return max(0, _count(rows) - self.n)
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        return table.aggregate(v=table.count())
+
+    def settle(self, v: int | None) -> int:
+        return max(0, int(v or 0) - self.n)
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         return rows[self.n :]
@@ -504,16 +515,16 @@ class RowsPer(TableCondition):
     def label(self) -> str:
         return f"rows_per({''.join(c + ', ' for c in self.cols)}at_most={self.n})"
 
-    def violations(self, table: ir.Table) -> int:
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
         if not self.cols:
-            everything: Any = table.count()
-            return max(0, _count(everything) - self.n)
+            return table.aggregate(v=table.count())
         # Rows beyond the bound in each key's group.
         sizes = table.group_by(list(self.cols)).aggregate(rows=ibis._.count())
         big = sizes.filter(sizes.rows > self.n)
-        over: Any = (big.rows - self.n).sum()
-        # A sum over no groups is NULL.
-        return int(over.to_pyarrow().as_py() or 0)
+        return big.aggregate(v=(big.rows - self.n).sum())
+
+    def settle(self, v: int | None) -> int:
+        return int(v or 0) if self.cols else max(0, int(v or 0) - self.n)
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         # The rows beyond the first `n` of each key.

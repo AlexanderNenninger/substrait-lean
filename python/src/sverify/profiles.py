@@ -16,9 +16,9 @@ brings:
 
 - a profile: `versions`, `translation`, `settings`, `shim_text`,
   `installed_version`, `restore`, `checker`. A profile from outside has a
-  Lean package that requires substrait-lean, states its `EngineProfile`,
-  checks it with `#check_engine_profiles` and builds a checker over
-  `builtinEngines ++ [its profile]` (`SubstraitCheckExamples/DummyEngine.lean`);
+  Lean package that requires substrait-lean, proves its `Engine` sound, states
+  its `EngineEntry`, checks it with `#check_engine_profiles` and builds a
+  checker over `builtinEntries ++ [its entry]` (`SubstraitCheckExamples/DummyEngine.lean`);
   its plugin names that checker. With it installed, `verify(semantics=...)`
   checks under the profile and `sverify.routes.choose` routes plans to the
   engine with their class. `$SVERIFY_CHECKER` still takes precedence over a

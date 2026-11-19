@@ -268,6 +268,15 @@ def _polars_plans_stream(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(polars_engine, "collect", checked)
 
 
+def pytest_runtest_logstart(nodeid: str, location: tuple) -> None:
+    """Write the test about to run to `$SVERIFY_FUZZ_PROGRESS.<worker>`, if
+    set: the nightly fuzz run (`sverify_dev.fuzz_nightly`) names the test a
+    batch was on when its watchdog stopped it."""
+    if path := os.environ.get("SVERIFY_FUZZ_PROGRESS"):
+        worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
+        Path(f"{path}.{worker}").write_text(json.dumps({"node": nodeid}))
+
+
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     """Append each test phase's duration to `$SVERIFY_TEST_TIMINGS`, if set:
     what `sverify_dev.shard_durations` balances the shards by. Each xdist

@@ -180,16 +180,6 @@ def test_a_sink_states_what_a_rerun_must_reproduce(monkeypatch, tmp_path) -> Non
     again.refresh(engine="polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-9)))
 
 
-def _has_rerun() -> bool:
-    rows = (routes._options_json().get("choices") or {}).get("polars") or []
-    return any("rerun" in r for r in rows)
-
-
-@pytest.mark.xfail(
-    not _has_rerun(),
-    reason="the rerun column of Profile.polars's choices (#444 D20) not in the checker yet",
-    strict=True,
-)
 def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
     """Polars's float sum is approx within the plan's bound (#612's rows), so
     the postcondition states a tolerance (`q_post`) and the rerun's `q_det`
