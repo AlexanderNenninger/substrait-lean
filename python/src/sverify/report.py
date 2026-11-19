@@ -1945,7 +1945,7 @@ class Report:
 
 
 #: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = ["table_params"]
+_REPORT_PRIVATE = ["table_params", "run_plan", "run_gate", "run_unchecked"]
 
 _REPORT_INTERNAL = [
     "windows_total",
