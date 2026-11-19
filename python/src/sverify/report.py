@@ -2022,7 +2022,7 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         # at `a`'s), and the model computes exactly.
         same = dtype.is_decimal() and dtype.scale == scale and dtype.precision is not None
         precision = max(dtype.precision, dec["precision"]) if same else dec["precision"]
-        show = lambda k: f"{Decimal(k).scaleb(-scale):.{scale}f}"  # noqa: E731
+        show = lambda k: f"{_decimals.scaled(k, -scale):.{scale}f}"  # noqa: E731
         noun = f"a decimal({precision}, {scale})"
     elif dtype.is_floating():
         show: Callable[[int], str] = lambda k: repr(decode_double(k))  # noqa: E731
