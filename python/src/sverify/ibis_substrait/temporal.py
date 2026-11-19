@@ -43,7 +43,8 @@ def _truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit in ("millisecond", "microsecond", "nanosecond"):
         raise Unsupported(
-            f"truncating to {unit}s is not supported; truncate to a second or coarser"
+            f"truncating to {unit}s is not supported; truncate to a second or coarser",
+            construct="function date_trunc",
         )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
@@ -84,10 +85,14 @@ def _interval(x: Exprs, op: Any) -> Json:
     if isinstance(op, ops.IntervalFromInteger):
         months, micros = interval_parts(1, dt.Interval(unit=op.unit))
         if months:
-            raise ProducerUnsupported("a column's count of months or years is not supported")
+            raise ProducerUnsupported(
+                "a column's count of months or years is not supported", construct="INTERVAL"
+            )
         return call("multiply", [x(op.arg, dt.int64), interval_json(0, micros)])
     if isinstance(op, ops.IntervalBinary):
-        raise ProducerUnsupported(f"{type(op).__name__} of non-constant intervals is not supported")
+        raise ProducerUnsupported(
+            f"{type(op).__name__} of non-constant intervals is not supported", construct="INTERVAL"
+        )
     return x(op)
 
 
@@ -106,7 +111,9 @@ def _temporal_add(name: str) -> Callable[[Exprs, Any], Json]:
             left, right = op.left, op.right
         iv = _interval(x, right)
         if op.left.dtype.is_timestamp() and "scalarFunction" in iv:
-            raise ProducerUnsupported("a timestamp plus a column's interval is not supported")
+            raise ProducerUnsupported(
+                "a timestamp plus a column's interval is not supported", construct="INTERVAL"
+            )
         return call(name, [x(left), iv])
 
     return rule
@@ -121,7 +128,9 @@ def _date_diff(x: Exprs, op: Any) -> Json:
 
 def _date_delta(x: Exprs, op: Any) -> Json:
     if op.part.value != "day":
-        raise Unsupported(f"delta in {op.part.value}s is not supported; use days")
+        raise Unsupported(
+            f"delta in {op.part.value}s is not supported; use days", construct="function date_diff"
+        )
     return call("date_diff", [x(op.left), x(op.right)])
 
 
@@ -189,7 +198,9 @@ def _sub_second(divisor: int) -> Callable[[Exprs, Any], Json]:
 def _date_truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit not in ("day", "week", "month", "quarter", "year"):
-        raise ProducerUnsupported(f"truncating a date to a {unit} is not supported")
+        raise ProducerUnsupported(
+            f"truncating a date to a {unit} is not supported", construct="function date_trunc"
+        )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 
@@ -218,11 +229,13 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
             # `make_date` of columns (#809), which raises outside the calendar.
             return make_date_json(*(x(a, dt.int64) for a in op.args))
         if values is None:
-            raise Unsupported(f"{what} of columns is not supported, only of constants")
+            raise Unsupported(
+                f"{what} of columns is not supported, only of constants", construct=what.upper()
+            )
         try:
             value = build(*values)
         except (ValueError, OverflowError) as e:
-            raise ProducerUnsupported(f"{what} of {values}: {e}") from e
+            raise ProducerUnsupported(f"{what} of {values}: {e}", construct=what.upper()) from e
         return literal(value, dtype)
 
     return rule
@@ -234,7 +247,10 @@ _UNIX_MICROS = {"s": 1_000_000, "ms": 1_000, "us": 1}
 def _from_unix(x: Exprs, op: Any) -> Json:
     k = _UNIX_MICROS.get(op.unit.short)
     if k is None:
-        raise ProducerUnsupported(f"timestamps from {op.unit.plural} are not supported")
+        raise ProducerUnsupported(
+            f"timestamps from {op.unit.plural} are not supported",
+            construct="function from_unixtime",
+        )
     us = x(op.arg, dt.int64)
     if k != 1:
         us = call("multiply", [us, literal(k, dt.int64)])
@@ -243,9 +259,9 @@ def _from_unix(x: Exprs, op: Any) -> Json:
 
 def _strftime(x: Exprs, op: Any) -> Json:
     if not op.arg.dtype.is_timestamp():
-        raise Unsupported("strftime is only supported of timestamps")
+        raise Unsupported("strftime is only supported of timestamps", construct="function strftime")
     if not isinstance(op.format_str, ops.Literal):
-        raise Unsupported("strftime formats must be constants")
+        raise Unsupported("strftime formats must be constants", construct="function strftime")
     return call("strftime", [x(op.arg), literal(op.format_str.value, dt.string)])
 
 
@@ -255,7 +271,9 @@ def _bucket(x: Exprs, op: Any) -> Json:
     c = _const_interval(op.interval)
     o = (0, 0) if op.offset is None else _const_interval(op.offset)
     if c is None or c[0] or c[1] <= 0 or o is None or o[0]:
-        raise Unsupported("bucket needs constant intervals of days or less")
+        raise Unsupported(
+            "bucket needs constant intervals of days or less", construct="function bucket"
+        )
     origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(o[1])}}}
     return call("date_bin", [interval_json(0, c[1]), x(op.arg), origin])
 
@@ -267,9 +285,13 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         c = _const_interval(op.right)
         if c is None:
-            raise Unsupported("a time of day plus an interval needs a constant interval")
+            raise Unsupported(
+                "a time of day plus an interval needs a constant interval", construct="INTERVAL"
+            )
         if c[0]:
-            raise ProducerUnsupported("a time of day plus months or years is not supported")
+            raise ProducerUnsupported(
+                "a time of day plus months or years is not supported", construct="INTERVAL"
+            )
         return call(name, [x(op.left), interval_json(0, c[1])])
 
     return rule
@@ -278,7 +300,10 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
 def _time_truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit not in ("hour", "minute", "second", "millisecond", "microsecond"):
-        raise ProducerUnsupported(f"truncating a time of day to a {unit} is not supported")
+        raise ProducerUnsupported(
+            f"truncating a time of day to a {unit} is not supported",
+            construct="function date_trunc",
+        )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 

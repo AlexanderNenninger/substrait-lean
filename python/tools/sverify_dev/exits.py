@@ -162,7 +162,9 @@ def unnamed_by_file(found: list[Site] | None = None) -> dict[str, int]:
 CONSTRUCT_DIRS = ("sql_lift/", "ibis_substrait/")
 CONSTRUCT_BASELINE = BASELINE.with_name("construct_baseline.json")
 #: One spelling of a construct: `function md5` or SQL keywords in upper case.
-CONSTRUCT_FORM = re.compile(r"function (\{\}|[a-z][a-z0-9_]*)|[A-Z][A-Z0-9]*( [A-Z][A-Z0-9]*)*")
+CONSTRUCT_FORM = re.compile(
+    r"function (\{\}|[a-z][a-z0-9_]*)|\{\}|[A-Z][A-Z0-9]*( [A-Z][A-Z0-9]*)*"
+)
 
 
 def construct_sites(found: list[Site] | None = None) -> list[Site]:

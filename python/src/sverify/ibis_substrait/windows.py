@@ -50,7 +50,7 @@ def _frame_offset(op: Any, b: Any) -> int:
         key = op.order_by[0].arg.dtype if len(op.order_by) == 1 else None
         if key is not None and key.is_date():
             if micros % _US_PER_DAY:
-                raise Unsupported("a RANGE frame over a date needs whole days")
+                raise Unsupported("a RANGE frame over a date needs whole days", construct="FRAME")
             return micros // _US_PER_DAY
         return micros
     if isinstance(v, ops.Cast):
@@ -60,7 +60,8 @@ def _frame_offset(op: Any, b: Any) -> int:
     if not isinstance(v, ops.Literal) or not isinstance(v.value, int) or isinstance(v.value, bool):
         raise Unsupported(
             "frame offsets must be integer constants (a column or expression offset "
-            "makes each row's frame its own)"
+            "makes each row's frame its own)",
+            construct="FRAME",
         )
     return v.value
 
@@ -80,7 +81,7 @@ def _interval_offset(v: Any) -> int:
         factor = INTERVAL_MICROS.get(dtype.unit.short)
         if factor is not None and isinstance(v.value, int):
             return v.value * factor
-    raise Unsupported("frame offsets must be constant intervals of days or less")
+    raise Unsupported("frame offsets must be constant intervals of days or less", construct="FRAME")
 
 
 def _bound(op: Any, b: Any) -> Json:
@@ -117,7 +118,10 @@ def window(x: Exprs, op: Any) -> Json:
     elif isinstance(func, ops.Lag | ops.Lead):
         name = "lag" if isinstance(func, ops.Lag) else "lead"
         if not isinstance(func.arg, ops.Field):
-            raise Unsupported(f"{name} of an expression is not supported; use a column")
+            raise Unsupported(
+                f"{name} of an expression is not supported; use a column",
+                construct=f"function {name}",
+            )
         args = [x(func.arg)]
         offset = 1 if func.offset is None else func.offset
         if isinstance(offset, ops.Literal):
@@ -127,23 +131,33 @@ def window(x: Exprs, op: Any) -> Json:
             args.append(x(func.default, func.dtype))
     elif isinstance(func, ops.First | ops.Last | ops.NthValue):
         if not isinstance(func.arg, ops.Field):
-            raise Unsupported("first/last/nth of an expression is not supported; use a column")
+            raise Unsupported(
+                "first/last/nth of an expression is not supported; use a column",
+                construct="function first_value",
+            )
         if isinstance(func, ops.First | ops.Last):
             # Ibis's DataFusion SQL is a plain FIRST_VALUE/LAST_VALUE whatever
             # `include_null` says.
             if func.where is not None or func.order_by:
-                raise ProducerUnsupported("first/last with where or order_by is not supported")
+                raise ProducerUnsupported(
+                    "first/last with where or order_by is not supported",
+                    construct="function first_value",
+                )
             name = "first_value" if isinstance(func, ops.First) else "last_value"
             args = [x(func.arg)]
         else:
             nth = func.nth.value if isinstance(func.nth, ops.Literal) else None
             if not isinstance(nth, int) or nth < 0:
-                raise Unsupported("nth must be a non-negative integer constant")
+                raise Unsupported(
+                    "nth must be a non-negative integer constant", construct="function nth_value"
+                )
             name, args = "nth_value", [x(func.arg), literal(nth + 1, dt.int64)]
     elif isinstance(func, ops.Reduction):
         m = measure(x, func)
         if "filter" in m or m["measure"]["invocation"] != "AGGREGATION_INVOCATION_ALL":
-            raise ProducerUnsupported("window aggregates with where= or DISTINCT are not supported")
+            raise ProducerUnsupported(
+                "window aggregates with where= or DISTINCT are not supported", construct="WINDOW"
+            )
         fn = m["measure"]
         return {
             "windowFunction": {
@@ -157,7 +171,10 @@ def window(x: Exprs, op: Any) -> Json:
             }
         }
     else:
-        raise ProducerUnsupported(f"window function {type(func).__name__} is not supported")
+        raise ProducerUnsupported(
+            f"window function {type(func).__name__} is not supported",
+            construct=type(func).__name__.upper(),
+        )
     return {
         "windowFunction": {
             "functionReference": _anchor(name),

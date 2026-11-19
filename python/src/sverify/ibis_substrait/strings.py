@@ -34,7 +34,9 @@ def _string_contains(x: Exprs, op: Any) -> Json:
 def _like(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         if op.escape is not None:
-            raise ProducerUnsupported(f"{name.upper()} with an escape character is not supported")
+            raise ProducerUnsupported(
+                f"{name.upper()} with an escape character is not supported", construct=name.upper()
+            )
         return call(name, [x(op.arg), x(op.pattern)])
 
     return rule
@@ -48,7 +50,9 @@ def _trim(name: str) -> Callable[[Exprs, Any], Json]:
 def _substring(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0, and from the end for negative starts.
     if isinstance(op.length, ops.Literal) and op.length.value < 0:
-        raise ProducerUnsupported("substring with a negative length")
+        raise ProducerUnsupported(
+            "substring with a negative length", construct="function substring"
+        )
     start = call("add", [x(op.start, dt.int64), literal(1, dt.int64)])
     start = if_then(
         [(call("gte", [start, literal(1, dt.int64)]), start)],
@@ -103,7 +107,9 @@ def _str_right(x: Exprs, op: Any) -> Json:
 
 def _replace(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
-        raise Unsupported("replace needs a constant pattern and replacement")
+        raise Unsupported(
+            "replace needs a constant pattern and replacement", construct="function replace"
+        )
     return call("replace", [x(op.arg), x(op.pattern), x(op.replacement)])
 
 
@@ -131,7 +137,8 @@ def _find_in_set(x: Exprs, op: Any) -> Json:
 def _translate(x: Exprs, op: Any) -> Json:
     raise Unsupported(
         "translate is not modelled yet (#60): the reference semantics has no character "
-        "mapping; chain .replace() for each character"
+        "mapping; chain .replace() for each character",
+        construct="function translate",
     )
 
 
@@ -142,7 +149,7 @@ def _string_concat(x: Exprs, op: Any) -> Json:
 
 def _regex_search(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal):
-        raise Unsupported("regular expressions must be constants")
+        raise Unsupported("regular expressions must be constants", construct="REGEXP")
     arg, pattern = x(op.arg), x(op.pattern)
     matches = call("array_length", [call("regexp_match", [arg, pattern])])
     found = call(
@@ -153,13 +160,17 @@ def _regex_search(x: Exprs, op: Any) -> Json:
 
 def _regex_extract(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.index, ops.Literal):
-        raise Unsupported("re_extract needs a constant pattern and group")
+        raise Unsupported(
+            "re_extract needs a constant pattern and group", construct="function re_extract"
+        )
     return call("regexp_extract", [x(op.arg), x(op.pattern), x(op.index, dt.int64)])
 
 
 def _regex_replace(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
-        raise Unsupported("re_replace needs a constant pattern and replacement")
+        raise Unsupported(
+            "re_replace needs a constant pattern and replacement", construct="function re_replace"
+        )
     # Every match, as Ibis's SQL does (DuckDB's flag `'g'`).
     args = [x(op.arg), x(op.pattern), x(op.replacement), literal("g", dt.string)]
     return call("regexp_replace", args)
@@ -169,7 +180,8 @@ def _hex_digest(x: Exprs, op: Any) -> Json:
     if op.how not in ("md5", "sha256") or not op.arg.dtype.is_string():
         raise Unsupported(
             f"hexdigest({op.how!r}) of {op.arg.dtype} is not supported; "
-            "md5 and sha256 of strings are"
+            "md5 and sha256 of strings are",
+            construct=f"function {op.how}",
         )
     return call(op.how, [x(op.arg)])
 
@@ -177,7 +189,7 @@ def _hex_digest(x: Exprs, op: Any) -> Json:
 def _string_find(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0 (-1 when absent): one less than `strpos`.
     if op.end is not None:
-        raise ProducerUnsupported("find with an end is not supported")
+        raise ProducerUnsupported("find with an end is not supported", construct="function find")
     arg, sub, one = x(op.arg), x(op.substr), literal(1, dt.int64)
     if op.start is None:
         return call("subtract", [call("strpos", [arg, sub]), one])
