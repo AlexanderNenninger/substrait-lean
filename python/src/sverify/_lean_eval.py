@@ -257,8 +257,9 @@ def allows_rows(
     rows that tie on the exact columns pair up whatever order their doubles
     sort in.
 
-    The oracle is tested, not proved: `Rel.evalChoices` has no theorem yet
-    (`docs/trusted-base.md`)."""
+    What the oracle accepts is allowed by the reference
+    (`Rel.evalChoices_allowed`) for plans without an aggregate, a `FETCH` or a
+    window; for the others it is tested (`docs/trusted-base.md`)."""
 
     def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:
         pos = 0

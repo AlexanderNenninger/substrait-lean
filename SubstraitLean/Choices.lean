@@ -18,8 +18,10 @@ rows that do not tie. Where the data does leave a choice it cannot list
 expression over an open cell), it gives `none`, and the caller compares
 with `Rel.eval`'s rows.
 
-Untrusted: no theorem connects it to `Rel.OrderAllowed`; the comparisons
-it serves are tests.
+`Rel.evalChoices_allowed` (`ChoicesSound.lean`) connects it to `Rel.OrderAllowed`
+for the plans `Rel.ChoicesSupported` holds of (no `aggregate`, `fetch` or `window`
+yet): what it accepts is a result the reference allows. The converse is false
+(`ChoicesSound.lean` says where); the other plans stay tests.
 -/
 
 namespace Substrait
