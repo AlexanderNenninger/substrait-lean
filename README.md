@@ -258,7 +258,7 @@ tasks need `lake` on your PATH.
 
 ### The tour
 
-The six notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
+The seven notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
 [`01_duplicate_payments.py`](notebooks/01_duplicate_payments.py). Open the whole folder, so the
 links between notebooks work:
 
@@ -282,6 +282,7 @@ environment works too: `uv run --project python marimo edit notebooks`.
 | 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, keys and relations, runtime errors, windows and ASOF joins, composing contracts |
 | 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, Spark and Snowflake SQL, doubles, time and text |
 | 6 | [Running it in production](notebooks/06_running_in_production.py) | `sverify check --diff` and `--fix`, a pytest test, credentials by name, OpenLineage, late rows and bounded state |
+| 7 | [Engines](notebooks/07_engines.py) | one proved plan on DuckDB, Polars and Spark, the routes that carry the proof, SQL for Spark and Snowflake, refusals and their exits |
 
 [catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a marimo app outside the tour: one
 expression asked of every engine. Under-the-hood detail is in

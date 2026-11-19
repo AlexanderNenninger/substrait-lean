@@ -545,7 +545,7 @@ what a plan means, row by row.
 
 ## Where next
 
-* The [tour](../README.md#the-tour): six notebooks, three complete jobs and
+* The [tour](../README.md#the-tour): seven notebooks, three complete jobs and
   three guides, to contracts, to pipelines and engines, and to running in
   production.
 * [How to](tasks.md): one section per task, from the command line
