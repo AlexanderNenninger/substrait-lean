@@ -3,6 +3,7 @@ import Sverify.Engines.Generated
 import Sverify.Engines.Lowering
 import Sverify.Engines.LoweringHint
 import Sverify.Engines.LoweringSearch
+import Sverify.Engines.Rewrite
 import Sverify.Engines.Shims
 import Sverify.Engines.Sound
 import Sverify.Engines.Tables
