@@ -78,6 +78,7 @@ def Ctor.key : Ctor → Ctor
     | .strftime _ => .strftime ""
     | .bucket _ _ => .bucket 0 0
     | .raise _ => .raise ""
+    | .approx _ => .approx 0
     | f => f
   | .bin f => .bin <| match f with
     | .substr _ _ => .substr none true
@@ -187,6 +188,8 @@ def core : List FnRow := [
   { name := "sverify_raise", anchor := 118, group := "sverify", ctor := some (.un (.raise "")) },
   { name := "sverify_is_number", anchor := 119, group := "sverify", ctor := some (.un (.isNum .int)),
     reads := .plain, pretty := "IS_NUMBER" },
+  -- sverify's own: a source mark (D52), the identity, with `k` as a literal.
+  { name := "sverify_approx", anchor := 126, group := "sverify", ctor := some (.un (.approx 0)) },
   -- sverify's own: a decimal divided by an integer, rounded half away from
   -- zero (a decimal `AVG` over a window, #27).
   { name := "sverify_decimal_div", anchor := 120, group := "dec.div" },

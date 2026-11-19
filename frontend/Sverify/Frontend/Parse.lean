@@ -248,6 +248,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ | .un .ftoiOrNull _
   | .un (.narrowOrNull _) _ => .int
   | .un (.wrap _) a => a.kind cols
+  | .un (.approx _) a => a.kind cols
   | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
   | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
@@ -1517,6 +1518,11 @@ def mkFloatCall : String → List Expr → J Expr
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.float 0))) (.un .fneg a) a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
+  -- D52: a source mark, the identity; `k` a literal natural number.
+  | "sverify_approx", [a, .lit (.int k)] =>
+    if 0 ≤ k then pure (.un (.approx k.toNat) a)
+    else throw s!"sverify_approx: the bound {k} is negative"
+  | "sverify_approx", _ => throw "sverify_approx takes a double and a literal natural number"
   -- `core/Sverify/Core/Numeric.lean`.
   | name, args => match Functions.read? Functions.core .float name args with
     | some e => pure e

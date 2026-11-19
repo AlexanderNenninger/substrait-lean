@@ -589,6 +589,8 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>
     call (fn "round") [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString d))])]]
+  | .un (.approx k) a =>
+    call (fn "sverify_approx") [writeExpr cols .float a, obj [("literal", obj [("i64", toJson (toString k))])]]
   | .un .ffloor a => call (fn "floor") [writeExpr cols .float a]
   | .un .fceil a => call (fn "ceil") [writeExpr cols .float a]
   | .un .fround a => call (fn "round") [writeExpr cols .float a]

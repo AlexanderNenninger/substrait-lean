@@ -110,6 +110,7 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i64 => some Substrait.duckdbOn.fit_saturate_i64
     | Substrait.UnFn.isNum a0 => some (Substrait.duckdbOn.isNum a0)
     | Substrait.UnFn.bbox a0 => some (Substrait.duckdbOn.bbox a0)
+    | Substrait.UnFn.approx a0 => some (Substrait.duckdbOn.approx a0)
     | Substrait.UnFn.flatten  => some (Substrait.duckdbOn.flatten ),
    fun f => match f with
     | Substrait.BinFn.add  => some (Substrait.duckdbOn.add )
@@ -230,6 +231,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.fit .saturate .i64", "CASE WHEN 9223372036854775807 < #0 THEN 9223372036854775807 ELSE CASE WHEN #0 < -9223372036854775808 THEN -9223372036854775808 ELSE #0 END END", 0),
   ("UnFn.isNum", "native", 0),
   ("UnFn.bbox", "native", 0),
+  ("UnFn.approx", "native", 0),
   ("UnFn.flatten", "native", 0),
   ("BinFn.add", "native", 0),
   ("BinFn.sub", "native", 0),

@@ -228,6 +228,11 @@ inductive UnFn where
   list adds none, and a `NULL` `l` is `NULL` (#810). `list(x)` keeps
   `x`'s NULLs as `flatten(array_agg([x]))`. -/
   | flatten
+  /-- A source mark (D52): the identity. It records that the source the plan
+  was lifted from computes this value with a construct of its own, within
+  `k · 2⁻⁵³` of it, relatively. No profile reads it; the checker's tolerance
+  analysis does (`Epsilon.exprEps`). -/
+  | approx (k : Nat)
   deriving Repr, DecidableEq
 
 /-- The list functions of two arguments (#812). One `BinFn` constructor holds them all, so that
@@ -479,11 +484,16 @@ def UnFn.apply : UnFn → Value → Value
   | .listElement off, .list vs => Value.listElement off vs
   | .cardinality, .list vs => .int vs.length
   | .flatten, v => Value.flatten v
+  -- D52: a source mark is the identity.
+  | .approx _, v => v
   | .isNum k, v => .bool (v.isNum k)
   | .fit m w, .int i => .int (w.fit m i)
   | .fit _ _, v => v
   | .bbox n, v => BlackBox.callScalar Boxes.Ambient.boxes n [v]
   | _, _ => .null
+
+/-- D52: the mark changes no value. -/
+@[simp] theorem UnFn.apply_approx (k : Nat) (v : Value) : UnFn.apply (.approx k) v = v := rfl
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
 def and3 : Value → Value → Value

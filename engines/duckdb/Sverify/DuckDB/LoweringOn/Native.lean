@@ -627,6 +627,19 @@ abbrev Substrait.duckdbOn.bbox : (name : String) →
   Substrait.UnEntry.native (Substrait.UnFn.bbox name)
     (Substrait.Lowering.un_agree_of_eq (Substrait.duckdbOn.bbox_native name))
 
+theorem Substrait.duckdbOn.approx_native : ∀ (name : Nat) (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      (Substrait.UnFn.approx name) x =
+    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.approx name) x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.approx : (name : Nat) →
+  Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (Substrait.UnFn.approx name) :=
+  fun name =>
+  Substrait.UnEntry.native (Substrait.UnFn.approx name)
+    (Substrait.Lowering.un_agree_of_eq (Substrait.duckdbOn.approx_native name))
+
 theorem Substrait.duckdbOn.flatten_native : ∀ (x : Substrait.Value),
   Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       Substrait.UnFn.flatten x =
