@@ -39,7 +39,9 @@ class Lst:
     elem: Any
 
 
-Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+Kind = (
+    Literal["int", "float", "time", "instant", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+)
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
 #: guard that raises names, and the guards that are not an issue, `UNISSUED`:
@@ -82,7 +84,9 @@ zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
 microseconds. `None` (unknown) is
 used for columns whose Substrait type the model does not know."""
 
-LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"] | Dec | Lst
+LeanKind = (
+    Literal["int", "float", "time", "instant", "date", "str", "bool", "tod", "other"] | Dec | Lst
+)
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
 
@@ -224,6 +228,7 @@ class Dialect:
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
             "time": "TIMESTAMP",
+            "instant": "TIMESTAMP WITH TIME ZONE",
             "date": "DATE",
             "tod": "TIME",
             "interval": "INTERVAL",
@@ -1941,7 +1946,7 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         case ("int" | "float" | "date" | "str" | "bool") as k, _:
             return k, k
         # Times are microseconds; a coarser precision is not modelled.
-        case ("time" | "tod") as k, int() as p if p >= 6:
+        case ("time" | "instant" | "tod") as k, int() as p if p >= 6:
             return k, k
         case "decimal", (p, sc):
             d = Dec(p, sc)
@@ -3470,7 +3475,10 @@ class _Parser:
                     fn = "std_pop" if pop else "std_samp"
                 if k == "int":
                     arg = Un("itof", arg)
-            case (("min" | "max"), ("int" | "float" | "str" | "bool" | "time" | "date")):
+            case (
+                ("min" | "max"),
+                ("int" | "float" | "str" | "bool" | "time" | "instant" | "date"),
+            ):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
                 raise WriterUnsupported(f"{name} of this type is not supported")

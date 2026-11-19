@@ -74,6 +74,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sverify._plan_read import SUBSTR_MAX
+from sverify._unsupported import ISSUE_1725
 from sverify.sql.core import Dec, Dialect, GuardIssue, Kind, Lst, Unsupported, _timestamp_text
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -100,6 +101,10 @@ class SnowflakeDialect(Dialect):
             return super().type_name(kind)
         if isinstance(kind, Lst):
             raise self.to_duckdb("lists are not yet supported on Snowflake")
+        if kind == "instant":
+            raise self.to_duckdb(
+                "a timestamp with a time zone is not yet supported on Snowflake", ISSUE_1725
+            )
         return _TYPES[kind]
 
     def result_kind(self, kind: Kind | None) -> None:

@@ -11,7 +11,13 @@ import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
 from sverify._decimals import EXACT
-from sverify.plan_json import SqlUnsupported, Unsupported, cast_json, literal, type_json
+from sverify.plan_json import (
+    SqlUnsupported,
+    Unsupported,
+    cast_json,
+    literal,
+    type_json,
+)
 from sverify.sql_lift._base import (
     DIALECT,
     Column,
@@ -47,8 +53,8 @@ def _from_varchar(lf: _Lift, a: E, t: Any, try_: bool) -> E | None:
         raise Unsupported(f"a cast of a string to {t} is not supported yet (#27)")
     if t.is_timestamp() and t.timezone is not None:
         raise Unsupported(
-            "timestamps with a time zone are not supported; "
-            "read the column as a timestamp without one (CAST(column AS TIMESTAMP))"
+            "a cast of a string to a timestamp with a time zone is not supported yet (#1725): "
+            "conversions and literals of instants follow"
         )
     for accepts, name, via in _FROM_VARCHAR:
         if accepts(t):

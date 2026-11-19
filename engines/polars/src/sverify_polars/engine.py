@@ -83,6 +83,8 @@ from sverify_polars import shims
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 US = pl.Datetime("us")
+INSTANT = pl.Datetime("us", "UTC")
+"""An instant: a UTC-zoned timestamp (#1725)."""
 INTERVAL = pl.Duration("us")
 _LEFT, _RIGHT = "__sv_left", "__sv_right"
 
@@ -261,6 +263,10 @@ def null_type(t: dict) -> DType:
             if p != 6:
                 raise Unsupported("only microsecond timestamps are supported")
             return US
+        case "instant", p:
+            if p != 6:
+                raise Unsupported("only microsecond timestamps are supported")
+            return INSTANT
         case "date", _:
             return pl.Date
         case "tod", _:
@@ -336,7 +342,7 @@ def lit_expr(value: Any, dtype: DType) -> pl.Expr:
 
 # --- Expressions -----------------------------------------------------------
 
-INTEGRAL = (pl.Int64, US, INTERVAL)
+INTEGRAL = (pl.Int64, US, INSTANT, INTERVAL)
 #: The types `<`, `GREATEST` and `LEAST` order, as the model does (`Value.ltB`): strings by
 #: code point (UTF-8 byte order) and booleans `FALSE < TRUE` among them.
 ORDERED = (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.String, pl.Boolean)
@@ -1875,6 +1881,8 @@ def type_of(t: dict) -> DType:
             return pl.Boolean
         case "time", _:
             return US
+        case "instant", _:
+            return INSTANT
         case "date", _:
             return pl.Date
         case "tod", _:
@@ -1959,7 +1967,11 @@ class Measure:
     @property
     def values(self) -> pl.Expr:
         """The argument on the kept rows, NULL elsewhere (times as integers)."""
-        a = self.arg.expr.to_physical() if self.arg.dtype in (US, pl.Date) else self.arg.expr
+        a = (
+            self.arg.expr.to_physical()
+            if self.arg.dtype in (US, INSTANT, pl.Date)
+            else self.arg.expr
+        )
         return a if self.filter is None else pl.when(is_true(self.filter.expr)).then(a)
 
     def result(self, values: pl.Expr) -> pl.Expr:
@@ -2032,7 +2044,7 @@ class Measure:
             # `pickFold`: equal values are the same value, so which of them
             # is kept does not show. Times aggregate as their integers.
             agg = v.min() if self.fn == "min" else v.max()
-            temporal = self.arg.dtype in (US, pl.Date)
+            temporal = self.arg.dtype in (US, INSTANT, pl.Date)
             return NativeAgg({name: agg}, r.cast(self.arg.dtype) if temporal else r)
         if self.fn in ("bit_and", "bit_or", "bit_xor"):
             # `AggFn.bit`; NULL for no values, as Polars gives.
@@ -2141,7 +2153,7 @@ _LIMB = 10**18
 _WINDOW_IDS = itertools.count()
 #: The keys a RANGE frame's offsets apply to (`Parse.parseFrame`): integers,
 #: timestamps (microseconds) and dates (days).
-_RANGE_KEYS = (pl.Int64, US, pl.Date)
+_RANGE_KEYS = (pl.Int64, US, INSTANT, pl.Date)
 
 
 class Windows:
@@ -2882,7 +2894,7 @@ class Translator:
         elif name == "avg" and t == pl.Int64 and _int_output(m):
             fn = "iavg"
         elif name in ("min", "max") and (
-            t in (pl.Int64, pl.String, pl.Boolean, US, pl.Date) or is_decimal(t)
+            t in (pl.Int64, pl.String, pl.Boolean, US, INSTANT, pl.Date) or is_decimal(t)
         ):
             fn = name
         elif name in ("min", "max") and t == pl.Float64:

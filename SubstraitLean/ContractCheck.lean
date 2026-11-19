@@ -878,6 +878,7 @@ def outputKindJson : Write.WKind → Json
   | .bool => Json.mkObj [("kind", "bool")]
   | .date => Json.mkObj [("kind", "date")]
   | .time => Json.mkObj [("kind", "time")]
+  | .instant => Json.mkObj [("kind", "instant")]
   | .interval => Json.mkObj [("kind", "interval")]
   | .tod => Json.mkObj [("kind", "tod")]
   | .list _ => Json.mkObj [("kind", "list")]
