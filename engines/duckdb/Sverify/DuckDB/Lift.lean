@@ -20,6 +20,18 @@ def Lift.duckdb : (s : Semantics) → Lift s
   | .duckdb => liftDuckDB
   | .reference => liftReference
 
+/-- **D52's mark on every lifted aggregate that needs it** (#1608 12d-4): where
+DuckDB's construct is a set around the plan's value (`DuckAgg.mark`), the
+generated entry's finish is marked with that band, the constant its theorem
+proves (`DuckAgg.avgBigint_nearRel`); `Epsilon.exprEps` reads it. -/
+theorem Lift.duckdb_marked (s : Semantics) (g : DuckAgg) {k : Nat} (hk : DuckAgg.mark s g = some k)
+    {e : AggEntry s g} (he : (Lift.duckdb s).agg g = some e) : ∃ a, e.finish = .un (.approx k) a := by
+  cases s <;> cases g <;> simp only [DuckAgg.mark, reduceCtorEq] at hk
+  cases hk
+  simp only [Lift.duckdb, liftDuckDB, Option.some.injEq] at he
+  subst he
+  exact ⟨_, rfl⟩
+
 /-- The lift tables as JSON (`substrait-check --lift-table`): for each
 semantics and DuckDB function, its argument and result types and the
 Substrait expression it lifts to (`template`), over its arguments as field
