@@ -1475,6 +1475,13 @@ def _output_types(transform: Transform, schemas: Mapping[str, ibis.Schema]) -> l
         return None
 
 
+def _as_arrow_gives(schemas: Mapping[str, ibis.Schema]) -> dict[str, ibis.Schema]:
+    """The input schemas as a table made from them reads back: through Arrow
+    (a `timestamp` is `timestamp(6)`), as DuckDB gave them before `verify`
+    held no connection."""
+    return {n: ibis.Schema.from_pyarrow(s.to_pyarrow()) for n, s in schemas.items()}
+
+
 def _verify_once(
     transform: Transform,
     requires: Mapping[str, Sequence[Condition]],
@@ -1498,10 +1505,8 @@ def _verify_once(
         schemas = {**leaf_tables(transform), **schemas}
     # The verifier holds schemas, not tables: unbound Ibis tables, and for SQL
     # the schemas as Arrow gives them back.
-    unbound = {name: ibis.table(schema, name=name) for name, schema in schemas.items()}
-    sql_schemas = {
-        name: ibis.Schema.from_pyarrow(schema.to_pyarrow()) for name, schema in schemas.items()
-    }
+    sql_schemas = _as_arrow_gives(schemas)
+    unbound = {name: ibis.table(schema, name=name) for name, schema in sql_schemas.items()}
 
     def lift(query: Any) -> Semantics:
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
