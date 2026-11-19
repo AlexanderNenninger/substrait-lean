@@ -80,7 +80,7 @@ permissions:
 # a batch branch `batch/*`, pushes, merge queue entries or dispatches, whose
 # `qa` the merge tooling waits for: a job queued for lack of a spot instance
 # would stall it), and only when `aws-probe` starts within 3 minutes;
-# otherwise ubuntu-latest. `changes`, `qa`, `bench` (its budgets assume
+# otherwise ubuntu-latest. `changes`, `qa`, the Spark tests, `bench` (its budgets assume
 # GitHub's CPUs), `float-bounds` and `refresh-model` always run on GitHub's
 # runners.
 jobs:
@@ -544,19 +544,14 @@ jobs:
       # `core` is split into three shards (`SVERIFY_SHARD`, tests/conftest.py)
       # so that no job runs much longer than the others.
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    # Spark stays on GitHub's runners for now: its runs were reclaimed twice on spot (#1737).
+    runs-on: ${{ contains(matrix.backends, 'spark') && 'ubuntu-latest' || fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
-      # Spark needs a JDK; GitHub's runners have one and the AWS image does not.
-      - if: contains(matrix.backends, 'spark')
-        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
-        with:
-          distribution: temurin
-          java-version: "17"
       - uses: ./.github/actions/checker
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
