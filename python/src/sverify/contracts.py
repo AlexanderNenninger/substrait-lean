@@ -523,11 +523,10 @@ def _ascii_condition(col: str, classes: bool = False) -> Inferred:
     `Text.classesDiffer`. Its SQL is the writers' guard (`ascii_text`) in the
     default engine's dialect, the one the data is checked on; its Ibis form is
     one regular expression with the same characters."""
-    from sverify import _engines, profiles
+    from sverify import _engines
     from sverify.sql.core import ascii_text
 
-    dialect = profiles.plugins()[_engines.default()].dialect
-    assert dialect is not None
+    dialect = _engines.sql_dialect()
     sql = '"' + col.replace('"', '""') + '"'
     plain = ascii_text(dialect(), sql, classes)
     ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"

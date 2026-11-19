@@ -134,6 +134,11 @@ class Connection:
         from sverify import profiles
 
         plugin = profiles.find(engine if engine is not None else _engines.default())
+        if plugin is not None and plugin.runner is not None and not plugin.local:
+            raise ImportError(
+                f"engine {plugin.engine!r} cannot run plans here: its run dependencies are "
+                f"missing (pip install 'sverify[{plugin.engine}]')"
+            )
         if plugin is None or not plugin.local:
             raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
         self.engine: Engine = plugin.engine  # type: ignore[assignment] - an installed engine's name
