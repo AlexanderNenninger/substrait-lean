@@ -76,7 +76,6 @@ import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Any, Literal
 
 import ibis
@@ -85,7 +84,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _hooks, _pipe, _stages
+from sverify import _decimals, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._hooks import COLLECTING, Collected
@@ -378,7 +377,7 @@ def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> l
         scale = dtype.scale
 
         def dec(k: int) -> str:
-            text = f"{Decimal(k).scaleb(-scale):.{scale}f}"
+            text = f"{_decimals.scaled(k, -scale):.{scale}f}"
             if scale == 0 and abs(k) >= 2**63:
                 # A whole number past 64 bits reads as a HUGEINT, which the
                 # lift refuses (#1252); cast from a string it stays a decimal.
@@ -503,7 +502,7 @@ def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
     elif dtype.is_floating():
         v = repr(decode_double(k))
     elif dtype.is_decimal() and dtype.scale is not None:
-        v = f"{Decimal(k).scaleb(-dtype.scale):.{dtype.scale}f}"
+        v = f"{_decimals.scaled(k, -dtype.scale):.{dtype.scale}f}"
     else:
         return None
     return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")

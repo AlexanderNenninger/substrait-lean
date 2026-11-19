@@ -16,9 +16,10 @@ import math
 import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import ROUND_HALF_UP, Decimal
 
 from sverify._checker import decode_double, run_checker
+from sverify._decimals import scaled
 
 EPOCH = dt.datetime(1970, 1, 1)
 
@@ -29,9 +30,7 @@ def decimal_literal(v: Decimal, precision: int = 38, scale: int | None = None) -
     if scale is None:
         exponent = v.as_tuple().exponent
         scale = max(0, -exponent) if isinstance(exponent, int) else 0
-    # A context wide enough for 38 digits: the default's 28 would round them.
-    with localcontext(prec=80):
-        unscaled = int(v.scaleb(scale).to_integral_value(rounding=ROUND_HALF_UP))
+    unscaled = int(scaled(v, scale).to_integral_value(rounding=ROUND_HALF_UP))
     value = base64.b64encode(unscaled.to_bytes(16, "little", signed=True)).decode()
     return {"literal": {"decimal": {"value": value, "precision": precision, "scale": scale}}}
 
