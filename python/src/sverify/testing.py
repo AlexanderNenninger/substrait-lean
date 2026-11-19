@@ -56,6 +56,7 @@ from sverify._lean_eval import (  # noqa: F401  (re-exported for the tests)
     _ESCAPE,
     _TOKEN,
     EPOCH,
+    LeanRaised,
     _checked,
     _parse_row,
     _unquote,
@@ -97,6 +98,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FlightLog",
+    "LeanRaised",
     "assert_contract",
     "assert_engines_agree",
     "cases",

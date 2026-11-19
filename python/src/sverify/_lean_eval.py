@@ -185,8 +185,8 @@ def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
     decimals and a `d` (so only approximately). The rows are `Rel.eval`'s,
     which has a value where the reference raises: a projection over a
-    `VALUES` raises `LeanRaised` there, as the reference does (`--outcomes`;
-    other shapes are not checked). `rows_only` asks the checker for the rows
+    `VALUES` raises `LeanRaised` (exported by `sverify.testing`) there, as the
+    reference does (`--outcomes`; other shapes are not checked). `rows_only` asks the checker for the rows
     alone (`--rows`), without the plan's other facts and without that check."""
     if not rows_only and (err := _raised(plan_json)) is not None:
         raise LeanRaised(err)
