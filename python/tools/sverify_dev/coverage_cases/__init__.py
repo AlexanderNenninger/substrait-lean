@@ -64,6 +64,7 @@ REFUSED: dict[str, dict[str, str]] = _merged("REFUSED")
 NO_DUCKDB_SQL: dict[str, str] = _merged("NO_DUCKDB_SQL")
 UNORDERED_LISTS: set[str] = set(_merged("UNORDERED_LISTS"))
 APPROXIMATE: set[str] = set(_merged("APPROXIMATE"))
+APPROXIMATE_SPARK: set[str] = set(_merged("APPROXIMATE_SPARK"))
 DUCKDB_ORACLE: dict[str, Any] = _merged("DUCKDB_ORACLE")
 
 if len({c.label for c in CASES}) != len(CASES):

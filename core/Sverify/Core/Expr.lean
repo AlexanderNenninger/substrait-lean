@@ -620,6 +620,20 @@ def Value.canonV : Value → Value
   | .struct vs => .struct (vs.map Value.canonV)
   | v => v
 
+mutual
+/-- A value holds a double, at any depth of a list or struct: the values
+`canonV` changes. -/
+def Value.hasDouble : Value → Bool
+  | .float _ => true
+  | .list vs | .struct vs => Value.anyDouble vs
+  | _ => false
+
+/-- Some value of the list holds a double. -/
+def Value.anyDouble : List Value → Bool
+  | [] => false
+  | v :: vs => v.hasDouble || Value.anyDouble vs
+end
+
 omit [Boxes.Ambient] in
 theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by
   simp only [Value.canonV]

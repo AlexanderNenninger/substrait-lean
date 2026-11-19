@@ -332,6 +332,12 @@ DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
 raise are rare in real queries. No precondition rules one out; the report
 names the constant.
 
+Note (2026-11-19, theory advisor): D19 states the reference's raise set. An
+engine may evaluate a conjunct on fewer pairs: a pair that another conjunct
+makes not TRUE is in no allowed result (`isTrue_and3`), so by D16 the engine
+may return there. Polars's hash-join keys do, and DuckDB's joins do. No
+reference value, allowed set or raise set changes.
+
 
 ### D20. Two observations per output
 
@@ -465,7 +471,7 @@ determinism has two levels: up to the member of each class of doubles
 
 An order-sensitive operator reads one sorted enumeration of its input, and
 its meaning is the set over all of them (`Lin` and `Sem`,
-`SubstraitLean/Seam.lean`, #928). Below an unordered operator, as with a
+`analysis/Sverify/Analysis/Seam.lean`, #928). Below an unordered operator, as with a
 `FETCH` without a total `ORDER BY` under a join, the order is forgotten and
 the result is a set of multisets (`Rel.Bags`): this is where the tie order's
 nondeterminism lives. `verify` and `run` allow such a plan, and the proofs
@@ -1647,6 +1653,30 @@ Why: a proof is about the plan the lift writes. A user reads it as a statement
 about the SQL they wrote, so where the plan's value differs from the text's
 the report says so. A refusal lifted later is a minor change, a changed value a
 major one (D17), so the casts are refused before a release and `corr` is listed.
+
+### D56. Decimal `+` and `-` check each operand at the result's scale
+
+Decided 2026-11-19 (theory advisor, ruling 131; the user, #1484: "If DDB can't
+run the behavior, we should disallow it").
+
+Decimal `+` and `-` across scales bring each operand to the result type
+`DECIMAL(p, s)` before they add. An operand whose rescaled value has more than
+`p` digits raises an overflow, also where the exact result would fit. Only an
+operand with `pᵢ + (s − sᵢ) > 38` can raise so, and the check is written for
+those operands only: `Parse.decimalCall` wraps them in `UnFn.decimal 38 s`, the
+checked rescale that `CASE`, `COALESCE` and `GREATEST` use. DuckDB casts both
+operands to the result type (fact `duckdb-decimal-addsub-operand-cast`). The
+raise is an overflow that a declared range guards: the inferred precondition is
+`|a| < 10^(38 − s)`. Substrait leaves the operand's rescale open ([ST-18](../upstream/bugs/ST-18.json)).
+
+`×` has no such cast: its result scale is `s₁ + s₂`.
+
+Recomputes sinks: no
+
+Why: DuckDB raises on a cancelling sum such as `DECIMAL(38,0) + DECIMAL(38,10)`
+at `10^28`, so a plan the reference accepted there would return a value that
+DuckDB cannot run. A raise the preconditions name is visible; a value the
+engine does not give is not.
 
 ### D58. A timestamp's delta counts the unit boundaries crossed
 

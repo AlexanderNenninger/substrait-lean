@@ -462,6 +462,7 @@ The Python side has the same three tables, as frozen dataclasses next to
 wave 3's function table (`python/src/sverify/_functions.py`):
 
 ```python
+# skip: a sketch of the tables' shape; the real definitions are in the source
 @dataclass(frozen=True)
 class Option:
     id: str

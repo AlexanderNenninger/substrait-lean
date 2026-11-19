@@ -1,0 +1,36 @@
+{
+  "id": "ST-18",
+  "project": "substrait",
+  "kind": "spec-gap",
+  "version": "0.106.0",
+  "status": "confirmed",
+  "status_note": "`functions_arithmetic_decimal.yaml` (substrait-extensions 0.106.0): `add` and `subtract` give the result type `DECIMAL<P,S>` and say nothing of how the operands reach it. Not searched upstream.",
+  "summary": "Decimal `add` and `subtract` do not say whether each operand is brought to the result type first. DuckDB casts both operands to it and raises on an operand that does not fit, also where the exact sum does; an engine that adds the exact values returns the sum.",
+  "repro": [
+    "`a DECIMAL(38,0) = 10^28`, `b DECIMAL(38,10) = -0.0000000001`: `a + b` raises `Conversion Error: Casting value \"10000000000000000000000000000\" to type DECIMAL(38,10) failed` in DuckDB 2.0.0 (fact duckdb-decimal-addsub-operand-cast); the exact sum, 9999999999999999999999999999.9999999999, has 38 digits."
+  ],
+  "handling": [
+    "The reference's decimal `+` and `-` check each operand that can exceed 38 digits at the result's scale, and raise as DuckDB does (D56); the inferred precondition is `|a| < 10^(38 - s)`.",
+    "Could be expressed as: one sentence in the description (operands are cast to the result type first, or the sum is exact and only the result is checked)."
+  ],
+  "found_by": "the DuckDB coercion census (#1484)",
+  "issues": [
+    1484
+  ],
+  "files": [
+    "frontend/Sverify/Frontend/Parse.lean",
+    "python/tests/test_decimal_operand_cast.py"
+  ],
+  "facts": [
+    "duckdb-decimal-addsub-operand-cast"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-19",
+      "against": {
+        "substrait-extensions": "0.106.0"
+      },
+      "note": "functions_arithmetic_decimal.yaml: add and subtract's description and result type say nothing of how operands reach the result type"
+    }
+  ]
+}
