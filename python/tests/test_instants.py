@@ -11,6 +11,7 @@ from typing import Any
 
 import ibis
 import pyarrow as pa
+from ibis import _
 import pytest
 from deltalake import DeltaTable, write_deltalake
 
@@ -181,20 +182,43 @@ def test_a_delta_table_of_instants_and_naive_timestamps_round_trips_through_a_si
         assert schema.field("ts").type == UTC and schema.field("naive").type == NTZ, engine
 
 
+def _naive_other(t):
+    return ibis.table({"id": "int64", "naive": "timestamp"}, name="o")
+
+
 REFUSED = {
-    "a naive timestamp compared with an instant": lambda t: t.filter(t.ts <= t.naive),
+    "a naive column compared with an instant": lambda t: t.filter(t.ts <= t.naive),
+    "a naive literal compared with an instant": lambda t: t.filter(
+        t.ts > ibis.literal(dt.datetime(2024, 1, 1), "timestamp")
+    ),
+    "IN with a naive literal": lambda t: t.filter(
+        t.ts.isin([ibis.literal(dt.datetime(2024, 1, 1), "timestamp")])
+    ),
+    "IN with a naive column": lambda t: t.filter(t.ts.isin([t.naive])),
     "an instant plus an interval": lambda t: t.select(x=t.ts + ibis.interval(hours=1)),
     "the difference of two instants": lambda t: t.select(x=t.ts - t.ts2),
     "date_trunc of an instant": lambda t: t.select(x=t.ts.truncate("D")),
     "extract from an instant": lambda t: t.select(x=t.ts.year()),
     "an instant cast to a date": lambda t: t.select(x=t.ts.cast("date")),
     "an instant cast to a string": lambda t: t.select(x=t.ts.cast("string")),
-    "an instant against an instant literal": lambda t: t.filter(
+    "least of an instant": lambda t: t.select(x=ibis.least(t.ts, t.ts2)),
+    "lag of an instant": lambda t: t.select(x=t.ts.lag().over(ibis.window(order_by=t.id))),
+    "an instant literal in a comparison": lambda t: t.filter(
         t.ts > ibis.literal(U(2024, 1, 1), "timestamp('UTC', 6)")
+    ),
+    "an instant literal in a projection": lambda t: t.select(
+        x=ibis.literal(U(2024, 1, 1), "timestamp('UTC', 6)")
     ),
     "a naive timestamp cast to an instant": lambda t: t.select(
         x=t.naive.cast("timestamp('UTC', 6)")
     ),
+    "a CASE with a NULL branch": lambda t: t.select(x=ibis.cases((t.ts < t.ts2, t.ts))),
+    "NULLIF of instants": lambda t: t.select(x=t.ts.nullif(t.ts2)),
+    "COALESCE of an instant and a naive column": lambda t: t.select(x=ibis.coalesce(t.ts, t.naive)),
+    "SUM, AVG and FIRST of an instant": lambda t: t.aggregate(x=t.ts.first()),
+    "date_trunc over COALESCE of instants, one level up": lambda t: t.select(
+        c=ibis.coalesce(t.ts, t.ts2)
+    ).select(x=_.c.truncate("D")),
 }
 
 
@@ -209,3 +233,27 @@ def test_a_zone_other_than_utc_is_refused_and_names_the_issue():
     t = ibis.table({"ts": "timestamp('Europe/Berlin', 6)"}, name="t")
     with pytest.raises(Exception, match="1725"):
         sv.verify(t.select(t.ts))
+
+
+def test_ibis_itself_refuses_a_list_of_instants_and_a_union_with_a_naive_column():
+    t = instant_table()
+    with pytest.raises(Exception):  # noqa: B017 - Ibis (a list) and the producer (#60) refuse
+        sv.verify(t.select(x=ibis.array([t.ts, t.ts2])))
+    with pytest.raises(Exception, match="schemas must be equal"):
+        sv.verify(ibis.union(t.select(x=t.ts), t.select(x=t.naive), distinct=False))
+
+
+def test_a_set_operation_over_an_instant_and_a_naive_column_is_refused_by_the_checker():
+    """The parser's gate, past Ibis: the second input's column is retyped naive."""
+    from sverify.engine import run_checker
+
+    t = ibis.table({"ts": "timestamp('UTC', 6)"}, name="t")
+    u = ibis.table({"ts": "timestamp('UTC', 6)"}, name="u")
+    plan = to_substrait_json(ibis.union(t.select(x=t.ts), u.select(x=u.ts), distinct=False))
+    tz = '"precisionTimestampTz"'
+    first = plan.index(tz) + 1
+    second = plan.index(tz, first)
+    # The second `precisionTimestampTz` after the first table's read is table `u`'s `ts`.
+    patched = plan[:second] + '"precisionTimestamp"' + plan[second + len(tz) :]
+    code, _, err = run_checker((), patched)
+    assert code != 0 and "1725" in err

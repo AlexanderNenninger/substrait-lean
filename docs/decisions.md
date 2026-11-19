@@ -1498,8 +1498,9 @@ another instant, `IS [NOT] DISTINCT FROM`, ordering, `MIN`, `MAX`, `COUNT`,
 is refused and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
 arithmetic with intervals, the difference of two instants, `date_trunc`,
 `extract`, a cast to a date or a string. A comparison of an instant with a
-naive timestamp is refused. Zones other than UTC are refused. `Rel.eval` and
-`Rel.Allowed` are unchanged.
+naive timestamp is refused. Zones other than UTC are refused. The conversion is
+a function of the core that returns its argument; nothing else in `Rel.eval` and
+`Rel.Allowed` changes.
 
 Read in steps: an instant column is read, computed with and written back as an
 instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`); the conversion

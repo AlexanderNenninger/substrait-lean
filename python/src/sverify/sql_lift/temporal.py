@@ -12,6 +12,7 @@ import sqlglot.expressions as sge
 from ibis.common.temporal import IntervalUnit
 
 from sverify.plan_json import (
+    INSTANT_NOTE,
     Json,
     SqlUnsupported,
     Unsupported,
@@ -90,7 +91,9 @@ def _temporal(e: E, t: Any) -> E:
     except (TypeError, ValueError) as err:
         raise Unsupported(f"cannot read {text!r} as a {t}") from err
     if v.tzinfo is not None:
-        raise SqlUnsupported("a literal timestamp with a time zone is not supported yet (#1725)")
+        raise SqlUnsupported(
+            f"a literal timestamp with a time zone is not supported yet {INSTANT_NOTE}"
+        )
     ts = dt.timestamp(scale=6)
     return E(literal(v, ts), ts, v)
 

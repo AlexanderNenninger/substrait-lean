@@ -79,6 +79,13 @@ class ProducerUnsupported(Unsupported):
 # Types and literals
 
 
+#: What a refusal of a timestamp with a time zone (an instant) says it can do instead
+#: (D53, #1725).
+INSTANT_NOTE = (
+    "(#1725): a timestamp with a time zone can be read, compared with other such columns, "
+    "used as a key and written back; literals, conversions and calendar functions follow"
+)
+
 #: The spellings of the time zone UTC the readers produce (Arrow, Delta, Ibis).
 UTC_ZONES = frozenset({"UTC", "Etc/UTC", "+00:00", "Z", "utc"})
 
@@ -125,8 +132,8 @@ def _type_json(dtype: Any) -> Json:
     if dtype.is_timestamp():
         if dtype.timezone is not None and not is_utc(dtype.timezone):
             raise Unsupported(
-                f"timestamps with the time zone {dtype.timezone} are not supported yet (#1725); "
-                "only UTC is read, as an instant"
+                f"timestamps with the time zone {dtype.timezone} are not supported yet "
+                f"{INSTANT_NOTE}; only UTC is read, as an instant"
             )
         if dtype.scale not in (None, 6):
             raise Unsupported(
@@ -189,8 +196,7 @@ def literal(value: Any, dtype: Any) -> Json:
         type_json(dtype)
         if value.tzinfo is not None or dtype.timezone is not None:
             raise Unsupported(
-                "a literal timestamp with a time zone is not supported yet (#1725); "
-                "compare the instant with another instant column"
+                f"a literal timestamp with a time zone is not supported yet {INSTANT_NOTE}"
             )
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}

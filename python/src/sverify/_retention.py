@@ -42,7 +42,7 @@ from ibis.common.graph import Node
 from sverify._arrow_state import _scalar, after, buckets, through  # noqa: F401  (re-exported: incremental calls them here)
 from sverify._weighted import _call, negative, positive, rows_of
 from sverify.contracts import ArrivesWithin, Condition, label, show_duration
-from sverify.plan_json import is_utc
+from sverify.plan_json import INSTANT_NOTE
 
 # `date_trunc` to these units is a bucket from 1970-01-01 (`Retention.trunc_eq_bucket`).
 _UNITS = {
@@ -238,12 +238,9 @@ def plan(
         if not dtype.is_timestamp():
             reasons.append(f"{table}.{col} is not a timestamp")
             continue
-        if (
-            dtype.timezone is not None
-            and not is_utc(dtype.timezone)
-            and width >= timedelta(hours=1)
-        ):
-            reasons.append(f"{table}.{col} has time zone {dtype.timezone}")
+        if dtype.timezone is not None:
+            # A cutoff is a literal in the plan (#1725).
+            reasons.append(f"{table}.{col} is a timestamp with a time zone {INSTANT_NOTE}")
             continue
         if name not in names:
             reasons.append(f"the view does not output {name} unchanged")
