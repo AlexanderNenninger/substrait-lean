@@ -160,19 +160,31 @@ def Value.hasFloat : Value → Bool
   | .list vs | .struct vs => vs.attach.any fun ⟨v, _⟩ => v.hasFloat
   | _ => false
 
+/-- Fail closed: the constructors that neither take nor give a double are
+listed, and any other, a new one included, may. -/
 def UnFn.mayDouble : UnFn → Bool
-  | .itof | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .ftoi | .ftoiOrNull | .widen
-  | .fmath _ | .ftod _ | .dtof _ | .bbox _ | .structField _ | .listElement _ | .flatten => true
-  | _ => false
+  | .not | .isNull | .neg | .narrow _ | .narrowOrNull _ | .wrap _ | .itos | .atUtc _
+  | .upper | .lower | .length | .reverse | .ascii | .replace _ _ | .regexMatch _
+  | .regexExtract _ _ | .regexReplace _ _ _ | .md5 | .sha256 | .datePart _ | .dateTrunc _
+  | .toDate | .dayPart _ | .dayTrunc _ | .addMonths _ _ | .timeOfDay | .asTime | .dateTime
+  | .epochUs | .strftime _ | .bucket _ _ | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _
+  | .cardinality | .raise _ | .fit _ _ | .isNum _ => false
+  | _ => true
 
+/-- Fail closed, as `UnFn.mayDouble`. -/
 def BinFn.mayDouble : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb | .bbox2 _
-  | .listFn _ | .pair => true
-  | _ => false
+  | .add | .sub | .mul | .eq | .lt | .and | .or | .idiv | .imod | .ipow | .concat | .strpos
+  | .startsWith | .endsWith | .like | .substr _ _ | .trim _ _ | .strRepeat | .ilike
+  | .levenshtein | .dateAdd | .dateDiff | .bit _ | .dadd | .dsub | .dmul | .ddiv | .greatest
+  | .least => false
+  | _ => true
 
+/-- Fail closed, as `UnFn.mayDouble`. `MIN`, `MAX`, `QUANTILE_DISC` and the
+picks pass their argument through. -/
 def AggFn.mayDouble : AggFn → Bool
-  | .fsum | .avg | .var _ _ | .cov _ | .corr | .quantile true _ _ | .bbox _ | .collect => true
-  | _ => false
+  | .count | .sum | .min | .max | .iavg | .bit _ | .pick _ | .concat _ | .mode
+  | .quantile false _ _ => false
+  | _ => true
 
 def Expr.mayDouble : Expr → Bool
   | .lit v => v.hasFloat
@@ -186,11 +198,14 @@ def Expr.mayDouble : Expr → Bool
 def Measure.mayDouble (m : Measure) : Bool :=
   m.fn.mayDouble || m.arg.mayDouble || (m.filter.map Expr.mayDouble).getD false
 
+/-- Fail closed, as `UnFn.mayDouble`. The value functions pass their column
+through. -/
 def WinFn.mayDouble : WinFn → Bool
-  | .percentRank _ | .cumeDist _ => true
+  | .rowNumber | .rank _ | .denseRank _ | .ntile _ | .firstValue _ _ _ | .lastValue _ _ _
+  | .nthValue _ _ _ _ => false
   | .lag _ _ v | .lead _ _ v => v.hasFloat
   | .agg m _ _ => m.mayDouble
-  | _ => false
+  | _ => true
 
 /-- **May a double occur in `r`?** Its input columns' kinds come from the
 request's tables (`Parse.schemaKinds`); a table it does not describe may. -/
@@ -214,7 +229,7 @@ def Rel.mayDouble (tables : Parse.Tables) : Rel → Bool
   let ints : Parse.Tables := [("t", 1, Lean.Json.mkObj [("struct", Lean.Json.mkObj
     [("types", Lean.Json.arr #[Lean.Json.mkObj [("i64", Lean.Json.mkObj [])]])])])]
   (Rel.filter (.read "t")
-    (.bin .lt (.bin .fatan2 (.un .fneg (.un .itof (.field 0))) (.lit (.float 0))) (.lit (.int 0)))
+    (.bin .lt (.bin .fatan2 (.un .fneg (.un .itof (.field 0))) (.lit (.float (FloatCode.ofFloat (-1.0))))) (.lit (.int 0)))
     ).mayDouble ints &&
   !(Rel.read "t").mayDouble ints
 

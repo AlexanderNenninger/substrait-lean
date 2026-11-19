@@ -494,6 +494,13 @@ class Report:
     rewrite), or None where the plan to run is the rewrite."""
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`: the marks of its expressions."""
+    _run_gates: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    """Per engine (or `"to_sql"`), why its last run took the plan as written
+    where the checker gave a rewrite (`_run_gate` is None): `"route"` (a route
+    that does not rest on this report), `"unchecked"` (the run did not check
+    the preconditions on its data, or `to_sql`, which cannot) or `"writer"`
+    (the engine's writer refused the rewrite). A run's own gate, apart from
+    the checker's (ruling 150, C2)."""
     _inferred: dict[str, list[Condition]] = field(default_factory=dict, repr=False)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
@@ -830,43 +837,61 @@ class Report:
         if self.internal_plan is None:
             raise ValueError("this report has no plan: it was not made by sv.verify")
         d, finite = self._sql_route(dialect)
-        return self._with_plan(
-            "translated",
-            lambda plan: to_sql(
-                plan,
-                d,
-                deterministic=self._exact,
-                finite=finite,
-                rows="sequence" if self.observation.rows == "sequence" else "multiset",
-            ),
+        # The SQL runs on data nothing here checks, so it is the plan as
+        # written: the rewrite rests on the preconditions (ruling 150, C1).
+        return to_sql(
+            self._plan_to_run("translated", checked=False, engine="to_sql"),
+            d,
+            deterministic=self._exact,
+            finite=finite,
+            rows="sequence" if self.observation.rows == "sequence" else "multiset",
         )
 
-    def _plan_to_run(self, kind: str | None) -> str:
-        """The plan an engine runs on the route `kind`, as JSON text: the
-        checker's plan to run (`_run_plan`) on a route that rests on this
-        report (`routes.runs_rewrite`), the plan as written otherwise. The one
-        place a run reads the plan (#1787)."""
+    def _plan_to_run(self, kind: str | None, *, checked: bool, engine: str) -> str:
+        """The plan `engine` runs on the route `kind`, as JSON text: the
+        checker's plan to run (`_run_plan`) where the route rests on this
+        report (`routes.runs_rewrite`) and the run checked the preconditions on
+        its data (`checked`), since every rewrite rests on them (ruling 150,
+        C1); the plan as written otherwise, with the reason in
+        `_run_gates[engine]`. The one place a run reads the plan (#1787)."""
         from sverify import routes
 
         assert self.internal_plan is not None
-        if self._run_plan is not None and routes.runs_rewrite(kind):
-            return json.dumps(self._run_plan)
-        return written_plan(self.internal_plan)
+        written = written_plan(self.internal_plan)
+        if self._run_plan is None:
+            return written
+        if not routes.runs_rewrite(kind):
+            self._run_gates[engine] = "route"
+            return written
+        if not checked:
+            self._run_gates[engine] = "unchecked"
+            return written
+        self._run_gates.pop(engine, None)
+        return json.dumps(self._run_plan)
 
-    def _with_plan(self, kind: str | None, f: Callable[[str], Any]) -> Any:
-        """`f` on the plan to run on the route `kind` (`_plan_to_run`). Where
-        an engine's writer refuses the rewrite (`UnsupportedError`), `f` on the
-        plan as written, and `_run_gate` says `"writer"`: the checker accepted
-        both, so either run is sound (ruling 129, E)."""
-        plan = self._plan_to_run(kind)
-        if self._run_plan is None or plan == written_plan(self.internal_plan or ""):
+    def _with_plan(
+        self,
+        plan: str,
+        engine: str,
+        f: Callable[[str], Any],
+        recheck: Callable[[str], Any] | None = None,
+    ) -> Any:
+        """`f` on `plan`, the plan `_plan_to_run` chose. Where `engine`'s
+        writer refuses the rewrite (`UnsupportedError`), the run's own checks
+        (`recheck`) and `f` on the plan as written, with `"writer"` in
+        `_run_gates[engine]`: the checker accepted both, so either run is sound
+        (ruling 129, E), and a run checks the plan it runs."""
+        assert self.internal_plan is not None
+        written = written_plan(self.internal_plan)
+        if plan == written:
             return f(plan)
         try:
             return f(plan)
         except UnsupportedError:
-            self._run_gate = "writer"
-            assert self.internal_plan is not None
-            return f(written_plan(self.internal_plan))
+            self._run_gates[engine] = "writer"
+            if recheck is not None:
+                recheck(written)
+            return f(written)
 
     def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
         """The dialect `dialect` names, and whether its SQL checks the
@@ -912,7 +937,7 @@ class Report:
         engine: str | None = None,
         *,
         assumed_checked: bool = False,
-        _kind: str | None = None,
+        _plan: str | None = None,
     ) -> None:
         """Check the tables of `con` against the schema the plan was verified
         for (`_check_schema`), the preconditions (`requires`, the inferred
@@ -956,16 +981,19 @@ class Report:
                         rows=violating_rows(table, c),
                     )
         if self.assumed and self.internal_plan is not None and not assumed_checked:
-            # An engine whose translation does not check the assumptions as it
-            # runs (a route or an engine without `checks_assumed`) gets them
-            # checked by the proved DuckDB translation first: a SUM as it adds
-            # up, an operation on finite doubles as it gives its result (#575).
-            # On the plan that runs: its issues are among the plan as
-            # written's (the checker's `issues` gate, #1787).
-            try:
-                self._with_plan(_kind, lambda plan: run_plan(con, plan, "duckdb"))
-            except Exception as e:
-                raise self._broken_assumption(e) or e from None
+            # On the plan that runs (`_plan`, #1787); the plan as written for
+            # a caller outside `run`.
+            self._check_assumed(con, _plan or written_plan(self.internal_plan))
+
+    def _check_assumed(self, con: Connection, plan: str) -> None:
+        """Check the assumptions on `plan` before an engine whose translation
+        does not check them as it runs (a route or an engine without
+        `checks_assumed`): the proved DuckDB translation checks a SUM as it
+        adds up, an operation on finite doubles as it gives its result (#575)."""
+        try:
+            run_plan(con, plan, "duckdb")
+        except Exception as e:
+            raise self._broken_assumption(e) or e from None
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
         """Refuse a table that differs from the schema the plan was verified
@@ -1161,6 +1189,10 @@ class Report:
         assumed_checked = (
             check_requires and run_on is not None and run_on.checks_assumed and kind == "translated"
         )
+        # The plan this run runs, decided once: the checks below and the run
+        # read the same one.
+        run_engine = chosen.engine if chosen is not None else str(target)
+        plan = self._plan_to_run(kind, checked=check_requires, engine=run_engine)
         if check_requires:
             # A precondition with no check would let the run drop guards on
             # data it never looked at: refuse before anything runs.
@@ -1170,7 +1202,7 @@ class Report:
                     + ", ".join(unchecked)
                     + " of this report: refused before the run (check_requires=False skips them)"
                 )
-            self.check_inputs(con, target, assumed_checked=assumed_checked, _kind=kind)
+            self.check_inputs(con, target, assumed_checked=assumed_checked, _plan=plan)
         else:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
@@ -1184,7 +1216,7 @@ class Report:
             and fallbacks is not None
             and (chosen is not None or streaming == "require")
         ):
-            self._streaming(con, chosen, streaming, plugin.engine, fallbacks)
+            self._streaming(con, chosen, streaming, plugin.engine, fallbacks, plan)
         # The check of an overflow to ±∞ is the reference's precondition
         # (#575): it is written for a plan verified under the reference, and
         # for one that reaches the engine through the reference's route.
@@ -1196,6 +1228,15 @@ class Report:
         # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
         name = chosen.engine if chosen is not None else ""
         theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
+
+        def recheck(written: str) -> None:
+            """The run's checks of the plan it runs, again for the plan as
+            written after a writer refused the rewrite."""
+            if check_requires and self.assumed and not assumed_checked:
+                self._check_assumed(con, written)
+            if plugin is not None and fallbacks is not None and chosen is not None:
+                self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
+
         try:
             if (
                 check_requires
@@ -1205,12 +1246,15 @@ class Report:
                 and theorem is not None
             ):
                 out = self._with_plan(
-                    kind,
+                    plan,
+                    run_engine,
                     lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                    recheck,
                 )
             else:
                 out = self._with_plan(
-                    kind,
+                    plan,
+                    run_engine,
                     lambda plan: run_plan(
                         con,
                         plan,
@@ -1220,6 +1264,7 @@ class Report:
                         # without a row-order tiebreak (`to_sql`'s `deterministic`).
                         tie_free=self._exact and kind != "unverified",
                     ),
+                    recheck,
                 )
         except Exception as e:
             # The translation's own checks of the assumptions, which `check_inputs`
@@ -1352,7 +1397,13 @@ class Report:
         return " (inferred)" if issue is None else f" (inferred from {issue.what})"
 
     def _streaming(
-        self, con: Connection, chosen: Any, streaming: str, engine: str, fallbacks: Any
+        self,
+        con: Connection,
+        chosen: Any,
+        streaming: str,
+        engine: str,
+        fallbacks: Any,
+        plan_text: str,
     ) -> None:
         """Record the nodes of the plan the engine runs outside its chosen
         executor (`ProfilePlugin.fallbacks`: Polars's in-memory nodes of its
@@ -1364,7 +1415,7 @@ class Report:
         from sverify.engine import read_tables
 
         assert self.internal_plan is not None
-        plan = json.loads(self._plan_to_run(chosen.kind if chosen is not None else None))
+        plan = json.loads(plan_text)
         tables = {t: con._arrow[t] for t in read_tables(plan)}
         nodes = tuple(fallbacks(plan, tables))
         if chosen is not None:
@@ -1945,7 +1996,7 @@ class Report:
 
 
 #: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = ["table_params", "run_plan", "run_gate", "run_unchecked"]
+_REPORT_PRIVATE = ["table_params", "run_plan", "run_gate", "run_unchecked", "run_gates"]
 
 _REPORT_INTERNAL = [
     "windows_total",
