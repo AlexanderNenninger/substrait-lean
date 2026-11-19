@@ -9,8 +9,8 @@
     "on_domain_error"
   ],
   "rows": [
-    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]},
-    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"], "evidence": "probe"}
+    {"group": "fp.atan2", "option": "on_domain_error", "types": ["fp64"]},
+    {"group": "fp.atan2", "option": "on_domain_error", "types": ["fp32"], "evidence": "probe"}
   ],
   "constructs": [
     "arctan2"

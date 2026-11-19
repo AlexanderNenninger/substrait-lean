@@ -199,7 +199,7 @@ def test_choices(profile: str) -> None:
             fns.choice(profile, group, option)
 
 
-@pytest.mark.parametrize("group", ["fp.elem", "fp.log"])
+@pytest.mark.parametrize("group", ["fp.pow", "fp.atan2", "fp.elem", "fp.log"])
 def test_lift_profiles_agree(group: str) -> None:
     """The options the lift writes are its profile's choice: DuckDB's one
     behaviour, the reference's default."""
