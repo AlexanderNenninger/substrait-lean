@@ -114,7 +114,8 @@ def sql_chain(case: dict[str, Any], levels: int, table: str = "t") -> str:
     )
     for i in range(2, levels + 1):
         reach = f"(r{i - 1} AND (c{i - 1} IS NULL OR c{i - 1}))"
-        q = f"SELECT *, {reach} AS r{i}, CASE WHEN {reach} THEN {_p_sql(case['p'])} END AS c{i} FROM ({q})"
+        c = f"CASE WHEN {reach} THEN {_p_sql(case['p'])} END"
+        q = f"SELECT *, {reach} AS r{i}, {c} AS c{i} FROM ({q})"
     reading = " AND ".join(f"c{i}" for i in range(1, levels + 1))
     q = f"SELECT id, {reading} AS v FROM ({q})"
     above = case["above"]
