@@ -88,6 +88,7 @@ from ibis.common.graph import Node
 from sverify import _decimals, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
+from sverify._dialect import DialectDifference
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
 from sverify._unsupported import SverifyWarning
@@ -137,7 +138,7 @@ from sverify.engine import (
     Connection,
     Engine,
     checker_failed,
-    plan_json_over,
+    plan_and_differences,
     run_checker,
 )
 from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
@@ -768,6 +769,8 @@ def verify(
     `sverify.sql_lift` with `semantics`: the reference semantics by default,
     or what DuckDB computes with `semantics="duckdb"`. The report says
     which (`Report.semantics`).
+    Where the reference reads the SQL differently from DuckDB on a value, the
+    report lists it (`Report.dialect_differences`).
 
     Unlike `transform`, `verify` checks nothing on data and raises nothing
     when a postcondition is unproved: it returns the report.
@@ -1558,8 +1561,12 @@ def _prove_once(
         own = not (isinstance(query, str) and semantics in _profile_requests())
         return semantics if own else "reference"
 
-    def plan(query: Transform) -> Any:
-        return json.loads(plan_json_over(sql_schemas, query, lift(query)))
+    differences: dict[DialectDifference, None] = {}
+
+    def plan(query: Transform, where: str = "the query") -> Any:
+        text, found = plan_and_differences(sql_schemas, query, lift(query))
+        differences.update(dict.fromkeys(replace(d, where=where) for d in found))
+        return json.loads(text)
 
     def table_ref(name: str, cond: Condition) -> Transform:
         if isinstance(transform, str) and isinstance(cond, str):
@@ -1611,12 +1618,17 @@ def _prove_once(
     for t, cs in requires.items():
         for n, c in enumerate(cs, start=1):
             if planned(c):
-                req_plans.append(plan(query(f"requires {t}", n, table_ref(t, c), c)))
+                req_plans.append(
+                    plan(
+                        query(f"requires {t}", n, table_ref(t, c), c),
+                        f"the requires condition {label(c)}",
+                    )
+                )
     ens_plans = []
     for n, c in enumerate(ensures, start=1):
         if isinstance(c, TableCondition):
             continue
-        p = plan(query("ensures", n, output(c), c))
+        p = plan(query("ensures", n, output(c), c), f"the ensures condition {label(c)}")
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)
@@ -1832,6 +1844,7 @@ def _prove_once(
             # An engine whose `//` and `%` floor computes them as the plan states.
             report._hints += division_hints(transform)
     report._hints += contradictions(requires, schemas)
+    report.dialect_differences = tuple(differences)
     return report, out["inferred"], schemas
 
 

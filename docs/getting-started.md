@@ -125,7 +125,10 @@ print(report.run(con).to_pylist())
 with a `RouteError`; `report.run(con, unverified=True)` runs it anyway.
 
 The SQL is DuckDB's dialect, read with sverify's reference semantics
-(`semantics="duckdb"` reads it as DuckDB computes it). `//` is integer
+(`semantics="duckdb"` reads it as DuckDB computes it). Where the two differ on
+a value (a double cast to an integer, `corr` of one pair),
+`report.dialect_differences` names the construct and the spelling that means
+the same on both ([the list](reference-semantics.md#duckdb-sql-under-the-reference)). `//` is integer
 division, and `/` would give a double.
 
 ## 3. The preconditions a plan needs, declared and checked before the run

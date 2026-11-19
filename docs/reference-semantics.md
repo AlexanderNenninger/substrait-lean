@@ -353,6 +353,29 @@ Design notes: [nested-values.md](nested-values.md).
 | `date` ↔ `timestamp` | A date is days since 1970-01-01, a timestamp microseconds. `date` to `timestamp` is midnight (`UnFn.dateTime`), an error outside the reference's dates; `timestamp` to `date` rounds down, before 1970 too. A date compared with a timestamp is cast to one, as DuckDB does. | ✓; other engines refuse the cast of a DATE column |
 | `timestamp` to `BIGINT` | `epoch_us(ts)`: the microseconds since 1970-01-01 (`UnFn.epochUs`), the same number. | ✓ on DuckDB |
 
+## DuckDB SQL under the reference
+
+A SQL text reads as DuckDB's under both semantics: `/`, `//`, NULL order and
+`replace` mean what they mean on DuckDB. The semantics is what the functions
+then do. Under `semantics="reference"` the lift refines the dialect
+([D54](decisions.md#d54-the-lift-refines-the-dialect)): where the reference
+gives a value, DuckDB running the same text gives that value; where the
+reference raises, DuckDB may give a value, and the inferred preconditions name
+those inputs. Three constructs are listed exceptions, where the reference gives
+another value, and `Report.dialect_differences` names each one in the query:
+
+- `float_to_int`: `CAST(x AS BIGINT)` of a double truncates here and rounds half
+  to even on DuckDB. `CAST(round(x) AS BIGINT)`, `floor` and `ceil` mean the
+  same on both.
+- `decimal_to_int`: the cast of a decimal truncates here and rounds half away
+  from zero on DuckDB. `round`, `floor` and `ceil` of a decimal are not lifted
+  yet; `CAST(round(CAST(d AS DOUBLE)) AS BIGINT)` means the same on both.
+- `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
+  is NULL here and NaN on DuckDB.
+
+The verdict is unchanged. The list is empty under `semantics="duckdb"` and for
+an Ibis transformation.
+
 ## Aggregates
 
 ### Of integers
