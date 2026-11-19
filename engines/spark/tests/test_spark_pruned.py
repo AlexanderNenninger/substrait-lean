@@ -29,5 +29,6 @@ def test_spark_runs_a_plan_that_leaves_out_an_unused_struct_and_map():
     put_table(con, "t", TABLE)
     plan = plan_json(con, T.select(T.d, y=T.d + T.e))
     assert '"s"' not in plan and '"m"' not in plan
-    rows = arrow_rows(run_plan(con, written_plan(plan), "spark"))
-    assert sorted(rows) == [(1, 11), (2, 22), (3, 33)]
+    spark = arrow_rows(run_plan(con, written_plan(plan), "spark"))
+    assert sorted(spark) == [(1, 11), (2, 22), (3, 33)]
+    assert sorted(spark) == sorted(arrow_rows(run_plan(con, written_plan(plan), "duckdb")))
