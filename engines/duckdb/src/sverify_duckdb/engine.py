@@ -15,15 +15,19 @@ import functools
 import json
 import threading
 from collections.abc import Callable, Mapping, Sequence
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
 
-import duckdb
 import pyarrow as pa
 
 from sverify import _duckdb
 from sverify._scan import Native, Resident
 from sverify.sql import to_sql
 from sverify_duckdb.dialect import DUCKDB
+
+if TYPE_CHECKING:
+    import duckdb
+else:
+    from sverify._duckdb import lazy as duckdb
 
 
 @functools.lru_cache(maxsize=4096)
