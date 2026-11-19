@@ -147,10 +147,16 @@ def test_avg_over_a_window(con):
 
 def test_lean_values_raises_where_the_reference_raises(con):
     """`Rel.eval` goes on with a value where a cast does not fit; `lean_values`
-    raises as the reference does (`--outcomes`), and gives the rows where it fits."""
+    raises as the reference does (`--raises`), and gives the rows where it fits.
+    A filter and an aggregate raise too, where a projection is not alone."""
     with pytest.raises(LeanRaised, match="overflow"):
         lean(con, "SELECT CAST(a AS DECIMAL(3, 2)) AS r FROM t")
     assert lean(con, "SELECT CAST(a AS DECIMAL(4, 2)) AS r FROM t")[0] == ("12.35",)
+    with pytest.raises(LeanRaised, match="overflow"):
+        lean(con, "SELECT a FROM t WHERE CAST(a AS DECIMAL(3, 2)) > 0")
+    with pytest.raises(LeanRaised, match="overflow"):
+        lean(con, "SELECT sum(CAST(a AS DECIMAL(3, 2))) AS r FROM t")
+    assert lean(con, "SELECT sum(CAST(a AS DECIMAL(4, 2))) AS r FROM t")[0] == ("12.35",)
 
 
 @pytest.mark.parametrize(
