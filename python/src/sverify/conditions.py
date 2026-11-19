@@ -374,7 +374,7 @@ def arrives_within(
     of `col` (`ts.truncate("h")`, `ts.bucket(...)`) then drops the buckets
     that end at or before the watermark from its state, since no admissible
     batch changes them (`Retention.final_unchanged` in
-    `SubstraitLean/Retention.lean`), and keeps at most
+    `analysis/Sverify/Analysis/Retention.lean`), and keeps at most
     `⌈lateness / width⌉ + 1` buckets (`Retention.open_buckets_le`).
 
     Args:
