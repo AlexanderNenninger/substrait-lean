@@ -1,0 +1,3 @@
+### `sverify-dbt check` exits as `sverify check` does, and a refused model no longer fails the default gate
+
+A model sverify cannot read (`WITH RECURSIVE`) with an enforced contract failed `--fail-on contract` on every run, and its text showed no reason. It now prints its constraints as not checked, and the gate fails only on a constraint that is not proved. `--fail-on unproved` no longer counts refused models; `--fail-on refused` is new and exits 3 where a model is refused. An unreadable project is exit 2, an unsupported check 3, a broken install or an I/O error exit 6 with its message, where it was a traceback and exit 1, the code for "a contract does not hold" (#891, 1.2 and 1.3).

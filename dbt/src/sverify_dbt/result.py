@@ -185,7 +185,7 @@ class CheckResult:
 
     @property
     def unproved_constraints(self) -> list[tuple[str, TestResult]]:
-        return [(m.name, c) for m in self.models for c in m.constraints if c.status != "proved"]
+        return [(m.name, c) for m in self.models for c in m.constraints if c.status == "not proved"]
 
     def summary(self) -> str:
         tests = [t for m in self.models for t in m.tests]
@@ -263,7 +263,11 @@ class CheckResult:
 def _model_lines(m: ModelResult) -> list[str]:
     head = f"{m.name}" + (f" ({m.path})" if m.path else "")
     if m.refused:
-        return [head, f"  refused: {m.refused}"]
+        out = [head, f"  refused: {m.refused}"]
+        if m.constraints:
+            out.append("  contract constraints, not checked as the model was refused:")
+            out += [f"    {c.label}" for c in m.constraints]
+        return out
     out = [head]
     proved = [t for t in m.tests if t.status == "proved" and t.skippable]
     if proved:
