@@ -371,6 +371,7 @@ PLUGIN = ProfilePlugin(
     # The package writes DuckDB SQL without DuckDB; running plans needs it
     # (`pip install sverify[duckdb]`).
     local=find_spec("duckdb") is not None,
+    checks_assumed=True,
     read_settings=_read_settings,
     dialect=_dialect,
     run_tables=_run_tables,

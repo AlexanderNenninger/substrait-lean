@@ -137,6 +137,7 @@ PLUGIN = ProfilePlugin(
     restore=_restore,
     runner=_run,
     local=True,
+    checks_assumed=True,
     modules=("polars", "numpy"),
     read_settings=_read_settings,
     run_tables=_run_tables,
