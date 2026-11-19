@@ -7,4 +7,4 @@ import Sverify.DuckDB.Boxes
 -- The checker runs with DuckDB's black boxes, the only engine package that has any (#1189).
 open scoped Substrait.DuckDB in
 def main (args : List String) : IO UInt32 :=
-  Substrait.Checker.checkerMain Substrait.builtinEngines args
+  Substrait.Checker.checkerMain Substrait.builtinEntries args

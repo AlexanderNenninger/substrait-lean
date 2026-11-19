@@ -136,7 +136,7 @@ partial def need (env : List AVal) (fs : List Fact) (lo hi : Int) : Expr → Exc
   | .lit (.int v) => if lo ≤ v ∧ v ≤ hi then pure {} else throw "it adds a constant that is out of range"
   | .lit _ => pure {}
   | .un .neg a => need env fs (-hi) (-lo) a
-  | .un (.wrap _) a | .un .widen a => need env fs lo hi a
+  | .un (.wrap _) a | .un .widen a | .un (.atUtc _) a => need env fs lo hi a
   -- A decimal's check keeps its value (its digits are another issue).
   | .un (.decimal _ _) a | .un (.dkind _ _) a => need env fs lo hi a
   -- `trunc u x ∈ (x - span u, x]`.

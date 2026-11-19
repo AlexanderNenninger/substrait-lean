@@ -75,7 +75,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   `LAG`/`LEAD`/`ROW_NUMBER` columns holds. Strict order uses an oracle saying
   which windows have a key (`WindowKeys`); `Rel.keyedWindows_soundAll` proves the
   one computed from `Rel.keys` right, which is what `contract_sound` asks for.
-* `IoT.window_complete` ([Completeness.lean](../SubstraitLean/Completeness.lean)): the
+* `IoT.window_complete` ([Completeness.lean](../core/Sverify/Core/Completeness.lean)): the
   converse of the contracts. If both sensors have valid readings at `t` and `t + 60`,
   the window at `t` is in the output, so no window is lost. It's built from one
   membership lemma per operator.

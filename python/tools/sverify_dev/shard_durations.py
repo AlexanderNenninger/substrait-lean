@@ -3,7 +3,7 @@
 Maintainer tooling (`sverify_dev`): not in the wheel.
 
 CI splits the `core` tests three ways (`SVERIFY_SHARD`, `tests/_suite.py`)
-and oracle A's replay four ways (`--shard`, `sverify_dev.oracle`). Without a
+and oracle A's replay two ways (`--shard`, `sverify_dev.oracle`). Without a
 table, the tests go by a hash of their node id and the files round-robin,
 which leaves shards unequal. This reads the durations a run records,
 `$SVERIFY_TEST_TIMINGS` (one line per test phase) and `$SVERIFY_SLT_TIMINGS`

@@ -1,0 +1,45 @@
+{
+  "id": "duckdb-instant-conversion",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "An instant and a timestamp convert at UTC by the epoch, with no session zone",
+  "verdict": "make_timestamptz(epoch_us(ts)) and make_timestamp(epoch_us(x)) keep the microseconds under any TimeZone",
+  "area": "temporal",
+  "constructs": [
+    "make_timestamptz",
+    "make_timestamp",
+    "epoch_us",
+    "TIMESTAMPTZ",
+    "TimeZone"
+  ],
+  "settings": {
+    "TimeZone": [
+      "Asia/Kolkata",
+      "America/New_York"
+    ]
+  },
+  "description": [
+    "`make_timestamptz(epoch_us(ts))` is the instant whose microseconds since 1970-01-01 00:00 UTC are the timestamp's wall-clock microseconds, and `make_timestamp(epoch_us(x))` is the naive timestamp of an instant's UTC wall clock. Neither reads `TimeZone` or needs ICU: the values at the ends of the reference's range (`0001-01-01` and `9999-12-31 23:59:59.999999`) and across a DST change come back unchanged under `Asia/Kolkata` and `America/New_York`; NULL stays NULL.",
+    "`ts AT TIME ZONE 'UTC'` gives the same instant, and `CAST(x AS TIMESTAMP)` of an instant, `x::DATE` and `CAST(ts AS TIMESTAMPTZ)` use the session zone (`duckdb-time-zones`): the writer uses the epoch spellings and the lift refuses the casts."
+  ],
+  "reference": "`UnFn.atUtc` (D53) returns its argument: the microseconds are the same, only the kind changes. The writer spells it `make_timestamptz(epoch_us(ts))` and `make_timestamp(epoch_us(x))`, which read no zone.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; #1725)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "instant-conversion"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "instant-conversion-new-york"
+        }
+      ]
+    }
+  ]
+}

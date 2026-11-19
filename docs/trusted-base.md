@@ -51,12 +51,12 @@ the project's one axiom (the trusted table below).
 | `Rel.mayIssues_sound` | A plan with no reported issue raises no runtime error | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.mayIssues_sound_all` | … on every order of the ties the reference allows | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.guardFree_sound` | Dropping the guards of a plan whose only issues are assumed changes no result | `Guards.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `Rel.duckdb_refines` | The generated DuckDB lowering computes the reference | `Obligations.lean` | propext, Classical.choice, Quot.sound |
+| `Rel.duckdb_refines` | The generated DuckDB lowering computes the reference, and a raise of the lowered plan is a raise of the reference: the second part is no part of `Engine.duckdb_sound`, and it discharges DuckDB's side condition with an empty `Rel.mayIssues` | `Obligations.lean` | propext, Classical.choice, Quot.sound |
 | `Lowering.duckdb_exact` | Each generated lowering entry is exact | `DuckDB/LoweringOn.lean` | propext, Classical.choice, Quot.sound |
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `DuckDB/Lift/Duckdb.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings). The model differs from the reference only in its scalar functions: its relational behaviour is the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide` (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings), given `NoRaiseSide`, which an empty `Rel.mayIssues` discharges (`Engine.duckdb_noRaise_of_mayIssues`). The model differs from the reference only in its scalar functions: its relational behaviour is the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which nothing discharges yet where `transferB` fails (#929) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
@@ -100,9 +100,9 @@ place, and what retires it.
 | opaque, `implemented_by`, unsafe def | `evalEngines`, `evalEnginesUnsafe` | `SubstraitLean/Obligations.lean` | The engine profiles' evaluation while the obligations elaborate | |
 | sorry | `checkGenerated` | `engines/Sverify/Engines/Generated.lean` | With `check_generated` off (a plain `lake build`, every editable install), the generated entries' proofs are `sorryAx`; CI, the wheels and `poe prove` check them. `substrait-check --build` says which build it is (`generated proofs checked` or `unchecked`); the report records it as `checker.generated_proofs`, and `str(report)` says "proved by a checker whose generated proofs are unchecked" for the second | |
 | compiled checker | `partial def` on the evaluation path, IO, `Lean.Json` | `SubstraitLean/`, `SubstraitCheck.lean`, `Main.lean` | The compiled code runs what the definitions state; a `partial def` is opaque to proofs | |
-| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` labels the reference's report with the profile of an out-of-tree engine marked `asReference`, and marks a built-in engine's request pending | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/271)) |
+| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` marks a request under an engine's profile pending (the reference's report, labelled `reference`) | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/271)) |
 | CLI glue | `"class_basis": "computed"`, `"sorted_basis": "computed"` | `SubstraitLean/Realize.lean` | The class and the sort per engine are computed from the rows; no theorem connects them to the engine's refinement | A theorem that does |
-| ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `SubstraitLean/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
+| ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `core/Sverify/Core/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
 | Python glue | `Observation.reads_members`, `routes.reproducibility` | `python/src/sverify/observation.py`, `python/src/sverify/routes.py` | The step from an observation to a level of determinism (D48): an observation that reads one zero and one NaN (`zeros="canon"`, `floats="plan"` or a tolerance) is met by `Report.deterministic`, the class level (`check_class_determined_sound`); one that reads the members asks for the exact level (`check_deterministic_sound`) | A bridge from `Row.canon` to `Relation.Equiv` for `zeros = .canon` (`core/Sverify/Core/ObsEquiv.lean`) |
 | Python glue | `Report.check_inputs`, `Report._unchecked_requires` | `python/src/sverify/report.py` | On Polars (and Spark) a guard-free plan runs without its per-row guards, which rests on `check_inputs` deciding `Rel.polars_sound`'s `hpre` on the data: each `requires` is checked on the run's engine, a report read back with `Report.from_substrait` carries its preconditions as plans (`PlannedCondition`), and a run refuses a report with a precondition it holds no check for | A theorem that ties the checks to `hpre` |
@@ -120,7 +120,10 @@ place, and what retires it.
   fewer than 2⁶² rows (`Rel.Small`), and every relation an
   aggregate reads fewer than 2⁶³, as `COUNT(*)` is a 64-bit integer
   (`Rel.sumRows`). `Rel.SmallAll` asks the same of every order of the ties
-  the reference allows, for `Rel.mayIssues_sound_all`.
+  the reference allows, for `Rel.mayIssues_sound_all` and
+  `check_issues_sound_all`; the engine's input is one of those orders.
+  `DataAssumed` in `Statements.lean` takes `Rel.SmallAll`, which gives
+  `Rel.Small` (`DataAssumed.small`).
   No machine's memory holds more. The theorems that need it take
   `Rel.Small` (`Rel.mayIssues_sound`, `Rel.guardFree_sound`,
   `Rel.duckdb_sound`, `Rel.polars_sound`, `Rel.spark_sound`, and the engine
@@ -161,8 +164,9 @@ place, and what retires it.
   trusted is the step before and after: `parse` (JSON to plans, and
   `schemaEnv`, the declared types as abstract values), `Report.json`, the
   `--serve` loop and `runOn` that call `check` and print its report, and
-  `underProfile`, which labels the reference's report with the profile a
-  request names for an out-of-tree engine marked `asReference` (no built-in one: Polars's report is pending until [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). On the Python side, the glue of
+  `underProfile`, which marks a request under an engine's profile pending
+  and returns the reference's report (an engine's own report waits for
+  [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). On the Python side, the glue of
   incremental views (change tables, consolidation, merge, and the finish that
   turns the state back into the view's rows). The checker parses and writes
   each maintenance plan (`init`, `contrib`, `merge`, `regroup`, the finish and

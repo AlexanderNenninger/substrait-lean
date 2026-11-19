@@ -200,7 +200,9 @@ def query_tables(query: str, dialect: str = "duckdb") -> list[str]:
     try:
         tree = sg.parse_one(query, read=dialect)
     except sg.errors.ParseError as e:
-        raise Unsupported(f"cannot parse the SQL: {str(e).splitlines()[0]}") from e
+        raise Unsupported(
+            f"cannot parse the SQL: {str(e).splitlines()[0]}; check that {dialect} runs it"
+        ) from e
     ctes = {c.alias_or_name for c in tree.find_all(sg.exp.CTE)}
     out: list[str] = []
     for t in tree.find_all(sg.exp.Table, bfs=False):

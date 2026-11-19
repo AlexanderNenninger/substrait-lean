@@ -181,6 +181,14 @@ def struct_names(schema: Any) -> list[str]:
     return [n for name, t in schema.items() for n in names(name, t)]
 
 
+def _instant(value: dt_.datetime) -> str:
+    """The microseconds since 1970-01-01 00:00 UTC of an instant literal (D53): a
+    datetime with an offset or a zone is the instant it names, a naive one is read
+    as UTC. (A named zone in the *text* of a SQL literal is refused by the lift.)"""
+    at = value.astimezone(dt_.UTC) if value.tzinfo is not None else value.replace(tzinfo=dt_.UTC)
+    return str((at - EPOCH.replace(tzinfo=dt_.UTC)) // dt_.timedelta(microseconds=1))
+
+
 def literal(value: Any, dtype: Any) -> Json:
     if value is None or dtype.is_null():
         return {"literal": {"null": type_json(dtype)}}
@@ -203,9 +211,7 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_timestamp():
         type_json(dtype)
         if value.tzinfo is not None or dtype.timezone is not None:
-            raise Unsupported(
-                f"a literal timestamp with a time zone is not supported yet {INSTANT_NOTE}"
-            )
+            return {"literal": {"precisionTimestampTz": {"precision": 6, "value": _instant(value)}}}
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
     if dtype.is_date():

@@ -5,13 +5,10 @@ Each test verifies a plan, runs it on DuckDB and on Polars by the route
 `sverify.routes.choose` picks (`docs/core-semantics.md`, "Which plans run on
 an engine", D13), and asserts the route, the class (#568) and the result.
 
-Most rows wait for the Lean side: the class, `q` and shim columns of
-`Profile.duckdb`'s and `Profile.polars`'s choices (steps 3a, 3b, D15) and
-the option dependency report (3c). Those are expected failures while the
-checker has no classes, and strict ones: they must pass once it does.
-Rows that also wait for step 1c (`UNSPECIFIED` sort keys, open choices
-proved over every pick) or #575 (`±∞` as an error of the reference) are
-expected failures without strictness, with the reason. The F rows check
+The class, `q` and shim columns of `Profile.duckdb`'s and
+`Profile.polars`'s choices (steps 3a, 3b, D15) and the option dependency
+report (3c) come from the checker. Rows that wait for more are expected
+failures without strictness, with the reason. The F rows check
 `Profile.polars` (`engines/polars/Sverify/Polars/Profile.lean`): a plan whose `%`
 floors runs natively on Polars and is refused on DuckDB.
 """
@@ -36,27 +33,8 @@ DIVIDENDS = [-7, 2, 4, 3, -1, 5, 6]
 DIVISORS = [2, -3, 3, -2, 2, 4, -4]
 
 
-def _classed() -> bool:
-    """Whether the checker's tables give the engines' classes (D15)."""
-    return any(
-        r.get("class") is not None
-        for p in ENGINES
-        for r in (routes._options_json().get("choices") or {}).get(p, [])
-    )
-
-
-CLASSED = _classed()
-
-#: The row needs the engines' classes from the checker.
-classes = pytest.mark.xfail(
-    not CLASSED,
-    reason="Profile.duckdb and Profile.polars choices with class, q and shim (#444 3a, 3b, 3c)",
-    strict=True,
-)
-
-
 def waits_for(why: str) -> pytest.MarkDecorator:
-    """The row needs more than the classes; `why` names it."""
+    """The row needs more than the checker's tables give; `why` names it."""
     return pytest.mark.xfail(reason=why, strict=False)
 
 
@@ -95,7 +73,6 @@ def route_of(report: sv.Report, engine: str) -> routes.Route:
 # -- A: integers and doubles -------------------------------------------------
 
 
-@classes
 def test_a1_integer_arithmetic_with_negative_operands(con) -> None:
     """`+ − × ÷ %` on `i64` with negative operands: Polars floors `//` and
     `%`, so its translation shims both (value side); DuckDB truncates, as
@@ -122,7 +99,6 @@ def test_a1_integer_arithmetic_with_negative_operands(con) -> None:
     assert route_of(report, "polars").cls == "shim"
 
 
-@classes
 def test_a2_sum_of_a_bounded_int32(con) -> None:
     """Overflow proved absent from the bounds: no shim, no guard."""
     t = con.table("t")
@@ -137,7 +113,6 @@ def test_a2_sum_of_a_bounded_int32(con) -> None:
         assert route_of(report, e).cls == "exact"
 
 
-@classes
 def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
     """`SUM` of an unbounded `i64`: assumed to fit and checked on the data.
     A batch that overflows is refused before the plan runs, on both
@@ -172,7 +147,7 @@ def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
             report.run(bad, e, route="auto")
 
 
-@waits_for("#575: overflow of doubles to ±inf as an error of the reference, with inferred bounds")
+@waits_for("#1803: the run-time check of x * y staying finite does not discharge its domain error")
 def test_a4_double_product_that_may_reach_infinity(con) -> None:
     """`x * y` on doubles: the bounds that keep it finite are inferred and
     checked on the data; a verified run never yields a new `±∞`."""
@@ -193,7 +168,6 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
             report.run(bad, e, route="auto")
 
 
-@classes
 def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
     """`round` on ties (half away from zero in the reference; Polars rounds
     half to even natively, so its translation writes the mode), and `AVG`
@@ -217,10 +191,20 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
         assert report.verdict == sv.Verdict.PROVED, str(report)
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
-    # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the written plan's
-    # proved template gives the reference's `0.0`.
-    assert route_of(rounded, "duckdb").cls == "shim"
+    # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the default
+    # observation reads one zero, so DuckDB runs it as written; an
+    # observation that reads the signs gets the written plan's proved
+    # template, which gives the reference's `0.0`. Polars shims the
+    # rounding mode either way.
+    assert route_of(rounded, "duckdb").cls == "observed"
     assert route_of(rounded, "polars").cls == "shim"
+    signed = sv.verify(
+        tt.select("k", r=tt.x.round()),
+        requires=req,
+        ensures=[sv.equivalent(floats="plan")],
+    )
+    assert route_of(signed, "duckdb").cls == "shim"
+    assert route_of(signed, "polars").cls == "shim"
     assert mean._epsilon, "the plan's bound on the mean"
     assert route_of(mean, "duckdb").cls in ("exact", "observed")
     assert route_of(mean, "polars").cls == "observed"
@@ -229,7 +213,6 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
 # -- B: observations ---------------------------------------------------------
 
 
-@classes
 def test_b1_float_aggregates_within_a_tolerance(con) -> None:
     """Float `SUM` and `AVG` with a tolerance postcondition: the summation
     order is open, so an engine is `approx` within the plan's bound (#85,
@@ -274,7 +257,6 @@ def _non_negative(con) -> sv.engine.Connection:
     return out
 
 
-@classes
 def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
     """`GROUP BY` a double holding `-0.0`, `0.0` and NaN: NaN equality is
     native, but Polars keeps the first zero it sees. Without
@@ -284,7 +266,7 @@ def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
     z.put("d", pa.table({"x": [-0.0, 0.0, float("nan"), float("nan"), 1.0], "v": [1, 2, 3, 4, 5]}))
     d = z.table("d")
     expr = d.group_by("x").aggregate(n=d.v.count())
-    exact = sv.verify(expr)
+    exact = sv.verify(expr, ensures=[sv.equivalent(floats="plan")])
     assert exact.verdict == sv.Verdict.PROVED, str(exact)
     strict = routes.choose(exact, "polars")
     assert (strict.refused and "zeros" in strict.reason) or strict.cls == "shim", strict
@@ -298,7 +280,6 @@ def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
 # -- C: order and NULLs ------------------------------------------------------
 
 
-@classes
 def test_c1_explicit_nulls_first(con) -> None:
     """A key that states `NULLS FIRST`: explicit intent, native on both."""
     t = con.table("t")
@@ -348,7 +329,6 @@ def test_c3_limit_over_ties_is_reported_and_refused_where_required(con) -> None:
         report.run(con, "polars", route="auto", reproducible=sv.equivalent())
 
 
-@classes
 def test_c4_join_on_keys_with_nulls(con) -> None:
     """`=` skips NULL keys on both engines, as in the reference."""
     t = con.table("t")
@@ -394,7 +374,6 @@ def test_d1_open_picks_and_element_order(con) -> None:
 # -- E: strings --------------------------------------------------------------
 
 
-@classes
 def test_e1_substring_with_a_negative_start_and_strpos(con) -> None:
     """Polars counts from 0, in bytes for `strpos`, and gives NULL where
     `strpos` gives 0: the translation rewrites both."""
@@ -489,7 +468,6 @@ def test_f1e_recheck_is_unavailable_for_polars_until_271(con) -> None:
     )
 
 
-@classes
 def test_f2_duckdb_plan_is_refused_on_polars_until_271(con) -> None:
     """Double arithmetic allowed to reach `±∞`, verified under `Profile.duckdb`:
     DuckDB's `zero_sign` is `ONE_ZERO` and Polars's `IEEE`, so the transfer

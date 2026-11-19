@@ -1,0 +1,56 @@
+{
+  "id": "duckdb-coerce-date-timestamptz",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "A DATE or TIMESTAMP against a TIMESTAMPTZ compares as instants in the session's TimeZone",
+  "verdict": "`ts = tstz` and `date = tstz` are true under UTC and false under America/New_York for the same wall clock",
+  "area": "temporal",
+  "options": [
+    "implicit_casts"
+  ],
+  "layer": "semantics",
+  "constructs": [
+    "=",
+    "<"
+  ],
+  "settings": {},
+  "description": [
+    "`DATE '2020-01-01' = TIMESTAMP '2020-01-01 00:00:00'` is true and `DATE < TIMESTAMP '… 00:00:00.000001'` is true: a date is its midnight. Against a TIMESTAMPTZ the wall clock is read in the session's `TimeZone`: `TIMESTAMP '2020-01-01 00:00:00' = TIMESTAMPTZ '2020-01-01 00:00:00+00'` is true under `UTC` and false under `America/New_York`, and so is the DATE against it."
+  ],
+  "reference": [
+    "Time-zone-aware timestamps are refused by the model (`duckdb-time-zones`). The lift plans `ts = tstz` and `dt = tstz` with both sides cast to a naive `timestamp(6)` (2 casts) and does not refuse; whether the checker refuses the plan was not re-run here (the only local checker is from 2026-11-09). A DATE against a TIMESTAMP is written as the midnight cast (#807, 2 casts)."
+  ],
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session claude/duckdb-coercions, #1484 census)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-date-timestamp"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-date-timestamptz-utc"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-date-timestamptz-zone"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` records each query as it comes."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (sverify.sql_lift.lift, semantics=\"duckdb\", on origin/main b28e14ff)",
+      "notes": "`lift` on `ts = tstz`, `dt = tstz`, `dt = ts`: each plans with two casts to precisionTimestamp 6; no refusal in the lift."
+    }
+  ],
+  "issues": [
+    1484
+  ]
+}
