@@ -105,9 +105,9 @@ def base_calls() -> dict[tuple[str, str], tuple[dict, int]]:
 
 def collapses(written: dict[str, str], default: str) -> list[list[str]]:
     """The accepted values the checker writes alike while it writes another
-    apart, and the values written as the plan without the option when more than
-    one is: the parser reads them as one value. `default` is the plan written
-    without the option, which at most one value can stand for."""
+    apart, and the values written as the base call when more than one is: the
+    parser reads them as one value. `default` is the base call as written (it
+    may state the option itself), which at most one value can stand for."""
     groups = collections.defaultdict(list)
     for value, text in written.items():
         groups[text].append(value)
@@ -116,11 +116,12 @@ def collapses(written: dict[str, str], default: str) -> list[list[str]]:
     return out + ([as_default] if len(as_default) > 1 and as_default not in out else [])
 
 
-#: Pairs (function, option) whose option changes nothing for the call's kind:
-#: the choice of `on_domain_error` for an integer `power` is `any`
-#: (`Options.lean`, group `int.pow`), so every value is accepted and written as
-#: the plan without it.
-NO_EFFECT = {("power", "on_domain_error")}
+#: Triples (function, output kind, option) whose option changes nothing: the
+#: choice of `on_domain_error` for an integer `power` is `any` (`Options.lean`,
+#: group `int.pow`; the producer states no output type on it, kind `?`), so
+#: every value is accepted and written as the base call. The float `power` is
+#: not in the set: there the option matters.
+NO_EFFECT = {("power", "?", "on_domain_error")}
 
 
 def test_a_collapse_is_two_values_written_alike_beside_another():
@@ -172,7 +173,7 @@ def test_every_option_value_is_refused_or_written_back():
                 for (_, o, pref), _ in (stated(json.loads(out)) - stated(plan)).items():
                     if o == option and pref != (value,):
                         wrong.append(f"{name}({kind}) {option}={value} is written as {pref}")
-            if (name, option) not in NO_EFFECT:
+            if (name, kind, option) not in NO_EFFECT:
                 wrong += [
                     f"{name}({kind}) {option}: {vs} are written alike"
                     for vs in collapses(written, default)
