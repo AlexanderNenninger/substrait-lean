@@ -408,21 +408,6 @@ class Dialect:
     def float_div(self, a: str, b: str) -> str:
         return f"({a} / {b})"
 
-    def float_div_by_zero_written(self, a: str, b: str) -> str:
-        """`a / b` with IEEE's result by a zero divisor written out, for an
-        engine whose `/` raises on one (Spark's ANSI `/`; Snowflake's, recorded
-        privately): ±inf by the dividend's sign, NaN for `0 / 0` and a NaN
-        dividend. The divisor is the one zero, +0.0. Under
-        `on_division_by_zero` = `ERROR` the guard raises first."""
-        if (c := _float_const(b)) is not None and c != 0:
-            return f"({a} / {b})"
-        nan, inf, ninf = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf))
-        by_zero = (
-            f"(CASE WHEN {a} IS NULL THEN {self.null('float')} "
-            f"WHEN {self.is_nan(a)} OR {a} = 0 THEN {nan} WHEN {a} > 0 THEN {inf} ELSE {ninf} END)"
-        )
-        return f"(CASE WHEN {b} = 0 THEN {by_zero} ELSE {a} / {b} END)"
-
     def float_mod(self, a: str, b: str) -> str:
         """`BinFn.fmod`, C's `fmod`: the sign of `a`; NaN for a NaN or an
         infinite `a`, and `a` for an infinite `b`. By zero it raises, as
@@ -5786,10 +5771,3 @@ def to_sql(
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""
     return w.select(items, dialect.subquery(w.rel(p.root, ordered), a), rest)
-
-
-def _float_const(sql: str) -> float | None:
-    """The value of a `float_lit` constant (`CAST('…' AS <double>)`), or None
-    for other SQL."""
-    m = re.fullmatch(r"CAST\('([^']*)' AS [A-Z ]+\)", sql)
-    return float(m.group(1)) if m else None

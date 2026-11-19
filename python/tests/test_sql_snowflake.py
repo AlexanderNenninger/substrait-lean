@@ -253,16 +253,6 @@ def test_float_literals():
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
 
 
-def test_double_division_writes_the_result_by_zero():
-    # Snowflake's `/` raises on a zero divisor (Snowflake behaviour recorded
-    # privately); IEEE division's result by zero is written out, as Spark's is.
-    sql = parses(SNOWFLAKE.float_div("a", "b"))
-    assert sql.startswith("(CASE WHEN b = 0 THEN (CASE WHEN a IS NULL")
-    assert "CAST('NaN' AS FLOAT)" in sql and sql.endswith("ELSE a / b END)")
-    # A non-zero constant divisor needs no case.
-    assert SNOWFLAKE.float_div("a", SNOWFLAKE.float_lit(2.5)) == "(a / CAST('2.5' AS FLOAT))"
-
-
 @pytest.mark.parametrize(
     ("label", "native"), [("rolling mean (rows)", False), ("running mean", True)]
 )

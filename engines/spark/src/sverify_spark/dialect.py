@@ -67,6 +67,8 @@ result is the Lean value, checked on a local Spark session by
 
 from __future__ import annotations
 
+import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
@@ -174,8 +176,15 @@ class SparkDialect(Dialect):
     # Doubles
 
     def float_div(self, a: str, b: str) -> str:
-        # Spark's ANSI `/` raises on a zero divisor.
-        return self.float_div_by_zero_written(a, b)
+        if (c := _float_const(b)) is not None and c != 0:
+            return f"({a} / {b})"
+        nan, inf, ninf = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf))
+        # The divisor is the one zero, +0.0.
+        by_zero = (
+            f"(CASE WHEN {a} IS NULL THEN {self.null('float')} "
+            f"WHEN isnan({a}) OR {a} = 0 THEN {nan} WHEN {a} > 0 THEN {inf} ELSE {ninf} END)"
+        )
+        return f"(CASE WHEN {b} = 0 THEN {by_zero} ELSE {a} / {b} END)"
 
     def whole(self, fn: str, x: str) -> str:
         """`fn` (FLOOR or CEIL, which return BIGINT) on a double. Doubles of
@@ -431,6 +440,12 @@ class SparkDialect(Dialect):
 
     def row_ordinal(self) -> str:
         raise self.no_row_order("Spark")
+
+
+def _float_const(sql: str) -> float | None:
+    """The value of a `float_lit` constant, or None for other SQL."""
+    m = re.fullmatch(r"CAST\('([^']*)' AS DOUBLE\)", sql)
+    return float(m.group(1)) if m else None
 
 
 SPARK: Dialect = SparkDialect("spark")

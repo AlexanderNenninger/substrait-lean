@@ -232,10 +232,6 @@ class SnowflakeDialect(Dialect):
     def float_logb(self, x: str, b: str) -> str:
         raise self.to_duckdb("Snowflake's LN is not documented to be C's libm", "see #852")
 
-    def float_div(self, a: str, b: str) -> str:
-        # Snowflake's `/` raises on a zero divisor (recorded privately).
-        return self.float_div_by_zero_written(a, b)
-
     def is_nan(self, x: str) -> str:
         return f"({x} = {NAN})"
 
