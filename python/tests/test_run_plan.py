@@ -53,7 +53,7 @@ def test_accepted_rewrite_runs_and_shrinks_the_sql(rules):
     report = sv.verify(T.distinct(), requires=KEY)
     assert report._run_gate is None and report._run_plan is not None
     assert "GROUP BY" not in report.to_sql()
-    contracts._RULES = None
+    rules()
     as_written = sv.verify(T.distinct(), requires=KEY)
     assert "GROUP BY" in as_written.to_sql()
     c = con()
@@ -61,7 +61,8 @@ def test_accepted_rewrite_runs_and_shrinks_the_sql(rules):
         assert sorted_rows(report.run(c, engine)) == sorted_rows(as_written.run(c, engine))
 
 
-def test_rule_off_keeps_the_plan_as_written():
+def test_rule_off_keeps_the_plan_as_written(rules):
+    rules()
     report = sv.verify(T.distinct(), requires=KEY)
     assert report._rewrites == [DISTINCT]
     assert report._run_plan is None and report._run_gate == "no_rewrite"

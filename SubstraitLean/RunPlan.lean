@@ -496,7 +496,9 @@ def runPlanIn (K : KnowledgeEnv) : Except RunGate Rel :=
   else match R.transform with
     | none => .error .noRewrite
     | some T =>
-      if !T.root.checkWF R.cat then .error .noRewrite
+      -- No rule on: nothing to rewrite, and no analysis to run (the default).
+      if !Rule.all.any R.runRules then .error .noRewrite
+      else if !T.root.checkWF R.cat then .error .noRewrite
       else if (T.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf R.runRules).2.isEmpty then
         .error .noRewrite
       else match R.rewriteOf K T.root with
@@ -560,6 +562,8 @@ theorem check_run_plan_sound {input : Json} {R : Request} {rep : Report}
   split at hs
   · simp at hs
   dsimp only at hs
+  split at hs
+  · simp at hs
   split at hs
   · simp at hs
   split at hs
