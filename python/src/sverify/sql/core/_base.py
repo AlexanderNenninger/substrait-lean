@@ -535,6 +535,11 @@ class Dialect:
     def time_sub_interval(self, ts: str, iv: str) -> str:
         return f"({ts} - {iv})"
 
+    def time_add_micros(self, ts: str, us: str, sub: bool) -> str:
+        """`ts ± us`, a count of microseconds from an expression. New on
+        DuckDB only (#271)."""
+        raise self.not_written("a timestamp plus a column's interval")
+
     def time_diff(self, a: str, b: str) -> str:
         """`a - b` for timestamps, as an interval."""
         return f"({a} - {b})"
@@ -5485,6 +5490,12 @@ class _Writer:
             raise WriterUnsupported(
                 "date arithmetic is not in the Lean model (dates are days, intervals microseconds)"
             )
+        if op != "mul" and {ka, kb} == {"time", "int"} and (op == "add" or ka == "time"):
+            # A timestamp and a count of microseconds, as a column's count of an
+            # interval is written (`Time`: intervals are integers).
+            t, n = (a, b) if ka == "time" else (b, a)
+            us = self.int_operand(n, ref, cols, "adding to a timestamp")
+            return d.time_add_micros(self.expr(t, ref, cols, "time"), us, op == "sub")
         sa, sb = self.expr(a, ref, cols, ka or kb), self.expr(b, ref, cols, kb or ka)
         match op, ka or kb, kb or ka:
             case "add", "time", "interval":
