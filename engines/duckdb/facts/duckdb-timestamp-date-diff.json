@@ -1,0 +1,66 @@
+{
+  "id": "duckdb-timestamp-date-diff",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "date_diff of timestamps counts the unit boundaries crossed",
+  "verdict": "no-finding: the reference (D58) counts the same way",
+  "area": "temporal",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "date_diff"
+  ],
+  "settings": {},
+  "description": [
+    "`date_diff(part, start, end)` of two timestamps, for microsecond to day, is the difference of the two values' unit indexes (each floored to its unit), not the floor of the exact difference: 1 \u00b5s across an hour boundary is 1, an almost-hour inside one hour is 0, and the order of the arguments flips the sign. Values before 1970 floor like `date_trunc`."
+  ],
+  "reference": [
+    "D58: `a.delta(b, unit)` is `idx(a) - idx(b)` with the floor of the microseconds over the unit; the writer swaps DuckDB's argument order. Week, month, quarter, year and nanosecond are refused."
+  ],
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "Claude session for #60 (duckdb 2.0.0, Python)",
+      "evidence": [
+        {
+          "sql": "SELECT date_diff('hour', TIMESTAMP '2024-01-01 00:59:59.999999', TIMESTAMP '2024-01-01 01:00:00')",
+          "observed": "1"
+        },
+        {
+          "sql": "SELECT date_diff('hour', TIMESTAMP '2024-01-01 01:00:00.000001', TIMESTAMP '2024-01-01 01:59:59.999999')",
+          "observed": "0"
+        },
+        {
+          "sql": "SELECT date_diff('hour', TIMESTAMP '2024-01-01 01:59:59.999999', TIMESTAMP '2024-01-01 01:00:00')",
+          "observed": "0"
+        },
+        {
+          "sql": "SELECT date_diff('hour', TIMESTAMP '2024-01-01 01:00:00', TIMESTAMP '2024-01-01 02:00:00')",
+          "observed": "1"
+        },
+        {
+          "sql": "SELECT date_diff('hour', TIMESTAMP '1969-12-31 23:59:59.999999', TIMESTAMP '1970-01-01 00:00:00')",
+          "observed": "1"
+        },
+        {
+          "sql": "SELECT date_diff('hour', TIMESTAMP '1969-12-31 22:30:00', TIMESTAMP '1969-12-31 23:30:00')",
+          "observed": "1"
+        },
+        {
+          "sql": "SELECT date_diff('day', TIMESTAMP '1969-12-31 23:59:59', TIMESTAMP '1970-01-01 00:00:01')",
+          "observed": "1"
+        },
+        {
+          "sql": "SELECT date_diff('millisecond', TIMESTAMP '2024-01-01 00:00:00.0009', TIMESTAMP '2024-01-01 00:00:00.001')",
+          "observed": "1"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    60
+  ]
+}
