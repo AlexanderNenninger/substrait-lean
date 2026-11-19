@@ -11,7 +11,8 @@ union, group by every column, add the weights, drop zeros) adds the parts up:
 
 - when something reads the table: `view`, `attach`, `to_arrow`, `retire`, and
   `expanded` or `has_negative` unless the parts alone answer (below). No row
-  and no answer leaves a state whose parts are not added up;
+  and no answer that needs the sum leaves a state whose parts are not added
+  up;
 - when the parts passed a bound (`PartsState.needs_compaction`): the rows
   added since the last time hold as many rows as that sum, or there are more
   than `MAX_PARTS` parts. The files on disk then stay within about twice the
@@ -22,7 +23,7 @@ An operation that is linear in the weights runs on the parts as they are:
 added-up state stays added up) and `expanded` where every weight of every part
 is positive (a row is as many copies as its weights add up to). A weight sum
 that leaves 64 bits is raised at the merge that adds the parts up, which can
-be later than the refresh that caused it; no answer comes from such a state.
+be later than the refresh that caused it; no answer that needs the sum comes from such a state.
 The plan is the one definition of row equality: nothing else adds weights.
 
 An engine supplies a `Backend`: the frames it computes lazily, writing one as
