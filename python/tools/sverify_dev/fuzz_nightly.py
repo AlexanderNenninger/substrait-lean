@@ -42,6 +42,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Iterable, Sequence
@@ -426,7 +427,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     else:
         entry = json.loads(args.ledger.read_text())["entries"][args.id]
         if "{file}" in entry["repro"]:
-            path = Path(f"fuzz-{args.id}.json").resolve()
+            # Outside the checkout, where it can't be committed by accident.
+            path = Path(tempfile.gettempdir()) / f"fuzz-{args.id}.json"
             path.write_text(json.dumps(entry["example"], indent=1))
             print(entry["repro"].format(file=path))
         else:

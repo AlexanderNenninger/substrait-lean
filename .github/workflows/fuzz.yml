@@ -21,6 +21,9 @@ on:
       - .github/workflows/fuzz.yml
       - .github/actions/build-checker/**
       - python/tools/sverify_dev/fuzz_nightly.py
+      - python/tools/sverify_dev/fuzz.py
+      - python/tools/sverify_dev/duckdb_fuzz.py
+      - python/tests/_suite.py
   workflow_dispatch:
     inputs:
       seconds:
@@ -121,10 +124,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          run=$(gh run list -R "$REPO" -w fuzz.yml -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
-          if [ -n "$run" ] && gh run download "$run" -R "$REPO" -n fuzz-ledger -D prev; then
-            cp prev/fuzz-ledger.json fuzz-ledger.json
-          fi
+          # The newest earlier night with a ledger: a night that lost a batch to
+          # a spot reclaim is a failed run, and its ledger still counts.
+          for run in $(gh run list -R "$REPO" -w fuzz.yml -b main -s completed -L 10 \
+                         --json databaseId -q ".[] | select(.databaseId != $GITHUB_RUN_ID) | .databaseId"); do
+            if gh run download "$run" -R "$REPO" -n fuzz-ledger -D prev 2>/dev/null; then
+              echo "Previous ledger: run $run"
+              cp prev/fuzz-ledger.json fuzz-ledger.json
+              break
+            fi
+          done
           python3 python/tools/sverify_dev/fuzz_nightly.py merge \
             --ledger fuzz-ledger.json --report fuzz-report.md batches
           cat fuzz-report.md >> "$GITHUB_STEP_SUMMARY"
