@@ -152,7 +152,7 @@ theorem Obs.stringsAt_rank {q' q : Obs} {ctx : ObsCtx} {col : Nat}
 mutual
 /-- **Two values of column `col` equal up to `q`**: the same constructor,
 integers by `IntEquiv`, strings by `StrEquiv`, lists elementwise, or as a
-multiset where `q.elements` is. -/
+multiset where `q.elements` is, structs field by field. -/
 def Value.Equiv (q : Obs) (ctx : ObsCtx) (col : Nat) : Value → Value → Prop
   | .null, .null => True
   | .bool a, .bool b => a = b
@@ -161,9 +161,11 @@ def Value.Equiv (q : Obs) (ctx : ObsCtx) (col : Nat) : Value → Value → Prop
     IntEquiv q ctx col a b
   | .dec s a, .dec t b => s = t ∧ IntEquiv q ctx col a b
   | .str a, .str b => StrEquiv q ctx col a b
-  | .list as, .list bs | .struct as, .struct bs => match q.elements with
+  | .list as, .list bs => match q.elements with
     | .sequence => Value.EquivList q ctx col as bs
     | .multiset => ∃ cs, Value.EquivList q ctx col as cs ∧ cs.Perm bs
+  -- A struct's fields are positional: its fields compare in order at every level.
+  | .struct as, .struct bs => Value.EquivList q ctx col as bs
   | _, _ => False
 
 /-- Lists of values of column `col`, elementwise. -/
@@ -217,11 +219,12 @@ theorem Value.Equiv.refl (h : ctx.ReflAt q) : ∀ v, Value.Equiv q ctx col v v
   | .int a | .float a | .date a | .ts a | .tod a => IntEquiv.refl h a
   | .dec _ a => ⟨rfl, IntEquiv.refl h a⟩
   | .str a => StrEquiv.refl h a
-  | .list as | .struct as => by
+  | .list as => by
     unfold Value.Equiv
     split
     · exact Value.EquivList.refl h as
     · exact ⟨as, Value.EquivList.refl h as, .refl _⟩
+  | .struct as => Value.EquivList.refl h as
 
 theorem Value.EquivList.refl (h : ctx.ReflAt q) : ∀ vs, Value.EquivList q ctx col vs vs
   | [] => trivial
@@ -253,17 +256,19 @@ theorem Value.Equiv.symm (h : ctx.WF) : ∀ a b, Value.Equiv q ctx col a b → V
     cases b <;> first | exact e.elim | exact IntEquiv.symm h e
   | .dec _ _, b, e => by cases b <;> first | exact e.elim | exact ⟨e.1.symm, IntEquiv.symm h e.2⟩
   | .str _, b, e => by cases b <;> first | exact e.elim | exact StrEquiv.symm h e
-  | .list as, b, e | .struct as, b, e => by
+  | .list as, b, e => by
     cases b <;> try exact e.elim
-    all_goals
-      rename_i bs
-      unfold Value.Equiv at e ⊢
-      cases hl : q.elements <;> simp only [hl] at e ⊢
-      · exact Value.EquivList.symm h as bs e
-      · obtain ⟨cs, hl, hp⟩ := e
-        obtain ⟨ds, hd, hf⟩ :=
-          Forall2.perm hp (Value.equivList_iff.1 (Value.EquivList.symm h as cs hl))
-        exact ⟨ds, Value.equivList_iff.2 hf, hd.symm⟩
+    rename_i bs
+    unfold Value.Equiv at e ⊢
+    cases hl : q.elements <;> simp only [hl] at e ⊢
+    · exact Value.EquivList.symm h as bs e
+    · obtain ⟨cs, hl, hp⟩ := e
+      obtain ⟨ds, hd, hf⟩ :=
+        Forall2.perm hp (Value.equivList_iff.1 (Value.EquivList.symm h as cs hl))
+      exact ⟨ds, Value.equivList_iff.2 hf, hd.symm⟩
+  | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    exact Value.EquivList.symm h as _ e
 
 theorem Value.EquivList.symm (h : ctx.WF) :
     ∀ as bs, Value.EquivList q ctx col as bs → Value.EquivList q ctx col bs as
@@ -317,20 +322,23 @@ theorem Value.Equiv.trans (h : ObsCtx.Comp c₁ c₂ c₃) :
   | .str _, b, d, e₁, e₂ => by
     cases b <;> try exact e₁.elim
     cases d <;> first | exact e₂.elim | exact StrEquiv.trans h e₁ e₂
-  | .list as, b, d, e₁, e₂ | .struct as, b, d, e₁, e₂ => by
+  | .list as, b, d, e₁, e₂ => by
     cases b <;> try exact e₁.elim
-    all_goals cases d <;> try exact e₂.elim
-    all_goals
-      rename_i bs ds
-      unfold Value.Equiv at e₁ e₂ ⊢
-      cases hc11 : q.elements <;> simp only [hc11] at e₁ e₂ ⊢
-      · exact Value.EquivList.trans h as bs ds e₁ e₂
-      · obtain ⟨cs, h₁, p₁⟩ := e₁
-        obtain ⟨cs', h₂, p₂⟩ := e₂
-        -- `as R cs ~ bs R cs' ~ ds`: move `cs ~ bs` past `bs R cs'`.
-        obtain ⟨es, pe, fe⟩ := Forall2.perm p₁.symm (Value.equivList_iff.1 h₂)
-        have := Value.EquivList.trans h as cs es h₁ (Value.equivList_iff.2 fe)
-        exact ⟨es, this, pe.symm.trans p₂⟩
+    cases d <;> try exact e₂.elim
+    rename_i bs ds
+    unfold Value.Equiv at e₁ e₂ ⊢
+    cases hc11 : q.elements <;> simp only [hc11] at e₁ e₂ ⊢
+    · exact Value.EquivList.trans h as bs ds e₁ e₂
+    · obtain ⟨cs, h₁, p₁⟩ := e₁
+      obtain ⟨cs', h₂, p₂⟩ := e₂
+      -- `as R cs ~ bs R cs' ~ ds`: move `cs ~ bs` past `bs R cs'`.
+      obtain ⟨es, pe, fe⟩ := Forall2.perm p₁.symm (Value.equivList_iff.1 h₂)
+      have := Value.EquivList.trans h as cs es h₁ (Value.equivList_iff.2 fe)
+      exact ⟨es, this, pe.symm.trans p₂⟩
+  | .struct as, b, d, e₁, e₂ => by
+    cases b <;> try exact e₁.elim
+    cases d <;> try exact e₂.elim
+    exact Value.EquivList.trans h as _ _ e₁ e₂
 
 theorem Value.EquivList.trans (h : ObsCtx.Comp c₁ c₂ c₃) :
     ∀ as bs ds, Value.EquivList q c₁ col as bs → Value.EquivList q c₂ col bs ds →
@@ -399,18 +407,20 @@ theorem Value.Equiv.mono (hc : ctx.WF) (h : q'.le q = true) :
     cases b <;> first | exact e.elim | exact IntEquiv.mono hc h e
   | .dec _ _, b, e => by cases b <;> first | exact e.elim | exact ⟨e.1, IntEquiv.mono hc h e.2⟩
   | .str _, b, e => by cases b <;> first | exact e.elim | exact StrEquiv.mono hc h e
-  | .list as, b, e | .struct as, b, e => by
+  | .list as, b, e => by
     cases b <;> try exact e.elim
-    all_goals
-      rename_i bs
-      obtain ⟨-, hl, -⟩ := Obs.le_parts h
-      unfold Value.Equiv at e ⊢
-      cases hq' : q'.elements <;> cases hq : q.elements <;>
-        simp only [hq', hq, ElemsObs.le, reduceCtorEq] at hl e ⊢
-      · exact Value.EquivList.mono hc h as bs e
-      · exact ⟨bs, Value.EquivList.mono hc h as bs e, .refl _⟩
-      · obtain ⟨cs, hc', hp⟩ := e
-        exact ⟨cs, Value.EquivList.mono hc h as cs hc', hp⟩
+    rename_i bs
+    obtain ⟨-, hl, -⟩ := Obs.le_parts h
+    unfold Value.Equiv at e ⊢
+    cases hq' : q'.elements <;> cases hq : q.elements <;>
+      simp only [hq', hq, ElemsObs.le, reduceCtorEq] at hl e ⊢
+    · exact Value.EquivList.mono hc h as bs e
+    · exact ⟨bs, Value.EquivList.mono hc h as bs e, .refl _⟩
+    · obtain ⟨cs, hc', hp⟩ := e
+      exact ⟨cs, Value.EquivList.mono hc h as cs hc', hp⟩
+  | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    exact Value.EquivList.mono hc h as _ e
 
 theorem Value.EquivList.mono (hc : ctx.WF) (h : q'.le q = true) :
     ∀ as bs, Value.EquivList q' ctx col as bs → Value.EquivList q ctx col as bs
@@ -464,13 +474,15 @@ theorem Value.Equiv.eq_of_valExact (hq : q.valExact = true) :
     obtain ⟨-, -, -, -, hs⟩ := Obs.valExact_iff.1 hq
     change StrEquiv q ctx col _ _ at e
     unfold StrEquiv StrEquivAt Obs.stringsAt at e; simp only [hs, ite_self] at e; exact congrArg _ e
-  | .list as, b, e | .struct as, b, e => by
+  | .list as, b, e => by
     cases b <;> try exact e.elim
-    all_goals
-      rename_i bs
-      obtain ⟨hl, -⟩ := Obs.valExact_iff.1 hq
-      unfold Value.Equiv at e; simp only [hl] at e
-      exact congrArg _ (Value.EquivList.eq_of_valExact hq as bs e)
+    rename_i bs
+    obtain ⟨hl, -⟩ := Obs.valExact_iff.1 hq
+    unfold Value.Equiv at e; simp only [hl] at e
+    exact congrArg _ (Value.EquivList.eq_of_valExact hq as bs e)
+  | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    exact congrArg _ (Value.EquivList.eq_of_valExact hq as _ e)
 
 theorem Value.EquivList.eq_of_valExact (hq : q.valExact = true) :
     ∀ as bs, Value.EquivList q ctx col as bs → as = bs

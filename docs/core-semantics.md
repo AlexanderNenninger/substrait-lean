@@ -148,6 +148,15 @@ Three kinds of semantics, each with one job.
   overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
   so neither of the two refines the other.
 
+A plan is verified up to an observation `o` when its verdict is one of the
+proved values and it is determined up to `o`: every result the reference
+allows is equal, up to `o`, to `Rel.eval`'s (`Rel.DeterminedUpTo`). A sound
+engine's model then gives that one observed answer (`Engine.Sound.equiv_eval`),
+and two sound engines agree on it (`Engine.sound_agree`). The proof outcome
+(`Report.verdict`) and the determinism (`Report.deterministic`) are two
+attributes of a report, and "verified" is the term read off both
+([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
+
 Black boxes are rows of a black-box catalogue (`Boxes`,
 `core/Sverify/Core/BlackBox.lean`) that engine packages supply: DuckDB's is
 `Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`). The core holds the

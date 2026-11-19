@@ -536,6 +536,11 @@ class Dialect:
     def time_sub_interval(self, ts: str, iv: str) -> str:
         return f"({ts} - {iv})"
 
+    def interval_micros(self, iv: str) -> str:
+        """The microseconds of an interval of days or less. New on DuckDB
+        only (#271)."""
+        raise self.not_written("an interval as a number")
+
     def time_add_micros(self, ts: str, us: str, sub: bool) -> str:
         """`ts ± us`, a count of microseconds from an expression. New on
         DuckDB only (#271)."""
@@ -5403,6 +5408,14 @@ class _Writer:
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
     ) -> str:
         k = expr_kind(e, cols)
+        if k == "interval":
+            # Intervals are integer microseconds in the model (D58's delta
+            # divides the microseconds between two timestamps). The writer's
+            # interval kind never carries months (`Const` refuses them), so
+            # no month interval reaches the dialect's `interval_micros`.
+            if isinstance(e, Lit) and isinstance(e.value, int):
+                return self.d.int_lit(e.value)
+            return self.d.interval_micros(self.expr(e, ref, cols, "interval"))
         if k not in ("int", None) or (k is None and not (isinstance(e, Lit) and e.value is None)):
             raise Unsupported(f"{what} needs an integer, not {k or 'a value of unknown type'}")
         sql = self.expr(e, ref, cols, "int")
