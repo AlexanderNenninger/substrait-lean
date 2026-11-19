@@ -9,7 +9,9 @@
     "rounding"
   ],
   "rows": [
-    {"group": "fp.elem", "option": "rounding", "types": ["fp32", "fp64"]}
+    {"group": "fp.elem", "option": "rounding", "types": ["fp32", "fp64"]},
+    {"group": "fp.pow", "option": "rounding", "types": ["fp32", "fp64"]},
+    {"group": "fp.atan2", "option": "rounding", "types": ["fp32", "fp64"]}
   ],
   "constructs": [
     "sqrt",
