@@ -1317,13 +1317,22 @@ class Report:
     @property
     def _proved(self) -> bool:
         """Either proved verdict: what a run, an export and a summary need."""
-        return (
-            all(c.portable for c in self.ensures)
-            and not self.errors
-            and not self._transfer
-            and not self.needs
-            and not self.floats_unmet
-        )
+        return all(c.portable for c in self.ensures) and self._otherwise_sound
+
+    @property
+    def _verified(self) -> bool:
+        """Proved, or unproved only in postconditions checked on the output
+        data (`on_unproved="check"`): what a run may take."""
+        return not self._unmet_ensures() and self._otherwise_sound
+
+    @property
+    def _otherwise_sound(self) -> bool:
+        """What a proved verdict needs besides its postconditions."""
+        return not (self.errors or self._transfer or self.needs or self.floats_unmet)
+
+    def _unmet_ensures(self) -> list[CheckedCondition]:
+        """The postconditions that are neither proved nor checked on the data."""
+        return [c for c in self.ensures if not (c.portable or c.checked)]
 
     @property
     def floats_unmet(self) -> str | None:
@@ -1727,9 +1736,7 @@ class Report:
         from sverify._user_text import plain
 
         out: list[tuple[str, list[str]]] = []
-        for c in self.ensures:
-            if c.checked or c.portable:
-                continue
+        for c in self._unmet_ensures():
             more = []
             if c.counterexample is not None:
                 more.append(f"counterexample: {c.counterexample}")
