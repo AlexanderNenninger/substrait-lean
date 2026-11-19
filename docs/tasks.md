@@ -1541,7 +1541,7 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
   their sinks keep those buckets as they were, and the report counts the
   expired rows. Lean proves that the final buckets in the sink and the open
   ones in the state are then a full recompute over every row the source
-  received, less the deletes at or after the watermark
+  received, less the deletes at or after the watermark (see [proved-theorems.md](proved-theorems.md)).
   A delete before the watermark in a bucket that
   is still open rejects the batch. With no view that drops buckets of `ts`,
   every delete is applied as it is.
@@ -1550,7 +1550,7 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
   final buckets kept in the sink and the open ones in the state add up to a
   full recompute (see [proved-theorems.md](proved-theorems.md)).
 - After the sink has written a refresh, the node drops the final buckets
-  from its state. At most `⌈lateness / width⌉ + 1` buckets stay open
+  from its state. At most `⌈lateness / width⌉ + 1` buckets stay open,
   so the state holds that many rows per group.
   The refresh report gives the open and retired buckets, the bound and the
   watermark (`RetentionReport`).
