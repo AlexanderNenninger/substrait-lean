@@ -1569,8 +1569,8 @@ every other instant expression. A literal without an offset reads the session
 zone and is refused; so are DuckDB's `CAST(tstz AS TIMESTAMP)`, `tstz::DATE` and
 `CAST(ts AS TIMESTAMPTZ)`, and a comparison, `IN`, `COALESCE`, `CASE` or set
 operation that mixes an instant with a naive timestamp, which DuckDB brings to
-the session's zone. An Ibis cast between the two kinds is the conversion, so a
-comparison Ibis completes with one reads the naive side as UTC.
+the session's zone. The Ibis frontend refuses a mix too, and an explicit Ibis
+cast between the two kinds is the conversion.
 
 No option and no profile entry: the operations above read no zone, so the
 engines agree on them under every session zone

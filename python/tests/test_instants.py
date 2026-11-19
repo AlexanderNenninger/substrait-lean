@@ -194,6 +194,15 @@ def _naive_other(t):
 
 
 REFUSED = {
+    "a naive column compared with an instant": lambda t: t.filter(t.ts <= t.naive),
+    "a naive literal compared with an instant": lambda t: t.filter(
+        t.ts > ibis.literal(dt.datetime(2024, 1, 1), "timestamp")
+    ),
+    "IN with a naive literal": lambda t: t.filter(
+        t.ts.isin([ibis.literal(dt.datetime(2024, 1, 1), "timestamp")])
+    ),
+    "IN with a naive column": lambda t: t.filter(t.ts.isin([t.naive])),
+    "COALESCE of an instant and a naive column": lambda t: t.select(x=ibis.coalesce(t.ts, t.naive)),
     "an instant plus an interval": lambda t: t.select(x=t.ts + ibis.interval(hours=1)),
     "the difference of two instants": lambda t: t.select(x=t.ts - t.ts2),
     "date_trunc of an instant": lambda t: t.select(x=t.ts.truncate("D")),
