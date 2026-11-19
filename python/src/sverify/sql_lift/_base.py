@@ -2086,7 +2086,8 @@ class _Lift:
             raise SqlUnsupported(
                 f"{what} of a {base} and an integer literal is not supported yet: DuckDB types "
                 f"the literal as the {base} where it fits; write `CAST({lits[0].value} AS INTEGER)`"
-                " (an INTEGER) or cast the column"
+                " (an INTEGER) or cast the column",
+                construct="INTEGER LITERAL",
             )
         wide = [e.type for e in lits if not _fits(e.value, base)]
         return max([base, *wide], key=lambda t: t.nbytes).copy(nullable=True)
