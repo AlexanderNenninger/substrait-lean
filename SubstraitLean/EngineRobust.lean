@@ -171,8 +171,9 @@ def robust (es : List EngineProfile) (input : Json) : Except String Json := do
 /-- `"source_threshold"` issues of a `--contract` request (D52, ruling 104):
 where the plan carries a source mark, every row decision that reads a marked
 value has one outcome over the band (C-rows), every output column that reads
-one has a bound (C-out), and every postcondition that reads one holds over it
-(C-contract). Each failure is an error issue: the source may keep other rows,
+one has a bound (C-out), every postcondition that reads one holds over it
+(C-contract), and every reported key holds through a key inside it that reads
+none (C-key, ruling 108). Each failure is an error issue: the source may keep other rows,
 or give other values, than the plan Sverify verified. Checked for the engine
 the request's `"profile"` names, or for every engine. -/
 def sourceIssues (es : List EngineProfile) (input : Json) : Except String (List Json) := do
@@ -205,6 +206,18 @@ def sourceIssues (es : List EngineProfile) (input : Json) : Except String (List 
       p.mapping.map fun j => cs.getD j (.lit .null)).zip robs
   let contract := posts.filterMap fun (e, r) =>
     if !r && Epsilon.Expr.markDep deps e then some s!"the postcondition {e.render}" else none
-  return (rows ++ cols ++ contract).map issue
+  -- C-key (ruling 108): a reported key holds on the engine's result only through
+  -- a derived key inside it that reads no marked column.
+  let keys := match R.transform with
+    | some p =>
+      let K := R.kenv
+      let derived := p.root.keys R.cat K.cols K.facts K.keys
+      let pdeps := Epsilon.Rel.markDeps R.cat p.root
+      (R.keysIn K).filterMap fun (k, ok) =>
+        if !ok || derived.any (fun k' => k'.all (k.contains ·) && k'.all fun c => !pdeps.getD c true)
+        then none
+        else some s!"the key [{", ".intercalate (k.map fun c => names.getD c s!"#{c}")}]"
+    | none => []
+  return (rows ++ cols ++ contract ++ keys).map issue
 
 end Substrait.EngineRobust

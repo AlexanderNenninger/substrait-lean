@@ -1494,5 +1494,5 @@ others. It names no engine.
 
 2026-11-19 (ruling 104): a plan that carries a mark is proved only where every
 decision that reads a marked value has one outcome over the band and every
-output column that reads one has a bound in the report. Elsewhere the report
+output column that reads one has a bound in the report, and keys. Elsewhere the report
 carries an error issue (`source_threshold`, `EngineRobust.sourceIssues`).
