@@ -72,6 +72,9 @@ class DuckDBDialect(Dialect):
     def interval_lit(self, micros: int) -> str:
         return f"to_microseconds({self.int_lit(micros)})"
 
+    def interval_micros(self, iv: str) -> str:
+        return f"epoch_us({iv})"
+
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
 
