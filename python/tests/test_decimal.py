@@ -372,7 +372,8 @@ def test_the_average_of_a_wide_decimal_goes_through_a_cast_to_34_digits():
     assert "overflow" in [i.kind for i in mean(None, "off").errors]
     # A bound of 10²⁸ (the literal writer rounds above 28 digits) keeps the cast in range.
     top = ibis.literal(D(10**28), "decimal(29, 0)")
-    report = mean([_.v >= -top, _.v <= top], "ignore")
+    bottom = ibis.literal(D(-(10**28)), "decimal(29, 0)")
+    report = mean([_.v >= bottom, _.v <= top], "ignore")
     # What stays is the group's `SUM` overflow, assumed as for every `SUM` (`Report.assumed`).
     assert [i.kind for i in report.errors if not i.assumed] == []
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
