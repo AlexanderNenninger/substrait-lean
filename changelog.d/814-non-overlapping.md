@@ -1,0 +1,3 @@
+### `sv.non_overlapping`: keys through a point-in-time join
+
+`sv.non_overlapping(lo, hi, by=...)` in `requires` states that a table's validity ranges `[lo, hi)` do not overlap per `by`, as in a type-2 dimension. A left or inner join that equates the `by` columns and tests `lo <= x` and `x < hi` (or `hi IS NULL OR x < hi`) then gives each left row at most one partner, and the left side's keys stay keys of the join: the shop's `orders_with_city` proves `unique(order_id)` from the orders' key. The data check is one window query over the ranges ordered by start. Closed ends (`x <= hi`) have no rule. Incremental views refuse it, as they do `rows_per`.
