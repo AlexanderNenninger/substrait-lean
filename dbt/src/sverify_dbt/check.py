@@ -92,6 +92,7 @@ class _Checker:
             tests={t.unique_id: t for t in self.p.tests.values()},
             unit_tests=self.p.unit_tests,
             relations=self.p.relations,
+            selected=bool(select),
         )
 
     def _upstream(self, uids: set[str]) -> set[str]:
