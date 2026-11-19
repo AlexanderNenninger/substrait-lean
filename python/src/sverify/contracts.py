@@ -1612,6 +1612,8 @@ def _prove_once(
         `ConditionError` naming it (#699), not a refusal of the query."""
         try:
             return plan(query(where, n, table, c))
+        except ConditionError:
+            raise
         except _Unsupported as e:
             raise ConditionError(label(c), str(e), f"{where} condition {n}") from e
 
