@@ -250,6 +250,9 @@ end Substrait.Examples
 #print axioms Substrait.ContractCheck.check_issues_sound
 #print axioms Substrait.Rel.floatOpenSafeP_aggregate
 #print axioms Substrait.Engine.polars_sum_example
+#print axioms Substrait.SumOrder.near_tol
+#print axioms Substrait.Measure.sumNear_of_tol
+#print axioms Substrait.Engine.polars_sum_openSafe_tol
 #print axioms Substrait.ContractCheck.check_guard_free_sound
 #print axioms Substrait.ContractCheck.check_optimized_sound
 #print axioms Substrait.Knowledge.mayIssues_sound

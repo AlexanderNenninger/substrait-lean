@@ -327,6 +327,152 @@ theorem Rel.floatOpenSafeP_aggregate {q : Obs} {ctx : ObsCtx} (hq : q.rows = .mu
   exact ⟨o, he, hp.symm⟩
 
 
+
+/-! ## The checker's tolerance covers an engine's sums (ruling 135)
+
+The report's tolerance for a double `SUM` of at most `N` values, each at most
+`bs` in magnitude (units of `2⁻¹⁰⁷⁴`), is `Epsilon.measureEps`'s
+`sumTolScaled N bs + ceilDiv (N · bs) 2⁵³`: the engine's order from the exact
+sum, then the reference's rounding. D35 (`SumBound`) bounds the engine's
+side; `SumTolCovers` is the check that `sumTolScaled` covers that bound,
+decided by evaluation. It fails only for magnitudes below the smallest
+normal double (a constant-zero column among them), where D35's subnormal
+slack `(n + 1) · n · 2⁵²` exceeds `sumTolScaled`'s `n² · 2⁵²` by up to
+`n / 2` units of `2⁻¹⁰⁷⁴`. -/
+
+/-- The most D35's bound (`SumBound`) lets a `SUM` of `n` doubles, each at
+most `bs` scaled, be from the exact sum, in units of `2⁻¹⁰⁷⁴`. -/
+def sumBoundScaled (n bs : Nat) : Nat :=
+  (n * 2 ^ 53 + (2 ^ 53 - n)) * (n * bs + n * 2 ^ 52) / (2 ^ 53 * (2 ^ 53 - n))
+
+/-- **The checker's tolerance covers D35's bound** for `N` values of at most
+`bs`: decided by evaluation. -/
+abbrev SumTolCovers (N bs : Nat) : Prop := sumBoundScaled N bs ≤ FloatCode.sumTolScaled N bs
+
+omit [Boxes.Ambient] in
+theorem sumBoundScaled_mono {n N bs : Nat} (h : n ≤ N) (hN : N ≤ 2 ^ 32) :
+    sumBoundScaled n bs ≤ sumBoundScaled N bs := by
+  unfold sumBoundScaled
+  generalize hK : (2 : Nat) ^ 53 = K
+  have hK' : 2 ^ 32 < K := by rw [← hK]; decide
+  have h1 : n * K + (K - n) ≤ N * K + (K - N) := by
+    have e1 : (N - n) * K = N * K - n * K := Nat.sub_mul N n K
+    have e2 : N - n ≤ (N - n) * K := Nat.le_mul_of_pos_right _ (by omega)
+    have e3 : n * K ≤ N * K := Nat.mul_le_mul_right K h
+    omega
+  have h2 : n * bs + n * 2 ^ 52 ≤ N * bs + N * 2 ^ 52 :=
+    Nat.add_le_add (Nat.mul_le_mul_right _ h) (Nat.mul_le_mul_right _ h)
+  have h3 : K * (K - N) ≤ K * (K - n) := Nat.mul_le_mul_left K (by omega)
+  have h4 : 0 < K * (K - N) := Nat.mul_pos (by omega) (by omega)
+  exact Nat.le_trans (Nat.div_le_div_left h3 h4) (Nat.div_le_div_right (Nat.mul_le_mul h1 h2))
+
+omit [Boxes.Ambient] in
+theorem scaledAbsSum_le_mul {bs : Nat} :
+    ∀ {cs : List Int}, (∀ c ∈ cs, (FloatCode.scaled c).natAbs ≤ bs) →
+      scaledAbsSum (cs.map .float) ≤ cs.length * bs
+  | [], _ => by simp [scaledAbsSum]
+  | c :: cs, h => by
+    have ih := scaledAbsSum_le_mul (cs := cs) fun x hx => h x (List.mem_cons_of_mem _ hx)
+    have hc := h c List.mem_cons_self
+    simp only [List.map_cons, scaledAbsSum, List.length_cons, Nat.succ_mul]
+    omega
+
+set_option exponentiation.threshold 2100 in
+omit [Boxes.Ambient] in
+/-- **An engine's `SUM` is within the checker's tolerance** of the correctly
+rounded one: `n ≤ N ≤ 2³²` finite doubles of at most `bs`, with
+`SumTolCovers N bs`. -/
+theorem SumOrder.near_tol {b : Behaviour} {cs : List Int} {v : Int} {N bs : Nat}
+    (h : SumOrder b (cs.map .float) v)
+    (hf : ∀ c ∈ cs, FloatCode.IsFin c ∧ (FloatCode.scaled c).natAbs ≤ bs)
+    (hnN : cs.length ≤ N) (hN : N ≤ 2 ^ 32)
+    (hov : 2 * (N * bs + N * 2 ^ 52) ≤ FloatCode.maxMag) (hcov : SumTolCovers N bs) :
+    FloatCode.IsFin v ∧ FloatCode.IsFin (floatSumCR (cs.map .float)) ∧
+      (FloatCode.scaled v - FloatCode.scaled (floatSumCR (cs.map .float))).natAbs ≤
+        FloatCode.sumTolScaled N bs + FloatCode.ceilDiv (N * bs) (2 ^ 53) := by
+  have hfin : ∀ c ∈ cs, FloatCode.IsFin c := fun c hc => (hf c hc).1
+  have hA := scaledAbsSum_le_mul (bs := bs) fun c hc => (hf c hc).2
+  have hS := natAbs_exactSum_le hfin
+  have hnb : cs.length * bs ≤ N * bs := Nat.mul_le_mul_right _ hnN
+  have hmax : FloatCode.maxMag ≤ 2 ^ 2098 := by rw [FloatCode.maxMag_def]; omega
+  have hcr : floatSumCR (cs.map .float) = FloatCode.ofExact (exactSum (cs.map .float)) := by
+    rw [floatSumCR, nonFinite_of_fin (fun c hc => by rw [fin_canon (hfin c hc)]; exact hfin c hc),
+      Option.getD_none]
+  obtain ⟨hfcr, hecr⟩ := FloatCode.ofExact_rel (S := exactSum (cs.map .float)) (by omega)
+  rw [← hcr] at hfcr hecr
+  -- The reference's rounding: within `ceilDiv (N · bs) 2⁵³`.
+  have hr : (FloatCode.scaled (floatSumCR (cs.map .float)) - exactSum (cs.map .float)).natAbs ≤
+      FloatCode.ceilDiv (N * bs) (2 ^ 53) := by
+    have : (FloatCode.scaled (floatSumCR (cs.map .float)) - exactSum (cs.map .float)).natAbs ≤
+        N * bs / 2 ^ 53 := (Nat.le_div_iff_mul_le (by omega)).2 (by rw [Nat.mul_comm]; omega)
+    exact Nat.le_trans this (Nat.div_le_div_right (by omega))
+  by_cases hb : b = "EXACT"
+  · simp only [SumOrder, hb, ↓reduceIte] at h
+    subst h
+    exact ⟨hfcr, hfcr, by simp⟩
+  -- The engine's order: within D35's bound, which `SumTolCovers` covers.
+  have he : FloatCode.IsFin v ∧ (FloatCode.scaled v - exactSum (cs.map .float)).natAbs ≤
+      FloatCode.sumTolScaled N bs := by
+    simp only [SumOrder, hb, ↓reduceIte] at h
+    have hlen : (cs.map Value.float).length = cs.length := List.length_map _
+    obtain ⟨hfv, hineq⟩ := h.1
+      (fun x hx => by
+        obtain ⟨y, hy, e⟩ := List.mem_map.1 hx
+        injection e with e; subst e; exact hfin _ hy)
+      (by rw [hlen]; omega)
+      (by rw [hlen]; omega)
+    rw [hlen] at hineq
+    refine ⟨hfv, Nat.le_trans ?_ (Nat.le_trans (sumBoundScaled_mono hnN hN) hcov)⟩
+    unfold sumBoundScaled
+    refine (Nat.le_div_iff_mul_le (Nat.mul_pos (by omega) (by omega))).2 (Nat.le_trans hineq ?_)
+    exact Nat.mul_le_mul_left _ (Nat.add_le_add_right hA _)
+  exact ⟨he.1, hfcr, Nat.le_trans (natAbs_tri _ (exactSum (cs.map .float)) _)
+    (by have := he.2; omega)⟩
+
+
+omit [Boxes.Ambient] in
+theorem floats_of {P : Int → Prop} :
+    ∀ {vs : List Value}, (∀ x ∈ vs, ∃ c, x = .float c ∧ P c) →
+      ∃ cs : List Int, vs = cs.map .float ∧ ∀ c ∈ cs, P c
+  | [], _ => ⟨[], rfl, by simp⟩
+  | x :: vs, h => by
+    obtain ⟨c, rfl, hc⟩ := h x List.mem_cons_self
+    obtain ⟨cs, rfl, hcs⟩ := floats_of (vs := vs) fun y hy => h y (List.mem_cons_of_mem _ hy)
+    exact ⟨c :: cs, rfl, by simpa [hc] using hcs⟩
+
+/-- **A double `SUM` near within the checker's tolerance** (`Measure.SumNear`
+from the request): where each group it reads has at most `N ≤ 2³²` finite
+values of at most `bs`, `SumTolCovers N bs` holds, the table allows no
+unmodelled behaviour there, and the column's tolerance is at least the
+checker's term (`Epsilon.measureEps`: `sumTolScaled N bs + ceilDiv (N · bs) 2⁵³`). -/
+theorem Measure.sumNear_of_tol {q : Obs} {ctx : ObsCtx} {t : ProfileTable} {cat : Catalog}
+    {r : Rel} {gs : List Expr} {col : Nat} {m : Measure} {nm : String} {N bs : Nat}
+    (hq : q.floats = .within nm) (hk : ctx.kind col = .double)
+    (hctx : ∀ a b, FloatCode.IsFin a → FloatCode.IsFin b →
+      (FloatCode.scaled a - FloatCode.scaled b).natAbs ≤
+        FloatCode.sumTolScaled N bs + FloatCode.ceilDiv (N * bs) (2 ^ 53) → ctx.near nm col a b)
+    (hfn : m.fn = .fsum) (hX : ∀ vs, r.GroupInputs t cat gs m vs → ¬AggExtra t m.fn vs)
+    (hvals : ∀ vs, r.GroupInputs t cat gs m vs → vs.length ≤ N ∧
+      ∀ x ∈ vs, ∃ c, x = .float c ∧ FloatCode.IsFin c ∧ (FloatCode.scaled c).natAbs ≤ bs)
+    (hN : N ≤ 2 ^ 32) (hov : 2 * (N * bs + N * 2 ^ 52) ≤ FloatCode.maxMag)
+    (hcov : SumTolCovers N bs) : m.SumNear q ctx t cat r gs col := by
+  intro vs hg _
+  refine ⟨hX vs hg, fun _ b _ c => ⟨fun _ hso => ?_, fun ha => by rw [hfn] at ha; cases ha⟩⟩
+  obtain ⟨hlen, hv⟩ := hvals vs hg
+  obtain ⟨cs, rfl, hcs⟩ := floats_of hv
+  rw [List.length_map] at hlen
+  obtain ⟨hfc, hfcr, hd⟩ := SumOrder.near_tol hso hcs hlen hN hov hcov
+  show IntEquiv q ctx col _ _
+  unfold IntEquiv
+  rw [hk, hq]
+  simp only
+  rw [show fp64.canon (floatSumCR (cs.map .float)) = floatSumCR (cs.map .float) from fin_canon hfcr,
+    show fp64.canon c = c from fin_canon hfc]
+  refine hctx _ _ hfcr hfc ?_
+  rw [show FloatCode.scaled (floatSumCR (cs.map .float)) - FloatCode.scaled c =
+    -(FloatCode.scaled c - FloatCode.scaled (floatSumCR (cs.map .float))) by omega, Int.natAbs_neg]
+  exact hd
+
 end General
 
 /-! ## An example: a double `SUM` on Polars
@@ -404,16 +550,11 @@ theorem Engine.polars_sum_noExtra : ¬AggExtra Engine.polars.table .fsum [.float
   revert o
   decide +kernel
 
-theorem Engine.polars_sumsNear :
-    (Rel.read "t").SumsNear Engine.sumObs Engine.sumCtx Engine.polars.table Engine.sumCat []
-      [{ fn := .fsum, arg := .field 0 }] := by
-  intro j m hj
-  cases j with
-  | succ j => simp at hj
-  | zero =>
-  simp only [List.getElem?_cons_zero, Option.some.injEq] at hj
-  subst hj
-  rintro vs ⟨I, -, i, hi, grp, hg, s, hs, rfl⟩ -
+/-- `SUM(x)` of `Engine.sumPlan` reads `[1.0]` under any table. -/
+theorem Engine.sum_groupInputs {t : ProfileTable} {vs : List Value}
+    (h : (Rel.read "t").GroupInputs t Engine.sumCat [] { fn := .fsum, arg := .field 0 } vs) :
+    vs = [.float FloatCode.one] := by
+  obtain ⟨I, -, i, hi, grp, hg, s, hs, rfl⟩ := h
   have hi' : i = [[.float FloatCode.one]] := List.perm_singleton.mp hi
   subst hi'
   have hg' : grp = [[.float FloatCode.one]] := by
@@ -423,10 +564,19 @@ theorem Engine.polars_sumsNear :
   subst hg'
   have hs' : s = [[.float FloatCode.one]] := List.perm_singleton.mp hs
   subst hs'
-  have hv : Measure.inputs { fn := .fsum, arg := .field 0 } [[.float FloatCode.one]] I =
-      [.float FloatCode.one] := by
-    simp [Measure.inputs, Measure.kept, Expr.eval]
-  rw [hv]
+  simp [Measure.inputs, Measure.kept, Expr.eval]
+
+theorem Engine.polars_sumsNear :
+    (Rel.read "t").SumsNear Engine.sumObs Engine.sumCtx Engine.polars.table Engine.sumCat []
+      [{ fn := .fsum, arg := .field 0 }] := by
+  intro j m hj
+  cases j with
+  | succ j => simp at hj
+  | zero =>
+  simp only [List.getElem?_cons_zero, Option.some.injEq] at hj
+  subst hj
+  intro vs hgi _
+  rw [Engine.sum_groupInputs hgi]
   refine ⟨Engine.polars_sum_noExtra, fun _ b _ c => ⟨fun _ h => ?_, fun h => by cases h⟩⟩
   have hsi : SmallInts [.float FloatCode.one] := by
     refine ⟨fun v hv => ?_, by decide +kernel⟩
@@ -444,6 +594,50 @@ theorem Engine.polars_sumsNear :
       · exact id
   show IntEquiv Engine.sumObs Engine.sumCtx 0 _ _
   simp only [IntEquiv, Engine.sumCtx, hcr, hc]
+
+/-- The checker's tolerance for `Engine.sumPlan`'s `SUM`: one value of at
+most `1.0` (`2¹⁰⁷⁴` scaled), as `Epsilon.measureEps` computes it. -/
+def Engine.sumTol : Nat :=
+  FloatCode.sumTolScaled 1 (2 ^ 1074) + FloatCode.ceilDiv (1 * 2 ^ 1074) (2 ^ 53)
+
+/-- Rows as a multiset, doubles within `Engine.sumTol`. -/
+def Engine.sumObsTol : Obs := { rows := .multiset, floats := .within "sum" }
+
+def Engine.sumCtxTol : ObsCtx :=
+  { kind := fun _ => .double,
+    near := fun _ _ a b => (FloatCode.scaled a - FloatCode.scaled b).natAbs ≤ Engine.sumTol }
+
+set_option exponentiation.threshold 2100 in
+/-- **The corollary on the example** (ruling 135): under the checker's own
+tolerance, `SumsNear` holds of Polars's `SUM` from the request's range (one
+value, at most `1.0`) by `Measure.sumNear_of_tol`, `SumTolCovers 1 2¹⁰⁷⁴`
+decided by evaluation. -/
+theorem Engine.polars_sumsNear_tol :
+    (Rel.read "t").SumsNear Engine.sumObsTol Engine.sumCtxTol Engine.polars.table Engine.sumCat []
+      [{ fn := .fsum, arg := .field 0 }] := by
+  intro j m hj
+  cases j with
+  | succ j => simp at hj
+  | zero =>
+  simp only [List.getElem?_cons_zero, Option.some.injEq] at hj
+  subst hj
+  refine Measure.sumNear_of_tol (nm := "sum") (N := 1) (bs := 2 ^ 1074) rfl rfl
+    (fun a b _ _ h => h) rfl
+    (fun vs hg => by rw [Engine.sum_groupInputs hg]; exact Engine.polars_sum_noExtra)
+    (fun vs hg => by
+      rw [Engine.sum_groupInputs hg]
+      refine ⟨by simp, fun x hx => ?_⟩
+      simp only [List.mem_singleton] at hx
+      exact ⟨_, hx, by unfold FloatCode.IsFin; decide +kernel, by decide +kernel⟩)
+    (by decide) (by rw [FloatCode.maxMag_def]; decide +kernel) (by decide +kernel)
+
+/-- And so `Rel.FloatOpenSafeP` under that tolerance, for Polars's table. -/
+theorem Engine.polars_sum_openSafe_tol :
+    Engine.sumPlan.FloatOpenSafeP Engine.sumObsTol Engine.sumCtxTol Engine.polars.table
+      Engine.sumCat :=
+  Rel.floatOpenSafeP_aggregate rfl ⟨fun _ _ _ _ => by simp [Engine.sumCtxTol], fun s h hne =>
+    absurd h.symm (by simpa [Engine.sumObsTol] using hne)⟩
+    (by decide +kernel) (by decide +kernel) (by decide) Engine.polars_sumsNear_tol
 
 /-- **`Engine.contract_sound_runs_near` applies to a double `SUM`** (#1484):
 on Polars's table, for `Engine.sumPlan`, every hypothesis is shown here but
