@@ -11,9 +11,9 @@ from typing import Any
 
 import ibis
 import pyarrow as pa
-from ibis import _
 import pytest
 from deltalake import DeltaTable, write_deltalake
+from ibis import _
 
 import sverify as sv
 from sverify import _duckdb
