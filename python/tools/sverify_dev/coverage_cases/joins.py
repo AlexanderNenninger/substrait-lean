@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from sverify_dev.coverage_cases._common import (
-    NO_ROW_ORDER,
     Case,
     R,
     V,
@@ -85,5 +84,4 @@ REFUSED: dict[str, dict[str, str]] = {
         "snowflake": "ordering comparisons of str values",
         "spark": "ordering comparisons of str values",
     },
-    "scalar subquery, one row": NO_ROW_ORDER,
 }

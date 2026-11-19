@@ -191,7 +191,7 @@ TIE_FREE = {"window_tie_free": NAMED_ORDERED["window"]}
 def snowflake_sql(plan: dict, tie_free: bool = False) -> str:
     """The query, or the reason it is refused, for snapshots."""
     try:
-        return to_sql(plan, SNOWFLAKE, deterministic=tie_free, rows="sequence")
+        return to_sql(plan, SNOWFLAKE, deterministic=tie_free)
     except Unsupported as e:
         return f"-- Unsupported: {e}"
 
