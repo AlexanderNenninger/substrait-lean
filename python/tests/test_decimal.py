@@ -275,8 +275,8 @@ def test_report_shows_decimals_at_their_scale():
     li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
     sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
     report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li), on_inferred="off")
-    assert report.facts["revenue"] == "a decimal(38, 4) ≥ 45.0000 or NULL"
-    assert "revenue: a decimal(38, 4) ≥ 45.0000 or NULL" in str(report)
+    assert report.facts["revenue"] == "a decimal(28, 4) ≥ 45.0000 or NULL"
+    assert "revenue: a decimal(28, 4) ≥ 45.0000 or NULL" in str(report)
     t = ibis.table({"a": "decimal(10,2)"}, name="t")
     # Ibis types `a + a` at `a`'s precision; the model's exact sum needs one more.
     assert sv.verify(t.select(b=t.a + t.a)).facts["b"] == (
@@ -367,11 +367,6 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     assert out.column("m").to_pylist() == [D(10**34 - 2)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1497: Report.output of a decimal AVG is the input's type; the written plan's is "
-    "DECIMAL(p + 4, s + 4) (S7)",
-)
 def test_the_output_type_of_a_decimal_mean_is_the_one_that_runs():
     c = sv.connect()
     c.put("t", pa.table({"g": [1, 1], "v": pa.array([D("1.5"), D("2.5")], pa.decimal128(20, 18))}))
