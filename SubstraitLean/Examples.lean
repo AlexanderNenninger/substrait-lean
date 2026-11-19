@@ -41,6 +41,7 @@ import SubstraitLean.Statements
 import SubstraitLean.Engine
 import SubstraitLean.ContractCheck
 import SubstraitLean.ProvedOn
+import SubstraitLean.OpenSums
 import SubstraitLean.Statements
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatMoments
@@ -252,6 +253,11 @@ end Substrait.Examples
 #print axioms Substrait.map_eq_of_perm_of_pairwise
 #print axioms Substrait.ContractCheck.check_keys_sound
 #print axioms Substrait.ContractCheck.check_issues_sound
+#print axioms Substrait.Rel.floatOpenSafeP_aggregate
+#print axioms Substrait.Engine.polars_sum_example
+#print axioms Substrait.SumOrder.near_tol
+#print axioms Substrait.Measure.sumNear_of_tol
+#print axioms Substrait.Engine.polars_sum_openSafe_tol
 #print axioms Substrait.ContractCheck.check_issues_sound_all
 #print axioms Substrait.ContractCheck.checked_issues_all
 #print axioms Substrait.ContractCheck.check_guard_free_sound
