@@ -136,8 +136,7 @@ from sverify.engine import (
     Connection,
     Engine,
     checker_failed,
-    connect,
-    plan_json,
+    plan_json_over,
     run_checker,
 )
 from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
@@ -1497,9 +1496,12 @@ def _verify_once(
     schemas = {name: input_schema(s) for name, s in (tables or {}).items()}
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
-    con = connect()
-    for name, schema in schemas.items():
-        con.create(name, schema)
+    # The verifier holds schemas, not tables: unbound Ibis tables, and for SQL
+    # the schemas as Arrow gives them back.
+    unbound = {name: ibis.table(schema, name=name) for name, schema in schemas.items()}
+    sql_schemas = {
+        name: ibis.Schema.from_pyarrow(schema.to_pyarrow()) for name, schema in schemas.items()
+    }
 
     def lift(query: Any) -> Semantics:
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
@@ -1508,12 +1510,12 @@ def _verify_once(
         return semantics if own else "reference"
 
     def plan(query: Transform) -> Any:
-        return json.loads(plan_json(con, query, lift(query)))
+        return json.loads(plan_json_over(sql_schemas, query, lift(query)))
 
     def table_ref(name: str, cond: Condition) -> Transform:
         if isinstance(transform, str) and isinstance(cond, str):
             return f"SELECT * FROM {q(name)}"
-        return con.table(name)
+        return unbound[name]
 
     def output(cond: Condition) -> Transform:
         """The transformation as `cond` reads it: an Ibis condition on a SQL
@@ -1524,7 +1526,7 @@ def _verify_once(
         from sverify.ibis_substrait import SQLModel, sql_model_schema
 
         names = tuple(schemas)
-        inputs: Any = tuple(con.table(n).op() for n in names)
+        inputs: Any = tuple(unbound[n].op() for n in names)
         return SQLModel(
             transform,
             inputs,
