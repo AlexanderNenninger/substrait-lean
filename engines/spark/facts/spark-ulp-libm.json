@@ -46,7 +46,8 @@
  "description": [
   "S, Spark's distance from the exact value, in ulps, by source: `ln`, `log10`: 1 (`StrictMath`, fdlibm; Java SE `Math.log`: 'within 1 ulp of the exact result'); `log2` is `ln x / ln 2`: 1 + 1 + 0.5 = 2.5 by formula; `log(b, x)` is `ln x / ln b`: 2.5; `sin`, `cos`, `tan`, `asin`, `acos`, `atan`: 1 (Java SE `Math`: within 1 ulp of the exact result, for every argument). Java 17 and 21, the JVMs Spark 4.3 runs on, give the same sentences. R, the reference's own distance (its `libm`), is in duckdb-ulp-libm: ln 1, log10 2, log2 2, sin, cos, asin, acos, atan 1, tan 3 (2.4 measured on macOS), `log(b, x)` 2.5 by its formula. The plan's bound uses S + R per call (`EngineProfile.elemUlps`, ruling 132). `exp` (`StrictMath.exp`, 1 ulp) has no entry: the plan's bound uses `rule_exp`, which allows one ulp on each side, and Spark's measured 0.78 ulp is inside it.",
   "Measured against the correctly rounded value (mpmath, 300 bits; `sverify_dev.probe_spark_ulp`, DOUBLE inputs, 1 500 draws per function on macOS arm64 under JDK 21, 3 000 on Linux x86_64, glibc 2.39), the largest distance in ulps. macOS: exp 0.78, ln 0.61, log10 0.63, log2 0.89, log(b, x) 1.09, sin 0.98, cos 0.91, tan 0.71, asin 0.67, acos 0.82, atan 0.71; sin, cos, tan of arguments up to 1e300: 0.94, 0.95, 0.72. Linux: exp 0.78, ln 0.61, log10 0.63, log2 1.00, log(b, x) 1.24, sin 0.51, cos 0.50, tan 0.51, asin 0.70, acos 0.82, atan 0.71; huge arguments of sin, cos, tan: 0.50, 0.50, 0.54. Every maximum is below S. `engines/spark/tests/test_spark_math.py` compares Spark with the reference binary (the checker, read through an exact product with 2^500) on macOS arm64 against the stated bound, and CI runs it on Linux.",
-  "The plan's bound for `sin`, `cos` and `tan` is stated for |x| up to 2^20 only (`Epsilon.trigArgMax`): Java gives them one ulp for every argument, but the reference's glibc errs by up to 14 ulp at huge ones (duckdb-ulp-libm). glibc 2.39 changes to its large-argument reduction (`__branred`) at |x| = 105414350 for `sin` and `cos` (`sysdeps/ieee754/dbl-64/s_sin.c`, `k < 0x419921FB`) and at 1e8 for `tan` (`s_tan.c`, 'The case 1e8 < abs(x) < 2**1024'): 2^20 sits well inside, and the largest power of two inside both is 2^26."
+  "The plan's bound for `sin`, `cos` and `tan` is stated for |x| up to 2^20 only (`Epsilon.trigArgMax`): Java gives them one ulp for every argument, but the reference's glibc errs by up to 14 ulp at huge ones (duckdb-ulp-libm). glibc 2.39 changes to its large-argument reduction (`__branred`) at |x| = 105414350 for `sin` and `cos` (`sysdeps/ieee754/dbl-64/s_sin.c`, `k < 0x419921FB`) and at 1e8 for `tan` (`s_tan.c`, 'The case 1e8 < abs(x) < 2**1024'): 2^20 sits well inside, and the largest power of two inside both is 2^26.",
+  "Polars's `fp.div` precondition is text only today; see ruling 157."
  ],
  "reference": "The reference's value is the platform's libm (`FMath.apply`); the bound is the sum of both distances, tested and not proved (ruling 132, #271).",
  "status": "open",
@@ -86,6 +87,12 @@
      "note": "tan: the case 1e8 < abs(x) < 2**1024 uses __branred"
     }
    ]
+  },
+  {
+   "checked_at": "2026-11-19",
+   "method": "probe",
+   "checked_by": "Spark math session (#271), ruling 157",
+   "notes": "Polars log10, log2 and log(b, x) and DuckDB log10, log2 and log(b, x), each against the reference binary on Linux (glibc 2.39), Polars also on macOS arm64: every distance is at most 1.58 in units of 2^-53 times the result's magnitude, against plan bounds of 8.2 to 10. DuckDB on macOS is unmeasured."
   }
  ]
 }
