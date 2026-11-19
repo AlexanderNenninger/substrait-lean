@@ -2797,7 +2797,8 @@ def view_contract(expr: ir.Table) -> ViewContract:
     if unproved:
         raise ValueError(
             "cannot maintain incrementally: conditions on derived inputs were "
-            f"not proved ({'; '.join(unproved)})"
+            f"not proved ({'; '.join(unproved)}); state them in the `ensures` of the "
+            "transformation that produces those inputs, so they are proved"
         )
     if per_key := [label(c) for cs in requires.values() for c in cs if isinstance(c, RowsPer)]:
         raise ValueError(
