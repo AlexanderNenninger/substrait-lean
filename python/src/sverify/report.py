@@ -1298,7 +1298,7 @@ class Report:
         Raises:
             UnsupportedError: An as-of join compares more pairs than the cap.
         """
-        from sverify.asof import too_many
+        from sverify._asof_cap import too_many
 
         cap = self._asof_max_pairs
         if cap is None:

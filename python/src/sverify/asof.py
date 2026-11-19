@@ -33,15 +33,14 @@ right side these guarantees still hold for every pick of the tied rows,
 and the report is not `deterministic`.
 """
 
-import weakref
 from collections.abc import Sequence
 from typing import Any, Literal
 
 import ibis
-import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 
+from sverify._asof_cap import _CAPS
 from sverify._weighted import _call
 
 ROW = "_asof_row"
@@ -64,29 +63,6 @@ def pairs(left: pa.Table, right: pa.Table, by: Sequence[str]) -> int:
     both = count(left).join(count(right), list(by), right_suffix="_right")
     product = _call("multiply", both["count_all"], both["count_all_right"])
     return _call("sum", product).as_py() or 0
-
-
-_CAPS: weakref.WeakKeyDictionary[Any, int | None] = weakref.WeakKeyDictionary()
-"""Each `asof_join` result's `max_pairs`, by its operation."""
-
-
-def max_pairs_of(expr: ir.Table) -> int | None:
-    """The cap on the pairs an expression's as-of joins compare: the smallest
-    `max_pairs` of the `asof_join` calls it holds; None without a cap (none
-    holds one, or each has `max_pairs=None`)."""
-    caps = [c for n in expr.op().find(ops.Node) if (c := _CAPS.get(n)) is not None]
-    return min(caps, default=None)
-
-
-def too_many(n: int, cap: int) -> str:
-    """The refusal of an as-of join that compares `n` pairs, over `cap`."""
-    return (
-        f"asof_join compares {n:,} pairs of rows (each left row with the right rows of its by"
-        f" group), over max_pairs={cap:,}: its cost is that number, quadratic in the rows. Add"
-        " `by` columns that split the rows into smaller groups, join fewer rows, or raise"
-        " `max_pairs` (None: no cap), which is fast on DuckDB with a `tolerance`, whose range join"
-        " skips most pairs"
-    )
 
 
 def asof_join(

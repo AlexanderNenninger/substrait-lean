@@ -1,5 +1,7 @@
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Analysis.AsofSite
+import Sverify.Analysis.Choices
+import Sverify.Analysis.ChoicesSound
 import Sverify.Analysis.Contracts
 import Sverify.Analysis.Contracts.Facts
 import Sverify.Analysis.Contracts.Lattice
@@ -14,9 +16,16 @@ import Sverify.Analysis.Keys
 import Sverify.Analysis.Knowledge
 import Sverify.Analysis.Partition
 import Sverify.Analysis.ProfileImpl
+import Sverify.Analysis.Quarantine
 import Sverify.Analysis.Refines
+import Sverify.Analysis.Refresh
+import Sverify.Analysis.Retention
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Safety
+import Sverify.Analysis.Seam
+import Sverify.Analysis.Terms
+import Sverify.Analysis.TouchedFrames
+import Sverify.Analysis.TouchedGroups
 import Sverify.Analysis.WSet
 import Sverify.Analysis.Weighted
 
