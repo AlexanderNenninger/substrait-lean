@@ -1227,7 +1227,7 @@
    "code": "[df(x=[nan, 0.0, -0.0, None]).join(df(x=[nan, 0.0, None], y=[1, 2, 3]), on='x', nulls_equal=n).sort('y').rows() for n in (False, True)]",
    "differ": 1,
    "in-memory": "[[(nan, 1), (0.0, 2), (-0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]",
-   "streaming": "[[(nan, 1), (-0.0, 2), (0.0, 2)], [(nan, 1), (0.0, 2), (-0.0, 2), (None, 3)]]"
+   "streaming": "[[(nan, 1), (-0.0, 2), (0.0, 2)], [(nan, 1), (-0.0, 2), (0.0, 2), (None, 3)]]"
   },
   {
    "construct": "int-float-compare",
@@ -1566,6 +1566,14 @@
    "streaming": "error SchemaError: failed to determine supertype of time and duration[\u03bcs]"
   },
   {
+   "construct": "instant-conversion",
+   "area": "temporal",
+   "code": "(lambda s: (s.dt.replace_time_zone('UTC').dtype, s.dt.replace_time_zone('UTC').dt.epoch('us').to_list(), s.dt.replace_time_zone('UTC').dt.replace_time_zone(None).to_list(), s.dt.epoch('us').to_list()))(df(x=[dt.datetime(2024, 3, 31, 2, 30), dt.datetime(1, 1, 1), None]).to_series())",
+   "differ": 0,
+   "in-memory": "(Datetime(time_unit='us', time_zone='UTC'), [1711852200000000, -62135596800000000, None], [datetime.datetime(2024, 3, 31, 2, 30), datetime.datetime(1, 1, 1, 0, 0), None], [1711852200000000, -62135596800000000, None])",
+   "streaming": "(Datetime(time_unit='us', time_zone='UTC'), [1711852200000000, -62135596800000000, None], [datetime.datetime(2024, 3, 31, 2, 30), datetime.datetime(1, 1, 1, 0, 0), None], [1711852200000000, -62135596800000000, None])"
+  },
+  {
    "construct": "tz-nonexistent",
    "area": "temporal",
    "code": "df(x=[dt.datetime(2024, 3, 31, 2, 30)]).select(pl.col('x').dt.replace_time_zone('Europe/Berlin')).item()",
@@ -1857,9 +1865,9 @@
    "construct": "s-group-var",
    "area": "aggregates",
    "code": "df(g=[1] * 4, x=[1e8 + 1, 1e8 + 2, 1e8 + 3, 1e8 + 4]).group_by('g').agg(pl.col('x').var()).item(0, 'x')",
-   "differ": 0,
+   "differ": 1,
    "in-memory": "1.6666666666666667",
-   "streaming": "1.6666666666666667"
+   "streaming": "1.6666666716337204"
   },
   {
    "construct": "s-fsum-runs",
@@ -1874,8 +1882,8 @@
    "area": "aggregates",
    "code": "sorted({repr(df(g=[i % 3 for i in range(5_000)], x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)]).group_by('g').agg(pl.col('x').sum()).sort('g')['x'].to_list()) for _ in range(5)})",
    "differ": 1,
-   "in-memory": "['[819.8000000000312, 811.3000000000312, 809.6000000000314]', '[819.8000000000314, 811.3000000000316, 809.6000000000315]', '[819.8000000000314, 811.3000000000318, 809.6000000000321]', '[819.8000000000324, 811.3000000000321, 809.6000000000329]', '[819.8000000000325, 811.3000000000322, 809.6000000000324]']",
-   "streaming": "['[819.8000000000319, 811.3000000000317, 809.600000000032]', '[819.8000000000325, 811.300000000032, 809.6000000000321]', '[819.8000000000325, 811.3000000000326, 809.6000000000325]', '[819.8000000000327, 811.3000000000321, 809.6000000000327]', '[819.8000000000327, 811.3000000000326, 809.6000000000327]']"
+   "in-memory": "['[819.8000000000317, 811.3000000000317, 809.6000000000312]', '[819.8000000000319, 811.3000000000324, 809.600000000032]', '[819.8000000000321, 811.3000000000325, 809.600000000032]', '[819.8000000000322, 811.3000000000322, 809.6000000000321]', '[819.8000000000326, 811.3000000000325, 809.600000000032]']",
+   "streaming": "['[819.8000000000319, 811.3000000000321, 809.6000000000322]', '[819.800000000032, 811.3000000000316, 809.6000000000323]', '[819.8000000000324, 811.3000000000314, 809.6000000000319]', '[819.8000000000324, 811.3000000000321, 809.600000000032]', '[819.8000000000329, 811.3000000000329, 809.6000000000328]']"
   },
   {
    "construct": "s-var-runs",
@@ -1883,7 +1891,7 @@
    "code": "sorted({repr(df(x=[(i * 0.1) % 7.3 - 3.1 for i in range(5_000)]).select(pl.col('x').var()).item()) for _ in range(5)})",
    "differ": 1,
    "in-memory": "['4.441337607921585']",
-   "streaming": "['4.441337607921584']"
+   "streaming": "['4.441337607921583', '4.441337607921584', '4.441337607921585']"
   },
   {
    "construct": "s-first-last-grouped",
@@ -1914,8 +1922,8 @@
    "area": "relations",
    "code": "df(g=[(i * 7919) % 1000 for i in range(100_000)]).group_by('g').len()['g'].to_list()[:8]",
    "differ": 1,
-   "in-memory": "[170, 39, 152, 402, 935, 810, 24, 542]",
-   "streaming": "[0, 595, 352, 190, 28, 947, 704, 623]"
+   "in-memory": "[804, 134, 536, 816, 152, 417, 673, 664]",
+   "streaming": "[919, 595, 514, 433, 190, 28, 947, 866]"
   },
   {
    "construct": "s-when-masks-cast",

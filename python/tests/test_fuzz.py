@@ -7,6 +7,8 @@ fix shows up as an XPASS. The examples are fixed (`derandomize`); `poe fuzz`
 runs a long, random budget and prints the shrunk findings.
 """
 
+import datetime as dt
+import json
 import math
 
 import pytest
@@ -61,6 +63,33 @@ def test_proved_postconditions_are_checked_on_the_output():
     q = Query("SELECT i AS c0 FROM t AS q WHERE i > 0", {"c0": fuzz.INT})
     rows = {"t": [(1, None, None, None, None, None), (-1, None, None, None, None, None)]}
     assert check_contract(q, rows, None, "c0 > 0") == []
+
+
+def test_a_recorded_case_round_trips_and_replays():
+    ts = dt.datetime(2026, 11, 19, 1, 2, 3)
+    row = (1, None, math.inf, "a", True, ts)
+    q = Query("SELECT i AS c0 FROM t AS q", {"c0": fuzz.INT})
+    f = Finding("rows", q.sql, {"t": [row]}, "detail", case=(q, {"t": [row], "u": []}))
+    record = json.loads(json.dumps(fuzz.to_json(f, seed=5)))
+    assert record["seed"] == 5 and record["tables"]["t"][0][2] == {"float": "inf"}
+    assert [fuzz._decode(v) for v in record["tables"]["t"][0]] == list(row)
+    assert fuzz.replay(record) == []
+
+
+def test_a_checker_over_its_cap_is_a_finding_not_an_exception(monkeypatch, tmp_path):
+    from sverify._checker import CheckerMemoryError
+
+    def runaway(*case):
+        raise CheckerMemoryError("substrait-check used 5000 MB on one request, over its cap")
+
+    monkeypatch.setattr(fuzz, "check", runaway)
+    monkeypatch.setenv("SVERIFY_FUZZ_PROGRESS", str(tmp_path / "progress.json"))
+    q = Query("SELECT i AS c0 FROM t AS q", {"c0": fuzz.INT})
+    (f,) = fuzz._findings((q, {"t": [], "u": []}))
+    assert f.oracle == "checker" and f.detail.startswith("memory cap:")
+    assert "plan" in f.extra and f.case is not None
+    # The case was written before the check, for a batch the watchdog stops.
+    assert json.loads((tmp_path / "progress.json").read_text())["sql"] == q.sql
 
 
 T_ROW = (1, 2, 0.5, "a", True, None)
