@@ -79,14 +79,14 @@ class _TablesOnly:
 
 def _ibis_backend(plugin: Any) -> tuple[Any, str]:
     """The Ibis backend a connection's bound tables read through, and what it
-    is: `"duckdb"`, a backend on a cursor of its own to the process's database
-    (`sverify._duckdb`), where the tables DuckDB holds live too; `"engine"`,
-    the engine's own where DuckDB is not installed (`ProfilePlugin.ibis_backend`);
+    is: `"shared"`, a backend on a cursor of its own to the process's database
+    (`sverify._duckdb`), where the tables the database holds live too; `"own"`,
+    the engine's where that database is not installed (`ProfilePlugin.ibis_backend`);
     or `"none"`, a holder of the connection that runs nothing (`_TablesOnly`)."""
     if _importable("duckdb"):
-        return ibis.duckdb.from_connection(_duckdb.cursor()), "duckdb"
+        return ibis.duckdb.from_connection(_duckdb.cursor()), "shared"
     if plugin.ibis_backend is not None:
-        return plugin.ibis_backend(), "engine"
+        return plugin.ibis_backend(), "own"
     return _TablesOnly(plugin.engine), "none"
 
 
@@ -271,7 +271,7 @@ class Connection:
                 table = replace(table, schema=plain_schema(table.schema))
             self._tables[name] = table
             # A scan whose files were removed is held, but cannot be read.
-            if self._backend == "duckdb" and table.readable():
+            if self._backend == "shared" and table.readable():
                 self._views[name] = table.attach(self._ibis.con, name)
                 try:
                     _check_calendar_view(self._ibis.con, name, table)
@@ -282,9 +282,9 @@ class Connection:
         _check_times(table.schema)
         _check_calendar(table)
         self._tables[name] = table
-        if self._backend == "duckdb":
+        if self._backend == "shared":
             self._ibis.con.register(name, table)
-        elif self._backend == "engine":
+        elif self._backend == "own":
             self._ibis.create_table(name, table, overwrite=True)
 
     def drop(self, name: str) -> None:
@@ -294,9 +294,9 @@ class Connection:
         if (drop := self._views.pop(name, None)) is not None:
             drop()
         elif isinstance(table, pa.Table):
-            if self._backend == "duckdb":
+            if self._backend == "shared":
                 self._ibis.con.unregister(name)
-            elif self._backend == "engine":
+            elif self._backend == "own":
                 self._ibis.drop_table(name, force=True)
 
 
