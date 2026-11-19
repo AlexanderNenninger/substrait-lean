@@ -44,7 +44,7 @@ def _narrow_timestamp(x: Exprs, op: Any) -> Json | None:
     """A cast to a second or millisecond timestamp floors on the timeline: the
     reference's timestamps count microseconds (D61), so it is `date_trunc`."""
     to, src = op.to, op.arg.dtype
-    if not (to.is_timestamp() and src.is_timestamp() and to.scale in (0, 3)):
+    if not (isinstance(to, dt.Timestamp) and src.is_timestamp() and to.scale in (0, 3)):
         return None
     unit = "second" if to.scale == 0 else "millisecond"
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
@@ -108,7 +108,7 @@ def _typeof(x: Exprs, op: Any) -> Json:
     t = cast("dt.DataType", column.dtype)
     # A second or millisecond column is read as microseconds (D61): its type
     # in the run is TIMESTAMP, which the declared type's name does not say.
-    name = None if t.is_timestamp() and t.scale in (0, 3) else duckdb_type_name(t)
+    name = None if isinstance(t, dt.Timestamp) and t.scale in (0, 3) else duckdb_type_name(t)
     if name is None:
         raise Unsupported(
             f"typeof of a {t} column is not supported; write the type's name as a constant"
