@@ -5,7 +5,7 @@ import SubstraitLean
 well-formed, and evaluate it.
 
 `substrait-check --eval-spec plan.json`: the same, evaluated with `Rel.eval`
-(the specification) in place of `Rel.evalFast` (`SubstraitLean/EvalFast.lean`),
+(the specification) in place of `Rel.evalFast` (`core/Sverify/Core/EvalFast.lean`),
 which is faster and proved equal; for tests.
 
 `substrait-check --delta plan.json`: print the Substrait JSON plan an engine
