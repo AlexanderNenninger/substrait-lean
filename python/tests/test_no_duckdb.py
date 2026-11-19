@@ -35,8 +35,10 @@ def test_every_module_imports_without_duckdb() -> None:
                     continue
                 try:
                     importlib.import_module(m.name)
-                except BaseException as e:
-                    bad.append(f"{m.name}: {e}")
+                except ImportError as e:
+                    # An optional package of another extra is not this test's concern.
+                    if "duckdb" in str(e):
+                        bad.append(f"{m.name}: {e}")
         print(bad)
         """
     )
