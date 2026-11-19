@@ -1,0 +1,43 @@
+{
+  "id": "polars-guarded-constant-eager",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "A raising constant operand fails the plan whatever guards it",
+  "verdict": "a pure-constant operand is evaluated at plan resolution, guard or not",
+  "area": "execution",
+  "constructs": [
+    "CASE WHEN",
+    "cast"
+  ],
+  "settings": {
+    "engine": "streaming",
+    "optimizations": [
+      "default",
+      "none"
+    ]
+  },
+  "description": [
+    "A `when/then` branch that is a pure-constant expression and raises is evaluated while the plan is resolved, whatever the condition is: `pl.LazyFrame({\"x\": [-1, -2]}).select(pl.when(pl.col(\"x\") > 0).then(pl.lit(300).cast(pl.Int8, strict=True))).collect(engine=\"streaming\")` raises `InvalidOperationError` (conversion from `i128` to `i8` failed in column 'scalar') on rows where the condition is FALSE, and so does `pl.lit('bad').cast(pl.Int64, strict=True) > 0` under a literal-FALSE, a column and a data-FALSE reach. `optimizations=pl.QueryOptFlags.none()` changes nothing. A branch that reads a column is evaluated lazily (polars-guarded-column-lazy).",
+    "Sverify's checker folds a constant error without regard to its guard and refuses or reports it (a cast of `'bad'` or of 300 to TINYINT is refused; `1 // 0`, `sqrt(-1.0)`, `ln(0.0)`, overflow and `abs` of the minimum give `unproved` with the error, also under a precondition that makes the branch unreachable), so a plan with a raising constant is never certified raise-free (D21, ruling 100)."
+  ],
+  "reference": "`CASE WHEN r THEN k END` with a raising constant `k` raises only where `r` holds; D21 fails every plan with a raising constant, so a verified plan never carries one.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.guarded_columns (worker 4), on homelab, branch claude/d50d-probes",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/guarded_columns.py",
+          "note": "`python -m sverify_dev.guarded_columns p1 --engine polars`: Polars 2.1.0 (Python), streaming engine, Linux x86_64 (homelab); the P1 cases also ran on macOS arm64 for DuckDB and Polars with the same result."
+        }
+      ],
+      "notes": "Issue #1719 (D50-d). Probe rows: 3000, every third one the text `bad`, which a strict cast rejects."
+    }
+  ],
+  "issues": [
+    1719
+  ]
+}

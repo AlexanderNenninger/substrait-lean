@@ -1,0 +1,42 @@
+{
+  "id": "polars-guarded-column-lazy",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "A guarded column is lazy over column operands",
+  "verdict": "passes for operands that read a column",
+  "area": "execution",
+  "constructs": [
+    "CASE WHEN",
+    "project"
+  ],
+  "settings": {
+    "engine": "streaming",
+    "optimizations": [
+      "default",
+      "none"
+    ]
+  },
+  "description": [
+    "`pl.when(r).then(p).otherwise(None)` over stacked `with_columns`, on the streaming engine with the default optimizations: `p` (a strict cast of the text `bad`) raises on no row where `r` is FALSE, for every case probed with a column operand: a stacked chain of 4 levels read plainly, under a selective filter on `id`, under a filter on the chain's value, under an aggregate, and with a reach that is FALSE on every row by data only (`s IS NULL AND s IS NOT NULL`). The rows match the reference. A constant-only operand is the exception: see polars-guarded-constant-eager."
+  ],
+  "reference": "`CASE WHEN r THEN p END` evaluates `p` only where `r` holds, also over stacked projections (`Expr.issues`: an `ifThen` raises what its taken branch raises). A guarded column of the D50-d chain therefore raises on no row whose reach is FALSE.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.guarded_columns (worker 4), on homelab, branch claude/d50d-probes",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/guarded_columns.py",
+          "note": "`python -m sverify_dev.guarded_columns p1 --engine polars`: Polars 2.1.0 (Python), streaming engine, Linux x86_64 (homelab); the P1 cases also ran on macOS arm64 for DuckDB and Polars with the same result."
+        }
+      ],
+      "notes": "Issue #1719 (D50-d). Probe rows: 3000, every third one the text `bad`, which a strict cast rejects."
+    }
+  ],
+  "issues": [
+    1719
+  ]
+}
