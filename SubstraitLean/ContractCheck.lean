@@ -274,7 +274,7 @@ structure Report where
   facts : List (String × String × Json)
   /-- The output columns' types as the writer types them (`Write.relKinds`, the
   reference's: a decimal `SUM` is `DECIMAL(min(38, p + 10), s)`, an `AVG` is
-  `DECIMAL(min(38, p + 4), s + 4)`), as `outputKindJson` renders them, in the
+  `DECIMAL(p + 4, s + 4)`, p up to 34), as `outputKindJson` renders them, in the
   output's order. Empty where the transformation is not well-formed. -/
   outputKinds : List Json := []
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/

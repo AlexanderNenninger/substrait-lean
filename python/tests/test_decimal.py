@@ -356,8 +356,40 @@ def test_the_average_of_a_wide_decimal_is_refused(p):
     c = sv.connect()
     c.put("t", pa.table({"g": [1, 1], "v": pa.array([D(1), D(2)], pa.decimal128(p, 0))}))
     t = c.table("t")
-    with pytest.raises(Exception, match="more than 34 digits"):
+    with pytest.raises(
+        Exception, match="more than 34 digits.*cast the argument to DECIMAL\\(34, s\\)"
+    ):
         sv.verify(t.group_by("g").aggregate(m=t.v.mean()))
+
+
+def test_the_average_of_a_wide_decimal_goes_through_a_cast_to_34_digits():
+    """The way through the refusal: `AVG` of the argument cast to `DECIMAL(34, 0)`. The cast
+    is checked, so it reports its overflow, and with a bound on the column the plan is
+    proved, runs to the exact mean and `Report.output` is the run's `DECIMAL(38, 4)` (#1497)."""
+    c = sv.connect()
+    rows = [D(10**27 + 1), D(10**27 + 2)]
+    c.put("t", pa.table({"g": [1, 1], "v": pa.array(rows, pa.decimal128(38, 0))}))
+    t = c.table("t")
+
+    def mean(r, on_inferred):
+        return sv.verify(
+            t.group_by("g").aggregate(m=t.v.cast("decimal(34, 0)").mean()),
+            requires=r,
+            on_inferred=on_inferred,
+        )
+
+    assert "overflow" in [i.kind for i in mean(None, "off").errors]
+    # A bound of 10²⁸ (the literal writer rounds above 28 digits) keeps the cast in range.
+    top = ibis.literal(D(10**28), "decimal(29, 0)")
+    bottom = ibis.literal(D(-(10**28)), "decimal(29, 0)")
+    report = mean([_.v >= bottom, _.v <= top], "ignore")
+    # What stays is the group's `SUM` overflow, assumed as for every `SUM` (`Report.assumed`).
+    assert [i.kind for i in report.errors if not i.assumed] == []
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
+    out = report.run(c, "duckdb")
+    assert out.column("m").to_pylist() == [D("1000000000000000000000000001.5000")]
+    assert out.schema.field("m").type == pa.decimal128(38, 4)
+    assert report.output["m"].precision == 38 and report.output["m"].scale == 4
 
 
 def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
