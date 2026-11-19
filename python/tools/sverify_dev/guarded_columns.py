@@ -260,9 +260,7 @@ def spark_engine() -> dict[str, Any]:
 
 
 ENGINES: dict[str, Callable[[], dict[str, Any]]] = {
-    "duckdb": duckdb_engine,
-    "polars": polars_engine,
-    "spark": spark_engine,
+    f.__name__.removesuffix("_engine"): f for f in (duckdb_engine, polars_engine, spark_engine)
 }
 
 
