@@ -316,6 +316,14 @@ def _o(construct: str, area: str, sql: str, *setup: str) -> Observation:
 _NAN_TEXT = ("CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END",)
 
 
+#: One row of every integer width at 100, a decimal and a double, for the
+#: integer-literal probes.
+_LITERAL_TABLE = (
+    "CREATE TABLE t AS SELECT 100::TINYINT i8, 100::SMALLINT i16, 100::INTEGER i32,"
+    " 100::BIGINT i64, 1.25::DECIMAL(10,2) d, 1.5::DOUBLE f",
+)
+
+
 #: Two bags with duplicates, NULLs, both NaNs and both zeros, for the set
 #: operations and the NaN keys.
 _BAGS = (
@@ -382,6 +390,97 @@ OBSERVATIONS: list[Observation] = [
     _o("dec-divide", "decimals",
        "SELECT 1.00::DECIMAL(10,2) / 8::DECIMAL(10,0), 10::DECIMAL(10,0) / 3::DECIMAL(10,0),"
        " CAST(1.00::DECIMAL(10,2) / 8::DECIMAL(10,0) AS DECIMAL(10,2))"),
+    # Implicit coercions between types (#1484, the census): which operands
+    # DuckDB brings to a common type, and where that raises.
+    _o("coerce-int-decimal-compare-raise", "decimals",
+       "SELECT 9223372036854775807::BIGINT = 1::DECIMAL(38,30)"),
+    _o("coerce-int-decimal-compare-ok", "decimals",
+       "SELECT 5::INTEGER < 5.5::DECIMAL(38,37), 1::INTEGER = 1.0::DECIMAL(18,3)"),
+    _o("coerce-int-decimal-arith-types", "decimals",
+       "SELECT typeof(1::TINYINT + 1.5::DECIMAL(3,2)), typeof(1::INTEGER + 1.5::DECIMAL(18,3)),"
+       " typeof(1::BIGINT + 1.5::DECIMAL(18,3)), typeof(1::INTEGER + 1.5::DECIMAL(38,37)),"
+       " typeof(1.5::DECIMAL(18,3) + 1.5::DECIMAL(38,10)), typeof(1.5::DECIMAL(18,3) + 1e0)"),
+    _o("coerce-int-decimal-arith-raise", "decimals",
+       "SELECT 9007199254740993::BIGINT + 1.5::DECIMAL(38,30)"),
+    _o("coerce-decimal-digits-limit", "decimals",
+       "SELECT 1000000000000000000000000000::DECIMAL(28,0) + 1.5::DECIMAL(38,10)"),
+    _o("coerce-decimal-digits-limit-raise", "decimals",
+       "SELECT 1000000000000000000000000000000::DECIMAL(31,0) + 1.5::DECIMAL(38,10)"),
+    _o("coerce-varchar-number", "strings",
+       "SELECT s = i, s_ws = i, s IN (1), s::VARCHAR || i FROM"
+       " (SELECT '01'::VARCHAR s, ' 1'::VARCHAR s_ws, 1::INTEGER i)"),
+    _o("coerce-varchar-number-raise", "strings",
+       "SELECT s = i FROM (SELECT 'abc'::VARCHAR s, 1::INTEGER i)"),
+    _o("coerce-varchar-case-union", "strings",
+       "SELECT (SELECT typeof(x) FROM (SELECT 1 AS x UNION ALL SELECT 'a') u LIMIT 1),"
+       " (SELECT typeof(x || 'a') FROM (SELECT 1 AS x) c)"),
+    _o("coerce-varchar-case-raise", "strings",
+       "SELECT CASE WHEN b THEN i ELSE s END FROM (SELECT true b, 1::INTEGER i, 'a'::VARCHAR s)"),
+    _o("coerce-boolean-integer", "integers",
+       "SELECT b = i, typeof(CASE WHEN b THEN i ELSE b END),"
+       " (SELECT typeof(x) FROM (SELECT b AS x UNION ALL SELECT i) u LIMIT 1)"
+       " FROM (SELECT true b, 1::INTEGER i)"),
+    _o("coerce-nullif-type", "nulls",
+       "SELECT typeof(NULLIF(1::INTEGER, 1.5::DOUBLE)), typeof(NULLIF(1::BIGINT, 1::INTEGER)),"
+       " typeof(NULLIF(1::INTEGER, 1::BIGINT))"),
+    _o("coerce-nullif-int-overflow", "nulls",
+       "SELECT NULLIF(1::INTEGER, 1.5::DOUBLE) + 9223372036854775807::BIGINT"),
+    _o("coerce-integer-literal-width", "integers",
+       "SELECT typeof(1::TINYINT + 200), typeof(1::INTEGER + 3000000000),"
+       " typeof(1::TINYINT + 100::TINYINT), typeof(1::TINYINT * 1::SMALLINT)"),
+    # An integer literal node takes the other integer operand's type where it
+    # fits (ruling 131): `INTEGER_LITERAL` in DuckDB's binder.
+    _o("coerce-literal-fits", "integers",
+       "SELECT typeof(i8 + 100), typeof(i8 + (-100)), typeof(i8 - -128), typeof(100 - i8),"
+       " typeof(i8 * 2), typeof(i8 % 100), typeof(i8 // 3), typeof(i8 + 100 + 100),"
+       " typeof(i16 + 10000), typeof(i64 + 100) FROM t", *_LITERAL_TABLE),
+    _o("coerce-literal-too-wide", "integers",
+       "SELECT typeof(i8 + 200), typeof(i16 + 40000), typeof(i8 + 3000000000),"
+       " typeof(100 + 100 + i8) FROM t", *_LITERAL_TABLE),
+    _o("coerce-literal-not-a-node", "integers",
+       "SELECT typeof(i8 + (50 + 50)), i8 + (50 + 50), typeof(i8 + CAST(100 AS INTEGER)),"
+       " i8 = 200, i8 IN (1, 200) FROM t", *_LITERAL_TABLE),
+    _o("coerce-literal-raise", "integers",
+       "SELECT 100 - (-i8) FROM t", *_LITERAL_TABLE),
+    _o("coerce-literal-contexts", "integers",
+       "SELECT typeof(COALESCE(i8, 100)), typeof(COALESCE(i8, 200)),"
+       " typeof(CASE WHEN i8 > 0 THEN i8 ELSE 100 END), typeof(GREATEST(i8, 100)),"
+       " typeof(NULLIF(i8, 100)), typeof(NULLIF(i32, f)), typeof(NULLIF(i32, i64)) FROM t",
+       *_LITERAL_TABLE),
+    _o("coerce-literal-decimal", "decimals",
+       "SELECT typeof(d + 1), typeof(d + i8), typeof(d + 100000000000), typeof(d * 2),"
+       " typeof(i8 + 1.5) FROM t", *_LITERAL_TABLE),
+    # Decimal `+` casts each operand to the result type and raises there, also
+    # where the exact sum fits (arithmetic.cpp, ResolveDecimalArithmeticTypes).
+    _o("coerce-decimal-cancel-type", "decimals",
+       "SELECT typeof(a + b), typeof(b + a) FROM"
+       " (SELECT 10000000000000000000000000000::DECIMAL(38,0) a,"
+       " -0.0000000001::DECIMAL(38,10) b)"),
+    _o("coerce-decimal-cancel-raise", "decimals",
+       "SELECT a + b FROM (SELECT 10000000000000000000000000000::DECIMAL(38,0) a,"
+       " -0.0000000001::DECIMAL(38,10) b)"),
+    _o("coerce-decimal-cancel-sub-raise", "decimals",
+       "SELECT a - b FROM (SELECT 10000000000000000000000000000::DECIMAL(38,0) a,"
+       " 0.0000000001::DECIMAL(38,10) b)"),
+    _o("coerce-sum-int-hugeint", "aggregates",
+       "SELECT typeof(SUM(x)), SUM(x) FROM (VALUES (9223372036854775807::BIGINT),"
+       " (9223372036854775807::BIGINT)) t(x)"),
+    _o("coerce-int-double-compare", "doubles",
+       "SELECT 9007199254740993::BIGINT = 9007199254740992.0::DOUBLE,"
+       " 0.1::DECIMAL(38,10) = 0.1::DOUBLE, typeof(1::INTEGER IN (1, 2.5))"),
+    _o("coerce-date-timestamp", "temporal",
+       "SELECT DATE '2020-01-01' = TIMESTAMP '2020-01-01 00:00:00',"
+       " DATE '2020-01-01' < TIMESTAMP '2020-01-01 00:00:00.000001'"),
+    _o("coerce-date-timestamptz-utc", "temporal",
+       "SELECT TIMESTAMP '2020-01-01 00:00:00' = TIMESTAMPTZ '2020-01-01 00:00:00+00',"
+       " DATE '2020-01-01' = TIMESTAMPTZ '2020-01-01 00:00:00+00'"),
+    _o("coerce-date-timestamptz-zone", "temporal",
+       "SELECT TIMESTAMP '2020-01-01 00:00:00' = TIMESTAMPTZ '2020-01-01 00:00:00+00',"
+       " DATE '2020-01-01' = TIMESTAMPTZ '2020-01-01 00:00:00+00'",
+       "SET TimeZone = 'America/New_York'"),
+    _o("coerce-unsigned-signed", "integers",
+       "SELECT 18446744073709551615::UBIGINT = -1::BIGINT,"
+       " typeof(18446744073709551615::UBIGINT + -1::BIGINT)"),
     # NaN in equality and keys.
     _o("nan-compare", "doubles",
        "SELECT 'nan'::DOUBLE = 'nan'::DOUBLE, 'nan'::DOUBLE <> 'nan'::DOUBLE,"
