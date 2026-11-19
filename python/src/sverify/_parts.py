@@ -88,16 +88,28 @@ def new_part_path() -> str:
     return os.path.join(state_dir(), f"part-{uuid.uuid4().hex}")
 
 
+def write_part(backend: Backend, frame: Any, schema: pa.Schema, *, merged: bool = False) -> Part:
+    """A new part: the backend writes `frame` to a fresh directory of the
+    state location. A write that fails leaves no directory behind."""
+    path = new_part_path()
+    try:
+        backend.write(frame, schema, path, merged=merged)
+        return Part(path, schema, backend)
+    except BaseException:
+        _remove(path)
+        raise
+
+
 class Backend(ABC):
     """What an engine supplies. A frame is the engine's lazy table; the
     schema is the Arrow schema of a weighted table, with `WEIGHT` where it has
     one."""
 
     @abstractmethod
-    def write(self, frame: Any, schema: pa.Schema, *, merged: bool = False) -> Part:
-        """`frame` (the columns of `schema`, by position, in its types) as a new
-        part. `merged`: the frame is the merge plan's result, whose weight sum
-        may have left 64 bits (raise it)."""
+    def write(self, frame: Any, schema: pa.Schema, path: str, *, merged: bool = False) -> None:
+        """`frame` (the columns of `schema`, by position, in its types)
+        written to the directory `path`. `merged`: the frame is the merge
+        plan's result, whose weight sum may have left 64 bits (raise it)."""
 
     @abstractmethod
     def read(self, parts: Sequence[Part], schema: pa.Schema) -> Any:
@@ -265,7 +277,7 @@ class PartsState(Native):
         frame = self.backend.run(
             self.plan, self.schema, self.raw(), self.backend.frame(self.schema.empty_table())
         )
-        self.parts = (self.backend.write(frame, self.schema, merged=True),)
+        self.parts = (write_part(self.backend, frame, self.schema, merged=True),)
         self.consolidated = self.base = True
         return self
 
@@ -333,7 +345,7 @@ def _parts_of(z: Any, schema: pa.Schema, backend: Backend) -> tuple[Part, ...]:
         return z.parts
     if isinstance(z, pa.Table) and z.num_rows == 0:
         return ()
-    return (backend.write(_frame_of(z, backend), schema),)
+    return (write_part(backend, _frame_of(z, backend), schema),)
 
 
 class PartsStore(ArrowOps):
@@ -410,7 +422,7 @@ class PartsStore(ArrowOps):
         if not z.parts or (low == 1 and high == 1):
             return PartsState(z.parts, schema, z.backend)  # every row once: the parts' own files
         frame = z.backend.copies(z.raw(), names)
-        return PartsState((z.backend.write(frame, schema),), schema, z.backend)
+        return PartsState((write_part(z.backend, frame, schema),), schema, z.backend)
 
     def has_negative(self, z: State) -> bool:
         if not isinstance(z, PartsState):
@@ -426,7 +438,7 @@ class PartsStore(ArrowOps):
             return super().retire(view, column, cutoff)
         # Added up first: a row whose weights cancelled is not a bucket.
         gone, kept = z.backend.split(z.view(), column, cutoff)
-        part = z.backend.write(kept, z.schema)
+        part = write_part(z.backend, kept, z.schema)
         view.state = PartsState(
             (part,), z.schema, z.backend, plan=z.plan, consolidated=True, base=bool(part.rows)
         )
@@ -447,7 +459,7 @@ class PartsStore(ArrowOps):
         # result is as added up as they are.
         b = z.backend
         out = b.filtered(z.raw(), z.schema, columns, _frame_of(keys, b), anti=anti)
-        part = b.write(out, z.schema)
+        part = write_part(b, out, z.schema)
         return PartsState(
             (part,),
             z.schema,

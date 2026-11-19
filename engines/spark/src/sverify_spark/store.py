@@ -15,7 +15,7 @@ from typing import Any
 
 import pyarrow as pa
 
-from sverify._parts import Backend, Lazy, Part, PartsStore, new_part_path
+from sverify._parts import Backend, Lazy, Part, PartsStore
 from sverify._store import MERGE_A, MERGE_B
 from sverify._weighted import WEIGHT
 
@@ -26,14 +26,12 @@ class SparkBackend(Backend):
     def __init__(self, spark: Any):
         self.spark = spark
 
-    def write(self, frame: Any, schema: pa.Schema, *, merged: bool = False) -> Part:
+    def write(self, frame: Any, schema: pa.Schema, path: str, *, merged: bool = False) -> None:
         # `coalesce` keeps the writer to a few files: a change from Arrow has a
         # task per 10,000 rows, and a file each costs more than the rows do.
         # The plan's own guard raises a weight sum that leaves 64 bits.
-        path = new_part_path()
         out = frame.toDF(*schema.names).coalesce(self.spark.sparkContext.defaultParallelism)
         out.write.mode("overwrite").parquet(path)
-        return Part(path, schema, self)
 
     def read(self, parts: Sequence[Part], schema: pa.Schema) -> Any:
         return self.spark.read.parquet(*[p.path for p in parts]).select(*schema.names)

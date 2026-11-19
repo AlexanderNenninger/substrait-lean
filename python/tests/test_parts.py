@@ -132,3 +132,23 @@ def test_parts_are_added_up_when_the_change_matches_the_base_or_there_are_many(s
     assert not state.consolidated and len(state.parts) == MAX_PARTS
     state = merge(state, weighted([(99, "c", 1.5, 1)]), keep=True)
     assert state.consolidated
+
+
+def test_a_write_that_fails_leaves_no_part_behind(store, monkeypatch):
+    from sverify._parts import state_dir
+
+    backend = store.default_backend()
+    kept = store.kept(weighted([(1, "a", 1.5, 1)]))
+    before = set(os.listdir(state_dir()))
+    real = type(backend).write
+
+    def failing(self, frame, schema, path, *, merged=False):
+        real(self, frame, schema, path, merged=merged)  # the directory is there, then it fails
+        raise RuntimeError("the disk is full")
+
+    monkeypatch.setattr(type(backend), "write", failing)
+    merge = _merger(store)
+    with pytest.raises(RuntimeError, match="disk is full"):
+        merge(kept, weighted([(2, "b", 2.0, 1)]), keep=True)
+    gc.collect()
+    assert set(os.listdir(state_dir())) == before

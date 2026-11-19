@@ -18,7 +18,7 @@ from typing import Any
 import polars as pl
 import pyarrow as pa
 
-from sverify._parts import Backend, Lazy, Part, PartsStore, new_part_path
+from sverify._parts import Backend, Lazy, Part, PartsStore
 from sverify._store import MERGE_A, MERGE_B
 from sverify._weighted import WEIGHT
 from sverify_polars import engine, shims
@@ -43,12 +43,13 @@ def _files(path: str) -> list[str]:
 class PolarsBackend(Backend):
     """Polars's frames (`LazyFrame`)."""
 
-    def write(self, frame: pl.LazyFrame, schema: pa.Schema, *, merged: bool = False) -> Part:
+    def write(
+        self, frame: pl.LazyFrame, schema: pa.Schema, path: str, *, merged: bool = False
+    ) -> None:
         names = frame.collect_schema().names()
         frame = frame.select(
             [pl.col(n).cast(_dtype(f)).alias(f.name) for n, f in zip(names, schema, strict=True)]
         )
-        path = new_part_path()
         os.makedirs(path)
         file = os.path.join(path, "part.parquet")
         engine.sink_parquet(frame, file)
@@ -57,7 +58,6 @@ class PolarsBackend(Backend):
         # weights, one `any()`.
         if merged and pl.scan_parquet(file).select(pl.col(WEIGHT).is_null().any()).collect().item():
             raise engine.SumOverflow(_OVERFLOW)
-        return Part(path, schema, self)
 
     def read(self, parts: Sequence[Part], schema: pa.Schema) -> pl.LazyFrame:
         files = [f for p in parts for f in _files(p.path)]
