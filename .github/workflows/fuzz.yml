@@ -1,7 +1,8 @@
 name: Fuzz
 
 # The nightly fuzz run (#747, `sverify_dev.fuzz_nightly`): the fuzzers in
-# batches on their own AWS spot pool (label `aws-fuzz`, at most 4 runners),
+# batches on their own AWS spot pool (label `aws-fuzz`, at most 4 runners,
+# 3 batches at once),
 # which PR CI never uses. Each matrix job is one batch of `SECONDS` with its
 # own seed, so a spot reclaim loses one batch. `report` folds the batches
 # into the ledger (the `fuzz-ledger` artifact, carried from night to night)
@@ -29,16 +30,15 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: fuzz
-  cancel-in-progress: false
-
 env:
   SECONDS_PER_BATCH: ${{ inputs.seconds || (github.event_name == 'pull_request' && '120') || '1200' }}
 
 jobs:
   checker:
-    if: vars.FUZZ_PAUSED != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: >-
+      vars.FUZZ_PAUSED != 'true' && (github.event_name != 'pull_request'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+      && !startsWith(github.head_ref, 'batch/')))
     runs-on: [self-hosted, linux, x64, aws-fuzz]
     timeout-minutes: 40
     steps:
@@ -54,7 +54,9 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 4
+      # Under the pool's 4: a finished job's runner counts until it is gone,
+      # and the scale-up drops a job that finds the pool full (no retry).
+      max-parallel: 3
       matrix:
         suite:
           - core
