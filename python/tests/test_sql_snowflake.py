@@ -245,11 +245,13 @@ def parses(sql: str) -> str:
 
 
 def test_float_literals():
+    # The base writer's: a zero keeps its sign (D31), one NaN; Snowflake reads
+    # these texts as IEEE does (Snowflake behaviour recorded privately).
     assert parses(SNOWFLAKE.float_lit(math.nan)) == "CAST('NaN' AS FLOAT)"
-    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-inf' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-Infinity' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(0.1)) == "CAST('0.1' AS FLOAT)"
-    # The model's one zero and one NaN.
-    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('-0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(0.0)) == "CAST('0' AS FLOAT)"
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
 
 

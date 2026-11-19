@@ -48,7 +48,7 @@ def verdict(
         final.
     """
     from sverify.conditions import RelationRows
-    from sverify.report import Report, class_places, tie_places
+    from sverify.report import Report, black_boxes_from_json, class_places, tie_places
 
     semantics = context.get("semantics", "reference")
     return Report(
@@ -76,6 +76,7 @@ def verdict(
         _epsilon=out.get("epsilon_bounds"),
         _rows_exact=out.get("rows_exact"),
         _margin_checks=list(out.get("margin_checks") or []),
+        black_boxes=black_boxes_from_json(out.get("black_boxes")),
         _engines=out.get("engines"),
         _sorted=out.get("sorted"),
         _generated_proofs=generated_proofs(),
