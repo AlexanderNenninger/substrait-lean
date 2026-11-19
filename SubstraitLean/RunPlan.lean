@@ -171,21 +171,27 @@ private def nearAll (r : Rel) : Bool :=
     ).mayDouble intCat intKinds &&
   !(Rel.read "t").mayDouble intCat intKinds
 
--- Ruling 154, condition 1: an integer `MAX`, a `GROUP BY` on an integer key and
--- an integer comparison transfer at every built-in engine.
-#guard nearAll (.aggregate (.read "t") [] [{ fn := .max, arg := .field 0 }])
+-- Ruling 154, condition 1: a `GROUP BY` on an integer key and an integer
+-- comparison transfer at every built-in engine.
 #guard nearAll (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .field 0 }])
 #guard nearAll (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 1))))
+-- An integer `MAX` does not, at any of them: `MIN` and `MAX` read
+-- `list_null_order`, whose scope is every call (`optionScope`), and each
+-- engine's table leaves the reference there.
+#guard (builtinEngines.filter fun e =>
+    !transferB (.aggregate (.read "t") [] [{ fn := .max, arg := .field 0 }])
+      Profile.reference.table (e.table.refAt floatOnlyOptions)).length == 3
 -- Ruling 169: an integer `BIT_AND` has no double but is not `closedB`
 -- (`AggFn.orderFree` leaves `.bit _` out), so the `near` gate keeps it as written.
 #guard
   let r := Rel.aggregate (.read "t") [] [{ fn := .bit .and, arg := .field 0 }]
   !r.mayDouble intCat intKinds && !r.closedB
--- An integer `AVG` does not at Polars and Spark: `avg_int_result = FP64`
--- changes its integer result, outside `floatOnlyOptions` by design.
+-- Nor does an integer `AVG`: each engine's table leaves the reference at
+-- `avg_int_result` (`FP64` at Polars and Spark), which changes its integer
+-- result, outside `floatOnlyOptions` by design.
 #guard (builtinEngines.filter fun e =>
     !transferB (.aggregate (.read "t") [] [{ fn := .iavg, arg := .field 0 }])
-      Profile.reference.table (e.table.refAt floatOnlyOptions)).map (·.name) == ["polars", "spark"]
+      Profile.reference.table (e.table.refAt floatOnlyOptions)).map (·.name) == ["duckdb", "polars", "spark"]
 
 /-! ## The size hypothesis through the rewrites
 
@@ -438,7 +444,7 @@ built-in engine's table: neither has a double or an open measure, and each
 transfers to the reference past `floatOnlyOptions` (ruling 154). What stays
 open: plans with a double, and plans without one that read an option where an
 engine's table leaves the reference outside `floatOnlyOptions` (an integer
-`AVG` at Polars or Spark), which the gate keeps as written. -/
+`MIN`, `MAX` or `AVG` at every built-in engine), which the gate keeps as written. -/
 def nearRoute (r s : Rel) : Bool :=
   let obs := (R.input.getObjVal? "observation").toOption
   ((obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false ||

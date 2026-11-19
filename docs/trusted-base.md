@@ -274,7 +274,8 @@ place, and what retires it.
      plan's `near` gate checks both at each built-in engine (ruling 154). It
      stays open for plans with a double, and for plans without one that read
      an option where the table leaves the reference outside that list (an
-     integer `AVG` at Polars or Spark).
+     integer `MIN`, `MAX` or `AVG` at every built-in engine, through
+     `list_null_order` and `avg_int_result`).
 
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside `Engine.Runs`. Raising only where the reference may is a separate claim

@@ -128,7 +128,10 @@ def test_a_function_the_plan_does_not_call_keeps_the_plan_as_written(rules):
     expr = line.join(orders, line.k == orders.ok).group_by([line.k, orders.d]).agg(n=line.p.count())
     report = sv.verify(expr, requires={"ord": [sv.unique("ok")]})
     assert rule in report._rewrites
-    assert report._run_gate in ("reads", "functions")
+    # The rewrite's MIN reads `list_null_order`, where every engine's table
+    # leaves the reference, so the `near` gate, which comes first, keeps the
+    # plan too (ruling 154).
+    assert report._run_gate in ("near", "reads", "functions")
 
 
 def test_a_writer_that_refuses_the_rewrite_runs_the_plan_as_written(rules):
