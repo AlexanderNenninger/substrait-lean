@@ -2229,7 +2229,7 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
         try:
             schema = sql_model_schema(query, {"t": table.schema()}, semantics)
         except Unsupported as e:
-            raise ConditionError(cond, str(e)) from e
+            raise ConditionError(label(cond), str(e)) from e
         return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
