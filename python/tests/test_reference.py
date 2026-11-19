@@ -15,6 +15,7 @@ import pytest
 
 import sverify as sv
 from _engines import PROFILED
+from sverify._lean_eval import LeanRaised
 from sverify._unsupported import Unsupported
 from sverify.engine import (
     connect,
@@ -755,15 +756,18 @@ def test_not_in_subquery_means_what_sql_means():
 
 def test_lean_prints_integers_beyond_64_bits():
     """`Rel.eval`'s integers are unbounded: `MAX + 1` is printed as itself, not
-    as a double's code (#72)."""
+    as a double's code (#72). `lean_values` raises there, as the reference does
+    (the `rows_only` read shows the unbounded value)."""
     c = connect()
     put_table(c, "mx", pa.table({"a": pa.array([2**63 - 1], pa.int64())}))
     plan = json.loads(substrait_json(c, "SELECT a + 1 AS s, -a AS n FROM mx WHERE a > 0"))
-    assert lean_values(json.dumps(inline_tables(plan, {"mx": [(2**63 - 1,)]}))) == [
-        (2**63, -(2**63) + 1)
-    ]
+    inlined = json.dumps(inline_tables(plan, {"mx": [(2**63 - 1,)]}))
+    assert lean_values(inlined, rows_only=True) == [(2**63, -(2**63) + 1)]
     plan = json.loads(substrait_json(c, "SELECT -a AS n FROM mx"))
-    assert lean_values(json.dumps(inline_tables(plan, {"mx": [(-(2**63),)]}))) == [(2**63,)]
+    inlined = json.dumps(inline_tables(plan, {"mx": [(-(2**63),)]}))
+    assert lean_values(inlined, rows_only=True) == [(2**63,)]
+    with pytest.raises(LeanRaised, match="wraps"):
+        lean_values(inlined)
 
 
 @pytest.mark.parametrize("engine", PROFILED)

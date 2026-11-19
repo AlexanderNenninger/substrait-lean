@@ -196,8 +196,9 @@ def _result(results, prefix):
 def test_replay(replayed):
     # DuckDB's SQL as it is, through `sverify.sql_lift`.
     assert _result(replayed, "SELECT i + 1").cls == "agree"
-    # DuckDB raises on 64-bit overflow; `Rel.eval`'s integers are unbounded,
-    # and the verifier warns: the reference raises with DuckDB (#747).
+    # DuckDB raises on 64-bit overflow; `Rel.eval`'s integers are unbounded, and
+    # the verifier warns: the reference raises with DuckDB (#747). `lean_values`
+    # reports the error only for a Project over a VALUES, which this plan is not.
     overflow = _result(replayed, "SELECT 9223372036854775807")
     assert (overflow.cls, overflow.side) == ("agree", None)
     assert overflow.lean == '[["9223372036854775808"]]'
@@ -205,11 +206,11 @@ def test_replay(replayed):
     # `verify` without inference reports the overflow the test expects, which
     # an inferred precondition would absorb (#619).
     assert (overflow.reason or "").startswith("verify: overflow"), overflow.reason
-    # Lean's division by zero is NULL; DuckDB 2.0 raises (and so does the
-    # written plan, guarded); the verifier flags it.
+    # Division by zero: DuckDB 2.0 raises (and so does the written plan,
+    # guarded), and so does the reference.
     div = _result(replayed, "SELECT i // 0")
     assert (div.cls, div.side) == ("agree", None)
-    assert div.reason.startswith("verify: division by zero")
+    assert div.lean == "error: Substrait.Issue.divByZero"
     assert _result(replayed, "SELECT list_sort").reason.startswith("lift: ")
     # Data-modifying CTEs are outside sverify's scope (#318); DuckDB still
     # runs them, so the next query sees the row.
@@ -373,8 +374,7 @@ def test_tables_of_128_bit_integers_out_of_arrow_range_are_refused(tmp_path):
 
 
 def test_a_domain_error_is_the_verifiers(tmp_path):
-    """`Rel.eval` gives NULL on a row that raises, and `verify` reports the
-    error: `sin` of infinity raises in the reference, where DuckDB gives NaN
+    """`sin` of infinity raises in the reference, where DuckDB gives NaN
     (`duckdb-R15-math-domain`, #617)."""
     path = tmp_path / "trig.test"
     path.write_text(
@@ -389,14 +389,13 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
     )
     (r,), _ = slt.replay_file(path, "area/trig.test")
     # DuckDB prints the NaN of sin(inf) as -nan on Linux, nan on macOS.
-    assert (r.cls, r.lean) == ("disagree", '[["NULL"]]')
+    assert (r.cls, r.lean) == ("disagree", "error: Substrait.Issue.domain")
     assert r.duckdb in ('[["nan"]]', '[["-nan"]]'), r.duckdb
-    assert (r.reason or "").startswith("verify: domain error: SIN"), r.reason
 
 
 def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
-    """Where the test expects an error and `verify` reports it, the reference
-    raises with DuckDB: Lean's side agrees (#747)."""
+    """Where the test expects an error, the reference raises with DuckDB:
+    Lean's side agrees (#747)."""
     path = tmp_path / "mod.test"
     path.write_text(
         textwrap.dedent(
@@ -410,7 +409,7 @@ def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     )
     (r,), _ = slt.replay_file(path, "area/mod.test")
     assert r.cls == "agree", r
-    assert (r.reason or "").startswith("verify: division by zero"), r.reason
+    assert r.lean == "error: Substrait.Issue.divByZero"
 
 
 def test_a_time_of_24_00_is_refused(tmp_path):
