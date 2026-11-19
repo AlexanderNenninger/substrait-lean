@@ -6,7 +6,11 @@
   "verdict": "code points throughout; `trim` strips U+0020 only; native",
   "area": "strings",
   "options": [
-    "char_set"
+    "char_set",
+    "non_ascii_text"
+  ],
+  "rows": [
+    {"group": "str.ascii", "option": "non_ascii_text", "types": ["string"]}
   ],
   "constructs": [
     "length",

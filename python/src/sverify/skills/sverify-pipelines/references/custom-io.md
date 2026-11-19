@@ -136,8 +136,9 @@ sink, so that holds across restarts too; without it, sverify remembers for
 the life of the process. If two processes may refresh the same sink, make
 `write` fail for the second one to commit: raise
 `sverify.errors.ConcurrentWriteError` when the sink no longer holds what
-`contract()` returned. Its next refresh writes the whole table, or skips
-the state the other process committed.
+`contract()` returned. If the sink then holds the state this refresh was
+writing, the refresh reports it as already committed; otherwise the error
+reaches the caller, and the next refresh writes the whole table.
 
 ```python
 import json

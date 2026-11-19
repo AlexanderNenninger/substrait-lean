@@ -375,7 +375,7 @@ def contract_facet(
         "format": FACET_FORMAT,
         "sverify": _version(),
         "node": node.name,
-        "plan": plan_digest(node.internal_plan),
+        "plan": plan_digest(node.internal_plan, profile=report.semantics),
         "proved": report._proved,
         "verdict": report.verdict,
         "semantics": report.semantics,

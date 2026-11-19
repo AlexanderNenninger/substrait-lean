@@ -11,11 +11,13 @@ from typing import Any
 
 import pyarrow as pa
 from deltalake import DeltaTable, write_deltalake
+from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
 from sverify.engines import run
-from sverify.io import DeltaSource
+from sverify.incremental import row_key
+from sverify.io import Changes, DeltaSource
 from sverify_dev.examples import create_tables, orders
 
 #: Orders with a non-NULL key and a nullable amount.
@@ -188,3 +190,38 @@ def integer_powers(plan: dict) -> dict:
 
     walk(plan)
     return plan
+
+
+# -- random batches -----------------------------------------------------------
+
+
+def canon(rows):
+    """Rows as the reference compares them (`row_key`): one zero, one NaN."""
+    return sorted(repr(row_key(r)) for r in rows)
+
+
+def multiset_of(current, rows):
+    """`rows`, each at most as often as `current` holds it, by the reference's equality."""
+    held = canon(current)
+    out = []
+    for r in rows:
+        key = repr(row_key(r))
+        if key in held:
+            held.remove(key)
+            out.append(r)
+    return out
+
+
+def other_member(row):
+    """The row with each zero and NaN replaced by the other member of its class."""
+    return tuple(-x if isinstance(x, float) and (x == 0 or x != x) else x for x in row)
+
+
+@st.composite
+def random_batch(draw, con, t, row):
+    """Random inserts plus deletes of rows that currently exist (duplicates included, and each
+    zero and NaN of a double key named by the other member of its class at random)."""
+    current = con.rows(t)
+    deletes = draw(st.lists(st.sampled_from(current), max_size=3)) if current else []
+    deletes = [other_member(r) if draw(st.booleans()) else r for r in multiset_of(current, deletes)]
+    return Changes(inserts=draw(st.lists(row, max_size=3)), deletes=deletes)

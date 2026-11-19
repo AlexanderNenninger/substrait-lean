@@ -44,6 +44,9 @@ DATA = {
 }
 
 
+ASCII_S = ~_.s.re_search(r"[^\x00-\x7f]")  # the condition D43's guards ask for
+
+
 def _verify(expr, requires=None, ensures=(), **kw) -> sv.Report:
     report = sv.verify(expr, requires=requires, ensures=list(ensures), **kw)
     assert report.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS), str(report)
@@ -196,7 +199,7 @@ def test_engine_profile_is_refused() -> None:
 
 def test_st10_refuses_in_every_mode() -> None:
     t = ibis.table({"s": "string"}, name="t")
-    report = _verify(t.select(u=_.s.upper()))
+    report = _verify(t.select(u=_.s.upper()), {"t": [ASCII_S]})
     for mode in se.SHIMS:
         with pytest.raises(ExportError, match="ST-10"):
             report.to_substrait(shims=mode)
@@ -204,7 +207,7 @@ def test_st10_refuses_in_every_mode() -> None:
 
 def test_function_outside_the_yamls_is_refused() -> None:
     t = ibis.table({"s": "string"}, name="t")
-    report = _verify(t.select(h=_.s.levenshtein("a")))
+    report = _verify(t.select(h=_.s.levenshtein("a")), {"t": [ASCII_S]})
     with pytest.raises(ExportError, match="not a function of Substrait's YAMLs"):
         report.to_substrait()
 

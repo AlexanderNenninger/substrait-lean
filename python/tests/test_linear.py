@@ -441,6 +441,41 @@ def test_a_decimal_avg_keeps_its_exact_type_and_rounds_half_away_from_zero():
     assert rows(node) == recomputed(node, src) == [("a", D("-23.796667")), ("b", None)]
 
 
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_decimal_avg_at_the_widest_argument_finishes_and_equals_the_batch(engine):
+    """The one maintenance site that adds a check to SQL a refresh runs: the
+    finish's quotient (`sverify_decimal_div`), at DECIMAL(34, 2), the widest
+    argument a view may have (`checkDecimalAvgWidth`), with a state at the
+    extremes ±(10^34 - 1) · 10^-2."""
+    from decimal import Decimal as D
+
+    # Built from text: arithmetic on a Decimal rounds to 28 digits.
+    big, small = D(f"{10**34 - 1}e-2"), D(f"-{10**34 - 1}e-2")
+    schema = pa.schema([("host", pa.string()), ("amount", pa.decimal128(34, 2))])
+
+    def wide(rows):
+        return pa.table(
+            {"host": [r[0] for r in rows], "amount": [r[1] for r in rows]}, schema=schema
+        )
+
+    src = StaticSource(
+        wide([("a", big), ("a", big), ("b", small), ("b", small), ("b", big)]), name="amounts"
+    )
+    node = src.pipe(lambda t: t.group_by("host").aggregate(mean=t.amount.mean()))
+    node.refresh(engine=engine)
+    assert view(node).strategy == "delta rules"
+    assert rows(node) == recomputed(node, src)
+    for batch in [
+        Changes(inserts=wide([("a", big), ("b", small)])),
+        Changes(deletes=wide([("a", big), ("b", small)])),
+        Changes(deletes=wide([("a", big), ("a", big)]), inserts=wide([("a", small)])),
+        Changes(deletes=wide([("b", small), ("b", small), ("b", big)])),
+    ]:
+        src.apply(batch)
+        node.refresh(engine=engine, audit=True)
+        assert rows(node) == recomputed(node, src)
+
+
 def test_an_integer_avg_is_left_to_touched_groups():
     src = StaticSource(samples([("a", 1, 5)]), name="samples")
     node = src.pipe(lambda t: t.group_by("host").aggregate(m=t.cpu.mean()))

@@ -403,7 +403,7 @@ def export(
     doc["customProperties"] = _sverify(
         {
             "node": node.name,
-            "plan": plan_digest(node.internal_plan),
+            "plan": plan_digest(node.internal_plan, profile=report.semantics),
             "proved": report._proved,
             "semantics": report.semantics,
             "sverify": _sverify_version(),

@@ -64,6 +64,13 @@ inductive Issue where
   excludes (`Issue.isError` is false for it), so that a profile that returns `±∞` there is
   stated exactly. -/
   | infinite
+  /-- Text outside ASCII where an engine's answer is its own (D43): `UPPER`,
+  `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein`, and a regular expression
+  with a class (`\\d`, `\\w`, `\\s`, `\\b`) on text that is not ASCII or has a
+  vertical tab (`Text.classesDiffer`). The reference raises; the engines'
+  mappings differ from Rust's, which the black boxes mean. Ruled out by an
+  inferred precondition on a column (the text is ASCII), checked on the data. -/
+  | nonAscii
   deriving Repr, DecidableEq
 
 def Issue.name : Issue → String
@@ -77,6 +84,7 @@ def Issue.name : Issue → String
   | .domain => "domain error"
   | .raised => "raised by a guard"
   | .infinite => "overflow to infinity"
+  | .nonAscii => "non-ASCII text"
 
 /-- The aggregates among a list of window functions. -/
 def WinFn.aggs (fns : List WinFn) : List Measure :=
@@ -131,7 +139,14 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .narrow n, .int i => if fitsBits n i then none else some .badCast
   | .wrap n, .int i => if fitsBits n i then none else some .wraps
   -- The pattern is compiled whatever the input.
+  | .regexMatch p, .str s =>
+    if !Text.simpleRegex p then some .badRegex
+    else if Text.classesDiffer s p then some .nonAscii else none
   | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
+  | .regexExtract p _, .str s | .regexReplace p _ _, .str s =>
+    if Text.classesDiffer s p then some .nonAscii else none
+  | .upper, .str s | .lower, .str s | .reverse, .str s | .ascii, .str s =>
+    if Text.isAscii s then none else some .nonAscii
   | .dateTrunc u, .ts ts | .dateTrunc u, .tod ts =>
     if u.calendar then
       if ts ≤ Time.tsMax ∧ Time.tsMin ≤ Time.trunc u ts then none else some .overflow
@@ -289,6 +304,8 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
     if b < 0 then some .negExponent
     else if 64 < b ∧ 1 < a.natAbs then some .overflow
     else if inI64 (a ^ b.toNat) then none else some .overflow
+  | .ilike, .str a, .str b | .levenshtein, .str a, .str b =>
+    if Text.isAscii a && Text.isAscii b then none else some .nonAscii
   | .strRepeat, .str s, .int n => if Text.repeatFits s n then none else some .overflow
   | .substr n _, .str _, .int a => if Text.substrInRange a n then none else some .domain
   | .fatan2, .float y, .float x => domainIssue (atan2? y x)

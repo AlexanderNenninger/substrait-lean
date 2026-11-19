@@ -210,7 +210,7 @@ as microseconds, and `Expr.kind` calls `ts - ts` a time; the writer must tell
 them apart to write a literal compared with, or added to, an interval as an
 interval (#65). -/
 inductive WKind where
-  | int | float | time | date | interval | str | bool | tod | other
+  | int | float | time | instant | date | interval | str | bool | tod | other
   | list (elem : WKind)
   | struct (fields : List WKind)
   | dec (p s : Nat)
@@ -221,12 +221,13 @@ def WKind.ofKind : Kind → WKind
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (ofKind k)
   | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => ofKind k)
   | .dec p s => .dec p s
-  -- Zoned timestamps are only compared with each other (`checkArgKinds`).
-  | .timeTz => .other
+  -- An instant (#1725): compared with another instant, never mixed (`checkArgKinds`).
+  | .timeTz => .instant
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Kind
-  | .int => .int | .float => .float | .time | .interval => .time | .date => .date
+  | .int => .int | .float => .float | .time | .interval => .time | .instant => .timeTz
+  | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
   | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => toKind k)
   | .dec p s => .dec p s

@@ -617,4 +617,145 @@ theorem fmul_canon (a b : Int) : canon (fmul (canon a) (canon b)) = canon (fmul 
 theorem fdiv_canon_left (a b : Int) : canon (fdiv (canon a) b) = canon (fdiv a b) := by
   unfold fdiv; rw [canon_divI_canon_left]
 
+theorem unitK_pos : 0 < unitK := Nat.two_pow_pos _
+
+theorem scaled_exactCode (i : Int) : scaled (exactCode i) = i * (unitK : Int) := by
+  simp only [scaled, exactCode, FloatFormat.exactCode, fp64_scale, unitK]
+  split
+  · subst_vars; simp
+  · split <;> omega
+
+/-- Dividing `v · 2¹⁰⁷⁴` by `n · 2¹⁰⁷⁴` rounds as `v / n` does. -/
+theorem ofExactDiv_unitK (v : Int) (n : Nat) :
+    ofExactDiv (v * unitK * unitK) (n * unitK) = ofExactDiv (v * unitK) n := by
+  rw [← ofExactDiv_mul_mul (v * unitK) (k := unitK) (n := n) unitK_pos, Int.mul_comm (v * unitK),
+    Nat.mul_comm n]
+
+set_option exponentiation.threshold 2200 in
+/-- An integer of at most `2⁵³` in magnitude, times `2¹⁰⁷⁴`, is a double's
+exact value: it rounds to its own code. -/
+theorem ofExact_int {k : Int} (hk : k.natAbs ≤ 2 ^ 53) : ofExact (k * unitK) = exactCode k := by
+  by_cases h0 : k = 0
+  · subst h0
+    simp only [Int.zero_mul, ofExact, ofExactDiv_zero]; rfl
+  have hm : k.natAbs * 2 ^ 1074 ≤ maxMag := by
+    have h1 : k.natAbs * 2 ^ 1074 ≤ 2 ^ 53 * 2 ^ 1074 := Nat.mul_le_mul_right _ hk
+    rw [← Nat.pow_add] at h1
+    exact Nat.le_trans h1 (pow_le_maxMag (by omega))
+  have hpos : 0 < k.natAbs * 2 ^ 1074 := Nat.mul_pos (by omega) (Nat.two_pow_pos _)
+  have hcode : exactCode k = ofMag (decide (k < 0)) (k.natAbs * 2 ^ 1074) := by
+    rw [ofMag_eq _ hm]
+    unfold posCode
+    simp only [exactCode, FloatFormat.exactCode, fp64_scale, h0, ↓reduceIte,
+      show ¬ maxMag < k.natAbs * 2 ^ 1074 by omega, show k.natAbs * 2 ^ 1074 ≠ 0 by omega]
+    by_cases hn : k < 0 <;> simp [hn]
+  have hval : k * (unitK : Int) = exact (ofMag (decide (k < 0)) (k.natAbs * 2 ^ 1074)) := by
+    have hU : (unitK : Int) = ((2 ^ 1074 : Nat) : Int) := rfl
+    rw [ofMag_eq _ hm, hU]
+    by_cases hn : k < 0
+    · simp only [hn, decide_true, ↓reduceIte, exact]
+      rw [scaled_neg_posCode hm, Int.natCast_mul, ← Int.neg_mul]
+      congr 1; omega
+    · simp only [hn, decide_false, Bool.false_eq_true, ↓reduceIte, exact]
+      rw [scaled_posCode hm, Int.natCast_mul]
+      congr 1; omega
+  rw [hval, hcode]
+  rcases Nat.lt_or_ge k.natAbs (2 ^ 53) with hlt | hge
+  · exact ofExact_exact _ hlt hm
+  · have e : k.natAbs * 2 ^ 1074 = 1 * 2 ^ 1127 := by
+      rw [show k.natAbs = 2 ^ 53 by omega, Nat.one_mul, ← Nat.pow_add]
+    rw [e]
+    exact ofExact_exact _ (by decide) (by rw [← e]; exact hm)
+
+/-! ### One-sided bounds of a sum and a product (#1485, item 7)
+
+A lower bound on a double's code bounds a sum or a product from below even
+where the double may be `+∞` or NaN (the NaN code is the greatest): `amount >= 0`
+gives `amount * 3 + 1 ≥ 1`. -/
+
+theorem ofExactDiv_le_posInf (v : Int) (n : Nat) : ofExactDiv v n ≤ posInf := by
+  have := posInf_eq; have := posCode_nonneg (roundMagDiv v.natAbs n)
+  have := posCode_le_posInf (roundMagDiv v.natAbs n)
+  unfold ofExactDiv; split <;> omega
+
+theorem canon_nan : canon nan = nan := canon_of_isRef isRef_nan
+
+/-- `la ≤ i` and `lb ≤ j`, finite lower ends: the sum is at least the rounded sum
+of the ends, whatever `i` and `j` are above them (`+∞` and NaN included). -/
+theorem fadd_lower {i j la lb : Int} (hla : negInf < la) (hlb : negInf < lb)
+    (hi : la ≤ i) (hj : lb ≤ j) :
+    ofExact (scaled la + scaled lb) ≤ canon (fadd i j) := by
+  have hL : ofExact (scaled la + scaled lb) ≤ posInf := ofExactDiv_le_posInf _ 1
+  have hpn : posInf < nan := fp64.posInf_lt_nan
+  have e1 := negZero_eq'; have e2 := negNan_eq'; have e3 := negInf_eq; have e4 := posInf_eq
+  have hsi := scaled_mono hi
+  have hsj := scaled_mono hj
+  unfold fadd addI isNanCode isInfCode
+  simp only [Bool.or_eq_true, beq_iff_eq]
+  split
+  · rw [canon_nan]; omega
+  · rename_i hn
+    split
+    · rename_i h1
+      split
+      · exfalso; omega
+      · rw [canon_posInf]; omega
+    · split
+      · exfalso; omega
+      · split
+        · rename_i h3
+          rcases h3 with h3 | h3
+          · rw [h3, canon_posInf]; omega
+          · exfalso; omega
+        · rename_i h1 h2 h3
+          have hs1 : sv i = scaled i := by unfold sv; split <;> first | rfl | (exfalso; omega)
+          have hs2 : sv j = scaled j := by unfold sv; split <;> first | rfl | (exfalso; omega)
+          split
+          · rename_i hv
+            rw [canon_zeroOf]
+            have : ofExact (scaled la + scaled lb) ≤ ofExact 0 := ofExact_mono (by omega)
+            exact Int.le_trans this (Int.le_of_eq (ofExactDiv_zero 1))
+          · rw [canon_rnd]
+            exact ofExact_mono (by omega)
+
+/-- `0 ≤ la ≤ i` and `0 ≤ lb ≤ j`: the product is at least the rounded product of
+the ends, whatever `i` and `j` are above them. -/
+theorem fmul_lower {i j la lb : Int} (hla : 0 ≤ la) (hlb : 0 ≤ lb)
+    (hi : la ≤ i) (hj : lb ≤ j) :
+    ofExactDiv (scaled la * scaled lb) unitK ≤ canon (fmul i j) := by
+  have hL : ofExactDiv (scaled la * scaled lb) unitK ≤ posInf := ofExactDiv_le_posInf _ _
+  have hpn : posInf < nan := fp64.posInf_lt_nan
+  have e1 := negZero_eq'; have e2 := negNan_eq'; have e3 := negInf_eq; have e4 := posInf_eq
+  have hsi := scaled_mono hi
+  have hsj := scaled_mono hj
+  have h0a := scaled_nonneg hla
+  have h0b := scaled_nonneg hlb
+  have hprod : scaled la * scaled lb ≤ scaled i * scaled j :=
+    Int.mul_le_mul hsi hsj h0b (by omega)
+  have hK : 0 < unitK := Nat.two_pow_pos _
+  have hlt1 : ¬ i < 0 := by omega
+  have hlt2 : ¬ j < 0 := by omega
+  unfold fmul mulI isNanCode isInfCode isZeroCode
+  simp only [Bool.or_eq_true, beq_iff_eq, hlt1, hlt2, decide_false, bne_self_eq_false]
+  split
+  · rw [canon_nan]; omega
+  · split
+    · rw [canon_nan]; omega
+    · split
+      · rename_i h3
+        have : i ≠ negInf := by omega
+        have : j ≠ negInf := by omega
+        simp only [infOf, Bool.false_eq_true, ite_false, canon_posInf]; omega
+      · have hs1 : sv i = scaled i := by unfold sv; split <;> first | rfl | (exfalso; omega)
+        have hs2 : sv j = scaled j := by unfold sv; split <;> first | rfl | (exfalso; omega)
+        split
+        · rename_i hv
+          rw [hs1, hs2] at hv
+          rw [canon_zeroOf]
+          have : ofExactDiv (scaled la * scaled lb) unitK ≤ ofExactDiv 0 unitK :=
+            ofExactDiv_mono hK (by omega)
+          exact Int.le_trans this (Int.le_of_eq (ofExactDiv_zero _))
+        · rw [canon_rnd, hs1, hs2]
+          exact ofExactDiv_mono hK hprod
+
 end Substrait.FloatCode

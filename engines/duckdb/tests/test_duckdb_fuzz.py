@@ -1,6 +1,7 @@
 """DuckDB's own SQL against `Rel.eval` (`sverify_dev.duckdb_fuzz`), on fixed
 cases: the fuzzer's search is `sverify_dev.fuzz`'s, tested in `test_fuzz.py`."""
 
+import dataclasses
 import json
 
 import pytest
@@ -27,20 +28,17 @@ def test_agree():
 def test_overflow():
     big = 2**63 - 1
     out = _check("SELECT (i + i) AS c0 FROM t AS q", [(big, None, *T_ROW[2:])])
-    # `verify` reports the overflow, so a verified plan excludes the input:
-    # an expected refusal, not a finding (#638).
+    # The reference raises with DuckDB (`lean_values` reports the model's error).
     assert out.agree
-    assert out.lean == f'[["{2 * big}"]]'  # unbounded
+    assert out.lean == "error: Substrait.Issue.wraps"
     assert out.duckdb.startswith("error: Out of Range Error: Overflow in addition")
     assert duckdb_fuzz.kind(out) == "error: Out of Range Error: Overflow in addition of INT"
-    assert any("overflow" in i for i in out.issues)
 
 
 def test_division_by_zero():
     out = _check("SELECT (i % j) AS c0 FROM t AS q", [(7, 0, *T_ROW[2:])])
-    assert (out.agree, out.lean) == (True, '[["NULL"]]')
+    assert (out.agree, out.lean) == (True, "error: Substrait.Issue.divByZero")
     assert out.duckdb.startswith("error: Invalid Input Error: Division by zero")
-    assert any("division by zero" in i for i in out.issues)
 
 
 def test_aimed_restores():
@@ -59,7 +57,10 @@ def test_aimed_restores():
 
 
 def test_write(tmp_path):
-    out = _check("SELECT (i % j) AS c0 FROM t AS q", [(7, 0, *T_ROW[2:])])
+    # Both raise, so the query agrees; the ledger records a disagreement.
+    out = dataclasses.replace(
+        _check("SELECT (i % j) AS c0 FROM t AS q", [(7, 0, *T_ROW[2:])]), agree=False
+    )
     path = duckdb_fuzz.write("int_division", "2.0.0", [out], 10, tmp_path)
     led = json.loads(path.read_text())
     assert (led["area"], led["checked"]) == ("fuzz/int_division", 10)
@@ -90,11 +91,10 @@ def test_aimed_swaps_the_double_values_and_restores_them():
 
 
 def test_an_error_verify_reports_is_an_expected_refusal():
-    # DuckDB raises; `Rel.eval` gives rows; `verify` reports the overflow, so
-    # a verified plan's precondition excludes the input (#638).
+    # DuckDB raises and so does the reference (`lean_values`, #638).
     out = _check("SELECT (i - 1) AS c0 FROM t AS q", [(-(2**63), *T_ROW[1:])])
-    assert out.duckdb.startswith("error: ") and not out.lean.startswith("error: ")
-    assert out.agree and any("overflow" in i for i in out.issues)
+    assert out.duckdb.startswith("error: ") and out.lean.startswith("error: ")
+    assert out.agree
 
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -116,21 +116,20 @@ def _check_u(sql: str, k: int) -> duckdb_fuzz.Outcome:
 )
 def test_ledger_overflows_are_expected_refusals(sql, k, error):
     """The fuzz ledgers' (`engines/duckdb/replay/fuzz__*.json`) overflows
-    of 2026-11: DuckDB raises, `Rel.eval` gives rows, `verify` reports the
-    overflow (#638)."""
+    of 2026-11: DuckDB raises and so does the reference (#638)."""
     out = _check_u(sql, k)
     assert out.duckdb.startswith("error: Out of Range Error: Overflow") and error in out.duckdb
-    assert out.agree and any("overflow" in i for i in out.issues)
+    assert out.agree and out.lean.startswith("error: Substrait.Issue.")
 
 
 def test_ledger_overflow_under_a_filter_and_a_nested_one():
     out = _check("SELECT COUNT(b) AS c0 FROM t AS q WHERE (i = (i * i))", [(I64_MAX, *T_ROW[1:])])
     assert out.duckdb.startswith("error: Out of Range Error: Overflow in multiplication")
-    assert out.agree and out.lean == '[["0"]]'
+    assert out.agree and out.lean == "error: Substrait.Issue.wraps"
     sql = "SELECT DISTINCT b AS c0, b AS c1, (i + (i - j)) AS c2 FROM t AS q ORDER BY c0, c1, c2"
     out = _check(sql, [T_ROW, (0, I64_MIN, *T_ROW[2:])], ordered=True)
     assert out.duckdb.startswith("error: Out of Range Error: Overflow in subtraction")
-    assert out.agree and any("overflow" in i for i in out.issues)
+    assert out.agree and out.lean.startswith("error: Substrait.Issue.")
 
 
 @pytest.mark.parametrize(

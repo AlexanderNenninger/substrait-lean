@@ -26,6 +26,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 
 from sverify import black_box
+from sverify._decimals import scaled
 from sverify._unsupported import Unsupported as _Unsupported
 
 Json = dict[str, Any]
@@ -78,6 +79,22 @@ class ProducerUnsupported(Unsupported):
 # Types and literals
 
 
+#: What a refusal of a timestamp with a time zone (an instant) says it can do instead
+#: (D53, #1725).
+INSTANT_NOTE = (
+    "(#1725): a timestamp with a time zone can be read, compared with other such columns, "
+    "used as a key and written back; literals, conversions and calendar functions follow"
+)
+
+#: The spellings of the time zone UTC the readers produce (Arrow, Delta, Ibis).
+UTC_ZONES = frozenset({"UTC", "Etc/UTC", "+00:00", "Z", "utc"})
+
+
+def is_utc(zone: str | None) -> bool:
+    """Is `zone` UTC, in a spelling a reader produces?"""
+    return zone in UTC_ZONES
+
+
 def type_json(dtype: Any, nullable: bool = True) -> Json:
     """The Substrait type; computed values are typed nullable, as the Lean
     model's values all are, and only table schemas say otherwise."""
@@ -113,16 +130,18 @@ def _type_json(dtype: Any) -> Json:
     if dtype.is_date():
         return {"date": NULLABLE}
     if dtype.is_timestamp():
-        if dtype.timezone is not None:
+        if dtype.timezone is not None and not is_utc(dtype.timezone):
             raise Unsupported(
-                "timestamps with a time zone are not supported yet (#323); cast the column to "
-                "a timestamp in UTC without a time zone before sverify reads the table"
+                f"timestamps with the time zone {dtype.timezone} are not supported yet "
+                f"{INSTANT_NOTE}; only UTC is read, as an instant"
             )
         if dtype.scale not in (None, 6):
             raise Unsupported(
                 "only microsecond timestamps are supported (#323); cast the column to "
                 "microseconds before sverify reads the table"
             )
+        if dtype.timezone is not None:
+            return {"precisionTimestampTz": {"precision": 6, **NULLABLE}}
         return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
     if dtype.is_time():
         return {"precisionTime": {"precision": 6, **NULLABLE}}
@@ -175,10 +194,9 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"string": str(value)}}
     if dtype.is_timestamp():
         type_json(dtype)
-        if value.tzinfo is not None:
+        if value.tzinfo is not None or dtype.timezone is not None:
             raise Unsupported(
-                "timestamps with a time zone are not supported yet (#323); cast the column to "
-                "a timestamp in UTC without a time zone before sverify reads the table"
+                f"a literal timestamp with a time zone is not supported yet {INSTANT_NOTE}"
             )
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
@@ -220,7 +238,7 @@ def decimal_type_of(value: Any) -> Any:
     if not d.is_finite():
         raise ProducerUnsupported(f"decimal {d} is not supported")
     s = max(0, -int(d.as_tuple().exponent))
-    digits = len(str(abs(int(d.scaleb(s)))))
+    digits = len(str(abs(int(scaled(d, s)))))
     return dt.Decimal(precision=max(digits, s, 1), scale=s, nullable=True)
 
 
@@ -230,7 +248,7 @@ def decimal_literal(value: Any, dtype: Any) -> Json:
     the narrowest type that holds it."""
     if dtype.precision is None or dtype.scale is None:
         dtype = decimal_type_of(value)
-    unscaled = Decimal(value).scaleb(dtype.scale)
+    unscaled = scaled(value, dtype.scale)
     if unscaled != unscaled.to_integral_value():
         raise ProducerUnsupported(f"{value} has more than {dtype.scale} decimal places")
     if len(str(abs(int(unscaled)))) > dtype.precision:
@@ -632,10 +650,16 @@ def distinct_rel(input: Json, width: int) -> Json:
 
 def read_rel(name: str, schema: Any) -> Json:
     """A read of the named table `name`, of the Ibis schema `schema`."""
-    struct = {
-        "types": [type_json(t, t.nullable) for t in schema.types],
-        "nullability": "NULLABILITY_REQUIRED",
-    }
+    types = []
+    for column, t in schema.items():
+        try:
+            types.append(type_json(t, t.nullable))
+        except Unsupported as e:
+            raise Unsupported(
+                f"column {column!r} of {name!r}: {e}; "
+                "only a column the query never reads is left out"
+            ) from e
+    struct = {"types": types, "nullability": "NULLABILITY_REQUIRED"}
     return {
         "read": {
             "baseSchema": {"names": struct_names(schema), "struct": struct},

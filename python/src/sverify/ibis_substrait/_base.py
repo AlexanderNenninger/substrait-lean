@@ -78,7 +78,7 @@ class Exprs:
         if _float_const(op) or (isinstance(v, int | Decimal) and not isinstance(v, bool)):
             d = _const_decimal(op) if _float_const(op) else Decimal(op.value)
             if d == d.quantize(Decimal(1).scaleb(-s)):
-                digits = len(str(abs(int(d.scaleb(s)))))
+                digits = len(str(abs(int(_decimals.scaled(d, s)))))
                 return decimal_literal(d, _decimal(max(digits, s, 1), s))
         e = self.translate(op)
         if t.is_decimal() or t.is_integer():
@@ -318,6 +318,9 @@ def to_substrait(expr: ir.Table, semantics: str = "reference") -> Json:
     from sverify.profiles import check_declared_types
 
     check_declared_types(expr)
+    from sverify.ibis_substrait.prune import prune_unmentioned
+
+    expr = prune_unmentioned(expr)
     with compiling(semantics) as compiler:
         op: Any = expr.op()
         return plan(compiler, rel(op), list(op.schema.names))

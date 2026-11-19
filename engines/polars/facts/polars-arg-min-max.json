@@ -2,14 +2,20 @@
   "id": "polars-arg-min-max",
   "engine": "polars",
   "engine_version": "py-2.1.0",
-  "title": "`arg_min`, `arg_max`: the first index of a tie",
-  "verdict": "the first of tied rows",
+  "title": "`arg_min`, `arg_max`: the first index of a tie in memory and in a list, any tied row on streaming",
+  "verdict": "in memory and `list.arg_*`: the first of tied rows; streaming column-level: any of them",
   "area": "aggregates",
   "options": [
     "tie_pick"
   ],
   "rows": [
-    {"group": "agg.pick", "option": "tie_pick", "types": ["any"]}
+    {
+      "group": "agg.pick",
+      "option": "tie_pick",
+      "types": [
+        "any"
+      ]
+    }
   ],
   "constructs": [
     "arg_min",
@@ -21,7 +27,7 @@
       "streaming"
     ]
   },
-  "description": "`arg_max` over 1, 3, 3, 1 is 1 and `arg_min` is 0: the first of the tied rows. NaN is skipped (polars-min-max-nan).",
+  "description": "`arg_max` over 1, 3, 3, 1 is 1 and `arg_min` is 0 in memory: the first of the tied rows. On streaming the column-level `arg_max`/`arg_min` pick any tied row, since each morsel has its own first and the morsels merge in the threads' order: with 2 threads `arg_max` was 2 (the second 3). The per-list form (`list.arg_max`, `list.arg_min`) works within one row's list, which no morsel splits, and keeps the first. NaN is skipped (polars-min-max-nan).",
   "reference": "`tie_pick`: any row of the tie.",
   "status": "no-finding",
   "evidence": "probe",
@@ -60,6 +66,21 @@
         "Streaming gives what in memory gives on every probe and observation cited here.",
         "The observations' frames hold a few rows, which streaming runs as one-row morsels; the probes' 6000-row columns cover morsels of many rows.",
         "`python -m sverify_dev.probe_polars --diff --write` runs each probe one row at a time and on a 6000-row column with `collect(engine='in-memory')` and `collect(engine='streaming')`, and each observation twice: its `df(...)` frame's `select`, `with_columns`, `filter`, `sort`, `unique`, `join` and `group_by` go through the streaming engine the second time (`StreamingFrame`); the `s-` observations collect a lazy query on each engine themselves. Polars 2.1.0 (Python), macOS arm64."
+      ]
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_polars, `s-`/`arg-min-max-ties` observation, PR #1685 (session worker 3)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/probes-streaming.json",
+          "probe": "arg-min-max-ties"
+        }
+      ],
+      "notes": [
+        "The observation `df(x=[1, 3, 3, 1]).select(arg_max, arg_min).rows()` on the streaming engine gave `[(2, 3)]` with `POLARS_MAX_THREADS=2` (in memory `[(1, 0)]`), where the recorded run on 10 cores gave `[(1, 0)]`: the earlier round's 'streaming gives what in memory gives' holds for that machine only. The ledger job failed on the 2-thread AWS runner (ci.yml `route`, self-hosted linux x64) over a neighbouring observation; this result was reproduced locally on macOS arm64 (Apple M4) by limiting the threads, Polars 2.1.0 (Python), not on the runner itself.",
+        "The translator uses only the per-list form (`engine.py`, `greatest`/`least`), which morsels do not split, so no lowered plan changes; the reference's `tie_pick` allows any tied row."
       ]
     }
   ]

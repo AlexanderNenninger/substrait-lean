@@ -570,7 +570,18 @@ class IcebergSource(_TableSource):
             return None
         where = f"{self.identifier}@v{_version(s)}"
         return Stored(
-            where, self.identifier, c.plan, c.sources, c.digests, _read(t, s), c.table_ids
+            where,
+            self.identifier,
+            c.plan,
+            c.sources,
+            c.digests,
+            _read(t, s),
+            c.table_ids,
+            c.engine,
+            c.engine_version,
+            c.sverify,
+            c.profile,
+            c.package,
         )
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:

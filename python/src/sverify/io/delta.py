@@ -608,7 +608,20 @@ class DeltaSource(_TableSource):
             return None
         where_key = public_uri(self.uri)
         where = f"{where_key}@v{dt.version()}"
-        return Stored(where, where_key, c.plan, c.sources, c.digests, _read(dt), c.table_ids)
+        return Stored(
+            where,
+            where_key,
+            c.plan,
+            c.sources,
+            c.digests,
+            _read(dt),
+            c.table_ids,
+            c.engine,
+            c.engine_version,
+            c.sverify,
+            c.profile,
+            c.package,
+        )
 
     def _check_cdf(self, dt: DeltaTable, since: int, end: int) -> None:
         """Raise unless every commit after `since` up to `end` wrote its

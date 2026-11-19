@@ -41,7 +41,9 @@ recomputing the others gives the aggregate too
 (`ExtremeAgg.extreme_maintained` in `SubstraitLean/IncrementalMinMax.lean`).
 A projection that finishes an `AVG` keeps that (`ExtremeAgg.map_maintained`).
 This module is trusted glue: it recognises the shape on the Ibis expression
-and builds the plans, which Lean checks as it checks any plan.
+and builds the plans. The checker parses and writes them (`written_plan`) and
+does not contract-check them, so a view's report is its batch query's. A refresh
+can raise where the report lists no issue; it then applies nothing.
 
 The maintained sum is the exact sum of the group's values, and `merge` adds
 it up with the engine's `SUM`, which raises when a group's sum leaves 64

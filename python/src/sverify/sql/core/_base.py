@@ -39,11 +39,13 @@ class Lst:
     elem: Any
 
 
-Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+Kind = (
+    Literal["int", "float", "time", "instant", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+)
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
 #: guard that raises names, and the guards that are not an issue, `UNISSUED`:
-#: the ASCII condition (#1506) and DuckDB's quantile position limit (#900).
+#: DuckDB's quantile position limit (#900).
 #: `tests/test_guards_issues.py` checks the list against the Lean source.
 GuardIssue = Literal[
     "divByZero",
@@ -56,12 +58,12 @@ GuardIssue = Literal[
     "domain",
     "raised",
     "infinite",
-    "asciiOnly",
+    "nonAscii",
     "quantilePosition",
 ]
 
 #: The guards of `GuardIssue` that no `Issue` reports yet.
-UNISSUED = frozenset({"asciiOnly", "quantilePosition"})
+UNISSUED = frozenset({"quantilePosition"})
 
 #: The issue a shim's `raise` message names (`UnFn.raise`); `"raised"` for any other.
 _RAISED: dict[str, GuardIssue] = {
@@ -82,7 +84,9 @@ zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
 microseconds. `None` (unknown) is
 used for columns whose Substrait type the model does not know."""
 
-LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"] | Dec | Lst
+LeanKind = (
+    Literal["int", "float", "time", "instant", "date", "str", "bool", "tod", "other"] | Dec | Lst
+)
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
 
@@ -224,6 +228,7 @@ class Dialect:
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
             "time": "TIMESTAMP",
+            "instant": "TIMESTAMP WITH TIME ZONE",
             "date": "DATE",
             "tod": "TIME",
             "interval": "INTERVAL",
@@ -1941,7 +1946,7 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         case ("int" | "float" | "date" | "str" | "bool") as k, _:
             return k, k
         # Times are microseconds; a coarser precision is not modelled.
-        case ("time" | "tod") as k, int() as p if p >= 6:
+        case ("time" | "instant" | "tod") as k, int() as p if p >= 6:
             return k, k
         case "decimal", (p, sc):
             d = Dec(p, sc)
@@ -3470,7 +3475,10 @@ class _Parser:
                     fn = "std_pop" if pop else "std_samp"
                 if k == "int":
                     arg = Un("itof", arg)
-            case (("min" | "max"), ("int" | "float" | "str" | "bool" | "time" | "date")):
+            case (
+                ("min" | "max"),
+                ("int" | "float" | "str" | "bool" | "time" | "instant" | "date"),
+            ):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
                 raise WriterUnsupported(f"{name} of this type is not supported")
@@ -5313,10 +5321,10 @@ class _Writer:
         (#70). With `classes` (a regular expression with `\\w`, `\\d`, `\\s`
         or `\\b`), the vertical tab is out too, where Rust's `\\s` and RE2's
         differ: `Text.classesDiffer`, and the same predicate as
-        `ascii_text`. Not one of `Safety.lean`'s issues, so `guards=False`
-        keeps it."""
+        `ascii_text`. The issue is `Issue.nonAscii`: the report lists it, and
+        a plan whose text is declared ASCII has it proved away."""
         d = self.d
-        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "asciiOnly")
+        fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "nonAscii")
         return d.case_when(f"(NOT {ascii_text(d, x, classes)})", fail, value)
 
     def int_operand(
@@ -5485,7 +5493,8 @@ def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
     plain = d.is_ascii(x)
     if not vertical_tab_out:
         return plain
-    return f"({plain} AND NOT {d.like(x, d.str_lit(VERTICAL_TAB_PATTERN))})"
+    # No ESCAPE clause: the pattern has no backslash, and the SQL lift reads the form without one.
+    return f"({plain} AND NOT ({x} LIKE {d.str_lit(VERTICAL_TAB_PATTERN)}))"
 
 
 def like_pattern(p: str) -> str:

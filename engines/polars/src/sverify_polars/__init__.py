@@ -67,7 +67,7 @@ def _run(
 
 def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: bool) -> Any:
     """The plan's result as a lazy weighted-table handle
-    (`sverify_polars.store.LazyState`): the merge that adds it to the state
+    (`sverify._parts.Lazy`): the merge that adds it to the state
     streams it into a file, so it is never collected."""
     from sverify_polars import engine
     from sverify_polars.store import lazy_plan
