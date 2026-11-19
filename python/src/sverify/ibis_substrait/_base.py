@@ -138,7 +138,8 @@ def _common(*types: Any) -> Any:
         # D53: Ibis leaves the two kinds as they are, and DuckDB or Spark would bring the
         # naive side to the session's zone; the conversion is written, not guessed.
         raise Unsupported(
-            "a timestamp with a time zone and a timestamp without one are compared or combined: "
+            "a timestamp with a time zone and a timestamp without one are compared or combined "
+            "(#1725): "
             'convert one with .cast("timestamp(\'UTC\', 6)") or .cast("timestamp") ' + INSTANT_NOTE
         )
     return dt.highest_precedence([t for t in types if not t.is_null()] or [dt.null])
