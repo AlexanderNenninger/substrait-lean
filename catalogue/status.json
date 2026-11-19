@@ -1600,7 +1600,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so rows=\"sequence\" cannot follow the Lean model's list order for FETCH and windows over a named table; write rows=\"multiset\" (ties and the rows of a LIMIT are open,"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
    "proved": true,

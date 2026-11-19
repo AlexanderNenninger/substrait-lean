@@ -42,7 +42,9 @@ def test_a_cast_guarded_by_a_range_runs_where_the_guard_is_false(engine):
     keeps it from running there. The analysis does not yet narrow a bound through
     the chain's `IS NOT FALSE` (it proves a zero guard, not an interval), so the
     plan runs unverified: the test is about the engine, which must take the guard."""
-    sql = "SELECT x FROM t WHERE x BETWEEN -1000000.0 AND 1000000.0 AND CAST(x AS BIGINT) > 1"
+    sql = (
+        "SELECT x FROM t WHERE x BETWEEN -1000000.0 AND 1000000.0 AND CAST(round(x) AS BIGINT) > 1"
+    )
     report, con, target = _run(sql, FLT, {"x": [1e30, 5.5, -3.0, 2.5]}, engine)
     with pytest.warns(UnverifiedRunWarning):
         got = report.run(con, target, unverified=True)
@@ -53,7 +55,7 @@ def test_a_cast_guarded_by_a_range_runs_where_the_guard_is_false(engine):
 def test_the_range_cast_raises_without_its_guard(engine):
     """Control for the test above: the same cast with no guard raises on the row
     that is out of range, so that test shows an engine taking the guard."""
-    sql = "SELECT x FROM t WHERE CAST(x AS BIGINT) > 1"
+    sql = "SELECT x FROM t WHERE CAST(round(x) AS BIGINT) > 1"
     report, con, target = _run(sql, FLT, {"x": [1e30, 5.5, -3.0, 2.5]}, engine)
     with (
         pytest.warns(UnverifiedRunWarning),
