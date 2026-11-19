@@ -142,10 +142,10 @@ def _table(con: Any, name: str, spark: Any) -> Any:
     DuckDB SQL, or files that are not local) reads through Arrow on a session that
     shares the driver's filesystem, and is refused on a Spark Connect or non-local-master session:
     the server-side read is N12 of #173."""
+    from sverify._parts import PartsState
     from sverify._scan import Scan
     from sverify._unsupported import Unsupported
     from sverify_spark.scan import shares_filesystem
-    from sverify._parts import PartsState
 
     table = con.get(name)
     if isinstance(table, PartsState):  # a state's files, as they are
