@@ -1,3 +1,4 @@
+# ruff: noqa: E501 - the table of probes, one per line
 """Measure Spark's elementary functions against the correctly rounded value.
 
 Maintainer tooling (`sverify_dev`), the Spark counterpart of the ulp probes
@@ -21,14 +22,13 @@ import json
 import math
 import platform
 import random
+from collections.abc import Callable
+from typing import Any
 
 import mpmath
 from pyspark.sql import SparkSession
 
 mpmath.mp.prec = 300
-
-#: name -> (SQL template over `x` and `y`, reference, sampler of (x, y)).
-Sampler = "Callable[[random.Random], tuple[float, float]]"
 
 
 def _logu(rng: random.Random, lo: float, hi: float) -> float:
@@ -39,7 +39,7 @@ def _signed(rng: random.Random, f: float) -> float:
     return f if rng.random() < 0.5 else -f
 
 
-FUNCS: dict[str, tuple[str, object, object]] = {
+FUNCS: dict[str, tuple[str, Callable[..., Any], Callable[[random.Random], tuple[float, float]]]] = {
     "exp": ("exp(x)", lambda x, y: mpmath.exp(x), lambda r: (r.uniform(-700, 700), 0.0)),
     "ln": ("ln(x)", lambda x, y: mpmath.log(x), lambda r: (_logu(r, 1e-300, 1e300), 0.0)),
     "log10": ("log10(x)", lambda x, y: mpmath.log10(x), lambda r: (_logu(r, 1e-300, 1e300), 0.0)),
@@ -86,7 +86,9 @@ def main() -> None:
     for name, (sql, ref, sampler) in FUNCS.items():
         rng = random.Random(name)
         pts = [sampler(rng) for _ in range(args.n)]
-        df = spark.createDataFrame([(i, x, y) for i, (x, y) in enumerate(pts)], "i INT, x DOUBLE, y DOUBLE")
+        df = spark.createDataFrame(
+            [(i, x, y) for i, (x, y) in enumerate(pts)], "i INT, x DOUBLE, y DOUBLE"
+        )
         df.createOrReplaceTempView("t")
         got = {r.i: r.v for r in spark.sql(f"SELECT i, {sql} AS v FROM t").collect()}
         worst = 0.0

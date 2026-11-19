@@ -161,6 +161,16 @@ structure EngineProfile where
   marked with the profile's name: a plan states the profile's choices as the
   reference's templates (`Polars.elaborate_eq`). -/
   asReference : Bool := false
+  /-- Do the engine's doubles call the reference's `libm`? Then every
+  elementary function without an entry in `elemUlps` is the reference's value,
+  bit for bit; otherwise it has no bound (`Epsilon.opExtra`). -/
+  sameLibm : Bool := true
+  /-- The engine's elementary functions that are not the reference's: for
+  `ln`, `log10`, `log2`, `logb` (`log(b, x)`), `sin`, `cos`, `tan`, `asin`,
+  `acos` and `atan`, S + R in ulps, the engine's distance from the exact value
+  (from its source) plus the reference's (ruling 132). The plan's bound adds
+  twice this per call, tested and never proved. -/
+  elemUlps : List (String × Float) := []
 
 def EngineProfile.name (e : EngineProfile) : String := e.table.name
 

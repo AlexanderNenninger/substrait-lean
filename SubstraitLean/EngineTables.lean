@@ -31,7 +31,10 @@ def builtinEngines : List EngineProfile := [
     translationTheorem := "Rel.duckdb_refines",
     shims := [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
       ("ORDER BY the keys", .sort), ("nan_through", .expression),
-      ("quantile_guard", .expression)] },
+      ("quantile_guard", .expression)],
+    -- `log(b, x)` is two libm calls and a division: the reference's own formula is 2.5 ulp
+    -- from exact, DuckDB's 2 (`duckdb-ulp-libm`).
+    elemUlps := [("logb", 2.0 + 2.5)] },
   { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
     translationTheorem := "Rel.polars_sound", executes := "streaming",
     shims := [("null_order", .argument), ("round_half_away", .argument),
@@ -41,12 +44,21 @@ def builtinEngines : List EngineProfile := [
       ("substring_wrap", .expression),
       ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
       ("max_nan_greatest", .expression), ("nan_through", .expression),
-      ("sort on the keys", .sort)] },
+      ("sort on the keys", .sort)],
+    -- `ln x / ln b`: within 2.1 ulp for `log10` and `log2` of the exact `ln x / ln b`
+    -- (`polars-ulp-libm`), plus the reference's 2; `log(b, x)` is the reference's formula twice.
+    elemUlps := [("log10", 2.1 + 2.0), ("log2", 2.1 + 2.0), ("logb", 2.5 + 2.5)] },
   { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
     translationTheorem := "Rel.spark_sound", executes := "batch",
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
       ("atan2 refused", .expression), ("null_order", .argument), ("sort on the keys", .sort),
-      ("decimal_negate_sub", .expression)] }]
+      ("decimal_negate_sub", .expression)],
+    -- Java's functions, not the reference's `libm` (`spark-ulp-libm`, ruling 132):
+    -- S + R for `fp64`, `sin`, `cos` and `tan` guarded to `|x| ≤ 2²⁰` (`Epsilon.trigArgMax`).
+    sameLibm := false,
+    elemUlps := [("ln", 1.0 + 1.0), ("log10", 1.0 + 2.0), ("log2", 2.5 + 2.0), ("logb", 2.5 + 2.5),
+      ("sin", 1.0 + 1.0), ("cos", 1.0 + 1.0), ("tan", 1.0 + 3.0),
+      ("asin", 1.0 + 1.0), ("acos", 1.0 + 1.0), ("atan", 1.0 + 1.0)] }]
 
 variable [Boxes.Ambient]
 example : builtinEngines.all (·.rowsWf) := by decide +kernel
