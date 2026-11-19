@@ -1,5 +1,5 @@
 import Sverify.Engines.Sound
-import SubstraitLean.MarginSound
+import Sverify.Analysis.MarginSound
 import Sverify.Polars.Engine
 
 /-!

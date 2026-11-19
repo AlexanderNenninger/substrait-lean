@@ -631,7 +631,7 @@ def _render_needs(
 
 def _why_hint(why: str, show: Callable[[str], str]) -> str:
     """Why no bound on an input column rules an issue out, from the
-    inference's reason (`SubstraitLean/Infer.lean`), in the user's terms."""
+    inference's reason (`analysis/Sverify/Analysis/Infer.lean`), in the user's terms."""
     m = re.fullmatch(r"it divides by (.+), which the inference does not look into", why)
     if m and re.fullmatch(r"-?0(\.0*)?d?", m[1]):
         return "it divides by the constant 0, so every row it reaches raises: change the divisor"
@@ -648,7 +648,7 @@ def _hint(
     show: Callable[[str], str] = lambda e: e,
 ) -> str | None:
     """What a report suggests for one overflow, from what the inference
-    found (`SubstraitLean/Infer.lean`)."""
+    found (`analysis/Sverify/Analysis/Infer.lean`)."""
     if bound is None:
         return None
     if bound["why"] is not None:
@@ -962,7 +962,7 @@ def infer_bounds(
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred.
 
-    Lean's `SubstraitLean/Infer.lean` runs the range analysis backwards: for
+    Lean's `analysis/Sverify/Analysis/Infer.lean` runs the range analysis backwards: for
     each overflow it may not rule out, the range of each input column that
     does (`amount * 2` on BIGINT fits when `amount < 2**62`). Those bounds
     are candidates only. The ones on the tables in `assume` (all tables if
