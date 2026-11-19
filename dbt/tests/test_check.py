@@ -509,6 +509,7 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     """#699: `verify` names the condition it cannot read; sverify-dbt drops it
     and proves the others, in one retry per bad condition (no dbt needed)."""
     from types import SimpleNamespace
+    from typing import Any, cast
 
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
@@ -518,7 +519,10 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     res.sql = "SELECT x FROM t"
     ensures = [(bad, ["zz > 1"]), (good, ["x IS NOT NULL"])]
     report = _Checker._verify(
-        SimpleNamespace(counterexamples=0, _drop=_Checker._drop),
+        cast(
+            Any,
+            SimpleNamespace(counterexamples=0, _drop=_Checker._drop, _isolate=_Checker._isolate),
+        ),
         res,
         {"t": {"x": "BIGINT NOT NULL"}},
         {},
