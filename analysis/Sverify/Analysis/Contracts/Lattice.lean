@@ -352,7 +352,19 @@ structure AVal where
   /-- every string is ASCII without a vertical tab (`Text.isPlain`): what a
   class of a regular expression asks of text (`Text.classesDiffer`). -/
   plain : Bool := false
+  /-- every string is in `UPPER`'s agreed alphabet: none holds a scalar of its raise set
+  (`Text.upperRaises`). A column declared so, or a literal's text. The condition
+  `Issue.caseDiffers` asks of the operand of `UPPER` (D51). ASCII text has it
+  (`Text.upperRaises_of_isAscii`). -/
+  upperAgreed : Bool := false
+  /-- every string is in `LOWER`'s agreed alphabet (`Text.lowerRaises`). -/
+  lowerAgreed : Bool := false
   deriving Repr, BEq, Inhabited
+
+/-- The text conditions `a` asserts of the string `s`: each flag set implies its predicate. -/
+@[simp] def AVal.textOk (a : AVal) (s : String) : Bool :=
+  (!a.ascii || Text.isAscii s) && (!a.plain || Text.isPlain s) &&
+    (!a.upperAgreed || !Text.upperRaises s) && (!a.lowerAgreed || !Text.lowerRaises s)
 
 /-- The most strings an abstract value lists (#708); more, and any string may be. -/
 def strCap : Nat := 64
@@ -375,7 +387,7 @@ def AVal.MemR (a : AVal) : Value → Prop
   -- `cond`, not a match on the boolean: `simp` rewrites it where the
   -- boolean is not a literal (`a.Mem (.bool (s == t))`).
   | .bool b => cond b a.tt a.ff = true
-  | .str s => (a.str && a.strs.all (·.contains s) && (!a.ascii || Text.isAscii s) && (!a.plain || Text.isPlain s)) = true
+  | .str s => (a.str && a.strs.all (·.contains s) && a.textOk s) = true
   | .list vs => a.list = true ∧ a.card.Mem vs.length ∧
       (match a.elems with | some e => AVal.MemAll e vs | none => True)
   | .struct vs => a.struct = true ∧
@@ -449,7 +461,9 @@ def AVal.ofValue : Value → AVal
   | .dec s i => .num false (.exact i) (.dec s)
   | .bool true => { tt := true }
   | .bool false => { ff := true }
-  | .str s => { str := true, strs := some [s], ascii := Text.isAscii s, plain := Text.isPlain s }
+  | .str s =>
+    { str := true, strs := some [s], ascii := Text.isAscii s, plain := Text.isPlain s,
+      upperAgreed := !Text.upperRaises s, lowerAgreed := !Text.lowerRaises s }
   | .list vs => { list := true, card := .exact vs.length }
   | .struct _ => { struct := true }
 
@@ -472,11 +486,15 @@ def joinStrs (a b : AVal) : Option (List String) :=
 def joinNk (a b : AVal) : Option NumKind :=
   if a.int.isNone then b.nk else if b.int.isNone then a.nk else if a.nk = b.nk then a.nk else none
 
+/-- A text flag of a join: a side without strings adds none; neither side with strings
+gives the default. -/
+def joinFlag (fa fb sa sb : Bool) : Bool := (fa || !sa) && (fb || !sb) && (sa || sb)
+
 mutual
 /-- The values of either side. A side that holds no list (no struct) adds
 nothing to the elements and lengths (fields). -/
 def AVal.join : AVal → AVal → AVal
-  | a@⟨_, _, _, _, _, _, _, l, e, c, st, fs, _, _⟩, b =>
+  | a@⟨_, _, _, _, _, _, _, l, e, c, st, fs, _, _, _, _⟩, b =>
     { null := a.null || b.null, int := joinInt a.int b.int, tt := a.tt || b.tt,
       ff := a.ff || b.ff, str := a.str || b.str, strs := joinStrs a b, nk := joinNk a b,
       list := l || b.list,
@@ -485,8 +503,9 @@ def AVal.join : AVal → AVal → AVal
       struct := st || b.struct,
       fields := if !st then b.fields else if !b.struct then fs else AVal.joinF fs b.fields,
       -- A side without strings adds none; neither side with strings gives the default.
-      ascii := (a.ascii || !a.str) && (b.ascii || !b.str) && (a.str || b.str),
-      plain := (a.plain || !a.str) && (b.plain || !b.str) && (a.str || b.str) }
+      ascii := joinFlag a.ascii b.ascii a.str b.str, plain := joinFlag a.plain b.plain a.str b.str,
+      upperAgreed := joinFlag a.upperAgreed b.upperAgreed a.str b.str,
+      lowerAgreed := joinFlag a.lowerAgreed b.lowerAgreed a.str b.str }
   termination_by structural a => a
 
 /-- Both elements' descriptions joined; any value where one is. -/
@@ -524,11 +543,42 @@ omit [Boxes.Ambient] in
 omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_strs : (a.join b).strs = joinStrs a b := by cases a; rfl
 omit [Boxes.Ambient] in
-@[simp] theorem AVal.join_ascii :
-    (a.join b).ascii = ((a.ascii || !a.str) && (b.ascii || !b.str) && (a.str || b.str)) := by cases a; rfl
+@[simp] theorem AVal.join_ascii : (a.join b).ascii = joinFlag a.ascii b.ascii a.str b.str := by
+  cases a; rfl
 omit [Boxes.Ambient] in
-@[simp] theorem AVal.join_plain :
-    (a.join b).plain = ((a.plain || !a.str) && (b.plain || !b.str) && (a.str || b.str)) := by cases a; rfl
+@[simp] theorem AVal.join_plain : (a.join b).plain = joinFlag a.plain b.plain a.str b.str := by
+  cases a; rfl
+omit [Boxes.Ambient] in
+@[simp] theorem AVal.join_upperAgreed :
+    (a.join b).upperAgreed = joinFlag a.upperAgreed b.upperAgreed a.str b.str := by
+  cases a; rfl
+omit [Boxes.Ambient] in
+@[simp] theorem AVal.join_lowerAgreed :
+    (a.join b).lowerAgreed = joinFlag a.lowerAgreed b.lowerAgreed a.str b.str := by
+  cases a; rfl
+omit [Boxes.Ambient] in
+theorem joinFlag_left {fa fb sa sb p : Bool} (hs : sa = true) (h : (!fa || p) = true) :
+    (!joinFlag fa fb sa sb || p) = true := by
+  cases fa <;> cases fb <;> cases sb <;> cases p <;> simp_all [joinFlag]
+omit [Boxes.Ambient] in
+theorem joinFlag_right {fa fb sa sb p : Bool} (hs : sb = true) (h : (!fb || p) = true) :
+    (!joinFlag fa fb sa sb || p) = true := by
+  cases fa <;> cases fb <;> cases sa <;> cases p <;> simp_all [joinFlag]
+omit [Boxes.Ambient] in
+theorem AVal.textOk_join_left {a b : AVal} {s : String} (hs : a.str = true)
+    (h : a.textOk s = true) : (a.join b).textOk s = true := by
+  simp only [AVal.textOk, Bool.and_eq_true, AVal.join_ascii, AVal.join_plain, AVal.join_upperAgreed,
+    AVal.join_lowerAgreed] at h ⊢
+  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
+  exact ⟨⟨⟨joinFlag_left hs h1, joinFlag_left hs h2⟩, joinFlag_left hs h3⟩, joinFlag_left hs h4⟩
+omit [Boxes.Ambient] in
+theorem AVal.textOk_join_right {a b : AVal} {s : String} (hs : b.str = true)
+    (h : b.textOk s = true) : (a.join b).textOk s = true := by
+  simp only [AVal.textOk, Bool.and_eq_true, AVal.join_ascii, AVal.join_plain, AVal.join_upperAgreed,
+    AVal.join_lowerAgreed] at h ⊢
+  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
+  exact ⟨⟨⟨joinFlag_right hs h1, joinFlag_right hs h2⟩, joinFlag_right hs h3⟩,
+    joinFlag_right hs h4⟩
 omit [Boxes.Ambient] in
 @[simp] theorem AVal.join_nk : (a.join b).nk = joinNk a b := by cases a; rfl
 omit [Boxes.Ambient] in
@@ -614,7 +664,7 @@ theorem AVal.mem_list {a : AVal} {vs : List Value} :
 omit [Boxes.Ambient] in
 theorem AVal.mem_ofValue : ∀ v, (AVal.ofValue v).Mem v
   | .null | .bool true | .bool false => rfl
-  | .str s => by simp [AVal.Mem, AVal.ofValue]
+  | .str s => by simp [AVal.Mem, AVal.ofValue, AVal.textOk]
   | .list _ => by simp [AVal.Mem, AVal.ofValue, Bound.mem_exact]
   | .struct _ => by simp [AVal.Mem, AVal.ofValue]
   | .int i | .date i | .ts i | .tod i | .dec _ i =>
@@ -673,12 +723,10 @@ mutual
 theorem AVal.mem_join_left {a b : AVal} : ∀ {v}, a.Mem v → (a.join b).Mem v
   | .str s, h => by
       simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at h
-      obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
-      simp only [AVal.Mem, AVal.MemR, AVal.join_str, AVal.join_strs, AVal.join_ascii, AVal.join_plain,
-        Bool.and_eq_true, Bool.or_eq_true]
-      refine ⟨⟨⟨.inl h1, joinStrs_left h1 h2⟩, ?_⟩, ?_⟩
-      all_goals cases hA : a.ascii <;> cases hB : b.ascii <;> cases hP : a.plain <;> cases hQ : b.plain <;>
-        cases hb : b.str <;> simp_all
+      obtain ⟨⟨h1, h2⟩, h3⟩ := h
+      simp only [AVal.Mem, AVal.MemR, AVal.join_str, AVal.join_strs, Bool.and_eq_true,
+        Bool.or_eq_true]
+      exact ⟨⟨.inl h1, joinStrs_left h1 h2⟩, AVal.textOk_join_left h1 h3⟩
   | .null, h | .bool true, h | .bool false, h => by
       simp_all [AVal.Mem]
   | .list vs, ⟨hl, hc, he⟩ => by
@@ -728,12 +776,10 @@ mutual
 theorem AVal.mem_join_right {a b : AVal} : ∀ {v}, b.Mem v → (a.join b).Mem v
   | .str s, h => by
       simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at h
-      obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
-      simp only [AVal.Mem, AVal.MemR, AVal.join_str, AVal.join_strs, AVal.join_ascii, AVal.join_plain,
-        Bool.and_eq_true, Bool.or_eq_true]
-      refine ⟨⟨⟨.inr h1, joinStrs_right h1 h2⟩, ?_⟩, ?_⟩
-      all_goals cases hA : a.ascii <;> cases hB : b.ascii <;> cases hP : a.plain <;> cases hQ : b.plain <;>
-        cases ha : a.str <;> simp_all
+      obtain ⟨⟨h1, h2⟩, h3⟩ := h
+      simp only [AVal.Mem, AVal.MemR, AVal.join_str, AVal.join_strs, Bool.and_eq_true,
+        Bool.or_eq_true]
+      exact ⟨⟨.inr h1, joinStrs_right h1 h2⟩, AVal.textOk_join_right h1 h3⟩
   | .null, h | .bool true, h | .bool false, h => by
       simp_all [AVal.Mem]
   | .list vs, ⟨hl, hc, he⟩ => by
@@ -812,7 +858,7 @@ theorem AVal.mem_cases {a : AVal} {v : Value} (h : a.Mem v) :
   | .bool false, h => exact .inr (.inr (.inr (.inl ⟨rfl, h⟩)))
   | .str s, h =>
       simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at h
-      exact .inr (.inr (.inr (.inr (.inl ⟨s, rfl, h.1.1⟩))))
+      exact .inr (.inr (.inr (.inr (.inl ⟨s, rfl, h.1⟩))))
   | .list vs, h => exact .inr (.inr (.inr (.inr (.inr ⟨vs, .inl rfl, by simp [AVal.nested, h.1]⟩))))
   | .struct vs, h =>
       exact .inr (.inr (.inr (.inr (.inr ⟨vs, .inr rfl, by simp [AVal.nested, h.1]⟩))))

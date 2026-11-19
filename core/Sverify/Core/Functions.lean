@@ -403,7 +403,7 @@ def groups : List (String × List String) := [
   ("cmp", ["nan_equality", "nan_order", "zero_sign"]), ("sverify", []),
   ("str.sub", ["negative_start", "substring_range", "string_positions"]),
   ("str.match", ["case_sensitivity", "string_positions"]),
-  ("str.case", ["char_set", "non_ascii_text"]), ("str.concat", ["null_handling"]), ("str.plain", []),
+  ("str.case", ["char_set", "case_mapping"]), ("str.concat", ["null_handling"]), ("str.plain", []),
   ("str.opaque", []), ("str.ascii", ["non_ascii_text"]),
   ("time.arith", ["date_range", "time_interval_months"]), ("time.part", []),
   ("list.order", ["list_null_order"]), ("list.plain", []),

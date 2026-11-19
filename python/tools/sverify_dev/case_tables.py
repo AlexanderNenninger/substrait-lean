@@ -156,9 +156,10 @@ def collated_string_checks(spark: Any) -> dict[str, Any]:
     and join keys go by bytes and the result mixes with an uncollated string;
     and what it does with invalid UTF-8. Runs on any `SparkSession`."""
     form = lambda x: COLLATED.format(fn="upper", x=x)  # noqa: E731
-    spark.sql(
-        f"SELECT {form('s')} AS u, s FROM VALUES ('é'), ('a'), ('É'), ('B') AS t(s)"
-    ).createOrReplaceTempView("v")
+    values = "('é'), ('a'), ('É'), ('B'), ('e\u0301'), ('z')"
+    spark.sql(f"SELECT {form('s')} AS u, s FROM VALUES {values} AS t(s)").createOrReplaceTempView(
+        "v"
+    )
     q = lambda sql: [tuple(r) for r in spark.sql(sql).collect()]  # noqa: E731
     out: dict[str, Any] = {
         "type": q(f"SELECT typeof({form(repr('é'))})")[0][0],
@@ -167,6 +168,8 @@ def collated_string_checks(spark: Any) -> dict[str, Any]:
         "group_by": sorted(r[0] for r in q("SELECT u FROM v GROUP BY u")),
         "distinct": q("SELECT count(DISTINCT u) FROM v")[0][0],
         "equal_bytes": q("SELECT u = 'É', u = 'é' FROM v WHERE s = 'é'")[0],
+        # `e` + U+0301 is canonically equal to `é`: under `UNICODE` it would equal `É`.
+        "equal_decomposed": q("SELECT u = 'É' FROM v WHERE s = 'e\u0301'")[0],
         "join_keys": sorted(r[0] for r in q("SELECT a.u FROM v a JOIN v b ON a.u = b.u")),
         "mixes_with_plain": q("SELECT u || s, concat(u, s), u < s FROM v WHERE s = 'a'")[0],
     }
@@ -179,6 +182,72 @@ def collated_string_checks(spark: Any) -> dict[str, Any]:
             ).collect()
         ]
     return out
+
+
+def spark_version_entry(conf: str | None = None) -> None:
+    """The collated form's tables on the installed pyspark under `conf` (`key=value`),
+    as differences from the default table, under `pyspark_<version>_icu_<true|false>` in
+    `case-tables-collated.json` (D51, ruling 68): the pyspark, the JVM, the bundled ICU
+    and its Unicode version, the context words and the string checks (L3). Runs in an
+    environment of its own: only `pyspark` and `pyarrow` are imported."""
+    import tempfile
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import pyspark
+    from pyspark.sql import SparkSession
+
+    spark = (
+        SparkSession.builder.master("local[2]").config("spark.driver.memory", "2g").getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("OFF")
+    if conf:
+        spark.conf.set(*conf.split("=", 1))
+    icu = (conf or "spark.sql.icu.caseMappings.enabled=true").split("=", 1)[1]
+    with tempfile.TemporaryDirectory() as tmp:
+        pq.write_table(pa.table({"s": [chr(c) for c in SCALARS]}), f"{tmp}/t.parquet")
+        spark.read.parquet(tmp).createOrReplaceTempView("t")
+        coll = lambda f: COLLATED.format(fn=f, x="s")  # noqa: E731
+        got = _diff(
+            [
+                tuple(r)
+                for r in spark.sql(f"SELECT s, {coll('upper')}, {coll('lower')} FROM t").collect()
+            ]
+        )
+    base = json.loads((ROOT / "engines" / "spark" / "probes" / "case-tables.json").read_text())
+    jvm: Any = spark.sparkContext._jvm
+    assert jvm is not None
+    entry: dict = {
+        "pyspark": pyspark.__version__,
+        "java": str(jvm.java.lang.System.getProperty("java.version")),
+        "icu": str(jvm.com.ibm.icu.util.VersionInfo.ICU_VERSION.toString()),
+        "unicode": str(jvm.com.ibm.icu.lang.UCharacter.getUnicodeVersion().toString()),
+        "conf": conf,
+    }
+    for d in ("upper", "lower"):
+        keys = sorted(set(got[d]) | set(base[d]), key=lambda h: int(h, 16))
+        entry[d] = {
+            h: [base[d].get(h, chr(int(h, 16))), got[d].get(h, chr(int(h, 16)))]
+            for h in keys
+            if base[d].get(h, chr(int(h, 16))) != got[d].get(h, chr(int(h, 16)))
+        }
+    entry["context"] = {
+        w: [
+            str(x)
+            for x in spark.sql(
+                "SELECT " + ", ".join(COLLATED.format(fn=f, x="?") for f in ("upper", "lower")),
+                args=[w, w],
+            ).collect()[0]
+        ]
+        for w in CONTEXT_WORDS
+    }
+    entry["string_checks"] = collated_string_checks(spark)
+    name = f"pyspark_{pyspark.__version__}_icu_{icu}"
+    print(name, entry["icu"], entry["unicode"], {d: len(entry[d]) for d in ("upper", "lower")})
+    path = ROOT / "engines" / "spark" / "probes" / "case-tables-collated.json"
+    data = json.loads(path.read_text()) if path.exists() else {}
+    data[name] = entry
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=0, sort_keys=True) + "\n")
 
 
 def spark_executor_locale(locale: str) -> None:
@@ -268,9 +337,16 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--spark-setting", metavar="NAME", help="record Spark's tables under a setting")
     ap.add_argument("--conf", help="the setting's conf, key=value")
     ap.add_argument("--executor-locale", metavar="LOCALE", help="the collated form on an executor")
+    ap.add_argument(
+        "--pyspark-entry",
+        action="store_true",
+        help="the collated form on the installed pyspark, under --conf (D51, ruling 68)",
+    )
     ap.add_argument("--collated", action="store_true", help="through the collated writer form")
     ap.add_argument("--engines", default="", help="comma-separated; default: all")
     args = ap.parse_args(argv)
+    if args.pyspark_entry:
+        return spark_version_entry(args.conf)
     if args.executor_locale:
         return spark_executor_locale(args.executor_locale)
     if args.spark_setting:
