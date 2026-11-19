@@ -16,17 +16,24 @@ from sverify.errors import UnverifiedRunWarning
 
 pytestmark = pytest.mark.backend("duckdb")
 
-ENGINES = ["duckdb", "polars"]
+ENGINES = ["duckdb", "polars", "spark"]
 FLT = ibis.table({"x": "float64"}, name="t")
 INT = ibis.table({"x": "int64"}, name="t")
 STR = ibis.table({"s": "string"}, name="t")
 
 
-def _run(sql, table, data):
+def _run(sql, table, data, engine="duckdb"):
+    """The verified report, and the target to run it on: a DuckDB connection, which
+    Polars reads too, or the Spark session with the table in it."""
     report = sv.verify(sql, tables={"t": table}, on_inferred="off")
     con = connect()
     put_table(con, "t", pa.table(data))
-    return report, con
+    if engine == "spark":
+        import spark_session
+
+        spark_session.put_tables({"t": pa.table(data)})
+        return report, con, spark_session.session()
+    return report, con, engine
 
 
 @pytest.mark.parametrize("engine", ENGINES)
@@ -36,9 +43,9 @@ def test_a_cast_guarded_by_a_range_runs_where_the_guard_is_false(engine):
     the chain's `IS NOT FALSE` (it proves a zero guard, not an interval), so the
     plan runs unverified: the test is about the engine, which must take the guard."""
     sql = "SELECT x FROM t WHERE x BETWEEN -1000000.0 AND 1000000.0 AND CAST(x AS BIGINT) > 1"
-    report, con = _run(sql, FLT, {"x": [1e30, 5.5, -3.0, 2.5]})
+    report, con, target = _run(sql, FLT, {"x": [1e30, 5.5, -3.0, 2.5]}, engine)
     with pytest.warns(UnverifiedRunWarning):
-        got = report.run(con, engine, unverified=True)
+        got = report.run(con, target, unverified=True)
     assert got.column("x").to_pylist() == [5.5, 2.5]
 
 
@@ -47,9 +54,9 @@ def test_a_cast_guarded_by_a_pattern_runs_where_the_guard_is_false():
     the other engines refuse it, D49). The analysis has no domain bound for it, so
     the plan runs unverified."""
     sql = "SELECT s FROM t WHERE s LIKE '1%' AND CAST(s AS BIGINT) > 1"
-    report, con = _run(sql, STR, {"s": ["12", "ab", "5", "10"]})
+    report, con, target = _run(sql, STR, {"s": ["12", "ab", "5", "10"]})
     with pytest.warns(UnverifiedRunWarning):
-        got = report.run(con, "duckdb", unverified=True)
+        got = report.run(con, target, unverified=True)
     assert got.column("s").to_pylist() == ["12", "10"]
 
 
@@ -58,19 +65,22 @@ def test_an_aggregate_filter_runs_where_the_guard_is_false(engine):
     """`polars-exec-when-eager` excludes a branch under `group_by().agg`; the
     guard of the filter still holds there."""
     sql = "SELECT COUNT(*) FILTER (WHERE x <> 0 AND 10 // x > 1) AS c FROM t"
-    report, con = _run(sql, INT, {"x": [0, 2, 5]})
+    report, con, target = _run(sql, INT, {"x": [0, 2, 5]}, engine)
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.run(con, engine).column("c").to_pylist() == [2]
+    assert report.run(con, target).column("c").to_pylist() == [2]
 
 
 @pytest.mark.parametrize("engine", ENGINES)
 def test_a_window_argument_runs_where_the_guard_is_false(engine):
     """The guard inside a window's argument (`over()`, which the masking fact
     excludes) still holds."""
-    sql = "SELECT x, MAX(CASE WHEN x <> 0 AND 10 // x > 1 THEN x END) OVER () AS m FROM t"
-    report, con = _run(sql, INT, {"x": [0, 2, 5]})
+    sql = (
+        "SELECT x, MAX(CASE WHEN x <> 0 AND 10 // x > 1 THEN x END) "
+        "OVER (ORDER BY x ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS m FROM t"
+    )
+    report, con, target = _run(sql, INT, {"x": [0, 2, 5]}, engine)
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    got = report.run(con, engine).to_pylist()
+    got = report.run(con, target).to_pylist()
     assert sorted((r["x"], r["m"]) for r in got) == [(0, 5), (2, 5), (5, 5)]
 
 
