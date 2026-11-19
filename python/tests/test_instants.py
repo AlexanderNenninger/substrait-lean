@@ -250,6 +250,8 @@ def test_a_set_operation_over_an_instant_and_a_naive_column_is_refused_by_the_ch
 
 # -- Step 2: the conversion and the literals (D53, #1725) -----------------------------
 
+LIT0 = U(2000, 1, 1)
+LIT1 = U(2100, 1, 1)
 LIT = ibis.literal(U(2024, 1, 1, 12), "timestamp('UTC', 6)")
 
 CONVERT = {
@@ -434,3 +436,50 @@ def test_the_checker_refuses_a_comparison_of_an_instant_with_a_naive_column():
     patched = plan[:second] + '"precisionTimestamp"' + plan[second + len(tz) :]
     code, _, err = run_checker((), patched)
     assert code != 0 and "1725" in err
+
+
+def test_a_retention_cutoff_on_an_instant_column():
+    """T7: buckets of an instant's UTC wall clock retire as a naive column's do."""
+    from datetime import timedelta
+
+    from sverify.errors import PreconditionError  # noqa: F401
+    from sverify.io import Changes, StaticSource
+
+    t0 = dt.datetime(2026, 11, 3, tzinfo=dt.UTC)
+    schema = pa.schema([("host", pa.string()), ("ts", UTC), ("cpu", pa.int64())])
+
+    def samples(rows):
+        return pa.table(
+            {
+                "host": [h for h, _, _ in rows],
+                "ts": [t0 + timedelta(minutes=m) for _, m, _ in rows],
+                "cpu": [c for _, _, c in rows],
+            },
+            schema=schema,
+        )
+
+    @sv.transform(
+        requires={
+            "samples": [
+                sv.arrives_within("ts", timedelta(hours=2)),
+                _.ts >= LIT0,
+                _.ts < LIT1,
+                _.cpu.notnull(),
+            ]
+        }
+    )
+    def hourly(samples):
+        bucket = samples.ts.cast("timestamp").truncate("h").name("bucket")
+        return samples.group_by(["host", bucket]).aggregate(n=samples.count())
+
+    src = StaticSource(samples([("a", m, 1) for m in range(0, 60, 10)]), name="samples")
+    node = src.pipe(hourly)
+    node.refresh()
+    for minute in range(60, 60 * 12, 10):
+        src.apply(Changes(inserts=samples([("a", minute, 1)])))
+        entry = node.refresh()["hourly"]
+        (report,) = entry.retention
+        assert report.open <= report.bound
+    assert node._stage is not None
+    # The latest sample is at 11:50: buckets up to 08:50 are final.
+    assert node._stage.view.retired_through == dt.datetime(2026, 11, 3, 8, 50)
