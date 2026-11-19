@@ -388,6 +388,11 @@ class DeltaSource(_TableSource):
             `on_violation` of their own: `"error"`, `"quarantine"` or
             `"hold"` (see `sverify.transform`). Default: None,
             `"error"`.
+        schema: The table's schema. With it, building a node and `sverify
+            check` prove the transform without opening the table (no
+            credentials, no network); every refresh reads the table's schema
+            and raises `SchemaError` if it is not this one. Default: the
+            table's.
 
     Attributes:
         uri: The table's location.
@@ -436,10 +441,11 @@ class DeltaSource(_TableSource):
         where: str | None = None,
         name: str | None = None,
         on_violation: Policy | None = None,
+        schema: pa.Schema | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
         self.on_violation = _quarantine.check_policy(on_violation)
-        super().__init__(name or _basename(self.uri), where)
+        super().__init__(name or _basename(self.uri), where, schema)
         self._pinned = _Pin()
         """The table `latest` opened, at its version: a refresh reads that
         version's changes and files from it, where opening the table again
@@ -461,7 +467,9 @@ class DeltaSource(_TableSource):
         return _table_id(self.table(version))
 
     def _read_at(self, dt: DeltaTable) -> DeltaTable:
-        """Remember the id of the table at `dt`'s version (`metaData.id`)."""
+        """Remember the id of the table at `dt`'s version (`metaData.id`), and
+        check its schema is the declared one."""
+        self._verify_declared(_arrow_schema(dt))
         self._seen(dt.version(), _table_id(dt))
         return dt
 
@@ -552,7 +560,10 @@ class DeltaSource(_TableSource):
         return dt
 
     def schema(self) -> pa.Schema:
-        """The table's schema at its latest version, as Arrow."""
+        """The table's schema at its latest version, as Arrow; the declared
+        one (`schema=`) without opening the table."""
+        if self._declared is not None:
+            return self._declared
         return _arrow_schema(self.table())
 
     def latest(self) -> int:

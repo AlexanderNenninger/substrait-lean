@@ -781,3 +781,16 @@ def test_maintenance_options_are_checked(catalog):
     with pytest.raises(ValueError, match="min_snapshots"):
         IcebergSink(catalog, "db.out", min_snapshots=0)
     assert IcebergSink(catalog, "db.missing").maintain() == {}
+
+
+def test_a_declared_schema_is_not_read_from_the_table_but_checked_against_it(catalog):
+    """`schema=` answers `schema()` without loading the table, and a refresh
+    raises `SchemaError` where the table is not the declared one (#1485, 18)."""
+    from sverify.errors import SchemaError
+
+    declared = pa.schema([("id", pa.int64()), ("amount", pa.int64())])
+    assert IcebergSource(catalog, "db.nowhere", schema=declared).schema() == declared
+    make_orders(catalog, [(1, "ada", 5)])
+    wrong = IcebergSource(catalog, "db.orders", schema=declared)
+    with pytest.raises(SchemaError, match="unexpected"):
+        wrong.snapshot()
