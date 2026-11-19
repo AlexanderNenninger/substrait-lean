@@ -107,7 +107,11 @@ written SQL) and no loss beyond the bench's spread on DuckDB, Polars and Spark;
 `docs/optimizations.md` has the numbers. The gate carries no proof weight:
 `Rel.optimize_sound` holds for every choice of rules. -/
 def Rule.onByDefault : Rule → Bool
-  | _ => false
+  | .filterImplied | .filterRuledOut | .distinctKey | .groupByKey | .distinctAggKey
+  | .joinForeignKeyUnused | .leftKeyUnused => true
+  -- No gain beyond the spread (the two left-join conversions), or slower (#79,
+  -- #80): ruling 150. Reachable through the request's `"rules"`.
+  | .leftNullRejecting | .leftForeignKey | .groupByDetermined | .aggregateBelowJoin => false
 
 /-- Does every issue the rewrite has on data meeting the preconditions arise
 in the plan as written too? True only with a proved lemma; until then the

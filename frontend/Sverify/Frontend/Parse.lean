@@ -1618,7 +1618,8 @@ brought to one scale and the arithmetic is exact: `+` and `-` at the larger
 scale, `×` at the sum of the scales, as the backends compute them. The result
 has the plan's declared precision, else `max(p₁ - s₁, p₂ - s₂) + s + 1` (`+`,
 `-`) or `p₁ + p₂ + 1` (`×`), at most 38; `UnFn.decimal` reports a value of
-more digits as an overflow. -/
+more digits as an overflow. An operand of `+` or `-` whose rescaled value can
+have more than 38 digits is checked on its own first (D56). -/
 def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List Expr) :
     J (Option Expr) := do
   let some tys := args.mapM (decType? cols)
@@ -1642,7 +1643,13 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
     checkScale s
     let p := declared.getD (min 38 (max (p₁ - s₁) (p₂ - s₂) + s + 1))
     let f : BinFn := if name == "add" then .dadd else .dsub
-    return some (.un (.decimal p s) (.bin f (upscale (s - s₁) a) (upscale (s - s₂) b)))
+    -- DuckDB casts each operand to the result type before it adds, and raises
+    -- there (D56, `duckdb-decimal-addsub-operand-cast`): an operand whose
+    -- rescaled value can exceed 38 digits is checked at 38, as `CASE` and
+    -- `COALESCE` check theirs. Below that the cast cannot raise.
+    let operand (pᵢ sᵢ : Nat) (x : Expr) : Expr :=
+      if 38 < pᵢ + (s - sᵢ) then .un (.decimal 38 s) (upscale (s - sᵢ) x) else upscale (s - sᵢ) x
+    return some (.un (.decimal p s) (.bin f (operand p₁ s₁ a) (operand p₂ s₂ b)))
   | "multiply", [a, b], [(p₁, s₁), (p₂, s₂)] =>
     let s := s₁ + s₂
     if 38 < s then throw "a DECIMAL product with more than 38 decimal places is not supported"
