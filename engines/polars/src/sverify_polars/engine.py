@@ -62,7 +62,7 @@ import itertools
 import json
 import math
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
@@ -203,6 +203,30 @@ ALL_GUARDS = frozenset(
 NO_GUARDS = frozenset(
     {"SUM overflow", "overflow to infinity", "subnormal divisor", "variance computed as NaN"}
 )
+
+
+def _fields(j: Any) -> set[int] | None:
+    """The fields an expression reads, by ordinal; None where it reads
+    something else (an outer reference, a reference into an expression, a
+    subquery)."""
+    out: set[int] = set()
+    stack = [j]
+    while stack:
+        e = stack.pop()
+        if isinstance(e, list):
+            stack.extend(e)
+        elif isinstance(e, dict):
+            sel = e.get("selection")
+            if sel is not None:
+                ref = sel.get("directReference", {}).get("structField")
+                if ref is None or "child" in ref or "rootReference" not in sel:
+                    return None
+                out.add(int(ref.get("field", 0)))
+                continue
+            if "subquery" in e:
+                return None
+            stack.extend(e.values())
+    return out
 
 
 def col(i: int) -> str:
@@ -2951,8 +2975,15 @@ class Translator:
         """`Rel.join`, and `Rel.semi` for semi and anti joins. Equalities
         between a left and a right column become hash-join keys with NULLs
         never matching (`nulls_equal=False`, as `isTrue (eq NULL _)` is
-        false); the rest of the condition filters the matches. Row indices
-        restore `Rel.eval`'s order."""
+        false); without one, the comparisons that can raise nothing become a
+        range join's predicates (`range_join`). The whole condition then
+        filters the matches, with its guard. Row indices restore
+        `Rel.eval`'s order.
+
+        The guard runs on the pairs past the keys and the range join's
+        predicates only. A pair one conjunct makes not TRUE is in no result
+        the reference allows (`isTrue_and3`), so by D16 the run may return
+        where the reference may raise on it (ruling 164)."""
         how = {
             "JOIN_TYPE_INNER": "inner",
             "JOIN_TYPE_LEFT": "left",
@@ -2992,7 +3023,7 @@ class Translator:
                 maintain_order="left_right",
             )
         else:
-            matches = left.join(right, how="cross", maintain_order="left_right")
+            matches = self.range_join(left, right, rest, ex, n)
         if rest:
             # The rest of the condition, as one `and3` evaluated on every match.
             conds = [ex(c) for c in rest]
@@ -3021,6 +3052,73 @@ class Translator:
             )
         ordered_rows = matches.sort([_LEFT, _RIGHT], nulls_last=True, maintain_order=True)
         return ordered_rows.select(cols), dtypes
+
+    def range_join(
+        self, left: pl.LazyFrame, right: pl.LazyFrame, rest: list[dict], ex: Exprs, n: int
+    ) -> pl.LazyFrame:
+        """The pairs that pass each conjunct of `rest` comparing a left-only
+        expression with a right-only one (`range_conjunct`): Polars's range
+        join (`join_where`, which streams and agrees with a cross join and a
+        filter, polars-join-where), each side's comparison key computed as a
+        column first. Without such a conjunct, every pair: a cross join."""
+        preds = []
+        for m, c in enumerate(rest):
+            found = self.range_conjunct(c, ex, n)
+            if found is None:
+                continue
+            kl, kr, op = found
+            ln, rn = f"__sv_jl{m}", f"__sv_jr{m}"
+            left, right = left.with_columns(kl.alias(ln)), right.with_columns(kr.alias(rn))
+            preds.append(op(pl.col(ln), pl.col(rn)))
+        if not preds:
+            return left.join(right, how="cross", maintain_order="left_right")
+        return left.join_where(right, *preds)
+
+    def range_conjunct(
+        self, j: dict, ex: Exprs, n: int
+    ) -> tuple[pl.Expr, pl.Expr, Callable[[pl.Expr, pl.Expr], pl.Expr]] | None:
+        """`x < y` or `NOT (x < y)` (Lean writes every order comparison so),
+        with one side reading only left columns and the other only right
+        ones, of an ordered type and with no issue: the left key, the right
+        key (`ordered`, so Polars's bare operator compares them as `lt`
+        does) and the operator between them. None for any other conjunct."""
+        negated = False
+        f = j.get("scalarFunction")
+        if f is not None and ex.function(f.get("functionReference")) == "not":
+            args = f.get("arguments", [])
+            f = args[0]["value"].get("scalarFunction") if len(args) == 1 else None
+            negated = True
+        if f is None or ex.function(f.get("functionReference")) != "lt":
+            return None
+        args = [a["value"] for a in f.get("arguments", [])]
+        if len(args) != 2:
+            return None
+        fx, fy = _fields(args[0]), _fields(args[1])
+        if not fx or not fy:
+            return None
+        if max(fx) < n <= min(fy):
+            x_left = True
+        elif max(fy) < n <= min(fx):
+            x_left = False
+        else:
+            return None
+        try:
+            vx, vy = ex(args[0]), ex(args[1])
+            t = unify(vx.dtype, vy.dtype, "lt")
+        except Unsupported:
+            return None
+        if issues(vx, vy) or t not in ORDERED:
+            return None
+        kx, ky = ordered(vx.expr, t), ordered(vy.expr, t)
+        # `x < y`, or `x >= y` negated, turned to read left against right.
+        ops = {
+            (True, False): lambda a, b: a < b,
+            (True, True): lambda a, b: a >= b,
+            (False, False): lambda a, b: a > b,
+            (False, True): lambda a, b: a <= b,
+        }
+        op = ops[(x_left, negated)]
+        return (kx, ky, op) if x_left else (ky, kx, op)
 
     def conjuncts(self, j: dict, ex: Exprs) -> list[dict]:
         f = j.get("scalarFunction")
