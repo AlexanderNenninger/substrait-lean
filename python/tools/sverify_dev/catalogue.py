@@ -523,7 +523,7 @@ def probe_engines(
     that differ from them are compared with Lean's own instead
     (`lean_reference`, or `lean_choices` where ties are open):
     `runs (Lean's rows: why)` if they agree. An engine of `WRITES` (Snowflake)
-    is `sql` or `sql (tie_free)` (SQL written and parsed with sqlglot, not
+    is `sql` (SQL written in the dialect's own `rows` and parsed with sqlglot, not
     run) or `refused: …`."""
     import sqlglot
 
@@ -580,15 +580,11 @@ def probe_engines(
     for engine in WRITES:
         dialect = profiles.plugins()[engine].dialect()  # pyrefly: ignore[not-callable]
         try:
-            text = plan_sql(json.loads(plan), dialect, rows="sequence")
+            text = plan_sql(json.loads(plan), dialect)
             out[engine] = "sql"
         except UnsupportedError as e:
-            try:
-                text = plan_sql(json.loads(plan), dialect, deterministic=True, rows="sequence")
-                out[engine] = "sql (tie_free)"
-            except UnsupportedError:
-                text = None
-                out[engine] = f"refused: {_first_line(e)}"
+            text = None
+            out[engine] = f"refused: {_first_line(e)}"
         if text is not None:
             sqlglot.parse_one(text, read=engine)
     return dict(sorted(out.items()))
