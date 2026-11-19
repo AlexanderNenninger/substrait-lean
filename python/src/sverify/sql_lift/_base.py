@@ -175,7 +175,26 @@ def _function(node: Any) -> str:
 def _category(node: Any) -> str:
     """A node's `construct`, for a refusal and for a dialect difference: its
     function (`function corr`), else its kind in upper case (`CAST`)."""
-    return _function(node) if isinstance(node, sge.Func) else type(node).__name__.upper()
+    return _function(node) if isinstance(node, sge.Func) else _keywords(node)
+
+
+#: SQL keywords for the sqlglot classes whose words do not read off the class name.
+_KEYWORDS = {
+    "NullSafeEQ": "IS NOT DISTINCT FROM",
+    "NullSafeNEQ": "IS DISTINCT FROM",
+    "Neg": "NEGATION",
+    "Intersect": "INTERSECT",
+    "Union": "UNION",
+}
+
+
+def _keywords(node: Any) -> str:
+    """The SQL keywords of a node that is no function: sqlglot's class name split
+    into words (`AlterTable` is `ALTER TABLE`), where `_KEYWORDS` has no spelling."""
+    name = type(node).__name__
+    return (
+        _KEYWORDS.get(name) or " ".join(re.findall(r"[A-Z][a-z0-9]*|[A-Z]+(?![a-z])", name)).upper()
+    )
 
 
 def lift_table() -> LiftTable:
@@ -372,6 +391,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             _nondeterministic(node),
             hint="pass the value in as a column or a constant",
             construct=_function(node),
+            sql=_shown(node),
         )
     for f in tree.find_all(sge.Anonymous):
         if f.name.lower() in _NONDETERMINISTIC_NAMES:
@@ -379,12 +399,14 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
                 _nondeterministic(f),
                 hint="pass the value in as a column or a constant",
                 construct=f"function {f.name.lower()}",
+                sql=_shown(f),
             )
         if f.name.lower() not in _KNOWN:
             raise SqlUnsupported(
                 f"unknown function {f.name}(): DuckDB SQL here has no such function",
                 hint="check the name against DuckDB's functions, or write the step in Ibis",
                 construct=f"function {f.name.lower()}",
+                sql=_shown(f),
             )
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
@@ -414,9 +436,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             construct="NAME RESOLUTION",
         ) from e
     if not isinstance(tree, sge.Select | sge.SetOperation):
-        raise Unsupported(
-            _ONLY_SELECT.format(type(tree).__name__), construct=type(tree).__name__.upper()
-        )
+        raise Unsupported(_ONLY_SELECT.format(type(tree).__name__), construct=_keywords(tree))
     return tree
 
 
@@ -731,9 +751,7 @@ class _Lift:
         if isinstance(node, sge.SetOperation):
             return self.set_op(node)
         if not isinstance(node, sge.Select):
-            raise Unsupported(
-                _ONLY_SELECT.format(type(node).__name__), construct=type(node).__name__.upper()
-            )
+            raise Unsupported(_ONLY_SELECT.format(type(node).__name__), construct=_keywords(node))
         if (with_ := node.args.get("with_")) is not None:
             # CTEs are inlined where they are read; each sees the ones before.
             if with_.args.get("recursive"):

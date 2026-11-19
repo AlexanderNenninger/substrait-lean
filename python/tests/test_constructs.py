@@ -111,6 +111,26 @@ def test_the_producer_never_spells_a_construct_from_an_ibis_class_name():
     for p in (exits.SRC / "ibis_substrait").rglob("*.py"):
         for n in ast.walk(ast.parse(p.read_text())):
             if isinstance(n, ast.keyword) and n.arg == "construct":
-                if "__name__" in ast.unparse(n.value) or ".upper()" in ast.unparse(n.value):
-                    bad.append(f"{p.name}:{n.value.lineno}: {ast.unparse(n.value)}")
+                text = ast.unparse(n.value)
+                if "__name__" in text or ".upper()" in text:
+                    bad.append(f"{p.name}:{n.value.lineno}: {text}")
     assert not bad, "\n".join(bad)
+
+
+def test_a_node_that_is_no_function_is_named_in_sql_keywords():
+    """Ruling 126: SQL keywords, not sqlglot's joined class name."""
+    import sqlglot.expressions as sge
+
+    from sverify.sql_lift._base import _keywords
+
+    assert _keywords(sge.GroupingSets()) == "GROUPING SETS"
+    assert _keywords(sge.NullSafeNEQ()) == "IS DISTINCT FROM"
+    assert _keywords(sge.NullSafeEQ()) == "IS NOT DISTINCT FROM"
+
+
+def test_the_whole_query_refusals_about_a_function_carry_its_sql():
+    import sverify as sv
+
+    with pytest.raises(sv.errors.UnsupportedError) as e:
+        sv.verify("select foo_bar(x) as h from t", tables={"t": {"x": "BIGINT"}})
+    assert e.value.construct == "function foo_bar" and "foo_bar" in (e.value.sql or "").lower()
