@@ -6,7 +6,8 @@ from ibis import _
 
 from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
-    NO_LISTS,
+    NO_LISTS_SNOWFLAKE,
+    NO_ORDERED_LISTS,
     Case,
     R,
     V,
@@ -150,9 +151,9 @@ REFUSED: dict[str, dict[str, str]] = {
     "median, quantile": DUCKDB_ONLY,
     "mode": DUCKDB_ONLY,
     "argmin, argmax": DUCKDB_ONLY,
-    "collect": NO_LISTS,
-    "collect ordered": NO_LISTS,
-    "unnest": NO_LISTS,
+    "collect": NO_LISTS_SNOWFLAKE,
+    "collect ordered": NO_ORDERED_LISTS,
+    "unnest": NO_LISTS_SNOWFLAKE,
     # Snowflake's VAR_SAMP and STDDEV of doubles cancel catastrophically
     # (Snowflake behaviour recorded privately).
 }

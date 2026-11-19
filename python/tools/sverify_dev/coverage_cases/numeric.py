@@ -31,9 +31,9 @@ CASES: list[Case] = [
             e=t.amount.asin(),
             f=t.amount.acos(),
             g=t.amount.atan(),
-            h=t.amount.atan2(t.qty),
         ),
     ),
+    case("math", "atan2", V, lambda: t.select(x=t.amount.atan2(t.qty))),
     case(
         "math", "degrees, radians", V, lambda: t.select(x=t.amount.degrees(), y=t.amount.radians())
     ),
@@ -49,9 +49,8 @@ CASES: list[Case] = [
     case("math", "logical xor", V, lambda: t.filter(t.flag ^ (t.qty > 0))),
 ]
 
-#: Spark computes these with Java's `StrictMath`, which may differ from C's
-#: libm in the last bit; Snowflake does not document its implementation.
-LIBM = {"snowflake": "libm", "spark": "StrictMath"}
+#: Snowflake does not document its implementation of these.
+LIBM = {"snowflake": "libm"}
 REFUSED: dict[str, dict[str, str]] = {
     "sqrt": {"snowflake": "libm"},
     "exp": LIBM,
@@ -59,6 +58,7 @@ REFUSED: dict[str, dict[str, str]] = {
     "log10, log2": LIBM,
     "log(base)": LIBM,
     "trigonometry": LIBM,
+    "atan2": {**LIBM, "spark": "StrictMath"},
     "shifts": {"snowflake": "not 64-bit"},
 }
 
@@ -68,6 +68,10 @@ REFUSED: dict[str, dict[str, str]] = {
 #: and -0.3010299956639812 on libm, 1 ulp apart. The comparison is to nine
 #: significant digits (`test_backends.approximately`), far wider than 2.1 ulp.
 APPROXIMATE = {"log10, log2"}
+
+#: Spark's functions are Java's (`spark-ulp-libm`), a few ulps from libm's, so these are
+#: compared to nine digits against DuckDB; Polars and DuckDB share libm and match exactly.
+APPROXIMATE_SPARK = {"exp", "ln", "log(base)", "trigonometry"}
 
 NO_DUCKDB_SQL = {
     "sign": "DuckDB's sign of NaN is 0, the plan's NaN",

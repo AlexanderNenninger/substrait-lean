@@ -167,8 +167,8 @@ def Profile.polars.obs : ObsTable := [
   (none, "tie_pick", ({ ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }).tracking 271),
   (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
   (some "fp.div", "rounding", ({ ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
-    precondition := "every divisor of a double division is 0 or not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32)",
-    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound still uses u per division; a per-engine bound (2u for Polars) is a follow-up." }).tracking 271),
+    precondition := "every divisor of a double division with no column reference (a literal, a constant expression) is not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32); the plan has no bound below it (`Epsilon.exprEps`)",
+    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound is the reciprocal's, `rule_div_recip`, for every divisor without a column reference; it is at least the exact quotient's (`rule_div_le_recip`)." }).tracking 271),
   -- `log10` and `log2` are `ln x / ln b` (polars-log-base), where the
   -- reference takes the platform's `libm`: within 2.1 ulp (polars-ulp-libm),
   -- which the plan's bound adds per call (`Epsilon.opExtra`). Tested, not

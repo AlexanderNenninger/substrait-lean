@@ -329,7 +329,7 @@ def test_spark_agrees_with_duckdb(con, data):
                 query(sql)
             continue
         got = query(sql)
-        if case.label in coverage.APPROXIMATE:
+        if case.label in coverage.APPROXIMATE | coverage.APPROXIMATE_SPARK:
             got, duck = approximately(got), approximately(duck)
         root = parse_plan(json.loads(plan)).root
         ordered = order_matters(root) and case.label not in TIES_OPEN

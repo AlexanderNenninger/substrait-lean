@@ -99,8 +99,7 @@ DUCKDB_ONLY = {
 }
 #: Windows with no ORDER BY, which Spark's and Snowflake's writers refuse (#271).
 NO_ORDER_BY = {"snowflake": "need an ORDER BY", "spark": "need an ORDER BY"}
-#: Spark and Snowflake have no lists yet; DuckDB has (#94).
-NO_LISTS = {
-    "snowflake": "see #271",
-    "spark": "see #271",
-}
+#: Snowflake has no lists yet; DuckDB, Polars and Spark have (#94).
+NO_LISTS_SNOWFLAKE = {"snowflake": "see #271"}
+#: Spark has no ordered `array_agg` (`collect_list` has no ORDER BY).
+NO_ORDERED_LISTS = {**NO_LISTS_SNOWFLAKE, "spark": "see #271"}
