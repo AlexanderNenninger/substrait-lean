@@ -341,7 +341,13 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
         let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
-        let base := report.json |>.setObjVal! "depends" depends
+        -- The plan an engine runs, or the gate that keeps the plan as
+        -- written (#1787, `SubstraitLean/RunPlan.lean`).
+        let runPlan := match ContractCheck.parse j with
+          | .ok R => R.runPlanJson
+          | .error _ => []
+        let base := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
+            |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
             |>.setObjVal! "margin_checks" margins
@@ -491,6 +497,11 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     -- The black boxes' table (#325), for sverify.black_box's test.
     IO.println blackBoxJson.compress
     return 0
+  | ["--rules"] => do
+    -- The rewrite rules and the gate's defaults (#1787), for
+    -- `docs/optimizations.md`'s table test.
+    IO.println ContractCheck.rulesJson.compress
+    return 0
   | ["--functions"] => do
     -- The function tables (#544, #269), for the Python mirror's agreement test.
     IO.println Functions.tableJson.compress
@@ -528,7 +539,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

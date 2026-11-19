@@ -32,9 +32,11 @@ is named in the report (`run_gate`) and `r` runs:
   it on more rows can raise where `r` returns.
 * `guard_free`: where `r` runs without its row checks (`guardFreeIn`), so does
   `s`.
-* `near`: `r`'s verdict does not rest on doubles within a bound (the
-  observation's `floats_plan` or an `approx` postcondition): a refinement at
-  the reference says nothing at an engine's table (ruling 127).
+* `near`: `r`'s verdict does not rest on doubles within a bound: the
+  observation's `floats_plan` or an `approx` postcondition, where a double may
+  occur in `r` or `s` (`Rel.mayDouble`, syntactic). It rests on an open
+  obligation (`Request.nearRoute`). A
+  refinement at the reference says nothing at an engine's table (ruling 127).
 * `closed`: `s` is closed where `r` is (`closedIn`): no measure decomposed.
 * `reads`, `functions`: `s` reads no option and calls no function `r` does
   not, so the transfer check and each engine's verdict for `r` hold for `s`
@@ -137,6 +139,84 @@ check**: `transferB` checks each option read. -/
 theorem transferB_of_reads_sub {r s : Rel} {t u : ProfileTable}
     (hsub : ∀ p ∈ s.reads, p ∈ r.reads) (h : transferB r t u = true) : transferB s t u = true :=
   List.all_eq_true.mpr fun p hp => List.all_eq_true.mp h p (hsub p hp)
+
+/-! ## Where a double may occur
+
+A syntactic test, for the `near` gate (ruling 136): a double literal, a
+function or cast that takes or gives a double, a black box, a list or struct
+access, or an input column whose kind may hold a double (a double, a list, a
+struct, or a kind the parser does not know), anywhere in the plan: relation
+columns, conditions, projections, group keys, measure arguments and filters,
+window functions and literals. -/
+
+/-- A kind that may hold a double. -/
+def Kind.mayDouble : Kind → Bool
+  | .float | .list _ | .struct _ | .other => true
+  | _ => false
+
+/-- Is a double part of `v`? -/
+def Value.hasFloat : Value → Bool
+  | .float _ => true
+  | .list vs | .struct vs => vs.attach.any fun ⟨v, _⟩ => v.hasFloat
+  | _ => false
+
+def UnFn.mayDouble : UnFn → Bool
+  | .itof | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .ftoi | .ftoiOrNull | .widen
+  | .fmath _ | .ftod _ | .dtof _ | .bbox _ | .structField _ | .listElement _ | .flatten => true
+  | _ => false
+
+def BinFn.mayDouble : BinFn → Bool
+  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb | .bbox2 _
+  | .listFn _ | .pair => true
+  | _ => false
+
+def AggFn.mayDouble : AggFn → Bool
+  | .fsum | .avg | .var _ _ | .cov _ | .corr | .quantile true _ _ | .bbox _ | .collect => true
+  | _ => false
+
+def Expr.mayDouble : Expr → Bool
+  | .lit v => v.hasFloat
+  | .field _ => false
+  | .un f a => f.mayDouble || a.mayDouble
+  | .bin f a b => f.mayDouble || a.mayDouble || b.mayDouble
+  | .ifThen c t e => c.mayDouble || t.mayDouble || e.mayDouble
+  -- A lambda reads list elements, which may be doubles.
+  | .hof _ _ _ => true
+
+def Measure.mayDouble (m : Measure) : Bool :=
+  m.fn.mayDouble || m.arg.mayDouble || (m.filter.map Expr.mayDouble).getD false
+
+def WinFn.mayDouble : WinFn → Bool
+  | .percentRank _ | .cumeDist _ => true
+  | .lag _ _ v | .lead _ _ v => v.hasFloat
+  | .agg m _ _ => m.mayDouble
+  | _ => false
+
+/-- **May a double occur in `r`?** Its input columns' kinds come from the
+request's tables (`Parse.schemaKinds`); a table it does not describe may. -/
+def Rel.mayDouble (tables : Parse.Tables) : Rel → Bool
+  | .read t => match tables.lookup t with
+    | some (_, sch) => (Parse.schemaKinds sch).any Kind.mayDouble
+    | none => true
+  | .values _ rows => rows.any (·.any Value.hasFloat)
+  | .filter r c => r.mayDouble tables || c.mayDouble
+  | .project r es => r.mayDouble tables || es.any Expr.mayDouble
+  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.mayDouble tables
+  | .window r _ _ fns => r.mayDouble tables || fns.any WinFn.mayDouble
+  | .aggregate r gs ms => r.mayDouble tables || gs.any Expr.mayDouble || ms.any Measure.mayDouble
+  | .cross a b | .unionAll a b => a.mayDouble tables || b.mayDouble tables
+  | .join a b _ on | .semi a b _ on => a.mayDouble tables || b.mayDouble tables || on.mayDouble
+
+-- Ruling 136's counterexample: every column an integer, and a double in the
+-- filter (`atan2(-(CAST(a AS DOUBLE)), -1.0) < 0`), where the sign of `-0.0`
+-- decides whether the row stays.
+#guard
+  let ints : Parse.Tables := [("t", 1, Lean.Json.mkObj [("struct", Lean.Json.mkObj
+    [("types", Lean.Json.arr #[Lean.Json.mkObj [("i64", Lean.Json.mkObj [])]])])])]
+  (Rel.filter (.read "t")
+    (.bin .lt (.bin .fatan2 (.un .fneg (.un .itof (.field 0))) (.lit (.float 0))) (.lit (.int 0)))
+    ).mayDouble ints &&
+  !(Rel.read "t").mayDouble ints
 
 /-! ## The size hypothesis through the rewrites
 
@@ -367,12 +447,22 @@ def rowsMultiset : Bool :=
   ((R.input.getObjVal? "observation").toOption.bind
     (·.getObjValAs? String "rows" |>.toOption)) == some "multiset"
 
-/-- Does the verdict compare doubles within a bound: the observation's
-`floats_plan`, or a postcondition marked `approx`? -/
-def nearRoute : Bool :=
+/-- Does the verdict on `r` rest on doubles within a bound: the observation
+compares doubles within the plan's bound (`floats_plan`) or a postcondition is
+`approx`, and a double may occur in `r` or its rewrite `s` (`Rel.mayDouble`)?
+
+A choice at `sum_order`, `stat_algo`, `quantile_interp` or `zero_sign` changes
+a value only on doubles (`cmp` reads `zero_sign` at every type, and changes
+nothing without one). The gate rests on an open obligation, the one already
+undischarged for `r` (`hsafeE` of `Engine.contract_sound_runs_near`): a plan
+in which no double occurs is `Rel.FloatOpenSafeP` at every table that agrees
+with the reference outside those four options. Nothing proves it today
+(ruling 136). -/
+def nearRoute (r s : Rel) : Bool :=
   let obs := (R.input.getObjVal? "observation").toOption
-  (obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false ||
-    ((obs.bind (·.getObjValAs? (Array Bool) "approx" |>.toOption)).getD #[]).any id
+  ((obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false ||
+    ((obs.bind (·.getObjValAs? (Array Bool) "approx" |>.toOption)).getD #[]).any id) &&
+    (r.mayDouble R.tables || s.mayDouble R.tables)
 
 /-- The rewrite of the plan `r` the gate looks at, and the rules applied:
 the whole plan under a `multiset` observation, the input of the root
@@ -395,7 +485,7 @@ def gateOf (K : KnowledgeEnv) (r s part : Rel) (log : List Rule) : Option RunGat
     (!part.detPlan R.cat K.cols K.facts K.keys, .rows),
     (!(is.all (R.issuesIn K).contains && (is.isEmpty || log.all Rule.keepsIssues)), .issues),
     (R.guardFreeIn K && !R'.guardFreeIn K, .guardFree),
-    (R.nearRoute, .near),
+    (R.nearRoute r s, .near),
     (R'.closedIn != R.closedIn, .closed),
     (!s.reads.all r.reads.contains, .reads),
     (!s.functions.all r.functions.contains, .functions)].find? (·.1)).map (·.2)
@@ -407,6 +497,8 @@ def runPlanIn (K : KnowledgeEnv) : Except RunGate Rel :=
     | none => .error .noRewrite
     | some T =>
       if !T.root.checkWF R.cat then .error .noRewrite
+      else if (T.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf R.runRules).2.isEmpty then
+        .error .noRewrite
       else match R.rewriteOf K T.root with
         | none => .error .rows
         | some (s, part, log) => match R.gateOf K T.root s part log with
@@ -468,6 +560,8 @@ theorem check_run_plan_sound {input : Json} {R : Request} {rep : Report}
   split at hs
   · simp at hs
   dsimp only at hs
+  split at hs
+  · simp at hs
   split at hs
   · simp at hs
   split at hs

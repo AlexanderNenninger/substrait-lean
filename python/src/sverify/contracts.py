@@ -202,6 +202,13 @@ states the condition (None: unset)."""
 _LIFTED = ("reference", "duckdb")
 
 
+#: The rewrite rules the checker may apply to the plan an engine runs, by
+#: their report names (`Rule.name`), in place of the gate's defaults
+#: (`Rule.onByDefault`, `substrait-check --rules`, #1787). For benches and
+#: tests; None takes the defaults.
+_RULES: list[str] | None = None
+
+
 def _expr_semantics(transform: Transform) -> Semantics:
     """The semantics an unstated `verify(semantics=...)` takes: an expression
     whose SQL (`sverify.sql`) is all lifted with DuckDB's semantics has
@@ -1671,10 +1678,15 @@ def _prove_once(
         # components itself (#1071, `Report.ignores` in ContractCheck.lean).
         contract["observation"] = {
             "coarsens": [c for c in observed.ignored()],
+            # The rows level by name: the plan to run may refine the plan
+            # as written up to the order of rows only under `multiset` (#1787).
+            "rows": observed.rows,
             "floats_plan": observed.floats == "plan",
             "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
             "sql": isinstance(transform, str),
         }
+    if _RULES is not None:
+        contract["rules"] = list(_RULES)
     if semantics != "reference":
         # The profile decides which issues are errors (an overflow to ±∞ is
         # the reference's alone, #575) and, for those beyond DuckDB's lift,

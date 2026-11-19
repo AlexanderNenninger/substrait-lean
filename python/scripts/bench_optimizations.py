@@ -31,13 +31,12 @@ import numpy as np
 import pyarrow as pa
 from ibis import _
 
-from sverify.sql import to_sql
-from sverify_duckdb.dialect import DUCKDB
-
 import sverify as sv
 from sverify.engine import connect, create_table, plan_json, substrait_json, written_plan
 from sverify.partition import run_sharded
+from sverify.sql import to_sql
 from sverify_duckdb import engine as duckdb_engine
+from sverify_duckdb.dialect import DUCKDB
 from sverify_polars import engine as polars_engine
 
 
@@ -216,12 +215,8 @@ def rules(n: int) -> None:
         )
     }
     key = {"t": [sv.unique("id"), _.a >= 0, _.a <= 1000]}
-    rule_case(
-        "implied-filter", t.filter(t.a >= 0), key, tdata, "filter implied by the contract"
-    )
-    rule_case(
-        "empty-filter", t.filter(t.a < 0), key, tdata, "filter the contract rules out"
-    )
+    rule_case("implied-filter", t.filter(t.a >= 0), key, tdata, "filter implied by the contract")
+    rule_case("empty-filter", t.filter(t.a < 0), key, tdata, "filter the contract rules out")
     rule_case("distinct-key", t.distinct(), key, tdata, "DISTINCT on a key")
     rule_case(
         "group-key",
