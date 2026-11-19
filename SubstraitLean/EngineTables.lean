@@ -60,6 +60,13 @@ def builtinEngines : List EngineProfile := [
       ("sin", 1.0 + 1.0), ("cos", 1.0 + 1.0), ("tan", 1.0 + 3.0),
       ("asin", 1.0 + 1.0), ("acos", 1.0 + 1.0), ("atan", 1.0 + 1.0)] }]
 
+/-- Every elementary function has a bound on every engine: `sqrt` is correctly rounded and `exp`
+has `rule_exp` (one ulp on each side), so each other one has an `elemUlps` entry on an engine
+whose doubles are not the reference's (`Epsilon.opExtra` gives a function without one no bound). -/
+example : builtinEngines.all fun e => e.sameLibm ||
+    FMath.all.all fun f => f == .sqrt || f == .exp || (e.elemUlps.lookup f.name).isSome := by
+  decide +kernel
+
 variable [Boxes.Ambient]
 example : builtinEngines.all (·.rowsWf) := by decide +kernel
 

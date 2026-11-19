@@ -29,7 +29,7 @@ pytestmark = pytest.mark.backend("spark")
 #: the result's magnitude `Epsilon.resultMag` uses (`None`: the largest result in the rows).
 #: The plan's bound is `2 · (S + R) · 2⁻⁵³ · mag` in absolute terms.
 BOUNDS: dict[str, tuple[float, float | None]] = {
-    "ln": (2, 745.0), "log10": (3, 324.0), "log2": (5, 1075.0), "log(b)": (5.5, None),
+    "exp": (2, 1.0), "ln": (2, 745.0), "log10": (3, 324.0), "log2": (5, 1075.0), "log(b)": (5.5, None),
     "sin": (2, 1.0), "cos": (2, 1.0), "tan": (4, None),
     "asin": (2, math.pi / 2), "acos": (2, math.pi), "atan": (2, math.pi / 2),
 }  # fmt: skip
@@ -59,6 +59,8 @@ def inputs(label: str) -> list[float]:
     match label:
         case "ln" | "log10" | "log2":
             return logs(rng)
+        case "exp":
+            return [*draws(rng, -700, 700), 0.0, 1.0, -1.0, 1e-10, 709.0, -745.0]
         case "sin" | "cos":
             return [*draws(rng, -GUARD, GUARD), *kpi(1), 0.0, 5e-324, 1e-310, GUARD, -GUARD]
         case "tan":
@@ -70,7 +72,7 @@ def inputs(label: str) -> list[float]:
 
 
 FUNCS: dict[str, Callable[[], Any]] = {
-    "ln": lambda: X.ln(), "log10": lambda: X.log10(), "log2": lambda: X.log2(),
+    "exp": lambda: X.exp(), "ln": lambda: X.ln(), "log10": lambda: X.log10(), "log2": lambda: X.log2(),
     "sin": lambda: X.sin(), "cos": lambda: X.cos(), "tan": lambda: X.tan(),
     "asin": lambda: X.asin(), "acos": lambda: X.acos(), "atan": lambda: X.atan(),
 }  # fmt: skip
@@ -113,6 +115,8 @@ def check(label: str, expr, xs: list[float]) -> None:
     eps = 2 * s_plus_r * 2.0**-53 * mag
     for x, g, w in zip(xs, got, want, strict=True):
         w = 0.0 if w is None else w  # a subnormal or zero result, within eps of 0 anyway
+        if label == "exp":  # `rule_exp`: 4u · exp x, one ulp on each side
+            eps = 4 * 2.0**-53 * abs(w) + 1e-300
         assert g is not None and abs(g - w) <= eps, (label, x, g, w, eps)
 
 

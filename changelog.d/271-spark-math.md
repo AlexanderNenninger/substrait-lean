@@ -1,6 +1,6 @@
-### Spark runs `ln`, the logarithms and the trigonometric functions
+### Spark runs `exp`, `ln`, the logarithms and the trigonometric functions
 
-Spark now runs `ln`, `log10`, `log2`, `log(b, x)`, `sin`, `cos`, `tan`, `asin`, `acos`
+Spark now runs `exp`, `ln`, `log10`, `log2`, `log(b, x)`, `sin`, `cos`, `tan`, `asin`, `acos`
 and `atan` of doubles natively ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
 Its values are Java's, within 1 ulp of the exact result by its source
 (spark-ulp-libm), and the plan's float bound adds each function's distance
