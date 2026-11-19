@@ -40,8 +40,8 @@
       "disagree": 0
     },
     "datetime": {
-      "agree": 40,
-      "refused": 65,
+      "agree": 50,
+      "refused": 55,
       "disagree": 0
     },
     "list": {
@@ -75,8 +75,8 @@
       "disagree": 0
     },
     "all": {
-      "agree": 634,
-      "refused": 620,
+      "agree": 644,
+      "refused": 610,
       "disagree": 63
     }
   },
@@ -151,7 +151,6 @@
       "checker: unsupported function is_infinite/N": 6
     },
     "datetime": {
-      "checker: a literal timestamp with a time zone is not supported yet (#N): a timestamp with a time zone can be read, compared with other such columns, used as a key and wr": 10,
       "checker: gte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
       "checker: lte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
       "checker: gt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,

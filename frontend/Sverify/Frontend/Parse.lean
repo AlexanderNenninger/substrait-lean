@@ -939,10 +939,10 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     let known := ((ks.filterMap id).filter (· != .other)) ++
       sigs.filterMap (fun | .kind k => some k | _ => none)
     if let k :: rest := known then
-      if rest.any (·.numeric != k.numeric) then throw s!"{name}: compares values of different types"
       -- An instant is not comparable with a naive timestamp or an integer.
       if known.contains .timeTz && known.any (· != .timeTz) then
         throw (instantRefusal s!"{name}: compares a timestamp with a time zone with another kind")
+      if rest.any (·.numeric != k.numeric) then throw s!"{name}: compares values of different types"
   -- `Rel.eval` gives `NULL` for a string or boolean function of anything
   -- else; DataFusion would cast the argument (`1 || 'a'` is `'1a'`).
   let want (k : Nat) : Option Kind :=

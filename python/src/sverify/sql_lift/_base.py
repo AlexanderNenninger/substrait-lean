@@ -1845,6 +1845,12 @@ class _Lift:
         first = ts[0]
         if all(_same(t, first) for t in ts):
             return first.copy(nullable=True)
+        if any(t.is_timestamp() and t.timezone is not None for t in ts):
+            # DuckDB brings the other side to a TIMESTAMPTZ in the session's zone (D53).
+            raise SqlUnsupported(
+                f"{what} of a timestamp with a time zone and another type follows the session "
+                "time zone in DuckDB; convert with x AT TIME ZONE 'UTC' (#1725)"
+            )
         if all(t.is_temporal() and not t.is_time() for t in ts):
             return dt.timestamp(scale=6)
         shown = ", ".join(str(t) for t in ts)

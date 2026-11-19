@@ -6885,6 +6885,24 @@
    "observed": "'2024-03-31 12:00:00+02', '2024-03-31 13:00:00+02', '2024-03-31 00:00:00+01', 23"
   },
   {
+   "construct": "instant-conversion",
+   "area": "temporal",
+   "setup": [
+    "SET TimeZone = 'Asia/Kolkata'"
+   ],
+   "sql": "SELECT epoch_us(make_timestamptz(epoch_us(ts))), make_timestamp(epoch_us(make_timestamptz(epoch_us(ts))))::VARCHAR, make_timestamptz(epoch_us(CAST(NULL AS TIMESTAMP))) IS NULL FROM (VALUES (TIMESTAMP '2024-03-10 02:30:00'), (TIMESTAMP '0001-01-01 00:00:00'), (TIMESTAMP '9999-12-31 23:59:59.999999')) t(ts)",
+   "observed": "1710037800000000, '2024-03-10 02:30:00', true; -62135596800000000, '0001-01-01 00:00:00', true; 253402300799999999, '9999-12-31 23:59:59.999999', true"
+  },
+  {
+   "construct": "instant-conversion-new-york",
+   "area": "temporal",
+   "setup": [
+    "SET TimeZone = 'America/New_York'"
+   ],
+   "sql": "SELECT epoch_us(make_timestamptz(epoch_us(ts))), make_timestamp(epoch_us(make_timestamptz(epoch_us(ts))))::VARCHAR FROM (VALUES (TIMESTAMP '2024-03-10 02:30:00'), (TIMESTAMP '2024-11-03 01:30:00')) t(ts)",
+   "observed": "1710037800000000, '2024-03-10 02:30:00'; 1730597400000000, '2024-11-03 01:30:00'"
+  },
+  {
    "construct": "tz-utc",
    "area": "temporal",
    "setup": [

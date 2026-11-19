@@ -1502,19 +1502,29 @@ naive timestamp is refused. Zones other than UTC are refused. The conversion is
 a function of the core that returns its argument; nothing else in `Rel.eval` and
 `Rel.Allowed` changes.
 
-Read in steps: an instant column is read, computed with and written back as an
-instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`); the conversion
-between an instant and a naive timestamp at UTC (`x AT TIME ZONE 'UTC'`), a
-literal with an offset and DuckDB's session-zone casts wait for the second
-step of #1725 (they need an `UnFn` that changes the kind).
+Read in two steps. Step 1 read an instant column, computed with it and wrote it
+back as an instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`). Step 2
+adds the conversion between an instant and a naive timestamp at UTC
+(`UnFn.atUtc`: `x AT TIME ZONE 'UTC'` in SQL, the cast between `timestamp('UTC')`
+and `timestamp` in Ibis) and instant literals: a literal is an instant when its
+text or Python value carries an explicit offset, which is folded to UTC
+microseconds; it is the conversion of a timestamp literal, so it has the kind of
+every other instant expression. A literal without an offset reads the session
+zone and is refused; so are DuckDB's `CAST(tstz AS TIMESTAMP)`, `tstz::DATE` and
+`CAST(ts AS TIMESTAMPTZ)`, and a comparison, `IN`, `COALESCE`, `CASE` or set
+operation that mixes an instant with a naive timestamp, which DuckDB brings to
+the session's zone. An Ibis cast between the two kinds is the conversion, so a
+comparison Ibis completes with one reads the naive side as UTC.
 
 No option and no profile entry: the operations above read no zone, so the
 engines agree on them under every session zone
 ([duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json),
 [polars-datetime-zone](../engines/polars/facts/polars-datetime-zone.json),
 [spark-time-zones](../engines/spark/facts/spark-time-zones.json)). DuckDB and
-Polars have a map for the instant; Spark and Snowflake refuse it and name the
-issue.
+Polars have a map for the instant, and a fact for each spelling of the conversion
+([duckdb-instant-conversion](../engines/duckdb/facts/duckdb-instant-conversion.json),
+[polars-instant-conversion](../engines/polars/facts/polars-instant-conversion.json));
+Spark and Snowflake refuse it and name the issue.
 
 Recomputes sinks: no
 

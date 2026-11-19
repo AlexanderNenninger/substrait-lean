@@ -12,6 +12,7 @@ from typing import Any
 
 import ibis
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from deltalake import DeltaTable, write_deltalake
 from ibis import _
@@ -20,7 +21,7 @@ import sverify as sv
 from sverify import _duckdb
 from sverify.engines import ENGINES
 from sverify.ibis_substrait import to_substrait_json
-from sverify.io import DeltaSink, DeltaSource
+from sverify.io import DeltaSink, DeltaSource, from_query
 from sverify.testing import inline_tables, lean_values
 
 U = lambda *a: dt.datetime(*a, tzinfo=dt.UTC)  # noqa: E731
@@ -193,14 +194,6 @@ def _naive_other(t):
 
 
 REFUSED = {
-    "a naive column compared with an instant": lambda t: t.filter(t.ts <= t.naive),
-    "a naive literal compared with an instant": lambda t: t.filter(
-        t.ts > ibis.literal(dt.datetime(2024, 1, 1), "timestamp")
-    ),
-    "IN with a naive literal": lambda t: t.filter(
-        t.ts.isin([ibis.literal(dt.datetime(2024, 1, 1), "timestamp")])
-    ),
-    "IN with a naive column": lambda t: t.filter(t.ts.isin([t.naive])),
     "an instant plus an interval": lambda t: t.select(x=t.ts + ibis.interval(hours=1)),
     "the difference of two instants": lambda t: t.select(x=t.ts - t.ts2),
     "date_trunc of an instant": lambda t: t.select(x=t.ts.truncate("D")),
@@ -209,18 +202,8 @@ REFUSED = {
     "an instant cast to a string": lambda t: t.select(x=t.ts.cast("string")),
     "least of an instant": lambda t: t.select(x=ibis.least(t.ts, t.ts2)),
     "lag of an instant": lambda t: t.select(x=t.ts.lag().over(ibis.window(order_by=t.id))),
-    "an instant literal in a comparison": lambda t: t.filter(
-        t.ts > ibis.literal(U(2024, 1, 1), "timestamp('UTC', 6)")
-    ),
-    "an instant literal in a projection": lambda t: t.select(
-        x=ibis.literal(U(2024, 1, 1), "timestamp('UTC', 6)")
-    ),
-    "a naive timestamp cast to an instant": lambda t: t.select(
-        x=t.naive.cast("timestamp('UTC', 6)")
-    ),
     "a CASE with a NULL branch": lambda t: t.select(x=ibis.cases((t.ts < t.ts2, t.ts))),
     "NULLIF of instants": lambda t: t.select(x=t.ts.nullif(t.ts2)),
-    "COALESCE of an instant and a naive column": lambda t: t.select(x=ibis.coalesce(t.ts, t.naive)),
     "SUM, AVG and FIRST of an instant": lambda t: t.aggregate(x=t.ts.first()),
     "date_trunc over COALESCE of instants, one level up": lambda t: t.select(
         c=ibis.coalesce(t.ts, t.ts2)
@@ -260,6 +243,194 @@ def test_a_set_operation_over_an_instant_and_a_naive_column_is_refused_by_the_ch
     first = plan.index(tz) + 1
     second = plan.index(tz, first)
     # The second `precisionTimestampTz` after the first table's read is table `u`'s `ts`.
+    patched = plan[:second] + '"precisionTimestamp"' + plan[second + len(tz) :]
+    code, _, err = run_checker((), patched)
+    assert code != 0 and "1725" in err
+
+
+# -- Step 2: the conversion and the literals (D53, #1725) -----------------------------
+
+LIT = ibis.literal(U(2024, 1, 1, 12), "timestamp('UTC', 6)")
+
+CONVERT = {
+    "filter by an instant literal": lambda t: t.filter(t.ts > LIT).select(t.id),
+    "IN with instant literals": lambda t: t.filter(
+        t.ts.isin([LIT, ibis.literal(U(2024, 1, 2), "timestamp('UTC', 6)")])
+    ).select(t.id),
+    "an instant literal in a projection": lambda t: t.select(t.id, x=LIT),
+    "COALESCE with an instant literal": lambda t: t.select(t.id, x=ibis.coalesce(t.ts, LIT)),
+    "an instant as a timestamp": lambda t: t.select(t.id, x=t.ts.cast("timestamp")),
+    "a timestamp as an instant": lambda t: t.select(t.id, x=t.naive.cast("timestamp('UTC', 6)")),
+    "date_trunc of the timestamp of an instant": lambda t: t.select(
+        t.id, x=t.ts.cast("timestamp").truncate("D")
+    ),
+}
+
+
+@pytest.mark.parametrize("name", CONVERT)
+def test_the_conversion_and_the_literals_agree_with_the_lean_evaluator(name):
+    t = instant_table()
+    query = CONVERT[name](t)
+    plan = json.loads(to_substrait_json(query))
+    rows = {"t": [(r[0], _us(r[1]), _us(r[2]), _us(r[3])) for r in ROWS]}
+    lean = lean_values(json.dumps(inline_tables(plan, rows)))
+    got = sv.verify(query, counterexamples=0).run(con_with(), "duckdb", unverified=True)
+    have = [tuple(_us(v) for v in r) for r in canon(got)]
+    assert sorted(map(repr, have)) == sorted(map(repr, [tuple(r) for r in lean])), name
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("name", CONVERT)
+def test_the_conversion_gives_the_same_rows_on_each_engine_and_zone(
+    name, engine, duckdb_zone, host_zone
+):
+    t = instant_table()
+    report = sv.verify(CONVERT[name](t), counterexamples=0)
+    results = []
+    for session, host in [("UTC", "UTC"), ("America/New_York", "Asia/Kolkata")]:
+        duckdb_zone(session)
+        host_zone(host)
+        out = report.run(con_with(engine), engine, unverified=True)
+        results.append((out.schema, canon(out)))
+    assert results[0] == results[1]
+
+
+def test_date_trunc_of_an_instant_at_utc_agrees_on_every_engine_under_any_session_zone(
+    duckdb_zone,
+):
+    """T5: `date_trunc('day', ts AT TIME ZONE 'UTC')`, from SQL, on DuckDB under a non-UTC
+    session and on Polars."""
+    decl = {"t": instant_table()}
+    sql = "SELECT id, date_trunc('day', ts AT TIME ZONE 'UTC') AS d FROM t"
+    report = sv.verify(sv.sql(sql, dialect="duckdb", **decl), counterexamples=0)
+    duckdb_zone("Asia/Tokyo")
+    duck = canon(report.run(con_with(), "duckdb", unverified=True))
+    pol = canon(report.run(con_with("polars"), "polars", unverified=True))
+    assert duck == pol
+    assert dict(duck) == {
+        1: dt.datetime(2024, 1, 2),
+        2: dt.datetime(2024, 1, 1),
+        3: None,
+        4: dt.datetime(2024, 1, 2),
+        5: dt.datetime(2024, 1, 2),
+    }
+
+
+@pytest.mark.parametrize(
+    ("sql", "message"),
+    [
+        ("SELECT CAST(ts AS TIMESTAMP) AS x FROM t", "AT TIME ZONE 'UTC'"),
+        ("SELECT ts::DATE AS x FROM t", "AT TIME ZONE 'UTC'"),
+        ("SELECT CAST(naive AS TIMESTAMPTZ) AS x FROM t", "AT TIME ZONE 'UTC'"),
+        ("SELECT id FROM t WHERE ts > TIMESTAMPTZ '2024-01-01 12:00:00'", "offset"),
+        ("SELECT ts AT TIME ZONE 'Europe/Berlin' AS x FROM t", "'UTC'"),
+    ],
+)
+def test_the_lift_refuses_what_follows_the_session_zone_and_names_the_exit(sql, message):
+    with pytest.raises(Exception, match="1725") as err:
+        sv.verify(sv.sql(sql, dialect="duckdb", t=instant_table()), counterexamples=0)
+    assert message in str(err.value)
+
+
+def test_a_timestamptz_literal_with_an_offset_is_an_instant():
+    sql = "SELECT id FROM t WHERE ts > TIMESTAMPTZ '2024-01-01 14:00:00+02'"
+    report = sv.verify(sv.sql(sql, dialect="duckdb", t=instant_table()), counterexamples=0)
+    # 14:00+02 is 12:00 UTC: ids 1 (Jan 2) and 5 pass, id 2 (Jan 1 00:00) does not.
+    assert [r[0] for r in canon(report.run(con_with(), "duckdb", unverified=True))] == [1, 4, 5]
+
+
+def test_a_delta_filter_on_an_instant_skips_the_files_its_naive_twin_skips(tmp_path):
+    """T3."""
+
+    def table(day):
+        ts = [dt.datetime(2024, 1, day), dt.datetime(2024, 1, day + 1)]
+        return pa.table(
+            {
+                "id": [day, day + 1],
+                "ts": pa.array([x.replace(tzinfo=dt.UTC) for x in ts], UTC),
+                "naive": pa.array(ts, NTZ),
+            }
+        )
+
+    write_deltalake(tmp_path / "t", table(1))
+    write_deltalake(tmp_path / "t", table(10), mode="append")
+    zoned = DeltaSource(str(tmp_path / "t"), where="ts > TIMESTAMPTZ '2024-01-05 00:00:00+00'")
+    naive = DeltaSource(str(tmp_path / "t"), where="naive > TIMESTAMP '2024-01-05 00:00:00'")
+    zoned.snapshot(), naive.snapshot()
+    assert len(zoned.skipped) == len(naive.skipped) == 1
+
+
+def test_a_precondition_and_a_bound_on_an_instant_column():
+    """T7: a precondition on an instant column is checked on the data, and proves the
+    postcondition of the same bound."""
+    t = instant_table()
+    report = sv.verify(
+        t.filter(t.id > 0), requires=[_.ts >= LIT], ensures=[_.ts >= LIT], counterexamples=0
+    )
+    assert report.verdict == sv.Verdict.PROVED
+    con = sv.connect()
+    con.put(
+        "t", TABLE.filter(pa.array([r[1] is not None and r[1] >= U(2024, 1, 1, 12) for r in ROWS]))
+    )
+    assert report.run(con, "duckdb").num_rows == 3
+    with pytest.raises(sv.errors.PreconditionError):
+        report.run(con_with(), "duckdb")
+
+
+def test_an_incremental_cursor_on_an_instant_column(tmp_path):
+    """T7: a restarted job resumes from the instant its sink recorded."""
+    rows = [{"id": 1, "ts": U(2026, 11, 3, 12), "amount": 30}]
+
+    class Feed:
+        def since(self, ts):
+            table = pa.Table.from_pylist(rows)
+            return table if ts is None else table.filter(pc.greater(table["ts"], ts))
+
+    f = Feed()
+
+    @sv.transform(requires={"payments": [_.amount >= 0]}, ensures=[_.amount.notnull()])
+    def big(payments):
+        return payments.filter(payments.amount > 10)
+
+    def job():
+        return big(from_query(f.since, cursor_on="ts", name="payments")).write(
+            DeltaSink(str(tmp_path / "big"))
+        )
+
+    job().refresh()
+    recorded = DeltaSource(str(tmp_path / "big")).contract()
+    assert recorded is not None and "payments" in recorded.cursors
+    rows.append({"id": 2, "ts": U(2026, 11, 3, 12, 1), "amount": 40})
+    w = job().refresh().writes[0]
+    assert (w.mode, w.inserted) == ("merge", 1)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT id FROM t WHERE ts <= naive",
+        "SELECT id FROM t WHERE ts IN (naive)",
+        "SELECT COALESCE(ts, naive) AS x FROM t",
+        "SELECT CASE WHEN id > 1 THEN ts ELSE naive END AS x FROM t",
+        "SELECT ts AS x FROM t UNION ALL SELECT naive FROM t",
+        "SELECT id FROM t WHERE ts > TIMESTAMP '2024-01-01 00:00:00'",
+    ],
+)
+def test_the_lift_refuses_a_mix_of_instants_and_naive_timestamps(sql):
+    """DuckDB brings the naive side to the session's zone: the lift does not guess it."""
+    with pytest.raises(Exception, match="1725"):
+        sv.verify(sv.sql(sql, dialect="duckdb", t=instant_table()), counterexamples=0)
+
+
+def test_the_checker_refuses_a_comparison_of_an_instant_with_a_naive_column():
+    """The parser's gate, past the frontends: the second column of the plan is retyped naive."""
+    from sverify.engine import run_checker
+
+    t = ibis.table({"a": "timestamp('UTC', 6)", "b": "timestamp('UTC', 6)"}, name="t")
+    plan = to_substrait_json(t.filter(t.a <= t.b))
+    tz = '"precisionTimestampTz"'
+    first = plan.index(tz) + 1
+    second = plan.index(tz, first)
     patched = plan[:second] + '"precisionTimestamp"' + plan[second + len(tz) :]
     code, _, err = run_checker((), patched)
     assert code != 0 and "1725" in err

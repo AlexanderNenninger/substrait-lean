@@ -225,7 +225,7 @@ def Kind.subK : Kind → Kind → Option Kind
   | .timeTz, .int => some .timeTz
   | .tod, .int => some .tod
   | .date, .int => some .date
-  | .time, .time | .time, .timeTz | .timeTz, .time | .timeTz, .timeTz
+  | .time, .time | .timeTz, .timeTz
   | .tod, .tod | .date, .date => some .int
   | _, _ => none
 
@@ -248,7 +248,6 @@ compares two scales without it is refused here, not NULL at run time. -/
 def Kind.comparable : Kind → Kind → Bool
   | .other, _ | _, .other => true
   | .dec _ s, .dec _ t => s == t
-  | .time, .timeTz | .timeTz, .time => true
   | .list a, .list b => Kind.comparable a b
   | .struct as, .struct bs => as.length == bs.length && compList as bs
   | a, b => a == b

@@ -1284,6 +1284,12 @@ class Exprs:
             # `UnFn.timeOfDay`; Polars' times are nanoseconds.
             tod = (wide(v) % US_PER_DAY * 1000).cast(pl.Int64).cast(pl.Time)
             return ts_only(v, tod, pl.Time, "CAST to TIME")
+        if "precisionTimestampTz" in target and v.dtype == US:
+            # `UnFn.atUtc true` (D53): the same microseconds, as an instant.
+            return Val(v.expr.dt.replace_time_zone("UTC"), INSTANT, v.issues)
+        if "precisionTimestamp" in target and v.dtype == INSTANT:
+            # `UnFn.atUtc false`: the naive timestamp of the instant's UTC wall clock.
+            return Val(v.expr.dt.replace_time_zone(None), US, v.issues)
         if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
             # `UnFn.asTime`: microseconds since 1970-01-01.
             return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)

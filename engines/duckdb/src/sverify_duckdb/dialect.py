@@ -428,6 +428,13 @@ class DuckDBDialect(Dialect):
     def date_time(self, d: str) -> str:
         return f"CAST({d} AS TIMESTAMP)"
 
+    def to_instant(self, ts: str) -> str:
+        # By the microseconds, so that no session zone is read (duckdb-instant-conversion).
+        return f"make_timestamptz(epoch_us({ts}))"
+
+    def to_naive(self, instant: str) -> str:
+        return f"make_timestamp(epoch_us({instant}))"
+
     def epoch_us(self, ts: str) -> str:
         return f"epoch_us({ts})"
 

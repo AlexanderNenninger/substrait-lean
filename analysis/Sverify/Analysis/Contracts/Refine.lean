@@ -25,6 +25,8 @@ def Expr.constNum? : Expr → Option Value
   | .lit v => if v.numOf?.isSome then some v else none
   | .un (.decimal _ s) a | .un (.dkind _ s) a =>
     a.constNum?.bind fun v => v.unscaled?.map (.dec s)
+  -- An instant literal is a timestamp literal converted at UTC: the same value (D53).
+  | .un (.atUtc _) a => a.constNum?
   | .bin .dmul a b => a.constNum?.bind fun x => b.constNum?.bind fun y =>
     x.unscaled?.bind fun i => y.unscaled?.map fun j => .int (i * j)
   | _ => none
@@ -43,6 +45,9 @@ theorem Expr.constNum?_eval (row : Row) :
       simp only [Expr.constNum?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
       obtain ⟨w, hw, i, hi, rfl⟩ := h
       simp only [Expr.eval, ih hw, UnFn.apply, hi]
+    case atUtc b =>
+      simp only [Expr.constNum?] at h
+      simp only [Expr.eval, ih h, UnFn.apply]
     all_goals simp [Expr.constNum?] at h
   | bin f a b iha ihb =>
     intro v h

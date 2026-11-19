@@ -15,7 +15,7 @@ import urllib.parse
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Self
 
 import duckdb
@@ -29,6 +29,7 @@ from sverify._pipe import Pipeable
 from sverify._unsupported import SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
+from sverify.plan_json import is_utc
 
 
 @dataclass(frozen=True)
@@ -48,16 +49,16 @@ class ColumnStats:
 
 def _bounded(t: pa.DataType) -> bool:
     """Types whose minimum and maximum statistics become bounds: integers,
-    doubles, dates and microsecond timestamps without a time zone.
+    doubles, dates and microsecond timestamps, instants (UTC) included (D53).
 
     Not strings (writers truncate their bounds, and the checker has no string
-    order: #17), decimals (not modelled: #27), timestamps with a time zone
-    (not modelled: #20), nor other units and floats."""
+    order: #17), decimals (not modelled: #27), timestamps in another zone, nor
+    other units and floats."""
     return (
         pa.types.is_integer(t)
         or pa.types.is_float64(t)
         or pa.types.is_date32(t)
-        or (pa.types.is_timestamp(t) and t.unit == "us" and t.tz is None)
+        or (pa.types.is_timestamp(t) and t.unit == "us" and (t.tz is None or is_utc(t.tz)))
     )
 
 
@@ -107,6 +108,10 @@ def _literal(t: pa.DataType, v: Any) -> str | None:
         return repr(float(v)) if math.isfinite(v) else None
     if pa.types.is_date32(t):
         return f"DATE '{v.isoformat()}'"
+    if getattr(v, "tzinfo", None) is not None:
+        # An instant: its literal carries the offset, so no session zone is read.
+        text = v.astimezone(UTC).isoformat(sep=" ", timespec="microseconds")
+        return f"TIMESTAMPTZ '{text}'"
     return f"TIMESTAMP '{v.isoformat(sep=' ', timespec='microseconds')}'"
 
 
