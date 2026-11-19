@@ -65,6 +65,7 @@ CASES: dict[str, dict[str, Any]] = {
     "folded_data": dict(reach1="data", p="cast", data="allbad", above="none"),
     "folded_const_filter": dict(reach1="const", p="const_bad", data="mixed", above="id"),
     "const_operand": dict(reach1="data", p="const_bad", data="allbad", above="none"),
+    "const_in_column_operand": dict(reach1="notnull", p="col_gt_bad", data="allbad", above="none"),
     "const_operand_column_reach": dict(
         reach1="notnull", p="const_bad", data="allbad", above="none"
     ),
@@ -103,7 +104,11 @@ def _reach1_sql(kind: str) -> str:
 
 
 def _p_sql(kind: str) -> str:
-    return {"cast": "CAST(s AS INT) > 0", "const_bad": f"CAST('{BAD}' AS INT) > 0"}[kind]
+    return {
+        "cast": "CAST(s AS INT) > 0",
+        "const_bad": f"CAST('{BAD}' AS INT) > 0",
+        "col_gt_bad": f"CAST(id AS INT) > CAST('{BAD}' AS INT)",
+    }[kind]
 
 
 def sql_chain(case: dict[str, Any], levels: int, table: str = "t") -> str:
@@ -175,6 +180,7 @@ def polars_engine() -> dict[str, Any]:
         return {
             "cast": pl.col("s").cast(pl.Int64, strict=True) > 0,
             "const_bad": pl.lit(BAD).cast(pl.Int64, strict=True) > 0,
+            "col_gt_bad": pl.col("id").cast(pl.Int64) > pl.lit(BAD).cast(pl.Int64, strict=True),
         }[kind]
 
     def build(case: dict[str, Any], levels: int) -> pl.LazyFrame:
