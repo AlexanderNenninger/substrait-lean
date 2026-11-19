@@ -308,10 +308,6 @@ omit [Boxes.Ambient] in
 theorem FloatCode.canon_negNan' : FloatCode.canon FloatCode.negNan = FloatCode.nan := fp64.canon_negNan
 
 omit [Boxes.Ambient] in
-theorem FloatCode.canon_nan : FloatCode.canon FloatCode.nan = FloatCode.nan :=
-  FloatCode.canon_of_isRef FloatCode.isRef_nan
-
-omit [Boxes.Ambient] in
 theorem FloatCode.canon_one : FloatCode.canon FloatCode.one = FloatCode.one :=
   FloatCode.canon_of_bounds ⟨by
     have := FloatCode.negInf_lt_negOne

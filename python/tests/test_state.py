@@ -19,6 +19,7 @@ from _engines import PROFILED
 from _zero import one_zero
 from sverify import _duckdb
 from sverify._arrow_state import ArrowOps as ArrowStore
+from sverify._parts import PartsState
 from sverify._scan import Resident
 from sverify._state import Merger, arrow_of
 from sverify._weighted import WEIGHT, consolidated, negated
@@ -135,14 +136,8 @@ def test_views_keep_their_state_where_their_engine_reads_it(engine):
     held: type = pa.Table
     if engine == "duckdb":
         held = Resident
-    elif engine == "polars":
-        from sverify_polars.store import PolarsState
-
-        held = PolarsState
-    elif engine == "spark":
-        from sverify_spark.store import SparkState
-
-        held = SparkState
+    elif engine in ("polars", "spark"):
+        held = PartsState
     for step in range(3):
         deletes = orders()[2 * step : 2 * step + 2]
         pipe.apply({"o": Changes(inserts=orders(100 + 10 * step), deletes=deletes)})
@@ -163,14 +158,8 @@ def test_a_refresh_does_not_read_a_views_state_into_the_driver(engine, monkeypat
     import inspect
 
     classes: list[type] = [Resident]
-    if engine == "polars":
-        from sverify_polars.store import PolarsState
-
-        classes = [PolarsState]
-    elif engine == "spark":
-        from sverify_spark.store import SparkState
-
-        classes = [SparkState]
+    if engine in ("polars", "spark"):
+        classes = [PartsState]
     pipe, _ = pipeline(engine)
 
     def poisoned(cls):
