@@ -471,9 +471,10 @@ def test_a_dbt_project_needs_sverify_dbt(tmp_path, capsys, monkeypatch):
     assert "sverify-dbt" in doc["error"]["message"]
 
 
-def test_a_dbt_project_takes_the_format_sverify_dbt_does(tmp_path, capsys, monkeypatch):
-    """`sverify check <dbt dir> --format json` hands sverify-dbt flags it
-    parses (#891), and `--format github` is refused here, not by its parser."""
+def test_a_dbt_project_gets_the_flags_sverify_dbt_parses(tmp_path, capsys, monkeypatch):
+    """`sverify check <dbt dir>` hands sverify-dbt the format, the timeout and
+    the memory limit, each a flag its parser takes (#891): a rejected flag
+    would raise `SystemExit`."""
     sverify_dbt_cli = pytest.importorskip("sverify_dbt.cli")
     (tmp_path / "dbt_project.yml").write_text("name: x\n")
     monkeypatch.setattr("shutil.which", lambda _: "sverify-dbt")
@@ -481,13 +482,15 @@ def test_a_dbt_project_takes_the_format_sverify_dbt_does(tmp_path, capsys, monke
 
     def call(argv: list[str]) -> int:
         seen.append(argv)
-        return sverify_dbt_cli.main(argv[1:])  # SystemExit on a flag it rejects
+        return sverify_dbt_cli.main(argv[1:])
 
     monkeypatch.setattr("subprocess.call", call)
-    code, out = run(capsys, "check", str(tmp_path), "--format", "json")
-    assert code == 2 and seen[0][-2:] == ["--format", "json"]  # no target/manifest.json
-    code, out = run(capsys, "check", str(tmp_path), "--format", "github")
-    assert code == 2 and "text or json" in out and len(seen) == 1
+    for fmt in ("json", "github", "sarif"):
+        code, _ = run(capsys, "check", str(tmp_path), "--format", fmt)
+        assert code == 2 and seen[-1][-2:] == ["--format", fmt]  # no target/manifest.json
+    code, _ = run(capsys, "check", str(tmp_path), "--timeout", "5", "--memory-limit", "1GB")
+    assert code == 2
+    assert seen[-1][-4:] == ["--timeout", "5", "--memory-limit", "1GB"]
 
 
 def test_split_target():
