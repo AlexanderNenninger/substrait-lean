@@ -171,9 +171,9 @@ def test_lean_values_raises_where_the_reference_raises(con):
     over = "SELECT sum(CAST(a AS DECIMAL(3, 2))) OVER ({}) AS r FROM t"
     with pytest.raises(LeanRaised, match="overflow"):
         lean(con, over.format("PARTITION BY i"))
-    # By `i`, `12.35` is the last row: the frame of one row before holds each row but
-    # that one, so nothing raises.
-    skipped = over.format("ORDER BY i ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING")
+    # By `i` the rows are -0.05, NULL, -12.35, 12.35, and the two that overflow are the last
+    # two: a frame of the row two before holds only the first two, so nothing raises.
+    skipped = over.format("ORDER BY i ROWS BETWEEN 2 PRECEDING AND 2 PRECEDING")
     assert len(lean(con, skipped)) == 4
 
 
