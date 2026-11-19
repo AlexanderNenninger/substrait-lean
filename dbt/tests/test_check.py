@@ -233,11 +233,16 @@ def test_an_ephemeral_model_is_inlined_into_its_reader(make_project) -> None:
               - name: totals
                 columns:
                   - {name: id, data_tests: [unique]}
+              - name: stg
+                columns:
+                  - {name: id, data_tests: [not_null]}
             """,
         }
     )
     res = sverify_dbt.check(root, counterexamples=0)
     assert res["totals"].refused is None, res["totals"].refused
+    # A test on the ephemeral model is listed, not checked: dbt runs none on it.
+    assert statuses(res["stg"]) == {"not_null(id)": "not checked"}
     assert statuses(res["totals"]) == {"unique(id)": "proved"}
     assert res["stg"].refused is None
     assert any("inlines it into totals" in n for n in res["stg"].notes)

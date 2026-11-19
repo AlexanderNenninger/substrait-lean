@@ -233,6 +233,10 @@ class _Checker:
                 + (", ".join(readers) if readers else "no model")
                 + " and runs no test on it; it is checked there"
             )
+            for t in self.p.tests_on(m.unique_id):
+                tr = TestResult(test=t.unique_id, name=t.name, label=t.short, kind="test")
+                tr.skip("dbt runs no test on an ephemeral model")
+                res.tests.append(tr)
             return res
         if m.language != "sql":
             return res.refuse(
