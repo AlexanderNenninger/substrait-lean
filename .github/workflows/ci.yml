@@ -631,7 +631,7 @@ jobs:
           assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
           PY
           uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
-            --with pytest pytest -p no:cacheprovider python/tests/test_no_duckdb.py
+            --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
   # the benchmarks and on every sqllogictest file the ledgers decided a query

@@ -6,8 +6,8 @@ it:
 
     python scripts/check_packages.py base         # sverify alone: no DuckDB, no engine
     python scripts/check_packages.py duckdb       # sverify[duckdb]
-    python scripts/check_packages.py polars       # sverify[duckdb,polars]
-    python scripts/check_packages.py spark        # sverify[duckdb,spark]
+    python scripts/check_packages.py polars       # sverify[polars] (brings DuckDB)
+    python scripts/check_packages.py spark        # sverify[spark] (brings DuckDB)
     python scripts/check_packages.py spark-light  # sverify[duckdb] and sverify-spark, no PySpark
     python scripts/check_packages.py dbt          # sverify and sverify-dbt
 

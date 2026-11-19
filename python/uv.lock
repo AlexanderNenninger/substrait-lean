@@ -4487,6 +4487,8 @@ openlineage = [
     { name = "openlineage-python" },
 ]
 polars = [
+    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "sverify-duckdb", extra = ["run"] },
     { name = "sverify-polars", extra = ["run"] },
 ]
 secrets-aws = [
@@ -4503,6 +4505,8 @@ secrets-keychain = [
     { name = "keyring" },
 ]
 spark = [
+    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "sverify-duckdb", extra = ["run"] },
     { name = "sverify-spark", extra = ["run"] },
 ]
 testing = [
@@ -4553,6 +4557,8 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
     { name = "sqlglot", specifier = ">=30.8.0,<30.18" },
     { name = "substrait", specifier = ">=0.37.0" },
+    { name = "sverify", extras = ["duckdb"], marker = "extra == 'polars'" },
+    { name = "sverify", extras = ["duckdb"], marker = "extra == 'spark'" },
     { name = "sverify", extras = ["duckdb", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
     { name = "sverify-duckdb", editable = "../engines/duckdb" },
     { name = "sverify-duckdb", extras = ["run"], marker = "extra == 'duckdb'", editable = "../engines/duckdb" },

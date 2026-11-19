@@ -338,8 +338,8 @@ jobs:
           case "$COMBINATION" in
             base) spec=("sverify @ file://$wheel") ;;
             duckdb) spec=("sverify[duckdb] @ file://$wheel") ;;
-            polars) spec=("sverify[duckdb,polars] @ file://$wheel") ;;
-            spark) spec=("sverify[duckdb,spark] @ file://$wheel") ;;
+            polars) spec=("sverify[polars] @ file://$wheel") ;;
+            spark) spec=("sverify[spark] @ file://$wheel") ;;
             spark-light) spec=("sverify[duckdb] @ file://$wheel" "$(ls "$PWD"/dist-engines/sverify_spark-*.whl)") ;;
             dbt) spec=("sverify @ file://$wheel" "$(ls "$PWD"/dist-dbt/sverify_dbt-*.whl)" dbt-core dbt-duckdb) ;;
           esac
