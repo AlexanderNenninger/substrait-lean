@@ -840,7 +840,7 @@ def strMayNe (a b : AVal) : Bool :=
 
 /-! #### Signs (#441)
 
-Rounding keeps a result's sign (`FloatCode.div_nonneg`), so a quotient of a
+Rounding keeps a result's sign (`FloatCode.fdiv_nonneg_open`), so a quotient of a
 non-negative double by a positive one stays at least `0`; the absolute error
 of the general `fdivBound` alone would let its bound dip below. A sum, a
 product and a quotient by one divisor are rounded at their ends and need no
