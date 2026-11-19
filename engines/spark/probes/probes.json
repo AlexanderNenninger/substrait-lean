@@ -950,6 +950,30 @@
    }
   },
   {
+   "construct": "decimal-compare-scale-wide",
+   "sql": "SELECT a > b, a = b, a < b FROM VALUES (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0)), CAST(1.5 AS DECIMAL(38,10))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(True, False, False)",
+    "ansi=false": "(True, False, False)"
+   }
+  },
+  {
+   "construct": "decimal-compare-scale-fits",
+   "sql": "SELECT a > b, a = b, a < b FROM VALUES (CAST(1 AS DECIMAL(38,0)), CAST(1.0 AS DECIMAL(38,10))), (CAST(2 AS DECIMAL(38,0)), CAST(1.5 AS DECIMAL(38,10))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(False, True, False); (False, True, False)",
+    "ansi=false": "(False, True, False); (False, True, False)"
+   }
+  },
+  {
+   "construct": "decimal-compare-scale-bigint",
+   "sql": "SELECT a > b, a = b FROM VALUES (CAST(9223372036854775807 AS BIGINT), CAST(1.5 AS DECIMAL(38,30))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(True, False)",
+    "ansi=false": "(True, False)"
+   }
+  },
+  {
    "construct": "string-case",
    "sql": "SELECT s, upper(s), lower(s), initcap(s), length(upper(s)) FROM VALUES ('ß'), ('ﬁ'), ('İ'), ('ǅ'), ('ΣΑΣ'), ('straße'), ('Ⅻ') AS t(s)",
    "observed": {

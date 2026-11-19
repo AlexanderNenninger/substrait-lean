@@ -120,6 +120,18 @@ def test_refusals_name_the_construct() -> None:
         SPARK.decimal_cast("f", Dec(20, 2), "float")
 
 
+def test_a_comparison_whose_common_type_passes_38_digits_is_refused() -> None:
+    """Spark rounds the operand of the higher scale there (spark-decimal-compare-scale):
+    `2 = 1.5` of DECIMAL(38, 0) and DECIMAL(38, 10) is true. A pair that fits is exact."""
+    with pytest.raises(Unsupported, match=r"has 48 digits.*spark-decimal-compare-scale"):
+        SPARK.decimal_compare("eq", "a", Dec(38, 0), "b", Dec(38, 10))
+    with pytest.raises(Unsupported, match=r"DECIMAL\(20, 0\) with DECIMAL\(38, 20\)"):
+        SPARK.decimal_compare("lt", "a", "int", "b", Dec(38, 20))
+    assert SPARK.decimal_compare("eq", "a", Dec(28, 0), "b", Dec(38, 10))  # 28 + 10 = 38
+    assert SPARK.decimal_compare("lt", "a", "int", "b", Dec(38, 10))  # a BIGINT: 28 + 10
+    assert SPARK.decimal_compare("eq", "a", Dec(38, 10), "b", Dec(38, 10))  # one scale
+
+
 def test_an_avg_of_decimals_is_refused_on_spark(con) -> None:
     g = ibis.table({"k": "int64", "x": "decimal(10,2)"}, name="g")
     with pytest.raises(Unsupported, match="AVG of decimals"):
