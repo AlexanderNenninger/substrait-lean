@@ -60,19 +60,18 @@ def hold(monkeypatch, a, method: str, then) -> None:
 
 
 @pytest.mark.parametrize("engine", ENGINES)
-def test_the_second_writer_of_an_epoch_fails(jobs, monkeypatch, engine):
+def test_the_second_writer_of_an_epoch_skips(jobs, monkeypatch, engine):
     src, sink, a, b = jobs
     a.refresh(engine=engine)
     b.refresh(engine=engine)
     append(src, [3])
     # The issue's repro: A is held after reading the sink's last transaction.
     hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
-    with pytest.raises(ConcurrentWriteError, match=rf"{sink}.*sverify:paid.*epoch 2"):
-        a.refresh(engine=engine)
+    # A lost the commit race to a run that wrote this very state: it reports that.
+    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     assert ids(sink) == [1, 2, 3]
     assert DeltaTable(sink).transaction_version("sverify:paid") == 2
     # A recovers: the sink holds this state, and later changes merge on it.
-    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     append(src, [4])
     a.refresh(engine=engine)
     assert ids(sink) == [1, 2, 3, 4]
@@ -94,8 +93,8 @@ def test_a_commit_delta_rs_rejects(jobs, monkeypatch, engine):
         monkeypatch.setattr(DeltaSink, "_check", lambda *args: None)
 
     hold(monkeypatch, a, "_check", b_commits)
-    with pytest.raises(ConcurrentWriteError, match="delta-rs"):
-        a.refresh(engine=engine)
+    # A lost the commit race to a run that wrote this very state: it reports that.
+    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     monkeypatch.undo()
     assert ids(sink) == [1, 2, 3]
     assert a.refresh(engine=engine).writes[0].mode == "skipped"
@@ -127,8 +126,8 @@ def test_an_older_write_does_not_land_on_a_newer_state(jobs, monkeypatch, engine
 def test_two_writers_creating_the_table(jobs, monkeypatch, engine):
     _src, sink, a, b = jobs
     hold(monkeypatch, a, "contract", lambda: b.refresh(engine=engine))
-    with pytest.raises(ConcurrentWriteError):
-        a.refresh(engine=engine)
+    # A lost the commit race to a run that wrote this very state: it reports that.
+    assert a.refresh(engine=engine).writes[0].mode == "skipped"
     assert ids(sink) == [1, 2]
     assert a.refresh(engine=engine).writes[0].mode == "skipped"
 

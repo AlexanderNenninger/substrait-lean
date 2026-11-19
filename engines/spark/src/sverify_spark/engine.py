@@ -147,8 +147,13 @@ def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> 
         if own and held.get(name) is table:
             continue
         if not isinstance(table, pa.Table):
+            from sverify._scan import Scan
             from sverify_spark.scan import spark_scan
 
+            if not isinstance(table, Scan):  # a state's files (`SparkState`)
+                table.view(spark).createOrReplaceTempView(name)
+                held.pop(name, None)  # the view no longer holds the Arrow table sent last
+                continue
             spark_scan(spark, table).createOrReplaceTempView(name)
             if own:
                 held[name] = table
@@ -201,7 +206,20 @@ def run(
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
+    return run_df(plan, tables, spark, deterministic=deterministic, finite=finite).toArrow()
+
+
+def run_df(
+    plan: str | dict,
+    tables: Mapping[str, Any],
+    spark: SparkSession | None = None,
+    *,
+    deterministic: bool = False,
+    finite: bool = True,
+) -> Any:
+    """`run`, but the result stays a Spark `DataFrame`: nothing is collected.
+    A table is an Arrow table or a handle on files (`sverify_spark.store`)."""
     spark = spark or session()
     sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows=ROWS)
     put_tables(tables, spark)
-    return spark.sql(sql).toArrow()
+    return spark.sql(sql)

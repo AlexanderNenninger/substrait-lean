@@ -2096,7 +2096,8 @@ checks that 38 digits hold it: `p ≤ 34` (a double output has no such limit) an
 def checkDecimalAvgWidth (p s : Nat) (dbl : Bool) : J Unit := do
   if 34 < s then throw "avg of a DECIMAL with more than 34 decimal places is not supported"
   if !dbl && 34 < p then
-    throw "avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) result does not fit 38 digits"
+    throw ("avg of a DECIMAL with more than 34 digits is not supported: its DECIMAL(p + 4, s + 4) " ++
+      "result does not fit 38 digits; cast the argument to DECIMAL(34, s) or narrower first")
 
 #guard (checkDecimalAvgWidth 34 4 false).toBool && (checkDecimalAvgWidth 38 4 true).toBool
 #guard (checkDecimalAvgWidth 35 0 false).toBool == false && (checkDecimalAvgWidth 20 35 true).toBool == false

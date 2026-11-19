@@ -617,4 +617,54 @@ theorem fmul_canon (a b : Int) : canon (fmul (canon a) (canon b)) = canon (fmul 
 theorem fdiv_canon_left (a b : Int) : canon (fdiv (canon a) b) = canon (fdiv a b) := by
   unfold fdiv; rw [canon_divI_canon_left]
 
+theorem unitK_pos : 0 < unitK := Nat.two_pow_pos _
+
+theorem scaled_exactCode (i : Int) : scaled (exactCode i) = i * (unitK : Int) := by
+  simp only [scaled, exactCode, FloatFormat.exactCode, fp64_scale, unitK]
+  split
+  · subst_vars; simp
+  · split <;> omega
+
+/-- Dividing `v · 2¹⁰⁷⁴` by `n · 2¹⁰⁷⁴` rounds as `v / n` does. -/
+theorem ofExactDiv_unitK (v : Int) (n : Nat) :
+    ofExactDiv (v * unitK * unitK) (n * unitK) = ofExactDiv (v * unitK) n := by
+  rw [← ofExactDiv_mul_mul (v * unitK) (k := unitK) (n := n) unitK_pos, Int.mul_comm (v * unitK),
+    Nat.mul_comm n]
+
+set_option exponentiation.threshold 2200 in
+/-- An integer of at most `2⁵³` in magnitude, times `2¹⁰⁷⁴`, is a double's
+exact value: it rounds to its own code. -/
+theorem ofExact_int {k : Int} (hk : k.natAbs ≤ 2 ^ 53) : ofExact (k * unitK) = exactCode k := by
+  by_cases h0 : k = 0
+  · subst h0
+    simp only [Int.zero_mul, ofExact, ofExactDiv_zero]; rfl
+  have hm : k.natAbs * 2 ^ 1074 ≤ maxMag := by
+    have h1 : k.natAbs * 2 ^ 1074 ≤ 2 ^ 53 * 2 ^ 1074 := Nat.mul_le_mul_right _ hk
+    rw [← Nat.pow_add] at h1
+    exact Nat.le_trans h1 (pow_le_maxMag (by omega))
+  have hpos : 0 < k.natAbs * 2 ^ 1074 := Nat.mul_pos (by omega) (Nat.two_pow_pos _)
+  have hcode : exactCode k = ofMag (decide (k < 0)) (k.natAbs * 2 ^ 1074) := by
+    rw [ofMag_eq _ hm]
+    unfold posCode
+    simp only [exactCode, FloatFormat.exactCode, fp64_scale, h0, ↓reduceIte,
+      show ¬ maxMag < k.natAbs * 2 ^ 1074 by omega, show k.natAbs * 2 ^ 1074 ≠ 0 by omega]
+    by_cases hn : k < 0 <;> simp [hn]
+  have hval : k * (unitK : Int) = exact (ofMag (decide (k < 0)) (k.natAbs * 2 ^ 1074)) := by
+    have hU : (unitK : Int) = ((2 ^ 1074 : Nat) : Int) := rfl
+    rw [ofMag_eq _ hm, hU]
+    by_cases hn : k < 0
+    · simp only [hn, decide_true, ↓reduceIte, exact]
+      rw [scaled_neg_posCode hm, Int.natCast_mul, ← Int.neg_mul]
+      congr 1; omega
+    · simp only [hn, decide_false, Bool.false_eq_true, ↓reduceIte, exact]
+      rw [scaled_posCode hm, Int.natCast_mul]
+      congr 1; omega
+  rw [hval, hcode]
+  rcases Nat.lt_or_ge k.natAbs (2 ^ 53) with hlt | hge
+  · exact ofExact_exact _ hlt hm
+  · have e : k.natAbs * 2 ^ 1074 = 1 * 2 ^ 1127 := by
+      rw [show k.natAbs = 2 ^ 53 by omega, Nat.one_mul, ← Nat.pow_add]
+    rw [e]
+    exact ofExact_exact _ (by decide) (by rw [← e]; exact hm)
+
 end Substrait.FloatCode

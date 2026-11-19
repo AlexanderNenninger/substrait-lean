@@ -20,6 +20,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from sverify._lean_eval import LeanRaised
 from sverify.contracts import decode_double
 from sverify.engine import connect, put_table
 from sverify.ibis_substrait import Unsupported, to_substrait
@@ -44,7 +45,7 @@ OPAQUE = {"re_search"}
 UNORDERED = {"limit", "limit with offset", "order_by + limit"}
 #: Functions that raise outside their domains (`Issue.domain`, Lean: NULL),
 #: where DuckDB returns NaN, ±inf or a wrapped shift instead, which an
-#: error allows: compared row by row, Lean's NULL matching anything.
+#: error allows: compared row by row, a row where Lean raises is skipped.
 DOMAIN_ERRORS = {"sqrt", "ln", "log10, log2", "log(base)", "trigonometry", "shifts"}
 
 names = st.sampled_from(["ada", "bob", "cy", None])
@@ -128,7 +129,10 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
 def test_plans_mean_what_ibis_means(case, t, u, lr):
     if case.label in DOMAIN_ERRORS:
         for row in t:
-            got, expected = lean_and_duckdb(case, [row], u, lr)
+            try:
+                got, expected = lean_and_duckdb(case, [row], u, lr)
+            except LeanRaised:
+                continue
             for g, e in zip(got, expected, strict=True):
                 assert all(a is None or a == b for a, b in zip(g, e, strict=True)), (g, e)
         return

@@ -167,7 +167,10 @@
       "method": "docs",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "sum: floating-point versions affected by ordering; NULL on empty groups; silent on the constant-run product"}
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "sum: floating-point versions affected by ordering; NULL on empty groups; silent on the constant-run product"
+        }
       ]
     },
     {
@@ -175,8 +178,14 @@
       "method": "engine-test",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L8-L17", "note": "sum(9007199254740992.0, 1.0) → 9007199254740992: plain sequential double sum"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_sum.test#L82-L92", "note": "sum(n ORDER BY ABS(n)) of 2^53, 1, 1, 0 → 9007199254740994; no test of the constant-run product"}
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L8-L17",
+          "note": "sum(9007199254740992.0, 1.0) → 9007199254740992: plain sequential double sum"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_sum.test#L82-L92",
+          "note": "sum(n ORDER BY ABS(n)) of 2^53, 1, 1, 0 → 9007199254740994; no test of the constant-run product"
+        }
       ]
     },
     {
@@ -193,10 +202,23 @@
           "note": "constructs int-empty-aggregates (row agg.isum empty_group_aggregates, i16 to i64)"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "track A's Lean worker (#1608 12b-1, D35 amended 2026-11-19), duckdb 2.0.0 Python package, macOS arm64",
+      "evidence": [
+        {
+          "file": "engines/duckdb/tests/test_duckdb_int_sums.py",
+          "note": "sum(x) of DOUBLE, one thread and four, lengths 1 to 100,000 around the vector size, and a constant run sum(7.0::DOUBLE) over range(n) (SCALED_CONSTANT): the exact sum in every case"
+        }
+      ],
+      "notes": "Exactness on small integers: where every value is an integer-valued double and the magnitudes sum to at most 2^53, the engine's sum is the exact sum and its mean the exact mean rounded once (python/tests/_int_sums.py's cases). This is the evidence for D35's amendment on this engine's sum_order row."
     }
   ],
   "issues": [
     54,
-    85
+    85,
+    1608
   ]
 }

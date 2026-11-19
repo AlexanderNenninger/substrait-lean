@@ -1,0 +1,34 @@
+{
+  "id": "DD-11",
+  "project": "duckdb",
+  "kind": "bug",
+  "version": "2.0.0",
+  "status": "unverified",
+  "status_note": "Reproduces on 2.0.0 (Python wheel) on x86-64 Linux; arm64 macOS gives the same value for both queries, where `long double` is a double. Not checked against the latest release or main, and the duckdb/duckdb issues were not searched.",
+  "title": "`avg` of integers gives different doubles for the same data by plan shape on x86-64 Linux",
+  "summary": [
+    "An ungrouped `avg` of integers is rewritten to `SUM / COUNT` in doubles (`AvgRewriteRule`, https://github.com/duckdb/duckdb/blob/v2.0.0/src/optimizer/aggregate_function_rewriter.cpp#L70-L172), while a grouped or window `avg` keeps the native finalize, `long double(sum) / long double(count)` (https://github.com/duckdb/duckdb/blob/v2.0.0/extension/core_functions/aggregate/algebraic/avg.cpp#L110-L124), which is 80-bit on x86-64 Linux. The two can differ in the last bit: a sibling `SUM` in the select list, or turning the optimizer off, changes the answer.",
+    "On the 300 grouped pairs tried with a sum below 2^53 over 1,025 to 19,999 rows where the readings differ, the native path returned the 80-bit value in all 300; the ungrouped query returned the other one."
+  ],
+  "repro": "On x86-64 Linux, `CREATE TABLE t AS SELECT 4299183::BIGINT v FROM range(88084) UNION ALL SELECT 4315898::BIGINT;` then compare `SELECT avg(v) FROM t` with `SELECT g, avg(v) FROM (SELECT 0 g, v FROM t) GROUP BY g`; engines/duckdb/probes/avg_int_shapes.py runs 300 such pairs per shape. Sum 378693551270 over 88085 rows is one pair that separates them. Run as written on x86-64 Linux (homelab, 2.0.0): the ungrouped mean is `0x1.0666bcc2506abp+22`, the grouped one `0x1.0666bcc2506acp+22`.",
+  "handling": "The fact duckdb-avg-int states the set of values the mean can take over every shape; the profile follows it (12d-2). Nothing is written around it.",
+  "found_by": "worker 8 (#1608 item 12, 12d), ruling 74; engines/duckdb/probes/avg_int_shapes.py",
+  "issues": [
+    1608
+  ],
+  "files": [
+    "engines/duckdb/probes/avg_int_shapes.py"
+  ],
+  "facts": [
+    "duckdb-avg-int"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-18",
+      "against": {
+        "duckdb": "2.0.0"
+      },
+      "note": "probe on x86-64 Linux (homelab) and arm64 macOS; the source read at v2.0.0; the repro's table run as written on x86-64 Linux"
+    }
+  ]
+}

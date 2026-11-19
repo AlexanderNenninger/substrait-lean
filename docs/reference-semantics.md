@@ -446,7 +446,7 @@ The rules for decimals are in [Decimals](#decimals).
 |---|---|---|---|
 | `MIN`, `MAX` | the argument's type | | ✓ |
 | `SUM` | `DECIMAL(min(38, p + 10), s)` | Exact; raises past the precision, an inferred assumption like integer `SUM` overflow. | ✓ |
-| `AVG` | `DECIMAL(min(38, p + 4), s + 4)` | Rounded half away from zero. A scale over 34 is refused. | ✓ |
+| `AVG` | `DECIMAL(p + 4, s + 4)` | Rounded half away from zero. A precision over 34 or a scale over 34 is refused, since the result must fit 38 digits; cast the argument to `DECIMAL(34, s)` or narrower first. | ✓ |
 | `AVG` with an `fp64` result (DuckDB's type) | `fp64` | The exact sum converted to a double, divided by the count as a double (`CAST(n AS DOUBLE)`); NULL without values. DuckDB's native `AVG` divides once and may differ in the last bit. Over a window too. | ✓ |
 
 ### NULLs and order
