@@ -372,6 +372,7 @@ build as the guard.
 | Module | Job |
 |---|---|
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
+| `ChoicesSound.lean` | `Rel.evalChoices_allowed`: what the oracle accepts is a result the reference allows, for the plans without a `fetch`, a `window` or an ordered aggregate (#1484) |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |

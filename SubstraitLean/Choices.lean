@@ -18,8 +18,11 @@ rows that do not tie. Where the data does leave a choice it cannot list
 expression over an open cell), it gives `none`, and the caller compares
 with `Rel.eval`'s rows.
 
-Untrusted: no theorem connects it to `Rel.OrderAllowed`; the comparisons
-it serves are tests.
+`Rel.evalChoices_allowed` (`ChoicesSound.lean`) connects it to `Rel.OrderAllowed`
+for the plans `Rel.ChoicesSupported` holds of (no `fetch`, `window` or aggregate
+with a measure that sorts its rows yet): what it accepts is a result the reference
+allows. The converse is false
+(`ChoicesSound.lean` says where); the other plans stay tests.
 -/
 
 namespace Substrait
@@ -85,7 +88,7 @@ def Rel.evalChoices (cat : Catalog) : Rel → Option (List (List TieChoice))
   | .aggregate r gs ms => do
     let rows ← exactRows (← r.evalChoices cat)
     let groups := if gs.isEmpty then [([], rows)] else
-      (dedup (rows.map (groupKey gs))).map fun k => (k, groupRows gs rows k)
+      (distinctRows (rows.map (groupKey gs))).map fun k => (k, groupRows gs rows k)
     groups.mapM fun (k, grp) => do
       let cells ← ms.mapM (·.choice grp)
       pure (k.map .val ++ cells)
@@ -125,7 +128,7 @@ def Rel.evalChoices (cat : Catalog) : Rel → Option (List (List TieChoice))
     let rows ← exactRows (← r.evalChoices cat)
     pure (toChoices (rows.filter fun row => (c.eval row).isTrue))
   | .distinct r => do
-    pure (toChoices (dedup (← exactRows (← r.evalChoices cat))))
+    pure (toChoices (distinctRows (← exactRows (← r.evalChoices cat))))
   | .unnest r c => do
     pure (toChoices ((← exactRows (← r.evalChoices cat)).flatMap (unnestRow c)))
   | .cross a b => do

@@ -4,11 +4,41 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from importlib.metadata import version as _version
 from pathlib import Path
 
+from sverify_dbt import formats
 from sverify_dbt.check import check
 from sverify_dbt.manifest import ProjectError
+from sverify_dbt.result import CheckResult
+
+#: The exit code of a check past its time or memory budget, as `sverify check` has it.
+BUDGET = 4
+
+
+def _hard_stop() -> None:
+    """The check did not stop in time: end the process."""
+    print("sverify-dbt: time budget exceeded", file=sys.stderr)
+    os._exit(BUDGET)
+
+
+def _timeout_asked(arg: float | None) -> bool:
+    """Whether `--timeout` or `$SVERIFY_TIMEOUT` sets a time budget."""
+    return arg is not None or bool(os.environ.get("SVERIFY_TIMEOUT", "").strip())
+
+
+def _render(result: CheckResult, fmt: str) -> str:
+    if fmt == "json":
+        return json.dumps(result.to_dict(), indent=2)
+    if fmt == "github":
+        return formats.github(result)
+    if fmt == "sarif":
+        return formats.sarif(result, _version("sverify-dbt"))
+    if fmt == "junit":
+        return formats.junit(result)
+    return str(result)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,9 +61,9 @@ def main(argv: list[str] | None = None) -> int:
         "--format",
         "--output-format",
         dest="format",
-        choices=["text", "json"],
+        choices=["text", "json", "github", "sarif", "junit"],
         default="text",
-        help="how to print the result (default text); `sverify check` passes its --format",
+        help="text (the default), json, or for CI: github (annotations), sarif, junit",
     )
     c.add_argument(
         "--json", dest="format", action="store_const", const="json", help="--format json"
@@ -52,6 +82,19 @@ def main(argv: list[str] | None = None) -> int:
         default=200,
         metavar="N",
         help="small inputs to try per unproved test (default 200; 0 skips the search)",
+    )
+    c.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="seconds for the whole project check (default: $SVERIFY_TIMEOUT, else no limit); "
+        "exit 4 past it",
+    )
+    c.add_argument(
+        "--memory-limit",
+        default=None,
+        help="DuckDB's memory limit, such as 2GB, past which it spills to disk "
+        "(default: $SVERIFY_MEMORY_LIMIT, else DuckDB's own); exit 4 past it",
     )
     c.add_argument(
         "--fail-on",
@@ -75,17 +118,33 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "suggest":
         return _suggest(args)
+    from sverify.cli import _limits
+
     try:
-        result = check(
-            args.project,
-            target_path=args.target_path,
-            select=args.select,
-            counterexamples=args.counterexamples,
-        )
+        _limits.memory_limit_from(args.memory_limit)
+        # Off unless asked for: a project check is many models, and no limit
+        # existed before; `sverify check`'s 30 s is per file.
+        seconds = _limits.timeout_from(args.timeout) if _timeout_asked(args.timeout) else 0.0
+        budget = _limits.Budget(seconds, _hard_stop)
+        with budget.armed():
+            result = check(
+                args.project,
+                target_path=args.target_path,
+                select=args.select,
+                counterexamples=args.counterexamples,
+            )
+    except _limits.BudgetExceeded as e:
+        print(f"sverify-dbt: {e}", file=sys.stderr)
+        return BUDGET
     except (ProjectError, ValueError) as e:
         print(f"sverify-dbt: {e}", file=sys.stderr)
         return 2
-    print(json.dumps(result.to_dict(), indent=2) if args.format == "json" else result)
+    except Exception as e:
+        if _limits.is_out_of_memory(e):
+            print(f"sverify-dbt: memory budget exceeded ({e})", file=sys.stderr)
+            return BUDGET
+        raise
+    print(_render(result, args.format))
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
         n = len({t.name for t in result.skippable})
