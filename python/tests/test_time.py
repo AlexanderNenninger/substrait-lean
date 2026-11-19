@@ -301,6 +301,40 @@ def test_runtime_issues(label, expr, errs, warns):
     assert kinds(expr) == (errs, warns), label
 
 
+def test_timestamp_plus_column_interval_at_the_edge():
+    """`ts + n.as_interval("h")` is `ts + n * 3_600_000_000`, microseconds as
+    Lean reads every timestamp plus integer. The verdict reports the 64-bit
+    overflow the product may have; a sum past the reference's 9999 is a
+    computed timestamp, which Lean and DuckDB give as the same microseconds
+    and which a range-sensitive operation then reports (D32); DuckDB raises
+    where the product or the sum leaves 64 bits."""
+    expr = T.select(x=T.ts + T.n.as_interval("h"))
+    assert kinds(expr) == (["overflow"], [])
+    plan = to_substrait_json(expr)
+    written = written_plan(plan)
+
+    def both(ts, n):
+        rows = inline_tables(json.loads(plan), {"t": [(ts, n)]})
+        con = connect()
+        put_table(
+            con,
+            "t",
+            pa.table({"ts": pa.array([ts], pa.timestamp("us")), "n": [n]}),
+        )
+        out = run_plan(con, written, "duckdb")
+        return lean_values(json.dumps(rows)), out
+
+    # Past 9999-12-31 within 64 bits: the same microseconds.
+    (lean,), duck = both(TS_MAX, 10)
+    assert lean == (TS_MAX + 10 * 3_600_000_000,)
+    assert duck.column("x").cast(pa.int64()).to_pylist() == [lean[0]]
+    # The product leaves 64 bits, then the sum does: DuckDB raises, and the
+    # verdict above reported the overflow.
+    for ts, n in [(0, 2**62), (TS_MAX, 2_500_000_000)]:
+        with pytest.raises(duckdb.Error):
+            both(ts, n)
+
+
 def test_years_and_truncations_grow_with_the_timestamp():
     report = sv.verify(
         T.filter(T.ts >= datetime(2024, 1, 1), T.ts < datetime(2025, 1, 1)).select(
