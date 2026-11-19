@@ -1,0 +1,96 @@
+"""A lifted integer mean carries D52's mark (#1608 12d-4, #1735).
+
+Under `semantics="duckdb"`, `AVG` of integers is written as the plan states it,
+and DuckDB's own `avg` of integers, which dbt and the SQL-file CLI run, returns a
+double within a band of that value. The plan is proved only where every decision
+that reads the mean has one outcome over the band and every output column that
+reads it has a bound in `Report.epsilon`; elsewhere the report holds an error
+(ruling 104). 12b-2 turns the comparisons of the mean with integers back into
+proved ones."""
+
+import pyarrow as pa
+import pytest
+
+import sverify as sv
+from sverify.errors import UnverifiedRunError
+
+T = {"t": pa.schema([("k", pa.int64()), ("x", pa.int64()), ("d", pa.float64())])}
+#: `x` is in [0, 1e7], `d` in [-1e7, 1e7]: a mean is in [0, 1e7]; 1e6 rows at most.
+REQUIRES = {
+    "t": [
+        "x IS NULL OR x BETWEEN 0 AND 10000000",
+        "d IS NULL OR d BETWEEN -10000000 AND 10000000",
+        sv.max_rows(1_000_000),
+    ]
+}
+#: The issue's kind, as the checker names it (one name in Lean, JSON, Python and docs).
+KIND = "source_threshold"
+
+
+def verified(sql: str):
+    return sv.verify(sql, tables=T, requires=REQUIRES, semantics="duckdb", on_inferred="warn")
+
+
+def refused(report) -> bool:
+    return report.verdict == "unproved" and any(i.kind == KIND for i in report.errors)
+
+
+#: #1735: a group of 88,085 rows with sum 378693551270 has the mean
+#: 0x1.0666bcc2506abp+22 in the plan, and DuckDB's grouped `avg` on x86-64 Linux gives
+#: 0x1.0666bcc2506acp+22; a threshold between them keeps the group in one and not the other.
+EDGE = "SELECT k FROM t GROUP BY k HAVING AVG(x) < 4299183.1897598915"
+
+
+def test_the_issue_1735_threshold_is_refused():
+    report = verified(EDGE)
+    assert refused(report)
+    with pytest.raises(UnverifiedRunError):
+        report.to_sql("duckdb")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # The mean against a double column and an integer column (ruling 92's S2).
+        "SELECT k FROM t WHERE d > (SELECT AVG(x) FROM t)",
+        "SELECT k FROM t WHERE x > (SELECT AVG(x) FROM t)",
+        # Taint (ruling 104, item 4): the mean read through other operators.
+        "SELECT k FROM t GROUP BY k HAVING AVG(x) * 2 < 4299183.18",
+        "SELECT k FROM (SELECT k, AVG(x) AS m FROM t GROUP BY k) WHERE m < 4299183.18",
+        "SELECT a.k FROM (SELECT k, AVG(x) AS m FROM t GROUP BY k) a JOIN t ON t.d = a.m",
+        "SELECT m, COUNT(*) AS n FROM (SELECT k, AVG(x) AS m FROM t GROUP BY k) GROUP BY m",
+        "SELECT AVG(x) < 4299183.18 AS flag FROM t",
+        "SELECT k, AVG(x) AS m FROM t GROUP BY k ORDER BY m",
+    ],
+)
+def test_a_decision_on_the_mean_without_one_outcome_over_the_band_is_refused(sql):
+    report = verified(sql)
+    assert refused(report), (report.verdict, [str(e) for e in report.errors])
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # The band lies wholly on one side of the threshold: one outcome.
+        "SELECT k FROM t GROUP BY k HAVING AVG(x) < 20000000",
+        # No decision reads the mean.
+        "SELECT k, SUM(x) AS s, COUNT(x) AS n FROM t GROUP BY k",
+    ],
+)
+def test_a_decision_the_band_does_not_straddle_stays_proved(sql):
+    report = verified(sql)
+    assert report.verdict == "proved", [str(e) for e in report.errors]
+
+
+def test_the_plain_mean_is_proved_with_its_band_in_the_report():
+    report = verified("SELECT k, AVG(x) AS m FROM t GROUP BY k")
+    assert report.verdict == "proved"
+    band = report._epsilon["m"]["bounds"]["abs"]
+    # Sound and loose: the band is over the quotient's range (+-1e13), 17 * 2^-53 of it.
+    assert band["proved"] and 0 < band["value"] < 1e-1
+
+
+def test_the_reference_lift_has_no_mark():
+    """The reference's mean is the engines' common one (12b-1): no band, no refusal."""
+    report = sv.verify(EDGE, tables=T, requires=REQUIRES, semantics="reference", on_inferred="warn")
+    assert not any(i.kind == KIND for i in report.errors)
