@@ -34,6 +34,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import os
 import random
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -47,6 +48,7 @@ from hypothesis import HealthCheck, find, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 
+from sverify._checker import CheckerMemoryError
 from sverify.contracts import verify
 from sverify.engine import (
     ENGINES,
@@ -558,12 +560,36 @@ def contract_cases(draw: st.DrawFn) -> tuple[Query, dict[str, list[tuple]], str 
     return q, tables, pre, draw(postconditions(q.out))
 
 
+def note(case: tuple) -> None:
+    """Write the case about to be checked to `$SVERIFY_FUZZ_PROGRESS`, if set,
+    so a batch the nightly run's watchdog stops (`sverify_dev.fuzz_nightly`)
+    still names the case it was on. Written whole, then renamed into place."""
+    if path := os.environ.get("SVERIFY_FUZZ_PROGRESS"):
+        tmp = f"{path}.tmp"
+        Path(tmp).write_text(json.dumps(case_json(case)))
+        os.replace(tmp, path)
+
+
+def checker_memory(case: tuple, e: CheckerMemoryError) -> Finding:
+    """The checker went over its memory cap on a case (#1074): a finding of
+    its own, with the plan the producer writes for the query."""
+    query, tables = case[0], case[1]
+    try:
+        plan: str = substrait_json(Session(tables).con, query.sql, semantics="duckdb")
+    except Exception as err:  # noqa: BLE001 - the plan is extra detail
+        plan = f"(not produced: {err!r})"
+    return Finding("checker", query.sql, dict(tables), f"memory cap: {e}", {"plan": plan}, case)
+
+
 def _findings(case: tuple) -> list[Finding]:
     """The findings on a case that no open issue explains."""
+    note(case)
     try:
         found = check_contract(*case) if len(case) == 4 else check(*case)
     except Refused:
         return []
+    except CheckerMemoryError as e:
+        return [checker_memory(case, e)]
     return [f for f in found if known(f) is None]
 
 
@@ -582,7 +608,14 @@ def search(budget: float, seed: int = 0, contracts: bool = True) -> list[Finding
         )
 
         def new(case: tuple) -> bool:
-            return any(f.signature() not in found for f in _findings(case))
+            # A checker over its memory cap is kept as found, unshrunk:
+            # shrinking would run the runaway again and again.
+            fs = _findings(case)
+            for f in fs:
+                if f.oracle == "checker" and f.signature() not in found:
+                    found[f.signature()] = f
+                    print(f, end="\n\n", flush=True)
+            return any(f.signature() not in found for f in fs if f.oracle != "checker")
 
         try:
             case = find(
@@ -624,6 +657,37 @@ def _decode(v: object) -> object:
     return v
 
 
+def case_json(case: tuple) -> dict[str, Any]:
+    """A case (a `cases` or `contract_cases` draw) as JSON; `case_of` reads it."""
+    query, tables, *contract = case
+    record: dict[str, Any] = {
+        "sql": query.sql,
+        "query": {
+            "sql": query.sql,
+            "out": query.out,
+            "ordered": query.ordered,
+            "base": query.base,
+            "tlp_pred": query.tlp_pred,
+        },
+        "tables": {k: [[_encode(v) for v in r] for r in rows] for k, rows in tables.items()},
+    }
+    if contract:
+        record["requires"], record["ensures"] = contract
+    return record
+
+
+def case_of(record: Mapping[str, Any]) -> tuple:
+    """The case a `case_json` record holds."""
+    q = record["query"]
+    query = Query(q["sql"], q["out"], q["ordered"], q["base"], q["tlp_pred"])
+    tables = {
+        k: [tuple(_decode(v) for v in r) for r in rows] for k, rows in record["tables"].items()
+    }
+    if "ensures" in record:
+        return (query, tables, record["requires"], record["ensures"])
+    return (query, tables)
+
+
 def to_json(f: Finding, seed: int) -> dict[str, Any]:
     """A finding with the case it was found on, which `replay` checks again."""
     record: dict[str, Any] = {
@@ -634,33 +698,14 @@ def to_json(f: Finding, seed: int) -> dict[str, Any]:
         "seed": seed,
     }
     if f.case is not None:
-        query, tables, *contract = f.case
-        record["query"] = {
-            "sql": query.sql,
-            "out": query.out,
-            "ordered": query.ordered,
-            "base": query.base,
-            "tlp_pred": query.tlp_pred,
-        }
-        record["tables"] = {
-            k: [[_encode(v) for v in r] for r in rows] for k, rows in tables.items()
-        }
-        if contract:
-            record["requires"], record["ensures"] = contract
+        record.update(case_json(f.case))
     return record
 
 
 def replay(record: Mapping[str, Any]) -> list[Finding]:
-    """The findings on a recorded case (`to_json`) today: the same oracle again
-    means the disagreement reproduces."""
-    q = record["query"]
-    query = Query(q["sql"], q["out"], q["ordered"], q["base"], q["tlp_pred"])
-    tables = {
-        k: [tuple(_decode(v) for v in r) for r in rows] for k, rows in record["tables"].items()
-    }
-    if "ensures" in record:
-        return _findings((query, tables, record["requires"], record["ensures"]))
-    return _findings((query, tables))
+    """The findings on a recorded case (`to_json`, `case_json`) today: the same
+    oracle again means the disagreement reproduces."""
+    return _findings(case_of(record))
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -674,7 +719,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.replay:
         record = json.loads(args.replay.read_text())
-        again = [f for f in replay(record) if f.oracle == record["oracle"]]
+        again = [f for f in replay(record) if f.oracle == record.get("oracle", f.oracle)]
         for f in again:
             print(f, end="\n\n")
         print("reproduces" if again else "does not reproduce")

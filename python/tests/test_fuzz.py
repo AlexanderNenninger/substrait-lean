@@ -76,6 +76,22 @@ def test_a_recorded_case_round_trips_and_replays():
     assert fuzz.replay(record) == []
 
 
+def test_a_checker_over_its_cap_is_a_finding_not_an_exception(monkeypatch, tmp_path):
+    from sverify._checker import CheckerMemoryError
+
+    def runaway(*case):
+        raise CheckerMemoryError("substrait-check used 5000 MB on one request, over its cap")
+
+    monkeypatch.setattr(fuzz, "check", runaway)
+    monkeypatch.setenv("SVERIFY_FUZZ_PROGRESS", str(tmp_path / "progress.json"))
+    q = Query("SELECT i AS c0 FROM t AS q", {"c0": fuzz.INT})
+    (f,) = fuzz._findings((q, {"t": [], "u": []}))
+    assert f.oracle == "checker" and f.detail.startswith("memory cap:")
+    assert "plan" in f.extra and f.case is not None
+    # The case was written before the check, for a batch the watchdog stops.
+    assert json.loads((tmp_path / "progress.json").read_text())["sql"] == q.sql
+
+
 T_ROW = (1, 2, 0.5, "a", True, None)
 
 

@@ -123,3 +123,78 @@ def test_batch_stops_at_its_wall_time_and_records_it(tmp_path, monkeypatch):
     rec = nightly.batch("core", 1, 1, tmp_path / "b", timeout=1, rss_mb=10**6)
     assert rec["status"] == "timeout" and rec["elapsed"] < 30
     assert json.loads((tmp_path / "b" / "batch.json").read_text())["status"] == "timeout"
+
+
+CASE = {
+    "sql": "SELECT i + 7 FROM t",
+    "query": {
+        "sql": "SELECT i + 7 FROM t",
+        "out": {},
+        "ordered": False,
+        "base": None,
+        "tlp_pred": None,
+    },
+    "tables": {"t": [], "u": []},
+}
+
+
+def test_a_stopped_batch_records_the_case_it_was_on(tmp_path, monkeypatch):
+    # The fuzzer writes each case to $SVERIFY_FUZZ_PROGRESS before checking
+    # it; here the "case" hangs and the wall-time limit stops the batch.
+    code = (
+        "import json, os, time; "
+        f"open(os.environ['SVERIFY_FUZZ_PROGRESS'], 'w').write(json.dumps({CASE!r})); "
+        "time.sleep(60)"
+    )
+    monkeypatch.setattr(nightly, "command", lambda *a: ([nightly.sys.executable, "-c", code], {}))
+    rec = nightly.batch("core", 4, 1, tmp_path / "b", timeout=3, rss_mb=10**6)
+    assert rec["status"] == "timeout"
+    ledger, night = nightly.merge({}, [tmp_path / "b"])
+    (entry,) = ledger["entries"].values()
+    assert entry["signature"] == ["core:timeout", "SELECT i + ? FROM t", "timeout"]
+    assert entry["example"]["sql"] == CASE["sql"]
+    assert "sverify_dev.fuzz --replay" in entry["repro"]
+
+
+def test_a_stopped_test_batch_names_each_workers_test(tmp_path):
+    d = _batch(tmp_path / "h", "hypothesis:2/6", 5)
+    meta = json.loads((d / "batch.json").read_text())
+    (d / "batch.json").write_text(json.dumps({**meta, "status": "memory"}))
+    (d / "progress.json.gw1").write_text(json.dumps({"node": "tests/test_numeric.py::test_sum"}))
+    (found,) = nightly.findings(d)
+    assert found["sig"] == ["hypothesis:memory", "tests/test_numeric.py::test_sum", "memory"]
+    assert "--hypothesis-seed=5" in found["repro"]
+
+
+def test_the_checker_over_its_cap_is_a_memory_finding(tmp_path):
+    over = json.dumps(
+        [
+            {
+                "oracle": "checker",
+                "sql": "SELECT 1",
+                "detail": "memory cap: substrait-check used "
+                "5000 MB on one request, over its cap of 4096 MB",
+                "extra": {"plan": "{}"},
+            }
+        ]
+    )
+    duck = json.dumps(
+        {
+            "results": [
+                {
+                    "cls": "checker_memory",
+                    "sql": "SELECT 2 FROM t",
+                    "detail": "memory cap: ...",
+                    "plan": "{}",
+                }
+            ]
+        }
+    )
+    a = _batch(tmp_path / "a", "core", 1, **{"core.json": over})
+    b = _batch(tmp_path / "b", "duckdb:float_arith", 2, **{"duckdb__fuzz__float_arith.json": duck})
+    ledger, _ = nightly.merge({}, [a, b])
+    sigs = sorted(e["signature"] for e in ledger["entries"].values())
+    assert sigs == [
+        ["core:checker", "SELECT ?", "memory"],
+        ["duckdb:float_arith:checker", "SELECT ? FROM t", "memory"],
+    ]

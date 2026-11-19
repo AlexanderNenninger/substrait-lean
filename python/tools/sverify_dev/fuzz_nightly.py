@@ -131,6 +131,9 @@ def batch(suite: str, seed: int, seconds: float, out: Path, timeout: float, rss_
     """Run one batch; record and return how it ended."""
     out.mkdir(parents=True, exist_ok=True)
     argv, env = command(suite, seed, seconds, out)
+    # The fuzzers and the test plugin write the case or test about to run
+    # here, so a batch stopped below still names what it was on.
+    env = {**env, "SVERIFY_FUZZ_PROGRESS": str((out / "progress.json").resolve())}
     start = time.monotonic()
     peak, status = 0, "ok"
     with open(out / "log.txt", "w") as log:
@@ -180,10 +183,11 @@ def shape(sql: str) -> str:
 
 
 def value_class(text: str) -> str:
-    """The class of the values a mismatch shows: an error, NaN, an infinity,
-    NULL, a negative zero, or plain values."""
+    """The class of the values a mismatch shows: the checker over its memory
+    cap, an error, NaN, an infinity, NULL, a negative zero, or plain values."""
     t = text.lower()
     for cls, marks in (
+        ("memory", ("memory cap", "checkermemoryerror", "over its cap")),
         ("error", ("raises", "error", "exception")),
         ("nan", ("nan",)),
         ("inf", ("inf",)),
@@ -203,24 +207,72 @@ def sig_id(sig: Sequence[str]) -> str:
     return hashlib.sha256("\x1f".join(sig).encode()).hexdigest()[:12]
 
 
+CORE_REPLAY = "cd python && uv run python -m sverify_dev.fuzz --replay {file}"
+DUCKDB_REPLAY = "cd python && uv run python -m sverify_dev.duckdb_fuzz --replay {file}"
+
+
+def stopped(batch_dir: Path, meta: dict[str, Any]) -> list[dict[str, Any]]:
+    """A batch the watchdog stopped (`memory` or `timeout`) as findings: the
+    case or test each of its processes was on (`SVERIFY_FUZZ_PROGRESS`)."""
+    suite, status = meta["suite"], meta["status"]
+    kind = suite.split(":")[0] if suite.startswith("hypothesis:") else suite
+    found: list[dict[str, Any]] = []
+    for path in sorted(batch_dir.glob("progress.json*")):
+        if path.suffix == ".tmp":
+            continue
+        try:
+            last = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if "node" in last:
+            found.append(
+                {
+                    "sig": [f"{kind}:{status}", last["node"], status],
+                    "example": last,
+                    "repro": f"cd python && SVERIFY_EXAMPLES={EXAMPLES} SVERIFY_PROFILE=ci "
+                    f"uv run pytest '{last['node']}' --hypothesis-seed={meta['seed']} "
+                    "-p no:cacheprovider",
+                }
+            )
+        else:
+            found.append(
+                {
+                    "sig": [f"{kind}:{status}", shape(last["sql"]), status],
+                    "example": last,
+                    "repro": DUCKDB_REPLAY if suite.startswith("duckdb:") else CORE_REPLAY,
+                }
+            )
+    return found
+
+
 def findings(batch_dir: Path) -> list[dict[str, Any]]:
     """The findings of one batch's directory, each with its signature and
     the command that reproduces it."""
     meta = json.loads((batch_dir / "batch.json").read_text())
     suite, seed, seconds = meta["suite"], meta["seed"], meta["seconds"]
-    found: list[dict[str, Any]] = []
+    found: list[dict[str, Any]] = (
+        stopped(batch_dir, meta) if meta["status"] in ("memory", "timeout") else []
+    )
     if (path := batch_dir / "core.json").exists():
         for f in json.loads(path.read_text()):
             found.append(
                 {
                     "sig": signature(f"core:{f['oracle']}", shape(f["sql"]), f["detail"]),
                     "example": f,
-                    "repro": "cd python && uv run python -m sverify_dev.fuzz --replay {file}",
+                    "repro": CORE_REPLAY,
                 }
             )
     for ledger in sorted((batch_dir / "duckdb").rglob("*.json")):
         target = suite.split(":", 1)[1]
         for r in json.loads(ledger.read_text()).get("results", []):
+            if r.get("cls") == "checker_memory":
+                found.append(
+                    {
+                        "sig": [f"duckdb:{target}:checker", shape(r["sql"]), "memory"],
+                        "example": r,
+                        "repro": DUCKDB_REPLAY,
+                    }
+                )
             if r.get("cls") != "disagree":
                 continue
             found.append(
