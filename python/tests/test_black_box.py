@@ -119,6 +119,19 @@ def test_a_law_break_is_refused():
     assert "rows not evaluated: black box law_break_selftest broke a declared law" in err
 
 
+def test_a_raise_is_not_a_law_break():
+    # `varchar_bigint` declares non-NULL and its evaluator gives NULL on 'bad',
+    # where the row raises: the checker reports the raise and does not panic
+    # (ruling 154; the replay's `transitive_filter_bounds.test:83`).
+    from sverify.testing import LeanRaised, inline_tables, lean_values
+
+    schemas = {"t": ibis.schema({"s": "string"})}
+    plan = lift("SELECT CAST(s AS BIGINT) AS i FROM t", schemas, "duckdb").plan
+    with pytest.raises(LeanRaised) as raised:
+        lean_values(json.dumps(inline_tables(plan, {"t": [("bad",)]})))
+    assert "broke a declared law" not in str(raised.value)
+
+
 @pytest.mark.parametrize("semantics", ["duckdb", "reference"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
