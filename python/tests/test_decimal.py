@@ -284,8 +284,8 @@ def test_report_shows_decimals_at_their_scale():
     li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
     sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
     report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li), on_inferred="off")
-    assert report.facts["revenue"] == "a decimal(38, 4) ≥ 45.0000 or NULL"
-    assert "revenue: a decimal(38, 4) ≥ 45.0000 or NULL" in str(report)
+    assert report.facts["revenue"] == "a decimal(28, 4) ≥ 45.0000 or NULL"
+    assert "revenue: a decimal(28, 4) ≥ 45.0000 or NULL" in str(report)
     t = ibis.table({"a": "decimal(10,2)"}, name="t")
     # Ibis types `a + a` at `a`'s precision; the model's exact sum needs one more.
     assert sv.verify(t.select(b=t.a + t.a)).facts["b"] == (
@@ -356,8 +356,40 @@ def test_the_average_of_a_wide_decimal_is_refused(p):
     c = sv.connect()
     c.put("t", pa.table({"g": [1, 1], "v": pa.array([D(1), D(2)], pa.decimal128(p, 0))}))
     t = c.table("t")
-    with pytest.raises(Exception, match="more than 34 digits"):
+    with pytest.raises(
+        Exception, match="more than 34 digits.*cast the argument to DECIMAL\\(34, s\\)"
+    ):
         sv.verify(t.group_by("g").aggregate(m=t.v.mean()))
+
+
+def test_the_average_of_a_wide_decimal_goes_through_a_cast_to_34_digits():
+    """The way through the refusal: `AVG` of the argument cast to `DECIMAL(34, 0)`. The cast
+    is checked, so it reports its overflow, and with a bound on the column the plan is
+    proved, runs to the exact mean and `Report.output` is the run's `DECIMAL(38, 4)` (#1497)."""
+    c = sv.connect()
+    rows = [D(10**27 + 1), D(10**27 + 2)]
+    c.put("t", pa.table({"g": [1, 1], "v": pa.array(rows, pa.decimal128(38, 0))}))
+    t = c.table("t")
+
+    def mean(r, on_inferred):
+        return sv.verify(
+            t.group_by("g").aggregate(m=t.v.cast("decimal(34, 0)").mean()),
+            requires=r,
+            on_inferred=on_inferred,
+        )
+
+    assert "overflow" in [i.kind for i in mean(None, "off").errors]
+    # A bound of 10²⁸ (the literal writer rounds above 28 digits) keeps the cast in range.
+    top = ibis.literal(D(10**28), "decimal(29, 0)")
+    bottom = ibis.literal(D(-(10**28)), "decimal(29, 0)")
+    report = mean([_.v >= bottom, _.v <= top], "ignore")
+    # What stays is the group's `SUM` overflow, assumed as for every `SUM` (`Report.assumed`).
+    assert [i.kind for i in report.errors if not i.assumed] == []
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
+    out = report.run(c, "duckdb")
+    assert out.column("m").to_pylist() == [D("1000000000000000000000000001.5000")]
+    assert out.schema.field("m").type == pa.decimal128(38, 4)
+    assert report.output["m"].precision == 38 and report.output["m"].scale == 4
 
 
 def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
@@ -376,11 +408,6 @@ def test_the_average_of_a_34_digit_decimal_runs_on_duckdb():
     assert out.column("m").to_pylist() == [D(10**34 - 2)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#1497: Report.output of a decimal AVG is the input's type; the written plan's is "
-    "DECIMAL(p + 4, s + 4) (S7)",
-)
 def test_the_output_type_of_a_decimal_mean_is_the_one_that_runs():
     c = sv.connect()
     c.put("t", pa.table({"g": [1, 1], "v": pa.array([D("1.5"), D("2.5")], pa.decimal128(20, 18))}))
@@ -433,3 +460,28 @@ def test_the_duckdb_quotient_is_the_models_rounding_half_away(u, n, sa):
     mag = (2 * abs(exact) + 1) // 2  # half away from zero, on the magnitude
     want = D(f"{(1 if exact >= 0 else -1) * int(mag)}e{-(sa + 4)}")
     assert got == want, (u, n, sa)
+
+
+# -- decimal literals of up to 38 digits are written exactly ----------------------------
+
+
+@pytest.mark.parametrize("digits", [28, 29, 34, 38])
+def test_a_decimal_literal_of_up_to_38_digits_round_trips(digits):
+    """`Decimal.scaleb` rounds to 28 digits in Python's default context, so a literal
+    past them was rounded and then refused as "does not fit"."""
+    from sverify.plan_json import decimal_literal
+
+    value = D(10**digits - 1)
+    lit = decimal_literal(value, ibis.dtype(f"decimal({digits}, 0)"))["literal"]["decimal"]
+    assert int.from_bytes(__import__("base64").b64decode(lit["value"]), "little", signed=True) == (
+        10**digits - 1
+    )
+
+
+def test_a_38_digit_decimal_literal_verifies_and_compares_exactly():
+    top = D(10**38 - 1)
+    c = sv.connect()
+    c.put("t", pa.table({"v": pa.array([top, D(10**38 - 2)], pa.decimal128(38, 0))}))
+    t = c.table("t")
+    report = sv.verify(t.select(hit=t.v == ibis.literal(top, "decimal(38, 0)")))
+    assert report.run(c, "duckdb").column("hit").to_pylist() == [True, False]

@@ -97,7 +97,8 @@ The other options of `check`:
 | Option | What it does |
 |---|---|
 | `--select MODEL ...` | Report on these models (their upstream models are checked too) |
-| `--json` | Print the result as JSON |
+| `--format text\|json` | How to print the result (default `text`), the flag `sverify check` forwards |
+| `--json` | Print the result as JSON (`--format json`) |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |
 | `--fail-on` | Exit with status 1 on a contract mismatch or an unproved constraint (`contract`, the default), also on any unproved test or refused model (`unproved`), or `never` |
 | `--target-path` | The target directory, if not `target` |

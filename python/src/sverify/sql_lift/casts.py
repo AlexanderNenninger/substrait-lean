@@ -10,6 +10,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.backends.sql.datatypes import DuckDBType
 
+from sverify._decimals import EXACT
 from sverify.plan_json import SqlUnsupported, Unsupported, cast_json, literal, type_json
 from sverify.sql_lift._base import (
     DIALECT,
@@ -140,8 +141,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             raise SqlUnsupported(f"CAST of {text!r} to {t} is not supported")
         if v.is_finite():
             # DuckDB rounds the digits past the scale half away from zero.
-            with localcontext() as ctx:
-                ctx.prec = 100
+            with localcontext(EXACT):
                 v = v.quantize(Decimal(1).scaleb(-t.scale), rounding=ROUND_HALF_UP)
         if not (v.is_finite() and _fits(v, t)):
             raise SqlUnsupported(

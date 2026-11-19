@@ -1893,8 +1893,7 @@ def _fits(v: Any, t: Any) -> bool:
         return isinstance(v, int) and t.bounds.lower <= v <= t.bounds.upper
     if t.is_decimal():
         d = Decimal(v)
-        with localcontext() as ctx:
-            ctx.prec = 100  # past DECIMAL(38)'s digits, so nothing rounds
+        with localcontext(_decimals.EXACT):
             exact = d.quantize(Decimal(1).scaleb(-t.scale)) == d
             return exact and abs(d) < Decimal(1).scaleb(t.precision - t.scale)
     return True

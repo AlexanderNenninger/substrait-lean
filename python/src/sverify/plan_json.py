@@ -26,6 +26,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 
 from sverify import black_box
+from sverify._decimals import scaled
 from sverify._unsupported import Unsupported as _Unsupported
 
 Json = dict[str, Any]
@@ -220,7 +221,7 @@ def decimal_type_of(value: Any) -> Any:
     if not d.is_finite():
         raise ProducerUnsupported(f"decimal {d} is not supported")
     s = max(0, -int(d.as_tuple().exponent))
-    digits = len(str(abs(int(d.scaleb(s)))))
+    digits = len(str(abs(int(scaled(d, s)))))
     return dt.Decimal(precision=max(digits, s, 1), scale=s, nullable=True)
 
 
@@ -230,7 +231,7 @@ def decimal_literal(value: Any, dtype: Any) -> Json:
     the narrowest type that holds it."""
     if dtype.precision is None or dtype.scale is None:
         dtype = decimal_type_of(value)
-    unscaled = Decimal(value).scaleb(dtype.scale)
+    unscaled = scaled(value, dtype.scale)
     if unscaled != unscaled.to_integral_value():
         raise ProducerUnsupported(f"{value} has more than {dtype.scale} decimal places")
     if len(str(abs(int(unscaled)))) > dtype.precision:

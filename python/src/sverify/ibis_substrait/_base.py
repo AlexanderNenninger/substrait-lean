@@ -78,7 +78,7 @@ class Exprs:
         if _float_const(op) or (isinstance(v, int | Decimal) and not isinstance(v, bool)):
             d = _const_decimal(op) if _float_const(op) else Decimal(op.value)
             if d == d.quantize(Decimal(1).scaleb(-s)):
-                digits = len(str(abs(int(d.scaleb(s)))))
+                digits = len(str(abs(int(_decimals.scaled(d, s)))))
                 return decimal_literal(d, _decimal(max(digits, s, 1), s))
         e = self.translate(op)
         if t.is_decimal() or t.is_integer():

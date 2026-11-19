@@ -272,6 +272,11 @@ structure Report where
   (`contract_sound_allowed`, `postAllowed`), beside `proved`'s every order. -/
   allowed : List Bool := []
   facts : List (String × String × Json)
+  /-- The output columns' types as the writer types them (`Write.relKinds`, the
+  reference's: a decimal `SUM` is `DECIMAL(min(38, p + 10), s)`, an `AVG` is
+  `DECIMAL(p + 4, s + 4)`, p up to 34), as `outputKindJson` renders them, in the
+  output's order. Empty where the transformation is not well-formed. -/
+  outputKinds : List Json := []
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
   /-- Does the transformation leave the engine no choice but the order of its
@@ -418,6 +423,7 @@ def Report.json (r : Report) : Json :=
           | none => .null)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
+    ("outputKinds", Json.arr r.outputKinds.toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
@@ -862,6 +868,22 @@ def parse (input : Json) : Except String Request := do
     pre := (t, cs) :: pre
   return { input, posts, requires, transform, tables, pre }
 
+/-- One output column's type for the report: a decimal with its precision and
+scale, otherwise the kind's name. -/
+def outputKindJson : Write.WKind → Json
+  | .dec p s => Json.mkObj [("kind", "dec"), ("precision", Lean.toJson p), ("scale", Lean.toJson s)]
+  | .int => Json.mkObj [("kind", "int")]
+  | .float => Json.mkObj [("kind", "float")]
+  | .str => Json.mkObj [("kind", "str")]
+  | .bool => Json.mkObj [("kind", "bool")]
+  | .date => Json.mkObj [("kind", "date")]
+  | .time => Json.mkObj [("kind", "time")]
+  | .interval => Json.mkObj [("kind", "interval")]
+  | .tod => Json.mkObj [("kind", "tod")]
+  | .list _ => Json.mkObj [("kind", "list")]
+  | .struct _ => Json.mkObj [("kind", "struct")]
+  | .other => Json.mkObj [("kind", "other")]
+
 namespace Request
 
 variable (R : Request)
@@ -1290,6 +1312,12 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         fnames.zip ((fenv.zip (decs ++ List.replicate fenv.length none)).map fun (a, d) =>
           (a.render d, a.json d))
     | none => []
+  let outputKinds := match transform with
+    | some p =>
+      if p.root.checkWF cat then
+        (Write.relKinds (Write.planSchemas p) cat p.root).map outputKindJson
+      else []
+    | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
   -- Windows that order their partitions totally: otherwise a rerun may give
   -- other rows (D10).
@@ -1326,6 +1354,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
     ignores
     allowed
     facts
+    outputKinds
     keys
     windowsTotal := windowsDet
     issues
