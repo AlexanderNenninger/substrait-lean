@@ -380,11 +380,22 @@ doubles decoded within `2u` of the codes' values:
 Scaled by `2¹⁰⁷⁴`, `u · tiny` is `1/2`, which the core's integer forms round
 up to `1`.
 
-The error term alone would let the bound of `x * y`, `x + y` or `x / y` of
-non-negative doubles dip below `0`. Rounding keeps the sign
-(`StdModel.nonneg`), so the last row raises those bounds to `0`
-(`faddBoundS` …): a revenue `SUM(qty * price)` of non-negative factors
-is proved at least `0`.
+The checker's bound of a finite `x + y`, `x - y` and `x * y` is the exact
+result's ends rounded as the operation rounds them (`FloatCode.fadd_fin`,
+`fmul_fin`, `ofExact_mono`): rounding is monotone, so no widening by an
+error term is needed, and a sum or product of non-negative doubles starts at
+`0` without a special case. So `x ∈ [0, 1]`, `y ∈ [0, 1]` give `x + y` in
+`[0, 2]`, and `amount ∈ [0, 10³⁰⁰)` gives `amount * 3 + 1` in `[1, 3 · 10³⁰⁰]`.
+A quotient by one divisor `d ≠ 0` (`a / 8`) is bounded the same way, by
+`ofExactDiv_mono` on the dividend's ends. A quotient by a divisor with a
+range keeps the error bound of `div_scaled`, raised to `0` for a non-negative
+dividend and a positive divisor (`faddBound`, `fmulBound`, `fdivBound`,
+`fdivBoundS` in `analysis/Sverify/Analysis/Contracts/Transfer.lean`).
+A sum of two bounds with finite lower ends keeps the sum of the ends as its
+lower end, and a product of two with finite lower ends at least `0` the
+product of them, whatever the operands are above (`+∞` and NaN included,
+`FloatCode.fadd_lower`, `fmul_lower`): `amount >= 0` alone gives `amount * 3 + 1`
+at least `1`, and proves it positive. A difference has no lower end from them.
 
 ## The generic properties of statistical aggregates
 

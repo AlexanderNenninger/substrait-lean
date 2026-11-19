@@ -1494,7 +1494,36 @@ def _as_arrow_gives(schemas: Mapping[str, ibis.Schema]) -> dict[str, ibis.Schema
     return {n: ibis.Schema.from_pyarrow(s.to_pyarrow()) for n, s in schemas.items()}
 
 
+def _mentioned_names(
+    transform: Transform, requires: Mapping[str, Sequence[Condition]], ensures: Sequence[Condition]
+) -> set[str]:
+    """The column names the transformation and the conditions mention (a
+    column no one mentions is not written into any plan, `ibis_substrait.prune`),
+    or `EVERYTHING`."""
+    from sverify.ibis_substrait.prune import EVERYTHING, mentions, sql_mentions
+
+    own = sql_mentions(transform) if isinstance(transform, str) else mentions(transform)
+    if own is None:
+        return {EVERYTHING}
+    conditions = [*(c for cs in requires.values() for c in cs), *ensures]
+    return {*own, *(w for c in conditions for w in re.findall(r"\w+", label(c)))}
+
+
 def _verify_once(
+    transform: Transform,
+    requires: Mapping[str, Sequence[Condition]],
+    ensures: Sequence[Condition],
+    *args: Any,
+    **kwargs: Any,
+) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
+    """`_prove_once` with every plan written over the columns some plan mentions."""
+    from sverify.ibis_substrait.prune import mentioning
+
+    with mentioning(_mentioned_names(transform, requires, ensures)):
+        return _prove_once(transform, requires, ensures, *args, **kwargs)
+
+
+def _prove_once(
     transform: Transform,
     requires: Mapping[str, Sequence[Condition]],
     ensures: Sequence[Condition],
@@ -1507,6 +1536,8 @@ def _verify_once(
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
+    from sverify.ibis_substrait.prune import drop_unmentioned, mentioned
+
     if semantics in _profile_requests() and isinstance(transform, str):
         raise ValueError(
             f"semantics={semantics!r} checks Ibis transformations; "
@@ -1515,6 +1546,7 @@ def _verify_once(
     schemas = {name: input_schema(s) for name, s in (tables or {}).items()}
     if not isinstance(transform, str):
         schemas = {**leaf_tables(transform), **schemas}
+    schemas = drop_unmentioned(schemas, mentioned())
     # The verifier holds schemas, not tables: unbound Ibis tables, and for SQL
     # the schemas as Arrow gives them back.
     sql_schemas = _as_arrow_gives(schemas)
@@ -2708,6 +2740,12 @@ class ViewContract:
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
     `requires` (`Provenance.policies`)."""
+    profile: str = "reference"
+    """The profile the transformation was verified under (`Report.semantics`)."""
+    deterministic: bool = False
+    """The report proves the result determined up to row order and the members of
+    a class (`Report.deterministic`): two engines hold the same rows of it. False
+    where no single report speaks for the view."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -2738,6 +2776,8 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.checked) if prov else [],
         list(prov.report.not_null) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
+        profile=prov.report.semantics if prov else "reference",
+        deterministic=bool(prov and prov.report.deterministic),
     )
 
 

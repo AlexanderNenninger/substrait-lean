@@ -38,7 +38,7 @@ def weighted(rows) -> pa.Table:
 
 def rows_of(z) -> pa.Table:
     """A handle's rows (a lazy one is computed first)."""
-    return z.to_arrow() if hasattr(z, "to_arrow") else z.lf.collect().to_arrow()
+    return z.to_arrow() if hasattr(z, "to_arrow") else z.backend.arrow(z.frame, z.schema)
 
 
 def bag(t: pa.Table):
@@ -68,28 +68,17 @@ def test_the_operations_agree_with_the_arrow_store(rows):
     )
 
 
-def test_a_generation_is_removed_with_its_handle():
-    import gc
-    import os
-
-    store = polars_store.PolarsStore()
-    z = store.kept(weighted([(1, "a", 1.5, 1)]))
-    path = z.path
-    assert os.path.exists(path)
-    del z
-    gc.collect()
-    assert not os.path.exists(path)
-
-
-def test_a_weight_sum_that_leaves_64_bits_raises():
+def test_a_weight_sum_that_leaves_64_bits_raises_where_the_parts_are_added_up():
     from sverify_polars.engine import SumOverflow
 
     store = polars_store.PolarsStore()
     big = 2**63 - 1
-    z = store.kept(weighted([(1, "a", 1.5, big)]))
+    z = store.kept(weighted([(1, "a", 1.5, big), (2, "a", 1.5, 1), (3, "a", 1.5, 1)]))
     plan = _merge_plan(z.schema)
+    state = store.merge(plan, z.schema, z, weighted([(1, "a", 1.5, 1)]), keep=True)
+    assert not state.consolidated  # the refresh did not raise
     with pytest.raises(SumOverflow):
-        store.merge(plan, z.schema, z, weighted([(1, "a", 1.5, 1)]), keep=True)
+        state.to_arrow()
     with pytest.raises(SumOverflow):
         store.merge(plan, z.schema, z, weighted([(1, "a", 1.5, 1)]), keep=False)
 

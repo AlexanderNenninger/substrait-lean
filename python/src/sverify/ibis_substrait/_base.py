@@ -318,6 +318,9 @@ def to_substrait(expr: ir.Table, semantics: str = "reference") -> Json:
     from sverify.profiles import check_declared_types
 
     check_declared_types(expr)
+    from sverify.ibis_substrait.prune import prune_unmentioned
+
+    expr = prune_unmentioned(expr)
     with compiling(semantics) as compiler:
         op: Any = expr.op()
         return plan(compiler, rel(op), list(op.schema.names))

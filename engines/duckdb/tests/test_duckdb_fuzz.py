@@ -116,21 +116,20 @@ def _check_u(sql: str, k: int) -> duckdb_fuzz.Outcome:
 )
 def test_ledger_overflows_are_expected_refusals(sql, k, error):
     """The fuzz ledgers' (`engines/duckdb/replay/fuzz__*.json`) overflows
-    of 2026-11: DuckDB raises, `Rel.eval` gives rows, `verify` reports the
-    overflow (#638)."""
+    of 2026-11: DuckDB raises and so does the reference (#638)."""
     out = _check_u(sql, k)
     assert out.duckdb.startswith("error: Out of Range Error: Overflow") and error in out.duckdb
-    assert out.agree and any("overflow" in i for i in out.issues)
+    assert out.agree and out.lean.startswith("error: Substrait.Issue.")
 
 
 def test_ledger_overflow_under_a_filter_and_a_nested_one():
     out = _check("SELECT COUNT(b) AS c0 FROM t AS q WHERE (i = (i * i))", [(I64_MAX, *T_ROW[1:])])
     assert out.duckdb.startswith("error: Out of Range Error: Overflow in multiplication")
-    assert out.agree and out.lean == '[["0"]]'
+    assert out.agree and out.lean == "error: Substrait.Issue.wraps"
     sql = "SELECT DISTINCT b AS c0, b AS c1, (i + (i - j)) AS c2 FROM t AS q ORDER BY c0, c1, c2"
     out = _check(sql, [T_ROW, (0, I64_MIN, *T_ROW[2:])], ordered=True)
     assert out.duckdb.startswith("error: Out of Range Error: Overflow in subtraction")
-    assert out.agree and any("overflow" in i for i in out.issues)
+    assert out.agree and out.lean.startswith("error: Substrait.Issue.")
 
 
 @pytest.mark.parametrize(

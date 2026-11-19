@@ -32,7 +32,7 @@ nodes; a stored node's table is a source of the stages that read it.
 
 A `Pipeline` maintains views that read each other. Each view's change becomes
 the change table of the views that read it (the DBSP chain rule,
-`Rel.chain_sound`). A view without a delta rule (left join, fetch, window) is
+`Rel.chain_sound`). A view without a delta rule (a left join, fetch, window or aggregate) is
 recomputed and diffed, which still yields its change for the views
 downstream (`ZSet.diff_correct`).
 
@@ -64,7 +64,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched
+from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched, profiles
 from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
@@ -571,12 +571,16 @@ changes is recomputed, and a refresh says which change did it
 an entry; two changes in different releases give different digests."""
 
 
-def plan_digest(plan: str, changes: tuple[str, ...] | None = None) -> str:
+def plan_digest(
+    plan: str, changes: tuple[str, ...] | None = None, profile: str = "reference"
+) -> str:
     """The sha256 of a plan's canonical form and of the changes of meaning
     (`MEANING_CHANGES`, or `changes`): its JSON with sorted keys, no
     `extensions` (the list of every function the writer knows, which grows with
     each release), each `functionReference` replaced by the function's name.
-    With no changes recorded the digest is that of the plan alone. It is the
+    The profile the plan was verified under is a component of its own, left out
+    for the reference (`verify(semantics=...)`): the same plan under two profiles
+    has two digests. With no changes recorded the digest is that of the plan alone. It is the
     same across releases that change nothing the plan computes, so a sink
     written by one is resumed by the next; sinks record it, and `Stored`
     compares it. A release that changes the canonical form recomputes every sink
@@ -604,6 +608,8 @@ def plan_digest(plan: str, changes: tuple[str, ...] | None = None) -> str:
     text = json.dumps(canon(p), sort_keys=True, separators=(",", ":"))
     if changes:
         text += "\n" + json.dumps(list(changes))
+    if profile != "reference":
+        text += "\nprofile:" + profile
     return hashlib.sha256(text.encode()).hexdigest()
 
 
@@ -652,6 +658,13 @@ class Stored:
     table_ids: dict[str, str] | None = None
     """The source tables' ids the record names (`Contract.table_ids`), or
     None if the sink did not say: then they are read from its contract."""
+    engine: str | None = None
+    engine_version: str | None = None
+    sverify: str | None = None
+    profile: str | None = None
+    package: str | None = None
+    """What the record says about who wrote the state (`Contract.engine` …):
+    None where it does not."""
 
 
 class StaticSource(Pipeable):
@@ -982,6 +995,15 @@ class IncrementalView:
         windows without a row-order tiebreak; set by a stored node."""
         self.query = query
         contract = None if isinstance(query, str) else view_contract(query)
+        self.profile: str = contract.profile if contract else "reference"
+        """The profile the view's plan was verified under; the plan's digest
+        includes it unless it is the reference."""
+        self.deterministic: bool = contract.deterministic if contract else False
+        """Its report proves the result determined up to row order and the
+        members of a class: the same on every engine."""
+        self.record_changes: dict[str, tuple[str | None, str | None]] = {}
+        """What a resumed record says differently from this run: by field, the
+        record's value and this run's (`Contract.engine` …)."""
         self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
@@ -1020,12 +1042,15 @@ class IncrementalView:
         DuckDB, else in Arrow."""
         refuse_schema(json.loads(self.plan), con, self.engine)
         reason = None if resume is None else self._mismatch(resume)
+        note = None
+        if resume is not None and reason is None:
+            reason, note = self._engine_change(resume)
         if resume is not None and reason is None:
             # The schema the engine gives the view, from a run on no rows.
             empty = {t: con.schema(t).empty_table() for t in self.tables}
             schema = self._result_on(empty).schema
             result = resume.table.select(schema.names).cast(schema)
-            self.resumed = f"resumed from {resume.where}"
+            self.resumed = f"resumed from {resume.where}" + (f" ({note})" if note else "")
         else:
             result = run_plan(
                 con, self.plan, self.engine, keep=self.store.keep, tie_free=self.tie_free
@@ -1129,9 +1154,14 @@ class IncrementalView:
     def _mismatch(self, stored: Stored) -> str | None:
         """Why `stored` is not this view's state at the versions the pipeline
         holds its inputs at, or None if it is."""
-        if stored.plan != plan_digest(self.plan):
+        if stored.plan != plan_digest(self.plan, profile=self.profile):
+            if stored.profile is not None and stored.profile != self.profile:
+                return (
+                    f"the plan was verified under the {stored.profile} profile, "
+                    f"and is now under the {self.profile} profile"
+                )
             for k in range(len(MEANING_CHANGES) - 1, -1, -1):
-                if stored.plan == plan_digest(self.plan, MEANING_CHANGES[:k]):
+                if stored.plan == plan_digest(self.plan, MEANING_CHANGES[:k], self.profile):
                     changed = ", ".join(MEANING_CHANGES[k:])
                     return f"sverify changed what this plan computes ({changed})"
             return "the plan changed"
@@ -1149,6 +1179,40 @@ class IncrementalView:
         if stored.digests != digests:
             return f"static tables changed ({', '.join(sorted(digests))})"
         return None
+
+    def _engine_change(self, stored: Stored) -> tuple[str | None, str | None]:
+        """What a record that names other engines or releases than this run's
+        means for resuming from it: `(reason, note)`, a reason to recompute the
+        view instead, or a note on the resumed one, or neither. A record without
+        the fields (written before them) says nothing.
+
+        A view that is recomputed and diffed resumes, as the diff is sound for any
+        state. A view maintained from the state resumes where its plan is
+        determined (every engine holds the same rows, so a delta retracts the row
+        the state holds), and is recomputed once where the plan leaves a value
+        open. The release alone is recorded in `record_changes`."""
+        now = profiles.runtime(self.engine)
+        self.record_changes = {
+            f: (was, now[f])
+            for f in profiles.RUNTIME_FIELDS
+            if (was := getattr(stored, f)) is not None and was != now[f]
+        }
+        moved = [f for f in ("engine", "engine_version") if f in self.record_changes]
+        if not moved:
+            return None, None
+        text = ", ".join(
+            f"{f.replace('_', ' ')} {self.record_changes[f][0]} → {self.record_changes[f][1]}"
+            for f in moved
+        )
+        diffed = (
+            self.fallback is not None
+            and self.touched is None
+            and self.linear is None
+            and self.semi is None
+        )
+        if diffed or self.deterministic:
+            return None, f"the engine changed: {text}"
+        return f"the engine changed ({text}) and the plan leaves a value open", None
 
     @property
     def contracted(self) -> bool:

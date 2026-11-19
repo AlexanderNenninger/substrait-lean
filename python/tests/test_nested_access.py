@@ -39,10 +39,26 @@ def con():
     return c
 
 
+def _reads(node):
+    """The column names of each `read` in a plan's JSON."""
+    if isinstance(node, dict):
+        if "read" in node:
+            yield node["read"]["baseSchema"]["names"]
+        for v in node.values():
+            yield from _reads(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _reads(v)
+
+
 def both(con, expr) -> list[tuple]:
     """The plan's rows from `Rel.eval` and from Polars, which must agree."""
     plan = plan_json(con, expr)
-    lean = lean_values(json.dumps(inline_tables(json.loads(plan), ROWS)))
+    # The plan reads the columns it mentions (a struct it never uses is left out).
+    read = json.loads(plan)["relations"][0]["root"]
+    names = [n for n in next(iter(_reads(read))) if n in T.column_names]
+    rows = {"t": [tuple(r[n] for n in names) for r in T.to_pylist()]}
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), rows)))
     polars = arrow_rows(run_plan(con, written_plan(plan), "polars"))
     assert sorted(map(repr, polars)) == sorted(map(repr, lean))
     return sorted(lean, key=repr)
