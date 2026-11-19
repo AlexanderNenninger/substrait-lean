@@ -134,9 +134,13 @@ def test_parts_are_added_up_when_the_change_matches_the_base_or_there_are_many(s
     assert state.consolidated
 
 
-def test_a_write_that_fails_leaves_no_part_behind(store, monkeypatch):
+def test_a_write_that_fails_leaves_no_part_behind(store, monkeypatch, tmp_path):
+    from sverify import _parts
     from sverify._parts import state_dir
 
+    # A private state directory: the shared one belongs to the whole worker, and
+    # other tests' parts come and go in it.
+    monkeypatch.setattr(_parts, "_DIR", str(tmp_path))
     backend = store.default_backend()
     kept = store.kept(weighted([(1, "a", 1.5, 1)]))
     before = set(os.listdir(state_dir()))

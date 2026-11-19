@@ -137,3 +137,71 @@ def test_the_verdict_imports_no_engine():
     assert "Sverify.Core.Rel" in closure  # the walk found the layers' files
     bad = sorted(m for m in closure if m.split(".")[:2] in [e.split(".") for e in engines])
     assert not bad, bad
+
+
+# The root package `SubstraitLean` (#1444, ruling 148): the checker, the
+# theorems that need it or more than one engine, and the modules still on
+# their way to the lowest layer their imports allow. A new root module fails
+# `test_root_holds_only_the_listed_modules` until it is listed here with the
+# reason it needs the root.
+ROOT_CHECKER = {
+    "ContractCheck",
+    "ShardCheck",
+    "Epsilon",
+    "EngineRobust",
+    "Realize",
+    "EngineTables",
+    "Engine",
+    "Obligations",
+    "Examples",
+}
+ROOT_THEOREMS = {
+    "ProvedOn": "imports ContractCheck and the three engines' Engine modules",
+    "Statements": "imports ProvedOn",
+    "IssuesAll": "a theorem about the checker's verdict: imports ContractCheck",
+}
+# Each module still waiting to move, with what it waits for. #1444 closes
+# when this is empty.
+ROOT_WAITING = {
+    "Check": "a re-export of Sverify.Core.Check until #1795 and the optimizer's step 2 merge",
+    "AnalysisCongr": "#1795 edits it; then analysis",
+    "Semantic": "#1795 and the optimizer edit it; then analysis",
+    "Compose": "#1795 edits it; then analysis",
+    "Lipschitz": "#1795 edits it; then analysis",
+    "Lipschitz.Arith": "#1795 edits it; then analysis",
+    "Lipschitz.Basic": "imports Compose (#1795); then analysis",
+    "Lipschitz.Measures": "imports Lipschitz.Basic (#1795); then analysis",
+    "LipschitzL1": "#1795 edits it; then analysis",
+    "TableFormat": "imports Compose (#1795); then analysis",
+    "Pruning": "imports TableFormat (#1795); then analysis",
+    "Implied": "imports Pruning (#1795); then analysis",
+    "IncrementalAgg": "imports TableFormat (#1795); then analysis",
+    "IncrementalFloat": "imports IncrementalAgg (#1795); then analysis",
+    "IncrementalMinMax": "imports IncrementalAgg (#1795); then analysis",
+    "IncrementalSemi": "imports IncrementalAgg (#1795); then analysis",
+    "MarginSound": "#1805's OpenSums imports it; then analysis",
+    "Pretty": "#1765 edits it; then core",
+    "Infer": "#1765 edits it; then analysis",
+    "Write": "#1813 and #1765 edit it; then frontend",
+    "Bind": "#1444's engines-common move",
+    "Choices": "#1444's analysis move",
+    "ChoicesSound": "#1444's analysis move",
+    "Quarantine": "#1444's analysis move",
+    "Retention": "#1444's analysis move",
+    "TouchedGroups": "#1444's analysis move",
+    "TouchedFrames": "#1444's analysis move",
+    "Seam": "#1444's analysis move",
+    "Terms": "#1444's analysis move",
+    "Refresh": "#1444's core move",
+}
+
+
+def test_root_holds_only_the_listed_modules():
+    files = {
+        ".".join(p.with_suffix("").relative_to(ROOT / "SubstraitLean").parts)
+        for p in (ROOT / "SubstraitLean").rglob("*.lean")
+    }
+    sets = [ROOT_CHECKER, set(ROOT_THEOREMS), set(ROOT_WAITING)]
+    listed = set().union(*sets)
+    assert sum(map(len, sets)) == len(listed), "a module is in two sets"
+    assert files == listed

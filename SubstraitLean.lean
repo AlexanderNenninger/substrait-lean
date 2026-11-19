@@ -2,7 +2,7 @@ import Sverify.Core.FloatFormat
 import Sverify.Core.Value
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatArith
-import SubstraitLean.FloatArithCheck
+import Sverify.Core.FloatArithCheck
 import Sverify.Core.FloatMoments
 import Sverify.Core.BlackBox
 import Sverify.Core.Rounding
@@ -18,14 +18,14 @@ import Sverify.Core.Window
 import Sverify.Core.Aggregate
 import Sverify.Core.Rel
 import Sverify.Core.Kinds
-import SubstraitLean.EvalFast
-import SubstraitLean.Rewrites
+import Sverify.Core.EvalFast
+import Sverify.Core.Rewrites
 import Sverify.Analysis.WSet
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
 import SubstraitLean.Terms
 import SubstraitLean.Write
-import SubstraitLean.Check
+import Sverify.Core.Check
 import Sverify.Analysis.Contracts
 import Sverify.Core.Issue
 import Sverify.Analysis.Safety
@@ -76,7 +76,7 @@ import SubstraitLean.Compose
 import SubstraitLean.TableFormat
 import SubstraitLean.Pruning
 import SubstraitLean.Implied
-import SubstraitLean.Completeness
+import Sverify.Core.Completeness
 import SubstraitLean.ContractCheck
 import SubstraitLean.RunPlan
 import SubstraitLean.ShardCheck
@@ -84,7 +84,7 @@ import Sverify.Core.Functions
 import Sverify.Core.Options
 import Sverify.Core.Scopes
 import Sverify.Core.AllowedP
-import SubstraitLean.SumBound
+import Sverify.Core.SumBound
 import SubstraitLean.MarginSound
 import Sverify.Core.Observations
 import Sverify.Core.ObsEquiv

@@ -1,5 +1,5 @@
 import Sverify.Analysis.Keys
-import SubstraitLean.Check
+import Sverify.Core.Check
 import Sverify.Analysis.AllowedAnalysis
 
 /-!
