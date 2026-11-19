@@ -753,6 +753,18 @@ def finEnds (x : Bound) : Option (Int × Int) :=
     else none
   | _, _ => none
 
+/-- The lower end of a bound, where it is a finite double. -/
+def Bound.loFin (x : Bound) : Option Int :=
+  match x.lo with
+  | some l => if FloatCode.negInf < l ∧ l < FloatCode.posInf then some l else none
+  | none => none
+
+/-- The lower end of a bound, where it is a finite double at least `0`. -/
+def Bound.loNonneg (x : Bound) : Option Int :=
+  match x.lo with
+  | some l => if 0 ≤ l ∧ l < FloatCode.posInf then some l else none
+  | none => none
+
 /-- The codes whose scaled value is in `[l, h]`. -/
 def codeBound (l h : Int) : Bound := ⟨some (FloatCode.codeLo l), some (FloatCode.codeHi h)⟩
 
@@ -767,7 +779,12 @@ def faddBound (sub : Bool) (x y : Bound) : Bound :=
   | some (la, ha), some (lb, hb) =>
     if sub then ⟨some (FloatCode.ofExact (la - hb)), some (FloatCode.ofExact (ha - lb))⟩
     else ⟨some (FloatCode.ofExact (la + lb)), some (FloatCode.ofExact (ha + hb))⟩
-  | _, _ => Bound.top
+  -- Finite lower ends only: a sum is at least the rounded sum of them, whatever the
+  -- operands are above (`+∞` and NaN included, `FloatCode.fadd_lower`).
+  | _, _ =>
+    match sub, x.loFin, y.loFin with
+    | false, some la, some lb => ⟨some (FloatCode.ofExact (FloatCode.scaled la + FloatCode.scaled lb)), none⟩
+    | _, _, _ => Bound.top
 
 /-- `x * y` of doubles: the exact products' ends, rounded as the product is. -/
 def fmulBound (x y : Bound) : Bound :=
@@ -777,7 +794,12 @@ def fmulBound (x y : Bound) : Bound :=
     | ⟨some l, some h⟩ =>
       ⟨some (FloatCode.ofExactDiv l FloatCode.unitK), some (FloatCode.ofExactDiv h FloatCode.unitK)⟩
     | _ => Bound.top
-  | _, _ => Bound.top
+  -- Non-negative finite lower ends only (`FloatCode.fmul_lower`).
+  | _, _ =>
+    match x.loNonneg, y.loNonneg with
+    | some la, some lb =>
+      ⟨some (FloatCode.ofExactDiv (FloatCode.scaled la * FloatCode.scaled lb) FloatCode.unitK), none⟩
+    | _, _ => Bound.top
 
 /-- The least magnitude in `[l, h]`, where `0` is outside. -/
 def endsMin (l h : Int) : Nat := if 0 < l then l.natAbs else if h < 0 then h.natAbs else 0

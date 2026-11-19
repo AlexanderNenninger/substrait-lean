@@ -61,3 +61,33 @@ def test_the_bound_holds_at_its_ends_on_data():
     out = report.run(con, "duckdb")
     assert out.column("q").to_pylist() == [0.0, 1.0]
     assert out.column("s").to_pylist() == [0.0, 2.0]
+
+
+def test_a_bound_with_one_end_proves_the_headline_case():
+    """`amount >= 0` alone proves `amount * 3 + 1 > 0` (#1485, item 7): the sum and the
+    product keep their lower end whatever the column is above it, `+∞` and NaN included."""
+    t = ibis.table({"amount": "!float64"}, name="t")
+    t = t.filter(t.amount >= 0)
+    report = sv.verify(t.select(v=t.amount * 3 + 1), ensures=[ibis._.v > 0], counterexamples=0)
+    assert report.verdict != sv.Verdict.UNPROVED
+    assert report.facts["v"] == "a double ≥ 1.0"
+    assert sv.verify(t.select(v=t.amount + 1), counterexamples=0).facts["v"] == "a double ≥ 1.0"
+    # `amount * 3` can be `0`, and the ends below `0` are not kept: a difference has no lower end.
+    assert sv.verify(
+        t.select(v=t.amount * 3), ensures=[ibis._.v > 0], counterexamples=0
+    ).verdict == (sv.Verdict.UNPROVED)
+    assert sv.verify(t.select(v=t.amount - 1), counterexamples=0).facts["v"] == "any double"
+
+
+def test_a_one_ended_bound_is_sound_at_infinity_and_nan_on_data():
+    """The values the lower end does not bound: `+∞` and NaN stay at least `1` as codes."""
+    import pyarrow as pa
+
+    t = ibis.table({"amount": "!float64"}, name="t")
+    t = t.filter(t.amount >= 0)
+    report = sv.verify(t.select(v=t.amount * 3 + 1), counterexamples=0)
+    con = sv.connect()
+    con.put("t", pa.table({"amount": [0.0, 1.5, float("inf"), float("nan")]}))
+    got = report.run(con, "duckdb", unverified=True).column("v").to_pylist()
+    assert got[:3] == [1.0, 5.5, float("inf")]
+    assert got[3] != got[3]  # NaN

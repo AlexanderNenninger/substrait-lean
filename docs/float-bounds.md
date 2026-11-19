@@ -391,7 +391,11 @@ A quotient by one divisor `d ≠ 0` (`a / 8`) is bounded the same way, by
 range keeps the error bound of `div_scaled`, raised to `0` for a non-negative
 dividend and a positive divisor (`faddBound`, `fmulBound`, `fdivBound`,
 `fdivBoundS` in `analysis/Sverify/Analysis/Contracts/Transfer.lean`).
-A bound that has only one end (`amount >= 0`) gives `any double` for the result.
+A sum of two bounds with finite lower ends keeps the sum of the ends as its
+lower end, and a product of two with finite lower ends at least `0` the
+product of them, whatever the operands are above (`+∞` and NaN included,
+`FloatCode.fadd_lower`, `fmul_lower`): `amount >= 0` alone gives `amount * 3 + 1`
+at least `1`, and proves it positive. A difference has no lower end from them.
 
 ## The generic properties of statistical aggregates
 

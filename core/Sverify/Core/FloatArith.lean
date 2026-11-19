@@ -667,4 +667,95 @@ theorem ofExact_int {k : Int} (hk : k.natAbs ≤ 2 ^ 53) : ofExact (k * unitK) =
     rw [e]
     exact ofExact_exact _ (by decide) (by rw [← e]; exact hm)
 
+/-! ### One-sided bounds of a sum and a product (#1485, item 7)
+
+A lower bound on a double's code bounds a sum or a product from below even
+where the double may be `+∞` or NaN (the NaN code is the greatest): `amount >= 0`
+gives `amount * 3 + 1 ≥ 1`. -/
+
+theorem ofExactDiv_le_posInf (v : Int) (n : Nat) : ofExactDiv v n ≤ posInf := by
+  have := posInf_eq; have := posCode_nonneg (roundMagDiv v.natAbs n)
+  have := posCode_le_posInf (roundMagDiv v.natAbs n)
+  unfold ofExactDiv; split <;> omega
+
+theorem canon_nan : canon nan = nan := canon_of_isRef isRef_nan
+
+/-- `la ≤ i` and `lb ≤ j`, finite lower ends: the sum is at least the rounded sum
+of the ends, whatever `i` and `j` are above them (`+∞` and NaN included). -/
+theorem fadd_lower {i j la lb : Int} (hla : negInf < la) (hlb : negInf < lb)
+    (hi : la ≤ i) (hj : lb ≤ j) :
+    ofExact (scaled la + scaled lb) ≤ canon (fadd i j) := by
+  have hL : ofExact (scaled la + scaled lb) ≤ posInf := ofExactDiv_le_posInf _ 1
+  have hpn : posInf < nan := fp64.posInf_lt_nan
+  have e1 := negZero_eq'; have e2 := negNan_eq'; have e3 := negInf_eq; have e4 := posInf_eq
+  have hsi := scaled_mono hi
+  have hsj := scaled_mono hj
+  unfold fadd addI isNanCode isInfCode
+  simp only [Bool.or_eq_true, beq_iff_eq]
+  split
+  · rw [canon_nan]; omega
+  · rename_i hn
+    split
+    · rename_i h1
+      split
+      · exfalso; omega
+      · rw [canon_posInf]; omega
+    · split
+      · exfalso; omega
+      · split
+        · rename_i h3
+          rcases h3 with h3 | h3
+          · rw [h3, canon_posInf]; omega
+          · exfalso; omega
+        · rename_i h1 h2 h3
+          have hs1 : sv i = scaled i := by unfold sv; split <;> first | rfl | (exfalso; omega)
+          have hs2 : sv j = scaled j := by unfold sv; split <;> first | rfl | (exfalso; omega)
+          split
+          · rename_i hv
+            rw [canon_zeroOf]
+            have : ofExact (scaled la + scaled lb) ≤ ofExact 0 := ofExact_mono (by omega)
+            exact Int.le_trans this (Int.le_of_eq (ofExactDiv_zero 1))
+          · rw [canon_rnd]
+            exact ofExact_mono (by omega)
+
+/-- `0 ≤ la ≤ i` and `0 ≤ lb ≤ j`: the product is at least the rounded product of
+the ends, whatever `i` and `j` are above them. -/
+theorem fmul_lower {i j la lb : Int} (hla : 0 ≤ la) (hlb : 0 ≤ lb)
+    (hi : la ≤ i) (hj : lb ≤ j) :
+    ofExactDiv (scaled la * scaled lb) unitK ≤ canon (fmul i j) := by
+  have hL : ofExactDiv (scaled la * scaled lb) unitK ≤ posInf := ofExactDiv_le_posInf _ _
+  have hpn : posInf < nan := fp64.posInf_lt_nan
+  have e1 := negZero_eq'; have e2 := negNan_eq'; have e3 := negInf_eq; have e4 := posInf_eq
+  have hsi := scaled_mono hi
+  have hsj := scaled_mono hj
+  have h0a := scaled_nonneg hla
+  have h0b := scaled_nonneg hlb
+  have hprod : scaled la * scaled lb ≤ scaled i * scaled j :=
+    Int.mul_le_mul hsi hsj h0b (by omega)
+  have hK : 0 < unitK := Nat.two_pow_pos _
+  have hlt1 : ¬ i < 0 := by omega
+  have hlt2 : ¬ j < 0 := by omega
+  unfold fmul mulI isNanCode isInfCode isZeroCode
+  simp only [Bool.or_eq_true, beq_iff_eq, hlt1, hlt2, decide_false, bne_self_eq_false]
+  split
+  · rw [canon_nan]; omega
+  · split
+    · rw [canon_nan]; omega
+    · split
+      · rename_i h3
+        have : i ≠ negInf := by omega
+        have : j ≠ negInf := by omega
+        simp only [infOf, Bool.false_eq_true, ite_false, canon_posInf]; omega
+      · have hs1 : sv i = scaled i := by unfold sv; split <;> first | rfl | (exfalso; omega)
+        have hs2 : sv j = scaled j := by unfold sv; split <;> first | rfl | (exfalso; omega)
+        split
+        · rename_i hv
+          rw [hs1, hs2] at hv
+          rw [canon_zeroOf]
+          have : ofExactDiv (scaled la * scaled lb) unitK ≤ ofExactDiv 0 unitK :=
+            ofExactDiv_mono hK (by omega)
+          exact Int.le_trans this (Int.le_of_eq (ofExactDiv_zero _))
+        · rw [canon_rnd, hs1, hs2]
+          exact ofExactDiv_mono hK hprod
+
 end Substrait.FloatCode
