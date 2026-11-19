@@ -73,7 +73,7 @@ Lean file; [proofs.md](proofs.md) lists each guarantee with its theorem.
 
 | Feature | Sentence | First contact | Notebook | Theorem |
 |---|---|---|---|---|
-| Substrait export: `to_substrait`, `from_substrait`, `substrait_contract` | Another team's engine should run your plan with the same guarantees; Sverify writes the proved plan as Substrait with the conditions its proof needs. | `report.to_substrait(format=...)`; `ExportError` with `shims="annotate"` or `report.to_sql(dialect)` as its exit | Example 10; no notebook: [#1053] | The writer is trusted and checked by a round trip; `declared_rows` ([Write.lean](../SubstraitLean/Write.lean)) covers declarations only: [#1053] |
+| Substrait export: `to_substrait`, `from_substrait`, `substrait_contract` | Another team's engine should run your plan with the same guarantees; Sverify writes the proved plan as Substrait with the conditions its proof needs. | `report.to_substrait(format=...)`; `ExportError` with `shims="annotate"` or `report.to_sql(dialect)` as its exit | Example 10; no notebook: [#1053] | The writer is trusted and checked by a round trip; `declared_rows` ([Write.lean](../frontend/Sverify/Frontend/Write.lean)) covers declarations only: [#1053] |
 | ODCS contracts | A data contract in a standard format lets another team build on your table; Sverify writes the proved contract as ODCS. | The task page's [ODCS contracts](tasks.md#odcs-contracts) section | No notebook: [#1053] | No theorem: [#1053] |
 | The `sverify` command | You want the proof in CI and on the pull request, without a notebook; `sverify check` proves every transform and node in a file and prints the contract in plain words. | `sverify check file.py --diff` and `--fix`; each finding carries a code that `sverify explain` describes; "time budget exceeded" does not name `SVERIFY_TIMEOUT`: [#1056] | [06](../notebooks/06_running_in_production.py), "1. Check the file before it merges" | `contract_sound` ([Contracts.lean](../analysis/Sverify/Analysis/Contracts.lean)) for what it reports |
 | The pytest plugin | A contract belongs in the test suite you already run; the plugin's `assert_contract(node)` asserts a node's contract is proved and, with rows, checks it on them. | The task page's [Testing with pytest](tasks.md#testing-with-pytest) section | [06](../notebooks/06_running_in_production.py), "2. A test for CI" | `contract_sound` ([Contracts.lean](../analysis/Sverify/Analysis/Contracts.lean)) |
@@ -118,7 +118,7 @@ on 2026-11-07.
 | "the E writer does not write overflow = X yet" | SQL for an engine | `engine="duckdb"`; lifted by [#241] |
 | "tables have no row order" on Spark | SQL for an engine with `rows="sequence"` | the default `rows="multiset"`, or `deterministic=True` |
 | "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
-| Spark's LN, POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
+| Spark's POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |
 | Spark decimal negation, division, double to DECIMAL | Engines | A cast to fewer digits (to DOUBLE for an AVG), or `engine="duckdb"`; lifted by [#27] |
 | Snowflake's libm, MOD, VAR, decimals, intervals | Engines | `engine="duckdb"`; Snowflake behaviour recorded privately; lifted by [#852] |

@@ -24,12 +24,12 @@ import Sverify.Analysis.WSet
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
 import Sverify.Analysis.Terms
-import SubstraitLean.Write
+import Sverify.Frontend.Write
 import Sverify.Core.Check
 import Sverify.Analysis.Contracts
 import Sverify.Core.Issue
 import Sverify.Analysis.Safety
-import SubstraitLean.Infer
+import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Core.Decomposable
 import Sverify.Analysis.Partition
@@ -48,7 +48,7 @@ import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Functions
 import Sverify.DuckDB.Profile
 import Sverify.Engines.Lowering
-import SubstraitLean.Bind
+import Sverify.Frontend.Bind
 import Sverify.Engines.LoweringHint
 import Sverify.DuckDB.LoweringCache
 import Sverify.Engines.LoweringSearch
@@ -85,7 +85,7 @@ import Sverify.Core.Options
 import Sverify.Core.Scopes
 import Sverify.Core.AllowedP
 import Sverify.Core.SumBound
-import SubstraitLean.MarginSound
+import Sverify.Analysis.MarginSound
 import Sverify.Core.Observations
 import Sverify.Core.ObsEquiv
 import Sverify.Core.Robust
@@ -109,7 +109,7 @@ import SubstraitLean.Epsilon
 import SubstraitLean.EngineRobust
 import SubstraitLean.Realize
 import Sverify.Frontend.Parse
-import SubstraitLean.Pretty
+import Sverify.Core.Pretty
 import SubstraitLean.Examples
 import Sverify.Analysis.Refresh
 import SubstraitLean.Engine

@@ -207,6 +207,8 @@ pythonpath = ["tests"]
 source = ["sverify", "sverify_dev", "sverify_polars", "sverify_spark", "sverify_duckdb"]
 branch = true
 patch = ["subprocess"]
+# Paths relative to the repository, so the shards' data files combine (CI's `coverage` job).
+relative_files = true
 
 [tool.coverage.report]
 skip_empty = true

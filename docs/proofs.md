@@ -33,8 +33,8 @@ contract's preconditions.
 | … in every row order the reference allows | `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
 | What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s on the postcondition's conditions projected over the request's transformation, which `parse` builds itself, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088, #1484) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
 | When `substrait-check --contract` reports a postcondition proved and the transformation `closed` (no open measure: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; open ties are allowed), it holds on the rows each engine's model computes for the translated plan (#1484, A6), on any data that meets the request: DuckDB's (default settings, verified under the reference and lowered by `Lowering.duckdb`) on a report without issues under the reference that is `guard_free`, Polars's and Spark's on a `guard_free` one, each side condition taken from the report | `Allowed` | `check_proved_on`, `check_proved_on_duckdb`, `check_proved_on_polars`, `check_proved_on_spark`, `check_noRaise_duckdb`, `check_guardFreeSide` | `ProvedOn.lean` |
-| When `substrait-check --contract` reports the transformation `deterministic`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows, for any data that meets the request (`DataMeets`, #1484) | `OrderAllowed` | `check_deterministic_sound` | `ContractCheck.lean` |
-| When it reports the transformation `class_determined`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows and the member of each class of D31 (`Row.canon`, D48); the class level drops the exact level's `noDoubles` guards, and above a class pick admits only operators that read their input up to the class, the others named in `class_places` | `OrderAllowed` | `check_class_determined_sound`, `Rel.allowed_canon_perm_eval`, `classIn_eq_nil` | `ContractCheck.lean`, `AllowedAnalysis.lean` |
+| When `substrait-check --contract` reports the transformation `deterministic`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows, for any data that meets the request (`DataMeets`, #1484) | `Allowed` | `check_deterministic_sound`, `check_deterministic_determined` (determined up to the exact level, any context) | `ContractCheck.lean` |
+| When it reports the transformation `class_determined`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows and the member of each class of D31 (`Row.canon`, D48); the class level drops the exact level's `noDoubles` guards, and above a class pick admits only operators that read their input up to the class, the others named in `class_places` | `Allowed` | `check_class_determined_sound`, `check_class_determined_determined` (determined up to the class level, where every double sits in a double column), `Relation.Equiv_classes_of_canon_perm`, `Rel.allowed_canon_perm_eval`, `classIn_eq_nil` | `ContractCheck.lean`, `AllowedAnalysis.lean` |
 | A key `substrait-check --contract` reports proved is a key of every result the reference allows for the transformation, on data that meets the request (#1484) | `OrderAllowed` | `check_keys_sound` | `ContractCheck.lean` |
 | Every issue the transformation can run into is in the report's `issues`, on data that meets the request, its bounds per key and the size hypothesis (#1484) | `eval` | `check_issues_sound` | `ContractCheck.lean` |
 | Every issue the transformation can run into on any order the reference allows, and on the rows of each join input an engine may push a condition into (an empty other input included, #1484 R3), is in the report's `issues`, on data that meets the request, its bounds per key and the size hypothesis on every order | `OrderAllowed` | `check_issues_sound_all`, `Rel.issuesCapped_sound_all`, `checked_issues_all` | `IssuesAll.lean`, `Statements.lean` |
@@ -76,7 +76,7 @@ contract's preconditions.
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `DuckDB/Tables.lean`, `Polars/Tables.lean`, `Substrait/Profile.lean` |
 | An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `DuckDB/Engine.lean`, `Polars/Engine.lean` |
 | A proved contract holds on each engine's model (#900): under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference), the rows the model of DuckDB (default settings), Polars, Spark or the reference computes for it are a result the reference allows (`Engine.Sound`), so the postconditions hold on them; on the engine's actual result, D16's claim (`Engine.Runs`), where the engine's choices are the reference's at the plan's options (`htr`), or where every result the engine's table allows is near one of the reference's orders (`Rel.FloatOpenSafeP`, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`, and #929 tracks elsewhere) | `Allowed` | `Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`, `Engine.reference_sound`, `Engine.Sound.allowedP`, `Engine.contract_sound`, `Engine.contract_sound_runs`, `Engine.contract_sound_runs_near`, `contract_sound_near`, and one instance of `Engine.contract_sound`'s hypotheses for each engine (`Engine.example_contract`, `Engine.duckdb_contract_example`, `Engine.polars_contract_example`, `Engine.spark_contract_example`; `Engine.polars_sum_example` for `Engine.contract_sound_runs_near`) | `Sound.lean`, `OpenSums.lean`, `DuckDB/Engine.lean`, `Polars/Engine.lean`, `Spark/Engine.lean` |
-| Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add` | `ObsEquiv.lean` |
+| Equal up to an observation: an equivalence, and a finer observation's equality implies a coarser one's | `Equiv`, `Near` | `Relation.Equiv_mono`, `Relation.Equiv_exact`, `Relation.Near_add`, `Relation.Equiv_classes_of_canon_perm` | `ObsEquiv.lean` |
 | A plan is determined up to an observation when every allowed result is equal to `Rel.eval`'s up to it: a finer observation's determinism gives a coarser one's, two allowed results are equal in the composed context, a refinement of a determined plan is determined, and a sound engine's model, a pair of them, and an engine's actual result (where its choices are the reference's) give the one observed answer (#1285) | `DeterminedUpTo` | `Rel.DeterminedUpTo.mono`, `Rel.DeterminedUpTo.pair`, `Rel.RefinesUpTo.determined`, `Engine.Sound.equiv_eval`, `Engine.sound_agree`, `Engine.Runs.equiv_eval` | `Allowed.lean`, `Sound.lean` |
 | A rewrite refines the plan up to an observation; `optimize` up to the order of rows; an unsorted plan does not refine its `ORDER BY` twin exactly | `RefinesUpTo` | `Rel.refines_of_perm`, `Rel.refines_of_same`, `Rel.optimize_refines`, `Rel.unsorted_refinesBag_not_refines` | `Allowed.lean`, `AllowedAnalysis.lean`, `Semantic.lean` |
 | A refinement of a subplan refines the plan around it: up to the order of rows through `FILTER`, `PROJECT` and `EMIT`, exactly above every other operator but `FETCH`, which needs an exact one below | `RefinesUpTo` | `Rel.RefinesBag.filter`, `Rel.RefinesBag.orderBy`, `Rel.RefinesBag.aggregate`, `Rel.RefinesBag.join`, `Rel.Refines.fetch` and the other operators' lemmas | `Refines.lean` |
@@ -195,6 +195,7 @@ declares no instance. An engine's theorems name the instance: DuckDB's is
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
 | `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
+| `Pretty.lean` | Rendering of values, expressions and plans |
 
 ### The analysis: `analysis/Sverify/Analysis/`
 
@@ -236,6 +237,8 @@ as the guard. Engines-common and the modules below import it as
 | `Terms.lean` | Splitting a plan into union-free terms |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `Refresh.lean` | The refresh protocol of a stored node, for a durable source, as a transition system; its safety from `Reachable` alone (#933) |
+| `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
+| `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, the range of an engine's double `AVG` (`AvgOrder.bound`), and its exactness on small integers (`AvgOrder.int_exact`) |
 
 ### The frontend: `frontend/Sverify/Frontend/`
 
@@ -249,6 +252,8 @@ that build as the guard. Engine packages may import it, as
 |---|---|
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `SubstraitJson.lean` | Builders of Substrait's JSON: references, types, casts, literals, calls and measures by anchor, the functions templates call, and the options the parser accepts |
+| `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
+| `Bind.lean` | Binding nested call arguments to projected columns before a plan is written (#821) |
 
 ### Engines-common: `engines/Sverify/Engines/`
 
@@ -363,8 +368,6 @@ build as the guard.
 
 | Module | Job |
 |---|---|
-| `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
-| `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
 | `AnalysisCongr.lean` | The analyses read only the catalog's arities: `Rel.facts_congr`, `Rel.aeval_congr`, `Rel.keys_congr`, `Rel.keyedWindows_congr`, `Rel.detPlan_congr`, `Rel.mayIssues_congr`, `Rel.issuesCapped_congr` and the capped plans', `Rel.optimize_congr` and the rewrites', for the checker's theorems (`check_proved_sound` …) |
 | `Semantic.lean` | Rewrites justified by contract facts and keys |
 | `Compose.lean` | Composing contracts across a pipeline |
@@ -386,7 +389,6 @@ build as the guard.
 | `Statements.lean` | The top-level statements over named predicates (#1484, A7): `Checked`, `Verified`, the engine report conditions, `DataAssumed`, `Post.HoldsOn`, each proved by applying the theorem it names, and a `#guard` that a recorded request meets them |
 | `ProvedOn.lean` | From the checker's verdict to each engine's model (#1484, A6): `check_proved_on` and its DuckDB, Polars and Spark corollaries, the side conditions taken from the report |
 | `Engine.lean` | The engines' `Engine` values together: the check that each one's certificate is non-empty, and DuckDB's side condition from an empty `Rel.mayIssues` |
-| `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, the range of an engine's double `AVG` (`AvgOrder.bound`), and its exactness on small integers (`AvgOrder.int_exact`) |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
@@ -398,17 +400,10 @@ build as the guard.
 | `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |
 | `Realize.lean` | Each engine's verdict on a plan for `--contract` (`"engines"`): its class over the options the proof depends on, the evidence and its theorems and facts, the shims, the transfer check per profile (`transferB`), and #568's threshold rule (#1166) |
 
-### Lowering and lift
-
-| Module | Job |
-|---|---|
-| `Bind.lean` | Binding nested call arguments to projected columns before a plan is written (#821) |
-
 ### Reading, writing and the CLI
 
 | Module | Job |
 |---|---|
-| `Pretty.lean` | Rendering of values, expressions and plans |
 | `RunPlan.lean` | The plan an engine runs (#1787): the per-rule gate, the gates on the rewrite, the size hypothesis through the rules, and `check_run_plan_sound` |
 | `ContractCheck.lean` | `--contract`: proving postconditions and keys from preconditions; `parse` reads the request (trusted), `Request.check` analyses it, and `check_proved_sound` takes its verdict to `contract_sound_all` |
 | `ShardCheck.lean` | `--shard`: per-shard and combining plans |

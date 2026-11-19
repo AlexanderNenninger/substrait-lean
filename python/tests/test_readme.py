@@ -1,10 +1,12 @@
-"""The Python examples of the READMEs and of docs/tasks.md, docs/getting-started.md
-and docs/how-it-works.md run.
+"""The Python examples of the READMEs and of the docs pages run.
 
 Each file's ```python blocks are run in order, in one namespace and in a
 fresh working directory, so an example may build on the ones before it. A
 block that fails, or a printed line that its `# ...` comment does not
 show, fails the test; "..." in a comment elides part of the line.
+A block that cannot run says why in its first line, `# skip: a reason`;
+the test prints each reason (`pytest -s`). A page with a Python block
+that is in neither `READMES` nor `EXEMPT` fails `test_every_page_is_listed`.
 The tour's notebooks are checked by `poe notebooks`.
 """
 
@@ -15,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from _repo import needs_repo
+
 ROOT = Path(__file__).resolve().parents[2]
 READMES = [
     ROOT / "README.md",
@@ -22,11 +26,27 @@ READMES = [
     ROOT / "docs" / "tasks.md",
     ROOT / "docs" / "getting-started.md",
     ROOT / "docs" / "how-it-works.md",
+    ROOT / "docs" / "core-semantics.md",
+    ROOT / "docs" / "float-bounds.md",
+    ROOT / "docs" / "report.md",
+    ROOT / "dbt" / "README.md",
 ]
+# Pages whose Python blocks are not examples of the public API.
+EXEMPT = {
+    "CHANGELOG.md": "the release notes quote old versions of the API",
+    "dbt/API-NOTES.md": "notes on the API for contributors: fragments with their own setup",
+}
+FENCE = r"^```python\n(# skip: ([^\n]+)\n)?(.*?)^```"
 
 
 def python_blocks(text: str) -> list[str]:
-    return re.findall(r"^```python\n(.*?)^```", text, re.S | re.M)
+    """The ```python blocks that run, in order: those with no skip reason."""
+    return [body for _, reason, body in re.findall(FENCE, text, re.S | re.M) if not reason]
+
+
+def skipped_blocks(text: str) -> list[str]:
+    """The reasons of the ```python blocks that carry one."""
+    return [reason for _, reason, _ in re.findall(FENCE, text, re.S | re.M) if reason]
 
 
 def shown_output(block: str) -> list[str]:
@@ -70,3 +90,26 @@ def test_readme_examples_run(readme, tmp_path, monkeypatch):
         pytest.skip(f"{readme.relative_to(ROOT)} of the repository is not here")
     monkeypatch.chdir(tmp_path)
     run_blocks(readme, readme.read_text())
+    for reason in skipped_blocks(readme.read_text()):
+        print(f"{readme.relative_to(ROOT)}: block skipped: {reason}")
+
+
+@needs_repo
+def test_every_page_is_listed():
+    """A page with a Python block is run here, or says why it is not."""
+    listed = {p.relative_to(ROOT).as_posix() for p in READMES} | set(EXEMPT)
+    pages = [
+        *ROOT.glob("*.md"),
+        *ROOT.glob("python/README.md"),
+        *ROOT.glob("docs/*.md"),
+        *ROOT.glob("dbt/*.md"),
+        *ROOT.glob("templates/pipelines/**/*.md"),
+    ]
+    missing = sorted(
+        rel
+        for p in pages
+        if (rel := p.relative_to(ROOT).as_posix()) not in listed
+        and "templates/pipelines/.claude" not in rel
+        and re.search(r"^```python", p.read_text(), re.M)
+    )
+    assert not missing, f"pages with a Python block that no test runs: {missing}"
