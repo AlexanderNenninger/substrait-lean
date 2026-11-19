@@ -74,7 +74,7 @@ def _number(text: str, negative: bool = False) -> E:
         v = int(sign + text)
         for t in (dt.int32, dt.int64):
             if t.bounds.lower <= v <= t.bounds.upper:
-                return E(literal(v, t), t, v)
+                return E(literal(v, t), t, v, literal=True)
         raise Unsupported(
             f"the integer {sign}{text} is a HUGEINT, which is not supported; "
             f"write it as a decimal literal ({sign}{text}.0, up to 38 digits)"
