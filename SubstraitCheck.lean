@@ -377,8 +377,8 @@ def blackBoxesOf (r : Rel) : Lean.Json :=
     | some f, _ => f.laws
     | none, some f => f.laws
     | none, none => []
-  Lean.Json.arr (r.blackBoxNames.map fun n => Lean.Json.mkObj
-    [("name", n), ("laws", lawsJson (lawsOf n))]).toArray
+  Lean.Json.arr (r.blackBoxNames.map fun (n : String) => Lean.Json.mkObj
+    [("name", Lean.Json.str n), ("laws", lawsJson (lawsOf n))]).toArray
 
 /-- A black box whose function breaks its declared law: `non_null`, and it
 gives NULL. The model keeps the sample there and the compiled checker panics
