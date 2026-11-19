@@ -56,10 +56,11 @@ def test_verify_proves_a_plan_without_duckdb() -> None:
         sql = sv.verify("SELECT k + 1 AS y FROM t", tables={"t": {"k": "int64"}},
                         requires={"t": [_.k.between(0, 9)]}, ensures=["y >= 1"],
                         counterexamples=0)
-        print(r.verdict, sql.verdict, "duckdb" in {m for m, v in sys.modules.items() if v})
+        print(r.verdict, sql.verdict, "SELECT" in r.to_sql("duckdb").upper(),
+              "duckdb" in {m for m, v in sys.modules.items() if v})
         """
     )
-    assert out == "proved proved False"
+    assert out == "proved proved True False"
 
 
 def test_running_on_duckdb_names_the_extra() -> None:

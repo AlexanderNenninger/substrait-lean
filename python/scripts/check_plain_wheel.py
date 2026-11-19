@@ -2,9 +2,9 @@
 
 The Wheels workflow runs it against the built wheel, in an environment with
 nothing else: no optional package may be installed, `import sverify` must
-not need one, a node over an in-memory source refreshes on DuckDB, and the
-`sverify` command checks a file. An extra imported at the top of a module
-fails here before it breaks a plain install.
+not need one, a refresh names the extra that runs it (no engine is installed
+without `sverify[duckdb]`), and the `sverify` command checks a file. An extra
+imported at the top of a module fails here before it breaks a plain install.
 
     python scripts/check_plain_wheel.py [--import-budget SECONDS]
 """
@@ -23,6 +23,7 @@ from pathlib import Path
 #: The optional packages of the extras (and of extras to come); none may be
 #: installed for this check to mean anything.
 OPTIONAL = (
+    "duckdb",
     "polars",
     "pyspark",
     "deltalake",
@@ -86,12 +87,13 @@ def main() -> int:
     import pyarrow as pa
 
     import sverify as sv
-    from sverify.io import Changes, StaticSource
+    from sverify.io import StaticSource
 
     loaded = [m for m in OPTIONAL if m in sys.modules]
     assert not loaded, f"import sverify imported {loaded}"
 
-    # The core engine: a node over an in-memory source, refreshed from a change.
+    # No engine runs plans: a refresh of a node over an in-memory source says
+    # which extra to install (the `duckdb` combination runs one).
     t = StaticSource(pa.table({"a": [1, 5]}), name="t")
 
     @sv.transform()
@@ -99,11 +101,12 @@ def main() -> int:
         return t.filter(t.a > 2)
 
     node = big(t)
-    node.refresh()
-    t.apply(Changes(inserts=[(7,)]))
-    node.refresh()
-    rows = sorted(r["a"] for r in node.to_arrow().to_pylist())
-    assert rows == [5, 7], rows
+    try:
+        node.refresh()
+    except ValueError as e:
+        assert "sverify[duckdb]" in str(e), e
+    else:
+        raise AssertionError("a refresh with no engine installed did not refuse")
 
     # The command line on a file of the plain install.
     with tempfile.TemporaryDirectory() as d:
