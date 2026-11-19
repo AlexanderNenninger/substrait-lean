@@ -181,11 +181,17 @@ place, and what retires it.
   sequence of batches (`LinearAgg.fsum_no_drift`), and the same of the
   moments of `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` (`LinearAgg.no_drift`,
   `varState_sound`, `covState_sound`, `corrState_sound`); finishing them
-  ports Lean's `sqrtMag` (`sqrt_mag`). Holding that integer in
-  Python, adding up each batch's contributions to it (the engine gives each
-  changed row's value and weight with the checked `contrib` plan) and
-  rounding it once with CPython's `int / int` (correctly rounded, ties to
-  even) are trusted. `tests/test_exact_sum.py` checks the finish against the
+  ports Lean's `sqrtMag` (`sqrt_mag`). The engine holds that integer in
+  limbs, rows of the group state that its `SUM` adds up per group with the
+  checked plans (#1447). Trusted are: that a value's split into a mantissa
+  and a grid position (`log2`, a correction, two scalings by powers of two),
+  which each row checks and the finish refuses when it fails, gives back the
+  value; that the limbs, read back for the touched groups, are the integer
+  (`Σ v · 2^(32 j)`, which holds while a group has fewer than `2⁴¹` values,
+  where the finish raises); and rounding it once with CPython's `int / int`
+  (correctly rounded, ties to even). `tests/test_exact_sum.py` checks the
+  limbs against the exact moments on DuckDB and Polars, the largest double,
+  subnormals and `2^k - ulp` among the values, and the finish against the
   checker's `floatSumCR`, `floatAvgCR`, `varOf`, `covOf` and `corrOf`, NaN,
   `±∞`, `-0.0` and subnormals among the values.
 - Where an engine evaluates an expression. Lean proves which rows an

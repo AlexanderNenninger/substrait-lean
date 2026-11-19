@@ -1445,13 +1445,8 @@ class IncrementalView:
         init = run_plan_on(self.con, spec.init, self.engine, new_tables, self.tables)
         if self.linear is None or not self.linear.exact:
             return init
-        # SUMs and AVGs of doubles: their exact moments, from every input row.
-        lin = self.linear
-        assert lin.values is not None
-        rows = run_plan_on(self.con, lin.values, self.engine, new_tables, self.tables)
-        rows = rows.rename_columns(init.column_names)
-        delta = _exact_sum.fold_contributions(rows, lin.keys, lin.exact)
-        return _exact_sum.attach(init, lin.keys, lin.exact, {}, delta, check=False)
+        # SUMs and AVGs of doubles: finished from their limbs.
+        return _exact_sum.attach(init, self.linear.keys, self.linear.exact, check=False)
 
     def _linear_change(
         self, deltas: Mapping[str, pa.Table], new_tables: Mapping[str, pa.Table | Native]
@@ -1467,8 +1462,7 @@ class IncrementalView:
         (`ExtremeAgg.extreme_maintained`)."""
         spec, full = self.linear, self.groups
         assert spec is not None and full is not None
-        # The engine's columns: an exact measure's moments stay here.
-        groups = _exact_sum.strip(full, spec.exact)
+        groups = full
         con = self.con
         parts = [r for r in self._run_deltas(spec.deltas, deltas) if r.num_rows]
         if not parts:
@@ -1484,9 +1478,7 @@ class IncrementalView:
             # expiry deletes only their rows (`Retention.expiry_sound`).
             contrib = self._kept_groups(contrib)
             keys = contrib.select(spec.keys)
-            delta_moments = _exact_sum.fold_contributions(contrib, spec.keys, spec.exact)
-            old_full = arrow_of(self.store.with_keys(full, spec.keys, keys))
-            put_table(con, tables["old"], _exact_sum.strip(old_full, spec.exact))
+            put_table(con, tables["old"], arrow_of(self.store.with_keys(full, spec.keys, keys)))
             put_table(con, tables["contrib"], contrib)
             new = run_plan(con, spec.merge, self.engine)
             new = new.rename_columns(groups.schema.names).cast(groups.schema)
@@ -1503,12 +1495,8 @@ class IncrementalView:
                     again = again.rename_columns(groups.schema.names).cast(groups.schema)
                     kept = by_keys(new, spec.keys, gone, keep=False)
                     new = pa.concat_tables([kept, self._kept_groups(again)])
-            if spec.exact:
-                old_moments = _exact_sum.moments_by_key(old_full, spec.keys, spec.exact)
-                new = _exact_sum.attach(
-                    new, spec.keys, spec.exact, old_moments, delta_moments, check=True
-                )
-            put_table(con, tables["state"], _exact_sum.strip(new, spec.exact))
+            new = _exact_sum.attach(new, spec.keys, spec.exact, check=True)
+            put_table(con, tables["state"], new)
             out = run_plan(con, spec.finish, self.engine)
         finally:
             for t in tables.values():
@@ -1516,7 +1504,11 @@ class IncrementalView:
         out = self._kept(out.rename_columns(self.schema.names).cast(self.schema))
         old = arrow_of(self.store.with_keys(self.state, spec.columns, keys))
         change = self._merge(weighted(out, 1), self.store.negated(self._kept(old)))
-        live = new.filter(_call("not_equal", new.column(_linear.COUNT), pa.scalar(0)))
+        live = _call("not_equal", new.column(_linear.COUNT), pa.scalar(0))
+        if spec.exact:
+            # A group's limb rows stay while it has rows; a gone group's are 0.
+            live = _call("or", live, _call("is_valid", new.column(_exact_sum.CODE)))
+        live = new.filter(live)
         kept = self.store.without_keys(full, spec.keys, keys)
         return arrow_of(change), pa.concat_tables([kept, live])
 

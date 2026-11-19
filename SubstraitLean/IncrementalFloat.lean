@@ -23,8 +23,10 @@ aggregate (`LinState.Sound`).
   moments, linear too: `varState_sound`, `covState_sound` and
   `corrState_sound` finish them as `varOf`, `covOf` and `corrOf` do.
 
-The engine keeps the exact sum as a sum of mantissas per binary exponent
-(`python/src/sverify/_linear.py`), which is this integer written in pieces.
+The engine keeps each exact moment in limbs (`python/src/sverify/_exact_sum.py`,
+#1447): a piece `v` of a value at bit `p` adds `v · 2^(p mod 32)` to limb
+`p / 32`, each limb a sum over the rows like the moment itself, and the limbs
+weighted by `2^(32 j)` are this integer (`limbs_sum`).
 -/
 
 namespace Substrait
@@ -429,6 +431,17 @@ theorem corrState_sound {m : Measure} (hf : m.fn = .corr) (hd : m.distinct = fal
     cases nonFinite (pairCodes ps) with
     | some _ => rfl
     | none => simp [coComomentNum, prodSumOf_eq, scaledSum_fst, scaledSum_snd]
+
+/-- **The limbs are the integer.** A piece `v` at bit `p` of an exact moment
+adds `v · 2^(p mod 32)` to limb `p / 32`; weighted by that limb's `2^(32 j)`
+it is `v · 2^p` again, so the limbs add up to the integer the moment is. -/
+theorem limbs_sum (ps : List (Nat × Int)) :
+    (ps.map fun q => q.2 * 2 ^ (q.1 % 32) * 2 ^ (32 * (q.1 / 32))).sum
+      = (ps.map fun q => q.2 * 2 ^ q.1).sum := by
+  congr 1
+  apply List.map_congr_left
+  intro q _
+  rw [Int.mul_assoc, ← Int.pow_add, Nat.mod_add_div]
 
 end LinearAgg
 end Substrait

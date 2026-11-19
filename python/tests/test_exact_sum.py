@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 import math
 import random
+from decimal import Decimal
 from fractions import Fraction
 
 import ibis
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from ibis import _ as col
 
@@ -61,24 +63,28 @@ def _scaled(v: float) -> int:
     return int(Fraction(v) * _exact_sum.SCALE)
 
 
-@pytest.mark.parametrize("kind", ["fsum", "var", "cov", "corr"])
-def test_fold_is_exact(kind):
-    rng = random.Random(918)
-    xs = [value(rng) for _ in range(3000)]
-    ys = [value(rng) for _ in xs]
-    ws = [rng.choice([1, 1, -1, 2, 300, -1000, 2**40]) for _ in xs]
-    ks = [rng.choice([0, 1, None]) for _ in xs]
-    pair = kind in ("cov", "corr")
-    cols = [pa.array(xs, pa.float64())] + ([pa.array(ys, pa.float64())] if pair else [])
-    got = _exact_sum.fold(kind, pa.table({"k0": ks}), cols, pa.array(ws))
+EDGES = [
+    5e-324,
+    -5e-324,
+    2.225073858507201e-308,  # the largest subnormal
+    2.2250738585072014e-308,
+    1.7976931348623157e308,
+    -1.7976931348623157e308,
+    *(2.0**k * (1 - 2**-53) for k in range(-1021, 1025, 97)),  # 2^k - ulp
+    *(2.0**k for k in range(-1074, 1024, 89)),
+]
+
+
+def _moments(kind: str, xs, ys, ws) -> dict:
+    """Each group's exact moments, row by row with Python ints."""
     terms = _exact_sum.TERMS[kind]
-    want: dict = {}
-    for k, x, y, w in zip(ks, xs, ys, ws, strict=True):
-        got_vs = [x, y] if pair else [x]
-        vs = [v for v in got_vs if v is not None]
-        if len(vs) < len(got_vs):
+    pair = kind in ("cov", "corr")
+    out: dict = {}
+    for k, x, y, w in zip(xs[0], xs[1], ys, ws, strict=True):
+        vs = [x, y] if pair else [x]
+        if any(v is None for v in vs):
             continue
-        acc = want.setdefault((k,), [0] * _exact_sum.width(kind))
+        acc = out.setdefault(k, [0] * _exact_sum.width(kind))
         sv_ = {"x": _scaled(vs[0]), "y": _scaled(vs[-1])}
         for j, t in enumerate(terms):
             acc[j] += w * math.prod(sv_[c] for c in t)
@@ -87,7 +93,93 @@ def test_fold_is_exact(kind):
                 acc[len(terms)] += w
             elif math.isinf(v):
                 acc[len(terms) + (1 if v > 0 else 2)] += w
-    assert got == want
+    return out
+
+
+def _limbs(engine: str, kind: str, ks, xs, ys, ws) -> dict:
+    """The engine's limbs of the rows, added up per group and code, read
+    back as each group's moments (`_exact_sum.moments`)."""
+    from sverify.engine import connect, put_table, run_plan, written_plan
+
+    e = _exact_sum.Exact(0, kind)
+    t = ibis.table(
+        {"k0": "int64", "__w": "int64", "__ok0": "int64", "__x0": "float64", "__y0": "float64"},
+        name="rows",
+    )
+    parts = _exact_sum.limbs(t, ["k0"], [(e, "__x0", "__y0" if e.pair else None, "__ok0")])
+    code, value = _exact_sum.CODE, _exact_sum.VALUE
+    summed = parts.group_by(["k0", code]).aggregate(**{value: parts[value].sum()})
+    plan = written_plan(plan_json(None, summed))  # pyrefly: ignore[bad-argument-type]
+    con = connect(engine)
+    ok = [int(x is not None and (not e.pair or y is not None)) for x, y in zip(xs, ys, strict=True)]
+    data = {"k0": ks, "__w": ws, "__ok0": ok, "__x0": xs, "__y0": ys}
+    put_table(con, "rows", pa.table(data, schema=t.schema().to_pyarrow()))
+    slots: dict = {}
+    for r in run_plan(con, plan, engine).to_pylist():
+        _, rest = divmod(r[code], _exact_sum._SLOTS * _exact_sum._LIMBS)
+        slot, limb = divmod(rest, _exact_sum._LIMBS)
+        g = slots.setdefault(r["k0"], {})
+        g[slot] = g.get(slot, 0) + (int(r[value]) << (_exact_sum._BITS * limb))
+    assert all(_exact_sum.BROKEN not in g for g in slots.values())
+    return {k: _exact_sum.moments(e, g) for k, g in slots.items() if any(g.values())}
+
+
+ENGINES = ["duckdb", "polars", pytest.param("spark", marks=pytest.mark.backend("spark"))]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("kind", ["fsum", "var", "cov", "corr"])
+def test_limbs_are_the_exact_moments(engine, kind):
+    """The engine's limbs of random rows (NaN, infinities, subnormals, the
+    largest double, `2^k - ulp`, NULLs, large and negative weights) add up to
+    the exact moments; the same rows deleted leave no limb (E6)."""
+    rng = random.Random(918)
+    xs = [value(rng) for _ in range(1500)] + EDGES + [-v for v in EDGES]
+    ys = [value(rng) for _ in xs]
+    ws = [rng.choice([1, 1, -1, 2, 300, -1000, 2**40]) for _ in xs]
+    ks = [rng.choice([0, 1, None]) for _ in xs]
+    want = {k: m for k, m in _moments(kind, (ks, xs), ys, ws).items() if any(m)}
+    assert _limbs(engine, kind, ks, xs, ys, ws) == want
+    gone = _limbs(engine, kind, ks + ks, xs + xs, ys + ys, ws + [-w for w in ws])
+    assert gone == {}
+
+
+def _state(n: int, slots: dict[tuple[int, int], int]) -> pa.Table:
+    """A state of one group: its own row with `n` values and a limb row per
+    (slot, limb)."""
+    code, value = _exact_sum.CODE, _exact_sum.VALUE
+    limb_type = pa.decimal128(38, 0)
+    rows = [{"k0": 1, "__count": n, "__n0": n, "__s0": None, code: None, value: Decimal(0)}]
+    for (slot, limb), v in slots.items():
+        rows.append(
+            {
+                "k0": 1,
+                "__count": 0,
+                "__n0": 0,
+                "__s0": None,
+                code: slot * 256 + limb,
+                value: Decimal(v),
+            }
+        )
+    schema = pa.schema(
+        [("k0", pa.int64()), ("__count", pa.int64()), ("__n0", pa.int64()),
+         ("__s0", pa.float64()), (code, pa.int32()), (value, limb_type)]
+    )  # fmt: skip
+    return pa.Table.from_pylist(rows, schema=schema)
+
+
+def test_attach_finishes_from_limbs_and_guards_them():
+    """The finish reads a group's limbs; past the limbs' headroom (E1) or
+    with a failed split (E2) it raises."""
+    e = [_exact_sum.Exact(0, "fsum")]
+    got = _exact_sum.attach(
+        _state(2, {(_exact_sum.X, 1073 // 32): 3 * 2 ** (1073 % 32)}), ["k0"], e, check=True
+    )
+    assert got.filter(pc.is_null(got.column("__l"))).column("__s0").to_pylist() == [1.5]
+    with pytest.raises(ValueError, match="exceeds the exact state"):
+        _exact_sum.attach(_state(_exact_sum.HEADROOM, {}), ["k0"], e, check=False)
+    with pytest.raises(ValueError, match="split into limbs failed"):
+        _exact_sum.attach(_state(1, {(_exact_sum.BROKEN, 0): 1}), ["k0"], e, check=False)
 
 
 def test_finish_rounds_once():
@@ -106,13 +198,13 @@ def test_finish_rounds_once():
 
 
 def _ours(kind: str, xs, ys=None, sample: bool = False, sqrt: bool = False):
-    """`sverify._exact_sum`'s aggregate of one group's values."""
-    cols = [pa.array(xs, pa.float64())] + ([] if ys is None else [pa.array(ys, pa.float64())])
-    mo = _exact_sum.fold(kind, pa.table({"k0": [0] * len(xs)}), cols, pa.array([1] * len(xs)))
-    m = mo.get((0,), [0] * _exact_sum.width(kind))
-    n = sum(
-        x is not None and (ys is None or y is not None) for x, y in zip(xs, ys or xs, strict=True)
-    )
+    """The aggregate of one group's values from their exact moments,
+    finished by `sverify._exact_sum`."""
+    ys = ys if ys is not None else [0.0] * len(xs)
+    mo = _moments(kind, ([0] * len(xs), xs), ys, [1] * len(xs))
+    m = mo.get(0, [0] * _exact_sum.width(kind))
+    pair = kind in ("cov", "corr")
+    n = sum(x is not None and (not pair or y is not None) for x, y in zip(xs, ys, strict=True))
     return _exact_sum.finish(kind, m, n, sample, sqrt)
 
 
@@ -227,7 +319,7 @@ def _check(node, live, names=("s", "a")) -> None:
             assert _same(row[c], MEASURES[n][1](xs, ys)), (g, n, row[c])
 
 
-@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("engine", ENGINES)
 @pytest.mark.parametrize("seed", range(2))
 def test_a_maintained_double_sum_is_exact(seed, engine):
     rng = random.Random(seed)
@@ -246,6 +338,12 @@ def test_a_maintained_double_sum_is_exact(seed, engine):
         out = node.refresh(engine=engine)["sums"]
         assert out.report is not None and not out.report.touched and not out.report.diffed
         _check(node, live)
+    # Every row deleted: no group and no limb is left (E6).
+    src.apply(Changes(deletes=table(live)))
+    node.refresh(engine=engine)
+    assert rows(node) == []
+    groups = node._stage.view.groups
+    assert groups is not None and groups.num_rows == 0
 
 
 def test_no_drift_where_a_running_sum_drifts():

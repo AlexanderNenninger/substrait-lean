@@ -530,11 +530,14 @@ sequence of batches the state finishes to the aggregate of the current rows
 [`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)):
 a delete cancels its insert exactly. Over 1,000 batches of the prototype
 (`python -m sverify_dev.ivm_float_sum`), a running double sum was off in
-17,226 of 18,432 group results, the worst by 9.4·10¹⁴ ulps. The engine gives each changed row's value with the checked `contrib`
-plan, and `sverify._exact_sum` adds the values up and rounds, since splitting
-a double into mantissa and exponent and rounding a 2,100-bit integer have no
-Substrait or Ibis form ([what is trusted](proofs.md#what-is-trusted)). The
-state is rebuilt from the inputs when a job starts: about 2 s for 10⁷ rows.
+17,226 of 18,432 group results, the worst by 9.4·10¹⁴ ulps. The engine keeps the integer itself, in limbs: a finite double is
+`m · 2^(p - 1074)`, and `m · 2^(p mod 32)` adds to limb `p div 32` of the
+group, a `DECIMAL(38,0)` row of the group state that the checked `contrib`
+and `merge` plans add up per group with the engine's `SUM` (#1447). Python
+reads back the limbs of the touched groups only and rounds them once
+([what is trusted](proofs.md#what-is-trusted)). A group keeps 1 to 2 limbs
+for `Σx` and 3 to 5 for `Σx²` on typical data. The state is rebuilt from the
+inputs when a job starts.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` of doubles keep their exact moments
 the same way: the count, `Σx`, `Σx²`, and for pairs `Σy`, `Σxy`, `Σy²`, with
