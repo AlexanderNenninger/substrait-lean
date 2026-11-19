@@ -81,3 +81,15 @@ def test_an_ibis_aggregate_refusal_names_its_function():
     with pytest.raises(sv.errors.UnsupportedError) as e:
         sv.verify(t.group_by("k").agg(n=t.v.approx_nunique()))
     assert e.value.construct == "function approx_nunique" and e.value.sql is None
+
+
+def test_the_op_table_names_real_ibis_operations_by_one_spelling():
+    """The method names a user calls, for the operations a refusal can name."""
+    import ibis.expr.operations as ops
+
+    from sverify.ibis_substrait._constructs import OP_METHODS
+
+    assert all(hasattr(ops, name) for name in OP_METHODS), [
+        n for n in OP_METHODS if not hasattr(ops, n)
+    ]
+    assert all(exits.CONSTRUCT_FORM.fullmatch(f"function {m}") for m in OP_METHODS.values())

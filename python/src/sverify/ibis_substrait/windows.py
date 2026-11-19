@@ -14,6 +14,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, _sort_key
+from sverify.ibis_substrait._constructs import op_construct
 from sverify.ibis_substrait.aggregates import measure
 from sverify.ibis_substrait.temporal import _const_interval
 from sverify.plan_json import INTERVAL_MICROS, Json, ProducerUnsupported, Unsupported, call, literal
@@ -173,7 +174,7 @@ def window(x: Exprs, op: Any) -> Json:
     else:
         raise ProducerUnsupported(
             f"window function {type(func).__name__} is not supported",
-            construct=type(func).__name__.upper(),
+            construct=op_construct(func),
         )
     return {
         "windowFunction": {

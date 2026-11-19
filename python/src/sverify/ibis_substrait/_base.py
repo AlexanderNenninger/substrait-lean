@@ -20,6 +20,7 @@ import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
 from sverify import _decimals, _functions
+from sverify.ibis_substrait._constructs import op_construct
 from sverify.plan_json import (
     Json,
     ProducerUnsupported,
@@ -289,7 +290,7 @@ def rel(op: Any) -> Json:
     if rule is None:
         raise Unsupported(
             f"{type(op).__name__} is not supported yet ({_ISSUE_60})",
-            construct=type(op).__name__.upper(),
+            construct=op_construct(op),
         )
     return rule(op)
 
