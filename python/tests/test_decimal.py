@@ -167,14 +167,12 @@ def test_lean_values_raises_where_the_reference_raises(con):
     no_match = "SELECT x.i FROM t x JOIN t y ON x.i = y.i + 100 AND CAST(x.a AS DECIMAL(3, 2)) > 0"
     assert lean(con, no_match) == []
     assert len(lean(con, "SELECT sum(CAST(a AS DECIMAL(4, 2))) AS r FROM t")) == 1
-    # A window's aggregate, on each row's frame: `12.35` overflows DECIMAL(3, 2).
+    # A window's aggregate: `12.35` overflows DECIMAL(3, 2). The lift computes the cast in a
+    # projection under the window, so this raises there; that a row no frame holds raises
+    # nothing is a `#guard` of `windowRaised` (`SubstraitCheck.lean`).
     over = "SELECT sum(CAST(a AS DECIMAL(3, 2))) OVER ({}) AS r FROM t"
     with pytest.raises(LeanRaised, match="overflow"):
         lean(con, over.format("PARTITION BY i"))
-    # By `i` the rows are -0.05, NULL, -12.35, 12.35, and the two that overflow are the last
-    # two: a frame of the row two before holds only the first two, so nothing raises.
-    skipped = over.format("ORDER BY i ROWS BETWEEN 2 PRECEDING AND 2 PRECEDING")
-    assert len(lean(con, skipped)) == 4
 
 
 @pytest.mark.parametrize(

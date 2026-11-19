@@ -175,6 +175,19 @@ def windowRaised (p : Profile) (part : List Nat) (fns : List WinFn) :
         firstError p frame m.filter.toList <|> firstError p (m.kept frame) [m.arg]
       | _ => none) <|> windowRaised p part fns (before ++ [x]) after
 
+-- A window aggregate raises only on the rows a frame holds: `12.35` (a `DECIMAL(3, 2)` of
+-- 4 digits) is the last row, so `1 PRECEDING` holds it in no frame, and the whole
+-- partition holds it in the last row's.
+section
+local instance : Boxes.Ambient := Boxes.Ambient.none
+private def windowRows' : Relation := [[.int 1, .dec 2 5], [.int 2, .dec 2 1235]]
+private def windowAgg (fr : Frame) : List WinFn :=
+  [.agg { fn := .sum, arg := .un (.decimal 3 2) (.field 1) } [{ col := 0 }] fr]
+#guard (windowRaised Profile.reference [] (windowAgg ⟨false, .preceding 1, .preceding 1⟩) []
+  windowRows').isNone
+#guard (windowRaised Profile.reference [] (windowAgg Frame.all) [] windowRows').isSome
+end
+
 /-- The first error the reference profile `p` raises in the plan: each
 filter, projection and aggregate evaluates its expressions on the rows its
 input gives (`Rel.evalFast`, which equals `Rel.eval`), inputs first. An
