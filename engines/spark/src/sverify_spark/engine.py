@@ -150,7 +150,7 @@ def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> 
             from sverify._scan import Scan
             from sverify_spark.scan import spark_scan
 
-            if not isinstance(table, Scan):  # a state's files (`SparkState`)
+            if not isinstance(table, Scan):  # a state's files (`PartsState`)
                 table.view(spark).createOrReplaceTempView(name)
                 held.pop(name, None)  # the view no longer holds the Arrow table sent last
                 continue

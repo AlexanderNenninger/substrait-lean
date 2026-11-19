@@ -145,10 +145,10 @@ def _table(con: Any, name: str, spark: Any) -> Any:
     from sverify._scan import Scan
     from sverify._unsupported import Unsupported
     from sverify_spark.scan import shares_filesystem
-    from sverify_spark.store import SparkState
+    from sverify._parts import PartsState
 
     table = con.get(name)
-    if isinstance(table, SparkState):  # a state's files, as they are
+    if isinstance(table, PartsState):  # a state's files, as they are
         return table
     if not isinstance(table, Scan) or not table.readable():
         return con._arrow[name]
