@@ -1,0 +1,38 @@
+{
+  "id": "spark-guarded-chain-no-inlining",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Stacked guarded levels are not inlined into a 2^k tree",
+  "verdict": "plan and run stay small at 40 levels",
+  "area": "execution",
+  "constructs": [
+    "CASE WHEN",
+    "project"
+  ],
+  "settings": {
+    "optimizer": "default on"
+  },
+  "description": [
+    "Forty stacked projections, each appending a reach and a guarded column that read the previous reach twice (so an optimizer that merges projections by substitution would build a tree of 2^40 copies), plan and run in well under a second of engine time and under 100 MB of extra memory. Optimized plan text by levels (5, 10, 20, 40): 850, 2,017, 5,239 and 11,963 characters (the optimized logical plan); planning 0.25 s to 0.82 s; running 1.7 s to 2.1 s (a local[2] session; most of it is the session's start); process peak including the JVM 723 MB to 821 MB. The plan text grows about linearly. The result matches the reference at every level."
+  ],
+  "reference": "No reference counterpart: the reference has no plan size. D50-d needs the plan of a chain of k guarded levels to cost time and memory linear in k.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.guarded_columns (worker 4), on homelab, branch claude/d50d-probes",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/guarded_columns.py",
+          "note": "`python -m sverify_dev.guarded_columns p2 --engine spark`: PySpark 4.3.0, local[2], ANSI on, Linux x86_64 (homelab); the P1 cases also ran on macOS arm64 for DuckDB and Polars with the same result."
+        }
+      ],
+      "notes": "Issue #1719 (D50-d). Probe rows: 3000, every third one the text `bad`, which a strict cast rejects."
+    }
+  ],
+  "issues": [
+    1719
+  ]
+}

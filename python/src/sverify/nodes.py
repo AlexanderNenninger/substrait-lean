@@ -34,6 +34,7 @@ source versions.
 from __future__ import annotations
 
 import json
+import logging
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
@@ -62,6 +63,9 @@ if TYPE_CHECKING:
     from sverify.contracts import ContractedTransform, Report
     from sverify.io._common import Contract, SinkWrite
     from sverify.routes import Route, RouteKind
+
+#: One INFO line per node and per commit of a refresh, for a job's task log.
+_log = logging.getLogger("sverify")
 
 
 class Sink(Protocol):
@@ -708,6 +712,7 @@ class Node:
             _write_quarantine(self.name, stage, target, first)
         if sink is not None:
             out.write = sink._commit()
+            _log.info("%s: committed %s", self.name, _write_text(out.write))
         # After the write: a sink keeps the buckets the state drops.
         out.retention = self._stage.pipe.retire()
         return out
@@ -1043,11 +1048,7 @@ class StageRefresh:
             if r.off is None
         ]
         if (w := self.write) is not None:
-            if w.mode == "skipped":
-                parts.append("already committed")
-            else:
-                at = "" if w.version is None else f" v{w.version}"
-                parts.append(f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}")
+            parts.append(_write_text(w))
         return f"{self.heading}: " + ", ".join(parts)
 
     def to_dict(self, *, examples: bool = False) -> dict[str, Any]:
@@ -1404,6 +1405,7 @@ class Group:
                     entry = StageRefresh(n.name, None, held=f"waiting for {', '.join(blocked)}")
                     waiting[id(n)] = n.name
                     done.append(entry)
+                    _log.info("%s", entry.summary())
                     if runs is not None:
                         runs.start(n)
                         runs.complete(n, entry)
@@ -1416,6 +1418,7 @@ class Group:
                 if entry.held is not None and n._stage is None:
                     waiting[id(n)] = n.name
                 done.append(entry)
+                _log.info("%s", entry.summary())
             return Refresh(done)
         except BaseException as e:
             if runs is not None:
@@ -1446,6 +1449,15 @@ class Group:
                 )
             )
         return out
+
+
+def _write_text(w: SinkWrite) -> str:
+    """A commit in the summary's words: "merge v5: +2 −0", or "already
+    committed" where the sink held the state."""
+    if w.mode == "skipped":
+        return "already committed"
+    at = "" if w.version is None else f" v{w.version}"
+    return f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}"
 
 
 def _held_text(h: Held, stage: _Stage | None) -> str:
