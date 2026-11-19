@@ -11,7 +11,7 @@ A view that aggregates such a source by a time bucket of `ts` (`plan`
 recognises it) then has final buckets: one that ends at or before the
 watermark changes in no admissible batch. Lean proves it for the aggregate
 (`Retention.final_unchanged`, `Retention.retention_sound` and
-`Retention.final_stable` in `SubstraitLean/Retention.lean`), and that at most
+`Retention.final_stable` in `analysis/Sverify/Analysis/Retention.lean`), and that at most
 `⌈lateness / width⌉ + 1` buckets are open (`Retention.open_buckets_le`).
 Filters and projections under the aggregate keep each row's `ts`, and those
 over it act on each output row, so they keep the result.

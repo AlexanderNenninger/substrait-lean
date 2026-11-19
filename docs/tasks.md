@@ -920,7 +920,7 @@ table, without `PARTITION BY`), from the input rows in that span
 widened by the frame. Lean proves that a window value depends only on the
 rows in its frame, so this equals a full recompute for inputs without ties
 on the partition and time columns (`TouchedFrames.framed_batch` in
-[`SubstraitLean/TouchedFrames.lean`](../SubstraitLean/TouchedFrames.lean)),
+[`analysis/Sverify/Analysis/TouchedFrames.lean`](../analysis/Sverify/Analysis/TouchedFrames.lean)),
 and `status()` says "touched frames recomputed". The tests
 ([`test_touched_frames.py`](../python/tests/test_touched_frames.py)) compare
 every refresh with a full recompute on random streams with late rows, rows

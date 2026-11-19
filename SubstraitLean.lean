@@ -23,7 +23,7 @@ import Sverify.Core.Rewrites
 import Sverify.Analysis.WSet
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
-import SubstraitLean.Terms
+import Sverify.Analysis.Terms
 import SubstraitLean.Write
 import Sverify.Core.Check
 import Sverify.Analysis.Contracts
@@ -33,9 +33,9 @@ import SubstraitLean.Infer
 import Sverify.Analysis.Rows
 import Sverify.Core.Decomposable
 import Sverify.Analysis.Partition
-import SubstraitLean.Retention
-import SubstraitLean.TouchedGroups
-import SubstraitLean.TouchedFrames
+import Sverify.Analysis.Retention
+import Sverify.Analysis.TouchedGroups
+import Sverify.Analysis.TouchedFrames
 import SubstraitLean.IncrementalAgg
 import SubstraitLean.IncrementalFloat
 import SubstraitLean.IncrementalMinMax
@@ -59,10 +59,10 @@ import Sverify.Core.StatProps
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Core.Allowed
 import Sverify.Core.Ties
-import SubstraitLean.Seam
+import Sverify.Analysis.Seam
 import Sverify.Analysis.Knowledge
-import SubstraitLean.Choices
-import SubstraitLean.ChoicesSound
+import Sverify.Analysis.Choices
+import Sverify.Analysis.ChoicesSound
 import Sverify.DuckDB.SQL
 import Sverify.DuckDB.LiftHint
 import Sverify.DuckDB.LiftCache
@@ -70,7 +70,7 @@ import Sverify.DuckDB.LiftSearch
 import Sverify.DuckDB.Lift
 import Sverify.Analysis.Keys
 import SubstraitLean.AnalysisCongr
-import SubstraitLean.Quarantine
+import Sverify.Analysis.Quarantine
 import SubstraitLean.Semantic
 import SubstraitLean.Compose
 import SubstraitLean.TableFormat
@@ -111,7 +111,7 @@ import SubstraitLean.Realize
 import Sverify.Frontend.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples
-import SubstraitLean.Refresh
+import Sverify.Analysis.Refresh
 import SubstraitLean.Engine
 import SubstraitLean.IssuesAll
 import SubstraitLean.ProvedOn
