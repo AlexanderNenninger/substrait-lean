@@ -196,12 +196,16 @@ def _result(results, prefix):
 def test_replay(replayed):
     # DuckDB's SQL as it is, through `sverify.sql_lift`.
     assert _result(replayed, "SELECT i + 1").cls == "agree"
-    # DuckDB raises on 64-bit overflow, and so does the reference (`lean_values`
-    # reports the error, #747).
+    # DuckDB raises on 64-bit overflow; `Rel.eval`'s integers are unbounded, and
+    # the verifier warns: the reference raises with DuckDB (#747). `lean_values`
+    # reports the error only for a Project over a VALUES, which this plan is not.
     overflow = _result(replayed, "SELECT 9223372036854775807")
     assert (overflow.cls, overflow.side) == ("agree", None)
-    assert overflow.lean == "error: Substrait.Issue.wraps"
+    assert overflow.lean == '[["9223372036854775808"]]'
     assert overflow.engine.startswith("error: Out of Range Error")
+    # `verify` without inference reports the overflow the test expects, which
+    # an inferred precondition would absorb (#619).
+    assert (overflow.reason or "").startswith("verify: overflow"), overflow.reason
     # Division by zero: DuckDB 2.0 raises (and so does the written plan,
     # guarded), and so does the reference.
     div = _result(replayed, "SELECT i // 0")
