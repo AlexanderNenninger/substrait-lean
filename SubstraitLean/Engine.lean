@@ -22,6 +22,23 @@ are engines-common (`engines/Sverify/Engines/Engine.lean`,
 
 namespace Substrait
 
+/-- **The registry**: the engines of this repository, each with the proof
+that its run is sound (`Engine.duckdb_sound`, `Engine.polars_sound`,
+`Engine.spark_sound`), DuckDB under its default settings. The checker is
+built over them (`checkerMain`). -/
+def builtinEntries : List EngineEntry := [
+  { (engine_entry% Engine.duckdb_sound) with shims := Profile.duckdb.shimCosts },
+  { (engine_entry% Engine.polars_sound) with
+    shims := Profile.polars.shimCosts, executes := "streaming" },
+  { (engine_entry% Engine.spark_sound) with
+    shims := Profile.spark.shimCosts, executes := "batch" }]
+
+/-- The reports' tables (`builtinEngines`, `SubstraitLean/EngineTables.lean`)
+are the registry's: written once per engine there, and checked here. -/
+theorem builtinEntries_rows : builtinEntries.map (·.rows) = builtinEngines := rfl
+
+#check_engine_profiles builtinEntries
+
 -- No engine's certificate is empty: each but the reference has rows that
 -- are not theorems (so `Refines` is a real hypothesis, which `#print axioms`
 -- cannot show).

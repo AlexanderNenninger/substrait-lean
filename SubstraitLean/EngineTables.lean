@@ -1,45 +1,43 @@
 import Sverify.Engines.Transfer
-import Sverify.Engines.Entry
-import Sverify.DuckDB.Engine
+import Sverify.DuckDB.Tables
 import Sverify.Substrait.Profile
-import Sverify.Spark.Engine
-import Sverify.Polars.Engine
+import Sverify.Spark.Tables
+import Sverify.Polars.Tables
 
 /-!
 # The engines' tables, together (#444, step 3a)
 
-`builtinEntries`, the engines of this repository with their soundness
-proofs, `builtinEngines`, their tables, and the reports
+`builtinEngines`, the tables of this repository's engines, and the reports
 over them: `substrait-check --options` (`tablesJson`), `--dependencies`
 (`Rel.dependenciesJson`) and `--transfer` (`transferJson`). Each engine's
 choice table and observation rows are in its package
 (`engines/duckdb/Sverify/DuckDB/Tables.lean`,
 `engines/polars/Sverify/Polars/Tables.lean`,
 `engines/spark/Sverify/Spark/Tables.lean`), with the proof that it refines
-the core, and the costs of the shims its rows name; each engine's `Engine`
-value and the proof that it is sound are in its package's `Engine.lean`. The
-rows' constructors, `EngineProfile`, `EngineEntry` and the JSON a table is
-reported in are engines-common (`engines/Sverify/Engines/Tables.lean`,
-`engines/Sverify/Engines/Entry.lean`).
+the core, and the costs of the shims its rows name. The engines' `Engine`
+values with their soundness proofs, the registry the checker is built over
+(`builtinEntries`), are in `SubstraitLean/Engine.lean`, which only the checker's
+entry points import: the reports read the tables alone, and their modules do
+not load the engines' lowerings and proofs. The rows' constructors,
+`EngineProfile` and the JSON a table is reported in are engines-common
+(`engines/Sverify/Engines/Tables.lean`).
 -/
 
 namespace Substrait
 
 /-! ## The engines -/
 
-/-- The engines of this repository, each with the proof that its run is
-sound (`Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`),
-DuckDB under its default settings. The checker is built over them
-(`checkerMain`). -/
-def builtinEntries : List EngineEntry := [
-  { (engine_entry% Engine.duckdb_sound) with shims := Profile.duckdb.shimCosts },
-  { (engine_entry% Engine.polars_sound) with
+/-- The tables of this repository's engines, as the reports read them,
+DuckDB under its default settings. `builtinEntries_rows`
+(`SubstraitLean/Engine.lean`) proves they are the registry's
+(`builtinEntries.map (·.rows)`). -/
+def builtinEngines : List EngineProfile := [
+  { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
+    shims := Profile.duckdb.shimCosts },
+  { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
     shims := Profile.polars.shimCosts, executes := "streaming" },
-  { (engine_entry% Engine.spark_sound) with
+  { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
     shims := Profile.spark.shimCosts, executes := "batch" }]
-
-/-- The tables of `builtinEntries`, as the reports read them. -/
-def builtinEngines : List EngineProfile := builtinEntries.map (·.rows)
 
 variable [Boxes.Ambient]
 example : builtinEngines.all (·.rowsWf) := by decide +kernel
