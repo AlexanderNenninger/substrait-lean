@@ -19,9 +19,8 @@ expression over an open cell), it gives `none`, and the caller compares
 with `Rel.eval`'s rows.
 
 `Rel.evalChoices_allowed` (`ChoicesSound.lean`) connects it to `Rel.OrderAllowed`
-for the plans `Rel.ChoicesSupported` holds of (no `fetch`, `window` or aggregate
-with a measure that sorts its rows yet): what it accepts is a result the reference
-allows. The converse is false
+for the plans `Rel.ChoicesSupported` holds of (all but an aggregate with a measure
+that sorts its rows): what it accepts is a result the reference allows. The converse is false
 (`ChoicesSound.lean` says where); the other plans stay tests.
 -/
 

@@ -606,6 +606,36 @@ jobs:
           cache-suffix: pruned
       - run: bash python/scripts/wheel_tests.sh --editable python --fast -n 4 --dist worksteal
 
+  # sverify without DuckDB (#1288, #1485 item 16): the base install, no extra,
+  # in an environment that has no `duckdb`. `verify` proves a plan and writes
+  # SQL, every module imports, and a run on DuckDB names the extra.
+  no-duckdb:
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: python/pyproject.toml
+          prune-cache: true
+          cache-suffix: pruned
+      - name: The base install has no DuckDB, and its tests pass
+        run: |
+          uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with pytest python - <<'PY'
+          import importlib.util
+          assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
+          PY
+          uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
+
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
   # the benchmarks and on every sqllogictest file the ledgers decided a query
   # of; a query that no longer agrees, or newly disagrees, fails the job.
@@ -893,7 +923,7 @@ jobs:
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, outside-repo, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
+    needs: [changes, checker, lean, golden, static, test, outside-repo, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
     if: always()
     runs-on: ubuntu-latest
     steps:
