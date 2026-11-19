@@ -49,7 +49,9 @@ def Relation.MatchesChoices (cs : List (List TieChoice)) (out : Relation) : Prop
 
 /-- The plans whose choices are proved: so far, those without an `aggregate` with a
 measure that sorts its rows (`FIRST`, `LAST`, `STRING_AGG`, `collect`, `MODE`), whose
-cells are open. -/
+cells are open (the one case still pending, tracked on #1484 under "Ten evaluators").
+Only `Rel.evalChoices_allowed` consults it: `evalChoices` and `allows_rows` do not, and
+the last step deletes it. -/
 def Rel.ChoicesSupported : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r | .unnest r _ =>
