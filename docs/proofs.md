@@ -195,6 +195,7 @@ declares no instance. An engine's theorems name the instance: DuckDB's is
 | `FloatNear.lean` | Correctly rounded sums and means of doubles paired within a tolerance are near each other (#929) |
 | `SumBound.lean` | An engine's double `SUM` is finite and in a computable range under D35's bound (`SumOrder.bound`) |
 | `MarginCheck.lean` | The margin check of a threshold filter on a double `SUM` (#929), as a plan of its own |
+| `Pretty.lean` | Rendering of values, expressions and plans |
 
 ### The analysis: `analysis/Sverify/Analysis/`
 
@@ -235,6 +236,8 @@ as the guard. Engines-common and the modules below import it as
 | `Terms.lean` | Splitting a plan into union-free terms |
 | `Seam.lean` | Order as an effect over the unordered core: `Lin`, `Sem`, the lifting lemma, and the multisets a plan may give (#928) |
 | `Refresh.lean` | The refresh protocol of a stored node, for a durable source, as a transition system; its safety from `Reachable` alone (#933) |
+| `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
+| `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, the range of an engine's double `AVG` (`AvgOrder.bound`), and its exactness on small integers (`AvgOrder.int_exact`) |
 
 ### The frontend: `frontend/Sverify/Frontend/`
 
@@ -248,6 +251,7 @@ that build as the guard. Engine packages may import it, as
 |---|---|
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `SubstraitJson.lean` | Builders of Substrait's JSON: references, types, casts, literals, calls and measures by anchor, the functions templates call, and the options the parser accepts |
+| `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
 
 ### Engines-common: `engines/Sverify/Engines/`
 
@@ -362,8 +366,6 @@ build as the guard.
 
 | Module | Job |
 |---|---|
-| `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
-| `Infer.lean` | The bounds a contract needs to rule out overflow (untrusted, then proved) |
 | `AnalysisCongr.lean` | The analyses read only the catalog's arities: `Rel.facts_congr`, `Rel.aeval_congr`, `Rel.keys_congr`, `Rel.keyedWindows_congr`, `Rel.detPlan_congr`, `Rel.mayIssues_congr`, `Rel.issuesCapped_congr` and the capped plans', `Rel.optimize_congr` and the rewrites', for the checker's theorems (`check_proved_sound` …) |
 | `Semantic.lean` | Rewrites justified by contract facts and keys |
 | `Compose.lean` | Composing contracts across a pipeline |
@@ -385,7 +387,6 @@ build as the guard.
 | `Statements.lean` | The top-level statements over named predicates (#1484, A7): `Checked`, `Verified`, the engine report conditions, `DataAssumed`, `Post.HoldsOn`, each proved by applying the theorem it names, and a `#guard` that a recorded request meets them |
 | `ProvedOn.lean` | From the checker's verdict to each engine's model (#1484, A6): `check_proved_on` and its DuckDB, Polars and Spark corollaries, the side conditions taken from the report |
 | `Engine.lean` | The engines' `Engine` values together: the check that each one's certificate is non-empty, and DuckDB's side condition from an empty `Rel.mayIssues` |
-| `MarginSound.lean` | The margin check is sound in codes (#929): its rows, its arithmetic against `AllowedP`'s sums and means, the range of an engine's double `AVG` (`AvgOrder.bound`), and its exactness on small integers (`AvgOrder.int_exact`) |
 | `Lipschitz.lean` | Tolerance composition (#929): the fold of a plan's tolerance, `plan_near`, the pipeline rule and the `M₁` metric |
 | `Lipschitz/Basic.lean` | Tolerance composition (#929): cells, rows and matchings within a tolerance, the operators row by row |
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
@@ -407,7 +408,6 @@ build as the guard.
 
 | Module | Job |
 |---|---|
-| `Pretty.lean` | Rendering of values, expressions and plans |
 | `RunPlan.lean` | The plan an engine runs (#1787): the per-rule gate, the gates on the rewrite, the size hypothesis through the rules, and `check_run_plan_sound` |
 | `ContractCheck.lean` | `--contract`: proving postconditions and keys from preconditions; `parse` reads the request (trusted), `Request.check` analyses it, and `check_proved_sound` takes its verdict to `contract_sound_all` |
 | `ShardCheck.lean` | `--shard`: per-shard and combining plans |

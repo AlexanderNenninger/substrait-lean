@@ -182,12 +182,9 @@ ROOT_WAITING = {
     "IncrementalFloat": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalMinMax": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalSemi": "imports IncrementalAgg (#1795); then analysis",
-    "MarginSound": "#1805's OpenSums imports it; then analysis",
     "OpenSums": "ruling 148 O2: general part to engines-common, example to Polars",
-    "Pretty": "#1765 edits it; then core",
-    "Infer": "#1765 edits it; then analysis",
-    "Write": "#1813 and #1765 edit it; then frontend",
-    "Bind": "#1444's engines-common move",
+    "Bind": "imports Engines.Lowering (Outcome.bind_error) and Frontend.Parse (Expr.readsField), "
+    "and no layer below the engines has both: a ruling on where those lemmas live",
 }
 
 
