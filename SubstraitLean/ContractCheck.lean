@@ -4,10 +4,10 @@ import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
 import Sverify.Core.Check
 import Sverify.Frontend.Parse
-import SubstraitLean.Pretty
+import Sverify.Core.Pretty
 import SubstraitLean.Semantic
-import SubstraitLean.Write
-import SubstraitLean.Infer
+import Sverify.Frontend.Write
+import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
 import SubstraitLean.Implied
@@ -334,7 +334,7 @@ structure Report where
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
   rewrites : List String := []
-  /-- For each issue, what would rule it out (`SubstraitLean/Infer.lean`):
+  /-- For each issue, what would rule it out (`analysis/Sverify/Analysis/Infer.lean`):
   untrusted candidates, which the caller proves by adding them to the
   preconditions. -/
   bounds : List (Issue × Expr × Infer.Bounds) := []

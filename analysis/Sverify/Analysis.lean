@@ -11,8 +11,10 @@ import Sverify.Analysis.Contracts.Transfer
 import Sverify.Analysis.Contracts.TransferSound
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Incremental
+import Sverify.Analysis.Infer
 import Sverify.Analysis.Keys
 import Sverify.Analysis.Knowledge
+import Sverify.Analysis.MarginSound
 import Sverify.Analysis.Partition
 import Sverify.Analysis.ProfileImpl
 import Sverify.Analysis.Quarantine

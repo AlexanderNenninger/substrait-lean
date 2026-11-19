@@ -437,7 +437,7 @@ build on it like on any other precondition of a source.
 
 * The inference is untrusted: Lean proves the contract again with the
   inferred bounds added, so a wrong bound makes the proof fail
-  ([SubstraitLean/Infer.lean](../SubstraitLean/Infer.lean)).
+  ([analysis/Sverify/Analysis/Infer.lean](../analysis/Sverify/Analysis/Infer.lean)).
 * Bounds are rounded inward to round numbers (`3 * 10**18`, `2**62`) and
   timestamps to whole years (`(ts + ibis.interval(days=1)).truncate("M")`
   needs `_.ts < datetime(9999, 1, 1)`). A DATE or TIMESTAMP column lies in

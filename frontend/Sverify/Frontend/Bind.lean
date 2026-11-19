@@ -1,7 +1,7 @@
-import Sverify.Engines.Lowering
-import Sverify.Analysis.Partition
 import Sverify.Frontend.Parse
+import Sverify.Analysis.Partition
 import Sverify.Core.AllowedP
+import Sverify.Core.Profile
 
 /-!
 # Binding shared arguments to columns (#821)
