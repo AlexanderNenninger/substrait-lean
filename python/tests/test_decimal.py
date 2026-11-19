@@ -161,6 +161,11 @@ def test_lean_values_raises_where_the_reference_raises(con):
         lean(con, "SELECT x.i FROM t x JOIN t y ON CAST(x.a AS DECIMAL(3, 2)) > y.b")
     with pytest.raises(LeanRaised, match="overflow"):
         lean(con, "SELECT x.i FROM t x JOIN t y ON x.i = y.i AND CAST(x.a AS DECIMAL(3, 2)) > 0")
+    # Known gap: the overflowing x row has no key match, so its pair is not tested
+    # and the raise is missed (the reference evaluates `on` on every pair, D19).
+    # A full check would flip this on purpose.
+    no_match = "SELECT x.i FROM t x JOIN t y ON x.i = y.i + 100 AND CAST(x.a AS DECIMAL(3, 2)) > 0"
+    assert lean(con, no_match) == []
     assert len(lean(con, "SELECT sum(CAST(a AS DECIMAL(4, 2))) AS r FROM t")) == 1
 
 

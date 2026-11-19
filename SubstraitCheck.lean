@@ -167,7 +167,10 @@ aggregate's argument is evaluated on the rows its filter keeps. A join's or
 semi join's condition is evaluated on the pairs `Rel.evalFast` tests, the left
 row with the right rows of its equi-join keys (`JoinIndex.candidates`; all of
 them where the condition has none), not on the cross product, which is
-quadratic (`test_eval_fast`). A window's aggregates are not looked into: a
+quadratic (`test_eval_fast`). So a raise on a pair the key index drops can be
+missed: the reference evaluates `on` eagerly on every pair (D19), and no
+theorem says `evalFast` raises where `Rel.eval` does (`candidates_eq` says only
+that a dropped pair's `on` is not TRUE). Every error reported is real. A window's aggregates are not looked into: a
 frame may leave a row out. -/
 def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .read _ | .values _ _ => none
