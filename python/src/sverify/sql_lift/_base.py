@@ -1830,9 +1830,11 @@ class _Lift:
         return E(field_ref(found[0]), scope[found[0]].type)
 
     def to(self, e: E, t: Any) -> E:
-        """`e` as a `t`: a constant as a literal of `t`, else a cast."""
+        """`e` as a `t`: a constant as a literal of `t`, else a cast. Once
+        typed, an integer literal is no longer one for `common`:
+        `CAST(100 AS INTEGER)` is an INTEGER next to a TINYINT."""
         if _same(e.type, t):
-            return e
+            return dataclasses.replace(e, literal=False) if e.literal else e
         if e.constant:
             v = e.value
             if v is not None:
