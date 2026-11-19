@@ -187,38 +187,78 @@ def _fold(
     sees one row per group, class and exponent, never a row of the input.
 
     A value is its finite part plus its class's constant (`_SPECIAL`), one of
-    them zero, so with the classes in the group key each sum splits into a
-    sum of finite parts (as halves of the mantissa times a digit of the
-    weight, added in `decimal128(38)` per exponent) and constants times the
-    group's weight. A chunk without NaN or infinities needs no classes."""
+    them zero. The rows with a NaN or an infinity are summed with their
+    classes in the group key, so each sum splits into a sum of finite parts
+    (as halves of the mantissa times a digit of the weight, added in
+    `decimal128(38)` per exponent) and constants times the group's weight;
+    the other rows, all finite, need no classes."""
     xs = [_c("coalesce", v, 0.0).cast(pa.float64()) for v in values]
     valid = _c("is_valid", values[0])
     for v in values[1:]:
         valid = _c("and", valid, _c("is_valid", v))
     keys, xs = keys.filter(valid), [x.filter(valid) for x in xs]
     w = _c("coalesce", weights, 0).cast(pa.int64()).filter(valid)
+    finite = _c("is_finite", xs[0])
+    for x in xs[1:]:
+        finite = _c("and", finite, _c("is_finite", x))
+    buckets: dict[tuple, dict[str, int]] = {}
+    _sums(
+        kind, buckets, keys.filter(finite), [x.filter(finite) for x in xs], w.filter(finite), False
+    )
+    rest = _c("invert", finite)
+    _sums(kind, buckets, keys.filter(rest), [x.filter(rest) for x in xs], w.filter(rest), True)
+    # Each bucket's moments, from its finite sums and its classes' constants.
+    names, pair, nt = keys.column_names, len(xs) > 1, len(TERMS[kind])
+    for b, acc in buckets.items():
+        cx = b[len(names)]
+        cy = b[len(names) + 1] if pair else cx
+        s = {"x": _SPECIAL.get(cx, 0), "y": _SPECIAL.get(cy, 0)}
+        f = {"x": acc.get("x", 0), "y": acc.get("y", 0) if pair else acc.get("x", 0)}
+        W = acc.get("W", 0)
+        mo = _at(out, kind, b[: len(names)])
+        for j, term in enumerate(TERMS[kind]):
+            if len(term) == 1:
+                mo[j] += f[term] + s[term] * W
+            else:
+                a, c = term
+                # `(fa + sa)(fc + sc)`: a finite part is zero where its
+                # constant is not, so `fa · fc` comes only from finite pairs.
+                mo[j] += acc.get(term, 0) + f[a] * s[c] + s[a] * f[c] + s[a] * s[c] * W
+        for c in [cx, cy] if pair else [cx]:
+            if c:
+                mo[nt + c - 1] += W
+
+
+def _sums(
+    kind: Kind,
+    buckets: dict[tuple, dict[str, int]],
+    keys: pa.Table,
+    xs: Sequence[pa.Array],
+    w: pa.Array,
+    special: bool,
+) -> None:
+    """Each bucket's sums of finite parts per term, and with `special` its
+    weight, keyed by the group and the values' classes (all 0 without
+    `special`, where every value is finite)."""
     if not keys.num_rows:
         return
     names = keys.column_names
-    pair = len(xs) > 1
-    finite = [_c("is_finite", x) for x in xs]
-    special = not all(_c("all", f).as_py() for f in finite)
-    classes = ["__cx", "__cy"][: len(xs)] if special else []
     group = canonical_keys(keys, names)
+    classes = ["__cx", "__cy"][: len(xs)] if special else []
     for name, x in zip(classes, xs, strict=False):
         group = group.append_column(name, _class(x))
     by = [*names, *classes]
-    parts = {"x": _parts(xs[0], finite[0])}
-    if pair:
-        parts["y"] = _parts(xs[1], finite[1])
-    # Per (group, classes): the weight, and each term's sum of finite parts.
-    buckets: dict[tuple, dict[str, int]] = {}
+    zeros = () if special else (0,) * len(xs)
+
+    def bucket(row: dict[str, Any]) -> dict[str, int]:
+        return buckets.setdefault(key_of([*(row[n] for n in by), *zeros]), {})
+
     if special:
         weighted = group.append_column("__w", w.cast(_DEC))
-        weight = weighted.group_by([*names, *classes]).aggregate([("__w", "sum")])
-        for r in weight.to_pylist():
-            buckets[key_of([r[n] for n in by])] = {"W": int(r["__w_sum"])}
-    singles = ["x", "y"] if pair else ["x"]
+        for r in weighted.group_by([*names, *classes]).aggregate([("__w", "sum")]).to_pylist():
+            bucket(r)["W"] = int(r["__w_sum"])
+    parts = {t: _parts(x, _c("is_finite", x)) for t, x in zip("xy", xs, strict=False)}
+    singles = list(parts)
     products = [t for t in TERMS[kind] if len(t) == 2]
     digits = _digits(w)
     for term in singles + products:
@@ -244,32 +284,12 @@ def _fold(
                 cols.append(f"__t{c}")
             agg = tab.group_by([*names, *classes, "__shift"]).aggregate([(c, "sum") for c in cols])
             sums = [agg.column(f"{c}_sum").to_pylist() for c in cols]
-            for i, (b, sh) in enumerate(
+            for i, (r, sh) in enumerate(
                 zip(agg.select(by).to_pylist(), agg.column("__shift").to_pylist(), strict=True)
             ):
                 part = sum(int(sums[c][i]) << terms[c][0] for c in range(len(cols)))
-                acc = buckets.setdefault(key_of([b[n] for n in by]), {"W": 0})
+                acc = bucket(r)
                 acc[term] = acc.get(term, 0) + (part << sh)
-    # Each bucket's moments, from its finite sums and its classes' constants.
-    nt = len(TERMS[kind])
-    for b, acc in buckets.items():
-        cx = b[len(names)] if special else 0
-        cy = b[len(names) + 1] if special and pair else cx
-        s = {"x": _SPECIAL.get(cx, 0), "y": _SPECIAL.get(cy, 0)}
-        f = {"x": acc.get("x", 0), "y": acc.get("y", 0) if pair else acc.get("x", 0)}
-        W = acc["W"]
-        mo = _at(out, kind, b[: len(names)])
-        for j, term in enumerate(TERMS[kind]):
-            if len(term) == 1:
-                mo[j] += f[term] + s[term] * W
-            else:
-                a, c = term
-                # `(fa + sa)(fc + sc)`: a finite part is zero where its
-                # constant is not, so `fa · fc` comes only from finite pairs.
-                mo[j] += acc.get(term, 0) + f[a] * s[c] + s[a] * f[c] + s[a] * s[c] * W
-        for c in [cx, cy] if pair else [cx]:
-            if c:
-                mo[nt + c - 1] += W
 
 
 def _at(d: dict[tuple, Moments], kind: Kind, k: tuple) -> Moments:
