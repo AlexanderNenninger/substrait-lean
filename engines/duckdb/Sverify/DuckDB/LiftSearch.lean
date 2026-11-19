@@ -624,7 +624,8 @@ def measureTerm (m : Measure) : MetaM Lean.Expr := do
 rows, then split on whether any value is not `NULL`. -/
 def aggTac (_defs : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
+    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_approx,
+    ``DuckDBSQL.ref_fdiv_float,
     ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r, ``AggFn.apply, ``nanCase, ``isInfCode,
     ``Substrait.Expr.evalP, ``FloatCode.canon_ofInt,
     ``Lowering.beq_int, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,

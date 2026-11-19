@@ -268,6 +268,10 @@ theorem DuckDBSQL.ref_fmath_null (f : FMath) : Profile.reference.un (.fmath f) .
 
 theorem DuckDBSQL.ref_itof_null : Profile.reference.un .itof .null = .ok .null := rfl
 
+/-- D52's source mark is the identity and raises nothing. -/
+theorem DuckDBSQL.ref_approx (k : Nat) (v : Value) : Profile.reference.un (.approx k) v = .ok v := by
+  cases v <;> rfl
+
 omit [Boxes.Ambient] in
 theorem FloatCode.ofInt_ne_nan (i : Int) : FloatCode.ofInt i ≠ FloatCode.nan := by
   have := FloatCode.ofInt_bounds i; have := FloatCode.posInf_lt_nan; omega

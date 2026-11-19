@@ -1873,7 +1873,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- (a plan may type `POWER` of integers as a double).
     let outTy := (field? f "outputType").getD .null
     let floats := ["add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
-      "floor", "ceil", "round"] ++ doubleFns
+      "floor", "ceil", "round", "sverify_approx"] ++ doubleFns
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
     let floatCall := floats.contains (baseName name) &&
       (out == .float || hasFloat || doubleFns.contains (baseName name))
@@ -1893,8 +1893,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
     -- double's code.
-    -- `ROUND(x, d)`: the digits stay an integer.
-    let keepInt (k : Nat) : Bool := baseName name == "round" && k == 1
+    -- `ROUND(x, d)`: the digits stay an integer; so does D52's band `k`.
+    let keepInt (k : Nat) : Bool := (baseName name == "round" || baseName name == "sverify_approx") && k == 1
     let args ← ((argJs.zip parsed).zipIdx).mapM fun ((j, e), k) => do
       if (hasFloat || floatCall) && !keepInt k then
         if let some (.int i) ← constOf? fns j then return Expr.lit (.float (FloatCode.ofInt i))
