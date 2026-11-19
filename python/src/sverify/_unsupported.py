@@ -22,6 +22,10 @@ DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 RANGE_GUARD = "Overflow in a RANGE frame bound"
 
 
+#: The exit of a refusal of data that breaks a stated condition.
+ROWS_ASIDE = '; to set such rows aside, use `on_violation="quarantine"` or `"hold"`'
+
+
 class SverifyError(Exception):
     """The base of every exception sverify raises on purpose: a refusal
     (`Unsupported`), a proof that fails (`VerificationError`), data that

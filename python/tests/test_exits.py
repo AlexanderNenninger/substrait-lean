@@ -63,3 +63,16 @@ def test_every_real_site_of_an_own_exit_class_carries_an_action():
         if not exits.EXIT.search(text):
             bad.append(f"{s.file}:{s.line}: {text}")
     assert not bad, "\n".join(bad)
+
+
+def test_the_exits_of_data_and_composition_refusals_are_pinned() -> None:
+    """#1056, #1057: the text a user acts on."""
+    import inspect
+
+    from sverify import _unsupported
+    from sverify.cli import _main
+    from sverify.contracts import CompositionError
+
+    assert 'on_violation="quarantine"' in _unsupported.ROWS_ASIDE
+    assert "SVERIFY_TIMEOUT" in inspect.getsource(_main)
+    assert "on_unproved=" in inspect.getsource(CompositionError.__init__)
