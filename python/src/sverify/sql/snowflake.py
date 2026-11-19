@@ -398,7 +398,9 @@ class SnowflakeDialect(Dialect):
     def int32_lit(k: int) -> str:
         """A literal start or length `k ≥ 0` as SUBSTR reads it."""
         if k >= SUBSTR_MAX:
-            raise Unsupported(f"a substring position or length of {k} is not below 2^32")
+            raise Unsupported(
+                f"a substring position or length of {k} is not below 2^32; use a smaller value"
+            )
         return str(min(k, INT32_MAX))
 
     def trim(self, s: str, chars: str, left: bool, right: bool) -> str:
