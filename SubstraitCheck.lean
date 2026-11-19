@@ -156,7 +156,9 @@ def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String 
 /-- The first error the reference profile `p` raises in the plan: each
 filter, projection and aggregate evaluates its expressions on the rows its
 input gives (`Rel.eval`), inputs first. An aggregate's argument is evaluated
-on the rows its filter keeps. Joins and windows are not looked into (#1701). -/
+on the rows its filter keeps. Joins and windows are not looked into: a join's
+condition would be evaluated on the cross product, quadratic where
+`Rel.evalFast` hashes (`test_eval_fast`). -/
 def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .read _ | .values _ _ => none
   | .filter r c => relRaised cat p r <|> firstError p (r.eval cat) [c]
