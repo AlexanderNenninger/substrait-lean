@@ -103,3 +103,28 @@ def test_a_polars_or_spark_run_with_assumptions_does_not_run_on_duckdb(engine, m
             _con([10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18]),
             engine,
         )
+
+
+def test_polars_checks_the_assumed_sum_on_the_guard_free_route_too(monkeypatch):
+    """A guard-free report on Polars runs without its other checks, and the
+    assumed `SUM` keeps its own (`NO_GUARDS`): a batch that breaks it is
+    refused on that route (#1484)."""
+    pytest.importorskip("polars")
+    report = sv.verify(
+        "SELECT SUM(x) AS s FROM t",
+        tables={"t": T},
+        requires={"t": [_.x.between(-(10**18), 10**18)]},
+    )
+    assert report._guard_free and report.assumed
+    routes: list[str] = []
+    real = report_module.run_guard_free
+
+    def spy(*args, **kw):
+        routes.append("guard_free")
+        return real(*args, **kw)
+
+    monkeypatch.setattr(report_module, "run_guard_free", spy)
+    assert report.run(_con([1, 2, 3]), "polars").to_pylist() == [{"s": 6}]
+    assert routes == ["guard_free"]
+    with pytest.raises(PreconditionError, match="assumed precondition"):
+        report.run(_con([10**18] * 10), "polars")
