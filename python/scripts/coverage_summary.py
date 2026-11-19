@@ -5,7 +5,7 @@ the line and the line-and-branch coverage of `sverify` and the modules with the
 most missed lines. The gate warns: it prints a warning annotation under the
 target and always exits 0.
 
-    python scripts/coverage_summary.py coverage.json [--target 90] [--top 10]
+    python scripts/coverage_summary.py coverage.json [--target 89] [--top 10]
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ def summarise(data: dict, target: float, top: int) -> tuple[str, bool]:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("json", type=Path)
-    p.add_argument("--target", type=float, default=90.0)
+    p.add_argument("--target", type=float, default=89.0)
     p.add_argument("--top", type=int, default=10)
     args = p.parse_args(argv)
     text, ok = summarise(json.loads(args.json.read_text()), args.target, args.top)

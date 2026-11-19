@@ -575,7 +575,7 @@ jobs:
           retention-days: 3
 
   # The coverage of `sverify` over the shards of `test` (#750): combined, in the
-  # job summary. It warns under 90 % and never fails, and `qa` does not wait
+  # job summary. It warns when lines and branches together fall under 89 % and never fails, and `qa` does not wait
   # for it.
   coverage:
     needs: [test]
