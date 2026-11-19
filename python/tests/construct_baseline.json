@@ -1,7 +1,7 @@
 {
   "sql_lift/_base.py": 103,
   "sql_lift/blackbox.py": 7,
-  "sql_lift/casts.py": 15,
+  "sql_lift/casts.py": 16,
   "sql_lift/core.py": 24,
   "sql_lift/nested.py": 15,
   "sql_lift/relations.py": 13,

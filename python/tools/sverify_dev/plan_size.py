@@ -119,10 +119,10 @@ def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
     for name in _engines.DIALECTS:
         dialect = profiles.plugins()[name].dialect()  # pyrefly: ignore[not-callable]
         try:
-            sql = plan_sql(plan, dialect, rows="sequence")
+            sql = plan_sql(plan, dialect)
         except Unsupported:
             try:
-                sql = plan_sql(plan, dialect, deterministic=True, rows="sequence")
+                sql = plan_sql(plan, dialect, deterministic=True)
             except Unsupported:
                 continue
         nodes, depth = sql_size(sql, name)

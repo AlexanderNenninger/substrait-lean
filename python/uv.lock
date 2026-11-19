@@ -4446,28 +4446,35 @@ name = "sverify"
 version = "0.9.0.dev0"
 source = { editable = "." }
 dependencies = [
-    { name = "duckdb" },
-    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "ibis-framework" },
+    { name = "packaging" },
     { name = "pyarrow" },
+    { name = "pyarrow-hotfix" },
     { name = "sqlglot" },
     { name = "substrait" },
-    { name = "sverify-duckdb", extra = ["run"] },
+    { name = "sverify-duckdb" },
 ]
 
 [package.optional-dependencies]
 all = [
     { name = "deltalake" },
     { name = "hypothesis" },
+    { name = "ibis-framework", extra = ["duckdb"] },
     { name = "openlineage-python" },
     { name = "pyarrow" },
     { name = "pyiceberg", extra = ["pyarrow", "sql-sqlite"] },
     { name = "pytest" },
     { name = "pyyaml" },
+    { name = "sverify-duckdb", extra = ["run"] },
     { name = "sverify-polars", extra = ["run"] },
     { name = "sverify-spark", extra = ["run"] },
 ]
 delta = [
     { name = "deltalake" },
+]
+duckdb = [
+    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "sverify-duckdb", extra = ["run"] },
 ]
 flight = [
     { name = "pyarrow" },
@@ -4482,6 +4489,8 @@ openlineage = [
     { name = "openlineage-python" },
 ]
 polars = [
+    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "sverify-duckdb", extra = ["run"] },
     { name = "sverify-polars", extra = ["run"] },
 ]
 secrets-aws = [
@@ -4498,6 +4507,8 @@ secrets-keychain = [
     { name = "keyring" },
 ]
 spark = [
+    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "sverify-duckdb", extra = ["run"] },
     { name = "sverify-spark", extra = ["run"] },
 ]
 testing = [
@@ -4535,25 +4546,30 @@ requires-dist = [
     { name = "azure-keyvault-secrets", marker = "extra == 'secrets-azure'", specifier = ">=4.8" },
     { name = "boto3", marker = "extra == 'secrets-aws'", specifier = ">=1.35" },
     { name = "deltalake", marker = "extra == 'delta'", specifier = ">=1.6.6" },
-    { name = "duckdb", specifier = ">=2.0.0" },
     { name = "google-cloud-secret-manager", marker = "extra == 'secrets-gcp'", specifier = ">=2.20" },
     { name = "hypothesis", marker = "extra == 'testing'", specifier = ">=6.170.14" },
-    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
+    { name = "ibis-framework", specifier = ">=12.0.0" },
+    { name = "ibis-framework", extras = ["duckdb"], marker = "extra == 'duckdb'", specifier = ">=12.0.0" },
     { name = "keyring", marker = "extra == 'secrets-keychain'", specifier = ">=25" },
     { name = "openlineage-python", marker = "extra == 'openlineage'", specifier = ">=1.55.0,<2" },
+    { name = "packaging", specifier = ">=23" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
+    { name = "pyarrow-hotfix", specifier = ">=0.6" },
     { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
     { name = "sqlglot", specifier = ">=30.8.0,<30.18" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
-    { name = "sverify-duckdb", extras = ["run"], editable = "../engines/duckdb" },
+    { name = "sverify", extras = ["duckdb"], marker = "extra == 'polars'" },
+    { name = "sverify", extras = ["duckdb"], marker = "extra == 'spark'" },
+    { name = "sverify", extras = ["duckdb", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
+    { name = "sverify-duckdb", editable = "../engines/duckdb" },
+    { name = "sverify-duckdb", extras = ["run"], marker = "extra == 'duckdb'", editable = "../engines/duckdb" },
     { name = "sverify-polars", extras = ["run"], marker = "extra == 'polars'", editable = "../engines/polars" },
     { name = "sverify-spark", extras = ["run"], marker = "extra == 'spark'", editable = "../engines/spark" },
 ]
-provides-extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "secrets-aws", "secrets-gcp", "secrets-azure", "secrets-keychain", "all"]
+provides-extras = ["duckdb", "polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "secrets-aws", "secrets-gcp", "secrets-azure", "secrets-keychain", "all"]
 
 [package.metadata.requires-dev]
 dev = [

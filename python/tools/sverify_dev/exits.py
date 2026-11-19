@@ -37,7 +37,13 @@ _ROOTS = {"SverifyError", "UnsupportedError", "Unsupported", "Refused", "Produce
 _HELPER = re.compile(r"refus|unsupported", re.I)
 #: Classes whose message always ends with an action (`SqlUnsupported` adds a
 #: rewrite, or "write this step in Ibis").
-_OWN_EXIT = {"SqlUnsupported", "WriterUnsupported", "ProducerUnsupported", "refused"}
+_OWN_EXIT = {
+    "ConditionError",
+    "SqlUnsupported",
+    "WriterUnsupported",
+    "ProducerUnsupported",
+    "refused",
+}
 
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"

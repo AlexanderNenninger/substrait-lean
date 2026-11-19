@@ -15,10 +15,10 @@ import pyarrow.compute as pc
 import pytest
 
 import sverify as sv
+from _arrow_store import ArrowStore
 from _engines import PROFILED
 from _zero import one_zero
 from sverify import _duckdb
-from sverify._arrow_state import ArrowOps as ArrowStore
 from sverify._parts import PartsState
 from sverify._scan import Resident
 from sverify._state import Merger, arrow_of
@@ -64,7 +64,7 @@ def test_the_merge_plan_groups_as_the_model_on_every_engine(case):
     z = CASES[case]
     a, b = z.slice(0, z.num_rows // 2), z.slice(z.num_rows // 2)
     con = sv.connect()
-    merge = Merger(con, z.schema)
+    merge = Merger(con, z.schema, DuckDBStore())
     want = consolidated(a, b)
     plan = merge.plan()
     assert merge.refused is None and plan is not None
@@ -87,7 +87,7 @@ def test_the_merge_plan_groups_as_the_model_on_every_engine(case):
 def test_a_refused_merge_plan_adds_up_in_arrow():
     """Struct columns have no SQL form on DuckDB yet (#94)."""
     z = weighted_table({"p": [{"a": 1}, {"a": 1}, {"a": 2}]}, [1, 1, -1])
-    merge = Merger(sv.connect(), z.schema)
+    merge = Merger(sv.connect(), z.schema, DuckDBStore())
     assert same(merge(z), consolidated(z))
     assert merge.refused is not None
 

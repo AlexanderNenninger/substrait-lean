@@ -5613,8 +5613,8 @@ def to_sql(
     plan's last sort orders it. `"sequence"` writes Lean's order, ties by the
     input's row order, which needs a scan order the engine may not have. The
     default is what the engine's runner writes (`ProfilePlugin.rows`):
-    `"multiset"` for Spark, `"sequence"` for DuckDB and for a dialect no
-    engine provides.
+    `"multiset"` for Spark and Snowflake, `"sequence"` for DuckDB and for a
+    dialect no engine provides.
 
     `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
     pass it for a plan whose contract report is `guard_free`, and run the

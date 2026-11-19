@@ -161,8 +161,7 @@ Over the 136 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|
-| snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 24 |
-| snowflake: refused: Snowflake tables have no row order, so rows="sequence" cannot follow the Lean model's list order for  | 8 |
+| snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 31 |
 | polars: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see | 3 |
 | snowflake: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet;  | 3 |
 | polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
@@ -179,6 +178,7 @@ Over the 136 queries that verify (some only as DOUBLE):
 | snowflake: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run i | 1 |
 | polars: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run | 1 |
 | snowflake: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not  | 1 |
+| snowflake: refused: Snowflake window functions need an ORDER BY: run it with engine='duckdb' (see #271, https://github.co | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused: run it with engine='duckdb'  | 1 |
 
 ### Pitfall frequency

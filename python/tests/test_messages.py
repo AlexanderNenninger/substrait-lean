@@ -252,16 +252,65 @@ def test_approx_checks_its_condition_when_called() -> None:
     assert sv.approx(_.mean_t >= -90).rel == 1e-6
 
 
-def test_an_ibis_type_error_names_its_condition() -> None:
+def test_an_ibis_condition_that_does_not_type_check_is_named_in_the_error() -> None:
     expr = double_charges(PAYMENTS)
-    with pytest.raises(TypeError) as e:
+    cond = _.dup_ts - _.first_ts <= ibis.interval(minutes=5)
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify(expr, ensures=[_.first_ts.notnull(), cond])
+    (label,) = e.value.errors
+    assert label == "((_.dup_ts - _.first_ts) <= ibis.interval(minutes=5))"
+    assert "does not type-check: " in str(e.value.errors[label])
+
+
+def test_an_ibis_condition_on_a_missing_column_is_named_in_the_error() -> None:
+    expr = double_charges(PAYMENTS)
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify(expr, ensures=[_.zz > 1])
+    assert list(e.value.errors) == ["(_.zz > 1)"]
+    assert "no column 'zz'" in str(e.value.errors["(_.zz > 1)"])
+
+
+def test_the_keys_of_condition_error_are_spelt_as_checked_condition_label() -> None:
+    expr = double_charges(PAYMENTS)
+    r = sv.verify(expr, ensures=[_.first_ts.notnull()])
+    assert r.ensures[0].label == "_.first_ts.notnull()"
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify(expr, ensures=[_.first_ts.notnull(), _.zz.notnull()])
+    assert list(e.value.errors) == ["_.zz.notnull()"]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "condition", "reason"),
+    [
+        ({"ensures": ["x > 0", "zz > 1"]}, "zz > 1", "Column 'zz' could not be resolved"),
+        ({"ensures": ["x >"]}, "x >", "cannot parse the SQL"),
+        ({"requires": {"t": ["zz > 1"]}, "ensures": ["x > 0"]}, "zz > 1", "zz"),
+        ({"ensures": ["md5(x) > 1"]}, "md5(x) > 1", "not supported"),
+    ],
+)
+def test_a_condition_verify_cannot_read_names_itself(kwargs, condition, reason) -> None:
+    """#699: an unknown column, SQL that does not parse and a construct the lift
+    does not read each raise `ConditionError`, keyed by the condition; the
+    query itself reads fine."""
+    tables = {"t": {"x": "BIGINT"}}
+    assert sv.verify("select x from t", tables=tables).verdict is sv.Verdict.PROVED
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify("select x from t", tables=tables, **kwargs)
+    assert list(e.value.errors) == [condition]
+    assert reason in str(e.value.errors[condition])
+    assert isinstance(e.value, sv.errors.UnsupportedError)
+    assert "the query is not refused" in str(e.value)
+
+
+def test_every_unreadable_condition_is_named_at_once() -> None:
+    with pytest.raises(sv.errors.ConditionError) as e:
         sv.verify(
-            expr, ensures=[_.first_ts.notnull(), _.dup_ts - _.first_ts <= ibis.interval(minutes=5)]
+            "select x from t",
+            tables={"t": {"x": "BIGINT"}},
+            requires={"t": ["qq > 0"]},
+            ensures=["x > 0", "zz > 1", "md5(x) > 1"],
         )
-    assert str(e.value).startswith(
-        "ensures condition 2, ((_.dup_ts - _.first_ts) <= ibis.interval(minutes=5)), "
-        "does not type-check: "
-    )
+    assert list(e.value.errors) == ["qq > 0", "zz > 1", "md5(x) > 1"]
 
 
 def test_a_stale_checker_build_says_so(tmp_path, monkeypatch) -> None:

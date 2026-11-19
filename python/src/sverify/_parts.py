@@ -30,12 +30,11 @@ An engine supplies a `Backend`: the frames it computes lazily, writing one as
 a part, reading parts as they lie, and running the merge plan over two
 frames, with a few small frame operations. `PartsStore` is the rest.
 
-The state location is a directory the engine and the driver both read: a
-temporary directory for the local session (`SVERIFY_STATE_LOCATION` names
-another). A part's row count and weight range come from its Parquet footers,
-which the driver reads where it can see the files; elsewhere the backend
-measures them. A cluster needs a location it reads and writes, which N6c's
-state-location setting brings.
+The state location is where the parts live: a temporary directory for a local
+session, else `SVERIFY_STATE_LOCATION`, a directory or a URI (`s3://bucket/state`,
+`hdfs://...`) that every executor and the driver read and write. A part's
+row count and weight range come from its Parquet footers, which the driver
+reads where it can see the files; elsewhere the backend measures them.
 """
 
 from __future__ import annotations
@@ -50,14 +49,14 @@ import uuid
 import weakref
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from sverify._arrow_state import ArrowOps
 from sverify._scan import Native, _q
-from sverify._store import State
+from sverify._store import State, Store
 from sverify._weighted import WEIGHT
 
 if TYPE_CHECKING:
@@ -74,10 +73,11 @@ def state_dir() -> str:
     process removed at exit."""
     global _DIR
     if _DIR is None:
-        given = os.environ.get("SVERIFY_STATE_LOCATION")
+        given = os.environ.get("SVERIFY_STATE_LOCATION", "").strip()
         if given:
-            os.makedirs(given, exist_ok=True)
-            _DIR = given
+            if "://" not in given:  # a local directory; a URI is the engine's to create
+                os.makedirs(given, exist_ok=True)
+            _DIR = given.rstrip("/")
         else:
             _DIR = tempfile.mkdtemp(prefix="sverify-state-")
             atexit.register(shutil.rmtree, _DIR, ignore_errors=True)
@@ -97,7 +97,7 @@ def write_part(backend: Backend, frame: Any, schema: pa.Schema, *, merged: bool 
         backend.write(frame, schema, path, merged=merged)
         return Part(path, schema, backend)
     except BaseException:
-        _remove(path)
+        backend.remove(path)
         raise
 
 
@@ -134,6 +134,18 @@ class Backend(ABC):
         """A part's rows and weight range, where the driver cannot read its
         footers."""
 
+    def remove(self, path: str) -> None:
+        """Deletes a part's directory. The default is a local directory; a
+        backend that writes to a URI deletes it there."""
+        with contextlib.suppress(OSError):
+            shutil.rmtree(path)
+
+    def sized(self, parts: Sequence[Part]) -> AbstractContextManager[None]:
+        """What the engine sets for the run that adds `parts` up, such as the
+        number of its shuffle partitions for their size. The default sets
+        nothing."""
+        return nullcontext()
+
     @abstractmethod
     def with_weight(self, frame: Any, weight: int) -> Any:
         """`frame` with a `WEIGHT` column of `weight` appended."""
@@ -159,11 +171,6 @@ class Backend(ABC):
     def split(self, frame: Any, column: str, cutoff: Any) -> tuple[int, Any]:
         """How many distinct values of `column` are at most `cutoff` in
         `frame`, and the rows above it."""
-
-
-def _remove(path: str) -> None:
-    with contextlib.suppress(OSError):
-        shutil.rmtree(path)
 
 
 def footers(files: list[str], weighted: bool) -> tuple[int, int | None, int | None]:
@@ -197,7 +204,7 @@ class Part:
 
     def __init__(self, path: str, schema: pa.Schema, backend: Backend):
         self.path = path
-        weakref.finalize(self, _remove, path)
+        weakref.finalize(self, backend.remove, path)
         weighted = WEIGHT in schema.names
         if "://" not in path:
             try:
@@ -275,10 +282,12 @@ class PartsState(Native):
         assert self.plan is not None, (
             "parts that are not added up come with the plan that adds them"
         )
-        frame = self.backend.run(
-            self.plan, self.schema, self.raw(), self.backend.frame(self.schema.empty_table())
-        )
-        self.parts = (write_part(self.backend, frame, self.schema, merged=True),)
+        with self.backend.sized(self.parts):
+            frame = self.backend.run(
+                self.plan, self.schema, self.raw(), self.backend.frame(self.schema.empty_table())
+            )
+            part = write_part(self.backend, frame, self.schema, merged=True)
+        self.parts = (part,)
         self.consolidated = self.base = True
         return self
 
@@ -349,7 +358,7 @@ def _parts_of(z: Any, schema: pa.Schema, backend: Backend) -> tuple[Part, ...]:
     return (write_part(backend, _frame_of(z, backend), schema),)
 
 
-class PartsStore(ArrowOps):
+class PartsStore(Store[Any]):
     """A view's state as parts of Parquet files that the engine writes
     (`PartsState`). A weighted table that is an Arrow table (a change, the
     state per group) is handled as the Arrow store does. An engine's store

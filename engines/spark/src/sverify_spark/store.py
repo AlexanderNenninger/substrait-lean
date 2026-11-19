@@ -9,8 +9,11 @@ the cluster.
 
 from __future__ import annotations
 
+import contextlib
+import glob
 import json
-from collections.abc import Sequence
+import os
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 import pyarrow as pa
@@ -19,12 +22,58 @@ from sverify._parts import Backend, Lazy, Part, PartsStore
 from sverify._store import MERGE_A, MERGE_B
 from sverify._weighted import WEIGHT
 
+#: The bytes of state one shuffle partition of a consolidation holds.
+PARTITION_BYTES = 128 * 2**20
+
+#: The most shuffle partitions a consolidation asks for.
+MAX_PARTITIONS = 4096
+
 
 class SparkBackend(Backend):
     """Spark's frames (`DataFrame`) over one session."""
 
     def __init__(self, spark: Any):
         self.spark = spark
+
+    def remove(self, path: str) -> None:
+        if "://" not in path:
+            return super().remove(path)
+        jvm = self.spark._jvm
+        target = jvm.org.apache.hadoop.fs.Path(path)
+        fs = target.getFileSystem(self.spark._jsc.hadoopConfiguration())
+        with contextlib.suppress(Exception):  # a part that is gone already
+            fs.delete(target, True)
+
+    def shuffle_partitions(self, parts: Sequence[Part]) -> int | None:
+        """How many shuffle partitions adding `parts` up wants: one per
+        `PARTITION_BYTES` of their files, at least the session's parallelism.
+        None where the driver cannot see the files."""
+        if any("://" in p.path for p in parts):
+            return None
+        size = sum(
+            os.path.getsize(f) for p in parts for f in glob.glob(os.path.join(p.path, "*.parquet"))
+        )
+        wanted = -(-size // PARTITION_BYTES)
+        return int(min(MAX_PARTITIONS, max(self.spark.sparkContext.defaultParallelism, wanted)))
+
+    @contextlib.contextmanager
+    def sized(self, parts: Sequence[Part]) -> Iterator[None]:
+        """Sets `spark.sql.shuffle.partitions` on the session while the parts are added
+        up and restores it after. The session is shared: a query that runs at the
+        same time sees the setting too."""
+        key = "spark.sql.shuffle.partitions"
+        n = self.shuffle_partitions(parts)
+        before = self.spark.conf.get(key, None)
+        if n is not None:
+            self.spark.conf.set(key, str(n))
+        try:
+            yield
+        finally:
+            if n is not None:
+                if before is None:
+                    self.spark.conf.unset(key)
+                else:
+                    self.spark.conf.set(key, before)
 
     def write(self, frame: Any, schema: pa.Schema, path: str, *, merged: bool = False) -> None:
         # `coalesce` keeps the writer to a few files: a change from Arrow has a
