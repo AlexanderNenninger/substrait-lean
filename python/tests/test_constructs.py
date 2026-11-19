@@ -88,3 +88,15 @@ def test_the_sql_lift_names_the_fragment_it_refused():
         sv.verify("select md5(x) as h from t", tables={"t": {"x": "BIGINT"}})
     assert e.value.construct == "function md5"
     assert "MD5" in (e.value.sql or "").upper()
+
+
+def test_the_op_table_names_real_ibis_operations_by_one_spelling():
+    """The method names a user calls, for the operations a refusal can name."""
+    import ibis.expr.operations as ops
+
+    from sverify.ibis_substrait._constructs import OP_METHODS
+
+    assert all(hasattr(ops, name) for name in OP_METHODS), [
+        n for n in OP_METHODS if not hasattr(ops, n)
+    ]
+    assert all(exits.CONSTRUCT_FORM.fullmatch(f"function {m}") for m in OP_METHODS.values())
