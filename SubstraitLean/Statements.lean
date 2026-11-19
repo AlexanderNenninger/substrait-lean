@@ -1,4 +1,6 @@
 import SubstraitLean.ProvedOn
+import SubstraitLean.RunPlan
+import Sverify.Engines.Rewrite
 import SubstraitLean.IssuesAll
 
 /-!
@@ -124,6 +126,43 @@ theorem verified_holds_spark {input : Json} {R : Request} {rep : Report} {T : Pl
     {p : Post} (h : Verified input R rep T k p) (hE : Verified.GuardFree rep) {data : Catalog}
     (hD : DataAssumed R data T) : p.HoldsOn (T.root.eval data Engine.spark.impl) :=
   check_proved_on_spark h.parsed h.checked hD.meets h.transform h.post h.proved hE.1 hD.small hE.2
+
+/-- What a postcondition says of a result holds of it in any order. -/
+theorem Post.HoldsOn.perm {p : Post} {out out' : Relation} (h : p.HoldsOn out')
+    (hp : out.Perm out') : p.HoldsOn out :=
+  fun row hrow => h row (((hp.map _).map _).mem_iff.mp hrow)
+
+/-- **A verified postcondition holds on an engine's run of the plan to run**
+(#1787, `check_run_plan_sound`): where the report is closed and the checker
+gives a plan to run, an engine that is sound under its side condition and
+translates that plan computes rows on which the postcondition holds. The data
+meets the request and its declared foreign keys (`references`), which
+`check_inputs` checks with the other preconditions. -/
+theorem verified_holds_run_plan {input : Json} {R : Request} {rep : Report} {T : Plan} {k : Nat}
+    {p : Post} (h : Verified input R rep T k p) (hclosed : rep.closed = true) {data : Catalog}
+    (hD : DataMeets R data) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    (hs : R.runPlanIn R.kenv = .ok s) {E : Engine} {side : Catalog → Rel → Prop}
+    (hE : E.Sound side) {s' : Rel} (hl : E.lower s = some s') (hside : side data s) :
+    p.HoldsOn (s'.eval data E.impl) := by
+  obtain ⟨hbag, -⟩ := check_run_plan_sound h.parsed h.checked hD h.transform hFK hs
+  obtain ⟨out, hout, hp⟩ := hE.of_refinesBag hl hside hbag
+  rw [check_closed h.parsed h.checked] at hclosed
+  simp only [Request.closedIn, h.transform, Option.any_some] at hclosed
+  exact (verified_holds h hD out (Rel.allowed_orderAllowed hclosed hout)).perm hp
+
+/-- **A verified postcondition holds on DuckDB's model of the plan to run**
+(default route), under DuckDB's report condition, on data that meets the
+request, its declared foreign keys (`references`), its bounds per key and the
+size hypothesis of the plan as written. The gate gives the plan to run what
+DuckDB's side condition needs (`run_plan_noRaise_duckdb`). -/
+theorem verified_holds_run_plan_duckdb {input : Json} {R : Request} {rep : Report} {T : Plan}
+    {k : Nat} {p : Post} (h : Verified input R rep T k p) (hE : Verified.DuckDB rep R)
+    {data : Catalog} (hD : DataAssumed R data T) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    (hs : R.runPlanIn R.kenv = .ok s) :
+    p.HoldsOn ((Lowering.duckdb.lowerRel s).eval data (Engine.duckdb {} rfl).impl) :=
+  verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.duckdb_sound rfl
+    (run_plan_noRaise_duckdb h.parsed h.checked hD.meets h.transform hFK hs hD.rowsPer hD.small
+      hE.2.1 hE.2.2.1 hE.2.2.2)
 
 /-- **A deterministic report means one result up to row order**
 (`check_deterministic_sound`). -/

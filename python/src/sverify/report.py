@@ -32,7 +32,7 @@ from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
 from sverify._run_schema import declared_columns, int_range, null_message, range_message
 from sverify._run_schema import problems as schema_problems
-from sverify._unsupported import SverifyError, SverifyWarning
+from sverify._unsupported import SverifyError, SverifyWarning, UnsupportedError
 from sverify.engine import (
     Connection,
     Engine,
@@ -481,6 +481,19 @@ class Report:
     did not return one."""
     _rewrites: list[str] = field(default_factory=list, repr=False)
     """The rewrites in `optimized`, such as "DISTINCT on a key"."""
+    _run_plan: dict | None = field(default=None, repr=False)
+    """The plan an engine runs on a route that rests on this report
+    (`_plan_to_run`): the transformation rewritten by the rules the gate turns
+    on, where every gate passes (`Request.runPlanIn` in
+    `SubstraitLean/RunPlan.lean`, `check_run_plan_sound`). None where a gate
+    keeps the plan as written (`_run_gate`)."""
+    _run_gate: str | None = field(default=None, repr=False)
+    """The gate that kept the plan as written (`"no_rewrite"`, `"profile"`,
+    `"rows"`, `"issues"`, `"guard_free"`, `"near"`, `"closed"`, `"reads"`,
+    `"functions"`, or `"writer"` where an engine's writer refused the
+    rewrite), or None where the plan to run is the rewrite."""
+    _run_unchecked: dict | None = field(default=None, repr=False)
+    """`_unchecked` for `_run_plan`: the marks of its expressions."""
     _inferred: dict[str, list[Condition]] = field(default_factory=dict, repr=False)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
@@ -818,13 +831,43 @@ class Report:
         if self.internal_plan is None:
             raise ValueError("this report has no plan: it was not made by sv.verify")
         d, finite = self._sql_route(dialect)
-        return to_sql(
-            written_plan(self.internal_plan),
-            d,
-            deterministic=self._exact,
-            finite=finite,
-            rows="sequence" if self.observation.rows == "sequence" else "multiset",
+        return self._with_plan(
+            "translated",
+            lambda plan: to_sql(
+                plan,
+                d,
+                deterministic=self._exact,
+                finite=finite,
+                rows="sequence" if self.observation.rows == "sequence" else "multiset",
+            ),
         )
+
+    def _plan_to_run(self, kind: str | None) -> str:
+        """The plan an engine runs on the route `kind`, as JSON text: the
+        checker's plan to run (`_run_plan`) on a route that rests on this
+        report (`routes.runs_rewrite`), the plan as written otherwise. The one
+        place a run reads the plan (#1787)."""
+        from sverify import routes
+
+        assert self.internal_plan is not None
+        if self._run_plan is not None and routes.runs_rewrite(kind):
+            return json.dumps(self._run_plan)
+        return written_plan(self.internal_plan)
+
+    def _with_plan(self, kind: str | None, f: Callable[[str], Any]) -> Any:
+        """`f` on the plan to run on the route `kind` (`_plan_to_run`). Where
+        an engine's writer refuses the rewrite (`UnsupportedError`), `f` on the
+        plan as written, and `_run_gate` says `"writer"`: the checker accepted
+        both, so either run is sound (ruling 129, E)."""
+        plan = self._plan_to_run(kind)
+        if self._run_plan is None or plan == written_plan(self.internal_plan or ""):
+            return f(plan)
+        try:
+            return f(plan)
+        except UnsupportedError:
+            self._run_gate = "writer"
+            assert self.internal_plan is not None
+            return f(written_plan(self.internal_plan))
 
     def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
         """The dialect `dialect` names, and whether its SQL checks the
@@ -865,7 +908,12 @@ class Report:
         return d, self.semantics == "reference" or chosen.kind == "translated"
 
     def check_inputs(
-        self, con: Connection, engine: str | None = None, *, assumed_checked: bool = False
+        self,
+        con: Connection,
+        engine: str | None = None,
+        *,
+        assumed_checked: bool = False,
+        _kind: str | None = None,
     ) -> None:
         """Check the tables of `con` against the schema the plan was verified
         for (`_check_schema`), the preconditions (`requires`, the inferred
@@ -913,8 +961,10 @@ class Report:
             # runs (a route or an engine without `checks_assumed`) gets them
             # checked by the proved DuckDB translation first: a SUM as it adds
             # up, an operation on finite doubles as it gives its result (#575).
+            # On the plan that runs: its issues are among the plan as
+            # written's (the checker's `issues` gate, #1787).
             try:
-                run_plan(con, written_plan(self.internal_plan), "duckdb")
+                self._with_plan(_kind, lambda plan: run_plan(con, plan, "duckdb"))
             except Exception as e:
                 raise self._broken_assumption(e) or e from None
 
@@ -1121,7 +1171,7 @@ class Report:
                     + ", ".join(unchecked)
                     + " of this report: refused before the run (check_requires=False skips them)"
                 )
-            self.check_inputs(con, target, assumed_checked=assumed_checked)
+            self.check_inputs(con, target, assumed_checked=assumed_checked, _kind=kind)
         else:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
@@ -1155,18 +1205,22 @@ class Report:
                 and self._guard_free
                 and theorem is not None
             ):
-                out = run_guard_free(
-                    con, written_plan(self.internal_plan), name, theorem, finite=finite
+                out = self._with_plan(
+                    kind,
+                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
                 )
             else:
-                out = run_plan(
-                    con,
-                    written_plan(self.internal_plan),
-                    engine,
-                    finite=finite,
-                    # A proved report's exact level justifies Spark's windows
-                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                    tie_free=self._exact and kind != "unverified",
+                out = self._with_plan(
+                    kind,
+                    lambda plan: run_plan(
+                        con,
+                        plan,
+                        engine,
+                        finite=finite,
+                        # A proved report's exact level justifies Spark's windows
+                        # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                        tie_free=self._exact and kind != "unverified",
+                    ),
                 )
         except Exception as e:
             # The translation's own checks of the assumptions, which `check_inputs`
@@ -1311,7 +1365,7 @@ class Report:
         from sverify.engine import read_tables
 
         assert self.internal_plan is not None
-        plan = json.loads(written_plan(self.internal_plan))
+        plan = json.loads(self._plan_to_run(chosen.kind if chosen is not None else None))
         tables = {t: con._arrow[t] for t in read_tables(plan)}
         nodes = tuple(fallbacks(plan, tables))
         if chosen is not None:
@@ -1892,7 +1946,7 @@ class Report:
 
 
 #: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = ["table_params"]
+_REPORT_PRIVATE = ["table_params", "run_plan", "run_gate", "run_unchecked"]
 
 _REPORT_INTERNAL = [
     "windows_total",
