@@ -380,9 +380,10 @@ def test_epsilon_per_engine(monkeypatch):
     # An elementary function is the platform's `libm`: bounded where probed, not proved.
     # Polars divides by the reciprocal for every divisor without a column reference, a
     # constant expression included (polars-scalar-divisor, ruling 157); DuckDB as IEEE does.
-    sv.verify(t.select(c=t.x / (7.0 * 7.0)), requires=req)
+    sv.verify(t.select(c=t.x / (7.0 * 7.0), d=t.x / 49.0), requires=req)
     eps = json.loads(seen["out"])["epsilon_by_engine"]
-    assert eps["duckdb"]["c"]["abs"] == 0 and eps["polars"]["c"]["abs"] > 1e-10
+    assert eps["duckdb"]["c"]["abs"] == 0
+    assert 0 < eps["polars"]["c"]["abs"] == eps["polars"]["d"]["abs"]  # the literal's bound
     # Below the smallest normal `1 / y` overflows on Polars: the plan has no bound there.
     sv.verify(t.select(s=t.x / 1e-300, d=t.x / 1e-310), requires=req, on_inferred="warn")
     eps = json.loads(seen["out"])["epsilon_by_engine"]["polars"]
