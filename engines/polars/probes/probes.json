@@ -4125,6 +4125,12 @@
    "observed": "error SchemaError: failed to determine supertype of time and duration[\u03bcs]"
   },
   {
+   "construct": "instant-conversion",
+   "area": "temporal",
+   "code": "(lambda s: (s.dt.replace_time_zone('UTC').dtype, s.dt.replace_time_zone('UTC').dt.epoch('us').to_list(), s.dt.replace_time_zone('UTC').dt.replace_time_zone(None).to_list(), s.dt.epoch('us').to_list()))(df(x=[dt.datetime(2024, 3, 31, 2, 30), dt.datetime(1, 1, 1), None]).to_series())",
+   "observed": "(Datetime(time_unit='us', time_zone='UTC'), [1711852200000000, -62135596800000000, None], [datetime.datetime(2024, 3, 31, 2, 30), datetime.datetime(1, 1, 1, 0, 0), None], [1711852200000000, -62135596800000000, None])"
+  },
+  {
    "construct": "tz-nonexistent",
    "area": "temporal",
    "code": "df(x=[dt.datetime(2024, 3, 31, 2, 30)]).select(pl.col('x').dt.replace_time_zone('Europe/Berlin')).item()",

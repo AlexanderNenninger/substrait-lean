@@ -1,1 +1,0 @@
--- Unsupported: Spark's POWER is Java's Math.pow, within 1 ulp of the C pow the Lean model uses

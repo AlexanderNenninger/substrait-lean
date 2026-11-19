@@ -112,6 +112,7 @@ import SubstraitLean.Pretty
 import SubstraitLean.Examples
 import SubstraitLean.Refresh
 import SubstraitLean.Engine
+import SubstraitLean.IssuesAll
 import SubstraitLean.ProvedOn
 import SubstraitLean.OpenSums
 import SubstraitLean.Statements

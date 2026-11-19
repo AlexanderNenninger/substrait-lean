@@ -120,7 +120,10 @@ place, and what retires it.
   fewer than 2⁶² rows (`Rel.Small`), and every relation an
   aggregate reads fewer than 2⁶³, as `COUNT(*)` is a 64-bit integer
   (`Rel.sumRows`). `Rel.SmallAll` asks the same of every order of the ties
-  the reference allows, for `Rel.mayIssues_sound_all`.
+  the reference allows, for `Rel.mayIssues_sound_all` and
+  `check_issues_sound_all`; the engine's input is one of those orders.
+  `DataAssumed` in `Statements.lean` takes `Rel.SmallAll`, which gives
+  `Rel.Small` (`DataAssumed.small`).
   No machine's memory holds more. The theorems that need it take
   `Rel.Small` (`Rel.mayIssues_sound`, `Rel.guardFree_sound`,
   `Rel.duckdb_sound`, `Rel.polars_sound`, `Rel.spark_sound`, and the engine
