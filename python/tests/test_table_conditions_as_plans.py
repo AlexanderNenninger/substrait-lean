@@ -106,8 +106,9 @@ def test_a_table_of_the_callers_own_backend_is_counted_there(monkeypatch):
     import ibis
 
     backend = ibis.duckdb.connect()
-    backend.create_table("t", pa.table(ROWS))
-    backend.create_table("p", pa.table({"id": [5, 6]}))
+    # `register`, not `create_table`: SQLGlot 30.18 breaks Ibis's DROP (SG-7).
+    backend.con.register("t", pa.table(ROWS))
+    backend.con.register("p", pa.table({"id": [5, 6]}))
 
     def refuse(*args, **kwargs):
         raise AssertionError("a table of the caller's backend was copied into a connection")
