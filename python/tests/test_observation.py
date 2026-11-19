@@ -209,7 +209,7 @@ def test_without_an_observation_nothing_changes() -> None:
     plain = sv.verify(expr, requires=req, ensures=[_.y >= 1], counterexamples=0)
     observed = sv.verify(expr, requires=req, ensures=[sv.equivalent(), _.y >= 1], counterexamples=0)
     assert plain.verdict == sv.Verdict.PROVED and observed.verdict == sv.Verdict.PROVED
-    assert plain.observation == sv.equivalent(floats="plan")
+    assert plain.observation == PLAN_BOUND
     assert observed.observation == Observation()
     assert "observes" not in str(plain)
 

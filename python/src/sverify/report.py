@@ -533,9 +533,10 @@ class Report:
     `params` bound and the SQL lifted with `semantics`. `run` runs it."""
     observation: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
     """What the result's consumer observes (`sv.equivalent` in `ensures`).
-    When `ensures` names none: rows as a multiset, doubles within the
-    plan's bound (`floats="plan"`, printed with the bound, `epsilon`) and
-    other values exact, the same as `sv.equivalent(floats="plan")`. Under
+    When `ensures` names none: rows and list elements as multisets, one zero
+    and one NaN (`zeros="canon"`), doubles within the plan's bound
+    (`floats="plan"`, printed with the bound, `epsilon`) and other values
+    exact (`sverify.observation.PLAN_BOUND`). Under
     the plan's bound a run holds the double columns a postcondition reads
     to their exact value (`sverify.routes.observed`). `equivalence` is the same, by the
     concept's name."""
