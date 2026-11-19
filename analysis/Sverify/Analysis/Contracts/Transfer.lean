@@ -615,6 +615,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ftod s, a => ftodAbs s a
   | .itos, a => { null := a.nonNum .int, str := a.int.isSome }
   | .widen, a => a
+  | .atUtc _, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a
   | .regexReplace _ _ _, a | .md5, a | .sha256, a =>
     { null := a.nonStr, str := a.str }

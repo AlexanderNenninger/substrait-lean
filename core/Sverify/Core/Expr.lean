@@ -126,6 +126,12 @@ inductive UnFn where
   /-- `CAST(x AS DOUBLE)` of a `FLOAT` (fp32): the same value, which a double
   holds exactly; it marks where a 32-bit double becomes a 64-bit one (#208). -/
   | widen
+  /-- The conversion between a timestamp and an instant at UTC (D53, #1725):
+  `true` reads a naive timestamp as the instant at that wall clock in UTC, `false`
+  gives the naive timestamp of an instant's UTC wall clock. It computes nothing:
+  the microseconds are the same, NULL stays NULL. It marks where the kind changes,
+  as `widen` marks 32 to 64 bits. -/
+  | atUtc (instant : Bool)
   /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
   | upper | lower | length
   /-- `reverse(s)` and `ascii(s)` (the first code point, `0` for `''`). -/
@@ -423,6 +429,7 @@ def UnFn.apply : UnFn → Value → Value
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
   | .widen, v => v
+  | .atUtc _, v => v
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)
   | .length, .str s => .int (Text.capped s.length)

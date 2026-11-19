@@ -586,6 +586,10 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     callOpt (BinFn.anchor f) [fitArg w x (writeExpr cols .int x), fitArg w y (writeExpr cols .int y)]
       "overflow" m.name
   | .un .widen a => obj [("cast", obj [("type", fp64Type), ("input", writeExpr cols .float a)])]
+  | .un (.atUtc inst) a =>
+    obj [("cast", obj [("type", kindType (if inst then .timeTz else .time)),
+      ("input", writeExpr cols (if inst then .time else .instant) a),
+      ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>

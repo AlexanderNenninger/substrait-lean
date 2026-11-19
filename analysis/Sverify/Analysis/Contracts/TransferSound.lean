@@ -390,6 +390,7 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
       (fun _ _ _ _ hr => by cases hr; exact FloatCode.canon_idem _)
   case wrap => simpa [UnFn.abs, UnFn.apply] using h
   case widen => simpa [UnFn.abs, UnFn.apply] using h
+  case atUtc b => simpa [UnFn.abs, UnFn.apply] using h
   case decimal p s | dkind p s =>
     exact mapAbs_sound (g := some) (fun v => by cases v <;> hf_tac)
       (fun _ _ _ hi hr => by cases hr; exact hi) (fun _ _ _ hr => by cases hr) h
