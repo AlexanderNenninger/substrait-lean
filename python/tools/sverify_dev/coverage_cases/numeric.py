@@ -67,9 +67,11 @@ REFUSED: dict[str, dict[str, str]] = {
 #: libm in the last bit: `log10(0.5)` is -0.30102999566398114 on Polars 2.1.0
 #: and -0.3010299956639812 on libm, 1 ulp apart. The comparison is to nine
 #: significant digits (`test_backends.approximately`), far wider than 2.1 ulp.
-#: Spark's functions are Java's (`spark-ulp-libm`), a few ulps from libm's, so `exp`, `ln`,
-#: `log(base)` and the trigonometric functions are compared the same way.
-APPROXIMATE = {"exp", "ln", "log10, log2", "log(base)", "trigonometry"}
+APPROXIMATE = {"log10, log2"}
+
+#: Spark's functions are Java's (`spark-ulp-libm`), a few ulps from libm's, so these are
+#: compared to nine digits against DuckDB; Polars and DuckDB share libm and match exactly.
+APPROXIMATE_SPARK = {"exp", "ln", "log(base)", "trigonometry"}
 
 NO_DUCKDB_SQL = {
     "sign": "DuckDB's sign of NaN is 0, the plan's NaN",

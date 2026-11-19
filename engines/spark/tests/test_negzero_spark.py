@@ -108,3 +108,16 @@ def test_a_plan_with_sqrt_or_atan2_is_refused_on_spark(which: str) -> None:
     report = sv.verify(expr, requires={"t": [_.x.between(-100, 100)]})
     route = routes.choose(report, "spark")
     assert route.refused and "pow_one_inf" in route.reason, route
+
+
+def test_only_the_logarithms_route_to_spark_today() -> None:
+    """`ln`, `log10`, `log2` and `log(b, x)` (`fp.log`) reach Spark; `exp` and the
+    trigonometric functions (`fp.elem`) wait on `pow_one_inf`, which Spark refuses."""
+    con = sv.connect()
+    con.create("t", ibis.schema({"k": "int64", "x": "float64"}), [])
+    t = con.table("t")
+    req = {"t": [_.x.between(1.0, 100.0)]}
+    ln = routes.choose(sv.verify(t.select(t.k, v=t.x.ln()), requires=req), "spark")
+    assert not ln.refused, ln
+    sin = routes.choose(sv.verify(t.select(t.k, v=t.x.sin()), requires=req), "spark")
+    assert sin.refused and "pow_one_inf" in sin.reason, sin
