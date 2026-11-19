@@ -43,7 +43,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_keys",
             "_weighted",
             "_store",
-            "_arrow_state",
+            "_parts",
             "_hooks",
             "_pipe",
             "profiles",

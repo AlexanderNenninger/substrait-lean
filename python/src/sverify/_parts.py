@@ -54,9 +54,8 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from sverify._arrow_state import ArrowOps
 from sverify._scan import Native, _q
-from sverify._store import State
+from sverify._store import State, Store
 from sverify._weighted import WEIGHT
 
 if TYPE_CHECKING:
@@ -336,7 +335,7 @@ def _parts_of(z: Any, schema: pa.Schema, backend: Backend) -> tuple[Part, ...]:
     return (backend.write(_frame_of(z, backend), schema),)
 
 
-class PartsStore(ArrowOps):
+class PartsStore(Store[Any]):
     """A view's state as parts of Parquet files that the engine writes
     (`PartsState`). A weighted table that is an Arrow table (a change, the
     state per group) is handled as the Arrow store does. An engine's store

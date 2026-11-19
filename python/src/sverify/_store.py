@@ -16,7 +16,16 @@ import pyarrow as pa
 
 from sverify._keys import canonical_key
 from sverify._scan import Native
-from sverify._weighted import _indices
+from sverify._weighted import (
+    _indices,
+    after,
+    buckets,
+    expanded,
+    has_negative,
+    negated,
+    through,
+    weighted,
+)
 
 type State = Any
 """A weighted table as the engine holds it: its store's handle (`Store`'s
@@ -38,9 +47,8 @@ class Store[S](ABC):
     runs only one-shot plans has none.
 
     `S` is the engine's own handle on a weighted table (`Resident` for a
-    table DuckDB holds, an Arrow table for an interim store, a cluster-side
-    DataFrame for Spark's), opaque to sverify. The invariant: state stays a
-    handle. The operations take and give back handles, so the state stays
+    table DuckDB holds, `sverify._parts.PartsState` for Polars and Spark),
+    opaque to sverify. The invariant: state stays a handle. The operations take and give back handles, so the state stays
     where the engine keeps it; only answers cross into concrete data (a
     count, whether a weight is negative, how many buckets were retired, a
     bounded set of violating keys), and the rows a sink writes at the end.
@@ -57,41 +65,50 @@ class Store[S](ABC):
         else an Arrow table. Raises `Unsupported` where the engine refuses
         the plan."""
 
-    @abstractmethod
     def kept(self, table: pa.Table) -> S:
-        """A weighted Arrow table as the store's state."""
+        """A weighted Arrow table as the store's state: the table itself, for
+        a store that holds Arrow tables."""
+        return table  # type: ignore[return-value]
 
-    @abstractmethod
+    # The operations below do what an Arrow table needs (a change, the state
+    # per group): `sverify._weighted`, in the Python process. A store
+    # overrides them for the handles of its own engine and calls them for an
+    # Arrow table.
+
     def weighted(self, rows: S, weight: int = 1) -> S:
         """`rows` (a batch the engine read) with the weight `weight` on
         every row."""
+        return weighted(arrow_of(rows), weight)  # type: ignore[arg-type, return-value]
 
-    @abstractmethod
     def negated(self, z: S) -> S:
         """`z` with every weight negated."""
+        return negated(arrow_of(z))  # type: ignore[arg-type, return-value]
 
-    @abstractmethod
     def expanded(self, z: S) -> S:
         """Each row as many times as its weight."""
+        return expanded(arrow_of(z))  # type: ignore[arg-type, return-value]
 
-    @abstractmethod
     def has_negative(self, z: S) -> bool:
         """Does a row of `z` have a negative weight?"""
+        return has_negative(arrow_of(z))  # type: ignore[arg-type]
 
-    @abstractmethod
     def retire(self, view, column: str, cutoff: object) -> int:
         """Drop the rows of `view.state` whose bucket `column` starts at or
         before `cutoff` (`sverify._retention`); returns how many buckets."""
+        state = arrow_of(view.state)
+        gone = buckets(through(state, column, cutoff), column)
+        view.state = after(state, column, cutoff)
+        return gone
 
-    @abstractmethod
     def with_keys(self, z: S, columns: Sequence[str], keys: S) -> S:
         """The rows of `z` whose `columns` equal a row of `keys` (the same
         number of columns, in order), NULLs equal."""
+        return by_keys(arrow_of(z), columns, arrow_of(keys))  # type: ignore[arg-type, return-value]
 
-    @abstractmethod
     def without_keys(self, z: S, columns: Sequence[str], keys: S) -> S:
         """The rows of `z` whose `columns` equal no row of `keys`: the rows
         `with_keys` leaves out."""
+        return by_keys(arrow_of(z), columns, arrow_of(keys), keep=False)  # type: ignore[arg-type, return-value]
 
 
 def by_keys(
