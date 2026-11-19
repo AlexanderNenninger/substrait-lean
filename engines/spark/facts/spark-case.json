@@ -8,7 +8,7 @@
   "options": [
     "char_set",
     "settings",
-    "non_ascii_text"
+    "case_mapping"
   ],
   "rows": [
     {
@@ -18,7 +18,7 @@
         "string"
       ]
     },
-    {"group": "str.case", "option": "non_ascii_text", "types": ["string"]}
+    {"group": "str.case", "option": "case_mapping", "types": ["string"]}
   ],
   "constructs": [
     "upper",

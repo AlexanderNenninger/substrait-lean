@@ -57,7 +57,13 @@ CASES: list[Case] = [
     case("strings", "host", R, lambda: t.select(x=t.name.host())),
 ]
 
+#: Snowflake's case mapping is recorded privately (D51): its writer runs `UPPER` and
+#: `LOWER` on literals only until the private fact shows the table.
+CASE_MAPPING = {"snowflake": "case mapping is recorded privately"}
+
 REFUSED: dict[str, dict[str, str]] = {
+    "upper": CASE_MAPPING,
+    "capitalize": CASE_MAPPING,
     # DuckDB only until the generated lowerings (#271).
     "re_extract": DUCKDB_ONLY,
     "re_replace": DUCKDB_ONLY,

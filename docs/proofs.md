@@ -153,6 +153,7 @@ declares no instance. An engine's theorems name the instance: DuckDB's is
 | `Regex.lean` | The regular-expression evaluator behind the regex black boxes |
 | `Rounding.lean` | Exact `FLOOR`, `CEIL`, `ROUND` and double-to-integer casts on codes |
 | `Conversions.lean` | Exact conversions between doubles, decimals and integers, with monotonicity |
+| `CaseTable.lean` | The scalar mappings of `UPPER` and `LOWER` the engines agree on and the scalars they raise on (generated, D51) |
 | `Text.lean` | String functions and `LIKE` |
 | `Time.lean` | `date_part` and `date_trunc` on the proleptic Gregorian calendar |
 | `Numeric.lean` | Elementary functions of doubles and 64-bit bitwise operations |
