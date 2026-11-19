@@ -41,7 +41,7 @@ one commit per release; don't edit it by hand. The sources are in
 """
 
 _HEADER = re.compile(r"^# /// script\n(.*?)^# ///$", re.S | re.M)
-_SVERIFY = re.compile(r'^(#\s+)"sverify(\[[^\]]*\])?"(,?)$', re.M)
+_SVERIFY = re.compile(r'^(#\s+)"(sverify(?:-dbt)?)(\[[^\]]*\])?"(,?)$', re.M)
 _UP_LINK = re.compile(r"\]\(\.\./([^)\s]+)\)")
 
 
@@ -77,9 +77,10 @@ def rewrite(text: str, version: str) -> str:
             continue
         out.append(lines[i])
         i += 1
-    body, n = _SVERIFY.subn(rf'\1"sverify\2=={version}"\3', "".join(out))
-    if n != 1:
-        raise ValueError(f"expected one sverify dependency, found {n}")
+    deps = "".join(out)
+    if sum(d[1] == "sverify" for d in _SVERIFY.findall(deps)) != 1:
+        raise ValueError("expected one sverify dependency")
+    body = _SVERIFY.sub(rf'\1"\2\3=={version}"\4', deps)
     text = text[: m.start(1)] + body + text[m.end(1) :]
     return _UP_LINK.sub(rf"]({REPO}/blob/v{version}/\1)", text)
 

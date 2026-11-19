@@ -280,8 +280,9 @@ jobs:
           else
             out models=false
           fi
-          # sverify-dbt reads sverify, and what the checker proves.
-          if grep -qE '^(dbt/|python/|SubstraitLean/|core/|analysis/|engines/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          # sverify-dbt reads sverify, and what the checker proves; the tour's
+          # dbt notebook runs there too.
+          if grep -qE '^(dbt/|notebooks/08_dbt\.py$|python/|SubstraitLean/|core/|analysis/|engines/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out dbt=true
           else
             out dbt=false
@@ -825,6 +826,9 @@ jobs:
           $DBT seed $SHOP
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
+      # The tour's dbt notebook (`poe notebooks` skips it: the python/
+      # environment has no dbt).
+      - run: uv run --no-sync --with marimo marimo export html ../notebooks/08_dbt.py -o "$RUNNER_TEMP/08_dbt.html"
 
   # The pipeline template (templates/pipelines/, #771), as a repository of
   # its own: its tests run its workflows' steps (check, refresh twice, the
