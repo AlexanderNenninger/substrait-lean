@@ -42,6 +42,7 @@ def UnFn.render : UnFn → String
   | .itof => "DOUBLE" | .froundTo d => s!"ROUND_{d}"
   | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .ftoiOrNull => "TRY_BIGINT"
   | .narrowOrNull n => s!"TRY_INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE"
+  | .atUtc true => "AT TIME ZONE UTC" | .atUtc false => "AT TIME ZONE UTC (naive)"
   | .replace p r => s!"REPLACE_{p.quote}_{r.quote}" | .regexMatch p => s!"REGEXP_MATCH_{p.quote}"
   | .regexExtract p g => s!"REGEXP_EXTRACT_{p.quote}_{g}"
   | .regexReplace p r g => s!"REGEXP_REPLACE_{p.quote}_{r.quote}{if g then "_G" else ""}"

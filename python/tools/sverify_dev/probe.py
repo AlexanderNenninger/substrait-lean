@@ -537,6 +537,21 @@ OBSERVATIONS: list[Observation] = [
        " date_diff('hour', TIMESTAMPTZ '2024-03-31 00:00:00+01',"
        " TIMESTAMPTZ '2024-04-01 00:00:00+02')",
        "SET TimeZone = 'Europe/Berlin'"),
+    # The conversion at UTC (D53): the microseconds of a timestamp as an instant and back,
+    # by the epoch, so no session zone is read; the same under another `TimeZone`.
+    _o("instant-conversion", "temporal",
+       "SELECT epoch_us(make_timestamptz(epoch_us(ts))),"
+       " make_timestamp(epoch_us(make_timestamptz(epoch_us(ts))))::VARCHAR,"
+       " make_timestamptz(epoch_us(CAST(NULL AS TIMESTAMP))) IS NULL"
+       " FROM (VALUES (TIMESTAMP '2024-03-10 02:30:00'), (TIMESTAMP '0001-01-01 00:00:00'),"
+       " (TIMESTAMP '9999-12-31 23:59:59.999999')) t(ts)",
+       "SET TimeZone = 'Asia/Kolkata'"),
+    _o("instant-conversion-new-york", "temporal",
+       "SELECT epoch_us(make_timestamptz(epoch_us(ts))),"
+       " make_timestamp(epoch_us(make_timestamptz(epoch_us(ts))))::VARCHAR"
+       " FROM (VALUES (TIMESTAMP '2024-03-10 02:30:00'), (TIMESTAMP '2024-11-03 01:30:00'))"
+       " t(ts)",
+       "SET TimeZone = 'America/New_York'"),
     _o("tz-utc", "temporal",
        "SELECT (TIMESTAMPTZ '2024-03-31 02:30:00')::VARCHAR,"
        " (TIMESTAMPTZ '2024-03-31 02:30:00+05:30')::VARCHAR,"

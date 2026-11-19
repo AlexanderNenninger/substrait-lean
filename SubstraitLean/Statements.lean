@@ -1,6 +1,7 @@
 import SubstraitLean.ProvedOn
 import SubstraitLean.RunPlan
 import Sverify.Engines.Rewrite
+import SubstraitLean.IssuesAll
 
 /-!
 # The top-level statements, named (#1484, A7)
@@ -21,7 +22,8 @@ docstring names the sharper theorem.
   guard-free. Polars's and Spark's: closed and guard-free.
 * `DataMeets R data`: the data meets the request (schemas, preconditions,
   keys, caps). `DataAssumed R data T` adds its bounds on rows per key
-  (`rows_per`) and the size hypothesis (`Rel.Small`).
+  (`rows_per`) and the size hypothesis on every order (`Rel.SmallAll`,
+  which gives `Rel.Small`: `DataAssumed.small`).
 * `Post.HoldsOn p out`: every column `p` keeps is TRUE on every row of `out`.
 
 ## The evaluators
@@ -73,11 +75,18 @@ def Verified.DuckDB (rep : Report) (R : Request) : Prop :=
 def Verified.GuardFree (rep : Report) : Prop := rep.closed = true ∧ rep.guardFree = true
 
 /-- The data a contract's engine statements speak of: it meets the request,
-its bounds on rows per key (`rows_per`) and the size hypothesis. -/
+its bounds on rows per key (`rows_per`) and the size hypothesis on every order
+the reference allows (`Rel.SmallAll`, #202): the engine's input is one of
+them. -/
 structure DataAssumed (R : Request) (data : Catalog) (T : Plan) : Prop where
   meets : DataMeets R data
   rowsPer : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows
-  small : T.root.Small data
+  smallAll : T.root.SmallAll data
+
+/-- The size hypothesis on `Rel.eval`'s order, one of every order's. -/
+theorem DataAssumed.small {R : Request} {data : Catalog} {T : Plan} (hD : DataAssumed R data T) :
+    T.root.Small data :=
+  hD.smallAll.small
 
 /-- Every column `p` keeps is TRUE on every row of `out`, the rows of the
 transformation `p` selects from. -/
@@ -170,13 +179,23 @@ theorem checked_keys {input : Json} {R : Request} {rep : Report} {T : Plan}
     (hD : DataMeets R data) : ∀ {out : Relation}, T.root.OrderAllowed data out → KeyOn k out :=
   check_keys_sound h.parsed h.checked hD h.transform hk
 
-/-- **Every issue that can happen is reported** (`check_issues_sound`), but
-an overflow to `±∞` under a profile other than the reference. -/
+/-- **Every issue that can happen on any order is reported**
+(`check_issues_sound_all`), on the views of a join's inputs included (an
+engine that pushes a condition into one input, #1484 R3), but an overflow to
+`±∞` under a profile other than the reference. -/
+theorem checked_issues_all {input : Json} {R : Request} {rep : Report} {T : Plan}
+    (h : Checked input R rep T) {data : Catalog} (hD : DataAssumed R data T) :
+    ∀ p, T.root.HasIssueAll data false p →
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) :=
+  check_issues_sound_all h.parsed h.checked hD.meets h.transform hD.rowsPer hD.smallAll
+
+/-- **Every issue that can happen on `Rel.eval`'s order is reported**, one
+order of `checked_issues_all`'s. -/
 theorem checked_issues {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) {data : Catalog} (hD : DataAssumed R data T) :
     ∀ p, T.root.HasIssue data false p →
       p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) :=
-  check_issues_sound h.parsed h.checked hD.meets h.transform hD.rowsPer hD.small
+  fun p hp => checked_issues_all h hD p (Rel.hasIssueAll_of_hasIssue hp)
 
 end Substrait.ContractCheck
 

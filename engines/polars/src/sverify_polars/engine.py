@@ -48,8 +48,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   and `DISTINCT` keeps the first of equal rows (`dedup`), NULLs equal.
 * Strings are sequences of Unicode scalar values (`core/Sverify/Core/Text.lean`):
   positions and lengths count characters, not bytes. `UPPER`, `LOWER` and
-  regular expressions are black boxes in Lean; Polars computes them with the
-  same Rust code DataFusion uses (`str::to_uppercase`, the `regex` crate).
+  regular expressions are black boxes in Lean; Polars computes them with
+  Rust's `str::to_uppercase` and the `regex` crate.
 * `date_part` and `date_trunc` follow `core/Sverify/Core/Time.lean`: sub-day
   parts and truncations are integer arithmetic on the microseconds, calendar
   ones go through Polars' calendar, and the calendar functions raise outside
@@ -114,8 +114,8 @@ class RuntimeIssue(ArithmeticError):
 
 
 class IntegerOverflow(RuntimeIssue):
-    """`+`, `-`, `*` or negation left 64 bits. DataFusion wraps around; the
-    model's integers are unbounded, so the only faithful answer is to stop."""
+    """`+`, `-`, `*` or negation left 64 bits. The model's integers are
+    unbounded, so the only faithful answer is to stop."""
 
     issue = "overflow"
 
@@ -127,7 +127,7 @@ class SumOverflow(IntegerOverflow):
 
 
 class Overflow(RuntimeIssue):
-    """`MIN / -1` or an integer `POWER` outside 64 bits: DataFusion fails."""
+    """`MIN / -1` or an integer `POWER` outside 64 bits."""
 
     issue = "overflow"
 
@@ -225,7 +225,7 @@ def _float_key(e: pl.Expr) -> pl.Expr:
     return canon(e).fill_nan(math.nan)
 
 
-#: `BinFn.greatest`/`least`, as Lean writes them (and as DataFusion does).
+#: `BinFn.greatest`/`least`, as Lean writes them.
 _PICKS = ("greatest", "least", "greatest_skip_null", "least_skip_null")
 
 
@@ -393,7 +393,7 @@ def wide(v: Val) -> pl.Expr:
 
 def narrow(w: pl.Expr, out: DType, what: str, *vals: Val, kind=None) -> Val:
     """A 128-bit result back in 64 bits. Leaving them is an issue: an error
-    for `MIN / -1` (`kind`), and where DataFusion would wrap, `IntegerOverflow`
+    for `MIN / -1` (`kind`), and `IntegerOverflow` otherwise
     (the model's integers are unbounded, so wrapping would be wrong)."""
     outside = (w < I64_MIN) | (w > I64_MAX)
     return Val(
@@ -703,7 +703,7 @@ def like_regex(p: str, fold: bool = False) -> str:
     """`Text.like`'s pattern, or with `fold` `Text.ilike`'s, as a regular
     expression of the `regex` crate (polars-regex): `%` any characters, `_`
     one, a backslash makes the next character literal (a trailing one is
-    itself). `(?i)` folds case as DataFusion's `ILIKE` does (Unicode's simple
+    itself). `(?i)` folds case for `ILIKE` (Unicode's simple
     case folding); `(?s)` lets `.` match a newline; `$` is the end of the
     text. Every literal character is an escape `\\x{…}`."""
     out, k = [], 0
@@ -766,7 +766,7 @@ def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
 def regex_groups(p: str) -> int | None:
     """Entries of `regexp_match(s, p)` on a match (`_plan_read.regex_groups`).
     `None` if the pattern does not compile, asked of Polars, which compiles
-    patterns with DataFusion's `regex` crate."""
+    patterns with the `regex` crate."""
     try:
         pl.Series([""], dtype=pl.String).str.contains(p)
     except pl.exceptions.ComputeError:
@@ -1284,6 +1284,12 @@ class Exprs:
             # `UnFn.timeOfDay`; Polars' times are nanoseconds.
             tod = (wide(v) % US_PER_DAY * 1000).cast(pl.Int64).cast(pl.Time)
             return ts_only(v, tod, pl.Time, "CAST to TIME")
+        if "precisionTimestampTz" in target and v.dtype == US:
+            # `UnFn.atUtc true` (D53): the same microseconds, as an instant.
+            return Val(v.expr.dt.replace_time_zone("UTC"), INSTANT, v.issues)
+        if "precisionTimestamp" in target and v.dtype == INSTANT:
+            # `UnFn.atUtc false`: the naive timestamp of the instant's UTC wall clock.
+            return Val(v.expr.dt.replace_time_zone(None), US, v.issues)
         if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
             # `UnFn.asTime`: microseconds since 1970-01-01.
             return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)

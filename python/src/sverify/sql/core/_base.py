@@ -17,6 +17,7 @@ from typing import Any, ClassVar, Literal
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
+from sverify._unsupported import ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -590,6 +591,15 @@ class Dialect:
     def as_time(self, us: str) -> str:
         """`UnFn.asTime`: the timestamp `us` microseconds after 1970-01-01."""
         raise self.not_written("timestamps from microseconds")
+
+    def to_instant(self, ts: str) -> str:
+        """`UnFn.atUtc true`: the instant of a naive timestamp's wall clock in UTC,
+        the same microseconds; no session zone is read."""
+        raise self.not_written("timestamps with a time zone", ISSUE_1725)
+
+    def to_naive(self, instant: str) -> str:
+        """`UnFn.atUtc false`: the naive timestamp of an instant's UTC wall clock."""
+        raise self.not_written("timestamps with a time zone", ISSUE_1725)
 
     def date_time(self, d: str) -> str:
         """`UnFn.dateTime`: a DATE as the TIMESTAMP of its midnight (#807)."""
@@ -1165,6 +1175,7 @@ StringBinOp = Literal[
 TemporalUnOp = Literal[
     "date_part", "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day",
     "as_time", "strftime", "bucket", "time_add", "time_trunc", "date_time", "epoch_us",
+    "to_instant", "to_naive",
 ]  # fmt: skip
 TemporalBinOp = Literal["date_add", "date_diff"]
 
@@ -1847,6 +1858,7 @@ _DATE_OPS = frozenset(
     {
         "date_part", "day_part", "date_trunc", "day_trunc", "to_date", "date_time",
         "add_months", "as_time", "time_of_day", "bucket", "strftime", "epoch_us",
+        "to_instant", "to_naive",
     }
 )  # fmt: skip
 
@@ -2141,6 +2153,14 @@ def _cast_const(ty: dict, c: Const) -> Const:
             if c.tag == "str":
                 return c
             raise WriterUnsupported("casts to strings are not supported")
+        # An instant literal: the microseconds of a timestamp literal, read at UTC (D53).
+        case "instant":
+            if c.tag == "int":
+                return Const("int", c.value, kind="instant")
+            raise WriterUnsupported(
+                "a cast of this value to a timestamp with a time zone is not supported "
+                + ISSUE_1725
+            )
     if isinstance(lean, Dec):
         return _cast_const_decimal(lean, c)
     raise WriterUnsupported(
@@ -2705,6 +2725,11 @@ class _Parser:
                     return Un("to_date", e)
                 if target == "tod" and k == "time":
                     return Un("time_of_day", e)
+                # The conversion at UTC (D53): the same microseconds, the other kind.
+                if target == "instant" and k == "time":
+                    return Un("to_instant", e)
+                if target == "time" and k == "instant":
+                    return Un("to_naive", e)
                 # Microseconds since 1970-01-01 (arrow's cast of an integer).
                 if target == "time" and k == "int":
                     return Un("as_time", e)
@@ -4991,6 +5016,8 @@ class _Writer:
         match k:
             case "time":
                 return d.timestamp_lit(v)
+            case "instant":
+                return d.to_instant(d.timestamp_lit(v))
             case "date":
                 return d.date_lit(v)
             case "tod":

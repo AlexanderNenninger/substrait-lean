@@ -158,6 +158,16 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
   | .narrow _ | .narrowOrNull _ => need (t.okI Kind.isInt) (.kind .int)
   | .wrap _ | .fit _ _ => need (t.okI Kind.isExactNum) t
   | .widen => need (t.okI Kind.isFloat) t
+  -- Exactly the kind it converts: an unknown kind stays unknown, since the value is returned as
+  -- it is.
+  | .atUtc true => match t with
+    | .kind .time => some (.kind .timeTz)
+    | .kind .other => some (.kind .other)
+    | _ => none
+  | .atUtc false => match t with
+    | .kind .timeTz => some (.kind .time)
+    | .kind .other => some (.kind .other)
+    | _ => none
   | .itos => need (t.okI Kind.isInt) (.kind .str)
   | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 => need (t.okK .str) (.kind .str)
@@ -215,7 +225,7 @@ def Kind.subK : Kind → Kind → Option Kind
   | .timeTz, .int => some .timeTz
   | .tod, .int => some .tod
   | .date, .int => some .date
-  | .time, .time | .time, .timeTz | .timeTz, .time | .timeTz, .timeTz
+  | .time, .time | .timeTz, .timeTz
   | .tod, .tod | .date, .date => some .int
   | _, _ => none
 
@@ -238,7 +248,6 @@ compares two scales without it is refused here, not NULL at run time. -/
 def Kind.comparable : Kind → Kind → Bool
   | .other, _ | _, .other => true
   | .dec _ s, .dec _ t => s == t
-  | .time, .timeTz | .timeTz, .time => true
   | .list a, .list b => Kind.comparable a b
   | .struct as, .struct bs => as.length == bs.length && compList as bs
   | a, b => a == b
@@ -346,8 +355,8 @@ def UnFn.out : UnFn → Kind
   | .addMonths _ true | .bucket _ _ | .asTime | .dateTime => .time
   | .timeOfDay => .tod
   | .decimal p s | .dkind p s => .dec p s
-  | .wrap _ | .widen | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _ | .flatten
-  | .raise _ | .bbox _ => .other
+  | .wrap _ | .widen | .atUtc _ | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _
+  | .flatten | .raise _ | .bbox _ => .other
 
 theorem UnFn.apply_out (f : UnFn) (v : Value) : (f.apply v).hasKind f.out = true := by
   cases f
@@ -396,6 +405,14 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
   case addMonths m b =>
     cases b <;> simp only [UnFn.kindOf, UnFn.out, Option.ite_none_right_eq_some,
       Option.some.injEq] at h hout <;> (obtain ⟨_, rfl⟩ := h; exact hout)
+  case atUtc b =>
+    cases t with
+    | num => cases b <;> simp [UnFn.kindOf] at h
+    | kind k =>
+      cases b <;> cases k <;> simp only [UnFn.kindOf] at h <;>
+        first
+          | (exfalso; simp at h; done)
+          | (cases h; cases v <;> simp_all [UnFn.apply, KT.has, KT.toKind, Value.hasKind])
   all_goals simp only [UnFn.kindOf, UnFn.out, Option.ite_none_right_eq_some, Option.some.injEq] at h hout
   all_goals first
     | (obtain ⟨_, rfl⟩ := h; exact hout)
