@@ -198,3 +198,18 @@ def test_the_checker_over_its_cap_is_a_memory_finding(tmp_path):
         ["core:checker", "SELECT ?", "memory"],
         ["duckdb:float_arith:checker", "SELECT ? FROM t", "memory"],
     ]
+
+
+def test_a_crashed_fuzzer_is_not_ok_and_names_its_last_case(tmp_path, monkeypatch):
+    code = (
+        "import json, os, sys; "
+        f"open(os.environ['SVERIFY_FUZZ_PROGRESS'], 'w').write(json.dumps({CASE!r})); "
+        "sys.exit(1)"
+    )
+    monkeypatch.setattr(nightly, "command", lambda *a: ([nightly.sys.executable, "-c", code], {}))
+    # A relative --out, as the workflow passes it: the batch writes there all the same.
+    monkeypatch.chdir(tmp_path)
+    rec = nightly.batch("core", 4, 1, nightly.Path("out"), timeout=30, rss_mb=10**6)
+    assert rec["status"] == "exit 1"
+    (found,) = nightly.findings(tmp_path / "out")
+    assert found["sig"] == ["core:crash", "SELECT i + ? FROM t", "crash"]

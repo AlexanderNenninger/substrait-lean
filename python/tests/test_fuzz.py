@@ -92,6 +92,14 @@ def test_a_checker_over_its_cap_is_a_finding_not_an_exception(monkeypatch, tmp_p
     assert json.loads((tmp_path / "progress.json").read_text())["sql"] == q.sql
 
 
+def test_a_reference_raise_that_verify_flags_is_not_a_finding():
+    # Lean raises divByZero; verify reports the possible runtime error, so
+    # this is the reference's designed raise, not a disagreement (the nightly
+    # run's first batch crashed on this case before).
+    q = Query("SELECT (k // 0) AS c0 FROM u AS q", {"c0": fuzz.INT})
+    assert fuzz._findings((q, {"t": [], "u": [(1, "a")]})) == []
+
+
 T_ROW = (1, 2, 0.5, "a", True, None)
 
 

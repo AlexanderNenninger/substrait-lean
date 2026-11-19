@@ -129,6 +129,8 @@ def _tree_rss_mb(root: int) -> int:
 
 def batch(suite: str, seed: int, seconds: float, out: Path, timeout: float, rss_mb: int) -> dict:
     """Run one batch; record and return how it ended."""
+    # Absolute: the batch runs in `python/`, the caller anywhere.
+    out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     argv, env = command(suite, seed, seconds, out)
     # The fuzzers and the test plugin write the case or test about to run
@@ -157,7 +159,10 @@ def batch(suite: str, seed: int, seconds: float, out: Path, timeout: float, rss_
                 proc.wait()
                 break
             time.sleep(2)
-    if status == "ok" and proc.returncode not in (0, 1):
+    # pytest exits 1 when a test fails: findings, not a crash.
+    if status == "ok" and proc.returncode not in (
+        (0, 1) if suite.startswith("hypothesis:") else (0,)
+    ):
         status = f"exit {proc.returncode}"
     record = {
         "suite": suite,
@@ -212,9 +217,11 @@ DUCKDB_REPLAY = "cd python && uv run python -m sverify_dev.duckdb_fuzz --replay 
 
 
 def stopped(batch_dir: Path, meta: dict[str, Any]) -> list[dict[str, Any]]:
-    """A batch the watchdog stopped (`memory` or `timeout`) as findings: the
-    case or test each of its processes was on (`SVERIFY_FUZZ_PROGRESS`)."""
-    suite, status = meta["suite"], meta["status"]
+    """A batch that did not end well (the watchdog's `memory` or `timeout`, or
+    a crash: an unexpected exit code) as findings: the case or test each of
+    its processes was on (`SVERIFY_FUZZ_PROGRESS`)."""
+    suite = meta["suite"]
+    status = meta["status"] if meta["status"] in ("memory", "timeout") else "crash"
     kind = suite.split(":")[0] if suite.startswith("hypothesis:") else suite
     found: list[dict[str, Any]] = []
     for path in sorted(batch_dir.glob("progress.json*")):
@@ -250,9 +257,7 @@ def findings(batch_dir: Path) -> list[dict[str, Any]]:
     the command that reproduces it."""
     meta = json.loads((batch_dir / "batch.json").read_text())
     suite, seed, seconds = meta["suite"], meta["seed"], meta["seconds"]
-    found: list[dict[str, Any]] = (
-        stopped(batch_dir, meta) if meta["status"] in ("memory", "timeout") else []
-    )
+    found: list[dict[str, Any]] = stopped(batch_dir, meta) if meta["status"] != "ok" else []
     if (path := batch_dir / "core.json").exists():
         for f in json.loads(path.read_text()):
             found.append(
