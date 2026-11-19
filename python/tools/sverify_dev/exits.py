@@ -99,6 +99,19 @@ def _text(node: ast.AST, consts: dict[str, str]) -> str:
     return "{}"
 
 
+def _construct_text(node: ast.AST) -> str:
+    """A `construct=` argument as text: its literal parts, `{}` for each computed part."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            str(v.value) if isinstance(v, ast.Constant) else "{}"
+            for v in node.values
+            if isinstance(v, ast.Constant | ast.FormattedValue)
+        )
+    return "{}"
+
+
 def sites(root: Path = SRC) -> list[Site]:
     """Every refusal `raise` under `root`."""
     trees = {
@@ -146,7 +159,7 @@ def sites(root: Path = SRC) -> list[Site]:
                 )
             hint = next((_text(k.value, consts) for k in n.exc.keywords if k.arg == "hint"), "")
             construct = next(
-                (_text(k.value, consts) for k in n.exc.keywords if k.arg == "construct"), None
+                (_construct_text(k.value) for k in n.exc.keywords if k.arg == "construct"), None
             )
             out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint, construct))
     return out
@@ -162,7 +175,9 @@ def unnamed_by_file(found: list[Site] | None = None) -> dict[str, int]:
 CONSTRUCT_DIRS = ("sql_lift/", "ibis_substrait/")
 CONSTRUCT_BASELINE = BASELINE.with_name("construct_baseline.json")
 #: One spelling of a construct: `function md5` or SQL keywords in upper case.
-CONSTRUCT_FORM = re.compile(r"function (\{\}|[a-z][a-z0-9_]*)|[A-Z][A-Z0-9]*( [A-Z][A-Z0-9]*)*")
+CONSTRUCT_FORM = re.compile(
+    r"function (\{\}|[a-z][a-z0-9_]*)|(\{\}|[A-Z][A-Z0-9]*)( (\{\}|[A-Z][A-Z0-9]*))*"
+)
 
 
 def construct_sites(found: list[Site] | None = None) -> list[Site]:

@@ -13,6 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, _sort_key
+from sverify.ibis_substrait._constructs import op_construct
 from sverify.plan_json import Json, ProducerUnsupported, Unsupported, call, decimal_literal
 from sverify.plan_json import anchor as _anchor
 
@@ -78,7 +79,7 @@ def measure(x: Exprs, op: Any) -> Json:
     else:
         raise ProducerUnsupported(
             f"aggregate {type(op).__name__} is not supported",
-            construct=f"function {type(op).__name__.lower()}",
+            construct=op_construct(op),
         )
     agg: Json = {
         "functionReference": _anchor(name),
@@ -201,7 +202,7 @@ def quantile(x: Exprs, op: Any) -> Json:
         raise Unsupported(
             f"{type(op).__name__} is not supported: its value is each engine's own estimate; "
             "use median() or quantile() for the exact value",
-            construct=f"function {type(op).__name__.lower()}",
+            construct=op_construct(op),
         )
     if isinstance(op, ops.MultiQuantile):
         raise Unsupported(
@@ -224,7 +225,7 @@ def quantile(x: Exprs, op: Any) -> Json:
         # DuckDB interpolates decimals and timestamps in their own types.
         raise ProducerUnsupported(
             f"{type(op).__name__.lower()} of {t} is not supported yet",
-            construct=f"function {type(op).__name__.lower()}",
+            construct=op_construct(op),
         )
     agg: Json = {
         "functionReference": _anchor("quantile_cont" if cont else "quantile_disc"),
