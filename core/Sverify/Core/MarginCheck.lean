@@ -77,7 +77,7 @@ def Expr.passes (ex : Nat → Bool) : Expr → Option (Option Nat)
 
 /-- A comparison of an aggregate's column `j` with a constant `t`, the
 condition of a threshold filter: `(j, t)`. The column is a bare column, or an expression that passes
-it (`Expr.passes`): the finishing `CASE` of DuckDB's `SUM` and `AVG` of doubles (#341), whose
+it (`Expr.passes`): the finishing `CASE` a lowering writes for `SUM` and `AVG` of doubles (#341), whose
 conditions read the extremes and whose branches are NaN, `+∞` or the sum. Both sides of such a
 filter agree on every engine: the conditions read exact columns, so each takes the reference's branch,
 and a branch is a constant, the same on every engine, or the sum, which the check bounds. -/
@@ -207,7 +207,7 @@ def marginWin (cat : Catalog) (i : Rel) (x y : Expr) : Option MarginSite := do
   guard ((m.fn == .fsum || m.fn == .avg) && !m.distinct && m.filter.isNone)
   let xi ← match m.arg with | .field xi => some xi | _ => none
   -- The frame is the whole partition, so any order gives its values; one by the
-  -- partition's keys where the window has none (Spark's windows need one).
+  -- partition's keys where the window has none (an engine may need one).
   let sort' := if sort.isEmpty then part.map fun p => ({ col := p } : SortKey) else sort
   let w2 := Rel.window r part sort' [.agg m s frame, .agg { fn := .count, arg := .field xi } s frame,
     .agg { fn := .fsum, arg := (Expr.field xi).fabs } s frame]
@@ -303,7 +303,7 @@ private def finish (cond : Expr) (f : AggFn) : Rel :=
 #guard (Rel.filter (.window (.read "r") [0] []
   [.agg { fn := .avg, arg := .field 1 } [] ⟨false, .unboundedPreceding, .preceding 0⟩])
   (.bin .lt (.field 2) (.field 1))).marginCheck exCat |>.isNone
--- The finish of DuckDB's `SUM` of doubles (#341): a guarded sum, the maximum and the minimum, and a
+-- The finish a lowering writes for a `SUM` of doubles (#341): a guarded sum, the maximum and the minimum, and a
 -- `CASE` on the extremes; the threshold on it has the check, and a `CASE` whose condition reads the
 -- sum has none.
 private def guardedSum : Rel := .aggregate (.read "orders") [.field 0]
