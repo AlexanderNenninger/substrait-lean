@@ -154,10 +154,10 @@ class Exact:
 # --- The limbs, as Ibis expressions over each changed row --------------------
 
 
-def _wide(e: ir.IntegerValue) -> ir.DecimalValue:
+def _wide(e: Any) -> Any:
     # The checker writes an integer's cast to `DECIMAL(38,0)` away, which
     # leaves a product at 64 bits; a sum at that type keeps it.
-    return e.cast(LIMB_TYPE) + ibis.literal(Decimal(0), LIMB_TYPE)  # type: ignore[attr-defined]
+    return e.cast(LIMB_TYPE) + ibis.literal(Decimal(0), LIMB_TYPE)
 
 
 def _split(t: ir.Table, c: str) -> ir.Table:
@@ -166,7 +166,7 @@ def _split(t: ir.Table, c: str) -> ir.Table:
     infinity), and `<c>_bad` 1 where the split does not give back the value.
     Each step reads the step before as columns, so the written plan stays
     small."""
-    x = t[c]
+    x: Any = t[c]
     one, zero = ibis.literal(1, "int64"), ibis.literal(0, "int64")
     finite = x.notnull() & ~x.isnan() & ~x.isinf()
     cls = ibis.cases(
@@ -177,23 +177,27 @@ def _split(t: ir.Table, c: str) -> ir.Table:
     )
     on = finite & (x != 0)
     t = t.mutate(**{f"{c}_c": cls, f"{c}_f": ibis.ifelse(on, x, 0.0)})
-    f = t[f"{c}_f"]
+    f: Any = t[f"{c}_f"]
     t = t.mutate(**{f"{c}_a": ibis.ifelse(f == 0, 1.0, f.abs())})
-    a = t[f"{c}_a"]
+    a: Any = t[f"{c}_a"]
     t = t.mutate(**{f"{c}_e": ibis.least(a.log2().floor().cast("int64"), 1023)})
-    e, two = t[f"{c}_e"], ibis.literal(2.0)
+    e: Any = t[f"{c}_e"]
+    two: Any = ibis.literal(2.0)
+    # Each step reads the one before as columns: a guard of the written plan
+    # repeats its operands, so a nested expression grows with every level.
+    t = t.mutate(**{f"{c}_lo": two.pow(e), f"{c}_hi": two.pow(ibis.least(e + 1, 1023))})
     # `log2` may be off by one near a power of two: correct it.
-    down = ibis.ifelse(a < two.pow(e), one, zero)
-    up = ibis.ifelse((e < 1023) & (a >= two.pow(ibis.least(e + 1, 1023))), one, zero)
+    down = ibis.ifelse(a < t[f"{c}_lo"], one, zero)
+    up = ibis.ifelse((e < 1023) & (a >= t[f"{c}_hi"]), one, zero)
     t = t.mutate(**{f"{c}_e": ibis.greatest(e - down + up, -1022)})
     e = t[f"{c}_e"]
-    # `2^(52 - e)` in two steps, one at a time: a subnormal's is past the
-    # largest double, and the guards of a nested product repeat its operands.
-    t = t.mutate(**{f"{c}_h": (52 - e) // 2})
-    h = t[f"{c}_h"]
-    t = t.mutate(**{f"{c}_d": f * two.pow(h)})
-    t = t.mutate(**{f"{c}_d": t[f"{c}_d"] * two.pow(52 - e - h)})
-    d = t[f"{c}_d"]
+    # `2^(52 - e)` in two factors: a subnormal's is past the largest double.
+    t = t.mutate(**{f"{c}_k": ibis.least(-e + 52, 537)})
+    k: Any = t[f"{c}_k"]
+    t = t.mutate(**{f"{c}_lo": two.pow(k), f"{c}_hi": two.pow(-e + 52 - k)})
+    t = t.mutate(**{f"{c}_d": f * t[f"{c}_lo"]})
+    t = t.mutate(**{f"{c}_d": t[f"{c}_d"] * t[f"{c}_hi"]})
+    d: Any = t[f"{c}_d"]
     ok = (d.floor() == d) & (d.abs() < 2.0**53) & ((e == -1022) | (d.abs() >= 2.0**52) | (d == 0))
     t = t.mutate(
         **{
@@ -203,9 +207,9 @@ def _split(t: ir.Table, c: str) -> ir.Table:
         }
     )
     # The mantissa's magnitude in halves below `2²⁷`, for squares and products.
-    m = t[f"{c}_m"]
+    m: Any = t[f"{c}_m"]
     t = t.mutate(**{f"{c}_abs": m.abs()})
-    mag = t[f"{c}_abs"]
+    mag: Any = t[f"{c}_abs"]
     return t.mutate(**{f"{c}_hi": mag // _HALF, f"{c}_lo": mag % _HALF})
 
 
@@ -220,15 +224,19 @@ def limbs(
         rows = _split(rows, c)
     pieces: list[tuple[Any, Any, Any, Any]] = []
     """(measure index, slot, position, value) per piece, all expressions."""
-    zero = ibis.literal(0, "int64")
+    zero: Any = ibis.literal(0, "int64")
 
     for e, xc, yc, okc in measures:
-        r = rows
+        r: Any = rows
         ok = r[okc] == 1
         cx, px, mx = r[f"{xc}_c"], r[f"{xc}_p"], r[f"{xc}_m"]
-        cy, py, my = (r[f"{yc}_c"], r[f"{yc}_p"], r[f"{yc}_m"]) if yc else (zero, None, None)
-        hx, lx = r[f"{xc}_hi"], r[f"{xc}_lo"]
-        hy, ly = (r[f"{yc}_hi"], r[f"{yc}_lo"]) if yc else (None, None)
+        cy: Any = r[f"{yc}_c"] if yc else zero
+        py: Any = r[f"{yc}_p"] if yc else None
+        my: Any = r[f"{yc}_m"] if yc else None
+        hx: Any = r[f"{xc}_hi"]
+        lx: Any = r[f"{xc}_lo"]
+        hy: Any = r[f"{yc}_hi"] if yc else None
+        ly: Any = r[f"{yc}_lo"] if yc else None
         i = e.index
         terms = TERMS[e.kind]
         pieces.append((i, X + cy, px, ibis.ifelse(ok, mx, 0)))
@@ -249,13 +257,15 @@ def limbs(
                 )
         counted = ok & ((cx != FINITE) | (cy != FINITE))
         pieces.append((i, CLASSES + 4 * cx + cy, zero, ibis.ifelse(counted, 1, 0)))
-        bad = r[f"{xc}_bad"] + (r[f"{yc}_bad"] if yc else 0)
+        bad: Any = r[f"{xc}_bad"]
+        if yc:
+            bad = bad + r[f"{yc}_bad"]
         pieces.append((i, ibis.literal(BROKEN, "int64"), zero, ibis.ifelse(ok, bad, 0)))
     # One row per (row, piece): a cross join with the piece numbers, so the
     # split runs once per row.
     nums = ibis.memtable({"__k": list(range(len(pieces)))}, schema={"__k": "int64"})
-    j = rows.cross_join(nums)
-    n = j["__k"]
+    j: Any = rows.cross_join(nums)
+    n: Any = j["__k"]
 
     def pick(at: int) -> Any:
         def lit(v: Any) -> Any:
@@ -267,13 +277,12 @@ def limbs(
         __i=pick(0), __slot=pick(1), __pos=pick(2).cast("int64"), __val=pick(3).cast("int64")
     )
     j = j.filter(j["__val"] != 0)
-    pow2 = ibis.cases(
-        *[(j["__pos"] % _BITS == b, ibis.literal(Decimal(2**b), LIMB_TYPE)) for b in range(_BITS)]
-    )
+    # `2^(pos mod 32)`, a double below `2³²`, so its cast is exact.
+    j = j.mutate(__shift=ibis.literal(2.0).pow(j["__pos"] % _BITS).cast(LIMB_TYPE))
     code = (j["__i"] * _SLOTS + j["__slot"]) * _LIMBS + j["__pos"] // _BITS
     return j.select(
         *keys,
-        **{CODE: code.cast("int32"), VALUE: _wide(j["__val"]) * pow2 * j["__w"]},
+        **{CODE: code.cast("int32"), VALUE: _wide(j["__val"]) * j["__shift"] * j["__w"]},
     )
 
 
@@ -392,27 +401,34 @@ def moments(e: Exact, slots: dict[int, int]) -> Moments:
     slot's limbs): the finite parts from the limbs, the NaN and infinities
     from their counts by class, as Lean's `scaled` codes add them up."""
     c = _CLASS
-    count = {(a, b): slots.get(CLASSES + 4 * a + b, 0) for a in range(4) for b in range(4)}
     fx = [slots.get(X + k, 0) for k in range(4)]
     fy = [slots.get(Y + k, 0) for k in range(4)]
-    sums = {
-        "x": sum(fx) + sum(n * c[a] for (a, _), n in count.items()),
-        "y": sum(fy) + sum(n * c[b] for (_, b), n in count.items()),
-        "xx": slots.get(XX, 0) + sum(n * c[a] ** 2 for (a, _), n in count.items()),
-        "yy": slots.get(YY, 0) + sum(n * c[b] ** 2 for (_, b), n in count.items()),
-        "xy": slots.get(XY, 0)
-        + sum(c[k] * (fx[k] + fy[k]) for k in range(4))
-        + sum(n * c[a] * c[b] for (a, b), n in count.items()),
-    }
+    sx, sy = sum(fx), sum(fy)
+    sxx, syy = slots.get(XX, 0), slots.get(YY, 0)
+    sxy = slots.get(XY, 0) + sum(c[k] * (fx[k] + fy[k]) for k in range(1, 4) if fx[k] or fy[k])
     classes = [0] * 4
-    for (a, b), n in count.items():
-        classes[a] += n
-        if e.pair:
-            classes[b] += n
+    for a in range(4):
+        for b in range(4):
+            n = slots.get(CLASSES + 4 * a + b, 0)
+            if not n:
+                continue
+            sx, sy = sx + n * c[a], sy + n * c[b]
+            sxx, syy = sxx + n * c[a] * c[a], syy + n * c[b] * c[b]
+            sxy += n * c[a] * c[b]
+            classes[a] += n
+            if e.pair:
+                classes[b] += n
+    sums = {"x": sx, "y": sy, "xx": sxx, "yy": syy, "xy": sxy}
     return [sums[t] for t in TERMS[e.kind]] + classes[1:]
 
 
 _CHUNK = 2**16
+
+
+def _call(name: str, *args: Any) -> Any:
+    # `pyarrow.compute`'s functions are generated at import, so type checkers
+    # do not see them; `call_function` is typed.
+    return pc.call_function(name, list(args))
 
 
 def attach(state: pa.Table, keys: Sequence[str], exact: Sequence[Exact], check: bool) -> pa.Table:
@@ -424,9 +440,11 @@ def attach(state: pa.Table, keys: Sequence[str], exact: Sequence[Exact], check: 
     if not exact:
         return state
     canon = canonical_keys(state.select(list(keys)), keys)
-    order = pc.sort_indices(
-        canon.append_column(CODE, state.column(CODE)),
-        sort_keys=[(k, "ascending", "at_start") for k in [*keys, CODE]],
+    by = [(k, "ascending", "at_start") for k in [*keys, CODE]]
+    order = pc.call_function(
+        "sort_indices",
+        [canon.append_column(CODE, state.column(CODE))],
+        pc.SortOptions(sort_keys=by),  # pyrefly: ignore[missing-attribute]
     )
     state = state.take(order)
     canon = canon.take(order)
@@ -471,9 +489,9 @@ def attach(state: pa.Table, keys: Sequence[str], exact: Sequence[Exact], check: 
                 slots[(i, slot)] = slots.get((i, slot), 0) + (int(r[VALUE]) << (_BITS * limb))
     if cur is not None:
         flush()
-    own_rows = pc.is_null(state.column(CODE))
+    own_rows = _call("is_null", state.column(CODE))
     main = state.filter(own_rows)
     for e in exact:
         at = main.column_names.index(f"__s{e.index}")
         main = main.set_column(at, f"__s{e.index}", pa.array(done[e.index], pa.float64()))
-    return pa.concat_tables([main, state.filter(pc.invert(own_rows))])
+    return pa.concat_tables([main, state.filter(_call("invert", own_rows))])

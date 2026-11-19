@@ -175,7 +175,9 @@ def test_attach_finishes_from_limbs_and_guards_them():
     got = _exact_sum.attach(
         _state(2, {(_exact_sum.X, 1073 // 32): 3 * 2 ** (1073 % 32)}), ["k0"], e, check=True
     )
-    assert got.filter(pc.is_null(got.column("__l"))).column("__s0").to_pylist() == [1.5]
+    assert got.filter(pc.call_function("is_null", [got.column("__l")])).column(
+        "__s0"
+    ).to_pylist() == [1.5]
     with pytest.raises(ValueError, match="exceeds the exact state"):
         _exact_sum.attach(_state(_exact_sum.HEADROOM, {}), ["k0"], e, check=False)
     with pytest.raises(ValueError, match="split into limbs failed"):
