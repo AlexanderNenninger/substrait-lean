@@ -159,6 +159,7 @@ ROOT_THEOREMS = {
     "ProvedOn": "imports ContractCheck and the three engines' Engine modules",
     "Statements": "imports ProvedOn",
     "IssuesAll": "a theorem about the checker's verdict: imports ContractCheck",
+    "RunPlan": "the plan an engine runs (#1787): imports ContractCheck and DuckDB's Engine module",
 }
 # Each module still waiting to move, with what it waits for. #1444 closes
 # when this is empty.
@@ -180,6 +181,7 @@ ROOT_WAITING = {
     "IncrementalMinMax": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalSemi": "imports IncrementalAgg (#1795); then analysis",
     "MarginSound": "#1805's OpenSums imports it; then analysis",
+    "OpenSums": "ruling 148 O2: general part to engines-common, example to Polars",
     "Pretty": "#1765 edits it; then core",
     "Infer": "#1765 edits it; then analysis",
     "Write": "#1813 and #1765 edit it; then frontend",

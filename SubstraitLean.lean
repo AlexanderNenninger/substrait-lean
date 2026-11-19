@@ -78,6 +78,7 @@ import SubstraitLean.Pruning
 import SubstraitLean.Implied
 import Sverify.Core.Completeness
 import SubstraitLean.ContractCheck
+import SubstraitLean.RunPlan
 import SubstraitLean.ShardCheck
 import Sverify.Core.Functions
 import Sverify.Core.Options
@@ -114,4 +115,5 @@ import SubstraitLean.Refresh
 import SubstraitLean.Engine
 import SubstraitLean.IssuesAll
 import SubstraitLean.ProvedOn
+import SubstraitLean.OpenSums
 import SubstraitLean.Statements

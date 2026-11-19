@@ -76,7 +76,12 @@ CASES: list[Case] = [
         R,
         lambda: t.select(x=t.ts.date() + t.qty.as_interval("M")),
     ),
-    case("time", "timestamp delta", R, lambda: t.select(x=t.ts.delta(t.ts, unit="hour"))),
+    case(
+        "time",
+        "timestamp delta",
+        V,
+        lambda: t.select(x=t.ts.delta(t.ts - ibis.interval(days=1), unit="hour")),
+    ),
     case("time", "bucket", V, lambda: t.select(x=t.ts.bucket(minutes=15))),
     case(
         "time",
@@ -150,6 +155,7 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
+    "timestamp delta": DUCKDB_ONLY,
     "timestamp + column interval": DUCKDB_ONLY,
     "time of day": {"spark": "no tod type"},
     "time parts": {"spark": "no tod type"},

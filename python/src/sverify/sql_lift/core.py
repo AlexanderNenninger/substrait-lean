@@ -74,7 +74,7 @@ def _number(text: str, negative: bool = False) -> E:
         v = int(sign + text)
         for t in (dt.int32, dt.int64):
             if t.bounds.lower <= v <= t.bounds.upper:
-                return E(literal(v, t), t, v)
+                return E(literal(v, t), t, v, literal=True)
         raise Unsupported(
             f"the integer {sign}{text} is a HUGEINT, which is not supported; "
             f"write it as a decimal literal ({sign}{text}.0, up to 38 digits)",
@@ -521,7 +521,14 @@ def _nullif(lf: _Lift, node: sge.Nullif, sub: Sub, scope: list[Column]) -> E:
     t = lf.common([a, b], "nullif")
     if t.is_null():
         t = dt.int32
-    return E(_fn("nullif", [lf.to(a, t).json, lf.to(b, t).json], t), t)
+    if a.type.is_null() or _same(a.type, t):
+        return E(_fn("nullif", [lf.to(a, t).json, lf.to(b, t).json], t), t)
+    # DuckDB's `NULLIF(a, b)` is `CASE WHEN a = b THEN NULL ELSE a END`
+    # (`default_functions.cpp`): it compares in the common type and returns `a`
+    # itself, at `a`'s type, never cast to the common one and back
+    # (`duckdb-nullif-type`).
+    same = _fn("equal", _operands(lf, [a, b], "equal"), dt.boolean)
+    return E(if_then([(same, literal(None, a.type))], a.json), a.type, midnight=a.midnight)
 
 
 def _sign(lf: _Lift, node: sge.Sign, sub: Sub, scope: list[Column]) -> E:

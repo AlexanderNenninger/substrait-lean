@@ -474,6 +474,20 @@ def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
 _NO_VALUE = object()
 
 
+#: The contexts where an integer literal takes a narrower integer operand's
+#: type (`_Lift._integer_common`): the operators, and the functions that pick
+#: one of their arguments. Each has a probe in `duckdb-coerce-int-literal-width`.
+#: Comparisons, `IN` and `BETWEEN` compare exactly, so their type is not
+#: observable.
+_LITERAL_TYPED = frozenset(
+    {
+        "add", "subtract", "multiply", "//", "%", "CASE", "COALESCE", "greatest", "least",
+        "nullif", "equal", "not_equal", "lt", "gt", "lte", "gte", "BETWEEN", "IN",
+        "IS DISTINCT FROM",
+    }
+)  # fmt: skip
+
+
 @dataclasses.dataclass
 class E:
     """A lifted expression: its JSON, its type in the plan, and its value if
@@ -483,12 +497,18 @@ class E:
     midnight (`DATE + INTERVAL 1 DAY`, `date_trunc` of a DATE), so the plan
     holds the date. It compares, truncates and has date parts exactly as
     the timestamp; where a timestamp is needed (an output column) it is cast
-    to one (`UnFn.dateTime`, #807)."""
+    to one (`UnFn.dateTime`, #807).
+
+    `literal`: an integer written in the query (with its sign), as DuckDB's
+    binder types it: it takes the type of the other integer operand where it
+    fits (`_Lift.common`). A constant folded from other operands is not one:
+    `i8 + (50 + 50)` is an INTEGER (`duckdb-coerce-int-literal-width`)."""
 
     json: Json
     type: Any
     value: Any = _NO_VALUE
     midnight: bool = False
+    literal: bool = False
 
     @property
     def constant(self) -> bool:
@@ -2017,9 +2037,11 @@ class _Lift:
         return E(field_ref(found[0]), scope[found[0]].type)
 
     def to(self, e: E, t: Any) -> E:
-        """`e` as a `t`: a constant as a literal of `t`, else a cast."""
+        """`e` as a `t`: a constant as a literal of `t`, else a cast. Once
+        typed, an integer literal is no longer one for `common`:
+        `CAST(100 AS INTEGER)` is an INTEGER next to a TINYINT."""
         if _same(e.type, t):
-            return e
+            return dataclasses.replace(e, literal=False) if e.literal else e
         if e.constant:
             v = e.value
             if v is not None:
@@ -2042,6 +2064,33 @@ class _Lift:
         # A DATE as a TIMESTAMP is its midnight (`UnFn.dateTime`, #807).
         return E(cast_json(e.json, t), t)
 
+    def _integer_common(self, es: list[E], what: str) -> Any:
+        """The type DuckDB brings integer operands to: the widest. An integer
+        literal next to a narrower integer operand takes that operand's type
+        where its value fits, so `tinyint_col + 100` is a TINYINT and raises
+        past 127; one that does not fit keeps its own type and the operand
+        widens (`duckdb-coerce-int-literal-width`, source `cast_rules.cpp`).
+        Only the contexts in `_LITERAL_TYPED` were probed; in any other a
+        literal next to a TINYINT or SMALLINT is refused."""
+        ints = [e for e in es if not e.type.is_null()]
+
+        def is_literal(e: E) -> bool:
+            return e.literal and e.type.is_integer()
+
+        lits = [e for e in ints if is_literal(e)]
+        rest = [e.type for e in ints if not is_literal(e)]
+        if not lits or not rest:
+            return max((e.type for e in ints), key=lambda t: t.nbytes).copy(nullable=True)
+        base = max(rest, key=lambda t: t.nbytes)
+        if base.nbytes < 4 and what not in _LITERAL_TYPED:
+            raise SqlUnsupported(
+                f"{what} of a {base} and an integer literal is not supported yet: DuckDB types "
+                f"the literal as the {base} where it fits; write `CAST({lits[0].value} AS INTEGER)`"
+                " (an INTEGER) or cast the column"
+            )
+        wide = [e.type for e in lits if not _fits(e.value, base)]
+        return max([base, *wide], key=lambda t: t.nbytes).copy(nullable=True)
+
     def common(self, es: list[E], what: str, sum_digits: bool = False) -> Any:
         """The type DuckDB brings `es` to as one value: the widest integer;
         a double if one is; else a decimal with the most integer digits and
@@ -2055,7 +2104,7 @@ class _Lift:
             if any(t.is_decimal() for t in ts):
                 p, s = _decimals.common(_digits(t) for t in ts)
                 return _decimal(p + int(sum_digits), s)
-            return max(ts, key=lambda t: t.nbytes).copy(nullable=True)
+            return self._integer_common(es, what)
         first = ts[0]
         if all(_same(t, first) for t in ts):
             return first.copy(nullable=True)
