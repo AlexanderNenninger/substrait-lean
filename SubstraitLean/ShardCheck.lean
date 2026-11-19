@@ -233,7 +233,7 @@ def check (input : Json) : Except String Json := do
   let A : String → List AVal := fun t => match plan.tables.lookup t with
     | some (_, schema) => ContractCheck.schemaEnv schema
     | none => []
-  let T := Rel.keyedWindows cat A (fun _ => []) ⟨U⟩
+  let T := Rel.keyedWindows cat A (fun _ => []) { keys := U }
   let I := IntArgs.ofTypes cat A
   -- `Rel.shardSplit_sound` is stated for well-formed plans' semantics; the
   -- combining plan must read only `__partials`.

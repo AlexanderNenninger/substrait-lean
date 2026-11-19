@@ -1026,7 +1026,7 @@ include hcat hA hF hK hR
 
 omit hA hF hR in
 theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD fd.1 fd.2 (r.eval cat)
-  | .read t, _ => keyFds_sound (hK t)
+  | .read t, _ => keyFds_sound (hK.keys t)
   | .aggregate _ gs ms, _ => keyFds_sound fun k hk => by
       simp only [List.mem_singleton] at hk; subst hk; exact aggregateEval_key gs ms _
   | .values _ _, _ | .unionAll _ _, _ | .unnest _ _, _ => fun _ h => by simp [fds] at h
