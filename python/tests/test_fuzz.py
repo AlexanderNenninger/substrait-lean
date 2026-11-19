@@ -7,6 +7,8 @@ fix shows up as an XPASS. The examples are fixed (`derandomize`); `poe fuzz`
 runs a long, random budget and prints the shrunk findings.
 """
 
+import datetime as dt
+import json
 import math
 
 import pytest
@@ -61,6 +63,17 @@ def test_proved_postconditions_are_checked_on_the_output():
     q = Query("SELECT i AS c0 FROM t AS q WHERE i > 0", {"c0": fuzz.INT})
     rows = {"t": [(1, None, None, None, None, None), (-1, None, None, None, None, None)]}
     assert check_contract(q, rows, None, "c0 > 0") == []
+
+
+def test_a_recorded_case_round_trips_and_replays():
+    ts = dt.datetime(2026, 11, 19, 1, 2, 3)
+    row = (1, None, math.inf, "a", True, ts)
+    q = Query("SELECT i AS c0 FROM t AS q", {"c0": fuzz.INT})
+    f = Finding("rows", q.sql, {"t": [row]}, "detail", case=(q, {"t": [row], "u": []}))
+    record = json.loads(json.dumps(fuzz.to_json(f, seed=5)))
+    assert record["seed"] == 5 and record["tables"]["t"][0][2] == {"float": "inf"}
+    assert [fuzz._decode(v) for v in record["tables"]["t"][0]] == list(row)
+    assert fuzz.replay(record) == []
 
 
 T_ROW = (1, 2, 0.5, "a", True, None)

@@ -38,6 +38,7 @@ import random
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import ibis
@@ -302,6 +303,9 @@ class Finding:
     tables: dict[str, list[tuple]]
     detail: str
     extra: dict[str, Any] = field(default_factory=dict)
+    case: tuple | None = field(default=None, repr=False, compare=False)
+    """The case `search` found it on (a `cases` or `contract_cases` draw), for
+    `to_json` and `replay`."""
 
     def __str__(self) -> str:
         data = "\n".join(f"  {name}: {rows!r}" for name, rows in self.tables.items() if rows)
@@ -590,17 +594,94 @@ def search(budget: float, seed: int = 0, contracts: bool = True) -> list[Finding
         except NoSuchExample:
             continue
         for f in _findings(case):
+            f.case = case
             found.setdefault(f.signature(), f)
             print(f, end="\n\n", flush=True)
     return list(found.values())
+
+
+# --- records and replay ------------------------------------------------------------
+
+
+def _encode(v: object) -> object:
+    """A table value as JSON: timestamps, dates and non-finite doubles tagged."""
+    if isinstance(v, dt.datetime):
+        return {"ts": v.isoformat()}
+    if isinstance(v, dt.date):
+        return {"date": v.isoformat()}
+    if isinstance(v, float) and not math.isfinite(v):
+        return {"float": repr(v)}
+    return v
+
+
+def _decode(v: object) -> object:
+    if isinstance(v, dict):
+        if "ts" in v:
+            return dt.datetime.fromisoformat(v["ts"])
+        if "date" in v:
+            return dt.date.fromisoformat(v["date"])
+        return float(v["float"])
+    return v
+
+
+def to_json(f: Finding, seed: int) -> dict[str, Any]:
+    """A finding with the case it was found on, which `replay` checks again."""
+    record: dict[str, Any] = {
+        "oracle": f.oracle,
+        "sql": f.sql,
+        "detail": f.detail,
+        "extra": {k: str(v) for k, v in f.extra.items()},
+        "seed": seed,
+    }
+    if f.case is not None:
+        query, tables, *contract = f.case
+        record["query"] = {
+            "sql": query.sql,
+            "out": query.out,
+            "ordered": query.ordered,
+            "base": query.base,
+            "tlp_pred": query.tlp_pred,
+        }
+        record["tables"] = {
+            k: [[_encode(v) for v in r] for r in rows] for k, rows in tables.items()
+        }
+        if contract:
+            record["requires"], record["ensures"] = contract
+    return record
+
+
+def replay(record: Mapping[str, Any]) -> list[Finding]:
+    """The findings on a recorded case (`to_json`) today: the same oracle again
+    means the disagreement reproduces."""
+    q = record["query"]
+    query = Query(q["sql"], q["out"], q["ordered"], q["base"], q["tlp_pred"])
+    tables = {
+        k: [tuple(_decode(v) for v in r) for r in rows] for k, rows in record["tables"].items()
+    }
+    if "ensures" in record:
+        return _findings((query, tables, record["requires"], record["ensures"]))
+    return _findings((query, tables))
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--budget", type=float, default=60.0, help="seconds (default 60)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--json", type=Path, help="also write the findings, with their cases, here")
+    parser.add_argument(
+        "--replay", type=Path, help="check a recorded finding (`--json`) again; 1 if it reproduces"
+    )
     args = parser.parse_args(argv)
+    if args.replay:
+        record = json.loads(args.replay.read_text())
+        again = [f for f in replay(record) if f.oracle == record["oracle"]]
+        for f in again:
+            print(f, end="\n\n")
+        print("reproduces" if again else "does not reproduce")
+        raise SystemExit(1 if again else 0)
     findings = search(args.budget, args.seed)
+    if args.json:
+        args.json.write_text(json.dumps([to_json(f, args.seed) for f in findings], indent=1))
     print(f"{len(findings)} distinct finding(s)")
 
 
