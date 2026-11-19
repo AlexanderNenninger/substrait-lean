@@ -371,3 +371,22 @@ def test_a_refresh_of_a_max_of_doubles(tmp_path):
     with pytest.raises(Refused, match="reads the members of a class") as err:
         exact.refresh(engine="duckdb")
     assert routes.CLASS_PICKS in str(err.value) and "unique(" not in str(err.value)
+
+
+def test_keys_are_groups_up_to_canonical_codes() -> None:
+    """`-0.0` and `0.0` are one key (D31): `lean_choices` lists one group and one
+    `DISTINCT` row, as `Rel.eval` does, where it listed one per spelling and
+    `allows_rows` then rejected the single row an engine returns."""
+    t = ibis.table({"k": "float64", "x": "int64", "o": "int64"}, name="t")
+    rows = [(-0.0, 1, 1), (0.0, 2, 2)]
+
+    def listed(expr: ibis.Table) -> list[list[tuple]] | None:
+        plan = json.loads(to_substrait_json(expr))
+        return lean_choices(json.dumps(inline_tables(plan, {"t": rows})))
+
+    grouped = listed(t.group_by("k").aggregate(last=t.x.argmax(t.o)))
+    assert grouped is not None and len(grouped) == 1
+    assert allows_rows([(0.0, 2)], grouped)
+    distinct = listed(t.select("k").distinct())
+    assert distinct is not None and len(distinct) == 1
+    assert allows_rows([(0.0,)], distinct)
