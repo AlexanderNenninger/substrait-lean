@@ -1158,10 +1158,26 @@ class Report:
             if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
                 raise refusal from e
             raise
+        out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
         return out
+
+    def _declared_widths(self, out: pa.Table) -> pa.Table:
+        """`out` with each integer column at the width `output` states: a
+        passed-through narrow column Polars widened to int64 goes back to its
+        declared width (a native cast, exact: the values came from that width,
+        ruling 121)."""
+        want = dict(self.output)
+        fields = []
+        for f in out.schema:
+            ty = want.get(f.name)
+            if ty is not None and ty.is_integer() and pa.types.is_integer(f.type):
+                f = f.with_type(ty.to_pyarrow())
+            fields.append(f)
+        schema = pa.schema(fields, metadata=out.schema.metadata)
+        return out if schema.equals(out.schema) else out.cast(schema)
 
     def check_margins(
         self, con: Connection, engine: Any, target: str, deterministic: bool = False

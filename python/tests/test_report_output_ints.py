@@ -1,7 +1,7 @@
 """`Report.output` states the run's integer widths and timestamp type (#1484,
 ruling 114): a computed integer is int64, a passed-through column keeps its
-declared width, a timestamp has microseconds. Polars returns every integer
-as int64 whatever its declared width, so the integer tests run on DuckDB."""
+declared width, a timestamp has microseconds, on every engine (ruling 121: a
+Polars run casts a passed-through narrow column back to its declared width)."""
 
 import ibis
 import ibis.expr.datatypes as dt
@@ -10,7 +10,7 @@ import pytest
 
 import sverify as sv
 
-ENGINES = ["duckdb", "polars"]
+ENGINES = ["duckdb", "polars", "spark"]
 
 SCHEMA = {"a": "int8", "b": "int16", "c": "timestamp", "s": "string", "d": "timestamp"}
 
@@ -33,9 +33,18 @@ def data():
 
 
 def run_types(report, engine):
+    if engine == "spark":
+        from spark_session import session
+
+        session()  # skips without pyspark or a JVM
     con = sv.connect()
     con.put("t", data())
-    out = report.run(con, engine, unverified=True)
+    try:
+        out = report.run(con, engine, unverified=True)
+    except Exception as e:  # noqa: BLE001 - a plan an engine does not run (#271)
+        if "Unsupported" in type(e).__name__:
+            pytest.skip(str(e))
+        raise
     return {f.name: dt.dtype(ibis.formats.pyarrow.PyArrowType.to_ibis(f.type)) for f in out.schema}
 
 
@@ -50,13 +59,14 @@ COMPUTED = {
 }
 
 
+@pytest.mark.parametrize("engine", ENGINES)
 @pytest.mark.parametrize("name", COMPUTED)
-def test_a_computed_integer_is_int64_in_the_report_and_the_run(name):
+def test_a_computed_integer_is_int64_in_the_report_and_the_run(name, engine):
     t = table()
     report = sv.verify(t.select(a=t.a, b=t.b, x=COMPUTED[name](t)), on_inferred="ignore")
     assert report.output["x"] == dt.int64
     assert report.output["a"] == dt.int8 and report.output["b"] == dt.int16
-    assert dict(report.output) == run_types(report, "duckdb")
+    assert dict(report.output) == run_types(report, engine)
 
 
 @pytest.mark.parametrize("engine", ENGINES)
