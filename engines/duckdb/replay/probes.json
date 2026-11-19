@@ -6772,6 +6772,223 @@
    "observed": "0.125, 3.3333333333333335, 0.13"
   },
   {
+   "construct": "coerce-int-decimal-compare-raise",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 9223372036854775807::BIGINT = 1::DECIMAL(38,30)",
+   "observed": "error ConversionException: Conversion Error: Could not cast value 9223372036854775807 to DECIMAL(38,30)"
+  },
+  {
+   "construct": "coerce-int-decimal-compare-ok",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 5::INTEGER < 5.5::DECIMAL(38,37), 1::INTEGER = 1.0::DECIMAL(18,3)",
+   "observed": "true, true"
+  },
+  {
+   "construct": "coerce-int-decimal-arith-types",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT typeof(1::TINYINT + 1.5::DECIMAL(3,2)), typeof(1::INTEGER + 1.5::DECIMAL(18,3)), typeof(1::BIGINT + 1.5::DECIMAL(18,3)), typeof(1::INTEGER + 1.5::DECIMAL(38,37)), typeof(1.5::DECIMAL(18,3) + 1.5::DECIMAL(38,10)), typeof(1.5::DECIMAL(18,3) + 1e0)",
+   "observed": "'DECIMAL(6,2)', 'DECIMAL(19,3)', 'DECIMAL(23,3)', 'DECIMAL(38,37)', 'DECIMAL(38,10)', 'DOUBLE'"
+  },
+  {
+   "construct": "coerce-int-decimal-arith-raise",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 9007199254740993::BIGINT + 1.5::DECIMAL(38,30)",
+   "observed": "error ConversionException: Conversion Error: Could not cast value 9007199254740993 to DECIMAL(38,30)"
+  },
+  {
+   "construct": "coerce-decimal-digits-limit",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 1000000000000000000000000000::DECIMAL(28,0) + 1.5::DECIMAL(38,10)",
+   "observed": "1000000000000000000000000001.5000000000"
+  },
+  {
+   "construct": "coerce-decimal-digits-limit-raise",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT 1000000000000000000000000000000::DECIMAL(31,0) + 1.5::DECIMAL(38,10)",
+   "observed": "error ConversionException: Conversion Error: Casting value \"1000000000000000000000000000000\" to type DECIMAL(38,10) failed: value is out of range!"
+  },
+  {
+   "construct": "coerce-varchar-number",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT s = i, s_ws = i, s IN (1), s::VARCHAR || i FROM (SELECT '01'::VARCHAR s, ' 1'::VARCHAR s_ws, 1::INTEGER i)",
+   "observed": "true, true, true, '011'"
+  },
+  {
+   "construct": "coerce-varchar-number-raise",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT s = i FROM (SELECT 'abc'::VARCHAR s, 1::INTEGER i)",
+   "observed": "error ConversionException: Conversion Error: Could not convert string 'abc' to INT32 when casting from source column s"
+  },
+  {
+   "construct": "coerce-varchar-case-union",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT (SELECT typeof(x) FROM (SELECT 1 AS x UNION ALL SELECT 'a') u LIMIT 1), (SELECT typeof(x || 'a') FROM (SELECT 1 AS x) c)",
+   "observed": "'VARCHAR', 'VARCHAR'"
+  },
+  {
+   "construct": "coerce-varchar-case-raise",
+   "area": "strings",
+   "setup": [],
+   "sql": "SELECT CASE WHEN b THEN i ELSE s END FROM (SELECT true b, 1::INTEGER i, 'a'::VARCHAR s)",
+   "observed": "error BinderException: Binder Error: Cannot mix values of type VARCHAR and INTEGER in CASE expression - an explicit cast is required"
+  },
+  {
+   "construct": "coerce-boolean-integer",
+   "area": "integers",
+   "setup": [],
+   "sql": "SELECT b = i, typeof(CASE WHEN b THEN i ELSE b END), (SELECT typeof(x) FROM (SELECT b AS x UNION ALL SELECT i) u LIMIT 1) FROM (SELECT true b, 1::INTEGER i)",
+   "observed": "true, 'INTEGER', 'INTEGER'"
+  },
+  {
+   "construct": "coerce-nullif-type",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT typeof(NULLIF(1::INTEGER, 1.5::DOUBLE)), typeof(NULLIF(1::BIGINT, 1::INTEGER)), typeof(NULLIF(1::INTEGER, 1::BIGINT))",
+   "observed": "'INTEGER', 'BIGINT', 'INTEGER'"
+  },
+  {
+   "construct": "coerce-nullif-int-overflow",
+   "area": "nulls",
+   "setup": [],
+   "sql": "SELECT NULLIF(1::INTEGER, 1.5::DOUBLE) + 9223372036854775807::BIGINT",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in addition of INT64 (1 + 9223372036854775807)!"
+  },
+  {
+   "construct": "coerce-integer-literal-width",
+   "area": "integers",
+   "setup": [],
+   "sql": "SELECT typeof(1::TINYINT + 200), typeof(1::INTEGER + 3000000000), typeof(1::TINYINT + 100::TINYINT), typeof(1::TINYINT * 1::SMALLINT)",
+   "observed": "'INTEGER', 'BIGINT', 'TINYINT', 'SMALLINT'"
+  },
+  {
+   "construct": "coerce-literal-fits",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT 100::TINYINT i8, 100::SMALLINT i16, 100::INTEGER i32, 100::BIGINT i64, 1.25::DECIMAL(10,2) d, 1.5::DOUBLE f"
+   ],
+   "sql": "SELECT typeof(i8 + 100), typeof(i8 + (-100)), typeof(i8 - -128), typeof(100 - i8), typeof(i8 * 2), typeof(i8 % 100), typeof(i8 // 3), typeof(i8 + 100 + 100), typeof(i16 + 10000), typeof(i64 + 100) FROM t",
+   "observed": "'TINYINT', 'TINYINT', 'TINYINT', 'TINYINT', 'TINYINT', 'TINYINT', 'TINYINT', 'TINYINT', 'SMALLINT', 'BIGINT'"
+  },
+  {
+   "construct": "coerce-literal-too-wide",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT 100::TINYINT i8, 100::SMALLINT i16, 100::INTEGER i32, 100::BIGINT i64, 1.25::DECIMAL(10,2) d, 1.5::DOUBLE f"
+   ],
+   "sql": "SELECT typeof(i8 + 200), typeof(i16 + 40000), typeof(i8 + 3000000000), typeof(100 + 100 + i8) FROM t",
+   "observed": "'INTEGER', 'INTEGER', 'BIGINT', 'INTEGER'"
+  },
+  {
+   "construct": "coerce-literal-not-a-node",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT 100::TINYINT i8, 100::SMALLINT i16, 100::INTEGER i32, 100::BIGINT i64, 1.25::DECIMAL(10,2) d, 1.5::DOUBLE f"
+   ],
+   "sql": "SELECT typeof(i8 + (50 + 50)), i8 + (50 + 50), typeof(i8 + CAST(100 AS INTEGER)), i8 = 200, i8 IN (1, 200) FROM t",
+   "observed": "'INTEGER', 200, 'INTEGER', false, false"
+  },
+  {
+   "construct": "coerce-literal-raise",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT 100::TINYINT i8, 100::SMALLINT i16, 100::INTEGER i32, 100::BIGINT i64, 1.25::DECIMAL(10,2) d, 1.5::DOUBLE f"
+   ],
+   "sql": "SELECT 100 - (-i8) FROM t",
+   "observed": "error OutOfRangeException: Out of Range Error: Overflow in subtraction of INT8 (100 - -100)!"
+  },
+  {
+   "construct": "coerce-literal-contexts",
+   "area": "integers",
+   "setup": [
+    "CREATE TABLE t AS SELECT 100::TINYINT i8, 100::SMALLINT i16, 100::INTEGER i32, 100::BIGINT i64, 1.25::DECIMAL(10,2) d, 1.5::DOUBLE f"
+   ],
+   "sql": "SELECT typeof(COALESCE(i8, 100)), typeof(COALESCE(i8, 200)), typeof(CASE WHEN i8 > 0 THEN i8 ELSE 100 END), typeof(GREATEST(i8, 100)), typeof(NULLIF(i8, 100)), typeof(NULLIF(i32, f)), typeof(NULLIF(i32, i64)) FROM t",
+   "observed": "'TINYINT', 'INTEGER', 'TINYINT', 'TINYINT', 'TINYINT', 'INTEGER', 'INTEGER'"
+  },
+  {
+   "construct": "coerce-literal-decimal",
+   "area": "decimals",
+   "setup": [
+    "CREATE TABLE t AS SELECT 100::TINYINT i8, 100::SMALLINT i16, 100::INTEGER i32, 100::BIGINT i64, 1.25::DECIMAL(10,2) d, 1.5::DOUBLE f"
+   ],
+   "sql": "SELECT typeof(d + 1), typeof(d + i8), typeof(d + 100000000000), typeof(d * 2), typeof(i8 + 1.5) FROM t",
+   "observed": "'DECIMAL(13,2)', 'DECIMAL(11,2)', 'DECIMAL(22,2)', 'DECIMAL(18,2)', 'DECIMAL(5,1)'"
+  },
+  {
+   "construct": "coerce-decimal-cancel-type",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT typeof(a + b), typeof(b + a) FROM (SELECT 10000000000000000000000000000::DECIMAL(38,0) a, -0.0000000001::DECIMAL(38,10) b)",
+   "observed": "'DECIMAL(38,10)', 'DECIMAL(38,10)'"
+  },
+  {
+   "construct": "coerce-decimal-cancel-raise",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT a + b FROM (SELECT 10000000000000000000000000000::DECIMAL(38,0) a, -0.0000000001::DECIMAL(38,10) b)",
+   "observed": "error ConversionException: Conversion Error: Casting value \"10000000000000000000000000000\" to type DECIMAL(38,10) failed: value is out of range! when casting from source column a"
+  },
+  {
+   "construct": "coerce-decimal-cancel-sub-raise",
+   "area": "decimals",
+   "setup": [],
+   "sql": "SELECT a - b FROM (SELECT 10000000000000000000000000000::DECIMAL(38,0) a, 0.0000000001::DECIMAL(38,10) b)",
+   "observed": "error ConversionException: Conversion Error: Casting value \"10000000000000000000000000000\" to type DECIMAL(38,10) failed: value is out of range! when casting from source column a"
+  },
+  {
+   "construct": "coerce-sum-int-hugeint",
+   "area": "aggregates",
+   "setup": [],
+   "sql": "SELECT typeof(SUM(x)), SUM(x) FROM (VALUES (9223372036854775807::BIGINT), (9223372036854775807::BIGINT)) t(x)",
+   "observed": "'HUGEINT', 18446744073709551614"
+  },
+  {
+   "construct": "coerce-int-double-compare",
+   "area": "doubles",
+   "setup": [],
+   "sql": "SELECT 9007199254740993::BIGINT = 9007199254740992.0::DOUBLE, 0.1::DECIMAL(38,10) = 0.1::DOUBLE, typeof(1::INTEGER IN (1, 2.5))",
+   "observed": "true, true, 'BOOLEAN'"
+  },
+  {
+   "construct": "coerce-date-timestamp",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT DATE '2020-01-01' = TIMESTAMP '2020-01-01 00:00:00', DATE '2020-01-01' < TIMESTAMP '2020-01-01 00:00:00.000001'",
+   "observed": "true, true"
+  },
+  {
+   "construct": "coerce-date-timestamptz-utc",
+   "area": "temporal",
+   "setup": [],
+   "sql": "SELECT TIMESTAMP '2020-01-01 00:00:00' = TIMESTAMPTZ '2020-01-01 00:00:00+00', DATE '2020-01-01' = TIMESTAMPTZ '2020-01-01 00:00:00+00'",
+   "observed": "true, true"
+  },
+  {
+   "construct": "coerce-date-timestamptz-zone",
+   "area": "temporal",
+   "setup": [
+    "SET TimeZone = 'America/New_York'"
+   ],
+   "sql": "SELECT TIMESTAMP '2020-01-01 00:00:00' = TIMESTAMPTZ '2020-01-01 00:00:00+00', DATE '2020-01-01' = TIMESTAMPTZ '2020-01-01 00:00:00+00'",
+   "observed": "false, false"
+  },
+  {
+   "construct": "coerce-unsigned-signed",
+   "area": "integers",
+   "setup": [],
+   "sql": "SELECT 18446744073709551615::UBIGINT = -1::BIGINT, typeof(18446744073709551615::UBIGINT + -1::BIGINT)",
+   "observed": "false, 'HUGEINT'"
+  },
+  {
    "construct": "nan-compare",
    "area": "doubles",
    "setup": [],

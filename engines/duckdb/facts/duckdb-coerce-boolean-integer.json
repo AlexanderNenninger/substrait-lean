@@ -1,0 +1,49 @@
+{
+  "id": "duckdb-coerce-boolean-integer",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "A BOOLEAN against an integer is cast to the integer",
+  "verdict": "`b = i` casts the boolean to an integer; CASE and UNION of the two are INTEGER; sverify refuses them",
+  "area": "integers",
+  "options": [
+    "implicit_casts"
+  ],
+  "layer": "frontend",
+  "constructs": [
+    "=",
+    "CASE",
+    "UNION"
+  ],
+  "settings": {},
+  "description": [
+    "`true = 1::INTEGER` is true; `CASE WHEN b THEN i ELSE b END` and `SELECT b UNION ALL SELECT i` are INTEGER columns."
+  ],
+  "reference": [
+    "The lift refuses: `equal of boolean, int32`, `CASE of int32, boolean`, `UNION of boolean, int32`."
+  ],
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session claude/duckdb-coercions, #1484 census)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-boolean-integer"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` records each query as it comes."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (sverify.sql_lift.lift, semantics=\"duckdb\", on origin/main b28e14ff)",
+      "notes": "`lift` on `b = i32`, `i32 = true`, `CASE WHEN b THEN i32 ELSE b END`, `b UNION ALL i32`: each `SqlUnsupported`."
+    }
+  ],
+  "issues": [
+    1484
+  ]
+}

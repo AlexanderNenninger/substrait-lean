@@ -1,0 +1,99 @@
+{
+  "id": "duckdb-coerce-int-literal-width",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "An integer literal next to a narrower integer operand takes that operand's type where it fits, and the sum raises at that width",
+  "verdict": "`tinyint_col + 100` is a TINYINT and raises past 127; `tinyint_col + 200` is an INTEGER; the lift types both INTEGER and never raises at 8 bits",
+  "area": "integers",
+  "options": [
+    "implicit_casts"
+  ],
+  "layer": "frontend",
+  "constructs": [
+    "+",
+    "-",
+    "*",
+    "%",
+    "//",
+    "COALESCE",
+    "CASE",
+    "GREATEST",
+    "NULLIF"
+  ],
+  "settings": {},
+  "description": [
+    "DuckDB's binder types an integer literal node as `INTEGER_LITERAL`, which casts to any integer type the value fits at a low cost and otherwise follows the preferred type's rules. So an integer literal next to an integer operand takes that operand's type when it fits, on either side: with `i8 = i16 = i32 = i64 = 100`, `i8 + 100`, `100 - i8`, `i8 * 2`, `i8 % 100`, `i8 // 3` and `i8 + 100 + 100` are TINYINT, `i16 + 10000` is SMALLINT, `i64 + 100` BIGINT. A literal that does not fit keeps its own type and the operand widens: `i8 + 200` and `i16 + 40000` are INTEGER, `i8 + 3000000000` BIGINT (never the narrowest type that fits). The sign belongs to the literal (`i8 + (-100)`, `i8 - -128` are TINYINT). Only a literal node counts: `i8 + (50 + 50)` is an INTEGER and returns 200, `i8 + CAST(100 AS INTEGER)` is an INTEGER, and `100 + 100 + i8` is an INTEGER (left to right). A TINYINT of 100 plus 100 raises `Overflow in addition of INT8`, and so does `100 - (-i8)`. The rule holds in COALESCE, CASE, GREATEST and NULLIF (`COALESCE(i8, 100)` TINYINT, `COALESCE(i8, 200)` INTEGER). Next to a DECIMAL the literal has its own type (`d + 1` with `d DECIMAL(10,2)` is `DECIMAL(13,2)`, `i8 + 1.5` is `DECIMAL(5,1)`). `i8 = 200` and `i8 IN (1, 200)` are false.",
+    "The docs do not state it: a docs gap."
+  ],
+  "reference": [
+    "The lift types an integer literal INTEGER or BIGINT (`sql_lift/core.py` `_number`) and `_Lift.common` takes the widest integer, so `i8 + 100` plans as `CAST(i8 AS INTEGER) + 100` (int32, 1 cast) and `i8 * 2`, `i16 + 10000`, `i16 * 2` plan as int32. The model then raises at 32 bits where DuckDB raises at 8 or 16: a proved plan can raise on DuckDB. INTEGER and BIGINT columns match. The Ibis producer was not checked. Open until the lift follows the rule on an allowlist of probed contexts (and refuses an unprobed context next to TINYINT or SMALLINT)."
+  ],
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe observations (duckdb 2.0.0, Python, macOS arm64; session claude/duckdb-coercions, #1484 census)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-integer-literal-width"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-literal-fits"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-literal-too-wide"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-literal-not-a-node"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-literal-raise"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-literal-contexts"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "coerce-literal-decimal"
+        }
+      ],
+      "notes": "`python -m sverify_dev.probe --observations` records each query as it comes."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (sverify.sql_lift.lift, semantics=\"duckdb\", on origin/main b28e14ff)",
+      "notes": "`lift` over `t(i8 int8, i16 int16, i32 int32)` on `i8 + 100`, `i8 * 2`, `i16 + 10000`, `i16 * 2`: output int32 (plans with a cast to i32). DuckDB on `t = (100, 30000, 2000000000)`: `i8 + 100`, `i8 * 2`, `i16 + 10000`, `i16 * 2` raise at their column's width."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "source-reading",
+      "checked_by": "session claude/duckdb-coercions (DuckDB v2.0.0 source)",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/function/cast_rules.cpp#L418-L433",
+          "note": "`CastRules::ImplicitCast`: an `INTEGER_LITERAL` casts to any integer type it fits (cost `TargetTypeCost - 90`), else by its preferred type's rules"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/common/types.cpp#L1976-L1989",
+          "note": "`IntegerLiteral::FitsInType`: always to FLOAT and DOUBLE; to an integral type if the value casts to it"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/src/planner/binder/expression/bind_comparison_expression.cpp#L143-L153",
+          "note": "`ExpressionBinder::GetExpressionReturnType`: only a `BOUND_CONSTANT` of an integral type is an `INTEGER_LITERAL`, so a folded `50 + 50` is not"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    1484
+  ]
+}
