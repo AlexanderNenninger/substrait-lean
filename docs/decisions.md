@@ -1484,3 +1484,41 @@ Why: the reference belongs to no engine, and these rows said "as DuckDB
 computes it" with no decision and no second engine's facts. The mark states
 what is known, and the rule for new functions (Lean and DuckDB first) keeps
 producing such rows.
+
+### D53. A timestamp with the time zone UTC is an instant
+
+Decided 2026-11-19 (theory advisor).
+
+A timestamp with the time zone UTC is an instant. `Kind.timeTz` holds
+microseconds since 1970-01-01 00:00 UTC, the value the naive kind holds. The
+reference computes with an instant wherever no zone is read: comparison with
+another instant, `IS [NOT] DISTINCT FROM`, ordering, `MIN`, `MAX`, `COUNT`,
+`DISTINCT`, grouping, join keys, window keys, and `CASE`, `COALESCE` and
+`NULLIF` among instants. Everything that reads a calendar field of an instant
+is refused and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
+arithmetic with intervals, the difference of two instants, `date_trunc`,
+`extract`, a cast to a date or a string. A comparison of an instant with a
+naive timestamp is refused. Zones other than UTC are refused. `Rel.eval` and
+`Rel.Allowed` are unchanged.
+
+Read in steps: an instant column is read, computed with and written back as an
+instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`); the conversion
+between an instant and a naive timestamp at UTC (`x AT TIME ZONE 'UTC'`), a
+literal with an offset and DuckDB's session-zone casts wait for the second
+step of #1725 (they need an `UnFn` that changes the kind).
+
+No option and no profile entry: the operations above read no zone, so the
+engines agree on them under every session zone
+([duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json),
+[polars-datetime-zone](../engines/polars/facts/polars-datetime-zone.json),
+[spark-time-zones](../engines/spark/facts/spark-time-zones.json)). DuckDB and
+Polars have a map for the instant; Spark and Snowflake refuse it and name the
+issue.
+
+Recomputes sinks: no
+
+Why: a Delta `timestamp` is an instant, and read as the naive kind it would
+return `timestamp_ntz` columns and let calendar functions run unstated, which a
+later kind would change. A refusal lifted later is a minor change, a corrected
+rule a major one. D53 gives a meaning to plans that had none, so no stored node
+changes its meaning.

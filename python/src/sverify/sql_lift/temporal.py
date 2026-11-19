@@ -90,7 +90,7 @@ def _temporal(e: E, t: Any) -> E:
     except (TypeError, ValueError) as err:
         raise Unsupported(f"cannot read {text!r} as a {t}") from err
     if v.tzinfo is not None:
-        raise SqlUnsupported("timestamps with a time zone are not supported")
+        raise SqlUnsupported("a literal timestamp with a time zone is not supported yet (#1725)")
     ts = dt.timestamp(scale=6)
     return E(literal(v, ts), ts, v)
 

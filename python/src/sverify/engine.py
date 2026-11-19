@@ -42,6 +42,7 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     run_checker,
 )
 from sverify._scan import Native, Resident, Scan
+from sverify._store import instants_in_utc
 from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
 
@@ -619,7 +620,8 @@ def run_plan(
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
-    return plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
+    out = plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
+    return instants_in_utc(out) if isinstance(out, pa.Table) else out
 
 
 def run_guard_free(

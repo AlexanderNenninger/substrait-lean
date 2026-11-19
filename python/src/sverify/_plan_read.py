@@ -86,7 +86,7 @@ def type_kind(t: Any) -> tuple[str, Any] | None:
     not write:
 
     `int` (its key), `float` (its key), `str`, `bool`, `date`, `interval`,
-    `time` and `tod` (their precision, `None` if malformed), `decimal`
+    `time`, `instant` and `tod` (their precision, `None` if malformed), `decimal`
     (precision and scale), `list` (the element type) and `struct` (the field
     types)."""
     if not isinstance(t, dict):
@@ -99,6 +99,9 @@ def type_kind(t: Any) -> tuple[str, Any] | None:
         return "time", 6
     if "precisionTimestamp" in t:
         return "time", _precision(t["precisionTimestamp"])
+    # An instant: a UTC-zoned timestamp (`Kind.timeTz`, #1725).
+    if "precisionTimestampTz" in t:
+        return "instant", _precision(t["precisionTimestampTz"])
     if "date" in t:
         return "date", None
     if "time" in t:

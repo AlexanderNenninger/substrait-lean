@@ -11,6 +11,8 @@ from typing import ClassVar
 
 #: Where #271 is, for refusals: an engine that does not run a function yet.
 ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
+#: Where #1725 is: an engine that has no map for a UTC-zoned timestamp (an instant) yet.
+ISSUE_1725 = "see #1725, https://github.com/AlexanderNenninger/substrait-lean/issues/1725"
 #: The end of a refusal of what only DuckDB runs: its exit.
 DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 

@@ -71,6 +71,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
+from sverify._unsupported import ISSUE_1725
 from sverify.sql.core import (
     I64_MAX,
     I64_MIN,
@@ -130,6 +131,10 @@ class SparkDialect(Dialect):
     def type_name(self, kind: Kind) -> str:
         if isinstance(kind, Dec):
             return super().type_name(kind)
+        if kind == "instant":
+            raise self.to_duckdb(
+                "Spark has no map for a timestamp with a time zone yet", ISSUE_1725
+            )
         if kind not in _TYPES:
             raise self.to_duckdb(f"spark has no {kind} type (TIME needs Spark 4.1)")
         return _TYPES[kind]

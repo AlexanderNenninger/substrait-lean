@@ -97,7 +97,7 @@ def spark_type(t: pa.DataType) -> str:
         return SPARK.type_name("float")
     if pa.types.is_timestamp(t):
         if t.tz is not None:
-            raise TypeError(f"{t}: only timestamps without a time zone (TIMESTAMP_NTZ)")
+            raise TypeError(f"{t}: only timestamps without a time zone (TIMESTAMP_NTZ; #1725)")
         return SPARK.type_name("time")
     if pa.types.is_date(t):
         return SPARK.type_name("date")
