@@ -525,11 +525,10 @@ def _text_condition(col: str, fact: TextFact) -> Inferred:
     (`Text.upperRaises`, `lowerRaises`, D51).
     Its SQL is the writers' guard in the default engine's dialect, the one the data is
     checked on; its Ibis form is one regular expression with the same characters."""
-    from sverify import _engines, profiles
+    from sverify import _engines
     from sverify.sql.core import ascii_text, case_class
 
-    dialect = profiles.plugins()[_engines.default()].dialect
-    assert dialect is not None
+    dialect = _engines.sql_dialect()
     sql = '"' + col.replace('"', '""') + '"'
     ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
     if fact in ("upper_agreed", "lower_agreed"):
