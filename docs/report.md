@@ -11,7 +11,7 @@ to follow a verdict to what supports it.
 prove a plan from its inputs' schemas and the preconditions you state. No
 row is read. The result is a `Report`:
 
-```python
+```python skip="a template: expr and the contract are the reader's"
 report = sv.verify(expr, requires={"orders": [...]}, ensures=[...])
 print(report)          # the contract in plain words: what holds, what each run checks, what is not proved
 print(report.details())  # the whole report, with the semantics, the evidence per engine and the routes
