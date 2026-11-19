@@ -1006,6 +1006,10 @@ def infer_bounds(
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
+    if out._asof_checks and not isinstance(transform, str):
+        from sverify._asof_cap import max_pairs_of
+
+        out._asof_max_pairs = max_pairs_of(transform)
     if on_inferred == "off" and out._margin_checks:
         # Nothing is checked on the data: a threshold filter on a double sum
         # may keep other groups than the reference's (#568).
