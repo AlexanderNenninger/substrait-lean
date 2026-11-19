@@ -784,6 +784,11 @@ def faddBound (sub : Bool) (x y : Bound) : Bound :=
   | _, _ =>
     match sub, x.loFin, y.loFin with
     | false, some la, some lb => ⟨some (FloatCode.ofExact (FloatCode.scaled la + FloatCode.scaled lb)), none⟩
+    -- `x - y` with a finite lower end of `x` and a finite `y` (`FloatCode.fsub_lower`).
+    | true, some la, _ =>
+      match finEnds y with
+      | some (_, hb) => ⟨some (FloatCode.ofExact (FloatCode.scaled la - hb)), none⟩
+      | none => Bound.top
     | _, _, _ => Bound.top
 
 /-- `x * y` of doubles: the exact products' ends, rounded as the product is. -/
@@ -866,6 +871,17 @@ theorem Bound.nonneg_mem {b : Bound} {r : Int} (h : b.Mem r) (hn : b.nonneg = tr
   | some l => simp only [hlo, Option.any_some, decide_eq_true_eq] at hn; have := h.1 l hlo; omega
 
 set_option exponentiation.threshold 3200 in
+/-- Is every value of the bound above code `0` (positive, `+∞` and NaN included)? -/
+def Bound.posLo (b : Bound) : Bool := b.lo.any (0 < ·)
+
+omit [Boxes.Ambient] in
+theorem Bound.posLo_mem {b : Bound} {r : Int} (h : b.Mem r) (hn : b.posLo = true) : 0 < r := by
+  unfold Bound.posLo at hn
+  cases hlo : b.lo with
+  | none => simp [hlo] at hn
+  | some l => simp only [hlo, Option.any_some, decide_eq_true_eq] at hn; have := h.1 l hlo; omega
+
+set_option exponentiation.threshold 3200 in
 /-- Do `fdivBound`'s guards hold? -/
 def fdivOk (x y : Bound) : Bool :=
   match finEnds x, finEnds y with
@@ -873,9 +889,10 @@ def fdivOk (x y : Bound) : Bool :=
     decide (0 < endsMin lb hb ∧ endsMag la ha * 2 ^ 1074 ≤ 2 ^ 2097 * endsMin lb hb)
   | _, _ => false
 
-/-- `fdivBound`, at least `0` for a non-negative dividend and a positive divisor. -/
+/-- `fdivBound`, at least `0` for a non-negative dividend and a positive divisor,
+also where either has one end only (`FloatCode.fdiv_nonneg_open`). -/
 def fdivBoundS (x y : Bound) : Bound :=
-  if x.nonneg && y.nonneg && fdivOk x y then (fdivBound x y).atLeast0 else fdivBound x y
+  if x.nonneg && y.posLo then (fdivBound x y).atLeast0 else fdivBound x y
 
 /-- Do `fdivBound`'s guards hold of two values' intervals? Then the divisor is
 neither zero nor NaN, and IEEE division (`BinFn.fdivIeee`, D39) is `fdiv`. -/
