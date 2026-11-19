@@ -44,6 +44,8 @@ def loweringCache : List LoweringHint := [
     template := "native", note := "" },
   { table := "duckdbOn", construct := "UnFn.widen",
     template := "native", note := "" },
+  { table := "duckdbOn", construct := "UnFn.atUtc",
+    template := "native", note := "" },
   { table := "duckdbOn", construct := "UnFn.upper",
     template := "native", note := "" },
   { table := "duckdbOn", construct := "UnFn.lower",
