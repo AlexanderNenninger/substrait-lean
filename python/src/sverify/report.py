@@ -35,6 +35,7 @@ from sverify._unsupported import SverifyError, SverifyWarning
 from sverify.engine import (
     Connection,
     Engine,
+    connect,
     connection_of,
     plan_json,
     read_tables,
@@ -2277,7 +2278,7 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         plan = written_plan(plan_json(con, condition_query(table, cond)))
         return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
     if isinstance(cond, TableCondition):
-        return cond.violations(table)
+        return _table_violations(table, cond, engine)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -2289,6 +2290,56 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None) -> int:
+    """Rows of the bound `table` that break the table condition `cond`, from its
+    count as a plan run by the engine (the connection's, unless one is named):
+    the count has the reference's meaning on every engine, and a condition the
+    engine's writer refuses refuses the check (`SverifyError`)."""
+    return _table_counts(table, [cond], engine)[0]
+
+
+def _held(table: ir.Table, conds: Sequence[TableCondition]) -> tuple[Connection, ir.Table]:
+    """A connection holding `table` (a table of the caller's own Ibis backend)
+    and the tables the conditions refer to, so that its conditions are counted
+    by an engine as any bound table's are."""
+    con = connect()
+    backend = ibis.get_backend(table)
+    con.put("__sverify_input", table.to_pyarrow())
+    for c in conds:
+        if isinstance(c, References) and not con.has(c.table):
+            con.put(c.table, backend.table(c.table).to_pyarrow())
+    return con, con.table("__sverify_input")
+
+
+def _table_counts(
+    table: ir.Table, conds: Sequence[TableCondition], engine: str | None
+) -> list[int]:
+    """`_table_violations` for several table conditions on one table, from one
+    plan where the writer takes it: their counts as the rows of a union, each
+    tagged with its position. Where it does not, one plan each."""
+    con = connection_of(table)
+    if con is None:
+        con, table = _held(table, conds)
+    on = engine or con.engine
+    queries = [c.count_query(table, con.table) for c in conds]
+    if len(queries) > 1:
+        tagged = [
+            q.select(i=ibis.literal(i, "int64"), v=q.v.cast("int64")) for i, q in enumerate(queries)
+        ]
+        try:
+            plan = written_plan(plan_json(con, ibis.union(*tagged, distinct=False)))
+            out = run_plan(con, plan, on)
+        except SverifyError:
+            pass  # a writer that takes one count at a time, below
+        else:
+            got = dict(zip(out.column(0).to_pylist(), out.column(1).to_pylist(), strict=True))
+            return [c.settle(got[i]) for i, c in enumerate(conds)]
+    return [
+        c.settle(run_plan(con, written_plan(plan_json(con, q)), on).column(0)[0].as_py())
+        for c, q in zip(conds, queries, strict=True)
+    ]
 
 
 def violation_counts(
@@ -2304,22 +2355,27 @@ def violation_counts(
     for the engine refuses the check (`SverifyError`), with no fallback to
     Ibis. Without an `engine`, Ibis counts each condition on the table's own
     backend (`violations`)."""
+    counts: dict[int, tuple[int, str | None]] = {}
+    on_table = [i for i, c in enumerate(conds) if isinstance(c, TableCondition)]
+    if on_table:
+        table_conds = [c for c in conds if isinstance(c, TableCondition)]
+        for i, n in zip(on_table, _table_counts(table, table_conds, engine), strict=True):
+            counts[i] = (n, None)
     if engine is None:
-        rows: list[tuple[Condition, int, str | None]] = []
-        for c in conds:
-            n, stopped = (
+        for i, c in enumerate(conds):
+            if i in counts:
+                continue
+            counts[i] = (
                 _run_planned(table, c, "duckdb")
                 if isinstance(c, PlannedCondition)
                 else (violations(table, c), None)
             )
-            rows.append((c, n, stopped))
-        return rows
-    counts: dict[int, tuple[int, str | None]] = {}
+        return [(c, *counts[i]) for i, c in enumerate(conds)]
     groups: dict[bool, list[int]] = {True: [], False: []}
     for i, c in enumerate(conds):
-        if isinstance(c, TableCondition):
-            counts[i] = (c.violations(table), None)
-        elif isinstance(c, PlannedCondition):
+        if i in counts:
+            continue
+        if isinstance(c, PlannedCondition):
             counts[i] = _run_planned(table, c, engine)
         else:
             groups[isinstance(c, str)].append(i)
