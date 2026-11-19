@@ -175,6 +175,10 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   what is inside a string (`LIKE`, lengths) is not tracked
   ([the guide](../docs/guide.md#contracts)).
 - Python models, and models whose inputs have no column types, are refused.
+- What each materialization gets: a table or view is checked; an incremental
+  model as its full refresh (below); an ephemeral model is inlined, so its
+  readers are read through it and it prints a note, with no test run on it; a
+  snapshot is an input only. Python models are refused.
 - An incremental model is checked as its full refresh, as `dbt compile`
   renders it; its `is_incremental()` block is taken to only filter that query.
   Its tests are skippable (`--selectors`) only under `merge` or `delete+insert`
