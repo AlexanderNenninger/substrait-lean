@@ -69,7 +69,7 @@ engines    DuckDB · Polars · Spark · Snowflake
   allows ([#1132](https://github.com/AlexanderNenninger/substrait-lean/pull/1132),
   [#1134](https://github.com/AlexanderNenninger/substrait-lean/pull/1134),
   [Which plans run on an engine](#which-plans-run-on-an-engine)). Where an
-  engine's choice of an open option differs from the reference's
+  engine's choice of an option differs from the reference's
   (`sum_order`, `stat_algo`), its result is within the plan's tolerance of
   one the reference allows (`Relation.Near`,
   [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929)).
@@ -180,7 +180,13 @@ second:
 |---|---|---|---|
 | Error side | raises | `overflow` (`ERROR`), `on_division_by_zero`, `on_domain_error`, `on_log_zero`, `nan_creation`, double overflow to `±∞` (#575), `shift_range`, `substring_range`, `date_range`, `cast_failure` (`UNSPECIFIED`), `stat_degenerate` for `±∞` | no shim: the engine's behaviour there (a wrap, NULL, NaN, `±∞`, a panic) is never reached |
 | Value side | picks one value | `null_order`, `rounding` of `round`, `division_type`, floor or truncating division of negatives, `float_to_int`, `decimal_rescale`, `avg_int_result`, an empty `SUM`, string and list positions, `zero_sign`, `nan_kind`, `nan_order`, `list_null_order`, `stat_degenerate` for `CORR`, result types | native where the engine picks the same value; a shim otherwise |
-| Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `observed` within the plan's tolerance `ε` (#568, D22) otherwise |
+| Open | allows several | `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `observed` within the plan's tolerance `ε` (#568, D22) otherwise |
+
+`sum_order` and `stat_algo` are options of the core and choices of the engines,
+and the reference's value for both is `EXACT` ([D25](decisions.md#d25-float-aggregates-are-correctly-rounded-exact-sums),
+[D30](decisions.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)):
+a double `SUM` or a variance is one value, and an engine's result is `observed`
+within the plan's tolerance `ε` of it.
 
 An option the plan states itself (`overflow: SILENT`) is a value choice too.
 A precondition only checked on the data, such as a `SUM`'s overflow bound

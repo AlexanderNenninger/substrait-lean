@@ -21,7 +21,8 @@ and the others are NULL:
   associative, the result is the true sum unless that leaves 64 bits.
   `SUM` here is the true sum, and `analysis/Sverify/Analysis/Safety.lean` warns.
 * `SUM` and `AVG` of doubles round, in an order SQL does not promise;
-  here they add in list order with native floats. `AVG` of integers is the
+  here they are the exact sum rounded once, whatever the order (D25).
+  `AVG` of integers is the
   `AVG` of their conversions to double, which the parser makes explicit.
 * `MIN` and `MAX` use the same order as `ORDER BY` (`Value.le`).
 * Grouping compares values exactly; doubles have one zero and one NaN
@@ -39,7 +40,8 @@ inductive AggFn where
   | count
   /-- `SUM` of integers, exactly. -/
   | sum
-  /-- `SUM` and `AVG` of doubles, with native floats. -/
+  /-- `SUM` and `AVG` of doubles: the exact sum rounded once (`floatSumCR`,
+  `floatAvgCR`; D25), a function of the multiset of values. -/
   | fsum | avg
   /-- `MIN` and `MAX` by `Value.le`. -/
   | min | max
@@ -54,10 +56,10 @@ inductive AggFn where
   folded over the values (the parser gives only these three). -/
   | bit (op : BitOp)
   /-- `VARIANCE` (`sqrt := false`) and `STDDEV` of doubles, of a sample
-  (`n - 1`) or a population (`n`), #54. Engines compute it with their own
-  algorithms, so the model claims only some double that is not negative (or
-  NaN), and NULL where the definition has no value: no values, or a sample
-  of one. The value it computes is one such double (`varOf`). -/
+  (`n - 1`) or a population (`n`), #54: the exact moments rounded once
+  (`varOf`; D30), and NULL where the definition has no value: no values, or a
+  sample of one. Engines keep their own algorithms and stay within the plan's
+  bound of that value. -/
   | var (sample sqrt : Bool)
   /-- `FIRST` (`last := false`) and `LAST` of the values in the measure's
   `sort` order (#55), as `ARRAY_AGG(x ORDER BY …)[1]` and its last element:
@@ -67,9 +69,10 @@ inductive AggFn where
   contracts see only the values' range (`Measure.abs`). -/
   | pick (last : Bool)
   /-- `COVAR_SAMP`/`COVAR_POP` and `CORR` of pairs of doubles (#54), whose
-  argument is `pair x y` (rows with a NULL skipped). Engines compute them
-  their own way: the model claims some double, or NULL where the definition
-  has no value. `CORR` is NULL, as the SQL standard says, for fewer than two
+  argument is `pair x y` (rows with a NULL skipped): the exact moments rounded
+  once (`covOf`, `corrOf`; D30), or NULL where the definition has no value.
+  Engines keep their own algorithms and stay within the plan's bound of that
+  value. `CORR` is NULL, as the SQL standard says, for fewer than two
   pairs or a side whose values are all equal (some engines give NaN there). -/
   | cov (sample : Bool)
   | corr
