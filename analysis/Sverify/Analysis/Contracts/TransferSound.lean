@@ -1006,13 +1006,21 @@ theorem faddBound_mem' (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy
       exact ⟨fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega),
         fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega)⟩
   · -- Finite lower ends only.
-    cases sub
-    · split
-      · rename_i la lb hxl hyl
+    split
+    · rename_i la lb hxl hyl
+      obtain ⟨h1, -, h3⟩ := Bound.loFin_mem hxl hx
+      obtain ⟨h4, -, h6⟩ := Bound.loFin_mem hyl hy
+      rw [hr rfl]
+      have hm := FloatCode.fadd_lower h1 h4 h3 h6
+      exact ⟨fun l hl => by cases hl; exact hm, fun h hh => by cases hh⟩
+    · -- `x - y`: a finite lower end of `x` and a finite `y`.
+      rename_i la hxl
+      split
+      · rename_i lb hb' hfb
         obtain ⟨h1, -, h3⟩ := Bound.loFin_mem hxl hx
-        obtain ⟨h4, -, h6⟩ := Bound.loFin_mem hyl hy
-        rw [hr rfl]
-        have hm := FloatCode.fadd_lower h1 h4 h3 h6
+        obtain ⟨fj, -, hj, -⟩ := finEnds_mem hy hfb
+        rw [hr' rfl]
+        have hm := FloatCode.fsub_lower h1 fj hj h3
         exact ⟨fun l hl => by cases hl; exact hm, fun h hh => by cases hh⟩
       · exact Bound.mem_top _
     · exact Bound.mem_top _
@@ -1132,10 +1140,9 @@ theorem fdivBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
   split
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
-    obtain ⟨⟨hxn, hyn⟩, hok⟩ := hc
-    obtain ⟨fi, fj, hj0, hg⟩ := fdivOk_guard hx hy hok
+    obtain ⟨hxn, hyp⟩ := hc
     exact Bound.mem_atLeast0 hm
-      (FloatCode.div_nonneg fi fj hj0 hg (Bound.nonneg_mem hx hxn) (Bound.nonneg_mem hy hyn))
+      (FloatCode.fdiv_nonneg_open (Bound.nonneg_mem hx hxn) (Bound.posLo_mem hy hyp))
   · exact hm
 
 theorem BinFn.eq_vals (k k' : NumKind) (i j : Int) :

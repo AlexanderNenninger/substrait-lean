@@ -2595,7 +2595,9 @@ class CompositionError(VerificationError):
         given = ", ".join(guarantees) or "nothing"
         Exception.__init__(
             self,
-            f"{consumer} needs {needs} on {param!r}; {producer} only guarantees {given}",
+            f"{consumer} needs {needs} on {param!r}; {producer} only guarantees {given}; "
+            f"state it in {producer}'s `ensures`, "
+            'or set `on_unproved="check"` to check it on the data',
         )
 
 

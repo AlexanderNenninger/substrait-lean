@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+import sverify
 import yaml
 
 import sverify_dbt
@@ -135,6 +136,17 @@ def test_dbt_excludes_the_proved_tests(shop: Path, result: sverify_dbt.CheckResu
     dbt(shop, "compile")  # the selectors file parses
 
 
+def test_the_readmes_sample_is_what_check_prints(shop: Path) -> None:
+    """Each model's block in the README's sample output is a block of what
+    `check` prints on `examples/shop` (#891, 1.7)."""
+    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    start = readme.index("On the sample project in")
+    sample = readme[readme.index("```\n", start) + 4 :].split("\n```")[0]
+    printed = str(sverify_dbt.check(shop, counterexamples=0)).split("\n\n")
+    for block in sample.split("\n\n"):
+        assert block.strip() in [b.strip() for b in printed], block
+
+
 def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["check", str(shop), "--select", "stg_orders", "--counterexamples", "0"]) == 0
     out = capsys.readouterr().out
@@ -212,6 +224,40 @@ def test_contract_mismatch_and_inputs_without_types(make_project) -> None:
     assert "no column types" in (res["latest"].refused or "")
     assert "no column types" in (res["downstream"].refused or "")
     assert main(["check", str(root), "--counterexamples", "0"]) == 1
+
+
+def test_an_ephemeral_model_is_inlined_into_its_reader(make_project) -> None:
+    """dbt inlines an ephemeral model into each reader as a CTE: the reader
+    reads the ephemeral's inputs, which `check` finds two hops up (#891)."""
+    root = make_project(
+        {
+            "models/_sources.yml": SOURCES,
+            "models/stg.sql": (
+                "{{ config(materialized='ephemeral') }}\n"
+                "select id, cents from {{ source('raw', 'payments') }}\n"
+            ),
+            "models/totals.sql": (
+                "select id, sum(cents) as cents from {{ ref('stg') }} group by id\n"
+            ),
+            "models/_models.yml": """\
+            version: 2
+            models:
+              - name: totals
+                columns:
+                  - {name: id, data_tests: [unique]}
+              - name: stg
+                columns:
+                  - {name: id, data_tests: [not_null]}
+            """,
+        }
+    )
+    res = sverify_dbt.check(root, counterexamples=0)
+    assert res["totals"].refused is None, res["totals"].refused
+    # A test on the ephemeral model is listed, not checked: dbt runs none on it.
+    assert statuses(res["stg"]) == {"not_null(id)": "not checked"}
+    assert statuses(res["totals"]) == {"unique(id)": "proved"}
+    assert res["stg"].refused is None
+    assert any("inlines it into totals" in n for n in res["stg"].notes)
 
 
 def test_a_decimal_sum_notes_the_type_sverify_and_duckdb_differ_on(make_project) -> None:
@@ -549,3 +595,34 @@ def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
 
     out = _Checker._isolate(go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], ValueError("x"))
     assert out == "report" and bad.status == "not checked" and good.status == "pending"
+
+
+def test_a_manifest_of_another_schema_version_warns(tmp_path: Path) -> None:
+    """sverify-dbt reads manifest v12; an older one reads, with a warning (#891, 1.8)."""
+    import json
+
+    from sverify_dbt.manifest import ProjectError, load
+
+    (tmp_path / "target").mkdir()
+    meta = {"dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v11.json"}
+    (tmp_path / "target" / "manifest.json").write_text(json.dumps({"metadata": meta}))
+    with pytest.warns(UserWarning, match="schema v12.*v11"), pytest.raises(ProjectError):
+        load(tmp_path)  # the adapter check follows
+
+
+def test_sverify_dbt_and_sverify_are_one_version() -> None:
+    assert sverify_dbt.__version__ == sverify.__version__
+
+
+def test_a_sverify_of_another_version_stops_the_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib
+    import importlib.metadata
+
+    real = importlib.metadata.version
+    monkeypatch.setattr(
+        importlib.metadata, "version", lambda n: "0.0.1" if n == "sverify-dbt" else real(n)
+    )
+    with pytest.raises(ImportError, match="needs sverify"):
+        importlib.reload(sverify_dbt)
+    monkeypatch.undo()
+    importlib.reload(sverify_dbt)

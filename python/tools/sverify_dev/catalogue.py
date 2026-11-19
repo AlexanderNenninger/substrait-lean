@@ -580,11 +580,11 @@ def probe_engines(
     for engine in WRITES:
         dialect = profiles.plugins()[engine].dialect()  # pyrefly: ignore[not-callable]
         try:
-            text = plan_sql(json.loads(plan), dialect)
+            text = plan_sql(json.loads(plan), dialect, rows="sequence")
             out[engine] = "sql"
         except UnsupportedError as e:
             try:
-                text = plan_sql(json.loads(plan), dialect, deterministic=True)
+                text = plan_sql(json.loads(plan), dialect, deterministic=True, rows="sequence")
                 out[engine] = "sql (tie_free)"
             except UnsupportedError:
                 text = None

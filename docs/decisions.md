@@ -6,6 +6,11 @@ reference, the core and the profiles make, with when and why it was made.
 [reference-semantics.md](reference-semantics.md) states the resulting
 behaviour for users, without the history.
 
+A decision that a later one corrects or replaces, in whole or in part, carries
+a dated `Amended`, `Correction` or `Superseded` line under its heading, with
+a link to the later decision, and its text above that line is the history. The
+text of the later decision is the live rule, and each rule is stated there once.
+
 Every decision after D49 ends its section with a line, `Recomputes sinks: yes`
 or `Recomputes sinks: no`. A decision that changes a value of the reference or
 narrows what it allows says yes, and its D-number goes into
@@ -1245,6 +1250,9 @@ and an option enters the core with its value recorded. The rows whose "Decided b
 keeps every option of the core named in this file.
 
 ### D43. Text the engines map differently is an issue, `nonAscii`
+
+Amended 2026-11-18 by [D51](#d51-case-mapping-has-the-value-the-engines-agree-on):
+`UPPER` and `LOWER` leave this decision for `case_mapping`. The rest stands.
 
 `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein` and a regular
 expression with a class (`\d`, `\w`, `\s`, `\b`) give Rust's values on ASCII

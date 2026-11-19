@@ -21,7 +21,8 @@ the Substrait standard extensions (`functions_boolean.yaml`) specify.
 
 Doubles are integer *codes* (see `core/Sverify/Core/Float.lean`), so they share
 `Value.int` and the integer comparisons. Float arithmetic has its own
-operators (`fadd`, …), computed with native floats; rounding a double to an
+operators (`fadd`, …), the exact result rounded once (D31,
+`core/Sverify/Core/FloatArith.lean`); rounding a double to an
 integer is exact (see `core/Sverify/Core/Rounding.lean`).
 
 Integer division and remainder truncate toward zero unless the plan asks

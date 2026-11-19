@@ -162,7 +162,7 @@ Over the 136 queries that verify (some only as DOUBLE):
 | engine: reason | queries |
 |---|---|
 | snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 24 |
-| snowflake: refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean mo | 8 |
+| snowflake: refused: Snowflake tables have no row order, so rows="sequence" cannot follow the Lean model's list order for  | 8 |
 | polars: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see | 3 |
 | snowflake: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet;  | 3 |
 | polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |

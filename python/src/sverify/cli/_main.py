@@ -148,7 +148,10 @@ class Check:
         if budget.exceeded and self.code != BUDGET:
             self.code = BUDGET
             self.error = self.error or _error(
-                "timeout", f"time budget exceeded ({budget.seconds:g} s)", "BudgetExceeded"
+                "timeout",
+                f"time budget exceeded ({budget.seconds:g} s); "
+                "raise it with `--timeout` or `SVERIFY_TIMEOUT`",
+                "BudgetExceeded",
             )
 
     @property

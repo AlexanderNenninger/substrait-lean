@@ -9,9 +9,11 @@ import Sverify.Core.AllowedP
 every order the reference allows (`Rel.OrderAllowed`): rows in any order the
 plan leaves open, each double `SUM` and `AVG` with `Rel.eval`'s value.
 `Rel.Allowed` allows more where a measure's value is a choice of the
-reference: before D25 a double `SUM` or `AVG` added in any order and grouping
-(`FloatSums`), and still a statistical aggregate (`StatProps`). A
-postcondition proved of `Rel.eval`'s values must allow for the others.
+reference: `QUANTILE_CONT`, whose value lies between two neighbours
+(`contAllowed`). Before D25 a double `SUM` or `AVG` added in any order and
+grouping (`FloatSums`), and before D30 a statistical aggregate was any value
+with `StatProps`; both are one value now. A postcondition proved of
+`Rel.eval`'s values must allow for the others.
 
 `contract_sound_allowed` (`AllowedAnalysis.lean`) does that, from this
 module's closeness. A postcondition narrowed by each
@@ -33,11 +35,10 @@ sufficient conditions are proved:
 
 D25 (#915) takes `FloatSums` out of `Rel.Allowed`: a double `SUM` or `AVG`
 is order-free (`AggFn.orderFree`), so `Measure.closedB` holds of it, and
-`Measure.Allowed.near_eval` by reflexivity. `Rel.FloatOpenSafe` is not yet
-true of every plan: `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` stay choices of
-the reference (`StatProps`) until their exact moments (#918), and
-`QUANTILE_CONT` (`contAllowed`) is a choice too. Once those go,
-`contract_sound_allowed` needs no side condition. -/
+`Measure.Allowed.near_eval` by reflexivity. D30 (#918) does the same for
+`VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`. `QUANTILE_CONT` (`contAllowed`)
+is the one choice left, so `Rel.FloatOpenSafe` is not yet true of every plan,
+and `contract_sound_allowed` keeps its side condition. -/
 
 namespace Substrait
 variable [Boxes.Ambient]
@@ -124,7 +125,8 @@ theorem Rel.allowed_orderAllowed {cat : Catalog} :
 /-- **The side condition**: every result the reference allows for `r` is,
 up to `q`, the result of one of its orders. The double `SUM`s and `AVG`s
 left open reach the output only where `q` tolerates them, and nothing reads
-them to choose rows. After D25 (#916) it holds for every plan. -/
+them to choose rows. After D25 (#916) and D30 (#918) it holds of every plan
+without `QUANTILE_CONT`. -/
 def Rel.FloatOpenSafe (q : Obs) (ctx : ObsCtx) (cat : Catalog) (r : Rel) : Prop :=
   ∀ out, r.Allowed cat out → ∃ out', r.OrderAllowed cat out' ∧ Relation.Equiv q ctx out' out
 
@@ -138,7 +140,10 @@ theorem Rel.floatOpenSafe_of_closed {q : Obs} {ctx : ObsCtx} (hc : ctx.ReflAt q)
 within the plan's bound. -/
 def Obs.plan : Obs := { rows := .multiset, floats := .within "plan" }
 
-/-- A double `SUM` or `AVG`: its value depends on the order of its additions. -/
+/-- A double `SUM` or `AVG`, the measures `Measure.Open` relates to the orders
+of additions an engine may use. Since D25 their reference value is order-free
+(`Measure.closedB` holds too); the predicate is kept for `aggCtx`'s tolerance
+on their columns. -/
 def Measure.openB (m : Measure) : Bool := m.fn == .fsum || m.fn == .avg
 
 /-- Two values of an open measure over the same values: sums of them in two
