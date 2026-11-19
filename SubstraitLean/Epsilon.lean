@@ -226,9 +226,12 @@ rules of `float-bounds/FloatBounds/Propagate.lean`:
 * `*`: `(ma εb + mb εa + εa εb)(1 + u) + 2u (ma mb + t)` (`rule_mul`);
 * `/` by a divisor the same on both sides, `|b| ≥ lb > 0`:
   `(εa / lb)(1 + u) + 2u (ma / lb + t)` (`rule_div`); Polars's `/` by a
-  literal multiplies by the reciprocal (`fl(x · fl(1/y))`,
-  polars-scalar-divisor): `(εa / lb)(1 + u)² + (3u + u²)(ma / lb) +
-  (u (1 + u)(ma + εa) + 2u) t` (`rule_div_recip`);
+  divisor with no column reference (a literal, a constant expression) multiplies by the
+  reciprocal (`fl(x · fl(1/y))`, polars-scalar-divisor): `(εa / lb)(1 + u)² +
+  (3u + u²)(ma / lb) + (u (1 + u)(ma + εa) + 2u) t` (`rule_div_recip`), stated only where
+  `lb ≥ t`, so `1 / y` is finite. It is at least `rule_div`'s term by term
+  (`rule_div_le_recip`), so a plan Polars divides exactly (a frame shorter than its
+  threads) is covered too;
 * `abs`, negation: `εa` (`rule_abs`); `FLOOR`, `CEIL`, `ROUND`: `εa + 1`
   (`rule_floor`, `rule_ceil`, `rule_round`); a cast to an integer: `εa + 2`
   (`rule_trunc`); `sqrt` of `a ≥ εa`: `Δ (1 + u) + 2u (√ha + t)`,
@@ -432,7 +435,10 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
     let (ea, pa) ← exprEps es engine env cols a
     let (eb, pb) ← exprEps es engine env cols b
     let u := unitRound
-    let recip := engine == "polars" && (match f, b with | .fdiv, .lit _ => true | _, _ => false)
+    -- Polars multiplies by the reciprocal for any length-1 divisor, one with no column
+    -- reference included (polars-scalar-divisor); `rule_div_le_recip` says the bound also
+    -- covers the exact kernel it takes for a short frame.
+    let recip := engine == "polars" && f == .fdiv && b.cols.isEmpty
     match f with
     | .fadd | .fsub =>
       if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
@@ -451,6 +457,9 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
       guard (eb == 0.0)
       if ea == 0.0 && !recip then return (0.0, pa && pb)
       let lb ← minAbsOf env b
+      -- Below the smallest normal `1 / y` overflows and Polars gives inf or NaN where the
+      -- rule would state a finite bound: no bound there (the row's precondition, ruling 157).
+      guard (!recip || tinyF ≤ lb)
       match magOf env a with
       | some ma =>
         guard (fits (ma / lb + ea / lb))
