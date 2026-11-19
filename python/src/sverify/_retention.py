@@ -39,10 +39,18 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.graph import Node
 
-from sverify._arrow_state import _scalar, after, buckets, through  # noqa: F401  (re-exported: incremental calls them here)
-from sverify._weighted import _call, negative, positive, rows_of
+from sverify._weighted import (  # noqa: F401  (`after`, `buckets`, `through` are called from here by incremental)
+    _call,
+    _scalar,
+    after,
+    buckets,
+    negative,
+    positive,
+    rows_of,
+    through,
+)
 from sverify.contracts import ArrivesWithin, Condition, label, show_duration
-from sverify.plan_json import INSTANT_NOTE
+from sverify.plan_json import INSTANT_NOTE, is_utc
 
 # `date_trunc` to these units is a bucket from 1970-01-01 (`Retention.trunc_eq_bucket`).
 _UNITS = {
@@ -68,6 +76,9 @@ class Retention:
     column: str
     width: timedelta
     origin: timedelta = timedelta(0)
+    bucket_naive: bool = False
+    """`ts` is an instant and the bucket is of its UTC wall clock (a naive
+    timestamp, D53): a cutoff compared with the bucket column is naive too."""
 
     @property
     def bound(self) -> int:
@@ -79,10 +90,16 @@ class Retention:
         yet, no watermark)."""
         return None if latest is None else latest - self.lateness
 
+    def _cutoff(self, latest: Any) -> Any:
+        return None if latest is None else latest - self.lateness - self.width
+
     def cutoff(self, latest: Any) -> Any:
         """The last bucket start that is final: a bucket starting at `b` is
-        final when `b + width ≤ watermark`."""
-        return None if latest is None else latest - self.lateness - self.width
+        final when `b + width ≤ watermark`, in the type of the bucket column."""
+        cutoff = self._cutoff(latest)
+        if cutoff is not None and self.bucket_naive:
+            return cutoff.astimezone(UTC).replace(tzinfo=None)
+        return cutoff
 
     def start(self, t: Any) -> Any:
         """The start of the bucket of time `t`."""
@@ -92,7 +109,7 @@ class Retention:
     def final_before(self, latest: Any) -> Any:
         """Every time before this one is in a final bucket: the end of the
         last final bucket (None: no row yet)."""
-        cutoff = self.cutoff(latest)
+        cutoff = self._cutoff(latest)
         return None if cutoff is None else self.start(cutoff) + self.width
 
     def __str__(self) -> str:
@@ -182,20 +199,34 @@ def _interval_us(op: ops.Value | None) -> int | None:
     return parts[1]
 
 
-def _bucket(v: ops.Value) -> tuple[ops.Field, timedelta, timedelta] | str:
-    """The column, width and origin of a bucket expression, or why it is not
-    one with a fixed width."""
+def _bucket(v: ops.Value) -> tuple[ops.Field, timedelta, timedelta, bool] | str:
+    """The column, width and origin of a bucket expression, and whether it
+    is of an instant's UTC wall clock (`ts.cast("timestamp").truncate(...)`),
+    or why it is not a bucket with a fixed width."""
+    naive = False
+    arg = getattr(v, "arg", None)
+    if isinstance(arg, ops.Cast) and isinstance(arg.arg, ops.Field):
+        src: Any = arg.arg.dtype
+        to: Any = arg.to
+        if (
+            src.is_timestamp()
+            and src.timezone is not None
+            and is_utc(src.timezone)
+            and to.is_timestamp()
+            and to.timezone is None
+        ):
+            v, naive = v.copy(arg=arg.arg), True  # type: ignore[attr-defined]
     match v:
         case ops.TimestampTruncate(arg=ops.Field() as f, unit=unit):
             width = _UNITS.get(unit.name)
             if width is None:
                 return f"buckets of a {unit.name.lower()} have no fixed width"
-            return f, width, timedelta(0)
+            return f, width, timedelta(0), naive
         case ops.TimestampBucket(arg=ops.Field() as f, interval=interval, offset=offset):
             k, o = _interval_us(interval), _interval_us(offset)
             if k is None or o is None or k <= 0:
                 return "bucket() needs a constant interval of days or less"
-            return f, timedelta(microseconds=k), timedelta(microseconds=o)
+            return f, timedelta(microseconds=k), timedelta(microseconds=o), naive
     return "not a time bucket"
 
 
@@ -227,7 +258,7 @@ def plan(
             if b != "not a time bucket":
                 reasons.append(f"{name}: {b}")
             continue
-        f, width, origin = b
+        f, width, origin, naive = b
         base = _base_column(f.rel, f.name) if f.rel == agg.parent else None
         cond = lateness.get(base) if base is not None else None
         if base is None or cond is None:
@@ -238,9 +269,14 @@ def plan(
         if not dtype.is_timestamp():
             reasons.append(f"{table}.{col} is not a timestamp")
             continue
-        if dtype.timezone is not None:
-            # A cutoff is a literal in the plan (#1725).
-            reasons.append(f"{table}.{col} is a timestamp with a time zone {INSTANT_NOTE}")
+        if dtype.timezone is not None and not is_utc(dtype.timezone):
+            reasons.append(f"{table}.{col} has the time zone {dtype.timezone} {INSTANT_NOTE}")
+            continue
+        if dtype.timezone is not None and not naive:
+            reasons.append(
+                f"{table}.{col} is an instant: take the buckets of its UTC wall clock, "
+                f"`{col}.cast('timestamp').truncate(...)` {INSTANT_NOTE}"
+            )
             continue
         if name not in names:
             reasons.append(f"the view does not output {name} unchanged")
@@ -248,7 +284,7 @@ def plan(
         if _base_column(agg.parent, f.name) is None:
             reasons.append("the aggregate reads more than one source row per row")
             continue
-        return Retention(table, col, cond.lateness, names[name], width, origin)
+        return Retention(table, col, cond.lateness, names[name], width, origin, naive)
     conds = ", ".join(label(c) for c in lateness.values())
     return "; ".join(reasons) or f"no GROUP BY key is a fixed-width time bucket of {conds}"
 

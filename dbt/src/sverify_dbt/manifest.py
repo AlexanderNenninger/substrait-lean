@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -172,6 +173,14 @@ def load(project: str | Path, target_path: str | Path = "target") -> Project:
         raise ProjectError(f"no {path}: run `dbt compile` in {root} first")
     manifest = json.loads(path.read_text())
     meta = manifest.get("metadata", {})
+    schema = str(meta.get("dbt_schema_version") or "")
+    if not schema.endswith("/manifest/v12.json"):
+        warnings.warn(
+            f"sverify-dbt reads dbt manifests of schema v12 (dbt-core 1.10 to 1.12); this one is "
+            f"{schema.rsplit('/', 1)[-1].removesuffix('.json') or 'of unknown version'}, so tests "
+            "may be attached to the wrong model",
+            stacklevel=2,
+        )
     adapter = meta.get("adapter_type") or "unknown"
     if adapter != "duckdb":
         raise ProjectError(

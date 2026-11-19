@@ -14,9 +14,8 @@ Snowflake SQL is generated for every case too (and parsed).
 
 The Spark SQL of every case runs on a local Spark session (`spark_session`,
 one JVM for the whole test) and agrees with DuckDB, row for row where the
-order is part of the result. Spark refuses what needs a table's row order;
-the cases of `TIE_FREE` run with `tie_free=True` on the tables drawn here,
-whose timestamps are distinct.
+order is part of the result. Spark has no table row order, so its SQL leaves
+ties and a `LIMIT`'s rows open (`to_sql`'s default `rows` for it).
 """
 
 import datetime as dt
@@ -50,7 +49,7 @@ from sverify_spark.dialect import SPARK
 VERIFIED = [c for c in coverage.CASES if c.expected == "verified"]
 
 #: Cases an engine refuses, with the reason (`sverify_dev.coverage` says why).
-REFUSED, TIE_FREE = coverage.REFUSED, coverage.TIE_FREE
+REFUSED = coverage.REFUSED
 
 T0 = dt.datetime(2024, 2, 28, 23, 0)
 STAMPS = [
@@ -231,25 +230,66 @@ def test_var_pop_of_one_nan(con):
     assert v(duckdb_ibis(con, expr)) == [None, 0.0]
 
 
+def test_cot_of_negative_zero_agrees_across_engines(con):
+    """The Hypothesis example behind `test_engines_agree[trigonometry]`'s seed-dependent
+    failure (`--hypothesis-seed=5`): `amount = -0.0`. `cot(-0.0)` is `-inf` on DuckDB and
+    `+inf` on Polars when its read made the zero positive (D31 keeps values raw, #1461, #1794)."""
+    schema = {name: s.to_pyarrow() for name, s in coverage.T.schema().items()}
+    t = {"id": [None], "name": [None], "amount": [-0.0], "qty": [None],
+         "ts": STAMPS[:1], "flag": [None]}  # fmt: skip
+    put_table(con, "t", pa.table({k: pa.array(v, schema[k]) for k, v in t.items()}))
+    (case,) = [c for c in VERIFIED if c.label == "trigonometry"]
+    plan = written_plan(to_substrait_json(case.build()))
+    got = {e: rows(run_plan(con, plan, e)) for e in ("polars", "duckdb")}
+    assert same(got["polars"], got["duckdb"])
+
+
 def approximately(rows: list[tuple]) -> list[tuple]:
     """Doubles to nine significant digits: engines compute some aggregates with
     their own algorithms (`VARIANCE`, `STDDEV`, #54)."""
     return [tuple(float(f"{v:.9g}") if isinstance(v, float) else v for v in r) for r in rows]
 
 
+#: The cases that sort on a key with ties or number rows: Spark's SQL leaves their ties
+#: open (`rows="multiset"`), so they agree with DuckDB as multisets.
+TIES_OPEN = {
+    "order_by",
+    "order_by expression",
+    "limit",
+    "limit with offset",
+    "order_by + limit",
+    "row_number",
+    "lag",
+    "rank",
+    "dense_rank",
+    "cumsum",
+    "ntile",
+    "first",
+    "percent_rank, cume_dist",
+    "rolling sum (range)",
+    "rolling sum (interval)",
+    "sum over group",
+    "running mean",
+    "rolling mean (rows)",
+    "rolling mean (interval)",
+    "min over a sliding frame",
+    "window sum of an expression",
+    "last, nth",
+    "max, count over frame",
+    "scalar subquery, one row",
+    "rolling sum by time",
+}
+
+
 def engine_sql(case, engine: str, dialect, read: str) -> str | None:
-    """The SQL of a case for a dialect that refuses what needs row order: the
-    query, None where it is refused, or the `tie_free` query of `TIE_FREE`.
-    It parses as `read` SQL (sqlglot)."""
+    """The SQL of a case in the dialect's own `rows`: the query, or None where
+    the dialect refuses it. It parses as `read` SQL (sqlglot)."""
     plan = json.loads(written_plan(to_substrait_json(case.build())))
     if engine in REFUSED.get(case.label, {}):
         with pytest.raises(Unsupported, match=REFUSED[case.label][engine]):
-            plan_sql(plan, dialect, rows="sequence")
-        if case.label not in TIE_FREE:
-            return None
-        sql = plan_sql(plan, dialect, deterministic=True, rows="sequence")
-    else:
-        sql = plan_sql(plan, dialect, rows="sequence")
+            plan_sql(plan, dialect)
+        return None
+    sql = plan_sql(plan, dialect)
     sqlglot.parse_one(sql, read=read)
     return sql
 
@@ -292,7 +332,7 @@ def test_spark_agrees_with_duckdb(con, data):
         if case.label in coverage.APPROXIMATE:
             got, duck = approximately(got), approximately(duck)
         root = parse_plan(json.loads(plan)).root
-        ordered = order_matters(root) and case.label not in TIE_FREE
+        ordered = order_matters(root) and case.label not in TIES_OPEN
         assert same(got, duck) if ordered else canonical(got) == canonical(duck), case.label
 
 
@@ -315,3 +355,47 @@ def test_connections_share_one_duckdb_database():
         create_tables(con, [(1, "ada", 3)])
         con.table("orders").count().execute()
     assert psutil.Process().num_threads() - before < 10
+
+
+#: Scalar operations whose result is a zero of either sign for the `-0.0` row.
+_ZERO_SIGNS = {
+    "negation": lambda a: -a,
+    "floor": lambda a: a.floor(),
+    "ceil": lambda a: a.ceil(),
+    "round": lambda a: a.round(),
+    "sin": lambda a: a.sin(),
+    "tan": lambda a: a.tan(),
+    "cot": lambda a: a.cot(),
+    "abs": lambda a: a.abs(),
+    "cot of abs": lambda a: a.abs().cot(),
+    "sqrt of abs": lambda a: a.abs().sqrt(),
+    "atan": lambda a: a.atan(),
+    "sum with a zero literal": lambda a: a + 0.0,
+    "difference from a zero literal": lambda a: 0.0 - a,
+    "difference of a zero literal": lambda a: a - 0.0,
+    "difference": lambda a: a - a,
+    "sum": lambda a: a + a,
+    "product": lambda a: a * -1.0,
+    "quotient": lambda a: a / -1.0,
+    "cube": lambda a: a**3,
+    "atan2": lambda a: a.atan2(a * 0.0 - 1.0),
+}
+
+
+@pytest.mark.parametrize("name", _ZERO_SIGNS)
+def test_scalar_results_keep_the_sign_of_a_zero_on_polars_and_duckdb(con, name):
+    """Values stay raw (D31, #1461, #1794): the plan's `-0.0` and `0.0` results are the
+    reference's, so a later division reads the same infinity on both engines."""
+    schema = {n: s.to_pyarrow() for n, s in coverage.T.schema().items()}
+    amount = [-0.0, 0.0, -1.0, 2.0, -0.5, 0.5]
+    t = {"id": list(range(6)), "name": [None] * 6, "amount": amount, "qty": [None] * 6,
+         "ts": STAMPS[:1] * 6, "flag": [None] * 6}  # fmt: skip
+    put_table(con, "t", pa.table({k: pa.array(v, schema[k]) for k, v in t.items()}))
+    q = coverage.T.select(i=coverage.T.id, x=_ZERO_SIGNS[name](coverage.T.amount))
+    plan = written_plan(to_substrait_json(q))
+
+    def signed(engine: str) -> list:
+        out = run_plan(con, plan, engine).sort_by("i").column("x").to_pylist()
+        return [math.copysign(1.0, v) if v == 0 else v for v in out]
+
+    assert signed("polars") == signed("duckdb")

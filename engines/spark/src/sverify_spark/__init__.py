@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 2:
+if getattr(_meta, "PLUGIN_API", None) != 3:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -225,6 +225,7 @@ PLUGIN = ProfilePlugin(
     installed_version=_version,
     restore=_restore,
     runner=_run,
+    checks_assumed=True,
     rows=ROWS,
     session=_is_session,
     modules=("pyspark",),

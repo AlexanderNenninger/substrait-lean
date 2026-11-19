@@ -1,0 +1,3 @@
+### Table conditions are counted by the engine that runs their plan
+
+`unique`, `references`, `rows_per`, `max_rows` and `arrives_within` were counted by executing an Ibis expression on the connection's own backend (DuckDB). Each is now an Ibis relation that the checker's plan carries, run by the engine the check runs on, with the reference's meaning; a NULL key is one key in `unique` and `rows_per`, a NULL foreign key breaks nothing in `references`, on DuckDB, Polars and Spark. All the table conditions of one table run as one plan. A condition the engine's writer refuses refuses the check (#1764).

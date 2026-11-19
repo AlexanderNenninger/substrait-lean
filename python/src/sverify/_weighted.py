@@ -344,3 +344,27 @@ def weights_in(z: pa.Table | Native, rows: pa.Table) -> pa.Array:
         r=indexed,
     )
     return out.column("w").combine_chunks().cast(pa.int64())
+
+
+# Retention over Arrow state (`sverify._retention` uses them).
+
+
+def _scalar(value: Any, dtype: pa.DataType) -> pa.Scalar:
+    return pa.scalar(value, type=dtype)
+
+
+def after(table: pa.Table, column: str, cutoff: Any) -> pa.Table:
+    """The rows of `table` whose bucket `column` starts after `cutoff`."""
+    col = table.column(column)
+    return table.filter(_call("greater", col, _scalar(cutoff, col.type)))
+
+
+def through(table: pa.Table, column: str, cutoff: Any) -> pa.Table:
+    """The rows of `table` whose bucket starts at or before `cutoff`."""
+    col = table.column(column)
+    return table.filter(_call("less_equal", col, _scalar(cutoff, col.type)))
+
+
+def buckets(table: pa.Table, column: str) -> int:
+    """How many distinct buckets `table` has."""
+    return _call("count_distinct", table.column(column)).as_py() if table.num_rows else 0

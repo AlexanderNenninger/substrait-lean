@@ -276,8 +276,8 @@ structure Report where
   facts : List (String × String × Json)
   /-- The output columns' types as the writer types them (`Write.relKinds`, the
   reference's: a decimal `SUM` is `DECIMAL(min(38, p + 10), s)`, an `AVG` is
-  `DECIMAL(p + 4, s + 4)`, p up to 34), as `outputKindJson` renders them, in the
-  output's order. Empty where the transformation is not well-formed. -/
+  `DECIMAL(p + 4, s + 4)`, p up to 34; an integer carries its width, a computed
+  one is 64), as `outputKindJson` renders them, in the output's order. Empty where the transformation is not well-formed. -/
   outputKinds : List Json := []
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -529,7 +529,7 @@ def opName : Rel → String
 /-- Each relation of `r` in pre-order, with its depth, its row bound on
 the capped plan and an aggregate's bound on the rows of a group. -/
 def relationBounds (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (caps : String → Option Nat)
+    (K : TableCond) (caps : String → Option Nat)
     (P : String → List (List Nat × Nat)) (d : Nat) (r : Rel) :
     List (String × Nat × Option Nat × Option Nat) :=
   let group := match r with
@@ -577,7 +577,7 @@ def doublesTies (what : String) : String :=
 /-- What the relation `r` leaves open beyond its inputs: each check of
 `Rel.detPlan` at `r` that fails (`tiesIn_eq_nil`). -/
 def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → List (String × String)
+    (K : TableCond) : Rel → List (String × String)
   | .distinct r =>
     if (r.aeval cat A F .none).all AVal.noDoubles then [] else [("class", doublesTies "DISTINCT")]
   | .window r part sort fns =>
@@ -607,7 +607,7 @@ def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fac
 /-- **The reasons are the flag's**: `r` leaves nothing open
 (`Rel.detPlan`) exactly where no relation of it names a reason. -/
 theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) :
+    (K : TableCond) :
     ∀ r : Rel, (preorder r).flatMap (tiesHere cat A F K) = [] ↔ r.detPlan cat A F K = true
   | .read _ | .values _ _ => by simp [preorder, tiesHere, Rel.detPlan]
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .unnest r _ => by
@@ -646,11 +646,11 @@ theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String →
 /-- Where `r` leaves the order of ties open: each relation's index in
 `preorder r`, its operator and what is open. -/
 def tiePlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String × String) :=
+    (K : TableCond) (r : Rel) : List (Nat × String × String × String) :=
   (preorder r).zipIdx.flatMap fun (n, i) => (tiesHere cat A F K n).map fun (k, w) => (i, opName n, k, w)
 
 theorem tiePlaces_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) :
+    (K : TableCond) (r : Rel) :
     tiePlaces cat A F K r = [] ↔ r.detPlan cat A F K = true := by
   rw [← tiesIn_eq_nil]
   simp only [tiePlaces, List.flatMap_eq_nil_iff, List.map_eq_nil_iff, Prod.forall]
@@ -764,27 +764,17 @@ def combineIgnores (noOpen : Bool) (pre : List (Option (List String × List Stri
 
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
 `T.select(…)` from every order to every allowed result: `T` is closed
-(`Rel.closedB`, `contract_sound_allowed_closed`: no `VAR_*`, `STDDEV_*`,
-`COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is order-free
-since D25), or an aggregate whose open measures are double `SUM`s and `AVG`s
-over a closed plan (`Rel.floatOpenSafe_aggregate`), and the column is robust
-under that context without a tolerance (`Expr.robustB`), so it reads no open
-measure. A comparison of an open sum needs
-the shift of its tolerance (#929). -/
+(`Rel.closedB`, `contract_sound_allowed_closed`: no `QUANTILE_CONT`; a double
+`SUM`, `AVG` or statistical aggregate is order-free since D25 and D30), and the
+column is robust under the empty context without a tolerance (`Expr.robustB`),
+so it reads no open measure. A comparison of an open sum needs the shift of
+its tolerance (#929). -/
 def postAllowed (cat : Catalog) (r : Rel) (n : Nat) : List Bool :=
   match r with
   | .emit (.project t es) m =>
-    let ctx? : Option ObsCtx :=
-      if t.closedB then some {} else match t with
-        | .aggregate r gs ms =>
-          if r.closedB && ms.all (fun m => m.closedB || m.openB) then some (aggCtx gs.length ms)
-          else none
-        | _ => none
-    match ctx? with
-    | some ctx =>
-      if m.length != n then List.replicate n false
-      else m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan ctx (fun _ => none)
-    | none => List.replicate n false
+    if t.closedB && m.length == n then
+      m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan {} (fun _ => none)
+    else List.replicate n false
   | _ => List.replicate n false
 
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/
@@ -871,10 +861,11 @@ def parse (input : Json) : Except String Request := do
   return { input, posts, requires, transform, tables, pre }
 
 /-- One output column's type for the report: a decimal with its precision and
-scale, otherwise the kind's name. -/
-def outputKindJson : Write.WKind → Json
+scale, an integer with its width in bits (`Rel.outBits`), otherwise the kind's
+name. -/
+def outputKindJson (k : Write.WKind) (bits : Nat) : Json := match k with
   | .dec p s => Json.mkObj [("kind", "dec"), ("precision", Lean.toJson p), ("scale", Lean.toJson s)]
-  | .int => Json.mkObj [("kind", "int")]
+  | .int => Json.mkObj [("kind", "int"), ("bits", Lean.toJson bits)]
   | .float => Json.mkObj [("kind", "float")]
   | .str => Json.mkObj [("kind", "str")]
   | .bool => Json.mkObj [("kind", "bool")]
@@ -1055,7 +1046,7 @@ end Request
 /-- An operator over `x` that needs `x` determined exactly, where it is only
 determined up to the class (D48). -/
 def readsClass (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (x : Rel) (what : String) : List String :=
+    (K : TableCond) (x : Rel) (what : String) : List String :=
   if x.detClass cat A F K && !x.detPlan cat A F K then
     [s!"{what} reads a value picked from a class of doubles (0.0 and -0.0, the NaNs)"]
   else []
@@ -1064,7 +1055,7 @@ def readsClass (cat : Catalog) (A : String → List AVal) (F : String → List F
 `Rel.detClass` at `r` that fails (`classIn_eq_nil`). Open ties, and operators
 that read a value a class pick below them chose. -/
 def classHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → List String
+    (K : TableCond) : Rel → List String
   | .filter r c => if c.canonSafe then [] else readsClass cat A F K r s!"WHERE {c.render}"
   | .project r es =>
     if es.all Expr.classCongr then [] else
@@ -1093,7 +1084,7 @@ def classHere (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | _ => []
 
 theorem readsClass_eq_nil {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
-    {K : String → List (List Nat)} {x : Rel} {what : String} (hx : x.detClass cat A F K = true) :
+    {K : TableCond} {x : Rel} {what : String} (hx : x.detClass cat A F K = true) :
     readsClass cat A F K x what = [] ↔ x.detPlan cat A F K = true := by
   unfold readsClass
   cases h : x.detPlan cat A F K <;> simp [hx]
@@ -1101,7 +1092,7 @@ theorem readsClass_eq_nil {cat : Catalog} {A : String → List AVal} {F : String
 /-- **The class-level reasons are the flag's**: `r` is determined up to the
 class (`Rel.detClass`) exactly where no relation of it names a reason. -/
 theorem classIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) :
+    (K : TableCond) :
     ∀ r : Rel, (preorder r).flatMap (classHere cat A F K) = [] ↔ r.detClass cat A F K = true
   | .read _ | .values _ _ => by simp [preorder, classHere, Rel.detClass]
   | .emit r _ | .orderBy r _ | .distinct r => by
@@ -1179,11 +1170,11 @@ theorem classIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String �
 /-- Where `r` is open at the class level: each relation's index in
 `preorder r`, its operator and what is open. -/
 def classPlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String) :=
+    (K : TableCond) (r : Rel) : List (Nat × String × String) :=
   (preorder r).zipIdx.flatMap fun (n, i) => (classHere cat A F K n).map (i, opName n, ·)
 
 theorem classPlaces_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) :
+    (K : TableCond) (r : Rel) :
     classPlaces cat A F K r = [] ↔ r.detClass cat A F K = true := by
   rw [← classIn_eq_nil]
   simp only [classPlaces, List.flatMap_eq_nil_iff, List.map_eq_nil_iff, Prod.forall]
@@ -1322,7 +1313,9 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
   let outputKinds := match transform with
     | some p =>
       if p.root.checkWF cat then
-        (Write.relKinds (Write.planSchemas p) cat p.root).map outputKindJson
+        let ks := Write.relKinds (Write.planSchemas p) cat p.root
+        let bits := p.root.outBits tables
+        (ks.zipIdx.map fun (k, i) => outputKindJson k (bits.getD i 64))
       else []
     | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
@@ -1590,9 +1583,9 @@ every row of every result the reference allows
 the request (`DataMeets`).
 
 `check` analyses under the reference whatever profile the request names: a
-report under another one is the reference's, relabelled by `underProfile`
-(`SubstraitCheck.lean`), a trusted step until #271 gives those engines
-profiles of their own. A tolerance or an observation on the engine's doubles
+request for DuckDB's, Polars's or Spark's profile gets the reference's report,
+labelled `"reference"` and marked `"pending"` by `underProfile`
+(`SubstraitCheck.lean`), until #271 gives those engines reports of their own. A tolerance or an observation on the engine's doubles
 belongs to the engine's soundness (`Engine.Sound`), which starts from this
 conclusion.
 

@@ -6,6 +6,11 @@ reference, the core and the profiles make, with when and why it was made.
 [reference-semantics.md](reference-semantics.md) states the resulting
 behaviour for users, without the history.
 
+A decision that a later one corrects or replaces, in whole or in part, carries
+a dated `Amended`, `Correction` or `Superseded` line under its heading, with
+a link to the later decision, and its text above that line is the history. The
+text of the later decision is the live rule, and each rule is stated there once.
+
 Every decision after D49 ends its section with a line, `Recomputes sinks: yes`
 or `Recomputes sinks: no`. A decision that changes a value of the reference or
 narrows what it allows says yes, and its D-number goes into
@@ -528,8 +533,9 @@ Three consequences:
   every result the reference allows for them.
 
   Amended (2026-11-07, #1017): this holds of closed plans (`Rel.closedB`); a
-  plan with open measures (`Measure.openB`) goes through
-  `contract_sound_allowed` and `Rel.FloatOpenSafe`.
+  plan with open measures goes through `contract_sound_allowed` and
+  `Rel.FloatOpenSafe`. Amended 2026-11-19: no double `SUM` or `AVG` is an open
+  measure after D25, so `Measure.openB` and the machinery for it are removed.
 - A tolerance is a metric: bounds add along a pipeline
   (`Near ε₁ a b → Near ε₂ b c → Near (ε₁ + ε₂) a c`), and no tolerance passes
   through a filter, group key or sort on a double column.
@@ -1250,6 +1256,9 @@ keeps every option of the core named in this file.
 
 ### D43. Text the engines map differently is an issue, `nonAscii`
 
+Amended 2026-11-18 by [D51](#d51-case-mapping-has-the-value-the-engines-agree-on):
+`UPPER` and `LOWER` leave this decision for `case_mapping`. The rest stands.
+
 `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein` and a regular
 expression with a class (`\d`, `\w`, `\s`, `\b`) give Rust's values on ASCII
 text, and the engines give their own elsewhere: DuckDB maps `ß` to `ẞ` where
@@ -1632,19 +1641,29 @@ naive timestamp is refused. Zones other than UTC are refused. The conversion is
 a function of the core that returns its argument; nothing else in `Rel.eval` and
 `Rel.Allowed` changes.
 
-Read in steps: an instant column is read, computed with and written back as an
-instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`); the conversion
-between an instant and a naive timestamp at UTC (`x AT TIME ZONE 'UTC'`), a
-literal with an offset and DuckDB's session-zone casts wait for the second
-step of #1725 (they need an `UnFn` that changes the kind).
+Read in two steps. Step 1 read an instant column, computed with it and wrote it
+back as an instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`). Step 2
+adds the conversion between an instant and a naive timestamp at UTC
+(`UnFn.atUtc`: `x AT TIME ZONE 'UTC'` in SQL, the cast between `timestamp('UTC')`
+and `timestamp` in Ibis) and instant literals: a literal is an instant when its
+text or Python value carries an explicit offset, which is folded to UTC
+microseconds; it is the conversion of a timestamp literal, so it has the kind of
+every other instant expression. A literal without an offset reads the session
+zone and is refused; so are DuckDB's `CAST(tstz AS TIMESTAMP)`, `tstz::DATE` and
+`CAST(ts AS TIMESTAMPTZ)`, and a comparison, `IN`, `COALESCE`, `CASE` or set
+operation that mixes an instant with a naive timestamp, which DuckDB brings to
+the session's zone. The Ibis frontend refuses a mix too, and an explicit Ibis
+cast between the two kinds is the conversion.
 
 No option and no profile entry: the operations above read no zone, so the
 engines agree on them under every session zone
 ([duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json),
 [polars-datetime-zone](../engines/polars/facts/polars-datetime-zone.json),
 [spark-time-zones](../engines/spark/facts/spark-time-zones.json)). DuckDB and
-Polars have a map for the instant; Spark and Snowflake refuse it and name the
-issue.
+Polars have a map for the instant, and a fact for each spelling of the conversion
+([duckdb-instant-conversion](../engines/duckdb/facts/duckdb-instant-conversion.json),
+[polars-instant-conversion](../engines/polars/facts/polars-instant-conversion.json));
+Spark and Snowflake refuse it and name the issue.
 
 Recomputes sinks: no
 
@@ -1653,3 +1672,52 @@ return `timestamp_ntz` columns and let calendar functions run unstated, which a
 later kind would change. A refusal lifted later is a minor change, a corrected
 rule a major one. D53 gives a meaning to plans that had none, so no stored node
 changes its meaning.
+
+### D54. The lift refines the dialect
+
+Decided 2026-11-19 (theory advisor, ruling 105; #1484).
+
+Under `semantics="reference"`, a SQL text in dialect X lifts to a plan with
+this property: wherever the reference gives a value, X running the same text
+natively gives that value, up to the classes D47 leaves open and the float
+bands of D52 and D53. Where the reference raises, X may give a value, NaN or
+an infinity, and the inferred preconditions name those inputs. A construct that
+cannot meet this is refused by the lift, with a hint that names spellings
+that do. A construct whose two readings differ only on a named degenerate input
+class may be a listed exception, shown in the report.
+
+The text of a SQL query reads as DuckDB's under both semantics (`/`, `//`, NULL
+order, `replace`); the semantics is what the functions do. The two profiles
+differ in five fields. In two the reference raises where DuckDB gives NaN or
+`-inf` (`domain_error`, `log_zero`): a raise is visible and the inferred
+preconditions guard it. In three the reference gives another value:
+
+| `Profile` field | reference | DuckDB | where | the lift |
+|---|---|---|---|---|
+| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
+| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | refuses, with a hint |
+| `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
+
+R9 stays the reference's rule: the model's cast of a double or decimal truncates,
+and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
+which rounds, so the SQL lift refuses it under the reference until #322 gives
+the model a rounding cast (the user's choice on #1484, 2026-11-19). The hint
+for a double names the spellings with one meaning under both semantics,
+`CAST(round(x) AS BIGINT)`, `floor` and `ceil` (`round(x, 2)` is not one: it
+leaves a fraction); the hint for a decimal points at #322 and names none. `corr` stays a listed exception: the
+readings differ only on one pair or a constant side (ST-3), and refusing it
+would refuse every `corr`. `Report.dialect_differences` shows it with the
+construct, where it is, both readings, an example and the spellings.
+
+L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
+`Profile.reference`, and the verdict gains no value: the list says what the
+proof covers, and proved stays proved. A SQL query with `semantics="duckdb"`
+and an Ibis transformation list nothing. `semantics="reference"` stays the
+default for raw SQL ("verify two paths" and "portable everywhere" keep it).
+
+Recomputes sinks: no
+
+Why: a proof is about the plan the lift writes. A user reads it as a statement
+about the SQL they wrote, so where the plan's value differs from the text's
+the report says so. A refusal lifted later is a minor change, a changed value a
+major one (D17), so the casts are refused before a release and `corr` is listed.

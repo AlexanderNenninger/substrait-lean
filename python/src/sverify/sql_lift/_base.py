@@ -25,6 +25,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
+from sverify._dialect import DialectDifference, difference
 from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
@@ -472,6 +473,8 @@ class Lifted:
 
     plan: Json
     schema: ibis.Schema
+    differences: tuple[DialectDifference, ...] = ()
+    """Where the reference reads the text differently from DuckDB (`sverify._dialect`)."""
 
 
 #: Integer widths as DuckDB's decimals: `DECIMAL(p, 0)` holding each.
@@ -691,6 +694,8 @@ class _Lift:
         # The overflow guard of each window whose RANGE frame bounds DuckDB
         # computes in its integer key's type (`_bound_guard`).
         self.guards: dict[int, Json] = {}
+        # Where the reference reads this text differently from DuckDB (D54).
+        self.differences: list[DialectDifference] = []
 
     # -- relations ---------------------------------------------------------
 
@@ -1513,6 +1518,8 @@ class _Lift:
                 # and Lean divides the exact sum by the count in doubles.
                 out = dt.float64
         invocation = "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
+        if name == "corr" and self.profile.corr_degenerate != DUCKDB.corr_degenerate:
+            self.differences.append(difference("corr_degenerate", _shown(node)))
         if name in ("sum", "avg") and args and (gen := _generated_agg(self, name, args[0])):
             # DISTINCT and FILTER apply to each measure alike.
             parts = [
@@ -1845,6 +1852,12 @@ class _Lift:
         first = ts[0]
         if all(_same(t, first) for t in ts):
             return first.copy(nullable=True)
+        if any(t.is_timestamp() and t.timezone is not None for t in ts):
+            # DuckDB brings the other side to a TIMESTAMPTZ in the session's zone (D53).
+            raise SqlUnsupported(
+                f"{what} of a timestamp with a time zone and another type follows the session "
+                "time zone in DuckDB; convert with x AT TIME ZONE 'UTC' (#1725)"
+            )
         if all(t.is_temporal() and not t.is_time() for t in ts):
             return dt.timestamp(scale=6)
         shown = ", ".join(str(t) for t in ts)
@@ -2381,7 +2394,8 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
         )
     tree = parse(query, schemas)
     with compiling() as compiler:
-        rel, cols = _Lift(profile, schemas).query(tree)
+        lifter = _Lift(profile, schemas)
+        rel, cols = lifter.query(tree)
         out = plan(compiler, rel, [c.name for c in cols])
     names = [c.name for c in cols]
     if len(set(names)) != len(names):
@@ -2400,4 +2414,4 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     schema = ibis.schema(
         {c.name: (dt.int32 if c.type.is_null() else c.type.copy(nullable=True)) for c in cols}
     )
-    return Lifted(out, schema)
+    return Lifted(out, schema, tuple(dict.fromkeys(lifter.differences)))

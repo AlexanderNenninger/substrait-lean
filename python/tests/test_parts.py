@@ -9,7 +9,7 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify._arrow_state import ArrowOps
+from _arrow_store import ArrowStore
 from sverify._parts import MAX_PARTS, PartsState
 from sverify._state import Merger
 from sverify._weighted import WEIGHT
@@ -76,7 +76,7 @@ CHANGES = [
 def test_merges_add_parts_and_every_answer_is_the_added_up_table(store):
     """A merge writes the change as a part and runs no plan; what reads the
     table adds the parts up, and equals the Arrow store's."""
-    arrow = ArrowOps()
+    arrow = ArrowStore()
     merge = _merger(store)
     state, expected = store.kept(weighted([])), weighted([])
     for change in CHANGES:
@@ -92,7 +92,7 @@ def test_merges_add_parts_and_every_answer_is_the_added_up_table(store):
 
 
 def test_positive_parts_expand_without_being_added_up(store):
-    arrow = ArrowOps()
+    arrow = ArrowStore()
     merge = _merger(store)
     state = store.kept(weighted([]))
     for change in ([(1, "a", 1.5, 2)], [(1, "a", 1.5, 1), (2, "b", 2.0, 1)]):
@@ -105,7 +105,7 @@ def test_positive_parts_expand_without_being_added_up(store):
 
 
 def test_key_filters_run_on_the_parts_and_keep_their_state(store):
-    arrow = ArrowOps()
+    arrow = ArrowStore()
     merge = _merger(store)
     state, expected = store.kept(weighted([])), weighted([])
     for change in CHANGES:

@@ -56,7 +56,7 @@ theorem Rel.aeval_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String →
         (aeval_congr h A F T sz b).1, and_self]
 
 theorem Rel.keys_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) :
+    (F : String → List Fact) (K : TableCond) :
     ∀ r : Rel, r.keys c A F K = r.keys cat A F K
   | .read _ | .values _ _ | .aggregate _ _ _ | .unnest _ _ => rfl
   | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .semi r _ _ _ => by
@@ -71,13 +71,13 @@ theorem Rel.keys_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → 
         (aeval_congr h A F .none false a).1, (aeval_congr h A F .none false b).1]
 
 theorem Rel.keyedWindows_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) :
+    (F : String → List Fact) (K : TableCond) :
     Rel.keyedWindows c A F K = Rel.keyedWindows cat A F K := by
   funext r part sort
   simp only [keyedWindows, keys_congr h A F K r]
 
 theorem Measure.detIn_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (r : Rel) (gs : List Expr) :
+    (F : String → List Fact) (K : TableCond) (r : Rel) (gs : List Expr) :
     Measure.detIn c A F K r gs = Measure.detIn cat A F K r gs := by
   funext m
   simp only [Measure.detIn, Measure.tiesFixed, Measure.keyedIn, Rel.keys_congr h A F K r,
@@ -92,7 +92,7 @@ theorem WinFn.pickFixed_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : Stri
   funext f; cases f <;> simp only [WinFn.pickFixed, Measure.pickFixed_congr h A F r]
 
 theorem Rel.detPlan_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) :
+    (F : String → List Fact) (K : TableCond) :
     ∀ r : Rel, r.detPlan c A F K = r.detPlan cat A F K
   | .read _ | .values _ _ => rfl
   | .fetch (.orderBy r _) _ _ => by
@@ -116,7 +116,7 @@ theorem Rel.detPlan_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String �
         arity_congr h r, (aeval_congr h A F .none false r).1, WinFn.pickFixed_congr h A F r]
 
 theorem Rel.detClass_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) :
+    (F : String → List Fact) (K : TableCond) :
     ∀ r : Rel, r.detClass c A F K = r.detClass cat A F K
   | .read _ | .values _ _ => rfl
   | .filter r _ | .project r _ => by
@@ -141,12 +141,12 @@ reads and joins capped, `SUM`s bounded per key) read the catalog's arities
 alone too. -/
 
 theorem Rel.keyedJoin_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (a b : Rel) (on : Expr) :
+    (F : String → List Fact) (K : TableCond) (a b : Rel) (on : Expr) :
     Rel.keyedJoin c A F K a b on = Rel.keyedJoin cat A F K a b on := by
   simp only [keyedJoin, keys_congr h A F K b, arity_congr h a]
 
 theorem Rel.perKey_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (P : String → List (List Nat × Nat)) :
+    (F : String → List Fact) (K : TableCond) (P : String → List (List Nat × Nat)) :
     ∀ r : Rel, r.perKey c A F K P = r.perKey cat A F K P
   | .read _ | .values _ _ | .cross _ _ | .window _ _ _ _ | .aggregate _ _ _ | .unnest _ _ => rfl
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ | .emit r _ => by
@@ -158,12 +158,12 @@ theorem Rel.perKey_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String �
         keys_congr h A F K a, arity_congr h a]
 
 theorem Rel.groupRows_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (P : String → List (List Nat × Nat))
+    (F : String → List Fact) (K : TableCond) (P : String → List (List Nat × Nat))
     (r : Rel) (gs : List Expr) : r.groupRows c A F K P gs = r.groupRows cat A F K P gs := by
   simp only [groupRows, perKey_congr h A F K P r, keys_congr h A F K r]
 
 theorem Rel.capJoins_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) :
+    (F : String → List Fact) (K : TableCond) :
     ∀ r : Rel, r.capJoins c A F K = r.capJoins cat A F K
   | .read _ | .values _ _ => rfl
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
@@ -174,7 +174,7 @@ theorem Rel.capJoins_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String 
       simp only [capJoins, capJoins_congr h A F K a, capJoins_congr h A F K b, keyedJoin_congr h]
 
 theorem Rel.sumsPer_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (T : WindowKeys) (K : String → List (List Nat))
+    (F : String → List Fact) (T : WindowKeys) (K : TableCond)
     (P : String → List (List Nat × Nat)) :
     ∀ r : Rel, r.sumsPer c A F T K P = r.sumsPer cat A F T K P
   | .read _ | .values _ _ => rfl
@@ -237,7 +237,7 @@ theorem Rel.mayIssues_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String
         facts_congr h F T, viewIssues_congr h A F T, Bool.false_eq_true, ↓reduceIte]
 
 theorem Rel.issuesCapped_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (T : WindowKeys) (K : String → List (List Nat))
+    (F : String → List Fact) (T : WindowKeys) (K : TableCond)
     (caps : String → Option Nat) (P : String → List (List Nat × Nat)) (r : Rel) :
     r.issuesCapped c A F T K caps P = r.issuesCapped cat A F T K caps P := by
   unfold issuesCapped capped
@@ -277,13 +277,13 @@ theorem Rel.cover_congr (h : ∀ t, (c t).arity = (cat t).arity) :
       simp only [cover, this]
 
 theorem Rel.fkMatch_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (R : ForeignKeys) (a b : Rel)
+    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) (a b : Rel)
     (on : Expr) : Rel.fkMatch c A F K R a b on = Rel.fkMatch cat A F K R a b on := by
   simp only [fkMatch, arity_congr h a, origin_congr h a, cover_congr h b,
     keyedWindows_congr h, (aeval_congr h A F _ false a).1]
 
 theorem Rel.joinElim_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (R : ForeignKeys) :
+    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) :
     ∀ r : Rel, r.joinElim c A F K R = r.joinElim cat A F K R
   | .join a b _ on => by
       simp only [joinElim, keys_congr h A F K b, arity_congr h a, arity_congr h b,
@@ -293,12 +293,12 @@ theorem Rel.joinElim_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String 
   | .aggregate _ _ _ | .unnest _ _ => rfl
 
 theorem Rel.condVal_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (r : Rel) (e : Expr) :
+    (F : String → List Fact) (K : TableCond) (r : Rel) (e : Expr) :
     r.condVal c A F K e = r.condVal cat A F K e := by
   simp only [condVal, keyedWindows_congr h, (aeval_congr h A F _ false r).1, facts_congr h F]
 
 omit [Boxes.Ambient] in
-theorem Rel.fds_congr (h : ∀ t, (c t).arity = (cat t).arity) (K : String → List (List Nat)) :
+theorem Rel.fds_congr (h : ∀ t, (c t).arity = (cat t).arity) (K : TableCond) :
     ∀ r : Rel, r.fds c K = r.fds cat K
   | .read t => by simp only [fds, h t]
   | .aggregate _ _ _ | .unnest _ _ | .values _ _ | .unionAll _ _ => rfl
@@ -310,13 +310,13 @@ theorem Rel.fds_congr (h : ∀ t, (c t).arity = (cat t).arity) (K : String → L
       cases ty <;> simp only [fds, fds_congr h K a, fds_congr h K b, arity_congr h a]
 
 theorem Rel.fdAgg_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (r : Rel) (gs : List Expr)
+    (F : String → List Fact) (K : TableCond) (r : Rel) (gs : List Expr)
     (ms : List Measure) : Rel.fdAgg c A F K r gs ms = Rel.fdAgg cat A F K r gs ms := by
   simp only [fdAgg, fds_congr h K r, keys_congr h A F K r, arity_congr h r,
     (aeval_congr h A F .none false r).1]
 
 theorem Rel.eagerAgg_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (r : Rel) (gs : List Expr)
+    (F : String → List Fact) (K : TableCond) (r : Rel) (gs : List Expr)
     (ms : List Measure) : Rel.eagerAgg c A F K r gs ms = Rel.eagerAgg cat A F K r gs ms := by
   unfold eagerAgg
   split
@@ -331,14 +331,14 @@ theorem Rel.aeval_congr₁ (h : ∀ t, (c t).arity = (cat t).arity) (A : String 
   (aeval_congr h A F T sz r).1
 
 theorem Rel.rule_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (R : ForeignKeys) (r : Rel) :
+    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) (r : Rel) :
     r.rule c A F K R = r.rule cat A F K R := by
   cases r <;> simp only [rule, condVal_congr h A F K, arity_congr h, keyedWindows_congr h,
     aeval_congr₁ h, keys_congr h A F K, joinElim_congr h A F K R, fdAgg_congr h A F K,
     eagerAgg_congr h A F K, fkMatch_congr h A F K R]
 
 theorem Rel.stepN_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (R : ForeignKeys) :
+    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) :
     ∀ (fuel : Nat) (r : Rel) (log : List String),
       r.stepN c A F K R fuel log = r.stepN cat A F K R fuel log
   | 0, _, _ => rfl
@@ -348,7 +348,7 @@ theorem Rel.stepN_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String →
       exact stepN_congr h A F K R fuel _ _
 
 theorem Rel.optimize_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : String → List (List Nat)) (R : ForeignKeys) :
+    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) :
     ∀ r : Rel, r.optimize c A F K R = r.optimize cat A F K R
   | .read _ | .values _ _ | .unnest _ _ => rfl
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _

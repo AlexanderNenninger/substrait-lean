@@ -451,6 +451,31 @@ def _decimal_probes() -> list[Obs]:
             "SELECT abs(a), a = b, a < b, typeof(abs(a)) FROM VALUES "
             "(CAST(-1.50 AS DECIMAL(10,2)), CAST(-1.5 AS DECIMAL(5,1))) AS s(a, b)",
         ),
+        # #1498: DuckDB casts both sides of a comparison across scales to one
+        # DECIMAL(38, s) and raises past it. A value of 38 digits at scale 0
+        # against scale 10 (28 integer digits fit) and a BIGINT against scale 30.
+        Obs(
+            "decimal-compare-scale-wide",
+            "SELECT a > b, a = b, a < b FROM VALUES "
+            "(CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0)), "
+            "CAST(1.5 AS DECIMAL(38,10))) AS s(a, b)",
+        ),
+        Obs(
+            "decimal-compare-scale-fits",
+            "SELECT a > b, a = b, a < b FROM VALUES "
+            "(CAST(1 AS DECIMAL(38,0)), CAST(1.0 AS DECIMAL(38,10))), "
+            "(CAST(2 AS DECIMAL(38,0)), CAST(1.5 AS DECIMAL(38,10))) AS s(a, b)",
+        ),
+        Obs(
+            "decimal-greatest-scale",
+            "SELECT greatest(a, b), least(a, b), typeof(greatest(a, b)), a IN (b) FROM VALUES "
+            "(CAST(1.50 AS DECIMAL(38,2)), CAST(1.5000000001 AS DECIMAL(38,10))) AS s(a, b)",
+        ),
+        Obs(
+            "decimal-compare-scale-bigint",
+            "SELECT a > b, a = b FROM VALUES "
+            "(CAST(9223372036854775807 AS BIGINT), CAST(1.5 AS DECIMAL(38,30))) AS s(a, b)",
+        ),
     ]
 
 

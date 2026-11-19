@@ -14,6 +14,7 @@ error_on_division_by_zero=on	UnFn.narrowOrNull	native
 error_on_division_by_zero=on	UnFn.wrap	native
 error_on_division_by_zero=on	UnFn.itos	native
 error_on_division_by_zero=on	UnFn.widen	native
+error_on_division_by_zero=on	UnFn.atUtc	native
 error_on_division_by_zero=on	UnFn.upper	native
 error_on_division_by_zero=on	UnFn.lower	native
 error_on_division_by_zero=on	UnFn.length	native

@@ -53,8 +53,12 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
     query = "SELECT CAST(price AS INTEGER) AS i FROM orders"
     with pytest.raises(Refused, match="TIE_TO_EVEN"):
         lift(query, SCHEMAS, "duckdb")
-    # The reference truncates (#209 R9), which the plan's cast means.
-    assert lift(query, SCHEMAS, "reference").schema == ibis.schema({"i": "int32"})
+    # The reference truncates (#209 R9), DuckDB rounds, so the lift refuses it and names
+    # the spellings with one meaning under both (D54).
+    with pytest.raises(Refused, match=r"CAST\(round\(x\) AS BIGINT\)"):
+        lift(query, SCHEMAS, "reference")
+    spelled = "SELECT CAST(round(price) AS INTEGER) AS i FROM orders"
+    assert lift(spelled, SCHEMAS, "reference").schema == ibis.schema({"i": "int32"})
 
 
 @pytest.mark.parametrize(

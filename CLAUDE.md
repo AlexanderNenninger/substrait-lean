@@ -266,9 +266,9 @@ compensation in its shims. If a change to `Rel.eval` or `Rel.Allowed`
 mentions an engine, it is in the wrong place.
 
 Two consequences. An engine's profile is an engine fact, never a choice:
-defining one as `Profile.reference` (as `Profile.spark` is today) states a
-verification semantics, not what Spark computes, and a theorem over it says
-nothing about Spark (#271 replaces it). And a user-facing semantics
+defining one as `Profile.reference` states a verification semantics, not what
+the engine computes, and a theorem over it says nothing about that engine. And
+a user-facing semantics
 (`semantics="duckdb"`) is a choice of profile to verify under, a different
 role from the engine profile the lowered plan runs under, even when the
 two profiles share a name.

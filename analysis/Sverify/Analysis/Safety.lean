@@ -2769,7 +2769,8 @@ def Expr.constIssues : Expr → List (Issue × Expr)
   | e@(.un _ a) => e.selfConstIssues ++ a.constIssues
   | e@(.bin _ a b) => e.selfConstIssues ++ a.constIssues ++ b.constIssues
   | e@(.ifThen c t x) => e.selfConstIssues ++ c.constIssues ++ t.constIssues ++ x.constIssues
-  | .hof _ l _ => l.constIssues
+  -- A lambda's body too: a constant in it that raises counts as everywhere else (D21).
+  | .hof _ l b => l.constIssues ++ b.constIssues
 
 /-- Every expression of a plan: conditions, projections, grouping keys and
 the measures' arguments and filters. -/
@@ -2794,5 +2795,9 @@ def Rel.constIssues (r : Rel) : List (Issue × Expr) :=
   (.ifThen (.bin .eq (.bin .idiv (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)))
     (.lit (.int 2)) (.lit .null))).constIssues.eraseDups.map (·.1) == [.divByZero]
 #guard letI := Boxes.Ambient.none; (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
+-- A raising constant in a lambda's body (`list_transform(xs, e -> e + 1 // 0)`) is counted too.
+#guard letI := Boxes.Ambient.none;
+  (Expr.hof .transform (.field 0) (.bin .add (.field 1) (.bin .idiv (.lit (.int 1)) (.lit (.int 0)))))
+    |>.constIssues.eraseDups.map (·.1) == [.divByZero]
 
 end Substrait

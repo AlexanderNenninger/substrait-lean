@@ -94,7 +94,7 @@ own, to find the culprits: up to one checker call per condition
 
 Proposed: `verify` reads every condition before it proves anything, and
 raises `ConditionError` (a subclass of `ValueError`) with the condition and
-the reason; or it reports an unreadable condition in the report
+the reason (done in #699); or it reports an unreadable condition in the report
 (`CheckedCondition.status = "unreadable"`) and proves the rest.
 
 ### 3. Refusals name the construct only as truncated SQL
@@ -427,3 +427,7 @@ would give suggestions for more kinds of postcondition.
 ### `Report.output` types a decimal as the reference does
 
 `Report.output` gives a decimal column the precision and scale the checker types it with (`SUM` is `DECIMAL(min(38, p + 10), s)`, `AVG` is `DECIMAL(min(38, p + 4), s + 4)`), where it gave Ibis's. The contract check compares `Report.output` with DuckDB's type for the compiled SQL, so a model that sums a decimal now carries the note "sverify's plan has type DECIMAL(20,2), and DuckDB's SQL gives DECIMAL(38,2)". The note is true: dbt's own SQL builds DuckDB's native type, and the contract check keeps using DuckDB's.
+
+### sverify-dbt reads sverify's finding codes and budgets from `sverify.cli`
+
+`--format github|sarif|junit`, `--timeout` and `--memory-limit` (#891) use `sverify.cli._explain` (the text and level of a finding code) and `sverify.cli._limits` (`Budget`, `timeout_from`, `memory_limit_from`), both private. The `==` pin keeps them working. Proposed: a public `sverify.limits` and `sverify.explain`, so that a package on sverify's API needs no underscore module.

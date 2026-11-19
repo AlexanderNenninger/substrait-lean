@@ -179,11 +179,11 @@ def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
     decimals and a `d` (so only approximately). The rows are `Rel.eval`'s,
     which has a value where the reference raises: that raises `LeanRaised`
-    (exported by `sverify.testing`), for a raise in a filter, a projection or an
-    aggregate (`--raises`). A join's condition is checked on the pairs the
-    checker's hash join tests only, so a raise on a pair without matching keys
-    can be missed; a window's aggregates are not looked into. Every error it
-    raises is the reference's. `rows_only` asks the checker for the rows alone
+    (exported by `sverify.testing`), for a raise in a filter, a projection, an
+    aggregate or a window's aggregate on its frame (`--raises`). A join's
+    condition is checked on the pairs the checker's hash join tests only, so a
+    raise on a pair without matching keys can be missed. Every error it raises
+    is the reference's. `rows_only` asks the checker for the rows alone
     (`--rows`), without the plan's other facts and without that check."""
     if not rows_only and (err := _raised(plan_json)) is not None:
         raise LeanRaised(err)
@@ -257,7 +257,9 @@ def allows_rows(
     rows that tie on the exact columns pair up whatever order their doubles
     sort in.
 
-    The oracle is tested, not proved: `Rel.evalChoices` has no theorem yet
+    What the oracle accepts is allowed by the reference
+    (`Rel.evalChoices_allowed`) for plans without an ordered aggregate (`FIRST`,
+    `LAST`, `STRING_AGG`, `collect`, `MODE`); for the others it is tested
     (`docs/trusted-base.md`)."""
 
     def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:

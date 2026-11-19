@@ -15,7 +15,7 @@ import urllib.parse
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any, Literal, Self
 
 import ibis
@@ -28,6 +28,7 @@ from sverify._pipe import Pipeable
 from sverify._unsupported import SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
+from sverify.plan_json import is_utc
 
 if TYPE_CHECKING:
     import duckdb
@@ -52,16 +53,16 @@ class ColumnStats:
 
 def _bounded(t: pa.DataType) -> bool:
     """Types whose minimum and maximum statistics become bounds: integers,
-    doubles, dates and microsecond timestamps without a time zone.
+    doubles, dates and microsecond timestamps, instants (UTC) included (D53).
 
     Not strings (writers truncate their bounds, and the checker has no string
-    order: #17), decimals (not modelled: #27), timestamps with a time zone
-    (not modelled: #20), nor other units and floats."""
+    order: #17), decimals (not modelled: #27), timestamps in another zone, nor
+    other units and floats."""
     return (
         pa.types.is_integer(t)
         or pa.types.is_float64(t)
         or pa.types.is_date32(t)
-        or (pa.types.is_timestamp(t) and t.unit == "us" and t.tz is None)
+        or (pa.types.is_timestamp(t) and t.unit == "us" and (t.tz is None or is_utc(t.tz)))
     )
 
 
@@ -111,6 +112,10 @@ def _literal(t: pa.DataType, v: Any) -> str | None:
         return repr(float(v)) if math.isfinite(v) else None
     if pa.types.is_date32(t):
         return f"DATE '{v.isoformat()}'"
+    if getattr(v, "tzinfo", None) is not None:
+        # An instant: its literal carries the offset, so no session zone is read.
+        text = v.astimezone(UTC).isoformat(sep=" ", timespec="microseconds")
+        return f"TIMESTAMPTZ '{text}'"
     return f"TIMESTAMP '{v.isoformat(sep=' ', timespec='microseconds')}'"
 
 
@@ -693,8 +698,11 @@ class _TableSource(Pipeable, ABC):
     _hi_slack = timedelta(0)
     """How far a value may lie above a file's upper bound (`stats_facts`)."""
 
-    def __init__(self, name: str, where: str | None):
+    def __init__(self, name: str, where: str | None, schema: pa.Schema | None = None):
         self.name, self.where = name, where
+        self._declared = schema
+        """The schema the caller declared: `schema()` answers with it, without
+        opening the table; every read checks the table still has it."""
         self.implied: str | None = None
         """The predicate a node's view implies on this table, if the source
         reads only the rows that pass it (`_restricted`)."""
@@ -708,7 +716,38 @@ class _TableSource(Pipeable, ABC):
         # again at the same place has a new one (#516, #533).
 
     @abstractmethod
-    def schema(self) -> pa.Schema: ...
+    def schema(self) -> pa.Schema:
+        """The table's schema: the one declared (`schema=`) without opening the
+        table, else the table's current one."""
+
+    def _verify_declared(self, actual: pa.Schema) -> None:
+        """Raise `SchemaError` if the table's schema is not the declared one:
+        names and types (a table read as `large_string` is `string`), and no
+        column declared NOT NULL is nullable in the table."""
+        if self._declared is None:
+            return
+        from sverify.engine import plain_schema
+        from sverify.incremental import SchemaError
+
+        want = {f.name: f for f in plain_schema(self._declared)}
+        got = {f.name: f for f in plain_schema(actual)}
+        diff = [f"missing {c}" for c in want.keys() - got.keys()]
+        diff += [f"unexpected {c}" for c in got.keys() - want.keys()]
+        for c in want.keys() & got.keys():
+            if want[c].type != got[c].type:
+                diff.append(f"{c}: declared {want[c].type}, table {got[c].type}")
+            elif not want[c].nullable and got[c].nullable:
+                # A proof may take "never NULL" from the declaration; a table
+                # that allows NULLs does not promise it. (Declared nullable
+                # over a NOT NULL column is the weaker claim, and fine.)
+                diff.append(f"{c}: declared NOT NULL, table nullable")
+        if not diff:
+            return
+        raise SchemaError(
+            f"{self.name}: the table's schema is not the one declared with schema=: "
+            + "; ".join(sorted(diff))
+            + "; update schema= to the table's schema, or restore the table's columns"
+        )
 
     @abstractmethod
     def latest(self) -> int: ...

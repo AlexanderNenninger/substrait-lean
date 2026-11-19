@@ -29,6 +29,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
+from sverify._dialect import DialectDifference
 from sverify._run_schema import declared_columns, int_range, null_message, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
@@ -608,6 +609,16 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
+    dialect_differences: tuple[DialectDifference, ...] = field(default=(), compare=False)
+    """For SQL, where the reference reads the text differently from DuckDB, as
+    a value it gives and DuckDB does not: a double or decimal cast to an
+    integer (the reference truncates, DuckDB rounds) and `corr` of one pair
+    or a constant side (NULL, NaN). Each entry has the construct, where it
+    is, both readings, an example, and the spellings that mean the same under
+    both semantics. Empty under `semantics="duckdb"` and for an Ibis
+    transformation (`docs/reference-semantics.md`, "DuckDB SQL under the
+    reference"). The verdict is unchanged: the list says what the proof
+    covers."""
     # What an inferred precondition does (`verify(on_inferred=...)`): an error
     # unless the caller says otherwise (D23).
     _on_inferred: OnInferred = field(default="error", repr=False, compare=False)
@@ -870,9 +881,9 @@ class Report:
         Args:
             con: The connection holding the tables.
             engine: The engine to check the conditions on.
-            assumed_checked: The run's route checks the assumed issues as it
-                runs (DuckDB's proved translation), so they are not run once
-                more here.
+            assumed_checked: The run's engine checks the assumed issues as it
+                runs its translation (`ProfilePlugin.checks_assumed`), so they
+                are not run once more here on DuckDB.
 
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
@@ -897,10 +908,10 @@ class Report:
                         rows=violating_rows(table, c),
                     )
         if self.assumed and self.internal_plan is not None and not assumed_checked:
-            # The proved DuckDB translation checks each assumption as it runs:
-            # a SUM as it adds up, an operation on finite doubles as it gives
-            # its result (#575). It runs first, so a batch that breaks one is
-            # refused before the plan runs on any engine, Polars included.
+            # An engine whose translation does not check the assumptions as it
+            # runs (a route or an engine without `checks_assumed`) gets them
+            # checked by the proved DuckDB translation first: a SUM as it adds
+            # up, an operation on finite doubles as it gives its result (#575).
             try:
                 run_plan(con, written_plan(self.internal_plan), "duckdb")
             except Exception as e:
@@ -927,11 +938,16 @@ class Report:
         return out
 
     def _broken_assumption(self, e: Exception) -> PreconditionError | None:
-        """The refusal for an error of DuckDB's proved translation that says an
+        """The refusal for an error of an engine's translation that says an
         assumed `SUM` or operation on finite doubles failed on the data; None
         for any other error."""
         message = str(e)
-        if "overflow in SUM" not in message and "overflow to infinity" not in message:
+        issues = ("SUM overflow", "overflow to infinity")  # a Polars guard's `issue`
+        if not (
+            getattr(e, "issue", None) in issues
+            or "overflow in SUM" in message
+            or "overflow to infinity" in message
+        ):
             return None
         broken = ", ".join(_assumption(i) for i in self.assumed)
         err = PreconditionError(
@@ -1089,12 +1105,11 @@ class Report:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
-        # DuckDB's proved translation checks each assumption as it runs.
+        # The engine's translation of the plan checks each assumption as it
+        # runs (`ProfilePlugin.checks_assumed`).
+        run_on = profiles.find(chosen.engine) if chosen is not None else None
         assumed_checked = (
-            check_requires
-            and chosen is not None
-            and chosen.engine == "duckdb"
-            and kind == "translated"
+            check_requires and run_on is not None and run_on.checks_assumed and kind == "translated"
         )
         if check_requires:
             # A precondition with no check would let the run drop guards on
@@ -1158,10 +1173,26 @@ class Report:
             if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
                 raise refusal from e
             raise
+        out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
             out = out.replace_schema_metadata(meta)
         return out
+
+    def _declared_widths(self, out: pa.Table) -> pa.Table:
+        """`out` with each integer column at the width `output` states: a
+        passed-through narrow column Polars widened to int64 goes back to its
+        declared width (a native cast, exact: the values came from that width,
+        ruling 121)."""
+        want = dict(self.output)
+        fields = []
+        for f in out.schema:
+            ty = want.get(f.name)
+            if ty is not None and ty.is_integer() and pa.types.is_integer(f.type):
+                f = f.with_type(ty.to_pyarrow())
+            fields.append(f)
+        schema = pa.schema(fields, metadata=out.schema.metadata)
+        return out if schema.equals(out.schema) else out.cast(schema)
 
     def check_margins(
         self, con: Connection, engine: Any, target: str, deterministic: bool = False
@@ -1317,13 +1348,22 @@ class Report:
     @property
     def _proved(self) -> bool:
         """Either proved verdict: what a run, an export and a summary need."""
-        return (
-            all(c.portable for c in self.ensures)
-            and not self.errors
-            and not self._transfer
-            and not self.needs
-            and not self.floats_unmet
-        )
+        return all(c.portable for c in self.ensures) and self._otherwise_sound
+
+    @property
+    def _verified(self) -> bool:
+        """Proved, or unproved only in postconditions checked on the output
+        data (`on_unproved="check"`): what a run may take."""
+        return not self._unmet_ensures() and self._otherwise_sound
+
+    @property
+    def _otherwise_sound(self) -> bool:
+        """What a proved verdict needs besides its postconditions."""
+        return not (self.errors or self._transfer or self.needs or self.floats_unmet)
+
+    def _unmet_ensures(self) -> list[CheckedCondition]:
+        """The postconditions that are neither proved nor checked on the data."""
+        return [c for c in self.ensures if not (c.portable or c.checked)]
 
     @property
     def floats_unmet(self) -> str | None:
@@ -1549,11 +1589,13 @@ class Report:
     def notes(self) -> list[str]:
         """What the report notes about the result as a whole, as `str(report)`
         prints them after "note: ": that rows may tie in an `ORDER BY`
-        (`deterministic` is False, `ties` says which keys would help), and
-        that the proof holds for the `params` given only."""
+        (`deterministic` is False, `ties` says which keys would help), that
+        the proof holds for the `params` given only, and where the reference
+        reads the SQL differently from DuckDB (`dialect_differences`)."""
         out = [] if self.deterministic else [self._ties_hint()]
         if self._params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
+        out += [f"dialect: {d}" for d in self.dialect_differences]
         return out
 
     def route(
@@ -1727,9 +1769,7 @@ class Report:
         from sverify._user_text import plain
 
         out: list[tuple[str, list[str]]] = []
-        for c in self.ensures:
-            if c.checked or c.portable:
-                continue
+        for c in self._unmet_ensures():
             more = []
             if c.counterexample is not None:
                 more.append(f"counterexample: {c.counterexample}")
@@ -2270,7 +2310,7 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         plan = written_plan(plan_json(con, condition_query(table, cond)))
         return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
     if isinstance(cond, TableCondition):
-        return cond.violations(table)
+        return _table_violations(table, cond, engine)
     if isinstance(cond, str):
         backend: Any = ibis.get_backend(table)
         sql = ibis.to_sql(table, dialect=backend.name)
@@ -2282,6 +2322,51 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None) -> int:
+    """Rows of the bound `table` that break the table condition `cond`, from its
+    count as a plan run by the engine (the connection's, unless one is named):
+    the count has the reference's meaning on every engine, and a condition the
+    engine's writer refuses refuses the check (`SverifyError`)."""
+    return _table_counts(table, [cond], engine)[0]
+
+
+def _table_counts(
+    table: ir.Table, conds: Sequence[TableCondition], engine: str | None
+) -> list[int]:
+    """`_table_violations` for several table conditions on one table, from one
+    plan where the writer takes it: their counts as the rows of a union, each
+    tagged with its position. Where it does not, one plan each. A table of the
+    caller's own Ibis backend is counted there, by the same relations."""
+    con = connection_of(table)
+    if con is None:
+        # The caller's own Ibis backend (a database, a memtable): its rows stay
+        # there, and it counts the same relations (`Report.run`'s engines work
+        # on a connection's tables).
+        backend = ibis.get_backend(table)
+        return [
+            c.settle(c.count_query(table, backend.table).to_pyarrow().column(0)[0].as_py())
+            for c in conds
+        ]
+    on = engine or con.engine
+    queries = [c.count_query(table, con.table) for c in conds]
+    if len(queries) > 1:
+        tagged = [
+            q.select(i=ibis.literal(i, "int64"), v=q.v.cast("int64")) for i, q in enumerate(queries)
+        ]
+        try:
+            plan = written_plan(plan_json(con, ibis.union(*tagged, distinct=False)))
+            out = run_plan(con, plan, on)
+        except SverifyError:
+            pass  # a writer that takes one count at a time, below
+        else:
+            got = dict(zip(out.column(0).to_pylist(), out.column(1).to_pylist(), strict=True))
+            return [c.settle(got[i]) for i, c in enumerate(conds)]
+    return [
+        c.settle(run_plan(con, written_plan(plan_json(con, q)), on).column(0)[0].as_py())
+        for c, q in zip(conds, queries, strict=True)
+    ]
 
 
 def violation_counts(
@@ -2297,22 +2382,27 @@ def violation_counts(
     for the engine refuses the check (`SverifyError`), with no fallback to
     Ibis. Without an `engine`, Ibis counts each condition on the table's own
     backend (`violations`)."""
+    counts: dict[int, tuple[int, str | None]] = {}
+    on_table = [i for i, c in enumerate(conds) if isinstance(c, TableCondition)]
+    if on_table:
+        table_conds = [c for c in conds if isinstance(c, TableCondition)]
+        for i, n in zip(on_table, _table_counts(table, table_conds, engine), strict=True):
+            counts[i] = (n, None)
     if engine is None:
-        rows: list[tuple[Condition, int, str | None]] = []
-        for c in conds:
-            n, stopped = (
+        for i, c in enumerate(conds):
+            if i in counts:
+                continue
+            counts[i] = (
                 _run_planned(table, c, "duckdb")
                 if isinstance(c, PlannedCondition)
                 else (violations(table, c), None)
             )
-            rows.append((c, n, stopped))
-        return rows
-    counts: dict[int, tuple[int, str | None]] = {}
+        return [(c, *counts[i]) for i, c in enumerate(conds)]
     groups: dict[bool, list[int]] = {True: [], False: []}
     for i, c in enumerate(conds):
-        if isinstance(c, TableCondition):
-            counts[i] = (c.violations(table), None)
-        elif isinstance(c, PlannedCondition):
+        if i in counts:
+            continue
+        if isinstance(c, PlannedCondition):
             counts[i] = _run_planned(table, c, engine)
         else:
             groups[isinstance(c, str)].append(i)

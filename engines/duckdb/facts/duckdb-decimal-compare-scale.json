@@ -23,7 +23,7 @@
     "The docs are silent on the common type of a comparison across scales: a docs gap."
   ],
   "reference": [
-    "The reference compares the exact values, with no issue (D31 does not apply: decimals have one representation). A plan that is proved can then raise on DuckDB.",
+    "The reference compares the exact values, with no issue (D31 does not apply: decimals have one representation). DuckDB's own comparison raises where the common type does not fit, so the writer does not emit it across scales (below).",
     "The DuckDB writer does not emit the native comparison across scales: `Dialect.decimal_compare` brings both sides to integers (the integer part times `10ˢ` plus the fraction times `10ˢ`, in `HUGEINT`) and compares those with floor division, so no implicit cast runs (#1498)."
   ],
   "status": "shimmed",

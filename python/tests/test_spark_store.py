@@ -7,7 +7,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from sverify._arrow_state import ArrowOps
+from _arrow_store import ArrowStore
 from sverify._weighted import WEIGHT
 
 pytestmark = pytest.mark.backend("spark")
@@ -51,7 +51,7 @@ def bag(t: pa.Table):
 @settings(max_examples=8, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(rows=ROWS)
 def test_the_operations_agree_with_the_arrow_store(rows):
-    arrow, store = ArrowOps(), spark_store.SparkStore()
+    arrow, store = ArrowStore(), spark_store.SparkStore()
     z = weighted(rows)
     kept = store.kept(z)
     assert bag(kept.to_arrow()) == bag(z)
