@@ -34,10 +34,9 @@ is named in the report (`run_gate`) and `r` runs:
 * `guard_free`: where `r` runs without its row checks (`guardFreeIn`), so does
   `s`.
 * `near`: `r`'s verdict does not rest on doubles within a bound: the
-  observation's `floats_plan` or an `approx` postcondition, where a double may
-  occur in `r` or `s` (`Rel.mayDouble`, syntactic). The obligation it leaves,
-  `r`'s own, `Rel.floatOpenSafeP_of_noDouble` discharges where its conditions
-  hold (`Request.nearRoute`). A
+  observation's `floats_plan` or an `approx` postcondition, unless `r` and `s`
+  have no double and transfer to the reference at each built-in engine
+  (`Request.nearRoute`, `Rel.floatOpenSafeP_of_noDouble`). A
   refinement at the reference says nothing at an engine's table (ruling 127).
 * `closed`: `s` is closed where `r` is (`closedIn`): no measure decomposed.
 * `reads`, `functions`: `s` reads no option and calls no function `r` does
@@ -168,7 +167,7 @@ private def nearAll (r : Rel) : Bool :=
 -- filter (`atan2(-(CAST(a AS DOUBLE)), -1.0) < 0`), where the sign of `-0.0`
 -- decides whether the row stays.
 #guard (Rel.filter (.read "t")
-    (.bin .lt (.bin .fatan2 (.un .fneg (.un .itof (.field 0))) (.lit (.float 0))) (.lit (.int 0)))
+    (.bin .lt (.bin .fatan2 (.un .fneg (.un .itof (.field 0))) (.lit (.float (FloatCode.ofFloat (-1.0))))) (.lit (.int 0)))
     ).mayDouble intCat intKinds &&
   !(Rel.read "t").mayDouble intCat intKinds
 
@@ -177,6 +176,11 @@ private def nearAll (r : Rel) : Bool :=
 #guard nearAll (.aggregate (.read "t") [] [{ fn := .max, arg := .field 0 }])
 #guard nearAll (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .field 0 }])
 #guard nearAll (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 1))))
+-- Ruling 169: an integer `BIT_AND` has no double but is not `closedB`
+-- (`AggFn.orderFree` leaves `.bit _` out), so the `near` gate keeps it as written.
+#guard
+  let r := Rel.aggregate (.read "t") [] [{ fn := .bit .and, arg := .field 0 }]
+  !r.mayDouble intCat intKinds && !r.closedB
 -- An integer `AVG` does not at Polars and Spark: `avg_int_result = FP64`
 -- changes its integer result, outside `floatOnlyOptions` by design.
 #guard (builtinEngines.filter fun e =>
@@ -417,24 +421,29 @@ def tableKinds (t : String) : List Kind := match R.tables.lookup t with
   | some (_, sch) => Parse.schemaKinds sch
   | none => []
 
+/-- Is `x` a plan `Rel.floatOpenSafeP_of_noDouble` covers at every built-in
+engine: no double, no open measure, and the transfer to the reference past
+the options only doubles read? -/
+def nearProved (x : Rel) : Bool :=
+  !x.mayDouble R.cat R.tableKinds && x.closedB &&
+    builtinEngines.all fun e => transferB x Profile.reference.table (e.table.refAt floatOnlyOptions)
+
 /-- Does the verdict on `r` rest on doubles within a bound: the observation
 compares doubles within the plan's bound (`floats_plan`) or a postcondition is
-`approx`, and a double may occur in `r` or its rewrite `s` (`Rel.mayDouble`)?
+`approx`, and `r` or its rewrite `s` is not a plan `nearProved` covers?
 
-The gate keeps the obligation `r` already has (`hsafeE` of
-`Engine.contract_sound_runs_near`) and adds none. `Rel.floatOpenSafeP_of_noDouble`
-discharges it for `r` and `s` at an engine's table where each has no double
-and no open measure (`Rel.closedB`) and transfers to the reference past the
-options only doubles read (`transferB` at `t.refAt floatOnlyOptions`, ruling
-154). It stays open for plans without a double that read an option where the
-table leaves the reference outside `floatOnlyOptions` (an integer `AVG` at
-Polars or Spark), and for a `BIT_AND` or `QUANTILE_DISC`, which are not
-`closedB`. -/
+The gate passes `r` and `s` where `Rel.floatOpenSafeP_of_noDouble` discharges
+the obligation (`hsafeE` of `Engine.contract_sound_runs_near`) at every
+built-in engine's table: neither has a double or an open measure, and each
+transfers to the reference past `floatOnlyOptions` (ruling 154). What stays
+open: plans with a double, and plans without one that read an option where an
+engine's table leaves the reference outside `floatOnlyOptions` (an integer
+`AVG` at Polars or Spark), which the gate keeps as written. -/
 def nearRoute (r s : Rel) : Bool :=
   let obs := (R.input.getObjVal? "observation").toOption
   ((obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false ||
     ((obs.bind (·.getObjValAs? (Array Bool) "approx" |>.toOption)).getD #[]).any id) &&
-    (r.mayDouble R.cat R.tableKinds || s.mayDouble R.cat R.tableKinds)
+    !(R.nearProved r && R.nearProved s)
 
 /-- The rewrite of the plan `r` the gate looks at, and the rules applied:
 the whole plan under a `multiset` observation, the input of the root
