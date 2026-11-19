@@ -128,26 +128,30 @@ def _(SPARK, con, display, mo, rollup):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    All three agree, and the plan didn't change between them. What differs
+def _(mo, results):
+    mo.md(f"""
+    All {len(results)} agree, and the plan didn't change between them. What differs
     is how each engine reaches the proof:
     """)
     return
 
 
 @app.cell
-def _(rollup):
-    {engine: str(route).split(";")[0] for engine, route in rollup.routes.items()}
+def _(results, rollup):
+    {engine: rollup.routes[engine].cls for engine in results}
     return
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    DuckDB gives what the reference gives, `exact`. Polars and Spark need
-    a shim: Spark adds integers in a wider decimal and checks the result fits
-    again, and Polars writes the sum of no rows as NULL. Each shim carries its own
+def _(SPARK, mo):
+    _spark = (
+        "Spark adds integers in a wider decimal and checks the result fits again, and Polars"
+        if SPARK
+        else "Polars"
+    )
+    mo.md(f"""
+    DuckDB gives what the reference gives, `exact`. {"Polars and Spark need a shim" if SPARK else "Polars needs a shim"}:
+    {_spark} writes the sum of no rows as NULL. Each shim carries its own
     proof or test evidence, and the route says which.
 
     ## 3. The same plan as SQL
@@ -173,7 +177,7 @@ def _(mo):
     ## 4. A refusal names its exit
 
     An engine runs only what Lean can say it computes. Ask for a plan it
-    can't run, and sverify says what to do. We number each
+    can't run, and Sverify says what to do. We number each
     customer's lines, with no order stated:
     """)
     return
@@ -222,7 +226,7 @@ def _(mo):
 
 
 @app.cell
-def _(SPARK, con, ibis, mo, sv):
+def _(SPARK, con, ibis, sv):
     _orders = con.table("orders")
     ordered = sv.verify(
         _orders.select(
@@ -231,13 +235,12 @@ def _(SPARK, con, ibis, mo, sv):
             line=ibis.row_number().over(group_by=_orders.customer, order_by=_orders.item),
         )
     )
-    if SPARK:
-        _out = sorted(
-            tuple(r.values()) for r in ordered.run(con, "spark", route="auto").to_pylist()
+    {
+        _engine: sorted(
+            tuple(r.values()) for r in ordered.run(con, _engine, route="auto").to_pylist()
         )
-    else:
-        _out = mo.md("Spark needs Java, and none is installed here: its run is skipped.")
-    _out
+        for _engine in ["duckdb", "polars", *(["spark"] if SPARK else [])]
+    }
     return
 
 
