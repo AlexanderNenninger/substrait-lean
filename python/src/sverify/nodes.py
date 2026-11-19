@@ -681,6 +681,9 @@ class Node:
             if self._stage is None:
                 self._stage = _Stage.build(self, leaves, versions, engine, sink, target)
                 out.started = self._stage.view.resumed or "computed"
+                out.record_changes = {
+                    f: list(v) for f, v in self._stage.view.record_changes.items()
+                }
                 out.preconditions = list(self._stage.pipe.preconditions)
                 out.postconditions = list(self._stage.view.postconditions)
                 out.quarantine = list(self._stage.pipe.quarantine)
@@ -931,6 +934,10 @@ class StageRefresh:
     versions."""
     started: str | None = None
     """"computed", or "resumed from <table>@v<n>", on the first refresh."""
+    record_changes: dict[str, list[str | None]] = field(default_factory=dict)
+    """On a first refresh that resumed: what the record names differently from
+    this run, by field (`engine`, `engine_version`, `sverify`, `package`), as
+    `[recorded, now]`. A changed engine or engine version is also in `started`."""
     write: SinkWrite | None = None
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
@@ -1050,6 +1057,7 @@ class StageRefresh:
             "node": self.node,
             "outcome": self.outcome,
             "started": self.started,
+            "record_changes": self.record_changes,
             "held": self.held,
             "sources": [
                 {
