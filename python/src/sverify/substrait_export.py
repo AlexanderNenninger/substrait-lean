@@ -1426,7 +1426,7 @@ def _table_condition_json(c: Any) -> Json:
 def _table_condition(j: Mapping[str, Any]) -> Any:
     from sverify import conditions
 
-    allowed = {"Unique", "References", "ArrivesWithin", "MaxRows", "RowsPer"}
+    allowed = {"Unique", "References", "ArrivesWithin", "MaxRows", "RowsPer", "NonOverlapping"}
     cls = j.get("class")
     if cls not in allowed:
         raise ValueError(f"unknown table condition {cls!r}")
@@ -1611,7 +1611,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "output": {k: str(v) for k, v in report.output.items()},
         "checker_contract": {
             k: report._contract[k]
-            for k in ("keys", "ensures_keys", "references", "max_rows", "rows_per")
+            for k in ("keys", "ensures_keys", "references", "max_rows", "rows_per", "ranges")
             if k in report._contract
         },
     }
@@ -1770,6 +1770,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         "references": stored.get("references", {}),
         "max_rows": _ints(stored.get("max_rows", {})),
         "rows_per": stored.get("rows_per", {}),
+        "ranges": stored.get("ranges", {}),
     }
     for e in imp.ensures:
         if e.get("kind") == "row":
