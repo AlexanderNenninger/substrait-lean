@@ -9,24 +9,30 @@ the plan with `r`: the lemmas here carry a refinement up through each
 operator, so a rule proved at one node holds of the whole plan.
 
 How far a refinement up to the order of rows (`Rel.RefinesBag`) climbs
-depends on the operator:
+depends on the operator. Each constructor of `Rel`, with the form its lemma
+takes:
 
-* `FILTER`, `PROJECT` and `EMIT` keep their input's order, so they keep a
-  refinement up to the order of rows and no more
-  (`Rel.RefinesBag.filter`, `.project`, `.emit`).
-* Every other operator except `FETCH` reads its input in any order, or
-  allows its output in any order, so a refinement up to the order of rows
-  below it becomes an exact one above it (`Rel.RefinesBag.orderBy`,
-  `.window`, `.distinct`, `.aggregate`, `.unnest`, `.cross`, `.join`,
-  `.unionAll`, `.semi`). An `ORDER BY` over a rewritten input thus refines
-  the original exactly.
-* `FETCH` takes the first rows of its input's order: it needs an exact
-  refinement below (`Rel.Refines.fetch`). Up to the order of rows it would
-  be false, as `Rel.unsorted_refinesBag_not_refines` shows for `ORDER BY`.
+| Constructor | Below | Above | Lemma |
+|---|---|---|---|
+| `read`, `values` | none | | no input to rewrite: no lemma |
+| `filter`, `project`, `emit` | bag | bag | `Rel.RefinesBag.filter`, `.project`, `.emit` |
+| `filter`, `project`, `emit` | exact | exact | `Rel.Refines.filter`, `.project`, `.emit` |
+| `fetch` | exact | exact | `Rel.Refines.fetch` |
+| `orderBy`, `window`, `distinct`, `aggregate`, `unnest` | bag | exact | `Rel.RefinesBag.orderBy`, `.window`, `.distinct`, `.aggregate`, `.unnest` |
+| `cross`, `join`, `unionAll`, `semi` | bag, both inputs | exact | `Rel.RefinesBag.cross`, `.join`, `.unionAll`, `.semi` |
 
-An exact refinement climbs through every operator: through `FILTER`,
-`PROJECT`, `EMIT` and `FETCH` by their own lemmas, through the rest by
-`Rel.Refines.bag` and the lemmas above.
+`FILTER`, `PROJECT` and `EMIT` keep their input's order, so a refinement up to
+the order of rows stays one and no more. The operators of the bag-to-exact
+rows read their input in any order or allow their output in any order, so an
+`ORDER BY` over a rewritten input refines the original exactly. `FETCH` takes
+the first rows of its input's order and has no bag lemma: it would be false,
+as `Rel.unsorted_refinesBag_not_refines` shows for `ORDER BY`. A left join
+pads with as many NULLs as its right input has columns, so `.join` asks the
+right inputs' arities to agree for a left join only (`values 1 []` and
+`values 2 []` refine each other).
+
+An exact refinement climbs through every operator: through the exact rows by
+their lemmas, through the rest by `Rel.Refines.bag` and the bag lemmas.
 -/
 
 namespace Substrait
@@ -108,9 +114,10 @@ theorem Rel.RefinesBag.cross {qa ra qb rb : Rel} (ha : qa.RefinesBag cat ra)
     exact ⟨x', y', hx', hy', hp.trans (crossRows_perm px py)⟩
 
 /-- A left join pads with as many NULLs as its right input has columns, so
-the two right inputs have one arity. -/
+for a left join the two right inputs have one arity. -/
 theorem Rel.RefinesBag.join {qa ra qb rb : Rel} (ha : qa.RefinesBag cat ra)
-    (hb : qb.RefinesBag cat rb) (har : qb.arity cat = rb.arity cat) (ty : JoinType) (on : Expr) :
+    (hb : qb.RefinesBag cat rb) {ty : JoinType} (har : ty = .left → qb.arity cat = rb.arity cat)
+    (on : Expr) :
     (Rel.join qa qb ty on).Refines cat (.join ra rb ty on) := by
   refine Rel.refines_iff.2 fun out hq => ?_
   cases ty with
@@ -124,7 +131,7 @@ theorem Rel.RefinesBag.join {qa ra qb rb : Rel} (ha : qa.RefinesBag cat ra)
     obtain ⟨x', hx', px⟩ := Rel.refinesBag_iff.1 ha x hx
     obtain ⟨y', hy', py⟩ := Rel.refinesBag_iff.1 hb y hy
     refine ⟨x', y', hx', hy', hp.trans ?_⟩
-    rw [har]
+    rw [har rfl]
     exact (flatMap_perm_congr fun z _ => leftJoinRow_perm z py).trans (px.flatMap_right _)
 
 theorem Rel.RefinesBag.unionAll {qa ra qb rb : Rel} (ha : qa.RefinesBag cat ra)

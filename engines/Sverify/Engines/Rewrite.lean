@@ -18,6 +18,13 @@ report states is about `r`. The lemmas here carry it over:
   come from the plan the user wrote, and a rewrite that hides a margin site
   changes none of them. A refinement up to the order of rows is enough: the
   contract observes its rows as a multiset.
+* `Engine.contract_sound_runs_rewrite`: the same on the engine's actual
+  result (D16's claim, `Engine.Runs`), where the engine's choices are the
+  reference's at every option the rewrite reads (`transferB`). The near route
+  (`Engine.contract_sound_runs_near`, `Rel.FloatOpenSafeP` over `E.table`) has
+  no twin: a refinement at the reference says nothing at the engine's table.
+  So wherever the written plan's verdict rests on the near route, the plan to
+  run stays the written one (item 2's gate).
 * `Engine.runPlan`: the plan to run. The rewrite where `E` translates it and
   the decidable check of `E`'s side condition passes on it, otherwise the plan
   as written (`Engine.Sound.runPlan`). A rewrite that would evaluate an
@@ -72,6 +79,35 @@ theorem Engine.contract_sound_rewrite (hE : E.Sound side) (hcat : cat.WF)
   exact contract_sound_allowed hcat hS hpre hT hq hsafe hsh hrob hQ hW hproved
     hout.postRows row hm
 
+/-- **A verified contract holds on the engine's actual result for a rewrite**,
+the twin of `Engine.contract_sound_runs`: where `E`'s choices are the
+reference's at every option the rewrite `R` reads (`htr`), D16's claim holds of
+the result (`Engine.Runs`), and `R` refines the written plan `T` up to the
+order of rows. Every other hypothesis is about `T`. -/
+theorem Engine.contract_sound_runs_rewrite (hcat : cat.WF)
+    {S : String → List AVal} {pre : String → List Expr} {T : Rel} {es : List Expr}
+    {mp : List Nat}
+    (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
+    (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
+    (hT : T.WF cat) {q : Obs} {ctx : ObsCtx} (hq : q.rows = .multiset)
+    (hsafe : T.FloatOpenSafe q ctx cat) {sh : Nat → Option Shift}
+    (hsh : ∀ i s, sh i = some s → s.Sound q ctx i)
+    (hrob : ∀ j ∈ mp, (postExpr (T.arity cat) es j).robustB q ctx sh = true)
+    (hQ : (Rel.emit (.project T (es.map (·.narrow sh))) mp).WF cat) {W : WindowKeys}
+    (hW : W.SoundAll cat)
+    (hproved : ((Rel.emit (.project T (es.map (·.narrow sh))) mp).aeval cat
+      (fun t => tableEnv (S t) (pre t)) (fun t => (pre t).flatMap Expr.factsOf) W).all
+        AVal.certainlyTrue = true)
+    {R : Rel} (hR : R.RefinesBag cat T)
+    (htr : transferB R Profile.reference.table E.table = true) {out : Relation}
+    (hrun : E.Runs cat R out) :
+    ∀ row ∈ postRows es mp out, ∀ v ∈ row, v = .bool true := by
+  obtain ⟨out', hout, hp⟩ :=
+    Rel.refinesBag_iff.1 hR out (Rel.allowedP_reference.mp (Rel.transfer_of_transferB htr hrun))
+  intro row hrow
+  exact contract_sound_allowed hcat hS hpre hT hq hsafe hsh hrob hQ hW hproved
+    hout.postRows row (((hp.map _).map _).mem_iff.mp hrow)
+
 /-! ## The plan to run -/
 
 /-- **The plan to run**: the rewrite `s` where `E` translates it and `check`,
@@ -89,24 +125,24 @@ theorem Engine.runPlan_cases (E : Engine) (check : Rel → Bool) (r s : Rel) :
   · exact .inr rfl
 
 /-- **The plan to run is sound for the plan as written**: where `check`
-implies `E`'s side condition, the side condition holds of `r`, and the rewrite
+passing on `s` gives `E`'s side condition of `s`, the side condition holds of `r`, and the rewrite
 `s` refines `r`, the engine's run of whichever plan `Engine.runPlan` picks is a
 result the reference allows for `r`. -/
 theorem Engine.Sound.runPlan (hE : E.Sound side) {check : Rel → Bool}
-    (hc : ∀ q, check q = true → side cat q) {r s p' : Rel} (hr : side cat r)
+    {r s p' : Rel} (hc : check s = true → side cat s) (hr : side cat r)
     (h : s.Refines cat r) (hl : E.lower (E.runPlan check r s) = some p') :
     r.Allowed cat (p'.eval cat E.impl) := by
   rcases E.runPlan_cases check r s with ⟨he, hcs⟩ | he <;> rw [he] at hl
-  · exact hE.of_refines hl (hc s hcs) h
+  · exact hE.of_refines hl (hc hcs) h
   · exact hE hl hr
 
 /-- `Engine.Sound.runPlan` up to the order of rows. -/
 theorem Engine.Sound.runPlanBag (hE : E.Sound side) {check : Rel → Bool}
-    (hc : ∀ q, check q = true → side cat q) {r s p' : Rel} (hr : side cat r)
+    {r s p' : Rel} (hc : check s = true → side cat s) (hr : side cat r)
     (h : s.RefinesBag cat r) (hl : E.lower (E.runPlan check r s) = some p') :
     ∃ out, r.Allowed cat out ∧ (p'.eval cat E.impl).Perm out := by
   rcases E.runPlan_cases check r s with ⟨he, hcs⟩ | he <;> rw [he] at hl
-  · exact hE.of_refinesBag hl (hc s hcs) h
+  · exact hE.of_refinesBag hl (hc hcs) h
   · exact ⟨_, hE hl hr, .refl _⟩
 
 /-! ### The three paths

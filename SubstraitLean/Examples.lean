@@ -383,6 +383,7 @@ end Substrait.Examples
 #print axioms Substrait.Rel.Refines.fetch
 #print axioms Substrait.Engine.Sound.of_refines
 #print axioms Substrait.Engine.contract_sound_rewrite
+#print axioms Substrait.Engine.contract_sound_runs_rewrite
 #print axioms Substrait.Engine.Sound.runPlan
 #print axioms Substrait.Engine.Sound.runPlanBag
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
