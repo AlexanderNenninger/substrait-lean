@@ -72,7 +72,8 @@ What a test checks and no proof does.
 
 | What | The test |
 |---|---|
-| The parser and the writer: every plan the checker writes parses back to the same `Rel` | The golden tests, `tests/run.sh` (`tests/fixtures/`), and the CLI's own round trip |
+| The writer loses nothing: every plan the checker writes parses back to the same `Rel` (`parse (write r) = r`) | The CLI's own round trip (`Write.roundtrips`), and the golden tests, `tests/run.sh` (`tests/fixtures/`) |
+| The parser reads an option's values apart: for a call of each function that reads options (33 of 36), the values of each option the checker accepts are written as different plans, at most one of them as the plan without the option. It does not see an option with one accepted value (44 of 65 cases), or a value read as another that the written plan does not show | `python/tests/test_parse_options.py`: one plan per function, option and value, from the coverage cases' calls (about 370 plans, 5 s) |
 | The checker's answers to `--contract` requests | `tests/contracts/` (`tests/run.sh`) |
 | The Python mirror of the function tables (`sverify._functions`) | `python/tests/test_functions.py` against `substrait-check --functions` |
 | The engine facts each engine profile states | Their probes (`engines/duckdb/replay/probes.json`, `engines/polars/probes/` and `engines/spark/probes/`), checked by `sverify_dev.facts` and the engine jobs |
@@ -135,7 +136,15 @@ place, and what retires it.
   dialect.
 - The parser and the writer, `Parse.lean` and `Write.lean`. The CLI checks
   that every plan it writes parses back to the same `Rel`, and the golden
-  tests (`tests/run.sh`) run that round trip on every fixture. The parser's
+  tests (`tests/run.sh`) run that round trip on every fixture. That shows the
+  writer loses nothing and says nothing about whether the parser reads the
+  input faithfully. The other direction, that `write (parse j)` agrees with
+  `j`, has no test that compares whole plans: the writer rewrites calls (`gt`
+  to `lt`, `is_not_null` to `not (is_null)`, `between` to `not` and `lt`), so
+  a comparison of a plan with its written form by names is noise. What it
+  checks is each option: `test_parse_options.py` states every option value on
+  a call of every function that reads options, and fails where the parser
+  refuses nothing and reads two values alike. The parser's
   choice of function by kind is checked: `checkPlan` refuses a plan
   `Rel.inferKinds` does not type (`Rel.kinds_sound`), and each kind has its
   own constructor of `Value` ([a value has its kind](decisions.md#d29-a-value-has-its-kind)).
