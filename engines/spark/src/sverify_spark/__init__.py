@@ -225,6 +225,7 @@ PLUGIN = ProfilePlugin(
     installed_version=_version,
     restore=_restore,
     runner=_run,
+    checks_assumed=True,
     rows=ROWS,
     session=_is_session,
     modules=("pyspark",),

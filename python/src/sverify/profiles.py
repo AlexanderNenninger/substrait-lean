@@ -136,6 +136,11 @@ class ProfilePlugin:
     """An Ibis backend on the engine that holds a `Connection`'s tables where
     DuckDB is not installed (the connection's bound tables run their table
     conditions there). None: the connection holds the tables and nothing else."""
+    checks_assumed: bool = False
+    """Its run of a translated plan checks the report's assumed issues as it
+    runs (an integer `SUM` that leaves its type, an operation on finite doubles
+    that gives `±∞`, #575) and raises, so `Report.run` does not run the plan on
+    DuckDB first to check them."""
     session: Callable[[Any], bool] | None = None
     """Recognises a session of the engine passed as `engine=` in place of
     its name (a Spark session)."""

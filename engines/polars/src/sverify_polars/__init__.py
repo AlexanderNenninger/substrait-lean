@@ -146,6 +146,7 @@ PLUGIN = ProfilePlugin(
     runner=_run,
     local=True,
     ibis_backend=_ibis_backend,
+    checks_assumed=True,
     modules=("polars", "numpy"),
     read_settings=_read_settings,
     run_tables=_run_tables,
