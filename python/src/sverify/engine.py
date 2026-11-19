@@ -42,6 +42,7 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     checker_refusal,
     run_checker,
 )
+from sverify._dialect import DialectDifference
 from sverify._scan import Native, Resident, Scan
 from sverify._store import instants_in_utc
 from sverify._unsupported import SverifyError
@@ -320,10 +321,19 @@ def plan_json_over(
 ) -> str:
     """`plan_json` for a query over the tables `schemas` names, with no
     connection: the verifier holds no table, only schemas."""
+    return plan_and_differences(schemas, query, semantics)[0]
+
+
+def plan_and_differences(
+    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "reference"
+) -> tuple[str, tuple[DialectDifference, ...]]:
+    """`plan_json_over`, and for SQL where the reference reads the text
+    differently from DuckDB (`Report.dialect_differences`)."""
     with _stages.stage("lift"):
         if isinstance(query, str):
-            return lift_sql(schemas, query, semantics)
-        return to_substrait_json(query, semantics)
+            lifted = lift_sql_plan(schemas, query, semantics)
+            return json.dumps(lifted.plan), lifted.differences
+        return to_substrait_json(query, semantics), ()
 
 
 def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> str:
@@ -357,15 +367,21 @@ def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> s
 def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference") -> str:
     """`substrait_json` over the tables `schemas` names: those the SQL reads
     are the lift's inputs."""
+    return json.dumps(lift_sql_plan(schemas, sql, semantics).plan)
+
+
+def lift_sql_plan(
+    schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference"
+) -> Any:
+    """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
+    `schemas` it reads."""
     from sverify.sql_lift import lift
 
     try:
         read = {t.name.lower() for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
     except sg.errors.ParseError:
         read = set()  # the lift says why
-    return json.dumps(
-        lift(sql, {n: s for n, s in schemas.items() if n.lower() in read}, semantics).plan
-    )
+    return lift(sql, {n: s for n, s in schemas.items() if n.lower() in read}, semantics)
 
 
 def quote(name: str) -> str:

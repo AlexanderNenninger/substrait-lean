@@ -29,6 +29,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
+from sverify._dialect import DialectDifference
 from sverify._run_schema import declared_columns, int_range, null_message, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
@@ -608,6 +609,16 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
+    dialect_differences: tuple[DialectDifference, ...] = field(default=(), compare=False)
+    """For SQL, where the reference reads the text differently from DuckDB, as
+    a value it gives and DuckDB does not: a double or decimal cast to an
+    integer (the reference truncates, DuckDB rounds) and `corr` of one pair
+    or a constant side (NULL, NaN). Each entry has the construct, where it
+    is, both readings, an example, and the spellings that mean the same under
+    both semantics. Empty under `semantics="duckdb"` and for an Ibis
+    transformation (`docs/reference-semantics.md`, "DuckDB SQL under the
+    reference"). The verdict is unchanged: the list says what the proof
+    covers."""
     # What an inferred precondition does (`verify(on_inferred=...)`): an error
     # unless the caller says otherwise (D23).
     _on_inferred: OnInferred = field(default="error", repr=False, compare=False)
@@ -1558,11 +1569,13 @@ class Report:
     def notes(self) -> list[str]:
         """What the report notes about the result as a whole, as `str(report)`
         prints them after "note: ": that rows may tie in an `ORDER BY`
-        (`deterministic` is False, `ties` says which keys would help), and
-        that the proof holds for the `params` given only."""
+        (`deterministic` is False, `ties` says which keys would help), that
+        the proof holds for the `params` given only, and where the reference
+        reads the SQL differently from DuckDB (`dialect_differences`)."""
         out = [] if self.deterministic else [self._ties_hint()]
         if self._params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
+        out += [f"dialect: {d}" for d in self.dialect_differences]
         return out
 
     def route(

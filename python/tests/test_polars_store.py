@@ -7,7 +7,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from sverify._arrow_state import ArrowOps
+from _arrow_store import ArrowStore
 from sverify._weighted import WEIGHT
 
 pytestmark = pytest.mark.backend("polars")
@@ -51,7 +51,7 @@ def bag(t: pa.Table):
 @settings(max_examples=25, deadline=None)
 @given(rows=ROWS)
 def test_the_operations_agree_with_the_arrow_store(rows):
-    arrow, store = ArrowOps(), polars_store.PolarsStore()
+    arrow, store = ArrowStore(), polars_store.PolarsStore()
     z = weighted(rows)
     kept = store.kept(z)
     assert bag(kept.to_arrow()) == bag(z)
@@ -87,7 +87,7 @@ def _merge_plan(schema: pa.Schema) -> str:
     import sverify as sv
     from sverify._state import Merger
 
-    m = Merger(sv.connect("polars"), schema)
+    m = Merger(sv.connect("polars"), schema, ArrowStore())
     plan = m.plan()
     assert plan is not None
     return plan

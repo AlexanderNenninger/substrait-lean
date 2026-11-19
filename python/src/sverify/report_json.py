@@ -403,6 +403,7 @@ def to_json(report: Report) -> Json:
             "places": [dataclasses.asdict(t) for t in report._tie_places],
             "needs": suggested_json(report.ties),
         },
+        "dialect_differences": [dataclasses.asdict(d) for d in report.dialect_differences],
         "rewrites": list(report._rewrites),
         "implied": dict(report._implied),
         "transfer": None if report._transfer is None else [dict(f) for f in report._transfer],
@@ -418,6 +419,7 @@ def to_json(report: Report) -> Json:
 
 def from_json(data: str | Mapping[str, Any]) -> Report:
     """`Report.from_json`: see there."""
+    from sverify._dialect import DialectDifference
     from sverify.conditions import Inferred
     from sverify.report import Report, TiePlace
 
@@ -464,6 +466,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _params=list(d.get("params", [])),
         _hints=list(dict.fromkeys(i.hint for i in issues if i.hint)),
         _rewrites=list(d.get("rewrites", [])),
+        dialect_differences=tuple(DialectDifference(**x) for x in d.get("dialect_differences", [])),
         rows=d.get("rows"),
         semantics=d.get("semantics", "reference"),
         observation=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
