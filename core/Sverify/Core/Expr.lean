@@ -187,7 +187,7 @@ inductive UnFn where
   side (`decimalCall`): the operand upscaled to the larger scale, whose precision
   nothing reads: evaluation takes only the scale (`UnFn.apply_dkind_precision`), as
   do `Kind.comparable` and the contract transfer. The model compares the exact
-  values, and the writers do too (DuckDB: the exact comparison of #1523, #1498). -/
+  values, and the writers do too (#1523, #1498). -/
   | dkind (p s : Nat)
   /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
   rounding half away from zero (`roundDiv10`). -/
