@@ -205,6 +205,19 @@ def Profile.polars.obs : ObsTable := [
   (some "dec.div", "decimal_rescale", (ObsRow.shimmed "decimal_div_half_away"
     ["polars-decimal-arith"]).proved "Polars.decimal_div_half_away")]
 
+/-- What each shim Polars's rows name costs at run time. They are
+`engines/polars/src/sverify_polars/shims.py`'s `SHIMS`, named as their lemmas
+`Polars.<name>`, which `tests/test_realizability.py` checks against these. -/
+def Profile.polars.shimCosts : List (String × ShimCost) :=
+  [("null_order", .argument), ("round_half_away", .argument),
+   ("int_div_trunc", .expression), ("int_mod_trunc", .expression),
+   ("sum_empty_null", .expression), ("avg_int_declared", .expression),
+   ("one_zero", .expression), ("strpos_chars", .expression),
+   ("substring_wrap", .expression),
+   ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
+   ("max_nan_greatest", .expression), ("nan_through", .expression),
+   ("sort on the keys", .sort)]
+
 theorem Profile.polars_leB : Profile.polars.table.leB Profile.core.table = true := by
   decide +kernel
 

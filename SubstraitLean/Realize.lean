@@ -141,7 +141,7 @@ def transferFailures (P E : EngineProfile) (reads : List Read) : List Json :=
 
 /-- The profiles besides the reference that a plan may be verified under. -/
 def sources (es : List EngineProfile) : List EngineProfile :=
-  { table := Profile.substrait.table, obs := Profile.substrait.obs, translationTheorem := "" } :: es
+  { table := Profile.substrait.table, obs := Profile.substrait.obs } :: es
 
 /-- One engine's verdict, as JSON. -/
 def engineJson (es : List EngineProfile) (E : EngineProfile) (ds : List Dep) (reads : List Read)
