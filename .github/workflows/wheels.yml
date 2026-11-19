@@ -199,8 +199,8 @@ jobs:
             --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl \
             --engine-wheel dist-duckdb/*.whl ${fast[@]+"${fast[@]}"}
 
-      # Without extras: no optional package is installed or imported, a node
-      # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
+      # Without extras: no optional package is installed or imported, a refresh
+      # names the extra that runs it, `sverify check` runs, and `import sverify` stays
       # under a budget (python/scripts/check_plain_wheel.py).
       # The engine packages come from this run's builds (`--find-links`), as a
       # release publishes them: none is on PyPI before its first release.
@@ -503,8 +503,8 @@ jobs:
             --engine-wheel dist-spark/*.whl --engine-wheel dist-duckdb/*.whl \
             --python ${{ matrix.python }} ${fast[@]+"${fast[@]}"}
 
-      # Without extras: no optional package is installed or imported, a node
-      # refreshes on DuckDB, `sverify check` runs, and `import sverify` stays
+      # Without extras: no optional package is installed or imported, a refresh
+      # names the extra that runs it, `sverify check` runs, and `import sverify` stays
       # under a budget (python/scripts/check_plain_wheel.py).
       - name: Run the installed wheel without extras
         run: |
