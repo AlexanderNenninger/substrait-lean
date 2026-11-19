@@ -548,7 +548,7 @@ jobs:
           SVERIFY_SHARD: ${{ matrix.shard }}
           # The slowest tests, to see which to mark `slow` or what unbalances
           # the shards.
-          PYTEST_ADDOPTS: --durations=25
+          PYTEST_ADDOPTS: --durations=25 -v
         run: |
           status=0
           for b in $BACKENDS; do
