@@ -417,11 +417,11 @@ def _sortable(t: pa.DataType) -> bool:
 EXACT = Observation(rows="sequence")
 #: The default when `ensures` names none: rows as a multiset, values exact.
 EXACT_MULTISET = Observation()
-#: Rows as a multiset, doubles within the plan's bound (`Report.epsilon`),
-#: other values exact: what `ensures` observes where it names no
-#: observation (`Report.observation`), and what a sink's rerun must
-#: reproduce by default.
-PLAN_BOUND = Observation(floats="plan")
+#: Rows and list elements as multisets, one zero and one NaN, doubles within
+#: the plan's bound (`Report.epsilon`), other values exact: what `ensures`
+#: observes where it names no observation (`Report.observation`), and what a
+#: sink's rerun must reproduce by default.
+PLAN_BOUND = Observation(floats="plan", zeros="canon", elements="multiset")
 
 
 def equivalent(
