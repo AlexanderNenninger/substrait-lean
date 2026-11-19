@@ -737,8 +737,8 @@ theorem Substrait.duckdbOn.guardsUn : ∀ f : Substrait.UnFn,
     | Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i64 => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.fit_saturate_i64_guards⟩
     | Substrait.UnFn.isNum _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.bbox _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
-    | Substrait.UnFn.approx _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.flatten  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.approx _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
 
 /-- Each binary entry's guards are exact. -/
 theorem Substrait.duckdbOn.guardsBin : ∀ f : Substrait.BinFn,
