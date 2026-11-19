@@ -910,7 +910,7 @@ touches: Sverify takes the group keys of the input rows the batch inserts or
 deletes, recomputes those groups from the new input (a semi-join on the
 keys), and replaces their rows. This holds for every measure, because an
 aggregate's groups are independent (`TouchedGroups.touched_sound` in
-[`SubstraitLean/TouchedGroups.lean`](../SubstraitLean/TouchedGroups.lean)).
+[`analysis/Sverify/Analysis/TouchedGroups.lean`](../analysis/Sverify/Analysis/TouchedGroups.lean)).
 A projection whose window functions share one `PARTITION BY`, with the
 partition keys among its columns, recomputes the partitions a batch touches
 the same way (`TouchedGroups.touched_window_sound`, for inputs without ties on
@@ -925,7 +925,7 @@ table, without `PARTITION BY`), from the input rows in that span
 widened by the frame. Lean proves that a window value depends only on the
 rows in its frame, so this equals a full recompute for inputs without ties
 on the partition and time columns (`TouchedFrames.framed_batch` in
-[`SubstraitLean/TouchedFrames.lean`](../SubstraitLean/TouchedFrames.lean)),
+[`analysis/Sverify/Analysis/TouchedFrames.lean`](../analysis/Sverify/Analysis/TouchedFrames.lean)),
 and `status()` says "touched frames recomputed". The tests
 ([`test_touched_frames.py`](../python/tests/test_touched_frames.py)) compare
 every refresh with a full recompute on random streams with late rows, rows
@@ -1069,7 +1069,7 @@ refresh batch by batch and a recompute agree:
   node, as `"hold"` does, and the report says why.
 
 Every precondition holds on the rows kept: `Catalog.kept_sound` in
-[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule
+[`Quarantine.lean`](../analysis/Sverify/Analysis/Quarantine.lean) proves it for this rule
 (on the snapshot with identical rows collapsed),
 so the node's contract (`contract_sound`, `Rel.keys_sound`) holds on what it
 reads. The batch checks then run on the kept rows as on any batch, and a row
@@ -1556,7 +1556,7 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
   no admissible batch changes a final bucket, for every measure, so the
   final buckets kept in the sink and the open ones in the state add up to a
   full recompute (`Retention.retention_sound` and `Retention.final_stable` in
-  [`SubstraitLean/Retention.lean`](../SubstraitLean/Retention.lean)).
+  [`analysis/Sverify/Analysis/Retention.lean`](../analysis/Sverify/Analysis/Retention.lean)).
 - After the sink has written a refresh, the node drops the final buckets
   from its state. At most `⌈lateness / width⌉ + 1` buckets stay open
   (`Retention.open_buckets_le`), so the state holds that many rows per group.
@@ -1737,11 +1737,12 @@ row cap (`--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
 values may cancel, so only an absolute bound holds, and the tolerance is
 absolute.
 
-Doubles follow one model. Without `sv.equivalent` in `ensures`, rows are a
-multiset, doubles are within the plan's bound and other values are exact:
-the same observation as `sv.equivalent(floats="plan")`, which
-`report.observation` prints with its bound, `equivalent(floats=plan, ≤
-2.2e-04)` here. `sv.equivalent(...)` states each component, and one you
+Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
+list elements are multisets, one zero and one NaN are read, doubles are within
+the plan's bound and other values are exact: the default observation
+([the table](core-semantics.md#the-default-observation)), which
+`report.observation` prints with its bound,
+`equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
 leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
 tolerance, and `floats="exact"` asks for the same bits. `verify` checks
 either against the plan's bound on each engine; where

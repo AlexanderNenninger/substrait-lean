@@ -49,6 +49,7 @@ from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 
 from sverify._checker import CheckerMemoryError
+from sverify._lean_eval import LeanRaised
 from sverify.contracts import verify
 from sverify.engine import (
     ENGINES,
@@ -467,7 +468,14 @@ def check(
         extra["Lean's plan"] = lean_plan(plan)
         findings.append(Finding(oracle, query.sql, s.tables, detail, extra))
 
-    lean = s.lean(plan)
+    try:
+        lean = s.lean(plan)
+    except LeanRaised as e:
+        # The reference raises (a zero divisor, an overflow): `verify` must
+        # report the possible runtime error, as for an engine that raises.
+        if not verify(query.sql, tables=SCHEMAS).errors:
+            found("runtime", f"Lean raises {e}; verify reports no runtime error")
+        return findings
     try:
         df_table = duckdb_sql(s.con, query.sql)
         df, df_error = _arrow_rows(df_table), None
@@ -590,6 +598,9 @@ def _findings(case: tuple) -> list[Finding]:
         return []
     except CheckerMemoryError as e:
         return [checker_memory(case, e)]
+    except Exception as e:  # noqa: BLE001 - a harness error is a finding; it must not end the run
+        query, tables = case[0], case[1]
+        return [Finding("harness", query.sql, dict(tables), f"{type(e).__name__}: {e}", {}, case)]
     return [f for f in found if known(f) is None]
 
 

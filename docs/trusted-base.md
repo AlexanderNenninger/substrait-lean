@@ -58,7 +58,7 @@ the project's one axiom (the trusted table below).
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which nothing discharges yet where `transferB` fails (#929) | `Sound.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
@@ -79,6 +79,7 @@ What a test checks and no proof does.
 | The engine facts each engine profile states | Their probes (`engines/duckdb/replay/probes.json`, `engines/polars/probes/` and `engines/spark/probes/`), checked by `sverify_dev.facts` and the engine jobs |
 | Native `Float` arithmetic agrees with the exact definition, the exact result rounded once | `python/tests/test_float_model.py` and the `float-bounds/` project's `NativeLink` |
 | DuckDB's black-box catalogue (`sverify.black_box`, `Boxes.duckdb` in `engines/duckdb/Sverify/DuckDB/Boxes.lean`), and its evaluators against DuckDB's values (`evaluated`) | `python/tests/test_black_box.py` against `substrait-check --black-boxes`, and the samples' `#guard` |
+| DuckDB's black boxes keep their declared laws where the function does not raise (`Boxes.Lawful`; under it the model's value is the function's, `Boxes.Lawful.call`). Where one did not, the model's value is the row's sample, the checker panics and refuses the rows (`BlackBox.Scalar.call`, `runOn`), and D16's claim (`Engine.Runs`) fails for that call (#1484) | `python/tests/test_black_box.py`: the laws on random data, and `test_a_law_break_is_refused` through the compiled checker |
 | The writers' SQL and the Polars translation compute what the lowered plan states | Golden, round-trip and differential tests ([the translations](engine-profiles.md#the-translations-today)) |
 | A report survives its JSON: `Report.from_json(report.to_json())` | `python/tests/test_formats.py` |
 
@@ -91,7 +92,7 @@ place, and what retires it.
 |---|---|---|---|---|
 | axiom | `FloatCode.exp_fin` | `analysis/Sverify/Analysis/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
 | opaque, `implemented_by` | `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256` | `core/Sverify/Core/Text.lean` | The string functions the checker evaluates by compiled code (`ilikeAscii`, `Digest.md5`, …); no proof looks inside them | A model of each in Lean, or a row of the black-box table |
-| opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `engines/duckdb/Sverify/DuckDB/Boxes.lean` | The functions of DuckDB's black-box catalogue (`evalScalar`, …), outside the model; the core holds none (#1189). A proof uses only a row's laws, which hold by the clamp and `Boxes.duckdb_wf` | A model of a row in Lean, where one exists |
+| opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `engines/duckdb/Sverify/DuckDB/Boxes.lean` | The functions of DuckDB's black-box catalogue (`evalScalar`, …), outside the model; the core holds none (#1189). A proof uses only a row's laws, which hold by the clamp and `Boxes.duckdb_wf`; where the clamp applies the compiled checker panics and refuses the rows | A model of a row in Lean, where one exists |
 | structure | `DoubleStats.Correct` | `SubstraitLean/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
 | opaque | `intToDouble` | `core/Sverify/Core/Float.lean` | A conversion given with the property the proofs use; the proofs see only the property | |
 | opaque | `decToDouble`, `doubleToDecimal` | `core/Sverify/Core/Conversions.lean` | The same, for decimals and doubles | |
@@ -255,10 +256,16 @@ place, and what retires it.
      integer overflow on Polars. There `Engine.contract_sound_runs_near` takes
      `Rel.FloatOpenSafeP` over the engine's table instead: every result the
      table allows is, up to the plan's observation, one of the reference's
-     orders. Nothing discharges that hypothesis yet where `transferB` fails;
-     for a double `SUM` and `AVG` it is the tolerance bound
-     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929),
-     so the open-float form holds of no engine's run by proof today.
+     orders. For an aggregate at the root, `Rel.floatOpenSafeP_aggregate`
+     discharges it from `Rel.SumsNear` (each double `SUM` and `AVG` the table
+     allows is near the correctly rounded one over the groups it reads), and
+     `Engine.polars_sum_example` applies the theorem to a double `SUM` on
+     Polars with only `Engine.Runs` open. For a `SUM`, the checker's own
+     tolerance covers D35's bound where `SumTolCovers` holds
+     (`Measure.sumNear_of_tol`); for an `AVG`, `Rel.SumsNear` stays a
+     hypothesis until track A's follow-up (rulings 135 (b) and 146). Other shapes (a double `SUM` read by
+     a filter, a join or a key) are the tolerance bound
+     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
 
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside `Engine.Runs`. Raising only where the reference may is a separate claim
@@ -293,7 +300,9 @@ place, and what retires it.
   `Regex.lean` and `Digest.lean`, and `Text.lean`'s six:
   `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256`) are
   read by no proof;
-  the proofs use only each black box's declared laws. The search evaluators
+  the proofs use only each black box's declared laws, which hold of the
+  model by the clamp (`Scalar.call` keeps the sample where a law breaks) and
+  of DuckDB by the tests; the checker refuses rows where the clamp applies. The search evaluators
   (`implemented_by` in `LoweringSearch.lean`, `DuckDB/LiftSearch.lean` and
   `Obligations.lean`) read profiles, functions and hints while a generator
   or a table check elaborates; no theorem reads them.

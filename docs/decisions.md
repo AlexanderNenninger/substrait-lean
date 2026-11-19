@@ -465,7 +465,7 @@ determinism has two levels: up to the member of each class of doubles
 
 An order-sensitive operator reads one sorted enumeration of its input, and
 its meaning is the set over all of them (`Lin` and `Sem`,
-`SubstraitLean/Seam.lean`, #928). Below an unordered operator, as with a
+`analysis/Sverify/Analysis/Seam.lean`, #928). Below an unordered operator, as with a
 `FETCH` without a total `ORDER BY` under a join, the order is forgotten and
 the result is a set of multisets (`Rel.Bags`): this is where the tie order's
 nondeterminism lives. `verify` and `run` allow such a plan, and the proofs
@@ -1647,3 +1647,33 @@ Why: a proof is about the plan the lift writes. A user reads it as a statement
 about the SQL they wrote, so where the plan's value differs from the text's
 the report says so. A refusal lifted later is a minor change, a changed value a
 major one (D17), so the casts are refused before a release and `corr` is listed.
+
+### D58. A timestamp's delta counts the unit boundaries crossed
+
+Decided 2026-11-19 (theory advisor, ruling 137).
+
+`a.delta(b, unit)` is `idx(a) - idx(b)`, an `int64`, where `idx(t)` is the
+floor of `t`'s microseconds divided by the unit's microseconds, for
+`microsecond`, `millisecond`, `second`, `minute`, `hour` and `day`. The floor
+puts a value before 1970 where `date_trunc` puts it. Two timestamps 1 µs apart
+across a boundary differ by 1; two almost a unit apart inside one unit differ
+by 0. NULL in gives NULL out, and nothing raises beyond the timestamps' own
+range (D32).
+
+DuckDB's `date_diff(part, start, end)` counts the same way with its arguments
+the other way round. The Ibis frontend writes the delta from existing
+functions: each side floored with `date_bin` from the epoch, the difference
+divided by the unit's microseconds, so Lean's model has no new function.
+
+`week`, `month`, `quarter`, `year` and `nanosecond` are refused until facts pin
+each engine's boundary (month, quarter and year are the next step).
+
+The delta of dates and times follows the same rule and is refused until built,
+and a time-zone-aware timestamp's delta is refused.
+
+Recomputes sinks: no
+
+Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duckdb/facts/duckdb-timestamp-date-diff.json))
+and Ibis documents the delta as the number of unit boundaries crossed
+([`TimestampValue.delta`](https://ibis-project.org/reference/expression-timestamps#ibis.expr.types.temporal.TimestampValue.delta)). The refused units are those where engines place the
+boundary differently.

@@ -391,7 +391,9 @@ def _(mo):
     preconditions a proof needs, test a node on rows you chose, keep
     credentials out of every file and log, hand the next team a contract it
     proves again, and bound a rollup's state with a promise every batch is
-    checked against. That is the end of the tour. The
+    checked against. The last chapter,
+    [Engines](?file=07_engines.py), runs one proved plan on DuckDB, Polars and
+    Spark and shows what an engine's refusal tells you. The
     [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
     covers every feature in more detail, and
     [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md)
@@ -404,7 +406,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 5. [Pipelines and engines](?file=05_pipelines_and_engines.py)
+    ← 5. [Pipelines and engines](?file=05_pipelines_and_engines.py) · 7. [Engines](?file=07_engines.py) →
     """)
     return
 

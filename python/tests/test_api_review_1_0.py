@@ -32,6 +32,7 @@ PUBLIC = {
     "inputs",
     "preconditions",
     "internal_plan",
+    "black_boxes",
 }
 
 

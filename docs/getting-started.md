@@ -225,7 +225,7 @@ mean_x = r.group_by("k").aggregate(mean_x=r.x.mean())
 bounded = {"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]}
 means = sv.verify(mean_x, requires=bounded)
 print(means.observation)
-# equivalent(floats=plan, ≤ 1.1e-10)
+# equivalent(elements='multiset', floats=plan, ≤ 1.1e-10, zeros='canon')
 on_duckdb = means.run(con, "duckdb", route="auto")
 on_polars = means.run(con, "polars", route="auto")
 print(means.equivalence.equal(on_duckdb, on_polars))
@@ -545,9 +545,9 @@ what a plan means, row by row.
 
 ## Where next
 
-* The [tour](../README.md#the-tour): six notebooks, three complete jobs and
-  three guides, to contracts, to pipelines and engines, and to running in
-  production.
+* The [tour](../README.md#the-tour): eight notebooks, three complete jobs and
+  five guides, to contracts, to pipelines and engines, to running in
+  production, to the engines one by one and to dbt.
 * [How to](tasks.md): one section per task, from the command line
   to credentials, OpenLineage and ODCS.
 * The [API reference](https://alexandernenninger.github.io/substrait-lean/reference/):

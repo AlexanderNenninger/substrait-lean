@@ -115,13 +115,15 @@ theorem Value.Equiv.eq_of_exactCol (h : ctx.exactCol q col = true) :
     rw [hs, (ObsCtx.exactCol_parts h).2.1 _ _ e]
   | .str _, b, e => by
     cases b <;> first | exact e.elim | exact congrArg _ ((ObsCtx.exactCol_parts h).2.2 _ _ e)
-  | .list as, b, e | .struct as, b, e => by
+  | .list as, b, e => by
     cases b <;> try exact e.elim
-    all_goals
-      rename_i bs
-      have hl := (ObsCtx.exactCol_parts h).1
-      unfold Value.Equiv at e; simp only [hl] at e
-      exact congrArg _ (Value.EquivList.eq_of_exactCol h as bs e)
+    rename_i bs
+    have hl := (ObsCtx.exactCol_parts h).1
+    unfold Value.Equiv at e; simp only [hl] at e
+    exact congrArg _ (Value.EquivList.eq_of_exactCol h as bs e)
+  | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    exact congrArg _ (Value.EquivList.eq_of_exactCol h as _ e)
 
 theorem Value.EquivList.eq_of_exactCol (h : ctx.exactCol q col = true) :
     ∀ as bs, Value.EquivList q ctx col as bs → as = bs

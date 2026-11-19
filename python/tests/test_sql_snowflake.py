@@ -245,11 +245,13 @@ def parses(sql: str) -> str:
 
 
 def test_float_literals():
+    # The base writer's: a zero keeps its sign (D31), one NaN; Snowflake reads
+    # these texts as IEEE does (Snowflake behaviour recorded privately).
     assert parses(SNOWFLAKE.float_lit(math.nan)) == "CAST('NaN' AS FLOAT)"
-    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-inf' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-Infinity' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(0.1)) == "CAST('0.1' AS FLOAT)"
-    # The model's one zero and one NaN.
-    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('-0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(0.0)) == "CAST('0' AS FLOAT)"
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
 
 
@@ -342,6 +344,14 @@ def test_raise_of_a_string_raises():
     assert sql.startswith("TO_VARCHAR(CAST(") and sql.endswith("AS NUMBER(38,0)))")
     assert "AS VARCHAR)" not in sql
     assert parses(SNOWFLAKE.raise_("e", "x", "float", "raised")).endswith("AS FLOAT)")
+
+
+def test_regex_search_counts_matches():
+    # A search holds on '' for a pattern that matches the empty string; Snowflake's
+    # REGEXP_INSTR('', p) is 0 there, REGEXP_COUNT 1 (Snowflake behaviour recorded privately).
+    sql = parses(SNOWFLAKE.regex_search("s", "^$"))
+    assert sql == "(REGEXP_COUNT(s, '^$') > 0)"
+    assert "REGEXP_INSTR" not in sql
 
 
 def test_substring_positions_fit_32_bits():
