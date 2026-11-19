@@ -357,7 +357,9 @@ def resultMag (env : List AVal) (e : Expr) : Option Float :=
     | .un (.fmath .acos) _ => some 3.1415926535897936
     | _ => none
 
-/-- The key of an elementary function in `EngineProfile.elemUlps`. -/
+/-- The key of an elementary function in `EngineProfile.elemUlps`. `sqrt` and `exp` have none:
+`sqrt` is correctly rounded everywhere, and `exp` has its own rule in `exprEps` (`rule_exp`, one
+ulp on each side, which Java's specification gives `exp` too), so neither reaches `opExtra`. -/
 def elemKey : Expr → Option String
   | .un (.fmath .sqrt) _ | .un (.fmath .exp) _ => none
   | .un (.fmath f) _ => some f.name
