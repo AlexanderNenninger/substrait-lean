@@ -693,8 +693,11 @@ class _TableSource(Pipeable, ABC):
     _hi_slack = timedelta(0)
     """How far a value may lie above a file's upper bound (`stats_facts`)."""
 
-    def __init__(self, name: str, where: str | None):
+    def __init__(self, name: str, where: str | None, schema: pa.Schema | None = None):
         self.name, self.where = name, where
+        self._declared = schema
+        """The schema the caller declared: `schema()` answers with it, without
+        opening the table; every read checks the table still has it."""
         self.implied: str | None = None
         """The predicate a node's view implies on this table, if the source
         reads only the rows that pass it (`_restricted`)."""
@@ -708,7 +711,33 @@ class _TableSource(Pipeable, ABC):
         # again at the same place has a new one (#516, #533).
 
     @abstractmethod
-    def schema(self) -> pa.Schema: ...
+    def schema(self) -> pa.Schema:
+        """The table's schema: the one declared (`schema=`) without opening the
+        table, else the table's current one."""
+
+    def _verify_declared(self, actual: pa.Schema) -> None:
+        """Raise `SchemaError` if the table's schema is not the declared one
+        (names and types; a table read as `large_string` is `string`)."""
+        if self._declared is None:
+            return
+        from sverify.engine import plain_schema
+        from sverify.incremental import SchemaError
+
+        want = {f.name: f.type for f in plain_schema(self._declared)}
+        got = {f.name: f.type for f in plain_schema(actual)}
+        if want == got:
+            return
+        diff = [f"missing {c}" for c in want.keys() - got.keys()]
+        diff += [f"unexpected {c}" for c in got.keys() - want.keys()]
+        diff += [
+            f"{c}: declared {want[c]}, table {got[c]}"
+            for c in want.keys() & got.keys()
+            if want[c] != got[c]
+        ]
+        raise SchemaError(
+            f"{self.name}: the table's schema is not the one declared with schema=: "
+            + "; ".join(sorted(diff))
+        )
 
     @abstractmethod
     def latest(self) -> int: ...
