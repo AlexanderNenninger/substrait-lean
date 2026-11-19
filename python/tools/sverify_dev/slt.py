@@ -77,6 +77,17 @@ REPO = Path(__file__).resolve().parents[3]
 CACHE = Path(os.environ.get("SVERIFY_SLT_CACHE", Path.home() / ".cache" / "sverify" / "duckdb-slt"))
 REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
 
+#: The semantics the lift reads the queries under: DuckDB's, or (L2 of #1484,
+#: `--semantics reference`) the reference's, where the replay checks that
+#: the values agree with DuckDB's own or the reference raises. A worker
+#: process reads it from the environment.
+SEMANTICS_ENV = "SVERIFY_SLT_SEMANTICS"
+
+
+def semantics() -> str:
+    return os.environ.get(SEMANTICS_ENV, "duckdb")
+
+
 #: The one-row table a `SELECT` without `FROM` reads.
 ONE = "__sverify_one"
 
@@ -810,7 +821,7 @@ class Replay:
             if t.lower() in lower
         }
         try:
-            lifted = lift(rec.sql, schemas, "duckdb")
+            lifted = lift(rec.sql, schemas, semantics())
         except Exception as e:  # noqa: BLE001 - the lift refusing (or failing: recorded)
             kind = "" if type(e).__name__ == "UnsupportedError" else f"{type(e).__name__}: "
             res.cls, res.reason = "refused", f"lift: {kind}{_clip(str(e), 200)}"
@@ -877,6 +888,11 @@ class Replay:
             lean_err = _error(e)
         if lean_err is not None:
             res.lean = lean_err
+        if lean_err is not None and semantics() == "reference":
+            # The reference raises: it gives no value, so the plan's text and
+            # DuckDB's native result are not in conflict (principle L of #1484).
+            res.cls, res.reason = "agree", "reference raises: " + _clip(lean_err, 120)
+            return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
         try:
             found = [] if lean_ok else issues()
@@ -892,6 +908,15 @@ class Replay:
             # expects an error, the warning is the reference raising with it.
             res.reason = "verify: " + _clip("; ".join(found), 200)
             lean_ok = outcome(None, res.reason, ordered)
+
+        if semantics() == "reference":
+            # L2 compares the reference's value with DuckDB's own on the same
+            # text; the plan written back for DuckDB has the reference's
+            # meaning, which is not what it is compared with.
+            res.cls = "agree" if lean_ok else "disagree"
+            if not lean_ok:
+                res.side = "lean"
+            return res
 
         # DuckDB on the plan Lean writes.
         from sverify.sql import core as sql_core
@@ -1432,7 +1457,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--out", type=Path, default=REPLAY_DIR)
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
+    parser.add_argument(
+        "--semantics",
+        choices=("duckdb", "reference"),
+        default="duckdb",
+        help="the semantics the lift reads the queries under; with reference, an agreement is "
+        "DuckDB's own value or the reference raising (#1484, L2)",
+    )
     args = parser.parse_args(argv)
+    os.environ[SEMANTICS_ENV] = args.semantics
     version = args.version or duckdb_version()
     root = fetch(version)
     for area, files in test_files(root, args.areas).items():
