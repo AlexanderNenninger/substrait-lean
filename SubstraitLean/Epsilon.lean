@@ -376,11 +376,13 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
   -- that band over the argument's range, rounded up, where the argument is
   -- exact; no bound otherwise. It does not test `engine`: one bound, whoever
   -- runs the SQL (ruling 82).
-  | .un (.approx k) a => (exprEps engine env cols a).bind fun (x, p) => do
+  -- Proved by the theorem that states the band (ruling 85): `true` over an
+  -- exact argument.
+  | .un (.approx k) a => (exprEps engine env cols a).bind fun (x, _) => do
     guard (x == 0.0)
     let m ← doubleMag env a
     let band := Float.ofNat k * Float.scaleB 1.0 (-53) * m
-    return (band * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074), p)
+    return (band * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074), true)
   | .bin .lt a b | .bin .eq a b => do
     -- `rule_threshold`: where the ranges, widened by `ε`, do not straddle, the
     -- comparison has one outcome on both sides.
@@ -857,6 +859,23 @@ def statCols : Rel → Option (List (Option (Option Measure)))
   | _ => none
 
 
+/-- An expression that is a source mark (D52), `.un (.approx k) _`, or chooses
+between such and other values. -/
+def markedExpr : Expr → Bool
+  | .un (.approx _) _ => true
+  -- The lift's guard for a group of NULLs keeps the mark in a branch.
+  | .ifThen _ a b => markedExpr a || markedExpr b
+  | _ => false
+
+/-- Which output columns are a source mark (D52), as a projection computes it
+and emits, filters and sorts hand it on. -/
+def markedCols (cat : Catalog) : Rel → List Bool
+  | .project r es => markedCols cat r ++ es.map markedExpr
+  | .emit r m => let cs := markedCols cat r; m.map (cs.getD · false)
+  | .filter r _ | .orderBy r _ | .fetch r _ _ => markedCols cat r
+  -- Below a projection nothing is marked: one `false` per column.
+  | r => List.replicate (r.arity cat) false
+
 /-- `"epsilon"` of a `--contract` request: per output column of the
 transformation that is a double `SUM` or `AVG`,
 `{"abs": …, "rel"?: …, "proved": {"abs": …, "rel"?: …}}`.
@@ -889,8 +908,22 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
         | none => Json.mkObj [("abs", Json.null)])
     | .unbounded why => some (name, Json.mkObj [("abs", Json.null), ("why", toJson why)])
     | .other => none
-  let some (r, gs, ms) := findAggregate root | return Json.mkObj winCols
-  let some (srcs, _) := colSrcs plan.root | return Json.mkObj winCols
+  -- D52: a marked column's band (`exprEps`'s rule), the largest on any
+  -- engine, proved where every engine's is.
+  let mk := markedCols cat root
+  let mnames := if plan.names.length == mk.length then plan.names
+    else (List.range mk.length).map (s!"#{·}")
+  let perEngine := (es.map (·.name)).map fun engine => colEps es engine cat A F T root
+  let marked := ((mnames.zip mk).zipIdx).filterMap fun ((name, m), i) =>
+    if !m then none
+    else
+      let bs := perEngine.map fun cs? => cs?.bind (·.getD i none)
+      if bs.all Option.isSome && !bs.isEmpty then
+        let e := bs.foldl (fun acc b => max acc (b.map (·.1) |>.getD 0.0)) 0.0
+        some (name, boundJson e none (bs.all fun b => b.any (·.2)))
+      else some (name, Json.mkObj [("abs", Json.null)])
+  let some (r, gs, ms) := findAggregate root | return Json.mkObj (winCols ++ marked)
+  let some (srcs, _) := colSrcs plan.root | return Json.mkObj (winCols ++ marked)
   let env := r.aeval cat A F T
   -- The measure's values, rows and groups are the same on every engine.
   let same (m : Measure) : Bool := !hasFp32 tj && ordersProved es &&
@@ -933,7 +966,8 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
     | none => Json.mkObj ([("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])] ++
         if m?.any (·.fn == .corr) then [("why", toJson corrWhy)] else []))
   let known := cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n)
-  return Json.mkObj (known.filter (fun (n, _) => !winCols.any (·.1 == n)) ++ winCols)
+  return Json.mkObj (known.filter (fun (n, _) => !winCols.any (·.1 == n)) ++ winCols ++
+    marked.filter fun (n, _) => !known.any (·.1 == n) && !winCols.any (·.1 == n))
 
 /-! ## The dependency report of a contract
 
