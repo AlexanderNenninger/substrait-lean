@@ -33,9 +33,11 @@ where DuckDB and the reference (#185, #209) differ:
   NaN and ±inf included; the other rules are written by hand, pending
   generation.
 * `semantics="reference"` (`REFERENCE`): sverify's reference. A double `/`
-  by zero raises (`ERROR`, decided on #185), and a cast of a double to an
-  integer truncates (R9, decided on #209). The written SQL is guarded where
-  DuckDB differs.
+  by zero raises (`ERROR`, decided on #185). A cast of a double or decimal
+  to an integer is refused, with the spellings that mean the same under both
+  semantics (`CAST(round(x) AS BIGINT)`): DuckDB's cast rounds and the
+  reference's (R9, decided on #209) truncates, and the lift refines the
+  dialect (D54). The written SQL is guarded where DuckDB differs.
 
 The subset (#239): SELECT, WHERE, arithmetic, comparisons, AND/OR/NOT,
 IS NULL, IS [NOT] DISTINCT FROM, BETWEEN, IN lists, CASE, CAST, COALESCE,
