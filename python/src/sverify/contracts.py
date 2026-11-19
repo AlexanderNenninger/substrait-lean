@@ -90,7 +90,8 @@ from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
-from sverify._unsupported import SverifyWarning
+from sverify._unsupported import ConditionError, SverifyWarning
+from sverify._unsupported import Unsupported as _Unsupported
 from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
 from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
@@ -1606,16 +1607,24 @@ def _prove_once(
                 err = TypeError(msg)
             raise err from e
 
+    def condition_plan(where: str, n: int, table: Transform, c: Condition) -> Any:
+        """The plan of a condition; a condition sverify cannot read raises
+        `ConditionError` naming it (#699), not a refusal of the query."""
+        try:
+            return plan(query(where, n, table, c))
+        except _Unsupported as e:
+            raise ConditionError(label(c), str(e), f"{where} condition {n}") from e
+
     req_plans = []
     for t, cs in requires.items():
         for n, c in enumerate(cs, start=1):
             if planned(c):
-                req_plans.append(plan(query(f"requires {t}", n, table_ref(t, c), c)))
+                req_plans.append(condition_plan(f"requires {t}", n, table_ref(t, c), c))
     ens_plans = []
     for n, c in enumerate(ensures, start=1):
         if isinstance(c, TableCondition):
             continue
-        p = plan(query("ensures", n, output(c), c))
+        p = condition_plan("ensures", n, output(c), c)
         p["relations"][0]["root"]["names"] = [label(c)]
         ens_plans.append(p)
     transform_plan = plan(transform)

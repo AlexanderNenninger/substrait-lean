@@ -503,3 +503,27 @@ def test_an_incremental_model_compiled_after_its_run_asks_for_full_refresh(make_
     assert why and "dbt compile --full-refresh" in why and "{{ this }}" in why
     dbt(root, "compile", "--full-refresh")
     assert sverify_dbt.check(root, counterexamples=0)["p"].refused is None
+
+
+def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
+    """#699: `verify` names the condition it cannot read; sverify-dbt drops it
+    and proves the others, in one retry per bad condition (no dbt needed)."""
+    from types import SimpleNamespace
+
+    from sverify_dbt.check import _Checker
+    from sverify_dbt.result import ModelResult, TestResult
+
+    bad, good = TestResult(None, None, "bad", "test"), TestResult(None, None, "good", "test")
+    res = ModelResult("m", "model.p.m", None, "m")
+    res.sql = "SELECT x FROM t"
+    ensures = [(bad, ["zz > 1"]), (good, ["x IS NOT NULL"])]
+    report = _Checker._verify(
+        SimpleNamespace(counterexamples=0, _drop=_Checker._drop),
+        res,
+        {"t": {"x": "BIGINT NOT NULL"}},
+        {},
+        ensures,
+    )
+    assert bad.status == "not checked" and "cannot read" in (bad.why or "")
+    assert good.status == "pending" and report is not None
+    assert [r.condition for r in report.ensures] == ["x IS NOT NULL"]

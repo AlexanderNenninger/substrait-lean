@@ -43,6 +43,10 @@ Running:
   lift, the Ibis producer, the checker, the SQL writer and the Polars
   translator all raise it (or a subclass), saying which construct. A
   `ValueError`.
+* `ConditionError` (`condition_unreadable`): one condition of `requires` or
+  `ensures` cannot be read (an unknown column, SQL the lift does not read, a
+  type error); `.condition` names it and `.reason` says why. An
+  `UnsupportedError`.
 * `SqlError` (`sql_refused`): a SQL producer refused a query.
 * `ExportError` (`export_refused`): a plan has no conforming Substrait form
   that keeps its proof (`Report.to_substrait`); the message names the
@@ -84,7 +88,7 @@ Warnings:
 import warnings
 from typing import Any
 
-from sverify._unsupported import SverifyError, SverifyWarning, UnsupportedError
+from sverify._unsupported import ConditionError, SverifyError, SverifyWarning, UnsupportedError
 from sverify.contracts import (
     CompositionError,
     InferredWarning,
@@ -136,6 +140,7 @@ __all__ = [
     "AuditError",
     "CheckerVersionError",
     "CompositionError",
+    "ConditionError",
     "ConcurrentWriteError",
     "EngineSettingsError",
     "EngineSettingsWarning",

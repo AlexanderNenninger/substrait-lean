@@ -58,6 +58,27 @@ Unsupported = UnsupportedError
 """The internal modules' name for `UnsupportedError`."""
 
 
+class ConditionError(UnsupportedError):
+    """One condition of `requires` or `ensures` cannot be read: it names a
+    column the table or the result does not have, its SQL is outside what the
+    lift reads, or it does not type-check. The query is not refused; fix or
+    drop this condition. `sverify.errors.ConditionError`.
+
+    Attributes:
+        condition: The condition as given (its label for an Ibis expression).
+        reason: Why it cannot be read, without the condition's name.
+    """
+
+    code = "condition_unreadable"
+
+    def __init__(self, condition: str, reason: str, where: str = "a condition"):
+        self.condition, self.reason = condition, reason
+        super().__init__(
+            f"{where} cannot be read: {condition}: {reason}; "
+            "fix or drop this condition; the query is not refused"
+        )
+
+
 class SverifyWarning(UserWarning):
     """The base of every warning sverify issues. In a CI job,
     `warnings.filterwarnings("error", category=SverifyWarning)` (or pytest's

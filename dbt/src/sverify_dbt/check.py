@@ -20,6 +20,7 @@ from typing import Any
 import duckdb
 import sqlglot as sg
 import sverify as sv
+from sverify.errors import ConditionError
 
 from sverify_dbt import mapping
 from sverify_dbt.manifest import Project, Relation, Test, load
@@ -292,7 +293,6 @@ class _Checker:
     def _verify(self, res: ModelResult, tables: dict, requires: dict, ensures: list) -> Any:
         """`sv.verify` of the model; a condition sverify cannot read is
         dropped with its reason, and a model it cannot read is refused."""
-        conds = [c for _, cs in ensures for c in cs]
 
         def go(req: dict, ens: list) -> Any:
             with warnings.catch_warnings():
@@ -307,36 +307,35 @@ class _Checker:
                     counterexamples=self.counterexamples,
                 )
 
-        try:
-            return go(requires, conds)
-        except ValueError as e:  # sverify's Unsupported, and a bad condition
-            first = e
-        try:
-            go({t: [] for t in requires}, [])
-        except ValueError as e:
-            res.refuse(_refusal(e))
-            return None
-        # The SQL is fine: find the conditions sverify cannot read.
-        for t, cs in requires.items():
-            keep = []
-            for c in cs:
-                try:
-                    go({**{k: [] for k in requires}, t: [c]}, [])
-                    keep.append(c)
-                except ValueError as e:
-                    res.not_assumed.append(f"{t}: {_label(c)}: sverify cannot read it ({e})")
-            requires[t] = keep
-        for tr, cs in ensures:
+        while True:
             try:
-                go({t: [] for t in requires}, cs)
-            except ValueError as e:
+                return go(
+                    requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
+                )
+            except ConditionError as e:  # one condition: drop it, prove the rest (#699)
+                if not self._drop(e, res, requires, ensures):
+                    res.refuse(_refusal(e))
+                    return None
+            except ValueError as e:  # sverify's Unsupported: the model
+                res.refuse(_refusal(e))
+                return None
+
+    @staticmethod
+    def _drop(e: ConditionError, res: ModelResult, requires: dict, ensures: list) -> bool:
+        """Drop the condition `e` names, with its reason; False if none is."""
+        for t, cs in requires.items():
+            hit = [c for c in cs if _label(c) == e.condition]
+            if hit:
+                requires[t] = [c for c in cs if c not in hit]
+                res.not_assumed.append(
+                    f"{t}: {_label(hit[0])}: sverify cannot read it ({e.reason})"
+                )
+                return True
+        for tr, cs in ensures:
+            if tr.status != "not checked" and any(_label(c) == e.condition for c in cs):
                 tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
-        conds = [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
-        try:
-            return go(requires, conds)
-        except ValueError:
-            res.refuse(_refusal(first))
-            return None
+                return True
+        return False
 
     def _read(self, report: Any, m: Relation, res: ModelResult, ensures: list) -> None:
         # `report.ensures` is in the order of the conditions given, each

@@ -94,7 +94,7 @@ own, to find the culprits: up to one checker call per condition
 
 Proposed: `verify` reads every condition before it proves anything, and
 raises `ConditionError` (a subclass of `ValueError`) with the condition and
-the reason; or it reports an unreadable condition in the report
+the reason (done in #699); or it reports an unreadable condition in the report
 (`CheckedCondition.status = "unreadable"`) and proves the rest.
 
 ### 3. Refusals name the construct only as truncated SQL
