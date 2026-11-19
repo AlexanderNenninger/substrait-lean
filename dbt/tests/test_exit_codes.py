@@ -53,7 +53,9 @@ def test_an_unproved_test_fails_unproved_with_1(monkeypatch):
     assert _run(monkeypatch, result) == 0
     assert _run(monkeypatch, result, "--fail-on", "unproved") == cli.NOT_PROVED
     both = _project(bad=m, rec=_refused())
-    assert _run(monkeypatch, both, "--fail-on", "refused") == cli.REFUSED  # not 1: tests may fail
+    # `refused` includes `unproved`: the unproved test comes first, as exit 1.
+    assert _run(monkeypatch, both, "--fail-on", "refused") == cli.NOT_PROVED
+    assert _run(monkeypatch, _project(rec=_refused()), "--fail-on", "refused") == cli.REFUSED
     assert _run(monkeypatch, both, "--fail-on", "unproved") == cli.NOT_PROVED
 
 
@@ -83,3 +85,11 @@ def test_failures_have_sverifys_exit_codes_and_no_traceback(monkeypatch, capsys,
     monkeypatch.setattr(cli, "check", boom)
     assert main(["check", "."]) == code
     assert capsys.readouterr().err.startswith("sverify-dbt:")
+
+
+def test_a_constraint_sverify_did_not_check_on_a_read_model_still_fails_the_gate(monkeypatch):
+    """Only a refused model's constraints are excused: one that sverify could not
+    read the condition of, on a model that was checked, is not a pass."""
+    m = _model("k")
+    m.constraints = [_t("check(x > 0)", "not checked", "constraint")]
+    assert _run(monkeypatch, _project(k=m)) == cli.NOT_PROVED

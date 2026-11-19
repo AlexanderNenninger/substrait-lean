@@ -185,7 +185,14 @@ class CheckResult:
 
     @property
     def unproved_constraints(self) -> list[tuple[str, TestResult]]:
-        return [(m.name, c) for m in self.models for c in m.constraints if c.status == "not proved"]
+        """The constraints that are not proved or, on a model that was read, not
+        checked. A refused model's are not: its reason is the refusal."""
+        return [
+            (m.name, c)
+            for m in self.models
+            for c in m.constraints
+            if c.status == "not proved" or (c.status == "not checked" and not m.refused)
+        ]
 
     def summary(self) -> str:
         tests = [t for m in self.models for t in m.tests]

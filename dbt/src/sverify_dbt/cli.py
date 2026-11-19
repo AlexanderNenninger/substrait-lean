@@ -104,8 +104,8 @@ def main(argv: list[str] | None = None) -> int:
         choices=["contract", "unproved", "refused", "never"],
         default="contract",
         help="exit 1 on a contract that does not match or a constraint not proved "
-        "(contract, the default); unproved: also on any test not proved; refused: also "
-        "exit 3 when a model was refused (sverify cannot read it); or never",
+        "(contract, the default); unproved: also on any test not proved; refused: all of "
+        "that, and exit 3 when a model was refused (sverify cannot read it); or never",
     )
     g = sub.add_parser(
         "suggest",
@@ -171,7 +171,7 @@ def _exit_code(result: CheckResult, fail_on: str) -> int:
     if fail_on == "never":
         return 0
     failed = bool(result.contract_errors or result.unproved_constraints)
-    if fail_on == "unproved":
+    if fail_on in ("unproved", "refused"):
         failed = failed or any(
             m.by_status("not proved") or (not m.refused and m.by_status("not checked"))
             for m in result.models
