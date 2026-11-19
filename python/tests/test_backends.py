@@ -230,6 +230,23 @@ def test_var_pop_of_one_nan(con):
     assert v(duckdb_ibis(con, expr)) == [None, 0.0]
 
 
+@pytest.mark.xfail(
+    strict=True, reason="Polars canonicalises -0.0 at reads and scalar results (#1794)"
+)
+def test_cot_of_negative_zero_agrees_across_engines(con):
+    """The Hypothesis example behind `test_engines_agree[trigonometry]`'s seed-dependent
+    failure (`--hypothesis-seed=5`): `amount = -0.0`. `cot(-0.0)` is `-inf` on DuckDB and
+    `+inf` on Polars, whose read makes the zero positive (D31 keeps values raw, #1461)."""
+    schema = {name: s.to_pyarrow() for name, s in coverage.T.schema().items()}
+    t = {"id": [None], "name": [None], "amount": [-0.0], "qty": [None],
+         "ts": STAMPS[:1], "flag": [None]}  # fmt: skip
+    put_table(con, "t", pa.table({k: pa.array(v, schema[k]) for k, v in t.items()}))
+    (case,) = [c for c in VERIFIED if c.label == "trigonometry"]
+    plan = written_plan(to_substrait_json(case.build()))
+    got = {e: rows(run_plan(con, plan, e)) for e in ("polars", "duckdb")}
+    assert same(got["polars"], got["duckdb"])
+
+
 def approximately(rows: list[tuple]) -> list[tuple]:
     """Doubles to nine significant digits: engines compute some aggregates with
     their own algorithms (`VARIANCE`, `STDDEV`, #54)."""
