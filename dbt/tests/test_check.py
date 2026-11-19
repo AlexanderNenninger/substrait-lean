@@ -163,6 +163,10 @@ sources:
             data_tests:
               - accepted_values: {arguments: {values: [card, cash]}}
       - name: untyped
+      - name: ledger
+        columns:
+          - {name: kind, data_type: varchar}
+          - {name: amount, data_type: "decimal(10,2)"}
 """
 
 
@@ -203,6 +207,36 @@ def test_contract_mismatch_and_inputs_without_types(make_project) -> None:
     assert "no column types" in (res["latest"].refused or "")
     assert "no column types" in (res["downstream"].refused or "")
     assert main(["check", str(root), "--counterexamples", "0"]) == 1
+
+
+def test_a_decimal_sum_notes_the_type_sverify_and_duckdb_differ_on(make_project) -> None:
+    """`Report.output` types a decimal `SUM` as the reference does, `DECIMAL(p + 10, s)`;
+    dbt's own SQL builds DuckDB's `DECIMAL(38, s)`; the contract check keeps DuckDB's (#1484)."""
+    root = make_project(
+        {
+            "models/_sources.yml": SOURCES,
+            "models/sums.sql": (
+                "select kind, sum(amount) as amount\n"
+                "from {{ source('raw', 'ledger') }} group by kind\n"
+            ),
+            "models/_models.yml": """\
+            version: 2
+            models:
+              - name: sums
+                config: {contract: {enforced: true}}
+                columns:
+                  - {name: kind, data_type: varchar}
+                  - {name: amount, data_type: "decimal(38,2)"}
+        """,
+        }
+    )
+    sums = sverify_dbt.check(root, counterexamples=0)["sums"]
+    assert sums.contract == []
+    assert any(
+        "column amount: sverify's plan has type DECIMAL(20,2), and DuckDB's SQL gives DECIMAL(38,2)"
+        in n
+        for n in sums.notes
+    )
 
 
 def test_model_tests_are_inputs_downstream(make_project) -> None:
