@@ -149,3 +149,20 @@ def test_runtime_mode_checks_a_broken_link_on_data():
         lenient(not_null(bound_orders([(1, "ada", -5)])))
     prov = provenance(lenient(not_null(bound_orders([(1, "ada", 5)]))))
     assert prov is not None and prov.unproved_links == ["lenient: (_.amount >= 0) on t"]
+
+
+def test_an_incremental_view_over_an_unproved_link_names_its_exit():
+    """#1051: a link checked on data cannot be kept by a view; the message says
+    to prove it in the producer's `ensures`."""
+    from sverify.contracts import view_contract
+
+    @sv.transform(ensures=[_.amount.notnull()])
+    def not_null(orders):
+        return orders.filter(orders.amount.notnull())
+
+    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.amount >= 0], on_unproved="check")
+    def lenient(t):
+        return t
+
+    with pytest.raises(ValueError, match=r"not proved.*state them in the `ensures` of the"):
+        view_contract(lenient(not_null(bound_orders([(1, "ada", 5)]))))
