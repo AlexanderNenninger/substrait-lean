@@ -139,6 +139,14 @@ internal plan, and `Dialect`'s SQL-writing methods and subclasses of it.
 `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
 to a plan's SQL and Substrait.
 
+The engine extension point is documented and outside the promise as well:
+the entry-point group `sverify.profiles`, `ProfilePlugin` and the checker's
+engine list (`EngineEntry`, `builtinEntries`,
+[engine profiles from outside](engine-profiles.md#engine-profiles-from-outside))
+may change in a minor release. A plugin checks `PLUGIN_API`, and an engine
+package pins the sverify version it was built for. Custom sources and sinks
+are the stable extension points.
+
 The engines in the promise are those [Engines](#engines) lists.
 
 A minor release may break the public API only when the break is:
@@ -166,9 +174,9 @@ by a route that the checker justifies against it
 
 | Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound by | In the 1.x promise |
 |---|---|---|---|---|---|
-| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Engine.duckdb_sound` | yes |
-| Polars, streaming | `engine="polars"` | | `"polars"` | `Engine.polars_sound` | yes |
-| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound` | yes |
+| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Engine.duckdb_sound`, under `Engine.NoRaiseSide` | yes |
+| Polars, streaming | `engine="polars"` | | `"polars"` | `Engine.polars_sound`, under `Engine.GuardFreeSide` | yes |
+| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound`, under `Engine.GuardFreeSide` | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
 `sverify.engines.ENGINES` names the engines in the promise that run plans

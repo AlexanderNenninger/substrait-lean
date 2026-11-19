@@ -56,7 +56,8 @@ def dummy : EngineEntry :=
 #check_engine_profiles [dummy]
 
 -- An entry whose theorem does not state its engine's soundness does not
--- elaborate: here Spark's table within the core's.
+-- elaborate: here Spark's table within the core's. Nor does one whose side
+-- condition is no named predicate.
 #guard_msgs (drop info) in
 #check_failure (engine_entry% Profile.spark_le_core)
 
@@ -66,7 +67,7 @@ def dummy : EngineEntry :=
 #check_engine_profiles [{ dummy with shims := [] }]
 
 def entries : List EngineEntry := builtinEntries ++ [dummy]
-def engines : List EngineProfile := entries.map (·.profile)
+def engines : List EngineProfile := entries.map (·.rows)
 
 open Lean (Json) in
 def has (j : Json) (path : List String) : Bool :=
@@ -78,6 +79,8 @@ def has (j : Json) (path : List String) : Bool :=
 #guard !has (tablesJson builtinEngines) ["profiles", "dummy"]
 #guard ((realizabilityJson entries).getObjValD "dummy" |>.getObjValD "theorem") ==
   "DummyEngine.Engine.dummy_sound"
+#guard ((realizabilityJson entries).getObjValD "dummy" |>.getObjValD "side") ==
+  "Engine.GuardFreeSide"
 -- A request under its name gets the reference's report, pending `dummy`.
 #guard (Checker.underProfile engines (Lean.Json.mkObj [("profile", "dummy")]) (Lean.Json.mkObj [])
   true |>.toOption.map (·.1.getObjValD "pending")) == some "dummy"

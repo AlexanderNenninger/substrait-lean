@@ -140,11 +140,14 @@ inductive ShimCost
 def ShimCost.name : ShimCost → String
   | .argument => "argument" | .expression => "expression" | .sort => "sort"
 
-/-- A profile's tables as the checker reports them: its choices, its
-observation rows, its shims' costs and where it executes. An engine's are
-derived from its registry entry (`EngineEntry.profile`,
-`engines/Sverify/Engines/Entry.lean`), which holds the engine and the proof
-that it is sound; Substrait's (`Realize.sources`) has no engine. -/
+/-- A profile's choice table and observation rows as the checker reports
+them, with its shims' costs and where it executes. An engine's are derived
+from its registry entry (`EngineEntry.rows`, `engines/Sverify/Engines/Entry.lean`),
+which holds the engine and the proof that it is sound; Substrait's
+(`Realize.sources`) has no engine. It is neither an engine nor a `Profile`:
+the rename to `ProfileRows` is pending (ruling 143), after the modules that
+read it now (`Epsilon`, `EngineRobust`, `Realize`) have landed their open
+changes. -/
 structure EngineProfile where
   table : ProfileTable
   obs : ObsTable

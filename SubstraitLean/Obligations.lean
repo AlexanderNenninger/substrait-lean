@@ -546,7 +546,7 @@ elab "#check_engine_profiles " t:term : command => do
   let known (thm : String) : Bool :=
     env.contains (`Substrait ++ thm.toName) || env.contains thm.toName ||
       floatBoundsTheorems.contains thm
-  for e in es.map (·.profile) do
+  for e in es.map (·.rows) do
     for r in obligations e.table e.obs do
       if let .proved thm _ := r.evidence then
         unless known thm do
@@ -597,15 +597,17 @@ def Obligation.json (e : EngineProfile) (r : Obligation) : Json :=
 
 open Lean (Json toJson) in
 /-- `substrait-check --realizability`: per engine, its version, the theorem
-that its run is sound (`EngineEntry.soundName`), its shims with their costs, the functions it
+that its run is sound (`EngineEntry.soundName`) and the side condition it
+is sound under (`sideName`), its shims with their costs, the functions it
 refuses, and `obligations reference E`'s rows. -/
 def realizabilityJson (es : List EngineEntry) : Json :=
   Json.mkObj <| es.map fun entry =>
-    let e := entry.profile
+    let e := entry.rows
     let os := obligations e.table e.obs
     (e.name, Json.mkObj [
       ("version", toJson e.table.version),
-      ("theorem", toJson entry.theoremName),
+      ("theorem", toJson (reportedName entry.soundName)),
+      ("side", toJson (reportedName entry.sideName)),
       ("shims", Json.arr <| ((shimNames os).map fun s => Json.mkObj [
         ("name", toJson s), ("cost", toJson ((e.shimCost? s).map ShimCost.name))]).toArray),
       ("refused_functions", Json.arr <| (e.table.missing.map fun (f, ids) =>

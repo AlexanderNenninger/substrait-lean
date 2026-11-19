@@ -488,7 +488,7 @@ def blackBoxJson : Lean.Json :=
 /-- The checker over the engines `entries`: `substrait-check`'s `main` with
 `builtinEntries`, or a package's own checker with its engine added. -/
 def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 := do
-  let es := entries.map (·.profile)
+  let es := entries.map (·.rows)
   match args with
   | ["--serve"] => serve es
   | ["--version"] => do

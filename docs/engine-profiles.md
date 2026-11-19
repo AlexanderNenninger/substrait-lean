@@ -470,7 +470,7 @@ each one's `Engine` value, the side condition its run is sound under, the
 proof `Engine.Sound` of that as a term, and its shims' costs. An entry whose
 theorem does not state its engine's soundness does not type-check.
 `builtinEntries` holds DuckDB's, Polars's and Spark's; their tables
-(`builtinEngines`, each entry's `EngineEntry.profile`) are what every
+(`builtinEngines`, each entry's `EngineEntry.rows`) are what every
 engine-wide fact (`Epsilon.statsProvedOn`, `EngineRobust.signKeptOn`, the
 `--options` and `--realizability` tables) is computed over.
 

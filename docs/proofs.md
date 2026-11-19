@@ -240,7 +240,7 @@ the guard. The modules below it import it as
 | Module | Job |
 |---|---|
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `Profile.okImpl`, `AllowedE`, `Engine.reference`, the per-plan `Refines` certificate |
-| `Entry.lean` | The checker's registry entry for an engine (#1443): the `Engine`, its side condition and its `Engine.Sound` proof as a term, written by `engine_entry%`, and the tables derived from it |
+| `Entry.lean` | The checker's registry entry for an engine (#1443): the `Engine`, its side condition and its `Engine.Sound` proof as a term, written by `engine_entry%` with the names of the theorem and of the side condition, and the tables derived from it |
 | `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
 | `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |

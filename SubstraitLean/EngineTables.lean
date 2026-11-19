@@ -39,7 +39,7 @@ def builtinEntries : List EngineEntry := [
     shims := Profile.spark.shimCosts, executes := "batch" }]
 
 /-- The tables of `builtinEntries`, as the reports read them. -/
-def builtinEngines : List EngineProfile := builtinEntries.map (·.profile)
+def builtinEngines : List EngineProfile := builtinEntries.map (·.rows)
 
 variable [Boxes.Ambient]
 example : builtinEngines.all (·.rowsWf) := by decide +kernel

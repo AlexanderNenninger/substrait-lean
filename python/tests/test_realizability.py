@@ -44,6 +44,8 @@ def test_engines_and_their_translations(table):
     assert table["duckdb"]["theorem"] == "Engine.duckdb_sound"
     assert table["polars"]["theorem"] == "Engine.polars_sound"
     assert table["spark"]["theorem"] == "Engine.spark_sound"
+    assert table["duckdb"]["side"] == "Engine.NoRaiseSide"
+    assert table["polars"]["side"] == table["spark"]["side"] == "Engine.GuardFreeSide"
     for e in table.values():
         assert e["version"]
         assert not [r for r in e["rows"] if r["case"] == "inconsistent"]
