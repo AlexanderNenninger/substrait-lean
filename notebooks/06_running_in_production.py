@@ -4,7 +4,7 @@
 #     "deltalake",
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[delta]",
+#     "sverify[duckdb,delta]",
 # ]
 #
 # [tool.uv.sources]
