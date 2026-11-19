@@ -332,6 +332,12 @@ DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
 raise are rare in real queries. No precondition rules one out; the report
 names the constant.
 
+Note (2026-11-19, theory advisor): D19 states the reference's raise set. An
+engine may evaluate a conjunct on fewer pairs: a pair that another conjunct
+makes not TRUE is in no allowed result (`isTrue_and3`), so by D16 the engine
+may return there. Polars's hash-join keys do, and DuckDB's joins do. No
+reference value, allowed set or raise set changes.
+
 
 ### D20. Two observations per output
 
