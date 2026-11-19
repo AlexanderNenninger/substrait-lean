@@ -80,6 +80,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 import ibis
+import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
@@ -1655,7 +1656,7 @@ def _verify_once(
         if isinstance(transform, str)
         else transform.schema()
     )
-    dtypes = dict(result.items())
+    dtypes = _checker_decimals(dict(result.items()), out.get("outputKinds"))
 
     def describe(f: dict) -> str:
         dtype = dtypes.get(f["name"])
@@ -2064,6 +2065,21 @@ def rounding_hints(
                 f"{k:g} (#85); state it as sv.approx({c.label})"
             )
     return hints
+
+
+def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> dict[str, Any]:
+    """`dtypes` with each decimal column as the checker types it
+    (`outputKinds`, from `Write.relKinds`): Ibis's `AVG` and `SUM` of a decimal
+    differ from the reference's. A checker without the field, or with another
+    number of columns, leaves Ibis's types as they are."""
+    if kinds is None or len(kinds) != len(dtypes):
+        return dtypes
+    return {
+        name: dt.Decimal(k["precision"], k["scale"], nullable=ty.nullable)
+        if k["kind"] == "dec"
+        else ty
+        for (name, ty), k in zip(dtypes.items(), kinds, strict=True)
+    }
 
 
 def _int_bounds(facts: Sequence[dict], dtypes: Mapping[str, Any]) -> dict:
