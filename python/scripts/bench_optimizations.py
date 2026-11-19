@@ -153,23 +153,56 @@ def eager(n: int) -> None:
         )
 
 
+def spread_ms(f: Callable[[], object], runs: int = 7) -> tuple[float, float]:
+    """The median of `runs` runs in ms, and their spread: (max - min) / median."""
+    f()  # warm up
+    times = []
+    for _run in range(runs):
+        t = time.perf_counter()
+        f()
+        times.append((time.perf_counter() - t) * 1000)
+    med = statistics.median(times)
+    return med, (max(times) - min(times)) / med
+
+
+def spark_runner(data: dict[str, pa.Table]) -> Callable[[dict], object] | None:
+    """A Spark run of a plan over `data`, registered as views once so that only
+    the query is timed; None without `sverify-spark`."""
+    try:
+        from sverify_spark import engine as spark_engine
+        from sverify_spark.dialect import SPARK
+    except ImportError:
+        return None
+    spark = spark_engine.session()
+    spark_engine.put_tables(data, spark)
+    return lambda plan: spark.sql(to_sql(plan, SPARK)).toArrow()
+
+
 def rule_case(
     label: str, expr: object, requires: dict, data: dict[str, pa.Table], rule: str
 ) -> None:
-    """One rule of `Rel.rule`: the plan as written and as rewritten, on Polars
-    and DuckDB, and the written SQL's characters."""
+    """One rule of `Rel.rule`: the plan as written and as rewritten, on Polars,
+    DuckDB and Spark, with the run-to-run spread, and the written SQL's
+    characters."""
     report = sv.verify(expr, requires=requires)
     assert rule in report._rewrites, (label, report._rewrites)
     assert report.internal_plan is not None and report._optimized is not None
     p = json.loads(written_plan(report.internal_plan))
     q = report._optimized
     sql_p, sql_q = len(to_sql(p, DUCKDB)), len(to_sql(q, DUCKDB))
-    for name, run in [("polars", polars_engine.run), ("duckdb", duckdb_engine.run)]:
-        as_written = median_ms(lambda run=run: run(p, data))
-        rewritten = median_ms(lambda run=run: run(q, data))
+    runs: list[tuple[str, Callable[[dict], object]]] = [
+        ("polars", lambda plan: polars_engine.run(plan, data)),
+        ("duckdb", lambda plan: duckdb_engine.run(plan, data)),
+    ]
+    if (spark := spark_runner(data)) is not None:
+        runs.append(("spark", spark))
+    for name, run in runs:
+        as_written, sp_w = spread_ms(lambda run=run: run(p))
+        rewritten, sp_r = spread_ms(lambda run=run: run(q))
         print(
-            f"rule {label:14} {name:7}: {as_written:8.1f} ms as written, {rewritten:8.1f} ms"
-            f" rewritten ({as_written / rewritten:.2f}x); SQL {sql_p} -> {sql_q} chars"
+            f"rule {label:15} {name:7}: {as_written:8.1f} ms (±{sp_w:.0%}) as written,"
+            f" {rewritten:8.1f} ms (±{sp_r:.0%}) rewritten ({as_written / rewritten:.2f}x);"
+            f" SQL {sql_p} -> {sql_q} chars"
         )
 
 
