@@ -89,8 +89,7 @@ The decisions below apply them; they add no semantics of their own.
   ([#899](https://github.com/AlexanderNenninger/substrait-lean/issues/899),
   [#1010](https://github.com/AlexanderNenninger/substrait-lean/pull/1010)),
   `Expr.robustB` that of `contract_sound_allowed`, and `Rel.FloatOpenSafe`
-  comes with two sufficient conditions (`Rel.floatOpenSafe_of_closed`,
-  `Rel.floatOpenSafe_aggregate`), as the kind checker's `Rel.kinds_sound`
+  comes with a sufficient condition (`Rel.floatOpenSafe_of_closed`), as the kind checker's `Rel.kinds_sound`
   carries the kinds (D28).
 - Work across epics goes interface first. A change that several epics build
   on lands as its interface before the epics change the definitions behind

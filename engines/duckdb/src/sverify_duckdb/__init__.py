@@ -33,7 +33,7 @@ import pyarrow as pa
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 2:
+if getattr(_meta, "PLUGIN_API", None) != 3:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -382,6 +382,7 @@ PLUGIN = ProfilePlugin(
     # The package writes DuckDB SQL without DuckDB; running plans needs it
     # (`pip install sverify[duckdb]`).
     local=find_spec("duckdb") is not None,
+    checks_assumed=True,
     read_settings=_read_settings,
     dialect=_dialect,
     run_tables=_run_tables,

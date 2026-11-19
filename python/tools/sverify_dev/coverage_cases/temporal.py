@@ -9,7 +9,6 @@ from ibis import _
 
 from sverify_dev.coverage_cases._common import (
     DAY0,
-    NO_ROW_ORDER,
     Case,
     R,
     V,
@@ -153,13 +152,11 @@ REFUSED: dict[str, dict[str, str]] = {
     "time of day": {"spark": "no tod type"},
     "time parts": {"spark": "no tod type"},
     "compare times": {"spark": "no tod type"},
-    "rolling sum by time": NO_ROW_ORDER,
     "time + interval": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
     "time truncate": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
     "date from columns": {"polars": "see #271", "snowflake": "208 MB", "spark": "heap"},
 }
 
-TIE_FREE = {"rolling sum by time"}
 
 NO_DUCKDB_SQL = {
     "epoch_seconds": "DuckDB's epoch keeps the fraction of a second",
