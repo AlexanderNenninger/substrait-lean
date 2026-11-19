@@ -48,7 +48,8 @@ class Store[S](ABC):
 
     `S` is the engine's own handle on a weighted table (`Resident` for a
     table DuckDB holds, `sverify._parts.PartsState` for Polars and Spark),
-    opaque to sverify. The invariant: state stays a handle. The operations take and give back handles, so the state stays
+    opaque to sverify. The invariant: state stays a handle. The operations
+    take and give back handles, so the state stays
     where the engine keeps it; only answers cross into concrete data (a
     count, whether a weight is negative, how many buckets were retired, a
     bounded set of violating keys), and the rows a sink writes at the end.
