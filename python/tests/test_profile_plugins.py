@@ -1,7 +1,7 @@
 """Engine profiles from outside sverify (`sverify.profiles`): a package
 registers a `ProfilePlugin` under the entry-point group `sverify.profiles`,
 beside sverify's own engines, and the routes, the settings check, the version
-check and `semantics=` take it in. The Lean side, a checker over `builtinEngines ++ [a profile]`, is
+check and `semantics=` take it in. The Lean side, a checker over `builtinEntries ++ [an entry]`, is
 `SubstraitCheckExamples/DummyEngine.lean`.
 """
 
