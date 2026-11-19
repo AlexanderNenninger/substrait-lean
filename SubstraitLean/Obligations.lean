@@ -201,11 +201,20 @@ def EngineProfile.evidenced (e : EngineProfile) : Bool :=
     | _ => r.evidence != .none) &&
   e.shims.all fun (n, _) => (shimNames os).contains n
 
-theorem obligations_consistent : builtinEngines.all (·.consistent) := by
+/-- Both checks of this repository's engines, decided by the kernel at once:
+it computes each engine's `obligations` once for the two. -/
+theorem obligations_checked : builtinEngines.all (fun e => e.consistent && e.evidenced) := by
   decide +kernel
 
+theorem obligations_consistent : builtinEngines.all (·.consistent) := by
+  have h := obligations_checked
+  simp only [List.all_eq_true, Bool.and_eq_true] at h ⊢
+  exact fun e he => (h e he).1
+
 theorem obligations_evidenced : builtinEngines.all (·.evidenced) := by
-  decide +kernel
+  have h := obligations_checked
+  simp only [List.all_eq_true, Bool.and_eq_true] at h ⊢
+  exact fun e he => (h e he).2
 
 /-- A row's evidence and its reruns' name the issue tracking their proof,
 where they are no proof (#1131). -/
@@ -512,33 +521,32 @@ theorem Rel.duckdb_refines {cat : Catalog} (r : Rel) :
 /-! ## Every theorem a row names exists -/
 
 open Lean Elab Command Meta in
-unsafe def evalEnginesUnsafe (e : Lean.Expr) : TermElabM (List EngineProfile) :=
-  evalExpr (List EngineProfile) (mkApp (mkConst ``List [.zero]) (mkConst ``EngineProfile)) e
+unsafe def evalEnginesUnsafe (e : Lean.Expr) : TermElabM (List EngineEntry) :=
+  evalExpr (List EngineEntry) (mkApp (mkConst ``List [.zero]) (mkConst ``EngineEntry)) e
 
 open Lean Elab Command Meta in
 @[implemented_by evalEnginesUnsafe]
-opaque evalEngines (e : Lean.Expr) : TermElabM (List EngineProfile)
+opaque evalEngines (e : Lean.Expr) : TermElabM (List EngineEntry)
 
 open Lean Elab Command Meta in
-/-- `#check_engine_profiles es`: fail the build unless every engine of `es`
-names a translation theorem and row theorems that exist (in `Substrait` or
-at the root, or `float-bounds`'s, `floatBoundsTheorems`), and its rows are
-well-formed (`EngineProfile.rowsWf`), within the core (`leCore`),
-consistent and evidenced. For this repository's engines the last four are
-also theorems, by `decide`; a profile from outside states its own. -/
+/-- `#check_engine_profiles es`: fail the build unless the theorems the rows
+of every engine of `es` name exist (in `Substrait` or at the root, or
+`float-bounds`'s, `floatBoundsTheorems`), and its rows are well-formed
+(`EngineProfile.rowsWf`), within the core (`leCore`), consistent, evidenced
+and tracked. That the engine is sound is the entry's type (`EngineEntry.sound`).
+For this repository's engines the checks are also theorems, by `decide`; a
+profile from outside states its own. -/
 elab "#check_engine_profiles " t:term : command => do
   let es ← liftTermElabM do
     let e ← Term.elabTermEnsuringType t
-      (mkApp (mkConst ``List [.zero]) (mkConst ``EngineProfile))
+      (mkApp (mkConst ``List [.zero]) (mkConst ``EngineEntry))
     Term.synthesizeSyntheticMVarsNoPostponing
     evalEngines (← instantiateMVars e)
   let env ← getEnv
   let known (thm : String) : Bool :=
     env.contains (`Substrait ++ thm.toName) || env.contains thm.toName ||
       floatBoundsTheorems.contains thm
-  for e in es do
-    unless known e.translationTheorem do
-      throwError "{e.name}: no translation theorem {e.translationTheorem}"
+  for e in es.map (·.profile) do
     for r in obligations e.table e.obs do
       if let .proved thm _ := r.evidence then
         unless known thm do
@@ -553,7 +561,7 @@ elab "#check_engine_profiles " t:term : command => do
     unless e.evidenced do throwError "{e.name}: a shim or row without evidence or cost"
     unless e.tracked do throwError "{e.name}: a tested or probed row names no issue tracking its proof"
 
-#check_engine_profiles builtinEngines
+#check_engine_profiles builtinEntries
 
 /-! ## For Python -/
 
@@ -589,14 +597,15 @@ def Obligation.json (e : EngineProfile) (r : Obligation) : Json :=
 
 open Lean (Json toJson) in
 /-- `substrait-check --realizability`: per engine, its version, the theorem
-its translation rests on, its shims with their costs, the functions it
+that its run is sound (`EngineEntry.soundName`), its shims with their costs, the functions it
 refuses, and `obligations reference E`'s rows. -/
-def realizabilityJson (es : List EngineProfile) : Json :=
-  Json.mkObj <| es.map fun e =>
+def realizabilityJson (es : List EngineEntry) : Json :=
+  Json.mkObj <| es.map fun entry =>
+    let e := entry.profile
     let os := obligations e.table e.obs
     (e.name, Json.mkObj [
       ("version", toJson e.table.version),
-      ("theorem", toJson e.translationTheorem),
+      ("theorem", toJson entry.theoremName),
       ("shims", Json.arr <| ((shimNames os).map fun s => Json.mkObj [
         ("name", toJson s), ("cost", toJson ((e.shimCost? s).map ShimCost.name))]).toArray),
       ("refused_functions", Json.arr <| (e.table.missing.map fun (f, ids) =>

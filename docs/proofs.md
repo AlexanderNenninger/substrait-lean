@@ -240,6 +240,7 @@ the guard. The modules below it import it as
 | Module | Job |
 |---|---|
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `Profile.okImpl`, `AllowedE`, `Engine.reference`, the per-plan `Refines` certificate |
+| `Entry.lean` | The checker's registry entry for an engine (#1443): the `Engine`, its side condition and its `Engine.Sound` proof as a term, written by `engine_entry%`, and the tables derived from it |
 | `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
 | `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |
@@ -247,7 +248,7 @@ the guard. The modules below it import it as
 | `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
 | `Rewrite.lean` | Running a rewritten plan (#1787): the engine's run of a refinement is allowed for the plan as written, contracts verified on the plan as written hold on it, and `Engine.runPlan` falls back to the plan as written |
 | `Sound.lean` | What an engine's model is sound for (`Engine.Sound`), guard elimination's side condition, and verified contracts on an engine (#900) |
-| `Tables.lean` | The table machinery: the observation rows' constructors and evidence, what reruns give (`withReruns`), `EngineProfile` and its checks, and the JSON a table is reported in |
+| `Tables.lean` | The table machinery: the observation rows' constructors and evidence, what reruns give (`withReruns`), `EngineProfile` (the tables the checker reports per profile) and its checks, and the JSON a table is reported in |
 | `Transfer.lean` | The options a plan meets, and transfer between profiles |
 
 ### DuckDB: `engines/duckdb/Sverify/DuckDB/`
@@ -389,7 +390,7 @@ build as the guard.
 | `Lipschitz/Measures.lean` | Tolerance composition (#929): the columns of reference codes, the fold's `SUM` and `AVG` rows |
 | `Lipschitz/Arith.lean` | Tolerance composition (#929): the arithmetic, `MIN` and `MAX` rows, groups and the sources' row bound |
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
-| `EngineTables.lean` | `builtinEngines`, the engines' tables together, and the dependency and transfer reports over them |
+| `EngineTables.lean` | `builtinEntries`, the engines with their soundness proofs, `builtinEngines`, their tables, and the dependency and transfer reports over them |
 | `Obligations.lean` | The realizability table: how each engine discharges each option; a raise of the reference is an issue (`Rel.hasIssue_of_raises`) |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
 | `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |
@@ -411,7 +412,7 @@ build as the guard.
 | `Examples.lean` | Concrete plans checked with `#guard`, and `#print axioms` |
 | `Main.lean` | The `substrait-check` CLI: `checkerMain` over `builtinEngines` |
 | `SubstraitCheck.lean` | `Checker.checkerMain`, the CLI over a list of engine profiles, which a package with a profile of its own builds on ([engine profiles from outside](engine-profiles.md#engine-profiles-from-outside)) |
-| `SubstraitCheckExamples/DummyEngine.lean` | A test profile, `dummy`, added from outside and checked with `#check_engine_profiles` |
+| `SubstraitCheckExamples/DummyEngine.lean` | The template a package with an engine of its own copies, and its test: `Engine.dummy`, proved sound, its entry by `engine_entry%`, checked with `#check_engine_profiles` |
 | `scripts/RegenLowering.lean`, `scripts/RegenLift.lean` | The drivers of `poe regen-lowering` and `poe regen-lift` |
 
 ### `float-bounds/`

@@ -10,11 +10,11 @@ An engine's choices are a `ProfileTable` and its observation rows an
 `ObsTable` (both in the core). This module holds what every engine's tables
 are written and reported with: the rows' constructors (`ObsRow.native`,
 `ObsRow.shimmed`, `ObsRow.upTo`, …) and their evidence, what reruns give
-(`withReruns`), `EngineProfile`, the entry the checker takes per engine, its
-well-formedness checks (`EngineProfile.rowsWf`, `EngineProfile.leCore`), and
-the JSON the checker reports a table in (`profileRowsJson`). Each engine's
-own tables are in its profile's module (`SubstraitLean/EngineTables.lean`
-for DuckDB, Polars and Spark until #1189's step 5 moves them).
+(`withReruns`), `EngineProfile`, the tables the checker reports per profile,
+their well-formedness checks (`EngineProfile.rowsWf`, `EngineProfile.leCore`),
+and the JSON the checker reports a table in (`profileRowsJson`). Each engine's
+own tables are in its package (`Sverify.DuckDB.Tables`, `Sverify.Polars.Tables`,
+`Sverify.Spark.Tables`).
 -/
 
 namespace Substrait
@@ -140,27 +140,19 @@ inductive ShimCost
 def ShimCost.name : ShimCost → String
   | .argument => "argument" | .expression => "expression" | .sort => "sort"
 
-/-- An engine profile as the checker reports it: its choices, its
-observation rows, the theorem its translation from the reference rests on,
-and its shims' costs. The checker takes a list of them (`checkerMain`), so a
-package outside this repository can add a profile: it requires this one,
-checks its entry with `#check_engine_profiles`, and builds a checker of its
-own over `builtinEngines ++ [its entry]`. -/
+/-- A profile's tables as the checker reports them: its choices, its
+observation rows, its shims' costs and where it executes. An engine's are
+derived from its registry entry (`EngineEntry.profile`,
+`engines/Sverify/Engines/Entry.lean`), which holds the engine and the proof
+that it is sound; Substrait's (`Realize.sources`) has no engine. -/
 structure EngineProfile where
   table : ProfileTable
   obs : ObsTable
-  /-- The theorem the translation from the reference rests on, by name
-  (`Rel.polars_sound`); `#check_engine_profiles` resolves it. -/
-  translationTheorem : String
   /-- Each shim of `obs`, by name, with its cost. -/
   shims : List (String × ShimCost) := []
   /-- Where the engine executes, as `--options` reports it (`"streaming"`,
   `"batch"`), or empty. -/
   executes : String := ""
-  /-- A `--contract` request under this profile gets the reference's report,
-  marked with the profile's name: a plan states the profile's choices as the
-  reference's templates (`Polars.elaborate_eq`). -/
-  asReference : Bool := false
 
 def EngineProfile.name (e : EngineProfile) : String := e.table.name
 

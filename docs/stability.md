@@ -164,11 +164,11 @@ refine the core ([core, profiles and engines](core-and-profiles.md)), and an eng
 by a route that the checker justifies against it
 ([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
 
-| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Translation from the reference | In the 1.x promise |
+| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound by | In the 1.x promise |
 |---|---|---|---|---|---|
-| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Rel.duckdb_refines` | yes |
-| Polars, streaming | `engine="polars"` | | `"polars"` | `Rel.polars_sound` | yes |
-| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Rel.spark_sound` | yes |
+| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Engine.duckdb_sound` | yes |
+| Polars, streaming | `engine="polars"` | | `"polars"` | `Engine.polars_sound` | yes |
+| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound` | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
 `sverify.engines.ENGINES` names the engines in the promise that run plans
