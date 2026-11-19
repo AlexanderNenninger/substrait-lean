@@ -80,6 +80,14 @@ structure Obs where
 /-- The identity: everything observed. -/
 def Obs.exact : Obs := {}
 
+/-- Rows as a multiset and every member read exactly: the exact level of the
+checker's `deterministic` (D48). -/
+def Obs.members : Obs := { rows := .multiset }
+
+/-- Rows as a multiset and one zero and one NaN: the class level of the
+checker's `class_determined` (D48). -/
+def Obs.classes : Obs := { rows := .multiset, zeros := .canon }
+
 def RowsObs.rank : RowsObs → Nat
   | .sequence => 0 | .tiesPermuted => 1 | .multiset => 2
 
