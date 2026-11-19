@@ -173,6 +173,19 @@ RAISES = {"divByZero": "division by zero", "wraps": "overflow", "overflow": "ove
 RAISED = [("<raised>",)]
 
 
+def same_raise(issue: str, duck: object) -> bool:
+    """Whether DuckDB's error is the one the reference's `issue` stands for."""
+    return issue in RAISES and RAISES[issue] in str(duck).lower()
+
+
+def test_only_a_listed_issue_matches_duckdbs_error():
+    assert same_raise("divByZero", ValueError("Division by zero"))
+    assert not same_raise("divByZero", ValueError("Out of Range Error: Overflow"))
+    # An issue with no entry matches no error, whatever DuckDB says.
+    assert not same_raise("domain", ValueError("anything"))
+    assert not same_raise("nonAscii", ValueError(""))
+
+
 def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
     """Lean's rows of the case's plan, and DuckDB's of Ibis's SQL.
 
@@ -196,7 +209,7 @@ def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
             lean_values(json.dumps(plan))
         except LeanRaised as lean:
             issue = str(lean).rsplit(".", 1)[-1]
-            if RAISES.get(issue, "") in str(duck).lower():
+            if same_raise(issue, duck):
                 return RAISED, RAISED
         raise
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
