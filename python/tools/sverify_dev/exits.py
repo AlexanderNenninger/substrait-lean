@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import collections
+import functools
 import json
 import re
 import sys
@@ -34,6 +35,8 @@ BASELINE = Path(__file__).resolve().parents[2] / "tests" / "exits_baseline.json"
 
 #: The classes every refusal derives from, by name, and the helpers that build one.
 _ROOTS = {"SverifyError", "UnsupportedError", "Unsupported", "Refused", "ProducerRefused"}
+#: Data that breaks a condition, not a refusal of sverify's input.
+_DATA = {"PreconditionError", "PostconditionError"}
 _HELPER = re.compile(r"refus|unsupported", re.I)
 #: Classes whose message always ends with an action (`SqlUnsupported` adds a
 #: rewrite, or "write this step in Ibis").
@@ -103,7 +106,8 @@ def _text(node: ast.AST, consts: dict[str, str]) -> str:
     return "{}"
 
 
-def sites(root: Path = SRC) -> list[Site]:
+@functools.cache
+def _sites(root: Path) -> tuple[Site, ...]:
     """Every refusal `raise` under `root`."""
     trees = {
         p: ast.parse(p.read_text())
@@ -139,7 +143,7 @@ def sites(root: Path = SRC) -> list[Site]:
                 continue
             f = n.exc.func
             name = f.id if isinstance(f, ast.Name) else getattr(f, "attr", "")
-            if not (refusal(name) or _HELPER.search(name)):
+            if name in _DATA or not (refusal(name) or _HELPER.search(name)):
                 continue
             msg = _text(n.exc.args[0], consts) if n.exc.args else ""
             if not msg.strip() or msg.strip() == "{}":
@@ -149,8 +153,30 @@ def sites(root: Path = SRC) -> list[Site]:
                     if k.arg in ("message", "reason", "msg")
                 )
             hint = next((_text(k.value, consts) for k in n.exc.keywords if k.arg == "hint"), "")
+            if not re.sub(r"[{}\s]|\w+(?=})", "", msg) and not hint:
+                continue  # forwards a message another site built (`raise RouteError(refused)`)
+            if _wraps_caught(n.exc.args[0] if n.exc.args else None) and not hint:
+                continue  # a prefix on the caught error (`f"condition {c!r}: {e}"`)
             out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint))
-    return out
+    return tuple(out)
+
+
+def _wraps_caught(node: ast.AST | None) -> bool:
+    """An f-string that ends in the caught error (`{e}`, `{err}`): a prefix on
+    another site's message, which names its own exit."""
+    if not isinstance(node, ast.JoinedStr) or not node.values:
+        return False
+    last = node.values[-1]
+    return (
+        isinstance(last, ast.FormattedValue)
+        and isinstance(last.value, ast.Name)
+        and last.value.id in {"e", "err", "exc", "error"}
+    )
+
+
+def sites(root: Path = SRC) -> list[Site]:
+    """Every refusal `raise` under `root` (parsed once per process)."""
+    return list(_sites(root))
 
 
 def unnamed_by_file(found: list[Site] | None = None) -> dict[str, int]:

@@ -228,19 +228,15 @@ class Fn:
 
 
 def _libm(name: str) -> dict[str, str | No]:
-    """An elementary function of a double, C's `libm` on the engines that use it."""
-    sql: dict[str, str | No] = {
+    """An elementary function of a double: C's `libm` on DuckDB and Polars, Java's on
+    Spark, within the ulps its `fp.elem` and `fp.log` rows state (spark-elem-rounding)."""
+    return {
         "": f"{name.upper()}({{0}})",
         "snowflake": No(
             f"Snowflake's {name.upper()} is not documented to be C's libm, "
             "which the Lean model uses"
         ),
     }
-    if name != "sqrt":  # IEEE 754 rounds square roots correctly, as libm does.
-        sql["spark"] = No(
-            f"Spark's {name.upper()} is Java's StrictMath, not the C libm the Lean model uses"
-        )
-    return sql
 
 
 def _fp(name: str, anchor: int, group: str, lift: str, ibis: str) -> Fn:
@@ -351,6 +347,17 @@ FUNCTIONS: tuple[Fn, ...] = (
          lift=("MD5",)),
     _str("sha256", 209, "str.opaque", 1, "str", expr=True, sql={"duckdb": "sha256({0})"}),
 )  # fmt: skip
+
+#: The reference's operations on doubles whose result tells `-0.0` from
+#: `+0.0` beyond `canon` (ruling 160): `atan2` (either argument), IEEE
+#: division (`BinFn.fdivIeee`, the divisor) and `power` (`BinFn.fpow`, the base
+#: under a negative exponent). The reference casts no double to text. Every
+#: other operation on doubles maps the two zeros into one class. An engine
+#: whose read of a zero's sign can differ from the stored value (Snowflake,
+#: recorded privately) admits these only refused or guarded;
+#: `test_sql_snowflake.py::test_zero_sign_readers_are_refused_or_guarded`
+#: checks it, one check per name.
+ZERO_SIGN_READERS: tuple[str, ...] = ("atan2", "fdivIeee", "fpow")
 
 #: The rows by name and by each alias.
 BY_NAME: Mapping[str, Fn] = MappingProxyType(

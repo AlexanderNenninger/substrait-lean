@@ -33,15 +33,15 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Check": {
+  "Sverify.Core.Check": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Choices": {
+  "Sverify.Analysis.Choices": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Completeness": {
+  "Sverify.Core.Completeness": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -109,7 +109,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.EvalFast": {
+  "Sverify.Core.EvalFast": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -117,11 +117,11 @@
    "cpu_s": 30,
    "rss_mb": 2754
   },
-  "SubstraitLean.FloatArithCheck": {
+  "Sverify.Core.FloatArithCheck": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.FloatNear": {
+  "Sverify.Core.FloatNear": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -309,7 +309,7 @@
    "cpu_s": 30,
    "rss_mb": 2790
   },
-  "SubstraitLean.MarginCheck": {
+  "Sverify.Core.MarginCheck": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -349,7 +349,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Quarantine": {
+  "Sverify.Analysis.Quarantine": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -357,15 +357,15 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Refresh": {
+  "Sverify.Analysis.Refresh": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Retention": {
+  "Sverify.Analysis.Retention": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Rewrites": {
+  "Sverify.Core.Rewrites": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -377,7 +377,7 @@
    "cpu_s": 69,
    "rss_mb": 1838
   },
-  "SubstraitLean.Seam": {
+  "Sverify.Analysis.Seam": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -401,7 +401,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.SumBound": {
+  "Sverify.Core.SumBound": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -409,15 +409,15 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Terms": {
+  "Sverify.Analysis.Terms": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.TouchedFrames": {
+  "Sverify.Analysis.TouchedFrames": {
    "cpu_s": 40,
    "rss_mb": 1536
   },
-  "SubstraitLean.TouchedGroups": {
+  "Sverify.Analysis.TouchedGroups": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

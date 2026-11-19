@@ -148,6 +148,15 @@ Three kinds of semantics, each with one job.
   overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
   so neither of the two refines the other.
 
+A plan is verified up to an observation `o` when its verdict is one of the
+proved values and it is determined up to `o`: every result the reference
+allows is equal, up to `o`, to `Rel.eval`'s (`Rel.DeterminedUpTo`). A sound
+engine's model then gives that one observed answer (`Engine.Sound.equiv_eval`),
+and two sound engines agree on it (`Engine.sound_agree`). The proof outcome
+(`Report.verdict`) and the determinism (`Report.deterministic`) are two
+attributes of a report, and "verified" is the term read off both
+([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
+
 Black boxes are rows of a black-box catalogue (`Boxes`,
 `core/Sverify/Core/BlackBox.lean`) that engine packages supply: DuckDB's is
 `Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`). The core holds the
@@ -453,6 +462,7 @@ The Python side has the same three tables, as frozen dataclasses next to
 wave 3's function table (`python/src/sverify/_functions.py`):
 
 ```python
+# skip: a sketch of the tables' shape; the real definitions are in the source
 @dataclass(frozen=True)
 class Option:
     id: str
@@ -1025,9 +1035,9 @@ component, with its default and the reason (#1285):
 | Component | Default | Why |
 |---|---|---|
 | `rows` | `multiset` | SQL gives no order without an `ORDER BY`, so the order of rows is never observed. An `ORDER BY` in the plan does not raise the level: `sequence` is the contract's own request. |
-| `elements` | `sequence` | The order of a list's elements counts. An unordered `collect` or `string_agg` is a place where the order is open ([D24](decisions.md#d24-tie-order-is-open-and-determinism-is-proved)), so `Report.deterministic` is false there until the contract states `elements="multiset"`. |
+| `elements` | `multiset` | The order of a list's elements is never observed, as the order of rows is not: SQL gives none without an `ORDER BY`. It counts with `elements="sequence"`, and an `ORDER BY` inside the aggregate is what makes it determined there; it does not raise the level ([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)). An unordered `collect` is then no tie place once the checker reads it. An unordered `string_agg` is one at every level, since its value is a string. |
 | `floats` | `plan` | Doubles are equal within the bound the checker computes for the plan (`Report.epsilon`, [float-bounds](float-bounds.md)), since engines sum in their own order. A column with no bound is exact. |
-| `zeros` | `exact` | `floats="plan"` already reads one zero and one NaN ([D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)); `zeros="canon"` does it for a column the bound does not cover. |
+| `zeros` | `canon` | `-0.0` equals `0.0` and every NaN equals every other, as the doubles' bound already reads them ([D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)); `zeros="exact"` observes the signs. |
 | `timestamps` | `ns` | Every digit. The reference's timestamps are microseconds and DuckDB and Polars hold at least that; Spark drops the digits past the sixth without an error ([`spark-timestamp-precision`](../engines/spark/facts/spark-timestamp-precision.json)), which a coarser default would hide. |
 | `strings` | `exact` | A difference in non-ASCII text is observed. The reference raises where `UPPER`, `LOWER` and the regular expression classes differ on non-ASCII text ([D51](decisions.md#d51-case-mapping-has-the-value-the-engines-agree-on)); ignoring it is a choice for the contract. |
 | `decimals` | `exact` | The scale of a decimal is part of its type, and `decimal_rescale` pins it on every engine ([`polars-decimal-arith`](../engines/polars/facts/polars-decimal-arith.json), [`spark-decimal-arith`](../engines/spark/facts/spark-decimal-arith.json)). |

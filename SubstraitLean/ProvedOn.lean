@@ -23,7 +23,9 @@ What stays outside: the model is the engine's scalar functions over the
 reference's relational evaluator (`trusted-base.md`), the run is the model
 (`Engine.Runs`), and an open float measure (`VAR_*`, `STDDEV_*`, `COVAR_*`,
 `CORR`, `QUANTILE_CONT`) needs `Rel.FloatOpenSafeP`, which nothing
-discharges yet (#929).
+discharges yet (#929). For a double `SUM` or `AVG`, `Engine.contract_sound_runs_near`
+with `Rel.floatOpenSafeP_aggregate` covers an aggregate at the root
+(`SubstraitLean/OpenSums.lean`).
 -/
 
 namespace Substrait.ContractCheck

@@ -99,7 +99,7 @@ The other options of `check`:
 
 | Option | What it does |
 |---|---|
-| `--select MODEL ...` | Report on these models (their upstream models are checked too) |
+| `--select MODEL ...` | Report on these models (their upstream models are checked too); not with `--selectors`, which needs the whole project |
 | `--format text\|json\|github\|sarif\|junit` | How to print the result (default `text`): `github` is one annotation per finding on the model's file, `sarif` a code-scanning log, `junit` a suite per model; `sverify check` forwards its own |
 | `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 4 past it |
 | `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
@@ -113,6 +113,7 @@ Exit codes, as in `sverify check`: 0 holds, 1 something is not proved, 2 usage (
 The same from Python:
 
 ```python
+# skip: needs a compiled dbt project at path/to/project
 import sverify_dbt
 
 result = sverify_dbt.check("path/to/project")

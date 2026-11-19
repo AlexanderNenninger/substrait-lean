@@ -2,7 +2,7 @@ import Sverify.Analysis.Contracts
 import Sverify.Analysis.Safety
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
-import SubstraitLean.Check
+import Sverify.Core.Check
 import Sverify.Frontend.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Semantic
@@ -86,7 +86,7 @@ def typeEnv : Nat → Json → AVal
     let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
     -- The column's number kind (#923).
     let nk : Option NumKind :=
-      if ["i8", "i16", "i32", "i64"].contains kind then some .int
+      if (Parse.intTags.lookup kind).isSome then some .int
       else if ["fp32", "fp64"].contains kind then some .float
       else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
       else if kind == "date" then some .date
@@ -97,8 +97,7 @@ def typeEnv : Nat → Json → AVal
     -- source read checks it (`sverify.engine.Connection.put`).
     -- The same for a narrow integer: its type's range (D46), which the run's
     -- schema check holds the data to (#1540).
-    let width : Option Nat := match kind with
-      | "i8" => some 7 | "i16" => some 15 | "i32" => some 31 | _ => none
+    let width : Option Nat := (Parse.narrowIntBits? ty).map (· - 1)
     if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
     else if let some w := width then
@@ -1028,17 +1027,18 @@ def foreignKeysOf : ForeignKeys :=
   foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
 
 /-- The transformation rewritten under `K` with the inputs' facts, keys and
-foreign keys (`Rel.optimize`, `check_optimized_sound`), and the rewrites'
-names. -/
-def optimizedIn (K : KnowledgeEnv) : Option (Rel × List String) :=
-  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf
+foreign keys by every rule (`Rel.optimize`, `check_optimized_sound`), and the
+rules applied. The report shows it; the plan an engine runs is gated
+(`Request.runPlanIn`, `SubstraitLean/RunPlan.lean`). -/
+def optimizedIn (K : KnowledgeEnv) : Option (Rel × List Rule) :=
+  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf fun _ => true
 
 /-- The report's `optimized` and `rewrites`: `optimizedIn`'s plan in the
 writer's JSON (trusted, round-tripped where the CLI writes plans), and its
 rewrites. -/
 def optimizedJson (K : KnowledgeEnv) : Json × List String :=
   match R.transform, R.optimizedIn K with
-  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log)
+  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log.map (·.name))
   | _, _ => (.null, [])
 
 end Request
@@ -1677,7 +1677,7 @@ theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `deterministic` is a theorem** (#1484, finding 9). When
 `check` reports the transformation deterministic, every result the reference
-allows for it, every order of the ties (`Rel.OrderAllowed`), is `Rel.eval`'s
+allows for it (`Rel.Allowed`), is `Rel.eval`'s
 up to the order of its rows, for any data that meets the request
 (`DataMeets`): through `Rel.detPlan` (`check_deterministic`) and
 `Rel.allowed_perm_eval`. -/
@@ -1685,7 +1685,7 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out → out.Perm (T.root.eval data) := by
+    ∀ {out : Relation}, T.root.Allowed data out → out.Perm (T.root.eval data) := by
   intro out ho
   rw [check_deterministic hR hc] at hdet
   simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
@@ -1694,7 +1694,17 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detPlan_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd ho
+
+/-- **A deterministic report means one result up to `Obs.members`** (the instance
+of `Rel.DeterminedUpTo` at the exact level, in every context: a multiset of rows
+is a permutation, `Relation.Equiv_multiset_perm`). -/
+theorem check_deterministic_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) (ctx : ObsCtx) :
+    T.root.DeterminedUpTo Obs.members ctx data :=
+  fun _ h => Relation.Equiv_multiset_perm.2 (check_deterministic_sound hR hc hD hT hdet h)
 
 /-- The report's `class_determined` is `Request.classDeterminedIn`'s. -/
 theorem check_classDetermined {input : Json} {R : Request} {rep : Report}
@@ -1710,7 +1720,7 @@ theorem check_classPlaces {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `class_determined` is a theorem** (D48). When `check`
 reports the transformation determined up to the class, every result the
-reference allows for it, every order of the ties (`Rel.OrderAllowed`), is
+reference allows for it (`Rel.Allowed`), is
 `Rel.eval`'s up to the order of its rows and the member of each class of D31
 (`Row.canon`), for any data that meets the request (`DataMeets`): through
 `Rel.detClass` and `Rel.allowed_canon_perm_eval`. -/
@@ -1718,7 +1728,7 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out →
+    ∀ {out : Relation}, T.root.Allowed data out →
       (out.map Row.canon).Perm ((T.root.eval data).map Row.canon) := by
   intro out ho
   rw [check_classDetermined hR hc] at hdet
@@ -1728,7 +1738,22 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detClass data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detClass_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd ho
+
+/-- **A class-determined report means one result up to `Obs.classes`** (the
+instance of `Rel.DeterminedUpTo` at the class level), in a context that reads
+every double of `Rel.eval`'s result as a double (`Relation.DoublesKinded`): the
+bridge `Relation.Equiv_classes_of_canon_perm` from `Row.canon`. The converse
+of the bridge fails (one kind per column), so `check_class_determined_sound`
+stays the primary theorem. -/
+theorem check_class_determined_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) (ctx : ObsCtx)
+    (hk : Relation.DoublesKinded ctx (T.root.eval data)) :
+    T.root.DeterminedUpTo Obs.classes ctx data :=
+  fun _ h => Relation.Equiv_classes_of_canon_perm
+    (check_class_determined_sound hR hc hD hT hdet h) hk
 
 /-! ### The other fields the engine theorems read (#1484, A4)
 
@@ -1823,12 +1848,13 @@ JSON (`Request.CheckOk.optimized`). -/
 theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List String}
+    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List Rule}
     (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
   simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
   rw [← Rel.optimize_congr hD.arity] at hq
-  have := Rel.optimize_sound hD.wf hK.cols hK.facts hK.keys hFK (check_transform_wf hR hc hD hT)
+  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hFK
+    (check_transform_wf hR hc hD hT)
   rw [hq] at this
   exact this
 

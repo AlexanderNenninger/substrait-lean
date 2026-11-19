@@ -1,4 +1,7 @@
 import SubstraitLean.ProvedOn
+import SubstraitLean.RunPlan
+import Sverify.Engines.Rewrite
+import SubstraitLean.IssuesAll
 
 /-!
 # The top-level statements, named (#1484, A7)
@@ -19,7 +22,8 @@ docstring names the sharper theorem.
   guard-free. Polars's and Spark's: closed and guard-free.
 * `DataMeets R data`: the data meets the request (schemas, preconditions,
   keys, caps). `DataAssumed R data T` adds its bounds on rows per key
-  (`rows_per`) and the size hypothesis (`Rel.Small`).
+  (`rows_per`) and the size hypothesis on every order (`Rel.SmallAll`,
+  which gives `Rel.Small`: `DataAssumed.small`).
 * `Post.HoldsOn p out`: every column `p` keeps is TRUE on every row of `out`.
 
 ## The evaluators
@@ -71,11 +75,18 @@ def Verified.DuckDB (rep : Report) (R : Request) : Prop :=
 def Verified.GuardFree (rep : Report) : Prop := rep.closed = true ∧ rep.guardFree = true
 
 /-- The data a contract's engine statements speak of: it meets the request,
-its bounds on rows per key (`rows_per`) and the size hypothesis. -/
+its bounds on rows per key (`rows_per`) and the size hypothesis on every order
+the reference allows (`Rel.SmallAll`, #202): the engine's input is one of
+them. -/
 structure DataAssumed (R : Request) (data : Catalog) (T : Plan) : Prop where
   meets : DataMeets R data
   rowsPer : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows
-  small : T.root.Small data
+  smallAll : T.root.SmallAll data
+
+/-- The size hypothesis on `Rel.eval`'s order, one of every order's. -/
+theorem DataAssumed.small {R : Request} {data : Catalog} {T : Plan} (hD : DataAssumed R data T) :
+    T.root.Small data :=
+  hD.smallAll.small
 
 /-- Every column `p` keeps is TRUE on every row of `out`, the rows of the
 transformation `p` selects from. -/
@@ -116,11 +127,48 @@ theorem verified_holds_spark {input : Json} {R : Request} {rep : Report} {T : Pl
     (hD : DataAssumed R data T) : p.HoldsOn (T.root.eval data Engine.spark.impl) :=
   check_proved_on_spark h.parsed h.checked hD.meets h.transform h.post h.proved hE.1 hD.small hE.2
 
+/-- What a postcondition says of a result holds of it in any order. -/
+theorem Post.HoldsOn.perm {p : Post} {out out' : Relation} (h : p.HoldsOn out')
+    (hp : out.Perm out') : p.HoldsOn out :=
+  fun row hrow => h row (((hp.map _).map _).mem_iff.mp hrow)
+
+/-- **A verified postcondition holds on an engine's run of the plan to run**
+(#1787, `check_run_plan_sound`): where the report is closed and the checker
+gives a plan to run, an engine that is sound under its side condition and
+translates that plan computes rows on which the postcondition holds. The data
+meets the request and its declared foreign keys (`references`), which
+`check_inputs` checks with the other preconditions. -/
+theorem verified_holds_run_plan {input : Json} {R : Request} {rep : Report} {T : Plan} {k : Nat}
+    {p : Post} (h : Verified input R rep T k p) (hclosed : rep.closed = true) {data : Catalog}
+    (hD : DataMeets R data) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    (hs : R.runPlanIn R.kenv = .ok s) {E : Engine} {side : Catalog → Rel → Prop}
+    (hE : E.Sound side) {s' : Rel} (hl : E.lower s = some s') (hside : side data s) :
+    p.HoldsOn (s'.eval data E.impl) := by
+  obtain ⟨hbag, -⟩ := check_run_plan_sound h.parsed h.checked hD h.transform hFK hs
+  obtain ⟨out, hout, hp⟩ := hE.of_refinesBag hl hside hbag
+  rw [check_closed h.parsed h.checked] at hclosed
+  simp only [Request.closedIn, h.transform, Option.any_some] at hclosed
+  exact (verified_holds h hD out (Rel.allowed_orderAllowed hclosed hout)).perm hp
+
+/-- **A verified postcondition holds on DuckDB's model of the plan to run**
+(default route), under DuckDB's report condition, on data that meets the
+request, its declared foreign keys (`references`), its bounds per key and the
+size hypothesis of the plan as written. The gate gives the plan to run what
+DuckDB's side condition needs (`run_plan_noRaise_duckdb`). -/
+theorem verified_holds_run_plan_duckdb {input : Json} {R : Request} {rep : Report} {T : Plan}
+    {k : Nat} {p : Post} (h : Verified input R rep T k p) (hE : Verified.DuckDB rep R)
+    {data : Catalog} (hD : DataAssumed R data T) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    (hs : R.runPlanIn R.kenv = .ok s) :
+    p.HoldsOn ((Lowering.duckdb.lowerRel s).eval data (Engine.duckdb {} rfl).impl) :=
+  verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.duckdb_sound rfl
+    (run_plan_noRaise_duckdb h.parsed h.checked hD.meets h.transform hFK hs hD.rowsPer hD.small
+      hE.2.1 hE.2.2.1 hE.2.2.2)
+
 /-- **A deterministic report means one result up to row order**
 (`check_deterministic_sound`). -/
 theorem checked_deterministic {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) (hd : rep.deterministic = true) {data : Catalog}
-    (hD : DataMeets R data) : ∀ {out : Relation}, T.root.OrderAllowed data out →
+    (hD : DataMeets R data) : ∀ {out : Relation}, T.root.Allowed data out →
       out.Perm (T.root.eval data) :=
   check_deterministic_sound h.parsed h.checked hD h.transform hd
 
@@ -131,13 +179,23 @@ theorem checked_keys {input : Json} {R : Request} {rep : Report} {T : Plan}
     (hD : DataMeets R data) : ∀ {out : Relation}, T.root.OrderAllowed data out → KeyOn k out :=
   check_keys_sound h.parsed h.checked hD h.transform hk
 
-/-- **Every issue that can happen is reported** (`check_issues_sound`), but
-an overflow to `±∞` under a profile other than the reference. -/
+/-- **Every issue that can happen on any order is reported**
+(`check_issues_sound_all`), on the views of a join's inputs included (an
+engine that pushes a condition into one input, #1484 R3), but an overflow to
+`±∞` under a profile other than the reference. -/
+theorem checked_issues_all {input : Json} {R : Request} {rep : Report} {T : Plan}
+    (h : Checked input R rep T) {data : Catalog} (hD : DataAssumed R data T) :
+    ∀ p, T.root.HasIssueAll data false p →
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) :=
+  check_issues_sound_all h.parsed h.checked hD.meets h.transform hD.rowsPer hD.smallAll
+
+/-- **Every issue that can happen on `Rel.eval`'s order is reported**, one
+order of `checked_issues_all`'s. -/
 theorem checked_issues {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) {data : Catalog} (hD : DataAssumed R data T) :
     ∀ p, T.root.HasIssue data false p →
       p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) :=
-  check_issues_sound h.parsed h.checked hD.meets h.transform hD.rowsPer hD.small
+  fun p hp => checked_issues_all h hD p (Rel.hasIssueAll_of_hasIssue hp)
 
 end Substrait.ContractCheck
 

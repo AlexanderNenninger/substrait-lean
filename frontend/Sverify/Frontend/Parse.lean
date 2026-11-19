@@ -143,9 +143,24 @@ def sigTokens (name : String) : List String :=
 Doubles, timestamps and dates all become integers in the model (see
 `core/Sverify/Core/Float.lean`); the parser and the writer track which is which. -/
 
+/-- The integer types and their widths in bits: the one table the parser (kinds,
+literals, `wrap`), the writer (the type of a cast) and the analysis (a column's
+range, D46) read. -/
+def intTags : List (String × Nat) := [("i8", 8), ("i16", 16), ("i32", 32), ("i64", 64)]
+
+/-- The width of an integer type, from its Substrait type (`none` for another). -/
+def intTagBits? (ty : Json) : Option Nat :=
+  (intTags.find? fun (k, _) => (ty.getObjVal? k).toOption.isSome).map (·.2)
+
+/-- The width of a narrow (under 64 bits) integer type. -/
+def narrowIntBits? (ty : Json) : Option Nat := (intTagBits? ty).filter (· < 64)
+
+/-- The smallest integer type holding `n` bits (`i64` for more than 32). -/
+def intTagFor (n : Nat) : String := ((intTags.find? fun (_, b) => n ≤ b).map (·.1)).getD "i64"
+
 partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
-  if ["i8", "i16", "i32", "i64"].any has then .int
+  if intTags.any (fun (k, _) => has k) then .int
   else if ["fp32", "fp64"].any has then .float
   -- Times are microseconds; a coarser precision (Calcite's `TIMESTAMP` is
   -- seconds) would truncate, which is not modelled.
@@ -473,12 +488,8 @@ def roundMicros? (f : Float) : Option Int :=
 #guard (Const.str "0.0").toFloat?.map (·.toBits) == some 0
 
 def intBits (ty : Json) : Nat :=
-  if (ty.getObjVal? "i8").toOption.isSome then 8
-  else if (ty.getObjVal? "i16").toOption.isSome then 16
-  else if (ty.getObjVal? "i32").toOption.isSome then 32
   -- A `FLOAT` is a 32-bit double: arithmetic on it is refused (#208).
-  else if (ty.getObjVal? "fp32").toOption.isSome then 32
-  else 64
+  (intTagBits? ty).getD (if (ty.getObjVal? "fp32").toOption.isSome then 32 else 64)
 
 /-! ## Integer widths
 
@@ -493,7 +504,7 @@ its own type (SQL's `1` is a `BIGINT`, Calcite's an `INT`). Unsigned integers
 /-- Is this an integer type with a type variation (DataFusion's unsigned
 integers)? -/
 def unsignedType (ty : Json) : Bool :=
-  ["i8", "i16", "i32", "i64"].any fun k =>
+  intTags.any fun (k, _) =>
     ((field? ty k).bind (field? · "typeVariationReference")).any (·.getNat?.toOption != some 0)
 
 def schemaBits (schema : Json) : List Nat :=
@@ -592,7 +603,7 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
   -- constants alone is 64-bit, as DataFusion types it.
   | none, none =>
     match (field? j "scalarFunction").bind (field? · "outputType") with
-    | some ty => if (["i8", "i16", "i32"].any fun k => (ty.getObjVal? k).toOption.isSome)
+    | some ty => if (narrowIntBits? ty).isSome
         then intBits ty else if e.readsField then e.bits cols else 64
     | none => if e.readsField then e.bits cols else 64
 
@@ -727,7 +738,7 @@ def instantRefusal (what : String) : String :=
     calendar functions follow"
 
 def parseConstLiteral (j : Json) : J Const := do
-  if ["i8", "i16", "i32", "i64"].any (fun k => (field? j k).isSome) &&
+  if intTags.any (fun (k, _) => (field? j k).isSome) &&
       (field? j "typeVariationReference").any (·.getNat?.toOption != some 0) then
     throw "unsigned integers are not supported"
   let keys := ["boolean", "i8", "i16", "i32", "i64", "fp32", "fp64", "string", "fixedChar",
@@ -800,9 +811,7 @@ def parseConstLiteral (j : Json) : J Const := do
     let i ← getInt n
     -- An integer literal holds its tag's width (#1491); the model's integers
     -- are unbounded, so the width is checked here, where the tag is known.
-    let bits : Nat :=
-      if k == "i8" then 8 else if k == "i16" then 16 else if k == "i32" then 32
-      else if k == "i64" then 64 else 0
+    let bits : Nat := (intTags.lookup k).getD 0
     if bits != 0 && !(decide (-((2 : Int) ^ (bits - 1)) ≤ i) && decide (i < 2 ^ (bits - 1))) then
       throw s!"{k} literal {i} does not fit {k}"
     return .int i

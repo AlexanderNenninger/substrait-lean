@@ -1,4 +1,4 @@
-"""`Rel.evalFast` (`SubstraitLean/EvalFast.lean`, #357) against `Rel.eval`.
+"""`Rel.evalFast` (`core/Sverify/Core/EvalFast.lean`, #357) against `Rel.eval`.
 
 `Rel.evalFast_eq` proves the two equal; these tests check the wiring:
 `substrait-check` evaluates with `Rel.evalFast`, and `--eval-spec` with

@@ -75,7 +75,7 @@ def test_messages() -> None:
 
 def test_engine_specific_rows() -> None:
     assert _support.supported("array_agg", "Polars")
-    assert not _support.supported("array_agg", "spark")
+    assert _support.supported("array_agg", "spark")
     assert _support.supported("ntile", "spark")
     assert not _support.supported("sverify_raise", "snowflake")
     assert _support.supported("add:i64_i64", "snowflake")
