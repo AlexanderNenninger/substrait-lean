@@ -51,3 +51,24 @@ def test_without_a_row_cap_the_product_may_overflow():
     unbounded = {"orders": ["qty IS NULL OR qty BETWEEN -1000000 AND 1000000"]}
     report = sv.verify(EXACT, tables=ORDERS, requires=unbounded, on_inferred="warn")
     assert [i.kind for i in report.errors] == ["overflow"]
+
+
+def test_a_bounded_mean_of_integers_is_exact_and_the_threshold_runs():
+    # 12b-1 (#1608): with `N · max M 1 <= 2^52` every engine's mean of the
+    # converted integers is the reference's (`AvgOrder.int_exact`), so the
+    # mean's column has no tolerance and the threshold keeps the same rows.
+    report = sv.verify(MEAN, tables=ORDERS, requires=BOUNDED, on_inferred="warn")
+    report.to_sql("duckdb")
+    mean = sv.verify(
+        "SELECT AVG(qty) AS m FROM orders", tables=ORDERS, requires=BOUNDED, on_inferred="warn"
+    )
+    assert mean._epsilon is not None
+    bound = mean._epsilon["m"]["bounds"]["abs"]
+    assert bound == {"proved": True, "value": 0}
+
+
+def test_too_many_rows_keep_the_mean_refused():
+    many = {"orders": [BOUNDED["orders"][0], sv.max_rows(2**33)]}
+    report = sv.verify(MEAN, tables=ORDERS, requires=many, on_inferred="warn")
+    with pytest.raises(sv.errors.RouteError, match=r"COUNT\(y\) > SUM\(y\)"):
+        report.to_sql("duckdb")

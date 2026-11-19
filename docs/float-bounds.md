@@ -229,6 +229,14 @@ and the first two steps are exact or nearly so, which keeps `n = 3` within
 tolerance of each other, and one of them is within the tolerance plus `u` of
 the reference's correctly rounded sum, which `"epsilon"` reports:
 
+Integers add exactly. Where every value is an integer and `Σ |xᵢ| ≤ 2⁵³`, every
+partial sum is an integer binary64 holds, so every order above is the exact
+sum (`StdModel.Summed.int_exact`, [`IntExact.lean`](../float-bounds/FloatBounds/IntExact.lean)),
+under the model hypothesis `StdModel.ExactInts`. The core proves the shaped
+orders itself and states the others in `SumOrder` (D35, amended 2026-11-19);
+`"epsilon"` is then `0` for a `SUM` or `AVG` of converted integers with
+`N · max M 1 ≤ 2⁵²` (`Epsilon.intMeanExact`, #1608).
+
 | Theorem | `"epsilon"` |
 |---|---|
 | `epsilon_sum`, `epsilon_avg` | two engine orders: `2 · sumTolScaled N Bs`, `2 · avgTolScaled N Bs`, scaled by `2¹⁰⁷⁴` |
