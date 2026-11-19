@@ -764,27 +764,17 @@ def combineIgnores (noOpen : Bool) (pre : List (Option (List String × List Stri
 
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
 `T.select(…)` from every order to every allowed result: `T` is closed
-(`Rel.closedB`, `contract_sound_allowed_closed`: no `VAR_*`, `STDDEV_*`,
-`COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is order-free
-since D25), or an aggregate whose open measures are double `SUM`s and `AVG`s
-over a closed plan (`Rel.floatOpenSafe_aggregate`), and the column is robust
-under that context without a tolerance (`Expr.robustB`), so it reads no open
-measure. A comparison of an open sum needs
-the shift of its tolerance (#929). -/
+(`Rel.closedB`, `contract_sound_allowed_closed`: no `QUANTILE_CONT`; a double
+`SUM`, `AVG` or statistical aggregate is order-free since D25 and D30), and the
+column is robust under the empty context without a tolerance (`Expr.robustB`),
+so it reads no open measure. A comparison of an open sum needs the shift of
+its tolerance (#929). -/
 def postAllowed (cat : Catalog) (r : Rel) (n : Nat) : List Bool :=
   match r with
   | .emit (.project t es) m =>
-    let ctx? : Option ObsCtx :=
-      if t.closedB then some {} else match t with
-        | .aggregate r gs ms =>
-          if r.closedB && ms.all (fun m => m.closedB || m.openB) then some (aggCtx gs.length ms)
-          else none
-        | _ => none
-    match ctx? with
-    | some ctx =>
-      if m.length != n then List.replicate n false
-      else m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan ctx (fun _ => none)
-    | none => List.replicate n false
+    if t.closedB && m.length == n then
+      m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan {} (fun _ => none)
+    else List.replicate n false
   | _ => List.replicate n false
 
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/

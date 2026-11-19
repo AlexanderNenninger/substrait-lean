@@ -529,8 +529,9 @@ Three consequences:
   every result the reference allows for them.
 
   Amended (2026-11-07, #1017): this holds of closed plans (`Rel.closedB`); a
-  plan with open measures (`Measure.openB`) goes through
-  `contract_sound_allowed` and `Rel.FloatOpenSafe`.
+  plan with open measures goes through `contract_sound_allowed` and
+  `Rel.FloatOpenSafe`. Amended 2026-11-19: no double `SUM` or `AVG` is an open
+  measure after D25, so `Measure.openB` and the machinery for it are removed.
 - A tolerance is a metric: bounds add along a pipeline
   (`Near ε₁ a b → Near ε₂ b c → Near (ε₁ + ε₂) a c`), and no tolerance passes
   through a filter, group key or sort on a double column.
