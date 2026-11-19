@@ -172,7 +172,7 @@ class Observation:
     """`"kind"`: two errors of the same kind are equal, whatever their messages."""
     elements: Elements = "sequence"
     """`"multiset"`: the order of a list's elements is ignored (a `collect`
-    or `string_agg` without an order); `"sequence"`: it counts."""
+    without an order); `"sequence"`: it counts."""
     bound: Within | None = field(default=None, compare=False)
     """With `floats="plan"`, the plan's bound as a tolerance, where the
     report knows it (`Report.observation`): printed beside `floats=plan`,
