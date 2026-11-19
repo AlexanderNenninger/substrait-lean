@@ -828,7 +828,9 @@ jobs:
           $DBT test $SHOP --select selector:sverify_proved
       # The tour's dbt notebook (`poe notebooks` skips it: the python/
       # environment has no dbt).
-      - run: uv run --no-sync --with marimo marimo export html ../notebooks/08_dbt.py -o "$RUNNER_TEMP/08_dbt.html"
+      - env:
+          DO_NOT_TRACK: "1"  # dbt's usage tracking can stall without network
+        run: uv run --no-sync --with marimo marimo export html ../notebooks/08_dbt.py -o "$RUNNER_TEMP/08_dbt.html"
 
   # The pipeline template (templates/pipelines/, #771), as a repository of
   # its own: its tests run its workflows' steps (check, refresh twice, the

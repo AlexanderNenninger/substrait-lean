@@ -227,7 +227,7 @@ def _(mo):
 
     ## 5. What it refuses
 
-    A model sverify can't read is refused, with the reason and what to do.
+    Sverify-dbt refuses a model it can't read, with the reason and what to do.
     We add two: one reads a table by its name, and one is a recursive query:
     """)
     return
@@ -255,8 +255,8 @@ def _(mo):
     The first refusal names its exit: read the table with `{{ ref() }}` or
     `{{ source() }}`, so that sverify-dbt knows which tests describe it. The
     second names the construct, `WITH RECURSIVE`, and the issue that tracks
-    it. In both, `dbt build` still runs the model's tests, and the project's
-    other models are checked as before.
+    it. A refused model proves nothing, so `dbt build` still runs every test on
+    it, and the project's other models are checked as before.
 
     You can now prove a dbt project's tests before its models run, read
     what it couldn't prove and why, fix a model until it holds, and let
