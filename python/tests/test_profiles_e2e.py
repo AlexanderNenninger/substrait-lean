@@ -217,10 +217,20 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
         assert report.verdict == sv.Verdict.PROVED, str(report)
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
-    # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the written plan's
-    # proved template gives the reference's `0.0`.
-    assert route_of(rounded, "duckdb").cls == "shim"
+    # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the default
+    # observation reads one zero, so DuckDB runs it as written; an
+    # observation that reads the signs gets the written plan's proved
+    # template, which gives the reference's `0.0`. Polars shims the
+    # rounding mode either way.
+    assert route_of(rounded, "duckdb").cls == "observed"
     assert route_of(rounded, "polars").cls == "shim"
+    signed = sv.verify(
+        tt.select("k", r=tt.x.round()),
+        requires=req,
+        ensures=[sv.equivalent(floats="plan")],
+    )
+    assert route_of(signed, "duckdb").cls == "shim"
+    assert route_of(signed, "polars").cls == "shim"
     assert mean._epsilon, "the plan's bound on the mean"
     assert route_of(mean, "duckdb").cls in ("exact", "observed")
     assert route_of(mean, "polars").cls == "observed"
@@ -284,7 +294,7 @@ def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
     z.put("d", pa.table({"x": [-0.0, 0.0, float("nan"), float("nan"), 1.0], "v": [1, 2, 3, 4, 5]}))
     d = z.table("d")
     expr = d.group_by("x").aggregate(n=d.v.count())
-    exact = sv.verify(expr)
+    exact = sv.verify(expr, ensures=[sv.equivalent(floats="plan")])
     assert exact.verdict == sv.Verdict.PROVED, str(exact)
     strict = routes.choose(exact, "polars")
     assert (strict.refused and "zeros" in strict.reason) or strict.cls == "shim", strict
