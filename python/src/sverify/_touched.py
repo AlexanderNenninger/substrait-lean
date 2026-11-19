@@ -283,7 +283,7 @@ def _ranged(name, agg, groups, touched, over) -> Ranged | None:
         b = _bucket(g)
         if isinstance(b, str) or b[0].rel != agg.parent:
             continue
-        f, width, _origin = b
+        f, width, _origin, _naive = b
         parent = agg.parent.to_expr()
         dtype = touched[f"k{i}"].type()
         bounds = ibis.table({"__lo": dtype, "__hi": dtype}, name=f"{name}$range")
