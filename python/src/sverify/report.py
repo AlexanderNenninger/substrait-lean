@@ -494,6 +494,11 @@ class Report:
     rewrite), or None where the plan to run is the rewrite."""
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`: the marks of its expressions."""
+    _run_gates: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
+    """Per engine (or `"to_sql"`), why its last run took the plan as written
+    where the checker gave a rewrite: `"writer"` where the engine's writer
+    refused it. A run's own gate, apart from the checker's `_run_gate`
+    (ruling 150, C2)."""
     _inferred: dict[str, list[Condition]] = field(default_factory=dict, repr=False)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
     table: also in `requires`, and assumed like the rest of it."""
@@ -832,6 +837,7 @@ class Report:
         d, finite = self._sql_route(dialect)
         return self._with_plan(
             "translated",
+            "to_sql",
             lambda plan: to_sql(
                 plan,
                 d,
@@ -853,18 +859,20 @@ class Report:
             return json.dumps(self._run_plan)
         return written_plan(self.internal_plan)
 
-    def _with_plan(self, kind: str | None, f: Callable[[str], Any]) -> Any:
+    def _with_plan(self, kind: str | None, engine: str, f: Callable[[str], Any]) -> Any:
         """`f` on the plan to run on the route `kind` (`_plan_to_run`). Where
-        an engine's writer refuses the rewrite (`UnsupportedError`), `f` on the
-        plan as written, and `_run_gate` says `"writer"`: the checker accepted
-        both, so either run is sound (ruling 129, E)."""
+        `engine`'s writer refuses the rewrite (`UnsupportedError`), `f` on the
+        plan as written, with `"writer"` in `_run_gates[engine]`: the checker
+        accepted both, so either run is sound (ruling 129, E). The gate is that
+        engine's, so another engine's run is not marked (ruling 150, C2)."""
         plan = self._plan_to_run(kind)
+        self._run_gates.pop(engine, None)
         if self._run_plan is None or plan == written_plan(self.internal_plan or ""):
             return f(plan)
         try:
             return f(plan)
         except UnsupportedError:
-            self._run_gate = "writer"
+            self._run_gates[engine] = "writer"
             assert self.internal_plan is not None
             return f(written_plan(self.internal_plan))
 
@@ -963,7 +971,7 @@ class Report:
             # On the plan that runs: its issues are among the plan as
             # written's (the checker's `issues` gate, #1787).
             try:
-                self._with_plan(_kind, lambda plan: run_plan(con, plan, "duckdb"))
+                self._with_plan(_kind, "assumed", lambda plan: run_plan(con, plan, "duckdb"))
             except Exception as e:
                 raise self._broken_assumption(e) or e from None
 
@@ -1206,11 +1214,13 @@ class Report:
             ):
                 out = self._with_plan(
                     kind,
+                    name,
                     lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
                 )
             else:
                 out = self._with_plan(
                     kind,
+                    name or str(engine),
                     lambda plan: run_plan(
                         con,
                         plan,
@@ -1945,7 +1955,7 @@ class Report:
 
 
 #: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = ["table_params", "run_plan", "run_gate", "run_unchecked"]
+_REPORT_PRIVATE = ["table_params", "run_plan", "run_gate", "run_unchecked", "run_gates"]
 
 _REPORT_INTERNAL = [
     "windows_total",

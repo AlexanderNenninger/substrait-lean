@@ -7,6 +7,7 @@ by default (`Rule.onByDefault`); these tests turn them on through
 `sverify.contracts._RULES`, as the bench does.
 """
 
+import importlib
 import json
 import re
 import subprocess
@@ -141,8 +142,32 @@ def test_a_writer_that_refuses_the_rewrite_runs_the_plan_as_written(rules):
             raise UnsupportedError("this engine's writer refuses the rewrite")
         return plan
 
-    assert report._with_plan("translated", writer) != rewrite
-    assert report._run_gate == "writer"
+    assert report._with_plan("translated", "refusing", writer) != rewrite
+    assert report._run_gates == {"refusing": "writer"}
+    assert report._run_gate is None
+
+
+def test_a_writer_refusal_marks_that_call_only(rules, monkeypatch):
+    # `to_sql` for a dialect whose writer refuses the rewrite, then a run on an
+    # engine that takes it: the run's gate is not "writer" (ruling 150, C2).
+    rules(DISTINCT)
+    report = sv.verify(T.distinct(), requires=KEY)
+    rewrite = json.dumps(report._run_plan)
+    sql = importlib.import_module("sverify.sql")
+
+    real = sql.to_sql
+
+    def refusing(plan, *args, **kwargs):
+        if plan == rewrite:
+            raise UnsupportedError("this dialect's writer refuses the rewrite")
+        return real(plan, *args, **kwargs)
+
+    monkeypatch.setattr(sql, "to_sql", refusing)
+    assert "GROUP BY" in report.to_sql()
+    assert report._run_gates == {"to_sql": "writer"}
+    monkeypatch.setattr(sql, "to_sql", real)
+    report.run(con(), "duckdb")
+    assert "duckdb" not in report._run_gates and report._run_gate is None
 
 
 @pytest.mark.parametrize("kind", ["translated", "transfer", "native", "recheck", "unverified"])
