@@ -14,6 +14,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, register_refusals
+from sverify.ibis_substrait._constructs import class_construct
 from sverify.plan_json import (
     EPOCH,
     Json,
@@ -44,7 +45,7 @@ def _truncate(x: Exprs, op: Any) -> Json:
     if unit in ("millisecond", "microsecond", "nanosecond"):
         raise Unsupported(
             f"truncating to {unit}s is not supported; truncate to a second or coarser",
-            construct="function date_trunc",
+            construct="function truncate",
         )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
@@ -129,7 +130,7 @@ def _date_diff(x: Exprs, op: Any) -> Json:
 def _date_delta(x: Exprs, op: Any) -> Json:
     if op.part.value != "day":
         raise Unsupported(
-            f"delta in {op.part.value}s is not supported; use days", construct="function date_diff"
+            f"delta in {op.part.value}s is not supported; use days", construct="function delta"
         )
     return call("date_diff", [x(op.left), x(op.right)])
 
@@ -199,7 +200,7 @@ def _date_truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit not in ("day", "week", "month", "quarter", "year"):
         raise ProducerUnsupported(
-            f"truncating a date to a {unit} is not supported", construct="function date_trunc"
+            f"truncating a date to a {unit} is not supported", construct="function truncate"
         )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
@@ -230,12 +231,15 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
             return make_date_json(*(x(a, dt.int64) for a in op.args))
         if values is None:
             raise Unsupported(
-                f"{what} of columns is not supported, only of constants", construct=what.upper()
+                f"{what} of columns is not supported, only of constants",
+                construct=class_construct(what),
             )
         try:
             value = build(*values)
         except (ValueError, OverflowError) as e:
-            raise ProducerUnsupported(f"{what} of {values}: {e}", construct=what.upper()) from e
+            raise ProducerUnsupported(
+                f"{what} of {values}: {e}", construct=class_construct(what)
+            ) from e
         return literal(value, dtype)
 
     return rule
@@ -249,7 +253,7 @@ def _from_unix(x: Exprs, op: Any) -> Json:
     if k is None:
         raise ProducerUnsupported(
             f"timestamps from {op.unit.plural} are not supported",
-            construct="function from_unixtime",
+            construct="function to_timestamp",
         )
     us = x(op.arg, dt.int64)
     if k != 1:
@@ -302,7 +306,7 @@ def _time_truncate(x: Exprs, op: Any) -> Json:
     if unit not in ("hour", "minute", "second", "millisecond", "microsecond"):
         raise ProducerUnsupported(
             f"truncating a time of day to a {unit} is not supported",
-            construct="function date_trunc",
+            construct="function truncate",
         )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 

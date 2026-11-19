@@ -35,7 +35,8 @@ def _like(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         if op.escape is not None:
             raise ProducerUnsupported(
-                f"{name.upper()} with an escape character is not supported", construct=name.upper()
+                f"{name.upper()} with an escape character is not supported",
+                construct=f"function {name}",
             )
         return call(name, [x(op.arg), x(op.pattern)])
 
@@ -50,9 +51,7 @@ def _trim(name: str) -> Callable[[Exprs, Any], Json]:
 def _substring(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0, and from the end for negative starts.
     if isinstance(op.length, ops.Literal) and op.length.value < 0:
-        raise ProducerUnsupported(
-            "substring with a negative length", construct="function substring"
-        )
+        raise ProducerUnsupported("substring with a negative length", construct="function substr")
     start = call("add", [x(op.start, dt.int64), literal(1, dt.int64)])
     start = if_then(
         [(call("gte", [start, literal(1, dt.int64)]), start)],
@@ -181,7 +180,7 @@ def _hex_digest(x: Exprs, op: Any) -> Json:
         raise Unsupported(
             f"hexdigest({op.how!r}) of {op.arg.dtype} is not supported; "
             "md5 and sha256 of strings are",
-            construct=f"function {op.how}",
+            construct="function hexdigest",
         )
     return call(op.how, [x(op.arg)])
 
