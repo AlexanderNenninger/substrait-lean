@@ -67,6 +67,62 @@ theorem KeyOn.map_pairwise {β : Type} {k : List Nat} {rows : Relation} (h : Key
     (rows.map f).Pairwise (· ≠ ·) :=
   List.pairwise_map.mpr (h.imp fun hne heq => hne (hf _ _ heq))
 
+/-! ## The rules -/
+
+/-- The rewrites `Rel.rule` applies, one constructor each. `Rule.name` is the
+report's name for it (`rewrites`). -/
+inductive Rule where
+  | filterImplied | filterRuledOut | leftNullRejecting | leftForeignKey
+  | distinctKey | groupByKey | distinctAggKey
+  | joinForeignKeyUnused | leftKeyUnused
+  | groupByDetermined | aggregateBelowJoin
+  deriving DecidableEq, Repr
+
+/-- The report's name for a rule. -/
+def Rule.name : Rule → String
+  | .filterImplied => "filter implied by the contract"
+  | .filterRuledOut => "filter the contract rules out"
+  | .leftNullRejecting => "left join under a filter rejecting NULLs"
+  | .leftForeignKey => "left join on a foreign key"
+  | .distinctKey => "DISTINCT on a key"
+  | .groupByKey => "GROUP BY a key"
+  | .distinctAggKey => "DISTINCT aggregate of a key"
+  | .joinForeignKeyUnused => "join on a foreign key, no column used"
+  | .leftKeyUnused => "left join on a key, no column used"
+  | .groupByDetermined => "GROUP BY columns that others determine"
+  | .aggregateBelowJoin => "aggregate below a join on a key"
+
+/-- Every rule, in `Rel.rule`'s order. -/
+def Rule.all : List Rule :=
+  [.filterImplied, .filterRuledOut, .leftNullRejecting, .leftForeignKey, .distinctKey,
+    .groupByKey, .distinctAggKey, .joinForeignKeyUnused, .leftKeyUnused, .groupByDetermined,
+    .aggregateBelowJoin]
+
+/-- The rule a report names. -/
+def Rule.ofName? (n : String) : Option Rule := Rule.all.find? (·.name == n)
+
+/-- **The gate** (#1787, item 2): the rules whose rewrite the engine runs by
+default. A rule is on only with a measured gain on one engine (run time or
+written SQL) and no loss beyond the bench's spread on DuckDB, Polars and Spark;
+`docs/optimizations.md` has the numbers. The gate carries no proof weight:
+`Rel.optimize_sound` holds for every choice of rules. -/
+def Rule.onByDefault : Rule → Bool
+  | _ => false
+
+/-- Does every issue the rewrite has on data meeting the preconditions arise
+in the plan as written too? True only with a proved lemma; until then the
+plan to run is the rewrite only where it has no issue at all (ruling 129). -/
+def Rule.keepsIssues : Rule → Bool
+  | _ => false
+
+/-- Does the rewrite keep `Rel.Small` of the plan as written
+(`Rel.rule_small`, `SubstraitLean/RunPlan.lean`)? Every rule but eager
+aggregation, which aggregates the join's left input, whose rows the join's do
+not bound. The plan to run uses only these rules (ruling 129, C). -/
+def Rule.keepsSmall : Rule → Bool
+  | .aggregateBelowJoin => false
+  | _ => true
+
 /-! ## The rewrites -/
 
 /-- Is `e` a column `c` that is a key by itself (`[c]`, `[c, c]` or `[]`)? -/
@@ -144,14 +200,14 @@ key of the right side (at most one partner per left row), and for an inner
 join a foreign key gives every left row one. Returns the rewrite's name, the
 left side and the right side's arity. -/
 def Rel.joinElim (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : TableCond) (R : ForeignKeys) : Rel → Option (String × Rel × Nat)
+    (K : TableCond) (R : ForeignKeys) : Rel → Option (Rule × Rel × Nat)
   | .join a b ty on =>
     if (b.keys cat A F K).any (determines on (a.arity cat)) then
       match ty with
-      | .left => some ("left join on a key, no column used", a, b.arity cat)
+      | .left => some (.leftKeyUnused, a, b.arity cat)
       | .inner =>
         if Rel.fkMatch cat A F K R a b on then
-          some ("join on a foreign key, no column used", a, b.arity cat)
+          some (.joinForeignKeyUnused, a, b.arity cat)
         else none
     else none
   | _ => none
@@ -256,7 +312,7 @@ def fdEmit (qs drops : List Nat) (n m : Nat) : List Nat :=
 determine through `MIN` (all values of a group agree on them). -/
 def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : TableCond) (r : Rel) (gs : List Expr) (ms : List Measure) :
-    Option (String × Rel) :=
+    Option (Rule × Rel) :=
   let fds := r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat)
   let qs := keepCols fds gs
   let drops := (List.range gs.length).filter (!qs.contains ·)
@@ -265,7 +321,7 @@ def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   -- keys (D31): only without doubles.
   if !qs.isEmpty && !drops.isEmpty && drops.all (determinedBy cl gs) &&
       gs.all (fun g => (g.abs (r.aeval cat A F .none)).noDoubles) then
-    some ("GROUP BY columns that others determine",
+    some (.groupByDetermined,
       .emit (.aggregate r (qs.map (gAt gs)) (ms ++ drops.map (minOf gs)))
         (fdEmit qs drops gs.length ms.length))
   else none
@@ -286,7 +342,7 @@ def eagerCols (n : Nat) (gs : List Expr) (out k : Nat) : List Expr :=
 join of the left side's groups with the right side. -/
 def Rel.eagerAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : TableCond) (r : Rel) (gs : List Expr) (ms : List Measure) :
-    Option (String × Rel) :=
+    Option (Rule × Rel) :=
   match r with
   | .join a b .inner on =>
     if !gs.isEmpty && gs.all (·.refsLtB (a.arity cat)) &&
@@ -295,7 +351,7 @@ def Rel.eagerAgg (cat : Catalog) (A : String → List AVal) (F : String → List
         on.allFields (fun i => decide (a.arity cat ≤ i) || (gpos gs i).isSome) &&
         -- The condition may tell `-0.0` from `0.0`, which one group holds (D31).
         gs.all (fun g => (g.abs (a.aeval cat A F .none)).noDoubles) then
-      some ("aggregate below a join on a key",
+      some (.aggregateBelowJoin,
         .emit (.join (.aggregate a gs ms) b .inner
             (on.subst (eagerCols (a.arity cat) gs (gs.length + ms.length) (b.arity cat))))
           (List.range (gs.length + ms.length)))
@@ -304,28 +360,28 @@ def Rel.eagerAgg (cat : Catalog) (A : String → List AVal) (F : String → List
 
 /-- One rewrite at the root, and its name for the report. -/
 def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : TableCond) (R : ForeignKeys) : Rel → Option (String × Rel)
+    (K : TableCond) (R : ForeignKeys) : Rel → Option (Rule × Rel)
   | .filter r c =>
     let a := r.condVal cat A F K c
-    if a.certainlyTrue then some ("filter implied by the contract", r)
-    else if !a.tt then some ("filter the contract rules out", .values (r.arity cat) [])
+    if a.certainlyTrue then some (.filterImplied, r)
+    else if !a.tt then some (.filterRuledOut, .values (r.arity cat) [])
     else match r with
       | .join x y .left on =>
         let pad := x.aeval cat A F (Rel.keyedWindows cat A F K) ++ nullRow (y.arity cat)
         if !(c.absD pad []).tt then
-          some ("left join under a filter rejecting NULLs", .filter (.join x y .inner on) c)
+          some (.leftNullRejecting, .filter (.join x y .inner on) c)
         else none
       | _ => none
   | .join a b .left on =>
-    if Rel.fkMatch cat A F K R a b on then some ("left join on a foreign key", .join a b .inner on)
+    if Rel.fkMatch cat A F K R a b on then some (.leftForeignKey, .join a b .inner on)
     else none
-  | .distinct r => if (r.keys cat A F K).isEmpty then none else some ("DISTINCT on a key", r)
+  | .distinct r => if (r.keys cat A F K).isEmpty then none else some (.distinctKey, r)
   | .aggregate r gs ms =>
     let ks := r.keys cat A F K
     if ms.isEmpty && !gs.isEmpty && groupsKey ks gs then
-      some ("GROUP BY a key", .emit (.project r gs) ((List.range gs.length).map (r.arity cat + ·)))
+      some (.groupByKey, .emit (.project r gs) ((List.range gs.length).map (r.arity cat + ·)))
     else if ms.any fun m => m.distinct && keyCol ks m.arg then
-      some ("DISTINCT aggregate of a key", .aggregate r gs (ms.map (Measure.dropDistinct ks)))
+      some (.distinctAggKey, .aggregate r gs (ms.map (Measure.dropDistinct ks)))
     else match r.joinElim cat A F K R with
       | some (name, a, _) =>
         if gs.all (·.refsLtB (a.arity cat)) && ms.all (·.exprs.all (·.refsLtB (a.arity cat))) then
@@ -347,46 +403,48 @@ def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fac
       | _ => none
   | _ => none
 
-/-- Apply `rule` at the root while it fires (`fuel` times at most), logging
-the names. -/
+/-- Apply `rule` at the root while it fires and `use` allows it (`fuel` times at most),
+logging the rules. A rule that fires and is off leaves the node as it is: the
+rules after it in `Rel.rule`'s order are not tried there. -/
 def Rel.stepN (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : TableCond) (R : ForeignKeys) : Nat → Rel → List String → Rel × List String
+    (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) : Nat → Rel → List Rule → Rel × List Rule
   | 0, r, log => (r, log)
   | fuel + 1, r, log =>
     match r.rule cat A F K R with
-    | some (name, s) => s.stepN cat A F K R fuel (log ++ [name])
+    | some (name, s) => if use name then s.stepN cat A F K R use fuel (log ++ [name]) else (r, log)
     | none => (r, log)
 
 def Rel.step (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : TableCond) (R : ForeignKeys) (r : Rel) (log : List String) :
-    Rel × List String :=
-  r.stepN cat A F K R 4 log
+    (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) (r : Rel) (log : List Rule) :
+    Rel × List Rule :=
+  r.stepN cat A F K R use 4 log
 
-/-- Rewrite bottom-up; also return the names of the rewrites applied. -/
+/-- Rewrite bottom-up with the rules `use` allows; also return the rules
+applied. -/
 def Rel.optimize (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : TableCond) (R : ForeignKeys) : Rel → Rel × List String
+    (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) : Rel → Rel × List Rule
   | .read t => (.read t, [])
   | .values n rows => (.values n rows, [])
-  | .filter r c => step cat A F K R (.filter (r.optimize cat A F K R).1 c) (r.optimize cat A F K R).2
-  | .project r es => step cat A F K R (.project (r.optimize cat A F K R).1 es) (r.optimize cat A F K R).2
-  | .emit r m => step cat A F K R (.emit (r.optimize cat A F K R).1 m) (r.optimize cat A F K R).2
-  | .cross a b => step cat A F K R (.cross (a.optimize cat A F K R).1 (b.optimize cat A F K R).1)
-      ((a.optimize cat A F K R).2 ++ (b.optimize cat A F K R).2)
-  | .join a b ty on => step cat A F K R (.join (a.optimize cat A F K R).1 (b.optimize cat A F K R).1 ty on)
-      ((a.optimize cat A F K R).2 ++ (b.optimize cat A F K R).2)
-  | .fetch r off cnt => step cat A F K R (.fetch (r.optimize cat A F K R).1 off cnt) (r.optimize cat A F K R).2
-  | .unionAll a b => step cat A F K R (.unionAll (a.optimize cat A F K R).1 (b.optimize cat A F K R).1)
-      ((a.optimize cat A F K R).2 ++ (b.optimize cat A F K R).2)
+  | .filter r c => step cat A F K R use (.filter (r.optimize cat A F K R use).1 c) (r.optimize cat A F K R use).2
+  | .project r es => step cat A F K R use (.project (r.optimize cat A F K R use).1 es) (r.optimize cat A F K R use).2
+  | .emit r m => step cat A F K R use (.emit (r.optimize cat A F K R use).1 m) (r.optimize cat A F K R use).2
+  | .cross a b => step cat A F K R use (.cross (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
+  | .join a b ty on => step cat A F K R use (.join (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 ty on)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
+  | .fetch r off cnt => step cat A F K R use (.fetch (r.optimize cat A F K R use).1 off cnt) (r.optimize cat A F K R use).2
+  | .unionAll a b => step cat A F K R use (.unionAll (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
   | .window r part sort fns =>
-      step cat A F K R (.window (r.optimize cat A F K R).1 part sort fns) (r.optimize cat A F K R).2
-  | .semi a b anti on => step cat A F K R (.semi (a.optimize cat A F K R).1 (b.optimize cat A F K R).1 anti on)
-      ((a.optimize cat A F K R).2 ++ (b.optimize cat A F K R).2)
-  | .orderBy r keys => step cat A F K R (.orderBy (r.optimize cat A F K R).1 keys) (r.optimize cat A F K R).2
-  | .distinct r => step cat A F K R (.distinct (r.optimize cat A F K R).1) (r.optimize cat A F K R).2
+      step cat A F K R use (.window (r.optimize cat A F K R use).1 part sort fns) (r.optimize cat A F K R use).2
+  | .semi a b anti on => step cat A F K R use (.semi (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 anti on)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
+  | .orderBy r keys => step cat A F K R use (.orderBy (r.optimize cat A F K R use).1 keys) (r.optimize cat A F K R use).2
+  | .distinct r => step cat A F K R use (.distinct (r.optimize cat A F K R use).1) (r.optimize cat A F K R use).2
   -- Not optimized through (`UNNEST` has no rewrites yet).
   | .unnest r c => (.unnest r c, [])
   | .aggregate r gs ms =>
-      step cat A F K R (.aggregate (r.optimize cat A F K R).1 gs ms) (r.optimize cat A F K R).2
+      step cat A F K R use (.aggregate (r.optimize cat A F K R use).1 gs ms) (r.optimize cat A F K R use).2
 
 /-! ## Soundness -/
 
@@ -1139,7 +1197,7 @@ theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD f
         exact ⟨x, hx, y, rfl⟩
 
 omit hR in
-theorem Rel.fdAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : String}
+theorem Rel.fdAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : Rule}
     (hwf : (Rel.aggregate r gs ms).WF cat) (h : r.fdAgg cat A F K gs ms = some (name, s)) :
     Same cat (.aggregate r gs ms) s := by
   have hfds : ∀ fd ∈ r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat),
@@ -1345,7 +1403,7 @@ theorem Rel.partners_le_one {a b : Rel} {on : Expr} (ha : a.WF cat) (hb : b.WF c
     exact .inr ⟨z, hy⟩
 
 omit hR in
-theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : String}
+theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : Rule}
     (hwf : (Rel.aggregate r gs ms).WF cat) (h : r.eagerAgg cat A F K gs ms = some (name, s)) :
     Same cat (.aggregate r gs ms) s := by
   cases r with
@@ -1558,7 +1616,7 @@ theorem Rel.fkMatch_sound {a b : Rel} {on : Expr} (hm : Rel.fkMatch cat A F K R 
     · simp at hm
   · simp at hm
 
-theorem Rel.joinElim_sound {r a : Rel} {name : String} {k : Nat} (hwf : r.WF cat)
+theorem Rel.joinElim_sound {r a : Rel} {name : Rule} {k : Nat} (hwf : r.WF cat)
     (h : r.joinElim cat A F K R = some (name, a, k)) :
     a.WF cat ∧ r.arity cat = a.arity cat + k ∧
       ∃ g : Row → Row, r.eval cat = (a.eval cat).map g ∧ ∀ x ∈ a.eval cat, ∃ w, g x = x ++ w := by
@@ -1622,7 +1680,7 @@ theorem Rel.joinElim_sound {r a : Rel} {name : String} {k : Nat} (hwf : r.WF cat
     · simp at h
   | _ => simp [joinElim] at h
 
-theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
+theorem Rel.rule_sound {r s : Rel} {name : Rule} (hwf : r.WF cat)
     (h : r.rule cat A F K R = some (name, s)) : Same cat r s := by
   have keys := fun {r : Rel} (hr : r.WF cat) => keys_sound hcat hA hF hK hr
   have cond : ∀ {r : Rel}, r.WF cat → ∀ c : Expr, ∀ row ∈ r.eval cat,
@@ -1822,85 +1880,90 @@ theorem Rel.rule_sound {r s : Rel} {name : String} (hwf : r.WF cat)
         · simp at h
       · simp at h
 
-theorem Rel.stepN_sound : ∀ (fuel : Nat) {r : Rel} {log : List String}, r.WF cat →
-    Same cat r (r.stepN cat A F K R fuel log).1
+theorem Rel.stepN_sound (use : Rule → Bool) :
+    ∀ (fuel : Nat) {r : Rel} {log : List Rule}, r.WF cat →
+    Same cat r (r.stepN cat A F K R use fuel log).1
   | 0, _, _, hwf => ⟨hwf, rfl, rfl⟩
   | fuel + 1, r, log, hwf => by
     unfold stepN
     split
     · rename_i hs
-      have h1 := rule_sound hcat hA hF hK hR hwf hs
-      exact h1.trans (stepN_sound fuel h1.wf)
+      split
+      · have h1 := rule_sound hcat hA hF hK hR hwf hs
+        exact h1.trans (stepN_sound use fuel h1.wf)
+      · exact ⟨hwf, rfl, rfl⟩
     · exact ⟨hwf, rfl, rfl⟩
 
-theorem Rel.step_sound {r : Rel} {log : List String} (hwf : r.WF cat) :
-    Same cat r (r.step cat A F K R log).1 :=
-  stepN_sound hcat hA hF hK hR 4 hwf
+theorem Rel.step_sound {use : Rule → Bool} {r : Rel} {log : List Rule} (hwf : r.WF cat) :
+    Same cat r (r.step cat A F K R use log).1 :=
+  stepN_sound hcat hA hF hK hR use 4 hwf
 
 /-- **Soundness of the rewrites**: on data meeting the preconditions, the
-rewritten plan gives the same rows. -/
-theorem Rel.optimize_sound : ∀ {r : Rel}, r.WF cat → Same cat r (r.optimize cat A F K R).1
+rewritten plan gives the same rows, whichever rules `use` allows: the gate
+(`Rule.onByDefault`) carries no proof weight. -/
+theorem Rel.optimize_sound {use : Rule → Bool} :
+    ∀ {r : Rel}, r.WF cat → Same cat r (r.optimize cat A F K R use).1
   | .read _, hwf | .values _ _, hwf | .unnest _ _, hwf => ⟨hwf, rfl, rfl⟩
   | .filter r c, hwf => by
-    have ih := optimize_sound hwf.1
+    have ih := optimize_sound (use := use) hwf.1
     refine Same.trans ?_ (step_sound hcat hA hF hK hR ?_)
     · exact ⟨⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩, ih.arity, by simp [eval, ih.eval]⟩
     · exact ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
   | .project r es, hwf => by
-    have ih := optimize_sound hwf.1
-    have hw : (Rel.project (r.optimize cat A F K R).1 es).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.project (r.optimize cat A F K R use).1 es).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
     exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
   | .emit r m, hwf => by
-    have ih := optimize_sound hwf.1
-    have hw : (Rel.emit (r.optimize cat A F K R).1 m).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.emit (r.optimize cat A F K R use).1 m).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
     exact Same.trans ⟨hw, rfl, by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
   | .cross a b, hwf => by
-    have iha := optimize_sound hwf.1
-    have ihb := optimize_sound hwf.2
-    have hw : (Rel.cross (a.optimize cat A F K R).1 (b.optimize cat A F K R).1).WF cat := ⟨iha.wf, ihb.wf⟩
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2
+    have hw : (Rel.cross (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1).WF cat := ⟨iha.wf, ihb.wf⟩
     exact Same.trans ⟨hw, by simp [arity, iha.arity, ihb.arity], by simp [eval, iha.eval, ihb.eval]⟩
       (step_sound hcat hA hF hK hR hw)
   | .join a b ty on, hwf => by
-    have iha := optimize_sound hwf.1
-    have ihb := optimize_sound hwf.2.1
-    have hw : (Rel.join (a.optimize cat A F K R).1 (b.optimize cat A F K R).1 ty on).WF cat :=
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2.1
+    have hw : (Rel.join (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 ty on).WF cat :=
       ⟨iha.wf, ihb.wf, by rw [iha.arity, ihb.arity]; exact hwf.2.2⟩
     refine Same.trans ⟨hw, by simp [arity, iha.arity, ihb.arity], ?_⟩ (step_sound hcat hA hF hK hR hw)
     cases ty <;> simp [eval, iha.eval, ihb.eval, ihb.arity]
   | .fetch r off cnt, hwf => by
-    have ih := optimize_sound (r := r) hwf
-    have hw : (Rel.fetch (r.optimize cat A F K R).1 off cnt).WF cat := ih.wf
+    have ih := optimize_sound (use := use) (r := r) hwf
+    have hw : (Rel.fetch (r.optimize cat A F K R use).1 off cnt).WF cat := ih.wf
     exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
   | .unionAll a b, hwf => by
-    have iha := optimize_sound hwf.1
-    have ihb := optimize_sound hwf.2.1
-    have hw : (Rel.unionAll (a.optimize cat A F K R).1 (b.optimize cat A F K R).1).WF cat :=
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2.1
+    have hw : (Rel.unionAll (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1).WF cat :=
       ⟨iha.wf, ihb.wf, by rw [iha.arity, ihb.arity]; exact hwf.2.2⟩
     exact Same.trans ⟨hw, by simp [arity, iha.arity], by simp [eval, iha.eval, ihb.eval]⟩
       (step_sound hcat hA hF hK hR hw)
   | .window r part sort fns, hwf => by
-    have ih := optimize_sound hwf.1
-    have hw : (Rel.window (r.optimize cat A F K R).1 part sort fns).WF cat :=
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.window (r.optimize cat A F K R use).1 part sort fns).WF cat :=
       ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
     exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
   | .semi a b anti on, hwf => by
-    have iha := optimize_sound hwf.1
-    have ihb := optimize_sound hwf.2.1
-    have hw : (Rel.semi (a.optimize cat A F K R).1 (b.optimize cat A F K R).1 anti on).WF cat :=
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2.1
+    have hw : (Rel.semi (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 anti on).WF cat :=
       ⟨iha.wf, ihb.wf, by rw [iha.arity, ihb.arity]; exact hwf.2.2⟩
     exact Same.trans ⟨hw, by simp [arity, iha.arity], by simp [eval, iha.eval, ihb.eval]⟩
       (step_sound hcat hA hF hK hR hw)
   | .orderBy r keys, hwf => by
-    have ih := optimize_sound hwf.1
-    have hw : (Rel.orderBy (r.optimize cat A F K R).1 keys).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.orderBy (r.optimize cat A F K R use).1 keys).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
     exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
   | .distinct r, hwf => by
-    have ih := optimize_sound (r := r) hwf
-    have hw : (Rel.distinct (r.optimize cat A F K R).1).WF cat := ih.wf
+    have ih := optimize_sound (use := use) (r := r) hwf
+    have hw : (Rel.distinct (r.optimize cat A F K R use).1).WF cat := ih.wf
     exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
   | .aggregate r gs ms, hwf => by
-    have ih := optimize_sound hwf.1
-    have hw : (Rel.aggregate (r.optimize cat A F K R).1 gs ms).WF cat :=
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.aggregate (r.optimize cat A F K R use).1 gs ms).WF cat :=
       ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
     exact Same.trans ⟨hw, rfl, by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
 
@@ -1927,9 +1990,9 @@ theorem Rel.optimize_refines {cat : Catalog} (hcat : cat.WF) {A : String → Lis
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
-    (hK : K.Hold cat) {R : ForeignKeys} (hR : R.Hold cat) {r : Rel}
-    (hwf : r.WF cat) (hd : (r.optimize cat A F K R).1.detPlan cat A F K = true) :
-    (r.optimize cat A F K R).1.RefinesBag cat r :=
+    (hK : K.Hold cat) {R : ForeignKeys} (hR : R.Hold cat) {use : Rule → Bool} {r : Rel}
+    (hwf : r.WF cat) (hd : (r.optimize cat A F K R use).1.detPlan cat A F K = true) :
+    (r.optimize cat A F K R use).1.RefinesBag cat r :=
   Rel.refines_of_same hcat hA hF hK (Rel.optimize_sound hcat hA hF hK hR hwf) hd
 
 end Substrait
