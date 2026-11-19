@@ -56,3 +56,26 @@ def test_the_spark_table_is_current_at_the_installed_version():
         pytest.skip("Spark needs a JVM")
     recorded = _recorded("spark")
     assert case_tables.spark_tables() == {d: recorded[d] for d in ("upper", "lower")}
+
+
+@needs_repo
+@pytest.mark.slow
+def test_the_collated_form_is_a_byte_compared_string():
+    """D51 (L3, L4): `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')` is a
+    string that compares, groups, orders and joins by bytes and mixes with an
+    uncollated string; invalid UTF-8 becomes U+FFFD as in the plain function."""
+    pytest.importorskip("pyspark")
+    from spark_session import has_java, session
+
+    if not has_java():
+        pytest.skip("Spark needs a JVM")
+    got = case_tables.collated_string_checks(session())
+    assert got["schema"] == "StringType()"
+    assert got["order_by"] == ["A", "B", "É", "É"] and got["distinct"] == 3
+    assert got["equal_bytes"] == (True, False) or got["equal_bytes"] == [True, False]
+    assert got["mixes_with_plain"] == ("Aa", "Aa", True) or got["mixes_with_plain"] == [
+        "Aa",
+        "Aa",
+        True,
+    ]
+    assert got["invalid_utf8_plain"] == got["invalid_utf8_collated"] == ["efbfbd"]
