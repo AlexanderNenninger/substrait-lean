@@ -4,10 +4,8 @@
 name as the user writes it) and otherwise the SQL keywords in upper case
 (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`). `sverify_dev.exits` counts the
 refusals of `sql_lift/` and `ibis_substrait/` that set none, per file;
-`construct_baseline.json` holds the count and only goes down; it is `{}`, so
-every site sets one. A new one is written with
-
-    python -m sverify_dev.exits --write-baseline
+`construct_baseline.json` is `{}`: every site sets one, and a refusal without
+`construct=` fails here.
 """
 
 import json
