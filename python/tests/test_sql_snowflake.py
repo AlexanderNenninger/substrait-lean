@@ -23,6 +23,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import ibis
+import pyarrow as pa
 import pytest
 import sqlglot
 
@@ -251,6 +252,24 @@ def test_float_literals():
     # The model's one zero and one NaN.
     assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
+
+
+def test_ieee_division_is_the_plain_divide():
+    # DuckDB SQL lifted with `semantics="duckdb"` divides doubles under IEEE
+    # (D39). Snowflake's `/` raises at a zero divisor (Snowflake behaviour
+    # recorded privately), as Spark's does: the written division is the plain
+    # `/`, and a zero divisor raises there (ruling 161), no `CASE` on it.
+    from sverify.engine import connect, put_table, written_plan
+
+    con = connect()
+    put_table(con, "t", pa.table({"a": [1.0], "b": [2.0]}))
+    plan = written_plan(substrait_json(con, "SELECT a / b AS q FROM t", semantics="duckdb"))
+    assert '"IEEE"' in plan
+    sql = to_sql(json.loads(plan), SNOWFLAKE)
+    # The guards around it read the divisor; the division itself is `/`.
+    assert re.search(r'ELSE \(s\d+\."c0" / s\d+\."c1"\)', sql)
+    assert "'inf' AS FLOAT) ELSE" not in sql and "division by zero" not in sql
+    assert SNOWFLAKE.float_div("a", "b") == "(a / b)"
 
 
 @pytest.mark.parametrize(

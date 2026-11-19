@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import math
+import re
 from decimal import Decimal
 from pathlib import Path
 
@@ -186,10 +187,18 @@ def test_floats(spark):
         d.float_eq(neg0, zero),
         d.float_lt(ninf, neg0),
     ) == (True, True, False, True, True)
-    # Division by zero is IEEE, not an error.
-    got = one(*(d.float_div(a, zero) for a in (one_, f"(- {one_})", zero)))
-    assert got[:2] == (math.inf, -math.inf) and math.isnan(got[2])
-    assert one(d.float_div(d.null("float"), zero)) == (None,)
+    # IEEE division by a zero of either sign raises, as ANSI `/` does and
+    # `sparkBin .fdivIeee` states (ruling 161); a non-zero divisor divides.
+    for a in (one_, f"(- {one_})", zero):
+        for z in (zero, neg0):
+            with pytest.raises(Exception, match="(?i)DIVIDE_BY_ZERO|division by zero"):
+                one(d.float_div(a, z))
+    assert one(
+        d.float_div(one_, d.float_lit(4.0)), d.float_div(f"(- {one_})", neg0 + " + 4.0")
+    ) == (
+        0.25,
+        -0.25,
+    )
     # The remainder is C's `fmod`; by zero sverify's error (#203).
     m = [d.float_lit(v) for v in (7.5, -7.5, 2.0, -2.0)]
     got = one(
@@ -274,6 +283,37 @@ def test_variance_of_one_nan(spark):
     got = sorted(tuple(r.values()) for r in spark_engine.run(plan, {"t": t}, spark).to_pylist())
     assert [g for g, *_ in got] == [1, 2]
     assert all(math.isnan(v) and math.isnan(s) for _, v, s in got)
+
+
+def test_ieee_division_by_zero_raises(spark):
+    """DuckDB SQL lifted with `semantics="duckdb"` divides doubles under
+    `on_division_by_zero` = `IEEE` (D39). Written for Spark it is the plain
+    `/`, so a zero divisor raises, `-0.0` as `0.0`, whichever the dividend's
+    sign (ruling 161); a non-zero divisor gives the quotient."""
+    import json
+
+    from sverify_spark import engine as spark_engine
+
+    con = connect()
+    put_table(con, "t", pa.table({"a": [1.0], "b": [2.0]}))
+    plan = written_plan(substrait_json(con, "SELECT a / b AS q FROM t", semantics="duckdb"))
+    assert '"IEEE"' in plan
+    sql = to_sql(json.loads(plan), SPARK)
+    # The guards around it read the divisor; the division itself is `/`.
+    assert re.search(r"ELSE \(s\d+\.`c0` / s\d+\.`c1`\)", sql)
+    assert "'Infinity' AS DOUBLE) ELSE" not in sql and "division by zero" not in sql
+
+    def run(rows: list[tuple[float, float]]) -> list[tuple]:
+        a, b = zip(*rows, strict=True)
+        t = pa.table({"a": pa.array(a, pa.float64()), "b": pa.array(b, pa.float64())})
+        return [tuple(r.values()) for r in spark_engine.run(plan, {"t": t}, spark).to_pylist()]
+
+    assert sorted(run([(3.0, 2.0), (-1.0, 4.0)])) == [(-0.25,), (1.5,)]
+    for a in (1.0, -1.0):
+        for b in (0.0, -0.0):
+            # Beside a row with a non-zero divisor, so the column varies.
+            with pytest.raises(Exception, match="(?i)DIVIDE_BY_ZERO|division by zero"):
+                run([(a, b), (1.0, 2.0)])
 
 
 def test_floor_division(spark):
