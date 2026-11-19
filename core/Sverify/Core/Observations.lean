@@ -289,6 +289,8 @@ def Profile.reference.tools : List ToolRow := [
     precondition := "every substring offset is in [-2³², 2³²) (#336)" },
   { option := "non_ascii_text", tool := .raise,
     precondition := "text is ASCII (without a vertical tab for a regular expression's class) (#1506)" },
+  { option := "case_mapping", tool := .raise,
+    precondition := "no scalar the engines' UPPER or LOWER map differently (D51)" },
   { option := "case_sensitivity", tool := .choose },
   { option := "char_set", tool := .choose },
   { option := "null_handling", tool := .choose },

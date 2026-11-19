@@ -43,7 +43,8 @@
       "items": [
         {"id": "char_set", "kind": "option", "question": "`upper`, `lower`: Unicode or ASCII mappings."},
         {"id": "case_sensitivity", "kind": "option", "question": "`like`, `contains`, `starts_with`, `strpos`, regexes: case-sensitive or not."},
-        {"id": "non_ascii_text", "kind": "option", "question": "`upper`, `lower`, `ilike`, `reverse`, `ascii`, `levenshtein` and regex classes on non-ASCII text, or on a vertical tab: the engine's value against Rust's."},
+        {"id": "non_ascii_text", "kind": "option", "question": "`ilike`, `reverse`, `ascii`, `levenshtein` and regex classes on non-ASCII text, or on a vertical tab: the engine's value against Rust's."},
+        {"id": "case_mapping", "kind": "option", "question": "`upper` and `lower` on each Unicode scalar value: the engine's mapping against the others' (D51)."},
         {"id": "substring_range", "kind": "option", "question": "`substring` offsets and lengths outside 32 bits."},
         {"id": "negative_start", "kind": "option", "question": "`substring` with a negative or zero start; its indexing (characters or bytes, 0- or 1-based)."},
         {"id": "string_positions", "kind": "option", "question": "What `substring` and `strpos` positions count: characters or bytes, from 0 or 1; `strpos` without a match."},

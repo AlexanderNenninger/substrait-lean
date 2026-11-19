@@ -49,6 +49,7 @@ KIND = {
     "raised": "raised by a guard",
     "infinite": "overflow to infinity",
     "nonAscii": "non-ASCII text",
+    "caseDiffers": "text the engines' case mapping treats differently",
 }
 
 

@@ -24,8 +24,10 @@ import tempfile
 import threading
 import warnings
 from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
-import duckdb
+if TYPE_CHECKING:
+    import duckdb
 
 _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.RLock()
@@ -35,6 +37,28 @@ _LOCK = threading.RLock()
 _GONE: list[tuple[str, str]] = []
 #: What forgets a cursor of the database kept elsewhere (`on_reset`).
 _FORGET: list[Callable[[], None]] = []
+
+
+def module() -> Any:
+    """The `duckdb` module, or an `ImportError` that names the extra: verifying
+    needs no DuckDB, and what runs on it does (#1288)."""
+    try:
+        import duckdb
+    except ImportError as e:
+        raise ImportError("this needs DuckDB: pip install 'sverify[duckdb]'") from e
+    return duckdb
+
+
+class _Lazy:
+    """The `duckdb` module, imported on first use: a module that names DuckDB
+    in its code imports without it, and fails with `module`'s message where it
+    runs."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(module(), name)
+
+
+lazy: Any = _Lazy()
 
 
 def limits() -> dict[str, bool | float | int | list[str] | str]:
@@ -63,7 +87,7 @@ def cursor() -> duckdb.DuckDBPyConnection:
     global _DB
     with _LOCK:
         if _DB is None:
-            _DB = duckdb.connect(config=limits())
+            _DB = module().connect(config=limits())
         return _DB.cursor()
 
 

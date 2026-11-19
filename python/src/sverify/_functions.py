@@ -74,6 +74,7 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
             Option("substring_range", None, ("ERROR", "COMPUTE"),
                    (("ERROR", "duckdb-substring-range"),)),
             Option("non_ascii_text", None, ("ERROR", "COMPUTE")),
+            Option("case_mapping", None, ("ERROR", "COMPUTE")),
             Option("case_sensitivity", "case_sensitivity",
                    ("CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII")),
             Option("char_set", "char_set", ("UTF8", "ASCII_ONLY")),
@@ -95,7 +96,7 @@ GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "fp.log": ("rounding", "on_domain_error", "on_log_zero"),
         "str.sub": ("negative_start", "substring_range", "string_positions"),
         "str.match": ("case_sensitivity", "string_positions"),
-        "str.case": ("char_set", "non_ascii_text"),
+        "str.case": ("char_set", "case_mapping"),
         "str.concat": ("null_handling",),
         "str.plain": (),
         "str.opaque": (),
@@ -117,6 +118,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "negative_start"): _asked("WRAP_FROM_END", "LEFT_OF_BEGINNING"),  # #209
                 (None, "substring_range"): Choice(("ERROR",)),  # #336
                 (None, "non_ascii_text"): Choice(("ERROR",)),  # D43
+                (None, "case_mapping"): Choice(("ERROR",)),  # D51
                 (None, "case_sensitivity"): _asked("CASE_SENSITIVE"),
                 (None, "char_set"): _asked("UTF8"),
                 (None, "null_handling"): _asked("ACCEPT_NULLS"),
@@ -136,6 +138,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "non_ascii_text"): Choice(
                     ("ERROR", "COMPUTE")
                 ),  # uncharacterised; open until a fact pins it
+                (None, "case_mapping"): Choice(("ERROR", "COMPUTE")),  # as non_ascii_text
                 (None, "case_sensitivity"): Choice(("CASE_SENSITIVE",)),
                 (None, "char_set"): Choice(("UTF8",)),
                 (None, "null_handling"): Choice(("ACCEPT_NULLS",)),
@@ -194,6 +197,8 @@ class Fn:
     """What its error messages call it; the name by default."""
     ascii: str = ""
     """Engines agree on ASCII text only: what the guard's error calls it."""
+    case: Literal["upper", "lower"] | None = None
+    """Engines agree off a raise set of scalars (`_case_tables`, D51): whose."""
     sql: Mapping[str, str | No] = field(default_factory=dict)
     """The SQL by dialect name, `""` for every other, with `{0}`, `{1}` for
     the operands; a dialect with neither refuses (`Dialect.refused`)."""
@@ -289,11 +294,13 @@ FUNCTIONS: tuple[Fn, ...] = (
     _bit("bitwise_shift_right", 117, "BitwiseRightShift", "({0} >> {1})",
          "shiftright({0}, CAST({1} AS INT))", ""),
     # Strings (`core/Sverify/Core/Text.lean`): characters are Unicode scalar values.
-    # Upper and lower case are a black box, Rust's `str::to_uppercase`;
-    # engines map case with their own tables (`'ß'`).
-    _str("upper", 20, "str.case", 1, "str", expr=True, ascii="UPPER", sql={"": "UPPER({0})"},
+    # Upper and lower case map each scalar as DuckDB, Polars and Spark agree, and raise on the
+    # scalars they map differently (`'ß'`, D51).
+    _str("upper", 20, "str.case", 1, "str", expr=True, case="upper",
+         sql={"": "UPPER({0})", "spark": "collate(upper(collate({0}, 'UNICODE')), 'UTF8_BINARY')"},
          lift=("Upper",), ibis=("Uppercase",)),
-    _str("lower", 21, "str.case", 1, "str", expr=True, ascii="LOWER", sql={"": "LOWER({0})"},
+    _str("lower", 21, "str.case", 1, "str", expr=True, case="lower",
+         sql={"": "LOWER({0})", "spark": "collate(lower(collate({0}, 'UNICODE')), 'UTF8_BINARY')"},
          lift=("Lower",), ibis=("Lowercase",)),
     _str("character_length", 22, "str.plain", 1, "int", "length", expr=True, label="length",
          aliases=("char_length", "length"), ibis=("StringLength",),

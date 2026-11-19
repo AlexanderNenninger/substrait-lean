@@ -141,8 +141,8 @@ _ASCII_S = ~ibis._.s.re_search(r"[^\x00-\x7f]")
 @pytest.mark.parametrize(
     ("expr", "options"),
     [
-        (_S.s.upper(), ["char_set", "non_ascii_text"]),
-        (_S.s.lower(), ["char_set", "non_ascii_text"]),
+        (_S.s.upper(), ["char_set", "case_mapping"]),
+        (_S.s.lower(), ["char_set", "case_mapping"]),
         (_S.s.reverse(), ["non_ascii_text"]),
         (_S.s.ascii_str(), ["non_ascii_text"]),
         (_S.s.levenshtein("x"), ["non_ascii_text"]),
@@ -152,11 +152,12 @@ _ASCII_S = ~ibis._.s.re_search(r"[^\x00-\x7f]")
         (_S.s.length(), []),
     ],
 )
-def test_the_transfer_reads_non_ascii_text_by_group(expr, options, declared):
-    """D43: a profile transfer reads options by group, and is static: under
+def test_the_transfer_reads_text_options_by_group(expr, options, declared):
+    """D43, D51: a profile transfer reads options by group, and is static: under
     `semantics="substrait"` the functions that can report `nonAscii` are
-    unproved on `non_ascii_text` (`COMPUTE` is allowed) whether or not the
-    column is declared ASCII; `length` carries no such option."""
+    unproved on `non_ascii_text`, and `UPPER` and `LOWER` (`caseDiffers`) on
+    `case_mapping` (`COMPUTE` is allowed), whether or not the column is declared
+    ASCII; `length` carries no such option."""
     report = sv.verify(
         _S.select(x=expr),
         requires={"t": [_ASCII_S]} if declared else None,

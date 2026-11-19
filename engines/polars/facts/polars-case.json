@@ -7,11 +7,11 @@
   "area": "strings",
   "options": [
     "char_set",
-    "non_ascii_text"
+    "case_mapping"
   ],
   "rows": [
     {"group": "str.case", "option": "char_set", "types": ["string"]},
-    {"group": "str.case", "option": "non_ascii_text", "types": ["string"]}
+    {"group": "str.case", "option": "case_mapping", "types": ["string"]}
   ],
   "constructs": [
     "str.to_uppercase",

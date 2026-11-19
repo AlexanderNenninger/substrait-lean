@@ -133,9 +133,9 @@ theorem AVal.meetEq_mem {a b : AVal} {v : Value} (ha : a.Mem v) (hb : b.Mem v) (
   · simp_all [AVal.Mem, AVal.meetEq]
   · simp_all [AVal.Mem, AVal.meetEq]
   · simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at hb
-    obtain ⟨⟨⟨hb1, hb2⟩, -⟩, -⟩ := hb
+    obtain ⟨⟨hb1, hb2⟩, -⟩ := hb
     simp only [AVal.Mem, AVal.MemR, AVal.meetEq, Bool.and_eq_true]
-    exact ⟨⟨⟨⟨h.1, hb1⟩, meetStrs_mem h.2 hb2⟩, by simp⟩, by simp⟩
+    exact ⟨⟨⟨h.1, hb1⟩, meetStrs_mem h.2 hb2⟩, by simp [AVal.textOk]⟩
   · exact ⟨by simp [AVal.meetEq, ha.1, hb.1], Bound.mem_meet ha.2.1 hb.2.1, ha.2.2⟩
   · exact ⟨by simp [AVal.meetEq, ha.1, hb.1], ha.2⟩
 
@@ -149,8 +149,8 @@ def AVal.strNot (k : String) (a : AVal) : AVal := { a with strs := a.strs.map (�
 omit [Boxes.Ambient] in
 theorem AVal.strIs_mem {a : AVal} {k : String} (h : a.Mem (.str k)) : (a.strIs k).Mem (.str k) := by
   simp only [AVal.Mem, AVal.MemR, AVal.strIs, Bool.and_eq_true] at *
-  obtain ⟨⟨⟨h1, h2⟩, -⟩, -⟩ := h
-  exact ⟨⟨⟨h1, meetStrs_mem h2 (by simp)⟩, by simp⟩, by simp⟩
+  obtain ⟨⟨h1, h2⟩, -⟩ := h
+  exact ⟨⟨h1, meetStrs_mem h2 (by simp)⟩, by simp⟩
 
 omit [Boxes.Ambient] in
 theorem AVal.strNot_mem {a : AVal} {k : String} {v : Value} (h : a.Mem v)

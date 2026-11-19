@@ -16,9 +16,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 
-import duckdb
 import ibis
 import pyarrow as pa
 import sqlglot as sg
@@ -30,6 +29,11 @@ from sverify._unsupported import SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.plan_json import is_utc
+
+if TYPE_CHECKING:
+    import duckdb
+else:
+    from sverify._duckdb import lazy as duckdb
 
 
 @dataclass(frozen=True)

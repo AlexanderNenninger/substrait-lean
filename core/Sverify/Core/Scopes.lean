@@ -132,6 +132,7 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "negative_start" => args.any fun | .int a => decide (a < 0) | _ => false
   | "substring_range" => iss == some .domain
   | "non_ascii_text" => iss == some Issue.nonAscii
+  | "case_mapping" => iss == some Issue.caseDiffers
   | "case_sensitivity" => true
   | "char_set" => true
   | "null_handling" => args.any (· == .null)
@@ -184,7 +185,7 @@ def scopedOptions : List String :=
   ["overflow", "on_division_by_zero", "division_type", "min_mod_neg_one", "shift_range",
    "decimal_rescale", "rounding", "on_domain_error", "on_log_zero", "nan_creation", "zero_sign",
    "round_zero_sign", "pow_one_inf", "nan_equality", "nan_order", "nan_kind", "negative_start", "substring_range",
-   "non_ascii_text",
+   "non_ascii_text", "case_mapping",
    "case_sensitivity", "char_set", "null_handling", "date_range", "time_interval_months",
    "list_null_order", "sum_order", "stat_algo", "window_sum_algo", "stat_degenerate",
    "avg_int_result", "quantile_interp", "tie_pick", "tie_order", "null_order", "clustered",
@@ -195,28 +196,29 @@ def scopedOptions : List String :=
 #guard options.map (·.id) == scopedOptions
 
 -- A profile transfer reads an option by group (`ctorReads`), so
--- `non_ascii_text` sits on the groups whose functions can report `nonAscii`
--- (D43): a call reads it exactly when its constructor has a `nonAscii` arm.
--- A regular expression reports by its pattern (`classesDiffer`), so it is
--- tried with a class.
+-- `non_ascii_text` and `case_mapping` sit on the groups whose functions can report
+-- `nonAscii` and `caseDiffers` (D43, D51): a call reads an option exactly when its
+-- constructor has an arm for that issue. A regular expression reports by its pattern
+-- (`classesDiffer`), so it is tried with a class; the texts are one the case mapping
+-- treats alike on every engine and the text of each raise set (`ß`, `Σ`).
 #guard letI := Boxes.Ambient.none;
   Functions.strings.all fun r =>
-    match r.ctor with
-    | none => !((Functions.groups.lookup r.group).getD []).contains "non_ascii_text"
-    | some c =>
-      let probe := match c with
-        | .un (.regexMatch _) => Ctor.un (.regexMatch "\\d")
-        | .un (.regexExtract _ _) => .un (.regexExtract "\\d" 0)
-        | .un (.regexReplace _ _ _) => .un (.regexReplace "\\d" "" false)
-        | c => c
-      let reports := match probe with
-        | .un f => f.issue (.str "é") == some Issue.nonAscii
-        | .bin f => f.issue (.str "é") (.str "é") == some Issue.nonAscii
-        | _ => false
-      let reads := match Functions.rowOf probe with
-        | some row => (((Functions.groups.lookup row.group).getD []).filter (optionApplies · probe)).contains
-            "non_ascii_text"
-        | none => false
-      reports == reads
+    [("non_ascii_text", Issue.nonAscii), ("case_mapping", Issue.caseDiffers)].all fun (o, i) =>
+      match r.ctor with
+      | none => !((Functions.groups.lookup r.group).getD []).contains o
+      | some c =>
+        let probe := match c with
+          | .un (.regexMatch _) => Ctor.un (.regexMatch "\\d")
+          | .un (.regexExtract _ _) => .un (.regexExtract "\\d" 0)
+          | .un (.regexReplace _ _ _) => .un (.regexReplace "\\d" "" false)
+          | c => c
+        let reports := ["é", "ß", "Σ"].any fun t => match probe with
+          | .un f => f.issue (.str t) == some i
+          | .bin f => f.issue (.str t) (.str t) == some i
+          | _ => false
+        let reads := match Functions.rowOf probe with
+          | some row => (((Functions.groups.lookup row.group).getD []).filter (optionApplies · probe)).contains o
+          | none => false
+        reports == reads
 
 end Substrait

@@ -3,6 +3,7 @@ import Sverify.Core.Allowed
 import Sverify.Core.AllowedNear
 import Sverify.Core.AllowedP
 import Sverify.Core.BlackBox
+import Sverify.Core.CaseTable
 import Sverify.Core.Conversions
 import Sverify.Core.Decomposable
 import Sverify.Core.Dedup
