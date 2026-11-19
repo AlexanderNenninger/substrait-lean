@@ -72,6 +72,7 @@ from sverify._retention import RetentionReport
 from sverify._run_schema import table_problems
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import Merger, State, Store, arrow_of, by_keys, store_for
+from sverify._store import instants_schema
 from sverify._unsupported import SverifyError
 from sverify._weighted import (
     WEIGHT,
@@ -1274,7 +1275,7 @@ class IncrementalView:
         self.table = self.con.table(self.name)
 
     def _set_schema(self, schema: pa.Schema) -> None:
-        self.schema = schema
+        self.schema = schema = instants_schema(schema)
         weighted_schema = pa.schema([*schema, pa.field(WEIGHT, pa.int64())])
         self._merge = Merger(self.con, weighted_schema, self.store)
         """Adds up weighted tables of the view's rows by a plan Lean

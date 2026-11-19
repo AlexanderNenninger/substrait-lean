@@ -151,7 +151,7 @@
       "checker: unsupported function is_infinite/N": 6
     },
     "datetime": {
-      "checker: unsupported literal: {\"precisionTimestampTz\":{\"precision\":N,\"value\":\"N\"}}": 10,
+      "checker: a literal timestamp with a time zone is not supported yet (#N): a timestamp with a time zone can be read, compared with other such columns, used as a key and wr": 10,
       "checker: gte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
       "checker: lte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
       "checker: gt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
