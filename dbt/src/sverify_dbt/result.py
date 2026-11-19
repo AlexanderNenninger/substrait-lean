@@ -116,6 +116,8 @@ class CheckResult:
     tests: dict[str, Test] = field(repr=False)
     unit_tests: list[str] = field(default_factory=list)
     relations: dict[str, Relation] = field(default_factory=dict, repr=False)
+    selected: bool = False
+    """Whether the check reported on some models only (`check(select=...)`)."""
 
     def suggestions(self) -> list[Suggestion]:
         """The tests sverify suggests adding, so that it proves more: what
@@ -253,9 +255,19 @@ class CheckResult:
         """Add (or replace) the selector `name` in a dbt selectors file,
         keeping its other selectors. dbt reads `selectors.yml` at the root
         of the project; then `dbt build --exclude selector:<name>` skips the
-        proved tests."""
+        proved tests.
+
+        Raises:
+            ValueError: The check reported on some models only: its selector
+                would drop the proved tests of the others, so `dbt build`
+                would run them again. Write it from a full check."""
         import yaml
 
+        if self.selected:
+            raise ValueError(
+                "a selector written from some models only drops the proved tests of the "
+                "others: write it from a check of the whole project (without --select)"
+            )
         path = Path(path)
         data: dict[str, Any] = {}
         if path.is_file():
