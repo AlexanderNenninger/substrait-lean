@@ -2,6 +2,9 @@
 view recomputed from scratch, across random batches of inserts and deletes, on
 every engine.
 
+Keys of other types (doubles with both zeros and NaN, decimals, dates, NULLs) are
+drawn in `test_incremental_keys.py`.
+
 These drive `IncrementalView` and `Pipeline` directly: they test the delta
 rules on any batch, and the guards of a pipeline of several views, which a
 node (one view per stage, fed by its sources) does not reach. What users see
@@ -15,7 +18,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 import sverify as sv
-from _pipelines import connect_with, doubled, paid
+from _pipelines import connect_with, doubled, paid, random_batch
 from sverify.engines import ENGINES
 from sverify.errors import NotIncrementalError
 from sverify.incremental import IncrementalView, Pipeline
@@ -31,16 +34,6 @@ orders_row = st.tuples(st.integers(0, 5), names, st.one_of(st.none(), st.integer
 customers_row = st.tuples(names, st.sampled_from(["Paris", "Rome", None]))
 
 
-@st.composite
-def batch(draw, con, t, row):
-    """Random inserts plus deletes of rows that currently exist."""
-    current = con.rows(t)
-    deletes = draw(st.lists(st.sampled_from(current), unique_by=id, max_size=3)) if current else []
-    # Deleting a row twice needs two copies of it.
-    deletes = [r for i, r in enumerate(deletes) if deletes[: i + 1].count(r) <= current.count(r)]
-    return Changes(inserts=draw(st.lists(row, max_size=3)), deletes=deletes)
-
-
 def run_differential(data, make_view):
     con = connect_with(
         data.draw(st.lists(orders_row, max_size=6)), data.draw(st.lists(customers_row, max_size=4))
@@ -49,7 +42,7 @@ def run_differential(data, make_view):
     assert view.rows() == view.recompute()
     for _ in range(data.draw(st.integers(1, 4))):
         changes = {
-            t: data.draw(batch(con, t, orders_row if t == "orders" else customers_row))
+            t: data.draw(random_batch(con, t, orders_row if t == "orders" else customers_row))
             for t in view.tables
         }
         view.apply(changes)
@@ -149,7 +142,7 @@ def test_string_and_time_views_match_recompute(name, data):
     view = IncrementalView(con, EVENT_VIEWS[name], "v")
     assert view.rows() == view.recompute()
     for _ in range(data.draw(st.integers(1, 3))):
-        view.apply({"events": data.draw(batch(con, "events", events_row))})
+        view.apply({"events": data.draw(random_batch(con, "events", events_row))})
         assert view.rows() == view.recompute()
 
 
