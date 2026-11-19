@@ -741,6 +741,7 @@ class _TableSource(Pipeable, ABC):
         raise SchemaError(
             f"{self.name}: the table's schema is not the one declared with schema=: "
             + "; ".join(sorted(diff))
+            + "; update schema= to the table's schema, or restore the table's columns"
         )
 
     @abstractmethod
