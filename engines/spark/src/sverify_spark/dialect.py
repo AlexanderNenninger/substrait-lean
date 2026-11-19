@@ -340,7 +340,7 @@ class SparkDialect(Dialect):
         CAST(1.5 AS DECIMAL(38,10))` is true, and `GREATEST` of `1.50` and `1.5000000001`
         is `1.50` (spark-decimal-compare-scale). A pair that fits compares exactly. An
         operand of another or unknown kind (a `NULL` literal) is not checked."""
-        if not all(isinstance(k, Dec) or k == "int" for k in (ka, kb)):
+        if not (isinstance(ka, Dec) or ka == "int") or not (isinstance(kb, Dec) or kb == "int"):
             return
         (p1, s1), (p2, s2) = _digits(ka), _digits(kb)
         wide = max(p1 - s1, p2 - s2) + max(s1, s2)
