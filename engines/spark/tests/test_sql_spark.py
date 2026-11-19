@@ -194,7 +194,7 @@ def test_floats(spark):
             with pytest.raises(Exception, match="(?i)DIVIDE_BY_ZERO|division by zero"):
                 one(d.float_div(a, z))
     assert one(
-        d.float_div(one_, d.float_lit(4.0)), d.float_div(f"(- {one_})", neg0 + " + 4.0")
+        d.float_div(one_, d.float_lit(4.0)), d.float_div(f"(- {one_})", f"({neg0} + 4.0)")
     ) == (
         0.25,
         -0.25,
