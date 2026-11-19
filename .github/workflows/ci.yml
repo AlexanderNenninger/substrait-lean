@@ -73,22 +73,20 @@ permissions:
 # workflow on it (`workflow_dispatch`), which runs everything on its merge
 # with main.
 #
-# The light jobs (`static`, `golden`, `notebooks`, `ledger`, `dbt`, `template`:
-# no Lean build, under 1 GB, 15-80 s each) run on the self-hosted AWS runners
-# (ephemeral spot instances, 2 vCPU, 8 GB, at most 3 at once), which leaves
-# GitHub's 20 job slots to the heavy ones. `route` picks the runner: the AWS
+# Most jobs run on the self-hosted AWS runners (ephemeral spot instances,
+# 4 vCPU, 16 GB, at most 8 at once; GitHub's hosted ones are the same size),
+# which leaves GitHub's 20 job slots free. `route` picks the runner: the AWS
 # runners only for pull requests from this repository (never a fork's; never
 # a batch branch `batch/*`, pushes, merge queue entries or dispatches, whose
-# `qa` the merge tooling waits for: a light job queued for lack of a spot
-# instance would stall it), and only when `aws-probe` starts within 3 minutes;
-# otherwise ubuntu-latest.
-# `changes`, `checker`, `qa`, the tests, `bench` (its budgets assume GitHub's
-# CPUs), `oracle-a`, `lean`, `float-bounds` and `refresh-model` stay on
-# GitHub's runners.
+# `qa` the merge tooling waits for: a job queued for lack of a spot instance
+# would stall it), and only when `aws-probe` starts within 3 minutes;
+# otherwise ubuntu-latest. `changes`, `qa`, `bench` (its budgets assume
+# GitHub's CPUs), `float-bounds` and `refresh-model` always run on GitHub's
+# runners.
 jobs:
-  # Where the light jobs run (see the header): GitHub's runners, or the
+  # Where the jobs below run (see the header): GitHub's runners, or the
   # self-hosted AWS runners when one picks `aws-probe` up in time. `light` is
-  # a JSON `runs-on`; every light job takes it from here. This job never
+  # a JSON `runs-on`; every job that may run on AWS takes it from here. This job never
   # fails: any doubt answers GitHub's runners.
   route:
     runs-on: ubuntu-latest
@@ -96,7 +94,7 @@ jobs:
     permissions:
       actions: read # to read `aws-probe`'s status
     outputs:
-      light: ${{ steps.pick.outputs.light }}
+      runner: ${{ steps.pick.outputs.runner }}
     steps:
       - id: pick
         continue-on-error: true
@@ -105,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # GitHub's runners unless the loop below finds an AWS one.
-          echo 'light="ubuntu-latest"' >> "$GITHUB_OUTPUT"
+          echo 'runner="ubuntu-latest"' >> "$GITHUB_OUTPUT"
           # `aws-probe` runs only for this repository's own pull requests (it is
           # skipped for forks, batch branches and other events). Spot launch and boot
           # take about a minute; past 3 minutes the probe is still queued
@@ -116,12 +114,12 @@ jobs:
             st=$(gh api "$url" --jq '.jobs[]|select(.name=="aws-probe")|.status+" "+(.conclusion//"")') || st=
             case "$st" in
               "in_progress "*|"completed success") echo "AWS runner picked up the probe."
-                echo 'light=["self-hosted","linux","x64","aws"]' >> "$GITHUB_OUTPUT"; exit 0;;
+                echo 'runner=["self-hosted","linux","x64","aws"]' >> "$GITHUB_OUTPUT"; exit 0;;
               "completed "*) echo "Probe skipped or failed ($st): GitHub's runners."; exit 0;;
             esac
             sleep 5
           done
-          echo "::warning::No AWS runner picked up the probe in 3 minutes: the light jobs run on GitHub's runners."
+          echo "::warning::No AWS runner picked up the probe in 3 minutes: those jobs run on GitHub's runners."
 
   # Starts an AWS runner (ephemeral: one job each) so `route` can tell whether
   # one is available; it queues until one starts, and a run with no runner
@@ -305,13 +303,14 @@ jobs:
   # build skips the generated proofs (`lean` checks them), so it restores the
   # lake cache without saving it: the cache keeps the checked build.
   checker:
-    needs: changes
+    needs: [route, changes]
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.ledger == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     # `actions: read` for main's checker, the artifact of main's last run.
     permissions:
       contents: read
       actions: read
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -382,9 +381,10 @@ jobs:
 
   # Every proof, the generated entries' included, when a Lean input changed.
   lean:
-    needs: changes
+    needs: [route, changes]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -498,7 +498,7 @@ jobs:
   golden:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs != 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -513,7 +513,7 @@ jobs:
   static:
 
     needs: route
-    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -536,7 +536,7 @@ jobs:
   # pay for the setup once. `changes` leaves out the engines a pull request
   # cannot affect.
   test:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true'
     name: test (${{ matrix.backends }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     strategy:
@@ -544,7 +544,8 @@ jobs:
       # `core` is split into three shards (`SVERIFY_SHARD`, tests/conftest.py)
       # so that no job runs much longer than the others.
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -583,9 +584,10 @@ jobs:
   # a package the wheel test lacks, fails here, on its own pull request,
   # instead of in a release's Wheels run (0.5.0, 0.6.0).
   outside-repo:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -607,7 +609,7 @@ jobs:
   # the benchmarks and on every sqllogictest file the ledgers decided a query
   # of; a query that no longer agrees, or newly disagrees, fails the job.
   oracle-a:
-    needs: [changes, checker]
+    needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.oracle == 'true'
     name: oracle-a (${{ matrix.shard }})
     strategy:
@@ -615,7 +617,7 @@ jobs:
       matrix:
         # The files split four ways (`--shard`); the benchmarks run in the first.
         shard: [1/4, 2/4, 3/4, 4/4]
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -644,7 +646,7 @@ jobs:
   notebooks:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.notebooks == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -697,7 +699,7 @@ jobs:
   ledger:
     needs: [route, changes, checker]
     if: needs.changes.outputs.ledger == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -754,7 +756,7 @@ jobs:
   dbt:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
     defaults:
       run:
@@ -801,7 +803,7 @@ jobs:
   template:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.light) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
