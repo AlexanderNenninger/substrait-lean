@@ -17,6 +17,7 @@ import Sverify.Analysis.Partition
 import Sverify.Analysis.ProfileImpl
 import Sverify.Analysis.Quarantine
 import Sverify.Analysis.Refines
+import Sverify.Analysis.Refresh
 import Sverify.Analysis.Retention
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Safety

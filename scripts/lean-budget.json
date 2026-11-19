@@ -357,7 +357,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Core.Refresh": {
+  "Sverify.Analysis.Refresh": {
    "cpu_s": 30,
    "rss_mb": 1536
   },

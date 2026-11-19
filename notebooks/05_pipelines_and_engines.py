@@ -703,7 +703,7 @@ def _(mo):
     another row shares its key: both rows of a repeated `id` go, so the rule
     needs no order between them. Every precondition holds on the rows that
     stay (`Catalog.kept_sound` in
-    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Quarantine.lean)),
+    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/analysis/Sverify/Analysis/Quarantine.lean)),
     so `paid`'s proof holds as before. We feed a Delta table an order with a
     negative amount and one with an id that exists already:
     """)

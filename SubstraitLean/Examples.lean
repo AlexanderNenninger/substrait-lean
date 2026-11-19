@@ -1,5 +1,5 @@
 import Sverify.Core.Kinds
-import Sverify.Core.Refresh
+import Sverify.Analysis.Refresh
 import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Profile
 import Sverify.Core.Rewrites

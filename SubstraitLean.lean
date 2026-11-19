@@ -110,7 +110,7 @@ import SubstraitLean.Realize
 import Sverify.Frontend.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Examples
-import Sverify.Core.Refresh
+import Sverify.Analysis.Refresh
 import SubstraitLean.Engine
 import SubstraitLean.IssuesAll
 import SubstraitLean.ProvedOn

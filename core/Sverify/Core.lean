@@ -32,7 +32,6 @@ import Sverify.Core.Order
 import Sverify.Core.OrderAllowed
 import Sverify.Core.Profile
 import Sverify.Core.Reflect
-import Sverify.Core.Refresh
 import Sverify.Core.Regex
 import Sverify.Core.Rel
 import Sverify.Core.Rewrites
