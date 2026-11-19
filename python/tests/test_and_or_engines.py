@@ -141,7 +141,12 @@ def _leaf():
         st.builds(lambda k: t.i == k, st.integers(-5, 5)),
         st.builds(lambda k: t.f < k, st.floats(-5, 5, allow_nan=False)),
         st.builds(lambda k: t.s == k, st.sampled_from(["a", "b", ""])),
-        st.builds(lambda ks: t.s.isin(ks), st.lists(st.sampled_from(["a", "b", "c"]), min_size=1)),
+        # A repeated `IN` list costs the checker seconds (8-15 s for 11 values), so the
+        # lists are short and without repeats.
+        st.builds(
+            lambda ks: t.s.isin(ks),
+            st.lists(st.sampled_from(["a", "b", "c"]), min_size=1, max_size=3, unique=True),
+        ),
         st.builds(lambda ks: t.i.isin(ks), st.lists(st.integers(-3, 3), min_size=1, max_size=3)),
         st.just(t.d.isnull()),
         st.builds(lambda k: t.n > k, st.decimals(-5, 5, places=2)),
