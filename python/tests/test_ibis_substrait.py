@@ -17,7 +17,7 @@ from typing import cast
 import ibis
 import ibis.expr.datatypes as idt
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from sverify._lean_eval import LeanRaised
@@ -125,6 +125,9 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
 @settings(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
+# A zero divisor: `sum(qty) / sum(id)` with `id = 0` raises in the reference and in
+# DuckDB, which is an agreement (seed 17 of #1728).
+@example(t=[(0, "ada", None, 1, EPOCH, None)], u=[], lr=[])
 @given(t=t_rows(), u=u_rows, lr=l_rows)
 def test_plans_mean_what_ibis_means(case, t, u, lr):
     if case.label in DOMAIN_ERRORS:
@@ -164,8 +167,19 @@ def test_plans_mean_what_ibis_means(case, t, u, lr):
         assert canonical(got) == canonical(expected)
 
 
+#: What DuckDB's message says where the reference raises the issue: both
+#: raising it is an agreement.
+RAISES = {"divByZero": "division by zero", "wraps": "overflow", "overflow": "overflow"}
+RAISED = [("<raised>",)]
+
+
 def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
-    """Lean's rows of the case's plan, and DuckDB's of Ibis's SQL."""
+    """Lean's rows of the case's plan, and DuckDB's of Ibis's SQL.
+
+    Where the reference raises, the case agrees (each side is `RAISED`) if
+    DuckDB raises the same error, or for a zero divisor gives ±inf or NaN, which
+    an error allows (`duckdb-R15-math-domain`). Where only one side raises
+    otherwise, its error propagates."""
     expr = case.build()
     con = connect()
     con.create("t", T.schema(), t)
@@ -173,12 +187,27 @@ def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
     con.create("l", L.schema(), lr)
     for name, table in MEMTABLES.items():
         put_table(con, name, table)
-    out = duckdb_ibis(con, expr)
     schema = expr.schema()
+    plan = inline_tables(to_substrait(expr), {"t": t, "u": u, "l": lr})
+    try:
+        out = duckdb_ibis(con, expr)
+    except Exception as duck:  # noqa: BLE001 - compared with the reference's raise below
+        try:
+            lean_values(json.dumps(plan))
+        except LeanRaised as lean:
+            issue = str(lean).rsplit(".", 1)[-1]
+            if RAISES.get(issue, "") in str(duck).lower():
+                return RAISED, RAISED
+        raise
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     expected = normalize(rows, schema, lean=False)
-    plan = inline_tables(to_substrait(expr), {"t": t, "u": u, "l": lr})
-    got = normalize(lean_values(json.dumps(plan)), schema, lean=True)
+    try:
+        got = normalize(lean_values(json.dumps(plan)), schema, lean=True)
+    except LeanRaised as lean:
+        non_finite = any(isinstance(v, float) and not math.isfinite(v) for r in rows for v in r)
+        if str(lean).endswith("divByZero") and non_finite:
+            return RAISED, RAISED
+        raise
     return got, expected
 
 
