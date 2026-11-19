@@ -252,16 +252,31 @@ def test_approx_checks_its_condition_when_called() -> None:
     assert sv.approx(_.mean_t >= -90).rel == 1e-6
 
 
-def test_an_ibis_type_error_names_its_condition() -> None:
+def test_an_ibis_condition_that_does_not_type_check_is_named_in_the_error() -> None:
     expr = double_charges(PAYMENTS)
-    with pytest.raises(TypeError) as e:
-        sv.verify(
-            expr, ensures=[_.first_ts.notnull(), _.dup_ts - _.first_ts <= ibis.interval(minutes=5)]
-        )
-    assert str(e.value).startswith(
-        "ensures condition 2, ((_.dup_ts - _.first_ts) <= ibis.interval(minutes=5)), "
-        "does not type-check: "
-    )
+    cond = _.dup_ts - _.first_ts <= ibis.interval(minutes=5)
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify(expr, ensures=[_.first_ts.notnull(), cond])
+    (label,) = e.value.errors
+    assert label == "((_.dup_ts - _.first_ts) <= ibis.interval(minutes=5))"
+    assert "does not type-check: " in str(e.value.errors[label])
+
+
+def test_an_ibis_condition_on_a_missing_column_is_named_in_the_error() -> None:
+    expr = double_charges(PAYMENTS)
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify(expr, ensures=[_.zz > 1])
+    assert list(e.value.errors) == ["(_.zz > 1)"]
+    assert "no column 'zz'" in str(e.value.errors["(_.zz > 1)"])
+
+
+def test_the_keys_of_condition_error_are_spelt_as_checked_condition_label() -> None:
+    expr = double_charges(PAYMENTS)
+    r = sv.verify(expr, ensures=[_.first_ts.notnull()])
+    assert r.ensures[0].label == "_.first_ts.notnull()"
+    with pytest.raises(sv.errors.ConditionError) as e:
+        sv.verify(expr, ensures=[_.first_ts.notnull(), _.zz.notnull()])
+    assert list(e.value.errors) == ["_.zz.notnull()"]
 
 
 @pytest.mark.parametrize(

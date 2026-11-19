@@ -62,7 +62,8 @@ Unsupported = UnsupportedError
 class ConditionError(UnsupportedError):
     """Conditions of `requires` or `ensures` that sverify cannot read: a
     column the table or the result does not have, SQL outside what the lift
-    reads, a construct outside the model. `verify` reads every condition
+    reads, a construct outside the model, an Ibis condition that does not
+    type-check or names a column the table lacks. `verify` reads every condition
     before it proves anything and raises once, naming all of them; the query
     itself is not refused. Fix or drop those conditions.
     `sverify.errors.ConditionError`.
