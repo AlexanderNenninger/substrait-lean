@@ -258,8 +258,9 @@ def allows_rows(
     sort in.
 
     What the oracle accepts is allowed by the reference
-    (`Rel.evalChoices_allowed`) for plans without an aggregate, a `FETCH` or a
-    window; for the others it is tested (`docs/trusted-base.md`)."""
+    (`Rel.evalChoices_allowed`) for plans without a `FETCH`, a window or an
+    ordered aggregate (`FIRST`, `LAST`, `STRING_AGG`, `collect`, `MODE`); for the
+    others it is tested (`docs/trusted-base.md`)."""
 
     def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:
         pos = 0
