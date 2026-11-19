@@ -313,7 +313,9 @@ def _delta_probes() -> list[tuple[str, datetime, datetime, int]]:
     pat = re.compile(r"date_diff\('(\w+)', TIMESTAMP '([^']+)', TIMESTAMP '([^']+)'\)")
     out = []
     for ev in fact["provenance"][0]["evidence"]:
-        unit, a, b = pat.search(ev["sql"]).groups()
+        m = pat.search(ev["sql"])
+        assert m is not None, ev["sql"]
+        unit, a, b = m.groups()
         out.append(
             (unit, datetime.fromisoformat(a), datetime.fromisoformat(b), int(ev["observed"]))
         )
