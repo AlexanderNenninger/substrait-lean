@@ -560,10 +560,13 @@ def distinct_rel(input: Json, width: int) -> Json:
 
 def read_rel(name: str, schema: Any) -> Json:
     """A read of the named table `name`, of the Ibis schema `schema`."""
-    struct = {
-        "types": [type_json(t, t.nullable) for t in schema.types],
-        "nullability": "NULLABILITY_REQUIRED",
-    }
+    types = []
+    for column, t in schema.items():
+        try:
+            types.append(type_json(t, t.nullable))
+        except Unsupported as e:
+            raise Unsupported(f"column {column!r} of {name!r}: {e}") from e
+    struct = {"types": types, "nullability": "NULLABILITY_REQUIRED"}
     return {
         "read": {
             "baseSchema": {"names": struct_names(schema), "struct": struct},
