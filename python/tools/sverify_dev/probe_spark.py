@@ -467,6 +467,11 @@ def _decimal_probes() -> list[Obs]:
             "(CAST(2 AS DECIMAL(38,0)), CAST(1.5 AS DECIMAL(38,10))) AS s(a, b)",
         ),
         Obs(
+            "decimal-greatest-scale",
+            "SELECT greatest(a, b), least(a, b), typeof(greatest(a, b)), a IN (b) FROM VALUES "
+            "(CAST(1.50 AS DECIMAL(38,2)), CAST(1.5000000001 AS DECIMAL(38,10))) AS s(a, b)",
+        ),
+        Obs(
             "decimal-compare-scale-bigint",
             "SELECT a > b, a = b FROM VALUES "
             "(CAST(9223372036854775807 AS BIGINT), CAST(1.5 AS DECIMAL(38,30))) AS s(a, b)",

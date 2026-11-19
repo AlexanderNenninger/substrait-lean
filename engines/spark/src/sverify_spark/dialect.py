@@ -332,23 +332,25 @@ class SparkDialect(Dialect):
             )
         return self.cast(f"({a} {op} {b})", k)
 
-    def decimal_compare(self, op: str, a: str, ka: Kind | None, b: str, kb: Kind | None) -> str:
-        """Spark compares two decimals of different scales in the wider type
-        `DECIMAL(max(p₁ - s₁, p₂ - s₂) + max(s₁, s₂), max(s₁, s₂))`, and where
-        that has more than 38 digits cuts the scale, which rounds the side of
-        the higher scale: `CAST(2 AS DECIMAL(38,0)) = CAST(1.5 AS DECIMAL(38,10))`
-        is true (spark-decimal-compare-scale). A pair that fits compares exactly."""
-        if ka is not None and kb is not None:
-            (p1, s1), (p2, s2) = _digits(ka), _digits(kb)
-            wide = max(p1 - s1, p2 - s2) + max(s1, s2)
-            if s1 != s2 and wide > 38:
-                raise Unsupported(
-                    f"comparison of DECIMAL({p1}, {s1}) with DECIMAL({p2}, {s2}) on Spark: "
-                    f"its common type has {wide} digits, and Spark rounds the operand of "
-                    "the higher scale to fit 38 (spark-decimal-compare-scale); "
-                    "cast an operand to fewer digits"
-                )
-        return super().decimal_compare(op, a, ka, b, kb)
+    def decimal_pair(self, what: str, ka: Kind | None, kb: Kind | None) -> None:
+        """Spark brings two decimals of different scales (a comparison, `IN`, a join key,
+        `GREATEST`, `LEAST`) to the wider type `DECIMAL(max(p₁ - s₁, p₂ - s₂) + max(s₁,
+        s₂), max(s₁, s₂))`, and where that has more than 38 digits cuts the scale, which
+        rounds the operand of the higher scale: `CAST(2 AS DECIMAL(38,0)) =
+        CAST(1.5 AS DECIMAL(38,10))` is true, and `GREATEST` of `1.50` and `1.5000000001`
+        is `1.50` (spark-decimal-compare-scale). A pair that fits compares exactly. An
+        operand of another or unknown kind (a `NULL` literal) is not checked."""
+        if not all(isinstance(k, Dec) or k == "int" for k in (ka, kb)):
+            return
+        (p1, s1), (p2, s2) = _digits(ka), _digits(kb)
+        wide = max(p1 - s1, p2 - s2) + max(s1, s2)
+        if s1 != s2 and wide > 38:
+            raise Unsupported(
+                f"{what} of DECIMAL({p1}, {s1}) with DECIMAL({p2}, {s2}) on Spark: "
+                f"its common type has {wide} digits, and Spark rounds the operand of "
+                "the higher scale to fit 38 (spark-decimal-compare-scale); "
+                "cast an operand to fewer digits"
+            )
 
     def decimal_neg(self, a: str, k: Dec | None = None) -> str:
         # SP-1: `-x` rounds past 34 significant digits. `0 - x` is exact where

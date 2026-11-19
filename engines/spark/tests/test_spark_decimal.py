@@ -132,6 +132,27 @@ def test_a_comparison_whose_common_type_passes_38_digits_is_refused() -> None:
     assert SPARK.decimal_compare("eq", "a", Dec(38, 10), "b", Dec(38, 10))  # one scale
 
 
+def test_greatest_least_in_and_join_keys_reach_the_same_check() -> None:
+    """They bring the two decimals to the same common type (`GREATEST` of `1.50` and
+    `1.5000000001` is `1.50` on Spark), and a `NULL` literal has no kind to check."""
+    for what in ("GREATEST", "LEAST"):
+        with pytest.raises(
+            Unsupported, match=rf"{what} of DECIMAL\(38, 2\) with DECIMAL\(38, 10\)"
+        ):
+            SPARK.decimal_pair(what, Dec(38, 2), Dec(38, 10))
+    assert SPARK.decimal_pair("GREATEST", Dec(10, 2), Dec(10, 4)) is None  # 8 + 4: fits
+    assert SPARK.decimal_pair("comparison", Dec(38, 0), None) is None  # `x = NULL`
+    t = ibis.table({"a": "decimal(38, 0)", "b": "decimal(38, 10)"}, name="t")
+    u = ibis.table({"b": "decimal(38, 10)"}, name="u")
+    # A join key and a filter reach it through `eq`. Ibis writes an explicit cast to the
+    # common type for `GREATEST` and `IN`, which is `CAST(a AS DECIMAL(38, 10))` in the
+    # SQL (an overflow, as the reference's cast); a plan or a lift that states the two
+    # kinds reaches `decimal_pair` as above.
+    for expr in (t.join(u, t.a == u.b), t.filter(t.a == t.b)):
+        with pytest.raises(Unsupported, match="spark-decimal-compare-scale"):
+            to_sql(written_plan(to_substrait_json(expr)), SPARK)
+
+
 def test_an_avg_of_decimals_is_refused_on_spark(con) -> None:
     g = ibis.table({"k": "int64", "x": "decimal(10,2)"}, name="g")
     with pytest.raises(Unsupported, match="AVG of decimals"):

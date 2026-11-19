@@ -2,7 +2,7 @@
   "id": "spark-decimal-compare-scale",
   "engine": "spark",
   "engine_version": "4.3.0",
-  "title": "A comparison of decimals of different scales rounds the operand of the higher scale where the common type passes 38 digits",
+  "title": "A comparison, IN, join key, GREATEST or LEAST of decimals of different scales rounds the operand of the higher scale where the common type passes 38 digits",
   "verdict": "`CAST(2 AS DECIMAL(38,0)) = CAST(1.5 AS DECIMAL(38,10))` is true: the comparison is not exact past 38 digits of common type; the writer refuses that case",
   "area": "decimals",
   "options": [
@@ -21,6 +21,10 @@
     "=",
     "<",
     ">",
+    "IN",
+    "JOIN ON",
+    "GREATEST",
+    "LEAST",
     "CAST"
   ],
   "settings": {
@@ -31,9 +35,10 @@
   },
   "description": [
     "Spark compares two decimals of different precision or scale in the wider type `DECIMAL(i + s, s)`, with `s` the larger scale and `i` the larger count of integer digits. Where `i + s` passes 38 digits it cuts the scale (`allowPrecisionLoss`, the setting `spark-decimal-arith` records), which rounds the operand of the higher scale half up: `CAST(2 AS DECIMAL(38,0)) = CAST(1.5 AS DECIMAL(38,10))` is true and `>` is false, `CAST(1.50 AS DECIMAL(38,2)) = CAST(1.5000000001 AS DECIMAL(38,10))` is true. It raises nothing, and gives the same under ANSI and without it.",
+    "`GREATEST` and `LEAST` bring their operands to the same common type: `GREATEST(CAST(1.50 AS DECIMAL(38,2)), CAST(1.5000000001 AS DECIMAL(38,10)))` is `1.50` of type `DECIMAL(38,2)` (not `1.5000000001`), `LEAST` is `1.50`, and `a IN (b)` is true. A join `ON a = b` on the same pair matches the row.",
     "Where the wider type has 38 digits or fewer the comparison is exact: `CAST(2 AS DECIMAL(28,0)) = CAST(1.5 AS DECIMAL(38,10))` is false, `>` true; a BIGINT counts as `DECIMAL(20,0)`. Values that do not fit a 28-digit integer part still compare exactly (a 38-digit integer is greater than 1.5), because the cut keeps the integer digits."
   ],
-  "reference": "The reference compares the exact values (#1498: decimals compare exactly, at the larger scale). Spark gives it natively where the common type fits 38 digits, and a wrong answer past that; the Spark writer refuses a comparison whose common type has more than 38 digits (`SparkDialect.decimal_compare`: cast an operand to fewer digits). An exact form (integer part and fraction compared apart) is possible and not written.",
+  "reference": "The reference compares the exact values (#1498: decimals compare exactly, at the larger scale). Spark gives it natively where the common type fits 38 digits, and a wrong answer past that; the Spark writer refuses a comparison, `GREATEST` or `LEAST` whose common type has more than 38 digits (`SparkDialect.decimal_pair`, called by `decimal_compare` and by the `GREATEST`/`LEAST` writer; an operand of unknown kind, a `NULL` literal, is not checked; Ibis writes an explicit cast to the common type for `GREATEST` and `IN`, so those reach it through the cast's own overflow: cast an operand to fewer digits). An exact form (integer part and fraction compared apart) is possible and not written.",
   "status": "shimmed",
   "evidence": "probe",
   "provenance": [
@@ -49,6 +54,10 @@
         {
           "file": "engines/spark/probes/probes.json",
           "probe": "decimal-compare-scale-fits"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "decimal-greatest-scale"
         },
         {
           "file": "engines/spark/probes/probes.json",

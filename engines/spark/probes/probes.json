@@ -966,6 +966,14 @@
    }
   },
   {
+   "construct": "decimal-greatest-scale",
+   "sql": "SELECT greatest(a, b), least(a, b), typeof(greatest(a, b)), a IN (b) FROM VALUES (CAST(1.50 AS DECIMAL(38,2)), CAST(1.5000000001 AS DECIMAL(38,10))) AS s(a, b)",
+   "observed": {
+    "ansi=true": "(1.50, 1.50, decimal(38,2), True)",
+    "ansi=false": "(1.50, 1.50, decimal(38,2), True)"
+   }
+  },
+  {
    "construct": "decimal-compare-scale-bigint",
    "sql": "SELECT a > b, a = b FROM VALUES (CAST(9223372036854775807 AS BIGINT), CAST(1.5 AS DECIMAL(38,30))) AS s(a, b)",
    "observed": {
