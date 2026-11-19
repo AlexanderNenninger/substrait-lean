@@ -1,0 +1,18 @@
+{
+  "ibis_substrait/_base.py": 2,
+  "ibis_substrait/casts.py": 3,
+  "ibis_substrait/core.py": 2,
+  "ibis_substrait/nested.py": 8,
+  "ibis_substrait/relations.py": 5,
+  "ibis_substrait/strings.py": 9,
+  "ibis_substrait/temporal.py": 15,
+  "ibis_substrait/windows.py": 9,
+  "sql_lift/_base.py": 103,
+  "sql_lift/blackbox.py": 7,
+  "sql_lift/casts.py": 15,
+  "sql_lift/core.py": 24,
+  "sql_lift/nested.py": 15,
+  "sql_lift/relations.py": 13,
+  "sql_lift/strings.py": 28,
+  "sql_lift/temporal.py": 25
+}
