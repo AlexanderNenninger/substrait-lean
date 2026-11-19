@@ -40,6 +40,13 @@ def test_an_unused_struct_column_does_not_block_the_duckdb_writer(con):
     assert sorted(rows) == [(1, 10, 11), (2, 20, 22), (3, 30, 33)]
 
 
+def test_polars_reads_a_pruned_plan_from_the_whole_table(con):
+    """The plan names the columns it reads; the table has one more."""
+    plan = plan_json(con, T.select(T.d, y=T.e * 2))
+    rows = arrow_rows(run_plan(con, written_plan(plan), "polars"))
+    assert sorted(rows) == [(1, 20), (2, 40), (3, 60)]
+
+
 def test_a_struct_column_the_query_reads_is_still_refused_on_duckdb(con):
     w = written_plan(plan_json(con, T.select(a=T.s.x)))
     with pytest.raises(Exception, match="struct columns have no SQL form yet"):
