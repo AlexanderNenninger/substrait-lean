@@ -17,7 +17,7 @@ against the comment under it.
 
 ```bash
 pip install sverify                 # or: uv add sverify
-pip install 'sverify[polars,delta]' # the steps below use Polars and Delta Lake
+pip install 'sverify[duckdb,polars,delta]' # the steps below use DuckDB, Polars and Delta Lake
 ```
 
 The core runs on DuckDB: contracts, incremental maintenance, and SQL for
