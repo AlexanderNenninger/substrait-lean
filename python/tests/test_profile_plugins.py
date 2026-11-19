@@ -16,14 +16,14 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _arrow_store import ArrowStore
 from sverify import _checker, _engine_settings, profiles, routes
-from sverify._arrow_state import ArrowOps
 from sverify.engines import to_sql, written_plan
 from sverify.profiles import ProfilePlugin, Setting
 from sverify.routes import EngineSettingsError, EngineVersionError
 
 
-class DummyStore(ArrowOps):
+class DummyStore(ArrowStore):
     """The dummy engine's store (`ProfilePlugin.store`): where an engine
     keeps its incremental views' state, as its own handles. An engine that
     runs only one-shot plans has none."""
@@ -207,7 +207,7 @@ def test_an_engine_beside_a_sverify_of_another_build_says_which_to_align(engine)
 
 #: PLUGIN_API and ProfilePlugin's fields; change both together.
 PINNED = (
-    2,
+    3,
     (
         "engine",
         "versions",
@@ -220,6 +220,7 @@ PINNED = (
         "runner",
         "rows",
         "local",
+        "checks_assumed",
         "session",
         "modules",
         "read_settings",

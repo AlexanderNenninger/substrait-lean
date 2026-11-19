@@ -78,6 +78,8 @@ def test_to_sql_for_spark_is_what_the_runner_sends():
     assert to_sql(plan, "spark") == to_sql(plan, SPARK, rows="multiset")
     with pytest.raises(Exception, match='rows="multiset"'):
         to_sql(plan, "spark", rows="sequence")
+    # Snowflake's engine writes the same: its default follows its plugin too.
+    assert to_sql(plan, "snowflake") == to_sql(plan, "snowflake", rows="multiset")
 
 
 def test_a_node_without_a_report_writes_the_sql_a_refresh_runs():

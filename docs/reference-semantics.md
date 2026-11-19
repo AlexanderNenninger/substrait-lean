@@ -341,7 +341,7 @@ Design notes: [nested-values.md](nested-values.md).
 | Cast | Reference | Status |
 |---|---|---|
 | Out of range (`BIGINT` from a wider value, `i8`…`i32` from a larger integer, a double that is NaN, infinite or out of range) | An error: `FAILURE_BEHAVIOR_THROW_EXCEPTION`. | ✓ (`badCast`) |
-| Double or decimal to integer | Truncates toward zero. Monotone, so a double's bounds bound the integer: a computed double within its error bound `[x − ε, x + ε]` ([float-bounds.md](float-bounds.md#in-contracts)) casts to `[trunc(x − ε), trunc(x + ε)]`. DuckDB's own cast rounds a double half to even and a decimal half away from zero (`CAST(2.5::DOUBLE AS INTEGER)` is 2, `CAST(2.5 AS INTEGER)` is 3, [duckdb-R9](../engines/duckdb/facts/duckdb-R9.json)); sverify's SQL truncates a double first, `CAST(trunc(x) AS BIGINT)`. | ✓ |
+| Double or decimal to integer | Truncates toward zero. Monotone, so a double's bounds bound the integer: a computed double within its error bound `[x − ε, x + ε]` ([float-bounds.md](float-bounds.md#in-contracts)) casts to `[trunc(x − ε), trunc(x + ε)]`. DuckDB's own cast rounds a double half to even and a decimal half away from zero (`CAST(2.5::DOUBLE AS INTEGER)` is 2, `CAST(2.5 AS INTEGER)` is 3, [duckdb-R9](../engines/duckdb/facts/duckdb-R9.json)), so the SQL lift refuses `CAST(x AS BIGINT)` of a double or decimal under the reference and names `CAST(round(x) AS BIGINT)`, `floor` and `ceil` ([D54](decisions.md#d54-the-lift-refines-the-dialect)); the SQL writers truncate a double first, `CAST(trunc(x) AS BIGINT)`. | ✓ |
 | `TRY_CAST` (`failureBehavior: RETURN_NULL`) | NULL where the cast would raise, and then no error: a double to an integer (NaN, `±∞`, outside 64 bits), an integer to a narrower one, and a string (below). `TRY_CAST` to a DECIMAL and of a DECIMAL to an integer are refused. | ✓ on DuckDB |
 | A string to a BIGINT, DOUBLE, BOOLEAN, DATE or TIMESTAMP | DuckDB-defined (runs on DuckDB only until a second engine decides the value). DuckDB's rules ([`duckdb-cast-varchar`](../engines/duckdb/facts/duckdb-cast-varchar.json)): spaces around dropped; numbers with a sign, fraction and exponent, a BIGINT rounding the exact decimal half away from zero, a DOUBLE correctly rounded; `true`/`t`/`yes`/`y`/`1` and `false`/`f`/`no`/`n`/`0` in any case; dates and timestamps in ISO form. `CAST` raises on a string DuckDB rejects, and is not NULL for a string; `TRY_CAST` is NULL there. A narrower integer is the BIGINT cast down. Black boxes ([Black boxes](#black-boxes)); a string to a DECIMAL is refused, tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/27). | ✓ on DuckDB |
 | Decimal to a smaller scale | Rounds half away from zero. | ✓ |
@@ -352,6 +352,30 @@ Design notes: [nested-values.md](nested-values.md).
 | `typeof` | Of a column, a string constant: DuckDB's name of the column's type (`BIGINT`, `DECIMAL(10,2)`, `VARCHAR[]`; [`duckdb-typeof-names`](../engines/duckdb/facts/duckdb-typeof-names.json)), whichever engine runs the plan, so every engine gives the same string. The Ibis producer folds it before the plan is checked. Of an expression, or of a struct or map, it is refused: DuckDB infers that type its own way. | ✓ |
 | `date` ↔ `timestamp` | A date is days since 1970-01-01, a timestamp microseconds. `date` to `timestamp` is midnight (`UnFn.dateTime`), an error outside the reference's dates; `timestamp` to `date` rounds down, before 1970 too. A date compared with a timestamp is cast to one, as DuckDB does. | ✓; other engines refuse the cast of a DATE column |
 | `timestamp` to `BIGINT` | `epoch_us(ts)`: the microseconds since 1970-01-01 (`UnFn.epochUs`), the same number. | ✓ on DuckDB |
+
+## DuckDB SQL under the reference
+
+A SQL text reads as DuckDB's under both semantics: `/`, `//`, NULL order and
+`replace` mean what they mean on DuckDB. The semantics is what the functions
+then do. Under `semantics="reference"` the lift refines the dialect
+([D54](decisions.md#d54-the-lift-refines-the-dialect)): where the reference
+gives a value, DuckDB running the same text gives that value; where the
+reference raises, DuckDB may give a value, and the inferred preconditions name
+those inputs. Where the reference gives another value, the lift refuses the
+construct or lists it:
+
+- `float_to_int`: `CAST(x AS BIGINT)` of a double rounds half to even on DuckDB
+  and truncates in the reference (R9), so the lift refuses it until #322. The
+  hint names `CAST(round(x) AS BIGINT)`, `floor` and `ceil`, which mean the same
+  on both.
+- `decimal_to_int`: the cast of a decimal rounds half away from zero on DuckDB;
+  the lift refuses it until #322, and names no spelling: the model has no
+  rounding cast of a decimal yet.
+- `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
+  is NULL here and NaN on DuckDB. `Report.dialect_differences` lists it.
+
+The verdict is unchanged by the list. The list is empty under
+`semantics="duckdb"` and for an Ibis transformation.
 
 ## Aggregates
 

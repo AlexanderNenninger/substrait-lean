@@ -29,6 +29,7 @@ from ibis.common.deferred import Deferred
 from sverify import _decimals, _deprecated, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
+from sverify._dialect import DialectDifference
 from sverify._run_schema import declared_columns, int_range, null_message, range_message
 from sverify._run_schema import problems as schema_problems
 from sverify._unsupported import SverifyError, SverifyWarning
@@ -608,6 +609,16 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
+    dialect_differences: tuple[DialectDifference, ...] = field(default=(), compare=False)
+    """For SQL, where the reference reads the text differently from DuckDB, as
+    a value it gives and DuckDB does not: a double or decimal cast to an
+    integer (the reference truncates, DuckDB rounds) and `corr` of one pair
+    or a constant side (NULL, NaN). Each entry has the construct, where it
+    is, both readings, an example, and the spellings that mean the same under
+    both semantics. Empty under `semantics="duckdb"` and for an Ibis
+    transformation (`docs/reference-semantics.md`, "DuckDB SQL under the
+    reference"). The verdict is unchanged: the list says what the proof
+    covers."""
     # What an inferred precondition does (`verify(on_inferred=...)`): an error
     # unless the caller says otherwise (D23).
     _on_inferred: OnInferred = field(default="error", repr=False, compare=False)
@@ -870,9 +881,9 @@ class Report:
         Args:
             con: The connection holding the tables.
             engine: The engine to check the conditions on.
-            assumed_checked: The run's route checks the assumed issues as it
-                runs (DuckDB's proved translation), so they are not run once
-                more here.
+            assumed_checked: The run's engine checks the assumed issues as it
+                runs its translation (`ProfilePlugin.checks_assumed`), so they
+                are not run once more here on DuckDB.
 
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
@@ -897,10 +908,10 @@ class Report:
                         rows=violating_rows(table, c),
                     )
         if self.assumed and self.internal_plan is not None and not assumed_checked:
-            # The proved DuckDB translation checks each assumption as it runs:
-            # a SUM as it adds up, an operation on finite doubles as it gives
-            # its result (#575). It runs first, so a batch that breaks one is
-            # refused before the plan runs on any engine, Polars included.
+            # An engine whose translation does not check the assumptions as it
+            # runs (a route or an engine without `checks_assumed`) gets them
+            # checked by the proved DuckDB translation first: a SUM as it adds
+            # up, an operation on finite doubles as it gives its result (#575).
             try:
                 run_plan(con, written_plan(self.internal_plan), "duckdb")
             except Exception as e:
@@ -927,11 +938,16 @@ class Report:
         return out
 
     def _broken_assumption(self, e: Exception) -> PreconditionError | None:
-        """The refusal for an error of DuckDB's proved translation that says an
+        """The refusal for an error of an engine's translation that says an
         assumed `SUM` or operation on finite doubles failed on the data; None
         for any other error."""
         message = str(e)
-        if "overflow in SUM" not in message and "overflow to infinity" not in message:
+        issues = ("SUM overflow", "overflow to infinity")  # a Polars guard's `issue`
+        if not (
+            getattr(e, "issue", None) in issues
+            or "overflow in SUM" in message
+            or "overflow to infinity" in message
+        ):
             return None
         broken = ", ".join(_assumption(i) for i in self.assumed)
         err = PreconditionError(
@@ -1089,12 +1105,11 @@ class Report:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
-        # DuckDB's proved translation checks each assumption as it runs.
+        # The engine's translation of the plan checks each assumption as it
+        # runs (`ProfilePlugin.checks_assumed`).
+        run_on = profiles.find(chosen.engine) if chosen is not None else None
         assumed_checked = (
-            check_requires
-            and chosen is not None
-            and chosen.engine == "duckdb"
-            and kind == "translated"
+            check_requires and run_on is not None and run_on.checks_assumed and kind == "translated"
         )
         if check_requires:
             # A precondition with no check would let the run drop guards on
@@ -1558,11 +1573,13 @@ class Report:
     def notes(self) -> list[str]:
         """What the report notes about the result as a whole, as `str(report)`
         prints them after "note: ": that rows may tie in an `ORDER BY`
-        (`deterministic` is False, `ties` says which keys would help), and
-        that the proof holds for the `params` given only."""
+        (`deterministic` is False, `ties` says which keys would help), that
+        the proof holds for the `params` given only, and where the reference
+        reads the SQL differently from DuckDB (`dialect_differences`)."""
         out = [] if self.deterministic else [self._ties_hint()]
         if self._params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
+        out += [f"dialect: {d}" for d in self.dialect_differences]
         return out
 
     def route(

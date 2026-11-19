@@ -278,7 +278,7 @@ FAITHFUL = [
     "SELECT v, v = 0.0, v < 0.0 FROM f0",
     # By zero raises (#204), except for NULL.
     "SELECT v / 0.0 FROM f WHERE v IS NULL",
-    "SELECT v, CAST(v AS BIGINT) AS c FROM r",
+    "SELECT v, CAST(round(v) AS BIGINT) AS c FROM r",
     "SELECT v, round(v) FROM r",
     "SELECT s, length(s) FROM s",
     "SELECT s, substr(s, 0, 2), substr(s, -1, 3) FROM s",
@@ -385,13 +385,13 @@ def proves(sql: str, ensures: str) -> bool:
     return r.verdict == sv.Verdict.PROVED and r.ensures[0].proved
 
 
-def test_constant_casts_truncate(con):
-    """F9: under the reference semantics constant casts fold as column casts
-    do (truncating), not rounded."""
-    for value, truncated in [("2.7", 2), ("-2.5", -2), ("CAST(2.5 AS DOUBLE)", 2)]:
-        sql = f"SELECT CAST({value} AS BIGINT) AS c FROM j"
-        assert proves(sql, f"c = {truncated}")
-        assert not proves(sql, f"c = {truncated + (1 if truncated > 0 else -1)}")
+@pytest.mark.parametrize("value", ["2.7", "-2.5", "CAST(2.5 AS DOUBLE)"])
+def test_constant_casts_are_refused_like_column_casts(value):
+    """F9, D54: DuckDB rounds a constant cast to an integer, and the reference
+    truncates, so the lift refuses a constant as it does a column and names the
+    spellings with one meaning."""
+    with pytest.raises(ValueError, match="DuckDB's cast, which rounds"):
+        sv.verify(f"SELECT CAST({value} AS BIGINT) AS c FROM j", tables={"j": {"a": "int64"}})
 
 
 @pytest.mark.parametrize(

@@ -25,6 +25,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
+from sverify._dialect import DialectDifference, difference
 from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
@@ -169,6 +170,12 @@ def _function(node: Any) -> str:
     lower-cased."""
     name = node.sql_name() if isinstance(node, sge.Func) else node.key
     return f"function {name.lower()}"
+
+
+def _category(node: Any) -> str:
+    """A node's `construct`, for a refusal and for a dialect difference: its
+    function (`function corr`), else its kind in upper case (`CAST`)."""
+    return _function(node) if isinstance(node, sge.Func) else type(node).__name__.upper()
 
 
 def lift_table() -> LiftTable:
@@ -491,6 +498,8 @@ class Lifted:
 
     plan: Json
     schema: ibis.Schema
+    differences: tuple[DialectDifference, ...] = ()
+    """Where the reference reads the text differently from DuckDB (`sverify._dialect`)."""
 
 
 #: Integer widths as DuckDB's decimals: `DECIMAL(p, 0)` holding each.
@@ -710,6 +719,8 @@ class _Lift:
         # The overflow guard of each window whose RANGE frame bounds DuckDB
         # computes in its integer key's type (`_bound_guard`).
         self.guards: dict[int, Json] = {}
+        # Where the reference reads this text differently from DuckDB (D54).
+        self.differences: list[DialectDifference] = []
 
     # -- relations ---------------------------------------------------------
 
@@ -1239,7 +1250,7 @@ class _Lift:
         else:
             raise SqlUnsupported(
                 f"window function {_shown(f)} is not supported yet",
-                construct=_function(f) if isinstance(f, sge.Func) else type(f).__name__.upper(),
+                construct=_category(f),
             )
         fn = self.window_json(w, name, args, scope, bound, column)
         return [(fn, out)], lambda refs: E(refs[0], out)
@@ -1628,6 +1639,8 @@ class _Lift:
                 # and Lean divides the exact sum by the count in doubles.
                 out = dt.float64
         invocation = "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
+        if name == "corr" and self.profile.corr_degenerate != DUCKDB.corr_degenerate:
+            self.differences.append(difference("corr_degenerate", _category(node), _shown(node)))
         if name in ("sum", "avg") and args and (gen := _generated_agg(self, name, args[0])):
             # DISTINCT and FILTER apply to each measure alike.
             parts = [
@@ -1958,9 +1971,7 @@ class _Lift:
         if rule is None:
             raise SqlUnsupported(
                 f"{_shown(node)} is not supported yet",
-                construct=_function(node)
-                if isinstance(node, sge.Func)
-                else type(node).__name__.upper(),
+                construct=_category(node),
             )
         try:
             return rule(self, node, lambda n: self.expr(n, scope, bound), scope)
@@ -2592,7 +2603,8 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
         )
     tree = parse(query, schemas)
     with compiling() as compiler:
-        rel, cols = _Lift(profile, schemas).query(tree)
+        lifter = _Lift(profile, schemas)
+        rel, cols = lifter.query(tree)
         out = plan(compiler, rel, [c.name for c in cols])
     names = [c.name for c in cols]
     if len(set(names)) != len(names):
@@ -2616,4 +2628,4 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     schema = ibis.schema(
         {c.name: (dt.int32 if c.type.is_null() else c.type.copy(nullable=True)) for c in cols}
     )
-    return Lifted(out, schema)
+    return Lifted(out, schema, tuple(dict.fromkeys(lifter.differences)))
