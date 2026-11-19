@@ -24,6 +24,7 @@ import Sverify.Core.Functions
 import Sverify.Core.Issue
 import Sverify.Core.Kinds
 import Sverify.Core.MarginCheck
+import Sverify.Core.NoDouble
 import Sverify.Core.Numeric
 import Sverify.Core.ObsEquiv
 import Sverify.Core.Observations

@@ -1,5 +1,6 @@
 import SubstraitLean.ContractCheck
 import Sverify.Analysis.Refines
+import Sverify.Engines.NoDouble
 import Sverify.Engines.Transfer
 import SubstraitLean.Engine
 
@@ -33,9 +34,9 @@ is named in the report (`run_gate`) and `r` runs:
 * `guard_free`: where `r` runs without its row checks (`guardFreeIn`), so does
   `s`.
 * `near`: `r`'s verdict does not rest on doubles within a bound: the
-  observation's `floats_plan` or an `approx` postcondition, where a double may
-  occur in `r` or `s` (`Rel.mayDouble`, syntactic). It rests on an open
-  obligation (`Request.nearRoute`). A
+  observation's `floats_plan` or an `approx` postcondition, unless `r` and `s`
+  have no double and transfer to the reference at each built-in engine
+  (`Request.nearRoute`, `Rel.floatOpenSafeP_of_noDouble`). A
   refinement at the reference says nothing at an engine's table (ruling 127).
 * `closed`: `s` is closed where `r` is (`closedIn`): no measure decomposed.
 * `reads`, `functions`: `s` reads no option and calls no function `r` does
@@ -142,81 +143,44 @@ theorem transferB_of_reads_sub {r s : Rel} {t u : ProfileTable}
 
 /-! ## Where a double may occur
 
-A syntactic test, for the `near` gate (ruling 136): a double literal, a
-function or cast that takes or gives a double, a black box, a list or struct
-access, or an input column whose kind may hold a double (a double, a list, a
-struct, or a kind the parser does not know), anywhere in the plan: relation
-columns, conditions, projections, group keys, measure arguments and filters,
-window functions and literals. -/
+`Rel.mayDouble` (`core/Sverify/Core/NoDouble.lean`, ruling 154) is the
+syntactic test the `near` gate reads; `Rel.floatOpenSafeP_of_noDouble`
+(`engines/Sverify/Engines/NoDouble.lean`) proves what the gate needs of a plan
+it passes. The examples below pin its inputs. -/
 
-/-- A kind that may hold a double. -/
-def Kind.mayDouble : Kind → Bool
-  | .float | .list _ | .struct _ | .other => true
-  | _ => false
+/-- A table `t` of one 64-bit integer column, in a request's schema form. -/
+private def intTable : Parse.Tables := [("t", 1, Lean.Json.mkObj [("struct", Lean.Json.mkObj
+  [("types", Lean.Json.arr #[Lean.Json.mkObj [("i64", Lean.Json.mkObj [])]])])])]
 
-/-- Is a double part of `v`? -/
-def Value.hasFloat : Value → Bool
-  | .float _ => true
-  | .list vs | .struct vs => vs.attach.any fun ⟨v, _⟩ => v.hasFloat
-  | _ => false
+private def intCat : Catalog := ContractCheck.tablesCatalog intTable
 
-def UnFn.mayDouble : UnFn → Bool
-  | .itof | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .ftoi | .ftoiOrNull | .widen
-  | .fmath _ | .ftod _ | .dtof _ | .bbox _ | .structField _ | .listElement _ | .flatten => true
-  | _ => false
+private def intKinds (t : String) : List Kind := match intTable.lookup t with
+  | some (_, sch) => Parse.schemaKinds sch
+  | none => []
 
-def BinFn.mayDouble : BinFn → Bool
-  | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb | .bbox2 _
-  | .listFn _ | .pair => true
-  | _ => false
-
-def AggFn.mayDouble : AggFn → Bool
-  | .fsum | .avg | .var _ _ | .cov _ | .corr | .quantile true _ _ | .bbox _ | .collect => true
-  | _ => false
-
-def Expr.mayDouble : Expr → Bool
-  | .lit v => v.hasFloat
-  | .field _ => false
-  | .un f a => f.mayDouble || a.mayDouble
-  | .bin f a b => f.mayDouble || a.mayDouble || b.mayDouble
-  | .ifThen c t e => c.mayDouble || t.mayDouble || e.mayDouble
-  -- A lambda reads list elements, which may be doubles.
-  | .hof _ _ _ => true
-
-def Measure.mayDouble (m : Measure) : Bool :=
-  m.fn.mayDouble || m.arg.mayDouble || (m.filter.map Expr.mayDouble).getD false
-
-def WinFn.mayDouble : WinFn → Bool
-  | .percentRank _ | .cumeDist _ => true
-  | .lag _ _ v | .lead _ _ v => v.hasFloat
-  | .agg m _ _ => m.mayDouble
-  | _ => false
-
-/-- **May a double occur in `r`?** Its input columns' kinds come from the
-request's tables (`Parse.schemaKinds`); a table it does not describe may. -/
-def Rel.mayDouble (tables : Parse.Tables) : Rel → Bool
-  | .read t => match tables.lookup t with
-    | some (_, sch) => (Parse.schemaKinds sch).any Kind.mayDouble
-    | none => true
-  | .values _ rows => rows.any (·.any Value.hasFloat)
-  | .filter r c => r.mayDouble tables || c.mayDouble
-  | .project r es => r.mayDouble tables || es.any Expr.mayDouble
-  | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.mayDouble tables
-  | .window r _ _ fns => r.mayDouble tables || fns.any WinFn.mayDouble
-  | .aggregate r gs ms => r.mayDouble tables || gs.any Expr.mayDouble || ms.any Measure.mayDouble
-  | .cross a b | .unionAll a b => a.mayDouble tables || b.mayDouble tables
-  | .join a b _ on | .semi a b _ on => a.mayDouble tables || b.mayDouble tables || on.mayDouble
+/-- Does `r` transfer to the reference at every built-in engine, past the
+options only doubles read? -/
+private def nearAll (r : Rel) : Bool :=
+  builtinEngines.all fun e => transferB r Profile.reference.table (e.table.refAt floatOnlyOptions)
 
 -- Ruling 136's counterexample: every column an integer, and a double in the
 -- filter (`atan2(-(CAST(a AS DOUBLE)), -1.0) < 0`), where the sign of `-0.0`
 -- decides whether the row stays.
-#guard
-  let ints : Parse.Tables := [("t", 1, Lean.Json.mkObj [("struct", Lean.Json.mkObj
-    [("types", Lean.Json.arr #[Lean.Json.mkObj [("i64", Lean.Json.mkObj [])]])])])]
-  (Rel.filter (.read "t")
+#guard (Rel.filter (.read "t")
     (.bin .lt (.bin .fatan2 (.un .fneg (.un .itof (.field 0))) (.lit (.float 0))) (.lit (.int 0)))
-    ).mayDouble ints &&
-  !(Rel.read "t").mayDouble ints
+    ).mayDouble intCat intKinds &&
+  !(Rel.read "t").mayDouble intCat intKinds
+
+-- Ruling 154, condition 1: an integer `MAX`, a `GROUP BY` on an integer key and
+-- an integer comparison transfer at every built-in engine.
+#guard nearAll (.aggregate (.read "t") [] [{ fn := .max, arg := .field 0 }])
+#guard nearAll (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .field 0 }])
+#guard nearAll (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 1))))
+-- An integer `AVG` does not at Polars and Spark: `avg_int_result = FP64`
+-- changes its integer result, outside `floatOnlyOptions` by design.
+#guard (builtinEngines.filter fun e =>
+    !transferB (.aggregate (.read "t") [] [{ fn := .iavg, arg := .field 0 }])
+      Profile.reference.table (e.table.refAt floatOnlyOptions)).map (·.name) == ["polars", "spark"]
 
 /-! ## The size hypothesis through the rewrites
 
@@ -447,22 +411,34 @@ def rowsMultiset : Bool :=
   ((R.input.getObjVal? "observation").toOption.bind
     (·.getObjValAs? String "rows" |>.toOption)) == some "multiset"
 
+/-- The kinds of a table's columns, from the request's schema. -/
+def tableKinds (t : String) : List Kind := match R.tables.lookup t with
+  | some (_, sch) => Parse.schemaKinds sch
+  | none => []
+
+/-- Is `x` a plan `Rel.floatOpenSafeP_of_noDouble` covers at every built-in
+engine: no double, no open measure, and the transfer to the reference past
+the options only doubles read? -/
+def nearProved (x : Rel) : Bool :=
+  !x.mayDouble R.cat R.tableKinds && x.closedB &&
+    builtinEngines.all fun e => transferB x Profile.reference.table (e.table.refAt floatOnlyOptions)
+
 /-- Does the verdict on `r` rest on doubles within a bound: the observation
 compares doubles within the plan's bound (`floats_plan`) or a postcondition is
-`approx`, and a double may occur in `r` or its rewrite `s` (`Rel.mayDouble`)?
+`approx`, and `r` or its rewrite `s` is not a plan `nearProved` covers?
 
-A choice at `sum_order`, `stat_algo`, `quantile_interp` or `zero_sign` changes
-a value only on doubles (`cmp` reads `zero_sign` at every type, and changes
-nothing without one). The gate rests on an open obligation, the one already
-undischarged for `r` (`hsafeE` of `Engine.contract_sound_runs_near`): a plan
-in which no double occurs is `Rel.FloatOpenSafeP` at every table that agrees
-with the reference outside those four options. Nothing proves it today
-(ruling 136). -/
+The gate passes `r` and `s` where `Rel.floatOpenSafeP_of_noDouble` discharges
+the obligation (`hsafeE` of `Engine.contract_sound_runs_near`) at every
+built-in engine's table: neither has a double or an open measure, and each
+transfers to the reference past `floatOnlyOptions` (ruling 154). What stays
+open: plans with a double, and plans without one that read an option where an
+engine's table leaves the reference outside `floatOnlyOptions` (an integer
+`AVG` at Polars or Spark), which the gate keeps as written. -/
 def nearRoute (r s : Rel) : Bool :=
   let obs := (R.input.getObjVal? "observation").toOption
   ((obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false ||
     ((obs.bind (·.getObjValAs? (Array Bool) "approx" |>.toOption)).getD #[]).any id) &&
-    (r.mayDouble R.tables || s.mayDouble R.tables)
+    !(R.nearProved r && R.nearProved s)
 
 /-- The rewrite of the plan `r` the gate looks at, and the rules applied:
 the whole plan under a `multiset` observation, the input of the root
