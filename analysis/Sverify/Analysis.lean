@@ -1,4 +1,5 @@
 import Sverify.Analysis.AllowedAnalysis
+import Sverify.Analysis.AsofSite
 import Sverify.Analysis.Choices
 import Sverify.Analysis.ChoicesSound
 import Sverify.Analysis.Contracts

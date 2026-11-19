@@ -25,6 +25,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_stages",
             "_cursor",
             "_unsupported",
+            "_asof_cap",
             "_plan_read",
             "_user_text",
             "_vacuity",

@@ -223,6 +223,7 @@ as the guard. Engines-common and the modules below import it as
 | `Keys.lean` | Derived keys and window tie-breaking |
 | `Partition.lean` | Sharded evaluation and two-phase aggregates |
 | `Guards.lean` | Guard elimination for the SQL writers |
+| `AsofSite.lean` | As-of joins read off a plan (`Rel.asofSite`, `Rel.asofSite_sound`: the site rebuilds its plan) and the count of the pairs their range join compares (`AsofSite.pairs`, #1447) |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
 | `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`) |
 | `AllowedAnalysis.lean` | What the analysis proves of the allowed results: plans without choices, row caps, postconditions on every allowed result |
