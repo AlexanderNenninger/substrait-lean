@@ -23,6 +23,8 @@ RANGE_GUARD = "Overflow in a RANGE frame bound"
 
 
 #: The exit of a refusal of data that breaks a stated condition.
+ROWS_HELD = '; to hold the batch instead, use `on_violation="hold"`, or raise the cap'
+#: The same, for a condition with a rule for which rows break it.
 ROWS_ASIDE = '; to set such rows aside, use `on_violation="quarantine"` or `"hold"`'
 
 

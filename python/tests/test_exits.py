@@ -74,5 +74,6 @@ def test_the_exits_of_data_and_composition_refusals_are_pinned() -> None:
     from sverify.contracts import CompositionError
 
     assert 'on_violation="quarantine"' in _unsupported.ROWS_ASIDE
+    assert 'on_violation="hold"' in _unsupported.ROWS_HELD
     assert "SVERIFY_TIMEOUT" in inspect.getsource(_main)
     assert "on_unproved=" in inspect.getsource(CompositionError.__init__)

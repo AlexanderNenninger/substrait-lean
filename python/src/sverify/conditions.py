@@ -26,7 +26,7 @@ from ibis.common.deferred import Deferred
 
 from sverify import observation as _observation
 from sverify._duration import Duration, duration
-from sverify._unsupported import ROWS_ASIDE, SverifyError
+from sverify._unsupported import ROWS_ASIDE, ROWS_HELD, SverifyError
 from sverify.counterexample import Counterexample
 from sverify.observation import Observation
 
@@ -445,7 +445,7 @@ class MaxRows(TableCondition):
 
         if (n := row_count(new)) > self.n:
             raise PreconditionError(
-                f"{n - self.n} row(s) of {t} violate {self.label}{ROWS_ASIDE}",
+                f"{n - self.n} row(s) of {t} violate {self.label}{ROWS_HELD}",
                 source=t,
                 condition=self,
             )

@@ -1844,7 +1844,8 @@ class Pipeline:
             labels = sorted({c for e in bad for c in e.conditions if policies.get(c) == policy})
             conds = [c for c in self.requires.get(t, []) if label(c) in labels]
             error = PreconditionError(
-                f"{n} row(s) of {t} violate {', '.join(labels)}{ROWS_ASIDE}",
+                f"{n} row(s) of {t} violate {', '.join(labels)}"
+                f"{ROWS_ASIDE if policy == 'error' else ''}",
                 source=t,
                 condition=conds[0] if len(conds) == 1 else None,
                 rows=pa.Table.from_pylist([e.row for e in bad[:ROWS_SHOWN]]),
