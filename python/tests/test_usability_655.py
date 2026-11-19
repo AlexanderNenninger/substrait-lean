@@ -72,7 +72,12 @@ def test_on_unproved_warn_refreshes_unverified(tmp_path) -> None:
 # -- doubles into a sink ------------------------------------------------------
 
 
-@sv.transform(requires={"orders": [_.amount >= 0, _.amount <= 1000, sv.max_rows(1000)]})
+#: Amounts up to `2^43` over 1000 rows: `N · M > 2^52`, so engines may differ
+#: in the mean's last bits (below it, a mean of integers is exact, #1608).
+BIG = 2**43
+
+
+@sv.transform(requires={"orders": [_.amount >= 0, _.amount <= BIG, sv.max_rows(1000)]})
 def mean(orders):
     return orders.group_by("customer").aggregate(m=orders.amount.cast("float64").mean())
 
@@ -100,24 +105,23 @@ def test_exact_doubles_into_a_sink_are_asked_for(tmp_path) -> None:
 
 def test_a_postcondition_on_a_double_keeps_it_exact_unless_every_engine_meets_it() -> None:
     """`_.m >= 0` holds of every value within the mean's bound and of its sign,
-    so it runs (#1045). `_.m <= 1000` is proved of the reference's mean, the
+    so it runs (#1045). `_.m <= BIG` is proved of the reference's mean, the
     exact mean rounded once (D25, #1160), but an engine's may exceed it by up
-    to the bound (1.1e-10), so the run asks for `sv.approx` or a stated
-    tolerance. With room for the bound (`<= 1000 + 1.5e-10`) every engine
-    meets it."""
+    to the bound (0.98), so the run asks for `sv.approx` or a stated
+    tolerance. With room for the bound (`<= BIG + 2`) every engine meets it."""
     c = sv.connect()
     c.put("orders", pa.table({"id": [1], "customer": ["ada"], "amount": [5]}))
     o = c.table("orders")
     expr = o.group_by("customer").aggregate(m=o.amount.cast("float64").mean())
-    req = {"orders": [_.amount >= 0, _.amount <= 1000, sv.max_rows(1000)]}
+    req = {"orders": [_.amount >= 0, _.amount <= BIG, sv.max_rows(1000)]}
     sign = sv.verify(expr, requires=req, ensures=[_.m >= 0])
     assert sign.verdict == sv.Verdict.PROVED and sign.ensures[0].robust
     assert sign.run(c, "polars").num_rows == 1
-    tight = sv.verify(expr, requires=req, ensures=[_.m <= 1000])
+    tight = sv.verify(expr, requires=req, ensures=[_.m <= BIG])
     assert tight.verdict == sv.Verdict.PROVED and not tight.ensures[0].robust
     with pytest.raises(RouteError, match=r"reads m.*sv.approx"):
         tight.run(c, "polars")
-    room = sv.verify(expr, requires=req, ensures=[_.m <= 1000 + 1.5e-10])
+    room = sv.verify(expr, requires=req, ensures=[_.m <= BIG + 2])
     assert room.verdict == sv.Verdict.PROVED and room.ensures[0].robust
 
 

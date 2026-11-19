@@ -59,7 +59,7 @@ theorem lt_of_scaled_lt {c d : Int} (h : scaled c < scaled d) : c < d := by
 /-- An integer of at most `2⁵³` converts exactly. -/
 theorem ofInt_nat {n : Nat} (h : n ≤ 2 ^ 53) :
     IsFin (ofInt n) ∧ scaled (ofInt n) = n * 2 ^ 1074 := by
-  rw [ofInt_exact (by simpa using h), scaled_exactCode]
+  rw [ofInt_exact (by simpa using h), FloatCode.scaled_exactCode, unitK, Int.natCast_pow]
   refine ⟨?_, rfl⟩
   by_cases h0 : n = 0
   · subst h0
@@ -859,5 +859,193 @@ theorem margin_row {row : Row} {k s : Nat} {t : Expr} {v a tc : Int} {n : Nat} {
   unfold marginPass
   rw [← hcx, ← canon_negI_neg]
   exact hp
+
+/-! ### Exact on small integers (#1608 12b-1, D35 amended 2026-11-19)
+
+Doubles that are integers, with `Σ |xᵢ| ≤ 2⁵³`: every partial sum is an
+integer of at most `2⁵³`, which is a double, so every order adds exactly and
+every engine's `SUM` is the exact sum. A mean divides that sum once by the
+count, as the reference's rounds the exact mean once: the same double. -/
+
+/-- A double that is an integer: `k · 2¹⁰⁷⁴` in units of `2⁻¹⁰⁷⁴`. -/
+def IntVal (v : Value) : Prop := ∃ c, v = .float c ∧ IsFin c ∧ ∃ k : Int, scaled c = k * unitK
+
+omit [Boxes.Ambient] in
+theorem scaledAbsSum_append (a b : List Value) :
+    scaledAbsSum (a ++ b) = scaledAbsSum a + scaledAbsSum b := by
+  induction a with
+  | nil => simp [scaledAbsSum]
+  | cons v a ih => cases v <;> simp only [List.cons_append, scaledAbsSum, ih] <;> omega
+
+omit [Boxes.Ambient] in
+theorem scaledAbsSum_perm {a b : List Value} (h : a.Perm b) : scaledAbsSum a = scaledAbsSum b := by
+  induction h with
+  | nil => rfl
+  | cons v _ ih => cases v <;> simp [scaledAbsSum, ih]
+  | swap v w l => cases v <;> cases w <;> simp only [scaledAbsSum] <;> omega
+  | trans _ _ ih1 ih2 => rw [ih1, ih2]
+
+omit [Boxes.Ambient] in
+/-- An integer times `2¹⁰⁷⁴`, at most `2⁵³` of them, rounds to a finite
+double of that value. -/
+theorem ofExact_int_val {A : Int} (hA : ∃ k : Int, A = k * unitK) (hb : A.natAbs ≤ 2 ^ 53 * unitK) :
+    IsFin (ofExact A) ∧ scaled (ofExact A) = A := by
+  obtain ⟨k, rfl⟩ := hA
+  have hk : k.natAbs ≤ 2 ^ 53 := by
+    rw [Int.natAbs_mul, Int.natAbs_natCast] at hb
+    exact Nat.le_of_mul_le_mul_right hb unitK_pos
+  rw [ofExact_int hk, FloatCode.scaled_exactCode]
+  exact ⟨by rw [← ofInt_exact hk]; exact ofInt_bounds k, rfl⟩
+
+omit [Boxes.Ambient] in
+/-- The exact sum of integers is an integer, at most their magnitudes. -/
+theorem exactSum_int {vs : List Value} (h : ∀ v ∈ vs, IntVal v) :
+    (∃ k : Int, exactSum vs = k * unitK) ∧ (exactSum vs).natAbs ≤ scaledAbsSum vs := by
+  induction vs with
+  | nil => exact ⟨⟨0, by simp [exactSum]⟩, by simp [exactSum]⟩
+  | cons v vs ih =>
+    obtain ⟨c, rfl, hc, j, hj⟩ := h v List.mem_cons_self
+    obtain ⟨⟨k, hk⟩, hb⟩ := ih fun w hw => h w (List.mem_cons_of_mem _ hw)
+    simp only [exactSum, scaledAbsSum, exact, fin_canon hc]
+    refine ⟨⟨j + k, by rw [hj, hk, Int.add_mul]⟩, ?_⟩
+    have := Int.natAbs_add_le (scaled c) (exactSum vs)
+    omega
+
+omit [Boxes.Ambient] in
+/-- Integers have no non-finite double. -/
+theorem nonFinite_int {vs : List Value} (h : ∀ v ∈ vs, IntVal v) : nonFinite vs = none := by
+  obtain ⟨cs, rfl⟩ : ∃ cs : List Int, vs = cs.map .float := by
+    refine ⟨floatsOf vs, ?_⟩
+    induction vs with
+    | nil => rfl
+    | cons v vs ih =>
+      obtain ⟨c, rfl, -, -⟩ := h v List.mem_cons_self
+      rw [show floatsOf (Value.float c :: vs) = c :: floatsOf vs from rfl, List.map_cons,
+        ← ih fun w hw => h w (List.mem_cons_of_mem _ hw)]
+  exact nonFinite_of_fin fun c hc => by
+    obtain ⟨c', he, hc', -⟩ := h (.float c) (List.mem_map_of_mem hc)
+    cases he; rw [fin_canon hc']; exact hc'
+
+omit [Boxes.Ambient] in
+/-- A fold that adds doubles with `fadd`, over integers from an exact start,
+stays exact. -/
+theorem foldl_fadd_int {f : Int → Value → Int} (hf : ∀ acc c, f acc (.float c) = fadd acc c)
+    {ws : List Value} (hw : ∀ v ∈ ws, IntVal v) {acc A : Int}
+    (hacc : canon acc = ofExact A) (hA : ∃ k : Int, A = k * unitK)
+    (hb : A.natAbs + scaledAbsSum ws ≤ 2 ^ 53 * unitK) :
+    canon (ws.foldl f acc) = ofExact (A + exactSum ws) := by
+  induction ws generalizing acc A with
+  | nil => simpa [exactSum] using hacc
+  | cons v ws ih =>
+    obtain ⟨c, rfl, hc, j, hj⟩ := hw v List.mem_cons_self
+    simp only [List.foldl_cons, scaledAbsSum, hf] at hb ⊢
+    obtain ⟨hfA, hsA⟩ := ofExact_int_val hA (by omega)
+    obtain ⟨k, hk⟩ := hA
+    have hstep : canon (fadd acc c) = ofExact (A + scaled c) := by
+      rw [← fadd_canon, hacc, fin_canon hc, fadd_fin hfA hc, hsA]
+    have := Int.natAbs_add_le A (scaled c)
+    rw [ih (fun w hw' => hw w (List.mem_cons_of_mem _ hw')) hstep ⟨k + j, by rw [hk, hj, Int.add_mul]⟩
+      (by omega)]
+    simp only [exactSum, exact, fin_canon hc, Int.add_assoc]
+
+omit [Boxes.Ambient] in
+/-- A sequential sum of integers is exact (`SEQUENTIAL`). -/
+theorem floatSum_int {ws : List Value} (hw : ∀ v ∈ ws, IntVal v)
+    (hb : scaledAbsSum ws ≤ 2 ^ 53 * unitK) : canon (floatSum ws) = ofExact (exactSum ws) := by
+  have h0 : canon (ofInt 0) = ofExact 0 := by
+    rw [ofInt_exact (by decide), show ofExact 0 = 0 from ofExactDiv_zero 1]; rfl
+  unfold floatSum
+  rw [foldl_fadd_int (fun _ _ => rfl) hw h0 ⟨0, by simp⟩ (by simpa using hb), Int.zero_add]
+
+omit [Boxes.Ambient] in
+/-- Every tree of additions of integers is exact (`ANY`, `PAIRWISE`). -/
+theorem FloatSums.int_exact {vs : List Value} {c : Int} (h : FloatSums vs c)
+    (hw : ∀ v ∈ vs, IntVal v) (hb : scaledAbsSum vs ≤ 2 ^ 53 * unitK) :
+    canon c = ofExact (exactSum vs) := by
+  induction h with
+  | seq hp =>
+    rw [floatSum_int (fun v hv => hw v (hp.mem_iff.mp hv)) (by rw [scaledAbsSum_perm hp]; exact hb),
+      exactSum_perm hp]
+  | @split vs xs ys a b hp _ _ iha ihb =>
+    have hmem := fun v (hv : v ∈ xs ++ ys) => hw v (hp.mem_iff.mpr hv)
+    have hbs := scaledAbsSum_perm hp
+    rw [scaledAbsSum_append] at hbs
+    have hx : ∀ v ∈ xs, IntVal v := fun v hv => hmem v (List.mem_append_left _ hv)
+    have hy : ∀ v ∈ ys, IntVal v := fun v hv => hmem v (List.mem_append_right _ hv)
+    have ha := iha hx (by omega)
+    have hb' := ihb hy (by omega)
+    obtain ⟨hkx, hex⟩ := exactSum_int hx
+    obtain ⟨hky, hey⟩ := exactSum_int hy
+    obtain ⟨hfa, hsa⟩ := ofExact_int_val hkx (by omega)
+    obtain ⟨hfb, hsb⟩ := ofExact_int_val hky (by omega)
+    rw [← fadd_canon, ha, hb', fadd_fin hfa hfb, hsa, hsb, exactSum_perm hp, exactSum_append]
+
+omit [Boxes.Ambient] in
+/-- **Every engine's `SUM` of small integers is exact**: whatever the
+`sum_order` behaviour, a sum `SumOrder` allows is the exact sum, as the
+reference's is. The shapes prove it; the shapeless behaviours state it
+(D35, amended 2026-11-19). -/
+theorem SumOrder.int_exact {b : Behaviour} {vs : List Value} {c : Int} (h : SumOrder b vs c)
+    (hs : SmallInts vs) : canon c = canon (floatSumCR vs) := by
+  obtain ⟨hw, hb⟩ := hs
+  have hw' : ∀ v ∈ vs, IntVal v := hw
+  obtain ⟨hk, hE⟩ := exactSum_int hw'
+  obtain ⟨hfE, -⟩ := ofExact_int_val hk (Nat.le_trans hE hb)
+  have hcr : canon (floatSumCR vs) = ofExact (exactSum vs) := by
+    rw [floatSumCR, nonFinite_int hw', Option.getD_none, fin_canon hfE]
+  by_cases hX : b = "EXACT"
+  · simp only [SumOrder, hX, ↓reduceIte] at h
+    rw [h]
+  simp only [SumOrder, hX, ↓reduceIte] at h
+  obtain ⟨-, h⟩ := h
+  rw [hcr]
+  split at h
+  · exact FloatSums.int_exact h hw' hb
+  · split at h
+    · obtain ⟨ws, hp, rfl⟩ := h
+      rw [floatSum_int (fun v hv => hw' v (hp.mem_iff.mp hv)) (by rw [scaledAbsSum_perm hp]; exact hb),
+        exactSum_perm hp]
+    · rw [h ⟨hw, hb⟩, hcr]
+
+omit [Boxes.Ambient] in
+/-- **Every engine's `AVG` of small integers is the reference's**: the sum
+is exact (`SumOrder.int_exact`), and dividing it once by the count rounds
+the exact mean once, as the reference does. With `N` rows of values at most
+`M`, `N · max M 1 ≤ 2⁵²` gives the conditions. -/
+theorem AvgOrder.int_exact {b : Behaviour} {vs : List Value} {c : Int} (h : AvgOrder b vs c)
+    (hs : SmallInts vs) (hn1 : 1 ≤ vs.length) (hn : vs.length ≤ 2 ^ 53) :
+    canon c = canon (floatAvgCR vs) := by
+  by_cases hX : b = "EXACT"
+  · simp only [AvgOrder, hX, ↓reduceIte] at h; rw [h]
+  simp only [AvgOrder, hX, ↓reduceIte] at h
+  obtain ⟨s, hsum, rfl⟩ := h
+  have hcs := SumOrder.int_exact hsum hs
+  obtain ⟨hw, hb⟩ := hs
+  have hw' : ∀ v ∈ vs, IntVal v := hw
+  obtain ⟨hk, hEb⟩ := exactSum_int hw'
+  obtain ⟨hfE, hsE⟩ := ofExact_int_val hk (Nat.le_trans hEb hb)
+  have hnf := nonFinite_int hw'
+  rw [floatSumCR, hnf, Option.getD_none, fin_canon hfE] at hcs
+  have hb0 : ofInt vs.length = exactCode vs.length := ofInt_exact (by simpa using hn)
+  have hfn : IsFin (ofInt vs.length) := ofInt_bounds _
+  have hsn : scaled (ofInt vs.length) = vs.length * (unitK : Int) := by
+    rw [hb0, FloatCode.scaled_exactCode]
+  have hU := unitK_pos
+  have hsn0 : scaled (ofInt vs.length) ≠ 0 := by
+    rw [hsn]; exact Int.mul_ne_zero (by omega) (by omega)
+  have hneg : ¬ scaled (ofInt vs.length) < 0 := by
+    rw [hsn]; exact Int.not_lt.mpr (Int.mul_nonneg (by omega) (by omega))
+  have hnat : (scaled (ofInt vs.length)).natAbs = unitK * vs.length := by
+    rw [hsn, Int.natAbs_mul, Int.natAbs_natCast, Int.natAbs_natCast, Nat.mul_comm]
+  have hfin : IsFin (ofExactDiv (exactSum vs) vs.length) := by
+    apply ofExactDiv_fin (by omega)
+    have h2 : 2 ^ 53 * unitK ≤ 2 ^ 2097 := by
+      rw [show unitK = 2 ^ 1074 from rfl, ← Nat.pow_add]; exact Nat.pow_le_pow_right (by omega) (by omega)
+    have h3 : 2 ^ 2097 ≤ vs.length * 2 ^ 2097 := Nat.le_mul_of_pos_left _ hn1
+    omega
+  rw [← fdiv_canon_left, hcs, fdiv_fin hfE hfn hsn0]
+  simp only [hneg, ↓reduceIte]
+  rw [hsE, hnat, Int.mul_comm (exactSum vs), ofExactDiv_mul_mul _ hU, floatAvgCR, hnf,
+    Option.getD_none, fin_canon hfin]
 
 end Substrait
