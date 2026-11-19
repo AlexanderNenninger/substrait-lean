@@ -1,4 +1,5 @@
 import Sverify.Analysis.AllowedAnalysis
+import Sverify.Analysis.AsofSite
 import Sverify.Analysis.Contracts
 import Sverify.Analysis.Contracts.Facts
 import Sverify.Analysis.Contracts.Lattice

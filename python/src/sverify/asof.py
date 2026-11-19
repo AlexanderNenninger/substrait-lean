@@ -15,9 +15,12 @@ any other plan:
    their own match.
 
 The join is a range join, so the pairs of rows it compares are quadratic: each
-left row with every right row of its `by` group (`pairs`). `asof_join` refuses
-more than `max_pairs` of them (default `MAX_PAIRS`, 10⁸) when it can count
-them, and names the exits: `by` columns, fewer rows, a larger cap.
+left row with every right row of its `by` group (`pairs`). The checker reads
+the as-of join off the plan (`Rel.asofSite`) and writes the count of those
+pairs as a plan of its own (`AsofSite.pairs`); a run evaluates it on the
+engine first and refuses more than `max_pairs` (default `MAX_PAIRS`, 10⁸),
+naming the exits: `by` columns, fewer rows, a larger cap. So the cap holds
+whatever the rows come from: Arrow tables, files or an engine's tables.
 
 No theorem is about ASOF joins: the plan is proved as any plan is. What an
 ASOF join promises, stated in `ensures`, is proved for each plan by the
@@ -30,6 +33,7 @@ right side these guarantees still hold for every pick of the tied rows,
 and the report is not `deterministic`.
 """
 
+import weakref
 from collections.abc import Sequence
 from typing import Any, Literal
 
@@ -38,7 +42,6 @@ import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify._unsupported import Unsupported
 from sverify._weighted import _call
 
 ROW = "_asof_row"
@@ -52,19 +55,6 @@ compares about 10⁸ pairs in 4 to 7 seconds (homelab, one thread of
 cross join of the same size."""
 
 
-def _held(table: ir.Table) -> pa.Table | None:
-    """The rows of a table bound to a `sverify.connect()` connection and held as
-    Arrow, else None."""
-    from sverify.engine import connection_of
-
-    op = table.op()
-    con = connection_of(table)
-    if not isinstance(op, ops.DatabaseTable) or con is None or not con.has(op.name):
-        return None
-    held = con.get(op.name)
-    return held if isinstance(held, pa.Table) else None
-
-
 def pairs(left: pa.Table, right: pa.Table, by: Sequence[str]) -> int:
     """The pairs of rows an as-of join compares: each left row with every right
     row of its `by` group (rows with a NULL `by` value never match)."""
@@ -76,21 +66,27 @@ def pairs(left: pa.Table, right: pa.Table, by: Sequence[str]) -> int:
     return _call("sum", product).as_py() or 0
 
 
-def _check_pairs(left: ir.Table, right: ir.Table, by: Sequence[str], max_pairs: int | None) -> None:
-    if max_pairs is None:
-        return
-    lt, rt = _held(left), _held(right)
-    if lt is None or rt is None:
-        return
-    n = pairs(lt, rt, by)
-    if n > max_pairs:
-        raise Unsupported(
-            f"asof_join compares {n:,} pairs of rows (each of {lt.num_rows:,} left rows with the"
-            f" right rows of its by group), over max_pairs={max_pairs:,}: its cost is that number,"
-            " quadratic in the rows. Add `by` columns that split the rows into smaller groups,"
-            " join fewer rows, or raise `max_pairs` (None: no cap), which is fast on DuckDB with a"
-            " `tolerance`, whose range join skips most pairs"
-        )
+_CAPS: weakref.WeakKeyDictionary[Any, int | None] = weakref.WeakKeyDictionary()
+"""Each `asof_join` result's `max_pairs`, by its operation."""
+
+
+def max_pairs_of(expr: ir.Table) -> int | None:
+    """The cap on the pairs an expression's as-of joins compare: the smallest
+    `max_pairs` of the `asof_join` calls it holds; None without a cap (none
+    holds one, or each has `max_pairs=None`)."""
+    caps = [c for n in expr.op().find(ops.Node) if (c := _CAPS.get(n)) is not None]
+    return min(caps, default=None)
+
+
+def too_many(n: int, cap: int) -> str:
+    """The refusal of an as-of join that compares `n` pairs, over `cap`."""
+    return (
+        f"asof_join compares {n:,} pairs of rows (each left row with the right rows of its by"
+        f" group), over max_pairs={cap:,}: its cost is that number, quadratic in the rows. Add"
+        " `by` columns that split the rows into smaller groups, join fewer rows, or raise"
+        " `max_pairs` (None: no cap), which is fast on DuckDB with a `tolerance`, whose range join"
+        " skips most pairs"
+    )
 
 
 def asof_join(
@@ -128,22 +124,19 @@ def asof_join(
         how: `"left"` (the default) keeps left rows without a match, with
             NULLs; `"inner"` drops them.
         max_pairs: The most pairs of rows (each left row with every right
-            row of its `by` group) the join may compare, counted when both
-            tables are bound to a `sverify.connect()` connection and held as
-            Arrow tables; the join is a range join, so its cost is that
-            count, quadratic in the rows (an engine's range join with a
-            `tolerance` may skip most of them: DuckDB's does). Above it,
+            row of its `by` group) the join may compare, counted on the
+            engine before each run (`Report.run`), whatever the tables are;
+            the join is a range join, so its cost is that count, quadratic
+            in the rows (an engine's range join with a `tolerance` may skip
+            most of them: DuckDB's does). Above it, the run raises
             `UnsupportedError`. `None`: no cap. Default `MAX_PAIRS`, 10⁸,
             which keeps DuckDB's join under about 7 seconds.
 
     Returns:
         An Ibis table expression, built from a range join and `ROW_NUMBER`.
 
-    Raises:
-        UnsupportedError: The pairs the join compares exceed `max_pairs`.
     """
     by = [by] if isinstance(by, str) else list(by)
-    _check_pairs(left, right, by, max_pairs)
     # The number is an identity only, ordered by `by` and `on` so that a left
     # table keyed on them has no tie there and the report can stay deterministic.
     left = left.mutate(**{ROW: ibis.row_number().over(order_by=[left[c] for c in (*by, on)])})
@@ -155,4 +148,6 @@ def asof_join(
     latest = ibis.window(group_by=[joined[ROW]], order_by=ibis.desc(joined[f"{on}_right"]))
     ranked = joined.mutate(**{RANK: ibis.row_number().over(latest)})
     first = ranked.filter(ranked[RANK] == 0)
-    return first.drop(ROW, RANK, *[f"{c}_right" for c in by if f"{c}_right" in first.columns])
+    out = first.drop(ROW, RANK, *[f"{c}_right" for c in by if f"{c}_right" in first.columns])
+    _CAPS[out.op()] = max_pairs
+    return out

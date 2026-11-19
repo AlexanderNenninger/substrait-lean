@@ -593,6 +593,14 @@ class Report:
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
     column, #568), as the checker computes it for this plan; None where it
     does not."""
+    _asof_checks: list[dict[str, Any]] = field(default_factory=list, repr=False, compare=False)
+    """Per as-of join of the plan (#1447, `Rel.asofSite`), a plan that counts
+    the pairs its range join compares (`AsofSite.pairs`). `run` runs each on
+    the engine first and refuses the run above `_asof_max_pairs`
+    (`check_asof_pairs`)."""
+    _asof_max_pairs: int | None = field(default=None, repr=False, compare=False)
+    """The smallest `max_pairs` of the transform's `asof_join` calls; None: no
+    cap (a SQL query's `ASOF JOIN`, or `max_pairs=None`)."""
     _margin_checks: list[dict[str, Any]] = field(default_factory=list, repr=False, compare=False)
     """The margin checks of the plan's threshold filters on double sums
     (#929): per filter, a plan that counts the groups whose sum lies within
@@ -1184,6 +1192,7 @@ class Report:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
             self._check_schema(con, target)
+        self.check_asof_pairs(con, engine)
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)
@@ -1258,6 +1267,25 @@ class Report:
             fields.append(f)
         schema = pa.schema(fields, metadata=out.schema.metadata)
         return out if schema.equals(out.schema) else out.cast(schema)
+
+    def check_asof_pairs(self, con: Connection, engine: Any) -> None:
+        """Count, on `engine`, the pairs each as-of join of the plan compares
+        (`_asof_checks`), over the tables of `con` the plan reads too, and
+        refuse the run where a count is over the cap (`_asof_max_pairs`).
+
+        Raises:
+            UnsupportedError: An as-of join compares more pairs than the cap.
+        """
+        from sverify.asof import too_many
+
+        cap = self._asof_max_pairs
+        if cap is None:
+            return
+        for chk in self._asof_checks:
+            res = run_plan(con, written_plan(json.dumps(chk["plan"])), engine)
+            n = int(res.column(0)[0].as_py() or 0)
+            if n > cap:
+                raise UnsupportedError(too_many(n, cap))
 
     def check_margins(
         self, con: Connection, engine: Any, target: str, deterministic: bool = False
@@ -1956,7 +1984,15 @@ class Report:
 
 
 #: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = ["table_params", "run_plan", "run_gate", "run_unchecked", "run_gates"]
+_REPORT_PRIVATE = [
+    "table_params",
+    "run_plan",
+    "run_gate",
+    "run_unchecked",
+    "run_gates",
+    "asof_checks",
+    "asof_max_pairs",
+]
 
 _REPORT_INTERNAL = [
     "windows_total",

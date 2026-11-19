@@ -76,6 +76,7 @@ def verdict(
         _epsilon=out.get("epsilon_bounds"),
         _rows_exact=out.get("rows_exact"),
         _margin_checks=list(out.get("margin_checks") or []),
+        _asof_checks=list(out.get("asof_checks") or []),
         _engines=out.get("engines"),
         _sorted=out.get("sorted"),
         _generated_proofs=generated_proofs(),
