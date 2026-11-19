@@ -92,6 +92,9 @@ def test_optimize_false_runs_the_plan_as_written(rules):
     report = sv.verify(T.distinct(), requires=KEY)
     assert report.run(con(), "duckdb", optimize=False).num_rows == DATA.num_rows
     assert report._run_gates["duckdb"] == "optimize"
+    # An unchecked run already ran the plan as written: its reason stays.
+    report.run(con(), "duckdb", check_requires=False, optimize=False)
+    assert report._run_gates["duckdb"] == "unchecked"
 
 
 def test_rule_off_keeps_the_plan_as_written(rules):

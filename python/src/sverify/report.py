@@ -1229,9 +1229,13 @@ class Report:
         # read the same one.
         run_engine = chosen.engine if chosen is not None else str(target)
         plan = self._plan_to_run(kind, checked=check_requires, engine=run_engine)
-        if not optimize and self._run_plan is not None and self.internal_plan is not None:
-            plan = written_plan(self.internal_plan)
-            self._run_gates[run_engine] = "optimize"
+        # Opting out names its own gate only where it changed the plan, and
+        # keeps an earlier reason ("route", "unchecked") otherwise.
+        if not optimize and self.internal_plan is not None:
+            written = written_plan(self.internal_plan)
+            if plan != written:
+                plan = written
+                self._run_gates[run_engine] = "optimize"
         if check_requires:
             # A precondition with no check would let the run drop guards on
             # data it never looked at: refuse before anything runs.
