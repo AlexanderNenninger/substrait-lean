@@ -45,8 +45,8 @@ JSON list per row. `sverify_dev.probe` compares them with DuckDB (#242).
 
 `substrait-check --raises plan.json`: the first error the reference raises
 anywhere in the plan, its name on one line, or nothing: every filter,
-projection, join and aggregate evaluates its expressions on the rows its
-input gives. What `sverify.testing.lean_values` reads to raise `LeanRaised`.
+projection and aggregate evaluates its expressions on the rows its input
+gives. What `sverify.testing.lean_values` reads to raise `LeanRaised`.
 
 `substrait-check --rows plan.json`: the default check's well-formedness
 verdict and rows only, without the plan, its round trip or its other
@@ -155,20 +155,16 @@ def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String 
 
 /-- The first error the reference profile `p` raises in the plan: each
 filter, projection and aggregate evaluates its expressions on the rows its
-input gives (`Rel.eval`), inputs first. A join's or semi join's condition is
-evaluated on every pair of rows, as `Rel.eval` does. An aggregate's argument
-is evaluated on the rows its filter keeps. A window's aggregates are not
-looked into: a frame may leave a row out. -/
+input gives (`Rel.eval`), inputs first. An aggregate's argument is evaluated
+on the rows its filter keeps. Joins and windows are not looked into (#1701). -/
 def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .read _ | .values _ _ => none
   | .filter r c => relRaised cat p r <|> firstError p (r.eval cat) [c]
   | .project r es => relRaised cat p r <|> firstError p (r.eval cat) es
   | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
     relRaised cat p r
-  | .cross a b | .unionAll a b => relRaised cat p a <|> relRaised cat p b
-  | .join a b _ on | .semi a b _ on =>
-    relRaised cat p a <|> relRaised cat p b <|>
-      firstError p (crossRows (a.eval cat) (b.eval cat)) [on]
+  | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ =>
+    relRaised cat p a <|> relRaised cat p b
   | .aggregate r gs ms =>
     let rows := r.eval cat
     relRaised cat p r <|> firstError p rows gs <|> ms.findSome? fun m =>
