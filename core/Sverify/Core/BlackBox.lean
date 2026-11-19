@@ -244,35 +244,38 @@ namespace BlackBox
 
 /-! ## The functions -/
 
-/-- The model's value of a scalar black box: NULL for a NULL argument of a
-strict one, else the function where it keeps the laws. Where it breaks one,
-the value is the row's `sample` in the kernel, and the compiled checker
-panics, so it refuses the rows (`runOn`, #70) instead of showing the sample
-(#1484). -/
-def Scalar.call (f : Scalar) (vs : List Value) : Value :=
-  if f.strict && vs.contains .null then .null else
-    let v := f.eval vs
-    if ok f.result f.laws (!vs.contains .null) v then v else
-      letI : Inhabited Value := ⟨f.sample⟩
-      panic! s!"black box {f.name} broke a declared law {repr f.laws}: {repr v}"
-
 /-- Does the scalar raise on these arguments? -/
 def Scalar.raisesOn (f : Scalar) (vs : List Value) : Bool :=
   f.raises == .sometimes && !vs.contains .null && f.raises? vs
 
-/-- The model's value of an aggregate black box of non-NULL values; where the
-function breaks a law, the sample in the kernel and a panic in the compiled
-checker, as `Scalar.call`. -/
-def Aggregate.call (f : Aggregate) (vs : List Value) : Value :=
-  if vs.isEmpty then f.empty else
+/-- The model's value of a scalar black box: NULL for a NULL argument of a
+strict one, else the function where it keeps the laws. Where it breaks one,
+the value is the row's `sample` in the kernel. On arguments it raises on
+(`raisesOn`) the row raises and the value is never shown; elsewhere the
+compiled checker panics, so it refuses the rows (`runOn`, #70) instead of
+showing the sample (#1484). -/
+def Scalar.call (f : Scalar) (vs : List Value) : Value :=
+  if f.strict && vs.contains .null then .null else
     let v := f.eval vs
-    if ok f.result f.laws true v then v else
+    if ok f.result f.laws (!vs.contains .null) v then v else
+    if f.raisesOn vs then f.sample else
       letI : Inhabited Value := ⟨f.sample⟩
       panic! s!"black box {f.name} broke a declared law {repr f.laws}: {repr v}"
 
 /-- Does the aggregate raise on these values? -/
 def Aggregate.raisesOn (f : Aggregate) (vs : List Value) : Bool :=
   f.raises == .sometimes && !vs.isEmpty && f.raises? vs
+
+/-- The model's value of an aggregate black box of non-NULL values; where the
+function breaks a law, the sample in the kernel, and in the compiled checker
+a panic unless the values raise, as `Scalar.call`. -/
+def Aggregate.call (f : Aggregate) (vs : List Value) : Value :=
+  if vs.isEmpty then f.empty else
+    let v := f.eval vs
+    if ok f.result f.laws true v then v else
+    if f.raisesOn vs then f.sample else
+      letI : Inhabited Value := ⟨f.sample⟩
+      panic! s!"black box {f.name} broke a declared law {repr f.laws}: {repr v}"
 
 /-- The scalar black box `name` of `B`, NULL for a name without a row. -/
 def callScalar (B : Boxes) (name : String) (vs : List Value) : Value :=
@@ -336,7 +339,7 @@ theorem Scalar.call_ok {f : Scalar} (hs : ok f.result f.laws true f.sample = tru
   · simp only
     split
     · assumption
-    · exact ok_of_set hs _
+    · split <;> exact ok_of_set hs _
 
 /-- **An aggregate black box keeps its laws** over values, given a sample
 that does. -/
@@ -346,7 +349,7 @@ theorem Aggregate.call_ok {f : Aggregate} (hs : ok f.result f.laws true f.sample
   simp only [List.isEmpty_iff, hne, ite_false]
   split
   · assumption
-  · exact hs
+  · split <;> exact hs
 
 theorem Aggregate.call_nil (f : Aggregate) : f.call [] = f.empty := rfl
 
@@ -378,32 +381,35 @@ namespace Substrait
 
 open BlackBox in
 /-- **The catalogue's functions keep their declared laws** (#1484): each
-scalar's where it is not NULL by strictness, each aggregate's over values. It
+scalar's where it is not NULL by strictness, each aggregate's over values,
+both where the function does not raise (there the row raises). It
 is part of D16's trusted claim that an engine computes the model
 (`Engine.Runs`), tested by `python/tests/test_black_box.py`; no theorem takes
 it as a hypothesis but `Boxes.Lawful.call`. -/
 def Boxes.Lawful (B : Boxes) : Prop :=
-  (∀ f ∈ B.scalars, ∀ vs, (f.strict && vs.contains .null) = false →
+  (∀ f ∈ B.scalars, ∀ vs, (f.strict && vs.contains .null) = false → f.raisesOn vs = false →
       ok f.result f.laws (!vs.contains .null) (f.eval vs) = true) ∧
-    ∀ f ∈ B.aggregates, ∀ vs, vs ≠ [] → ok f.result f.laws true (f.eval vs) = true
+    ∀ f ∈ B.aggregates, ∀ vs, vs ≠ [] → f.raisesOn vs = false →
+      ok f.result f.laws true (f.eval vs) = true
 
 open BlackBox in
 /-- **Under `Boxes.Lawful` the model's value is the function's**: the clamp
 of `Scalar.call` and `Aggregate.call` (the sample where a law breaks) never
 applies, so `Lawful` is exactly what the clamp assumes of the engine. -/
 theorem Boxes.Lawful.call {B : Boxes} (h : B.Lawful) :
-    (∀ f ∈ B.scalars, ∀ vs,
+    (∀ f ∈ B.scalars, ∀ vs, f.raisesOn vs = false →
       f.call vs = if f.strict && vs.contains .null then .null else f.eval vs) ∧
-    ∀ f ∈ B.aggregates, ∀ vs, f.call vs = if vs.isEmpty then f.empty else f.eval vs := by
-  refine ⟨fun f hf vs => ?_, fun f hf vs => ?_⟩
+    ∀ f ∈ B.aggregates, ∀ vs, f.raisesOn vs = false →
+      f.call vs = if vs.isEmpty then f.empty else f.eval vs := by
+  refine ⟨fun f hf vs hr => ?_, fun f hf vs hr => ?_⟩
   · unfold Scalar.call
     cases hs : (f.strict && vs.contains .null)
-    · simp only [Bool.false_eq_true, ↓reduceIte, h.1 f hf vs hs]
+    · simp only [Bool.false_eq_true, ↓reduceIte, h.1 f hf vs hs hr]
     · rfl
   · unfold Aggregate.call
     cases he : vs.isEmpty
     · have hne : vs ≠ [] := fun e => by simp [e] at he
-      simp only [Bool.false_eq_true, ↓reduceIte, h.2 f hf vs hne]
+      simp only [Bool.false_eq_true, ↓reduceIte, h.2 f hf vs hne hr]
     · rfl
 
 end Substrait
