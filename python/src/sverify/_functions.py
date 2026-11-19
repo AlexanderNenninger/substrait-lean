@@ -228,19 +228,15 @@ class Fn:
 
 
 def _libm(name: str) -> dict[str, str | No]:
-    """An elementary function of a double, C's `libm` on the engines that use it."""
-    sql: dict[str, str | No] = {
+    """An elementary function of a double: C's `libm` on DuckDB and Polars, Java's on
+    Spark, within the ulps its `fp.elem` and `fp.log` rows state (spark-elem-rounding)."""
+    return {
         "": f"{name.upper()}({{0}})",
         "snowflake": No(
             f"Snowflake's {name.upper()} is not documented to be C's libm, "
             "which the Lean model uses"
         ),
     }
-    if name != "sqrt":  # IEEE 754 rounds square roots correctly, as libm does.
-        sql["spark"] = No(
-            f"Spark's {name.upper()} is Java's StrictMath, not the C libm the Lean model uses"
-        )
-    return sql
 
 
 def _fp(name: str, anchor: int, group: str, lift: str, ibis: str) -> Fn:

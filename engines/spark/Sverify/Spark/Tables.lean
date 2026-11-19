@@ -106,6 +106,14 @@ def Profile.spark.obs : ObsTable := [
   -- (spark-elem-rounding).
   (none, "pow_one_inf", ({ ObsRow.native ["spark-math-domain", "spark-elem-rounding"] with
     cls := .refused }).tracking 271),
+  -- `exp`, `ln`, `log10` and `log(b, x)` are `StrictMath`'s (fdlibm), `log2` is
+  -- `ln x / ln 2`, and the trigonometric functions are `java.lang.Math`'s, each
+  -- within the ulps of spark-elem-rounding of libm's value, which the reference
+  -- takes (tested, not proved, as Polars's `fp.log`).
+  (some "fp.elem", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding"] with
+    note := "StrictMath and java.lang.Math, within the ulps of spark-elem-rounding of libm's value; atan2 and power stay refused." }).tracking 271),
+  (some "fp.log", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding"] with
+    note := "StrictMath's logarithms, and log2 as ln x / ln 2 (two roundings), within the ulps of spark-elem-rounding of libm's value." }).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),

@@ -49,9 +49,8 @@ CASES: list[Case] = [
     case("math", "logical xor", V, lambda: t.filter(t.flag ^ (t.qty > 0))),
 ]
 
-#: Spark computes these with Java's `StrictMath`, which may differ from C's
-#: libm in the last bit; Snowflake does not document its implementation.
-LIBM = {"snowflake": "libm", "spark": "StrictMath"}
+#: Snowflake does not document its implementation of these.
+LIBM = {"snowflake": "libm"}
 REFUSED: dict[str, dict[str, str]] = {
     "sqrt": {"snowflake": "libm"},
     "exp": LIBM,

@@ -204,12 +204,6 @@ class SparkDialect(Dialect):
         # the double's own rounding (a halfway double prints as one).
         return f"ROUND({x})"
 
-    def float_logb(self, x: str, b: str) -> str:
-        raise self.to_duckdb(
-            "Spark's LN is Java's StrictMath, not the C libm the Lean model uses "
-            "(spark-elem-rounding)"
-        )
-
     def float_pow(self, a: str, b: str) -> str:
         raise self.to_duckdb(
             "Spark's POWER is Java's Math.pow, within 1 ulp of the C pow the Lean model uses "
