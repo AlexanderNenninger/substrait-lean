@@ -1668,6 +1668,9 @@ divided by the unit's microseconds, so Lean's model has no new function.
 `week`, `month`, `quarter`, `year` and `nanosecond` are refused until facts pin
 each engine's boundary (month, quarter and year are the next step).
 
+The delta of dates and times follows the same rule and is refused until built,
+and a time-zone-aware timestamp's delta is refused.
+
 Recomputes sinks: no
 
 Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duckdb/facts/duckdb-timestamp-date-diff.json))
