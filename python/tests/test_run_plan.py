@@ -82,6 +82,16 @@ def test_to_sql_writes_the_plan_as_written(rules):
     assert report._run_plan is not None
     assert "GROUP BY" in report.to_sql()
     assert report._run_gates["to_sql"] == "unchecked"
+    # An explicit opt-in, for data known to meet the preconditions.
+    assert "GROUP BY" not in report.to_sql(optimize=True)
+    assert "to_sql" not in report._run_gates
+
+
+def test_optimize_false_runs_the_plan_as_written(rules):
+    rules(DISTINCT)
+    report = sv.verify(T.distinct(), requires=KEY)
+    assert report.run(con(), "duckdb", optimize=False).num_rows == DATA.num_rows
+    assert report._run_gates["duckdb"] == "optimize"
 
 
 def test_rule_off_keeps_the_plan_as_written(rules):

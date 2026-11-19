@@ -498,8 +498,9 @@ class Report:
     """Per engine (or `"to_sql"`), why its last run took the plan as written
     where the checker gave a rewrite (`_run_gate` is None): `"route"` (a route
     that does not rest on this report), `"unchecked"` (the run did not check
-    the preconditions on its data, or `to_sql`, which cannot) or `"writer"`
-    (the engine's writer refused the rewrite). A run's own gate, apart from
+    the preconditions on its data, or `to_sql` without `optimize=True`),
+    `"optimize"` (`run(optimize=False)`) or `"writer"` (the engine's writer
+    refused the rewrite). A run's own gate, apart from
     the checker's (ruling 150, C2)."""
     _inferred: dict[str, list[Condition]] = field(default_factory=dict, repr=False)
     """The bounds inferred to rule out overflow (`infer_bounds`), per input
@@ -792,7 +793,7 @@ class Report:
         """The contract `to_substrait` embeds, as JSON, for a sidecar file."""
         return _hooks.export().contract_json(self, shims=shims)
 
-    def to_sql(self, dialect: Any = "duckdb") -> str:
+    def to_sql(self, dialect: Any = "duckdb", *, optimize: bool = False) -> str:
         """The verified plan as SQL whose meaning is the proof's, in
         `dialect`.
 
@@ -809,6 +810,12 @@ class Report:
         Args:
             dialect: `"duckdb"` (the default), `"snowflake"` or `"spark"`,
                 or a `Dialect` (`sverify.sql.dialect_of`).
+            optimize: Write the plan the checker rewrote with the facts of
+                the preconditions (`docs/optimizations.md`, "The gate"), where
+                it gave one. It gives the plan's rows only on data that meets
+                the preconditions, which nothing checks for this SQL, so pass
+                it only for data you know meets them. Default False: the plan
+                as written. The name is provisional (#1787).
 
         Returns:
             One SQL query, reading the plan's tables by the names it was
@@ -840,7 +847,7 @@ class Report:
         # The SQL runs on data nothing here checks, so it is the plan as
         # written: the rewrite rests on the preconditions (ruling 150, C1).
         return to_sql(
-            self._plan_to_run("translated", checked=False, engine="to_sql"),
+            self._plan_to_run("translated", checked=optimize, engine="to_sql"),
             d,
             deterministic=self._exact,
             finite=finite,
@@ -1063,6 +1070,7 @@ class Report:
         check_requires: bool = True,
         streaming: Literal["allow", "require"] = "allow",
         deterministic: bool | None = None,
+        optimize: bool = True,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
         `con`, so the result is the one the report is about.
@@ -1125,6 +1133,11 @@ class Report:
                 (`sverify_polars.engine.fallback_nodes`); `"allow"` (the default)
                 runs it. Either way a chosen route records the nodes in
                 `Route.fallbacks`.
+            optimize: Run the plan the checker rewrote with the facts of the
+                preconditions (`docs/optimizations.md`, "The gate"), where it
+                gave one and this run checks the preconditions on the data
+                (`check_requires`). Default True; False runs the plan as
+                written. The name is provisional (#1787).
 
         Returns:
             The result as an Arrow table, with the transformation's output
@@ -1193,6 +1206,9 @@ class Report:
         # read the same one.
         run_engine = chosen.engine if chosen is not None else str(target)
         plan = self._plan_to_run(kind, checked=check_requires, engine=run_engine)
+        if not optimize and self._run_plan is not None and self.internal_plan is not None:
+            plan = written_plan(self.internal_plan)
+            self._run_gates[run_engine] = "optimize"
         if check_requires:
             # A precondition with no check would let the run drop guards on
             # data it never looked at: refuse before anything runs.
