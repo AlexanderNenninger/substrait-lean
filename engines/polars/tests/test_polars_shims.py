@@ -151,7 +151,7 @@ def test_polars_sums_nothing_to_zero_and_averages_to_a_double():
     assert native(df, shims.avg_int_declared(v)) == [(exact,)]
 
 
-@pytest.mark.parametrize("measure", ["SUM(a)", "CAST(floor(AVG(a)) AS BIGINT)", "COUNT(a)"])
+@pytest.mark.parametrize("measure", ["SUM(a)", "AVG(a)::BIGINT", "COUNT(a)"])
 def test_integer_sum_and_avg_match_lean(measure):
     # Groups 1 and 5 leave 64 bits when summed.
     rows = [r for r in GROUPED if r[0] not in (1, 5)] if measure == "SUM(a)" else GROUPED
@@ -162,7 +162,7 @@ def test_integer_sum_and_avg_match_lean(measure):
 @pytest.mark.parametrize("where", ["WHERE g > 9", "WHERE g = 2", ""])
 def test_ungrouped_sum_of_nothing_is_null(where):
     rows = [r for r in GROUPED if r[0] in (2, 3, 4)]
-    sql = f"SELECT SUM(a) AS s, CAST(floor(AVG(a)) AS BIGINT) AS m FROM r {where}"
+    sql = f"SELECT SUM(a) AS s, AVG(a)::BIGINT AS m FROM r {where}"
     lean, polars = lean_and_polars(INTS, rows, sql)
     assert lean == polars
     if where:
@@ -514,16 +514,15 @@ CASE_ROWS = [(10, 0, 0.0, "ab"), (MIN, -1, -1.0, None), (7, -2, math.nan, "æ—¥æœ
      "CASE WHEN b <> 0 AND NOT (a = -9223372036854775808 AND b = -1) THEN a // b END",
      "CASE WHEN a > -9223372036854775808 THEN -a END",
      "CASE WHEN a < 1000 AND a > -1000 THEN a * a END",
-     "CASE WHEN x = x AND x < 1e18 AND x > -1e18 THEN CAST(floor(x) AS BIGINT) END",
+     "CASE WHEN x = x AND x < 1e18 AND x > -1e18 THEN CAST(x AS BIGINT) END",
      "CASE WHEN x > 0 THEN sqrt(x) END",
      "CASE WHEN b > 0 THEN pow(a, b) END",
      "CASE WHEN a < 100 THEN repeat(s, a) END",
      "CASE WHEN a > 0 THEN CAST(a AS INTEGER) END",
      # Polars's CSE may hoist a repeated subexpression out of its branch
      # (`csee.rs`); the translator's casts are masked inside the expression.
-     "CASE WHEN x = x AND x < 1e18 AND x > -1e18"
-     " THEN CAST(floor(x) AS BIGINT) + CAST(floor(x) AS BIGINT)"
-     " WHEN x = x AND x < 1e17 THEN CAST(floor(x) AS BIGINT) END"],
+     "CASE WHEN x = x AND x < 1e18 AND x > -1e18 THEN CAST(x AS BIGINT) + CAST(x AS BIGINT)"
+     " WHEN x = x AND x < 1e17 THEN CAST(x AS BIGINT) END"],
 )  # fmt: skip
 def test_an_untaken_branch_neither_raises_nor_leaks(case):
     """Polars evaluates both sides of `when/then/otherwise` on every row. The
@@ -753,7 +752,7 @@ def test_a_fractional_power_of_minus_infinity_is_refused():
     """Polars computes `x ** 0.5` as `sqrt(x)`: NaN for `-inf`, where IEEE's
     `pow` gives `+inf`. The reference refuses a negative base, `-inf`
     included, to a fractional power, so the guard does, on the streaming
-    engine; `(-0.0) ** 0.5` is `-0.0` in Polars and the one zero here."""
+    engine; `(-0.0) ** 0.5` is `-0.0` in Polars, `+0.0` as libm's `pow` (`ieee_zero_power`)."""
     lf = pl.LazyFrame({"x": [-math.inf, -0.0, 4.0]})
     assert math.isnan(lf.select(pl.col("x").pow(0.5)).collect(engine="streaming").item(0, 0))
     con = connect()

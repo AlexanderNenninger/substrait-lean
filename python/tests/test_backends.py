@@ -230,13 +230,10 @@ def test_var_pop_of_one_nan(con):
     assert v(duckdb_ibis(con, expr)) == [None, 0.0]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="Polars canonicalises -0.0 at reads and scalar results (#1794)"
-)
 def test_cot_of_negative_zero_agrees_across_engines(con):
     """The Hypothesis example behind `test_engines_agree[trigonometry]`'s seed-dependent
     failure (`--hypothesis-seed=5`): `amount = -0.0`. `cot(-0.0)` is `-inf` on DuckDB and
-    `+inf` on Polars, whose read makes the zero positive (D31 keeps values raw, #1461)."""
+    `+inf` on Polars when its read made the zero positive (D31 keeps values raw, #1461, #1794)."""
     schema = {name: s.to_pyarrow() for name, s in coverage.T.schema().items()}
     t = {"id": [None], "name": [None], "amount": [-0.0], "qty": [None],
          "ts": STAMPS[:1], "flag": [None]}  # fmt: skip
@@ -358,3 +355,44 @@ def test_connections_share_one_duckdb_database():
         create_tables(con, [(1, "ada", 3)])
         con.table("orders").count().execute()
     assert psutil.Process().num_threads() - before < 10
+
+
+#: Scalar operations whose result is a zero of either sign for the `-0.0` row.
+_ZERO_SIGNS = {
+    "negation": lambda a: -a,
+    "floor": lambda a: a.floor(),
+    "ceil": lambda a: a.ceil(),
+    "round": lambda a: a.round(),
+    "sin": lambda a: a.sin(),
+    "tan": lambda a: a.tan(),
+    "cot": lambda a: a.cot(),
+    "atan": lambda a: a.atan(),
+    "sum with a zero literal": lambda a: a + 0.0,
+    "difference from a zero literal": lambda a: 0.0 - a,
+    "difference of a zero literal": lambda a: a - 0.0,
+    "difference": lambda a: a - a,
+    "sum": lambda a: a + a,
+    "product": lambda a: a * -1.0,
+    "quotient": lambda a: a / -1.0,
+    "cube": lambda a: a**3,
+    "atan2": lambda a: a.atan2(a * 0.0 - 1.0),
+}
+
+
+@pytest.mark.parametrize("name", _ZERO_SIGNS)
+def test_scalar_results_keep_the_sign_of_a_zero_on_polars_and_duckdb(con, name):
+    """Values stay raw (D31, #1461, #1794): the plan's `-0.0` and `0.0` results are the
+    reference's, so a later division reads the same infinity on both engines."""
+    schema = {n: s.to_pyarrow() for n, s in coverage.T.schema().items()}
+    amount = [-0.0, 0.0, -1.0, 2.0, -0.5, 0.5]
+    t = {"id": list(range(6)), "name": [None] * 6, "amount": amount, "qty": [None] * 6,
+         "ts": STAMPS[:1] * 6, "flag": [None] * 6}  # fmt: skip
+    put_table(con, "t", pa.table({k: pa.array(v, schema[k]) for k, v in t.items()}))
+    q = coverage.T.select(i=coverage.T.id, x=_ZERO_SIGNS[name](coverage.T.amount))
+    plan = written_plan(to_substrait_json(q))
+
+    def signed(engine: str) -> list:
+        out = run_plan(con, plan, engine).sort_by("i").column("x").to_pylist()
+        return [math.copysign(1.0, v) if v == 0 else v for v in out]
+
+    assert signed("polars") == signed("duckdb")
