@@ -25,7 +25,7 @@ primitives that Substrait and Ibis do not express.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -103,12 +103,16 @@ Moments = list[int]
 
 
 def fold(
-    kind: Kind, keys: pa.Table, values: Sequence[pa.Array], weights: pa.Array
+    kind: Kind,
+    keys: pa.Table,
+    values: Sequence[pa.Array],
+    weights: pa.Array,
+    out: dict[tuple, Moments] | None = None,
 ) -> dict[tuple, Moments]:
     """Each group's exact moments of `values` (one column, or a pair's two;
     rows with a NULL skipped), each counted `weights` times (negative for a
-    delete)."""
-    out: dict[tuple, Moments] = {}
+    delete), added to `out` (default: none yet)."""
+    out = {} if out is None else out
     for start in range(0, keys.num_rows, _CHUNK):
         n = min(_CHUNK, keys.num_rows - start)
         _fold(
@@ -406,18 +410,21 @@ def moments_by_key(
 
 
 def fold_contributions(
-    contrib: pa.Table, keys: Sequence[str], exact: Sequence[Exact]
+    contrib: pa.Table | Iterable[pa.Table], keys: Sequence[str], exact: Sequence[Exact]
 ) -> dict[int, dict[tuple, Moments]]:
     """The moments of each exact measure in a table of contributions (the
     keys, `__n<i>` the weight a counted value has, `__s<i>` the value and
-    for a pair `__t<i>` its second)."""
-    k = contrib.select(list(keys))
-    return {
-        e.index: fold(
-            e.kind,
-            k,
-            [contrib.column(c).combine_chunks() for c in e.value_columns()],
-            contrib.column(f"__n{e.index}").combine_chunks(),
-        )
-        for e in exact
-    }
+    for a pair `__t<i>` its second), or in the tables of a stream of them,
+    one at a time."""
+    out: dict[int, dict[tuple, Moments]] = {e.index: {} for e in exact}
+    for part in [contrib] if isinstance(contrib, pa.Table) else contrib:
+        k = part.select(list(keys))
+        for e in exact:
+            fold(
+                e.kind,
+                k,
+                [part.column(c).combine_chunks() for c in e.value_columns()],
+                part.column(f"__n{e.index}").combine_chunks(),
+                out[e.index],
+            )
+    return out

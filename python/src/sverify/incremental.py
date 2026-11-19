@@ -55,24 +55,25 @@ import hashlib
 import json
 import math
 import warnings
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, overload
 
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched, profiles
+from sverify import _duckdb, _exact_sum, _linear, _quarantine, _retention, _semi, _touched, profiles
 from sverify._engines import LOCAL
+from sverify._parts import Lazy
 from sverify._pipe import Pipeable
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify._run_schema import table_problems
 from sverify._scan import Native, Resident, Scan, ScanSnapshot
 from sverify._state import Merger, State, Store, arrow_of, by_keys, store_for
-from sverify._store import instants_schema
+from sverify._store import instants_in_utc, instants_schema
 from sverify._unsupported import ROWS_ASIDE, SverifyError
 from sverify._weighted import (
     WEIGHT,
@@ -1448,9 +1449,12 @@ class IncrementalView:
         # SUMs and AVGs of doubles: their exact moments, from every input row.
         lin = self.linear
         assert lin.values is not None
-        rows = run_plan_on(self.con, lin.values, self.engine, new_tables, self.tables)
-        rows = rows.rename_columns(init.column_names)
-        delta = _exact_sum.fold_contributions(rows, lin.keys, lin.exact)
+        # The rows stay in the engine where it can keep them (DuckDB), and are
+        # folded a batch at a time: the driver holds the moments per group and
+        # one batch, not the input (#1447).
+        rows = run_plan_on(self.con, lin.values, self.engine, new_tables, self.tables, keep=True)
+        batches = _batches(rows, init.column_names)
+        delta = _exact_sum.fold_contributions(batches, lin.keys, lin.exact)
         return _exact_sum.attach(init, lin.keys, lin.exact, {}, delta, check=False)
 
     def _linear_change(
@@ -1653,23 +1657,75 @@ def _flips(before: pa.Table, after: pa.Table, keys: list[str], anti: bool) -> pa
     )
 
 
+@overload
 def run_plan_on(
     con: Connection,
     plan: str,
     engine: Any,
     new_tables: Mapping[str, pa.Table | Native],
     tables: Sequence[str],
-) -> pa.Table:
+    *,
+    keep: Literal[False] = False,
+) -> pa.Table: ...
+
+
+@overload
+def run_plan_on(
+    con: Connection,
+    plan: str,
+    engine: Any,
+    new_tables: Mapping[str, pa.Table | Native],
+    tables: Sequence[str],
+    *,
+    keep: bool,
+) -> pa.Table | Resident: ...
+
+
+def run_plan_on(
+    con: Connection,
+    plan: str,
+    engine: Any,
+    new_tables: Mapping[str, pa.Table | Native],
+    tables: Sequence[str],
+    *,
+    keep: bool = False,
+) -> pa.Table | Resident:
     """`plan` run with each of `tables` that `new_tables` has at its new
-    contents; nothing is replaced."""
+    contents; nothing is replaced. With `keep`, DuckDB keeps the result
+    (`run_plan`'s `keep`)."""
     old = {t: con.get(t) for t in tables if t in new_tables}
     try:
         for t in old:
             put_table(con, t, new_tables[t])
-        return run_plan(con, plan, engine)
+        return run_plan(con, plan, engine, keep=keep)
     finally:
         for t, table in old.items():
             put_table(con, t, table)
+
+
+BATCH_ROWS = 2**17
+"""The rows of a result an engine keeps that the driver reads at a time
+(`_batches`)."""
+
+
+def _batches(rows: Any, names: Sequence[str]) -> Iterator[pa.Table]:
+    """The rows of a result `run_plan(keep=True)` gave, with the columns
+    `names`: from DuckDB, which keeps them, in tables of at most `BATCH_ROWS`
+    rows; from an engine's lazy frame (`sverify._parts.Lazy`), collected."""
+    if not isinstance(rows, Resident):
+        if isinstance(rows, Lazy):
+            rows = rows.backend.arrow(rows.frame, rows.schema)
+        yield rows.rename_columns(list(names))
+        return
+    schema = pa.schema([f.with_name(n) for f, n in zip(rows.schema, names, strict=True)])
+    db = _duckdb.cursor()
+    try:
+        reader = db.sql(f"SELECT * FROM {rows.ref}").fetch_record_batch(BATCH_ROWS)
+        for batch in reader:
+            table = pa.Table.from_batches([batch]).rename_columns(list(names))
+            yield instants_in_utc(table.cast(schema))
+    finally:
+        db.close()
 
 
 def _load_delta_table(con: Connection, t: str, change: pa.Table | None) -> None:

@@ -248,6 +248,21 @@ def test_a_maintained_double_sum_is_exact(seed, engine):
         _check(node, live)
 
 
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_the_first_state_folds_the_input_a_batch_at_a_time(monkeypatch, engine):
+    """The first refresh folds every input row into the exact state; DuckDB
+    keeps the rows and the driver reads them `BATCH_ROWS` at a time (#1447),
+    here three, so the state adds up across many batches."""
+    from sverify import incremental
+
+    monkeypatch.setattr(incremental, "BATCH_ROWS", 3)
+    rng = random.Random(1447)
+    live = [(rng.randrange(5), finite_value(rng)) for _ in range(40)]
+    node = StaticSource(table(live), name="t").pipe(sums)
+    node.refresh(engine=engine)
+    _check(node, live)
+
+
 def test_no_drift_where_a_running_sum_drifts():
     """`1e16 + 1 − 1e16` in doubles is 0; the exact state keeps the 1."""
     src = StaticSource(table([(1, 1.0)]), name="t")
