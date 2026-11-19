@@ -22,17 +22,6 @@ namespace Substrait
 
 /-! ## Values -/
 
-mutual
-/-- Is a double part of `v`, here or inside a list or a struct? -/
-def Value.hasDouble : Value → Bool
-  | .float _ => true
-  | .list vs | .struct vs => Value.anyDouble vs
-  | _ => false
-
-def Value.anyDouble : List Value → Bool
-  | [] => false
-  | v :: vs => v.hasDouble || Value.anyDouble vs
-end
 
 theorem Value.anyDouble_eq_false {vs : List Value} :
     Value.anyDouble vs = false ↔ ∀ v ∈ vs, v.hasDouble = false := by
