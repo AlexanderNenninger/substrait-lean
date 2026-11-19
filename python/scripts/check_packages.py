@@ -4,16 +4,19 @@ The Wheels workflow installs each combination users install, from the run's
 own wheels and with no source tree, one environment each, and runs this in
 it:
 
-    python scripts/check_packages.py base         # sverify alone
-    python scripts/check_packages.py polars       # sverify[polars]
-    python scripts/check_packages.py spark        # sverify[spark]
-    python scripts/check_packages.py spark-light  # sverify and sverify-spark, no PySpark
+    python scripts/check_packages.py base         # sverify alone: no DuckDB, no engine
+    python scripts/check_packages.py duckdb       # sverify[duckdb]
+    python scripts/check_packages.py polars       # sverify[duckdb,polars]
+    python scripts/check_packages.py spark        # sverify[duckdb,spark]
+    python scripts/check_packages.py spark-light  # sverify[duckdb] and sverify-spark, no PySpark
     python scripts/check_packages.py dbt          # sverify and sverify-dbt
 
 Each checks the engines sverify finds (`sverify.profiles`), that every
 installed sverify distribution is at sverify's version, a `verify` of a small
 plan, and a run of it on each installed engine against DuckDB's rows. The
-light Spark install writes Spark SQL and refuses a run, naming the extra.
+base install verifies and writes SQL with no DuckDB, and a run names the
+extra; the light Spark install writes Spark SQL and refuses a run, naming
+the extra.
 """
 
 from __future__ import annotations
@@ -82,6 +85,32 @@ def check(engines: set[str], absent: tuple[str, ...] = ()) -> None:
     print(f"engines {sorted(found)}; ran on {sorted(engines)}; pinned {pinned()}")
 
 
+def base() -> None:
+    """sverify alone: no engine runs plans and DuckDB is not installed, a
+    plan verifies and is written as SQL, and a run names the extra."""
+    from sverify import profiles
+
+    assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
+    import ibis
+
+    import sverify as sv
+
+    t = ibis.table({"a": "int64"}, name="t")
+    report = sv.verify(
+        t.filter(t.a > 2), requires={"t": [sv.unique("a")]}, ensures=[sv.unique("a")]
+    )
+    assert report.verdict == "proved", report
+    assert "SELECT" in report.to_sql("duckdb").upper()
+    assert not [e for e, p in profiles.plugins().items() if p.local]
+    try:
+        sv.connect()
+    except ValueError as e:
+        assert "sverify[duckdb]" in str(e), e
+    else:
+        raise AssertionError("a connection without an engine did not refuse")
+    print(f"engines {sorted(profiles.plugins())}; verified and wrote SQL; pinned {pinned()}")
+
+
 def spark_light() -> None:
     """sverify-spark without PySpark: it writes Spark SQL, and a run on Spark
     names the extra that brings PySpark."""
@@ -102,9 +131,13 @@ def spark_light() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("combination", choices=["base", "polars", "spark", "spark-light", "dbt"])
+    parser.add_argument(
+        "combination", choices=["base", "duckdb", "polars", "spark", "spark-light", "dbt"]
+    )
     which = parser.parse_args().combination
     if which == "base":
+        base()
+    elif which == "duckdb":
         check({"duckdb"}, absent=("polars", "pyspark", "sverify_polars", "sverify_spark"))
     elif which == "polars":
         check({"duckdb", "polars"}, absent=("pyspark",))

@@ -307,7 +307,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        combination: [base, polars, spark, spark-light, dbt]
+        combination: [base, duckdb, polars, spark, spark-light, dbt]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -337,9 +337,10 @@ jobs:
           wheel=$(ls "$PWD"/wheelhouse/*.whl)
           case "$COMBINATION" in
             base) spec=("sverify @ file://$wheel") ;;
-            polars) spec=("sverify[polars] @ file://$wheel") ;;
-            spark) spec=("sverify[spark] @ file://$wheel") ;;
-            spark-light) spec=("sverify @ file://$wheel" "$(ls "$PWD"/dist-engines/sverify_spark-*.whl)") ;;
+            duckdb) spec=("sverify[duckdb] @ file://$wheel") ;;
+            polars) spec=("sverify[duckdb,polars] @ file://$wheel") ;;
+            spark) spec=("sverify[duckdb,spark] @ file://$wheel") ;;
+            spark-light) spec=("sverify[duckdb] @ file://$wheel" "$(ls "$PWD"/dist-engines/sverify_spark-*.whl)") ;;
             dbt) spec=("sverify @ file://$wheel" "$(ls "$PWD"/dist-dbt/sverify_dbt-*.whl)" dbt-core dbt-duckdb) ;;
           esac
           uv venv --python 3.12 "$RUNNER_TEMP/venv"

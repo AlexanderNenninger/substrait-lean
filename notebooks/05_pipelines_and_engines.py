@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify[delta,polars,spark]",
+#     "sverify[duckdb,delta,polars,spark]",
 # ]
 #
 # [tool.uv.sources]
