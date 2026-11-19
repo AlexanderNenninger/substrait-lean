@@ -15,6 +15,7 @@ pytestmark = needs_repo
 def mod():
     path = Path(__file__).parent.parent / "scripts" / "coverage_summary.py"
     spec = importlib.util.spec_from_file_location("coverage_summary", path)
+    assert spec is not None and spec.loader is not None
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
