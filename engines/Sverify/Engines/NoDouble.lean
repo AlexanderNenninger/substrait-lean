@@ -1,5 +1,6 @@
 import Sverify.Core.AllowedNear
 import Sverify.Core.NoDouble
+import Sverify.Engines.Sound
 import Sverify.Engines.Transfer
 
 /-!
@@ -189,10 +190,6 @@ theorem IsReps.noDoubles {l reps : List Row} (h : IsReps Row.canon l reps) (hl :
   obtain ⟨y, hy, -, hxy | hxy⟩ := h.2.1 x hx
   · exact hxy ▸ hl y hy
   · rw [hxy, Row.canon_of_noDouble (hl y hy)]; exact hl y hy
-
-/-- Lean's own functions are within every table. -/
-theorem Impl.lean_within (t : ProfileTable) : Impl.lean.Within t :=
-  ⟨fun _ _ => .inl rfl, fun _ _ _ => .inl rfl⟩
 
 /-! ## Aggregates, windows and sorts -/
 
@@ -546,6 +543,22 @@ theorem Rel.transfer_of_noDouble (hcat : cat.WF) (hk : cat.HasKinds tk) {r : Rel
   rintro ⟨I, hI, ho⟩
   exact ⟨Impl.lean, Impl.lean_within _, (Rel.allowedI_noDouble hI hcat hk hd
     (fun p hp => ProfileTable.leAt_of_leAtB (List.all_eq_true.mp htr p hp)) ho).1⟩
+
+
+/-- **A plan without doubles is `FloatOpenSafeP`** under the same conditions,
+where it has no open measure (ruling 154, K5): the transfer, then the
+reference's side condition (`Rel.floatOpenSafe_of_closed`).
+
+`hcl` stays a hypothesis: a plan without doubles need not be `closedB`. An
+integer `BIT_AND` or `QUANTILE_DISC` is neither sorted nor `orderFree`
+(`AggFn.decomposable` leaves them out), so `Measure.closedB` is false of it. -/
+theorem Rel.floatOpenSafeP_of_noDouble {q : Obs} {ctx : ObsCtx} (hc : ctx.ReflAt q)
+    (hcat : cat.WF) (hk : cat.HasKinds tk) {r : Rel} (hd : r.mayDouble cat tk = false)
+    (hcl : r.closedB = true)
+    (htr : transferB r Profile.reference.table (t.refAt floatOnlyOptions) = true) :
+    r.FloatOpenSafeP q ctx t cat :=
+  fun out ho => Rel.floatOpenSafe_of_closed hc hcl out
+    (Rel.allowedP_reference.mp (Rel.transfer_of_noDouble hcat hk hd htr ho))
 
 end
 
