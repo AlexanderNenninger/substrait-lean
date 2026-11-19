@@ -71,3 +71,21 @@ def test_running_on_duckdb_names_the_extra() -> None:
         """
     )
     assert "sverify[duckdb]" in out
+
+
+def test_an_engine_that_is_installed_is_not_told_to_install_it() -> None:
+    """`connect("spark")` with PySpark present is not the DuckDB message: the
+    hint names an extra only where a module of the engine is missing."""
+    import pytest
+
+    pytest.importorskip("pyspark")
+    out = run(
+        """
+        import sverify as sv
+        try:
+            sv.connect("spark")
+        except Exception as e:
+            print(type(e).__name__, e)
+        """
+    )
+    assert "sverify[spark]" not in out
