@@ -116,6 +116,44 @@ def one(*exprs: str) -> tuple:
     return query(f"SELECT {', '.join(exprs)}")[0]
 
 
+def _reads(node) -> list:
+    """The `Read`s of a parsed plan, in any relation."""
+    import dataclasses
+
+    from sverify.sql.core import _base
+
+    if isinstance(node, _base.Read):
+        return [node]
+    if isinstance(node, tuple | list):
+        return [r for n in node for r in _reads(n)]
+    if dataclasses.is_dataclass(node) and not isinstance(node, type):
+        return [r for f in dataclasses.fields(node) for r in _reads(getattr(node, f.name))]
+    return []
+
+
+@pytest.mark.parametrize(
+    "name", ["df_asof", "df_order_by", "df_order_by_limit", "df_window", "union_fetch"]
+)
+def test_the_fixtures_that_became_queries_analyze_on_spark(spark, name):
+    """These Spark snapshots were refusals before `to_sql`'s `rows` followed the
+    engine: over empty tables of the plan's schemas, Spark accepts each query."""
+    from sverify.sql import parse_plan
+
+    path = next(p for p in accepted_fixtures() if p.stem == name)
+    plan = fixture_plan(path)
+    sql = to_sql(plan, SPARK)
+    assert not sql.startswith("-- Unsupported")
+    for i, read in enumerate(_reads(parse_plan(plan).root)):
+        schema = ", ".join(
+            f"{SPARK.quote(c)} {SPARK.type_name(k)}"  # type: ignore[arg-type]
+            for c, k in zip(read.columns, read.kinds, strict=True)
+        )
+        view = f"snap_{i}_{'_'.join(read.name)}".replace("$", "__").replace(".", "_")
+        spark.createDataFrame([], schema).createOrReplaceTempView(view)
+        sql = sql.replace(f"FROM {SPARK.quote('.'.join(read.name))}", f"FROM {SPARK.quote(view)}")
+    query(sql)  # analyzed and run: no exception
+
+
 def test_matches_lean(spark):
     """The queries of the Snowflake tests, against `Rel.eval`."""
     # View names cannot hold `$`.

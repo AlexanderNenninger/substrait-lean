@@ -67,12 +67,14 @@ def test_windows_over_ties_number_and_lag_along_one_arrangement(spark):
     for k in (1, 2):
         part = sorted((r for r in run(spark, TIES, q) if r["k"] == k), key=lambda r: r["rn"])
         assert [r["rn"] for r in part] == list(range(len(part)))
+        # The numbering follows the sort: `a` never decreases along it.
+        assert [r["a"] for r in part] == sorted(r["a"] for r in part)
         assert part[0]["prev"] is None
         assert all(part[i + 1]["prev"] == part[i]["v"] for i in range(len(part) - 1))
 
 
 def test_to_sql_for_spark_is_what_the_runner_sends():
-    plan = written_plan(plan_json(None, T.select(rn=ibis.row_number().over(window()))))
+    plan = written_plan(plan_json(connect(), T.select(rn=ibis.row_number().over(window()))))
     assert to_sql(plan, "spark") == to_sql(plan, SPARK, rows="multiset")
     with pytest.raises(Exception, match='rows="multiset"'):
         to_sql(plan, "spark", rows="sequence")
@@ -86,7 +88,7 @@ def test_a_node_without_a_report_writes_the_sql_a_refresh_runs():
 
 
 def test_snowflake_and_spark_share_the_refusal_text():
-    plan = written_plan(plan_json(None, T.select(rn=ibis.row_number().over(window()))))
+    plan = written_plan(plan_json(connect(), T.select(rn=ibis.row_number().over(window()))))
     for engine in ("spark", "snowflake"):
         with pytest.raises(Exception, match='tables have no row order, so rows="sequence"'):
             to_sql(plan, engine, rows="sequence")
