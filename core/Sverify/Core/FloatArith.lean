@@ -718,6 +718,72 @@ theorem fadd_lower {i j la lb : Int} (hla : negInf < la) (hlb : negInf < lb)
           · rw [canon_rnd]
             exact ofExact_mono (by omega)
 
+/-- `la ≤ i` with a finite `j` of scaled value at most `H`: the difference is at
+least the rounded difference of `la` and `H`, whatever `i` is above `la` (`+∞`
+and NaN included). -/
+theorem fsub_lower {i j la : Int} {H : Int} (hla : negInf < la) (hj : IsFin j)
+    (hjb : scaled j ≤ H) (hi : la ≤ i) :
+    ofExact (scaled la - H) ≤ canon (fsub i j) := by
+  obtain ⟨n1, n2, n3⟩ := hj.negI_parts
+  have hL : ofExact (scaled la - H) ≤ posInf := ofExactDiv_le_posInf _ 1
+  have hpn : posInf < nan := fp64.posInf_lt_nan
+  have e1 := negZero_eq'; have e2 := negNan_eq'; have e3 := negInf_eq; have e4 := posInf_eq
+  have hsi := scaled_mono hi
+  have hsj := hjb
+  unfold fsub subI
+  generalize negI j = b at n1 n2 n3
+  simp only [isNanCode, isInfCode, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at n1 n2
+  unfold addI isNanCode isInfCode
+  simp only [Bool.or_eq_true, beq_iff_eq]
+  split
+  · rw [canon_nan]; omega
+  · rename_i hn
+    split
+    · rename_i h1
+      split
+      · exfalso; omega
+      · rw [canon_posInf]; omega
+    · split
+      · exfalso; omega
+      · split
+        · exfalso; omega
+        · rename_i h1 h2 h3
+          have hs1 : sv i = scaled i := by unfold sv; split <;> first | rfl | (exfalso; omega)
+          split
+          · rename_i hv
+            rw [canon_zeroOf]
+            have : ofExact (scaled la - H) ≤ ofExact 0 := ofExact_mono (by omega)
+            exact Int.le_trans this (Int.le_of_eq (ofExactDiv_zero 1))
+          · rw [canon_rnd]
+            exact ofExact_mono (by omega)
+
+/-- `0 ≤ i` and `0 < j`: the quotient is at least `0`, whatever `i` and `j` are
+above (`+∞` and NaN included, the NaN code being the greatest). -/
+theorem fdiv_nonneg_open {i j : Int} (hi : 0 ≤ i) (hj : 0 < j) : 0 ≤ canon (fdiv i j) := by
+  have hpn : posInf < nan := fp64.posInf_lt_nan
+  have e1 := negZero_eq'; have e2 := negNan_eq'; have e3 := negInf_eq; have e4 := posInf_eq
+  have hsi := scaled_nonneg hi
+  have hK : 0 < unitK := Nat.two_pow_pos _
+  unfold fdiv divI isNanCode isInfCode isZeroCode
+  simp only [Bool.or_eq_true, beq_iff_eq, Bool.and_eq_true]
+  split
+  · rw [canon_nan]; omega
+  · simp only [show ¬ i < 0 by omega, show ¬ j < 0 by omega, decide_false, bne_self_eq_false]
+    split
+    · rename_i h; rw [canon_nan]; omega
+    · split
+      · simp only [infOf, Bool.false_eq_true, ↓reduceIte]; rw [canon_posInf]; omega
+      · split
+        · rw [canon_zeroOf]; omega
+        · split
+          · exfalso; omega
+          · split
+            · rw [canon_zeroOf]; omega
+            · rw [canon_rnd]
+              have : ¬ sv j < 0 := by unfold sv; split <;> first | omega | (have := scaled_nonneg (by omega : 0 ≤ j); omega)
+              simp only [this, ite_false]
+              exact ofExactDiv_nonneg _ (Int.mul_nonneg (by unfold sv; split <;> first | omega | exact hsi) (by unfold unitK; omega))
+
 /-- `0 ≤ la ≤ i` and `0 ≤ lb ≤ j`: the product is at least the rounded product of
 the ends, whatever `i` and `j` are above them. -/
 theorem fmul_lower {i j la lb : Int} (hla : 0 ≤ la) (hlb : 0 ≤ lb)

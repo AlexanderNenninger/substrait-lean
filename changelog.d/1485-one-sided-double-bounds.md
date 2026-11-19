@@ -1,3 +1,3 @@
-### A bound with only a lower end keeps it through double `+` and `*`
+### One-sided bounds through a double difference and quotient
 
-`amount >= 0` alone now proves `amount * 3 + 1 > 0`: a double's lower end bounds a sum with another lower end, and a product of non-negative ones, whatever the column is above it (`+∞` and NaN included), so the result is at least `1` where it was `any double` ([#1485](https://github.com/AlexanderNenninger/substrait-lean/issues/1485), item 7). A difference and a quotient by a range still give no lower end from one-sided operands.
+A double difference keeps its lower end where the minuend has a finite lower end and the subtrahend a finite range (`amount - 1` with `amount >= 0` is "a double ≥ -1.0"), and a quotient of a non-negative dividend by a divisor with a positive lower end is at least `0.0`, each with one end only (#1485 items 7 and 26). The upper end of such a quotient is not kept: the divisor may be NaN, which is above every bound.
