@@ -965,16 +965,6 @@ theorem codeBound_mem {l h s : Int} {c : Int} (hs : FloatCode.scaled c = s) (hl 
   · cases hx; exact FloatCode.le_codeHi (by omega)
 
 omit [Boxes.Ambient] in
-theorem add_ends {la ha lb hb si sj sr : Int} {k e : Nat} (li : la ≤ si) (hi : si ≤ ha)
-    (lj : lb ≤ sj) (hj : sj ≤ hb) (he : -(k : Int) ≤ sr - (si + sj) ∧ sr - (si + sj) ≤ k)
-    (hke : k ≤ e) : la + lb - e ≤ sr ∧ sr ≤ ha + hb + e := by omega
-
-omit [Boxes.Ambient] in
-theorem sub_ends {la ha lb hb si sj sr : Int} {k e : Nat} (li : la ≤ si) (hi : si ≤ ha)
-    (lj : lb ≤ sj) (hj : sj ≤ hb) (he : -(k : Int) ≤ sr - (si - sj) ∧ sr - (si - sj) ≤ k)
-    (hke : k ≤ e) : la - hb - e ≤ sr ∧ sr ≤ ha - lb + e := by omega
-
-omit [Boxes.Ambient] in
 theorem faddBound_mem' (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
     {r : Int} (hr : sub = false → r = FloatCode.canon (FloatCode.fadd i j))
     (hr' : sub = true → r = FloatCode.canon (FloatCode.fsub i j)) :
@@ -982,61 +972,37 @@ theorem faddBound_mem' (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy
   unfold faddBound
   split
   · rename_i la ha lb hb hfa hfb
-    obtain ⟨fi, li, hi, mi⟩ := finEnds_mem hx hfa
-    obtain ⟨fj, lj, hj, mj⟩ := finEnds_mem hy hfb
-    dsimp only
-    split
-    · rename_i hS
-      have hle : (FloatCode.scaled i).natAbs + (FloatCode.scaled j).natAbs ≤
-          endsMag la ha + endsMag lb hb := Nat.add_le_add mi mj
-      have hke := Nat.add_le_add_right (Nat.div_le_div_right (c := 2 ^ 50) hle) 1
-      cases sub
-      · obtain ⟨-, he⟩ := FloatCode.add_scaled fi fj (Nat.le_trans hle hS)
-        obtain ⟨b1, b2⟩ := add_ends li hi lj hj (le_of_natAbs_le he) hke
-        rw [hr rfl]
-        exact codeBound_mem rfl b1 b2
-      · obtain ⟨-, he⟩ := FloatCode.sub_scaled fi fj (Nat.le_trans hle hS)
-        obtain ⟨b1, b2⟩ := sub_ends li hi lj hj (le_of_natAbs_le he) hke
-        rw [hr' rfl]
-        exact codeBound_mem rfl b1 b2
-    · exact Bound.mem_top _
+    obtain ⟨fi, li, hi, -⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, lj, hj, -⟩ := finEnds_mem hy hfb
+    cases sub
+    · rw [hr rfl, FloatCode.fadd_fin fi fj]
+      exact ⟨fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega),
+        fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega)⟩
+    · rw [hr' rfl, FloatCode.fsub_fin fi fj]
+      exact ⟨fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega),
+        fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega)⟩
   · exact Bound.mem_top _
 
 omit [Boxes.Ambient] in
-theorem mul_ends {l h p q : Int} {k E : Nat} {K : Int} (hK : 0 < K) (hl : l ≤ p) (hh : p ≤ h)
-    {sr : Int} (hq : K * sr = q) (he : -(k : Int) ≤ q - p ∧ q - p ≤ k) (hkE : k ≤ E) :
-    (l - E) / K ≤ sr ∧ sr ≤ (h + E) / K := by
-  have a1 : l - E ≤ sr * K := by rw [Int.mul_comm, hq]; omega
-  have a2 : sr * K ≤ h + E := by rw [Int.mul_comm, hq]; omega
-  exact ⟨Int.ediv_le_of_le_mul hK a1, Int.le_ediv_of_mul_le hK a2⟩
-
-omit [Boxes.Ambient] in
+set_option exponentiation.threshold 3200 in
 theorem fmulBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
     (fmulBound x y).Mem (FloatCode.canon (FloatCode.fmul i j)) := by
   unfold fmulBound
   split
   · rename_i la ha lb hb hfa hfb
-    obtain ⟨fi, li, hi, mi⟩ := finEnds_mem hx hfa
-    obtain ⟨fj, lj, hj, mj⟩ := finEnds_mem hy hfb
-    dsimp only
+    obtain ⟨fi, li, hi, -⟩ := finEnds_mem hx hfa
+    obtain ⟨fj, lj, hj, -⟩ := finEnds_mem hy hfb
+    have hm : (Bound.mul ⟨some la, some ha⟩ ⟨some lb, some hb⟩).Mem
+        (FloatCode.scaled i * FloatCode.scaled j) :=
+      Bound.mem_mul ⟨fun _ h => by cases h; exact li, fun _ h => by cases h; exact hi⟩
+        ⟨fun _ h => by cases h; exact lj, fun _ h => by cases h; exact hj⟩
     split
-    · rename_i hP
-      have hle : (FloatCode.scaled i).natAbs * (FloatCode.scaled j).natAbs ≤
-          endsMag la ha * endsMag lb hb := Nat.mul_le_mul mi mj
-      have hkE := Nat.add_le_add_right (Nat.div_le_div_right (c := 2 ^ 50) hle) (2 ^ 1074)
-      obtain ⟨-, he⟩ := FloatCode.mul_scaled fi fj (Nat.le_trans hle hP)
-      have hm : (Bound.mul ⟨some la, some ha⟩ ⟨some lb, some hb⟩).Mem
-          (FloatCode.scaled i * FloatCode.scaled j) :=
-        Bound.mem_mul ⟨fun _ h => by cases h; exact li, fun _ h => by cases h; exact hi⟩
-          ⟨fun _ h => by cases h; exact lj, fun _ h => by cases h; exact hj⟩
-      split
-      · rename_i l h hb'
-        rw [hb'] at hm
-        have hK : (0 : Int) < ((2 ^ 1074 : Nat) : Int) := by exact_mod_cast Nat.two_pow_pos 1074
-        have hc : ((2 ^ 1074 : Nat) : Int) = 2 ^ 1074 := Int.natCast_pow 2 1074
-        obtain ⟨b1, b2⟩ := mul_ends hK (hm.1 l rfl) (hm.2 h rfl) (by rw [hc]) (le_of_natAbs_le he) hkE
-        exact codeBound_mem rfl b1 b2
-      · exact Bound.mem_top _
+    · rename_i l h hb'
+      rw [hb'] at hm
+      rw [FloatCode.fmul_fin fi fj]
+      have hK : 0 < FloatCode.unitK := Nat.two_pow_pos _
+      exact ⟨fun l' hl' => by cases hl'; exact FloatCode.ofExactDiv_mono hK (hm.1 l rfl),
+        fun h' hh' => by cases hh'; exact FloatCode.ofExactDiv_mono hK (hm.2 h rfl)⟩
     · exact Bound.mem_top _
   · exact Bound.mem_top _
 
@@ -1057,48 +1023,48 @@ theorem fdivBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
     obtain ⟨fj, lj, hj, mj⟩ := finEnds_mem hy hfb
     dsimp only
     split
-    · rename_i hc
-      obtain ⟨hmb, hM⟩ := hc
-      have hmin := endsMin_le lj hj
-      have hj0 : FloatCode.scaled j ≠ 0 := by
-        intro h0; rw [h0] at hmin; simp at hmin; omega
-      have hguard : (FloatCode.scaled i).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (FloatCode.scaled j).natAbs :=
-        Nat.le_trans (Nat.mul_le_mul_right _ mi) (Nat.le_trans hM (Nat.mul_le_mul_left _ hmin))
-      obtain ⟨-, he⟩ := FloatCode.div_scaled fi fj hj0 hguard
-      have h1 : (FloatCode.scaled i).natAbs * (2 ^ 1074 + 2 ^ 1024) / (FloatCode.scaled j).natAbs ≤
-          endsMag la ha * (2 ^ 1074 + 2 ^ 1024) / endsMin lb hb :=
-        Nat.le_trans (Nat.div_le_div_right (Nat.mul_le_mul_right _ mi))
-          (Nat.div_le_div_left hmin hmb)
-      obtain ⟨b1, b2⟩ := le_of_natAbs_le (Nat.le_trans he (Nat.add_le_add_right h1 1))
-      exact codeBound_mem rfl b1 b2
-    · exact Bound.mem_top _
+    · rename_i hd
+      obtain ⟨hlb, hz⟩ := hd
+      subst hlb
+      have hs : FloatCode.scaled j = lb := by omega
+      have hj0 : FloatCode.scaled j ≠ 0 := by omega
+      rw [FloatCode.fdiv_fin fi fj hj0]
+      have hn : 0 < lb.natAbs := by omega
+      have hnat : (FloatCode.scaled j).natAbs = lb.natAbs := by rw [hs]
+      rw [hnat]
+      have hK := Int.natCast_nonneg FloatCode.unitK
+      have hl := Int.mul_le_mul_of_nonneg_right li hK
+      have hh := Int.mul_le_mul_of_nonneg_right hi hK
+      split
+      · rename_i hp
+        have hnl : ¬ FloatCode.scaled j < 0 := by omega
+        simp only [hnl, ite_false]
+        exact ⟨fun l hl' => by cases hl'; exact FloatCode.ofExactDiv_mono hn hl,
+          fun l hl' => by cases hl'; exact FloatCode.ofExactDiv_mono hn hh⟩
+      · rename_i hp
+        have hnl : FloatCode.scaled j < 0 := by omega
+        simp only [hnl, ite_true]
+        exact ⟨fun l hl' => by
+            cases hl'; exact FloatCode.ofExactDiv_mono hn (by rw [Int.neg_mul]; omega),
+          fun l hl' => by
+            cases hl'; exact FloatCode.ofExactDiv_mono hn (by rw [Int.neg_mul]; omega)⟩
+    · split
+      · rename_i hc
+        obtain ⟨hmb, hM⟩ := hc
+        have hmin := endsMin_le lj hj
+        have hj0 : FloatCode.scaled j ≠ 0 := by
+          intro h0; rw [h0] at hmin; simp at hmin; omega
+        have hguard : (FloatCode.scaled i).natAbs * 2 ^ 1074 ≤ 2 ^ 2097 * (FloatCode.scaled j).natAbs :=
+          Nat.le_trans (Nat.mul_le_mul_right _ mi) (Nat.le_trans hM (Nat.mul_le_mul_left _ hmin))
+        obtain ⟨-, he⟩ := FloatCode.div_scaled fi fj hj0 hguard
+        have h1 : (FloatCode.scaled i).natAbs * (2 ^ 1074 + 2 ^ 1024) / (FloatCode.scaled j).natAbs ≤
+            endsMag la ha * (2 ^ 1074 + 2 ^ 1024) / endsMin lb hb :=
+          Nat.le_trans (Nat.div_le_div_right (Nat.mul_le_mul_right _ mi))
+            (Nat.div_le_div_left hmin hmb)
+        obtain ⟨b1, b2⟩ := le_of_natAbs_le (Nat.le_trans he (Nat.add_le_add_right h1 1))
+        exact codeBound_mem rfl b1 b2
+      · exact Bound.mem_top _
   · exact Bound.mem_top _
-
-omit [Boxes.Ambient] in
-set_option exponentiation.threshold 3200 in
-theorem faddOk_guard {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
-    (hok : faddOk x y = true) : FloatCode.IsFin i ∧ FloatCode.IsFin j ∧
-      (FloatCode.scaled i).natAbs + (FloatCode.scaled j).natAbs ≤ 2 ^ 2097 := by
-  unfold faddOk at hok
-  split at hok
-  · rename_i la ha lb hb hfa hfb
-    obtain ⟨fi, -, -, mi⟩ := finEnds_mem hx hfa
-    obtain ⟨fj, -, -, mj⟩ := finEnds_mem hy hfb
-    exact ⟨fi, fj, Nat.le_trans (Nat.add_le_add mi mj) (of_decide_eq_true hok)⟩
-  · simp at hok
-
-omit [Boxes.Ambient] in
-set_option exponentiation.threshold 3200 in
-theorem fmulOk_guard {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
-    (hok : fmulOk x y = true) : FloatCode.IsFin i ∧ FloatCode.IsFin j ∧
-      (FloatCode.scaled i).natAbs * (FloatCode.scaled j).natAbs ≤ 2 ^ 3171 := by
-  unfold fmulOk at hok
-  split at hok
-  · rename_i la ha lb hb hfa hfb
-    obtain ⟨fi, -, -, mi⟩ := finEnds_mem hx hfa
-    obtain ⟨fj, -, -, mj⟩ := finEnds_mem hy hfb
-    exact ⟨fi, fj, Nat.le_trans (Nat.mul_le_mul mi mj) (of_decide_eq_true hok)⟩
-  · simp at hok
 
 omit [Boxes.Ambient] in
 set_option exponentiation.threshold 3200 in
@@ -1117,38 +1083,6 @@ theorem fdivOk_guard {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
     exact ⟨fi, fj, hj0,
       Nat.le_trans (Nat.mul_le_mul_right _ mi) (Nat.le_trans hM (Nat.mul_le_mul_left _ hmin))⟩
   · simp at hok
-
-omit [Boxes.Ambient] in
-theorem faddBoundS_mem (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
-    {r : Int} (hr : sub = false → r = FloatCode.canon (FloatCode.fadd i j))
-    (hr' : sub = true → r = FloatCode.canon (FloatCode.fsub i j)) :
-    (faddBoundS sub x y).Mem r := by
-  have hm := faddBound_mem' sub hx hy hr hr'
-  unfold faddBoundS
-  split
-  · rename_i hc
-    simp only [Bool.and_eq_true, Bool.not_eq_true'] at hc
-    obtain ⟨⟨⟨hs, hxn⟩, hyn⟩, hok⟩ := hc
-    obtain ⟨fi, fj, hg⟩ := faddOk_guard hx hy hok
-    have h0 : 0 ≤ r := by
-      rw [hr hs]
-      exact FloatCode.add_nonneg fi fj hg (Bound.nonneg_mem hx hxn) (Bound.nonneg_mem hy hyn)
-    exact Bound.mem_atLeast0 hm h0
-  · exact hm
-
-omit [Boxes.Ambient] in
-theorem fmulBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
-    (fmulBoundS x y).Mem (FloatCode.canon (FloatCode.fmul i j)) := by
-  have hm := fmulBound_mem hx hy
-  unfold fmulBoundS
-  split
-  · rename_i hc
-    simp only [Bool.and_eq_true] at hc
-    obtain ⟨⟨hxn, hyn⟩, hok⟩ := hc
-    obtain ⟨fi, fj, hg⟩ := fmulOk_guard hx hy hok
-    exact Bound.mem_atLeast0 hm
-      (FloatCode.mul_nonneg fi fj hg (Bound.nonneg_mem hx hxn) (Bound.nonneg_mem hy hyn))
-  · exact hm
 
 omit [Boxes.Ambient] in
 theorem fdivBoundS_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
@@ -1398,16 +1332,16 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
       · rfl
   case fadd =>
     exact arith_sound (f := fun i j => FloatCode.canon (FloatCode.fadd i j))
-      (fun hx hy => faddBoundS_mem false hx hy (fun _ => rfl) (fun h => by cases h))
+      (fun hx hy => faddBound_mem' false hx hy (fun _ => rfl) (fun h => by cases h))
       (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
       (floatsOnly_out (f := fun i j => FloatCode.canon (FloatCode.fadd i j)) fun _ _ => FloatCode.canon_idem _)
   case fsub =>
     exact arith_sound (f := fun i j => FloatCode.canon (FloatCode.fsub i j))
-      (fun hx hy => faddBoundS_mem true hx hy (fun h => by cases h) (fun _ => rfl))
+      (fun hx hy => faddBound_mem' true hx hy (fun h => by cases h) (fun _ => rfl))
       (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
       (floatsOnly_out (f := fun i j => FloatCode.canon (FloatCode.fsub i j)) fun _ _ => FloatCode.canon_idem _)
   case fmul =>
-    exact arith_sound (f := fun i j => FloatCode.canon (FloatCode.fmul i j)) fmulBoundS_mem
+    exact arith_sound (f := fun i j => FloatCode.canon (FloatCode.fmul i j)) fmulBound_mem
       (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
       (floatsOnly_out (f := fun i j => FloatCode.canon (FloatCode.fmul i j)) fun _ _ => FloatCode.canon_idem _)
   case fdiv =>
