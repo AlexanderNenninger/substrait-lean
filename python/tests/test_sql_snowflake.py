@@ -330,6 +330,14 @@ def test_raise_of_a_string_raises():
     assert parses(SNOWFLAKE.raise_("e", "x", "float", "raised")).endswith("AS FLOAT)")
 
 
+def test_regex_search_counts_matches():
+    # A search holds on '' for a pattern that matches the empty string; Snowflake's
+    # REGEXP_INSTR('', p) is 0 there, REGEXP_COUNT 1 (Snowflake behaviour recorded privately).
+    sql = parses(SNOWFLAKE.regex_search("s", "^$"))
+    assert sql == "(REGEXP_COUNT(s, '^$') > 0)"
+    assert "REGEXP_INSTR" not in sql
+
+
 def test_substring_positions_fit_32_bits():
     # SUBSTR wraps starts and lengths at 32 bits (Snowflake behaviour recorded privately).
     assert parses(SNOWFLAKE.substring("s", "2", "3")) == "SUBSTR(s, 2, 3)"
