@@ -191,10 +191,13 @@ theorem Engine.Runs.equiv_eval {E : Engine} {cat : Catalog} {r : Rel} {out : Rel
 orders.** The side condition of a run on doubles: `Rel.FloatOpenSafe` is the
 case of the reference's table (`Rel.floatOpenSafe_iff_reference`), and an
 engine whose choices are the reference's at every option `r` reads has it
-from there (`Rel.floatOpenSafeP_of_transferB`). Where `transferB` fails
-(`sum_order`, `stat_algo`, `quantile_interp`, `zero_sign`) nothing discharges
-it yet: for a double `SUM` and `AVG` it is #929's bound to prove, so the
-open-float form holds of no engine's run by proof today. -/
+from there (`Rel.floatOpenSafeP_of_transferB`). `transferB` fails on every
+engine at `sum_order`; for an aggregate at the root whose double `SUM`s and
+`AVG`s are near the correctly rounded ones (`Rel.SumsNear`),
+`Rel.floatOpenSafeP_aggregate` (`SubstraitLean/OpenSums.lean`) discharges it,
+and `Engine.polars_sum_example` applies it to a double `SUM` on Polars. Elsewhere
+(`stat_algo`, `quantile_interp`, `zero_sign`, a double `SUM` below a filter or a
+join) nothing discharges it yet (#929). -/
 def Rel.FloatOpenSafeP (q : Obs) (ctx : ObsCtx) (t : ProfileTable) (cat : Catalog) (r : Rel) :
     Prop :=
   ∀ out, r.AllowedP t cat out → ∃ out', r.OrderAllowed cat out' ∧ Relation.Equiv q ctx out' out
@@ -213,9 +216,9 @@ theorem Rel.floatOpenSafeP_of_transferB {q : Obs} {ctx : ObsCtx} {cat : Catalog}
 /-- **A verified contract holds on the engine's actual result, open float
 rows included**, where every result `E`'s table allows for `T` is, up to `q`,
 one of the reference's orders (`Rel.FloatOpenSafeP`), and D16's trusted claim
-holds of the result (`Engine.Runs`). Nothing discharges `hsafeE` where
-`transferB` fails: for a double `SUM` and `AVG` it is #929's bound
-(`Rel.FloatOpenSafeP`). -/
+holds of the result (`Engine.Runs`). Where `transferB` fails, a root
+aggregate's double `SUM` and `AVG` discharge `hsafeE` by
+`Rel.floatOpenSafeP_aggregate`; other shapes are #929's (`Rel.FloatOpenSafeP`). -/
 theorem Engine.contract_sound_runs_near {E : Engine}
     {cat : Catalog} (hcat : cat.WF) {S : String → List AVal}
     {pre : String → List Expr} {T : Rel} {es : List Expr} {mp : List Nat}
