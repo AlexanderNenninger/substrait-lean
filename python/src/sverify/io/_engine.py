@@ -26,15 +26,19 @@ import math
 import threading
 import uuid
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import duckdb
 import pyarrow as pa
 
 from sverify import _duckdb
 from sverify._scan import Resident, Scan, _q
 from sverify._weighted import WEIGHT
 from sverify_duckdb.scan import FILE, POS, duckdb_types, lit
+
+if TYPE_CHECKING:
+    import duckdb
+else:
+    from sverify._duckdb import lazy as duckdb
 
 _DB: duckdb.DuckDBPyConnection | None = None
 _LOCK = threading.Lock()

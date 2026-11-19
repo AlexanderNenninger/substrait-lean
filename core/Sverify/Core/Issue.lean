@@ -64,13 +64,19 @@ inductive Issue where
   excludes (`Issue.isError` is false for it), so that a profile that returns `±∞` there is
   stated exactly. -/
   | infinite
-  /-- Text outside ASCII where an engine's answer is its own (D43): `UPPER`,
-  `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein`, and a regular expression
+  /-- Text outside ASCII where an engine's answer is its own (D43): `ILIKE`,
+  `reverse`, `ascii`, `levenshtein`, and a regular expression
   with a class (`\\d`, `\\w`, `\\s`, `\\b`) on text that is not ASCII or has a
   vertical tab (`Text.classesDiffer`). The reference raises; the engines'
   mappings differ from Rust's, which the black boxes mean. Ruled out by an
   inferred precondition on a column (the text is ASCII), checked on the data. -/
   | nonAscii
+  /-- A scalar value that the engines' `UPPER` or `LOWER` map differently (D51):
+  `Text.upperRaises`, `Text.lowerRaises`, the sets of `CaseTable`. The reference
+  raises; every other scalar has the one value all engines give. Ruled out by an
+  inferred precondition on a column (no scalar of the function's set), checked on
+  the data; ASCII text has none. -/
+  | caseDiffers
   deriving Repr, DecidableEq
 
 def Issue.name : Issue → String
@@ -85,6 +91,7 @@ def Issue.name : Issue → String
   | .raised => "raised by a guard"
   | .infinite => "overflow to infinity"
   | .nonAscii => "non-ASCII text"
+  | .caseDiffers => "text the engines' case mapping treats differently"
 
 /-- The aggregates among a list of window functions. -/
 def WinFn.aggs (fns : List WinFn) : List Measure :=
@@ -145,8 +152,9 @@ def UnFn.issue : UnFn → Value → Option Issue
   | .regexMatch p, _ => if Text.simpleRegex p then none else some .badRegex
   | .regexExtract p _, .str s | .regexReplace p _ _, .str s =>
     if Text.classesDiffer s p then some .nonAscii else none
-  | .upper, .str s | .lower, .str s | .reverse, .str s | .ascii, .str s =>
-    if Text.isAscii s then none else some .nonAscii
+  | .upper, .str s => if Text.upperRaises s then some .caseDiffers else none
+  | .lower, .str s => if Text.lowerRaises s then some .caseDiffers else none
+  | .reverse, .str s | .ascii, .str s => if Text.isAscii s then none else some .nonAscii
   | .dateTrunc u, .ts ts | .dateTrunc u, .tod ts =>
     if u.calendar then
       if ts ≤ Time.tsMax ∧ Time.tsMin ≤ Time.trunc u ts then none else some .overflow

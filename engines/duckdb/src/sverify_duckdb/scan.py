@@ -18,10 +18,14 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
-import duckdb
 import pyarrow as pa
 
 from sverify._scan import _q
+
+if TYPE_CHECKING:
+    import duckdb
+else:
+    from sverify._duckdb import lazy as duckdb
 
 if TYPE_CHECKING:
     from sverify._scan import EqualityDelete, Scan

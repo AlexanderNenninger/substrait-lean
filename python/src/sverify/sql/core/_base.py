@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, ClassVar, Literal
 
-from sverify import _decimals, _functions, _plan_read, _support, black_box
+from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
 from sverify._unsupported import Unsupported as _Unsupported
@@ -59,6 +59,7 @@ GuardIssue = Literal[
     "raised",
     "infinite",
     "nonAscii",
+    "caseDiffers",
     "quantilePosition",
 ]
 
@@ -692,6 +693,12 @@ class Dialect:
         own dialect, which agrees with Rust's on simple patterns."""
         raise self.not_written("regular expressions")
 
+    def case_differs(self, s: str, which: Literal["upper", "lower"]) -> str:
+        """Does `s` hold a scalar of `which`'s raise set (D51)? The one predicate of the
+        writers' guard (`_Writer.case_only`) and, negated, of the inferred precondition
+        `Report.check_inputs` checks."""
+        return self.regex_search(s, case_class(which))
+
     def regex_extract(self, s: str, pattern: str, group: int) -> str:
         """`UnFn.regexExtract` (#50): group `group` of the first match of the
         constant `pattern` in `s`, `''` where there is none."""
@@ -1058,6 +1065,17 @@ class Dialect:
         """An expression numbering a base table's rows in a fixed scan order,
         used where Lean's list order matters (below FETCH and windows)."""
         raise WriterUnsupported(f"{self.name} has no stable row order for tables")
+
+    def no_row_order(self, engine: str) -> Unsupported:
+        """The refusal of `row_ordinal` for an engine whose tables have no row
+        order, naming the two ways on."""
+        return Unsupported(
+            f'{engine} tables have no row order, so rows="sequence" cannot follow the Lean '
+            "model's list order for FETCH and windows over a named table; write "
+            'rows="multiset" (ties and the rows of a LIMIT are open, as the reference allows), '
+            "or run a report whose windows have no ties (deterministic=True), which writes "
+            "them with the sort keys alone"
+        )
 
     def subquery(self, select: str, alias: str) -> str:
         return f"({select}) AS {alias}"
@@ -5327,6 +5345,19 @@ class _Writer:
         fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "nonAscii")
         return d.case_when(f"(NOT {ascii_text(d, x, classes)})", fail, value)
 
+    def case_only(self, x: str, value: str, which: Literal["upper", "lower"]) -> str:
+        """`value`, the engine's `UPPER` or `LOWER` of the string `x` (`which`), where the
+        engines agree: an error on a scalar they map differently (`Issue.caseDiffers`,
+        D51). The report lists the issue, and a plan whose text is declared free of
+        those scalars (or ASCII) has it proved away."""
+        d = self.d
+        fail = d.raise_(
+            f"{which.upper()} of a scalar the engines map differently", x, "str", "caseDiffers"
+        )
+        # Every scalar of the sets is outside ASCII, so the engine's own ASCII test comes
+        # first: ASCII text, most of it, never reaches the regular expression.
+        return d.case_when(f"(NOT {d.is_ascii(x)} AND {d.case_differs(x, which)})", fail, value)
+
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
     ) -> str:
@@ -5497,6 +5528,31 @@ def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
     return f"({plain} AND NOT ({x} LIKE {d.str_lit(VERTICAL_TAB_PATTERN)}))"
 
 
+def case_class(which: Literal["upper", "lower"]) -> str:
+    """The regular expression class of the scalars `UPPER` (`which`) raises on
+    (`_case_tables`, D51), written with the characters themselves and ranges of them:
+    every member is outside ASCII, so none is a metacharacter, and the pattern is in
+    the supported subset (`Text.simpleRegex`: 200 characters at most) that the lift
+    reads and RE2, Java's `Pattern` and Rust's `regex` share."""
+    runs: list[list[int]] = []
+    for c in _case_tables.raise_set(which):
+        if runs and runs[-1][1] + 1 == c:
+            runs[-1][1] = c
+        else:
+            runs.append([c, c])
+    return "[" + "".join(_class_run(lo, hi) for lo, hi in runs) + "]"
+
+
+def case_raises(text: str, which: Literal["upper", "lower"]) -> bool:
+    """Does `text` hold a scalar of `which`'s raise set (`Text.upperRaises`, `lowerRaises`)?"""
+    raised = frozenset(_case_tables.raise_set(which))
+    return any(ord(c) in raised for c in text)
+
+
+def _class_run(lo: int, hi: int) -> str:
+    return chr(lo) if lo == hi else f"{chr(lo)}-{chr(hi)}"
+
+
 def like_pattern(p: str) -> str:
     """`Text.tokens` as a pattern for `LIKE … ESCAPE '\\'`: a backslash escapes
     the next character, and a trailing one stands for itself (where SQL
@@ -5535,7 +5591,7 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
-    rows: Literal["sequence", "multiset"] = "sequence",
+    rows: Literal["sequence", "multiset"] | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -5550,11 +5606,15 @@ def to_sql(
     requires). Then windows need no ordinal tiebreak, so engines without a
     stable scan order can run them; FETCH still needs one.
 
-    `rows="multiset"` leaves the order of rows open where `Rel.Allowed` does
-    (the observation's `rows` of anything but `"sequence"`): ties in a sort
-    and the rows a LIMIT keeps among them are the engine's choice, and the
-    result is ordered only where the plan's last sort orders it. The default
-    writes Lean's order, ties by the input's row order.
+    `rows` says what the SQL promises about the order of rows. `"multiset"`
+    leaves it open where `Rel.Allowed` does (the observation's `rows` of
+    anything but `"sequence"`): ties in a sort and the rows a LIMIT keeps among
+    them are the engine's choice, and the result is ordered only where the
+    plan's last sort orders it. `"sequence"` writes Lean's order, ties by the
+    input's row order, which needs a scan order the engine may not have. The
+    default is what the engine's runner writes (`ProfilePlugin.rows`):
+    `"multiset"` for Spark, `"sequence"` for DuckDB and for a dialect no
+    engine provides.
 
     `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
     pass it for a plan whose contract report is `guard_free`, and run the
@@ -5621,6 +5681,13 @@ def to_sql(
         dialect = dialect_of(dialect)
     if isinstance(plan, str):
         plan = json.loads(plan)
+    if rows is None:
+        # What the engine's runner writes (`ProfilePlugin.rows`); a dialect no
+        # plugin provides keeps Lean's row order.
+        from sverify import profiles
+
+        found = profiles.find(dialect.name)
+        rows = found.rows if found is not None else "sequence"
     if not guards:
         dialect = replace(dialect, guards=False)
     if not finite:

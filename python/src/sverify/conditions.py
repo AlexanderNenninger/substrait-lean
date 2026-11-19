@@ -986,6 +986,10 @@ class PlannedCondition:
     """The plan, as protobuf JSON in Lean's form."""
 
 
+#: What a declared text column holds (`Inferred.fact`).
+TextFact = Literal["ascii", "plain", "upper_agreed", "lower_agreed"]
+
+
 class Inferred(str):
     """A bound inferred to rule out an overflow: a SQL condition on one
     column of an input table, labelled as the Ibis code that states it
@@ -995,9 +999,11 @@ class Inferred(str):
     text: str
     column: str | None = None
     """The input column it bounds (set by `_render_needs`)."""
-    ascii: Literal["ascii", "plain"] | None = None
-    """For a text column's ASCII condition (#1506): `"plain"` also rules out
-    the vertical tab. The request declares the column so (`"ascii"`)."""
+    fact: TextFact | None = None
+    """For a text column's condition (#1506, D51): `"plain"` also rules out the vertical
+    tab, `"upper_agreed"` and `"lower_agreed"` the scalars `UPPER` and `LOWER` raise on
+    (the column is in the function's agreed alphabet). The request declares the column
+    so (`"text"`)."""
 
     def __new__(cls, sql: str, text: str) -> Inferred:
         out = super().__new__(cls, sql)

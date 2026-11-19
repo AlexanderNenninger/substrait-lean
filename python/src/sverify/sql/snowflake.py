@@ -72,6 +72,7 @@ import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from sverify._plan_read import SUBSTR_MAX
 from sverify._unsupported import ISSUE_1725
@@ -407,6 +408,14 @@ class SnowflakeDialect(Dialect):
     def regex_search(self, s: str, pattern: str) -> str:
         return f"(REGEXP_INSTR({s}, {self.str_lit(pattern)}) > 0)"
 
+    def case_differs(self, s: str, which: Literal["upper", "lower"]) -> str:
+        # Snowflake's case mapping is recorded privately; until its table is, `UPPER` and
+        # `LOWER` of anything but a literal are refused (D51).
+        raise self.to_duckdb(
+            f"the snowflake writer does not run {which.upper()} on non-literal text yet: "
+            "Snowflake's case mapping is recorded privately (D51)"
+        )
+
     # Logic
 
     def is_true(self, a: str) -> str:
@@ -435,10 +444,7 @@ class SnowflakeDialect(Dialect):
     # Relations
 
     def row_ordinal(self) -> str:
-        raise Unsupported(
-            "Snowflake tables have no row order, so FETCH and windows over a named table "
-            "cannot follow the Lean model's list order (windows run with deterministic=True)"
-        )
+        raise self.no_row_order("Snowflake")
 
     def limit_offset(self, offset: int, count: int | None) -> str:
         if count is None:

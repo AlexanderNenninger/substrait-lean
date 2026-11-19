@@ -3,15 +3,15 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "`upper`, `lower`: Unicode's simple one-to-one case mappings",
-  "verdict": "`char_set: UTF8` with simple mappings; sverify guards non-ASCII text",
+  "verdict": "`char_set: UTF8` with simple mappings; sverify raises where the engines' mappings differ (`case_mapping`)",
   "area": "strings",
   "options": [
     "char_set",
-    "non_ascii_text"
+    "case_mapping"
   ],
   "rows": [
     {"group": "str.case", "option": "char_set", "types": ["string"]},
-    {"group": "str.case", "option": "non_ascii_text", "types": ["string"]}
+    {"group": "str.case", "option": "case_mapping", "types": ["string"]}
   ],
   "constructs": [
     "upper",
@@ -26,7 +26,7 @@
   ],
   "reference": [
     "`upper`, `lower` with `char_set: UTF8` are black boxes defined as Rust's `str::to_uppercase` and `to_lowercase`: full mappings, which can change the length (`ß` → `SS`, `ﬁ` → `FI`, `İ` → `i̇`) and use a final sigma (`σας`). On ASCII text the two agree.",
-    "The written SQL raises on non-ASCII text for every engine (`ascii_only`, #70), so DuckDB never returns its mapping there. ST-10 records that Substrait's `UTF8` does not say which Unicode mapping."
+    "The written SQL raises on the scalars the engines map differently (`case_only`, D51), so DuckDB never returns its own mapping there. ST-10 records that Substrait's `UTF8` does not say which Unicode mapping."
   ],
   "status": "shimmed",
   "evidence": "probe",

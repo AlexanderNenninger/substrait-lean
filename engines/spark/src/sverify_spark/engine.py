@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from sverify.sql import to_sql
-from sverify_spark import ROWS
 from sverify_spark.dialect import SPARK, SPARK_CONF
 
 try:
@@ -158,14 +157,19 @@ def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> 
             if own:
                 held[name] = table
             continue
-        schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
-        target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
-        # One chunk: `createDataFrame` of a table with an empty chunk loses the
-        # rows after it (SP-8).
-        data = table.cast(target).combine_chunks()
-        spark.createDataFrame(data, schema).createOrReplaceTempView(name)
+        arrow_frame(table, spark).createOrReplaceTempView(name)
         if own:
             held[name] = table
+
+
+def arrow_frame(table: pa.Table, spark: SparkSession) -> Any:
+    """An Arrow table as a `DataFrame` of `spark_type` columns. The frame
+    holds the rows only as long as something refers to it: no view names it."""
+    schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
+    target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
+    # One chunk: `createDataFrame` of a table with an empty chunk loses the
+    # rows after it (SP-8).
+    return spark.createDataFrame(table.cast(target).combine_chunks(), schema)
 
 
 def run(
@@ -220,6 +224,6 @@ def run_df(
     """`run`, but the result stays a Spark `DataFrame`: nothing is collected.
     A table is an Arrow table or a handle on files (`sverify_spark.store`)."""
     spark = spark or session()
-    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows=ROWS)
+    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
     put_tables(tables, spark)
     return spark.sql(sql)

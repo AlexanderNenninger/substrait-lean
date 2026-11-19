@@ -157,7 +157,7 @@ def feature_plans() -> dict[str, dict]:
         ),
         "global_aggregate": o.aggregate(n=o.amount.count(), lo=o.customer.min()),
         "strings": c.select(
-            u=c.name.upper(),
+            u=c.name + "!",  # `UPPER` waits for Snowflake's case-mapping facts (D51)
             n=c.city.length(),
             s=c.city.substr(1, 3),
             p=c.city.find("o"),
@@ -191,7 +191,7 @@ TIE_FREE = {"window_tie_free": NAMED_ORDERED["window"]}
 def snowflake_sql(plan: dict, tie_free: bool = False) -> str:
     """The query, or the reason it is refused, for snapshots."""
     try:
-        return to_sql(plan, SNOWFLAKE, deterministic=tie_free)
+        return to_sql(plan, SNOWFLAKE, deterministic=tie_free, rows="sequence")
     except Unsupported as e:
         return f"-- Unsupported: {e}"
 
@@ -251,7 +251,7 @@ def test_moving_window_sums_of_doubles_add_the_frame_anew(label, native):
 
     case = next(c for c in coverage.CASES if c.label == label)
     plan = json.loads(written_plan(to_substrait_json(case.build())))
-    sql = to_sql(plan, SNOWFLAKE, deterministic=True)
+    sql = to_sql(plan, SNOWFLAKE, deterministic=True, rows="sequence")
     reduce = re.compile(
         r"REDUCE\(ARRAY_AGG\(s\d+\.\"c2\"\) OVER \([^)]*ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\),"
         r" CAST\(0 AS FLOAT\), \(acc FLOAT, x VARIANT\) -> acc \+ CAST\(x AS FLOAT\)\)"
@@ -290,7 +290,7 @@ def test_time_range_frames_order_by_microseconds():
 
     case = next(c for c in coverage.CASES if c.label == "rolling sum by time")
     plan = json.loads(written_plan(to_substrait_json(case.build())))
-    sql = to_sql(plan, SNOWFLAKE, deterministic=True)
+    sql = to_sql(plan, SNOWFLAKE, deterministic=True, rows="sequence")
     assert re.search(
         r"ORDER BY DATE_PART\(EPOCH_MICROSECOND, [^)]+\) ASC NULLS LAST"
         r" RANGE BETWEEN 604799999999 PRECEDING AND CURRENT ROW",
@@ -307,7 +307,9 @@ def test_set_operations_compare_with_equal_null(label):
     from sverify_dev import coverage
 
     case = next(c for c in coverage.CASES if c.label == label)
-    sql = to_sql(json.loads(written_plan(to_substrait_json(case.build()))), SNOWFLAKE)
+    sql = to_sql(
+        json.loads(written_plan(to_substrait_json(case.build()))), SNOWFLAKE, rows="sequence"
+    )
     assert re.search(r'EQUAL_NULL\(s\d+\."c0", s\d+\."c0"\)', sql)
     assert "THEN FALSE" not in sql
     sqlglot.parse_one(sql, read="snowflake")
@@ -369,7 +371,7 @@ def test_double_variance_reads_values_shifted_by_the_group_mean():
     req = {"t": [_.x.between(-1e10, 1e10)]}
     plan = sv.verify(t.group_by("k").aggregate(v=t.x.var()), requires=req).internal_plan
     assert plan is not None
-    sql = to_sql(plan, SNOWFLAKE)
+    sql = to_sql(plan, SNOWFLAKE, rows="sequence")
     assert re.search(r"- AVG\(.*?\) OVER \(PARTITION BY ", sql)
     assert 'VAR_SAMP(s3."t0")' in sql and 'ABS(s3."m0")' in sql
     sqlglot.parse_one(sql, read="snowflake")
@@ -377,7 +379,7 @@ def test_double_variance_reads_values_shifted_by_the_group_mean():
     distinct = sv.verify(query, tables={"t": t}, requires=req).internal_plan
     assert distinct is not None
     with pytest.raises(Unsupported, match="#1023"):
-        to_sql(distinct, SNOWFLAKE)
+        to_sql(distinct, SNOWFLAKE, rows="sequence")
 
 
 def test_integer_literals_fold():
@@ -402,9 +404,9 @@ def test_windows_and_relations():
     assert SNOWFLAKE.limit_offset(3, None) == "LIMIT NULL OFFSET 3"
     assert SNOWFLAKE.limit_offset(0, 2) == "LIMIT 2"
     with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["window"], SNOWFLAKE)
+        to_sql(NAMED_ORDERED["window"], SNOWFLAKE, rows="sequence")
     with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["fetch"], SNOWFLAKE, deterministic=True)
+        to_sql(NAMED_ORDERED["fetch"], SNOWFLAKE, deterministic=True, rows="sequence")
 
 
 def test_identifiers_are_quoted():
@@ -496,29 +498,35 @@ def run_differential(
     Lean's evaluation; `retarget` points a query at the loaded tables."""
     plans = {**PLANS, **DELTA_PLANS}
     for name, plan in plans.items():
-        got = run(retarget(to_sql(plan, d)))
+        got = run(retarget(to_sql(plan, d, rows="sequence")))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     for name, plan in ORDERED_PLANS.items():
-        got = run(to_sql(plan, d))
+        got = run(to_sql(plan, d, rows="sequence"))
         assert got == lean_rows(plan, {}), name  # in Lean's row order
     for name, plan in TIE_FREE.items():
-        got = run(retarget(to_sql(plan, d, deterministic=True)))
+        got = run(retarget(to_sql(plan, d, deterministic=True, rows="sequence")))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     for name, plan in FEATURE_PLANS.items():
-        got = run(retarget(to_sql(plan, d)))
+        got = run(retarget(to_sql(plan, d, rows="sequence")))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
     for name, expr in SORTED.items():
         plan = json.loads(to_substrait_json(expr))
-        got = run(retarget(to_sql(plan, d, deterministic=True)))
+        got = run(retarget(to_sql(plan, d, deterministic=True, rows="sequence")))
         assert [tuple(map(normalize, r)) for r in got] == lean_rows(plan, TABLES), name
     for path in accepted_fixtures():
         plan = json.loads(path.read_text())
         if "namedTable" in path.read_text():
             continue  # schema-only tables: covered by the pipelines above
-        got = run(to_sql(plan, d))
-        assert canonical(got) == canonical(lean_rows(plan, {})), path.stem
+        try:
+            sql = to_sql(plan, d, rows="sequence")
+        except Unsupported as e:
+            # `UPPER` and `LOWER` of a column wait for Snowflake's case-mapping facts (D51).
+            if "case mapping is recorded privately" not in str(e):
+                raise
+            continue
+        assert canonical(run(sql)) == canonical(lean_rows(plan, {})), path.stem
 
 
 def snowflake_differential(cur, suffix: str) -> None:

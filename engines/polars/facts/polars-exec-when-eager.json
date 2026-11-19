@@ -17,7 +17,12 @@
     "coalesce",
     "cast"
   ],
-  "settings": {"engine": ["in-memory", "streaming"]},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
     "The `when` docstring warns that Polars computes all expressions passed to `when-then-otherwise` in parallel and filters afterwards, so each expression must be valid on its own. The code at py-2.1.0 does better for most branches.",
     "Masking (in memory and streaming): when a `then` or `otherwise` operand is elementwise and is not a bare column or literal, the planner records its input columns, and `TernaryExpr` evaluates it on a frame where those columns are NULL on the rows the condition does not send to it; a branch no row takes is skipped unless needed for broadcasting. The streaming engine keeps an elementwise expression whole in a select node, so the same code runs there. So `pl.when(c).then(x.cast(t))` does not raise on rows `c` excludes; Polars's tests check this on both engines, also for multi-chunk structs (#29799).",
@@ -184,9 +189,34 @@
           "note": "docs say every branch is computed on every row; the code masks elementwise branches (ternary.rs#L110-L203), and test_when_then.py#L916-L960 pins the masking on both engines: the docs are stricter than the code"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.guarded_columns (worker 4), branch claude/d50d-probes, Polars 2.1.0 on macOS arm64 and homelab",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/guarded_columns.py",
+          "note": "`python -m sverify_dev.guarded_columns p1 --engine polars`, cases const_operand, const_operand_column_reach, const_in_column_operand, folded_const, folded_const_filter."
+        },
+        {
+          "sql": "pl.LazyFrame({'x': [-1, -2]}).select(pl.when(pl.col('x') > 0).then(pl.lit(300).cast(pl.Int8, strict=True))).collect(engine='streaming')",
+          "observed": "InvalidOperationError: conversion from `i128` to `i8` failed in column 'scalar' (at plan resolution; unchanged with optimizations=pl.QueryOptFlags.none(), and on the in-memory engine)"
+        },
+        {
+          "sql": "pl.LazyFrame({'x': [-1, -2]}).select(pl.when(pl.col('x') > 0).then(pl.col('x') > pl.lit('bad').cast(pl.Int64, strict=True))).collect(engine='streaming')",
+          "observed": "InvalidOperationError: conversion from `str` to `i64` failed in column 'scalar' (same with optimizations off)"
+        },
+        {
+          "file": "docs/decisions.md",
+          "note": "D21: a raising constant subexpression fails the whole plan on any data, in any branch, so a verified plan carries none to Polars."
+        }
+      ],
+      "notes": "The class 'a branch whose inputs are only literals' extends to a raising constant inside a branch that reads a column (`x > CAST('bad' AS BIGINT)`): the constant subtree is evaluated while the plan is resolved, whatever the condition and the rows it excludes, on the streaming and the in-memory engine, with the default optimizations and with none. The checker of main folds the same constants and reports them (`1 // 0`, `sqrt(-1.0)`, `ln(0.0)`, overflow) or refuses them (a cast of `'bad'` or of 300 to TINYINT) whatever guards them, also under a precondition that makes the branch unreachable (D21, ruling 100). Issue #1719."
     }
   ],
   "issues": [
-    604
+    604,
+    1719
   ]
 }

@@ -25,7 +25,8 @@ case label:
 * `REFUSED`: verified cases an engine refuses (`UnsupportedError`), with a pattern
   of the reason (`coverage_cases._common` explains the shared ones);
 * `TIE_FREE`: of those, the cases Snowflake and Spark run when the caller
-  promises no ties;
+  promises no ties. Both tables describe Lean's row order (`rows="sequence"`), which
+  these tools ask `to_sql` for; a bare `to_sql` writes the engine's own `rows`;
 * `NO_DUCKDB_SQL`: verified cases whose Ibis SQL DuckDB does not run, or
   computes otherwise than the plan; the tests compare every other verified
   case with DuckDB running Ibis's own DuckDB SQL, and these with the other
@@ -122,7 +123,7 @@ def refusal(plan: str, engine: str, tie_free: bool = False) -> str | None:
     plugin = profiles.plugins()[engine]
     try:
         if plugin.dialect is not None:
-            plan_sql(json.loads(plan), plugin.dialect(), deterministic=tie_free)
+            plan_sql(json.loads(plan), plugin.dialect(), deterministic=tie_free, rows="sequence")
         else:
             assert plugin.run_tables is not None, engine
             tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in TABLES}

@@ -36,12 +36,13 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import unquote, urlparse
 
-import duckdb
 import pyarrow as pa
 
 from sverify import _duckdb
 
 if TYPE_CHECKING:
+    import duckdb
+
     from sverify.contracts import Fact
     from sverify.io._storage import Storage
 
