@@ -75,7 +75,7 @@ CASES = [
 
 def _table(a: tuple[str, str], b: tuple[str, str]) -> pa.Table:
     con = duckdb.connect()
-    return con.execute(f"SELECT {a[1]}::{a[0]} AS a, {b[1]}::{b[0]} AS b").to_arrow_table()
+    return con.sql(f"SELECT {a[1]}::{a[0]} AS a, {b[1]}::{b[0]} AS b").to_arrow_table()
 
 
 @pytest.mark.parametrize(("a", "b", "op"), CASES)
