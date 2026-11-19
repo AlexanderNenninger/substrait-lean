@@ -1500,7 +1500,7 @@ class Exprs:
                 return Val(first_code_point(e), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
-            # A zero result is the one zero, as in `onMag`.
+            # Values stay raw (D31): a zero result keeps its sign.
             if name == "floor":
                 return Val(e.floor(), t, a.issues)
             if name == "ceil":
@@ -1509,7 +1509,9 @@ class Exprs:
                 return Val(shims.round_half_away(e), t, a.issues)
             # `|x|`, which a split double's partial rows report (#428).
             if name == "abs":
-                return Val(e.abs(), t, a.issues)
+                # The reference's `if x < 0 then -x else x`: `abs(-0.0)` is `-0.0`, as it is
+                # in the written SQL (Polars's own `abs` gives `+0.0`).
+                return Val(pl.when(e < 0.0).then(-e).otherwise(e), t, a.issues)
             if name in FMATH_NATIVE or name in FMATH_LOGS:
                 return self.fmath(name, a)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
