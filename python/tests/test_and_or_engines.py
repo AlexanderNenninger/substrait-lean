@@ -49,6 +49,19 @@ def test_a_cast_guarded_by_a_range_runs_where_the_guard_is_false(engine):
     assert got.column("x").to_pylist() == [5.5, 2.5]
 
 
+@pytest.mark.parametrize("engine", ENGINES)
+def test_the_range_cast_raises_without_its_guard(engine):
+    """Control for the test above: the same cast with no guard raises on the row
+    that is out of range, so that test shows an engine taking the guard."""
+    sql = "SELECT x FROM t WHERE CAST(x AS BIGINT) > 1"
+    report, con, target = _run(sql, FLT, {"x": [1e30, 5.5, -3.0, 2.5]}, engine)
+    with (
+        pytest.warns(UnverifiedRunWarning),
+        pytest.raises(Exception, match=r"(?i)cast|convert|out of range|overflow"),
+    ):
+        report.run(con, target, unverified=True)
+
+
 def test_a_cast_guarded_by_a_pattern_runs_where_the_guard_is_false():
     """A string-to-integer cast raises on text that is not a number (DuckDB only:
     the other engines refuse it, D49). The analysis has no domain bound for it, so

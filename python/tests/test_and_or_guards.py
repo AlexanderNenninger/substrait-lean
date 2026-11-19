@@ -65,3 +65,25 @@ def test_the_lifted_plan_runs_as_the_eager_one_where_nothing_raises():
     report = sv.verify(sql, tables={"orders": con.table("orders")}, ensures=[])
     got = sorted(report.run(con, unverified=True).to_pylist(), key=lambda r: r["qty"])
     assert got == [{"qty": 1, "total": 3}, {"qty": 2, "total": 4}, {"qty": 3, "total": 9}]
+
+
+def _nest(wrappers: int):
+    """`x <> 0 AND 10 // x > 1`, under `wrappers` more connectives (`OR` and `AND`
+    in turn, so none merges with its neighbour), each with a plain operand."""
+    t = ibis.table({"x": "int64", "z": "int64"}, name="t")
+    e = (t.x != 0) & ((10 // t.x) > 1)
+    for i in range(wrappers):
+        e = ((t.z > 0) | e) if i % 2 == 0 else ((t.z > 0) & e)
+    return t.filter(e)
+
+
+def test_the_lift_guards_the_top_levels_of_a_nest_and_no_more():
+    """D50 interim cap (`LIFT_LEVELS`): a guard at the deepest lifted level is proved,
+    one level further down is read eagerly and its division needs a precondition."""
+    from sverify.plan_json import LIFT_LEVELS
+
+    inner = sv.verify(_nest(LIFT_LEVELS - 1), on_inferred="off")
+    assert inner.verdict == sv.Verdict.PROVED, str(inner)
+    outer = sv.verify(_nest(LIFT_LEVELS), on_inferred="off")
+    assert outer.verdict != sv.Verdict.PROVED
+    assert [e.kind for e in outer.errors] == ["division by zero"]

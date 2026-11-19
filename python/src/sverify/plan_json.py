@@ -570,12 +570,18 @@ def is_plain(e: Json) -> bool:
     return all(is_plain(a["value"]) for a in fn["arguments"])
 
 
+#: How many levels of nested `AND` and `OR` the lift guards (D50, interim): a connective
+#: below this many enclosing lifted ones is written eager. Step D50-d removes the cap.
+LIFT_LEVELS = 3
+
+
 def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
     """`AND` or `OR` (`name`) of `operands`, in order (D50). Where every operand
     is plain, or the plan is read as DuckDB reads it (`eager`), the eager connective
     (`chain`); otherwise `sverify_and` or `sverify_or`, which the checker reads as
     a guard: each operand runs only where the earlier ones do not decide the
-    result (`Expr.andG`, `Guard.lean`)."""
+    result (`Expr.andG`, `Guard.lean`). Only the top `LIFT_LEVELS` levels of a nest
+    are lifted."""
     if eager or len(operands) == 1 or semantics() == "duckdb" or all(is_plain(o) for o in operands):
         return chain(name, operands)
     names = {a: n for n, a in _COMPILER.get().functions.items()}
@@ -586,7 +592,23 @@ def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
             spliced += [a["value"] for a in fn["arguments"]]  # a guard chain inside is one chain
         else:
             spliced.append(o)
-    return call(f"sverify_{name}", spliced)
+    return _cap_lift(call(f"sverify_{name}", spliced), names, 0)
+
+
+def _cap_lift(e: Any, names: dict[int, str], level: int) -> Any:
+    """`e` with every `sverify_and` and `sverify_or` at `LIFT_LEVELS` or more lifted
+    ones above it written as the eager `and` and `or`."""
+    if isinstance(e, list):
+        return [_cap_lift(x, names, level) for x in e]
+    if not isinstance(e, dict):
+        return e
+    fn = e.get("scalarFunction")
+    n = names.get(fn["functionReference"]) if fn is not None else None
+    if fn is not None and n in ("sverify_and", "sverify_or"):
+        below = level + 1
+        args = [_cap_lift(a["value"], names, below) for a in fn["arguments"]]
+        return chain(n.removeprefix("sverify_"), args) if level >= LIFT_LEVELS else call(n, args)
+    return {k: _cap_lift(v, names, level) for k, v in e.items()}
 
 
 def chain(name: str, args: list[Json]) -> Json:
