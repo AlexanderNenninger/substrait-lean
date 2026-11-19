@@ -32,7 +32,7 @@ nodes; a stored node's table is a source of the stages that read it.
 
 A `Pipeline` maintains views that read each other. Each view's change becomes
 the change table of the views that read it (the DBSP chain rule,
-`Rel.chain_sound`). A view without a delta rule (left join, fetch, window) is
+`Rel.chain_sound`). A view without a delta rule (a left join, fetch, window or aggregate) is
 recomputed and diffed, which still yields its change for the views
 downstream (`ZSet.diff_correct`).
 
