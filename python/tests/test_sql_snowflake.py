@@ -23,6 +23,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import ibis
+import pyarrow as pa
 import pytest
 import sqlglot
 
@@ -251,6 +252,42 @@ def test_float_literals():
     # The model's one zero and one NaN.
     assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
+
+
+def test_zero_sign_readers_are_refused_or_guarded():
+    """Ruling 160's gate: on Snowflake a column that holds -0.0 in every row
+    can read as +0.0 (Snowflake behaviour recorded privately), so each
+    operation that tells the zeros apart (`ZERO_SIGN_READERS`) is refused, or
+    raises before a result that would tell them apart. A name added to the
+    list needs a check here."""
+    from sverify._functions import BY_NAME, ZERO_SIGN_READERS, No
+    from sverify.engine import connect, put_table, written_plan
+
+    con = connect()
+    put_table(con, "t", pa.table({"a": [1.0], "b": [2.0]}))
+
+    def written(sql: str) -> str:
+        plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
+        return to_sql(json.loads(plan), SNOWFLAKE)
+
+    def atan2() -> None:
+        # Refused: the function table has no Snowflake SQL for it.
+        assert isinstance(BY_NAME["atan2"].sql["snowflake"], No)
+
+    def fdiv_ieee() -> None:
+        # The plain `/`, which raises at a zero divisor of either sign.
+        assert SNOWFLAKE.float_div("a", "b") == "(a / b)"
+        assert re.search(r'ELSE \(s\d+\."c0" / s\d+\."c1"\)', written("SELECT a / b AS q FROM t"))
+
+    def fpow() -> None:
+        # A ±inf result (a zero base under a negative exponent) raises first.
+        sql = written("SELECT power(a, b) AS p FROM t")
+        assert "POWER(" in sql and "sverify: overflow to infinity" in sql
+
+    checks = {"atan2": atan2, "fdivIeee": fdiv_ieee, "fpow": fpow}
+    assert set(checks) == set(ZERO_SIGN_READERS)
+    for name in ZERO_SIGN_READERS:
+        checks[name]()
 
 
 @pytest.mark.parametrize(
