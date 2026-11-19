@@ -965,6 +965,30 @@ theorem codeBound_mem {l h s : Int} {c : Int} (hs : FloatCode.scaled c = s) (hl 
   · cases hx; exact FloatCode.le_codeHi (by omega)
 
 omit [Boxes.Ambient] in
+theorem Bound.loFin_mem {x : Bound} {l i : Int} (h : x.loFin = some l) (hx : x.Mem i) :
+    FloatCode.negInf < l ∧ l < FloatCode.posInf ∧ l ≤ i := by
+  unfold Bound.loFin at h
+  cases hl : x.lo with
+  | none => simp [hl] at h
+  | some l' =>
+    simp only [hl] at h
+    split at h
+    · rename_i hc; cases h; exact ⟨hc.1, hc.2, hx.1 _ hl⟩
+    · cases h
+
+omit [Boxes.Ambient] in
+theorem Bound.loNonneg_mem {x : Bound} {l i : Int} (h : x.loNonneg = some l) (hx : x.Mem i) :
+    0 ≤ l ∧ l < FloatCode.posInf ∧ l ≤ i := by
+  unfold Bound.loNonneg at h
+  cases hl : x.lo with
+  | none => simp [hl] at h
+  | some l' =>
+    simp only [hl] at h
+    split at h
+    · rename_i hc; cases h; exact ⟨hc.1, hc.2, hx.1 _ hl⟩
+    · cases h
+
+omit [Boxes.Ambient] in
 theorem faddBound_mem' (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j)
     {r : Int} (hr : sub = false → r = FloatCode.canon (FloatCode.fadd i j))
     (hr' : sub = true → r = FloatCode.canon (FloatCode.fsub i j)) :
@@ -981,7 +1005,17 @@ theorem faddBound_mem' (sub : Bool) {x y : Bound} {i j : Int} (hx : x.Mem i) (hy
     · rw [hr' rfl, FloatCode.fsub_fin fi fj]
       exact ⟨fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega),
         fun l hl => by cases hl; exact FloatCode.ofExact_mono (by omega)⟩
-  · exact Bound.mem_top _
+  · -- Finite lower ends only.
+    cases sub
+    · split
+      · rename_i la lb hxl hyl
+        obtain ⟨h1, -, h3⟩ := Bound.loFin_mem hxl hx
+        obtain ⟨h4, -, h6⟩ := Bound.loFin_mem hyl hy
+        rw [hr rfl]
+        have hm := FloatCode.fadd_lower h1 h4 h3 h6
+        exact ⟨fun l hl => by cases hl; exact hm, fun h hh => by cases hh⟩
+      · exact Bound.mem_top _
+    · exact Bound.mem_top _
 
 omit [Boxes.Ambient] in
 set_option exponentiation.threshold 3200 in
@@ -1004,7 +1038,13 @@ theorem fmulBound_mem {x y : Bound} {i j : Int} (hx : x.Mem i) (hy : y.Mem j) :
       exact ⟨fun l' hl' => by cases hl'; exact FloatCode.ofExactDiv_mono hK (hm.1 l rfl),
         fun h' hh' => by cases hh'; exact FloatCode.ofExactDiv_mono hK (hm.2 h rfl)⟩
     · exact Bound.mem_top _
-  · exact Bound.mem_top _
+  · split
+    · rename_i la lb hla hlb
+      obtain ⟨h1, -, h3⟩ := Bound.loNonneg_mem hla hx
+      obtain ⟨h4, -, h6⟩ := Bound.loNonneg_mem hlb hy
+      have hm := FloatCode.fmul_lower h1 h4 h3 h6
+      exact ⟨fun l hl => by cases hl; exact hm, fun h hh => by cases hh⟩
+    · exact Bound.mem_top _
 
 omit [Boxes.Ambient] in
 theorem endsMin_le {lb hb s : Int} (hl : lb ≤ s) (hh : s ≤ hb) : endsMin lb hb ≤ s.natAbs := by
