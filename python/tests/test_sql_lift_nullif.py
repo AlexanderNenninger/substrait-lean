@@ -30,7 +30,7 @@ SCHEMAS = {"t": ibis.Schema.from_pyarrow(TABLE.schema)}
 def _duckdb_typeof(query: str) -> str:
     con = duckdb.connect()
     con.register("t", TABLE)
-    return str(con.execute(f"SELECT typeof(x) FROM ({query}) s LIMIT 1").fetchone()[0])
+    return str(con.execute(f"SELECT typeof(x) FROM ({query}) s LIMIT 1").fetchall()[0][0])
 
 
 @pytest.mark.parametrize(
