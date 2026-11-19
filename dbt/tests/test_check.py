@@ -214,6 +214,35 @@ def test_contract_mismatch_and_inputs_without_types(make_project) -> None:
     assert main(["check", str(root), "--counterexamples", "0"]) == 1
 
 
+def test_an_ephemeral_model_is_inlined_into_its_reader(make_project) -> None:
+    """dbt inlines an ephemeral model into each reader as a CTE: the reader
+    reads the ephemeral's inputs, which `check` finds two hops up (#891)."""
+    root = make_project(
+        {
+            "models/_sources.yml": SOURCES,
+            "models/stg.sql": (
+                "{{ config(materialized='ephemeral') }}\n"
+                "select id, cents from {{ source('raw', 'payments') }}\n"
+            ),
+            "models/totals.sql": (
+                "select id, sum(cents) as cents from {{ ref('stg') }} group by id\n"
+            ),
+            "models/_models.yml": """\
+            version: 2
+            models:
+              - name: totals
+                columns:
+                  - {name: id, data_tests: [unique]}
+            """,
+        }
+    )
+    res = sverify_dbt.check(root, counterexamples=0)
+    assert res["totals"].refused is None, res["totals"].refused
+    assert statuses(res["totals"]) == {"unique(id)": "proved"}
+    assert res["stg"].refused is None
+    assert any("inlines it into totals" in n for n in res["stg"].notes)
+
+
 def test_a_decimal_sum_notes_the_type_sverify_and_duckdb_differ_on(make_project) -> None:
     """`Report.output` types a decimal `SUM` as the reference does, `DECIMAL(p + 10, s)`;
     dbt's own SQL builds DuckDB's `DECIMAL(38, s)`; the contract check keeps DuckDB's (#1484)."""
