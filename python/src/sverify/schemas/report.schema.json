@@ -284,6 +284,10 @@
         "type": "string"
       }
     },
+    "run_gate": {
+      "description": "The gate that kept the plan as written in place of the rewrite (#1787), or null where the engine runs the rewrite.",
+      "type": ["string", "null"]
+    },
     "implied": {
       "description": "A SQL condition per input table that every row reaching the result passes.",
       "type": "object",

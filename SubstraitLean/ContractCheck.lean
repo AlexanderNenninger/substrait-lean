@@ -1027,17 +1027,18 @@ def foreignKeysOf : ForeignKeys :=
   foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
 
 /-- The transformation rewritten under `K` with the inputs' facts, keys and
-foreign keys (`Rel.optimize`, `check_optimized_sound`), and the rewrites'
-names. -/
-def optimizedIn (K : KnowledgeEnv) : Option (Rel × List String) :=
-  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf
+foreign keys by every rule (`Rel.optimize`, `check_optimized_sound`), and the
+rules applied. The report shows it; the plan an engine runs is gated
+(`Request.runPlanIn`, `SubstraitLean/RunPlan.lean`). -/
+def optimizedIn (K : KnowledgeEnv) : Option (Rel × List Rule) :=
+  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf fun _ => true
 
 /-- The report's `optimized` and `rewrites`: `optimizedIn`'s plan in the
 writer's JSON (trusted, round-tripped where the CLI writes plans), and its
 rewrites. -/
 def optimizedJson (K : KnowledgeEnv) : Json × List String :=
   match R.transform, R.optimizedIn K with
-  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log)
+  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log.map (·.name))
   | _, _ => (.null, [])
 
 end Request
@@ -1822,12 +1823,13 @@ JSON (`Request.CheckOk.optimized`). -/
 theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List String}
+    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List Rule}
     (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
   simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
   rw [← Rel.optimize_congr hD.arity] at hq
-  have := Rel.optimize_sound hD.wf hK.cols hK.facts hK.keys hFK (check_transform_wf hR hc hD hT)
+  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hFK
+    (check_transform_wf hR hc hD hT)
   rw [hq] at this
   exact this
 
