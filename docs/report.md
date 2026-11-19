@@ -56,7 +56,7 @@ instead.
 - The observation. `report.observation` is what the result's consumer
   observes: rows as a multiset and doubles within the plan's bound unless
   `ensures` states otherwise with `sv.equivalent(...)`, and it prints the
-  bound (`equivalent(floats=plan, ≤ 1.1e-10)`). Every component's default is
+  bound (`equivalent(elements='multiset', floats=plan, ≤ 1.1e-10, zeros='canon')`). Every component's default is
   in [the default observation](core-semantics.md#the-default-observation).
 - Determinism. `report.deterministic` is false when rows may tie in the
   order of a window, an ordered aggregate or a `LIMIT`, or the reference

@@ -2,7 +2,7 @@ import Sverify.Analysis.Contracts
 import Sverify.Analysis.Safety
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
-import SubstraitLean.Check
+import Sverify.Core.Check
 import Sverify.Frontend.Parse
 import SubstraitLean.Pretty
 import SubstraitLean.Semantic
@@ -86,7 +86,7 @@ def typeEnv : Nat → Json → AVal
     let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
     -- The column's number kind (#923).
     let nk : Option NumKind :=
-      if ["i8", "i16", "i32", "i64"].contains kind then some .int
+      if (Parse.intTags.lookup kind).isSome then some .int
       else if ["fp32", "fp64"].contains kind then some .float
       else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
       else if kind == "date" then some .date
@@ -97,8 +97,7 @@ def typeEnv : Nat → Json → AVal
     -- source read checks it (`sverify.engine.Connection.put`).
     -- The same for a narrow integer: its type's range (D46), which the run's
     -- schema check holds the data to (#1540).
-    let width : Option Nat := match kind with
-      | "i8" => some 7 | "i16" => some 15 | "i32" => some 31 | _ => none
+    let width : Option Nat := (Parse.narrowIntBits? ty).map (· - 1)
     if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
     else if let some w := width then

@@ -5,7 +5,7 @@ import SubstraitLean
 well-formed, and evaluate it.
 
 `substrait-check --eval-spec plan.json`: the same, evaluated with `Rel.eval`
-(the specification) in place of `Rel.evalFast` (`SubstraitLean/EvalFast.lean`),
+(the specification) in place of `Rel.evalFast` (`core/Sverify/Core/EvalFast.lean`),
 which is faster and proved equal; for tests.
 
 `substrait-check --delta plan.json`: print the Substrait JSON plan an engine
@@ -308,10 +308,8 @@ reference's proof carries over when the transfer check passes on the
 transformation: Substrait allows only behaviours the reference allows at every
 option it meets (`Rel.transfer_of_transferB`). Where it does not, no
 postcondition or key is proved under Substrait, and `"transfer"` names the
-options. An engine of `es` marked `asReference` (an out-of-tree one; none of
-the built-in ones) gets the reference's report under its name: a plan states
-its choices as the reference's templates. An engine whose profile is its own
-(DuckDB's, Polars's, Spark's) has no report under it yet (#1288, #271): its
+options. An engine of `es` (DuckDB, Polars, Spark, or one from outside)
+has no report under its profile yet (#1288, #271): its
 request gets the reference's report, labelled `"reference"`, with `"pending"`
 naming the profile asked for. Polars's plan is built with `division_type:
 FLOOR`, which the parser reads as the reference's templates
@@ -321,8 +319,6 @@ not know gets the reference's report alone. -/
 def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : Bool) :
     Except String (Json × Bool) := do
   let name := (j.getObjValAs? String "profile").toOption.getD "reference"
-  if (engineNamed? es name).any (·.asReference) then
-    return (report.setObjVal! "profile" name, proved)
   unless name == "substrait" do
     let report := report.setObjVal! "profile" "reference"
     return (if (engineNamed? es name).isSome then report.setObjVal! "pending" name else report,
@@ -489,9 +485,10 @@ def blackBoxJson : Lean.Json :=
       ("args", Lean.Json.arr #[ty f.arg]), ("result", ty f.result),
       ("empty", Write.writeValue f.empty), ("laws", laws f.laws)])).toArray
 
-/-- The checker over the engine profiles `es`: `substrait-check`'s `main`
-with `builtinEngines`, or a package's own checker with its profile added. -/
-def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
+/-- The checker over the engines `entries`: `substrait-check`'s `main` with
+`builtinEntries`, or a package's own checker with its engine added. -/
+def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 := do
+  let es := entries.map (·.rows)
   match args with
   | ["--serve"] => serve es
   | ["--version"] => do
@@ -543,7 +540,7 @@ def checkerMain (es : List EngineProfile) (args : List String) : IO UInt32 := do
     return 0
   | ["--realizability"] => do
     -- `obligations reference E` per engine: the realizability table (#444, step 3b).
-    IO.println (realizabilityJson es).compress
+    IO.println (realizabilityJson entries).compress
     return 0
   | ["--lowering-coverage"] => do
     -- How each construct is lowered to DuckDB (#241); a golden test.
