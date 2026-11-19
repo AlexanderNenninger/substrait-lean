@@ -4,10 +4,10 @@ import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
 import Sverify.Core.Check
 import Sverify.Frontend.Parse
-import SubstraitLean.Pretty
+import Sverify.Core.Pretty
 import SubstraitLean.Semantic
-import SubstraitLean.Write
-import SubstraitLean.Infer
+import Sverify.Frontend.Write
+import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
 import SubstraitLean.Implied
@@ -334,7 +334,7 @@ structure Report where
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
   rewrites : List String := []
-  /-- For each issue, what would rule it out (`SubstraitLean/Infer.lean`):
+  /-- For each issue, what would rule it out (`analysis/Sverify/Analysis/Infer.lean`):
   untrusted candidates, which the caller proves by adding them to the
   preconditions. -/
   bounds : List (Issue × Expr × Infer.Bounds) := []
@@ -984,10 +984,14 @@ def wantedKeys : List (List Nat) :=
 def perKeyOf : String → List (List Nat × Nat) :=
   rowsPer ((R.input.getObjVal? "rows_per").toOption.getD (.obj {}))
 
-/-- Does the request ask for the reference (`profile`)? Under another profile
-an overflow to `±∞` is the engine's value and no issue (#575). -/
+/-- Is the report the reference's? It is under the reference, and under an
+engine's profile with no report of its own yet, whose request gets the
+reference's report (`underProfile`'s `pending`, ruling 152 F1). Only DuckDB's
+lift (#575) and Substrait's profile have reports of their own, where an
+overflow to `±∞` is the value and no issue. -/
 def underReference : Bool :=
-  ((R.input.getObjValAs? String "profile").toOption.getD "reference") == "reference"
+  !["duckdb", "substrait"].contains
+    ((R.input.getObjValAs? String "profile").toOption.getD "reference")
 
 /-- Each requested output key, and whether it contains a key the analysis
 derives under `K` (`check_keys_sound`). -/

@@ -19,8 +19,6 @@ from sverify_dev.lift import duckdb_result
 
 pytestmark = pytest.mark.backend("duckdb")
 
-CANCEL = "a cancelling sum: DuckDB raises on the operand's cast to the result type (#1484)"
-
 #: (type of a, a, type of b, b, operation)
 CASES = [
     pytest.param(
@@ -28,21 +26,18 @@ CASES = [
         ("DECIMAL(38,10)", "-0.0000000001"),
         "+",
         id="d38_0-plus-d38_10-cancels",
-        marks=pytest.mark.xfail(strict=True, reason=CANCEL),
     ),
     pytest.param(
         ("DECIMAL(38,0)", "10000000000000000000000000000"),
         ("DECIMAL(38,10)", "0.0000000001"),
         "-",
         id="d38_0-minus-d38_10-cancels",
-        marks=pytest.mark.xfail(strict=True, reason=CANCEL),
     ),
     pytest.param(
         ("BIGINT", "100000000"),
         ("DECIMAL(38,30)", "-0.000000000000000000000000000001"),
         "+",
         id="bigint-plus-d38_30-cancels",
-        marks=pytest.mark.xfail(strict=True, reason=CANCEL),
     ),
     # Large operands that do not cancel raise in both.
     pytest.param(

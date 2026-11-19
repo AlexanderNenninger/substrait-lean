@@ -17,6 +17,8 @@ import ibis
 import pyarrow as pa
 import pyarrow.compute as pc
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from ibis import _ as col
 
 import sverify as sv
@@ -84,7 +86,7 @@ def _moments(kind: str, xs, ys, ws) -> dict:
         vs = [x, y] if pair else [x]
         if any(v is None for v in vs):
             continue
-        acc = out.setdefault(k, [0] * _exact_sum.width(kind))
+        acc = out.setdefault(_exact_sum.key_of([k]), [0] * _exact_sum.width(kind))
         sv_ = {"x": _scaled(vs[0]), "y": _scaled(vs[-1])}
         for j, t in enumerate(terms):
             acc[j] += w * math.prod(sv_[c] for c in t)
@@ -96,14 +98,14 @@ def _moments(kind: str, xs, ys, ws) -> dict:
     return out
 
 
-def _limbs(engine: str, kind: str, ks, xs, ys, ws) -> dict:
+def _limbs(engine: str, kind: str, ks, xs, ys, ws, key_type: str = "int64") -> dict:
     """The engine's limbs of the rows, added up per group and code, read
     back as each group's moments (`_exact_sum.moments`)."""
     from sverify.engine import connect, put_table, run_plan, written_plan
 
     e = _exact_sum.Exact(0, kind)
     t = ibis.table(
-        {"k0": "int64", "__w": "int64", "__ok0": "int64", "__x0": "float64", "__y0": "float64"},
+        {"k0": key_type, "__w": "int64", "__ok0": "int64", "__x0": "float64", "__y0": "float64"},
         name="rows",
     )
     parts = _exact_sum.limbs(t, ["k0"], [(e, "__x0", "__y0" if e.pair else None, "__ok0")])
@@ -118,7 +120,7 @@ def _limbs(engine: str, kind: str, ks, xs, ys, ws) -> dict:
     for r in run_plan(con, plan, engine).to_pylist():
         _, rest = divmod(r[code], _exact_sum._SLOTS * _exact_sum._LIMBS)
         slot, limb = divmod(rest, _exact_sum._LIMBS)
-        g = slots.setdefault(r["k0"], {})
+        g = slots.setdefault(_exact_sum.key_of([r["k0"]]), {})
         g[slot] = g.get(slot, 0) + (int(r[value]) << (_exact_sum._BITS * limb))
     assert all(_exact_sum.BROKEN not in g for g in slots.values())
     return {k: _exact_sum.moments(e, g) for k, g in slots.items() if any(g.values())}
@@ -142,6 +144,30 @@ def test_limbs_are_the_exact_moments(engine, kind):
     assert _limbs(engine, kind, ks, xs, ys, ws) == want
     gone = _limbs(engine, kind, ks + ks, xs + xs, ys + ys, ws + [-w for w in ws])
     assert gone == {}
+
+
+doubles = st.one_of(st.none(), st.sampled_from(SPECIAL), st.floats(allow_nan=True))
+
+
+@settings(max_examples=100, deadline=None)
+@given(
+    kind=st.sampled_from(["fsum", "favg", "var", "cov", "corr"]),
+    rows=st.lists(
+        st.tuples(
+            st.sampled_from([0.0, -0.0, 1.5, math.nan, None]),
+            doubles,
+            doubles,
+            st.one_of(st.integers(-3, 3), st.integers(-(2**40), 2**40)),
+        ),
+        max_size=40,
+    ),
+)
+def test_limbs_are_the_row_by_row_moments(kind, rows):
+    """The engine's limbs give the moments a row-by-row fold gives: float
+    keys (NaN, `-0.0`), NaN and infinities, and weights up to `2⁴⁰`."""
+    ks, xs, ys, ws = (list(c) for c in zip(*rows, strict=True)) if rows else ([], [], [], [])
+    want = {k: m for k, m in _moments(kind, (ks, xs), ys, ws).items() if any(m)}
+    assert _limbs("duckdb", kind, ks, xs, ys, ws, "float64") == want
 
 
 def _state(n: int, slots: dict[tuple[int, int], int]) -> pa.Table:
@@ -204,7 +230,7 @@ def _ours(kind: str, xs, ys=None, sample: bool = False, sqrt: bool = False):
     finished by `sverify._exact_sum`."""
     ys = ys if ys is not None else [0.0] * len(xs)
     mo = _moments(kind, ([0] * len(xs), xs), ys, [1] * len(xs))
-    m = mo.get(0, [0] * _exact_sum.width(kind))
+    m = mo.get((0,), [0] * _exact_sum.width(kind))
     pair = kind in ("cov", "corr")
     n = sum(x is not None and (not pair or y is not None) for x, y in zip(xs, ys, strict=True))
     return _exact_sum.finish(kind, m, n, sample, sqrt)

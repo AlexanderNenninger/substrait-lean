@@ -17,7 +17,7 @@ each partial sum is such an integer, and Kahan's compensation stays `0`. This
 backs the conjunct D35's amendment adds to `SumOrder`'s behaviours without a
 shape (`core/Sverify/Core/AllowedP.lean`), as `Summed.near` backs `SumBound`;
 the core proves the shaped behaviours itself (`SumOrder.int_exact` in
-`SubstraitLean/MarginSound.lean`).
+`analysis/Sverify/Analysis/MarginSound.lean`).
 -/
 
 @[expose] public section
