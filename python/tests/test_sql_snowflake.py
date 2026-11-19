@@ -248,8 +248,9 @@ def test_float_literals():
     assert parses(SNOWFLAKE.float_lit(math.nan)) == "CAST('NaN' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-inf' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(0.1)) == "CAST('0.1' AS FLOAT)"
-    # The model's one zero and one NaN.
-    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
+    # A zero keeps its sign, as the base writer's does (D31); one NaN.
+    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('-0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(0.0)) == "CAST('0.0' AS FLOAT)"
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
 
 

@@ -143,7 +143,11 @@ class SnowflakeDialect(Dialect):
             return NAN
         if math.isinf(f):
             return "CAST('inf' AS FLOAT)" if f > 0 else "CAST('-inf' AS FLOAT)"
-        return f"CAST('{f + 0.0!r}' AS FLOAT)"  # `+ 0.0`: the one zero
+        if f == 0:
+            # `-0.0` keeps its sign (D31); the text '-0.0' casts to -0 (Snowflake
+            # behaviour recorded privately).
+            return "CAST('-0.0' AS FLOAT)" if math.copysign(1.0, f) < 0 else "CAST('0.0' AS FLOAT)"
+        return f"CAST('{f!r}' AS FLOAT)"
 
     def int_lit(self, i: int) -> str:
         return str(i) if i >= 0 else f"({i})"
