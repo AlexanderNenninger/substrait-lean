@@ -96,6 +96,8 @@ def options : List OptionSpec := [
     extra := [("ERROR", "duckdb-substring-range")] },
   -- Text outside ASCII where an engine's answer is its own (D43, #1506).
   { id := "non_ascii_text", substrait := none, core := ["ERROR", "COMPUTE"] },
+  -- A scalar the engines' `UPPER` or `LOWER` map differently (D51).
+  { id := "case_mapping", substrait := none, core := ["ERROR", "COMPUTE"] },
   { id := "case_sensitivity", substrait := some "case_sensitivity",
     core := ["CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII"],
     yaml := ["CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII"] },
@@ -507,6 +509,7 @@ def Profile.reference.table : ProfileTable where
     (none, "negative_start", .asked ["WRAP_FROM_END", "LEFT_OF_BEGINNING"] ["WRAP_FROM_END"]),
     (none, "substring_range", .oneOf ["ERROR"]),
     (none, "non_ascii_text", .oneOf ["ERROR"]),
+    (none, "case_mapping", .oneOf ["ERROR"]),
     -- The model's string matching is case-sensitive, and `UPPER` and `LOWER`
     -- map Unicode case (`core/Sverify/Core/Text.lean`).
     (none, "case_sensitivity", .asked ["CASE_SENSITIVE"] ["CASE_SENSITIVE"]),

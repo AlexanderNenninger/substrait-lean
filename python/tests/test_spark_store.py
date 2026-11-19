@@ -115,3 +115,30 @@ def test_an_overflow_comes_with_the_read_that_adds_the_parts_up():
                 state.to_arrow()
         finally:
             spark.conf.set("spark.sql.ansi.enabled", "true")
+
+
+def _merger_for(store):
+    import sverify as sv
+    from sverify._state import Merger
+
+    return Merger(sv.connect(None), weighted([]).schema, store)
+
+
+def test_merging_changes_leaves_no_temporary_view_in_the_session():
+    """The rows of a change go to Spark as a frame that no view names: the JVM
+    keeps a view's rows for the life of the session, and a long-running
+    pipeline's driver ran out of heap."""
+    from sverify_spark import engine
+
+    spark = engine.session()
+
+    def temporary() -> list[str]:
+        return [t.name for t in spark.catalog.listTables() if t.name.startswith("__sverify_tmp")]
+
+    store = spark_store.SparkStore()
+    merge = _merger_for(store)
+    state = store.kept(weighted([]))
+    for i in range(6):
+        state = merge(state, weighted([(i, "a", 1.5, 1)]), keep=True)
+    assert state.to_arrow().num_rows == 6
+    assert temporary() == []

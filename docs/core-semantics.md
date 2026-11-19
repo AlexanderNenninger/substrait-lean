@@ -292,7 +292,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
 | strings | `str.match` | `like`, `strpos`, `starts_with`, `ends_with`, `replace` | `case_sensitivity` |
-| strings | `str.case` | `upper`, `lower` | `char_set`, `non_ascii_text` |
+| strings | `str.case` | `upper`, `lower` | `char_set`, `case_mapping` |
 | strings | `str.ascii` | `reverse`, `ascii`, `levenshtein`, `ilike`, `regexp_match`, `regexp_extract`, `regexp_replace` | `non_ascii_text` |
 | strings | `str.concat` | `str_concat` | `null_handling` |
 | strings | `str.plain` | `character_length`, `repeat`, `btrim`, `ltrim`, `rtrim` | none (the size hypothesis bounds their results) |
@@ -692,6 +692,7 @@ is a choice that accepts every value the plan states.
 | `negative_start` | all others | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`, `ERROR` | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`; `WRAP_FROM_END` by default | choose |
 | `substring_range` | all others | `COMPUTE` | `ERROR` | raise |
 | `non_ascii_text` | all others | `COMPUTE` | `ERROR` | raise |
+| `case_mapping` | all others | `COMPUTE` | `ERROR` | raise |
 | `case_sensitivity` | all others | `CASE_SENSITIVE`, `CASE_INSENSITIVE`, `CASE_INSENSITIVE_ASCII` | `CASE_SENSITIVE` | choose |
 | `char_set` | all others | `UTF8`, `ASCII_ONLY` | `UTF8` | choose |
 | `null_handling` | all others | `IGNORE_NULLS`, `ACCEPT_NULLS` | `ACCEPT_NULLS` | choose |

@@ -26,9 +26,9 @@ from collections.abc import Sequence
 # An engine built from main beside PyPI's sverify of the same version number
 # fails deep inside sverify with a TypeError (#1585): check the interface first.
 from importlib.metadata import version as _version
-from typing import Any
+from importlib.util import find_spec
+from typing import TYPE_CHECKING, Any
 
-import duckdb
 import pyarrow as pa
 
 from sverify import _meta
@@ -47,6 +47,9 @@ from sverify._unsupported import RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
 from sverify.profiles import ProfilePlugin, Setting
 from sverify_duckdb.declared import refuse_base_table
+
+if TYPE_CHECKING:
+    import duckdb
 
 _R15 = tuple(
     f"duckdb-R15-{n}"
@@ -376,7 +379,9 @@ PLUGIN = ProfilePlugin(
     installed_version=_version,
     restore=_restore,
     runner=_run,
-    local=True,
+    # The package writes DuckDB SQL without DuckDB; running plans needs it
+    # (`pip install sverify[duckdb]`).
+    local=find_spec("duckdb") is not None,
     read_settings=_read_settings,
     dialect=_dialect,
     run_tables=_run_tables,

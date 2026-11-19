@@ -21,6 +21,7 @@ from sverify.sql.core._base import (
     Unsupported,
     WriterUnsupported,
     _Writer,
+    case_raises,
     like_pattern,
     register,
 )
@@ -208,9 +209,20 @@ def _table(
     cols: list[Kind | None],
 ) -> str:
     """A row of the function table: its SQL of the operands, guarded where
-    engines agree on ASCII text only (`ascii_only`)."""
+    engines agree on ASCII text only (`ascii_only`) or off a set of scalars
+    (`case_only`)."""
     xs = [self.operand(a, k, ref, cols, f.what) for a, k in zip(args, f.args, strict=True)]
     sql = self.d.fn(f.name, *xs)
+    if f.case:
+        # A literal outside the raise set needs no guard.
+        lit = args[0]
+        if (
+            isinstance(lit, Lit)
+            and isinstance(lit.value, str)
+            and not case_raises(lit.value, f.case)
+        ):
+            return sql
+        return self.case_only(xs[0], sql, f.case)
     if not f.ascii:
         return sql
     text = xs[0] if len(xs) == 1 else self.d.concat(*xs)

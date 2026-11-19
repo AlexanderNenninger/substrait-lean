@@ -20,14 +20,16 @@ from __future__ import annotations
 import functools
 import threading
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
 
 from sverify import _duckdb
 from sverify._scan import Native
+
+if TYPE_CHECKING:
+    import duckdb
 
 WEIGHT = "__weight"
 _ROW = "__sverify_row"

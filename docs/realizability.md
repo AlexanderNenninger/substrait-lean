@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 5 | 25 | 1 | 4 | 4 | 0 | 16 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 6 | 8 | 2 | 16 | 7 |
-| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 26 | 1 | 5 | 3 | 2 | 15 | 0 |
+| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 5 | 25 | 1 | 4 | 4 | 0 | 17 | 0 |
+| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
+| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 26 | 1 | 5 | 3 | 2 | 16 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 6 | 13 | 18 | 2 | 0 | 0 | 16 |
-| Polars | 29 | 2 | 17 | 0 | 0 | 0 | 16 |
-| Spark | 17 | 13 | 13 | 0 | 0 | 0 | 15 |
+| DuckDB | 6 | 13 | 18 | 2 | 0 | 0 | 17 |
+| Polars | 29 | 2 | 17 | 0 | 0 | 0 | 17 |
+| Spark | 17 | 13 | 13 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -116,6 +116,7 @@ Rows per evidence level:
 | every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | engine_test | tested: [duckdb-R13](../engines/duckdb/facts/duckdb-R13.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `non_ascii_text` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
+| every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | probe | tested: [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
 | every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
@@ -185,6 +186,7 @@ Rows per evidence level:
 | every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | probe | tested: [polars-substring](../engines/polars/facts/polars-substring.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `non_ascii_text` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
+| every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | probe | tested: [polars-match-functions](../engines/polars/facts/polars-match-functions.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
 | every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
@@ -262,6 +264,7 @@ Refused on Polars, with no expression there:
 | every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | fuzz | tested: [spark-substring](../engines/spark/facts/spark-substring.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `non_ascii_text` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
+| every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | probe | tested: [spark-match-functions](../engines/spark/facts/spark-match-functions.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
 | every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
