@@ -41,8 +41,23 @@ def findings(result: CheckResult) -> list[dict[str, Any]]:
     return out
 
 
-def _f(m: ModelResult, file: str, code: str, level: str, item: str, message: str) -> dict[str, Any]:
-    return {"file": file, "code": code, "level": level, "item": item, "message": message}
+def _f(
+    m: ModelResult, file: str, code: str, level: str, label: str, message: str
+) -> dict[str, Any]:
+    """A finding in the shape of `cli.schema.json`'s: `item` is the model, and
+    `condition` the test or constraint it is about."""
+    out: dict[str, Any] = {
+        "file": file,
+        "code": code,
+        "level": level,
+        "item": m.name,
+        "nodes": [m.name],
+        "line": None,
+        "message": message,
+    }
+    if label != m.name:
+        out["condition"] = label
+    return out
 
 
 def _text(t: Any) -> str:
@@ -61,7 +76,7 @@ def github(result: CheckResult) -> str:
     """One workflow command per finding: `::error file=models/x.sql,title=…::…`."""
     lines = []
     for f in findings(result):
-        title = _escape_property(f"sverify {f['code']}: {f['item']}")
+        title = _escape_property(f"sverify {f['code']}: {f.get('condition', f['item'])}")
         text = f["message"] + (
             f"\ncounterexample: {f['counterexample']}" if "counterexample" in f else ""
         )
@@ -95,6 +110,8 @@ def sarif(result: CheckResult, version: str) -> str:
             "locations": [{"physicalLocation": {"artifactLocation": {"uri": f["file"]}}}],
             "properties": {"item": f["item"]},
         }
+        if "condition" in f:
+            r["properties"]["condition"] = f["condition"]
         if "counterexample" in f:
             r["properties"]["counterexample"] = f["counterexample"]
         results.append(r)
@@ -152,3 +169,40 @@ def junit(result: CheckResult) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>' + "".join(suites) + "</testsuites>"
     )
+
+
+STATUS = {
+    0: "proved",
+    1: "not_proved",
+    2: "usage",
+    3: "unsupported",
+    4: "budget_exceeded",
+    6: "error",
+}
+
+
+def envelope(
+    result: CheckResult | None, code: int, version: str, error: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """The JSON `--format json` prints: the envelope `cli.schema.json` describes
+    (`format`, `sverify`, `command`, `exit`, `status`, `findings`, `error`), so a
+    tool reads a dbt project's check as it reads a file's, and the models, as
+    sverify-dbt has always printed them, beside it."""
+    doc: dict[str, Any] = {
+        "format": 1,
+        "sverify": version,
+        "command": "check",
+        "exit": code,
+        "status": STATUS[code],
+        "findings": [
+            {k: v for k, v in f.items() if k != "file"} | {"file": f["file"]}
+            for f in findings(result)
+        ]
+        if result is not None
+        else [],
+        "error": error,
+    }
+    if result is not None:
+        doc["file"] = result.root
+        doc.update(result.to_dict())
+    return doc

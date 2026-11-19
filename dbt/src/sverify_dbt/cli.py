@@ -6,11 +6,12 @@ import argparse
 import json
 import os
 import sys
-from importlib.metadata import version as _version
 from pathlib import Path
 
+import sverify
 from sverify.errors import UnsupportedError
 
+import sverify_dbt
 from sverify_dbt import formats
 from sverify_dbt.check import check
 from sverify_dbt.manifest import ProjectError
@@ -32,13 +33,27 @@ def _timeout_asked(arg: float | None) -> bool:
     return arg is not None or bool(os.environ.get("SVERIFY_TIMEOUT", "").strip())
 
 
-def _render(result: CheckResult, fmt: str) -> str:
+def _fail(args: argparse.Namespace, code: int, kind: str, e: BaseException | str) -> int:
+    """Say what stopped the check on stderr, and as the JSON document's `error`."""
+    message = str(e)
+    print(f"sverify-dbt: {message}", file=sys.stderr)
+    if args.format == "json":
+        err = {
+            "code": kind,
+            "type": type(e).__name__ if not isinstance(e, str) else kind,
+            "message": message,
+        }
+        print(json.dumps(formats.envelope(None, code, sverify.__version__, err), indent=2))
+    return code
+
+
+def _render(result: CheckResult, fmt: str, code: int = 0) -> str:
     if fmt == "json":
-        return json.dumps(result.to_dict(), indent=2)
+        return json.dumps(formats.envelope(result, code, sverify.__version__), indent=2)
     if fmt == "github":
         return formats.github(result)
     if fmt == "sarif":
-        return formats.sarif(result, _version("sverify-dbt"))
+        return formats.sarif(result, sverify_dbt.__version__)
     if fmt == "junit":
         return formats.junit(result)
     return str(result)
@@ -137,21 +152,17 @@ def main(argv: list[str] | None = None) -> int:
                 counterexamples=args.counterexamples,
             )
     except _limits.BudgetExceeded as e:
-        print(f"sverify-dbt: {e}", file=sys.stderr)
-        return BUDGET
+        return _fail(args, BUDGET, "memory" if e.what == "memory" else "timeout", e)
     except UnsupportedError as e:
-        print(f"sverify-dbt: {e}", file=sys.stderr)
-        return REFUSED
+        return _fail(args, REFUSED, "unsupported", e)
     except (ProjectError, ValueError) as e:
-        print(f"sverify-dbt: {e}", file=sys.stderr)
-        return USAGE
+        return _fail(args, USAGE, "usage", e)
     except Exception as e:
         if _limits.is_out_of_memory(e):
-            print(f"sverify-dbt: memory budget exceeded ({e})", file=sys.stderr)
-            return BUDGET
-        print(f"sverify-dbt: error: {type(e).__name__}: {e}", file=sys.stderr)
-        return ERROR
-    print(_render(result, args.format))
+            return _fail(args, BUDGET, "memory", f"memory budget exceeded ({e})")
+        return _fail(args, ERROR, "error", f"error: {type(e).__name__}: {e}")
+    code = _exit_code(result, args.fail_on)
+    print(_render(result, args.format, code))
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
         n = len({t.name for t in result.skippable})
@@ -160,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
             "`dbt build --exclude selector:sverify_proved` to skip them",
             file=sys.stderr,
         )
-    return _exit_code(result, args.fail_on)
+    return code
 
 
 def _exit_code(result: CheckResult, fail_on: str) -> int:

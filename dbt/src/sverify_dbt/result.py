@@ -116,6 +116,8 @@ class CheckResult:
     tests: dict[str, Test] = field(repr=False)
     unit_tests: list[str] = field(default_factory=list)
     relations: dict[str, Relation] = field(default_factory=dict, repr=False)
+    adapter: str = "unknown"
+    dbt_version: str = "unknown"
 
     def suggestions(self) -> list[Suggestion]:
         """The tests sverify suggests adding, so that it proves more: what
@@ -223,6 +225,8 @@ class CheckResult:
             "summary": self.summary(),
             "models": out,
             "unit_tests": self.unit_tests,
+            "adapter": self.adapter,
+            "dbt_version": self.dbt_version,
         }
 
     def selector(self, name: str = "sverify_proved") -> dict[str, Any]:

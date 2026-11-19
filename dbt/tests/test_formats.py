@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import pytest
 
 from sverify_dbt import formats
 from sverify_dbt.cli import BUDGET, main
@@ -83,3 +86,46 @@ def test_the_time_budget_is_off_unless_asked_for(tmp_path, monkeypatch) -> None:
     assert _timeout_asked(5.0)
     monkeypatch.setenv("SVERIFY_TIMEOUT", "60")
     assert _timeout_asked(None)
+
+
+def _schema() -> dict:
+    import sverify
+
+    path = Path(sverify.__file__).parent / "schemas" / "cli.schema.json"
+    return json.loads(path.read_text())
+
+
+def test_the_json_is_sverifys_envelope_and_keeps_the_models(capsys, monkeypatch) -> None:
+    """`--format json` prints `cli.schema.json`'s document (`format`, `exit`,
+    `status`, `findings`, `error`) with the models beside it (#891, 1.5)."""
+    jsonschema = pytest.importorskip("jsonschema")
+    from sverify_dbt import cli
+
+    monkeypatch.setattr(cli, "check", lambda *a, **k: _result())
+    assert main(["check", ".", "--format", "json", "--fail-on", "unproved"]) == 1
+    doc = json.loads(capsys.readouterr().out)
+    jsonschema.validate(doc, _schema())
+    assert (doc["format"], doc["command"], doc["exit"], doc["status"]) == (
+        1,
+        "check",
+        1,
+        "not_proved",
+    )
+    assert doc["error"] is None and {m["name"] for m in doc["models"]} == {"ok", "bad", "rec"}
+    assert {f["code"] for f in doc["findings"]} >= {"may_be_false", "contract_mismatch"}
+    assert all(f["nodes"] == [f["item"]] and f["line"] is None for f in doc["findings"])
+
+
+def test_an_error_is_a_json_document_too(capsys, monkeypatch) -> None:
+    jsonschema = pytest.importorskip("jsonschema")
+    from sverify_dbt import cli
+
+    def boom(*a: object, **k: object) -> None:
+        raise FileNotFoundError("substrait-check is missing")
+
+    monkeypatch.setattr(cli, "check", boom)
+    assert main(["check", ".", "--json"]) == cli.ERROR
+    doc = json.loads(capsys.readouterr().out)
+    jsonschema.validate(doc, _schema())
+    assert doc["status"] == "error" and doc["error"]["code"] == "error"
+    assert "substrait-check is missing" in doc["error"]["message"]

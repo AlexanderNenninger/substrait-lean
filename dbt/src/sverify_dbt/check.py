@@ -92,6 +92,8 @@ class _Checker:
             tests={t.unique_id: t for t in self.p.tests.values()},
             unit_tests=self.p.unit_tests,
             relations=self.p.relations,
+            adapter=self.p.adapter,
+            dbt_version=self.p.dbt_version,
         )
 
     def _upstream(self, uids: set[str]) -> set[str]:

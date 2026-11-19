@@ -1,0 +1,3 @@
+### `sverify-dbt check --format json` prints sverify's document
+
+The JSON now has `cli.schema.json`'s keys (`format`, `sverify`, `command`, `exit`, `status`, `findings`, `error`), so a tool reads a dbt project's check as it reads a file's: each unproved test or constraint, refused model and contract mismatch is a finding with a code (`may_be_false`, `unknown`, `unchecked`, `unsupported`, `contract_mismatch`; `sverify explain` takes the first four), its model, its file and its condition. A failure (no manifest, a broken install, a budget) is a document with `error` too. `project`, `summary`, `models`, `unit_tests` stay as they were, with the project's `adapter` and `dbt_version` added (#891, 1.5).

@@ -147,7 +147,12 @@ def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert {m["name"] for m in data["models"]} >= {"stg_orders", "org_depth"}
     # `sverify check <dbt dir> --format json` forwards `--format` (#891).
     assert main(["check", str(shop), "--format", "json", "--counterexamples", "0"]) == 0
-    assert json.loads(capsys.readouterr().out) == data
+    again = json.loads(capsys.readouterr().out)
+    # The same document, but for what `--fail-on` made of the exit.
+    assert {k: v for k, v in again.items() if k not in ("exit", "status")} == {
+        k: v for k, v in data.items() if k not in ("exit", "status")
+    }
+    assert (data["exit"], again["exit"]) == (1, 0)
     assert main(["check", str(shop), "--format", "text", "--counterexamples", "0"]) == 0
     assert "stg_orders (models/staging/stg_orders.sql)" in capsys.readouterr().out
     assert main(["check", str(shop / "nowhere")]) == 2
