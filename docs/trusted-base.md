@@ -270,8 +270,8 @@ place, and what retires it.
      For a plan in which no double occurs (`Rel.mayDouble`) and no measure
      is open (`Rel.closedB`), `Rel.floatOpenSafeP_of_noDouble` discharges it
      where the table, with the reference's choices at the options only
-     doubles read (`floatOnlyOptions`), transfers (`transferB`); the run
-     plan's `near` gate checks both at each built-in engine (ruling 154). It
+     doubles read (`floatOnlyOptions`), transfers (`transferB`), ruling 154.
+     The run plan's `near` gate passes plans without doubles on that ground. It
      stays open for plans with a double, and for plans without one that read
      an option where the table leaves the reference outside that list (an
      integer `AVG` at Polars or Spark).
