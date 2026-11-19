@@ -48,7 +48,7 @@ import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Functions
 import Sverify.DuckDB.Profile
 import Sverify.Engines.Lowering
-import SubstraitLean.Bind
+import Sverify.Frontend.Bind
 import Sverify.Engines.LoweringHint
 import Sverify.DuckDB.LoweringCache
 import Sverify.Engines.LoweringSearch

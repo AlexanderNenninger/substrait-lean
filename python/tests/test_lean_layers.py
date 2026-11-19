@@ -183,8 +183,6 @@ ROOT_WAITING = {
     "IncrementalMinMax": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalSemi": "imports IncrementalAgg (#1795); then analysis",
     "OpenSums": "ruling 148 O2: general part to engines-common, example to Polars",
-    "Bind": "imports Engines.Lowering (Outcome.bind_error) and Frontend.Parse (Expr.readsField), "
-    "and no layer below the engines has both: a ruling on where those lemmas live",
 }
 
 

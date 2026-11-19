@@ -252,6 +252,7 @@ that build as the guard. Engine packages may import it, as
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `SubstraitJson.lean` | Builders of Substrait's JSON: references, types, casts, literals, calls and measures by anchor, the functions templates call, and the options the parser accepts |
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
+| `Bind.lean` | Binding nested call arguments to projected columns before a plan is written (#821) |
 
 ### Engines-common: `engines/Sverify/Engines/`
 
@@ -402,7 +403,6 @@ build as the guard.
 
 | Module | Job |
 |---|---|
-| `Bind.lean` | Binding nested call arguments to projected columns before a plan is written (#821) |
 
 ### Reading, writing and the CLI
 
