@@ -545,9 +545,9 @@ what a plan means, row by row.
 
 ## Where next
 
-* The [tour](../README.md#the-tour): six notebooks, three complete jobs and
-  three guides, to contracts, to pipelines and engines, and to running in
-  production.
+* The [tour](../README.md#the-tour): eight notebooks, three complete jobs and
+  five guides, to contracts, to pipelines and engines, to running in
+  production, to the engines one by one and to dbt.
 * [How to](tasks.md): one section per task, from the command line
   to credentials, OpenLineage and ODCS.
 * The [API reference](https://alexandernenninger.github.io/substrait-lean/reference/):
