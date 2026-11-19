@@ -1058,3 +1058,19 @@ def test_a_declared_schema_is_not_read_from_the_table_but_checked_against_it(tmp
     wrong = DeltaSource(uri, schema=pa.schema([("id", pa.int64()), ("amount", pa.string())]))
     with pytest.raises(SchemaError, match="amount: declared string, table int64"):
         wrong.snapshot()
+
+
+def test_a_column_declared_not_null_must_be_not_null_in_the_table(tmp_path):
+    """The proof may take "never NULL" from `schema=`; a table that allows NULLs
+    does not promise it (declared nullable over a NOT NULL column is fine)."""
+    uri = str(tmp_path / "orders")
+    write_deltalake(uri, pa.table({"id": [1, None]}))  # a nullable column
+    strict = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    with pytest.raises(SchemaError, match="id: declared NOT NULL, table nullable"):
+        DeltaSource(uri, schema=strict).snapshot()
+    loose = pa.schema([pa.field("id", pa.int64())])
+    assert DeltaSource(uri, schema=loose).snapshot().table.num_rows == 2
+    required = str(tmp_path / "required")
+    write_deltalake(required, pa.table({"id": pa.array([1], pa.int64())}, schema=strict))
+    assert DeltaSource(required, schema=loose).snapshot().table.num_rows == 1
+    assert DeltaSource(required, schema=strict).snapshot().table.num_rows == 1

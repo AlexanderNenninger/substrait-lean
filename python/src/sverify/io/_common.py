@@ -716,24 +716,28 @@ class _TableSource(Pipeable, ABC):
         table, else the table's current one."""
 
     def _verify_declared(self, actual: pa.Schema) -> None:
-        """Raise `SchemaError` if the table's schema is not the declared one
-        (names and types; a table read as `large_string` is `string`)."""
+        """Raise `SchemaError` if the table's schema is not the declared one:
+        names and types (a table read as `large_string` is `string`), and no
+        column declared NOT NULL is nullable in the table."""
         if self._declared is None:
             return
         from sverify.engine import plain_schema
         from sverify.incremental import SchemaError
 
-        want = {f.name: f.type for f in plain_schema(self._declared)}
-        got = {f.name: f.type for f in plain_schema(actual)}
-        if want == got:
-            return
+        want = {f.name: f for f in plain_schema(self._declared)}
+        got = {f.name: f for f in plain_schema(actual)}
         diff = [f"missing {c}" for c in want.keys() - got.keys()]
         diff += [f"unexpected {c}" for c in got.keys() - want.keys()]
-        diff += [
-            f"{c}: declared {want[c]}, table {got[c]}"
-            for c in want.keys() & got.keys()
-            if want[c] != got[c]
-        ]
+        for c in want.keys() & got.keys():
+            if want[c].type != got[c].type:
+                diff.append(f"{c}: declared {want[c].type}, table {got[c].type}")
+            elif not want[c].nullable and got[c].nullable:
+                # A proof may take "never NULL" from the declaration; a table
+                # that allows NULLs does not promise it. (Declared nullable
+                # over a NOT NULL column is the weaker claim, and fine.)
+                diff.append(f"{c}: declared NOT NULL, table nullable")
+        if not diff:
+            return
         raise SchemaError(
             f"{self.name}: the table's schema is not the one declared with schema=: "
             + "; ".join(sorted(diff))
