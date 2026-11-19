@@ -514,8 +514,7 @@ print(report.details())
 * Filters, semi-joins and `DISTINCT` keep at most their input's rows,
   `LIMIT` at most its count, `UNION ALL` adds, and an aggregate without
   `GROUP BY` has one row. A join multiplies, or keeps the left side's rows
-  when its condition matches a `unique` key of the right side
-  (`Rel.capJoins_eval`).
+  when its condition matches a `unique` key of the right side.
 * A cap is checked on the data at call time and on every batch of an
   incremental view, or proved from the record counts of the Delta or Iceberg
   files a source reads.
@@ -545,11 +544,10 @@ assert not report.assumed and not report.errors
 ```
 
 * Filters, sorts, `LIMIT`, `DISTINCT`, semi-joins, projections and
-  `UNION ALL` keep the bounds (`Rel.perKey_sound` in
-  [Rows.lean](../analysis/Sverify/Analysis/Rows.lean)), and so does a join on a `unique`
+  `UNION ALL` keep the bounds, and so does a join on a `unique`
   key of its right side. A `unique` key is a bound of 1.
 * An aggregate grouping by all of a bound's columns has groups of at most
-  that many rows (`Rel.groupRows_sound`), which bounds its integer and
+  that many rows, which bounds its integer and
   decimal `SUM`s.
 * `Report.rows` is the bound on the result's rows.
 * It is checked on the data at call time (a `GROUP BY` of the columns, with
@@ -867,13 +865,12 @@ An `sv.sql` expression inside an Ibis transformation keeps its own. The report
 says which semantics it used (`Report.semantics`, a `semantics:` line).
 `semantics="polars"` is pending like Spark's: Polars floors integer `//` and
 `%`, so `-7 % 2` is `1` there, and until the checker reports under Polars's own
-profile ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271))
+profile
 the report is the reference's, with the stated `FLOOR` read by the core, and a
 `ProfilePendingWarning` says so ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode, and doubles that overflow are ±inf with no precondition.
-Until the checker reports under Spark's own profile
-([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
+Until the checker reports under Spark's own profile,
 the report is the reference's, `report.semantics` says `"reference"`, a
 `ProfilePendingWarning` says so, and the plan reaches Spark through its
 translation ([engine-profiles.md](engine-profiles.md#spark-as-a-profile)).
@@ -909,12 +906,10 @@ aggregate whose input has delta rules recomputes only the groups a batch
 touches: Sverify takes the group keys of the input rows the batch inserts or
 deletes, recomputes those groups from the new input (a semi-join on the
 keys), and replaces their rows. This holds for every measure, because an
-aggregate's groups are independent (`TouchedGroups.touched_sound` in
-[`SubstraitLean/TouchedGroups.lean`](../SubstraitLean/TouchedGroups.lean)).
+aggregate's groups are independent (see [proved-theorems.md](proved-theorems.md)).
 A projection whose window functions share one `PARTITION BY`, with the
 partition keys among its columns, recomputes the partitions a batch touches
-the same way (`TouchedGroups.touched_window_sound`, for inputs without ties on
-the partition and sort columns). With a time bucket among the keys, the
+the same way, for inputs without ties on the partition and sort columns. With a time bucket among the keys, the
 recompute reads only the range the touched buckets cover.
 
 Window aggregates over bounded RANGE frames of one time column, such as the
@@ -1068,11 +1063,9 @@ refresh batch by batch and a recompute agree:
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
 
-Every precondition holds on the rows kept: `Catalog.kept_sound` in
-[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule
-(on the snapshot with identical rows collapsed),
-so the node's contract (`contract_sound`, `Rel.keys_sound`) holds on what it
-reads. The batch checks then run on the kept rows as on any batch, and a row
+Every precondition holds on the rows kept: Lean proves it for this rule
+(on the snapshot with identical rows collapsed, see [proved-theorems.md](proved-theorems.md)),
+so the node's contract holds on what it reads. The batch checks then run on the kept rows as on any batch, and a row
 the rule let through by mistake would raise.
 [`tests/test_quarantine.py`](../python/tests/test_quarantine.py) compares
 every refresh of random batches with the rule.
@@ -1131,7 +1124,7 @@ tables. A table format plays four roles:
   A Delta table, local or on S3, and a local Iceberg table are never loaded
   into Python: the pipeline holds the Parquet files of its version, with the
   rows that deletion vectors or position delete files remove, and each engine
-  reads them itself (#173): DuckDB with `read_parquet`, Polars with
+  reads them itself: DuckDB with `read_parquet`, Polars with
   `scan_parquet` on the streaming engine, Spark with its Parquet reader. A
   Delta table's partition values come from its log, and its column mapping by
   name or by id is followed, so a renamed column is found. Iceberg files are
@@ -1549,17 +1542,16 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
   expired rows. Lean proves that the final buckets in the sink and the open
   ones in the state are then a full recompute over every row the source
   received, less the deletes at or after the watermark
-  (`Retention.expiry_sound`). A delete before the watermark in a bucket that
+  A delete before the watermark in a bucket that
   is still open rejects the batch. With no view that drops buckets of `ts`,
   every delete is applied as it is.
 - A bucket that ends at or before the watermark is final. Lean proves that
   no admissible batch changes a final bucket, for every measure, so the
   final buckets kept in the sink and the open ones in the state add up to a
-  full recompute (`Retention.retention_sound` and `Retention.final_stable` in
-  [`SubstraitLean/Retention.lean`](../SubstraitLean/Retention.lean)).
+  full recompute (see [proved-theorems.md](proved-theorems.md)).
 - After the sink has written a refresh, the node drops the final buckets
   from its state. At most `⌈lateness / width⌉ + 1` buckets stay open
-  (`Retention.open_buckets_le`), so the state holds that many rows per group.
+  so the state holds that many rows per group.
   The refresh report gives the open and retired buckets, the bound and the
   watermark (`RetentionReport`).
 - The bucket is `ts.truncate(unit)` to a second, minute, hour or day, or
@@ -1657,9 +1649,9 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending until #1288 and #271) |
-| `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
-| `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
+| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending) |
+| `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
+| `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check) |
 | `recheck` | the checker proves the plan again under the engine's profile |
 
 `report.routes[engine]` records the route, with its class, which says what
@@ -1759,11 +1751,10 @@ component. A postcondition that reads what the observation ignores, such as
 tolerance. The checker names the components each condition's value depends
 on, from the columns it reads, and a condition that depends on none the
 observation ignores holds on every result equal to a proved one up to the
-observation (`Expr.robust_of_depends`,
-[Robust.lean](../core/Sverify/Core/Robust.lean)). A comparison with a constant
+observation. A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
-every such result (`Expr.narrow_sound`). A postcondition is proved on every
-result the reference allows (`contract_sound_allowed`), and
+every such result. A postcondition is proved on every
+result the reference allows, and
 `CheckedCondition.allowed` says so. A double `SUM` or `AVG` is one
 value, the exact sum rounded once, so this covers postconditions that read
 it; one that reads a statistical aggregate, whose value is still a choice of
