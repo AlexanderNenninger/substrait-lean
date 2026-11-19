@@ -20,6 +20,7 @@ from typing import Any
 import duckdb
 import sqlglot as sg
 import sverify as sv
+from sverify.conditions import label as condition_label
 from sverify.errors import ConditionError
 
 from sverify_dbt import mapping
@@ -316,15 +317,38 @@ class _Checker:
                 if not self._drop(e, res, requires, ensures):
                     res.refuse(_refusal(e))
                     return None
-            except ValueError as e:  # sverify's Unsupported: the model
-                res.refuse(_refusal(e))
-                return None
+            except ValueError as e:  # a refusal after planning: the model or a condition
+                return self._isolate(go, res, requires, ensures, e)
+
+    @staticmethod
+    def _isolate(go: Any, res: ModelResult, requires: dict, ensures: list, first: Exception) -> Any:
+        """A refusal `ConditionError` does not name (the checker's, after the
+        plans exist): refuse the model if it fails alone, else prove each
+        test's conditions on their own and skip the ones that fail."""
+        none = {t: [] for t in requires}
+        try:
+            go(none, [])
+        except ValueError:
+            res.refuse(_refusal(first))
+            return None
+        for tr, cs in ensures:
+            if tr.status == "not checked":
+                continue
+            try:
+                go(none, cs)
+            except ValueError as e:
+                tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
+        try:
+            return go(requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs])
+        except ValueError:
+            res.refuse(_refusal(first))
+            return None
 
     @staticmethod
     def _drop(e: ConditionError, res: ModelResult, requires: dict, ensures: list) -> bool:
         """Drop the condition `e` names, with its reason; False if none is."""
         for t, cs in requires.items():
-            hit = [c for c in cs if _label(c) == e.condition]
+            hit = [c for c in cs if _named(c) == e.condition]
             if hit:
                 requires[t] = [c for c in cs if c not in hit]
                 res.not_assumed.append(
@@ -332,7 +356,7 @@ class _Checker:
                 )
                 return True
         for tr, cs in ensures:
-            if tr.status != "not checked" and any(_label(c) == e.condition for c in cs):
+            if tr.status != "not checked" and any(_named(c) == e.condition for c in cs):
                 tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
                 return True
         return False
@@ -581,6 +605,11 @@ def _why(c: Any) -> str:
     (`CheckedCondition.reason`; its `why` speaks of `sv.unique` and
     `requires`)."""
     return _WHY.get(c.reason, f"sverify only knows it is {c.value}")
+
+
+def _named(c: Any) -> str:
+    """A condition as `ConditionError.condition` names it."""
+    return condition_label(c)
 
 
 def _label(c: Any) -> str:
