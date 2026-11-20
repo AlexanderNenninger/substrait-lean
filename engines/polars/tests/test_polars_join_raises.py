@@ -6,6 +6,7 @@ caches them and fuses the filter into a nested-loop join below the `guard`, whic
 never sees a pair the comparison rejects."""
 
 import json
+from typing import Literal
 
 import ibis
 import pytest
@@ -16,13 +17,15 @@ from sverify.testing import inline_tables, lean_values
 
 pytestmark = pytest.mark.backend("polars")
 
+How = Literal["inner", "left", "semi", "anti"]
+
 T = ibis.table({"a": "float64", "i": "int64", "k": "int64"}, name="t")
 U = ibis.table({"b": "float64", "j": "int64", "k": "int64"}, name="u")
 #: `i // (i - j)` divides by zero on the pair (1, 1), which also has a > b.
 RAISES = (T.a > U.b) & ((T.i // (T.i - U.j)) > 0)
 
 
-def run(how: str, cond, t_rows: list[tuple], u_rows: list[tuple]) -> list[dict]:
+def run(how: How, cond, t_rows: list[tuple], u_rows: list[tuple]) -> list[dict]:
     con = connect("polars")
     con.create("t", ibis.schema({"a": "float64", "i": "int64", "k": "int64"}), t_rows)
     con.create("u", ibis.schema({"b": "float64", "j": "int64", "k": "int64"}), u_rows)
@@ -32,7 +35,7 @@ def run(how: str, cond, t_rows: list[tuple], u_rows: list[tuple]) -> list[dict]:
 
 @pytest.mark.parametrize("how", ["inner", "left", "semi", "anti"])
 @pytest.mark.parametrize("keyed", [False, True], ids=["keyless", "keyed"])
-def test_a_pair_that_passes_the_comparison_and_raises_raises(how: str, keyed: bool) -> None:
+def test_a_pair_that_passes_the_comparison_and_raises_raises(how: How, keyed: bool) -> None:
     cond = RAISES & (T.k == U.k) if keyed else RAISES
     with pytest.raises(Exception, match="divide by zero"):
         run(how, cond, [(5.0, 1, 0)], [(2.0, 1, 0)])
