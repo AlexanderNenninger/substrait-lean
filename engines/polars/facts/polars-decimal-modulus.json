@@ -1,0 +1,85 @@
+{
+  "id": "polars-decimal-modulus",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Decimal `%`: floored (the divisor's sign), `Decimal(38, max(s₁, s₂))`, exact past 38 digits; raises by zero",
+  "verdict": "the remainder takes the divisor's sign: shimmed as `imod`'s; result type 38 digits",
+  "area": "decimals",
+  "options": [
+    "decimal_result_type",
+    "division_type",
+    "on_division_by_zero"
+  ],
+  "constructs": [
+    "%"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory"
+    ]
+  },
+  "description": [
+    "`a % b` of two decimals is the floored remainder, with the divisor's sign: `-7.50 % 2.0` is 0.50, `7.50 % -2.0` is -0.50, `-7.5 % -2` is -1.5, and `6 % -3` is 0. The reference truncates, so the translation needs `imod`'s sign shim.",
+    "The result is `Decimal(38, max(s₁, s₂))`, and it is exact where an operand upscaled to the common scale needs more than 38 digits (`99999999999999999999999999999999999999 % 7.0000000001` is 1.6880508122, as Python's `Decimal` gives). A zero divisor raises `ComputeError: division by zero Decimal`; a NULL operand gives NULL."
+  ],
+  "reference": "D62 (ruling 181): `a % b` on decimals is the truncated remainder of the two values at scale max(s₁, s₂): it takes the dividend's sign, its type is DECIMAL(min(p₁−s₁, p₂−s₂) + max(s₁, s₂), max(s₁, s₂)), a NULL operand gives NULL, and a zero divisor raises (`Issue.divByZero`, as `imod`).",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "manual-repro",
+      "checked_by": "lift-dates session (polars 2.1.0, Python, macOS arm64; DataFrame.select)",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'a':[D('7.50')],'b':[D('2.0')]}, schema={'a':pl.Decimal(10,2),'b':pl.Decimal(5,1)}).select(a % b)",
+          "observed": "Decimal(38, 2): 1.50"
+        },
+        {
+          "sql": "-7.50 % 2.0; 7.50 % -2.0 (same types)",
+          "observed": "0.50; -0.50"
+        },
+        {
+          "sql": "D('-7.5') % D('-2') as Decimal(10,1) % Decimal(5,0)",
+          "observed": "Decimal(38, 1): -1.5"
+        },
+        {
+          "sql": "-6 % 3; 6 % -3 as Decimal(10,0) % Decimal(5,0)",
+          "observed": "0; 0"
+        },
+        {
+          "sql": "7.50 % 0.0",
+          "observed": "ComputeError: division by zero Decimal"
+        },
+        {
+          "sql": "NULL % 2.0; 7.5 % NULL",
+          "observed": "None; None (Decimal(38, 2))"
+        },
+        {
+          "sql": "1234567.123 (10,3) % 3.7 (3,1)",
+          "observed": "Decimal(38, 3): 2.923"
+        },
+        {
+          "sql": "99999999999999999999999999999999999999 (38,0) % 7 (38,0)",
+          "observed": "Decimal(38, 0): 1"
+        },
+        {
+          "sql": "1.123456789012345678901234567890123456 (38,36) % 3 (38,0)",
+          "observed": "Decimal(38, 36): 1.123456789012345678901234567890123456"
+        },
+        {
+          "sql": "99999999999999999999999999999999999999 (38,0) % 7.0000000001 (38,10)",
+          "observed": "Decimal(38, 10): 1.6880508122"
+        },
+        {
+          "sql": "12345678901234567890123456789012 (38,0) % 0.0000000007 (38,10)",
+          "observed": "Decimal(38, 10): 6E-10"
+        },
+        {
+          "sql": "12345.678901 (28,6) % 7.5 (28,6)",
+          "observed": "Decimal(38, 6): 0.678901"
+        }
+      ]
+    }
+  ]
+}
