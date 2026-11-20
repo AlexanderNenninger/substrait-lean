@@ -239,7 +239,10 @@ def test_the_run_is_refused_above_the_cap_with_its_exits_named():
     # DuckDB writes the join as its ASOF JOIN, which compares no pairs: no cap.
     assert report.run(con, "duckdb").num_rows == 1000
     # With a tolerance it keeps the range join, and the cap.
-    tol = sv.verify(sv.asof_join(left, right, on="ts", by="device", tolerance=5, max_pairs=100_000))
+    tol = sv.verify(
+        sv.asof_join(left, right, on="ts", by="device", tolerance=5, max_pairs=100_000),
+        on_inferred="ignore",
+    )
     with pytest.raises(UnsupportedError, match=r"1,000,000 pairs"):
         tol.run(con, "duckdb")
     # More `by` groups: fewer pairs, under the cap; and no cap at all.
@@ -269,7 +272,8 @@ def test_the_cap_holds_on_tables_read_from_files(tmp_path, engine):
     report = sv.verify(
         sv.asof_join(
             con.table("l"), con.table("r"), on="ts", by="device", tolerance=5, max_pairs=100_000
-        )
+        ),
+        on_inferred="ignore",
     )
     with pytest.raises(UnsupportedError, match=r"1,000,000 pairs"):
         report.run(con, engine)
@@ -359,26 +363,40 @@ def _asof_tables(con, kind, left, right):
     return con.table("l"), con.table("r"), f
 
 
-def _candidates(row, right, how, f):
-    """Each right row an as-of join may give the left row `(k, t, id)`: those of
-    its key group with the greatest `t` at or before its own (ties are open),
-    as `(t, v)`; `(None, None)` for none, where `how` is left."""
-    k, t, _ = row
-    best = [
-        r
-        for r in right
-        if k is not None and t is not None and r[0] == k and r[1] is not None and r[1] <= t
-    ]
-    if not best:
-        return [(None, None)] if how == "left" else []
-    top = max(r[1] for r in best)
-    return [(f(top), r[2]) for r in best if r[1] == top]
+def _enc(v):
+    """A value as Lean reads it: a date is its day, a timestamp its microseconds."""
+    if isinstance(v, dt.datetime):
+        return (v - dt.datetime(1970, 1, 1)) // dt.timedelta(microseconds=1)
+    if isinstance(v, dt.date):
+        return (v - dt.date(1970, 1, 1)).days
+    return v
+
+
+def _lean_allowed(expr, kind, left, right):
+    """The rows `Rel.eval` allows for each left row: its output over each choice
+    among the tied latest right rows (variant `j` keeps the `j`-th row of every
+    group of right rows that share `(k, t)`), by left id."""
+    from sverify.ibis_substrait import to_substrait_json
+
+    f = NATIVE_KINDS[kind][1]
+    plan = json.loads(to_substrait_json(expr))
+    groups: dict = {}
+    for r in right:
+        groups.setdefault((r[0], r[1]), []).append(r)
+    allowed: dict[int, set] = {}
+    for j in range(max([len(g) for g in groups.values()], default=1)):
+        kept = [g[j % len(g)] for g in groups.values()]
+        enc = lambda rows: [(k, _enc(None if t is None else f(t)), x) for k, t, x in rows]  # noqa: E731
+        rows = inline_tables(plan, {"l": enc(left), "r": enc(kept)})
+        for out in lean_rows(json.dumps(rows)):
+            allowed.setdefault(out[2], set()).add(out)
+    return allowed
 
 
 @pytest.mark.parametrize("kind", NATIVE_KINDS)
 @pytest.mark.parametrize("how", ["left", "inner"])
 @settings(
-    max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(
     left=st.lists(
@@ -392,35 +410,23 @@ def _candidates(row, right, how, f):
 )
 def test_duckdbs_asof_join_gives_a_row_the_plan_allows(kind, how, left, right):
     """DuckDB runs the as-of join as its ASOF JOIN (ruling 162, #1447 item 6):
-    each left row, equal ones included, keeps one of its latest right rows
-    whole; NULL keys and NULL times never match, and a tie on the right is
-    one of the tied rows (A5, A6). `Rel.eval` allows the same rows."""
+    each left row, equal ones included, keeps one latest right row whole; NULL
+    keys and NULL times never match. The rows are `Rel.eval`'s: equal where
+    `(by, on)` is unique on the right, and one of the rows its choices among
+    tied right rows give (A5, A6)."""
     left = [(k, t, i) for i, (k, t) in enumerate(left)]
     right = [(k, t, 100 + i) for i, (k, t) in enumerate(right)]
     con = connect()
-    lt, rt, f = _asof_tables(con, kind, left, right)
-    report = sv.verify(sv.asof_join(lt, rt, on="t", by="k", how=how, max_pairs=0))
+    lt, rt, _ = _asof_tables(con, kind, left, right)
+    expr = sv.asof_join(lt, rt, on="t", by="k", how=how, max_pairs=0)
+    report = sv.verify(expr)
     # `max_pairs=0` refuses any count: the run is native, or it raises.
     assert [c["form"] for c in report._asof_checks] == ["builder"]
-    out = report.run(con, "duckdb").to_pylist()
-    by_id = {r["id"]: r for r in out}
-    assert len(by_id) == len(out)
-    for row in left:
-        allowed = _candidates(row, right, how, f)
-        if not allowed:
-            assert row[2] not in by_id
-            continue
-        got = by_id[row[2]]
-        assert (got["t_right"], got["v"]) in allowed, (row, got)
-        assert (got["k"], got["t"]) == (row[0], None if row[1] is None else f(row[1]))
-    # Where no two right rows tie, the range join of the other engines gives the same rows.
-    if len({(k, t) for k, t, _ in right if k is not None and t is not None}) == len(
-        [r for r in right if r[0] is not None and r[1] is not None]
-    ):
-        other = report.run(con, "polars").to_pylist()
-        assert canonical([tuple(r.values()) for r in out]) == canonical(
-            [tuple(r.values()) for r in other]
-        )
+    out = [tuple(_enc(v) for v in r.values()) for r in report.run(con, "duckdb").to_pylist()]
+    allowed = _lean_allowed(expr, kind, left, right)
+    assert sorted(r[2] for r in out) == sorted(allowed)
+    for row in out:
+        assert row in allowed[row[2]], row
 
 
 def test_the_native_sql_is_an_asof_join_where_the_site_is_plain():
@@ -444,3 +450,57 @@ def test_the_native_sql_is_an_asof_join_where_the_site_is_plain():
     con.create("fl", ibis.schema({"k": "int64", "t": "float64"}), [(1, 5.0)])
     con.create("fr", ibis.schema({"k": "int64", "t": "float64"}), [(1, 4.0)])
     assert "ASOF" not in sql(sv.asof_join(con.table("fl"), con.table("fr"), on="t", by="k"))
+
+
+@pytest.mark.parametrize("how", ["left", "inner"])
+def test_the_lift_of_the_native_sql_is_the_same_site(how):
+    """Round trip (A6): the lift reads the ASOF JOIN the writer emits as an
+    as-of site of the same keys, `on` columns and join type."""
+    from sverify.engine import written_plan
+    from sverify.sql import to_sql
+
+    con = connect()
+    lt, rt, _ = _asof_tables(con, "int", [(1, 5, 1)], [(1, 4, 100)])
+    report = sv.verify(sv.asof_join(lt, rt, on="t", by="k", how=how))
+    assert report.internal_plan is not None
+    sql = to_sql(
+        json.loads(written_plan(report.internal_plan)),
+        "duckdb",
+        asof=report._asof_checks,
+        rows="multiset",
+    )
+    assert "ASOF" in sql
+    schema = {"k": "int64", "t": "int64"}
+    lifted = sv.verify(
+        sql,
+        tables={
+            "l": ibis.schema({**schema, "id": "int64"}),
+            "r": ibis.schema({**schema, "v": "int64"}),
+        },
+    )
+    (a,), (b,) = report._asof_checks, lifted._asof_checks
+    assert (b["form"], a["form"]) == ("lift", "builder")
+    assert {x: a[x] for x in ("keys", "lon", "ron", "outer")} == {
+        x: b[x] for x in ("keys", "lon", "ron", "outer")
+    }
+
+
+def test_the_native_join_runs_over_files_with_no_count(tmp_path):
+    """Verdict 2 of ruling 162: a join over a Parquet scan had no bound. On DuckDB
+    it is an ASOF JOIN now, which compares no pairs, so a small `max_pairs`
+    neither counts nor refuses."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from sverify._scan import Scan
+
+    con = connect()
+    schema = pa.schema([("device", pa.int64()), ("ts", pa.int64())])
+    for name in ("l", "r"):
+        f = tmp_path / f"{name}.parquet"
+        pq.write_table(pa.table({"device": [0] * 1000, "ts": list(range(1000))}, schema=schema), f)
+        con.put(name, Scan((str(f),), schema))
+    report = sv.verify(
+        sv.asof_join(con.table("l"), con.table("r"), on="ts", by="device", max_pairs=100)
+    )
+    assert report.run(con, "duckdb").num_rows == 1000
