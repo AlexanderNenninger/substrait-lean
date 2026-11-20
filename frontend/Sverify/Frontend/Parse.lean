@@ -680,20 +680,11 @@ def castConst (ty : Json) (c : Const) : J Const := do
     if fitsDigits p m then return .dec m p s
     else throw s!"cast to DECIMAL({p}, {s}) overflows"
   | _ =>
-    -- A constant cast to a timestamp coarser than microseconds: only where it
-    -- truncates nothing (`CAST('2024-01-15 00:00:00' AS TIMESTAMP)` in Calcite).
+    -- A constant cast to a timestamp of another precision floors to that unit
+    -- (D61), which the model does not state (#2004).
     if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
       let p := (t.getObjValAs? Nat "precision").toOption.getD 0
-      let us ← match c with
-        | .str s => match Time.parseTimestamp? s with
-          | some us => pure us
-          | none => throw s!"cannot parse timestamp '{s}'"
-        | .ts us => pure us
-        | .date d => pure (d * Time.usPerDay)
-        | _ => throw "cannot cast this value to a timestamp"
-      if p > 6 then throw s!"cast to a timestamp of precision {p} is not supported"
-      if us % 10 ^ (6 - p) == 0 then return .ts us
-      else throw s!"cast to a timestamp of precision {p} truncates"
+      throw s!"cast to a timestamp of precision {p} is not supported: timestamps are read at microsecond precision"
     throw "unsupported cast type"
 
 /-- A day/second interval in microseconds. -/
@@ -1853,12 +1844,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols bits sj)
-    -- A timestamp of any precision: a coarser one is `.other` to `typeKind`,
-    -- and a date plus an interval typed as either is refused alike.
-    let outTy := (field? f "outputType").getD .null
-    let out := match (field? outTy "precisionTimestamp").bind (·.getObjValAs? Nat "precision" |>.toOption) with
-      | some p => if p ≤ 6 then Kind.time else .other
-      | none => typeKind outTy
+    -- A timestamp of another precision is `.other` to `typeKind` (#2004).
+    let out := typeKind ((field? f "outputType").getD .null)
     if let some e ← temporalArith (parseExpr fns cols bits) cols (baseName name) argJs out then return e
     if comparisonFns.contains (baseName name) then
       for a in argJs do
