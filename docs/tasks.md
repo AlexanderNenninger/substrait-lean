@@ -1475,10 +1475,13 @@ print(upstream.verified, doubled_paid.check(paid=upstream.schema).verdict)
 # True proved
 ```
 
-To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
-0.51.1 and its Postgres in containers, with the API on port 5000;
-`test_marquez_round_trip` runs against it when
-`SVERIFY_MARQUEZ_URL` is set. DataHub takes OpenLineage events at
+The tests validate every emitted event and facet against OpenLineage's
+published JSON schemas and check a refresh's events against Marquez: the job,
+its input and output datasets, the completed run and the contract facet.
+`python/scripts/marquez.sh start` runs Marquez 0.51.1 and its Postgres in
+containers, with the API on port 5000, and
+`SVERIFY_MARQUEZ_URL=http://localhost:5000 pytest tests/test_openlineage.py -k marquez`
+runs the check; CI runs it on main and in the merge queue. DataHub takes OpenLineage events at
 `/openapi/openlineage/api/v1/lineage` on its GMS, so its target is the
 GMS's URL with that prefix, such as
 `Lineage("http://datahub-gms:8080/openapi/openlineage", api_key=token)` with a
