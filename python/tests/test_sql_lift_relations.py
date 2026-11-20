@@ -472,6 +472,9 @@ def test_a_bigint_sum_over_a_series_keeps_its_64_bit_check():
     """DuckDB sums a BIGINT into a HUGEINT (8192 rows of 9e18 give 7.4e22). The
     reference's sum is 64 bits and its fit is a checked precondition: the plan is
     not proved without it, and the run refuses a batch that breaks it."""
-    sql = "SELECT sum(CASE WHEN x >= 0 THEN 9000000000000000000::BIGINT END) AS s FROM range(8192) AS t(x)"
+    sql = (
+        "SELECT sum(CASE WHEN x >= 0 THEN 9000000000000000000::BIGINT END) AS s "
+        "FROM range(8192) AS t(x)"
+    )
     report = sv.verify(sql, on_inferred="ignore")
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
