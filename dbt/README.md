@@ -159,6 +159,12 @@ The tests sverify-dbt reads:
 | `accepted_values`, `dbt_expectations.expect_column_values_to_be_in_set` | `c IS NULL OR c IN (...)` |
 | `dbt_expectations.expect_column_values_to_not_be_in_set` | `c IS NULL OR c NOT IN (...)` |
 | `dbt_utils.accepted_range`, `dbt_expectations.expect_column_values_to_be_between` | `c IS NULL OR (c >= min AND c <= max)`, strict where the test says |
+| `dbt_utils.not_accepted_values` | `c IS NULL OR c NOT IN (...)` |
+| `dbt_utils.not_empty_string` | `c IS NULL OR trim(c) <> ''` |
+| `dbt_expectations.expect_column_values_to_[not_]match_regex[_list]` | `c IS NULL OR regexp_matches(c, re)`, joined by `match_on` (any or all) |
+| `dbt_expectations.expect_column_values_to_[not_]match_like_pattern[_list]` | `c IS NULL OR c LIKE p`, joined by `match_on` |
+| `dbt_expectations.expect_column_value_lengths_to_equal`, `…_to_be_between` | `c IS NULL OR length(c) …` |
+| `dbt_expectations.expect_column_pair_values_A_to_be_greater_than_B`, `…_values_to_be_equal` | `coalesce(A > B, TRUE)`, `coalesce(A = B, TRUE)` |
 | `dbt_utils.expression_is_true` | `coalesce(expression, TRUE)` |
 | `unique`, `dbt_expectations.expect_column_values_to_be_unique` | a key (`sv.unique`) |
 | `dbt_utils.unique_combination_of_columns`, `dbt_expectations.expect_compound_columns_to_be_unique` | a key over the columns |
@@ -184,8 +190,10 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 - Sverify tracks a column's strings while they are few (up to 64), from
   constants, `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and
   `UNION ALL`, which proves `accepted_values` there;
-  what is inside a string (`LIKE`, lengths) is not tracked
-  ([the guide](../docs/guide.md#contracts)).
+  what is inside a string (`LIKE`, regexes, lengths) is not tracked, so those
+  tests are proved where the same test holds upstream and the column passes
+  through ([the guide](../docs/guide.md#contracts)). Sverify reads no regex
+  flags, so a regex test with `flags` is not checked.
 - Python models, and models whose inputs have no column types, are refused.
 - What each materialization gets: a table or view is checked; an incremental
   model as its full refresh (below); an ephemeral model is inlined, so its
@@ -199,6 +207,28 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   `expression_is_true`) and `unique` over that key or more columns: other
   proved tests are listed as proved for the full refresh, and `dbt build`
   still runs them.
+
+## Evidence
+
+`python -m sverify_dbt.replay` builds the integration projects of
+dbt-utils 1.4.1 and dbt-expectations 0.10.10 with dbt on DuckDB, checks them
+with sverify-dbt and records every test beside dbt's own result, in
+[`replay/`](replay/) (#859). No test sverify-dbt proves fails in dbt's run.
+
+| Source | Proved | Not proved | Not checked | Refused | Inputs |
+|---|---|---|---|---|---|
+| dbt-utils 1.4.1 | 1 | 8 | 48 | 19 | 37 |
+| dbt-expectations 0.10.10 | 0 | 0 | 42 | 115 | 0 |
+
+These projects test macros more than they model data: most of their tests
+compare two relations or match patterns, which sverify-dbt does not map yet
+([#1936](https://github.com/AlexanderNenninger/substrait-lean/issues/1936),
+[#1937](https://github.com/AlexanderNenninger/substrait-lean/issues/1937)),
+and most of dbt-expectations' models read a float32 column
+([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908))
+or `random()`. Every refusal and test not checked names its issue or the
+reason it is by design ([`replay/constructs.json`](replay/constructs.json)).
+CI's `dbt` job replays them and warns when an outcome changes.
 
 ## Development
 

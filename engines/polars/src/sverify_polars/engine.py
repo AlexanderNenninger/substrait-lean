@@ -1292,7 +1292,13 @@ class Exprs:
             return Val(v.expr.dt.replace_time_zone(None), US, v.issues)
         if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
             # `UnFn.asTime`: microseconds since 1970-01-01.
-            return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)
+            # In the reference's timestamps only (D32, #1947).
+            us = v.expr.cast(pl.Int64)
+            bad = (us < TS_MIN) | (us > TS_MAX)
+            safe = pl.when(bad).then(None).otherwise(us).cast(US)
+            return Val(
+                safe, US, (*v.issues, issue(bad, Overflow, f"CAST to TIMESTAMP {OUTSIDE_TS}"))
+            )
         if "date" in target and v.dtype == US:
             # `UnFn.toDate`: days since 1970-01-01, rounding down.
             days = v.expr.dt.epoch("us") // US_PER_DAY
@@ -1305,9 +1311,6 @@ class Exprs:
         t = v.dtype
         if kind == "decimal":
             p, s = arg
-            if s == 0 and p >= 19 and t in (pl.Int64, pl.Null):
-                # `Parse.wideIntDecimal`: an integer, kept as one.
-                return Val(v.expr.cast(pl.Int64), pl.Int64, v.issues)
             if t == pl.Float64:
                 return self.double_to_decimal(v, p, s)
             if t == pl.Null:

@@ -344,9 +344,7 @@ class _Checker:
 
         while True:
             try:
-                return go(
-                    requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
-                )
+                return go(requires, _checked(ensures))
             except ConditionError as e:  # drop the conditions it names, prove the rest (#699)
                 if not self._drop(e, res, requires, ensures):
                     res.refuse(_refusal(e))
@@ -373,7 +371,7 @@ class _Checker:
             except ValueError as e:
                 tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
         try:
-            return go(requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs])
+            return go(requires, _checked(ensures))
         except ValueError:
             res.refuse(_refusal(first))
             return None
@@ -605,6 +603,11 @@ def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _checked(ensures: list) -> list:
+    """The conditions of the tests still to check, in order."""
+    return [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
+
+
 def _first_line(e: BaseException) -> str:
     lines = str(e).strip().splitlines()
     return lines[0] if lines else type(e).__name__
@@ -678,6 +681,20 @@ _ROW_LEVEL = frozenset(
         "accepted_range",
         "expect_column_values_to_be_between",
         "expression_is_true",
+        "not_accepted_values",
+        "not_empty_string",
+        "expect_column_values_to_match_regex",
+        "expect_column_values_to_not_match_regex",
+        "expect_column_values_to_match_regex_list",
+        "expect_column_values_to_not_match_regex_list",
+        "expect_column_values_to_match_like_pattern",
+        "expect_column_values_to_not_match_like_pattern",
+        "expect_column_values_to_match_like_pattern_list",
+        "expect_column_values_to_not_match_like_pattern_list",
+        "expect_column_value_lengths_to_equal",
+        "expect_column_value_lengths_to_be_between",
+        "expect_column_pair_values_A_to_be_greater_than_B",
+        "expect_column_pair_values_to_be_equal",
     }
 )
 

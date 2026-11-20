@@ -184,7 +184,7 @@ theorem verified_holds_run_plan_duckdb {input : Json} {R : Request} {rep : Repor
     p.HoldsOn ((Lowering.duckdb.lowerRel s).eval data (Engine.duckdb {} rfl).impl) :=
   verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.duckdb_sound rfl
     (run_plan_noRaise_duckdb h.parsed h.checked hD.meets h.transform hFK hs hD.rowsPer hD.small
-      hE.2.1 hE.2.2.1 hE.2.2.2)
+      hE.2.1 hE.2.2.2)
 
 /-- **A deterministic report means one result up to row order**
 (`check_deterministic_sound`). -/
