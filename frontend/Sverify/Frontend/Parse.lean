@@ -364,6 +364,17 @@ def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
     cols.getD c .other
   | .agg m _ _ => m.kind cols
 
+/-- The kinds the source plan declares for a projection of `es` (`projectKey`),
+`[]` where it declares none. A plan without such an entry never prints its
+expressions: `Rel.kinds` asks at every projection on every call, and the key's
+`reprStr` made that quadratic in the plan's depth. -/
+def declaredProjectKinds (tables : Tables) (es : List Expr) : List Kind :=
+  if tables.any (·.1.startsWith "$project ") then
+    match tables.lookup (projectKey es) with
+    | some (_, s) => schemaKinds s
+    | none => []
+  else []
+
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
     | some (_, s) => schemaKinds s
@@ -374,9 +385,7 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .filter r _ | .fetch r _ _ => r.kinds tables
   | .project r es =>
       let ks := r.kinds tables
-      let declared := match tables.lookup (projectKey es) with
-        | some (_, s) => schemaKinds s
-        | none => []
+      let declared := declaredProjectKinds tables es
       ks ++ es.zipIdx.map fun (e, i) => match declared[i]? with
         | some k => if k == .other then e.kind ks else k
         | none => e.kind ks
@@ -513,17 +522,27 @@ def schemaBits (schema : Json) : List Nat :=
   | none => []
 
 /-- The width of an integer expression over columns of widths `cols` (64 for
-anything else). A literal does not widen (the parser looks at its type where
-it is an argument). -/
-def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
+anything else). An integer literal is as wide as its declared type (#1934): 64
+bits, or a `narrow` mark's (`declaredNarrow`). As an operand (`operand`) a
+literal does not widen the arithmetic around it, since the parser reads its type
+where it is an argument (`argBits`); a value (a column, a `CASE` branch) has no
+such context. A `NULL` widens nothing. -/
+def _root_.Substrait.Expr.bitsAt (operand : Bool) (cols : List Nat) : Expr → Nat
   | .field i => cols.getD i 64
-  | .lit _ => 8
+  | .lit .null => 8
+  | .lit _ => if operand then 8 else 64
   | .un (.wrap n) _ | .un (.narrow n) _ | .un (.narrowOrNull n) _ => n
-  | .un .neg a => a.bits cols
+  | .un .neg a => a.bitsAt operand cols
   | .bin .add a b | .bin .sub a b | .bin .mul a b | .bin .idiv a b | .bin .imod a b =>
-    max (a.bits cols) (b.bits cols)
-  | .ifThen _ t e => max (t.bits cols) (e.bits cols)
+    max (a.bitsAt true cols) (b.bitsAt true cols)
+  | .ifThen _ t e => max (t.bitsAt false cols) (e.bitsAt false cols)
   | _ => 64
+
+/-- The width of an operand. -/
+def _root_.Substrait.Expr.bits (cols : List Nat) (e : Expr) : Nat := e.bitsAt true cols
+
+/-- The width of a column computed by `e`. -/
+def _root_.Substrait.Expr.colBits (cols : List Nat) (e : Expr) : Nat := e.bitsAt false cols
 
 def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
   | .read t => match tables.lookup t with
@@ -560,32 +579,9 @@ def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Table
         | .min | .max => eb bs m.arg
         | _ => 64
 
-/-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
-model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
-it from widening the arithmetic around it, and a column has none (#1934). A
-narrower declared type is a `narrow` mark (`declaredNarrow`). -/
-def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
-  | .lit _ => 64
-  | e => e.bits cols
-
 /-- The width of each column of a relation's rows as the parser tracks it. -/
 def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.colBits tables
 
-/-- A projected integer constant `e`, written as `j`, at its declared width: a
-literal's tag, or the target of a cast the parser folded (`CAST(5 AS INTEGER)`).
-Narrower than 64 bits, the column keeps that width through a `narrow` mark,
-which changes no value: the parser has checked that the constant fits. -/
-def declaredNarrow (j : Json) (e : Expr) : Expr :=
-  match e with
-  | .lit (.int _) =>
-    let ty := match field? j "literal", field? j "cast" with
-      | some l, _ => some l
-      | none, some c => field? c "type"
-      | none, none => none
-    match ty.bind narrowIntBits? with
-    | some n => .un (.narrow n) e
-    | none => e
-  | e => e
 
 /-- An expression's width in the plan the writer writes: a column keeps its declared width,
 every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
@@ -630,6 +626,16 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
     | some ty => if (narrowIntBits? ty).isSome
         then intBits ty else if e.readsField then e.bits cols else 64
     | none => if e.readsField then e.bits cols else 64
+
+/-- A projected integer constant `e`, written as `j`, at its declared width
+(`argBits`: a literal's tag, or the target of a cast the parser folded,
+`CAST(5 AS INTEGER)`). Narrower than 64 bits, the column keeps that width
+through a `narrow` mark, which changes no value: the parser has checked that
+the constant fits. -/
+def declaredNarrow (j : Json) (e : Expr) : Expr :=
+  match e with
+  | .lit (.int _) => let n := argBits [] j e; if n < 64 then .un (.narrow n) e else e
+  | e => e
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
@@ -2088,11 +2094,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       return call
   | ("ifThen", t) =>
     -- A `CASE` without `ELSE` is `ELSE NULL`.
+    -- A branch's integer constant keeps its declared width (#1934).
+    let branch (j : Json) : J Expr := do return declaredNarrow j (← parseExpr fns cols bits j)
     let els ← match field? t "else" with
-      | some e => parseExpr fns cols bits e
+      | some e => branch e
       | none => pure (.lit .null)
     let clauses ← (← arrD t "ifs").mapM fun clause => do
-      return (← parseExpr fns cols bits (← field clause "if"), ← parseExpr fns cols bits (← field clause "then"))
+      return (← parseExpr fns cols bits (← field clause "if"), ← branch (← field clause "then"))
     match clauses with
     | [] => return els
     | (c, x) :: rest =>
