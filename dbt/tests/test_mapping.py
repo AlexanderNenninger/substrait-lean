@@ -67,6 +67,11 @@ def test_row_counts_are_caps() -> None:
     assert low.conditions == [] and "lower bound" in (low.reason or "")
     # an input's test: the cap holds whatever the lower bound is.
     assert conds(t(be, None, min_value=1, max_value=5), "requires") == [sv.max_rows(5)]
+    # `strictly` makes the bounds exclusive: the cap is one lower, and a lower bound
+    # of 0 is `count > 0`.
+    assert conds(t(be, None, max_value=5, strictly=True)) == [sv.max_rows(4)]
+    assert conds(t(be, None, max_value=5, strictly=True), "requires") == [sv.max_rows(4)]
+    assert not conds(t(be, None, min_value=0, max_value=5, strictly=True))
     eq = "dbt_expectations.expect_table_row_count_to_equal"
     assert conds(t(eq, None, value=0)) == [sv.max_rows(0)]
     grouped = mapping.test_conditions(
@@ -100,6 +105,9 @@ def test_row_counts_are_caps() -> None:
         ("expect_table_column_count_to_be_between", {"min_value": 3}, ["a", "b"], False),
         ("expect_column_to_exist", {"column_index": 2}, ["x", "c"], True),
         ("expect_column_to_exist", {"column_index": 1}, ["x", "c"], False),
+        ("expect_column_to_exist", {"column_index": 0}, ["x", "c"], True),
+        ("expect_column_to_exist", {"column_index": -3}, ["c", "x"], True),
+        ("expect_table_column_count_to_be_between", {"max_value": 0}, ["a"], True),
     ],
 )
 def test_column_set_tests(kind: str, kwargs: dict, cols: list[str], holds: bool) -> None:

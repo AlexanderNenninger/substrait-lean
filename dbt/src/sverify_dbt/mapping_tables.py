@@ -87,11 +87,15 @@ def table_level(test: Test, base: str, side: str, row_filter: str | None) -> Map
         elif base == "expect_table_column_count_to_equal":
             ok = len(cols) == kw.get("value")
         elif base == "expect_table_column_count_to_be_between":
-            ok = (n_min is None or len(cols) >= n_min) and (n_max is None or len(cols) <= n_max)
+            # dbt adds a bound only when its value is truthy, so 0 is dropped.
+            ok = (not n_min or len(cols) >= n_min) and (not n_max or len(cols) <= n_max)
         else:  # expect_column_to_exist
             name = fold(str(test.column or kw.get("column_name") or ""))
             idx = kw.get("column_index")
-            ok = name in have and (idx is None or have.index(name) == int(idx) - 1)
+            # dbt checks the position only for a truthy index, and reads one
+            # below 1 as the first column.
+            want_at = (int(idx) - 1 if int(idx) > 0 else 0) if idx else None
+            ok = name in have and (want_at is None or have.index(name) == want_at)
         return None if ok else f"the model's columns are {', '.join(cols)}"
 
     return _mapped([], schema=check)
@@ -110,16 +114,20 @@ def _row_count(test: Test, base: str, side: str, row_filter: str | None) -> Mapp
         return _mapped([], "a row count per group has no sverify condition; dbt still runs it")
     if row_filter:
         return _mapped([], "the count of a filtered set of rows is no cap on the table")
+    strict = False
     if base.endswith("equal"):
         lo = hi = kw.get("value")
     else:
         lo, hi = kw.get("min_value"), kw.get("max_value")
+        strict = bool(kw.get("strictly", False))
+    if hi is not None:
+        hi = int(hi) - 1 if strict else int(hi)  # `count < hi` is a cap of hi - 1
     if side == "requires":
-        return _mapped([sv.max_rows(int(hi))] if hi is not None else [])
-    if lo is not None and lo > 0:
+        return _mapped([sv.max_rows(hi)] if hi is not None else [])
+    if lo is not None and (lo > 0 or strict):
         return _mapped(
             [], f"a lower bound of {lo} rows: sverify proves caps on rows only; dbt still runs it"
         )
     if hi is None:
         return _mapped([], "the test has no upper bound on the rows")
-    return _mapped([sv.max_rows(int(hi))])
+    return _mapped([sv.max_rows(hi)])
