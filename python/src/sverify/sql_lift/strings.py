@@ -18,6 +18,7 @@ from sverify.plan_json import (
     chain,
     if_then,
     literal,
+    logical,
     substring_left,
 )
 from sverify.sql_lift._base import Column, E, Sub, _fn, _Lift, _option, _shown, register
@@ -291,9 +292,35 @@ def _regexp_replace(lf: _Lift, node: sge.RegexpReplace, sub: Sub, scope: list[Co
     return E(call("regexp_replace", args), dt.string)
 
 
+def _right_of(lf: _Lift, s: E, n: E) -> E:
+    """`right(s, n)` for an `n` that is not a constant (#1942): the same cases
+    as the constant rule, chosen by comparisons, so that no start leaves the
+    range of offsets `substring` takes (`n + size < 0` is `-n` past the end)."""
+    if not n.type.is_integer():
+        raise SqlUnsupported(f"right by a {n.type} is not supported")
+    (s_,) = _strings(lf, [s], "right")
+    n_ = lf.to(n, dt.int64).json
+    i64 = lambda v: literal(v, dt.int64)  # noqa: E731
+    size = call("character_length", [s_])
+    neg = call("lt", [n_, i64(0)])
+    ifs = [
+        (logical("or", [call("is_null", [s_]), call("is_null", [n_])], eager=True),
+         literal(None, dt.string)),
+        (logical("and", [neg, call("lt", [call("add", [n_, size]), i64(0)])], eager=True),
+         literal("", dt.string)),
+        (neg, call("substring", [s_, call("subtract", [i64(1), n_])])),
+        (call("gte", [n_, size]), s_),
+    ]  # fmt: skip
+    start = call("add", [call("subtract", [size, n_]), i64(1)])
+    return E(if_then(ifs, call("substring", [s_, start])), dt.string)
+
+
 def _right(lf: _Lift, node: sge.Right, sub: Sub, scope: list[Column]) -> E:
     # The last `n` characters, or all but the first `-n` for a negative `n`.
-    n = _const(sub(node.expression), "right", int)
+    n_e = sub(node.expression)
+    if not n_e.constant:
+        return _right_of(lf, sub(node.this), n_e)
+    n = _const(n_e, "right", int)
     (s_,) = _strings(lf, [sub(node.this)], "right")
     if n is None:
         return _null(dt.string)

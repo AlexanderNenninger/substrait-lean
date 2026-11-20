@@ -60,6 +60,11 @@ QUERIES = [
     "SELECT c FROM (SELECT customer AS c FROM orders INTERSECT SELECT name FROM customers)",
     "WITH c AS (SELECT name FROM customers UNION ALL SELECT name FROM customers)"
     " SELECT name, count(*) AS n FROM c GROUP BY name",
+    # #1939: a WITH in front of a set operation covers its branches.
+    "WITH c AS (SELECT name FROM customers) SELECT name FROM c UNION ALL"
+    " SELECT customer FROM orders",
+    "WITH c AS (SELECT name FROM customers) SELECT name FROM c EXCEPT SELECT customer FROM orders"
+    " ORDER BY name",
     "TABLE customers EXCEPT ALL SELECT name, region FROM customers WHERE region = 'eu'",
     # #803: VALUES in FROM and as a CTE, typed across rows.
     "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (NULL, 'c')) v(k, s)",

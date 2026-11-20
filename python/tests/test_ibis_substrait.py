@@ -294,3 +294,15 @@ def test_timestamp_literals_are_not_local_time():
 def test_what_lean_does_not_model_is_refused(build, message):
     with pytest.raises(Unsupported, match=message):
         to_substrait(build())
+
+
+def test_a_plan_that_reads_no_table_runs_on_duckdb_and_polars_refuses_it():
+    # A relation without columns keeps its row (#1916): DuckDB's SQL writes a
+    # column nothing reads; a Polars frame without columns has no rows.
+    import sverify as sv
+
+    report = sv.verify(ibis.literal([1, 2, 3]).length().name("n").as_table())
+    con = connect()
+    assert report.run(con, engine="duckdb").to_pylist() == [{"n": 3}]
+    with pytest.raises(Exception, match="relation without columns"):
+        report.run(con, engine="polars")

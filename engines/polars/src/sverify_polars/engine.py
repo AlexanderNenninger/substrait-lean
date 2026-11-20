@@ -2545,6 +2545,10 @@ class Translator:
     def values(self, v: dict, arity: int) -> Frame:
         if "values" in v:
             raise Unsupported("the deprecated VirtualTable.values encoding is not written by Lean")
+        if arity == 0:
+            # A frame without columns has no rows in Polars, so `SELECT 1 + 1`'s
+            # one row would vanish.
+            raise Unsupported("a relation without columns (a plan that reads no table)")
         rows = []
         for row in v.get("expressions", []):
             fields = row.get("fields", [])

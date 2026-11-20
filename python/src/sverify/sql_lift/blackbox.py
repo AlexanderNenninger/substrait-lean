@@ -109,41 +109,55 @@ def _unwrap(name: str, arg: sge.Expression) -> sge.Expression:
 
 
 def _rewrite(tree: sge.Expr) -> sge.Expr:
-    """Each black box's call as its own node."""
+    """Each black box's call as its own node, also one inside another's
+    arguments: `transform` does not enter a node it replaced, so it runs again
+    until no call is left (#1940)."""
+    changed = True
 
     def node(n: sge.Expr) -> sge.Expr:
-        if isinstance(n, sge.ToBase64):
-            # SQLGlot's `to_base64(x)`, DuckDB's other name for `base64`.
-            return BlackBoxCall(this="base64", expressions=[n.this])
-        if isinstance(n, (sge.CosineDistance, sge.EuclideanDistance)):
-            # SQLGlot's `list_cosine_distance(a, b)` and `list_distance(a, b)`.
-            name = "list_cosine_distance" if isinstance(n, sge.CosineDistance) else "list_distance"
-            return BlackBoxCall(this=name, expressions=[n.this, n.expression])
-        if isinstance(n, (sge.Kurtosis, sge.Skewness)):
-            # SQLGlot's `kurtosis(x)` and `skewness(x)`.
-            name = "kurtosis" if isinstance(n, sge.Kurtosis) else "skewness"
-            return BlackBoxAgg(this=n.this, fname=sge.Literal.string(name))
-        if isinstance(n, sge.Split):
-            # SQLGlot's `string_split(s, sep)` (also `str_split`, `string_to_array`).
-            return BlackBoxCall(this="string_split", expressions=[n.this, n.expression])
-        if isinstance(n, sge.Format):
-            # SQLGlot's `format(fmt, …)`.
-            return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])
-        if type(n) is not sge.Anonymous:
-            return n
-        name = n.name.lower()
-        if name in REFUSED:
-            raise SqlUnsupported(REFUSED[name])
-        name = ALIASES.get(name, name)
-        if name in black_box.SCALARS:
-            return BlackBoxCall(this=name, expressions=list(n.expressions))
-        if name in black_box.AGGREGATES:
-            if len(n.expressions) != 1:
-                raise SqlUnsupported(f"{name} takes one argument", hint="call it with one argument")
-            return BlackBoxAgg(this=n.expressions[0], fname=sge.Literal.string(name))
-        return n
+        nonlocal changed
+        out = _call(n)
+        changed |= out is not n
+        return out
 
-    return tree.transform(node, copy=False)
+    while changed:
+        changed = False
+        tree = tree.transform(node, copy=False)
+    return tree
+
+
+def _call(n: sge.Expr) -> sge.Expr:
+    """`n` as a black box's call node, or `n`."""
+    if isinstance(n, sge.ToBase64):
+        # SQLGlot's `to_base64(x)`, DuckDB's other name for `base64`.
+        return BlackBoxCall(this="base64", expressions=[n.this])
+    if isinstance(n, (sge.CosineDistance, sge.EuclideanDistance)):
+        # SQLGlot's `list_cosine_distance(a, b)` and `list_distance(a, b)`.
+        name = "list_cosine_distance" if isinstance(n, sge.CosineDistance) else "list_distance"
+        return BlackBoxCall(this=name, expressions=[n.this, n.expression])
+    if isinstance(n, (sge.Kurtosis, sge.Skewness)):
+        # SQLGlot's `kurtosis(x)` and `skewness(x)`.
+        name = "kurtosis" if isinstance(n, sge.Kurtosis) else "skewness"
+        return BlackBoxAgg(this=n.this, fname=sge.Literal.string(name))
+    if isinstance(n, sge.Split):
+        # SQLGlot's `string_split(s, sep)` (also `str_split`, `string_to_array`).
+        return BlackBoxCall(this="string_split", expressions=[n.this, n.expression])
+    if isinstance(n, sge.Format):
+        # SQLGlot's `format(fmt, …)`.
+        return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])
+    if type(n) is not sge.Anonymous:
+        return n
+    name = n.name.lower()
+    if name in REFUSED:
+        raise SqlUnsupported(REFUSED[name])
+    name = ALIASES.get(name, name)
+    if name in black_box.SCALARS:
+        return BlackBoxCall(this=name, expressions=list(n.expressions))
+    if name in black_box.AGGREGATES:
+        if len(n.expressions) != 1:
+            raise SqlUnsupported(f"{name} takes one argument", hint="call it with one argument")
+        return BlackBoxAgg(this=n.expressions[0], fname=sge.Literal.string(name))
+    return n
 
 
 def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:

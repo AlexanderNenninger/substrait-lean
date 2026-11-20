@@ -4193,7 +4193,17 @@ class _Writer:
         d = self.d
         n = arity(r)
         if n == 0:
-            raise WriterUnsupported("relations without columns have no SQL form")
+            if not isinstance(r, Values):
+                raise WriterUnsupported("relations without columns have no SQL form")
+            # The rows of a table without columns (`SELECT 1 + 1`, #1916): a
+            # column nothing reads gives each its place.
+            cols = [d.quote("_")] + ([d.quote(ORD)] if ordered else [])
+            rows = [
+                [d.int_lit(0)] + ([d.int_lit(i)] if ordered else []) for i in range(len(r.rows))
+            ]
+            if not rows:
+                return f"SELECT {', '.join(d.null('int') + ' AS ' + c for c in cols)} WHERE FALSE"
+            return self.select([f"{self.ref('v', c)} AS {c}" for c in cols], d.values(rows, cols))
         if not self.seq:
             ordered = ordered and chain_orders(r)
         match r:

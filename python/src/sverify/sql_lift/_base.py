@@ -723,12 +723,11 @@ class _Lift:
         """A query's relation and its output columns."""
         if isinstance(node, sge.Subquery):
             return self.query(node.this)
-        if isinstance(node, sge.SetOperation):
-            return self.set_op(node)
-        if not isinstance(node, sge.Select):
+        if not isinstance(node, sge.Select | sge.SetOperation):
             raise Unsupported(_ONLY_SELECT.format(type(node).__name__))
         if (with_ := node.args.get("with_")) is not None:
             # CTEs are inlined where they are read; each sees the ones before.
+            # A WITH in front of a set operation covers all its branches.
             if with_.args.get("recursive"):
                 raise Unsupported("WITH RECURSIVE is not supported yet (#320)")
             saved = self.ctes
@@ -741,6 +740,8 @@ class _Lift:
                 return self.query(body)
             finally:
                 self.ctes = saved
+        if isinstance(node, sge.SetOperation):
+            return self.set_op(node)
         for arg, (what, exit_) in _CLAUSES.items():
             if node.args.get(arg):
                 raise SqlUnsupported(f"{what} is not supported yet; {exit_}")

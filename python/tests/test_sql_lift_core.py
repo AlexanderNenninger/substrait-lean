@@ -56,6 +56,8 @@ QUERIES = [
     "SELECT id, sqrt(amount + 1) AS s, ln(amount + 1) AS l, log(amount + 1) AS lg,"
     " log2(amount + 1) AS l2, log(3, amount + 1) AS lb, exp(qty) AS e, sin(price) AS si"
     " FROM orders",
+    # `radians` and `degrees` multiply by DuckDB's constants (#1938).
+    "SELECT id, radians(price) AS r, degrees(price) AS d, radians(qty) AS rq FROM orders",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
     # The written plan's division of two double literals (#96, fixed with #335).
     "SELECT 7 / 2 AS h",

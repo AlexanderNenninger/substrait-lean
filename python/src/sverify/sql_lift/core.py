@@ -3,6 +3,7 @@ arithmetic and math."""
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from decimal import Decimal
@@ -446,6 +447,20 @@ def _pow(lf: _Lift, node: sge.Pow, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("power", args, dt.float64, opts), dt.float64)
 
 
+def _angle(factor: float) -> Callable[..., E]:
+    """`radians(x)` is `x * (pi / 180)` and `degrees(x)` `x * (180 / pi)`,
+    DuckDB's own constants (#1938), so the product is the generated `DOUBLE * DOUBLE`."""
+
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        (x,) = _doubles(lf, [sub(node.this)], type(node).__name__.lower())
+        k = E(literal(factor, dt.float64), dt.float64, factor)
+        if g := _generated(lf, "DOUBLE * DOUBLE", [E(x, dt.float64), k]):
+            return g
+        return E(_fn("multiply", [x, k.json], dt.float64, _overflow(lf, dt.float64)), dt.float64)
+
+    return rule
+
+
 def _abs(lf: _Lift, node: sge.Abs, sub: Sub, scope: list[Column]) -> E:
     a = sub(node.this)
     if not (_numeric(a.type) or a.type.is_null()):
@@ -581,6 +596,8 @@ register(
         sge.Coalesce: _coalesce,
         sge.Pow: _pow,
         sge.Abs: _abs,
+        sge.Radians: _angle(math.pi / 180),
+        sge.Degrees: _angle(180 / math.pi),
         sge.Log: _log,
         sge.Floor: _rounding("floor"),
         sge.Ceil: _rounding("ceil"),
