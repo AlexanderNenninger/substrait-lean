@@ -318,6 +318,10 @@ def main(argv: list[str]) -> None:
     print(f"{len(docs)} upstream bugs and the lift's backlog, well-formed")
     if "--write" in argv:
         REPORT.write_text(render(docs))
+    if "--stale" in argv:
+        # A warning, never a failure: a thread's age is no property of a change.
+        for ident in stale_threads(docs, date.today()):
+            print(f"::warning::upstream thread {ident} was not checked in {STALE_DAYS} days")
 
 
 if __name__ == "__main__":

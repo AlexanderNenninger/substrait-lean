@@ -120,16 +120,6 @@ def test_validate_backlog_finds_problems(tmp_path):
     assert "'reason' is a required property" in "\n".join(bugs.validate_backlog(backlog))
 
 
-def test_every_open_thread_was_checked_lately():
-    """An entry with an open upstream thread (filed, or a duplicate of an open
-    issue) was checked within `STALE_DAYS`: its status may have moved. Check it
-    again (`upstream-report` skill, step 2) and add a `checked` entry."""
-    from datetime import date
-
-    stale = bugs.stale_threads(bugs.load(), date.today())
-    assert not stale, f"upstream threads not checked in {bugs.STALE_DAYS} days: {stale}"
-
-
 def test_stale_threads_finds_an_old_check():
     from datetime import date
 
