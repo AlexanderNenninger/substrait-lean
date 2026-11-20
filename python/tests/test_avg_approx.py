@@ -147,3 +147,59 @@ def test_a_postcondition_at_the_edge_of_the_mean_is_refused():
     )
     assert refused(report)
     assert any(i.expr.startswith("the postcondition") for i in report.errors if i.kind == KIND)
+
+
+# --- Ruling 197: a SUM inside its type is exact on every engine -----------------
+#
+# A `SUM` whose argument's range and proved row cap keep it inside its type
+# (`Measure.sumFits`: 64 bits for integers, the result's precision for decimals)
+# is outside the `overflow` option's scope (D34), so its value is the reference's on
+# every engine. The report's `epsilon` holds double columns only: the tests read the
+# sum's flag through a filter on it, which keeps `MAX(d)`'s bound proved only where
+# the filter's condition is proved exact on every engine (`colEps`, `keepIf`).
+
+TS = {
+    "t": pa.schema(
+        [("k", pa.int64()), ("x", pa.int64()), ("c", pa.decimal128(5, 2)), ("d", pa.float64())]
+    )
+}
+RANGES = ["x IS NULL OR x BETWEEN 0 AND 10000000", "d IS NULL OR d BETWEEN -10000000 AND 10000000"]
+
+
+def _sum_flag(arg: str, cap: int | None, semantics: str = "reference") -> bool:
+    requires = RANGES + ([sv.max_rows(cap)] if cap is not None else [])
+    report = sv.verify(
+        "SELECT dm FROM (SELECT k, SUM(" + arg + ") AS s, MAX(d) AS dm FROM t GROUP BY k) "
+        "WHERE s > 0",
+        tables=TS,
+        requires={"t": requires},
+        semantics=semantics,
+        on_inferred="warn",
+    )
+    bound = report._epsilon["dm"]["bounds"]["abs"] or {}
+    return bool(bound.get("proved")) and bound.get("value") == 0
+
+
+def test_an_integer_sum_inside_64_bits_is_exact_and_proved():
+    # 1e6 rows of at most 1e7: 1e13 <= 2^63 - 1.
+    assert _sum_flag("x", 1_000_000)
+
+
+def test_an_integer_sum_without_a_row_cap_is_not_proved():
+    assert not _sum_flag("x", None)
+
+
+def test_a_decimal_sum_that_may_leave_its_type_is_not_proved():
+    # DECIMAL(5,2) sums to DECIMAL(15,2): 1e11 rows of 999.99 reach 1e16 > 1e15 - 1,
+    # though the unscaled sum, 99999 * 1e11, fits 64 bits.
+    assert not _sum_flag("c", 100_000_000_000)
+
+
+@pytest.mark.parametrize(("cap", "proved"), [(1_000_000, True), (None, False)])
+def test_the_band_of_a_lifted_mean_follows_its_sums_flag(cap, proved):
+    requires = REQUIRES["t"][:2] + ([sv.max_rows(cap)] if cap is not None else [])
+    report = sv.verify(
+        GROUPED, tables=T, requires={"t": requires}, semantics="duckdb", on_inferred="warn"
+    )
+    bound = report._epsilon["m"]["bounds"]["abs"] or {}
+    assert bool(bound.get("proved")) is proved

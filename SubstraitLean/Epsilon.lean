@@ -27,6 +27,10 @@ give (`Measure.abs`, `floatBound`):
   adds exactly on every engine and in every order, and a mean divides once
   as the reference does: tolerance `0`, proved (`intMeanExact`,
   `SumOrder.int_exact`, `AvgOrder.int_exact`; D35 amended 2026-11-19);
+* an integer or decimal `SUM` whose argument's range and proved row cap keep
+  it inside its type (`Measure.sumFits`) is outside the `overflow` option's
+  scope (D34), so every engine gives the reference's exact value: tolerance
+  `0`, proved by `Measure.sumFits_sound` (ruling 197);
 * where the argument's values have one sign nothing cancels, and the bound
   is also relative (`relEps`): `"rel"`, `StdModel.epsilon_sum_rel` and, for a
   mean of values at least `2⁻¹⁰²²` in magnitude, `StdModel.epsilon_avg_rel`,
@@ -111,15 +115,6 @@ def intMeanExact (env : List AVal) (m : Measure) (rows : Option Nat) : Bool :=
   | .un .itof e, some n => match (e.absD env []).int with
     | some ⟨some lo, some hi⟩ => n * max (max lo.natAbs hi.natAbs) 1 ≤ 2 ^ 52
     | _ => false
-  | _, _ => false
-
-/-- An integer `SUM` that cannot overflow: at most `rows` rows (a proved row
-bound), each of magnitude at most the argument's range, within 64 bits. Every
-engine then computes the exact sum, the same range check `intMeanExact`
-counts for a double sum of integers. -/
-def intSumExact (env : List AVal) (m : Measure) (rows : Option Nat) : Bool :=
-  match (m.arg.absD env []).int, rows with
-  | some ⟨some lo, some hi⟩, some n => n * max lo.natAbs hi.natAbs ≤ 2 ^ 63 - 1
   | _, _ => false
 
 /-- The bound for a double measure over rows described by `env`, at most
@@ -637,7 +632,11 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
           return (order + (if m.fn = .avg then ea else Float.ofNat n * ea),
             ea == 0.0 && pa && pf && (intMeanExact env m r.maxRows || ordersProved es))
         | .count => return (0.0, pf)
-        | .sum => if ea == 0.0 then return (0.0, pa && pf && intSumExact env m r.maxRows) else none
+        -- An integer or decimal `SUM` the argument's range and the proved row
+        -- cap keep inside its type (`Measure.sumFits_sound`) is outside the
+        -- `overflow` option's scope, so every profile gives the reference's
+        -- value (D34, ruling 197).
+        | .sum => if ea == 0.0 then return (0.0, pa && pf && m.sumFits (·.absD env []) r.maxRows) else none
         | .min | .max => return (ea, pa && pf)
         -- D30: an engine's statistic is within the plan's bound of the
         -- reference's exact moments rounded once.
