@@ -1,0 +1,42 @@
+{
+  "id": "polars-ts-narrow-floor",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Narrowing a Datetime cast floors",
+  "verdict": "floor, as the reference",
+  "area": "temporal",
+  "options": [
+    "timestamp_precision"
+  ],
+  "constructs": [
+    "cast",
+    "Datetime"
+  ],
+  "description": [
+    "`cast(pl.Datetime(\"ms\"))` of a `Datetime(\"us\")`, and `cast(pl.Datetime(\"us\"))` of a `Datetime(\"ns\")`, floor the count: -1 us is -1000 us at ms, -1 ns and -1500 ns are -1 us and -2 us. The in-memory and the streaming engine agree."
+  ],
+  "reference": "D61: a cast to a coarser precision floors on the timeline (`date_trunc`); from nanoseconds it is the floor of the count divided by 1000.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "worker 5, #323 (D61), 2026-11-19",
+      "evidence": [
+        {
+          "sql": "pl.Series([-1,-1001]).cast(Datetime('us')).cast(Datetime('ms')).dt.timestamp('us')",
+          "observed": "[-1000, -2000]"
+        },
+        {
+          "sql": "pl.Series([-1,-1001,-1500]).cast(Datetime('ns')).cast(Datetime('us')).dt.timestamp('us')",
+          "observed": "[-1, -2, -2]"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python), collected with engine=\"in-memory\" and engine=\"streaming\"."
+    }
+  ],
+  "issues": [
+    323
+  ]
+}
