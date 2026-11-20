@@ -330,3 +330,47 @@ def test_all_set_operations_are_determined_by_keys():
     assert sv.verify("SELECT x, s FROM a EXCEPT SELECT x, s FROM b", tables=tables).deterministic
     keyed = {"a": [sv.unique("x")], "b": [sv.unique("x")]}
     assert sv.verify(sql, tables=tables, requires=keyed).deterministic
+
+
+QUALIFIED = {
+    "shop.main.orders": ibis.schema({"x": "int64"}),
+    "main.customers": ibis.schema({"x": "int64", "name": "string"}),
+    "archive.main.orders": ibis.schema({"x": "int64"}),
+}
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        'SELECT x FROM "shop"."main"."orders"',
+        "SELECT orders.x FROM shop.main.orders",
+        "SELECT o.x FROM shop.orders AS o",
+        "SELECT x FROM customers",
+        "SELECT c.name FROM memory.main.customers c",
+        "SELECT a.x FROM shop.main.orders a JOIN archive.main.orders b ON a.x = b.x",
+    ],
+)
+def test_qualified_table_names_resolve_as_duckdb_resolves_them(query):
+    """#706: an input's key may be qualified, and a query's reference matches it
+    by (catalog, schema, table) with DuckDB's defaults `memory` and `main`; two
+    inputs of one table name in two schemas stay two inputs."""
+    if "shop.orders" in query:
+        # `shop` is a schema of the default catalog, not the key's catalog.
+        with pytest.raises(Refused, match="only the inputs' tables can be read"):
+            lift(query, QUALIFIED)
+        return
+    json.dumps(lift(query, QUALIFIED).plan)
+
+
+def test_a_table_in_the_wrong_schema_is_refused_with_the_name_to_declare():
+    with pytest.raises(Refused, match="only the inputs' tables can be read"):
+        lift("SELECT x FROM other.main.orders", QUALIFIED)
+
+
+def test_verify_reads_qualified_inputs():
+    report = sv.verify(
+        'SELECT a.x FROM "shop"."main"."orders" a JOIN archive.main.orders b ON a.x = b.x '
+        "WHERE a.x > 0",
+        tables={"shop.main.orders": {"x": "BIGINT"}, "archive.main.orders": {"x": "BIGINT"}},
+    )
+    assert "x: an integer ≥ 1" in str(report)

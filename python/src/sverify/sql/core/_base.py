@@ -1100,8 +1100,8 @@ class Dialect:
             f'{engine} tables have no row order, so rows="sequence" cannot follow the Lean '
             "model's list order for FETCH and windows over a named table; write "
             'rows="multiset" (ties and the rows of a LIMIT are open, as the reference allows), '
-            "or run a report whose windows have no ties (deterministic=True), which writes "
-            "them with the sort keys alone"
+            "or order by a key that is unique too and verify again: once `report.deterministic` "
+            "is True, `report.to_sql(dialect)` writes the windows with the sort keys alone"
         )
 
     def subquery(self, select: str, alias: str) -> str:

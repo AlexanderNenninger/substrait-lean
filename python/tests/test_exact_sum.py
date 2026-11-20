@@ -271,7 +271,7 @@ def test_a_maintained_double_sum_is_exact(seed, engine):
     src = StaticSource(table([]), name="t")
     node = src.pipe(sums)
     node.refresh(engine=engine)
-    assert node._stage is not None and node._stage.view.strategy == "delta rules"
+    assert node._stage is not None and node._stage.view.strategy == "state per group"
     live: list[tuple[int, float | None]] = []
     for _ in range(25):
         ins = [(rng.randrange(5), finite_value(rng)) for _ in range(rng.randrange(6))]
@@ -374,7 +374,7 @@ def test_maintained_statistics_are_exact(seed, engine):
     src = StaticSource(stat_table([]), name="t")
     node = src.pipe(stats)
     node.refresh(engine=engine)
-    assert node._stage is not None and node._stage.view.strategy == "delta rules"
+    assert node._stage is not None and node._stage.view.strategy == "state per group"
     live: list[tuple] = []
     for _ in range(20):
         ins = [(rng.randrange(4), gen(rng), gen(rng)) for _ in range(rng.randrange(6))]

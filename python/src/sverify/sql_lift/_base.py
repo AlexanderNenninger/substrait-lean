@@ -365,6 +365,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
                 f"unknown function {f.name}(): DuckDB SQL here has no such function",
                 hint="check the name against DuckDB's functions, or write the step in Ibis",
             )
+    _resolve_tables(tree, schemas)
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
     _check_export_state(tree)
@@ -394,6 +395,54 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__))
     return tree
+
+
+def full_name(table: sge.Table | str) -> tuple[str, str, str]:
+    """A table's (catalog, schema, name) as DuckDB resolves it: the defaults
+    are `memory` and `main`, and the names are normalized."""
+    if isinstance(table, str):
+        table = sge.to_table(table, dialect=DIALECT)
+    parts = (table.catalog or "memory", table.db or "main", table.name)
+    c, d, n = (_normalized(p) for p in parts)
+    return c, d, n
+
+
+def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
+    """Point each table the query reads at the input it names, as DuckDB
+    resolves names (#706): `shop.main.orders`, `main.orders` and `orders` are
+    one table where the inputs' keys say so, and the same table name in two
+    schemas stays two inputs. The table keeps its name as its alias, so the
+    query's own column references still resolve."""
+    by_full: dict[tuple[str, str, str], str] = {}
+    for key in schemas:
+        full = full_name(key)
+        if full in by_full:
+            raise Unsupported(
+                f"the inputs {by_full[full]!r} and {key!r} are the same table in DuckDB "
+                f"({'.'.join(full)}); declare it once"
+            )
+        by_full[full] = key
+    ctes = {_normalized(c.alias) for c in tree.find_all(sge.CTE)}
+    for node in tree.find_all(sge.Table):
+        if not isinstance(node.this, sge.Identifier):
+            continue
+        qualified = bool(node.args.get("db") or node.args.get("catalog"))
+        if not qualified and _normalized(node.name) in ctes:
+            continue
+        key = by_full.get(full_name(node))
+        if key is None and qualified:
+            raise SqlUnsupported(
+                f"FROM {_shown(node)}: only the inputs' tables can be read",
+                hint="add the table to the tables, under its qualified name "
+                f"(for example '{node.sql(DIALECT)}'), as DuckDB resolves it",
+            )
+        if key is None or (not qualified and key == node.name):
+            continue
+        alias = node.args.get("alias") or sge.TableAlias(this=sge.to_identifier(node.name))
+        node.set("catalog", None)
+        node.set("db", None)
+        node.set("this", sge.to_identifier(key, quoted=True))
+        node.set("alias", alias)
 
 
 def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
@@ -1002,7 +1051,11 @@ class _Lift:
                 or node.args.get("catalog")
                 or not isinstance(node.this, sge.Identifier)
             ):
-                raise Unsupported(f"FROM {_shown(node)}: only the inputs' tables can be read")
+                raise SqlUnsupported(
+                    f"FROM {_shown(node)}: only the inputs' tables can be read",
+                    hint="add the table to the tables, under its qualified name "
+                    "(for example 'shop.main.orders'), as DuckDB resolves it",
+                )
             found = self.schemas.get(node.name)
             if found is None:
                 raise SqlUnsupported(

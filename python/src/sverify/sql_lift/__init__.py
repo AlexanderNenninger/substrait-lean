@@ -71,6 +71,7 @@ from sverify.sql_lift._base import (  # noqa: F401
     LiftTable,
     Profile,
     expand_table_shorthand,
+    full_name,
     lift,
     lift_table,
     parse,
