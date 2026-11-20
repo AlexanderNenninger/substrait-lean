@@ -21,8 +21,9 @@ up rows per group and code is the engine's `SUM`, so the state is linear over
 Z-sets as the moments are: inserts add, deletes subtract, and the limbs are a
 function of the group's current rows, `Σ v · 2^(32 j)` the moment itself.
 
-The split uses `log2`, a correction step and two exact scalings by powers of
-two, since Substrait has no `frexp`. Each row checks its split (an integer
+Substrait has no `frexp`, so the split finds the exponent by binary steps,
+each a comparison and a product with a power of two, exact on every engine;
+it needs no `POWER` or `LOG2`, which Spark's lowering refuses. Each row checks its split (an integer
 mantissa below `2⁵³` that gives back the value) and counts a failure in the
 `BROKEN` slot, which raises at the finish. A limb holds at most `HEADROOM`
 pieces' worth before `DECIMAL(38,0)` could overflow, so the finish raises for
@@ -156,7 +157,7 @@ class Exact:
 
 def _wide(e: Any) -> Any:
     # The checker writes an integer's cast to `DECIMAL(38,0)` away, which
-    # leaves a product at 64 bits; a sum at that type keeps it.
+    # leaves a product at 64 bits; a sum at that type keeps it (#1876).
     return e.cast(LIMB_TYPE) + ibis.literal(Decimal(0), LIMB_TYPE)
 
 
@@ -178,25 +179,46 @@ def _split(t: ir.Table, c: str) -> ir.Table:
     on = finite & (x != 0)
     t = t.mutate(**{f"{c}_c": cls, f"{c}_f": ibis.ifelse(on, x, 0.0)})
     f: Any = t[f"{c}_f"]
-    t = t.mutate(**{f"{c}_a": ibis.ifelse(f == 0, 1.0, f.abs())})
-    a: Any = t[f"{c}_a"]
-    t = t.mutate(**{f"{c}_e": ibis.least(a.log2().floor().cast("int64"), 1023)})
-    e: Any = t[f"{c}_e"]
-    two: Any = ibis.literal(2.0)
-    # Each step reads the one before as columns: a guard of the written plan
-    # repeats its operands, so a nested expression grows with every level.
-    t = t.mutate(**{f"{c}_lo": two.pow(e), f"{c}_hi": two.pow(ibis.least(e + 1, 1023))})
-    # `log2` may be off by one near a power of two: correct it.
-    down = ibis.ifelse(a < t[f"{c}_lo"], one, zero)
-    up = ibis.ifelse((e < 1023) & (a >= t[f"{c}_hi"]), one, zero)
-    t = t.mutate(**{f"{c}_e": ibis.greatest(e - down + up, -1022)})
-    e = t[f"{c}_e"]
-    # `2^(52 - e)` in two factors: a subnormal's is past the largest double.
-    t = t.mutate(**{f"{c}_k": ibis.least(-e + 52, 537)})
-    k: Any = t[f"{c}_k"]
-    t = t.mutate(**{f"{c}_lo": two.pow(k), f"{c}_hi": two.pow(-e + 52 - k)})
-    t = t.mutate(**{f"{c}_d": f * t[f"{c}_lo"]})
-    t = t.mutate(**{f"{c}_d": t[f"{c}_d"] * t[f"{c}_hi"]})
+    # |f| scaled into [1, 2) a binary step at a time, each a comparison and a
+    # product with a power of two, both exact on every engine: no POWER or
+    # LOG2, which some engines compute only within an ulp. `e` counts the
+    # steps, so `|f| = a · 2^e`. Each step reads the one before as columns: a
+    # guard of the written plan repeats its operands, so nesting grows it.
+    a, e = f"{c}_a", f"{c}_e"
+    t = t.mutate(**{a: ibis.ifelse(f == 0, 1.0, f.abs())})
+    # `e` starts as a 64-bit column: the written plan types an integer literal
+    # by its value, so a literal 0 would start it at 8 bits.
+    t = t.mutate(**{e: (t[a] * 0.0).cast("int64")})
+    for b in range(9, -1, -1):
+        big = t[a] >= 2.0 ** (2**b)
+        step = ibis.literal(2**b, "int64")
+        t = t.mutate(
+            **{
+                a: ibis.ifelse(big, t[a] * 2.0 ** -(2**b), t[a]),
+                e: t[e] + ibis.ifelse(big, step, zero),
+            }
+        )
+    for b in range(10, -1, -1):
+        small = t[a] < 2.0 ** (1 - 2**b)
+        # `2^1024` is past the largest double: two factors of `2^512`.
+        up = t[a] * 2.0**512 * 2.0**512 if b == 10 else t[a] * 2.0 ** (2**b)
+        t = t.mutate(**{a: ibis.ifelse(small, up, t[a]), e: t[e] - ibis.ifelse(small, 2**b, 0)})
+    # The mantissa: `a · 2⁵²` signed for a normal value; for a subnormal, the
+    # value times `2¹⁰⁷⁴` in two factors (its exponent is clamped to -1022).
+    sub = t[e] < -1022
+    t = t.mutate(
+        **{
+            f"{c}_s": ibis.ifelse(sub, f, 0.0),
+            f"{c}_n": ibis.ifelse(f < 0, -t[a], ibis.ifelse(f == 0, 0.0, t[a])),
+        }
+    )
+    t = t.mutate(
+        **{
+            f"{c}_d": ibis.ifelse(sub, t[f"{c}_s"] * 2.0**537 * 2.0**537, t[f"{c}_n"] * 2.0**52),
+            e: ibis.greatest(t[e], -1022),
+        }
+    )
+    e = t[e]
     d: Any = t[f"{c}_d"]
     ok = (d.floor() == d) & (d.abs() < 2.0**53) & ((e == -1022) | (d.abs() >= 2.0**52) | (d == 0))
     t = t.mutate(
@@ -277,12 +299,15 @@ def limbs(
         __i=pick(0), __slot=pick(1), __pos=pick(2).cast("int64"), __val=pick(3).cast("int64")
     )
     j = j.filter(j["__val"] != 0)
-    # `2^(pos mod 32)`, a double below `2³²`, so its cast is exact.
-    j = j.mutate(__shift=ibis.literal(2.0).pow(j["__pos"] % _BITS).cast(LIMB_TYPE))
+    # `2^(pos mod 32)` from the bits of `pos mod 32`, a 64-bit integer.
+    j = j.mutate(__r=j["__pos"] % _BITS, __shift=ibis.literal(1, "int64"))
+    for b in range(5):
+        bit = (j["__r"] // 2**b) % 2 == 1
+        j = j.mutate(__shift=ibis.ifelse(bit, j["__shift"] * 2 ** (2**b), j["__shift"]))
     code = (j["__i"] * _SLOTS + j["__slot"]) * _LIMBS + j["__pos"] // _BITS
     return j.select(
         *keys,
-        **{CODE: code.cast("int32"), VALUE: _wide(j["__val"]) * j["__shift"] * j["__w"]},
+        **{CODE: code.cast("int32"), VALUE: _wide(j["__val"]) * _wide(j["__shift"]) * j["__w"]},
     )
 
 

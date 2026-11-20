@@ -112,7 +112,7 @@ def _limbs(engine: str, kind: str, ks, xs, ys, ws, key_type: str = "int64") -> d
     code, value = _exact_sum.CODE, _exact_sum.VALUE
     summed = parts.group_by(["k0", code]).aggregate(**{value: parts[value].sum()})
     plan = written_plan(plan_json(None, summed))  # pyrefly: ignore[bad-argument-type]
-    con = connect(engine)
+    con = connect("duckdb" if engine == "spark" else engine)  # Spark reads DuckDB's tables
     ok = [int(x is not None and (not e.pair or y is not None)) for x, y in zip(xs, ys, strict=True)]
     data = {"k0": ks, "__w": ws, "__ok0": ok, "__x0": xs, "__y0": ys}
     put_table(con, "rows", pa.table(data, schema=t.schema().to_pyarrow()))
@@ -126,6 +126,8 @@ def _limbs(engine: str, kind: str, ks, xs, ys, ws, key_type: str = "int64") -> d
     return {k: _exact_sum.moments(e, g) for k, g in slots.items() if any(g.values())}
 
 
+# Spark runs the limbs with the split that needs no POWER or LOG2 (E7 of
+# ruling 167, pending Fable's sign-off on #1873).
 ENGINES = ["duckdb", "polars", pytest.param("spark", marks=pytest.mark.backend("spark"))]
 
 

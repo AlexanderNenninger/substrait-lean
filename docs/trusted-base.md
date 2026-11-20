@@ -184,9 +184,9 @@ place, and what retires it.
   ports Lean's `sqrtMag` (`sqrt_mag`). The engine holds that integer in
   limbs, rows of the group state that its `SUM` adds up per group with the
   checked plans (#1447). Trusted are: that a value's split into a mantissa
-  and a grid position (`log2`, a correction, two scalings by powers of two),
-  which each row checks and the finish refuses when it fails, gives back the
-  value; that the limbs, read back for the touched groups, are the integer
+  and a grid position (binary steps of comparisons and products with powers
+  of two), which each row checks and the finish refuses when it fails, gives
+  back the value; that the limbs, read back for the touched groups, are the integer
   (`Σ v · 2^(32 j)`, which holds while a group has fewer than `2⁴¹` values,
   where the finish raises); and rounding it once with CPython's `int / int`
   (correctly rounded, ties to even). `tests/test_exact_sum.py` checks the

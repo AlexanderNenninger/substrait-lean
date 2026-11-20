@@ -143,7 +143,6 @@ def init_cost(n: int, groups: int = 1000) -> dict[str, object]:
     import time
 
     import pyarrow as pa
-
     from ibis import _
 
     import sverify as sv
