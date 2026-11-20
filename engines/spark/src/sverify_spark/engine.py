@@ -178,7 +178,7 @@ def run(
     spark: SparkSession | None = None,
     *,
     deterministic: bool = False,
-    finite: bool = True,
+    finite: bool | str = True,
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
 
@@ -219,7 +219,7 @@ def run_df(
     spark: SparkSession | None = None,
     *,
     deterministic: bool = False,
-    finite: bool = True,
+    finite: bool | str = True,
 ) -> Any:
     """`run`, but the result stays a Spark `DataFrame`: nothing is collected.
     A table is an Arrow table or a handle on files (`sverify_spark.store`)."""
