@@ -46,9 +46,19 @@ def Expr.finiteE (x : Expr) : Expr :=
 def Expr.infE (x : Expr) : Expr :=
   .bin .or (.bin .eq x (.lit (.float FloatCode.posInf))) (.bin .eq x (.lit (.float FloatCode.negInf)))
 
-/-- `TRUE` where every element of the list `x` is a finite double (a pair,
-`covar`'s and `corr`'s input), as `finiteValue` has it. -/
-def Expr.finitePairE (x : Expr) : Expr := .hof .allMatch x (Expr.field 0).finiteE
+/-- `TRUE` where both doubles of a pair (`covar`'s and `corr`'s input, `x`
+and `y` paired by `BinFn.pair`) are finite, as `finiteValue` has it: on the
+two operands, which every writer can state (a lambda has no SQL form, #94). -/
+def Expr.finitePairE : Expr → Expr
+  | .bin .pair a b => .bin .and a.finiteE b.finiteE
+  | x => .hof .allMatch x (Expr.field 0).finiteE
+
+/-- `TRUE` where `x` is NULL; a pair, where one of its operands is
+(`BinFn.pair`), stated on them, as the writers take a pair only as an
+aggregate's argument. -/
+def Expr.nullE : Expr → Expr
+  | .bin .pair a b => .bin .or (.un .isNull a) (.un .isNull b)
+  | x => .un .isNull x
 
 /-- `p ∨ q`, of optional conditions. -/
 def orFlag : Option Expr → Option Expr → Option Expr
@@ -132,7 +142,7 @@ def Measure.nonFiniteE (m : Measure) : Expr :=
   let fin := match m.fn with
     | .cov _ | .corr => m.arg.finitePairE
     | _ => m.arg.finiteE
-  .ifThen (.un .isNull m.arg) (.lit .null) (.ifThen fin (.lit (.int 0)) (.lit (.int 1)))
+  .ifThen m.arg.nullE (.lit .null) (.ifThen fin (.lit (.int 0)) (.lit (.int 1)))
 
 /-- A site: rows, and the condition on each that says the issue occurs. -/
 abbrev Site := Rel × Expr
@@ -167,10 +177,9 @@ def winSites (p : Issue × Expr) (r : Rel) (k : Nat) (part : List Nat) (sort : L
       [(Rel.window (.project r [m.wide.arg]) part sort [.agg { m with arg := .field k } s fr],
         m.sumOutE (.field (k + 1)))] else []) ++
     (if m.fn.infAgg ∧ p = (.infinite, m.arg) then
-      [(Rel.window (.project r [m.arg, m.nonFiniteE]) part sort
-          [.agg { m with arg := .field k } s fr,
-            .agg { fn := .max, arg := .field (k + 1), filter := m.filter } s fr],
-        .bin .and (Expr.field (k + 2)).infE (.un .not (.bin .eq (.field (k + 3)) (.lit (.int 1)))))]
+      [(Rel.window (.project r [m.nonFiniteE]) part sort
+          [.agg m s fr, .agg { fn := .max, arg := .field k, filter := m.filter } s fr],
+        .bin .and (Expr.field (k + 1)).infE (.un .not (.bin .eq (.field (k + 2)) (.lit (.int 1)))))]
     else []) ++ winSites p r k part sort fns
   | _ :: fns => winSites p r k part sort fns
 
@@ -219,7 +228,6 @@ on the reference's comparisons; a product that overflows is flagged, one of
 finite; a `CASE` flags the branch a row takes. -/
 
 section
-local instance : Boxes.Ambient := Boxes.Ambient.none
 
 private def big : Value := .float (FloatCode.ofFloat 1e308)
 private def ten : Expr := .lit (.float (FloatCode.ofFloat 10.0))
@@ -229,16 +237,16 @@ private def flagOn (e : Expr) (row : Row) : Bool :=
   | some f => (f.eval row).isTrue
   | none => false
 
-#guard [big, .float FloatCode.posInf, .float FloatCode.negInf, .float FloatCode.nan, .null].map
+#guard letI := Boxes.Ambient.none; [big, .float FloatCode.posInf, .float FloatCode.negInf, .float FloatCode.nan, .null].map
   (fun v => ((Expr.field 0).finiteE.eval [v]).isTrue) == [true, false, false, false, false]
-#guard [big, .float FloatCode.posInf, .float FloatCode.negInf, .float FloatCode.nan].map
+#guard letI := Boxes.Ambient.none; [big, .float FloatCode.posInf, .float FloatCode.negInf, .float FloatCode.nan].map
   (fun v => ((Expr.field 0).infE.eval [v]).isTrue) == [false, true, true, false]
-#guard flagOn prod [big] && !flagOn prod [.float FloatCode.posInf] &&
+#guard letI := Boxes.Ambient.none; flagOn prod [big] && !flagOn prod [.float FloatCode.posInf] &&
   !flagOn prod [.float (FloatCode.ofFloat 2.0)] && !flagOn prod [.null]
 -- `CASE WHEN x < 1 THEN x * 10 ELSE 0`: the product is in the branch not taken.
-#guard !flagOn (.ifThen (.bin .lt (.field 0) (.lit (.float (FloatCode.ofFloat 1.0)))) prod
+#guard letI := Boxes.Ambient.none; !flagOn (.ifThen (.bin .lt (.field 0) (.lit (.float (FloatCode.ofFloat 1.0)))) prod
   (.lit (.float 0))) [big]
-#guard flagOn (.ifThen (.bin .lt (.lit (.float (FloatCode.ofFloat 1.0))) (.field 0)) prod
+#guard letI := Boxes.Ambient.none; flagOn (.ifThen (.bin .lt (.lit (.float (FloatCode.ofFloat 1.0))) (.field 0)) prod
   (.lit (.float 0))) [big]
 
 end
