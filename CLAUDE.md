@@ -309,8 +309,9 @@ Snowflake's facts are private (the `engine-fact` skill says where).
 Task recipes live in `.claude/skills/` and load when needed: `add-function`
 (functions and coverage cases; older comments call it CLAUDE.md's "Adding
 functions"), `engine-fact` (formerly "Engine facts"), `upstream-bug`,
-`upstream-report`, `prove-lean`, `chaos-run`, `query-semantics` and
-`release-sverify`.
+`upstream-report`, `prove-lean`, `chaos-run`, `query-semantics`,
+`release-sverify` and `create-pull-request` (branch, checks, `Fixes #N`, the
+review and mergeq).
 
 ## sverify-dbt
 
