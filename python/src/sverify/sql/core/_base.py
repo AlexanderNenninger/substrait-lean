@@ -920,9 +920,9 @@ class Dialect:
         (`FIRST_VALUE(v IGNORE NULLS)`). New on DuckDB only (#271)."""
         raise Unsupported(f"{fn} over a window is not supported on {self.name}; " + DUCKDB_ONLY)
 
-    def window_string_agg(self, v: str, sep: str, w: str) -> str:
+    def window_string_agg(self, v: str, sep: str, order: Sequence[str], w: str) -> str:
         """`AggFn.concat` over the frame `w` (#1915): the frame's non-NULL
-        strings in the window's order, joined by `sep`; NULL without values.
+        strings ordered by `order` (the window's sort keys), joined by `sep`; NULL without values.
         New on DuckDB only (#271)."""
         raise Unsupported(
             f"string_agg over a window is not supported on {self.name}; " + DUCKDB_ONLY
@@ -4875,7 +4875,7 @@ class _Writer:
                     w = self.framed(f.frame, partition, keys, peers, sort, ks, col)
                 if f.fn == "agg":
                     assert f.measure is not None
-                    sql = self.window_measure(f.measure, col, ks, w, frame_moves(f.frame))
+                    sql = self.window_measure(f.measure, col, ks, w, frame_moves(f.frame), keys)
                 elif f.fn == "nth_value":
                     sql = f"NTH_VALUE({col(f.col)}, {f.offset}) {w}"
                 else:
@@ -4929,11 +4929,17 @@ class _Writer:
         return d.over_frame(partition, order, spec)
 
     def window_measure(
-        self, m: Measure, col: Callable[[int], str], ks: list[Kind | None], w: str, moving: bool
+        self,
+        m: Measure,
+        col: Callable[[int], str],
+        ks: list[Kind | None],
+        w: str,
+        moving: bool,
+        keys: list[str],
     ) -> str:
         """`Measure.eval` over the frame `w` (the argument is a column or a
         constant, `Parse.issueFree`); `moving`: rows leave the frame
-        (`frame_moves`)."""
+        (`frame_moves`); `keys`: the window's sort keys."""
         d = self.d
         v = self.expr(m.arg, col, ks, None)
         match m.fn:
@@ -4966,7 +4972,7 @@ class _Writer:
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
             case "string_agg":
-                return d.window_string_agg(v, d.str_lit(m.sep), w)
+                return d.window_string_agg(v, d.str_lit(m.sep), keys, w)
         f = "MIN" if m.fn == "min" else "MAX"
         if expr_kind(m.arg, ks) == "bool":
             as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))
