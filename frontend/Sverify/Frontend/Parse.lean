@@ -1844,8 +1844,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols bits sj)
-    -- A timestamp of another precision is `.other` to `typeKind` (#2004).
-    let out := typeKind ((field? f "outputType").getD .null)
+    -- A function's result typed as a timestamp of up to microseconds is the exact
+    -- microsecond value (`date - 5 days` is `precision_timestamp<0>` in Substrait's
+    -- own cases); a finer one is `.other`, as everywhere (#2004).
+    let outTy := (field? f "outputType").getD .null
+    let out := match (field? outTy "precisionTimestamp").bind (·.getObjValAs? Nat "precision" |>.toOption) with
+      | some p => if p ≤ 6 then Kind.time else .other
+      | none => typeKind outTy
     if let some e ← temporalArith (parseExpr fns cols bits) cols (baseName name) argJs out then return e
     if comparisonFns.contains (baseName name) then
       for a in argJs do
