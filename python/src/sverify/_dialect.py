@@ -4,8 +4,8 @@
 reference's. The reference gives a value DuckDB does not in the fields of
 `Profile` below. The lift refuses the casts (`REFUSED`, with a hint) and the
 report lists `corr` and `list_contains` (`Report.dialect_differences`). The raises of the
-reference (`domain_error`, `log_zero`) are not here: a raise is visible and the inferred preconditions
-name its inputs.
+reference (`domain_error`, `log_zero`) are not here: a raise is visible and the inferred
+preconditions name its inputs.
 
 One table, keyed by the `Profile` field. `tests/test_dialect_differences.py`
 derives the key set from `REFERENCE` and `DUCKDB` and fails when a field joins
