@@ -54,6 +54,7 @@ contract's preconditions.
 | A plan's row bound holds | `eval`, `OrderAllowed` | `Rel.maxRows_sound`, `Rel.maxRows_sound_all` | `Contracts/Plan.lean` |
 | A foreign-key match the optimizer relies on holds: every row of the child has a parent row the join condition accepts (a rewrite's side condition; `references` as a precondition has no theorem of its own) | `eval` | `Rel.fkMatch_sound` | `Semantic.lean` |
 | A derived key holds on the output | `eval`, `OrderAllowed` | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean` |
+| A derived functional dependency holds on the output, and a key it leads to is a key: a key a join or a `GROUP BY` loses survives as a dependency, so grouping by a key and its attributes keeps the key (#1993, rulings 194 and 196) | `eval`, `OrderAllowed` | `Rel.keysFds_sound_all`, `Rel.fds_sound`, `KeyOn.of_fd`, `closeKeys_sound` | `Keys.lean`, `FunctionalDeps.lean` |
 | A left join or inner join on non-overlapping ranges gives each left row at most one partner, so the left side's keys stay keys (`sv.non_overlapping`, #814) | `eval`, `OrderAllowed` | `Rel.ranges_sound_all`, `partners_le_one_range`, `Rel.keys_sound_all` | `Keys.lean` |
 | `sv.asof_join`'s promises, stated in `ensures`: the match at or before it and within the tolerance; one output row per left row is how the plan is built (a ranking per numbered left row), not a stated guarantee (#1517). The join is a range join and a ranking window, with no theorem of its own | `eval`, `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
 | A window's result does not depend on how its ties are broken | `eval`, `OrderAllowed` | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
@@ -233,7 +234,8 @@ as the guard. Engines-common and the modules below import it as
 | `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound`, and `Rel.mayIssues_sound_all` on every order |
 | `AssumedCheck.lean` | The check of the assumed issues as a plan whose one row is the verdict (`assumedCheck`, #2018): `Expr.assumedFlag` mirrors `Expr.issues`, `Rel.assumedSites` mirrors `Rel.HasIssue`; no theorem yet |
 | `Rows.lean` | Row caps that rule out `SUM` overflow |
-| `Keys.lean` | Derived keys and window tie-breaking |
+| `Keys.lean` | Derived keys and functional dependencies, in one walk, and window tie-breaking |
+| `FunctionalDeps.lean` | Functional dependencies (`FDOn`), their rules through each operator, `fdClosure` and the keys it adds (`closeKeys`), one node's dependencies (`Rel.fdsNode`) |
 | `Partition.lean` | Sharded evaluation and two-phase aggregates |
 | `Guards.lean` | Guard elimination for the SQL writers |
 | `AsofSite.lean` | As-of joins read off a plan (`Rel.asofSite`, `Rel.asofSite_sound`: the site rebuilds its plan) and the count of the pairs their range join compares (`AsofSite.pairs`, #1447) |

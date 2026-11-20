@@ -63,21 +63,37 @@ theorem Rel.ranges_congr (h : ∀ t, (c t).arity = (cat t).arity) (K : TableCond
   | .filter r _ | .orderBy r _ | .emit r _ => by simp only [Rel.ranges, ranges_congr h K r]
   | .project r _ => by simp only [Rel.ranges, ranges_congr h K r, arity_congr h r]
 
-theorem Rel.keys_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+/-- Keys and dependencies read the catalog's arities only. -/
+theorem Rel.keysFds_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) :
-    ∀ r : Rel, r.keys c A F K = r.keys cat A F K
-  | .read _ | .values _ _ | .aggregate _ _ _ | .unnest _ _ => rfl
-  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .semi r _ _ _ => by
-      simp only [keys, keys_congr h A F K r]
-  | .distinct r | .window r _ _ _ => by simp only [keys, keys_congr h A F K r, arity_congr h r]
+    ∀ r : Rel, r.keys c A F K = r.keys cat A F K ∧ r.fds c A F K = r.fds cat A F K
+  | .read t => by simp only [keys, fds, h t, and_self]
+  | .values _ _ => ⟨rfl, rfl⟩
+  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .semi r _ _ _ | .distinct r
+  | .window r _ _ _ | .aggregate r _ _ | .unnest r _ => by
+      obtain ⟨hk, hf⟩ := keysFds_congr h A F K r
+      simp only [keys, fds, hk, hf, arity_congr h r, and_self]
   | .project r _ => by
-      simp only [keys, keys_congr h A F K r, arity_congr h r, (aeval_congr h A F .none false r).1]
+      obtain ⟨hk, hf⟩ := keysFds_congr h A F K r
+      simp only [keys, fds, hk, hf, arity_congr h r, (aeval_congr h A F .none false r).1, and_self]
   | .cross a b | .join a b _ _ => by
-      simp only [keys, keys_congr h A F K a, keys_congr h A F K b, arity_congr h a,
-        ranges_congr h K b]
+      obtain ⟨hka, hfa⟩ := keysFds_congr h A F K a
+      obtain ⟨hkb, hfb⟩ := keysFds_congr h A F K b
+      simp only [keys, fds, hka, hfa, hkb, hfb, arity_congr h a, arity_congr h b, ranges_congr h K b,
+        and_self]
   | .unionAll a b => by
-      simp only [keys, keys_congr h A F K a, keys_congr h A F K b,
-        (aeval_congr h A F .none false a).1, (aeval_congr h A F .none false b).1]
+      obtain ⟨hka, hfa⟩ := keysFds_congr h A F K a
+      obtain ⟨hkb, hfb⟩ := keysFds_congr h A F K b
+      simp only [keys, fds, hka, hfa, hkb, hfb, arity_congr h a, arity_congr h b,
+        (aeval_congr h A F .none false a).1, (aeval_congr h A F .none false b).1, and_self]
+
+theorem Rel.keys_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (K : TableCond) (r : Rel) : r.keys c A F K = r.keys cat A F K :=
+  (Rel.keysFds_congr h A F K r).1
+
+theorem Rel.fds_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (K : TableCond) (r : Rel) : r.fds c A F K = r.fds cat A F K :=
+  (Rel.keysFds_congr h A F K r).2
 
 theorem Rel.keyedWindows_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) :
@@ -320,22 +336,10 @@ theorem Rel.condVal_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String �
     r.condVal c A F K e = r.condVal cat A F K e := by
   simp only [condVal, keyedWindows_congr h, (aeval_congr h A F _ false r).1, facts_congr h F]
 
-omit [Boxes.Ambient] in
-theorem Rel.fds_congr (h : ∀ t, (c t).arity = (cat t).arity) (K : TableCond) :
-    ∀ r : Rel, r.fds c K = r.fds cat K
-  | .read t => by simp only [fds, h t]
-  | .aggregate _ _ _ | .unnest _ _ | .values _ _ | .unionAll _ _ => rfl
-  | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ | .emit r _ => by
-      simp only [fds, fds_congr h K r]
-  | .project r _ | .window r _ _ _ => by simp only [fds, fds_congr h K r, arity_congr h r]
-  | .cross a b => by simp only [fds, fds_congr h K a, fds_congr h K b, arity_congr h a]
-  | .join a b ty _ => by
-      cases ty <;> simp only [fds, fds_congr h K a, fds_congr h K b, arity_congr h a]
-
 theorem Rel.fdAgg_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) (r : Rel) (gs : List Expr)
     (ms : List Measure) : Rel.fdAgg c A F K r gs ms = Rel.fdAgg cat A F K r gs ms := by
-  simp only [fdAgg, fds_congr h K r, keys_congr h A F K r, arity_congr h r,
+  simp only [fdAgg, fds_congr h A F K r, keys_congr h A F K r, arity_congr h r,
     (aeval_congr h A F .none false r).1]
 
 theorem Rel.eagerAgg_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)

@@ -328,7 +328,8 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   `Rel.fds` derives dependencies: input keys and aggregate groups determine
   every column, equalities in filters and inner joins and copied columns
   determine each other, and they follow emits, projections and joins
-  (`Rel.fds_sound`). `Rel.fdAgg` drops each grouping column that the closure
+  (`Rel.fds_sound`; the same dependencies give `Rel.keys` its keys,
+  `analysis/Sverify/Analysis/FunctionalDeps.lean`). `Rel.fdAgg` drops each grouping column that the closure
   of the others determines and carries it through `MIN`, which is the
   group's one value, NULL included (`Measure.eval_min_const`). The groups
   stay the same (`dedup_parallel`), so the result is the same list of rows.

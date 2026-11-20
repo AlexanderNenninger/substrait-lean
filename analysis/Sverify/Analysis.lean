@@ -11,6 +11,7 @@ import Sverify.Analysis.Contracts.Refine
 import Sverify.Analysis.Contracts.Sound
 import Sverify.Analysis.Contracts.Transfer
 import Sverify.Analysis.Contracts.TransferSound
+import Sverify.Analysis.FunctionalDeps
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Infer
