@@ -204,6 +204,19 @@ def test_a_decimal_sum_that_may_leave_its_type_is_not_proved():
     assert not _sum_proved("c", 100_000_000_000)
 
 
+@pytest.mark.parametrize(("cap", "bounded"), [(1_000_000, True), (100_000_000_000, False)])
+def test_a_double_sum_over_more_than_2_32_rows_has_no_bound(cap, bounded):
+    """`measureEps` bounds a double `SUM` over at most 2^32 rows (ruling 197, N3)."""
+    report = sv.verify(
+        "SELECT k, SUM(d) AS ds FROM t GROUP BY k",
+        tables=TS,
+        requires={"t": [*RANGES, sv.max_rows(cap)]},
+        semantics="reference",
+        on_inferred="warn",
+    )
+    assert ("value" in _abs_bound(report, "ds")) is bounded
+
+
 @pytest.mark.parametrize(("cap", "proved"), [(1_000_000, True), (None, False)])
 def test_the_band_of_a_lifted_mean_follows_its_sums_flag(cap, proved):
     requires = REQUIRES["t"][:2] + ([sv.max_rows(cap)] if cap is not None else [])

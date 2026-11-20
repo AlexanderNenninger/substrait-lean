@@ -121,7 +121,9 @@ def intMeanExact (env : List AVal) (m : Measure) (rows : Option Nat) : Bool :=
 `rows` of them: absolute, and relative where the values have one sign, with
 whether the relative bound is one `epsilon_avg_rel` covers (an `AVG`'s
 values at least `2⁻¹⁰²¹` in magnitude, so its decoded doubles and mean at
-least `2⁻¹⁰²²`). -/
+least `2⁻¹⁰²²`). Over more than `2³²` rows it gives no bound, whatever the
+argument's type: a double `SUM` or `AVG` under a larger row cap is unbounded
+(`test_a_double_sum_over_more_than_2_32_rows_has_no_bound`). -/
 def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
     Option (Float × Option (Float × Bool)) := do
   if intMeanExact env m rows then return (0.0, some (0.0, true))
@@ -626,6 +628,7 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
         let pf := m.filter.all fun c => exactP (exprEps es engine env cs c)
         match m.fn with
         | .fsum | .avg =>
+          -- No bound over more than `2³²` rows (`measureEps`).
           let (order, _) ← measureEps env m r.maxRows
           let n ← r.maxRows
           -- The order's bound is proved for the same doubles on both sides.
