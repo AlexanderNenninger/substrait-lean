@@ -1,0 +1,9 @@
+{
+  "id": "D59",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "String-to-timestamp parsing is strict, with a fixed directive set, and raises a domain error on a mismatch.",
+  "note": "Signed in ruling 137; its section is in #2063; tracked in #347."
+}

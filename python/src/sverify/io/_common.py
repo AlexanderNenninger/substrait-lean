@@ -25,7 +25,7 @@ import sqlglot as sg
 from sverify import _deprecated, profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
-from sverify._unsupported import SverifyError
+from sverify._unsupported import MemoryLimitError, SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.plan_json import is_utc
@@ -368,7 +368,7 @@ class Contract:
             from.
         not_null: Columns the node proves NOT NULL: stated in `ensures`
             (`_.col.notnull()`), or shown never NULL by its proved report
-            (`Report.not_null`).
+            (not nullable in `Report.output`).
         unique: Column sets the node proves unique.
         cursors: The cursor of every source that can restore its table from
             one (`Source.restore`), at its version in `sources`.
@@ -519,21 +519,18 @@ class SinkWrite:
         )
 
 
-def view_contract_record(view: IncrementalView) -> Contract:
-    versions = view.versions
-    bases = _base_tables(view)
-    missing = sorted(bases - set(versions))
-    if missing:
-        raise ValueError(
-            f"view {view.name} reads tables without a source ({missing}): a sink needs "
-            "source versions to write exactly once; read a table that is not in a table "
-            "format through sverify.io.StaticSource(table, name=..., version=...)"
-        )
-    schema = ibis.Schema.from_pyarrow(view.schema)
+def _promises(
+    guarantees: Sequence[Condition], proved_not_null: Sequence[str], schema: ibis.Schema
+) -> tuple[list[str], dict[str, str], list[list[str]]]:
+    """What a sink's contract record promises about every row, from a node's
+    guarantees and the columns its proved report shows never NULL: the NOT
+    NULL columns, the CHECK constraints by name, and the unique column sets.
+    The one builder of the committed record and the fresh one `drift`
+    compares it with."""
     not_null: list[str] = []
     checks: dict[str, str] = {}
     unique: list[list[str]] = []
-    for c in view.guarantees:
+    for c in guarantees:
         if isinstance(c, Unique):
             unique.append(list(c.cols))
             continue
@@ -545,8 +542,83 @@ def view_contract_record(view: IncrementalView) -> Contract:
             not_null.append(col)
         else:
             checks[f"sverify_{len(checks) + 1}"] = sql
-    names = set(view.schema.names)
-    not_null += [c for c in view.not_null if c in names and c not in not_null]
+    not_null += [c for c in proved_not_null if c in schema and c not in not_null]
+    return not_null, checks, unique
+
+
+@dataclass
+class Drift:
+    """How a stored node's contract now compares with the one its sink last
+    committed (`sverify check --against-sink`, #769): a committed promise
+    the fresh node does not prove is `weakened`; a fresh one the record
+    lacks is `added`. Each holds `not_null` columns, `checks` as SQL texts
+    and `unique` column sets."""
+
+    weakened: dict[str, list[Any]]
+    added: dict[str, list[Any]]
+    plan_changed: bool
+    profiles: tuple[str | None, str]
+    """The committed record's profile and the fresh one."""
+    why: dict[str, str] = field(default_factory=dict)
+    """For a weakened CHECK, why the fresh node does not prove it."""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"weakened": self.weakened, "added": self.added, "plan_changed": self.plan_changed}
+
+
+def drift(committed: Contract, node: Any) -> Drift:
+    """`committed` against what `node`'s sink would record now (ruling 189):
+    a NOT NULL column or a unique set by inclusion (a smaller key implies a
+    larger one); a CHECK by its SQL text, and one whose text is gone by a
+    proof of it as a postcondition of the node. No promise is kept without
+    its text in the fresh record or a proof."""
+    from sverify.contracts import verify, view_contract
+
+    expr = node._query()._expr
+    vc = view_contract(expr)
+    not_null, checks, unique = _promises(vc.guarantees, vc.not_null, expr.schema())
+    fresh = set(checks.values())
+    why: dict[str, str] = {}
+    for text in committed.checks.values():
+        if text in fresh or text in why:
+            continue
+        try:
+            got = verify(expr, requires=vc.requires, ensures=[text], semantics=vc.profile)
+        except MemoryLimitError:
+            raise  # a budget, which the CLI reports as one (exit 4)
+        except Exception as e:  # noqa: BLE001 - unreadable now: weakened, with why
+            why[text] = f"not proved: sverify cannot read it against the node ({e})"
+            continue
+        if not got.ensures or not got.ensures[0].proved:
+            reason = got.ensures[0].why if got.ensures else "no result"
+            why[text] = f"not proved: {reason}"
+    weakened = {
+        "not_null": [c for c in committed.not_null if c not in not_null],
+        "checks": list(why),
+        "unique": [u for u in committed.unique if not any(set(k) <= set(u) for k in unique)],
+    }
+    added = {
+        "not_null": [c for c in not_null if c not in committed.not_null],
+        "checks": [t for t in checks.values() if t not in committed.checks.values()],
+        "unique": [u for u in unique if u not in committed.unique],
+    }
+    plan = plan_digest(node.internal_plan, profile=vc.profile)
+    return Drift(weakened, added, plan != committed.plan, (committed.profile, vc.profile), why)
+
+
+def view_contract_record(view: IncrementalView) -> Contract:
+    versions = view.versions
+    bases = _base_tables(view)
+    missing = sorted(bases - set(versions))
+    if missing:
+        raise ValueError(
+            f"view {view.name} reads tables without a source ({missing}): a sink needs "
+            "source versions to write exactly once; read a table that is not in a table "
+            "format through sverify.io.StaticSource(table, name=..., version=...)"
+        )
+    not_null, checks, unique = _promises(
+        view.guarantees, view.not_null, ibis.Schema.from_pyarrow(view.schema)
+    )
     return Contract(
         node=view.name,
         plan=plan_digest(view.plan, profile=view.profile),

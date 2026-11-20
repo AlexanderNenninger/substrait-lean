@@ -1,0 +1,13 @@
+{
+  "id": "F17",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "least/greatest of the two zeros: the reference stays definite at a scalar pick (opening it declined); Spark's cmp row stays native with no shim; worker 2's Spark finding must be reproduced before merge.",
+  "prs": [
+    1512
+  ],
+  "source": "fable-rulings-night-1117.md, entry 17",
+  "note": "File ruling-1512-least-greatest-zero.md. Entry 22 records the Spark finding did not reproduce. No D-number."
+}

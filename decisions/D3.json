@@ -1,0 +1,11 @@
+{
+  "id": "D3",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "An option's core set is the YAML's values plus the behaviours the engine facts record, each tagged with its fact.",
+  "prs": [
+    562
+  ]
+}

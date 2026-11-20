@@ -22,6 +22,7 @@ import sqlglot as sg
 import sverify as sv
 
 from sverify_dbt.manifest import Test
+from sverify_dbt.mapping_tables import TABLE_LEVEL, table_level
 
 Condition = Any
 """A condition `sv.verify` takes: a SQL string, `sv.unique(...)` or
@@ -47,6 +48,10 @@ class Mapped:
     """Why there is no condition (`conditions` is empty)."""
     columns: tuple[str, ...] = ()
     """The columns the conditions read."""
+    schema: Callable[[list[str]], str | None] | None = None
+    """A test of the model's column names alone, in the order of its result:
+    None when it holds, else why not. It needs no proof, so `conditions`
+    stays empty."""
 
 
 def ident(name: str) -> str:
@@ -190,6 +195,8 @@ def test_conditions(
         cond = f"coalesce(({expr}), TRUE)"
     elif base == "relationships" and col:
         return _references(test, col, side, table_of)
+    elif base in TABLE_LEVEL:
+        return table_level(test, base, side, row_filter)
     elif (made := _row_test(base, col, kw)) is not None:
         if isinstance(made, Mapped):
             return made
@@ -386,7 +393,7 @@ def dbt_test(column: str | None, op: str | None, value: str | None, sql: str) ->
 
 
 def as_dbt_test(sql: str) -> tuple[str | None, str]:
-    """A precondition as SQL (a suggestion of `CheckedCondition.suggested`)
+    """A precondition as SQL (a suggestion of `CheckedCondition.needs`)
     as a dbt test to add: the column it goes on (None for a test on the
     table) and the test's YAML."""
     b = bound(sql)

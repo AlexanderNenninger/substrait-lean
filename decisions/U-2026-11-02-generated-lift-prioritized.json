@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-02-generated-lift-prioritized",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Generating the DuckDB SQL lift table from Lean (#268) is prioritized right after the SILENT/SATURATE step of M3; the lift then reads the generated table.",
+  "issues": [
+    241,
+    268
+  ],
+  "source": "github:#268 comment 6576340425"
+}

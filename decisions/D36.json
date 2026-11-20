@@ -1,0 +1,14 @@
+{
+  "id": "D36",
+  "date": "2026-10-31",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference reads doubles with one zero and one NaN where rows are compared for identity.",
+  "issues": [
+    89,
+    209,
+    1446
+  ],
+  "note": "Corrected 2026-11-15 (#1446) to apply D31's correction: canon only at identity boundaries."
+}

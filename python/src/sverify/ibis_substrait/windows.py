@@ -185,11 +185,6 @@ def window(x: Exprs, op: Any) -> Json:
         if isinstance(func, ops.First | ops.Last):
             # Ibis's DataFusion SQL is a plain FIRST_VALUE/LAST_VALUE whatever
             # `include_null` says.
-            if func.where is not None or func.order_by:
-                raise ProducerUnsupported(
-                    "first/last with where or order_by is not supported",
-                    construct="function first",
-                )
             name = "first_value" if isinstance(func, ops.First) else "last_value"
             args = [x(func.arg)]
         else:

@@ -205,10 +205,10 @@ def test_report_names_what_a_condition_depends_on() -> None:
         "unique(last)": ("timestamps",),
         "n >= 0": (),
     }
-    assert report.observation == sv.equivalent(floats=sv.within(rel=1e-9), timestamps="s")
+    assert report.lenses == sv.equivalent(floats=sv.within(rel=1e-9), timestamps="s")
     assert report.verdict == sv.Verdict.UNPROVED
     assert "depends on floats, which the observation ignores" in report.details()
-    assert "observes: equivalent(" in report.details()
+    assert "lenses: equivalent(" in report.details()
     # `str(report)` lists a postcondition that is proved but depends on what the
     # observation ignores under "Not proved", with the same reason.
     lines = str(report).splitlines()
@@ -245,14 +245,14 @@ def test_the_checker_names_what_a_condition_depends_on() -> None:
 
 def test_without_an_observation_nothing_changes() -> None:
     """Without doubles, the default (`floats="plan"`) and `sv.equivalent()`
-    prove the same, and the report prints no `observes:` line."""
+    prove the same, and the report prints no `lenses:` line."""
     expr = T.select("k", y=T.k + 1)
     req = {"t": [_.k.between(0, 100)]}
     plain = sv.verify(expr, requires=req, ensures=[_.y >= 1], counterexamples=0)
     observed = sv.verify(expr, requires=req, ensures=[sv.equivalent(), _.y >= 1], counterexamples=0)
     assert plain.verdict == sv.Verdict.PROVED and observed.verdict == sv.Verdict.PROVED
-    assert plain.observation == PLAN_BOUND
-    assert observed.observation == Observation()
+    assert plain.lenses == PLAN_BOUND
+    assert observed.lenses == Observation()
     assert "observes" not in str(plain)
 
 
@@ -266,7 +266,7 @@ def test_transform_takes_an_observation() -> None:
     out = per_key(con.table("t")).to_pyarrow()
     assert sorted(out.column("k").to_pylist()) == [1, 2]
     assert per_key.report is not None
-    assert isinstance(per_key.report.observation.floats, Within)
+    assert isinstance(per_key.report.lenses.floats, Within)
 
 
 def test_two_observations_are_refused() -> None:

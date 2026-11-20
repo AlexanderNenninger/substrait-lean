@@ -286,34 +286,6 @@ class Sink:
             raise ValueError(f"{type(self).__name__} keeps no history: contract(version=None)")
         return self._last
 
-    def committed(self) -> Contract | None:
-        """Deprecated: `contract()`."""
-        warnings.warn(
-            "Sink.committed() is deprecated; call sink.contract()",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.contract()
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        # A sink of 0.x overrides `committed`: read it as `contract`.
-        if "committed" in cls.__dict__ and "contract" not in cls.__dict__:
-            warnings.warn(
-                f"{cls.__name__} overrides Sink.committed(), which is deprecated; "
-                "override contract(version=None) instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            legacy = cls.__dict__["committed"]
-
-            def contract(self: Sink, version: int | None = None) -> Contract | None:
-                if version is not None:
-                    raise ValueError(f"{type(self).__name__} keeps no history")
-                return legacy(self)
-
-            cls.contract = contract  # type: ignore[method-assign]
-
     def source(self) -> VersionedSource | None:
         """The stored table as a versioned source, for the nodes reading the
         stored node.
@@ -471,8 +443,7 @@ _UNREAD = object()
 """`_TableSink._read` before `contract` ran."""
 
 
-_deprecated.add(Sink, {"view": "_view", "keeps_retired": "_keeps_retired"})
-_deprecated.add(SinkChange, {"native": "_native"})
+_deprecated.add(Sink, {"keeps_retired": "_keeps_retired"})
 
 
 class _TableSink[T](Sink, ABC):

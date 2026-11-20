@@ -1,0 +1,17 @@
+{
+  "id": "F91",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "AVG of a decimal of more than 34 digits stays refused for 1.0; #1497 closes on the refusal with conditions W1 to W4; candidates W and S are recorded for the later rule with #271.",
+  "issues": [
+    271,
+    1497
+  ],
+  "prs": [
+    1706
+  ],
+  "source": "fable-ruling-1497-wide-avg-stays-refused.md",
+  "note": "File titled 'Ruling 91'. No D-number allocated; 'D53 stays free for D50-d' (ruling 142 later cites D53's mix/operations)."
+}

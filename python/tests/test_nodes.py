@@ -267,9 +267,12 @@ def test_a_refresh_summarizes_each_node_in_one_line(tmp_path):
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
     stored = paid(orders).write(DeltaSink(str(tmp_path / "paid")))
     first = stored.refresh()
-    # The first refresh is notable: it shows how the state started.
+    # The first refresh is notable, and its summary is one line too (#1997):
+    # how the state started leads it; `str()` keeps the full entry.
     assert first.notable
-    assert first.summary() == str(first)
+    [line] = first.summary().splitlines()
+    assert line.startswith("paid: computed, requires ") and line.endswith(": +1 −0")
+    assert str(first).count("\n") > 1
     write_deltalake(str(tmp_path / "orders"), orders_table([(2, "bob", 7)]), mode="append")
     batch = stored.refresh()
     assert not batch.notable
@@ -281,19 +284,21 @@ def test_a_refresh_summarizes_each_node_in_one_line(tmp_path):
     assert stored.refresh().summary() == "paid: orders v2 unchanged, already committed"
 
 
-def test_a_recompute_or_a_schema_change_shows_the_full_report(tmp_path):
+def test_a_recompute_or_a_schema_change_leads_the_summary_line(tmp_path):
     src = StaticSource(orders_table([(1, "ada", 5)]), version=1, name="orders")
     node = big(src)
     node.refresh()
     src.replace(orders_table([(1, "ada", 9)]), version=2)  # no change feed
     result = node.refresh()
     assert result["big"].notable == ["orders recomputed"]
-    assert result.summary() == str(result)
+    [line] = result.summary().splitlines()
+    assert line.startswith("big: orders recomputed, ")
     wider = pa.schema([*ORDERS, pa.field("note", pa.string())])
     src.replace(pa.table({**orders_table([(1, "ada", 9)]).to_pydict(), "note": ["x"]}, wider), 3)
     result = node.refresh()
     assert any("schema: added note" in n for n in result["big"].notable)
-    assert result.summary() == str(result)
+    [line] = result.summary().splitlines()
+    assert "schema: added note" in line
 
 
 # -- engines and results ------------------------------------------------------

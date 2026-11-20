@@ -1,0 +1,21 @@
+{
+  "id": "F119",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "In #1765 (D53 step 2) the Ibis frontend refuses mixes of zoned and naive timestamps in _common (added D53 sentence removed); UnFn.atUtc passes .other through as .other; K5 may stay in the PR with its own fragment.",
+  "issues": [
+    1484,
+    1725,
+    1765
+  ],
+  "prs": [
+    1765
+  ],
+  "amends": [
+    "F112"
+  ],
+  "source": "fable-ruling-1765-deviations.md",
+  "note": "Repeats ruling 112 (2); corrects ruling 112's U2 text ('My text was wrong'); relaxes 112's request that K5 be its own PR. No D-number."
+}

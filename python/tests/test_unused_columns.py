@@ -64,6 +64,15 @@ def test_an_unused_struct_column_does_not_block_verify():
         assert "struct columns have no SQL form" not in str(report)
 
 
+@pytest.mark.parametrize("dtype", ["binary", "map<string, int64>"])
+def test_an_unused_column_does_not_block_a_sql_condition_on_ibis(dtype):
+    """A SQL `ensures` on an Ibis transformation reads it through a SQL model,
+    which the producer's pruning did not see into (#1958)."""
+    t = ibis.table({"id": "int64", "x": dtype}, name="t")
+    report = sv.verify(t.select("id"), requires={"t": ['"id" > 0']}, ensures=['"id" > 0'])
+    assert report.issues == []
+
+
 def test_a_condition_on_the_column_keeps_it_in_every_plan():
     """`requires` mentions `s`, the transformation does not: one schema for `t`."""
     report = sv.verify(T.select(T.d), requires={"t": [_.s.isnull() | (_.d > 0)]}, ensures=[_.d > 0])
@@ -90,3 +99,20 @@ def test_an_unused_map_column_does_not_refuse_a_delta_table(delta):
 def test_a_map_column_the_query_reads_is_refused_naming_it(delta):
     with pytest.raises(Unsupported, match=r"column 'm' of '.*': type map<!string, string>"):
         delta.pipe(lambda t: t.select("id", "m"))
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda t: t.select("x"),
+        lambda t: t.select(y=ibis.literal(b"A")),
+        lambda t: t.select(y=ibis.literal(None, type="binary")),
+    ],
+    ids=["column", "constant", "null"],
+)
+def test_binary_values_are_refused_by_design(build):
+    """Ruling 186 (#1918): sverify reads no binary values, and says how to get
+    around it without an engine's own text form of a BLOB."""
+    t = ibis.table({"id": "int64", "x": "binary"}, name="t")
+    with pytest.raises(Exception, match="encode them as text at the source"):
+        sv.verify(build(t))

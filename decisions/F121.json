@@ -1,0 +1,20 @@
+{
+  "id": "F121",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The Polars runner casts passed-through narrow integer columns back to their declared width in #1773 so report.output matches the run; explicit casts' widths stay with #1772.",
+  "issues": [
+    1772,
+    1773
+  ],
+  "prs": [
+    1773
+  ],
+  "amended_by": [
+    "F123"
+  ],
+  "source": "fable-ruling-1773-polars-widths.md",
+  "note": "Ruling number 121; applies ruling 114's rule. No D-number."
+}
