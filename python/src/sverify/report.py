@@ -3,8 +3,8 @@ that carry a report (`VerificationError`, `UnverifiedRunError`,
 `PostconditionError`), and the abstract values the checker established, as
 text (`render_fact`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 
@@ -406,7 +406,8 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run, and no run raises."""
+    """Every postcondition holds on every run of the model, and no run raises. That
+    the model matches an engine rests on tests (`docs/trusted-base.md`)."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
@@ -553,6 +554,8 @@ class Report:
     _bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    """The integer bounds Lean found on each integer output column, lowest
+    and highest (None: unbounded), for hints."""
     rows: int | None = None
     """At most this many output rows, from the inputs' row caps (`max_rows`
     in `requires`, `Rel.maxRows`); None if nothing bounds them."""
@@ -564,8 +567,6 @@ class Report:
     """The profile the report is under (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
     computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
-    """The integer bounds Lean found on each integer output column, lowest
-    and highest (None: unbounded), for hints."""
     internal_plan: str | None = field(default=None, repr=False, compare=False)
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
@@ -658,6 +659,11 @@ class Report:
     not say. A checker without them proves with `sorry` in their place."""
     _sorted: bool | None = field(default=None, repr=False, compare=False)
     """Whether the plan's result comes out of a sort, as the checker reads it."""
+    _sequence_determined: bool = field(default=False, repr=False, compare=False)
+    """Every result the reference allows is its result row by row
+    (`check_sequence_determined_sound`): `_exact`, and the result comes out of
+    a sort whose columns contain a key of its input, so no rows tie. What a
+    `rows="sequence"` observation needs."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
@@ -1628,7 +1634,7 @@ class Report:
         them to the stated preconditions.
 
             report = sv.verify(expr)
-            if not report._proved:
+            if report.needs:
                 report = sv.verify(expr, requires=report.suggested_requires)
         """
         if self._on_inferred != "error":
@@ -2114,6 +2120,7 @@ _REPORT_PRIVATE = [
     "run_gates",
     "asof_checks",
     "asof_max_pairs",
+    "sequence_determined",
 ]
 
 _REPORT_INTERNAL = [

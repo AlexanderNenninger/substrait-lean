@@ -128,14 +128,24 @@ reference:
 
 ## The Python API
 
-The public API is what the [API reference](https://alexandernenninger.github.io/substrait-lean/)
-documents. Modules and names that start with an underscore, the maintainer
-tooling `sverify_dev`, and the printed text of a report (`str(report)`) are
-outside it; tools read the report through its attributes or its JSON.
-Two parts of `sverify.engines` are documented but outside it too, and may
-change in a minor release: the plan layer (`to_sql`, `substrait_json`,
-`written_plan`, `delta_plans`), which takes sverify's
-internal plan, and `Dialect`'s SQL-writing methods and subclasses of it.
+The public API is the names in the `__all__` of nine modules, `sverify`,
+`sverify.io`, `sverify.engines`, `sverify.types`, `sverify.testing`,
+`sverify.errors`, `sverify.cli`, `sverify.odcs` and `sverify.openlineage`,
+and the members without a leading underscore of the classes among them.
+Every type a public name returns, holds or takes is public too, so
+`sverify.types` names the types a report and a refresh hold. The
+[API reference](https://alexandernenninger.github.io/substrait-lean/)
+documents each public name, and `tests/test_public_api.py` holds the
+reference, the `__all__`s and that closure equal. Every other module is
+internal, whether or not its name starts with an underscore, and so are
+the maintainer tooling `sverify_dev` and the printed text of a report
+(`str(report)`); tools read the report through its attributes or its JSON.
+Three parts of `sverify.engines` are documented but outside the promise,
+and may change in a minor release: the plan layer (`to_sql`,
+`substrait_json`, `written_plan`, `delta_plans`), which takes sverify's
+internal plan; `Dialect`'s SQL-writing methods and subclasses of it; and
+the members of `Native`, while the native scans move into the engine
+packages.
 `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
 to a plan's SQL and Substrait.
 

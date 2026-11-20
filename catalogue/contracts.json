@@ -346,6 +346,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "row tested: agg.order's list_null_order (#1484)",
           "row tested: agg.order's nan_order (#1985)",
           "row tested: agg.order's zero_sign (#1985)"
         ],
@@ -379,6 +380,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "row tested: agg.order's list_null_order (#1484)",
           "row tested: agg.order's nan_order (#1985)",
           "row tested: agg.order's zero_sign (#1985)"
         ],
@@ -412,6 +414,7 @@
     "engines": {
       "duckdb": {
         "causes": [
+          "row tested: agg.order's list_null_order (#1484)",
           "row tested: agg.order's nan_order (#1985)",
           "row tested: agg.order's zero_sign (#1985)",
           "row tested: cmp's nan_equality (#1985)",

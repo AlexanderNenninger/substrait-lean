@@ -2390,6 +2390,25 @@
     "ansi=true": "(9223372036854775807, -9223372036854775808, 9223372036854774784)",
     "ansi=false": "(9223372036854775807, -9223372036854775808, 9223372036854774784)"
    }
+  },
+  {
+   "construct": "limb-decimal-sum-overflow",
+   "sql": "SELECT sum(x), typeof(sum(x)) FROM VALUES (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))), (CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))) AS t(x)",
+   "note": "the exact limbs of #1447: a `DECIMAL(38,0)` sum past 38 digits",
+   "observed": {
+    "ansi=true folded": "error NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION: [NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION]  199999999999999999999999999999999999998 cannot be represented as Decimal(38, 0). If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error, and return NULL instead. SQLSTATE: 220",
+    "ansi=true codegen": "error ARITHMETIC_OVERFLOW: [ARITHMETIC_OVERFLOW] Overflow in sum of decimals. Use 'try_sum' to tolerate overflow and return NULL instead. If necessary set \"spark.sql.ansi.enabled\" to \"false\" to bypass this error. SQLSTATE: 22003",
+    "ansi=false": "(NULL, decimal(38,0))"
+   }
+  },
+  {
+   "construct": "limb-double-integer-to-bigint",
+   "sql": "SELECT CAST(x AS BIGINT) FROM VALUES (9007199254740991.0D), (-9007199254740991.0D), (4503599627370497.0D), (1.0D), (-0.0D), (2097151.0D) AS t(x)",
+   "note": "the exact limbs of #1447: a double holding an integer below 2^53 casts exactly",
+   "observed": {
+    "ansi=true": "(9007199254740991); (-9007199254740991); (4503599627370497); (1); (0); (2097151)",
+    "ansi=false": "(9007199254740991); (-9007199254740991); (4503599627370497); (1); (0); (2097151)"
+   }
   }
  ]
 }

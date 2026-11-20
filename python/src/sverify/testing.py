@@ -45,9 +45,12 @@ import math
 import warnings
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, overload
 
 import ibis
+import ibis.expr.operations as ops
+import ibis.expr.types as ir
 import pyarrow as pa
 
 from sverify import counterexample
@@ -72,11 +75,13 @@ from sverify._lean_eval import (  # noqa: F401  (re-exported for the tests)
 )
 from sverify.contracts import (
     Condition,
+    Provenance,
     References,
     TableCondition,
     _lookup,
     condition_query,
     label,
+    leaf_tables,
     resolve,
 )
 from sverify.engine import (
@@ -87,7 +92,9 @@ from sverify.engine import (
     plan_json,
     quote,
     run_plan,
+    written_plan,
 )
+from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import StaticSource, arrow_rows
 from sverify.nodes import Node, _Derived
 
@@ -255,6 +262,71 @@ def _node(node: Any) -> Node:
     return node
 
 
+@dataclass
+class _Target:
+    """What the helpers test, from a node or from an Ibis expression a
+    contracted transform built: its name, the tables it reads with what it
+    assumes about them, its plan, its postconditions, and the proofs it
+    rests on."""
+
+    name: str
+    tables: dict[str, pa.Schema]
+    requires: dict[str, list[Condition]]
+    plan: str
+    ensures: list[Condition]
+    proofs: list[tuple[str, Provenance]]
+    """The contracted transforms it is built from, by the name a failure
+    gives each."""
+
+
+def _target(subject: Any) -> _Target:
+    if isinstance(subject, ir.Table):
+        prov = _lookup(subject.op())
+        if prov is None:
+            raise TypeError(
+                "expected a sverify.Node, or an Ibis table a contracted transform returned "
+                "(`paid(orders)` for `@sv.transform def paid`); this Ibis table has no contract"
+            )
+        tables = {t: plain_schema(sch.to_pyarrow()) for t, sch in leaf_tables(subject).items()}
+        return _Target(
+            prov.transform.name,
+            tables,
+            {t: list(prov.external.get(t, [])) for t in tables},
+            written_plan(to_substrait_json(subject)),
+            list(prov.transform.ensures),
+            # The transforms it is built from, each once, its own among them.
+            [
+                (p.transform.name, p)
+                for op in dict.fromkeys(subject.op().find(ops.Relation))
+                if (p := _lookup(op)) is not None
+            ],
+        )
+    node = _node(subject)
+    provs: list[tuple[str, Provenance]] = []
+    seen: set[int] = set()
+
+    def walk(n: Node) -> None:
+        if id(n) in seen:
+            return
+        seen.add(id(n))
+        for i in n._inputs:
+            walk(i)
+        if isinstance(n, _Derived) and (prov := _lookup(n._expr.op())) is not None:
+            provs.append((n.name, prov))
+
+    walk(node)
+    leaves = node._leaves()
+    query = node._query()
+    return _Target(
+        node.name,
+        {leaf.name: plain_schema(leaf.schema.to_pyarrow()) for leaf in leaves},
+        _requirements(node, leaves),
+        node.internal_plan,
+        list(query.transform.ensures) if isinstance(query, _Derived) else [],
+        provs,
+    )
+
+
 def _requirements(node: Node, leaves: Sequence[Node]) -> dict[str, list[Condition]]:
     """What the node's stage assumes about each table it reads: the
     preconditions on its sources, and what a stored node guarantees."""
@@ -285,19 +357,43 @@ def _norm(v: object) -> object:
     return v
 
 
-def _violating(con: Connection, name: str, cond: Condition) -> list[dict]:
-    """The rows of table `name` where `cond` is not TRUE; for `unique`, every
-    row whose key repeats."""
+def _violations(
+    con: Connection, name: str, conds: Sequence[Condition], rows_of: str | None = None
+) -> list[str]:
+    """For each condition of `conds` table `name` breaks, a line naming it
+    and the rows where it is not TRUE (for `unique`, every row whose key
+    repeats), as `rows_of` names them (default: "row(s) of <name>"). The
+    Ibis conditions are evaluated in one query."""
+    rows_of = rows_of or f"row(s) of {name}"
     rows = con._arrow[name].to_pylist()
-    if isinstance(cond, TableCondition):
-        return cond.violating(rows, _norm, lambda t: con._arrow[t].to_pylist())
-    if isinstance(cond, str):
-        cur = con._ibis.raw_sql(f"SELECT * FROM {quote(name)} WHERE NOT coalesce(({cond}), FALSE)")
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
     t = con.table(name)
-    bad: Any = t.filter(~resolve(cond, t).fill_null(ibis.literal(False)))
-    return bad.to_pyarrow().to_pylist()
+    flags = {
+        f"__sverify_{i}": ~resolve(c, t).fill_null(ibis.literal(False))
+        for i, c in enumerate(conds)
+        if not isinstance(c, TableCondition | str)
+    }
+    flagged: list[dict] = []
+    if flags:
+        q: Any = t.mutate(**flags)
+        flagged = q.filter(ibis.or_(*(q[f] for f in flags))).to_pyarrow().to_pylist()
+    out = []
+    for i, c in enumerate(conds):
+        if isinstance(c, TableCondition):
+            bad = c.violating(rows, _norm, lambda t: con._arrow[t].to_pylist())
+        elif isinstance(c, str):
+            sql = f"SELECT * FROM {quote(name)} WHERE NOT coalesce(({c}), FALSE)"
+            cur = con._ibis.raw_sql(sql)
+            cols = [d[0] for d in cur.description]
+            bad = [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
+        else:
+            bad = [
+                {k: v for k, v in r.items() if k not in flags}
+                for r in flagged
+                if r[f"__sverify_{i}"]
+            ]
+        if bad:
+            out += [f"  {len(bad)} {rows_of} violate {label(c)}:", *_listed(bad)]
+    return out
 
 
 def _listed(rows: Sequence[object], limit: int = 10) -> list[str]:
@@ -307,46 +403,37 @@ def _listed(rows: Sequence[object], limit: int = 10) -> list[str]:
     return lines
 
 
-def _connection(node: Node, data: Mapping[str, Rows]) -> Connection:
-    """A connection holding `data` as the tables the node's stage reads,
-    after checking that they meet what the stage assumes."""
-    leaves = node._leaves()
-    names = [leaf.name for leaf in leaves]
+def _connection(target: _Target, data: Mapping[str, Rows]) -> Connection:
+    """A connection holding `data` as the tables the target reads, after
+    checking that they meet what it assumes."""
+    names = list(target.tables)
     missing = [n for n in names if n not in data]
     unknown = [n for n in data if n not in names]
     if missing or unknown:
         raise ValueError(
-            f"data for {node.name} needs the tables {names}"
+            f"data for {target.name} needs the tables {names}"
             + (f"; missing {missing}" if missing else "")
             + (f"; not read: {unknown}" if unknown else "")
         )
     con = connect()
-    for leaf in leaves:
-        con.put(leaf.name, _arrow(data[leaf.name], plain_schema(leaf.schema.to_pyarrow())))
-    problems = []
-    for t, conds in _requirements(node, leaves).items():
-        for c in conds:
-            if bad := _violating(con, t, c):
-                problems += [f"  {len(bad)} row(s) of {t} violate {label(c)}:", *_listed(bad)]
+    for name, schema in target.tables.items():
+        con.put(name, _arrow(data[name], schema))
+    problems = [line for t, conds in target.requires.items() for line in _violations(con, t, conds)]
     if problems:
         raise AssertionError(
-            f"the test data does not meet what {node.name} requires:\n" + "\n".join(problems)
+            f"the test data does not meet what {target.name} requires:\n" + "\n".join(problems)
         )
     return con
 
 
-def _output(con: Connection, node: Node, engine: str) -> tuple[pa.Table, list[str]]:
-    """The node's output on `engine`, and the postconditions it violates."""
-    out = run_plan(con, node.internal_plan, engine)
-    query = node._query()
-    if not isinstance(query, _Derived):
+def _output(con: Connection, target: _Target, engine: str) -> tuple[pa.Table, list[str]]:
+    """The target's output on `engine`, and the postconditions it violates."""
+    out = run_plan(con, target.plan, engine)
+    if not target.ensures:
         return out, []
     name = "__sverify_output"
     con.put(name, out)
-    problems = []
-    for c in query.transform.ensures:
-        if bad := _violating(con, name, c):
-            problems += [f"  {len(bad)} output row(s) violate {label(c)}:", *_listed(bad)]
+    problems = _violations(con, name, target.ensures, "output row(s)")
     con.drop(name)
     return out, problems
 
@@ -388,18 +475,22 @@ def _diff(got: pa.Table, expected: Rows) -> list[str]:
 
 @overload
 def assert_contract(
-    node: Node, data: None = None, *, expected: None = None, engine: str = "duckdb"
+    node: Node | ir.Table, data: None = None, *, expected: None = None, engine: str = "duckdb"
 ) -> None: ...
 
 
 @overload
 def assert_contract(
-    node: Node, data: Mapping[str, Rows], *, expected: Rows | None = None, engine: str = "duckdb"
+    node: Node | ir.Table,
+    data: Mapping[str, Rows],
+    *,
+    expected: Rows | None = None,
+    engine: str = "duckdb",
 ) -> pa.Table: ...
 
 
 def assert_contract(
-    node: Node,
+    node: Node | ir.Table,
     data: Mapping[str, Rows] | None = None,
     *,
     expected: Rows | None = None,
@@ -423,10 +514,13 @@ def assert_contract(
 
     Args:
         node: A node: a source or node piped into contracted transforms
-            (`source(...).pipe(paid)`).
+            (`source(...).pipe(paid)`); or the Ibis table a contracted
+            transform returned on Ibis tables (`paid(orders)`), whose
+            `data` is the rows of the tables it reads.
         data: The rows of each table the node reads, by name: its sources,
-            and the stored nodes it reads (`Node.write`). Default: none,
-            which only checks the proof.
+            and the stored nodes it reads (`Node.write`). Each is an Arrow
+            table, dicts by column name or tuples in column order. Default:
+            none, which only checks the proof.
         expected: The rows the node should give on `data`: dicts by column
             name, tuples in column order, or an Arrow table.
         engine: Where to run the node: `"duckdb"` (the default),
@@ -441,8 +535,8 @@ def assert_contract(
             from `expected`.
         ValueError: `data` misses a table the node reads, or has one it
             does not read.
-        TypeError: `node` is not a node, or `expected` is given without
-            `data`.
+        TypeError: `node` is neither a node nor an Ibis table a contracted
+            transform returned, or `expected` is given without `data`.
 
     Examples:
         ```python
@@ -467,46 +561,36 @@ def assert_contract(
         ```
     """
     __tracebackhide__ = True
-    node = _node(node)
+    target = _target(node)
     problems = []
-    seen: set[int] = set()
-
-    def walk(n: Node) -> None:
-        if id(n) in seen:
-            return
-        seen.add(id(n))
-        for i in n._inputs:
-            walk(i)
-        prov = _lookup(n._expr.op()) if isinstance(n, _Derived) else None
-        if prov is None:
-            return
+    for name, prov in target.proofs:
         if not prov.report._proved:
             report = "\n".join(f"    {line}" for line in str(prov.report).splitlines())
-            problems.append(f"  {n.name}:\n{report}")
+            problems.append(f"  {name}:\n{report}")
         problems.extend(f"  not proved: {link}" for link in prov.unproved_links)
-
-    walk(node)
     if problems:
-        raise AssertionError(f"the contract of {node.name} is not proved:\n" + "\n".join(problems))
+        raise AssertionError(
+            f"the contract of {target.name} is not proved:\n" + "\n".join(problems)
+        )
     if data is None:
         if expected is not None:
             raise TypeError("assert_contract(expected=...) needs data=")
         return None
-    out, problems = _output(_connection(node, data), node, engine)
+    out, problems = _output(_connection(target, data), target, engine)
     if problems:
         raise AssertionError(
-            f"the output of {node.name} on {engine} violates its proved postconditions "
+            f"the output of {target.name} on {engine} violates its proved postconditions "
             "(please report this as a sverify bug):\n" + "\n".join(problems)
         )
     if expected is not None and (diff := _diff(out, expected)):
         raise AssertionError(
-            f"{node.name} on {engine} does not give the expected rows:\n" + "\n".join(diff)
+            f"{target.name} on {engine} does not give the expected rows:\n" + "\n".join(diff)
         )
     return out
 
 
 def assert_engines_agree(
-    node: Node, data: Mapping[str, Rows], *, engines: Sequence[str] | None = None
+    node: Node | ir.Table, data: Mapping[str, Rows], *, engines: Sequence[str] | None = None
 ) -> pa.Table:
     """Assert that every engine gives the same rows for a node on `data`.
 
@@ -516,7 +600,8 @@ def assert_engines_agree(
     postconditions.
 
     Args:
-        node: A node: a source or node piped into contracted transforms.
+        node: A node, or an Ibis table a contracted transform returned (see
+            `assert_contract`).
         data: The rows of each table the node reads, by name (see
             `assert_contract`).
         engines: The engines to compare. Default: `installed_engines()`.
@@ -541,16 +626,16 @@ def assert_engines_agree(
         ```
     """
     __tracebackhide__ = True
-    node = _node(node)
+    target = _target(node)
     engines = list(engines if engines is not None else installed_engines())
     if len(engines) < 2:
         raise ValueError(f"comparing engines needs at least two, got {engines}")
-    con = _connection(node, data)
+    con = _connection(target, data)
     outputs: dict[str, pa.Table] = {}
     problems = []
     for engine in engines:
         try:
-            outputs[engine], violated = _output(con, node, engine)
+            outputs[engine], violated = _output(con, target, engine)
         except Exception as e:  # noqa: BLE001 - reported with the other engines' results
             problems.append(f"  {engine} failed: {type(e).__name__}: {e}")
             continue
@@ -563,7 +648,7 @@ def assert_engines_agree(
                 problems += [f"  {engine} differs from {first}:", *diff]
     if problems:
         raise AssertionError(
-            f"the engines disagree on {node.name} ({', '.join(engines)}):\n" + "\n".join(problems)
+            f"the engines disagree on {target.name} ({', '.join(engines)}):\n" + "\n".join(problems)
         )
     return outputs[engines[0]]
 

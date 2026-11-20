@@ -56,6 +56,38 @@ An open upstream issue covers these; the case is worth a comment there.
 | [DF-16](bugs/DF-16.json) | DataFusion | [apache/datafusion#26222](https://github.com/apache/datafusion/issues/26222) |
 | [ST-19](bugs/ST-19.json) | Substrait | [substrait-io/substrait-validator#608](https://github.com/substrait-io/substrait-validator/issues/608) |
 
+## Filed and fixed
+
+What was reported upstream and where it stands, with how sverify handles each.
+
+| Entry | Project | Status | Upstream | Fixed in | How sverify handles it |
+|---|---|---|---|---|---|
+| [DD-1](bugs/DD-1.json) | DuckDB | fixed upstream | [duckdb/duckdb#25113](https://github.com/duckdb/duckdb/issues/25113), [duckdb/duckdb#27619](https://github.com/duckdb/duckdb/pull/27619) | 2.0.1 (unreleased; in the 2.0.1 and 2.1.0 nightlies) | sverify raises "non-ASCII text differs between engines" for these on non-ASCII text (#195, `Dialect.ascii_o... |
+| [DD-3](bugs/DD-3.json) | DuckDB | filed | [duckdb/duckdb#28329](https://github.com/duckdb/duckdb/issues/28329), [duckdb/duckdb#28344](https://github.com/duckdb/duckdb/pull/28344) |  | The SQL writer returns NaN when an input is NaN (#54, `Dialect.var_nan`, `Dialect.nan_through`) on every di... |
+| [DD-4](bugs/DD-4.json) | DuckDB | filed | [duckdb/duckdb#25521](https://github.com/duckdb/duckdb/issues/25521), [duckdb/duckdb#27969](https://github.com/duckdb/duckdb/pull/27969) |  | A `Scan` reads each double column through `CASE WHEN isnan(x) THEN 'NaN' ELSE x + 0.0 END`, which DuckDB ke... |
+| [DD-5](bugs/DD-5.json) | DuckDB | filed | [duckdb/duckdb-python#568](https://github.com/duckdb/duckdb-python/issues/568) |  | sverify has no 128-bit integers. |
+| [DD-7](bugs/DD-7.json) | DuckDB | fixed upstream | [duckdb/duckdb#27300](https://github.com/duckdb/duckdb/pull/27300), [duckdb/duckdb#27619](https://github.com/duckdb/duckdb/pull/27619) | 2.0.1 (unreleased; in the 2.0.1 and 2.1.0 nightlies) | No workaround yet: |
+| [SP-1](bugs/SP-1.json) | Spark | filed | https://issues.apache.org/jira/browse/SPARK-45438 |  | The Spark profile (#739) writes `negate` of a `DECIMAL(p,s)` as `-x` up to 34 digits and as `0 - x` past th... |
+| [SP-2](bugs/SP-2.json) | Spark | filed | https://issues.apache.org/jira/browse/SPARK-59859 |  | The reference raises outside 0001-01-01 … 9999-12-31 (`date_range`, #251), so the Spark profile needs a ran... |
+| [SG-1](bugs/SG-1.json) | SQLGlot | fixed upstream | [tobymao/sqlglot#8887](https://github.com/tobymao/sqlglot/issues/8887), [tobymao/sqlglot#8898](https://github.com/tobymao/sqlglot/pull/8898) | 30.30.0 | The lift refuses such names (#252, b387dcd). |
+| [SG-3](bugs/SG-3.json) | SQLGlot | fixed upstream | [tobymao/sqlglot#8541](https://github.com/tobymao/sqlglot/issues/8541), [tobymao/sqlglot#8888](https://github.com/tobymao/sqlglot/issues/8888), [tobymao/sqlglot#8896](https://github.com/tobymao/sqlglot/pull/8896) | 30.30.0 | Obsolete for sverify: |
+| [SG-4](bugs/SG-4.json) | SQLGlot | fixed upstream | [tobymao/sqlglot#8889](https://github.com/tobymao/sqlglot/issues/8889), [tobymao/sqlglot#8892](https://github.com/tobymao/sqlglot/pull/8892) | 30.30.0 | The lift refuses a number with an underscore not between two digits (`_check_numbers`). |
+| [SG-5](bugs/SG-5.json) | SQLGlot | fixed upstream | [tobymao/sqlglot#8890](https://github.com/tobymao/sqlglot/issues/8890), [tobymao/sqlglot#8893](https://github.com/tobymao/sqlglot/pull/8893) | 30.30.0 | The lift refuses `t.*` with `USING` (`_check_using_stars`). |
+| [SG-6](bugs/SG-6.json) | SQLGlot | fixed upstream | [tobymao/sqlglot#8891](https://github.com/tobymao/sqlglot/issues/8891), [tobymao/sqlglot#8897](https://github.com/tobymao/sqlglot/pull/8897) | 30.30.0 | The lift and the replay write it out as `(SELECT * FROM t)` on SQLGlot's own tokens before parsing (`sql_li... |
+| [SG-7](bugs/SG-7.json) | SQLGlot | fixed upstream | [ibis-project/ibis#12124](https://github.com/ibis-project/ibis/issues/12124), [ibis-project/ibis#12104](https://github.com/ibis-project/ibis/pull/12104), [ibis-project/ibis#12101](https://github.com/ibis-project/ibis/issues/12101) | the Ibis release after 12.0.0 (unreleased; on main since f73d329) | sverify requires `sqlglot>=30.8.0,<30.18` (#442, #1485). |
+| [SG-10](bugs/SG-10.json) | SQLGlot | fixed upstream | [tobymao/sqlglot#8840](https://github.com/tobymao/sqlglot/pull/8840) | 30.30.0 | The SQL lift refuses `~` and `!~` between two operands, from the tokens, before parsing (`_check_regex_oper... |
+| [DL-1](bugs/DL-1.json) | delta-rs | filed | [delta-io/delta-rs#4797](https://github.com/delta-io/delta-rs/pull/4797), [delta-io/delta-rs#4978](https://github.com/delta-io/delta-rs/issues/4978), [delta-io/delta-rs#5005](https://github.com/delta-io/delta-rs/pull/5005) |  | Test against moto in another process (`moto_server`). |
+| [DF-1](bugs/DF-1.json) | DataFusion | filed | [apache/datafusion#12956](https://github.com/apache/datafusion/issues/12956), [apache/datafusion#25742](https://github.com/apache/datafusion/pull/25742) |  | Frontend no longer used (#264) |
+| [DF-2](bugs/DF-2.json) | DataFusion | fixed upstream | [apache/datafusion#17716](https://github.com/apache/datafusion/issues/17716), [apache/datafusion#18691](https://github.com/apache/datafusion/pull/18691) | 52.0.0 | Frontend no longer used (#264) |
+| [DF-3](bugs/DF-3.json) | DataFusion | fixed upstream | [apache/datafusion#22661](https://github.com/apache/datafusion/issues/22661), [apache/datafusion#22664](https://github.com/apache/datafusion/pull/22664), [apache/datafusion#24461](https://github.com/apache/datafusion/issues/24461) | 56.0.0 (unreleased) | Frontend no longer used (#264) |
+| [DF-4](bugs/DF-4.json) | DataFusion | filed | [apache/datafusion#27058](https://github.com/apache/datafusion/issues/27058), [apache/datafusion#27073](https://github.com/apache/datafusion/pull/27073) |  | none |
+| [DF-6](bugs/DF-6.json) | DataFusion | fixed upstream | [apache/datafusion#23608](https://github.com/apache/datafusion/issues/23608), [apache/datafusion#23672](https://github.com/apache/datafusion/pull/23672) | 55.0.0 | Frontend no longer used (#264) |
+| [DF-8](bugs/DF-8.json) | DataFusion | filed | [apache/datafusion#25208](https://github.com/apache/datafusion/issues/25208), [apache/datafusion#17910](https://github.com/apache/datafusion/issues/17910), [apache/datafusion#25527](https://github.com/apache/datafusion/pull/25527), [apache/datafusion#23468](https://github.com/apache/datafusion/pull/23468) |  | Grouping sets come through the SQLGlot lift instead (M2) |
+| [DF-9](bugs/DF-9.json) | DataFusion | filed | [apache/datafusion#11545](https://github.com/apache/datafusion/issues/11545) |  | Not needed anymore |
+| [DF-10](bugs/DF-10.json) | DataFusion | filed | [apache/datafusion#27059](https://github.com/apache/datafusion/issues/27059), [apache/datafusion#27072](https://github.com/apache/datafusion/pull/27072) |  | None: |
+| [DF-11](bugs/DF-11.json) | DataFusion | fixed upstream | [apache/datafusion#22049](https://github.com/apache/datafusion/issues/22049), [apache/datafusion#22051](https://github.com/apache/datafusion/pull/22051) | 54.0.0 | None: |
+| [DF-18](bugs/DF-18.json) | DataFusion | fixed upstream | [apache/datafusion#21060](https://github.com/apache/datafusion/issues/21060), [apache/datafusion#21405](https://github.com/apache/datafusion/pull/21405) | 55.0.0 | `translate` is not modelled (`core/Sverify/Core/Text.lean`, #60); |
+
 ## By class and project
 
 | Project | report | filed | fixed | duplicate | not-a-bug | spec-gap | unverified | total |

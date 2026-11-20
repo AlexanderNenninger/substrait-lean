@@ -1314,6 +1314,15 @@ def _writer_probes() -> list[Obs]:
             "SELECT CAST(9.223372036854775807E18D AS BIGINT), CAST(-9.223372036854775808E18D AS BIGINT), "
             "CAST(9.2233720368547748E18D AS BIGINT)",
             note="`float_to_int` checks -2^63 <= x < 2^63 before the cast"),
+        Obs("limb-decimal-sum-overflow",
+            "SELECT sum(x), typeof(sum(x)) FROM VALUES "
+            "(CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))), "
+            "(CAST('99999999999999999999999999999999999999' AS DECIMAL(38,0))) AS t(x)",
+            note="the exact limbs of #1447: a `DECIMAL(38,0)` sum past 38 digits"),
+        Obs("limb-double-integer-to-bigint",
+            "SELECT CAST(x AS BIGINT) FROM VALUES (9007199254740991.0D), (-9007199254740991.0D), "
+            "(4503599627370497.0D), (1.0D), (-0.0D), (2097151.0D) AS t(x)",
+            note="the exact limbs of #1447: a double holding an integer below 2^53 casts exactly"),
     ]  # fmt: skip
 
 
