@@ -71,7 +71,23 @@ def isValuesKey (t : String) : Bool := t.startsWith "$values "
 its expressions, where they say more than `Expr.kind`: the model has a
 timestamp, a double's `0.0` and a typed `NULL` as plain values (#96). Its
 `baseSchema` has one type per expression, `{}` where `Expr.kind` holds. -/
-def projectKey (es : List Expr) : String := s!"$project {reprStr es}"
+def projectKey (es : List Expr) : String :=
+  s!"$project {es.length}:" ++ String.join (es.map exprKey)
+where
+  /-- An expression as a string, as `valueKey` writes a value: a tag, a
+  function by its `reprStr` with its length first, and the operands' keys.
+  `reprStr` of the expression printed every double's code in decimal and
+  pretty-printed the tree, and the writer and the parser look a projection
+  up at every node above it: most of a nested double expression's check
+  (#1952). -/
+  exprKey : Expr → String
+    | .lit v => "l" ++ valueKey v
+    | .field i => s!"c{i};"
+    | .un f a => "u" ++ fnKey (reprStr f) ++ exprKey a
+    | .bin f a b => "b" ++ fnKey (reprStr f) ++ exprKey a ++ exprKey b
+    | .ifThen c t e => "i" ++ exprKey c ++ exprKey t ++ exprKey e
+    | .hof f l b => "h" ++ fnKey (reprStr f) ++ exprKey l ++ exprKey b
+  fnKey (s : String) : String := s!"{s.length}:{s}"
 
 /-- An entry of `Tables` that is not a named table. -/
 def isInternalKey (t : String) : Bool := t.startsWith "$"
@@ -188,16 +204,6 @@ partial def typeKind (ty : Json) : Kind :=
 
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
-
-/-- A decimal of scale 0 and at least 19 digits holds every 64-bit integer
-exactly, and adding, subtracting or multiplying such decimals is exact, so the
-model keeps their values as integers. DataFusion casts to `DECIMAL(20, 0)` to
-mix signed and unsigned integers (`ROW_NUMBER() - 1`). -/
-def wideIntDecimal (ty : Json) : Bool :=
-  match (ty.getObjVal? "decimal").toOption with
-  | some d => (d.getObjValAs? Nat "scale").toOption.getD 0 == 0 &&
-      19 ≤ (d.getObjValAs? Nat "precision").toOption.getD 0
-  | none => false
 
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -637,10 +643,6 @@ def declaredNarrow (j : Json) (e : Expr) : Expr :=
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
-  if wideIntDecimal ty then
-    match c with
-    | .int i | .dec i _ 0 => return .int i
-    | _ => throw "cannot cast this value to an integer decimal"
   match typeKind ty with
   | .float =>
     let some f := c.toFloat? | throw "cannot cast this value to a double"
@@ -2011,7 +2013,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if hasFloat then
         throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
       if let some e ← decimalCall cols (baseName name) outTy parsed then return e
-    else if (out matches .dec _ _) && !wideIntDecimal outTy then
+    else if out matches .dec _ _ then
       throw s!"{name}: a DECIMAL result of non-decimal arguments is not supported"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
@@ -2135,7 +2137,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if k == .timeTz && target == .timeTz then return e
     if k == .timeTz || target == .timeTz then
       throw (instantRefusal "a cast to or from a timestamp with a time zone, but at UTC to a timestamp,")
-    if k == .int && wideIntDecimal (← field c "type") then return e
     -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
     -- checking the precision. To a smaller scale rounds half away from zero;
     -- to an integer truncates toward zero.
@@ -2169,6 +2170,26 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if (ty.getObjVal? "fp32").toOption.isSome then
       if k == .float && argBits bits input e == 32 then return e
       throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
+    -- A boolean is 1 or 0, and NULL stays NULL (#1911); a narrower integer
+    -- keeps its width through a `narrow` mark, as a projected constant does.
+    if k == .bool && (target == .int || target == .float) then
+      let bit (v : Int) : Expr := .lit (if target == .float then .float (FloatCode.ofInt v) else .int v)
+      let b := Expr.ifThen e (bit 1) (.ifThen (.un .not e) (bit 0) (.lit .null))
+      let n := intBits ty
+      return if target == .int && n < 64 then .un (.narrow n) b else b
+    -- A list casts element by element (#1919): `transform(l, x -> CAST(x AS t))`.
+    if let .list ek := k then
+      if target != k then
+        if let some et := ((ty.getObjVal? "list").toOption).bind (·.getObjVal? "type" |>.toOption) then
+          let x := Json.mkObj [("selection", Json.mkObj [("rootReference", Json.mkObj []),
+            ("directReference", Json.mkObj [("structField", Json.mkObj [("field", (0 : Int))])])])]
+          let body ← parseExpr fns (ek :: cols) (64 :: bits)
+            (Json.mkObj [("cast", (c.setObjVal! "type" et).setObjVal! "input" x)])
+          return .hof .transform e body
+    -- A struct casts field by field, which needs a struct the core cannot build
+    -- (ruling 186: refused by design for 1.0, D66 reserved).
+    if k matches .struct _ then
+      throw "casts of structs are not supported: sverify cannot build a struct (D66); cast its fields"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
