@@ -812,9 +812,8 @@ given wins over the variable, and the variable over the default.
 | `SVERIFY_SECRETS` | | `Resolver.from_config(path)` | the nearest `pyproject.toml` | the TOML file whose `[tool.sverify.secrets]` table configures named secrets ([Credentials](#credentials)) |
 | `SVERIFY_PREBUILT_CHECKER` | | | | for contributors: an editable install links this checker and skips `lake build` |
 
-`SVERIFY_CHECK`, `SVERIFY_PREBUILT_CHECK` and `SVERIFY_SPILL_DIRECTORY`,
-their names in 0.6, are read too, the first and last with a
-`DeprecationWarning`.
+`SVERIFY_CHECK` and `SVERIFY_SPILL_DIRECTORY`, their names in 0.6, are read
+too, with a `DeprecationWarning`.
 
 ### Composing contracts
 

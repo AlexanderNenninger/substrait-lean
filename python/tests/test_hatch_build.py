@@ -41,7 +41,7 @@ def test_the_others_get_a_message_naming_the_way_out(hook, plat, machine):
 def _initialize(hook, monkeypatch, version, plat, machine, env=None):
     monkeypatch.setattr(sys, "platform", plat)
     monkeypatch.setattr(hook.platform, "machine", lambda: machine)
-    for k in ("SVERIFY_BUILD_FROM_SOURCE", "SVERIFY_PREBUILT_CHECKER", "SVERIFY_PREBUILT_CHECK"):
+    for k in ("SVERIFY_BUILD_FROM_SOURCE", "SVERIFY_PREBUILT_CHECKER"):
         monkeypatch.delenv(k, raising=False)
     if env:
         monkeypatch.setenv(*env)

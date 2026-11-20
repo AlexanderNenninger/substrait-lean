@@ -26,7 +26,6 @@ import math
 import os
 import time
 import uuid
-import warnings
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import timedelta
 from decimal import Decimal
@@ -1041,7 +1040,6 @@ class DeltaSink(_TableSink[DeltaTable]):
         self,
         *,
         vacuum_retention: Duration | None = None,
-        vacuum: timedelta | None = None,
     ) -> dict[str, object]:
         """Compact the table's small files, and with `vacuum_retention`,
         remove the files no version newer than that needs. The commits record the
@@ -1054,20 +1052,12 @@ class DeltaSink(_TableSink[DeltaTable]):
                 constructor's `vacuum_retention`. Nodes reading the stored
                 node from an older version read the whole table. Default:
                 None, no vacuum.
-            vacuum: Deprecated name of `vacuum_retention`.
 
         Returns:
             delta-rs's metrics of the compaction (`"optimize"`) and the
             files the vacuum removed (`"vacuumed"`); empty if the table does
             not exist.
         """
-        if vacuum is not None:
-            warnings.warn(
-                "DeltaSink.maintain(vacuum=...) is deprecated; write vacuum_retention=...",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            vacuum_retention = vacuum
         retention = None if vacuum_retention is None else duration(vacuum_retention)
         dt = self._table()
         if dt is None:
