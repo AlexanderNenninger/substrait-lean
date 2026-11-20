@@ -845,7 +845,10 @@ class _Stage:
         while view_name in taken:
             n += 1
             view_name = f"{name}_{n}"
-        view = pipe.view(view_name, bound, resume=resume)
+        # The view runs on the node's engine from its first state, so its state
+        # is kept in that engine's store (#1881): Spark is no local engine, so
+        # `con` is DuckDB's.
+        view = pipe.view(view_name, bound, resume=resume, engine=engine)
         report = node.report
         view.tie_free = report is not None and report._proved and report._exact
         prunable = {t for t, src in pipe.sources.items() if isinstance(src, _TableSource)}
