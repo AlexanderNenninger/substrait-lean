@@ -3,6 +3,7 @@ whatever its value (#1934): `ibis.literal(0, "int64")` starts a 64-bit column, s
 later arithmetic on it is checked at 64 bits, and an `int8` literal still starts
 an 8-bit one."""
 
+import duckdb
 import ibis
 import pyarrow as pa
 import pytest
@@ -44,7 +45,21 @@ def test_a_literal_column_keeps_its_declared_width(engine, ty):
     assert run(report, engine) == [300, 0]
 
 
-def test_a_narrow_literal_column_keeps_its_narrow_width():
-    # 3 * 100 leaves 8 bits: an `int8` column overflows where the plan says it does.
-    assert "overflow" in [i.kind for i in sv.verify(accumulated("int8", 100)).issues]
-    assert sv.verify(accumulated("int8", 10)).issues == []
+@pytest.mark.parametrize(
+    ("ty", "big", "small"),
+    [("TINYINT", 100, 10), ("SMALLINT", 1000, 100), ("INTEGER", 100000, 1000)],
+)
+def test_a_narrow_literal_column_keeps_its_narrow_width(ty, big, small):
+    """Ibis widens `int8 + int8` to int16, so the narrow case is SQL: DuckDB
+    multiplies two TINYINTs as a TINYINT and raises past 127."""
+
+    def sql(v):
+        return f"SELECT e * e AS y FROM (SELECT CAST({v} AS {ty}) AS e FROM t)"
+
+    with pytest.raises(duckdb.Error, match="Overflow|out of range"):
+        con = duckdb.connect()
+        con.execute("CREATE TABLE t AS SELECT 1.0::DOUBLE AS x")
+        con.execute(sql(big)).fetchall()
+    tables = {"t": {"x": "float64"}}
+    assert "overflow" in [i.kind for i in sv.verify(sql(big), tables=tables).issues]
+    assert sv.verify(sql(small), tables=tables).issues == []
