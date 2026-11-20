@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-no-quadratic-algorithms",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "No quadratic algorithms run anywhere a data library processes user data.",
+  "source": "memory:no-python-in-engine-paths.md"
+}

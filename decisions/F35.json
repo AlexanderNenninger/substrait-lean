@@ -1,0 +1,13 @@
+{
+  "id": "F35",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1575: Rel.orderAllowed_window's restated form is accepted with no corollary, and winFact_sound and winFacts_sound are generalised; Seam.lean's header names the new form.",
+  "prs": [
+    1575
+  ],
+  "source": "fable-rulings-night-1117.md, entry 35",
+  "note": "File ruling-1575-orderallowed-window.md."
+}

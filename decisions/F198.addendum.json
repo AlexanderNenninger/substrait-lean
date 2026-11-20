@@ -1,0 +1,17 @@
+{
+  "id": "F198.addendum",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "After the list_contains value-side drift at DuckDB 2.0.1: D70's fourth paragraph amended so a version-agnostic lowering comes first; K2 amended to rely on the full engine suite; list_contains gets a DuckDB shim, reference unchanged.",
+  "issues": [
+    2045
+  ],
+  "amends": [
+    "D70",
+    "F198"
+  ],
+  "source": "fable-ruling-198-engine-versions.md",
+  "note": "'D70's fourth paragraph is amended above (one text, edited in place)'; 'K2 amended'. Narrowing the fact to 2.0.0 rejected."
+}

@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-02-explicit-overflow-bounds",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "superseded",
+  "summary": "For now contracts must state the bounds integer overflow needs explicitly; inferring them automatically is later work.",
+  "issues": [
+    202,
+    244
+  ],
+  "superseded_by": [
+    "D23"
+  ],
+  "source": "github:#244 body",
+  "note": "Inferred preconditions (#580, #665) took over this role."
+}

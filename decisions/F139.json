@@ -1,0 +1,18 @@
+{
+  "id": "F139",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1285: `Rel.DeterminedUpTo` is centred on `r.eval`; no `Report.verified`, `Report.deterministic` means determined up to the observation; `strings=ascii` level defined by Unicode compatibility caseless key (3a now); 3b reserved D60; times default stays exact.",
+  "issues": [
+    1285,
+    1288
+  ],
+  "amended_by": [
+    "F144",
+    "F149"
+  ],
+  "source": "fable-ruling-139-1285-verified-strings.md",
+  "note": "Reserves D60 for 3b. Amended by ruling 149: section 1b's sentence on lifting from OrderAllowed (no `Rel.FloatOpenSafe` hypothesis for the two checker theorems). One question (order lens as requirement) goes to the user; times default is the user's."
+}

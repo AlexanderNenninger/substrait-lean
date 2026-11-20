@@ -1,0 +1,16 @@
+{
+  "id": "F157",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1818's log measurements are accepted with ruling 132's constants; Polars's fp.div precondition is text only and two wrong proved bounds on main (subnormal literal divisor, non-literal constant divisor) are a separate bug, F1 to F5.",
+  "issues": [
+    444
+  ],
+  "prs": [
+    1818
+  ],
+  "source": "fable-ruling-157-1818-logs-fpdiv.md",
+  "note": "Follow-up to ruling 132. Keeps #444's decision against an exact-IEEE division shim. No D-number."
+}

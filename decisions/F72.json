@@ -1,0 +1,16 @@
+{
+  "id": "F72",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The plan digest hashes a record (a tuple, not a counter, not named 'epoch') of changes that make an unchanged plan compute another result; each decision above D49 states its kind in docs/decisions.md, checked by a test. No D-number.",
+  "issues": [
+    1485
+  ],
+  "prs": [
+    1667
+  ],
+  "source": "fable-ruling-1667-digest-meaning.md",
+  "note": "Decisions that only open a choice do not enter the record."
+}

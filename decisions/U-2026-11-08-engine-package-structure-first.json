@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-08-engine-package-structure-first",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Each engine is one directory with its Lean package, Python distribution, facts and tests, entering through the plugin interface; feature work pauses until the structure exists, wrong-answer bugs excepted.",
+  "issues": [
+    1189
+  ],
+  "amended_by": [
+    "U-2026-11-15-structure-freeze-ends"
+  ],
+  "source": "github:#1189 comment 6724900039; #1189 body",
+  "note": "The freeze part ended 2026-11-15; the package structure stands."
+}
