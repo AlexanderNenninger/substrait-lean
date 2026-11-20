@@ -1,4 +1,5 @@
 import Sverify.Polars.Engine
+import Sverify.Polars.OpenSums
 import Sverify.Polars.Profile
 import Sverify.Polars.Shims
 import Sverify.Polars.Tables
