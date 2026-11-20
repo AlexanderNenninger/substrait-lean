@@ -321,8 +321,9 @@ class Issue:
     column)."""
     error: bool
     """True if a proof must rule it out. Every issue is one; a "SUM overflow"
-    or an "overflow to infinity" is also checked while the job runs, where
-    the transformation's SQL raises too."""
+    or an "overflow to infinity" is also checked on the data before the job
+    runs, by a plan whose result is the verdict (`Report._check_assumed`),
+    and the transformation's SQL raises too where an engine evaluates it."""
     hint: str | None = None
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
@@ -509,6 +510,12 @@ class Report:
     rewrite), or None where the plan to run is the rewrite."""
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`: the marks of its expressions."""
+    _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
+    """The check of the assumed issues (#2018, ruling 195): a plan of one row
+    whose columns say where an issue of `assumed` occurs on the data, on the
+    plan as written (`assumedCheck`, `Sverify/Analysis/AssumedCheck.lean`),
+    and the issue each column checks, by the checker's kind and expression.
+    None without assumed issues."""
     _run_gates: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
     """Per engine (or `"to_sql"`), why its last run took the plan as written
     where the checker gave a rewrite (`_run_gate` is None): `"route"` (a route
@@ -975,28 +982,23 @@ class Report:
         self,
         con: Connection,
         engine: str | None = None,
-        *,
-        assumed_checked: bool = False,
-        _plan: str | None = None,
     ) -> None:
         """Check the tables of `con` against the schema the plan was verified
         for (`_check_schema`), the preconditions (`requires`, the inferred
-        bounds among them) and the `SUM`s assumed to fit (`assumed`), before
-        anything runs: a batch that breaks one is refused before the run, with
-        the schema difference or the precondition as the message.
+        bounds among them) and the issues assumed not to occur (`assumed`),
+        before anything runs: a batch that breaks one is refused before the
+        run, with the schema difference or the precondition as the message.
 
         With an `engine`, each table's conditions run there, as one plan the
         checker wrote (`condition_query`): a result that is not TRUE, or a
         plan that raises, is a violation, and a condition the engine's writer
         refuses refuses the check. Without one, Ibis counts on the table's own
-        backend.
+        backend. The assumed issues are checked by a plan of their own
+        (`_check_assumed`), on `engine` or the connection's.
 
         Args:
             con: The connection holding the tables.
             engine: The engine to check the conditions on.
-            assumed_checked: The run's engine checks the assumed issues as it
-                runs its translation (`ProfilePlugin.checks_assumed`), so they
-                are not run once more here on DuckDB.
 
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
@@ -1020,20 +1022,44 @@ class Report:
                         condition=c,
                         rows=violating_rows(table, c),
                     )
-        if self.assumed and self.internal_plan is not None and not assumed_checked:
-            # On the plan that runs (`_plan`, #1787); the plan as written for
-            # a caller outside `run`.
-            self._check_assumed(con, _plan or written_plan(self.internal_plan))
+        if self.assumed:
+            self._check_assumed(con, engine if engine is not None else con.engine)
 
-    def _check_assumed(self, con: Connection, plan: str) -> None:
-        """Check the assumptions on `plan` before an engine whose translation
-        does not check them as it runs (a route or an engine without
-        `checks_assumed`): the proved DuckDB translation checks a SUM as it
-        adds up, an operation on finite doubles as it gives its result (#575)."""
+    def _check_assumed(self, con: Connection, engine: str) -> None:
+        """Check the assumed issues on the data, on `engine` (#2018, ruling
+        195): the checker's plan (`_assumed_check`) returns one row, one
+        column per place in the plan as written where an issue may occur, `1`
+        where it occurs on some row that place evaluates. Its verdict is a
+        value in the result, which every engine computes: a guard inside the
+        plan that runs is a side effect an engine skips where it needs no
+        value (a column nothing reads, a filter or limit pushed below it, a
+        join to an empty input). Those guards stay, for data that changes
+        between the check and the run.
+
+        Raises:
+            PreconditionError: An assumed issue occurs on the data, or the
+                check raises with an assumed issue's message.
+        """
+        if self._assumed_check is None:
+            labels = ", ".join(_assumption(i) for i in self.assumed)
+            raise PreconditionError(
+                f"no check of the assumed precondition(s) {labels} for this report: "
+                "refused before the run"
+            )
+        plan, issues = self._assumed_check
         try:
-            run_plan(con, plan, "duckdb")
+            out = run_plan(con, json.dumps(plan), engine)
         except Exception as e:
             raise self._broken_assumption(e) or e from None
+        row = list(out.to_pylist()[0].values()) if out.num_rows else []
+        if any(row):
+            found = {issues[j] for j, v in enumerate(row) if v}
+            # An issue the report shows folded with others names them all.
+            broken = [i for i in self.assumed if (i.kind, i.expr) in found] or self.assumed
+            labels = ", ".join(dict.fromkeys(_assumption(i) for i in broken))
+            raise PreconditionError(
+                f"the batch breaks an assumed precondition, {labels}: refused before the run"
+            )
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
         """Refuse a table that differs from the schema the plan was verified
@@ -1229,12 +1255,6 @@ class Report:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
-        # The engine's translation of the plan checks each assumption as it
-        # runs (`ProfilePlugin.checks_assumed`).
-        run_on = profiles.find(chosen.engine) if chosen is not None else None
-        assumed_checked = (
-            check_requires and run_on is not None and run_on.checks_assumed and kind == "translated"
-        )
         # The plan this run runs, decided once: the checks below and the run
         # read the same one.
         run_engine = chosen.engine if chosen is not None else str(target)
@@ -1255,7 +1275,7 @@ class Report:
                     + ", ".join(unchecked)
                     + " of this report: refused before the run (check_requires=False skips them)"
                 )
-            self.check_inputs(con, target, assumed_checked=assumed_checked, _plan=plan)
+            self.check_inputs(con, target)
         else:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
@@ -1285,9 +1305,8 @@ class Report:
 
         def recheck(written: str) -> None:
             """The run's checks of the plan it runs, again for the plan as
-            written after a writer refused the rewrite."""
-            if check_requires and self.assumed and not assumed_checked:
-                self._check_assumed(con, written)
+            written after a writer refused the rewrite (the assumed issues are
+            checked on the plan as written already)."""
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
@@ -1321,9 +1340,9 @@ class Report:
                     recheck,
                 )
         except Exception as e:
-            # The translation's own checks of the assumptions, which `check_inputs`
-            # did not run first, refuse the batch as that run would have.
-            if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
+            # The translation's own checks of the assumptions, a defence for
+            # data that changed since `_check_assumed`, refuse the batch too.
+            if check_requires and (refusal := self._broken_assumption(e)) is not None:
                 raise refusal from e
             raise
         out = self._declared_widths(out)
@@ -2081,6 +2100,7 @@ class Report:
 
 #: Private fields that never had a public name: no deprecated alias.
 _REPORT_PRIVATE = [
+    "assumed_check",
     "table_params",
     "run_plan",
     "run_gate",

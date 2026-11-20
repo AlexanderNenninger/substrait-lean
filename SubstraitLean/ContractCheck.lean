@@ -1,5 +1,6 @@
 import Sverify.Analysis.Contracts
 import Sverify.Analysis.Safety
+import Sverify.Analysis.AssumedCheck
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
 import Sverify.Core.Check
@@ -1044,6 +1045,24 @@ def optimizedJson (K : KnowledgeEnv) : Json × List String :=
   match R.transform, R.optimizedIn K with
   | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log.map (·.name))
   | _, _ => (.null, [])
+
+/-- The report's `assumed_check` (#2018, ruling 195): the plan whose one row
+checks the assumed issues on the plan as written (`assumedCheck`), in the
+writer's JSON, and for each of its columns the index in the report's `issues`
+of the issue it checks. Null where the report has no assumed issue. -/
+def assumedCheckJson (K : KnowledgeEnv) : Json :=
+  let issues := R.issuesIn K
+  match R.transform with
+  | some p =>
+    if issues.any (·.1.assumed) then
+      match assumedCheck R.cat p.root issues with
+      | some (q, cols) => Json.mkObj [
+          ("plan", Write.writePlan (Write.planSchemas p) R.cat q
+            ((List.range cols.length).map (s!"c{·}"))),
+          ("issues", Lean.toJson cols)]
+      | none => .null
+    else .null
+  | none => .null
 
 end Request
 

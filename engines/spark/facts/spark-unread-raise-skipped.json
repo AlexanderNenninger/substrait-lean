@@ -1,0 +1,61 @@
+{
+  "id": "spark-unread-raise-skipped",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "An expression the result does not need is not evaluated, and its error does not raise",
+  "area": "execution",
+  "layer": "semantics",
+  "settings": {},
+  "description": [
+    "A projection `g = CASE WHEN b = 0 THEN `raise_error()` ELSE b END` over a table with one row where `b = 0` raises only where the query needs `g` on that row. It returns rows without raising where the column is not read, where a filter above it drops the row (pushed below the projection), where it is joined to an empty input, and under `count(*)`; it raises where the output reads `g` on every row. Under a `LIMIT` it raises only where the rows the limit keeps include that row.",
+    "So a guard inside a plan is a side effect the engine may never take: it evaluates lazily, where the reference evaluates every expression of a projection on every row of its input (`Rel.HasIssue`, `Rel.Raises`). A table built from `VALUES` is a local relation, which Spark's optimizer evaluates while it plans (`ConvertToLocalRelation`), so there it raises in every shape: the probe reads a `range`."
+  ],
+  "reference": [
+    "The reference raises wherever the plan as written evaluates an operation that raises, whatever sits above it: a project raises when any expression raises on any row of its input. A report's assumed issues (an integer `SUM` that leaves 64 bits, an operation on finite doubles that gives `±∞`) are preconditions the run checks on the data.",
+    "Workaround (#2018, ruling 195): `Report._check_assumed` runs a check plan of its own (`assumedCheck`, `analysis/Sverify/Analysis/AssumedCheck.lean`), one row whose values are the verdicts, aggregates without groups at the root, which every engine computes. The in-plan guards stay as a defence."
+  ],
+  "status": "workaround",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "optimizer session, #2018 (the five shapes of ruling 195, default settings)",
+      "evidence": [
+        {
+          "sql": "SELECT a FROM (SELECT a, CASE WHEN b = 0 THEN CAST(raise_error('boom') AS BIGINT) ELSE b END AS g FROM t) AS q",
+          "observed": "2 row(s), no error",
+          "note": "unused-column"
+        },
+        {
+          "sql": "SELECT a, g FROM (SELECT a, CASE WHEN b = 0 THEN CAST(raise_error('boom') AS BIGINT) ELSE b END AS g FROM t) AS q WHERE a > 0",
+          "observed": "1 row(s), no error",
+          "note": "filter-above"
+        },
+        {
+          "sql": "SELECT a, g FROM (SELECT * FROM (SELECT a, CASE WHEN b = 0 THEN CAST(raise_error('boom') AS BIGINT) ELSE b END AS g FROM t) AS q ORDER BY a DESC) AS r LIMIT 1",
+          "observed": "raises: [USER_RAISED_EXCEPTION] boom SQLSTATE: P0001",
+          "note": "limit-above"
+        },
+        {
+          "sql": "SELECT x.a, x.g FROM (SELECT a, CASE WHEN b = 0 THEN CAST(raise_error('boom') AS BIGINT) ELSE b END AS g FROM t) AS x JOIN (SELECT a FROM t WHERE a > 100) AS e ON x.a = e.a",
+          "observed": "0 row(s), no error",
+          "note": "empty-join"
+        },
+        {
+          "sql": "SELECT count(*) AS n FROM (SELECT a, CASE WHEN b = 0 THEN CAST(raise_error('boom') AS BIGINT) ELSE b END AS g FROM t) AS q",
+          "observed": "1 row(s), no error",
+          "note": "count-above"
+        },
+        {
+          "sql": "SELECT a, g FROM (SELECT a, CASE WHEN b = 0 THEN CAST(raise_error('boom') AS BIGINT) ELSE b END AS g FROM t) AS q",
+          "observed": "raises: [USER_RAISED_EXCEPTION] boom SQLSTATE: P0001",
+          "note": "all-read"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2018
+  ]
+}
