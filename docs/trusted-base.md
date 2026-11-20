@@ -272,8 +272,10 @@ place, and what retires it.
      is open (`Rel.closedB`), `Rel.floatOpenSafeP_of_noDouble` discharges it
      where the table, with the reference's choices at the options only
      doubles read (`floatOnlyOptions`), transfers (`transferB`); the run
-     plan's `near` gate checks both at each built-in engine (ruling 154). It
-     stays open for plans with a double, and for plans without one that read
+     plan's `near` gate checks both at each built-in engine (ruling 154).
+     The rows are taken to have the request's kinds (`Catalog.HasKinds`),
+     which the gate reads as `Request.tableKinds` and does not check of the
+     data, and a plugin's table stays open. It stays open for plans with a double, and for plans without one that read
      an option where the table leaves the reference outside that list (an
      integer `MIN`, `MAX` or `AVG` at every built-in engine, through
      `list_null_order` and `avg_int_result`).

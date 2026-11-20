@@ -429,7 +429,7 @@ def tableKinds (t : String) : List Kind := match R.tables.lookup t with
 
 /-- Is `x` a plan `Rel.floatOpenSafeP_of_noDouble` covers at every built-in
 engine: no double, no open measure, and the transfer to the reference past
-the options only doubles read? -/
+the options only doubles read? The data is taken to have `tableKinds`. -/
 def nearProved (x : Rel) : Bool :=
   !x.mayDouble R.cat R.tableKinds && x.closedB &&
     builtinEngines.all fun e => transferB x Profile.reference.table (e.table.refAt floatOnlyOptions)
