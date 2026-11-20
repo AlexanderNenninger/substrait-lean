@@ -189,7 +189,8 @@ by a route that the checker justifies against it
 | Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | for plans without guards | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
-The theorems are named in [engine-profiles.md](engine-profiles.md#engines).
+The theorems are named in [engine-profiles.md](engine-profiles.md#engines). The two conditions come from the same check: a plan with no guards
+meets both.
 `sverify.engines.ENGINES` names the engines in the promise that run plans
 on a `Connection`'s tables. The engine
 versions each profile describes, the class of every option on each engine

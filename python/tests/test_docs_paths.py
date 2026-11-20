@@ -85,7 +85,7 @@ _KEEP_LEAN_NAMES = {
     "realizability", "coverage-targets", "layers", "teaching", "build-performance",
     "how-this-is-built",
 }  # fmt: skip
-_LEAN_NAME = re.compile(r"\b(Rel|Profile|Engine|Expr)\.(?!lean)[a-z]|_sound\b")
+_LEAN_NAME = re.compile(r"\b(Rel|Profile|Engine|Expr)\.(?!lean)[A-Za-z]|_sound\b")
 
 
 @pytest.mark.parametrize(
