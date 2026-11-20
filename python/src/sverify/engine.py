@@ -1,7 +1,7 @@
 """Substrait producers, and DuckDB or Polars as consumer.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `connect()` gives a `Connection`: named Arrow tables, the engine that runs
 plans over them (DuckDB by default), and Ibis tables bound to them
@@ -17,7 +17,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import warnings
-from collections.abc import Iterable, Iterator, Mapping, MutableMapping
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -304,11 +304,13 @@ class Connection:
         """
         self.drop(name)
         if isinstance(table, Native):
+            _refuse_coarse_timestamps(table.schema)
             if isinstance(table, Scan):
                 table = replace(table, schema=plain_schema(table.schema))
         else:
             _check_times(table.schema)
             _check_calendar(table)
+            table = _widen_timestamps(table)
         if isinstance(table, Native) and self._duck is None:
             if _importable("duckdb"):
                 self._ibis  # noqa: B018 - the rows are checked over a DuckDB view
@@ -628,6 +630,7 @@ def run_plan(
     keep: Literal[False] = False,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table: ...
 
 
@@ -640,6 +643,7 @@ def run_plan(
     keep: bool,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table | Resident: ...
 
 
@@ -651,6 +655,7 @@ def run_plan(
     keep: bool = False,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. `"spark"` runs it
@@ -680,6 +685,10 @@ def run_plan(
             they run with the sort keys alone (`to_sql`'s `deterministic`).
             Default: False; `Report.run` and a stored node's refresh pass
             the report's fact.
+        asof: The plan's as-of join sites, as the checker reports them
+            (`asof_checks`): on DuckDB, the plan's as-of joins run as its
+            ASOF JOIN where the writer can (`to_sql`'s `asof`). Other
+            engines are not given any. Default: none.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -727,7 +736,10 @@ def run_plan(
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
-    out = plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
+    extra = {"asof": asof} if asof else {}
+    out = plugin.runner(
+        con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
+    )
     return instants_in_utc(out) if isinstance(out, pa.Table) else out
 
 
@@ -808,6 +820,36 @@ def _calendar_error(column: str, what: str, count: int, example: str) -> Excepti
         f"{column} holds {what} outside 0001–9999 ({count}, e.g. {example}); the reference's "
         "calendar covers 0001–9999. Filter them, or read the column as text."
     )
+
+
+def _refuse_coarse_timestamps(schema: pa.Schema) -> None:
+    """Refuse a table DuckDB reads where it is with a second or millisecond
+    timestamp column: only an Arrow table is widened to microseconds at the
+    read (`_widen_timestamps`), and an engine that meets the two units in one
+    comparison or join truncates the finer side (`polars-ts-units-compare-coarse`).
+    The scan's projection will widen them (#323)."""
+    from sverify.plan_json import Unsupported
+
+    for f in schema:
+        if pa.types.is_timestamp(f.type) and f.type.unit in ("s", "ms"):
+            raise Unsupported(
+                f"{f.name} is a timestamp in {'seconds' if f.type.unit == 's' else 'milliseconds'} "
+                "in a table the engine reads where it is; sverify reads these as microseconds "
+                "only from an Arrow table so far (#323): cast the column to microseconds"
+            )
+
+
+def _widen_timestamps(table: pa.Table) -> pa.Table:
+    """Read the second and millisecond timestamp columns as microseconds (D61):
+    exact, since `_check_calendar` holds every value in 0001–9999. No engine
+    then sees two units in one operation."""
+    fields = [
+        pa.field(f.name, pa.timestamp("us", tz=f.type.tz), f.nullable, f.metadata)
+        if pa.types.is_timestamp(f.type) and f.type.unit in ("s", "ms")
+        else f
+        for f in table.schema
+    ]
+    return table.cast(pa.schema(fields)) if fields != list(table.schema) else table
 
 
 def _check_calendar(table: pa.Table) -> None:

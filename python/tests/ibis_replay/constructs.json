@@ -1,0 +1,189 @@
+{
+  "description": "What each construct the Ibis replay meets waits on: an issue, or the reason sverify refuses it by design. sverify_dev.ibis_replay reads it; a refusal that names an issue itself (#n) needs no entry.",
+  "constructs": [
+    {
+      "match": "float32 is not supported",
+      "issue": 1908
+    },
+    {
+      "match": "literal of type float32",
+      "issue": 1908
+    },
+    {
+      "match": "relations without columns have no SQL form",
+      "issue": 1916
+    },
+    {
+      "match": "mode() of an expression",
+      "issue": 1909
+    },
+    {
+      "match": "quantile() of several fractions",
+      "issue": 1910
+    },
+    {
+      "match": "first/last with where or order_by",
+      "issue": 1913
+    },
+    {
+      "match": "group_concat needs a constant separator",
+      "issue": 1914
+    },
+    {
+      "match": "Substrait.Kind.bool to Substrait.Kind",
+      "issue": 1911
+    },
+    {
+      "match": "count of months or years",
+      "issue": 1925
+    },
+    {
+      "match": "CountDistinctStar",
+      "issue": 1912
+    },
+    {
+      "match": "type interval(",
+      "issue": 1926
+    },
+    {
+      "match": "cannot cast this value to",
+      "issue": 1922
+    },
+    {
+      "match": "window partitions must be columns",
+      "issue": 1930
+    },
+    {
+      "match": "window sort keys must be columns",
+      "issue": 1930
+    },
+    {
+      "match": "substring lengths must be constants",
+      "issue": 1923
+    },
+    {
+      "match": "unsupported window function: string_agg",
+      "issue": 1915
+    },
+    {
+      "match": "date_bin is only supported on timestamps",
+      "issue": 1924
+    },
+    {
+      "match": "date_part is only supported on timestamps and dates",
+      "issue": 1927
+    },
+    {
+      "match": "TimestampFromYMDHMS of columns",
+      "issue": 1928
+    },
+    {
+      "match": "truncating to milliseconds",
+      "issue": 1929
+    },
+    {
+      "match": "truncating to microseconds",
+      "issue": 1929
+    },
+    {
+      "match": "unnest(keep_empty=True)",
+      "issue": 1917
+    },
+    {
+      "match": "unnest(offset=)",
+      "issue": 1917
+    },
+    {
+      "match": "Substrait.Kind.list",
+      "issue": 1919
+    },
+    {
+      "match": "Substrait.Kind.struct",
+      "design": "sverify cannot build a struct; cast its fields (ruling 186, D66 reserved)"
+    },
+    {
+      "match": "type binary is not supported",
+      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
+    },
+    {
+      "match": "literal of type binary",
+      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
+    },
+    {
+      "match": "aggregate Arbitrary",
+      "issue": 1920
+    },
+    {
+      "match": "quantile of decimal",
+      "issue": 1921
+    },
+    {
+      "match": "RANGE frames with offsets need",
+      "issue": 1931
+    },
+    {
+      "match": "ApproxQuantile is not supported",
+      "design": "an approximation is each engine's own estimate; median() and quantile() are exact"
+    },
+    {
+      "match": "ApproxMedian is not supported",
+      "design": "an approximation is each engine's own estimate; median() and quantile() are exact"
+    },
+    {
+      "match": "ibis.now() is not supported",
+      "design": "the time differs between runs"
+    },
+    {
+      "match": "ibis.today() is not supported",
+      "design": "the date differs between runs"
+    },
+    {
+      "match": "RandomScalar is not supported",
+      "design": "each run gives another value"
+    },
+    {
+      "match": "RowID is not supported",
+      "design": "the row id is the engine's own"
+    },
+    {
+      "match": "positional joins are not supported",
+      "design": "a positional join pairs rows by the engine's own order"
+    },
+    {
+      "match": "typeof is only supported of a column",
+      "design": "an expression's type is each engine's own inference (#508)"
+    },
+    {
+      "match": "decimal NaN is not supported",
+      "design": "a decimal has no NaN"
+    },
+    {
+      "match": "decimal Infinity is not supported",
+      "design": "a decimal has no infinity"
+    },
+    {
+      "match": "decimal -Infinity is not supported",
+      "design": "a decimal has no infinity"
+    },
+    {
+      "match": "literal of type float16",
+      "design": "no engine sverify supports has a float16 type"
+    },
+    {
+      "match": "decimals of unknown precision",
+      "design": "a decimal's precision is part of its type; the refusal says to cast"
+    },
+    {
+      "match": "outside the supported subset",
+      "design": "the regular expressions all engines agree on are a documented subset (docs/reference-semantics.md)"
+    },
+    {
+      "match": "LIMIT and OFFSET must be integers",
+      "issue": 503
+    },
+    {
+      "match": "aggregate Kurtosis",
+      "issue": 326
+    }
+  ]
+}

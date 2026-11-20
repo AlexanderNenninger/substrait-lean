@@ -153,6 +153,25 @@ def joinPlan : Rel := join (read "orders") (read "customers") .inner (.bin .eq (
 #guard (ZSet.consolidate (joinPlan.zeval (zcat₂ + Δ))).contains
        ([.int 4, .str "cy", .int 50, .str "cy"], 1)
 
+/-- The schema: `orders(id, customer, amount)` and `customers(name)`. -/
+def zsc : Catalog := fun
+  | "orders" => ⟨3, []⟩
+  | "customers" => ⟨1, []⟩
+  | _ => ⟨0, []⟩
+
+/-- The ids of the joined orders: the view reads the id and the join key of
+`orders`, never the amount (#1329). -/
+def idPlan : Rel := .emit joinPlan [0]
+
+#guard idPlan.colsOf zsc "orders" (List.range 1) == [0, 1]
+#guard idPlan.colsOf zsc "customers" (List.range 1) == [0]
+#guard idPlan.readsOnly zsc "orders" [0, 1]
+#guard !idPlan.readsOnly zsc "orders" [0]
+
+-- The store without the amount gives the view (`Rel.zeval_prune`).
+#guard (ZSet.consolidate ((idPlan.pruneRead "orders" [0, 1] 3).zeval
+         (zcat₂.prune "orders" [0, 1]))).isPerm (ZSet.consolidate (idPlan.zeval zcat₂))
+
 /-! ## Windows -/
 
 /-- Readings `(sensor, ts, value)`, out of order. -/
@@ -202,6 +221,8 @@ end Substrait.Examples
 #print axioms Substrait.emit_project_identity
 #print axioms Substrait.Rel.incremental_sound
 #print axioms Substrait.Rel.zeval_lift
+#print axioms Substrait.Rel.zeval_prune
+#print axioms Substrait.Rel.incremental_sound_prune
 #print axioms Substrait.Rel.incrementalK_sound
 #print axioms Substrait.Rel.delta_evalK_eq
 #print axioms Substrait.Rel.eval_eq_evalK
@@ -270,6 +291,8 @@ end Substrait.Examples
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono
 #print axioms Substrait.Rel.keys_sound
+#print axioms Substrait.Rel.ranges_sound_all
+#print axioms Substrait.partners_le_one_range
 #print axioms Substrait.Rel.join_length_le_of_keyed
 #print axioms Substrait.IoT.window_complete
 #print axioms Substrait.window_tiebreak

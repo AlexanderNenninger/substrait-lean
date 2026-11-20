@@ -44,6 +44,9 @@ def Profile.polars.table : ProfileTable where
     -- `min` and `max` skip NaN unless every value is NaN (polars-min-max-nan).
     (some "agg.order", "nan_order", .oneOf ["IGNORED"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
+    -- Left open until the scope narrows to list arguments (ruling 171): a refused row for the
+    -- facts' LEAST (spark-list-order, polars-list-order) would refuse every MIN and MAX, integer ones too.
+    (none, "list_null_order", .loose ["NULL", "GREATEST", "LEAST"]),
     -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
     -- target): pairwise, Kahan over groups.
