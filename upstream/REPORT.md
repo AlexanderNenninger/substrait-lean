@@ -2,7 +2,7 @@
 
 <!-- Generated from `bugs/*.json` by `python -m sverify_dev.bugs --write`. -->
 
-Sverify's upstream ledger holds 94 entries ([README](README.md)). 34 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
+Sverify's upstream ledger holds 95 entries ([README](README.md)). 34 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
 
 ## To report
 
@@ -54,6 +54,7 @@ An open upstream issue covers these; the case is worth a comment there.
 | [DF-13](bugs/DF-13.json) | DataFusion | [apache/datafusion#26138](https://github.com/apache/datafusion/issues/26138) |
 | [DF-14](bugs/DF-14.json) | DataFusion | [apache/datafusion#3520](https://github.com/apache/datafusion/issues/3520) |
 | [DF-16](bugs/DF-16.json) | DataFusion | [apache/datafusion#26222](https://github.com/apache/datafusion/issues/26222) |
+| [ST-19](bugs/ST-19.json) | Substrait | [substrait-io/substrait-validator#608](https://github.com/substrait-io/substrait-validator/issues/608) |
 
 ## By class and project
 
@@ -66,8 +67,8 @@ An open upstream issue covers these; the case is worth a comment there.
 | Ibis | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
 | delta-rs | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 3 |
 | DataFusion | 5 | 5 | 6 | 3 | 5 | 0 | 1 | 25 |
-| Substrait | 3 | 0 | 0 | 0 | 0 | 15 | 0 | 18 |
-| total | 34 | 11 | 15 | 5 | 10 | 15 | 4 | 94 |
+| Substrait | 3 | 0 | 0 | 1 | 0 | 15 | 0 | 19 |
+| total | 34 | 11 | 15 | 6 | 10 | 15 | 4 | 95 |
 
 The classes:
 

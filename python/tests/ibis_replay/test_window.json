@@ -1,0 +1,306 @@
+{
+  "ibis": "12.0.0",
+  "source": "https://github.com/ibis-project/ibis/tree/12.0.0/ibis/backends/tests/test_window.py",
+  "license": "Apache-2.0",
+  "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
+  "module": "test_window",
+  "summary": {
+    "agree": 2,
+    "disagree": 0,
+    "refused": 52,
+    "unproved": 0,
+    "skipped": 6
+  },
+  "results": {
+    "test_duplicate_ordered_sum[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_first_last[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_grouped_bounded_expanding_window[duckdb-count]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cumall]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cumany]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cume_dist]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cummax]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cummean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cummin]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cumnotall]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cumnotany]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-cumsum]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-dense_rank]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-lag]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-lead]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-max]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-mean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-min]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-nth]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-ntile]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-percent_rank]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-rank]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-row_number]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_expanding_window[duckdb-sum]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_following_window[duckdb-none-zero-two]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_following_window[duckdb-zero-two]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_preceding_window[duckdb-large-preceding-1000-following-0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_preceding_window[duckdb-large-preceding-999-following-0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_preceding_window[duckdb-preceding-2-following-0-tuple]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_preceding_window[duckdb-preceding-2-following-0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_preceding_window[duckdb-trailing-2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_bounded_range_window[duckdb]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_ordered_window_coalesce[duckdb]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_unbounded_window[duckdb-mean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_grouped_unbounded_window[duckdb-mean_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_mutate_window_filter[duckdb]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_over_with_scalar_group_by[duckdb]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window partitions must be columns. Lean's model does not cover it yet: rewrite the step, or find ",
+      "issue": 1930
+    },
+    "test_percent_rank_whole_table_no_order_by[duckdb]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_range_expression_bounds[duckdb]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: RANGE frames with offsets need an integer, timestamp or date sort key. Lean's model does not cove",
+      "issue": 1931
+    },
+    "test_rank_followed_by_over_call_merge_frames[duckdb]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window partitions must be columns. Lean's model does not cover it yet: rewrite the step, or find ",
+      "issue": 1930
+    },
+    "test_simple_ungrouped_unbound_following_window[duckdb-mean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_simple_ungrouped_unbound_following_window[duckdb-min]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_simple_ungrouped_unbound_following_window[duckdb-sum]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_simple_ungrouped_window_with_scalar_order_by[duckdb]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window sort keys must be columns. Lean's model does not cover it yet: rewrite the step, or find i",
+      "issue": 1930
+    },
+    "test_ungrouped_bounded_expanding_window[duckdb-mean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_bounded_expanding_window[duckdb-mean_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_ungrouped_unbounded_window[duckdb-ordered-lag]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_unbounded_window[duckdb-ordered-lead]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_unbounded_window[duckdb-ordered-mean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_unbounded_window[duckdb-ordered-mean_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_ungrouped_unbounded_window[duckdb-ordered-zscore_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_ungrouped_unbounded_window[duckdb-unordered-lag]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_unbounded_window[duckdb-unordered-lead]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_unbounded_window[duckdb-unordered-mean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_unbounded_window[duckdb-unordered-mean_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_ungrouped_unbounded_window[duckdb-unordered-ntile]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_ungrouped_unbounded_window[duckdb-unordered-zscore_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_windowed_order_by_sequence_is_preserved[duckdb]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window sort keys must be columns. Lean's model does not cover it yet: rewrite the step, or find i",
+      "issue": 1930
+    }
+  }
+}

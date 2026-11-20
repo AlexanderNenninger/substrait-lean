@@ -155,7 +155,14 @@ SETTINGS: tuple[Setting, ...] = (
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
+    con: Any,
+    plan_json: str,
+    session: Any,
+    *,
+    keep: bool,
+    finite: bool,
+    tie_free: bool,
+    asof: Sequence[dict] = (),
 ) -> Any:
     from sverify.engine import read_tables
     from sverify_duckdb import engine as duckdb_engine
@@ -163,8 +170,8 @@ def _run(
     # DuckDB reads `Scan` and `Resident` tables where they are.
     tables = {t: con.get(t) for t in read_tables(json.loads(plan_json))}
     if keep:
-        return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
-    return duckdb_engine.run(plan_json, tables, finite=finite)
+        return duckdb_engine.run(plan_json, tables, keep=True, finite=finite, asof=asof)
+    return duckdb_engine.run(plan_json, tables, finite=finite, asof=asof)
 
 
 def _run_tables(
