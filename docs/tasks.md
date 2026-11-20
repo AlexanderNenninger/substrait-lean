@@ -662,6 +662,7 @@ The `sverify` command checks, fixes and runs a pipeline's file from a
 shell, a CI job or an agent:
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify check pipelines/orders.py            # prove every transform and node in the file
 sverify check pipelines/orders.py:paid       # one node or transform
 sverify check pipelines/orders.py --full     # with each node's full report
@@ -1402,6 +1403,7 @@ The target is a file (JSON lines), `"console"`, a URL such as
 configuration (`openlineage.yml`, `OPENLINEAGE_*`).
 
 ```bash
+# skip: needs a Marquez service
 sverify refresh pipelines/orders.py:paid --lineage http://marquez:5000
 ```
 
@@ -1894,6 +1896,7 @@ print(doubled_paid.check(paid=paid_contract.schema()).verdict)
 ```
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify contract export pipelines/orders.py:paid --format odcs -o paid.odcs.yaml
 ```
 

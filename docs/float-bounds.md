@@ -509,6 +509,7 @@ contract can state the lower bound on the variances that `corr_le` needs.
 ## Checking the proofs
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run --project python poe -C python prove-floats
 ```
 

@@ -17,6 +17,7 @@ Each construct gets one of three marks:
 ## The number
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run python -m sverify_dev.coverage --targets
 ```
 
