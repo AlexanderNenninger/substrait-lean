@@ -44,8 +44,9 @@ def Profile.polars.table : ProfileTable where
     -- `min` and `max` skip NaN unless every value is NaN (polars-min-max-nan).
     (some "agg.order", "nan_order", .oneOf ["IGNORED"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
-    -- A sort puts a NULL element below every value (polars-list-order).
-    (none, "list_null_order", .oneOf ["LEAST"]),
+    -- Left open until the scope narrows to list arguments (ruling 171): a refused row for the
+    -- facts' LEAST (spark-list-order, polars-list-order) would refuse every MIN and MAX, integer ones too.
+    (none, "list_null_order", .loose ["NULL", "GREATEST", "LEAST"]),
     -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
     -- target): pairwise, Kahan over groups.
@@ -108,10 +109,6 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 271),
-  -- `<`, `min` and `max` of lists raise; only a sort orders them, a NULL element lowest.
-  (none, "list_null_order", ({ ObsRow.native ["polars-list-order"] with
-    cls := .refused
-    note := "`<` between lists and `min`, `max` of lists raise (`InvalidOperationError`); a sort orders a NULL element lowest, which no group of the option reads (polars-list-order)." }).tracking 1484),
   -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
   -- (groups) is not, so within #85's bound, which `float-bounds` proves for
   -- both (`StdModel.epsilon_sum_cr`, `Rnd.kahan_near`).
