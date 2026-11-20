@@ -606,6 +606,36 @@ jobs:
               python3 scripts/coverage_summary.py coverage.json >> "$GITHUB_STEP_SUMMARY"
           } || echo "::warning::The coverage report failed; see the log."
 
+  # A refresh's OpenLineage events against Marquez (#865): the job, its
+  # datasets, the run and the contract facet through Marquez's API. One
+  # container pair per run, so it runs outside pull requests (main, merge
+  # queue, release branches, a manual run) and, like `coverage`, `qa` does
+  # not wait for it.
+  marquez:
+    needs: [changes, checker]
+    if: needs.changes.outputs.python == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+          prune-cache: true
+          cache-suffix: pruned
+      - run: bash python/scripts/marquez.sh start | tee -a "$GITHUB_ENV"
+      - working-directory: python
+        env:
+          SVERIFY_MARQUEZ_REQUIRED: "1"
+        run: uv run --locked pytest tests/test_openlineage.py -k marquez -p no:cacheprovider
+      - if: always()
+        run: bash python/scripts/marquez.sh stop
+
   # The tests as the Wheels workflow runs them against the installed wheel:
   # from a copy outside the repository, with only the package's extras and
   # the test dependencies `python/scripts/wheel_tests.sh` lists, the fast
@@ -636,7 +666,8 @@ jobs:
 
   # sverify without DuckDB (#1288, #1485 item 16): the base install, no extra,
   # in an environment that has no `duckdb`. `verify` proves a plan and writes
-  # SQL, every module imports, and a run on DuckDB names the extra.
+  # SQL, every module imports, a run on DuckDB names the extra, and a Polars
+  # connection puts, verifies and runs (#1764).
   no-duckdb:
     needs: [changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
@@ -662,6 +693,7 @@ jobs:
           assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
           PY
           uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with-editable engines/polars --with polars --with numpy \
             --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
@@ -777,7 +809,7 @@ jobs:
       - working-directory: python
         run: |
           uv run --locked python -m sverify_dev.facts --strict
-          uv run --locked python -m sverify_dev.bugs
+          uv run --locked python -m sverify_dev.bugs --stale  # warns on a thread unchecked for 90 days
       # test_functions checks the facts Lean's tables cite; test_probe and
       # test_probe_polars the probes' `probes.json`; test_polars_shims the
       # facts its shims cite and `areas.json`; test_substrait_cases the
@@ -808,6 +840,122 @@ jobs:
           print("\n".join(tests), flush=True)
           sys.exit(subprocess.run([sys.executable, "-m", "pytest", "-n", "auto", *tests]).returncode)
           EOF
+
+  # The outside-evidence gates (#867): sverify's outputs checked by tools
+  # others wrote, each with a ledger of agree, refused and disagree. Gates
+  # report and never block: a gate that finds a change from its ledger warns
+  # here and in the run's summary, and `qa` does not wait on this job.
+  #
+  # Ibis's backend tests (#860): `sverify_dev.ibis_replay` runs them on
+  # DuckDB with sverify as a plugin, and compares with the ledgers.
+  #
+  # substrait-validator (#862): no release reads the Substrait sverify
+  # writes, so the job builds it at the commit `sverify_dev.substrait_validator`
+  # pins (Rust, protoc 28.3 as its own CI uses), caches the wheel by that
+  # commit, and runs it in a venv of its own: its protobuf bindings
+  # (Substrait 0.88.1) cannot share a process with sverify's. The wheel
+  # lives in the workspace: actions/cache stores a path outside it relative
+  # to the workspace, so `~` saved on one runner kind was restored elsewhere on
+  # another (GitHub's /home/runner, the AWS runners' /opt/actions-runner).
+  evidence:
+    needs: [route, changes, checker]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+          prune-cache: true
+          cache-suffix: pruned
+      # The validator's build, pinned: its commit, the Rust toolchain, maturin
+      # and protoc (28.3, as its own CI uses), all in the wheel's cache key.
+      - id: validator
+        env:
+          ARCH: ${{ runner.arch }}
+        run: |
+          commit=$(sed -n 's/^COMMIT = "\([0-9a-f]*\)"$/\1/p' python/tools/sverify_dev/substrait_validator.py)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "rust=1.96.1" >> "$GITHUB_OUTPUT"
+          echo "maturin=1.16.0" >> "$GITHUB_OUTPUT"
+          echo "protoc=28.3" >> "$GITHUB_OUTPUT"
+          case "$ARCH" in
+            ARM64) echo "protoc_arch=aarch_64" >> "$GITHUB_OUTPUT" ;;
+            *) echo "protoc_arch=x86_64" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: substrait-validator-wheel
+          key: substrait-validator-${{ steps.validator.outputs.commit }}-rust${{ steps.validator.outputs.rust }}-maturin${{ steps.validator.outputs.maturin }}-protoc${{ steps.validator.outputs.protoc }}-${{ runner.environment }}-${{ runner.os }}-${{ runner.arch }}
+      # A hit says only that the key matched: build whenever no wheel came.
+      - id: wheel
+        run: |
+          if compgen -G 'substrait-validator-wheel/*.whl' > /dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.wheel.outputs.found != 'true'
+        env:
+          COMMIT: ${{ steps.validator.outputs.commit }}
+          RUSTUP_TOOLCHAIN: ${{ steps.validator.outputs.rust }}
+          PROTOC_VERSION: ${{ steps.validator.outputs.protoc }}
+          PROTOC_ARCH: ${{ steps.validator.outputs.protoc_arch }}
+          MATURIN: ${{ steps.validator.outputs.maturin }}
+        run: |
+          set -euo pipefail
+          if command -v rustup; then
+            rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          else
+            curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUSTUP_TOOLCHAIN"
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          src=$RUNNER_TEMP/substrait-validator
+          git init -q "$src" && cd "$src"
+          git fetch -q --depth 1 https://github.com/substrait-io/substrait-validator.git "$COMMIT"
+          git checkout -q FETCH_HEAD && git submodule update -q --init --depth 1
+          curl -sSLo "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-$PROTOC_ARCH.zip"
+          unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          PROTOC="$RUNNER_TEMP/protoc/bin/protoc" PROTOC_INCLUDE="$RUNNER_TEMP/protoc/include" \
+            uvx "maturin==$MATURIN" build --release -m py/Cargo.toml -i python3.12 -o "$GITHUB_WORKSPACE/substrait-validator-wheel"
+      - run: |
+          uv venv -q -p 3.12 "$RUNNER_TEMP/validator"
+          uv pip install -q -p "$RUNNER_TEMP/validator/bin/python" substrait-validator-wheel/*.whl
+          echo "SUBSTRAIT_VALIDATOR_PYTHON=$RUNNER_TEMP/validator/bin/python" >> "$GITHUB_ENV"
+      - working-directory: python
+        run: uv sync --locked
+      - name: substrait-validator (#862)
+        working-directory: python
+        run: |
+          if ! uv run --no-sync python -m sverify_dev.substrait_validator --check > "$RUNNER_TEMP/gate.txt" 2>&1; then
+            echo "::warning title=substrait-validator gate::the export's validation differs from python/tests/substrait_validator.json; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/gate.txt"
+          { echo '### substrait-validator (#862)'; echo '```'; cat "$RUNNER_TEMP/gate.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      # Ibis's own backend tests on DuckDB (#860): the suite at the Ibis
+      # release uv.lock pins and its test data (70 MB), cached by both pins.
+      - id: ibis
+        run: |
+          f=python/tools/sverify_dev/ibis_replay.py
+          echo "key=$(sed -n 's/^IBIS_TAG = "\(.*\)"$/\1/p' $f)-$(sed -n 's/^DATA_COMMIT = "\(.*\)"$/\1/p' $f)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/ibis-replay
+          key: ibis-replay-${{ steps.ibis.outputs.key }}-${{ runner.environment }}
+      - name: Ibis's backend tests (#860)
+        working-directory: python
+        run: |
+          if ! uv run --no-sync python -m sverify_dev.ibis_replay --check > "$RUNNER_TEMP/ibis.txt" 2>&1; then
+            echo "::warning title=Ibis replay gate::outcomes differ from python/tests/ibis_replay/; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/ibis.txt"
+          { echo "### Ibis's backend tests (#860)"; echo '```'; cat "$RUNNER_TEMP/ibis.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # sverify-dbt (dbt/): lint, typecheck and tests, then its check of the
   # sample project, `dbt build` without the tests it proved, and `dbt test`
@@ -842,17 +990,35 @@ jobs:
           uv run --no-sync ruff check .
           uv run --no-sync ruff format --check .
           uv run --no-sync pyrefly check
+      # The sample project's packages once: the tests' copies of it take
+      # them (tests/conftest.py), and the steps below too.
+      - run: uv run --no-sync dbt --no-use-colors deps --project-dir examples/shop --profiles-dir examples/shop
       - run: uv run --no-sync pytest -q
       - env:
           DBT: uv run --no-sync dbt --no-use-colors
           SHOP: --project-dir examples/shop --profiles-dir examples/shop
         run: |
-          $DBT deps $SHOP
           $DBT compile $SHOP
           uv run --no-sync sverify-dbt check examples/shop --selectors
           $DBT seed $SHOP
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
+      # dbt packages' integration projects (#859): built with dbt on DuckDB
+      # and checked with sverify-dbt, against the ledgers in dbt/replay/.
+      # A gate: it reports a change as a warning and never fails the job.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/dbt-replay
+          key: dbt-replay-${{ hashFiles('dbt/src/sverify_dbt/replay.py') }}
+      - name: dbt packages' integration projects (#859)
+        env:
+          DO_NOT_TRACK: "1"
+        run: |
+          if ! uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1; then
+            echo "::warning title=dbt replay gate::outcomes differ from dbt/replay/; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/replay.txt"
+          { echo "### dbt packages' integration projects (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       # The tour's dbt notebook (`poe notebooks` skips it: the python/
       # environment has no dbt).
       - env:

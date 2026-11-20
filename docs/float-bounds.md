@@ -479,6 +479,7 @@ Welford's update with Chan's merge in any tree, as DuckDB computes them:
 | `core_cov_chan` | `COVAR_*` is within `covTol` |
 | `corr_duck_le`, `core_corr_chan` | DuckDB's `CORR`, `COVAR_POP / (STDDEV_POP_x · STDDEV_POP_y)` from three states, is at most `1 + 3E/L + 8u` |
 | `epsilon_var_cr` | `"abs"` of a `VAR_*` against the reference: `varTol + u · abs(S / d)` |
+| `epsilon_stddev_cr` | `"abs"` of a `STDDEV_*` against the reference: `√τ + u (√V + √τ) + 2u · tiny + u √V`, `τ = varTol`, `V = S / d` |
 | `epsilon_cov_cr` | `"abs"` of a `COVAR_*` against the reference: `covTol + u · abs(C / d)` |
 
 `vEval_nonneg` needs two facts of IEEE rounding beyond the standard model:
@@ -493,12 +494,21 @@ merge) are not proved, and its row stays tested.
 `COVAR_*`'s are `epsilon_var_cr` and `epsilon_cov_cr` for ranges `[-B, B]`
 (a pair's two sides each, `BinFn.pair`) and the row cap `n`, proved on the
 engines `statsProvedOn` names (`"proved_on"`: DuckDB and Spark) and tested on
-the others. A `STDDEV_*`'s goes through the square root, not mechanised.
+the others. A `STDDEV_*`'s is `epsilon_stddev_cr`: the variance's bound
+passes through the square root as `|√a − √b| ≤ √|a − b|`, so it needs no
+lower bound on the variance.
 `CORR` has none: its error grows as a side's variance shrinks, and ranges
 give no lower bound on a variance. Snowflake's textbook formula on values
 shifted by their group's mean is the corrected two-pass algorithm;
-the shift keeps the reference's value (`momentNum_shift`), and its bound is
-recorded privately.
+the shift keeps the reference's value (`momentNum_shift`), and
+[`CorrTwoPass.lean`](../float-bounds/FloatBounds/CorrTwoPass.lean) bounds it for
+any shift `c` and any summation order (`StdModel.Summed`):
+`corrTwoPass_error` puts the result within
+`(2n + 9) u W + 7 u K √(n W) + 128 n² u² W + 64 n² u · tiny` of `S`, where
+`W = Σ (|xᵢ − c| + tiny)²` and `K = |Σ (xᵢ − c)|`. For the group's computed
+mean, `K` is of order `n u` and `W` is `S` to first order, so the bound is
+`(2n + 9) u S` to first order. The private fuzz measured `2 n u S`. Snowflake's
+`stat_algo` row, which cites the theorem, is private.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
@@ -509,6 +519,7 @@ contract can state the lower bound on the variances that `corr_le` needs.
 ## Checking the proofs
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run --project python poe -C python prove-floats
 ```
 
