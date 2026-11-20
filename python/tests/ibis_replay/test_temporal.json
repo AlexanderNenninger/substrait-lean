@@ -327,12 +327,12 @@
     "test_subsecond_cast_to_timestamp[duckdb-timestamp(6)]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
-      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through other functions. A reference value for it is a ruling of its own; cast through epoch_us, or make_timestamp of an integer of microseconds"
+      "issue": 1922
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
-      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through other functions. A reference value for it is a ruling of its own; cast through epoch_us, or make_timestamp of an integer of microseconds"
+      "issue": 1922
     },
     "test_temporal_binop[duckdb-date-add-interval]": {
       "outcome": "agree"

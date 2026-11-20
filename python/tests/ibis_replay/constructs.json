@@ -46,8 +46,16 @@
       "issue": 1926
     },
     {
-      "match": "cannot cast this value to",
-      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through other functions. A reference value for it is a ruling of its own; cast through epoch_us, or make_timestamp of an integer of microseconds"
+      "match": "cannot cast this value to a double",
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
+    },
+    {
+      "match": "cannot cast this value to an integer",
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
+    },
+    {
+      "match": "cannot cast this value to a timestamp",
+      "issue": 1922
     },
     {
       "match": "window partitions must be columns",
