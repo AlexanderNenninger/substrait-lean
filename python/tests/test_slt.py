@@ -391,7 +391,9 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
 
 def test_the_reference_replay_agrees_where_the_reference_raises(tmp_path, monkeypatch):
     """L2 of #1484 (`--semantics reference`): the reference raising where
-    DuckDB gives NaN agrees; a value DuckDB does not give disagrees."""
+    DuckDB gives NaN agrees, and a `verify` issue agrees as static (no value
+    differs here since #1484's refusal of the rounding casts, so `disagree` has
+    no cheap case)."""
     monkeypatch.setenv(slt.SEMANTICS_ENV, "reference")
     path = tmp_path / "ref.test"
     path.write_text(
@@ -403,16 +405,19 @@ def test_the_reference_replay_agrees_where_the_reference_raises(tmp_path, monkey
             nan
 
             query I
-            select CAST(1.5::DOUBLE AS INTEGER)
+            select corr(x, y) from (values (1.0::DOUBLE, 1.0::DOUBLE)) t(x, y)
             ----
-            2
+            nan
             """
         )
     )
     results, _ = slt.replay_file(path, "area/ref.test")
-    assert [r.cls for r in results] == ["agree", "disagree"], [(r.cls, r.reason) for r in results]
+    assert [r.cls for r in results] == ["agree", "agree"], [(r.cls, r.reason) for r in results]
+    # `corr` of one pair is NULL here and NaN in DuckDB: only `verify`'s issue
+    # (a static check) agrees, marked as such.
+    assert (results[1].reason or "").startswith(slt.STATIC), results[1].reason
     # `sin('inf')` is the evaluator's own raise (`LeanRaised`), not a static issue.
-    assert results[0].reason.startswith("reference raises"), results[0].reason
+    assert (results[0].reason or "").startswith("reference raises"), results[0].reason
 
 
 def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
