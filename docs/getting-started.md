@@ -438,7 +438,9 @@ the profile takes from Polars.
 any conforming consumer of Substrait 0.106: each call names its YAML's URN,
 its compound name and its output type, and each option the proof depends on
 is pinned at the reference's behaviour. The contract travels with it, and
-`sv.Report.from_substrait` proves it again:
+`sv.Report.from_substrait` proves it again. No theorem says the written plan
+is the proved one; that proof again, from the plan as written, is the check
+([what is trusted](trusted-base.md)):
 
 ```python
 from sverify.errors import ExportError

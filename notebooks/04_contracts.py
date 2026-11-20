@@ -447,6 +447,37 @@ def _(con_refs, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    A cap on the whole table is more than this sum needs. Each customer
+    adds up only their own orders, so a bound per customer is enough:
+    `sv.rows_per("customer", at_most=1000)` says no customer has more than
+    a thousand orders, and a thousand amounts of at most a million fit
+    64 bits. The data is checked for it like a key (`sv.unique` is
+    `rows_per` with `at_most=1`):
+    """)
+    return
+
+
+@app.cell
+def _(con_refs, sv):
+    from ibis import _
+
+    _orders = con_refs.table("orders")
+    _totals = _orders.group_by("customer").aggregate(total=_orders.amount.sum())
+    per_customer = sv.verify(
+        _totals,
+        requires={
+            "orders": [_.amount >= 0, _.amount <= 1_000_000, sv.rows_per("customer", at_most=1000)]
+        },
+        ensures=[_.total >= 0],
+    )
+    assert per_customer.verdict == sv.Verdict.PROVED and not per_customer.assumed
+    per_customer.verdict
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Relations between columns
 
     Filter and join conditions such as `a.t = b.t + 1`, `start < end` or

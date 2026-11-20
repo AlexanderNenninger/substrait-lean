@@ -1303,7 +1303,7 @@ def _(mo):
 
 @app.cell
 def _(con, mo, sv):
-    from sverify.errors import RouteError
+    from sverify.errors import RouteError as _RouteError
 
     _t, _u = con.table("t"), con.table("u")
     _own = sv.verify(_t.join(_u, _t.k == _u.k).select(_t.k, _t.qty, _u.label), semantics="polars")
@@ -1311,7 +1311,7 @@ def _(con, mo, sv):
     try:
         _own.run(con, "duckdb", route="translated")
         _refusal = "(taken)"
-    except RouteError as _e:
+    except _RouteError as _e:
         _refusal = f"`{type(_e).__name__}`: {_e}"
     mo.md(f"Route on Polars: {_own.routes['polars']}\n\nAn explicit route on DuckDB: {_refusal}")
     return
@@ -1336,7 +1336,51 @@ def _(mo):
     `DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))`,
     for a `SUM` of doubles, which Polars's streaming engine may add in
     another order each run. A refresh whose route cannot meet that is
-    refused. The
+    refused. We'll store the same sum of doubles twice, once asking for exact
+    bits and once for a tolerance:
+    """)
+    return
+
+
+@app.cell
+def _(lake, mo, pa, sv):
+    from ibis import _
+    from sverify.errors import RouteError as _RouteError
+    from sverify.io import DeltaSink as _Sink
+    from sverify.io import StaticSource as _Source
+
+    _readings = _Source(pa.table({"k": [1, 2, 2], "x": [0.1, 0.2, 0.3]}), name="readings")
+
+    @sv.transform(
+        requires={"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]},
+        ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
+    )
+    def sums(readings):
+        return readings.group_by("k").aggregate(total=readings.x.sum())
+
+    try:
+        _exact = _Sink(str(lake / "sums_exact"), reproducible=sv.equivalent())
+        _readings.pipe(sums).write(_exact).refresh(engine="polars", route="auto")
+        _refusal = "(accepted)"
+    except _RouteError as _e:
+        _refusal = f"`{type(_e).__name__}`: {str(_e)[:230]}..."
+    _tolerant = _readings.pipe(sums).write(
+        _Sink(str(lake / "sums"), reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
+    )
+    _out = _tolerant.refresh(engine="polars", route="auto")
+    mo.vstack(
+        [
+            mo.md(f"Exact bits: {_refusal}"),
+            mo.md(f"Within 1e-6, `refresh()` reports:\n\n```text\n{_out}\n```"),
+        ]
+    )
+    return (sums,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The refusal names the tolerance that would do. The
     [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md) show both, step by step.
     """)
     return
