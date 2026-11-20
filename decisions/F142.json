@@ -1,0 +1,13 @@
+{
+  "id": "F142",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Signs D61: timestamps count microseconds or nanoseconds (new kinds timeNs, timeTzNs); s and ms are read as microseconds at the scan; narrowing casts floor; µs to ns raises overflow outside 64 bits; results stay timestamp(6).",
+  "issues": [
+    323
+  ],
+  "source": "fable-ruling-142-323-timestamp-precisions.md",
+  "note": "Assigns D61. Keeps ruling 114's timestamp(6) normalisation; refers to D32, D53, D54. Facts PR first; a contradicting fact brings the point back to Fable."
+}

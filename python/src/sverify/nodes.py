@@ -1010,7 +1010,7 @@ class StageRefresh:
             parts.append("requires proved from metadata")
         parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
         parts += [f"{n} row(s) in touched frames recomputed" for n in self.report.framed.values()]
-        parts += ["recomputed and diffed" for _ in self.report.diffed]
+        parts += [f"recomputed and diffed ({why})" for why in self.report.diffed.values()]
         if self.quarantined:
             parts.append(f"{self.quarantined} row(s) quarantined")
         if self.report.postconditions:
@@ -1236,6 +1236,11 @@ class NodeStatus:
     framed: bool = False
     """The node recomputes window rows near the change, by their frames
     (touched frames)."""
+    mode: str | None = None
+    """How a batch changes the node: "delta rules", "state per group",
+    "touched groups", "touched frames" or "recompute and diff"; None if it
+    has not been refreshed in this process. `recomputed` or `touched` say
+    why where it is not "delta rules" or "state per group"."""
 
     def __str__(self) -> str:
         if self.versions is None:
@@ -1244,6 +1249,8 @@ class NodeStatus:
             text = f"{self.node}: " + ", ".join(f"{t}@v{n}" for t, n in self.versions.items())
         if self.stored:
             text += f"; stored in {self.stored}"
+        if self.mode:
+            text += f"; mode: {self.mode}"
         if self.recomputed:
             text += f"; recomputed ({self.recomputed})"
         if self.touched and self.framed:
@@ -1422,6 +1429,7 @@ class Group:
                     None if stage is None else _recomputed(stage.view),
                     None if stage is None or stage.view.touched is None else stage.view.fallback,
                     stage is not None and stage.view.strategy == "touched frames",
+                    None if stage is None else stage.view.strategy,
                 )
             )
         return out
@@ -1486,8 +1494,7 @@ def _recomputed(view: IncrementalView) -> str | None:
     """Why a view is recomputed and diffed on every batch, or None."""
     if not view.recomputed:
         return None
-    off = f"; no touched groups: {view.touched_off}" if view.touched_off else ""
-    return f"{view.fallback}{off}"
+    return view.cause
 
 
 def _continue_versions(node: _Stored) -> None:

@@ -87,6 +87,7 @@ release on PyPI.
 |---|---|
 | [core-semantics.md](core-semantics.md) | The design of the loose core: how profiles state their constraints, the value domain, translations and their soundness |
 | [decisions.md](decisions.md) | The decision log: each choice of the reference, the core and the profiles, with when and why |
+| [ledger.md](ledger.md) | Every project decision in one list, by scope, with who decided and what is in force, generated from [`decisions/`](../decisions/) |
 | [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per Lean module |
 | [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area, with where each stands |
 | [layers.md](layers.md) | The layers of the Python package |
@@ -108,6 +109,7 @@ release on PyPI.
 | Profiles, for users | [core-and-profiles.md](core-and-profiles.md) |
 | Profile tables, translations, soundness | [core-semantics.md](core-semantics.md) |
 | Why each choice was made | [decisions.md](decisions.md) |
+| What is decided, by whom, and what replaced it | [ledger.md](ledger.md) |
 | What is proved | [proofs.md](proofs.md), [proved-theorems.md](proved-theorems.md) |
 | What is trusted | [trusted-base.md](trusted-base.md) |
 | The Lean build's time and memory, and its budget | [build-performance.md](build-performance.md) |

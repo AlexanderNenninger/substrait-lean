@@ -1,0 +1,16 @@
+{
+  "id": "F93",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "#1712 (N14): ruling 88's lines 1, 2, 4, 5 are met; line 3 stays open because it was measured in a built-state run; one like-for-like run (L1, bound 1042/2545 MB) decides it. Addendum: Polars' later overflow raise is accepted with O1 (changelog) and O2 (failed write removes its directory).",
+  "issues": [
+    1329
+  ],
+  "prs": [
+    1712
+  ],
+  "source": "fable-ruling-n14-line3.md",
+  "note": "Applies F88's acceptance; addendum relies on ruling 75 rule 6."
+}

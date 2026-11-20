@@ -1,0 +1,18 @@
+{
+  "id": "F73",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The finish plan and every incremental maintenance plan are covered by no proof and no contract check; a refresh can raise where the report lists none. R4a docs sentence blocks 1.0; R4b edge test; R4c derived maintenance plans later.",
+  "issues": [
+    1329,
+    1497,
+    1511
+  ],
+  "amends": [
+    "F63"
+  ],
+  "source": "fable-ruling-1497-finish-plan-unverified.md",
+  "note": "Log entry 73. 'A correction to ruling 63' (S9 invariant holds only for contract-checked plans). No D-number."
+}

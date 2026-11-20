@@ -1,0 +1,16 @@
+{
+  "id": "F48.refusal",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "A sverify_decimal_div call whose declared type does not follow from its operands is refused by the parser.",
+  "issues": [
+    1497
+  ],
+  "superseded_by": [
+    "F63"
+  ],
+  "source": "fable-ruling-1497-decimal-div-statement.md",
+  "note": "Ruling 63: 'This replaces the line \"Else the refusal\"'; such calls read as the checked decimal instead."
+}

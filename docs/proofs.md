@@ -230,6 +230,7 @@ as the guard. Engines-common and the modules below import it as
 | `Contracts/Plan.lean` | Abstract plan evaluation: `Rel.maxRows`, `Rel.aeval` and its one pass, `Rel.lane` |
 | `Contracts/Sound.lean` | `Rel.aeval_sound`, `contract_sound` |
 | `Safety.lean` | Runtime errors and overflow; `Rel.mayIssues_sound`, and `Rel.mayIssues_sound_all` on every order |
+| `AssumedCheck.lean` | The check of the assumed issues as a plan whose one row is the verdict (`assumedCheck`, #2018): `Expr.assumedFlag` mirrors `Expr.issues`, `Rel.assumedSites` mirrors `Rel.HasIssue`; no theorem yet |
 | `Rows.lean` | Row caps that rule out `SUM` overflow |
 | `Keys.lean` | Derived keys and window tie-breaking |
 | `Partition.lean` | Sharded evaluation and two-phase aggregates |

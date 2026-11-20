@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-19-schedule-1719-323-1285",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Guarded AND/OR columns (#1719) and millisecond/nanosecond timestamps (#323) are scheduled for 1.0, and the observables work (#1285) is unblocked.",
+  "issues": [
+    323,
+    1285,
+    1719
+  ],
+  "source": "github:#1719 comment 7001855318; #323 comment 7011992330; #1285 comment 7011451493"
+}

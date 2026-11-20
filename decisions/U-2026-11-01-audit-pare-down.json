@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-01-audit-pare-down",
+  "date": "2026-11-01",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The user approves the maintainer-tooling audit's recommendations to pare down the package, starting with moving maintainer tooling out of the wheel.",
+  "issues": [
+    211
+  ],
+  "prs": [
+    218
+  ],
+  "amended_by": [
+    "U-2026-11-01-frontends-sqlglot-ibis"
+  ],
+  "source": "github:#218 comment 6557110481",
+  "note": "The plan's step 'Isthmus becomes the only SQL producer' was superseded by U-2026-11-01-frontends-sqlglot-ibis; the rest of the paring-down stands."
+}

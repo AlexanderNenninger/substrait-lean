@@ -1,0 +1,13 @@
+{
+  "id": "F166",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Bind moves to the frontend as Sverify.Frontend.Bind; Outcome.bind_error, Outcome.ok_bind and Expr.evalP_subst move unchanged to core Profile.lean; Expr.readsFieldFrom/readsField stay in Parse.lean. No D-number.",
+  "issues": [
+    1189,
+    1444
+  ],
+  "source": "fable-ruling-166-bind-core-lemmas.md"
+}

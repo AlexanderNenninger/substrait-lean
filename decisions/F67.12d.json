@@ -1,0 +1,17 @@
+{
+  "id": "F67.12d",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Finding 12d: DuckDB's avg(BIGINT) may double-round on x86-64 Linux, so the claim 'no error below 2^53' is false and semantics='duckdb' may prove a row set Linux does not return.",
+  "issues": [
+    1608
+  ],
+  "amended_by": [
+    "F71",
+    "F74"
+  ],
+  "source": "fable-ruling-1608-items-11-12.md",
+  "note": "Ruling 71 withdrew this remark for the shipped wheel; ruling 74 restores it for native shapes: the DuckDB profile's avg(BIGINT) allows more than one double."
+}

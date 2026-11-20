@@ -325,7 +325,7 @@ def test_a_sink_of_its_own_gets_the_change(tmp_path):
     assert sink.changes == [(True, 1, 0), (False, 1, 1)]
     assert pq.read_table(sink.path).to_pylist() == [{"id": 3, "ts": 3, "amount": 50}]
     assert str(w) == "big from payments@v1: update, 1 row(s) written, 1 deleted"
-    assert str(node.status()).endswith(f"stored in {sink.path}")
+    assert f"stored in {sink.path}" in str(node.status())
 
 
 def test_a_restarted_job_skips_what_its_sink_committed(tmp_path):

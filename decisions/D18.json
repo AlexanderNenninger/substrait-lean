@@ -1,0 +1,11 @@
+{
+  "id": "D18",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Observations are ordered by refinement (q' refines q when ker q' ⊆ ker q).",
+  "prs": [
+    562
+  ]
+}

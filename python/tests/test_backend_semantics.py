@@ -385,13 +385,19 @@ def proves(sql: str, ensures: str) -> bool:
     return r.verdict == sv.Verdict.PROVED and r.ensures[0].proved
 
 
-@pytest.mark.parametrize("value", ["2.7", "-2.5", "CAST(2.5 AS DOUBLE)"])
+@pytest.mark.parametrize("value", ["CAST(2.5 AS DOUBLE)"])
 def test_constant_casts_are_refused_like_column_casts(value):
-    """F9, D54: DuckDB rounds a constant cast to an integer, and the reference
-    truncates, so the lift refuses a constant as it does a column and names the
-    spellings with one meaning."""
+    """F9, D54: DuckDB rounds a double constant cast to an integer, and the
+    reference truncates, so the lift refuses a constant as it does a column and
+    names the spellings with one meaning. A decimal rounds half away from zero
+    (#322) and is lifted."""
     with pytest.raises(ValueError, match="DuckDB's cast, which rounds"):
         sv.verify(f"SELECT CAST({value} AS BIGINT) AS c FROM j", tables={"j": {"a": "int64"}})
+
+
+@pytest.mark.parametrize(("value", "want"), [("2.7", 3), ("-2.5", -3), ("-2.4", -2)])
+def test_decimal_constant_casts_round_half_away_from_zero(value, want):
+    assert proves(f"SELECT CAST({value} AS BIGINT) AS c FROM j", f"c = {want}")
 
 
 @pytest.mark.parametrize(
