@@ -1041,12 +1041,35 @@ component, with its default and the reason (#1285):
 | `floats` | `plan` | Doubles are equal within the bound the checker computes for the plan (`Report.epsilon`, [float-bounds](float-bounds.md)), since engines sum in their own order. A column with no bound is exact. |
 | `zeros` | `canon` | `-0.0` equals `0.0` and every NaN equals every other, as the doubles' bound already reads them ([D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)); `zeros="exact"` observes the signs. |
 | `timestamps` | `ns` | Every digit. The reference's timestamps are microseconds and DuckDB and Polars hold at least that; Spark drops the digits past the sixth without an error ([`spark-timestamp-precision`](../engines/spark/facts/spark-timestamp-precision.json)), which a coarser default would hide. |
-| `strings` | `exact` | A difference in non-ASCII text is observed. The reference raises where `UPPER`, `LOWER` and the regular expression classes differ on non-ASCII text ([D51](decisions.md#d51-case-mapping-has-the-value-the-engines-agree-on)); ignoring it is a choice for the contract. |
+| `strings` | `exact` | A difference in non-ASCII text is observed. The reference raises where `UPPER`, `LOWER` and the regular expression classes differ on non-ASCII text ([D51](decisions.md#d51-case-mapping-has-the-value-the-engines-agree-on)); ignoring it is a choice for the contract, the levels of `strings` ([What the string levels hide](#what-the-string-levels-hide)). |
 | `decimals` | `exact` | The scale of a decimal is part of its type, and `decimal_rescale` pins it on every engine ([`polars-decimal-arith`](../engines/polars/facts/polars-decimal-arith.json), [`spark-decimal-arith`](../engines/spark/facts/spark-decimal-arith.json)). |
 | `errors` | `exact` | A proved plan raises nowhere, and a plan proved with checks stops at the check that fails with its message, so no result compares errors. |
 
 A contract that names an observation (`sv.equivalent`) leaves each component
 it does not name exact, and `floats` too.
+
+
+### What the string levels hide
+
+`strings` takes four levels, each a key of the string alone, so each equality is an equivalence and
+each level coarsens the one before (`StringObs`, `ObsCtx.WF.str_mono`):
+
+| Level | Two strings are equal when their keys are | Hides |
+|---|---|---|
+| `exact` | the strings | nothing |
+| `nfc` | `NFC(s)` | canonically equivalent spellings (`é` as one code point or two) |
+| `casefold` | `NFD(casefold(NFD(s)))`, Unicode's canonical caseless match (D145) | case, including `ß` and `SS` |
+| `ascii` | the code points below U+0080 of `NFKD(casefold(NFKD(casefold(NFD(s)))))`, the compatibility caseless match (D146) | case, width and ligature variants, and every code point without an ASCII decomposition |
+
+The last level drops what it cannot decompose: `søren` equals `sren`, and two strings in a
+non-Latin script equal each other. A contract names it for what it is, an opt-in lens for plans whose
+non-ASCII text engines treat differently (case mapping, [D51](decisions.md#d51-case-mapping-has-the-value-the-engines-agree-on)).
+The default stays `exact`. A postcondition that reads a string column (an equality, a length, an
+order) is marked as reading what the observation ignores. The level is not yet used to lift a
+refusal: the reference still raises where `UPPER` and `LOWER` differ on non-ASCII text. The keys
+follow the running Python's `unicodedata.unidata_version`; they can differ for code points assigned
+after Unicode 15.0. `tests/test_observation.py` checks that every engine's `UPPER` and `LOWER` value
+of the scalars D51 records as different has one `ascii` key.
 
 ### The engines' profiles
 
