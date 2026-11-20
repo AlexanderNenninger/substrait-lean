@@ -1040,7 +1040,7 @@ class IncrementalView:
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.not_null: list[str] = contract.not_null if contract else []
         """The columns the view's proved report shows never NULL, in every
-        state (`Report.not_null`)."""
+        state (not nullable in `Report.output`)."""
         self.checked: list[Condition] = contract.checked if contract else []
         """Postconditions that were not proved, checked on every state
         instead (`on_unproved="check"`): on the first in full, then on the

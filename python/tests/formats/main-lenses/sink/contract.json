@@ -1,0 +1,31 @@
+{
+  "checks": {
+    "sverify_1": "doubled >= 0"
+  },
+  "cursors": {},
+  "digests": {
+    "orders": "72ab98a91b76ab1ace502fd00deeefd20de426b1d4c61229ee15e9ff3436b79a"
+  },
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "epoch": 2,
+  "format": 2,
+  "node": "doubled",
+  "not_null": [
+    "id",
+    "doubled"
+  ],
+  "package": "sverify-duckdb==0.9.0.dev0",
+  "plan": "e187ef461fd3e8300f5929fbe3ab2befdf9b2557345f9540cac308d0819b0f76",
+  "profile": "reference",
+  "sources": {
+    "orders": 2
+  },
+  "sverify": "0.9.0.dev0",
+  "table_ids": {},
+  "unique": [
+    [
+      "id"
+    ]
+  ]
+}

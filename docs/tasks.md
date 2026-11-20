@@ -244,7 +244,8 @@ except VerificationError as e:
   `x IN (0, 1)`, and `isin([0, 1])`, of integers that fill a range is
   read as `x BETWEEN 0 AND 1`, so a column known to lie in `[0, 1]` meets
   it.
-  `report.not_null` lists the output columns the checker shows are never NULL.
+  `report.output` types the output columns the checker shows are never NULL
+  as not nullable (`count(*)` is `!int64`).
 * Relations between columns: join and filter conditions such as
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
@@ -618,8 +619,8 @@ print(report)
 ```
 
 Sverify proves each suggestion before showing it, by proving the
-postcondition again with it added. `Report.suggestions` has them as
-`Needed` records, per postcondition, for editors and language servers
+postcondition again with it added. Each postcondition's `needs` has them as
+`Needed` records, for editors and language servers
 ([test_suggestions.py](../python/tests/test_suggestions.py)).
 
 ### Checking without running
@@ -1205,7 +1206,7 @@ tables. A table format plays four roles:
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg). The NOT NULL columns are those `ensures`
   states (`_.id.notnull()`) and those the proved report shows are never NULL
-  (`report.not_null`).
+  (not nullable in `report.output`).
   The commit records the plan hash, the
   source versions and the contract (`sverify.io.Contract`, under the key
   `sverify.contract`, in the format of
@@ -1767,7 +1768,7 @@ means = sv.verify(
 )
 duckdb_result = means.run(readings, "duckdb", route="auto")
 polars_result = means.run(readings, "polars", route="auto")
-means.equivalence.equal(duckdb_result, polars_result)  # True
+means.lenses.equal(duckdb_result, polars_result)  # True
 ```
 
 Polars sums doubles in its own order, so its mean is within the plan's
@@ -1780,12 +1781,12 @@ Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
 list elements are multisets, one zero and one NaN are read, doubles are within
 the plan's bound and other values are exact: the default observation
 ([the table](core-semantics.md#the-default-observation)), which
-`report.observation` prints with its bound,
+`report.lenses` prints with its bound,
 `equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
 leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
 tolerance, and `floats="exact"` asks for the same bits. `verify` checks
 either against the plan's bound on each engine; where
-no engine meets it, the plan is not proved, and the report's `observes:`
+no engine meets it, the plan is not proved, and the report's `lenses:`
 line gives the plan's bound, the reason per engine and a tolerance that
 would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
@@ -1898,9 +1899,9 @@ Within 1.x the message and the manifest only gain fields, and
 | `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
 | `extension_urns` | the YAMLs the plan's calls come from |
 | `semantics` | the semantics the plan was proved under |
-| `class` | `exact`, `observed` (equal up to `equivalence`) or `assumed` (with annotated choices) |
+| `class` | `exact`, `observed` (equal up to `lenses`) or `assumed` (with annotated choices) |
 | `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
-| `equivalence`, `equivalence_components` | what the postconditions tell apart (`sv.equivalent`) |
+| `lenses`, `lenses_components` | what the postconditions tell apart (`Report.lenses`, `sv.equivalent`) |
 | `pinned` | each pinned option, its values and the calls that state it |
 | `shims`, `assumptions`, `unexercised`, `up_to` | each gap and how the export handled it |
 | `deterministic`, `rows`, `params`, `output` | as in the report |

@@ -386,7 +386,7 @@ def dbt_test(column: str | None, op: str | None, value: str | None, sql: str) ->
 
 
 def as_dbt_test(sql: str) -> tuple[str | None, str]:
-    """A precondition as SQL (a suggestion of `CheckedCondition.suggested`)
+    """A precondition as SQL (a suggestion of `CheckedCondition.needs`)
     as a dbt test to add: the column it goes on (None for a test on the
     table) and the test's YAML."""
     b = bound(sql)

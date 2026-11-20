@@ -18,13 +18,13 @@ PUBLIC = {
     "requires",
     "ensures",
     "facts",
-    "not_null",
     "deterministic",
     "issues",
     "assumed",
     "rows",
     "semantics",
-    "observation",
+    "lenses",
+    "engine_version",
     "routes",
     "output",
     "ties",
@@ -67,9 +67,9 @@ def test_plan_is_internal_plan():
 
 def test_the_public_attributes_do_not_warn(recwarn):
     report = _report()
-    for name in PUBLIC - {"observation"}:
+    for name in PUBLIC:
         getattr(report, name)
-    for name in ("verdict", "unproved", "needs", "errors", "notes", "suggestions"):
+    for name in ("verdict", "unproved", "needs", "errors", "notes"):
         getattr(report, name)
     assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
 

@@ -213,6 +213,7 @@ def export(
     )
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql, not_null_column
+    from sverify.report import proved_not_null
     from sverify.report_json import _sverify_version
 
     report = node.report
@@ -236,7 +237,7 @@ def export(
         if col in flags and rank[st] > rank.get(flags[col].get(name, ""), -1):
             flags[col][name] = st
 
-    for col in report.not_null:
+    for col in proved_not_null(report):
         flag(col, "required", "proved")
     for c in report.ensures:
         cond, st, lab = c.condition, _status(c), c.label
