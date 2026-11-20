@@ -39,8 +39,8 @@ CODES: dict[str, str] = {
         "The checker knows nothing that decides the postcondition. State more about the "
         'inputs in `requires`, or check it on the data with `on_unproved="check"`.'
     ),
-    "observation": (
-        "A postcondition is proved, but depends on what the observation "
+    "equivalence": (
+        "A postcondition is proved, but depends on what the equivalence "
         "(`sv.equivalent(...)`) ignores, such as row order or exact doubles."
     ),
     "needs": (
@@ -136,7 +136,7 @@ CODES: dict[str, str] = {
 
 #: Each code's level, as SARIF names them; "error" where it is not listed.
 LEVELS: dict[str, str] = {
-    "observation": "note",
+    "equivalence": "note",
     "unchecked": "warning",
     "sum_overflow": "warning",
     "scope": "warning",

@@ -220,7 +220,7 @@ def test_needed_text_is_a_field() -> None:
 
 def test_equivalence_is_the_observation() -> None:
     report = _quiet(sv.verify, T.select("k"), ensures=[sv.equivalent(rows="sequence")])
-    assert report.equivalence is report.observation
+    assert not hasattr(report, "observation")
     assert report.equivalence.rows == "sequence"
 
 

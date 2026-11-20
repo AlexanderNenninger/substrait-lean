@@ -1734,7 +1734,7 @@ Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
 list elements are multisets, one zero and one NaN are read, doubles are within
 the plan's bound and other values are exact: the default observation
 ([the table](core-semantics.md#the-default-observation)), which
-`report.observation` prints with its bound,
+`report.equivalence` prints with its bound,
 `equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
 leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
 tolerance, and `floats="exact"` asks for the same bits. `verify` checks

@@ -1571,7 +1571,7 @@ def _(mo):
 
 @app.cell
 def _(approx_claim):
-    print(approx_claim.observation)
+    print(approx_claim.equivalence)
     return
 
 

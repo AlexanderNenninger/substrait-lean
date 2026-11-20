@@ -230,7 +230,6 @@ _KINDS = {
 
 
 #: The rule ids of the reasons whose Python name differs (B3).
-_REASONS = {"observation": "equivalence"}
 
 
 def rule_id(kind: str) -> str:
@@ -318,7 +317,7 @@ def checked_json(c: CheckedCondition) -> Json:
     proved_level = "note" if c.reason else "none"
     level = proved_level if c.proved else "warning" if c.checked else "error"
     return _finding(
-        _REASONS.get(c.reason, c.reason) if c.reason else "proved",
+        c.reason or "proved",
         level,
         "pass" if c.proved else "fail",
         c.message,
@@ -400,7 +399,7 @@ def route_json(r: Route) -> Json:
         "warnings": list(r.warnings),
         "shims": list(r.shims),
         "failures": [dict(f) for f in r.failures],
-        "equivalence": None if r.observation is None else equivalence_json(r.observation),
+        "equivalence": None if r.equivalence is None else equivalence_json(r.equivalence),
         "bound_proved": r.bound_proved,
         "reproducible": None if r.reproducible is None else equivalence_json(r.reproducible),
         "rerun_evidence": r.rerun_evidence,
@@ -435,7 +434,7 @@ def route(d: Mapping[str, Any]) -> Route:
         reproducible=eq("reproducible"),
         rerun_evidence=d.get("rerun_evidence"),
         fallbacks=tuple(d.get("fallbacks", ())),
-        observation=eq("equivalence"),
+        equivalence=eq("equivalence"),
         bound_proved=d.get("bound_proved"),
         suggested=suggested(d.get("needs")),
     )
@@ -459,7 +458,7 @@ def to_json(report: Report) -> Json:
         "engine_version": report.engine_version,
         "dialect": report._dialect,
         "on_inferred": report._on_inferred,
-        "equivalence": equivalence_json(report.observation),
+        "equivalence": equivalence_json(report.equivalence),
         "deterministic": report.deterministic,
         "deterministic_exact": report._exact,
         "class_places": [dataclasses.asdict(t) for t in report._class_places],
@@ -554,7 +553,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         rows=d.get("rows"),
         semantics=d.get("semantics", "reference"),
         engine_version=d.get("engine_version"),
-        observation=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
+        equivalence=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
         _floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
         _engines=d.get("engines"),
         _sorted=d.get("sorted"),

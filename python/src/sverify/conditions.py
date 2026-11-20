@@ -877,7 +877,7 @@ class CheckedCondition:
         is proved and independent of the observation (`portable`). `why`
         says the same in words.
 
-        * `"observation"`: proved, but it depends on what the observation
+        * `"equivalence"`: proved, but it depends on what the equivalence
           (`sv.equivalent`) ignores.
         * `"needs"`: proved only with the preconditions sverify inferred,
           which `requires` does not state (`needs` lists them).
@@ -892,7 +892,7 @@ class CheckedCondition:
         * `"unknown"`: Lean knows nothing that decides it.
         """
         if self.proved:
-            return "observation" if self.ignores else None
+            return "equivalence" if self.ignores else None
         if self.value == "not shown to be a key":
             return "not_a_key"
         if self.ties or self.value.startswith("undetermined"):

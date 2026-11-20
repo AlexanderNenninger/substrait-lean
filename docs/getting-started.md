@@ -224,7 +224,7 @@ r = con.table("readings")
 mean_x = r.group_by("k").aggregate(mean_x=r.x.mean())
 bounded = {"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]}
 means = sv.verify(mean_x, requires=bounded)
-print(means.observation)
+print(means.equivalence)
 # equivalent(elements='multiset', floats=plan, ≤ 1.1e-10, zeros='canon')
 on_duckdb = means.run(con, "duckdb", route="auto")
 on_polars = means.run(con, "polars", route="auto")

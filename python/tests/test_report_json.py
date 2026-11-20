@@ -39,7 +39,7 @@ def _round_trip(report: Report) -> dict:
     back = Report.from_json(text)
     assert back.verdict == report.verdict
     assert json.loads(back.to_json()) == doc
-    assert str(back.observation) == str(report.observation)
+    assert str(back.equivalence) == str(report.equivalence)
     return doc
 
 

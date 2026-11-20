@@ -107,7 +107,7 @@ Transform = ir.Table | str
 
 
 UnprovedReason = Literal[
-    "observation",
+    "equivalence",
     "needs",
     "not_a_key",
     "ties",
@@ -562,15 +562,14 @@ class Report:
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
     `params` bound and the SQL lifted with `semantics`. `run` runs it."""
-    observation: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
+    equivalence: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
     """What the result's consumer observes (`sv.equivalent` in `ensures`).
     When `ensures` names none: rows and list elements as multisets, one zero
     and one NaN (`zeros="canon"`), doubles within the plan's bound
     (`floats="plan"`, printed with the bound, `epsilon`) and other values
     exact (`sverify.observation.PLAN_BOUND`). Under
     the plan's bound a run holds the double columns a postcondition reads
-    to their exact value (`sverify.routes.observed`). `equivalence` is the same, by the
-    concept's name."""
+    to their exact value (`sverify.routes.observed`)."""
     _stated: bool = field(default=False, repr=False, compare=False)
     """Whether `ensures` names the observation (`sv.equivalent`)."""
     _floats_on: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
@@ -885,7 +884,7 @@ class Report:
             d,
             deterministic=self._exact,
             finite=finite,
-            rows="sequence" if self.observation.rows == "sequence" else "multiset",
+            rows="sequence" if self.equivalence.rows == "sequence" else "multiset",
         )
 
     def _plan_to_run(self, kind: str | None, *, checked: bool, engine: str) -> str:
@@ -1571,7 +1570,7 @@ class Report:
         stated tolerance, and which engines' doubles meet it."""
         from sverify import routes as _routes
 
-        obs = self.observation
+        obs = self.equivalence
         bound = _routes.plan_bound(self._epsilon)
         if obs == _observation.PLAN_BOUND and bound is None:
             return []
@@ -1696,12 +1695,6 @@ class Report:
             if n.condition is not None:
                 out.setdefault(n.table, []).append(n.condition)
         return out
-
-    @property
-    def equivalence(self) -> Observation:
-        """The equivalence the result is proved up to: `sv.equivalent(...)` in
-        `ensures`, or rows as a multiset with exact values (`observation`)."""
-        return self.observation
 
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,

@@ -981,7 +981,7 @@ def infer_bounds(
     transformations) are suggested for those tables' `ensures`.
 
     An observation in `ensures` (`sv.equivalent`) is no condition to prove:
-    it goes to `Report.observation`, and each other postcondition that
+    it goes to `Report.equivalence`, and each other postcondition that
     depends on what it ignores says so (`CheckedCondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
@@ -1004,8 +1004,8 @@ def infer_bounds(
     out._stated = observed is not None
     from sverify import routes as _routes
 
-    if out.observation.floats == "plan":
-        out.observation = replace(out.observation, bound=_routes.plan_bound(out._epsilon))
+    if out.equivalence.floats == "plan":
+        out.equivalence = replace(out.equivalence, bound=_routes.plan_bound(out._epsilon))
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
@@ -1153,7 +1153,7 @@ def _observed(
         )
         for cond, c in zip(ensures, report.ensures, strict=True)
     ]
-    return replace(report, ensures=checked, observation=observed)
+    return replace(report, ensures=checked, equivalence=observed)
 
 
 def _open_columns(expr: ir.Table) -> dict[str, str]:

@@ -51,9 +51,9 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     assert isinstance(bound, Within) and bound.abs and bound.abs > 0
     stated = verify(con, [sv.equivalent(floats=sv.within(abs=bound.abs))])
 
-    assert absent.observation == plan.observation == PLAN_BOUND
-    assert absent.observation.bound == plan.observation.bound == bound
-    assert f"floats=plan, ≤ {bound.abs:.1e}" in str(absent.observation)
+    assert absent.equivalence == plan.equivalence == PLAN_BOUND
+    assert absent.equivalence.bound == plan.equivalence.bound == bound
+    assert f"floats=plan, ≤ {bound.abs:.1e}" in str(absent.equivalence)
     assert f"floats=plan, ≤ {bound.abs:.1e}" in absent.details()
     assert (
         absent.verdict == sv.Verdict.PROVED
@@ -67,8 +67,8 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     runs = []
     for report in (absent, plan, stated):
         a, b = report.run(con, "duckdb"), report.run(con, "polars")
-        assert report.observation.equal(a, b)
-        runs.append({e: (r.cls, r.observation) for e, r in report.routes.items()})
+        assert report.equivalence.equal(a, b)
+        runs.append({e: (r.cls, r.equivalence) for e, r in report.routes.items()})
     assert runs[0] == runs[1] == runs[2]
     assert {cls for cls, _ in runs[0].values()} == {"observed"}
 
@@ -166,7 +166,7 @@ def test_an_unsorted_plan_is_observed_as_a_multiset(con) -> None:
     report = verify(con, [])
     report.run(con, "polars")
     route = report.routes["polars"]
-    assert route.observation is not None and route.observation.rows == "multiset"
+    assert route.equivalence is not None and route.equivalence.rows == "multiset"
     assert "rows='sequence'" not in str(route)
 
 
