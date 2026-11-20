@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-08-canon-at-identity-boundaries",
+  "date": "2026-11-08",
+  "decided_by": "coordinator",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Canon applies only at identity boundaries (comparisons, DISTINCT, GROUP BY, join and window keys), while reads and scalar ops keep raw values.",
+  "issues": [
+    271
+  ],
+  "supersedes": [
+    "U-2026-11-08-canon-at-read"
+  ],
+  "amends": [
+    "D31"
+  ],
+  "source": "memory:canon-identity-boundaries.md",
+  "note": "Corrects D31 without a new D-number; Fable revised it the same day and it was flagged to the maintainer."
+}

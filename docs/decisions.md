@@ -187,6 +187,10 @@ version that changes a fact gets a new fact with `supersedes` (the `engine-fact`
 skill) and a new row in the profile. Facts hold for the version they
 were probed at, and the profile is only as good as its facts.
 
+Amended 2026-11-20 by [D70](#d70-engine-versions-probed-in-range-out-of-range):
+the range is the minor releases that hold a probed version, an unprobed version
+inside it warns, and one outside it is refused.
+
 ### D15. Where the observations live
 
 The choices table holds, next to each choice, its class, its observation
@@ -282,6 +286,10 @@ plan, against the `q` the postcondition names. The finest valid `q` is the
 `q` column of the choices table ([D15](#d15-where-the-observations-live)).
 
 ### D19. `AND` and `OR` raise eagerly
+
+Amended by [D50](#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand):
+the core stays eager, and the frontends lift an `AND` or `OR` over a raising
+operand so a guard protects it.
 
 An error in either operand of `AND` or `OR` may raise, whatever the other
 operand's value (#604). `p AND q` is not a guard for `q`: in
@@ -1239,7 +1247,7 @@ each is:
 | `char_set` | `UTF8`; `ASCII_ONLY` is refused | this decision |
 | `float_to_int` | `TRUNCATE` | D40 gives only its scope; the value is this decision |
 | `cast_failure` | `THROW_EXCEPTION`, also for an unspecified `failureBehavior`; `RETURN_NULL` where the plan asks | this decision |
-| `rounding` | `TIE_AWAY_FROM_ZERO` at `fp.round`, beside `TIE_TO_EVEN` elsewhere (native doubles) | #335; D5 for `TIE_TO_EVEN` |
+| `rounding` | `TIE_AWAY_FROM_ZERO` at `fp.round`, beside `TIE_TO_EVEN` elsewhere (native doubles) | #335; D5 for `TIE_TO_EVEN`; [D55](#d55-a-sql-cast-of-a-double-to-an-integer-rounds-half-to-even-as-a-composition) for `TIE_TO_EVEN` at `fp.round` |
 | `quantile_interp` | `BETWEEN` | D13 names the option without a value; the value is this decision |
 | `on_domain_error` | `ERROR`: outside its domain an elementary function raises | D37 |
 | `on_log_zero` | `ERROR`: a logarithm of zero raises | D37 |
@@ -1562,6 +1570,76 @@ computes it" with no decision and no second engine's facts. The mark states
 what is known, and the rule for new functions (Lean and DuckDB first) keeps
 producing such rows.
 
+### D50. The frontends lift `AND` and `OR` so a guard protects the next operand
+
+Decided 2026-11-18, approved by the user.
+
+`WHERE qty <> 0 AND total / qty > 1` reads as a guard, and SQL users write
+it so. The SQL and Ibis frontends lift `p AND q` so that a raising operation in
+`q` runs only where `p` is not FALSE, and `OR` likewise where `p` is not TRUE.
+The core stays eager (D19), and `semantics="duckdb"` keeps DuckDB's eager
+reading, where DuckDB raises.
+
+The lift is the call `sverify_and` (`sverify_or`) over the operands, which the
+parser reads as nested `CASE` (`Expr.andLift`, `Frontend/Guard.lean`):
+`T_k = CASE WHEN p_k IS NOT FALSE THEN T_{k+1} ELSE 0`, ending in
+`CASE WHEN p_1 AND … AND p_n THEN 1 ELSE NULL`, and the conjunction is
+`T_1 = 1`. Its size is linear in the operands, and each operand is written
+three times: twice in `p IS NOT FALSE` (`p IS NULL OR p`) and once in the
+closing conjunction; a plain operand a fourth time, outside the chain. A lift
+inside an operand is written three times a level. Operands that cannot raise
+(`Expr.plain`, a syntactic check with no use of the analysis) stay outside; an
+`AND` of plain operands stays the eager `AND`, and its plan does not change.
+
+Proved (`Frontend/Guard.lean`, with the `OR` duals): on every row where the
+eager `AND` returns, the lift returns the same (`Expr.andLift_refines`); where
+an operand is FALSE and the operands before it do not raise, the lift is FALSE
+whatever follows (`Expr.andLift_false`); an error in a reached operand still
+surfaces (`Expr.andLift_error`); and the lift is TRUE, FALSE or NULL, so it can
+be an operand (`Expr.andLift_boolVal`). The `andG` lemmas are the chain's case
+lemmas. A constant subexpression that raises is outside the guard (D21,
+`Rel.constIssues`): `x <> 0 AND 1 // 0 = 1` raises for the whole plan under the
+lift as under the eager reading. The analysis refines the `THEN` branch by its condition and reads
+`p IS NULL OR p` as a fact on a column (`x <> c`, `0 <= c < x`).
+
+An engine runs the lifted plan on a recorded fact that its `CASE` evaluates the
+taken branch alone; an engine or a shape without such a fact refuses it. The facts:
+`duckdb-exec-short-circuit` (DuckDB runs it), `spark-exec-evaluation-order`
+(Spark runs it, also with a subexpression twice in a branch) and
+`polars-exec-when-eager` (Polars runs it, collected with common-subexpression
+elimination off, `polars-exec-cse-hoist`). Snowflake follows its private facts.
+Polars's masking excludes a branch under `group_by().agg` and `over()`; an
+aggregate's `FILTER` and a window's argument are tested in
+`tests/test_and_or_engines.py`.
+
+Interim limits, until step D50-d (a gate for 1.0):
+
+- Only the top three levels of a nest of `AND` and `OR` are lifted
+  (`LIFT_LEVELS`, `plan_json.py`; a connective's level is one more than the lifted
+  ones enclosing it). Below that the connective is the eager `AND` or `OR`: a
+  guard there does not protect the next operand, so the guarded operation is
+  reported as an inferred precondition, as before D50. The cap exists because a
+  lift nested in a lift multiplies the size: with a guarded leaf, depth 3 of
+  alternating connectives measured 29 times the eager plan's characters, and
+  depth 4 took 5,171 s in the checker. Since the lift has the eager value
+  wherever the eager reading returns (`Expr.andLift_refines`), a plan proved
+  under the cap stays proved when D50-d lifts the lower levels.
+- The analysis proves zero and null guards (`x <> c`, `0 <= c < x`). A range
+  guard before a cast (`x BETWEEN a AND b AND CAST(x AS BIGINT) > 1`) and a
+  pattern guard before a string cast run correctly on the engines, but are
+  reported as inferred preconditions; step D50-e (before 1.0) adds a
+  refinement through `p IS NOT FALSE` for the range guard. A pattern guard stays
+  unproved.
+
+Why: the eager reading made the commonest guard in SQL unprovable, and the
+engines that short-circuit give the value the user meant.
+
+The lift is the chain `Expr.andLift`, in place of the `Expr.guardBy` shape first
+approved (2026-11-18); the plain operands are found by `Expr.plain`.
+
+Recomputes sinks: no. The reference's values do not change: a plan that raises on no row
+computes what it did, and a lifted guard only removes a raise.
+
 ### D53. A timestamp with the time zone UTC is an instant
 
 Decided 2026-11-19 (theory advisor).
@@ -1572,7 +1650,7 @@ reference computes with an instant wherever no zone is read: comparison with
 another instant, `IS [NOT] DISTINCT FROM`, ordering, `MIN`, `MAX`, `COUNT`,
 `DISTINCT`, grouping, join keys, window keys, and `CASE`, `COALESCE` and
 `NULLIF` among instants. Everything that reads a calendar field of an instant
-is refused and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
+is refused (opened for the Ibis frontend at UTC by [D69](#d69-a-calendar-function-of-a-utc-instant-in-ibis-reads-its-utc-wall-clock)) and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
 arithmetic with intervals, the difference of two instants, `date_trunc`,
 `extract`, a cast to a date or a string. A comparison of an instant with a
 naive timestamp is refused. Zones other than UTC are refused. The conversion is
@@ -1633,8 +1711,12 @@ preconditions guard it. In three the reference gives another value:
 | `Profile` field | reference | DuckDB | where | the lift |
 |---|---|---|---|---|
 | `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
-| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | refuses, with a hint |
+| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | reads it as DuckDB's (since #322, below) |
 | `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
+
+Amended 2026-11-20 (ruling 106 §2c, #322): the lift reads `CAST(decimal AS integer)` as the
+reference's own rescale to scale 0, which rounds half away from zero, and the exact cast.
+The field `decimal_to_int` left `Profile`: the two semantics read the cast alike.
 
 R9 stays the reference's rule: the model's cast of a double or decimal truncates,
 and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
@@ -1713,3 +1795,183 @@ Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duc
 and Ibis documents the delta as the number of unit boundaries crossed
 ([`TimestampValue.delta`](https://ibis-project.org/reference/expression-timestamps#ibis.expr.types.temporal.TimestampValue.delta)). The refused units are those where engines place the
 boundary differently.
+
+### D55. A SQL cast of a double to an integer rounds half to even, as a composition
+
+Decided 2026-11-19 (theory advisor, ruling 106; [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322)).
+
+- `fp.round` accepts `rounding: TIE_TO_EVEN` at zero digits: IEEE 754's
+  roundToIntegralTiesToEven on the magnitude (`onMag evenMag evenMag`,
+  `core/Sverify/Core/Rounding.lean`). The default stays `TIE_AWAY_FROM_ZERO`, so no plan
+  accepted before changes its result. `round(x, d)` with `d ≠ 0` and `TIE_TO_EVEN`
+  stays refused.
+- The zero sign follows `round_zero_sign`. `-0.0` and `0.0` are one class, and the cast
+  reads one zero (D31).
+- NaN and `±∞` pass through the `round` and raise at the cast.
+- `float_to_int` remains an engine's native-cast option that no evaluator reads. The lift
+  reads the dialect's value to choose the composition.
+- A SQL cast of a double to `BIGINT` means `ftoi (froundEven x)`, in Substrait
+  `cast(round(x, rounding: TIE_TO_EVEN))`, and of a decimal the rescale to scale 0 then
+  the cast, under D54. The reference's own `cast` and Ibis are unchanged (R9, truncation).
+  Narrower integer targets stay refused until their probe.
+- The value comes from IEEE 754 and Substrait's own option name, from no engine's facts,
+  so D49's mark does not apply.
+
+The decimal part is in [#1959](https://github.com/AlexanderNenninger/substrait-lean/pull/1959). The double part is tracked in
+[#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322); until it closes the lift refuses a cast of a double to an integer
+([D54](#d54-the-lift-refines-the-dialect)'s table).
+
+Recomputes sinks: no
+
+Why: after the `round` the cast's argument is integral, and every value of
+`float_to_int` gives the same integer on an integral double. So the pair means one thing
+under every profile, and the cast carries no rounding attribute.
+
+### D59. String to timestamp is strict and raises on a mismatch
+
+Decided 2026-11-19 (theory advisor, ruling 137).
+
+- The format is a literal. A column-valued format is refused.
+- Directives: `%Y` (4 digits), `%m %d %H %M %S` (2 digits each), `%f` (6 digits), `%j`
+  (3 digits), `%%`. Fixed width, ASCII digits, no sign, no padding variants.
+- Literal text matches exactly. No whitespace is skipped, at the ends or inside. The
+  whole string is consumed.
+- A date is required, as `%Y %m %d` or as `%Y %j`. Time parts are optional and default
+  to 0. No directive occurs twice; `%j` with `%m` or `%d` is refused.
+- Any other directive, and any time-zone directive, is refused at verify time.
+- Values: year 0001 to 9999, proleptic Gregorian validity (Feb 30 fails), hour 0 to 23,
+  minute and second 0 to 59 (no second 60), `%j` 001 to 366 and valid for the year.
+- A string outside this language raises a domain error, the same class as a failed
+  string cast: one listed raise, guardable with a regular-expression match first. NULL
+  in, NULL out.
+
+A lowering runs the native parser alone only where facts show the engine accepts
+exactly this language for the format. Otherwise the writer guards with a native
+regular-expression match of the reference's language before the parse, and turns an
+engine's NULL into the raise. A lenient `try_strptime` is not that guard: it accepts
+strings the reference rejects. The reference's raise set grows by this one entry. The
+refusals (other directives, non-literal formats) are lifted later without a new
+decision when facts allow.
+
+Tracked in [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347).
+
+Recomputes sinks: no
+
+Why: a strict language with one guardable raise is small enough for each engine's fact
+to settle whether its native parser accepts exactly it, and a native regular-expression
+guard covers an engine whose parser accepts more.
+
+### D62. `%` of decimals is the truncated remainder at the common scale
+
+Decided 2026-11-20 (theory advisor, rulings 181 and 188; [#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941)).
+
+`a % b` on decimals is the truncated remainder of the two values at scale
+`max(s₁, s₂)`: it takes the dividend's sign, its type is
+`DECIMAL(min(p₁ − s₁, p₂ − s₂) + max(s₁, s₂), max(s₁, s₂))`, a NULL operand gives
+NULL, and a zero divisor raises (`Issue.divByZero`, as integer `%`). The core computes
+on the unscaled integers at one common scale, as for `+`, `-` and `*`; the function has
+a group of its own, `dec.mod`. Decimal `%` is refused
+where `max(p₁ − s₁, p₂ − s₂) + max(s₁, s₂) > 38`: an operand would need more than 38
+digits at the common scale. The refusal reads the types, and a cast of an operand to a
+narrower type guards it. D56's operand check does not apply.
+
+The engines' facts are in [#1951](https://github.com/AlexanderNenninger/substrait-lean/pull/1951). The function is tracked in
+[#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941); until it closes every profile refuses decimal `%`.
+
+Recomputes sinks: no
+
+Why: it lifts a recorded refusal (`dec.div`, until #27) for `modulus`, with the type
+rule of Substrait's YAML, whose borrow branch never applies here.
+
+### D67. Opaque columns: a kind with no operations
+
+Decided 2026-11-20 (theory advisor, ruling 187; [#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958), [#1918](https://github.com/AlexanderNenninger/substrait-lean/issues/1918)).
+
+A column of a type the frontend does not model is an opaque column: a kind,
+`Kind.opaque`, and no new value. What the model holds for it is an injective image of
+the engine's value. The kind checker refuses every use but carrying it: an opaque
+argument to any function, measure or window function, a branch of `if_then` or
+`coalesce`, a cast either way, a sort, grouping, partition or order key, and DISTINCT
+and the set operations that compare rows. `IS NULL` and `IS NOT NULL` are admitted. A
+column whose type contains an unmodelled type is opaque as a whole. There is no
+literal and no cast. Each lowering writes a plain column reference, and the report gives
+the column's declared type and nullability and nothing else. The reference
+evaluator refuses an opaque column. An engine carries a type only where its fact shows
+the value unchanged through project, filter, join, sort, union all and limit; otherwise
+its route refuses the column. `Rel.eval` and
+`Rel.Allowed` do not change.
+
+Tracked in [#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958); until it closes a table with such a column is refused.
+
+Recomputes sinks: no
+
+Why: a well-kinded plan reads nothing from an opaque column, so no result depends on
+which image, and equality of two outputs in the model is equality of the engines'
+values. The law is that a plan commutes with every injective renaming of that sort. It
+lifts a refusal: sverify carries such a column and states nothing about its content.
+
+### D69. A calendar function of a UTC instant in Ibis reads its UTC wall clock
+
+Decided 2026-11-20 (theory advisor, ruling 193; [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725)).
+It opens what D53 left as a later decision.
+
+A function of a `timestamp('UTC')` expression whose Ibis result type is not an
+instant (a date, a time of day, an integer part, a string of the supported
+`strftime` directives, or the naive timestamp of `truncate` and `bucket`) means
+that function of the instant's UTC wall clock: `f (atUtc false x)`. The Ibis
+producer writes the conversion into the plan; the parser keeps refusing a
+calendar function of an instant, so a plan states its zone or is refused. The
+core, the options and the profiles are unchanged. Arithmetic with intervals, the
+difference of two instants, a cast to a string, zones other than UTC and the SQL
+spellings that follow DuckDB's session zone stay refused (D53, D54). Facts:
+[duckdb-instant-conversion](../engines/duckdb/facts/duckdb-instant-conversion.json),
+[polars-instant-conversion](../engines/polars/facts/polars-instant-conversion.json),
+[duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json). Spark and
+Snowflake refuse the conversion and name the issue.
+
+Tracked in [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725).
+
+Recomputes sinks: no. A refusal is lifted; no accepted plan changes its meaning.
+
+Why: in Ibis the zone is in the column's type, so the plan can state it; in DuckDB SQL
+it is in the session, which sverify never reads. With the conversion in the plan,
+`t.ts.truncate('D')` is the same plan as `t.ts.cast('timestamp').truncate('D')`: one
+meaning, proved once.
+
+### D70. Engine versions: probed, in range, out of range
+
+Decided 2026-11-20 (theory advisor, ruling 198 and its addendum, on [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045);
+ruling 200 states the third paragraph's first sentence). Amends D14.
+The maintainer chose the minor range and one probed minor per engine at 1.0
+(2026-11-20): DuckDB 2.0.x, Polars 2.1.x, Spark 4.3.x.
+
+An engine profile states the versions its facts were probed at and one range around
+them: the minor releases that hold a probed version, from the lowest probed patch up.
+A profile whose engine has no such releases states its own range. The engine
+package's dependency bound is that range.
+
+A run that claims a guarantee on a probed version claims it in full. On an unprobed
+version inside the range it warns, and the route records the version: the proof
+stands, and the engine step assumes that this version computes what the probed one
+does. Outside the range the run is refused until the probes are re-run.
+`unverified=True` runs it anyway and claims nothing.
+
+No guarantee of a verified run rests on an engine raising. A verified run is one whose
+verdict is `PROVED` or `PROVED_WITH_CHECKS`. An input the proof excludes
+is excluded by a proved precondition or by a check whose verdict is a value the engine
+returns. A version that raises on fewer inputs changes no verified run, and one that
+raises on more stops a run with the engine's error.
+
+At 1.0 a profile holds no row indexed by version. When a probed version changes a
+value that a lowering, a shim or a check reads, the lowering is rewritten to read the
+engine only where the versions in range agree, where one native expression does it.
+Otherwise the profile moves to the new version and the range's floor moves with it. A
+change on the error side supersedes its fact and keeps both versions.
+
+The guard and the bounds are tracked in [#2052](https://github.com/AlexanderNenninger/substrait-lean/issues/2052).
+
+Recomputes sinks: no
+
+Why: D14 refused only another major, and a patch release changed a native value
+(`list_contains([], NULL)` at DuckDB 2.0.1, [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045)). An unprobed patch
+warns and an unprobed minor is refused.

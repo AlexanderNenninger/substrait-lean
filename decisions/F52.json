@@ -1,0 +1,20 @@
+{
+  "id": "F52",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "non_ascii_text sits on str.case and a new group str.ascii (reverse, ascii, levenshtein, ilike, regexp_*); str.plain and str.opaque carry no option. A check ties group membership to a nonAscii arm. No new D-number.",
+  "prs": [
+    1631
+  ],
+  "amends": [
+    "D43",
+    "F30"
+  ],
+  "amended_by": [
+    "F55"
+  ],
+  "source": "fable-ruling-1631-str-ascii-group.md",
+  "note": "Amends C4 of the D43 ruling (night log entry 30): only the table carrying D43's option changes, D43's semantics unchanged."
+}

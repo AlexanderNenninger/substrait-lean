@@ -1,0 +1,13 @@
+{
+  "id": "D66",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "reserved",
+  "summary": "Reserved for a struct constructor.",
+  "issues": [
+    1918,
+    1919
+  ],
+  "note": "Reserved in ruling 186; ruling 187 names its subject."
+}

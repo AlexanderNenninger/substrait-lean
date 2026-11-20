@@ -1,0 +1,15 @@
+{
+  "id": "D37",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "No operation creates a NaN; a NaN from non-NaN inputs is an issue (Issue.domain).",
+  "issues": [
+    185,
+    257
+  ],
+  "supersedes": [
+    "D33"
+  ]
+}

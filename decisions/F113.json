@@ -1,0 +1,16 @@
+{
+  "id": "F113",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Rel.evalChoices: first fix exact-equality grouping/dedup to distinctRows; prove acceptance implies allowed (Rel.evalChoices_allowed, val matches by =, multiset); the proposed allowed-implies-accepted direction is false and recorded as the oracle's known gap.",
+  "issues": [
+    1484
+  ],
+  "amended_by": [
+    "F120"
+  ],
+  "source": "fable-ruling-evalchoices-statement.md",
+  "note": "No D-number. Staging set by ruling 120 (fable-ruling-113-staging.md)."
+}

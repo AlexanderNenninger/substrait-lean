@@ -32,6 +32,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sverify_dbt"]
+# The replay of dbt packages' projects (#859) is maintainers' tooling: it
+# reads and writes this repository's ledgers, which no installed copy has.
+exclude = ["src/sverify_dbt/replay.py"]
 
 # The sdist: the package, its tests and the sample project's sources, without
 # what dbt writes there (`dbt deps`, `dbt compile`, `dbt build`).

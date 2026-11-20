@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-05-substrait-execution-out-of-scope",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Executing exported plans in an outside Substrait consumer is out of scope.",
+  "issues": [
+    862
+  ],
+  "source": "github:#862 body"
+}

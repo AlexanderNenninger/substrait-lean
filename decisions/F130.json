@@ -1,0 +1,18 @@
+{
+  "id": "F130",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Track B #1484: F1 builds issues on every allowed order with `DataAssumed` taking `SmallAll`; F2 keeps the black-box clamp (no axiom, no D56), the checker reports law breaks and laws; F3 builds root-aggregate `FloatOpenSafeP`.",
+  "issues": [
+    929,
+    1484
+  ],
+  "amended_by": [
+    "F135",
+    "F140"
+  ],
+  "source": "fable-ruling-130-trackB-1484.md",
+  "note": "F2 item 4 (report names laws in `Report.assumptions`) amended by ruling 140 to `Report.black_boxes`; F3 corollary gains side condition `SumTolCovers` via ruling 135."
+}

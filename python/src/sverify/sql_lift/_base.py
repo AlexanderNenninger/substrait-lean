@@ -94,9 +94,6 @@ class Profile:
         float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
             (DuckDB rounds, `CAST(2.5 AS INT)` is 2) or `"TRUNCATE"`
             (reference, #209 R9).
-        decimal_to_int: A cast of a decimal to an integer:
-            `"TIE_AWAY_FROM_ZERO"` (DuckDB, `CAST(2.5 AS INT)` is 3) or
-            `"TRUNCATE"` (reference, R9).
         domain_error: Elementary functions and `power` outside their domain
             (`sqrt(-1)`, `power(-8, 1/3)`): `"NAN"` (DuckDB) or `"ERROR"`
             (reference, #257).
@@ -116,7 +113,6 @@ class Profile:
     on_division_by_zero: str = "ERROR"
     float_division_by_zero: str = "ERROR"
     float_to_int: str = "TRUNCATE"
-    decimal_to_int: str = "TRUNCATE"
     domain_error: str = "ERROR"
     log_zero: str = "ERROR"
     corr_degenerate: str = "NULL"
@@ -125,7 +121,6 @@ class Profile:
 DUCKDB = Profile(
     "duckdb",
     float_to_int="TIE_TO_EVEN",
-    decimal_to_int="TIE_AWAY_FROM_ZERO",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
@@ -207,9 +202,8 @@ def _instantiate(template: Any, args: Sequence[Json]) -> Any:
         return [_instantiate(t, args) for t in template]
     if not isinstance(template, dict):
         return template
-    sel = template.get("selection")
-    if isinstance(sel, dict) and "rootReference" in sel:
-        return copy.deepcopy(args[sel["directReference"]["structField"].get("field", 0)])
+    if (i := column_of(template)) is not None:
+        return copy.deepcopy(args[i])
     out: dict[str, Any] = {k: _instantiate(v, args) for k, v in template.items()}
     if "functionReference" in out:
         functions: Mapping[int, str] = lift_table().functions
@@ -229,7 +223,78 @@ def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
         raise SqlUnsupported(f"{construct}: {entry['refused']}")
     ts = [_TABLE_TYPES[a] for a in entry["args"]]
     js = [lf.to(a, t).json for a, t in zip(args, ts, strict=True)]
+    # An argument the template names more than once, and evaluates on every
+    # row, is bound to a column first (#1952).
+    shared = _shareable(construct)
+    js = [lf.share(j) if i in shared else j for i, j in enumerate(js)]
     return E(_instantiate(entry["template"], js), _TABLE_TYPES[entry["result"]])
+
+
+@functools.cache
+def _shareable(construct: str) -> frozenset[int]:
+    """The arguments of `construct`'s template that it names more than once
+    and evaluates on every row: those in its first condition or outside any
+    `CASE`, and the first operand of an `and` or `or` (the second is
+    evaluated only where the first does not decide)."""
+    template = lift_table().scalars[construct]["template"]
+    functions = lift_table().functions
+    refs: list[int] = []
+
+    def count(t: Any) -> None:
+        if isinstance(t, list):
+            for x in t:
+                count(x)
+        elif isinstance(t, dict):
+            if (i := column_of(t)) is not None:
+                refs.append(i)
+            else:
+                for v in t.values():
+                    count(v)
+
+    def always(t: Any) -> set[int]:
+        if not isinstance(t, dict):
+            return set()
+        if (i := column_of(t)) is not None:
+            return {i}
+        if "ifThen" in t:
+            return always(t["ifThen"]["ifs"][0]["if"])
+        if "cast" in t:
+            return always(t["cast"]["input"])
+        if "scalarFunction" in t:
+            f = t["scalarFunction"]
+            args = [a["value"] for a in f["arguments"]]
+            if functions[f["functionReference"]] in ("and", "or"):
+                args = args[:1]
+            return set().union(*(always(a) for a in args))
+        return set()
+
+    count(template)
+    return frozenset(i for i in always(template) if refs.count(i) > 1)
+
+
+def _fields(j: Any) -> set[int]:
+    """The input columns an expression reads."""
+    if isinstance(j, list):
+        return set().union(*(_fields(x) for x in j))
+    if not isinstance(j, dict):
+        return set()
+    sel = j.get("selection")
+    if isinstance(sel, dict) and "rootReference" in sel:
+        # A column, or a reference into one of its values.
+        return {sel["directReference"]["structField"].get("field", 0)}
+    return set().union(*(_fields(v) for v in j.values()))
+
+
+def _with_shared(rel: Json, width: int, shared: list[Json]) -> Json:
+    """`rel` with the bound arguments appended as columns `width`, `width +
+    1`, …: each projection appends those that read no column of its own."""
+    group: list[Json] = []
+    for j in shared:
+        if any(f >= width for f in _fields(j)):
+            rel = {"project": {"input": rel, "expressions": group}}
+            width, group = width + len(group), []
+        group.append(j)
+    return {"project": {"input": rel, "expressions": group}} if group else rel
 
 
 @dataclasses.dataclass(frozen=True)
@@ -349,6 +414,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}; check that DuckDB "
             "runs it, or write the step in Ibis"
         ) from e
+    tree = tree.transform(_builtin_schema, copy=False)
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
     for node in tree.find_all(*_NONDETERMINISTIC):
@@ -365,6 +431,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
                 f"unknown function {f.name}(): DuckDB SQL here has no such function",
                 hint="check the name against DuckDB's functions, or write the step in Ibis",
             )
+    _resolve_tables(tree, schemas)
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
     _check_export_state(tree)
@@ -394,6 +461,69 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__))
     return tree
+
+
+def _builtin_schema(n: sge.Expr) -> sge.Expr:
+    """A call qualified by its built-in schema (`main.lower(x)`,
+    `pg_catalog.lower(x)`, `system.main.lower(x)`) read as the bare function
+    (#328). SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
+    anonymous one, so the call is parsed again without its qualifier."""
+    if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
+        schema = n.this
+        if isinstance(schema, sge.Dot):
+            schema = schema.expression
+        if isinstance(schema, sge.Identifier) and schema.name.lower() in ("main", "pg_catalog"):
+            return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
+    return n
+
+
+def full_name(table: sge.Table | str) -> tuple[str, str, str]:
+    """A table's (catalog, schema, name) as DuckDB resolves it: the defaults
+    are `memory` and `main`, and the names are normalized."""
+    if isinstance(table, str):
+        table = sge.to_table(table, dialect=DIALECT)
+    parts = (table.catalog or "memory", table.db or "main", table.name)
+    c, d, n = (_normalized(p) for p in parts)
+    return c, d, n
+
+
+def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
+    """Point each table the query reads at the input it names, as DuckDB
+    resolves names (#706): `shop.main.orders`, `main.orders` and `orders` are
+    one table where the inputs' keys say so, and the same table name in two
+    schemas stays two inputs. The table keeps its name as its alias, so the
+    query's own column references still resolve."""
+    by_full: dict[tuple[str, str, str], str] = {}
+    for key in schemas:
+        full = full_name(key)
+        if full in by_full:
+            raise Unsupported(
+                f"the inputs {by_full[full]!r} and {key!r} are the same table in DuckDB "
+                f"({'.'.join(full)}); declare it once"
+            )
+        by_full[full] = key
+    ctes = {_normalized(c.alias) for c in tree.find_all(sge.CTE)}
+    for node in tree.find_all(sge.Table):
+        if not isinstance(node.this, sge.Identifier):
+            continue
+        qualified = bool(node.args.get("db") or node.args.get("catalog"))
+        if not qualified and _normalized(node.name) in ctes:
+            continue
+        key = by_full.get(full_name(node))
+        if key is None and qualified:
+            raise SqlUnsupported(
+                f"FROM {_shown(node)}: only the inputs' tables can be read",
+                hint="add the table to the tables, under its qualified name "
+                f"(for example '{node.sql(DIALECT)}'), as DuckDB resolves it",
+                construct="FROM",
+            )
+        if key is None or (not qualified and key == node.name):
+            continue
+        alias = node.args.get("alias") or sge.TableAlias(this=sge.to_identifier(node.name))
+        node.set("catalog", None)
+        node.set("db", None)
+        node.set("this", sge.to_identifier(key, quoted=True))
+        node.set("alias", alias)
 
 
 def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
@@ -616,6 +746,27 @@ def _conjuncts(node: sge.Expression) -> list[sge.Expression]:
 
 
 #: The arguments of a SELECT the lift reads; any other one set is refused.
+#: The expressions that evaluate every operand on every row they are evaluated
+#: on, through which `_Lift.share` may bind an argument below the SELECT list.
+_STRICT = frozenset(
+    {
+        sge.Add,
+        sge.Sub,
+        sge.Mul,
+        sge.Div,
+        sge.IntDiv,
+        sge.Mod,
+        sge.Pow,
+        sge.Neg,
+        sge.Paren,
+        sge.Cast,
+        sge.TryCast,
+        sge.Column,
+        sge.Literal,
+        sge.Alias,
+    }
+)
+
 _SELECT_ARGS = {
     "with_",
     "expressions",
@@ -716,6 +867,23 @@ class _Lift:
         self.guards: dict[int, Json] = {}
         # Where the reference reads this text differently from DuckDB (D54).
         self.differences: list[DialectDifference] = []
+        # The arguments bound to columns below the SELECT list being lifted
+        # (`share`), the first at column `shared_base`; None where nothing
+        # may be bound.
+        self.shared: list[Json] | None = None
+        self.shared_base = 0
+
+    def share(self, j: Json) -> Json:
+        """`j` as a column computed below the SELECT list being lifted, where
+        every row evaluates it anyway, or `j` itself. A template that names an
+        argument several times then copies a column, and a nested expression
+        stays linear in its depth (#1952). A column stays itself, and so
+        does a constant: it reads no column, and the parser reads some only
+        in place (a cast of a string literal)."""
+        if self.shared is None or column_of(j) is not None or not _fields(j):
+            return j
+        self.shared.append(j)
+        return field_ref(self.shared_base + len(self.shared) - 1)
 
     # -- relations ---------------------------------------------------------
 
@@ -779,7 +947,14 @@ class _Lift:
                 raise SqlUnsupported("UNNEST next to an aggregate or a window is not supported yet")
             rel, scope, bound = self.unnest(rel, scope, bound, explodes)
 
-        outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
+        saved = self.shared, self.shared_base
+        self.shared, self.shared_base = [], len(scope)
+        try:
+            outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
+            shared = self.shared
+        finally:
+            self.shared, self.shared_base = saved
+        rel = _with_shared(rel, len(scope), shared)
         names = [e.alias_or_name for e in node.expressions]
         outs = [self.timestamp_of(e) if e.midnight else e for e in outs]
         # Sort keys that are not output columns are computed after them, and
@@ -806,7 +981,7 @@ class _Lift:
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
                 direction = f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"
                 keys.append({"expr": field_ref(i), "direction": direction})
-        width = len(scope)
+        width = len(scope) + len(shared)
         rel = select(rel, width, [e.json for e in outs + extra_keys])
         if distinct is not None:
             rel = distinct_rel(rel, len(outs))
@@ -944,6 +1119,13 @@ class _Lift:
         if offset is not None:
             body["offsetExpr"] = literal(_count(offset.expression, "OFFSET"), dt.int64)
         if limit is not None:
+            opts = limit.args.get("limit_options")
+            if opts and (opts.args.get("percent") or opts.args.get("with_ties")):
+                raise SqlUnsupported(
+                    "LIMIT with PERCENT or WITH TIES is not supported yet",
+                    hint="write a row count: LIMIT n",
+                    construct="LIMIT",
+                )
             body["countExpr"] = literal(_count(limit.expression, "LIMIT"), dt.int64)
         return {"fetch": body}
 
@@ -1002,7 +1184,12 @@ class _Lift:
                 or node.args.get("catalog")
                 or not isinstance(node.this, sge.Identifier)
             ):
-                raise Unsupported(f"FROM {_shown(node)}: only the inputs' tables can be read")
+                raise SqlUnsupported(
+                    f"FROM {_shown(node)}: only the inputs' tables can be read",
+                    hint="add the table to the tables, under its qualified name "
+                    "(for example 'shop.main.orders'), as DuckDB resolves it",
+                    construct="FROM",
+                )
             found = self.schemas.get(node.name)
             if found is None:
                 raise SqlUnsupported(
@@ -1794,6 +1981,15 @@ class _Lift:
         bound = bound or {}
         if node in bound:
             return bound[node]
+        if self.shared is not None and type(node) not in _STRICT:
+            # Below this node some rows may skip an operand, so binding it
+            # below the SELECT list could evaluate it where the query does
+            # not: nothing under it is bound.
+            saved, self.shared = self.shared, None
+            try:
+                return self.expr(node, scope, bound)
+            finally:
+                self.shared = saved
         if getattr(bound, "grouped", False) and isinstance(node, sge.Column):
             raise Unsupported(f"column {_shown(node)} must be in GROUP BY or inside an aggregate")
         if type(node) in _AGGREGATES:

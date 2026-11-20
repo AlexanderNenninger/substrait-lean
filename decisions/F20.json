@@ -1,0 +1,15 @@
+{
+  "id": "F20",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The report's summary line names the verdict (proved, proved with checks: counts, NOT proved: counts), branching on self.verdict, as worker 5's next PR before S3.",
+  "prs": [
+    1526,
+    1529,
+    1530
+  ],
+  "source": "fable-rulings-night-1117.md, entry 20",
+  "note": "File ruling-1527-waiver-1526-summary.md. #1526 merges as approved."
+}

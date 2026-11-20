@@ -16,7 +16,11 @@ Running plans:
   `sverify_spark.dialect.SPARK_CONF`; `pip install 'sverify[spark]'`), over a
   `Connection`'s tables (`sv.connect()` makes one; `con.create`, `con.put`
   and `con.rows` put rows in and read them back). `run_sharded` runs a plan
-  shard by shard and combines the results.
+  shard by shard and combines the results (with `tolerance=True`, a
+  `Sharded`: the result and its doubles' distance from Lean's values).
+  `con.get` gives a table as it is held: an Arrow table, or a `Native`
+  table an engine reads where it is, whose members are outside the 1.x
+  promise while the native scans move into the engine packages.
 * `sv.Report.run` runs the plan a `sv.verify` report checked.
 
 SQL:
@@ -45,6 +49,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from sverify._scan import Native
 from sverify._unsupported import UnsupportedError
 from sverify.engine import (
     ENGINES,
@@ -56,7 +61,7 @@ from sverify.engine import (
 )
 from sverify.engine import run_plan as run
 from sverify.incremental import delta_plans
-from sverify.partition import run_sharded
+from sverify.partition import Sharded, run_sharded
 from sverify.sql import Dialect, to_sql
 
 
@@ -72,6 +77,8 @@ __all__ = [
     "ENGINES",
     "Connection",
     "Dialect",
+    "Native",
+    "Sharded",
     "UnsupportedError",
     "create_table",
     "delta_plans",

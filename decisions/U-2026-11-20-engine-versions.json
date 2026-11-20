@@ -1,0 +1,23 @@
+{
+  "id": "U-2026-11-20-engine-versions",
+  "date": "2026-11-20",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Every engine is fixed to its one probed minor at 1.0 (DuckDB 2.0.x, Polars 2.1.x, Spark 4.3.x only); unprobed patches in the minor run with a warning and route mark; exact patch pins out.",
+  "issues": [
+    2045,
+    2051,
+    2052
+  ],
+  "amends": [
+    "D14",
+    "D70",
+    "F198"
+  ],
+  "amended_by": [
+    "U-2026-11-20-minor-range"
+  ],
+  "source": "fable-ruling-198-engine-versions.md",
+  "note": "User: 'We should fix all engine versions', 'we follow your suggestion on spark', and 'Do this' on the minor range. Closes ruling 198's Spark question; D70 text unchanged. Also recorded in ruling 199 Question 2."
+}

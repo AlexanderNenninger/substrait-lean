@@ -1,0 +1,20 @@
+{
+  "id": "U-2026-11-03-strings-2pow32",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Reference strings have at most 2^32 characters, and substring with a start or length outside that range raises, for constants and columns alike.",
+  "issues": [
+    185,
+    336
+  ],
+  "prs": [
+    426
+  ],
+  "amended_by": [
+    "U-2026-11-08-substring-limit-reference-profile"
+  ],
+  "source": "github:#336 comment 6605546044",
+  "note": "Replaces #416's refusal of constant cases."
+}

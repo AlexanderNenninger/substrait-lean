@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-16-four-more-reference-pages",
+  "date": "2026-11-16",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "engine-profiles.md, float-bounds.md, optimizations.md and proved-theorems.md are also reference pages.",
+  "issues": [
+    1448
+  ],
+  "prs": [
+    1471
+  ],
+  "amends": [
+    "U-2026-11-15-reference-pages-lean-names"
+  ],
+  "source": "github:#1471 body",
+  "note": "Relayed by the coordinator."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "F107",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1743 (Spark total sort/fetch) follows ruling 98's design but is not ready: CI red; snapshot, coverage and catalogue records move with the multiset default; the Snowflake part is in the private evidence; build reports must state CI state.",
+  "prs": [
+    1743
+  ],
+  "amends": [
+    "F98"
+  ],
+  "source": "fable-ruling-1743-rework.md",
+  "note": "Corrects ruling 98's S6 count: four snapshot files turn into queries, not five (isthmus_nested_window was an error)."
+}

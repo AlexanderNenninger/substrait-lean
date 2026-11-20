@@ -1,0 +1,19 @@
+{
+  "id": "F51",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A7 Statements.lean: closed moves into engine conditions, a Checked layer under Verified, postcondition as a predicate on results; worked examples are #guards plus pointers to kernel examples; no check_optimized_sound corollary.",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1623
+  ],
+  "amends": [
+    "F50"
+  ],
+  "source": "fable-ruling-a7-statements.md",
+  "note": "'The plan's A7 text (\"one worked example each\") is amended to this in section 36.' Resolves A6's optimized-plan follow-up (a run takes written_plan(internal_plan))."
+}

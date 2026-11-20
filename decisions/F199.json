@@ -1,0 +1,24 @@
+{
+  "id": "F199",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#2051: Lean carries no version; profiles are indexed by a behaviour record built only on first unresolvable value difference; facts record versions as points with per-version probe-run records; rules R1-R3 bound fragile native rows; services range over their major version.",
+  "issues": [
+    2045,
+    2051,
+    2052,
+    2053,
+    2054
+  ],
+  "amends": [
+    "D70",
+    "F198"
+  ],
+  "amended_by": [
+    "U-2026-11-20-minor-range"
+  ],
+  "source": "fable-ruling-199-2051-version-dependent-profiles.md",
+  "note": "'Supersedes the coordinator's earlier message; ruling 198 (D70) stands and this builds on it.' Adds R2 (no native row reads a ledger bug, audit A6) and R3 (fact rule no wider than its probe); applies D70's first paragraph to services. Rejects #2051's from/until ranges. Snowflake details in the private evidence."
+}

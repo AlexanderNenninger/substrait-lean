@@ -1,0 +1,10 @@
+{
+  "id": "F96",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "A sink records engine, engine version, sverify version and profile outside the digest; across an engine change deterministic delta views resume with a note and open-valued delta views recompute once; a changed profile recomputes via its own plan_digest component.",
+  "source": "fable-ruling-record-engine-versions.md",
+  "note": "CONTRACT_FORMAT stays 2; profile stays out of MEANING_CHANGES."
+}

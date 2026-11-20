@@ -143,7 +143,7 @@ def errors(expr) -> list[str]:
             T.filter(T.n != 0).filter((T.qty % T.n) > 1),
             ["division by zero"],
         ),
-        ("guard in the same AND", T.filter((T.n != 0) & ((T.qty % T.n) > 1)), ["division by zero"]),
+        ("guard in the same AND", T.filter((T.n != 0) & ((T.qty % T.n) > 1)), []),  # D50
         # `fmod(±inf, 2.5)` would be NaN, which no operation creates (#257).
         ("double modulus, constant", T.select(x=T.amount % 2.5), ["domain error"]),
         (
@@ -231,7 +231,7 @@ def test_duckdb_fails_only_where_reported(i, rows):
     )
     con = connect()
     put_table(con, "t", table)
-    plan = to_substrait_json(expr)
+    plan = written_plan(to_substrait_json(expr))
     try:
         duckdb_rows(plan, {"t": table})
     except duckdb.Error as e:
@@ -422,3 +422,27 @@ def test_nested_narrow_arithmetic_overflows_as_duckdb(expr):
     ]
     with pytest.raises(duckdb.Error, match="out of range"):
         run_plan(con, written_plan(substrait_json(con, sql, semantics="duckdb")), "duckdb")
+
+
+LB = ibis.table({"k": "int64", "x": "float64", "b": "float64"}, name="t")
+
+
+@pytest.mark.parametrize(
+    ("x", "b", "raises"),
+    [
+        (None, 0.0, False), (None, 1.0, False), (None, -1.0, False),  # NULL before the domain
+        (-1.0, None, False), (0.0, None, False),
+        (1.0, 0.0, True), (5.0, 1.0, True), (-1.0, 2.0, True),
+    ],
+)  # fmt: skip
+def test_log_of_a_null_argument_is_null_before_the_domain_is_read(x, b, raises):
+    """`Expr.issues` reads `log(x, b)` with both arguments present (#1990): `log(NULL, 0)` is NULL,
+    where DuckDB's written plan raised."""
+    con = connect("duckdb")
+    con.create("t", LB.schema(), [(0, x, b)])
+    plan = written_plan(to_substrait_json(LB.select(LB.k, v=LB.x.log(LB.b))))
+    if raises:
+        with pytest.raises(Exception, match="domain error"):
+            run_plan(con, plan, "duckdb")
+    else:
+        assert run_plan(con, plan, "duckdb").to_pylist() == [{"k": 0, "v": None}]
