@@ -82,7 +82,6 @@ def test_the_profiles_differ_only_in_what_functions_do():
     assert {f for f in fields if getattr(DUCKDB, f) != getattr(REFERENCE, f)} == {
         "name",
         "float_to_int",
-        "decimal_to_int",
         "domain_error",
         "log_zero",
         "corr_degenerate",
