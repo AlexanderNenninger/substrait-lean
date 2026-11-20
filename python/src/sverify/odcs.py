@@ -537,8 +537,9 @@ _LOGICAL_IBIS = {
 }
 
 
-#: A time zone at the end of a timestamp's text: `Z`, `+10:00`, `-0530`.
-_OFFSET = re.compile(r"(Z|[+-]\d{2}(:?\d{2})?)$")
+#: A time zone after a timestamp's time of day: `Z`, `+10:00`, `-0530`. A
+#: date alone (`2020-01-01`) has none.
+_OFFSET = re.compile(r"\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s*(Z|[+-]\d{2}(:?\d{2})?)$")
 
 
 def _ibis_type(p: Mapping[str, Any]) -> Any:
@@ -676,8 +677,12 @@ class _Reader:
         if column is not None:
             query = query.replace("{property}", _quote(column))
         # The object by its own name, as ODCS's examples write it (#864).
+        # A quoted name matches with its case, a bare one without (DuckDB's).
         query = re.sub(
-            rf"(\bFROM\s+)(?:{re.escape(self.table)}|{re.escape(_quote(self.table))})(?=\s|;|$)",
+            rf"(\b(?i:FROM)\s+){re.escape(_quote(self.table))}(?=\s|;|$)", r"\1{object}", query
+        )
+        query = re.sub(
+            rf"(\bFROM\s+){re.escape(self.table)}(?=\s|;|$)",
             r"\1{object}",
             query,
             flags=re.IGNORECASE,
@@ -807,7 +812,15 @@ class _Reader:
         logical = p.get("logicalType")
         # A temporal bound is a literal of the column's own type.
         t = _ibis_type(p)
-        cast = _physical(t) if t.is_date() or t.is_time() or t.is_timestamp() else None
+        cast = (
+            ("TIMESTAMP" if t.timezone is None else "TIMESTAMPTZ")
+            if t.is_timestamp()
+            else "DATE"
+            if t.is_date()
+            else "TIME"
+            if t.is_time()
+            else None
+        )
         bounds = [
             ("minimum", sg.exp.GTE),
             ("exclusiveMinimum", sg.exp.GT),

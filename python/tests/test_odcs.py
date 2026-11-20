@@ -453,6 +453,13 @@ def test_a_sql_rule_may_name_its_object() -> None:
         strict=True,
     )
     assert [label(c) for c in contract.conditions()] == ["NOT COALESCE((amount < 0), FALSE)"]
+    # A quoted name matches with its case: "orders" is another table.
+    other = {**rule, "query": 'select count(*) from "orders" where amount < 0'}
+    doc = {**contract.document, "schema": [{**contract.document["schema"][0], "quality": [other]}]}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = odcs.read(doc)
+    assert back.conditions() == [] and len(back.unread) == 1
 
 
 def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
@@ -465,6 +472,8 @@ def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
         {"name": "e", "logicalType": "timestamp", "physicalType": "timestamp",
          "logicalTypeOptions": {"maximum": "2020-01-01 00:00:00Z"}},
         {"name": "b", "logicalType": "date", "logicalTypeOptions": {"minimum": "2020-01-01"}},
+        {"name": "d", "logicalType": "timestamp", "physicalType": "timestamp",
+         "logicalTypeOptions": {"minimum": "2020-01-01"}},
     ]  # fmt: skip
     doc = {"apiVersion": "v3.2.0", "kind": "DataContract", "id": "x", "version": "1",
            "status": "active", "schema": [{"name": "t", "properties": props}]}  # fmt: skip
@@ -474,6 +483,7 @@ def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
     assert [label(c) for c in contract.conditions()] == [
         '("a" >= CAST(\'2020-01-01 00:00:00+10:00\' AS TIMESTAMPTZ)) OR "a" IS NULL',
         '("b" >= CAST(\'2020-01-01\' AS DATE)) OR "b" IS NULL',
+        '("d" >= CAST(\'2020-01-01\' AS TIMESTAMP)) OR "d" IS NULL',
     ]
     assert [u.reason for u in contract.unread] == [
         "a maximum with a time zone on a timestamp without one"
