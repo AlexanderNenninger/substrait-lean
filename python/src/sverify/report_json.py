@@ -144,6 +144,7 @@ _KINDS = {
         "domain error",
         "SUM overflow",
         "overflow to infinity",
+        "source_threshold",
     )
 }
 

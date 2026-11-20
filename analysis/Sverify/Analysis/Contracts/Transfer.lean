@@ -647,6 +647,8 @@ def UnFn.abs : UnFn → AVal → AVal
   | .structField i, a => a.fieldAbs i
   | .listElement off, a => a.elementAbs off
   | .flatten, a => a.flattenAbs
+  -- D52: a source mark is the identity.
+  | .approx _, a => a
   | .cardinality, a => a.cardAbs
   | .raise _, _ => { null := true }
   | .isNum _, _ => { tt := true, ff := true }
