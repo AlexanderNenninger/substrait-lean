@@ -813,6 +813,9 @@ jobs:
   # report and never block: a gate that finds a change from its ledger warns
   # here and in the run's summary, and `qa` does not wait on this job.
   #
+  # Ibis's backend tests (#860): `sverify_dev.ibis_replay` runs them on
+  # DuckDB with sverify as a plugin, and compares with the ledgers.
+  #
   # substrait-validator (#862): no release reads the Substrait sverify
   # writes, so the job builds it at the commit `sverify_dev.substrait_validator`
   # pins (Rust, protoc 28.3 as its own CI uses), caches the wheel by that
@@ -873,6 +876,24 @@ jobs:
           fi
           cat "$RUNNER_TEMP/gate.txt"
           { echo '### substrait-validator (#862)'; echo '```'; cat "$RUNNER_TEMP/gate.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      # Ibis's own backend tests on DuckDB (#860): the suite at the Ibis
+      # release uv.lock pins and its test data (70 MB), cached by both pins.
+      - id: ibis
+        run: |
+          f=python/tools/sverify_dev/ibis_replay.py
+          echo "key=$(sed -n 's/^IBIS_TAG = "\(.*\)"$/\1/p' $f)-$(sed -n 's/^DATA_COMMIT = "\(.*\)"$/\1/p' $f)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/ibis-replay
+          key: ibis-replay-${{ steps.ibis.outputs.key }}
+      - name: Ibis's backend tests (#860)
+        working-directory: python
+        run: |
+          if ! uv run --no-sync python -m sverify_dev.ibis_replay --check > "$RUNNER_TEMP/ibis.txt" 2>&1; then
+            echo "::warning title=Ibis replay gate::outcomes differ from python/tests/ibis_replay/; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/ibis.txt"
+          { echo "### Ibis's backend tests (#860)"; echo '```'; cat "$RUNNER_TEMP/ibis.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # sverify-dbt (dbt/): lint, typecheck and tests, then its check of the
   # sample project, `dbt build` without the tests it proved, and `dbt test`
