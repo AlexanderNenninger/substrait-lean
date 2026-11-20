@@ -1063,6 +1063,8 @@ def test_quantile_of_a_decimal_cast_to_float64_verifies_and_runs():
     )
     assert report.verdict == sv.Verdict.PROVED, report.details()
     con = connect()
-    con.create("t", DEC.schema(), [(1, Decimal("1.25")), (1, Decimal("2.50")), (1, Decimal("4.75"))])
+    con.create(
+        "t", DEC.schema(), [(1, Decimal("1.25")), (1, Decimal("2.50")), (1, Decimal("4.75"))]
+    )
     got = run_plan(con, written_plan(to_substrait_json(expr)), "duckdb").to_pylist()
     assert got == [{"k": 1, "q": 2.5}]
