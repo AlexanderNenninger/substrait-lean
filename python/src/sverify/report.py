@@ -1038,8 +1038,7 @@ class Report:
         between the check and the run.
 
         Raises:
-            PreconditionError: An assumed issue occurs on the data, or the
-                check raises with an assumed issue's message.
+            PreconditionError: An assumed issue occurs on the data.
         """
         if self._assumed_check is None:
             labels = ", ".join(_assumption(i) for i in self.assumed)
@@ -1048,10 +1047,9 @@ class Report:
                 "refused before the run"
             )
         plan, issues = self._assumed_check
-        try:
-            out = run_plan(con, json.dumps(plan), engine)
-        except Exception as e:
-            raise self._broken_assumption(e) or e from None
+        # The flags read the values the guards would stop at, so the check
+        # runs without the guard against `±∞` (`finite`): its verdict is a value.
+        out = run_plan(con, json.dumps(plan), engine, finite=False)
         row = list(out.to_pylist()[0].values()) if out.num_rows else []
         if any(row):
             found = {issues[j] for j, v in enumerate(row) if v}
@@ -1081,25 +1079,6 @@ class Report:
                 else:
                     out.append(f"{t}: {lab}")
         return out
-
-    def _broken_assumption(self, e: Exception) -> PreconditionError | None:
-        """The refusal for an error of an engine's translation that says an
-        assumed `SUM` or operation on finite doubles failed on the data; None
-        for any other error."""
-        message = str(e)
-        issues = ("SUM overflow", "overflow to infinity")  # a Polars guard's `issue`
-        if not (
-            getattr(e, "issue", None) in issues
-            or "overflow in SUM" in message
-            or "overflow to infinity" in message
-        ):
-            return None
-        broken = ", ".join(_assumption(i) for i in self.assumed)
-        err = PreconditionError(
-            f"the batch breaks an assumed precondition, {broken}: refused before the run"
-        )
-        err.__cause__ = e
-        return err
 
     def _source(self, table: str, c: Condition) -> str:
         """Where a precondition the data breaks came from, and what to do,
@@ -1311,42 +1290,35 @@ class Report:
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
-        try:
-            if (
-                check_requires
-                and kind == "translated"
-                and self.semantics == "reference"
-                and self._guard_free
-                and theorem is not None
-            ):
-                out = self._with_plan(
+        if (
+            check_requires
+            and kind == "translated"
+            and self.semantics == "reference"
+            and self._guard_free
+            and theorem is not None
+        ):
+            out = self._with_plan(
+                plan,
+                run_engine,
+                lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                recheck,
+            )
+        else:
+            out = self._with_plan(
+                plan,
+                run_engine,
+                lambda plan: run_plan(
+                    con,
                     plan,
-                    run_engine,
-                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
-                    recheck,
-                )
-            else:
-                out = self._with_plan(
-                    plan,
-                    run_engine,
-                    lambda plan: run_plan(
-                        con,
-                        plan,
-                        engine,
-                        finite=finite,
-                        asof=self._native_asof(plan, run_engine),
-                        # A proved report's exact level justifies Spark's windows
-                        # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                        tie_free=self._exact and kind != "unverified",
-                    ),
-                    recheck,
-                )
-        except Exception as e:
-            # The translation's own checks of the assumptions, a defence for
-            # data that changed since `_check_assumed`, refuse the batch too.
-            if check_requires and (refusal := self._broken_assumption(e)) is not None:
-                raise refusal from e
-            raise
+                    engine,
+                    finite=finite,
+                    asof=self._native_asof(plan, run_engine),
+                    # A proved report's exact level justifies Spark's windows
+                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                    tie_free=self._exact and kind != "unverified",
+                ),
+                recheck,
+            )
         out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}

@@ -168,8 +168,10 @@ double, so the check reads bounds that hold whatever order the engine sums in
 
 * `SUM` and `AVG`: the exact sum is within `n·u·Σ|x|` of any summation's
   `ŝ` (`u = 2⁻⁵³`, `n` values; `n` and `Σ|x|` taken over every kept row bound
-  those of the distinct values). The check flags where `|ŝ|` or
-  `2·n·u·Σ|x|` reaches a quarter of the largest double: below both, the
+  those of the distinct values). The check flags where `ŝ` is not finite
+  (`±∞`, or NaN where partial sums overflow both ways: ruling 200, A4(3)), or
+  where `|ŝ|` or `2·n·u·Σ|x|` reaches a quarter of the largest double: below
+  both, the
   exact sum is below half of it, so its rounding is finite. An `AVG` lies
   within its values' range; it shares the `SUM`'s check, which refuses more.
 * `VARIANCE`, `STDDEV`, `COVAR` and `CORR` are at most `4·M²` for
@@ -186,7 +188,8 @@ def Measure.infCheck (m : Measure) (k o : Nat) : List Expr × List Measure × Ex
     ([a.fabsE, m.nonFiniteE],
       [{ m with fn := .fsum }, { fn := .fsum, arg := .field k, filter := m.filter },
         { fn := .count, arg := .field k, filter := m.filter }, mx (k + 1)],
-      .bin .and (.bin .or ((Expr.field o).fabsE.atLeastE 4.49423283715579e307)
+      .bin .and (.bin .or (.bin .or (.un .not (Expr.field o).finiteE)
+          ((Expr.field o).fabsE.atLeastE 4.49423283715579e307))
         ((Expr.bin .fmul (.bin .fmul (.lit (.float (FloatCode.ofFloat 2.220446049250313e-16)))
           (.un .itof (.field (o + 2)))) (.field (o + 1))).atLeastE 4.49423283715579e307))
         (finite (o + 3)))
@@ -295,6 +298,15 @@ private def flagOn (e : Expr) (row : Row) : Bool :=
   (.lit (.float 0))) [big]
 #guard letI := Boxes.Ambient.none; flagOn (.ifThen (.bin .lt (.lit (.float (FloatCode.ofFloat 1.0))) (.field 0)) prod
   (.lit (.float 0))) [big]
+-- A `SUM` of finite doubles whose total is NaN (partial sums overflowing both
+-- ways, ruling 200 A4(3)) is flagged; a small finite total is not, nor a NaN
+-- total of a NaN input. The flag reads `[ŝ, Σ|x|, n, an input not finite]`.
+#guard letI := Boxes.Ambient.none;
+  let flag := (({ fn := .fsum, arg := .field 0 } : Measure).infCheck 0 0).2.2
+  let one := Value.float (FloatCode.ofFloat 1.0)
+  [[.float FloatCode.nan, one, .int 2, .int 0], [one, one, .int 2, .int 0],
+    [.float FloatCode.nan, one, .int 2, .int 1]].map (fun r => (flag.eval r).isTrue) ==
+    [true, false, false]
 
 end
 
