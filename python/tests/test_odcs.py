@@ -16,6 +16,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _repo import needs_repo
 from sverify import odcs
 from sverify.cli import main
 from sverify.contracts import Key, MaxRows, References, RowsPer, Unique, label
@@ -418,6 +419,111 @@ def test_cli_contract_export(tmp_path, capsys):
     assert main(["contract", "export", f"{path}:p", "-o", str(out), "--id", "paid-v1"]) == 0
     assert valid(json.loads(out.read_text()))["id"] == "paid-v1"
     assert main(["contract", "export", f"{path}:nope"]) != 0
+
+
+# -- ODCS's own published examples (#864) ---------------------------------------
+
+
+def _examples() -> list[Path]:
+    """The vendored examples; none outside the repository (`needs_repo`)."""
+    try:
+        from sverify_dev import odcs_examples
+    except ImportError:
+        return []
+    return sorted(odcs_examples.EXAMPLES.rglob("*.odcs.yaml"))
+
+
+@needs_repo
+@pytest.mark.parametrize("path", _examples(), ids=lambda p: p.name)
+def test_a_published_example_reads_as_the_ledger_says(path: Path) -> None:
+    """`read` gives each example's conditions and unread rules as the ledger
+    records them, and an export of the conditions reads back the same."""
+    from sverify_dev import odcs_examples
+
+    ledger = json.loads(odcs_examples.LEDGER.read_text())
+    key = str(path.relative_to(odcs_examples.EXAMPLES))
+    assert odcs_examples.entry(path) == ledger["results"][key]
+
+
+@needs_repo
+def test_every_unread_example_rule_waits_on_an_issue_or_is_by_design() -> None:
+    from sverify_dev import odcs_examples
+
+    ledger = json.loads(odcs_examples.LEDGER.read_text())
+    assert len(ledger["results"]) == len(_examples()) == 42
+    for key, r in ledger["results"].items():
+        assert "objects" in r, key
+        for table, o in r["objects"].items():
+            for u in o["unread"]:
+                assert u["reason"] and (u.get("issue") or u.get("design")), (key, table, u)
+            rt = o["round_trip"]
+            assert (
+                rt in ("same", "no conditions")
+                or "not tried" in rt
+                or (rt.get("issue") or rt.get("design"))
+            ), (key, table, rt)
+
+
+def test_a_sql_rule_may_name_its_object() -> None:
+    """ODCS's examples write a rule's table by name, in any case (#864)."""
+    rule = {"type": "sql", "query": 'select count(*) from "Orders" where amount < 0', "mustBe": 0}
+    contract = odcs.read(
+        {
+            "apiVersion": "v3.2.0",
+            "kind": "DataContract",
+            "id": "x",
+            "version": "1",
+            "status": "active",
+            "schema": [
+                {
+                    "name": "Orders",
+                    "properties": [{"name": "amount", "logicalType": "integer"}],
+                    "quality": [rule],
+                }
+            ],
+        },
+        strict=True,
+    )
+    assert [label(c) for c in contract.conditions()] == ["NOT COALESCE((amount < 0), FALSE)"]
+    # A quoted name matches with its case: "orders" is another table.
+    other = {**rule, "query": 'select count(*) from "orders" where amount < 0'}
+    doc = {**contract.document, "schema": [{**contract.document["schema"][0], "quality": [other]}]}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = odcs.read(doc)
+    assert back.conditions() == [] and len(back.unread) == 1
+
+
+def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
+    """A bound with a time zone on a column with one is a TIMESTAMPTZ. On a
+    column without one it stays unread, since DuckDB's cast to TIMESTAMP
+    drops the offset, and so does a bound without one on a column with one,
+    which DuckDB would read in the session's time zone (D53, #864)."""
+    props = [
+        {"name": "a", "logicalType": "timestamp", "physicalType": "timestamptz",
+         "logicalTypeOptions": {"minimum": "2020-01-01 00:00:00+10:00"}},
+        {"name": "e", "logicalType": "timestamp", "physicalType": "timestamp",
+         "logicalTypeOptions": {"maximum": "2020-01-01 00:00:00Z"}},
+        {"name": "b", "logicalType": "date", "logicalTypeOptions": {"minimum": "2020-01-01"}},
+        {"name": "d", "logicalType": "timestamp", "physicalType": "timestamp",
+         "logicalTypeOptions": {"minimum": "2020-01-01"}},
+        {"name": "z", "logicalType": "timestamp", "physicalType": "timestamptz",
+         "logicalTypeOptions": {"minimum": "2020-01-01 00:00:00"}},
+    ]  # fmt: skip
+    doc = {"apiVersion": "v3.2.0", "kind": "DataContract", "id": "x", "version": "1",
+           "status": "active", "schema": [{"name": "t", "properties": props}]}  # fmt: skip
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        contract = odcs.read(doc)
+    assert [label(c) for c in contract.conditions()] == [
+        '("a" >= CAST(\'2020-01-01 00:00:00+10:00\' AS TIMESTAMPTZ)) OR "a" IS NULL',
+        '("b" >= CAST(\'2020-01-01\' AS DATE)) OR "b" IS NULL',
+        '("d" >= CAST(\'2020-01-01\' AS TIMESTAMP)) OR "d" IS NULL',
+    ]
+    assert [u.reason for u in contract.unread] == [
+        "a maximum with a time zone on a timestamp without one",
+        "a minimum without a time zone on a timestamp with one",
+    ]
 
 
 READ_MORE = {

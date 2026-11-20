@@ -1924,6 +1924,17 @@ every export against that release's JSON schema
 [test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:
 `pip install 'sverify[odcs]'`. JSON needs nothing.
 
+Sverify reads the standard's own published examples, the 42 contracts of
+ODCS v3.2.0's `docs/examples`
+([vendored](../python/tests/standards/odcs-examples-v3.2.0/SOURCE),
+[ledger](../python/tests/odcs_examples.json),
+`python -m sverify_dev.odcs_examples`). It reads 151 conditions from them,
+and 22 rules stay unread, each with its reason and the issue that would read
+it or why it does not by design. Of the 104 schema objects with conditions,
+95 export and read back to the same conditions, 4 are not tried (a foreign
+key to another object) and 5 are refused on a column type sverify does not
+read yet.
+
 ```python
 import pyarrow as pa
 import sverify as sv
