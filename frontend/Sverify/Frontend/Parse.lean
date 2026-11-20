@@ -364,6 +364,17 @@ def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
     cols.getD c .other
   | .agg m _ _ => m.kind cols
 
+/-- The kinds the source plan declares for a projection of `es` (`projectKey`),
+`[]` where it declares none. A plan without such an entry never prints its
+expressions: `Rel.kinds` asks at every projection on every call, and the key's
+`reprStr` made that quadratic in the plan's depth. -/
+def declaredProjectKinds (tables : Tables) (es : List Expr) : List Kind :=
+  if tables.any (·.1.startsWith "$project ") then
+    match tables.lookup (projectKey es) with
+    | some (_, s) => schemaKinds s
+    | none => []
+  else []
+
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
     | some (_, s) => schemaKinds s
@@ -374,9 +385,7 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .filter r _ | .fetch r _ _ => r.kinds tables
   | .project r es =>
       let ks := r.kinds tables
-      let declared := match tables.lookup (projectKey es) with
-        | some (_, s) => schemaKinds s
-        | none => []
+      let declared := declaredProjectKinds tables es
       ks ++ es.zipIdx.map fun (e, i) => match declared[i]? with
         | some k => if k == .other then e.kind ks else k
         | none => e.kind ks
@@ -525,6 +534,14 @@ def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
   | .ifThen _ t e => max (t.bits cols) (e.bits cols)
   | _ => 64
 
+/-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
+model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
+it from widening the arithmetic around it, and a column has none (#1934). A
+narrower declared type is a `narrow` mark (`declaredNarrow`). -/
+def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
+  | .lit _ => 64
+  | e => e.bits cols
+
 def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
   | .read t => match tables.lookup t with
     | some (_, s) => schemaBits s
@@ -561,7 +578,7 @@ def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Table
         | _ => 64
 
 /-- The width of each column of a relation's rows as the parser tracks it. -/
-def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.bits tables
+def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.colBits tables
 
 /-- An expression's width in the plan the writer writes: a column keeps its declared width,
 every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
@@ -606,6 +623,16 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
     | some ty => if (narrowIntBits? ty).isSome
         then intBits ty else if e.readsField then e.bits cols else 64
     | none => if e.readsField then e.bits cols else 64
+
+/-- A projected integer constant `e`, written as `j`, at its declared width
+(`argBits`: a literal's tag, or the target of a cast the parser folded,
+`CAST(5 AS INTEGER)`). Narrower than 64 bits, the column keeps that width
+through a `narrow` mark, which changes no value: the parser has checked that
+the constant fits. -/
+def declaredNarrow (j : Json) (e : Expr) : Expr :=
+  match e with
+  | .lit (.int _) => let n := argBits [] j e; if n < 64 then .un (.narrow n) e else e
+  | e => e
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
@@ -2670,7 +2697,7 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
   -- An `AVG` with a double result is a double in the expressions over it.
   let wcols := avgs.foldl (init := cols ++ hoisted.map (·.kind cols) ++ (windowed.kinds []).drop n')
     fun ks (c, _, _, dbl) => if dbl then ks.set c .float else ks
-  let wbits := bits ++ hoisted.map (·.bits bits) ++ (windowed.bits []).drop n'
+  let wbits := bits ++ hoisted.map (·.colBits bits) ++ (windowed.bits []).drop n'
   let withAvgs (e : Expr) : Expr := avgs.foldl (init := e) fun e (c, p, s, dbl) =>
     let (total, count) := (Expr.field c, Expr.field (c + 1))
     -- A double: the sum as a double by the count, NULL without values.
@@ -2949,10 +2976,11 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         parseWindowProject fns inp cols bits ejs
       else if k != 0 then
         let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
+        let es := (ejs.zip es).map fun (j, e) => declaredNarrow j e
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else
-        let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
+        let es ← ejs.mapM fun e => do return declaredNarrow e (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
         if es.isEmpty then pure inp else
           recordDeclaredKinds fns cols ejs es
