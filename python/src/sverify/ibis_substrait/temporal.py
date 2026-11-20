@@ -55,8 +55,25 @@ def _truncate(x: Exprs, op: Any) -> Json:
 # added to a date or timestamp; days added to a date may be a column's count.
 
 
+#: The units an integer cast to an interval may have (ruling 186 T1).
+_CAST_UNITS = frozenset({"W", "D", "h", "m", "s"})
+
+
+def _from_integer(op: Any) -> Any:
+    """`op`, with a cast of an integer to an interval of weeks, days, hours,
+    minutes or seconds read as the `IntervalFromInteger` it means
+    (`i.cast("interval('D')")`, #1926). Months and years stay refused."""
+    match op:
+        case ops.Cast(arg=arg, to=dt.Interval(unit=unit)) if (
+            arg.dtype.is_integer() and unit.short in _CAST_UNITS
+        ):
+            return ops.IntervalFromInteger(arg, unit=unit)
+    return op
+
+
 def _const_interval(op: Any) -> tuple[int, int] | None:
     """An interval expression of constants, as months and microseconds."""
+    op = _from_integer(op)
     match op:
         case ops.Literal(value=v, dtype=t) if v is not None:
             return interval_parts(v, t)
@@ -83,6 +100,7 @@ def _interval(x: Exprs, op: Any) -> Json:
     c = _const_interval(op)
     if c is not None:
         return interval_json(*c)
+    op = _from_integer(op)
     if isinstance(op, ops.IntervalFromInteger):
         months, micros = interval_parts(1, dt.Interval(unit=op.unit))
         if months:

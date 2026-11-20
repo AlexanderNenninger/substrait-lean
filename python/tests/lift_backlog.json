@@ -34,10 +34,6 @@
       "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
     },
     {
-      "test": "tests/test_reference.py::test_float_arithmetic_is_refused[SELECT CAST(d AS FLOAT) AS y FROM s-casts to FLOAT]",
-      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
-    },
-    {
       "test": "tests/test_reference.py::test_float_arithmetic_is_refused[SELECT sqrt(x) AS r FROM s-sqrt of FLOAT]",
       "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
     },
@@ -46,23 +42,11 @@
       "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
     },
     {
-      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT CAST(0.1 AS FLOAT) AS t FROM s LIMIT 1-expected4]",
-      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
-    },
-    {
-      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT CAST(x AS DOUBLE) AS y FROM s-expected1]",
-      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
-    },
-    {
       "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT sum(x) AS t FROM s-expected3]",
       "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
     },
     {
       "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT x * d AS m FROM s-expected2]",
-      "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
-    },
-    {
-      "test": "tests/test_reference.py::test_floats_read_compare_and_widen_exactly[SELECT x > 0.1 AS b FROM s-expected0]",
       "reason": "Tests of other features that wait on the model or the producers: FLOAT columns (#208)."
     }
   ]

@@ -636,6 +636,18 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
         then intBits ty else if e.readsField then e.bits cols else 64
     | none => if e.readsField then e.bits cols else 64
 
+/-- Is the double `f` halfway between two adjacent singles? A value rounded
+to `f` and then to a single rounds twice there, and may land on the other
+single than the value's nearest. -/
+def singleTie (f : Float) : Bool :=
+  let s := f.toFloat32
+  if s.toFloat == f || s.isNaN || s.isInf then false else
+  let other := Float32.ofBits (if (s.toFloat < f) == (0 ≤ f) then s.toBits + 1 else s.toBits - 1)
+  (s.toFloat + other.toFloat) / 2 == f
+
+#guard singleTie (1.0 + 2.0 ^ (-24 : Float)) && singleTie (-(1.0 + 2.0 ^ (-24 : Float)))
+#guard !singleTie 0.1 && !singleTie 1.5
+
 /-- A projected integer constant `e`, written as `j`, at its declared width
 (`argBits`: a literal's tag, or the target of a cast the parser folded,
 `CAST(5 AS INTEGER)`). Narrower than 64 bits, the column keeps that width
@@ -652,8 +664,19 @@ def castConst (ty : Json) (c : Const) : J Const := do
   match typeKind ty with
   | .float =>
     let some f := c.toFloat? | throw "cannot cast this value to a double"
-    -- To a `FLOAT`: the nearest single-precision value (#208).
-    return .flt (if (ty.getObjVal? "fp32").toOption.isSome then f.toFloat32.toFloat else f)
+    if (ty.getObjVal? "fp32").toOption.isNone then return .flt f
+    -- To a `FLOAT`: the nearest single-precision value (#208), rounded once, as
+    -- DuckDB casts (ruling 186 P3, duckdb-coerce-real). An integer within 2^53
+    -- is its double exactly; a decimal or a string goes through its nearest
+    -- double, which rounds to the decimal's single unless it is a tie.
+    if let .int i := c then
+      if 2 ^ 53 < i.natAbs then
+        throw s!"a cast of {i} to FLOAT (fp32) would round twice; cast it to DOUBLE"
+    if (c matches .dec .. || c matches .str _) && singleTie f then
+      throw "a cast of this value to FLOAT (fp32) would round twice; cast it to DOUBLE"
+    let s := f.toFloat32
+    if s.isInf && !f.isInf then throw "the value does not fit a FLOAT (fp32)"
+    return .flt s.toFloat
   | .int =>
     let some i := c.toInt? | throw "cannot cast this value to an integer"
     let bits := intBits ty
@@ -2147,7 +2170,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let e' ← match k with
         | .dec _ s₀ => pure (if s₀ ≤ s then upscale (s - s₀) e else .un (.dround (s₀ - s)) e)
         | .int => pure (upscale s e)
-        | .float => pure (.un (.ftod s) e)
+        | .float =>
+          -- A FLOAT's decimal digits depend on its width (ruling 186 P5).
+          if argBits bits input e == 32 then
+            throw "casts of FLOAT (fp32) values to DECIMAL are not modelled; cast them to DOUBLE first"
+          pure (.un (.ftod s) e)
         | _ => throw s!"unsupported cast from {repr k} to DECIMAL({p}, {s})"
       return .un (.decimal p s) e'
     if let .dec p₀ s₀ := k then
@@ -2311,6 +2338,15 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
       | _ => pure (none, a :: rest)
     | _, js => pure (none, js)
   let args ← argJs.mapM fun a => field a "value"
+  -- An aggregate whose result depends on the width of FLOAT (fp32) values: a
+  -- sum, a mean, a moment, an interpolated quantile (ruling 186 P5). The ones
+  -- below only pick, order or count values.
+  if !["count", "min", "max", "first", "last", "any_value", "mode", "arg_min", "arg_max",
+      "array_agg", "quantile_disc"].contains name then
+    for j in args do
+      let e ← parseExpr fns cols bits j
+      if e.kind cols == .float && argBits bits j e == 32 then
+        throw s!"{name} of FLOAT (fp32) values is not modelled; cast them to DOUBLE first"
   -- Doubles, or integers converted to doubles, as a two-argument aggregate's.
   let double (j : Json) : J Expr := do
     let e ← parseExpr fns cols bits j

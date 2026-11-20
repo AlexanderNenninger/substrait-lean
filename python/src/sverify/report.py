@@ -1336,15 +1336,20 @@ class Report:
         return out
 
     def _declared_widths(self, out: pa.Table) -> pa.Table:
-        """`out` with each integer column at the width `output` states: a
-        passed-through narrow column Polars widened to int64 goes back to its
+        """`out` with each integer or float column at the width `output` states:
+        a passed-through narrow column Polars widened to int64 goes back to its
         declared width (a native cast, exact: the values came from that width,
-        ruling 121)."""
+        ruling 121). A float32 column is the same (#1908): the checker refuses
+        arithmetic on float32, so a float32 result holds float32 values, and a
+        double the plan widened from one stays a double."""
         want = dict(self.output)
         fields = []
         for f in out.schema:
             ty = want.get(f.name)
-            if ty is not None and ty.is_integer() and pa.types.is_integer(f.type):
+            if ty is not None and (
+                (ty.is_integer() and pa.types.is_integer(f.type))
+                or (ty.is_floating() and pa.types.is_floating(f.type))
+            ):
                 f = f.with_type(ty.to_pyarrow())
             fields.append(f)
         schema = pa.schema(fields, metadata=out.schema.metadata)
@@ -2554,13 +2559,17 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
         if isinstance(table, str):
             return query.format(f"({table})")
         from sverify.ibis_substrait import SQLModel, Unsupported, sql_model_schema
+        from sverify.ibis_substrait.prune import prune_unmentioned
 
         query = query.format('"t"')
+        # The SQL model hides `table` from the producer's pruning: its unread
+        # columns of types sverify does not read go first (#1958).
+        inner: Any = prune_unmentioned(table).op()
         try:
-            schema = sql_model_schema(query, {"t": table.schema()}, semantics)
+            schema = sql_model_schema(query, {"t": inner.schema}, semantics)
         except Unsupported as e:
             raise Unsupported(f"condition {cond!r}: {e}") from e
-        return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
+        return SQLModel(query, (inner,), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
     if isinstance(table, ir.Join):
