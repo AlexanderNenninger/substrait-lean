@@ -95,6 +95,18 @@ structure BindSt where
 def BindSt.push (s : BindSt) (e : Expr) : BindSt × Nat :=
   (⟨.project s.rel [e], s.width + 1⟩, s.width)
 
+/-- Is `e` a column reference? -/
+def Expr.isField : Expr → Bool
+  | .field _ => true
+  | _ => false
+
+/-- The reach `g` as a column: a compound reach is appended once, so that a
+chain's levels read one column and a nest's plan grows linearly with its depth
+(#1719); a column, or no reach, stays as it is. -/
+def BindSt.anchor (s : BindSt) : Option Expr → BindSt × Option Expr
+  | some c => if c.isField then (s, some c) else ((s.push c).1, some (.field (s.push c).2))
+  | none => (s, none)
+
 /-- `g AND h`, `h` alone where `g` is absent (TRUE). -/
 def guardAnd : Option Expr → Expr → Expr
   | none, h => h
@@ -135,9 +147,11 @@ def LChain.bindAll (w : Nat) (g : Option Expr) (s : BindSt) (body : Expr) (i : N
     let q := LChain.bindAll w g p.1 body (i + 1) cs
     (q.1, p.2 :: q.2)
 /-- Bind a chain under the reach `g`: one level per operand that may raise,
-the running column holding the chain's value so far (B1, B2). -/
+the running column holding the chain's value so far (B1, B2). The reach is
+first a column of its own (`BindSt.anchor`), so each level's guard reads two
+columns, whatever the nest's depth. -/
 def LChain.bind (w : Nat) (g : Option Expr) (s : BindSt) : LChain → BindSt × Expr
-  | .mk isAnd ops => LChain.bindOps w isAnd g s none ops
+  | .mk isAnd ops => LChain.bindOps w isAnd (s.anchor g).2 (s.anchor g).1 none ops
 /-- The levels of the operands `ops`, `acc` the chain's value so far (`none`:
 no operand yet). Plain operands join the running expression; an operand that
 may raise gets a level, guarded by `acc IS NOT FALSE` (`IS NOT TRUE` for
@@ -435,6 +449,34 @@ theorem BindSt.push_grows {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : 
     Grows I cat r w s (s.push e).1 F (fun row => F row ++ [e.eval (row ++ F row) I]) :=
   ⟨BindSt.push_ext hs e, fun _ => List.prefix_append _ _, by simp [BindSt.push]⟩
 
+/-- The anchored reach holds where the reach did, over a state that grew. -/
+theorem BindSt.anchor_spec {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
+    (hs : s.Ext I cat r w F) (g : Option Expr) (hg : ∀ c ∈ g, c.refsLt s.width) :
+    ∃ F', Grows I cat r w s (s.anchor g).1 F F' ∧
+      (∀ c ∈ (s.anchor g).2, c.refsLt (s.anchor g).1.width) ∧
+      ∀ row ∈ r.eval cat I, (Reach I (s.anchor g).2 (row ++ F' row) ↔ Reach I g (row ++ F row)) := by
+  cases g with
+  | none => exact ⟨F, Grows.refl hs, by simp [BindSt.anchor], fun _ _ => by simp [BindSt.anchor, Reach]⟩
+  | some c =>
+    by_cases hc : c.isField = true
+    · have ha : s.anchor (some c) = (s, some c) := by simp [BindSt.anchor, hc]
+      rw [ha]
+      exact ⟨F, Grows.refl hs, hg, fun _ _ => Iff.rfl⟩
+    · have ha : s.anchor (some c) = ((s.push c).1, some (.field (s.push c).2)) := by
+        simp [BindSt.anchor, hc]
+      rw [ha]
+      refine ⟨_, BindSt.push_grows hs c, ?_, fun row hr => ?_⟩
+      · intro c' hc'
+        simp only [Option.mem_def, Option.some.injEq] at hc'
+        subst hc'
+        show s.width < s.width + 1
+        omega
+      · have hl := hs.2.1 row hr
+        have hidx : (row ++ F row).length = (s.push c).2 := by
+          simp [BindSt.push]; omega
+        simp only [Reach, Option.mem_def, Option.some.injEq, forall_eq', Expr.eval, ← List.append_assoc]
+        rw [getD_append_single _ _ _ hidx]
+
 omit [Boxes.Ambient] in
 theorem and3_isTrue (a b : Value) : (and3 a b).isTrue = true ↔ a.isTrue = true ∧ b.isTrue = true := by
   constructor
@@ -646,10 +688,12 @@ theorem LChain.bind_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) :
         ∀ row ∈ r.eval cat I, Reach I g (row ++ F row) → LChain.Bools I w row c →
           (LChain.bind w g s c).2.eval (row ++ F' row) I = (LChain.fill w c).eval row I
   | .mk isAnd ops, g, s, F, hs, hg, hops => by
-    obtain ⟨F', hG, hr, hv⟩ := LChain.bindOps_spec hI cat r w isAnd ops g s F none hs hg (by simp) hops
-    refine ⟨F', hG, hr, fun row hrow hreach hb => ?_⟩
+    obtain ⟨F₀, hG₀, hg₀, hR₀⟩ := BindSt.anchor_spec hs g hg
+    obtain ⟨F', hG, hr, hv⟩ := LChain.bindOps_spec hI cat r w isAnd ops (s.anchor g).2 (s.anchor g).1 F₀
+      none hG₀.1 hg₀ (by simp) hops
+    refine ⟨F', Grows.trans hG₀ hG, hr, fun row hrow hreach hb => ?_⟩
     rw [LChain.fill_eval hI w isAnd ops row hb]
-    exact hv row hrow hreach hb (by simp)
+    exact hv row hrow ((hR₀ row hrow).mpr hreach) hb (by simp)
 theorem LChain.bindOps_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
     ∀ (ops : List LExpr) (g : Option Expr) (s : BindSt) (F : Row → Row) (acc : Option Expr),
       s.Ext I cat r w F → (∀ c ∈ g, c.refsLt s.width) → (∀ a ∈ acc, a.refsLt s.width) →
@@ -1325,6 +1369,33 @@ section RaiseInv
 local notation "RP" => Profile.reference
 local notation "RI" => Profile.reference.impl
 
+/-- Anchoring a plain reach raises nowhere, and the anchored reach is plain. -/
+theorem BindSt.anchor_raises {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
+    (_hs : s.Ext RI cat r w F) (g : Option Expr) (hg : ∀ c ∈ g, c.refsLt s.width ∧ c.plain = true) :
+    ((s.anchor g).1.rel.Raises RP cat ↔ s.rel.Raises RP cat) ∧
+      ∀ c ∈ (s.anchor g).2, c.refsLt (s.anchor g).1.width ∧ c.plain = true := by
+  cases g with
+  | none => exact ⟨Iff.rfl, by simp [BindSt.anchor]⟩
+  | some c =>
+    by_cases hc : c.isField = true
+    · have ha : s.anchor (some c) = (s, some c) := by simp [BindSt.anchor, hc]
+      rw [ha]
+      exact ⟨Iff.rfl, hg⟩
+    · have ha : s.anchor (some c) = ((s.push c).1, some (.field (s.push c).2)) := by
+        simp [BindSt.anchor, hc]
+      rw [ha]
+      have hp := (hg c rfl).2
+      refine ⟨?_, ?_⟩
+      · rw [show (s.push c).1.rel = .project s.rel [c] from rfl, Rel.raises_project]
+        simp only [Expr.raisesOn_reference]
+        refine ⟨fun h => h.elim id fun ⟨row, _, h⟩ => absurd h ?_, .inl⟩
+        simp only [Expr.Raises, Expr.issues_plain row c hp, firstError]
+        decide
+      · intro c' hc'
+        simp only [Option.mem_def, Option.some.injEq] at hc'
+        subst hc'
+        exact ⟨show s.width < s.width + 1 by omega, rfl⟩
+
 mutual
 /-- **The binder's raises**: the levels added for `x` raise (`L`) exactly where,
 under its reach, `x`'s lift raises and the bound expression does not account
@@ -1452,7 +1523,7 @@ theorem LChain.bindAll_raise (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
         (fun e h => (hg₁ e h).1) hcs
       have hplain : (LChain.bind w g s c).2.plain = true := by
         match c with
-        | .mk isAnd ops => exact LChain.bindOps_plain w isAnd g ops s none (by simp)
+        | .mk isAnd ops => exact LChain.bindOps_plain w isAnd (s.anchor g).2 ops (s.anchor g).1 none (by simp)
       refine ⟨fun row => Lc row ∨ Lr row, ?_, fun F' hF' row hr ⟨hbc, hbcs⟩ => ?_⟩
       · rw [hRr, hRc]
         constructor
@@ -1555,11 +1626,14 @@ theorem LChain.bind_raise (cat : Catalog) (r : Rel) (w : Nat) :
           (¬ Reach RI g (row ++ F row) → ¬ L row) ∧
           (Reach RI g (row ++ F row) → ((c.fill w).Raises row ↔ L row))
   | .mk isAnd ops, g, s, F, hs, hg, hops => by
-    obtain ⟨L, hR, hL⟩ := LChain.bindOps_raise cat r w isAnd ops g s F none hs hg (by simp) hops
-    refine ⟨L, hR, fun F' _ row hr hb => ?_⟩
+    obtain ⟨hRa, hga⟩ := BindSt.anchor_raises hs g hg
+    obtain ⟨F₀, hG₀, _, hR₀⟩ := BindSt.anchor_spec hs g (fun c h => (hg c h).1)
+    obtain ⟨L, hR, hL⟩ := LChain.bindOps_raise cat r w isAnd ops (s.anchor g).2 (s.anchor g).1 F₀ none
+      hG₀.1 hga (by simp) hops
+    refine ⟨L, hR.trans (or_congr hRa Iff.rfl), fun F' _ row hr hb => ?_⟩
     obtain ⟨h1, h2⟩ := hL row hr hb (by simp)
-    refine ⟨h1, fun hreach => ?_⟩
-    rw [h2 hreach, Option.map_none, raiseFrom_iff w isAnd row ops none trivial (by simp) hb]
+    refine ⟨fun hn => h1 (fun h => hn ((hR₀ row hr).mp h)), fun hreach => ?_⟩
+    rw [h2 ((hR₀ row hr).mpr hreach), Option.map_none, raiseFrom_iff w isAnd row ops none trivial (by simp) hb]
     have hbv : ∀ q ∈ LExpr.fillAll w ops, firstError (q.issues row) = none → Expr.BoolVal row q := by
       intro q hq hn
       have hnr : ¬ q.Raises row := by simp [Expr.Raises, hn]
