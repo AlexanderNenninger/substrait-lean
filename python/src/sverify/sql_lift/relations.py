@@ -377,7 +377,13 @@ def _series(tree: sge.Expr) -> sge.Expr:
             raise SqlUnsupported(f"{name} of an integer and a date or timestamp is not supported")
         step: Any
         if step_node is None:
-            step = timedelta(days=1) if temporal else 1
+            if temporal:
+                # DuckDB: "No function matches" `range(DATE, DATE)`; it wants an INTERVAL.
+                raise SqlUnsupported(
+                    f"{name} of dates or timestamps needs an INTERVAL step in DuckDB",
+                    hint="add the step, for example INTERVAL 1 DAY",
+                )
+            step = 1
         elif isinstance(step_node, sge.Interval):
             unit = step_node.args.get("unit")
             count = step_node.this

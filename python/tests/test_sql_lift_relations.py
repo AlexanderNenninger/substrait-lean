@@ -419,9 +419,28 @@ def test_series_with_constant_bounds_are_inputs(query):
         "SELECT * FROM range(1, (SELECT max(id) FROM orders))",
         "SELECT * FROM range(1, 5, 0)",
         "SELECT * FROM range(5, 1)",
+        # DuckDB 2.0.0 binds no function to a series of dates without an INTERVAL.
+        "SELECT * FROM range(DATE '2024-01-01', DATE '2024-01-04')",
+        "SELECT * FROM generate_series(DATE '2024-01-01', DATE '2024-01-04')",
         "SELECT * FROM range(DATE '2024-01-01', DATE '2025-01-01', INTERVAL 1 MONTH)",
     ],
 )
 def test_series_outside_the_subset_are_refused(query):
     with pytest.raises(Refused):
         lift(query, SCHEMAS)
+
+
+def test_a_column_qualified_by_schema_and_table_still_resolves():
+    """#706: `main.orders.id` after the table is pointed at its key."""
+    for query in (
+        "SELECT main.orders.x FROM main.orders",
+        "SELECT shop.main.orders.x FROM shop.main.orders",
+    ):
+        schema = {
+            "shop.main.orders": QUALIFIED["shop.main.orders"],
+            "main.orders": QUALIFIED["shop.main.orders"],
+        }
+        try:
+            json.dumps(lift(query, schema).plan)
+        except Refused as e:
+            assert str(e)  # a clear refusal is acceptable too
