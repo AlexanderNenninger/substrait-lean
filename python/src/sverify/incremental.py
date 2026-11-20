@@ -1718,6 +1718,10 @@ class Pipeline:
         seen, keyed `(t, col)`: the watermark is it minus the lateness."""
         self.on_violation: dict[str, Policy | None] = {}
         """Each source's own `on_violation` (#184)."""
+        self.inputs: dict[str, tuple[State, Merger]] = {}
+        """Each sealed Arrow-fed source's rows as the store of the pipeline's
+        engine holds them (a weighted state, and what adds to it): the
+        connection holds a view of it, and no Arrow table (`seal`)."""
         self.policies: dict[str, dict[str, Policy]] = {}
         """What a batch that breaks each precondition does, by table and
         label: the strictest of the views' and the source's settings."""
@@ -1750,6 +1754,25 @@ class Pipeline:
         self.versions[name] = read
         self.on_violation[name] = _quarantine.check_policy(getattr(source, "on_violation", None))
         return self.con.table(name)
+
+    def seal(self) -> None:
+        """Move the rows of every Arrow-fed source into the store of the
+        views' engine (#1329, A1): the state that changes are added to and
+        deletes are checked against, held where the engine keeps it. The
+        connection then holds the store's rows, not an Arrow table. A source
+        already sealed, held as files (`Scan`) or without a view to read it
+        stays as it is."""
+        if not self._views:
+            return
+        store = self._views[0].store
+        for t in self.sources:
+            table = self.con.get(t)
+            if t in self.inputs or not isinstance(table, pa.Table):
+                continue
+            schema = pa.schema([*self.con.schema(t), pa.field(WEIGHT, pa.int64())])
+            state = store.kept(weighted(table, 1).cast(schema))
+            self.inputs[t] = (state, Merger(self.con, schema, store))
+            put_table(self.con, t, store.expanded(state))
 
     def _native(self, source: VersionedSource, version: int | None) -> ScanSnapshot | None:
         """The snapshot of `source` as files the engine reads itself, where
@@ -1865,6 +1888,7 @@ class Pipeline:
         )
         self._judge(t, list(q.entries.values()))
         put_table(self.con, t, kept)
+        self.inputs.pop(t, None)  # sealed again at the next refresh
         # Statistics of the files describe the source's rows, not the kept ones.
         register_facts(self.con, t, None)
         self.quarantined[t] = q
@@ -2131,6 +2155,7 @@ class Pipeline:
         With `retire` (the default), the views that retire time buckets drop
         the final ones afterwards (`retire`); a node passes False and retires
         once its sink has written."""
+        self.seal()
         changes: dict[str, pa.Table] = {}
         facts: dict[str, list[Fact]] = {}
         versions: dict[str, int] = {}
@@ -2292,6 +2317,7 @@ class Pipeline:
             try:
                 for t, (snap, _) in rebuild.items():
                     put_table(self.con, t, snap)
+                    self.inputs.pop(t, None)
                 changed = set(rebuild)
                 for v in replan:
                     v._replan(changed)
@@ -2367,10 +2393,10 @@ class Pipeline:
                 saved["state"] = DuckDBStore().copy(v.state)
                 tables[v.name] = v.store.expanded(saved["state"])
             views[v.name] = saved
-        return tables, views, dict(self.versions), dict(self.latest)
+        return tables, views, dict(self.versions), dict(self.latest), dict(self.inputs)
 
     def _restore(self, backup: tuple) -> None:
-        tables, views, versions, latest = backup
+        tables, views, versions, latest, inputs = backup
         for t, table in tables.items():
             if self.con.get(t) is not table:
                 put_table(self.con, t, table)
@@ -2378,7 +2404,7 @@ class Pipeline:
             state = views[v.name]
             v.__dict__.clear()
             v.__dict__.update(state)
-        self.versions, self.latest = versions, latest
+        self.versions, self.latest, self.inputs = versions, latest, inputs
 
     def _audit(self, pending: _Commit) -> None:
         """Compare every view's new state with its recomputation on the new
@@ -2439,9 +2465,20 @@ class Pipeline:
         self._check_changed(changes)
         # New base tables first: this also checks that every delete exists.
         new_tables: dict[str, pa.Table | Native] = {}
+        new_inputs: dict[str, tuple[State, Merger]] = {}
         for t, ch in changes.items():
             given = (whole or {}).get(t)
-            if given is None:
+            if given is None and t in self.inputs:
+                # A sealed source: the store adds the change to its rows,
+                # and a delete that finds no row leaves a negative weight.
+                state, merge = self.inputs[t]
+                store = self._views[0].store
+                new = merge(state, store.kept(ch.cast(merge.schema)), keep=True)
+                if store.has_negative(new):
+                    raise ValueError(f"cannot delete rows from {t}: no such row")
+                new_inputs[t] = (new, merge)
+                given = store.expanded(new)
+            elif given is None:
                 given = _apply_change(_as_arrow(self.con.get(t)), ch, t)
             new_tables[t] = given
         arrived, latest = self._arrivals(changes)
@@ -2522,6 +2559,7 @@ class Pipeline:
             found,
             in_place,
             changed,
+            inputs=new_inputs,
             before=before,
             latest=latest,
             checked=checked,
@@ -2545,6 +2583,7 @@ class Pipeline:
         touched = [*pending.changes, *pending.in_place, *pending.states]
         tables = {t: self.con.get(t) for t in touched}
         versions, latest = dict(self.versions), dict(self.latest)
+        inputs = dict(self.inputs)
         names = {*pending.in_place, *pending.states, *pending.deltas, *pending.groups}
         saved = {
             n: (views[n].state, views[n].serial, views[n]._log, views[n].groups) for n in names
@@ -2552,6 +2591,7 @@ class Pipeline:
         try:
             for t in pending.changes:
                 put_table(self.con, t, pending.new_tables[t])
+            self.inputs.update(pending.inputs)
             self.versions.update(pending.versions)
             self.latest.update(pending.latest)
             for name, state in pending.states.items():
@@ -2587,7 +2627,7 @@ class Pipeline:
         except BaseException:
             for t, table in tables.items():
                 put_table(self.con, t, table)
-            self.versions, self.latest = versions, latest
+            self.versions, self.latest, self.inputs = versions, latest, inputs
             for n, (state, serial, log, groups) in saved.items():
                 v = views[n]
                 v.state, v.serial, v._log, v.groups = state, serial, log, groups
@@ -2624,6 +2664,8 @@ class _Commit:
     """The views recomputed and diffed."""
     groups: dict[str, pa.Table] = field(default_factory=dict)
     """The new state per group of each view kept from one (`sverify._linear`)."""
+    inputs: dict[str, tuple[Any, Any]] = field(default_factory=dict)
+    """The new rows of each sealed source, in the store (`Pipeline.seal`)."""
 
 
 def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:
