@@ -504,3 +504,55 @@ def test_the_native_join_runs_over_files_with_no_count(tmp_path):
         sv.asof_join(con.table("l"), con.table("r"), on="ts", by="device", max_pairs=100)
     )
     assert report.run(con, "duckdb").num_rows == 1000
+
+
+def _ranked_asof(left, right, keep):
+    """`asof_join`'s plan with its last filter replaced: `keep(rank)` over the
+    rank (0 for the latest right row), so `rank <= 1` keeps two matches."""
+    from sverify.asof import RANK, ROW
+
+    left = left.mutate(**{ROW: ibis.row_number().over(order_by=[left["k"], left["t"]])})
+    joined = left.join(right, [left["k"] == right["k"], right["t"] <= left["t"]], how="left")
+    latest = ibis.window(group_by=[joined[ROW]], order_by=ibis.desc(joined["t_right"]))
+    ranked = joined.mutate(**{RANK: ibis.row_number().over(latest)})
+    return ranked.filter(keep(ranked[RANK])).drop(ROW, RANK, "k_right")
+
+
+def _agree_with_the_range_join(expr, con):
+    report = sv.verify(expr, on_inferred="ignore")
+    native = report.run(con, "duckdb").to_pylist()
+    other = report.run(con, "polars").to_pylist()
+    assert canonical([tuple(r.values()) for r in native]) == canonical(
+        [tuple(r.values()) for r in other]
+    )
+    return native
+
+
+@pytest.mark.parametrize(
+    "above",
+    [
+        lambda j: j.filter(j.v > 100),
+        lambda j: j.filter(j.v.isnull()),
+        lambda j: j.mutate(w=j.v + 1).filter(j.id > 1),
+    ],
+    ids=["filter v", "filter null", "mutate and filter"],
+)
+def test_a_filter_above_an_asof_join_is_not_dropped(above):
+    """A filter on the join's output stays: the site is the join, and what the
+    plan does above it is not the native join's to drop."""
+    con = connect()
+    lt, rt, _ = _asof_tables(
+        con, "int", [(1, 5, 1), (1, 9, 2), (2, 7, 3)], [(1, 4, 100), (1, 8, 101), (2, 6, 102)]
+    )
+    _agree_with_the_range_join(above(sv.asof_join(lt, rt, on="t", by="k")), con)
+
+
+def test_a_ranking_that_keeps_more_than_the_latest_row_is_not_native():
+    """`rank <= 1` keeps the two latest right rows per left row: no ASOF JOIN
+    returns that, so the plan keeps the range join."""
+    con = connect()
+    lt, rt, _ = _asof_tables(
+        con, "int", [(1, 9, 1), (1, 5, 2)], [(1, 4, 100), (1, 8, 101), (1, 7, 102)]
+    )
+    out = _agree_with_the_range_join(_ranked_asof(lt, rt, lambda r: r <= 1), con)
+    assert len(out) == 3

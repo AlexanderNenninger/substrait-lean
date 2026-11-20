@@ -2412,53 +2412,102 @@ bare comparisons the DuckDB fact `duckdb-asof-join` probed. Doubles stay out
 until the fact covers NaN and the zeros (ruling 162 A3)."""
 
 
-def _asof_trace(r: Rel) -> tuple[Join, list[int | None]] | None:
-    """The join under an as-of site's layers, and each output column of `r` as a
-    column of the join's output (None: a computed one)."""
+def _asof_numbered(r: Rel) -> tuple[list[Any], Rel, tuple[int, ...]] | None:
+    """A relation that numbers the rows of `L` with `ROW_NUMBER` (partitioned by
+    the columns `part` of `L`), under emits and projections: each of its columns
+    as `("l", i)` for column `i` of `L`, `"n"` for the number or the number less
+    one, `"x"` for anything else; `L`; and `part`."""
     match r:
-        case Join():
-            return r, list(range(arity(r)))
-        case Filter(input=i):
-            return _asof_trace(i)
-        case Project(input=i, exprs=es):
-            found = _asof_trace(i)
-            if found is None:
-                return None
-            j, t = found
-            return j, t + [
-                t[e.index] if isinstance(e, Field) and e.index < len(t) else None for e in es
-            ]
-        case Window(input=i, fns=fns):
-            found = _asof_trace(i)
-            return None if found is None else (found[0], found[1] + [None] * len(fns))
-        case Emit(input=i, mapping=m):
-            found = _asof_trace(i)
-            if found is None:
-                return None
-            j, t = found
-            return j, [t[k] if k < len(t) else None for k in m]
-    return None
-
-
-def _asof_numbered(r: Rel) -> tuple[list[int | None], Rel] | None:
-    """A relation that numbers the rows of `L` (`ROW_NUMBER`, under emits and
-    projections of its columns): each of its columns as a column of `L`, None
-    for one that holds the number or is computed from it, and `L`."""
-    match r:
-        case Window(input=i, fns=(f,)) if f.fn == "row_number":
-            return [*range(arity(i)), None], i
+        case Window(input=i, part=part, fns=(f,)) if f.fn == "row_number":
+            n = arity(i)
+            return [*(("l", c) for c in range(n)), "n"], i, part
         case Project(input=i, exprs=es):
             found = _asof_numbered(i)
             if found is None:
                 return None
-            src, left = found
-            return src + [src[e.index] if isinstance(e, Field) else None for e in es], left
+            src, left, part = found
+            return src + [_asof_tag(e, src) for e in es], left, part
         case Emit(input=i, mapping=m):
             found = _asof_numbered(i)
             if found is None or any(k >= len(found[0]) for k in m):
                 return None
-            return [found[0][k] for k in m], found[1]
+            return [found[0][k] for k in m], found[1], found[2]
     return None
+
+
+def _asof_tag(e: Expr, tags: list[Any]) -> Any:
+    """What a projected expression is: a copy of a column (its tag), the number
+    less one (`"n"`), or `"x"`."""
+    match e:
+        case Field(index=i) if i < len(tags):
+            return tags[i]
+        case Bin(op="sub", left=Field(index=i), right=Lit(value=1)) if i < len(tags) and tags[
+            i
+        ] in ("n", "rank"):
+            return "n" if tags[i] == "n" else "rank-1"
+    return "x"
+
+
+def _asof_layers(
+    r: Rel, join: Join, nl: int, src: list[Any], part: tuple[int, ...], ron: int
+) -> list[Any] | None:
+    """The layers of an as-of site above its join: the output columns of `r` as
+    columns of the join, or None where the layers are not the builder's and the
+    lift's (`sverify.asof_join`, `sql_lift`): a `ROW_NUMBER` that numbers each
+    left row's matches, latest first (partitioned by what identifies the left
+    row, sorted by the right `on` descending), a filter that keeps its first, and
+    emits and projections of columns around them. Any other filter or window
+    changes the rows or their number, and keeps the range join."""
+    layers: list[Rel] = []
+    node = r
+    while node is not join:
+        if not isinstance(node, Filter | Project | Window | Emit):
+            return None
+        layers.append(node)
+        node = node.input
+    tags: list[Any] = [("c", i) for i in range(arity(join))]
+    ranked = kept = False
+    for layer in reversed(layers):
+        match layer:
+            case Emit(mapping=m):
+                if any(k >= len(tags) for k in m):
+                    return None
+                tags = [tags[k] for k in m]
+            case Project(exprs=es):
+                tags = tags + [_asof_tag(e, tags) for e in es]
+            case Window(part=p, sort=(key,), fns=(f,)) if not ranked and f.fn == "row_number":
+                # The left row's identity: the number and what the numbering partitions by.
+                ident = {src[t[1]] for t in (tags[c] for c in p) if t[0] == "c" and t[1] < nl}
+                want = {"n", *(("l", c) for c in part)}
+                if (
+                    not key.desc
+                    or tags[key.col] != ("c", nl + ron)
+                    or not want <= ident
+                    or any(tags[c][0] != "c" or tags[c][1] >= nl for c in p)
+                ):
+                    return None
+                ranked = True
+                tags = tags + ["rank"]
+            case Filter(cond=Bin(op="eq", left=Field(index=i), right=Lit(value=v))) if (
+                ranked and not kept and i < len(tags)
+            ):
+                if (tags[i], v) not in (("rank", 1), ("rank-1", 0)):
+                    return None
+                kept = True
+            case _:
+                return None
+    if not (ranked and kept) or any(not isinstance(t, tuple) for t in tags):
+        return None
+    return [t[1] if t[0] == "c" else None for t in tags]
+
+
+def _asof_join_below(r: Rel) -> Join | None:
+    """The join under the layers of `r`."""
+    while not isinstance(r, Join):
+        if not isinstance(r, Filter | Project | Window | Emit):
+            return None
+        r = r.input
+    return r
 
 
 class _Parser:
@@ -3184,22 +3233,25 @@ class _Parser:
         it has the same columns."""
         if site.get("tolerance") or site.get("form") not in ("builder", "lift"):
             return None
-        found = _asof_trace(r)
-        if found is None:
+        join = _asof_join_below(r)
+        numbered = None if join is None else _asof_numbered(join.left)
+        if join is None or numbered is None or (join.type == "left") != bool(site.get("outer")):
             return None
-        join, trace = found
-        numbered = _asof_numbered(join.left)
-        if numbered is None or (join.type == "left") != bool(site.get("outer")):
-            return None
-        src, left = numbered
+        src, left, part = numbered
         nl, nr = len(src), arity(join.right)
+        col = lambda i: src[i][1] if src[i][0] == "l" else None  # noqa: E731
         try:
-            keys = tuple((src[a], b) for a, b in site["keys"])
-            lon, ron = src[site["lon"]], site["ron"]
+            keys = tuple((col(a), b) for a, b in site["keys"])
+            lon, ron = col(site["lon"]), site["ron"]
         except (KeyError, TypeError, IndexError):
             return None
+        trace = _asof_layers(r, join, nl, src, part, site["ron"])
         pairs = [*keys, (lon, ron)]
-        if len(trace) != arity(r) or any(a is None or not 0 <= b < nr for a, b in pairs):
+        if (
+            trace is None
+            or len(trace) != arity(r)
+            or any(a is None or not 0 <= b < nr for a, b in pairs)
+        ):
             return None
         lk, rk = kinds(left), kinds(join.right)
         if any(lk[a] != rk[b] or lk[a] not in _ASOF_KINDS for a, b in pairs):  # type: ignore[index]
@@ -3209,7 +3261,7 @@ class _Parser:
             if k is None:
                 return None
             if k < nl:
-                c = src[k]
+                c = col(k)
                 if c is None:
                     return None
                 out.append((True, c))
