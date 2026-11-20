@@ -19,6 +19,14 @@ P2, no inlining. Each level reads the previous reach twice, so an optimizer that
 
     python -m sverify_dev.guarded_columns p1 --engine duckdb|polars|spark
     python -m sverify_dev.guarded_columns p2 --engine ... [--levels 5 10 20 40]
+    python -m sverify_dev.guarded_columns bound --engine ... [--shape filter|project]
+        [--levels 40 200]
+
+`bound` runs P1 and P2 on the plan sverify binds (`sv.verify` of a nest of
+`AND`/`OR` connectives `levels` deep over `x <> 0 AND 10 // x > 1`, D50-d), not
+on a hand-written chain: the checker's time, the plan's size, and the engine's
+run time and peak memory, with rows where the division by zero must not be
+reached. Needs a sverify whose parser binds deep nests (#2030).
 
 Each prints one JSON document. `p2` runs every level count in a child process
 under a timeout and a memory watchdog. Run Spark and large levels on homelab
@@ -317,7 +325,69 @@ def p1(engine: str) -> dict[str, Any]:
 # --- P2 ------------------------------------------------------------------------
 
 
-def _child(engine: str, levels: int, mode: str) -> None:
+def _bound_expr(levels: int, shape: str):
+    import ibis
+
+    t = ibis.table({"x": "int64", "z": "int64"}, name="t")
+    e = (t.x != 0) & ((10 // t.x) > 1)
+    for i in range(levels):
+        e = ((t.z > 0) | e) if i % 2 == 0 else ((t.z > 0) & e)
+    return t.filter(e) if shape == "filter" else t.select(t.x, t.z, flag=e)
+
+
+def _bound_expected(levels: int, shape: str, data: list[tuple[int, int]]) -> list[tuple]:
+    out = []
+    for x, z in data:
+        e = x != 0 and (10 // x) > 1
+        for i in range(levels):
+            e = (z > 0 or e) if i % 2 == 0 else (z > 0 and e)
+        if shape == "filter":
+            if e:
+                out.append((x, z))
+        else:
+            out.append((x, z, e))
+    return sorted(out)
+
+
+def _bound_child(engine: str, levels: int, shape: str, mode: str) -> dict[str, Any]:
+    import json as _json
+
+    import pyarrow as pa
+
+    import sverify as sv
+
+    data = [(i % 11, i % 2) for i in range(N)]  # x = 0 on every 11th row
+    expr = _bound_expr(levels, shape)
+    t0 = time.perf_counter()
+    report = sv.verify(expr, on_inferred="off")
+    out: dict[str, Any] = {
+        "shape": shape,
+        "check_s": round(time.perf_counter() - t0, 2),
+        "plan_bytes": len(report.internal_plan or ""),
+        "written_plan_bytes": len(report._plan_to_run(None, checked=False, engine=engine)),
+    }
+    if mode == "plan":
+        return out
+    con = sv.connect()
+    con.put("t", pa.table({"x": [d[0] for d in data], "z": [d[1] for d in data]}))
+    t1 = time.perf_counter()
+    got = report.run(con, engine, unverified=True)
+    out["run_s"] = round(time.perf_counter() - t1, 2)
+    rows = sorted(tuple(r.values()) for r in got.to_pylist())
+    out["result_matches"] = rows == _bound_expected(levels, shape, data)
+    out["rows"] = len(rows)
+    _json.dumps(out)
+    return out
+
+
+def _child(engine: str, levels: int, mode: str, shape: str = "") -> None:
+    if shape:
+        got = _bound_child(engine, levels, shape, mode)
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+        scale = 1 if sys.platform == "darwin" else 1024
+        got["child_peak_rss_mb"] = round(usage.ru_maxrss * scale / 2**20)
+        print(json.dumps(got))
+        return
     eng = ENGINES[engine]()
     case = CASES["plain"]
     got = eng["run"](case, levels, plan_only=(mode == "plan"))
@@ -329,7 +399,9 @@ def _child(engine: str, levels: int, mode: str) -> None:
     print(json.dumps(got))
 
 
-def _spawn(engine: str, levels: int, mode: str, timeout: float, rss_cap_mb: int) -> dict[str, Any]:
+def _spawn(
+    engine: str, levels: int, mode: str, timeout: float, rss_cap_mb: int, shape: str = ""
+) -> dict[str, Any]:
     """Run one level count in a child; kill it past the timeout or the memory cap."""
     import psutil
 
@@ -344,6 +416,7 @@ def _spawn(engine: str, levels: int, mode: str, timeout: float, rss_cap_mb: int)
         str(levels),
         "--mode",
         mode,
+        *(["--shape", shape] if shape else []),
     ]
     t0 = time.perf_counter()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -409,17 +482,46 @@ def p2(engine: str, levels: list[int], timeout: float, rss_cap_mb: int) -> dict[
     return out
 
 
+def bound(engine: str, levels: list[int], shape: str, timeout: float, rss_cap_mb: int) -> dict:
+    """P1 and P2 on the bound plan: each level count in a child, plan then run."""
+    out: dict[str, Any] = {
+        "probe": "bound",
+        "engine": engine,
+        "version": ENGINES[engine]()["version"],
+        "shape": shape,
+        "timeout_s": timeout,
+        "rss_cap_mb": rss_cap_mb,
+        "plan": [],
+        "run": [],
+    }
+    for mode in ("plan", "run"):
+        for k in levels:
+            r = _spawn(engine, k, mode, timeout, rss_cap_mb, shape)
+            out[mode].append(r)
+            print(json.dumps(r), file=sys.stderr, flush=True)
+            if "error" in r:
+                break
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["p1", "p2", "child"])
+    ap.add_argument("what", choices=["p1", "p2", "bound", "child"])
     ap.add_argument("--engine", required=True, choices=sorted(ENGINES))
     ap.add_argument("--levels", type=int, nargs="+", default=[5, 10, 20, 40])
     ap.add_argument("--timeout", type=float, default=300.0)
     ap.add_argument("--rss-cap-mb", type=int, default=6000)
     ap.add_argument("--mode", choices=["plan", "run"], default="run")
+    ap.add_argument("--shape", choices=["filter", "project"], default="")
     a = ap.parse_args()
     if a.what == "child":
-        _child(a.engine, a.levels[0], a.mode)
+        _child(a.engine, a.levels[0], a.mode, a.shape)
+        return
+    if a.what == "bound":
+        os.environ.setdefault("PYTHONWARNINGS", "ignore")
+        shapes = [a.shape] if a.shape else ["filter", "project"]
+        res = [bound(a.engine, a.levels, sh, a.timeout, a.rss_cap_mb) for sh in shapes]
+        print(json.dumps(res, indent=1))
         return
     os.environ.setdefault("PYTHONWARNINGS", "ignore")
     res = p1(a.engine) if a.what == "p1" else p2(a.engine, a.levels, a.timeout, a.rss_cap_mb)
