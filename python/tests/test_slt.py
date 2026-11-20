@@ -432,6 +432,14 @@ def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     (r,), _ = slt.replay_file(path, "area/mod.test")
     assert r.cls == "agree", r
     assert r.lean == "error: Substrait.Issue.divByZero"
+    # The default mode has no static agreements, however the case is judged.
+    led = slt.write_ledger("area", "2.0.0", [slt.asdict(r)], {}, tmp_path)
+    assert "agree_static" not in json.loads(led.read_text())
+    assert not (r.reason or "").startswith(slt.STATIC)
+    # Counted apart under the reference's reading, from the reason alone.
+    static = {**slt.asdict(r), "reason": slt.STATIC + " an issue"}
+    led = slt.write_ledger("area", "2.0.0", [static, slt.asdict(r)], {}, tmp_path)
+    assert json.loads(led.read_text())["agree_static"] == 1
 
 
 def test_a_time_of_24_00_is_refused(tmp_path):

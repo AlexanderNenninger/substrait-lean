@@ -84,6 +84,10 @@ REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
 SEMANTICS_ENV = "SVERIFY_SLT_SEMANTICS"
 
 
+#: The reason of a reference-mode agreement that only a `verify` issue gives.
+STATIC = "static verify:"
+
+
 def semantics() -> str:
     return os.environ.get(SEMANTICS_ENV, "duckdb")
 
@@ -922,10 +926,12 @@ class Replay:
             # meaning, which is not what it is compared with.
             # A `verify` issue is a static "may raise" check, which need not
             # concern the rows that differ. Such a query agrees, with the
-            # issue as its reason ("verify: ..."), and is counted apart in the
-            # ledger (`agree_static`), to be read one by one.
+            # issue as its reason ("static verify: ..."), and is counted apart
+            # in the ledger (`agree_static`), to be read one by one.
             if lean_ok or found:
                 res.cls = "agree"
+                if found and not lean_ok:
+                    res.reason = "static " + (res.reason or "")
             else:
                 res.cls, res.side = "disagree", "lean"
             return res
@@ -1283,9 +1289,7 @@ def write_ledger(
     # DuckDB's (oracle A), but no engine ran the plan back (oracle C).
     oracle_a = _oracle_a_only(results)
     static = sum(
-        1
-        for r in results
-        if r["cls"] == "agree" and str(r.get("reason") or "").startswith("verify:")
+        1 for r in results if r["cls"] == "agree" and str(r.get("reason") or "").startswith(STATIC)
     )
     head = {
         **{
