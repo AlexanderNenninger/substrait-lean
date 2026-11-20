@@ -1,0 +1,13 @@
+{
+  "id": "F190",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Memory limits: no sverify default, no Polars cap at 1.0, no RefreshReport.memory_limit; one public MemoryLimitError (code memory_limit), checker cap a subclass, CLI exit BUDGET; two settings stay.",
+  "issues": [
+    783
+  ],
+  "source": "fable-ruling-190-783-memory-limits.md",
+  "note": "No D-number. Notice items reversible before 1.0 listed for the user."
+}

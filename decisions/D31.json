@@ -1,0 +1,16 @@
+{
+  "id": "D31",
+  "date": "2026-11-07",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Double +, −, × and ÷ are the exact result rounded once; the reference is IEEE on the full code set and canon applies only at identity boundaries.",
+  "issues": [
+    929
+  ],
+  "amended_by": [
+    "F42",
+    "U-2026-11-08-canon-at-identity-boundaries"
+  ],
+  "note": "Corrected 2026-11-09 by the maintainer via the theory advisor (canon at identity boundaries); the corrected text is the rule."
+}

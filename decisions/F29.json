@@ -1,0 +1,14 @@
+{
+  "id": "F29",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Review: #1551 (D44) accepted on both points with three text changes before the label; #1543 suggested closed as superseded by #1551.",
+  "prs": [
+    1543,
+    1551
+  ],
+  "source": "fable-rulings-night-1117.md, entry 29",
+  "note": "File ruling-1551-d44-review.md. No theorem changes."
+}

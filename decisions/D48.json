@@ -1,0 +1,15 @@
+{
+  "id": "D48",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A result is determined up to row order and the member of each class its observation does not read.",
+  "prs": [
+    1599
+  ],
+  "amends": [
+    "D10"
+  ],
+  "note": "On the theory advisor's proposal (review C2)."
+}

@@ -1,0 +1,20 @@
+{
+  "id": "F167",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Withdrawn: the research session's questions on in-engine state for maintained double aggregates; the first bullet of ruling 141 is superseded, and note 167 sets conditions E1-E8 for the exact integer-limb state.",
+  "issues": [
+    1329,
+    1447
+  ],
+  "supersedes": [
+    "F141.1"
+  ],
+  "amended_by": [
+    "F174"
+  ],
+  "source": "fable-note-167-exact-limb-state.md",
+  "note": "Log entry 167; the conditions are in fable-note-167-exact-limb-state.md. No D-number. Amended 2026-11-20 by ruling 174: E7 now has DuckDB, Polars and Spark run limbs (Snowflake keeps today's path); E2's check is a normal-form check tested against frexp."
+}

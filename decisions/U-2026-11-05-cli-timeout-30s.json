@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-05-cli-timeout-30s",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The CLI's default --timeout is 30 s for every command, bounding proof, planning and checking only, never query execution; execution is bounded by memory.",
+  "issues": [
+    744,
+    783
+  ],
+  "source": "github:#744 comment 6657938505; #744 comment 6657878226 (clarified 6659057727)",
+  "note": "Replaces the 60 s suggested earlier in the issue."
+}

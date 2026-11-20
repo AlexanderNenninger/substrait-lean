@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-04-spec-gaps-on-ledger",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Behaviour the Substrait YAMLs leave unspecified but could express is a spec gap, recorded as an ST-<n> document of kind spec-gap in the PR that meets it.",
+  "prs": [
+    563
+  ],
+  "source": "github:#563 body"
+}

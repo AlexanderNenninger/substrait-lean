@@ -1,0 +1,16 @@
+{
+  "id": "F147",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Snowflake tie picks need no change, and 'reachable' is redefined as a property of input values; details in the private evidence.",
+  "amends": [
+    "F145"
+  ],
+  "amended_by": [
+    "F158"
+  ],
+  "source": "fable-ruling-147-snowflake-ties-fold-columns.md",
+  "note": "Amends ruling 145's section 6; its wording is corrected by ruling 158. No D-number."
+}

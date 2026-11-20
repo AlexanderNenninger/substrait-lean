@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-08-engine-behaviour-in-profiles",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Engine-specific behaviour moves out of the core and the shared path into each engine's profile, dialect, writer or shims.",
+  "issues": [
+    1161
+  ],
+  "prs": [
+    1155,
+    1172
+  ],
+  "source": "memory:engine-behaviour-in-profiles.md"
+}

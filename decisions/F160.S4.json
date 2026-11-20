@@ -1,0 +1,16 @@
+{
+  "id": "F160.S4",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "withdrawn",
+  "summary": "Section 4 of ruling 160: a refusal of IEEE division on Snowflake.",
+  "issues": [
+    852
+  ],
+  "superseded_by": [
+    "F161"
+  ],
+  "source": "fable-ruling-160-snowflake-zero-sign-remedy.md",
+  "note": "Withdrawn by ruling 161."
+}
