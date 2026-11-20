@@ -222,6 +222,7 @@ class Route:
     """How a plan reaches an engine (`choose`), or why it does not."""
 
     engine: str
+    """The engine, by name."""
     kind: Taken | None
     """The route taken; `"unverified"` for a plan that is not proved, run
     with `unverified=True`; None when the plan is refused."""
@@ -295,6 +296,7 @@ class Route:
 
     @property
     def refused(self) -> bool:
+        """Whether no route takes the plan to the engine (`kind` is None)."""
         return self.kind is None
 
     def __str__(self) -> str:

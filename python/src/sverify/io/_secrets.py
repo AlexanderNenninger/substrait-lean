@@ -511,7 +511,9 @@ class Resolver:
         if default not in _SCHEMES and default not in (backends or {}):
             raise ValueError(f"default: no backend {default!r}; there are {sorted(_SCHEMES)}")
         self.default = default
+        """The scheme that reads bare names not in `names`."""
         self.cache_seconds = cache_seconds
+        """How long remote answers are kept, in seconds."""
         self._names: dict[str, str] = {}
         self._scopes: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
         for name, entry in (names or {}).items():

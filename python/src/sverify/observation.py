@@ -359,6 +359,8 @@ class Observation:
 
     @property
     def label(self) -> str:
+        """The observation in one line, `equivalent(...)` with each component
+        that is not exact; `str()` gives the same."""
         return str(self)
 
 

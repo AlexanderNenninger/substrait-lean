@@ -41,7 +41,9 @@ class Counterexample:
     output on them (`Rel.eval`), which violates the postcondition."""
 
     tables: dict[str, list[tuple]]
+    """The rows of each input table."""
     output: list[tuple]
+    """The transformation's output rows on them."""
     columns: dict[str, list[str]]
     """Column names of each input table, and of the output under `""`."""
 

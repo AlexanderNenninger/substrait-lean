@@ -127,6 +127,7 @@ class FlightSource(Source):
         super().__init__(name or table, schema=schema, assumes=ASSUMES)
         self.location, self.table = location, table
         self.secret = as_secret(secret, "FlightSource(secret=)")
+        """The bearer token, by name or reference, or None."""
         if token is not None:
             warnings.warn(
                 "FlightSource(token=) is deprecated: name the token with secret= "
@@ -185,6 +186,8 @@ class FlightSource(Source):
         return self._window()
 
     def read(self, since: Any) -> Batch | None:
+        """The batches the server numbered after `since`'s as inserts, and
+        those it dropped since as deletes; None when there are neither."""
         if since is None:
             self._held.clear()
         after = None if since is None else since["seq"]

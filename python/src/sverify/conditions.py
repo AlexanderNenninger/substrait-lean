@@ -995,6 +995,7 @@ class PlannedCondition:
     (`Report.check_inputs`)."""
 
     text: str
+    """The condition's label, as the export wrote it."""
     plan: str
     """The plan, as protobuf JSON in Lean's form."""
 
@@ -1112,8 +1113,12 @@ class Discharged:
     `SCHEMA`, proved from facts of one metadata source, or `ON_DATA`."""
 
     table: str
+    """The table the precondition is on."""
     condition: str
+    """The precondition, as SQL."""
     source: str
+    """How it was established: `"schema"`, the metadata source (such as
+    "file stats @v3"), or `"checked on data"`."""
     inferred: bool = False
     """The condition is a bound inferred to rule out overflow (#244)."""
 

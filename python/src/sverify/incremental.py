@@ -654,19 +654,26 @@ class Stored:
     plan: str
     """`plan_digest` of the view's plan."""
     sources: dict[str, int]
+    """The version of each source the state is at."""
     digests: dict[str, str]
     """`table_digest` of each static table the view read."""
     table: pa.Table
+    """The state's rows."""
     table_ids: dict[str, str] | None = None
     """The source tables' ids the record names (`Contract.table_ids`), or
     None if the sink did not say: then they are read from its contract."""
     engine: str | None = None
+    """The engine that computed the state (`Contract.engine`), or None where
+    the record does not say; likewise the four below."""
     engine_version: str | None = None
+    """The version of the engine's library (`Contract.engine_version`)."""
     sverify: str | None = None
+    """The version of sverify that wrote the record (`Contract.sverify`)."""
     profile: str | None = None
+    """The profile the plan was verified under (`Contract.profile`)."""
     package: str | None = None
-    """What the record says about who wrote the state (`Contract.engine` …):
-    None where it does not."""
+    """The engine's package as `name==version`, for an engine from another
+    package than sverify (`Contract.package`)."""
 
 
 class StaticSource(Pipeable):
