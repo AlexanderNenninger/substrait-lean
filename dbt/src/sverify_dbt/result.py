@@ -37,6 +37,8 @@ class TestResult:
     """Tests on the inputs under which it would be proved: per input, the
     column and the test's YAML."""
     conditions: list[Any] = field(default_factory=list, repr=False)
+    blocker: str | None = field(default=None, repr=False)
+    """`CheckedCondition.reason` of the condition that is not proved."""
 
     def skip(self, why: str) -> None:
         self.status, self.why = "not checked", why
