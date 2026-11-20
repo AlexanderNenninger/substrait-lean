@@ -52,7 +52,8 @@ def test_explicit_route_refusal_names_its_exit(con) -> None:
     )
     r = routes.choose(duck, "polars", "translated")
     assert r.refused and "verify with semantics='reference' to run on polars" in r.reason
-    r = routes.choose(duck, "duckdb", "transfer")
+    ref = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")})
+    r = routes.choose(ref, "duckdb", "native")
     assert r.refused and 'route="auto" tries every route' in r.reason
 
 

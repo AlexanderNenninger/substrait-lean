@@ -1303,18 +1303,19 @@ def _(mo):
 
 @app.cell
 def _(con, mo, sv):
-    from sverify.errors import RouteError as _RouteError
+    from sverify.errors import RouteError
 
     _t, _u = con.table("t"), con.table("u")
     _own = sv.verify(_t.join(_u, _t.k == _u.k).select(_t.k, _t.qty, _u.label), semantics="polars")
     _own.run(con, "polars", route="auto")
     try:
         _own.run(con, "duckdb", route="translated")
-        _refusal = "(taken)"
-    except _RouteError as _e:
+    except RouteError as _e:
         _refusal = f"`{type(_e).__name__}`: {_e}"
+    else:
+        raise AssertionError("the translation from the reference should not apply")
     mo.md(f"Route on Polars: {_own.routes['polars']}\n\nAn explicit route on DuckDB: {_refusal}")
-    return
+    return (RouteError,)
 
 
 @app.cell(hide_code=True)
@@ -1343,9 +1344,8 @@ def _(mo):
 
 
 @app.cell
-def _(lake, mo, pa, sv):
+def _(RouteError, lake, mo, pa, sv):
     from ibis import _
-    from sverify.errors import RouteError as _RouteError
     from sverify.io import DeltaSink as _Sink
     from sverify.io import StaticSource as _Source
 
@@ -1361,7 +1361,7 @@ def _(lake, mo, pa, sv):
     try:
         _exact = _Sink(str(lake / "sums_exact"), reproducible=sv.equivalent())
         _readings.pipe(sums).write(_exact).refresh(engine="polars", route="auto")
-    except _RouteError as _e:
+    except RouteError as _e:
         _refusal = f"`{type(_e).__name__}`: {str(_e)[:230]}..."
     else:
         raise AssertionError("exact bits should be refused on Polars")
