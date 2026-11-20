@@ -18,7 +18,7 @@ def test_the_probed_versions_are_read_from_the_profile_table(name: str) -> None:
 
 
 def test_alsoprobed_adds_versions(tmp_path) -> None:
-    t = tmp_path / canary.ENGINES["duckdb"]["tables"]
+    t = tmp_path / canary.ENGINES["duckdb"].tables
     t.parent.mkdir(parents=True)
     t.write_text('  version := "2.0.0"\n  alsoProbed := ["2.0.1", "2.0.2"]\n')
     assert canary.probed("duckdb", tmp_path) == ["2.0.0", "2.0.1", "2.0.2"]
@@ -30,7 +30,7 @@ def test_a_new_release_is_one_nobody_probed() -> None:
     newest = {e: max(v, key=canary._key) for e, v in have.items()}
 
     def latest(package: str) -> str:
-        engine = next(e for e, s in canary.ENGINES.items() if s["package"] == package)
+        engine = next(e for e, s in canary.ENGINES.items() if s.package == package)
         return newest[engine]
 
     assert canary.new_releases(latest) == []
@@ -148,7 +148,7 @@ def test_drift_sees_a_row_that_appears_or_vanishes() -> None:
 
 
 @needs_repo
-@pytest.mark.parametrize("file", [f for files in canary.PROBES.values() for f in files])
+@pytest.mark.parametrize("file", [f for s in canary.ENGINES.values() for f, _ in s.probes])
 def test_each_recorded_probe_row_has_its_own_identity(file: str) -> None:
     """Two rows that share an identity would hide each other's drift."""
     doc = json.loads((canary.REPO / file).read_text())
@@ -158,12 +158,11 @@ def test_each_recorded_probe_row_has_its_own_identity(file: str) -> None:
 @needs_repo
 @pytest.mark.parametrize("name", sorted(canary.ENGINES))
 def test_each_engine_has_the_commands_that_write_its_probe_files(name: str) -> None:
-    written = {c[0] for c in canary.PROBE_COMMANDS[name]}
+    written = {c[0] for _, c in canary.ENGINES[name].probes}
     assert written and all(
         (canary.REPO / "python" / "tools" / (m.replace(".", "/") + ".py")).is_file()
         for m in written
     )
-    assert len(canary.PROBE_COMMANDS[name]) == len(canary.PROBES[name])
 
 
 def test_the_ledger_lists_the_bugs_a_release_fixes(tmp_path) -> None:

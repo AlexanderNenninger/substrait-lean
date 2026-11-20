@@ -37,34 +37,50 @@ import subprocess
 import sys
 import urllib.request
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[3]
 
-#: The engines the public canary covers: the PyPI package of each, and the module of its
-#: profile table (`Profile.<engine>.table`).
-ENGINES: dict[str, dict[str, str]] = {
-    "duckdb": {"package": "duckdb", "tables": "engines/duckdb/Sverify/DuckDB/Tables.lean"},
-    "polars": {"package": "polars", "tables": "engines/polars/Sverify/Polars/Tables.lean"},
-    "spark": {"package": "pyspark", "tables": "engines/spark/Sverify/Spark/Tables.lean"},
-}
 
-#: The probe files of each engine the heavy job compares with their recording, and the commands
-#: (module and arguments) that regenerate them, in order.
-PROBES: dict[str, list[str]] = {
-    "duckdb": ["engines/duckdb/replay/probes.json"],
-    "polars": ["engines/polars/probes/probes.json", "engines/polars/probes/probes-streaming.json"],
-    "spark": ["engines/spark/probes/probes.json"],
-}
-PROBE_COMMANDS: dict[str, list[list[str]]] = {
-    "duckdb": [["sverify_dev.probe", "--write"]],
-    # `--diff --write` is the streaming engine against the in-memory one, without Lean.
-    "polars": [
-        ["sverify_dev.probe_polars", "--write"],
-        ["sverify_dev.probe_polars", "--diff", "--write"],
-    ],
-    "spark": [["sverify_dev.probe_spark", "--write"]],
+@dataclass(frozen=True)
+class Spec:
+    """What the canary knows of one engine."""
+
+    package: str
+    """Its PyPI package."""
+    tables: str
+    """The module of its profile table (`Profile.<engine>.table`)."""
+    probes: tuple[tuple[str, tuple[str, ...]], ...]
+    """Each probe file the heavy job compares with its recording, with the command (module and
+    arguments) that regenerates it, in order."""
+
+
+#: The engines the public canary covers, one table (K5: no Snowflake).
+ENGINES: dict[str, Spec] = {
+    "duckdb": Spec(
+        "duckdb",
+        "engines/duckdb/Sverify/DuckDB/Tables.lean",
+        (("engines/duckdb/replay/probes.json", ("sverify_dev.probe", "--write")),),
+    ),
+    "polars": Spec(
+        "polars",
+        "engines/polars/Sverify/Polars/Tables.lean",
+        (
+            ("engines/polars/probes/probes.json", ("sverify_dev.probe_polars", "--write")),
+            # The streaming engine against the in-memory one, without Lean.
+            (
+                "engines/polars/probes/probes-streaming.json",
+                ("sverify_dev.probe_polars", "--diff", "--write"),
+            ),
+        ),
+    ),
+    "spark": Spec(
+        "pyspark",
+        "engines/spark/Sverify/Spark/Tables.lean",
+        (("engines/spark/probes/probes.json", ("sverify_dev.probe_spark", "--write")),),
+    ),
 }
 
 Json = dict[str, Any]
@@ -76,10 +92,10 @@ Json = dict[str, Any]
 def probed(engine: str, root: Path = REPO) -> list[str]:
     """The versions `engine`'s facts were probed at: the table's `version`, then its
     `alsoProbed` (the checker's `profiles.<engine>.versions`)."""
-    text = (root / ENGINES[engine]["tables"]).read_text()
+    text = (root / ENGINES[engine].tables).read_text()
     version = re.search(r'^\s*version := "([^"]+)"', text, re.M)
     if version is None:
-        raise ValueError(f"no `version :=` in {ENGINES[engine]['tables']}")
+        raise ValueError(f"no `version :=` in {ENGINES[engine].tables}")
     also = re.search(r"^\s*alsoProbed := \[([^\]]*)\]", text, re.M)
     return [version.group(1), *(re.findall(r'"([^"]+)"', also.group(1)) if also else [])]
 
@@ -109,7 +125,7 @@ def new_releases(
     out = []
     for engine, spec in ENGINES.items():
         have = probed(engine, root)
-        version = latest(spec["package"])
+        version = latest(spec.package)
         if version not in have and _key(version) > max(map(_key, have)):
             out.append({"engine": engine, "version": version})
     return out
@@ -240,9 +256,6 @@ def drift(old: Any, new: Any) -> list[Json]:
 
 # --- ledger (K2) --------------------------------------------------------------------------
 
-#: The upstream-bug ledger's project of each engine (`upstream/bugs/<id>.json`).
-PROJECT = {"duckdb": "duckdb", "polars": "polars", "spark": "spark"}
-
 
 def ledger(engine: str, version: str, root: Path = REPO) -> list[Json]:
     """The bugs of the engine whose fix is named for this release (`fixed_in`): a patch release
@@ -251,7 +264,7 @@ def ledger(engine: str, version: str, root: Path = REPO) -> list[Json]:
     out = []
     for path in sorted((root / "upstream" / "bugs").glob("*.json")):
         bug = json.loads(path.read_text())
-        if bug.get("project") != PROJECT[engine]:
+        if bug.get("project") != engine:
             continue
         fixed = str(bug.get("fixed_in", ""))
         if re.match(rf"{re.escape(version)}(\s|$)", fixed):
@@ -318,7 +331,7 @@ def body(engine: str, version: str, results: Json) -> str:
     else:
         lines += [
             f"No value-side drift. Adding {version} to the probed versions is one line: "
-            f'`alsoProbed := [..., "{version}"]` in `{ENGINES[engine]["tables"]}`, with '
+            f'`alsoProbed := [..., "{version}"]` in `{ENGINES[engine].tables}`, with '
             "`uv.lock` moved when it is the pin."
         ]
     lines += ["", "Raises that appear or disappear are error-side (D70)."]
@@ -432,9 +445,9 @@ def main(argv: list[str] | None = None) -> int:
                 todo = [t for t in todo if issue_number(t["engine"], t["version"]) is None]
         print(_matrix(todo))
     elif args.cmd == "files":
-        print("\n".join(PROBES[args.engine]))
+        print("\n".join(f for f, _ in ENGINES[args.engine].probes))
     elif args.cmd == "commands":
-        print("\n".join(" ".join(c) for c in PROBE_COMMANDS[args.engine]))
+        print("\n".join(" ".join(c) for _, c in ENGINES[args.engine].probes))
     elif args.cmd == "drift":
         found = drift(json.loads(args.old.read_text()), json.loads(args.new.read_text()))
         print(json.dumps(found, indent=1))

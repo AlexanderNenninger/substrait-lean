@@ -103,7 +103,7 @@ jobs:
           cache-suffix: pruned
       - name: Install the repository, then this engine release over the lock's
         run: |
-          pkg=$(python3 -c 'from sverify_dev.canary import ENGINES; import os; print(ENGINES[os.environ["ENGINE"]]["package"])')
+          pkg=$(python3 -c 'from sverify_dev.canary import ENGINES; import os; print(ENGINES[os.environ["ENGINE"]].package)')
           echo "PKG=$pkg" >> "$GITHUB_ENV"
           uv sync --locked --project python
           uv pip install --python python/.venv/bin/python "$pkg==$VERSION"
