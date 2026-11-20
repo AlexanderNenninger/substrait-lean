@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-09-engine-native-state-stores",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "The engine a pipeline runs on holds its state natively through its own store, ArrowStore is removed, and the state store is a required plugin part for incremental engines.",
+  "issues": [
+    1189
+  ],
+  "source": "memory:api-decisions-1-0.md",
+  "note": "No pure-Arrow grouper in base; weighted ops and data checks move to the engine layer."
+}

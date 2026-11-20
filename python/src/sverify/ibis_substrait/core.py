@@ -51,7 +51,8 @@ def _field(x: Exprs, op: Any) -> Json:
     if op.rel not in x.offsets:
         raise Unsupported(
             f"column {op.name} refers to a relation outside its input "
-            "(correlated subqueries are only supported in EXISTS)"
+            "(correlated subqueries are only supported in EXISTS)",
+            construct="SUBQUERY",
         )
     return field_ref(x.offsets[op.rel] + op.rel.schema.names.index(op.name))
 
@@ -279,7 +280,9 @@ def _bitwise(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         if "shift" in name and not op.dtype.is_int64():
             # Narrower shifts lose bits at their own width.
-            raise Unsupported(f"shifts of {op.dtype} are not supported; cast to int64")
+            raise Unsupported(
+                f"shifts of {op.dtype} are not supported; cast to int64", construct="SHIFT"
+            )
         return call(name, [x(op.left, op.dtype), x(op.right, op.dtype)])
 
     return rule

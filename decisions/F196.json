@@ -1,0 +1,22 @@
+{
+  "id": "F196",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "One functional-dependency analysis (P) approved: one FDOn, one Rel.fds, full fdClosure in analysis/FunctionalDeps.lean; equality dependencies stay in the keys walk; conditions P1-P9.",
+  "issues": [
+    1795,
+    1992,
+    1993,
+    2017
+  ],
+  "supersedes": [
+    "F194.F4"
+  ],
+  "amends": [
+    "F194"
+  ],
+  "source": "fable-ruling-196-one-fd-notion.md",
+  "note": "'Amends ruling 194.' P2 replaces F4; P5 sharpens F8. No D-number."
+}

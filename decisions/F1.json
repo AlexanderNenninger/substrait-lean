@@ -1,0 +1,13 @@
+{
+  "id": "F1",
+  "date": "2026-11-16",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "#1475's LINEAR_DIFF quantile interpolation ruled and delivered; no D-number.",
+  "prs": [
+    1475
+  ],
+  "source": "fable-rulings-night-1117.md, entry 1",
+  "note": "Date by context (night of 2026-11-16 to 17). File ruling-1475-linear-diff.md. Amends ruling 4.3 of rulings-1116.md (#900 quantile_cont on DuckDB)."
+}

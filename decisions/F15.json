@@ -1,0 +1,16 @@
+{
+  "id": "F15",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1525: runOn refuses every request whose evaluation panicked (R6 closes with the wrapper, no LEAN_ABORT_ON_PANIC); total black-box evaluators are not part of R6.",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1525
+  ],
+  "source": "fable-rulings-night-1117.md, entry 15",
+  "note": "File ruling-1525-panic-wrapper.md. Conditions confirmed met in entry 21. No D-number."
+}

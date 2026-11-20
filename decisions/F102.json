@@ -1,0 +1,25 @@
+{
+  "id": "F102",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D50-d design second part: one running three-valued column per guarded chain, levels pruned via emit, binder as a pure Lean frontend function with theorem T1; join/semi conditions and lambda bodies keep d1's chain and cap at 1.0; engines re-probed (R1-R4).",
+  "issues": [
+    1681,
+    1719
+  ],
+  "prs": [
+    1730
+  ],
+  "amends": [
+    "D50",
+    "F94",
+    "F95"
+  ],
+  "amended_by": [
+    "U-2026-11-19-d50-cap"
+  ],
+  "source": "fable-design-d50d-part2.md",
+  "note": "No new D-number: D50-d stays a dated amendment of D50, written in step d3e. The join-condition cap at 1.0 is on the user's held list (per ruling 95) with Fable's recommendation to keep it."
+}

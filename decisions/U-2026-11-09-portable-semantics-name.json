@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-09-portable-semantics-name",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The user-facing API says semantics=\"portable\" with no reference synonym, while Profile.reference stays the Lean theory term.",
+  "issues": [
+    1288
+  ],
+  "source": "memory:api-decisions-1-0.md"
+}

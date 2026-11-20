@@ -1,0 +1,16 @@
+{
+  "id": "F7",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "asof_join: (A) the fix merges with docs and a test naming the unproved unique(*by, on) and one-row-per-left-row facts; (B) a general column-set dependency closure follows before 1.0 (S13); the three-node pattern is declined.",
+  "issues": [
+    1517
+  ],
+  "prs": [
+    1520
+  ],
+  "source": "fable-rulings-night-1117.md, entry 7",
+  "note": "File ruling-1517-asof-keys.md. Reaffirmed by entry 16. No D-number."
+}

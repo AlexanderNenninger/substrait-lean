@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-06-core-design-dossier",
+  "date": "2026-11-06",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Core design decisions - typed Value as a tagged sum, D25 before 1.0, D26 two NULL equalities, D27 Rel.Small the only size assumption, D28 lexical lambdas, unordered FETCH refused in refresh unless deterministic, every core epic before 1.0.",
+  "issues": [
+    936
+  ],
+  "source": "github:#936 body",
+  "note": "Also: SMT certificates count as proved with axioms listed, refresh model starts with one node, conservation proved-or-checked."
+}

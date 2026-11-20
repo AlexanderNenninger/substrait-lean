@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-08-pr-two-improvements",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Every pull request brings two measured improvements beside its main change, one to performance and one to code quality.",
+  "prs": [
+    1274
+  ],
+  "supersedes": [
+    "U-2026-11-05-pr-optimization-rule"
+  ],
+  "source": "github:#1274 body"
+}

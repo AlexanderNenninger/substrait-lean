@@ -1,0 +1,13 @@
+{
+  "id": "F39",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "core/ comments name an engine only at an option's declaration or inside a fact id, decision or issue number; a reference choice cites its decision; core/ describes no engine shim.",
+  "issues": [
+    1445
+  ],
+  "source": "fable-rulings-night-1117.md, entry 39",
+  "note": "File ruling-1445-comments.md. No D-number (comments only). Found StatProps.lean:203 (shim lemma in core/) and Rel.lean:126 (UNNEST of an empty list without a decision)."
+}

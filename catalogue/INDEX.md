@@ -93,7 +93,7 @@ Checker: ✓ verified, ✗ rejected by `substrait-check`, – fails before a pla
 | dbt-union-sources | [Union of sources with aligned columns](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/union.sql) | ✓ | NPDS |  |
 | dbt-mrr-movements | [MRR movements per customer and month](https://github.com/dbt-labs/mrr-playbook) | ✓ | NPDS |  |
 | dbt-org-hierarchy | [Reporting chain depth (recursive hierarchy)](https://www.postgresql.org/docs/current/queries-with.html) | ✗ | N | `recursive_cte` |
-| dbt-generate-date-spine | [Generate a daily date spine](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql) | ✗ | N | `generate_series` |
+| dbt-generate-date-spine | [Generate a daily date spine](https://github.com/dbt-labs/dbt-utils/blob/main/macros/sql/date_spine.sql) | ✓ | NPDS |  |
 | dbt-accepted-values-test | [Data test: accepted values](https://docs.getdbt.com/docs/build/data-tests) | ✓ | NPDS |  |
 | dbt-unique-test | [Data test: uniqueness](https://docs.getdbt.com/docs/build/data-tests) | ✓ | NPDS |  |
 | dbt-relationships-test | [Data test: referential integrity](https://docs.getdbt.com/docs/build/data-tests) | ✓ | NPDS |  |

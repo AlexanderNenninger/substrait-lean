@@ -1,0 +1,19 @@
+{
+  "id": "F153",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Accepts P1b's class-level predicate Relation.DoublesKinded and the bridge lemma; core has the typing fact (Rel.kinds_sound), so the discharge is follow-up P1c; ObsCtx.ofRelation is dropped in favour of an example.",
+  "issues": [
+    1285
+  ],
+  "prs": [
+    1828
+  ],
+  "amended_by": [
+    "F154"
+  ],
+  "source": "fable-ruling-153-1285-p1b-predicate.md",
+  "note": "Amended by ruling 154 before delivery: Kind.hasDouble renamed Kind.mayDouble ('that name is withdrawn'); Value.hasDouble shared with #1829 and F3. No D-number."
+}

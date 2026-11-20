@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-09-lenses-in-contract",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The user-facing term is lens, lenses live in the contract's postconditions rather than as verify parameters, and equivalent and deterministic are verdicts read off the result.",
+  "issues": [
+    1285,
+    1288
+  ],
+  "amends": [
+    "U-2026-11-05-observation-naming"
+  ],
+  "source": "memory:api-decisions-1-0.md",
+  "note": "Observable stays the theory term (Obs, ObsEquiv). Lenses are postcondition-only (#1285)."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "F132",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Spark's ln, log10, log2, log(b,x) and trig of doubles run natively under per-call ulp bounds (Spark's spec number plus reference's), sin/cos/tan guarded at |x| <= 2^20; Spark default no bound; per-engine numbers move to `EngineProfile` data.",
+  "issues": [
+    1270
+  ],
+  "source": "fable-ruling-132-spark-math-ulp.md",
+  "note": "No D-number. pow and atan2 stay refused on Spark."
+}

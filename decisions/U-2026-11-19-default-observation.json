@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-19-default-observation",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The default observation is multiset and canon: PLAN_BOUND = Observation(floats='plan', zeros='canon', elements='multiset'); it sets the level Report.deterministic is read at and nothing more.",
+  "issues": [
+    1285
+  ],
+  "prs": [
+    1815
+  ],
+  "amends": [
+    "U-2026-11-09-lens-defaults"
+  ],
+  "source": "fable-ruling-144-1285-default-lens-addendum.md",
+  "note": "User typed 'multiset and canon should be default' in the orchestrator session; relayed by ruling 144. Exact date of the user's message not given."
+}

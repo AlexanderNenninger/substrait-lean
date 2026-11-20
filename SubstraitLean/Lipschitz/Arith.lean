@@ -1009,7 +1009,7 @@ def Rel.rowsK (K : KnowledgeEnv) : Rel → Option Nat
 
 theorem Rel.rowsK_sound {cat : Catalog} {K : KnowledgeEnv} (hK : K.Sound cat) :
     ∀ {r : Rel} {n : Nat}, r.rowsK K = some n → (r.eval cat).length ≤ n
-  | .read s, _, h => (hK s).2.2.2 _ h
+  | .read s, _, h => (hK s).2.2.2.1 _ h
   | .values _ _, _, h => by simp only [Rel.rowsK, Option.some.injEq] at h; simp [Rel.eval, h]
   | .filter r _, _, h | .semi r _ _ _, _, h => by
     simp only [Rel.rowsK] at h
