@@ -37,7 +37,7 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
         and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
         and getattr(REFERENCE, f.name) != "ERROR"
     }
-    assert keys == set(_dialect.TABLE) | set(_dialect.REFUSED)
+    assert keys | _dialect.NATIVE == set(_dialect.TABLE) | set(_dialect.REFUSED)
     assert not set(_dialect.TABLE) & set(_dialect.REFUSED)
 
 
@@ -114,8 +114,9 @@ def _found_lists(sql: str, semantics: str = "reference") -> list[str]:
     "sql", ["SELECT list_contains(l, x) AS c FROM t", "SELECT list_has(l, NULL) AS c FROM t"]
 )
 def test_a_list_contains_with_a_needle_that_may_be_null_is_listed(sql: str) -> None:
+    # DuckDB's own reading differs from the plan's under both semantics.
     assert _found_lists(sql) == ["list_contains_null_needle"]
-    assert _found_lists(sql, "duckdb") == []
+    assert _found_lists(sql, "duckdb") == ["list_contains_null_needle"]
 
 
 def test_a_literal_needle_is_not_listed() -> None:

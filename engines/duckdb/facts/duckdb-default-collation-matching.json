@@ -2,8 +2,8 @@
   "id": "duckdb-default-collation-matching",
   "engine": "duckdb",
   "engine_version": "2.0.1",
-  "title": "`default_collation = 'nocase'` reaches `LIKE`, `contains`, `starts_with` and `strpos` at 2.0.1",
-  "verdict": "under `default_collation = 'nocase'`, `LIKE`, `contains`, `starts_with` and `strpos` ignore case at 2.0.1 and match bytes at 2.0.0; `ends_with`, `prefix` and `replace` stay case-sensitive at both",
+  "title": "`default_collation = 'nocase'` reaches `LIKE`, `contains`, `starts_with` and `strpos` at 2.0.1; sverify refuses the run",
+  "verdict": "under `default_collation = 'nocase'`, `LIKE`, `contains`, `starts_with` and `strpos` ignore case at 2.0.1 and match bytes at 2.0.0; `replace` is unchanged at both; sverify refuses a session whose `default_collation` is set, at both versions",
   "area": "strings",
   "options": [],
   "rows": [],
@@ -20,10 +20,10 @@
   },
   "description": [
     "The probes `default-collation-nocase` and `default-collation-nocase-literals` (`engines/duckdb/replay/probes.json`): after `SET default_collation = 'nocase'`, `'Hello' LIKE 'h%'` is false at 2.0.0 and true at 2.0.1, `contains('Hello', 'ELL')` false and true, `starts_with('Hello', 'he')` false and true, `strpos('Hello', 'EL')` 0 and 2. `=`, `ILIKE`, `ends_with`, `prefix` and `replace` are as before, and the sort probe is unchanged.",
-    "The change is value-side on a setting the profile does not model: sverify's SQL writes no collation and assumes the default, byte order (`duckdb-exec-settings`, duckdb-F4), and `duckdb-string-match-case`'s rows are stated under the default `BINARY` collation, where nothing moved. A user who sets `default_collation` runs outside the profile at either version."
+    "Sverify refuses a run whose session has `default_collation` set, for every plan (`check_settings`, `python/src/sverify/routes.py`; the `Setting` of `engines/duckdb/src/sverify_duckdb/__init__.py` cites this fact; `tests/test_engine_settings.py`): the 2.0.1 change widens what the setting would affect, and the refusal covers it at both versions. `duckdb-string-match-case`'s rows are stated under the default `BINARY` collation, where nothing moved."
   ],
   "reference": "The reference compares and matches bytes (`case_sensitivity = CASE_SENSITIVE`).",
-  "status": "open",
+  "status": "decided",
   "evidence": "probe",
   "provenance": [
     {

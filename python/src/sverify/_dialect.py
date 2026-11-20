@@ -22,7 +22,7 @@ class DialectDifference:
     """A construct of the SQL text whose reference reading differs from DuckDB's."""
 
     key: str
-    """The `Profile` field the lift read: `float_to_int`, `decimal_to_int`,
+    """The `Profile` field the lift read, or a `NATIVE` key: `float_to_int`, `decimal_to_int`,
     `corr_degenerate` or `list_contains_null_needle`."""
     construct: str
     """The construct as written."""
@@ -55,6 +55,10 @@ REFUSED: dict[str, str] = {
     ),
     "decimal_to_int": "see #322: the model has no rounding cast of a decimal yet",
 }
+
+#: The listed differences that are no `Profile` field: DuckDB's own reading of a construct differs
+#: from the plan's under every semantics, at the engine versions named (D54, ruling 208).
+NATIVE: frozenset[str] = frozenset({"list_contains_null_needle"})
 
 #: Each `Profile` field the lift lists: how the two readings differ, with an
 #: example and the spellings that mean the same.

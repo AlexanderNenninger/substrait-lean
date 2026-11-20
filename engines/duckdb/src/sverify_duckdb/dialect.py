@@ -105,8 +105,9 @@ class DuckDBDialect(Dialect):
         return self.cast(f"error({text})", kind)
 
     def trunc_div(self, a: str, b: str) -> str:
-        # The dividend minus the remainder divides exactly, however `//` rounds. `%`
-        # raises on `MIN % -1`, which is where the quotient overflows.
+        # The dividend minus the remainder divides exactly, however `//` rounds. `MIN % -1`
+        # raises at 2.0.0 and is 0 at 2.0.1 (`duckdb-int-modulus-min-neg-one`); there the
+        # quotient `MIN // -1` overflows, and the raise comes from `//`.
         return f"(({a} - ({a} % {b})) // {b})"
 
     def trunc_mod(self, a: str, b: str) -> str:

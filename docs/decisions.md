@@ -1709,7 +1709,7 @@ preconditions guard it. In three the reference gives another value:
 | `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
 | `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | refuses, with a hint |
 | `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
-| `list_contains_null_needle` | NULL | FALSE (2.0.1) | `list_contains(l, x)` with `x` NULL and `l` empty | lists it |
+| `list_contains` | NULL | FALSE (2.0.1) | `list_contains(l, x)` with `x` NULL and `l` empty | lists it, under every semantics |
 
 R9 stays the reference's rule: the model's cast of a double or decimal truncates,
 and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
@@ -1727,12 +1727,12 @@ exception: DuckDB 2.0.1 gives FALSE for `list_contains([], NULL)` where 2.0.0
 and the reference give NULL, and only for the empty list (`duckdb-list-contains-null`).
 A verified plan runs the reference's NULL at both versions, because the DuckDB writer
 guards the needle; SQL run natively on 2.0.1 gives FALSE, so the report lists the
-construct unless its needle is a literal.
+construct unless its needle is a literal, under `semantics="reference"` and `"duckdb"` alike.
 
 L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
 `Profile.reference`, and the verdict gains no value: the list says what the
-proof covers, and proved stays proved. A SQL query with `semantics="duckdb"`
-and an Ibis transformation list nothing. `semantics="reference"` stays the
+proof covers, and proved stays proved. An Ibis transformation lists nothing, and
+a SQL query with `semantics="duckdb"` lists only `list_contains` (2026-11-20). `semantics="reference"` stays the
 default for raw SQL ("verify two paths" and "portable everywhere" keep it).
 
 Recomputes sinks: no

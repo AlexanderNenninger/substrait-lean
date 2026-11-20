@@ -12,7 +12,6 @@ from sverify.plan_json import SqlUnsupported, Unsupported, literal
 from sverify.plan_json import same_type as _same
 from sverify.sql_lift._base import (
     _KNOWN,
-    DUCKDB,
     PARSE_REWRITES,
     Column,
     E,
@@ -96,10 +95,9 @@ def _contains(lf: _Lift, node: sge.ArrayContains, sub: Sub, scope: list[Column])
     #812)."""
     lst = sub(node.this)
     x, _ = _needle(lf, node, lst, sub(node.expression), "list_contains")
-    # A literal needle is never NULL, so it never meets the difference (D54).
-    if not isinstance(node.expression, sge.Literal) and (
-        lf.profile.list_contains_null_needle != DUCKDB.list_contains_null_needle
-    ):
+    # DuckDB 2.0.1 reads `list_contains([], NULL)` natively as FALSE, where the plan and 2.0.0 give
+    # NULL: a listed exception under every semantics, unless the needle is a literal (D54, ruling 208).
+    if not isinstance(node.expression, sge.Literal):
         lf.differences.append(difference("list_contains_null_needle", _shown(node)))
     return E(_fn("list_contains", [lst.json, x.json], dt.boolean), dt.boolean)
 
