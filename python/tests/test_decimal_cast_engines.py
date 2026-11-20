@@ -36,15 +36,14 @@ def half_away(v: Decimal, places: int) -> Decimal:
 
 @pytest.mark.parametrize("engine", PROFILED)
 def test_the_rescale_gives_duckdbs_value_on_each_engine(engine):
-    # The analysis does not bound `decimal_rescale` (not even a cast to DECIMAL(10, 0), which
-    # cannot overflow), so the overflow stays possible and the run is unverified: the route
-    # itself is not refused. The cast to an integer widens by one digit for the carry.
+    # The analysis bounds the rescale: its carry (9999999.5 to 10000000) fits the
+    # integer's intermediate, one digit wider than the integer part.
     report = sv.verify(QUERY, tables={"t": {"d": "DECIMAL(10,3)"}}, on_inferred="ignore")
-    assert {i.kind for i in report.errors} == {"overflow"}
+    assert not report.errors
     con = connect()
     column = pa.array([Decimal(v) for v in VALUES], type=pa.decimal128(10, 3))
     put_table(con, "t", pa.table({"d": column}))
-    got = report.run(con, engine, unverified=True).to_pydict()
+    got = report.run(con, engine).to_pydict()
     want = [Decimal(v) for v in VALUES]
     assert got["i"] == [int(half_away(v, 0)) for v in want]
     assert got["w"] == [half_away(v, 0) for v in want]
