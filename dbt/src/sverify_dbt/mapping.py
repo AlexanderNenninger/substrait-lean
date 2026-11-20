@@ -218,12 +218,12 @@ def _match(
         atoms = [f"regexp_matches({ident(col)}, {literal(p)})" for p in patterns]
     else:
         atoms = [f"{ident(col)} LIKE {literal(p)}" for p in patterns]
-    if negate:
-        if match_on != "any":
-            return Mapped([], f"match_on: {match_on} of a not_match test is not mapped")
-        return _null_passes(col, f"NOT ({' OR '.join(atoms)})")
     if match_on not in ("any", "all"):
         return Mapped([], f"match_on: {match_on} is not any or all")
+    if negate:
+        # dbt-expectations joins the atoms `NOT a` with OR for "any" and AND for "all".
+        join = " AND " if match_on == "any" else " OR "
+        return _null_passes(col, f"NOT ({join.join(atoms)})")
     return _null_passes(col, f" {'AND' if match_on == 'all' else 'OR'} ".join(atoms))
 
 
@@ -261,8 +261,9 @@ def _row_test(base: str, col: str | None, kw: dict[str, Any]) -> Any:
             return _null_passes(col, f"length({c}) = {kw['value']}") if "value" in kw else None
         if base == "expect_column_value_lengths_to_be_between":
             lo, hi = kw.get("min_value"), kw.get("max_value")
-            parts = ([f"length({c}) >= {lo}"] if lo is not None else []) + (
-                [f"length({c}) <= {hi}"] if hi is not None else []
+            gt, lt = (">", "<") if kw.get("strictly") else (">=", "<=")
+            parts = ([f"length({c}) {gt} {lo}"] if lo is not None else []) + (
+                [f"length({c}) {lt} {hi}"] if hi is not None else []
             )
             return _null_passes(col, " AND ".join(parts)) if parts else None
     a, b = kw.get("column_A"), kw.get("column_B")

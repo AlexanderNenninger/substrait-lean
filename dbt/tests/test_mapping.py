@@ -69,7 +69,24 @@ def test_row_conditions(test: Test, expected: str) -> None:
                 "dbt_expectations.expect_column_values_to_not_match_regex_list",
                 regex_list=["a", "b"],
             ),
-            "c IS NULL OR (NOT (regexp_matches(c, 'a') OR regexp_matches(c, 'b')))",
+            "c IS NULL OR (NOT (regexp_matches(c, 'a') AND regexp_matches(c, 'b')))",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_values_to_not_match_like_pattern_list",
+                like_pattern_list=["a%", "b%"],
+                match_on="all",
+            ),
+            "c IS NULL OR (NOT (c LIKE 'a%' OR c LIKE 'b%'))",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_value_lengths_to_be_between",
+                min_value=2,
+                max_value=4,
+                strictly=True,
+            ),
+            "c IS NULL OR (length(c) > 2 AND length(c) < 4)",
         ),
         (
             t(
@@ -127,9 +144,9 @@ def test_string_and_pair_conditions(test: Test, expected: str) -> None:
     [
         t("dbt_expectations.expect_column_values_to_match_regex", regex="a", flags="i"),
         t(
-            "dbt_expectations.expect_column_values_to_not_match_regex_list",
+            "dbt_expectations.expect_column_values_to_match_regex_list",
             regex_list=["a"],
-            match_on="all",
+            match_on="x",
         ),
         t("dbt_expectations.expect_column_values_to_match_regex_list", regex_list=[]),
     ],
