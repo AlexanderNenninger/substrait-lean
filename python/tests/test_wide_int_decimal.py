@@ -25,7 +25,7 @@ WIDE = ibis.dtype("decimal(38, 0)")
 BIG = (2**40, 2**30)  # a product of 2⁷⁰, above 2⁶³
 
 
-def _con(rows: list[tuple[int, int]]) -> sv.engine.Connection:
+def _con(rows: list[tuple[int | None, int | None]]) -> sv.engine.Connection:
     con = sv.connect()
     con.put("t", pa.table({"i": [r[0] for r in rows], "j": [r[1] for r in rows]}))
     con.put("u", pa.table({"k": [1, 2, 3], "v": [10, 20, 30]}))
