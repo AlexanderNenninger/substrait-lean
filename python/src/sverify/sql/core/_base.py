@@ -5129,6 +5129,9 @@ class _Writer:
                     f"(NOT {d.float_lt(zero, x)} OR NOT {d.float_lt(zero, base)} "
                     f"OR {d.float_eq(base, d.float_lit(1.0))})"
                 )
+                # `Expr.issues` reads a call with both arguments present: a NULL in either
+                # makes the result NULL before the domain is looked at (#1990).
+                bad = d.case_when(d.or3(d.is_null(x), d.is_null(base)), d.bool_lit(False), bad)
                 return self.domain(x, bad, d.float_logb(x, base))
             case Bin(op="bit", left=a, right=b, param=name):
                 sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))
