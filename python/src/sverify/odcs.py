@@ -537,6 +537,10 @@ _LOGICAL_IBIS = {
 }
 
 
+#: A time zone at the end of a timestamp's text: `Z`, `+10:00`, `-0530`.
+_OFFSET = re.compile(r"(Z|[+-]\d{2}(:?\d{2})?)$")
+
+
 def _ibis_type(p: Mapping[str, Any]) -> Any:
     import ibis.expr.datatypes as dt
     from ibis.backends.sql.datatypes import DuckDBType
@@ -671,6 +675,13 @@ class _Reader:
         query = str(rule.get("query", ""))
         if column is not None:
             query = query.replace("{property}", _quote(column))
+        # The object by its own name, as ODCS's examples write it (#864).
+        query = re.sub(
+            rf"(\bFROM\s+)(?:{re.escape(self.table)}|{re.escape(_quote(self.table))})(?=\s|;|$)",
+            r"\1{object}",
+            query,
+            flags=re.IGNORECASE,
+        )
         if not _is_zero(rule):
             self.skip(column, rule, "a threshold on a count: sverify reads rules that must be 0")
             return
@@ -794,7 +805,9 @@ class _Reader:
                 self.valued.add(col)
         opts = p.get("logicalTypeOptions") or {}
         logical = p.get("logicalType")
-        cast = {"date": "DATE", "timestamp": "TIMESTAMP", "time": "TIME"}.get(str(logical))
+        # A temporal bound is a literal of the column's own type.
+        t = _ibis_type(p)
+        cast = _physical(t) if t.is_date() or t.is_time() or t.is_timestamp() else None
         bounds = [
             ("minimum", sg.exp.GTE),
             ("exclusiveMinimum", sg.exp.GT),
@@ -806,6 +819,10 @@ class _Reader:
                 continue
             v = opts[key]
             lit = _lit(v)
+            if t.is_timestamp() and t.timezone is None and _OFFSET.search(str(v)):
+                # DuckDB's CAST to TIMESTAMP drops the offset (#864).
+                self.skip(col, {key: v}, f"a {key} with a time zone on a timestamp without one")
+                continue
             if cast is not None:
                 lit = sg.exp.cast(sg.exp.Literal.string(str(v)), cast)
             elif not isinstance(v, int | float) or isinstance(v, bool):
