@@ -175,11 +175,6 @@ def test_conditions(
         quote = kw.get("quote", kw.get("quote_values", True))
         items = ", ".join(literal(v, quote) for v in values)
         cond = _null_passes(col, f"{ident(col)} IN ({items})") if values else None
-    elif base == "expect_column_values_to_not_be_in_set" and col:
-        values = kw.get("value_set") or []
-        quote = kw.get("quote_values", True)
-        items = ", ".join(literal(v, quote) for v in values)
-        cond = _null_passes(col, f"{ident(col)} NOT IN ({items})") if values else None
     elif base == "accepted_range" and ns == "dbt_utils" and col:
         strict = not kw.get("inclusive", True)
         cond = _range(col, kw.get("min_value"), kw.get("max_value"), strict, strict)
@@ -195,6 +190,10 @@ def test_conditions(
         cond = f"coalesce(({expr}), TRUE)"
     elif base == "relationships" and col:
         return _references(test, col, side, table_of)
+    elif (made := _row_test(base, col, kw)) is not None:
+        if isinstance(made, Mapped):
+            return made
+        cond = made
     else:
         return Mapped([], f"sverify-dbt has no mapping for {k}; {_RUNS}")
     if cond is None:
@@ -202,10 +201,85 @@ def test_conditions(
     return Mapped([_filtered(cond, row_filter)], columns=_cols(test))
 
 
+def _as_list(v: Any) -> list[Any]:
+    return list(v) if isinstance(v, list | tuple) else ([] if v is None else [v])
+
+
+def _match(
+    col: str, kind: str, patterns: list[str], flags: str, match_on: str, negate: bool
+) -> Any:
+    """`col` matches (`kind` regex or like) any or all of `patterns`, or none of them
+    (`negate`), as dbt-expectations words each test."""
+    if not patterns:
+        return Mapped([], f"the test names no {kind} pattern")
+    if kind == "regex":
+        if flags:
+            return Mapped([], f"sverify reads no regex flags ({flags!r}); dbt still runs it")
+        atoms = [f"regexp_matches({ident(col)}, {literal(p)})" for p in patterns]
+    else:
+        atoms = [f"{ident(col)} LIKE {literal(p)}" for p in patterns]
+    if negate:
+        if match_on != "any":
+            return Mapped([], f"match_on: {match_on} of a not_match test is not mapped")
+        return _null_passes(col, f"NOT ({' OR '.join(atoms)})")
+    if match_on not in ("any", "all"):
+        return Mapped([], f"match_on: {match_on} is not any or all")
+    return _null_passes(col, f" {'AND' if match_on == 'all' else 'OR'} ".join(atoms))
+
+
+def _row_test(base: str, col: str | None, kw: dict[str, Any]) -> Any:
+    """The row-level tests of dbt-utils and dbt-expectations on strings, lengths
+    and pairs of columns: a condition, a `Mapped` refusal, or None when
+    `base` is no such test. NULLs pass, as in dbt."""
+    flags = str(kw.get("flags") or "")
+    match_on = str(kw.get("match_on", "any"))
+    if col:
+        c = ident(col)
+        regex: dict[str, tuple[str, bool, bool]] = {
+            "expect_column_values_to_match_regex": ("regex", False, False),
+            "expect_column_values_to_not_match_regex": ("regex", True, False),
+            "expect_column_values_to_match_regex_list": ("regex", False, True),
+            "expect_column_values_to_not_match_regex_list": ("regex", True, True),
+            "expect_column_values_to_match_like_pattern": ("like", False, False),
+            "expect_column_values_to_not_match_like_pattern": ("like", True, False),
+            "expect_column_values_to_match_like_pattern_list": ("like", False, True),
+            "expect_column_values_to_not_match_like_pattern_list": ("like", True, True),
+        }
+        if base in regex:
+            kind, negate, many = regex[base]
+            key = f"{'regex' if kind == 'regex' else 'like_pattern'}{'_list' if many else ''}"
+            return _match(col, kind, _as_list(kw.get(key)), flags, match_on, negate)
+        if base in ("not_accepted_values", "expect_column_values_to_not_be_in_set"):
+            values = _as_list(kw.get("values", kw.get("value_set")))
+            quote = kw.get("quote", kw.get("quote_values", True))
+            items = ", ".join(literal(v, quote) for v in values)
+            return _null_passes(col, f"{c} NOT IN ({items})") if values else None
+        if base == "not_empty_string":
+            trim = kw.get("trim_whitespace", True)
+            return _null_passes(col, f"{'trim(' + c + ')' if trim else c} <> ''")
+        if base == "expect_column_value_lengths_to_equal":
+            return _null_passes(col, f"length({c}) = {kw['value']}") if "value" in kw else None
+        if base == "expect_column_value_lengths_to_be_between":
+            lo, hi = kw.get("min_value"), kw.get("max_value")
+            parts = ([f"length({c}) >= {lo}"] if lo is not None else []) + (
+                [f"length({c}) <= {hi}"] if hi is not None else []
+            )
+            return _null_passes(col, " AND ".join(parts)) if parts else None
+    a, b = kw.get("column_A"), kw.get("column_B")
+    if base == "expect_column_pair_values_A_to_be_greater_than_B" and a and b:
+        return f"coalesce(({ident(a)} {'>=' if kw.get('or_equal') else '>'} {ident(b)}), TRUE)"
+    if base == "expect_column_pair_values_to_be_equal" and a and b:
+        return f"coalesce(({ident(a)} = {ident(b)}), TRUE)"
+    return None
+
+
 def _cols(test: Test) -> tuple[str, ...]:
     cols = test.kwargs.get("combination_of_columns") or test.kwargs.get("column_list")
     if cols:
         return tuple(cols)
+    pair = tuple(test.kwargs[k] for k in ("column_A", "column_B") if test.kwargs.get(k))
+    if pair:
+        return pair
     return (test.column,) if test.column else ()
 
 

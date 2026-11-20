@@ -155,6 +155,12 @@ The tests sverify-dbt reads:
 | `accepted_values`, `dbt_expectations.expect_column_values_to_be_in_set` | `c IS NULL OR c IN (...)` |
 | `dbt_expectations.expect_column_values_to_not_be_in_set` | `c IS NULL OR c NOT IN (...)` |
 | `dbt_utils.accepted_range`, `dbt_expectations.expect_column_values_to_be_between` | `c IS NULL OR (c >= min AND c <= max)`, strict where the test says |
+| `dbt_utils.not_accepted_values` | `c IS NULL OR c NOT IN (...)` |
+| `dbt_utils.not_empty_string` | `c IS NULL OR trim(c) <> ''` |
+| `dbt_expectations.expect_column_values_to_[not_]match_regex[_list]` | `c IS NULL OR regexp_matches(c, re)`, joined by `match_on` (any or all) |
+| `dbt_expectations.expect_column_values_to_[not_]match_like_pattern[_list]` | `c IS NULL OR c LIKE p`, joined by `match_on` |
+| `dbt_expectations.expect_column_value_lengths_to_equal`, `…_to_be_between` | `c IS NULL OR length(c) …` |
+| `dbt_expectations.expect_column_pair_values_A_to_be_greater_than_B`, `…_values_to_be_equal` | `coalesce(A > B, TRUE)`, `coalesce(A = B, TRUE)` |
 | `dbt_utils.expression_is_true` | `coalesce(expression, TRUE)` |
 | `unique`, `dbt_expectations.expect_column_values_to_be_unique` | a key (`sv.unique`) |
 | `dbt_utils.unique_combination_of_columns`, `dbt_expectations.expect_compound_columns_to_be_unique` | a key over the columns |
@@ -180,8 +186,10 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 - Sverify tracks a column's strings while they are few (up to 64), from
   constants, `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and
   `UNION ALL`, which proves `accepted_values` there;
-  what is inside a string (`LIKE`, lengths) is not tracked
-  ([the guide](../docs/guide.md#contracts)).
+  what is inside a string (`LIKE`, regexes, lengths) is not tracked, so those
+  tests are proved where the same test holds upstream and the column passes
+  through ([the guide](../docs/guide.md#contracts)). Sverify reads no regex
+  flags, so a regex test with `flags` is not checked.
 - Python models, and models whose inputs have no column types, are refused.
 - What each materialization gets: a table or view is checked; an incremental
   model as its full refresh (below); an ephemeral model is inlined, so its

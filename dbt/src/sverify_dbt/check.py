@@ -678,6 +678,20 @@ _ROW_LEVEL = frozenset(
         "accepted_range",
         "expect_column_values_to_be_between",
         "expression_is_true",
+        "not_accepted_values",
+        "not_empty_string",
+        "expect_column_values_to_match_regex",
+        "expect_column_values_to_not_match_regex",
+        "expect_column_values_to_match_regex_list",
+        "expect_column_values_to_not_match_regex_list",
+        "expect_column_values_to_match_like_pattern",
+        "expect_column_values_to_not_match_like_pattern",
+        "expect_column_values_to_match_like_pattern_list",
+        "expect_column_values_to_not_match_like_pattern_list",
+        "expect_column_value_lengths_to_equal",
+        "expect_column_value_lengths_to_be_between",
+        "expect_column_pair_values_A_to_be_greater_than_B",
+        "expect_column_pair_values_to_be_equal",
     }
 )
 
