@@ -115,7 +115,7 @@ def sarif(
         }
         if props:
             result["properties"] = props
-        if r["code"] == "needs" and (edits := fixes.pop(r.get("item"), None)):
+        if r["code"] == "needs" and (edits := fixes.pop(str(r.get("item")), None)):
             result["fixes"] = [_fix(file, edits)]
         out.append(result)
     log = {
