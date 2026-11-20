@@ -2115,13 +2115,6 @@ def _parse_timestamp(s: str) -> int | None:
     return ((days * 24 + int(h)) * 60 + int(mi)) * 60_000_000 + int(sec) * 1_000_000 + micros
 
 
-def _wide_int_decimal(ty: Any) -> bool:
-    """`Parse.wideIntDecimal`: a decimal of scale 0 and at least 19 digits,
-    whose values the model keeps as integers."""
-    d = ty.get("decimal") if isinstance(ty, dict) else None
-    return isinstance(d, dict) and d.get("scale", 0) == 0 and d.get("precision", 0) >= 19
-
-
 def _interval_type(ty: Any) -> bool:
     return isinstance(ty, dict) and ("intervalDayToSecond" in ty or "intervalCompound" in ty)
 
@@ -2130,13 +2123,6 @@ def _cast_const(ty: dict, c: Const) -> Const:
     lean, kind = _type_kinds(ty)
     if c.tag == "null":
         return Const("null", kind=kind)
-    if _wide_int_decimal(ty):
-        if c.tag == "int" or (c.tag == "dec" and c.scale == 0):
-            return Const("int", c.value, kind="int")
-        raise WriterUnsupported(
-            "cannot cast this value to an integer decimal",
-            hint=MALFORMED_PLAN,
-        )
     match lean:
         case "float":
             f = c.to_float()
@@ -2606,7 +2592,7 @@ class _Parser:
                     name = full_name = "modulus"
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
                 if name in ("any_match", "all_match", "transform", "filter"):
-                    raise Unsupported("lambdas have no SQL form yet (#94)")
+                    raise Unsupported("lambdas have no SQL form yet (#348)")
                 # `array_length(regexp_match(s, p))`: NULL if `p` does not match.
                 if name == "array_length" and len(arg_js) == 1:
                     g = _field(arg_js[0], "scalarFunction")
@@ -2705,9 +2691,8 @@ class _Parser:
                     dec = self.decimal_call(name, parsed, _field(v, "outputType"), cols)
                     if dec is not None:
                         return dec
-                # `Parse.wideIntDecimal`: other decimal results are not modelled.
-                decimal = isinstance(out_ty, dict) and "decimal" in out_ty
-                if decimal and not _wide_int_decimal(out_ty):
+                # A decimal result of non-decimal arguments is not modelled.
+                if isinstance(out_ty, dict) and "decimal" in out_ty:
                     raise WriterUnsupported(f"{name}: decimal results are not supported")
                 out = _lean_type_kind(out_ty)
                 floats = (
@@ -2827,9 +2812,6 @@ class _Parser:
                 k = lean_expr_kind(e, cols.lean)
                 # `TRY_CAST` (#58): NULL where the cast fails.
                 or_null = _field(v, "failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL"
-                # `Parse.wideIntDecimal`; a duration compared with an interval.
-                if k == "int" and _wide_int_decimal(_req(v, "type")):
-                    return e
                 # Decimals (#27): rescaled, rounding half away from zero to a
                 # smaller scale; to an integer truncates toward zero.
                 if isinstance(target, Dec):
@@ -5419,6 +5401,9 @@ class _Writer:
                     f"(NOT {d.float_lt(zero, x)} OR NOT {d.float_lt(zero, base)} "
                     f"OR {d.float_eq(base, d.float_lit(1.0))})"
                 )
+                # `Expr.issues` reads a call with both arguments present: a NULL in either
+                # makes the result NULL before the domain is looked at (#1990).
+                bad = d.case_when(d.or3(d.is_null(x), d.is_null(base)), d.bool_lit(False), bad)
                 return self.domain(x, bad, d.float_logb(x, base))
             case Bin(op="bit", left=a, right=b, param=name):
                 sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))

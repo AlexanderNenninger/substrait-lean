@@ -1,7 +1,7 @@
 """What the workflows run, so that they stay a few lines each and the tests
 run the same steps.
 
-    python scripts/lake.py check   [--out check.json] [--comment comment.md]
+    python scripts/lake.py check   [--out check.json] [--comment comment.md] [--plans DIR]
     python scripts/lake.py refresh [--out refresh.json] [--alert alert.md] [--check check.json]
     python scripts/lake.py catalog --out site [--check check.json] [--refresh refresh.json]
                                    [--data auto|snapshot|none|link:<url>] [--stage production]
@@ -12,6 +12,8 @@ run the same steps.
 `check` runs `sverify check --json` on every pipeline file (`pipelines/*.py`
 but helpers starting with `_`), prints GitHub annotations for each problem
 and writes the plain-language contract as Markdown for the PR comment.
+With `--plans`, each proved node is also exported to Substrait in that folder
+and proved again from the export, for a consumer that runs the plan itself.
 `refresh` runs `sverify refresh --json` on each node `pipelines.toml` lists
 and, when one fails, writes the text of the alert issue. `catalog` writes a
 static site: an index and one page per stored table with its proved facts,
@@ -172,6 +174,44 @@ def comment(docs: list[dict[str, Any]], code: int) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def export_plans(file: str, out: Path) -> list[str]:
+    """Write each node of `file` that has a contract as a Substrait plan
+    (`Node.to_substrait`) and prove the export again (`Report.from_substrait`).
+    Returns the problems, one line each; a pipeline that failed its check
+    has none to export."""
+    import importlib.util
+
+    import sverify as sv
+
+    path = ROOT / file
+    spec = importlib.util.spec_from_file_location(f"_plans_{path.stem}", path)
+    if spec is None or spec.loader is None:
+        return [f"{file}: not a Python file"]
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(path.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+    problems = []
+    for name, node in vars(module).items():
+        if not isinstance(node, sv.Node) or node.report is None:
+            continue
+        try:
+            # "annotate": a float comparison's NaN order is no Substrait
+            # option, so the plan ships it as an assumption the manifest names.
+            plan = node.to_substrait(shims="annotate")
+            verdict = sv.Report.from_substrait(plan).verdict
+        except Exception as e:  # noqa: BLE001 - reported, with the node's name
+            problems.append(f"{file}:{name}: {type(e).__name__}: {e}")
+            continue
+        if str(verdict) != str(node.report.verdict):
+            problems.append(f"{file}:{name}: the export reads back as {verdict}")
+        out.mkdir(parents=True, exist_ok=True)
+        (out / f"{path.stem}.{name}.substrait.json").write_text(plan)
+    return problems
+
+
 def cmd_check(args: argparse.Namespace) -> int:
     docs, codes = [], []
     for file in pipeline_files():
@@ -186,6 +226,11 @@ def cmd_check(args: argparse.Namespace) -> int:
         if err := doc.get("error"):
             annotate("error", file, 1, f"sverify [{err['code']}]", err["message"])
     code = worst(codes)
+    if args.plans and code == 0:
+        for file in pipeline_files():
+            for problem in export_plans(file, Path(args.plans)):
+                annotate("error", file, 1, "sverify export", problem)
+                code = worst([code, 6])
     text = comment(docs, code)
     if args.out:
         Path(args.out).write_text(json.dumps({"exit": code, "files": docs}, indent=2))
@@ -245,7 +290,7 @@ def alert(runs: list[dict[str, Any]]) -> str:
 def cmd_refresh(args: argparse.Namespace) -> int:
     if args.check:
         # The check first, in this process: the refresh reuses its proofs.
-        cmd_check(argparse.Namespace(out=args.check, comment=None))
+        cmd_check(argparse.Namespace(out=args.check, comment=None, plans=None))
     runs, codes = [], []
     for p in config().get("pipeline", []):
         for node in p.get("refresh", []):
@@ -666,6 +711,7 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("check")
     c.add_argument("--out")
     c.add_argument("--comment")
+    c.add_argument("--plans", help="write each proved node's Substrait plan here and read it back")
     c.set_defaults(run=cmd_check)
     r = sub.add_parser("refresh")
     r.add_argument("--out")

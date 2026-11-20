@@ -134,40 +134,45 @@ def run(batches: int, seed: int, groups: int = 20, size: int = 50) -> dict[str, 
 
 
 def init_cost(n: int, groups: int = 1000) -> dict[str, object]:
-    """The initial state's cost on `n` rows: DuckDB gives each row's
-    contribution as Arrow (the `values` plan's shape), and
-    `sverify._exact_sum.fold` adds them up. Rows per second, and the peak
-    RSS of this process (run it alone: the peak counts the whole process)."""
+    """The initial state's cost on `n` rows: a maintained `SUM` of doubles
+    over `groups` groups, its first refresh on DuckDB, which adds up the
+    exact limbs in the engine and finishes them (`sverify._exact_sum`).
+    Seconds, the state's rows and the peak RSS of this process (run it
+    alone: the peak counts the whole process)."""
     import resource
     import time
 
-    from sverify import _exact_sum
+    import pyarrow as pa
+    from ibis import _
+
+    import sverify as sv
+    from sverify.io import StaticSource
 
     con = duckdb.connect()
-    con.execute(
-        f"CREATE TABLE t AS SELECT (i % {groups})::BIGINT AS k0, "
-        "(random() - 0.5) * pow(10, (random() * 40)::INT - 20) AS x FROM range({n}) r(i)".replace(
-            "{n}", str(n)
-        )
-    )
+    data = con.sql(
+        f"SELECT (i % {groups})::BIGINT AS k0, "
+        f"(random() - 0.5) * pow(10, (random() * 40)::INT - 20) AS x FROM range({n}) r(i)"
+    ).to_arrow_table()
+
+    @sv.transform(requires={"t": [(_.x > -1e100) & (_.x < 1e100)]})
+    def sums(t):
+        return t.group_by("k0").aggregate(s=t.x.sum())
+
+    node = StaticSource(pa.table(data), name="t").pipe(sums)
     start = time.perf_counter()
-    rows = con.sql("SELECT k0, 1::BIGINT AS w, x FROM t").to_arrow_table()
-    fetched = time.perf_counter()
-    out = _exact_sum.fold(
-        "fsum",
-        rows.select(["k0"]),
-        [rows.column("x").combine_chunks()],
-        rows.column("w").combine_chunks(),
-    )
+    node.refresh(engine="duckdb")
     done = time.perf_counter()
+    stage = node._stage
+    state = stage.view.groups if stage is not None else None
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     peak_mb = peak / 2**20 if sys.platform == "darwin" else peak / 2**10
     return {
         "rows": n,
-        "groups": len(out),
-        "fetch_s": round(fetched - start, 2),
-        "fold_s": round(done - fetched, 2),
-        "fold_rows_per_s": round(n / (done - fetched)),
+        "groups": groups,
+        "state_rows": state.num_rows if state is not None else None,
+        "state_bytes": state.nbytes if state is not None else None,
+        "init_s": round(done - start, 2),
+        "rows_per_s": round(n / (done - start)),
         "peak_rss_mb": round(peak_mb),
     }
 

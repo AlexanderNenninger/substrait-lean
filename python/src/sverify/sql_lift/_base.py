@@ -212,9 +212,8 @@ def _instantiate(template: Any, args: Sequence[Json]) -> Any:
         return [_instantiate(t, args) for t in template]
     if not isinstance(template, dict):
         return template
-    sel = template.get("selection")
-    if isinstance(sel, dict) and "rootReference" in sel:
-        return copy.deepcopy(args[sel["directReference"]["structField"].get("field", 0)])
+    if (i := column_of(template)) is not None:
+        return copy.deepcopy(args[i])
     out: dict[str, Any] = {k: _instantiate(v, args) for k, v in template.items()}
     if "functionReference" in out:
         functions: Mapping[int, str] = lift_table().functions
@@ -234,7 +233,78 @@ def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
         raise SqlUnsupported(f"{construct}: {entry['refused']}")
     ts = [_TABLE_TYPES[a] for a in entry["args"]]
     js = [lf.to(a, t).json for a, t in zip(args, ts, strict=True)]
+    # An argument the template names more than once, and evaluates on every
+    # row, is bound to a column first (#1952).
+    shared = _shareable(construct)
+    js = [lf.share(j) if i in shared else j for i, j in enumerate(js)]
     return E(_instantiate(entry["template"], js), _TABLE_TYPES[entry["result"]])
+
+
+@functools.cache
+def _shareable(construct: str) -> frozenset[int]:
+    """The arguments of `construct`'s template that it names more than once
+    and evaluates on every row: those in its first condition or outside any
+    `CASE`, and the first operand of an `and` or `or` (the second is
+    evaluated only where the first does not decide)."""
+    template = lift_table().scalars[construct]["template"]
+    functions = lift_table().functions
+    refs: list[int] = []
+
+    def count(t: Any) -> None:
+        if isinstance(t, list):
+            for x in t:
+                count(x)
+        elif isinstance(t, dict):
+            if (i := column_of(t)) is not None:
+                refs.append(i)
+            else:
+                for v in t.values():
+                    count(v)
+
+    def always(t: Any) -> set[int]:
+        if not isinstance(t, dict):
+            return set()
+        if (i := column_of(t)) is not None:
+            return {i}
+        if "ifThen" in t:
+            return always(t["ifThen"]["ifs"][0]["if"])
+        if "cast" in t:
+            return always(t["cast"]["input"])
+        if "scalarFunction" in t:
+            f = t["scalarFunction"]
+            args = [a["value"] for a in f["arguments"]]
+            if functions[f["functionReference"]] in ("and", "or"):
+                args = args[:1]
+            return set().union(*(always(a) for a in args))
+        return set()
+
+    count(template)
+    return frozenset(i for i in always(template) if refs.count(i) > 1)
+
+
+def _fields(j: Any) -> set[int]:
+    """The input columns an expression reads."""
+    if isinstance(j, list):
+        return set().union(*(_fields(x) for x in j))
+    if not isinstance(j, dict):
+        return set()
+    sel = j.get("selection")
+    if isinstance(sel, dict) and "rootReference" in sel:
+        # A column, or a reference into one of its values.
+        return {sel["directReference"]["structField"].get("field", 0)}
+    return set().union(*(_fields(v) for v in j.values()))
+
+
+def _with_shared(rel: Json, width: int, shared: list[Json]) -> Json:
+    """`rel` with the bound arguments appended as columns `width`, `width +
+    1`, …: each projection appends those that read no column of its own."""
+    group: list[Json] = []
+    for j in shared:
+        if any(f >= width for f in _fields(j)):
+            rel = {"project": {"input": rel, "expressions": group}}
+            width, group = width + len(group), []
+        group.append(j)
+    return {"project": {"input": rel, "expressions": group}} if group else rel
 
 
 @dataclasses.dataclass(frozen=True)
@@ -621,6 +691,27 @@ def _conjuncts(node: sge.Expression) -> list[sge.Expression]:
 
 
 #: The arguments of a SELECT the lift reads; any other one set is refused.
+#: The expressions that evaluate every operand on every row they are evaluated
+#: on, through which `_Lift.share` may bind an argument below the SELECT list.
+_STRICT = frozenset(
+    {
+        sge.Add,
+        sge.Sub,
+        sge.Mul,
+        sge.Div,
+        sge.IntDiv,
+        sge.Mod,
+        sge.Pow,
+        sge.Neg,
+        sge.Paren,
+        sge.Cast,
+        sge.TryCast,
+        sge.Column,
+        sge.Literal,
+        sge.Alias,
+    }
+)
+
 _SELECT_ARGS = {
     "with_",
     "expressions",
@@ -721,6 +812,23 @@ class _Lift:
         self.guards: dict[int, Json] = {}
         # Where the reference reads this text differently from DuckDB (D54).
         self.differences: list[DialectDifference] = []
+        # The arguments bound to columns below the SELECT list being lifted
+        # (`share`), the first at column `shared_base`; None where nothing
+        # may be bound.
+        self.shared: list[Json] | None = None
+        self.shared_base = 0
+
+    def share(self, j: Json) -> Json:
+        """`j` as a column computed below the SELECT list being lifted, where
+        every row evaluates it anyway, or `j` itself. A template that names an
+        argument several times then copies a column, and a nested expression
+        stays linear in its depth (#1952). A column stays itself, and so
+        does a constant: it reads no column, and the parser reads some only
+        in place (a cast of a string literal)."""
+        if self.shared is None or column_of(j) is not None or not _fields(j):
+            return j
+        self.shared.append(j)
+        return field_ref(self.shared_base + len(self.shared) - 1)
 
     # -- relations ---------------------------------------------------------
 
@@ -785,7 +893,14 @@ class _Lift:
                 raise SqlUnsupported("UNNEST next to an aggregate or a window is not supported yet")
             rel, scope, bound = self.unnest(rel, scope, bound, explodes)
 
-        outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
+        saved = self.shared, self.shared_base
+        self.shared, self.shared_base = [], len(scope)
+        try:
+            outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
+            shared = self.shared
+        finally:
+            self.shared, self.shared_base = saved
+        rel = _with_shared(rel, len(scope), shared)
         names = [e.alias_or_name for e in node.expressions]
         outs = [self.timestamp_of(e) if e.midnight else e for e in outs]
         # Sort keys that are not output columns are computed after them, and
@@ -812,7 +927,7 @@ class _Lift:
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
                 direction = f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"
                 keys.append({"expr": field_ref(i), "direction": direction})
-        width = len(scope)
+        width = len(scope) + len(shared)
         rel = select(rel, width, [e.json for e in outs + extra_keys])
         if distinct is not None:
             rel = distinct_rel(rel, len(outs))
@@ -1800,6 +1915,15 @@ class _Lift:
         bound = bound or {}
         if node in bound:
             return bound[node]
+        if self.shared is not None and type(node) not in _STRICT:
+            # Below this node some rows may skip an operand, so binding it
+            # below the SELECT list could evaluate it where the query does
+            # not: nothing under it is bound.
+            saved, self.shared = self.shared, None
+            try:
+                return self.expr(node, scope, bound)
+            finally:
+                self.shared = saved
         if getattr(bound, "grouped", False) and isinstance(node, sge.Column):
             raise Unsupported(f"column {_shown(node)} must be in GROUP BY or inside an aggregate")
         if type(node) in _AGGREGATES:

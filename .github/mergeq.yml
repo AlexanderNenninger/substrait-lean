@@ -1,0 +1,25 @@
+# Configuration of the batch merge queue service (mergeq) for this repository
+# (homelab: mergeq/README.md, docs/decisions.md D17 and D20). Read from main every minute.
+# dry_run: true makes the service only log and record what it would do, beside the laptop
+# queue (agentic-tools/merge-queue), which stays in charge until the owner's cutover.
+# Durations are in seconds.
+base: main
+ready_label: reviewed
+required_checks: [qa]
+batch:
+  max: 16
+  gather_min: 6
+  gather_wait: 600
+  timeout: 10800
+admission:
+  require_green: true      # qa concluded success at the PR's current head
+  max_base_age: 21600      # merge base with main at most 6 h old
+  stale_comment: true      # one comment per head on a PR refused as stale
+ignore_own_ci: true
+cancel_workflows: [ci.yml]
+on_failure: bisect
+stuck_runner_labels: [aws]
+stuck_after: 600
+base_moved_ignore_prefix: "Regenerate generated"
+merge_method: merge
+dry_run: true

@@ -3,8 +3,8 @@
 virtual tables (`inline_tables`), and the rows the checker prints read back.
 The oracle of the tests and of the counterexample search.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 """
 
 from __future__ import annotations

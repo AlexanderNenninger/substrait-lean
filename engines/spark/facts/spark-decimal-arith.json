@@ -205,6 +205,21 @@
         }
       ],
       "notes": "The cancelling sum of `duckdb-decimal-addsub-operand-cast`: Spark gives a value at its own result type (`Add.resultDecimalType` with precision loss), which differs from the exact sum by the rounded term."
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session claude/exact-limb-state, #1873)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "limb-decimal-sum-overflow"
+        }
+      ],
+      "notes": [
+        "A `DECIMAL(38,0)` `sum` stays `DECIMAL(38,0)`; past 38 digits it raises under ANSI (`NUMERIC_VALUE_OUT_OF_RANGE` folded, `ARITHMETIC_OVERFLOW` on the codegen path) and is NULL without it. The exact limbs of #1447 rely on the raise; a refresh on Spark refuses a session without ANSI, and the finish refuses a NULL limb.",
+        "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with `--only`, ANSI on and off, on the folded and the codegen path. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC; probes.json's header records the earlier homelab run."
+      ]
     }
   ],
   "issues": [

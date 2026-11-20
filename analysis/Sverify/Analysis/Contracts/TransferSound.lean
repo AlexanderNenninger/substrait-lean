@@ -206,6 +206,23 @@ theorem narrowAbs_sound {n : Nat} {f : UnFn}
         · rfl
         · exact absurd (Bound.within_mem hw hi) hfit) h
 
+omit [Boxes.Ambient] in
+/-- Rounding to `k` fewer digits keeps the order (#1876): the sign is kept
+and the magnitude is divided after adding half a unit. -/
+theorem roundDiv10_mono {k : Nat} {x y : Int} (h : x ≤ y) : roundDiv10 k x ≤ roundDiv10 k y := by
+  unfold roundDiv10
+  by_cases hx : x < 0 <;> by_cases hy : y < 0 <;> simp only [hx, hy, ite_true, ite_false]
+  · have hn : y.natAbs ≤ x.natAbs := by omega
+    have := Nat.div_le_div_right (c := 10 ^ k) (Nat.add_le_add_right hn (10 ^ k / 2))
+    omega
+  · have h1 := Int.natCast_nonneg ((x.natAbs + 10 ^ k / 2) / 10 ^ k)
+    have h2 := Int.natCast_nonneg ((y.natAbs + 10 ^ k / 2) / 10 ^ k)
+    omega
+  · omega
+  · have hn : x.natAbs ≤ y.natAbs := by omega
+    have := Nat.div_le_div_right (c := 10 ^ k) (Nat.add_le_add_right hn (10 ^ k / 2))
+    omega
+
 /-- A function whose result is any number of its kind (or NULL). -/
 theorem topAbs_sound {ok : NumKind → Bool} {kout : NumKind → NumKind} {g : Int → Int} {f : UnFn}
     (hf : ∀ v, (f.apply v).ShapeEq (Value.mapP ok kout (some ∘ g) v)) {a : AVal} {v : Value} (h : a.Mem v) :
@@ -394,8 +411,16 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case decimal p s | dkind p s =>
     exact mapAbs_sound (g := some) (fun v => by cases v <;> hf_tac)
       (fun _ _ _ hi hr => by cases hr; exact hi) (fun _ _ _ hr => by cases hr) h
-  case dround k => exact topAbs_sound (g := roundDiv10 k) (fun v => by cases v <;> hf_top_tac) h
-  case dtrunc k => exact topAbs_sound (g := fun i => i.tdiv (10 ^ k)) (fun v => by cases v <;> hf_top_tac) h
+  case dround k =>
+    exact mapAbs_sound (g := fun i => some (roundDiv10 k i)) (fun v => by cases v <;> hf_tac)
+      (fun _ _ _ hi hr => by cases hr; exact Bound.mem_mapMono roundDiv10_mono hi)
+      (fun _ _ _ hr => by cases hr) h
+  case dtrunc k =>
+    exact mapAbs_sound (g := fun i => some (i.tdiv (10 ^ k))) (fun v => by cases v <;> hf_tac)
+      (fun _ _ _ hi hr => by
+        cases hr
+        exact Bound.mem_mapMono (fun h => Int.tdiv_le_tdiv (Int.pow_pos (by decide)) h) hi)
+      (fun _ _ _ hr => by cases hr) h
   case dtof s => exact convAbs_sound _ (fun v => by cases v <;> hf_tac) h
   case ftod s =>
     refine mapAbs_sound (g := fun c => FloatCode.toDecimal? c s) (fun v => by cases v <;> hf_tac)
