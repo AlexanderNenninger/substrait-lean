@@ -1,7 +1,8 @@
 """Replay dbt test projects others wrote through sverify-dbt (#859).
 
-Maintainers' tooling, not part of sverify-dbt's API: `python -m
-sverify_dbt.replay`.
+Maintainers' tooling, not part of sverify-dbt's API and not in its wheel
+(`pyproject.toml` excludes it): `python -m sverify_dbt.replay` from this
+repository.
 
 dbt packages ship integration projects: seeds, models that call each macro
 and the tests that check them, run by the package's own CI on each adapter.
@@ -102,15 +103,21 @@ def extract(source: Source, dest: Path) -> Path:
 
 
 def _dbt(project: Path, *args: str) -> None:
-    """A dbt command in `project`; a failing build is part of the record."""
+    """A dbt command in `project`; a failing build is part of the record, and
+    its last lines are printed, for CI's log."""
     exe = Path(sys.executable).with_name("dbt")
-    subprocess.run(
-        [str(exe), *args, "--profiles-dir", str(project), "--project-dir", str(project), "-q"],
+    done = subprocess.run(
+        [str(exe), *args, "--profiles-dir", str(project), "--project-dir", str(project)],
         cwd=project,
         check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
     )
+    if done.returncode != 0:
+        tail = (done.stdout + done.stderr).strip().splitlines()[-15:]
+        print(
+            f"dbt {' '.join(args)} exited {done.returncode} in {project.name}:", *tail, sep="\n  "
+        )
 
 
 def run(source: Source) -> dict[str, Any]:
