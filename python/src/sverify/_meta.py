@@ -14,7 +14,7 @@ except PackageNotFoundError:  # a source tree without an install
 
 #: The checker protocol this sverify speaks: `protocol` in `Main.lean`, bumped
 #: with it whenever a mode's output changes shape.
-PROTOCOL = 2
+PROTOCOL = 3
 
 #: The plugin interface revision: what `ProfilePlugin` takes and what an engine
 #: package imports from sverify. Bump it with any change to either; each engine

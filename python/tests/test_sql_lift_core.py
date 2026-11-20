@@ -6,6 +6,8 @@ the other areas are in `test_sql_lift_<area>.py`."""
 
 import json
 import re
+import subprocess
+import sys
 from typing import Any
 
 import duckdb
@@ -59,6 +61,10 @@ QUERIES = [
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
     # The written plan's division of two double literals (#96, fixed with #335).
     "SELECT 7 / 2 AS h",
+    # Nested double arithmetic: its operands are bound to columns first (#1952),
+    # and under a CASE they are not.
+    "SELECT id, price / qty / amount * price - price + qty AS x,"
+    " CASE WHEN qty > 2 THEN price / qty / amount ELSE 0 END AS y FROM orders",
 ]
 
 
@@ -124,6 +130,30 @@ def test_division_states_its_meaning():
     for plan in (duck, ref):
         assert {**zero, "preference": ["ERROR"]} in options(plan, "divide")[1]
     assert lift(query, SCHEMAS).schema == ibis.schema({"r": "float64", "q": "int64"})
+
+
+def test_nested_double_arithmetic_lifts_to_a_linear_plan():
+    # Each double operation's template names its operands several times; the
+    # lift binds a nested operand to a column, so every further division adds
+    # the same size (#1952). Copied, the plan grew fourfold per division.
+    def size(n: int) -> int:
+        query = "SELECT " + " / ".join(f"c{i}" for i in range(n)) + " AS s FROM t"
+        schema = ibis.schema({f"c{i}": "float64" for i in range(n)})
+        return len(json.dumps(lift(query, {"t": schema}, "duckdb").plan))
+
+    assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
+
+
+def test_nested_double_arithmetic_checks_quickly():
+    # The check end to end, in a subprocess with a timeout: six divisions took
+    # 193 s before #1952, ten now take a few seconds.
+    script = (
+        "import ibis, sverify as sv\n"
+        "cols = {f'c{i}': 'float64' for i in range(10)}\n"
+        "sv.verify('SELECT ' + ' / '.join(cols) + ' AS s FROM t',"
+        " tables={'t': ibis.table(cols, name='t')}, semantics='duckdb', on_inferred='warn')\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
 
 
 def test_constants_compared_with_a_narrow_column_take_its_type():

@@ -14,6 +14,12 @@ tables `t` and change tables `t$delta` (the same columns plus a trailing
 `__weight`); its output is the change to the result, with a trailing
 `__weight` column.
 
+`substrait-check --reads plan.json`: for each table the plan reads, the
+0-based columns of it the plan's output needs (`Rel.colsOf`), as JSON
+`{"t": [0, 2]}`, or `"all"` outside the incremental fragment. A store that
+keeps those columns of the table, consolidated, gives the view
+(`Rel.zeval_prune`, #1329).
+
 `substrait-check --contract contract.json`: try to prove postconditions from
 preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
 and print a JSON report.
@@ -74,7 +80,7 @@ def generatedChecked : Bool := generated_checked%
 at startup (`sverify.engine.PROTOCOL`): bump both when the output of a mode
 changes shape (a JSON field added, renamed or dropped, a new mode), so that a
 stale build fails with a clear message instead of a `KeyError`. -/
-def protocol : Nat := 2
+def protocol : Nat := 3
 
 /-- Shared static checks; `none` means the plan passed. -/
 def checkPlan (plan : Plan) : Option (UInt32 × String) :=
@@ -107,6 +113,24 @@ def delta (plan : Plan) : IO UInt32 := do
   if !d.isIncremental || !d.checkWF (Write.deltaCatalog plan) then
     IO.eprintln "the delta plan failed its static checks"; return 2
   IO.println (Write.writeDeltaPlan plan d).compress
+  return 0
+
+/-- `--reads`: the columns of each table the plan needs. `Rel.zeval_prune`
+proves a store keeping a superset of them, consolidated, gives the view: the
+set printed is `S` with `Rel.readsOnly` true, for a well-formed incremental
+plan. -/
+def reads (plan : Plan) : IO UInt32 := do
+  if let some (code, msg) := checkPlan plan then
+    IO.eprintln msg; return code
+  let cat := plan.catalog
+  let r := plan.root
+  let cols (t : String) : Lean.Json :=
+    -- `isIncremental_iff`: this decides `Rel.Incremental`, which the theorem needs.
+    if r.isIncremental then
+      .arr ((r.colsOf cat t (List.range (r.arity cat))).eraseDups.mergeSort.map
+        (fun i => Lean.toJson i)).toArray
+    else .str "all"
+  IO.println (Lean.Json.mkObj (r.tables.eraseDups.map fun t => (t, cols t))).compress
   return 0
 
 /-- A result value, printed by its column's kind: integers (unbounded in the
@@ -458,6 +482,7 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
     | "--rows" => pure (check · false false)
     | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
+    | "--reads" => pure reads
     | "--write" => pure write
     | "--outcomes" => pure (outcomes Profile.reference)
     | "--raises" => pure raises
@@ -618,14 +643,14 @@ def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 :=
     return 0
   | [path] => runOn es "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write", "--shard", "--outcomes", "--raises",
+    if ["--delta", "--reads", "--contract", "--write", "--shard", "--outcomes", "--raises",
         "--outcomes-duckdb-stopgap", "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
       return ← runOn es flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --reads | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

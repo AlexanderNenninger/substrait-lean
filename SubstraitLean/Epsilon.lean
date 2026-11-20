@@ -164,8 +164,9 @@ def doubleMag (env : List AVal) (e : Expr) : Option Float := do
   of the exact `V = S / d` (`core_var_chan`), the reference's value within
   `u · V` of it (`epsilon_var_cr`). With `Q' ≤ n (B + t)²`,
   `√(Q' S) ≤ n (B + t) B` and `V ≤ n B² / d`.
-* `STDDEV_*`: the variance's bound through the square root (`sdNear`'s
-  terms); not mechanised.
+* `STDDEV_*`: an engine's `fl(√v̂)` within `√τ + u (√V + √τ) + 2u t + u √V`
+  of the reference's root rounded once (`epsilon_stddev_cr`), `τ` the
+  variance's bound above, since `|√a − √b| ≤ √|a − b|`.
 * `COVAR_*` of pairs in `[-Bx, Bx] × [-By, By]` (the pair's two sides): an
   engine is within `covTol` of `C / d` (`core_cov_chan`), the reference
   within `u · |C / d|` (`epsilon_cov_cr`), with `r₁ = n (Bx + t) By`,
@@ -197,7 +198,7 @@ def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float :
     let tv := pad (varTol + u * v)
     if sqrt then
       let st := tv.sqrt
-      return pad (st + u * (v.sqrt + st) + u * tiny + u * v.sqrt)
+      return pad (st + u * (v.sqrt + st) + 2.0 * u * tiny + u * v.sqrt)
     else return tv
   | .cov sample, .bin .pair a b =>
     let bx ← doubleMag env a
@@ -212,12 +213,11 @@ def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float :
     return pad (covTol + u * rs / d)
   | _, _ => none
 
-/-- Is `statEps` of `m` a theorem (`epsilon_var_cr`, `epsilon_cov_cr`)? For
-`VAR_*` and `COVAR_*`, not for a deviation or `CORR`. -/
+/-- Is `statEps` of `m` a theorem (`epsilon_var_cr`, `epsilon_stddev_cr`,
+`epsilon_cov_cr`)? For `VAR_*`, `STDDEV_*` and `COVAR_*`, not for `CORR`. -/
 def statProvedFn (m : Measure) : Bool :=
   match m.fn with
-  | .var _ sqrt => !sqrt
-  | .cov _ => true
+  | .var _ _ | .cov _ => true
   | _ => false
 
 /-! ## Per engine: the error carried through arithmetic
@@ -1142,7 +1142,7 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
     | .unbounded => some (name, Json.mkObj [("abs", Json.null)])
     | _ => none
   -- D30: a statistic's column is within `statEps` of the reference's on an
-  -- engine, proved for `VAR_*` and `COVAR_*` where every engine's algorithm
+  -- engine, proved for `VAR_*`, `STDDEV_*` and `COVAR_*` where every engine's algorithm
   -- is one the theorems cover and the measure reads the same values; one
   -- computed from a statistic has no bound.
   let stats : List (String × Option Measure) := match statCols plan.root with

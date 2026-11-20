@@ -825,7 +825,9 @@ def verify(
             `"polars"` checks an Ibis transformation under Polars's
             profile, `"spark"` under Spark's, which evaluates as the
             reference does: its plan runs natively on that engine
-            (`sverify.routes`, the route `"native"`).
+            (`sverify.routes`, the route `"native"`). The proof holds for
+            the model of the engine's functions; that the model matches
+            the engine rests on tests (`docs/trusted-base.md`).
             `"substrait"` checks an Ibis transformation under Substrait's
             own semantics (`Profile.substrait`): the proof under the
             reference holds there where Substrait allows nothing more at
@@ -2808,8 +2810,9 @@ class ViewContract:
     """The profile the transformation was verified under (`Report.semantics`)."""
     deterministic: bool = False
     """The report proves the result determined up to row order and the members of
-    a class (`Report.deterministic`): two engines hold the same rows of it. False
-    where no single report speaks for the view."""
+    a class (`Report.deterministic`): the model of each engine holds the same
+    rows of it (that it matches the engine rests on tests,
+    `docs/trusted-base.md`). False where no single report speaks for the view."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:

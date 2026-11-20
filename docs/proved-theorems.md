@@ -211,6 +211,11 @@ what refresh maintains is in [the guide](tasks.md#nodes-composing-storing-refres
 * `Rel.weighted_eval`: running the weight-column encoding (`Rel.weighted`) on an
   ordinary bag engine gives exactly the Z-set result, with each weight as a
   trailing column. Old tables get weight 1, and joins multiply weights.
+* `Rel.zeval_prune`: a stored table pruned to the columns the view reads
+  (`Rel.colsOf`, checked by `Rel.readsOnly`) and consolidated gives every row
+  of the view its weight, the plan reading the pruned table through one
+  `emit` that puts NULL in the dropped columns. `Rel.incremental_sound_prune`
+  carries the delta rule to that store (#1329).
 
 Equivalence is `List.Perm`, which never cancels `+1` against `-1`. That makes it
 stronger than Z-set equality, so the results also hold under consolidation.
@@ -223,8 +228,8 @@ plan and an inner join where both sides change.
 takes from Delta Lake and Iceberg, with the format's part as explicit
 hypotheses:
 
-* `Rel.zeval_weight_congr`: on the incremental fragment, Z-set evaluation only
-  depends on the tables' weights. A change feed deletes and re-inserts rows,
+* `Rel.zeval_weight_congr` (`Incremental.lean`): on the incremental fragment,
+  Z-set evaluation only depends on the tables' weights. A change feed deletes and re-inserts rows,
   so the old table plus the feed is not a permutation of the new table, only
   equal in weights.
 * `Rel.cdf_sound`: if the feed turns each old snapshot into the new one up to
