@@ -985,7 +985,10 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
         return None, f"the checker failed: {err.strip()}"
     res = json.loads(out)
     if res.get("profile") != profile:
-        return None, f'the checker cannot check under semantics="{profile}" yet'
+        return None, (
+            f'the checker cannot check under semantics="{profile}" yet (#444); '
+            "verify with semantics='reference' to reach every engine"
+        )
     unproved = [e["name"] for e in res.get("ensures", []) if not e.get("proved")]
     unproved += ["a key" for k in res.get("keys", []) if not k.get("proved")]
     errors = [f"{i['kind']}: {i['expr']}" for i in res.get("issues", []) if i.get("error")]
@@ -1454,6 +1457,12 @@ def choose(
         )
         return refuse(f"{lead}; details: " + "; ".join(why_not), failures)
     reason = "; ".join(why_not)
+    if route != "auto":
+        # An explicit route is taken or refused, never replaced: say how to reach `e`.
+        if source != "reference" and e in translated:
+            reason += f"; verify with semantics='reference' to run on {e}, or pass route=\"auto\""
+        else:
+            reason += '; route="auto" tries every route'
     if not failures and e in _PENDING:
         reason += f" (pending: #{_PENDING[e]}, {_ISSUES}/{_PENDING[e]})"
     return refuse(reason, failures)
