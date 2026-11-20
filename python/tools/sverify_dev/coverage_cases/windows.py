@@ -128,7 +128,7 @@ CASES: list[Case] = [
         "windows",
         "window over expressions",
         V,
-        lambda: t.mutate(s=t.qty.sum().over(group_by=t.id % 2, order_by=t.id * 2)),
+        lambda: t.mutate(s=t.qty.sum().over(group_by=t.id % 2, order_by=t.id % 5)),
     ),
     # `varOf` over a frame (#54, D30).
     case(
