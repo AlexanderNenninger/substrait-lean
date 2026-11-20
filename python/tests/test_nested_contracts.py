@@ -55,3 +55,21 @@ def test_an_element_in_range_is_not_null():
     # Without the length, the list may be empty.
     report = sv.verify(expr, requires={"t": [_.xs.notnull()]}, ensures=[_.first.notnull()])
     assert report.verdict == sv.Verdict.UNPROVED
+
+
+def test_unnest_keep_empty_gives_an_empty_or_null_list_one_row_of_null():
+    # #1917: a project replaces such a list by `[NULL]` before the unnest.
+    from sverify.engine import connect
+
+    t = ibis.table({"id": "int64", "xs": "array<int64>", "ss": "array<string>"}, name="t")
+    rows = [(1, [1, 2], ["a"]), (2, [], []), (3, None, None), (4, [None, 5], [None])]
+    con = connect()
+    con.create("t", t.schema(), rows)
+    for col, ids in (("xs", [1, 1, 2, 3, 4, 4]), ("ss", [1, 2, 3, 4])):
+        report = sv.verify(t.unnest(col, keep_empty=True))
+        duck = report.run(con, engine="duckdb").to_pylist()
+        assert {r["id"]: r[col] for r in duck if r["id"] in (2, 3)} == {2: None, 3: None}
+        assert sorted(r["id"] for r in duck) == ids
+        assert sorted(map(str, report.run(con, engine="polars").to_pylist())) == sorted(
+            map(str, duck)
+        )

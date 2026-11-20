@@ -2360,7 +2360,16 @@ def _list_lit(lit: Any) -> Lit:
                 raise WriterUnsupported("a list element that is not a constant")
         vals.append(e.value)
         ks.append(e.kind)
-    return Lit(tuple(vals), Lst(next((k for k in ks if k is not None), None)))
+    elem = next((k for k in ks if k is not None), None)
+    if elem is None:
+        # A list of NULLs is of the type its NULLs are written with (`[NULL]` of
+        # `unnest(keep_empty=True)`, #1917), though a lone NULL says nothing.
+        elem = next(
+            (_type_kinds(n)[1] for j in _arr(_req(lit, "list"), "values")
+             if (n := _field(j, "null")) is not None),
+            None,
+        )  # fmt: skip
+    return Lit(tuple(vals), Lst(elem))
 
 
 def _lit(c: Const) -> Expr:
