@@ -107,7 +107,7 @@ The other options of `check`:
 | `--format text\|json\|github\|sarif\|junit` | How to print the result (default `text`): `github` is one annotation per finding on the model's file, `sarif` a code-scanning log, `junit` a suite per model; `sverify check` forwards its own |
 | `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 4 past it |
 | `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
-| `--json` | Print the result as JSON (`--format json`) |
+| `--json` | Print the result as JSON (`--format json`): the document of `sverify check --format json` ([`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json)), with each model as an item and `findings`, `exit`, `status`, `adapter` and `dbt_version` beside the project's own keys |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |
 | `--fail-on` | Exit 1 on a contract mismatch, an unproved constraint, or a refused model with an enforced contract, whose contract sverify could not check (`contract`, the default; stderr names the refusal); `unproved`: also on any unproved test; `refused`: all of that, and exit 3 when a model was refused (sverify cannot read it); `never` |
 | `--target-path` | The target directory, if not `target` |
