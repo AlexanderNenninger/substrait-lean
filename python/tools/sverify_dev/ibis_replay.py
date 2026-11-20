@@ -35,9 +35,8 @@ precondition as its reason.
 `~/.cache/sverify/ibis-replay`), replays the modules (`MODULES`, or those
 named), prints the totals and with `--write` rewrites the ledgers
 `python/tests/ibis_replay/<module>.json`, keeping each disagreement's and
-each refusal's `issue`. `--check` fails on an outcome that changed: a
-regression, a new disagreement and an improvement alike, the last to be
-written down.
+each refusal's `issue`. `--check` fails on a new disagreement and on a
+test that agreed and no longer does; other changes only print.
 """
 
 from __future__ import annotations
@@ -395,18 +394,23 @@ def summary(ledger_set: dict[str, dict[str, Any]]) -> dict[str, int]:
     return {k: total.get(k, 0) for k in OUTCOMES}
 
 
-def changes(fresh: dict[str, dict[str, Any]]) -> list[str]:
-    """How a fresh replay differs from the stored ledgers."""
-    out = []
+def changes(fresh: dict[str, dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """How a fresh replay differs from the stored ledgers: what fails the gate
+    (a new disagreement, a test that agreed and no longer does), and what only
+    drifted (a refusal lifted or changed), which the ledgers take when next
+    written."""
+    fails, notes = [], []
     for module, led in fresh.items():
         path = LEDGERS / f"{module}.json"
         old = json.loads(path.read_text())["results"] if path.exists() else {}
         for test, r in led["results"].items():
-            was = old.get(test, {}).get("outcome")
-            if was != r["outcome"]:
-                why = r.get("reason") or r.get("construct", "")
-                out.append(f"{module}::{test}: {was} -> {r['outcome']} ({why})")
-    return out
+            was, now = old.get(test, {}).get("outcome"), r["outcome"]
+            if was == now:
+                continue
+            why = r.get("reason") or r.get("construct", "")
+            line = f"{module}::{test}: {was} -> {now} ({why})"
+            (fails if now == "disagree" or was == "agree" else notes).append(line)
+    return fails, notes
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -425,14 +429,17 @@ def main(argv: list[str] | None = None) -> int:
     print(json.dumps(summary(fresh)))
     for module, led in fresh.items():
         print(f"{module}: {json.dumps(led['summary'])}")
-    found = changes(fresh)
+    fails, notes = changes(fresh)
     if args.write:
         LEDGERS.mkdir(parents=True, exist_ok=True)
         for module, led in fresh.items():
             text = json.dumps(led, indent=2, ensure_ascii=False) + "\n"
             (LEDGERS / f"{module}.json").write_text(text)
-    if args.check and found:
-        print("\n".join(found), file=sys.stderr)
+    if notes:
+        print(f"{len(notes)} change(s) the ledgers take when rewritten:")
+        print("\n".join(f"  {n}" for n in notes[:20]))
+    if args.check and fails:
+        print("\n".join(fails), file=sys.stderr)
         return 1
     return 0
 

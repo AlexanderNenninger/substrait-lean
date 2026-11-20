@@ -2649,8 +2649,24 @@ def _not_true(column: Any) -> int:
     return sum(v is not True for v in column.to_pylist())
 
 
-def _quoted(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
+def _columns_read(conds: Sequence[str], columns: Sequence[str]) -> list[str]:
+    """The columns SQL conditions read, in table order, as SQLGlot finds them
+    (DuckDB's identifiers match without case); empty, so that the whole
+    table is read, where one does not parse or names no column of it."""
+    import sqlglot as sg
+
+    by_name = {c.lower(): c for c in columns}
+    found: set[str] = set()
+    for cond in conds:
+        try:
+            tree = sg.parse_one(cond, read="duckdb")
+            names = {c.name.lower() for c in tree.find_all(sg.exp.Column)}
+        except sg.errors.ParseError:
+            return []
+        if not names <= by_name.keys():
+            return []
+        found |= {by_name[n] for n in names}
+    return [c for c in columns if c in found]
 
 
 def _run_conditions(
@@ -2662,7 +2678,7 @@ def _run_conditions(
     if len(sqls) == len(conds):
         # Only the columns the conditions name: the lift refuses a column of
         # a type it does not read (float32), which no condition reads (#860).
-        named = [n for n in table.columns if any(_quoted(n) in c for c in sqls)]
+        named = _columns_read(sqls, table.columns)
         if named and isinstance(op := table.op(), ops.DatabaseTable):
             schema = ibis.schema({n: op.schema[n] for n in named})
             table = ops.DatabaseTable(op.name, schema=schema, source=op.source).to_expr()

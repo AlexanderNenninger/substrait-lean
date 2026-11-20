@@ -40,32 +40,17 @@ def _from_varchar(x: Exprs, op: Any, try_: bool) -> Json | None:
     return None
 
 
-def _from_seconds(x: Exprs, op: Any, try_: bool) -> Json | None:
-    """A cast of an integer to a timestamp: Ibis reads the integer as seconds
-    since the epoch (`pd.to_datetime(unit="s")` in its tests, DuckDB's
-    `to_timestamp`), where Substrait's cast reads microseconds. So it is
-    `as_timestamp("s")` (#860). None for the other casts."""
-    if not (op.arg.dtype.is_integer() and op.to.is_timestamp()):
-        return None
-    if try_ or op.to.timezone is not None or op.to.scale not in (None, 6):
-        raise Unsupported(
-            f"a {'try_' if try_ else ''}cast of an integer to {op.to} is not supported; "
-            'write .as_timestamp("s") for seconds since the epoch',
-            construct="TRY_CAST" if try_ else "CAST",
-        )
-    return cast_json(call("multiply", [x(op.arg, dt.int64), literal(10**6, dt.int64)]), op.to)
-
-
 def _cast(x: Exprs, op: Any) -> Json:
-    """`CAST`, and `TRY_CAST`: NULL where the cast fails (#58)."""
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
-    try_ = isinstance(op, ops.TryCast)
-    return (
-        _from_varchar(x, op, try_)
-        or _from_seconds(x, op, try_)
-        or cast_json(x(op.arg), op.to, or_null=try_)
-    )
+    return _from_varchar(x, op, False) or cast_json(x(op.arg), op.to)
+
+
+def _try_cast(x: Exprs, op: Any) -> Json:
+    """`TRY_CAST`: NULL where the cast fails (#58)."""
+    if same_type(op.arg.dtype, op.to):
+        return x(op.arg)
+    return _from_varchar(x, op, True) or cast_json(x(op.arg), op.to, or_null=True)
 
 
 #: DuckDB's names of the types of `typeof` (`duckdb-typeof-names`).
@@ -118,7 +103,7 @@ def _typeof(x: Exprs, op: Any) -> Json:
 register(
     {
         ops.Cast: _cast,
-        ops.TryCast: _cast,
+        ops.TryCast: _try_cast,
         ops.TypeOf: _typeof,
     }
 )

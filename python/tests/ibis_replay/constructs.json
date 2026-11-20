@@ -99,15 +99,15 @@
     },
     {
       "match": "Substrait.Kind.struct",
-      "issue": 1919
+      "design": "sverify cannot build a struct; cast its fields (ruling 186, D66 reserved)"
     },
     {
       "match": "type binary is not supported",
-      "issue": 1918
+      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
     },
     {
       "match": "literal of type binary",
-      "issue": 1918
+      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
     },
     {
       "match": "aggregate Arbitrary",

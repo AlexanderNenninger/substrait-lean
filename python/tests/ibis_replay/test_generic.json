@@ -53,7 +53,7 @@
     "test_cast[duckdb-struct]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.struct [Substrait.Kind.int, Substrait.Kind.str] to Substrait",
-      "issue": 1919
+      "design": "sverify cannot build a struct; cast its fields (ruling 186, D66 reserved)"
     },
     "test_coalesce[duckdb-generic]": {
       "outcome": "refused",
@@ -374,7 +374,7 @@
     "test_literal_na[duckdb-bytes]": {
       "outcome": "refused",
       "construct": "Unsupported: type binary is not supported; cast the column to a supported type in the source query",
-      "issue": 1918
+      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
     },
     "test_literal_na[duckdb-date]": {
       "outcome": "agree"

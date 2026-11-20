@@ -15,7 +15,7 @@
     "test_binary_literal[duckdb]": {
       "outcome": "refused",
       "construct": "ProducerUnsupported: literal of type binary is not supported; rewrite it with a supported operation or column type",
-      "issue": 1918
+      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
     }
   }
 }
