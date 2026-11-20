@@ -56,8 +56,9 @@ Never use a plain `uv run`: after a `pyproject.toml` or `uv.lock` change it rebu
 
 - **Reviewer:** send the PR to the reviewer of its area, and tell the coordinator.
   - Reviewer 1 takes implementation and Lean.
-  - Reviewer 2 takes Python, CI, docs and coverage.
+  - Reviewer 2 takes Python code and coverage.
   - Reviewer 3 takes docs, tests and CI.
+  - A PR across areas goes to the reviewer of its main change, who asks another for a part outside theirs.
 - **The label:** the reviewer adds `reviewed`. mergeq admits the PR once `qa` is green at its head and its base is under 6 h old, swaps the label for `queued`, batches it with others and bisects a failed batch.
 - **Pushes after approval:** a push after the approval is let back in on green `qa` without a new review. After a substantive push, tell the reviewer, who removes the label until they have looked. A clean merge of `main` needs nothing.
 - **Cancelled runs:** a red `qa` whose other jobs were cancelled means a batch is testing the PR. Don't rerun it or "fix" it.
