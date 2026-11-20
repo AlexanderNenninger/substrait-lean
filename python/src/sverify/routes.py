@@ -521,24 +521,33 @@ def lean_transfer(source: str, target: str, depends: Sequence[Mapping[str, Any]]
     return {"ok": bool(found["ok"]), "failures": failures}
 
 
-@functools.lru_cache(maxsize=512)
 def _transfer(checker: str, request: str) -> str | None:
-    """The checker's answer to a transfer request: a function of the request
-    and the checker alone, so each is asked once per process (an export
-    asks it per `shims` mode, #862)."""
+    """The checker's answer to a transfer request, or None where the checker
+    fails. Answers are kept per process (`_answer`); a failure is not, so a
+    timeout does not stick."""
     import subprocess
 
     try:
-        return subprocess.run(
-            [checker, "--transfer"],
-            input=request,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=60,
-        ).stdout
+        return _answer(checker, request)
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+@functools.lru_cache(maxsize=512)
+def _answer(checker: str, request: str) -> str:
+    """The checker's answer: a function of the request and the checker
+    alone, so each is asked once per process (an export asks it per `shims`
+    mode, #862). Raises where the checker fails, which keeps it uncached."""
+    import subprocess
+
+    return subprocess.run(
+        [checker, "--transfer"],
+        input=request,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    ).stdout
 
 
 def row(profile: str, group: str | None, option: str) -> dict | None:

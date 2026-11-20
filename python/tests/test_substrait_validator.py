@@ -76,4 +76,18 @@ def test_normalize_keeps_the_cause_and_drops_the_plan() -> None:
 )
 def test_a_fresh_run_matches_the_ledger(ledger) -> None:
     fresh = gate.ledger(os.environ["SUBSTRAIT_VALIDATOR_PYTHON"])
-    assert gate.problems(fresh, ledger) == []
+    assert gate.problems(fresh, ledger)[0] == []
+
+
+def test_drift_prints_and_a_lost_validation_fails(ledger) -> None:
+    import copy
+
+    fresh = copy.deepcopy(ledger)
+    agreed = next(k for k, r in ledger["results"].items() if r["outcome"] == "agree")
+    refused = next(k for k, r in ledger["results"].items() if r["outcome"] == "refused")
+    fresh["results"][refused] = {"outcome": "agree"}
+    fresh["results"]["coverage/new/case [apply]"] = {"outcome": "agree"}
+    assert gate.problems(fresh, ledger)[0] == []
+    f = next(iter(ledger["findings"]))
+    fresh["results"][agreed] = {"outcome": "disagree", "findings": [f]}
+    assert gate.problems(fresh, ledger)[0] == [f"{agreed}: validated, now disagree"]
