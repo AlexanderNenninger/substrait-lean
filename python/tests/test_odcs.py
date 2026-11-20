@@ -526,6 +526,22 @@ def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
     ]
 
 
+def test_a_physical_array_type_needs_a_logical_array() -> None:
+    """`varchar[3]`, which DuckDB reads as an array, is a string where the
+    logical type says `string`, as in ODCS's AdventureWorks example (#864);
+    with `array`, or no logical type, it stays an array."""
+    props = [
+        {"name": "s", "logicalType": "string", "physicalType": "varchar[3]"},
+        {"name": "a", "logicalType": "array", "physicalType": "varchar[3]"},
+        {"name": "n", "physicalType": "varchar[]"},
+    ]
+    doc = {"apiVersion": "v3.2.0", "kind": "DataContract", "id": "x", "version": "1",
+           "status": "active", "schema": [{"name": "t", "properties": props}]}  # fmt: skip
+    schema = odcs.read(doc).schema("t")
+    assert schema["s"].is_string()
+    assert schema["a"].is_array() and schema["n"].is_array()
+
+
 READ_MORE = {
     "apiVersion": "v3.1.0",
     "kind": "DataContract",

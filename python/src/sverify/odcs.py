@@ -549,9 +549,15 @@ def _ibis_type(p: Mapping[str, Any]) -> Any:
     nullable = not p.get("required", False)
     if (phys := p.get("physicalType")) is not None:
         try:
-            return DuckDBType.from_string(str(phys), nullable=nullable)
-        except Exception:  # noqa: BLE001, S110 - another database's type: use the logical one
-            pass
+            t = DuckDBType.from_string(str(phys), nullable=nullable)
+        except Exception:  # noqa: BLE001 - another database's type: use the logical one
+            t = None
+        # DuckDB reads `varchar[3]` as an array, where ODCS's AdventureWorks
+        # example writes it for a string of three (its logical type says
+        # `string`). The logical type decides: an array only where it says
+        # `array` or says nothing.
+        if t is not None and (not t.is_array() or p.get("logicalType", "array") == "array"):
+            return t
     logical = _LOGICAL_IBIS.get(p.get("logicalType", "string"), "string")
     return dt.dtype(logical).copy(nullable=nullable)
 

@@ -8,3 +8,6 @@ to the same conditions ([#864](https://github.com/AlexanderNenninger/substrait-l
 FROM orders WHERE …`, in any case), and leaves unread a timestamp bound with a
 time zone on a column without one, which DuckDB's cast would have dropped; a
 bound on a column with a time zone is cast to `TIMESTAMPTZ`.
+A physical type that DuckDB reads as an array (`varchar[3]`) becomes an array
+only where the logical type says `array` or says nothing; under `string` it is
+a string, as ODCS's AdventureWorks example means it.
