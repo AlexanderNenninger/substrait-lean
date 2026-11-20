@@ -30,7 +30,7 @@ TARGETS = [
         "decimal to a smaller scale",
         "in",
         "CAST(x AS DECIMAL(10, 2)) after arithmetic; replay 25",
-        False,
+        True,
         sql="SELECT CAST(price AS DECIMAL(10, 1)) FROM t",
         issue=27,
     ),

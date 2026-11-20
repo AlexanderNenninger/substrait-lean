@@ -220,6 +220,13 @@ coordinator session that assigns work and merges PRs through batches.
   the rest; seven parallel Lean builds once took the Claude app down.
 - **Report, don't wait silently:** message the coordinator when a PR is
   ready, when you're blocked, or when a planned step turns out wrong.
+- **Look up a decision in the ledger** (`docs/ledger.md`, from
+  `decisions/<id>.json`) before asking who decided what. A new D-number, a
+  theory advisor's ruling or a maintainer's ruling gets its entry there,
+  with `supersedes` and `superseded_by` set on both sides;
+  `python -m sverify_dev.decisions` checks them. A maintainer's ruling on
+  process or tooling, or one with sensitive details, goes into the ignored
+  `decisions/private/` instead.
 - **Shell loops that wait on another process** match by PID. A `pgrep -f`
   pattern also matches the shell running it, and waits forever.
 - **After resolving a merge conflict,** run the tests of every file you
@@ -340,7 +347,9 @@ conflicts with other PRs:
   `sverify_dev.catalogue --write-tables`;
 - `docs/realizability.md`, from `sverify_dev.realizability --write`;
 - `upstream/REPORT.md`, the upstream bugs to report and the count of each
-  class, from `sverify_dev.bugs --write`.
+  class, from `sverify_dev.bugs --write`;
+- `docs/ledger.md`, the decisions in force by scope, from
+  `sverify_dev.decisions --write`.
 
 Generated Lean modules are different: `engines/duckdb/Sverify/DuckDB/LoweringOn`
 (the DuckDB lowering, for DuckDB's default settings only) and

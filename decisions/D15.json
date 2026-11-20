@@ -1,0 +1,14 @@
+{
+  "id": "D15",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "One choices table holds each option's class, observation q and shim per profile, so realizability rows come from one table.",
+  "issues": [
+    578
+  ],
+  "prs": [
+    562
+  ]
+}

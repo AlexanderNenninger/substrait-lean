@@ -1,7 +1,7 @@
 """Substrait producers, and DuckDB or Polars as consumer.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `connect()` gives a `Connection`: named Arrow tables, the engine that runs
 plans over them (DuckDB by default), and Ibis tables bound to them
@@ -452,13 +452,14 @@ def lift_sql_plan(
 ) -> Any:
     """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
     `schemas` it reads."""
-    from sverify.sql_lift import lift
+    from sverify.sql_lift import full_name, lift
 
     try:
-        read = {t.name.lower() for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+        # By DuckDB's resolution: `shop.main.orders` reads the input of that key.
+        read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
     except sg.errors.ParseError:
         read = set()  # the lift says why
-    return lift(sql, {n: s for n, s in schemas.items() if n.lower() in read}, semantics)
+    return lift(sql, {n: s for n, s in schemas.items() if full_name(n) in read}, semantics)
 
 
 def quote(name: str) -> str:

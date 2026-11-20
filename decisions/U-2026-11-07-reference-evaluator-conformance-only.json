@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-07-reference-evaluator-conformance-only",
+  "date": "2026-11-07",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "The Lean reference evaluator serves conformance testing and possibly a Substrait oracle, never as an execution fallback for user plans.",
+  "source": "memory:reference-evaluator-scope.md"
+}

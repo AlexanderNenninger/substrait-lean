@@ -1,8 +1,8 @@
 """SQL models: a transform's body written in SQL, `sv.sql(query, **tables)`,
 and SQL as a step of `Node.pipe`, `sv.sql(query)`.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public name (`sql`) is re-exported by `sverify`.
 
     @sv.transform(requires={"orders": ["amount_cents >= 0"]}, ensures=["revenue_cents >= 0"])

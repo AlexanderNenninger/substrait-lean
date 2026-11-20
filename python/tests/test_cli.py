@@ -587,6 +587,17 @@ def test_sarif(tmp_path, capsys):
         loc = r["locations"][0]["physicalLocation"]
         assert loc["artifactLocation"]["uri"] == str(path) and loc["region"]["startLine"] > 0
     assert "counterexample" in results[2]["properties"]
+    # The first `needs` result carries the fix `check --fix` writes (#793).
+    [fix] = results[0]["fixes"]
+    assert "fixes" not in results[1] and "fixes" not in results[2]
+    [change] = fix["artifactChanges"]
+    assert change["artifactLocation"]["uri"] == str(path)
+    fixed = path.read_bytes()
+    for rep in sorted(change["replacements"], key=lambda r: -r["deletedRegion"]["byteOffset"]):
+        at, n = rep["deletedRegion"]["byteOffset"], rep["deletedRegion"]["byteLength"]
+        fixed = fixed[:at] + rep["insertedContent"]["text"].encode() + fixed[at + n :]
+    assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
+    assert fixed == path.read_bytes()
 
 
 def test_help_lists_the_exit_codes(capsys):

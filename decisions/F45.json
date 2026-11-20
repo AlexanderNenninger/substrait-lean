@@ -1,0 +1,13 @@
+{
+  "id": "F45",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "superseded",
+  "summary": "D50: Expr.guardBy's statements accepted as an iff from outcome lemmas G1 and G2, classification by Expr.kind, no boolean ifThen added, wrapping maximal non-boolean subterms.",
+  "superseded_by": [
+    "F46"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 45",
+  "note": "File ruling-d50-guardby.md (fork scratchpad). Shape withdrawn by entry 46 as exponential in size."
+}

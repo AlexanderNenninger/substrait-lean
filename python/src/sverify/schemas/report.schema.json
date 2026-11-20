@@ -290,14 +290,15 @@
       }
     },
     "dialect_differences": {
-      "description": "For SQL, where the reference reads the text differently from DuckDB: the construct, where it is, both readings, an example and the spellings that mean the same under both semantics.",
+      "description": "For SQL, where the reference reads the text differently from DuckDB: the construct (its category and the SQL as written), where it is, both readings, an example and the spellings that mean the same under both semantics.",
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["key", "construct", "where", "here", "dialect", "example", "spellings"],
+        "required": ["key", "construct", "sql", "where", "here", "dialect", "example", "spellings"],
         "properties": {
           "key": {"enum": ["corr_degenerate"]},
           "construct": {"type": "string"},
+          "sql": {"type": "string"},
           "where": {"type": "string"},
           "here": {"type": "string"},
           "dialect": {"type": "string"},
@@ -353,6 +354,10 @@
           ]
         }
       }
+    },
+    "sequence_determined": {
+      "description": "Every result the reference allows is its result row by row (check_sequence_determined_sound): deterministic, and the result comes out of a sort whose columns contain a key of its input.",
+      "type": "boolean"
     },
     "sorted": {
       "description": "Whether the plan's result comes out of a sort, as the checker reads it.",

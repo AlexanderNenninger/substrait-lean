@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-09-row-order-certified-not-forced",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference shims only cheap value levels and certifies but never forces row order, which is determined iff the ORDER BY key is a superkey of the output.",
+  "source": "memory:determinism-as-certificate.md",
+  "note": "reproducible= becomes an opt-in that adds tie-breakers."
+}

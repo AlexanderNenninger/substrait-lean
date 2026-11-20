@@ -62,6 +62,13 @@ def check(
     return _Checker(proj, counterexamples).run(set(select) if select else None)
 
 
+#: The bounds of the search for input tests that prove a model test
+#: (`_blame_nulls`): at most this many uncovered input columns, and this many
+#: extra checker calls per model.
+_BLAME_COLUMNS = 12
+_BLAME_CALLS = 24
+
+
 class _Checker:
     def __init__(self, project: Project, counterexamples: int):
         self.p = project
@@ -228,7 +235,13 @@ class _Checker:
     # ---- one model ----------------------------------------------------------
 
     def _model(self, m: Relation) -> ModelResult:
-        res = ModelResult(name=m.name, unique_id=m.unique_id, path=m.path, ref=m.ref)
+        res = ModelResult(
+            name=m.name,
+            unique_id=m.unique_id,
+            path=m.path,
+            ref=m.ref,
+            enforced=bool(m.contract),
+        )
         if m.materialized == "ephemeral":
             readers = sorted(r.name for r in self.p.models if m.unique_id in r.depends_on)
             res.notes.append(
@@ -288,7 +301,72 @@ class _Checker:
         if report is None:
             return res
         self._read(report, m, res, ensures)
+        self._blame_nulls(res, inputs, tables, requires, ensures)
         return res
+
+    def _blame_nulls(
+        self, res: ModelResult, inputs: list[Relation], tables: dict, requires: dict, ensures: list
+    ) -> None:
+        """For each test unproved because a row may fail it or a NULL may reach it, find the
+        `not_null` tests on the inputs under which it holds: sverify suggests
+        none for a NULL that comes through an expression. Tries every input
+        column no test covers at once, then drops each that the proof does not
+        need (`would_hold`)."""
+        candidates = [
+            (r, c)
+            for r in inputs
+            for c in tables[self.names[r.unique_id]]
+            if c not in self._not_null(r)
+        ]
+        budget = [_BLAME_CALLS]
+        for tr, cs in ensures:
+            if (
+                tr.status != "not proved"
+                or tr.would_hold
+                or tr.blocker not in ("may_be_false", "may_be_null")
+            ):
+                continue
+            if len(candidates) > _BLAME_COLUMNS or budget[0] < 1:
+                why = f"not searched for a source test: {len(candidates)} uncovered input columns"
+                tr.why = f"{tr.why}; {why}" if tr.why else why
+                continue
+            budget[0] -= 1
+            held = self._holds_with(res, tables, requires, cs, candidates)
+            for pair in list(held or []):
+                if budget[0] < 1:
+                    break
+                rest = [x for x in held or [] if x != pair]
+                budget[0] -= 1
+                if rest and self._holds_with(res, tables, requires, cs, rest):
+                    held = rest
+            for r, c in held or []:
+                tr.would_hold.setdefault(r.ref, []).append((c, "not_null"))
+
+    def _holds_with(
+        self, res: ModelResult, tables: dict, requires: dict, cs: list, extra: list
+    ) -> list | None:
+        """`extra` (input, column) pairs when the conditions `cs` are proved
+        with `IS NOT NULL` on each of them added to `requires`, else None."""
+        if not extra:
+            return None
+        req = {t: list(v) for t, v in requires.items()}
+        for r, c in extra:
+            req[self.names[r.unique_id]].append(f"{mapping.ident(c)} IS NOT NULL")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                report = sv.verify(
+                    res.sql,  # type: ignore[arg-type]
+                    tables=tables,
+                    requires=req,
+                    ensures=cs,
+                    semantics="duckdb",
+                    on_inferred="error",
+                    counterexamples=0,
+                )
+        except ValueError:
+            return None
+        return extra if all(c.portable for c in report.ensures) and not report.needs else None
 
     def _ensures(self, m: Relation, res: ModelResult) -> list[tuple[Any, list]]:
         """The conditions to prove, each with its test or constraint result."""
@@ -299,7 +377,12 @@ class _Checker:
             res.tests.append(tr)
             got = mapping.test_conditions(t, side="ensures", table_of=lambda _: None)
             missing = [c for c in got.columns if c not in cols]
-            if missing:
+            if got.schema:
+                bad = got.schema(list(res.duckdb_types))
+                tr.status, tr.why = ("proved", None) if bad is None else ("not proved", bad)
+                if bad is None:
+                    self.proved.add(t.unique_id)
+            elif missing:
                 tr.skip(f"the model has no column {', '.join(missing)}")
             elif not got.conditions:
                 tr.skip(got.reason or "no condition")
@@ -433,6 +516,7 @@ class _Checker:
                 c = bad[0]
                 tr.status = "not proved"
                 tr.why = _why(c)
+                tr.blocker = c.reason
                 tr.counterexample = str(c.counterexample) if c.counterexample else None
                 tr.would_hold = {}
                 for n in c.needs:
@@ -682,6 +766,20 @@ _ROW_LEVEL = frozenset(
         "accepted_range",
         "expect_column_values_to_be_between",
         "expression_is_true",
+        "not_accepted_values",
+        "not_empty_string",
+        "expect_column_values_to_match_regex",
+        "expect_column_values_to_not_match_regex",
+        "expect_column_values_to_match_regex_list",
+        "expect_column_values_to_not_match_regex_list",
+        "expect_column_values_to_match_like_pattern",
+        "expect_column_values_to_not_match_like_pattern",
+        "expect_column_values_to_match_like_pattern_list",
+        "expect_column_values_to_not_match_like_pattern_list",
+        "expect_column_value_lengths_to_equal",
+        "expect_column_value_lengths_to_be_between",
+        "expect_column_pair_values_A_to_be_greater_than_B",
+        "expect_column_pair_values_to_be_equal",
     }
 )
 

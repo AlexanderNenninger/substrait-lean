@@ -150,7 +150,7 @@ def test_an_input_without_delta_rules_is_recomputed_and_diffed():
     assert "no touched groups: the aggregate's input has no delta rules" in str(node.status())
     src.apply(Changes(inserts=samples([("a", 2, 9)])))
     out = node.refresh()["busiest"]
-    assert out.report is not None and out.report.diffed == ["busiest"]
+    assert out.report is not None and list(out.report.diffed) == ["busiest"]
     assert "recomputed and diffed" in out.summary()
     assert rows(node) == recomputed(node, src)
 
@@ -342,7 +342,7 @@ def _double_sums(samples):
             "no delta rules: mean is a AVG of int64",
         ),
         # D25 keeps the exact sum (#1159): maintained, nothing to explain.
-        (_double_sums, DOUBLES, "delta rules", None, None),
+        (_double_sums, DOUBLES, "state per group", None, None),
     ],
     ids=["left_join", "window", "integer_avg", "double_sum_avg"],
 )
@@ -372,3 +372,31 @@ def test_a_batch_that_deletes_rows_says_why_the_node_recomputes(step, schema, st
     else:
         assert how in out.summary()
         assert why in str(node.status())
+
+
+def test_status_names_each_nodes_mode_and_why_a_recompute_recomputes():
+    """#742: a linear node, an aggregate kept from a state per group and a node
+    without delta rules report one mode each, and the last says why."""
+
+    def linear(samples):
+        return samples.filter(samples.cpu > 0)
+
+    def counted(samples):
+        return samples.group_by("host").aggregate(n=samples.count())
+
+    def busiest(samples):
+        t = per_minute(samples)
+        return t.group_by("host").aggregate(top=t.high.max())
+
+    src = StaticSource(samples([("a", 1, 5), ("b", 1, 3)]), name="samples")
+    nodes = [src.pipe(linear), src.pipe(counted), src.pipe(busiest)]
+    for n in nodes:
+        n.refresh()
+    modes = [n.status().nodes[0].mode for n in nodes]
+    assert modes == ["delta rules", "state per group", "recompute and diff"]
+    texts = [str(n.status()) for n in nodes]
+    assert all(f"mode: {m}" in t for m, t in zip(modes, texts, strict=True))
+    assert "no touched groups: the aggregate's input has no delta rules" in texts[2]
+    src.apply(Changes(inserts=samples([("a", 2, 9)])))
+    out = nodes[2].refresh()["busiest"]
+    assert "recomputed and diffed (" in out.summary()

@@ -1,0 +1,23 @@
+{
+  "id": "F192",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Following the user's lenses choice, Python (Report/Route.lenses), report JSON (format 4), Substrait manifest (format 3) and OpenLineage facet (format 2) rename to lenses with readers for earlier formats; theory names stay.",
+  "issues": [
+    1285,
+    1961
+  ],
+  "prs": [
+    1961
+  ],
+  "supersedes": [
+    "F184.1"
+  ],
+  "amends": [
+    "F184"
+  ],
+  "source": "fable-ruling-192-report-lenses-formats.md",
+  "note": "'Ruling 184's item 1 ... is superseded'; 'The rest of ruling 184 stands.' Conditions L1-L13."
+}

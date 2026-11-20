@@ -1,0 +1,11 @@
+{
+  "id": "D9",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Each option gets one tool in the reference (raise, choose a value, or leave open), recorded in one table with its precondition and shim count.",
+  "prs": [
+    562
+  ]
+}

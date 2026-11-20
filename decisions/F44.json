@@ -1,0 +1,16 @@
+{
+  "id": "F44",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Mended decisions: Fable signs D47 (raise-or-option rule) and D49 (DuckDB-defined values); the user decides D50 (frontends guard AND/OR) and D51 (case mapping where engines agree), and amends D17; D21, D23 and D24 amended.",
+  "amends": [
+    "D17",
+    "D21",
+    "D23",
+    "D24"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 44",
+  "note": "Written by a forked session on the user's request; text mended-decisions-1118.md. D47 and D49 are Fable's; D50, D51, D17 the user's. D24 is amended twice (by D48 and here). Next free D-number D52."
+}

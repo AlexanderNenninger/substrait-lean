@@ -1,0 +1,13 @@
+{
+  "id": "F185",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "DuckDB's tracking rows may cite the generated lowering theorems under a per-group evidence rule (C1-C6); decimal rows stay tested and tracking, with a guard that no dec. row is proved.",
+  "issues": [
+    241
+  ],
+  "source": "fable-ruling-185-241-duckdb-rows-decimals.md",
+  "note": "No D-number. Option (a) engine function symbols is the future direction; (c) plan-level precision deferred (would need a D-number)."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "F21",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Review: #1525 meets entry 15's three conditions at 6e39605b; no new ruling.",
+  "prs": [
+    1525
+  ],
+  "source": "fable-rulings-night-1117.md, entry 21",
+  "note": "Closes entry 15's hand-off."
+}

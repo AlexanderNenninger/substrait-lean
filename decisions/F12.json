@@ -1,0 +1,19 @@
+{
+  "id": "F12",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1527's verdict change accepted (DuckDB median-range class exact to shim, evidence tested); merge order #1475, #1502, #1527, #1530 with four small conditions on #1530; a position-guard follow-up under #900 before 1.0.",
+  "issues": [
+    900
+  ],
+  "prs": [
+    1475,
+    1502,
+    1527,
+    1530
+  ],
+  "source": "fable-rulings-night-1117.md, entry 12",
+  "note": "File ruling-1530-linear-restated.md. No D-number."
+}

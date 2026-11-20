@@ -1,0 +1,13 @@
+{
+  "id": "F127",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1787 step 1 accepted: congruence lemmas for refinement in `Refines.lean`, `Engine.Sound.of_refines` and `contract_sound_rewrite`, `Engine.runPlan`; conditions: move `Measure.Allowed.perm` to core, document per-constructor lemma forms, add `contract_sound_runs_rewrite`, weaken `check` hypothesis. Lean only.",
+  "issues": [
+    1787
+  ],
+  "source": "fable-ruling-127-1787-step1.md",
+  "note": "Near route stays out of step 1; join lemma arity hypothesis only for left joins."
+}

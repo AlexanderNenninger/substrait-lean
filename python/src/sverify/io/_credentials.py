@@ -1,8 +1,8 @@
 """The credentials each node uses (#778): by name, for reading or writing,
 and whether the place lies inside what the credential may touch.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public name `CredentialUse` is re-exported by `sverify.io`.
 """
 

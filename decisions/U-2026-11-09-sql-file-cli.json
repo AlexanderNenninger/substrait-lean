@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-09-sql-file-cli",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The CLI verifies a bare .sql file, with the SQL dialect front-end a field on ProfilePlugin and DuckDB the only in-tree dialect for now.",
+  "issues": [
+    1362
+  ],
+  "source": "memory:sql-file-cli-epic.md",
+  "note": "Maintainer gave the go; the architecture was scoped by Fable."
+}

@@ -299,6 +299,7 @@ def test_c1_explicit_nulls_first(con) -> None:
     t = con.table("t")
     report = sv.verify(
         t.select("k", "i").order_by([ibis.asc("k", nulls_first=True), "i"]),
+        requires={"t": [sv.unique("k", "i")]},
         ensures=[sv.equivalent(rows="sequence")],
     )
     out = run_both(report, con)
@@ -513,7 +514,7 @@ def test_f3_duckdb_null_order_stated_transfers(con) -> None:
     report = sv.verify(
         "SELECT k FROM t ORDER BY k",
         tables={"t": t},
-        ensures=[sv.equivalent(rows="sequence")],
+        ensures=[sv.equivalent(rows="ties permuted")],
         semantics="duckdb",
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)

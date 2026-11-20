@@ -1,0 +1,25 @@
+{
+  "id": "U-2026-11-02-stat-agg-native",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "std, var, corr and cov on doubles use each engine's native algorithm for now; the model treats the value as some double or NULL with sound bounds, and engines are compared approximately.",
+  "issues": [
+    54,
+    85
+  ],
+  "prs": [
+    281,
+    299,
+    304
+  ],
+  "supersedes": [
+    "U-2026-11-02-stat-agg-pinned-formula"
+  ],
+  "superseded_by": [
+    "U-2026-11-03-reference-generic-properties"
+  ],
+  "source": "github:#54 comment 6574124130",
+  "note": "Explicitly 'for now', with #85's proved bound as the planned replacement."
+}
