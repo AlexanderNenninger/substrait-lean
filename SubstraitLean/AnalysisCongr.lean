@@ -100,6 +100,20 @@ theorem WinFn.pickFixed_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : Stri
     (F : String → List Fact) (r : Rel) : WinFn.pickFixed c A F r = WinFn.pickFixed cat A F r := by
   funext f; cases f <;> simp only [WinFn.pickFixed, Measure.pickFixed_congr h A F r]
 
+theorem Rel.seqTotal_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (K : TableCond) :
+    ∀ r : Rel, r.seqTotal c A F K = r.seqTotal cat A F K
+  | .filter r _ | .project r _ | .emit r _ => by simp only [seqTotal, seqTotal_congr h A F K r]
+  | .orderBy r _ | .fetch (.orderBy r _) _ _ => by
+      simp only [seqTotal, fetchTotalAt, keys_congr h A F K r]
+  | .read _ | .values _ _ | .cross _ _ | .join _ _ _ _ | .unionAll _ _ | .window _ _ _ _
+  | .semi _ _ _ _ | .distinct _ | .aggregate _ _ _ | .unnest _ _ | .fetch (.read _) _ _
+  | .fetch (.values _ _) _ _ | .fetch (.filter _ _) _ _ | .fetch (.project _ _) _ _
+  | .fetch (.emit _ _) _ _ | .fetch (.cross _ _) _ _ | .fetch (.join _ _ _ _) _ _
+  | .fetch (.fetch _ _ _) _ _ | .fetch (.unionAll _ _) _ _ | .fetch (.window _ _ _ _) _ _
+  | .fetch (.semi _ _ _ _) _ _ | .fetch (.distinct _) _ _ | .fetch (.aggregate _ _ _) _ _
+  | .fetch (.unnest _ _) _ _ => rfl
+
 theorem Rel.detPlan_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) :
     ∀ r : Rel, r.detPlan c A F K = r.detPlan cat A F K
