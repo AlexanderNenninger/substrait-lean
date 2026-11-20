@@ -19,6 +19,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _repo import ROOT, needs_repo
 from sverify import openlineage as ol
 from sverify.cli import main
 from sverify.contracts import MaxRows, Unique
@@ -32,6 +33,17 @@ referencing = pytest.importorskip("referencing")
 HERE = Path(__file__).parent
 SPEC = HERE / "standards" / f"openlineage-{ol.CLIENT_VERSION}"
 FACET = HERE.parent / "src" / "sverify" / "schemas" / "openlineage-contract-facet.schema.json"
+
+
+@needs_repo
+def test_the_client_version_is_the_extras_floor():
+    """`CLIENT_VERSION` is in no output; the `openlineage` extra's pin, which
+    a user reads from the installed metadata, carries it."""
+    import tomllib
+
+    extras = tomllib.loads((ROOT / "python" / "pyproject.toml").read_text())
+    pin = extras["project"]["optional-dependencies"]["openlineage"]
+    assert f"openlineage-python>={ol.CLIENT_VERSION}," in pin[0]
 
 
 def _registry() -> referencing.Registry:

@@ -38,7 +38,7 @@ import logging
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal
 
 import ibis
 import ibis.expr.types as ir
@@ -61,40 +61,12 @@ if TYPE_CHECKING:
     import polars
 
     from sverify.contracts import ContractedTransform, Report
-    from sverify.io._common import Contract, SinkWrite
+    from sverify.io._common import SinkWrite
+    from sverify.io._sink import Sink
     from sverify.routes import Route, RouteKind
 
 #: One INFO line per node and per commit of a refresh, for a job's task log.
 _log = logging.getLogger("sverify")
-
-
-class Sink(Protocol):
-    """What `Node.write` needs of a sink (`sverify.io.DeltaSink`, `IcebergSink`).
-
-    `sverify.io.Sink` implements it, and a sink of your own subclasses that;
-    the methods it asks for are private, called by `refresh`.
-
-    Attributes:
-        name: The stored table's name in the plans that read it (the sink's
-            `name=`, by default the last part of its URI or identifier).
-    """
-
-    name: str
-    location: str
-
-    def _attach(self, view: IncrementalView, stored: Stored | None = None) -> None: ...
-
-    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None: ...
-
-    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None: ...
-
-    def _commit(self) -> SinkWrite: ...
-
-    def _stored(self) -> Stored | None: ...
-
-    def _source(self) -> Source: ...
-
-    def contract(self, version: int | None = None) -> Contract | None: ...
 
 
 class Node:

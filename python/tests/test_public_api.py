@@ -10,7 +10,10 @@ import ast
 import functools
 import importlib
 import inspect
+import itertools
+import re
 import sys
+import textwrap
 import typing
 
 import pytest
@@ -83,9 +86,6 @@ UNLISTED = {
     # Deprecated; removed under #1288's decision 5.
     "engines.create_table",
     "engines.table_rows",
-    # The OpenLineage client sverify[openlineage] pins, which no event
-    # carries; documented in the module's docstring.
-    "openlineage.CLIENT_VERSION",
 }
 """In an `__all__` and out of the reference."""
 
@@ -96,12 +96,10 @@ EXCLUDED = {
     "sverify.sql.core._base.Dec": "Dialect's SQL-writing methods",
     "sverify.sql.core._base.Lst": "Dialect's SQL-writing methods",
     "sverify.sql.core._base.Unsupported": "Dialect's SQL-writing methods; a deprecated alias",
-    # What `Node.write` asks of a sink, as a protocol; `io.Sink` is the
-    # public class that implements it.
-    "sverify.nodes.Sink": "the protocol io.Sink implements",
-    # A `Native` table `run` can return; `Native`'s members are outside the
-    # promise while the native scans move into the engine packages.
-    "sverify._scan.Resident": "a Native",
+    # A `Native` table `run_plan(keep=True)` returns. It goes with the
+    # exception in `docs/stability.md` that keeps `Native`'s members outside
+    # the promise while the native scans move into the engine packages.
+    "sverify._scan.Resident": "a Native, under Native's stability exception",
 }
 """Sverify classes a public name reaches that are not public, with why."""
 
@@ -271,3 +269,105 @@ def test_verdict_has_no_truth_value():
             bool(v)
         with pytest.raises(TypeError):
             assert v
+
+
+MACHINERY = {
+    "batched",
+    "capped_by",
+    "check_batch",
+    "count_query",
+    "ensured",
+    "entry",
+    "label",
+    "on_state",
+    "per_key",
+    "plan_entry",
+    "settle",
+    "violating",
+}
+"""`TableCondition`'s machinery, which its five public subclasses inherit
+without an underscore: how a condition is checked and planned, not what a
+user reads. Undocumented on purpose (a page would promise them); the
+underscore pass of #1288 API-5 renames them and deletes this set (ruling
+180)."""
+
+UNPROMISED = {
+    # Their members are outside the promise (`docs/stability.md`).
+    "sverify.engines.Native",
+    "sverify.engines.Dialect",
+}
+
+
+def test_the_machinery_is_still_there():
+    """`MACHINERY` names members `TableCondition` still has without an
+    underscore; the pass that underscores them deletes the set."""
+    from sverify.conditions import TableCondition
+
+    names = set(dir(TableCondition)) | set(TableCondition.__annotations__)
+    assert names >= MACHINERY
+
+
+@functools.cache
+def _documented_here(cls: type) -> frozenset[str]:
+    """The attributes `cls` documents: a string right after an assignment
+    in its body or after a `self.x = ...` in its `__init__`, or a line of
+    its docstring's `Attributes:` section."""
+    out: set[str] = set()
+    node = ast.parse(textwrap.dedent(inspect.getsource(cls))).body[0]
+    assert isinstance(node, ast.ClassDef)
+    body = node.body
+    inits = [f.body for f in body if isinstance(f, ast.FunctionDef) and f.name == "__init__"]
+    for stmts, of_self in [(body, False), *((b, True) for b in inits)]:
+        for a, b in itertools.pairwise(stmts):
+            if not (isinstance(b, ast.Expr) and isinstance(b.value, ast.Constant)):
+                continue
+            targets = [a.target] if isinstance(a, ast.AnnAssign) else getattr(a, "targets", [])
+            for t in targets:
+                if of_self and isinstance(t, ast.Attribute) and ast.unparse(t.value) == "self":
+                    out.add(t.attr)
+                elif not of_self and isinstance(t, ast.Name):
+                    out.add(t.id)
+    doc = inspect.cleandoc(cls.__dict__.get("__doc__") or "")
+    if section := re.search(r"^Attributes:\n((?:    .*\n?|\n)*)", doc, re.M):
+        out |= set(re.findall(r"^    (\w+):", section.group(1), re.M))
+    return frozenset(out)
+
+
+def _undocumented(cls: type) -> list[str]:
+    """`cls`'s public members, its sverify bases' included, that have no
+    docstring and no line in an `Attributes:` section."""
+    from sverify.conditions import TableCondition
+
+    bases = [k for k in cls.__mro__ if _sverify(k)]
+    documented = set().union(*map(_documented_here, bases))
+    if issubclass(cls, TableCondition):
+        documented |= MACHINERY
+    seen: set[str] = set()
+    missing = []
+    for k in bases:
+        for name in sorted(set(vars(k)) | set(vars(k).get("__annotations__", {}))):
+            if name.startswith("_") or name in seen:
+                continue
+            seen.add(name)
+            member = vars(k).get(name)
+            f = _function(member)
+            own_doc = getattr(member, "__doc__", None) if isinstance(member, property) else None
+            own_doc = own_doc or (f.__doc__ if f else None)
+            if name not in documented and not own_doc:
+                missing.append(f"{k.__qualname__}.{name}")
+    return missing
+
+
+@needs_repo
+def test_every_public_member_is_documented():
+    """A member without an underscore of a public class is public
+    (`docs/stability.md`), so the reference documents it: a docstring, or a
+    line in its class's `Attributes:` section."""
+    missing = {}
+    for module in map(importlib.import_module, PUBLIC):
+        for n in module.__all__:
+            obj = getattr(module, n)
+            name = f"{module.__name__}.{n}"
+            if inspect.isclass(obj) and name not in UNPROMISED and (u := _undocumented(obj)):
+                missing[name] = u
+    assert missing == {}

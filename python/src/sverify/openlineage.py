@@ -69,7 +69,6 @@ if TYPE_CHECKING:
     from sverify.nodes import Node, StageRefresh
 
 __all__ = [
-    "CLIENT_VERSION",
     "Assertion",
     "Events",
     "Lineage",
