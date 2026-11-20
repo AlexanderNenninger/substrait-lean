@@ -412,6 +412,12 @@ def exactP : Option (Float × Bool) → Bool
   | some (e, p) => e == 0.0 && p
   | none => false
 
+/-- The columns' values where a `CASE` takes its `THEN` branch: refined by the
+condition where it has the same outcome on every engine (`ec` exact), so
+that, say, a mean guarded by `0 < count` reads a count of at least one. -/
+def thenEnv (env : List AVal) (ec : Option (Float × Bool)) (c : Expr) : List AVal :=
+  if exactP ec then c.refine env else env
+
 /-- How far an engine's value of `e` may be from the reference's, from the
 columns' errors `cols` (`none`: not bounded), and whether a rule of
 `Propagate.lean` proves it. -/
@@ -533,14 +539,16 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
     if a₁ == a && f == a then
       let (ea, pa) ← exprEps es engine env cols a
       return (ea, pa)
-    let et ← exprEps es engine env cols t
+    let ec := exprEps es engine env cols c
+    let et ← exprEps es engine (thenEnv env ec c) cols t
     let ef ← exprEps es engine env cols f
-    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps es engine env cols c))
+    return (max et.1 ef.1, et.2 && ef.2 && exactP ec)
   | .ifThen c t f => do
-    let et ← exprEps es engine env cols t
+    let ec := exprEps es engine env cols c
+    let et ← exprEps es engine (thenEnv env ec c) cols t
     let ef ← exprEps es engine env cols f
     -- A condition that may differ between engines may pick the other branch.
-    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps es engine env cols c))
+    return (max et.1 ef.1, et.2 && ef.2 && exactP ec)
   | .hof _ _ _ => none
 
 /-- `cs` with every flag cleared where `ok` fails: rows or groups that may
