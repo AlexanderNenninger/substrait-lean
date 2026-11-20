@@ -1,6 +1,7 @@
 """`AND` and `OR` read as guards (D50): in `p AND q` the raising operations of
 `q` run only where `p` is not FALSE, in `p OR q` only where `p` is not TRUE."""
 
+import json
 import time
 
 import ibis
@@ -103,6 +104,21 @@ def test_a_deep_nest_is_bound_and_checks_in_time_linear_in_depth(wrappers):
     report = sv.verify(_nest(wrappers), on_inferred="off")
     assert time.perf_counter() - start < 60
     assert report.verdict == sv.Verdict.PROVED, str(report)
+
+
+def test_a_bound_nest_grows_linearly_with_its_depth():
+    """Each chain reads its reach from one column (`BindSt.anchor`), so a level adds
+    the same bytes to the plan at any depth. Before, a chain's guard held every
+    enclosing chain's (608 KB at 40 levels from a 21 KB request, the check cubic)."""
+
+    def size(levels: int) -> int:
+        report = sv.verify(_nest(levels), on_inferred="off")
+        assert report.verdict == sv.Verdict.PROVED, str(report)
+        return len(json.dumps(report._optimized))
+
+    s20, s40, s80 = size(20), size(40), size(80)
+    # Linear: 40 more levels add twice what 20 do; quadratic: four times.
+    assert (s80 - s40) < 3 * (s40 - s20), (s20, s40, s80)
 
 
 def test_a_bound_filter_runs_as_the_lifted_one():
