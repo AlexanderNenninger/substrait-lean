@@ -48,7 +48,7 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 
@@ -60,9 +60,9 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
     # The reference truncates (#209 R9), DuckDB rounds, so the lift refuses it and names
     # the spellings with one meaning under both (D54).
     with pytest.raises(Refused, match=r"CAST\(round\(x\) AS BIGINT\)"):
-        lift(query, SCHEMAS, "reference")
+        lift(query, SCHEMAS, "portable")
     spelled = "SELECT CAST(round(price) AS INTEGER) AS i FROM orders"
-    assert lift(spelled, SCHEMAS, "reference").schema == ibis.schema({"i": "int32"})
+    assert lift(spelled, SCHEMAS, "portable").schema == ibis.schema({"i": "int32"})
 
 
 @pytest.mark.parametrize(

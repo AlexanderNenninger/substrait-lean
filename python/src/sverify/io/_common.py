@@ -411,7 +411,8 @@ class Contract:
     those of the release."""
     profile: str | None = None
     """The profile the plan was verified under (`verify(semantics=...)`); the
-    plan's digest includes it unless it is `"reference"`."""
+    plan's digest includes it unless it is `"portable"`, which a
+    record written before 1.0 calls `"reference"`."""
     package: str | None = None
     """For an engine that comes from another package than sverify, that package
     as `name==version`: its facts ship with it."""
@@ -456,6 +457,8 @@ class Contract:
             )
         if fmt < 2 and "view" in data:
             data = {**data, "node": data["view"]}
+        if data.get("profile") == "reference":  # written before 1.0's name
+            data = {**data, "profile": "portable"}
         known = Contract.__dataclass_fields__
         return Contract(**{k: v for k, v in data.items() if k in known and k != "format"})
 

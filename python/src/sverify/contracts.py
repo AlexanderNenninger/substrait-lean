@@ -203,9 +203,10 @@ states the condition (None: unset)."""
 
 
 #: The semantics a plan is verified under besides the installed profiles:
-#: the reference, and DuckDB's, reached through its SQL lift until the checker
-#: evaluates under DuckDB's run profile (#271, #1189).
-_LIFTED = ("reference", "duckdb")
+#: portable (the reference profile, `Profile.reference`), and DuckDB's,
+#: reached through its SQL lift until the checker evaluates under DuckDB's
+#: run profile (#271, #1189).
+_LIFTED = ("portable", "duckdb")
 
 
 #: The rewrite rules the checker may apply to the plan an engine runs, by
@@ -219,14 +220,14 @@ def _expr_semantics(transform: Transform) -> Semantics:
     """The semantics an unstated `verify(semantics=...)` takes: an expression
     whose SQL (`sverify.sql`) is all lifted with DuckDB's semantics has
     them (#575: so its report assumes no ±∞ precondition and `Report.run`
-    writes no check of one); anything else, the reference."""
+    writes no check of one); anything else, `"portable"`."""
     if isinstance(transform, str):
-        return "reference"
+        return "portable"
     from sverify.ibis_substrait.relations import SQLModel
 
     found = transform.op().find(SQLModel)
-    sems = {op.semantics or "reference" for op in found}
-    return "duckdb" if sems == {"duckdb"} else "reference"
+    sems = {op.semantics or "portable" for op in found}
+    return "duckdb" if sems == {"duckdb"} else "portable"
 
 
 def _profile_requests() -> frozenset[str]:
@@ -239,7 +240,7 @@ def _profile_requests() -> frozenset[str]:
 
 
 def semantics_names() -> tuple[str, ...]:
-    """The semantics `verify` takes: the reference, DuckDB's (through its
+    """The semantics `verify` takes: `"portable"`, DuckDB's (through its
     lift) and each installed profile."""
     return (*_LIFTED, *sorted(_profile_requests() - set(_LIFTED)))
 
@@ -817,13 +818,13 @@ def verify(
             transform with these values (`bind_params`); an unbound parameter
             is refused.
         semantics: What the SQL `verify` lifts means, the transformation
-            if it is a SQL string and every SQL condition: `"reference"`
-            (the default), sverify's reference semantics, where an
+            if it is a SQL string and every SQL condition: `"portable"`
+            (the default), sverify's portable semantics (the reference profile), where an
             operation that would create a NaN raises; or `"duckdb"`, what
             DuckDB computes, NaN and ±inf included. An `sv.sql` expression
             inside an Ibis transformation keeps its own `semantics`. Unstated
             (None), it is `"duckdb"` for a transformation whose SQL is all
-            `sv.sql(..., semantics="duckdb")`, else `"reference"`.
+            `sv.sql(..., semantics="duckdb")`, else `"portable"`.
             `"polars"` checks an Ibis transformation under Polars's
             profile, `"spark"` under Spark's, which evaluates as the
             reference does: its plan runs natively on that engine
@@ -963,7 +964,7 @@ def infer_bounds(
     params: list[str],
     infer: bool = True,
     inputs: Collection[str] | None = None,
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
     on_inferred: OnInferred,
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred.
@@ -1055,7 +1056,7 @@ OnUnproved = Literal["error", "check", "warn"]
 class ProfilePendingWarning(SverifyWarning):
     """`verify` was asked for an engine's own profile (`semantics="spark"`)
     that the checker has no report under yet (#1288): the report is the
-    reference's, and says so (`Report.semantics` is `"reference"`)."""
+    reference's, and says so (`Report.semantics` is `"portable"`)."""
 
 
 class UnprovedWarning(SverifyWarning):
@@ -1598,7 +1599,7 @@ def _prove_once(
     counterexamples: int,
     bound: list[str],
     inputs: Collection[str] | None,
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
     observed: _observation.Observation | None = None,
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
@@ -1608,7 +1609,7 @@ def _prove_once(
     if semantics in _profile_requests() and isinstance(transform, str):
         raise ValueError(
             f"semantics={semantics!r} checks Ibis transformations; "
-            "SQL is DuckDB's, so its semantics is 'duckdb' or 'reference'"
+            "SQL is DuckDB's, so its semantics is 'duckdb' or 'portable'"
         )
     schemas = {name: input_schema(s) for name, s in (tables or {}).items()}
     if not isinstance(transform, str):
@@ -1623,7 +1624,7 @@ def _prove_once(
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
         # under the reference where the profile has no lift of its own.
         own = not (isinstance(query, str) and semantics in _profile_requests())
-        return semantics if own else "reference"
+        return semantics if own else "portable"
 
     differences: dict[DialectDifference, None] = {}
 
@@ -1750,7 +1751,7 @@ def _prove_once(
         }
     if _RULES is not None:
         contract["rules"] = list(_RULES)
-    if semantics != "reference":
+    if semantics != "portable":
         # The profile decides which issues are errors (an overflow to ±∞ is
         # the reference's alone, #575) and, for those beyond DuckDB's lift,
         # the report's profile (`underProfile`).
@@ -1773,7 +1774,7 @@ def _prove_once(
             ProfilePendingWarning,
             stacklevel=3,
         )
-        semantics = "reference"
+        semantics = "portable"
     elif semantics in _profile_requests() and out.get("profile") != semantics:
         raise ValueError(
             f'the checker in use has no profile "{semantics}": install the package that '
@@ -2847,7 +2848,7 @@ class ViewContract:
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
     `requires` (`Provenance.policies`)."""
-    profile: str = "reference"
+    profile: str = "portable"
     """The profile the transformation was verified under (`Report.semantics`)."""
     deterministic: bool = False
     """The report proves the result determined up to row order and the members of
@@ -2888,7 +2889,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.checked) if prov else [],
         proved_not_null(prov.report) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
-        profile=prov.report.semantics if prov else "reference",
+        profile=prov.report.semantics if prov else "portable",
         deterministic=bool(prov and prov.report.deterministic),
     )
 
@@ -2942,7 +2943,7 @@ class ContractedTransform:
         on_unproved: OnUnproved = "error",
         check_requires: bool = True,
         check_engine: Engine | None = None,
-        semantics: Semantics = "reference",
+        semantics: Semantics = "portable",
         on_inferred: OnInferred = "error",
         on_violation: Policy | None = None,
         schemas: Mapping[str, Any] | None = None,
@@ -3391,7 +3392,7 @@ def transform(
     on_unproved: OnUnproved | Literal["runtime"] = "error",
     check_requires: bool = True,
     check_engine: Engine | None = None,
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
     on_inferred: OnInferred = "error",
     on_violation: Policy | None = None,
     schemas: Mapping[str, Any] | None = None,
@@ -3441,7 +3442,7 @@ def transform(
             (the default) runs them through Ibis on the inputs' connection.
             `refresh(engine=)` says where a node's plan runs.
         semantics: What the contract's SQL conditions mean in its proofs,
-            as `verify`'s: `"reference"` (the default) or `"duckdb"`.
+            as `verify`'s: `"portable"` (the default) or `"duckdb"`.
         on_inferred: What a precondition sverify infers does, as
             `verify`'s. sverify infers the bounds it needs (`amount * 2` on
             BIGINT needs `_.amount < 2**62`). `"error"` (the default): the

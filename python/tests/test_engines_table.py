@@ -39,9 +39,10 @@ def _engine_profiles() -> set[str]:
 
 def test_semantics_are_the_checker_s_profiles() -> None:
     """A plan is verified under any profile of the checker but the core: the
-    reference, DuckDB's through its lift, and each plugin's that has one
-    (`ProfilePlugin.profile`, #1189)."""
-    assert set(semantics_names()) == set(_checker_profiles()) - {"core"}
+    reference (`"portable"` to the user), DuckDB's through its lift, and each
+    plugin's that has one (`ProfilePlugin.profile`, #1189)."""
+    named = {"portable" if p == "reference" else p for p in _checker_profiles()}
+    assert set(semantics_names()) == named - {"core"}
     with_profile = {e for e, p in profiles.plugins().items() if p.verifiable}
     assert with_profile == set(_checker_profiles()) - {"core", "reference", "duckdb"}
 

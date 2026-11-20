@@ -230,7 +230,7 @@ def test_substrait_manifest_of_formats_1_and_2() -> None:
             assert m["format"] == FORMAT == 3
             gone = {"profile", "observation", "equivalence", "equivalence_components"}
             assert not gone & set(m)
-            assert m["semantics"] in ("reference", "substrait") and isinstance(m["lenses"], str)
+            assert m["semantics"] in ("portable", "substrait") and isinstance(m["lenses"], str)
             assert all("equivalence" not in u and "observation" not in u for u in m["up_to"])
     with pytest.raises(ValueError, match="upgrade sverify"):
         _manifest({"format": FORMAT + 1})
@@ -312,7 +312,7 @@ def test_report_reads(version: str, case: str) -> None:
         now["facts"] = {
             c: {"text": f["text"], "nullable": f["nullable"]} for c, f in now["facts"].items()
         }
-    doc = _as_format_4(doc)
+    doc = _portable(_as_format_4(doc))
     assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
     skip = {"sverify", "format", "verdict", "summary"}
     assert {k: v for k, v in now.items() if k in doc and k not in skip} == {
@@ -350,6 +350,22 @@ def _as_format_4(doc: dict) -> dict:
         for c, t in doc.get("output", {}).items()
     }
     return out
+
+
+def _portable(doc: dict) -> dict:
+    """`doc` with the semantics a report written before 1.0 calls
+    `"reference"` named `"portable"`, in a route too (#2081)."""
+
+    def name(s: str) -> str:
+        return "portable" if s == "reference" else s
+
+    return {
+        **doc,
+        "semantics": name(doc["semantics"]),
+        "routes": {
+            e: {**r, "semantics": name(r["semantics"])} for e, r in doc.get("routes", {}).items()
+        },
+    }
 
 
 def _needs_by_label(doc: dict) -> dict:

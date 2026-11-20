@@ -53,7 +53,7 @@ def sql(
     *,
     name: str | None = None,
     dialect: str = "duckdb",
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
 ) -> SQLStep: ...
 @overload
 def sql(
@@ -61,7 +61,7 @@ def sql(
     /,
     *,
     dialect: str = "duckdb",
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
     **tables: ir.Table,
 ) -> ir.Table: ...
 def sql(
@@ -70,7 +70,7 @@ def sql(
     *,
     name: str | None = None,
     dialect: str = "duckdb",
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
     **tables: ir.Table,
 ) -> ir.Table | SQLStep:
     """SQL as a step of `Node.pipe`, or as the body of a transform.
@@ -91,7 +91,7 @@ def sql(
     is closed and checked. The query is DuckDB's SQL, and sverify's own lift
     (SQLGlot, #239) plans it,
     with every choice DuckDB's SQL leaves implicit written into the plan:
-    `semantics="reference"` (the default) means what sverify's reference
+    `semantics="portable"` (the default) means what sverify's reference
     model computes, and `semantics="duckdb"` means what DuckDB computes,
     where the two differ: a double divided by zero raises in the reference
     and gives `inf` on DuckDB; a cast of a double to an integer truncates in
@@ -108,7 +108,7 @@ def sql(
             name before 1.0, warns for one release.)
         dialect: The query's SQL dialect: `"duckdb"`, the default and so
             far the only one.
-        semantics: `"reference"` (the default) or `"duckdb"`.
+        semantics: `"portable"` (the default) or `"duckdb"`.
         **tables: For the body of a transform: the Ibis tables the query
             reads, by name.
 
@@ -184,9 +184,9 @@ def _semantics(dialect: str, semantics: str) -> Semantics:
     """`semantics`, checked, with `dialect`."""
     if dialect != "duckdb":
         raise ValueError(f"sverify.sql: dialect must be 'duckdb', not {dialect!r}")
-    if semantics not in ("duckdb", "reference"):
+    if semantics not in ("duckdb", "portable"):
         raise ValueError(
-            f"sverify.sql: semantics must be 'duckdb' or 'reference', not {semantics!r}"
+            f"sverify.sql: semantics must be 'duckdb' or 'portable', not {semantics!r}"
         )
     return cast(Semantics, semantics)
 
@@ -229,7 +229,7 @@ class SQLStep(ContractedTransform):
         tables: The tables the query reads, in the order it names them.
         as_: The table the chained node is (`sql(name=)`), or None.
         dialect: The query's dialect (`"duckdb"`), as `sql`'s.
-        semantics: `"duckdb"` or `"reference"`, as `sql`'s.
+        semantics: `"duckdb"` or `"portable"`, as `sql`'s.
     """
 
     def __init__(
@@ -237,7 +237,7 @@ class SQLStep(ContractedTransform):
         query: str,
         as_: str | None = None,
         dialect: str = "duckdb",
-        semantics: str = "reference",
+        semantics: str = "portable",
     ):
         self.query, self.as_ = query, as_
         self.dialect, self.semantics = dialect, _semantics(dialect, semantics)

@@ -117,7 +117,7 @@ def test_routes_after_a_run() -> None:
     assert set(doc["routes"]) == {"duckdb"}
     r = doc["routes"]["duckdb"]
     assert r["kind"] and r["class"] == "exact" and r["reason"]
-    assert r["semantics"] == "reference" and "profile" not in r
+    assert r["semantics"] == "portable" and "profile" not in r
     assert Report.from_json(report.to_json()).routes["duckdb"].kind == r["kind"]
 
 

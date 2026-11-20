@@ -241,7 +241,7 @@ def groups_of(fns: Iterable[str]) -> dict[str, set[str]]:
 def semantics_for(is_sql: bool) -> list[str]:
     """The profiles to verify under. Polars's checks Ibis only; SQL is
     DuckDB's."""
-    base = ["reference", "duckdb"] if is_sql else ["reference", "polars", "duckdb"]
+    base = ["portable", "duckdb"] if is_sql else ["portable", "polars", "duckdb"]
     return [*base, "substrait"]
 
 

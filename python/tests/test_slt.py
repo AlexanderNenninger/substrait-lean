@@ -394,7 +394,7 @@ def test_the_reference_replay_agrees_where_the_reference_raises(tmp_path, monkey
     DuckDB gives NaN agrees, and a `verify` issue agrees as static (no value
     differs here since #1484's refusal of the rounding casts, so `disagree` has
     no cheap case)."""
-    monkeypatch.setenv(slt.SEMANTICS_ENV, "reference")
+    monkeypatch.setenv(slt.SEMANTICS_ENV, "portable")
     path = tmp_path / "ref.test"
     path.write_text(
         textwrap.dedent(

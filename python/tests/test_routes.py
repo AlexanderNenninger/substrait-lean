@@ -26,7 +26,7 @@ def test_native_and_reference(con) -> None:
     for engine in ("duckdb", "polars"):
         out = report.run(con, engine, route="auto")
         r = report.routes[engine]
-        assert r.kind == "translated" and r.profile == "reference", r
+        assert r.kind == "translated" and r.profile == "portable", r
         assert sorted(out.column("j").to_pylist()) == [-6, 3, 4]
     assert "route on polars: exact" in report.details()
     duck = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": t}, semantics="duckdb")
@@ -51,7 +51,7 @@ def test_explicit_route_refusal_names_its_exit(con) -> None:
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
     r = routes.choose(duck, "polars", "translated")
-    assert r.refused and "verify with semantics='reference' to run on polars" in r.reason
+    assert r.refused and "verify with semantics='portable' to run on polars" in r.reason
     ref = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")})
     r = routes.choose(ref, "duckdb", "native")
     assert r.refused and 'route="auto" tries every route' in r.reason
@@ -88,7 +88,7 @@ def test_transfer_check(con) -> None:
     # #655: under "auto", the refusal leads with what to do. The checker
     # cannot prove under `Profile.polars` yet (#271), so there is no re-check.
     auto = routes.choose(duck, "polars")
-    assert auto.reason.startswith("verify with semantics='reference' to run on polars")
+    assert auto.reason.startswith("verify with semantics='portable' to run on polars")
     # Where the check passes, the route is taken.
     assert duck._engines is not None
     duck._engines["polars"]["transfer"]["duckdb"] = {"ok": True, "failures": []}
@@ -105,7 +105,7 @@ def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
     # `auto` has no re-check to go on to: the checker reports `polars` as
     # pending (#271), so it names the reference as the way.
     auto = routes.choose(duck, "polars")
-    assert auto.refused and auto.reason.startswith("verify with semantics='reference'"), auto
+    assert auto.refused and auto.reason.startswith("verify with semantics='portable'"), auto
 
 
 def test_unproved_plan_is_refused(con) -> None:

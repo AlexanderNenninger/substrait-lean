@@ -71,7 +71,7 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 

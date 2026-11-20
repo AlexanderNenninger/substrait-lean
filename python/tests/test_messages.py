@@ -506,5 +506,5 @@ def test_str_is_the_plain_contract_and_details_the_full_text():
     assert "Not proved:" in lines and any("total < 10" in line for line in lines)
     assert not any(line.startswith(("semantics:", "evidence:", "route on")) for line in lines)
     full = report.details().splitlines()
-    assert "semantics: reference" in full
+    assert "semantics: portable" in full
     assert "requires orders: unique(id)" in full

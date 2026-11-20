@@ -54,6 +54,9 @@ earlier formats:
   `not_null` listing the columns proved never NULL, and a postcondition's
   `needs` as their tables and labels; format 4 writes `facts` as objects
   (text, nullability, bounds) and `needs` as whole `needed` objects.
+- a report, a manifest or a sink's record written before 1.0 says
+  `"reference"` for the semantics 1.0 calls `"portable"` (`semantics`, a
+  route's `semantics`, the record's `profile`); a reader maps it.
 
 The OpenLineage facet `sverify_contract` follows the same name: its format
 2 says `lenses` where format 1 said `equivalence`.

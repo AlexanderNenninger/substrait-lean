@@ -101,7 +101,7 @@ def test_a_polars_request_is_reported_as_pending() -> None:
         r = sv.verify(
             t.select(q=t.i // t.j), requires={"t": [_.i >= LOW, _.j != 0]}, semantics="polars"
         )
-    assert r.verdict == sv.Verdict.PROVED and r.semantics == "reference"
+    assert r.verdict == sv.Verdict.PROVED and r.semantics == "portable"
 
 
 def test_written_plan_states_floor(report: sv.Report) -> None:
@@ -272,7 +272,7 @@ def test_double_modulus_is_refused_under_the_reference() -> None:
     Polars (#1270)."""
     con = sv.connect()
     con.put("t", _double_table())
-    report = _double_report(con, "reference", None)
+    report = _double_report(con, "portable", None)
     with pytest.raises(Exception, match="polars-double-modulus"):
         report.run(con, "polars")
 

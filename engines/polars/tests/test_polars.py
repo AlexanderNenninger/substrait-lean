@@ -320,7 +320,7 @@ def test_polars_view_matches_duckdb_view(name, data):
 def polars_rows(con, sql: str) -> list[tuple]:
     # The reference's semantics, and the model's integer `power`: Polars
     # against the model.
-    plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
+    plan = integer_powers(json.loads(substrait_json(con, sql, "portable")))
     return rows_of(run_plan(con, written_plan(json.dumps(plan)), "polars"))
 
 
@@ -587,7 +587,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
     con = connect()
     con.create("r", F, [(x,) for x in DOUBLES])
     sql = "SELECT f, CAST(floor(f) AS BIGINT) AS i FROM r"
-    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
+    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "portable")))
     assert duck == pl_rows
     con.create("r", F, [(1.0,), (math.nan,)])
     with pytest.raises(polars_engine.BadCast):

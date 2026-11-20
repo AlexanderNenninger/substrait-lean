@@ -381,7 +381,7 @@ def connection_of(table: ir.Table) -> Connection | None:
     return getattr(backend, "_sverify_connection", None)
 
 
-def plan_json(con: Connection, query: ir.Table | str, semantics: str = "reference") -> str:
+def plan_json(con: Connection, query: ir.Table | str, semantics: str = "portable") -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through sverify's lift
     (`substrait_json`) with `semantics`."""
@@ -394,7 +394,7 @@ def plan_json(con: Connection, query: ir.Table | str, semantics: str = "referenc
 
 
 def plan_json_over(
-    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "reference"
+    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "portable"
 ) -> str:
     """`plan_json` for a query over the tables `schemas` names, with no
     connection: the verifier holds no table, only schemas."""
@@ -402,7 +402,7 @@ def plan_json_over(
 
 
 def plan_and_differences(
-    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "reference"
+    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "portable"
 ) -> tuple[str, tuple[DialectDifference, ...]]:
     """`plan_json_over`, and for SQL where the reference reads the text
     differently from DuckDB (`Report.dialect_differences`)."""
@@ -413,7 +413,7 @@ def plan_and_differences(
         return to_substrait_json(query, semantics), ()
 
 
-def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> str:
+def substrait_json(con: Connection, sql: str, semantics: str = "portable") -> str:
     """Compile DuckDB's SQL to a Substrait plan with sverify's lift
     (`sverify.sql_lift`, SQLGlot), as protobuf JSON.
 
@@ -424,7 +424,7 @@ def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> s
     Args:
         con: The connection whose tables the SQL reads.
         sql: A query in DuckDB's SQL dialect.
-        semantics: `"reference"` (the default, as for `sv.verify` and
+        semantics: `"portable"` (the default, as for `sv.verify` and
             `sv.sql`): what sverify's reference model computes; or
             `"duckdb"`: what DuckDB computes where the two differ. Before
             0.6 the default was `"duckdb"`.
@@ -441,15 +441,13 @@ def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> s
     return lift_sql(schemas, sql, semantics)
 
 
-def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference") -> str:
+def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "portable") -> str:
     """`substrait_json` over the tables `schemas` names: those the SQL reads
     are the lift's inputs."""
     return json.dumps(lift_sql_plan(schemas, sql, semantics).plan)
 
 
-def lift_sql_plan(
-    schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference"
-) -> Any:
+def lift_sql_plan(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "portable") -> Any:
     """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
     `schemas` it reads."""
     from sverify.sql_lift import full_name, lift

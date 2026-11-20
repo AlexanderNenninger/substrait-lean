@@ -162,7 +162,10 @@ TESTED = [
 
 #: A refusal's class, by a phrase of its reason, the first that matches.
 REFUSED = [
-    ("no translation from the reference to", "refused: no route from the reference (Snowflake)"),
+    (
+        "no translation from portable semantics to",
+        "refused: no route from the reference (Snowflake)",
+    ),
     ("which the observation ignores", "refused: postcondition reads doubles a tolerance ignores"),
     (
         "of the reference: write it as sv.approx",

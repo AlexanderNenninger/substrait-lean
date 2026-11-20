@@ -434,10 +434,10 @@ def test_f1_a_polars_request_runs_translated_on_polars(con) -> None:
     plan reaches Polars by the translation, which computes the stated `FLOOR`."""
     with pytest.warns(ProfilePendingWarning):
         report = _floor_report(con)
-    assert report.verdict == sv.Verdict.PROVED and report.semantics == "reference", str(report)
+    assert report.verdict == sv.Verdict.PROVED and report.semantics == "portable", str(report)
     out = report.run(con, "polars", route="auto")
     r = report.routes["polars"]
-    assert (r.kind, r.profile) == ("translated", "reference")
+    assert (r.kind, r.profile) == ("translated", "portable")
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
     assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
     assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
@@ -498,7 +498,7 @@ def test_f2_duckdb_plan_is_refused_on_polars_until_271(con) -> None:
     assert report.verdict == sv.Verdict.PROVED, str(report)
     assert routes.choose(report, "duckdb").kind == "native"
     r = routes.choose(report, "polars")
-    assert r.refused and "semantics='reference'" in r.reason, r
+    assert r.refused and "semantics='portable'" in r.reason, r
     assert math.inf in report.run(big, "duckdb").column("z").to_pylist()
 
 

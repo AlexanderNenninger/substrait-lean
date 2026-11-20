@@ -165,7 +165,7 @@ every possible input, or says why it can't ([what is proved](https://github.com/
 * A route takes the proof to the engine. `route="auto"` runs the plan on
   DuckDB, Polars or Spark natively, through the reference's translation (proved against the model of
   the engine), or by a check that the engine's choices are within the proof's, and names
-  the plan's class there: exact, equal under an observation the
+  the plan's class there: exact, equal under lenses the
   postcondition states (a float tolerance is one), or exact or observed
   after a shim proved against that model. Where no route
   applies, the plan is refused with the reason
@@ -301,7 +301,7 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 `sverify check` reads a Python file or a dbt project; a bare `.sql` file is not checked yet, so put the query in `sv.sql` in a `.py` file, or use [sverify-dbt](https://github.com/AlexanderNenninger/substrait-lean/blob/main/dbt/README.md).
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
-through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
+through SQLGlot, with sverify's reference semantics (`semantics="portable"`,
 the default) or DuckDB's (`semantics="duckdb"`), for a subset of
 SQL so far ([what the SQL lift reads](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md)).
 
@@ -373,7 +373,7 @@ big.to_sql("snowflake")
 * `report.run(con, engine, route="auto")` runs a proved plan on an
   engine by a route (`report.routes` records it, with its class), and
   `refresh(engine=..., route="auto")` does the same for each node.
-  `sv.equivalent(...)` in `ensures` names the observation, and
+  `sv.equivalent(...)` in `ensures` names the lenses, and
   `reproducible=` on a sink what a rerun must reproduce.
 * `sverify.engines` has the engines, SQL dialects and plans
   (`run_sharded` runs a plan per shard and combines the results, with a

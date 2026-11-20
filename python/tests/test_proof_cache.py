@@ -97,7 +97,7 @@ def test_a_changed_profile_misses(cache: Path) -> None:
     _new_process()
     report, t = _verify(_query(), semantics="polars")
     assert t.calls["checker"] >= 1
-    assert report.semantics == "reference"  # polars is pending (#271)
+    assert report.semantics == "portable"  # polars is pending (#271)
 
 
 def test_another_version_misses(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:

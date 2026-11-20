@@ -26,7 +26,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -63,7 +63,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -122,7 +122,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -156,7 +156,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -188,7 +188,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -217,7 +217,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -245,7 +245,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -276,7 +276,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -304,7 +304,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -332,7 +332,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -362,7 +362,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -396,7 +396,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -435,7 +435,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -514,7 +514,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -549,7 +549,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -585,7 +585,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -610,7 +610,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -644,7 +644,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -682,7 +682,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -722,7 +722,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -812,7 +812,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -839,7 +839,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -867,7 +867,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -901,7 +901,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -939,7 +939,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -976,7 +976,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1011,7 +1011,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1062,7 +1062,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1087,7 +1087,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -1116,7 +1116,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1174,7 +1174,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1206,7 +1206,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1238,7 +1238,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1310,7 +1310,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -1345,7 +1345,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1373,7 +1373,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1395,7 +1395,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1427,7 +1427,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [

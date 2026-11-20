@@ -61,7 +61,7 @@ def test_duckdb_raises_on_the_issues_query_on_any_data(rows):
         native.sql(LATER_WHEN).fetchall()
     con = connect()
     put_table(con, "t", t)
-    plan = written_plan(substrait_json(con, LATER_WHEN, "reference"))
+    plan = written_plan(substrait_json(con, LATER_WHEN, "portable"))
     with pytest.raises(Exception, match="(?i)division by zero"):
         run_plan(con, plan, "duckdb")
 

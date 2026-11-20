@@ -44,17 +44,17 @@
       "type": "string"
     },
     "engine_version": {
-      "description": "The engine version the profile of semantics describes, the version its facts were probed at (Report.engine_version); null under the reference and substrait.",
+      "description": "The engine version the profile of semantics describes, the version its facts were probed at (Report.engine_version); null under portable and substrait.",
       "type": [
         "string",
         "null"
       ]
     },
     "semantics": {
-      "description": "The semantics the report is under. 1.x may add values.",
+      "description": "The semantics the report is under. 1.x may add values. A report written before 1.0 says reference for portable.",
       "type": "string",
       "examples": [
-        "reference",
+        "portable",
         "duckdb",
         "polars",
         "substrait"
@@ -80,7 +80,7 @@
     },
     "lenses": {
       "description": "What the result's consumer observes (Report.lenses); a report written before the name lenses calls it equivalence.",
-      "$ref": "#/$defs/equivalence"
+      "$ref": "#/$defs/lenses"
     },
     "deterministic": {
       "description": "Whether every result the reference allows is one up to row order and up to the member of each class of doubles, -0.0 and 0.0 and every NaN (Report.deterministic, D48): no ties in an ORDER BY a window, an ordered aggregate or a LIMIT reads, no expression that tells the members of a picked class apart, and no other value the reference leaves open.",
@@ -389,7 +389,7 @@
       }
     },
     "floats_on": {
-      "description": "Per engine, why its doubles may not meet the equivalence (empty where they do).",
+      "description": "Per engine, why its doubles may not meet the lenses (empty where they do).",
       "type": "object",
       "additionalProperties": {
         "type": "array",
@@ -759,7 +759,7 @@
         "reproducible": {
           "oneOf": [
             {
-              "$ref": "#/$defs/equivalence"
+              "$ref": "#/$defs/lenses"
             },
             {
               "type": "null"
@@ -785,7 +785,7 @@
         "lenses": {
           "oneOf": [
             {
-              "$ref": "#/$defs/equivalence"
+              "$ref": "#/$defs/lenses"
             },
             {
               "type": "null"
@@ -800,7 +800,7 @@
         }
       }
     },
-    "equivalence": {
+    "lenses": {
       "description": "What the result's consumer can tell apart (sv.equivalent): its text and its components; a tolerance on doubles is {abs, rel, ulps}.",
       "type": "object",
       "required": [
