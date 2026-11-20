@@ -154,10 +154,12 @@ def test_a_postcondition_at_the_edge_of_the_mean_is_refused():
 # A `SUM` whose argument's range and proved row cap keep it inside its type
 # (`Measure.sumFits`: 64 bits for integers, the result's precision for decimals)
 # is outside the `overflow` option's scope (D34), so its value is the reference's on
-# every engine. The report's `epsilon` holds double aggregates only: the tests read
-# the sum's flag through a filter on it, which keeps a double `SUM(d)`'s bound proved
-# only where the filter's condition is proved exact on every engine (`colEps`,
-# `keepIf`).
+# every engine. The report's `epsilon` holds no integer or decimal column, and a
+# double aggregate's flag reads only the aggregate's own input. A column that reads
+# a lifted mean (D52) has its flag from the whole plan (`colEps`): a filter on the
+# sum keeps the mean's band proved only where the filter's condition is proved exact
+# on every engine (`keepIf`). The mean's own `SUM(x)` fits 64 bits at every cap here
+# (1e11 * 1e7 = 1e18 <= 2^63 - 1).
 
 TS = {
     "t": pa.schema(
@@ -173,21 +175,21 @@ def _abs_bound(report, col: str) -> dict:
     return ((eps.get(col) or {}).get("bounds") or {}).get("abs") or {}
 
 
-def _sum_proved(arg: str, cap: int | None) -> bool:
-    requires = RANGES + ([sv.max_rows(cap)] if cap is not None else [])
+def _sum_proved(arg: str, cap: int) -> bool:
+    """Is a filter on `SUM(arg)` proved exact? Read through the lifted mean beside it."""
     report = sv.verify(
-        f"SELECT ds FROM (SELECT k, SUM({arg}) AS s, SUM(d) AS ds FROM t GROUP BY k) WHERE s > 0",
+        f"SELECT m FROM (SELECT k, SUM({arg}) AS s, AVG(x) AS m FROM t GROUP BY k) WHERE s > 0",
         tables=TS,
-        requires={"t": requires},
-        semantics="reference",
+        requires={"t": [*RANGES, sv.max_rows(cap)]},
+        semantics="duckdb",
         on_inferred="warn",
     )
-    return bool(_abs_bound(report, "ds").get("proved"))
+    return bool(_abs_bound(report, "m").get("proved"))
 
 
 def test_an_integer_sum_inside_64_bits_is_proved_exact():
-    # 1e6 rows of at most 1e7: 1e13 <= 2^63 - 1.
-    assert _sum_proved("x", 1_000_000)
+    # 1e11 rows of at most 1e7: 1e18 <= 2^63 - 1.
+    assert _sum_proved("x", 100_000_000_000)
 
 
 def test_a_decimal_sum_inside_its_type_is_proved_exact():
@@ -197,9 +199,8 @@ def test_a_decimal_sum_inside_its_type_is_proved_exact():
 
 def test_a_decimal_sum_that_may_leave_its_type_is_not_proved():
     # 1e11 rows of 999.99 reach 1e16 > 1e15 - 1, though the unscaled sum,
-    # 99999 * 1e11, fits 64 bits. The control: the same cap over an integer column
-    # stays proved (1e11 * 1e7 = 1e18 <= 2^63 - 1), so the type's bound moves the flag.
-    assert _sum_proved("x", 100_000_000_000)
+    # 99999 * 1e11, fits 64 bits. The integer SUM at the same cap is proved
+    # (test_an_integer_sum_inside_64_bits_is_proved_exact): the type's bound moves the flag.
     assert not _sum_proved("c", 100_000_000_000)
 
 
