@@ -26,6 +26,7 @@ from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
 from sverify._dialect import DialectDifference, difference
+from sverify._unsupported import QUANTILE_OF_DECIMAL
 from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
@@ -1722,8 +1723,7 @@ class _Lift:
         if name in ("median", "quantile_cont"):
             if t.is_decimal():
                 raise Unsupported(
-                    f"{_shown(node)} of a DECIMAL is not supported yet (DuckDB interpolates "
-                    "it as a DECIMAL); cast it to DOUBLE"
+                    f"{_shown(node)} of {t} {QUANTILE_OF_DECIMAL}; cast it to DOUBLE first"
                 )
             if not (t.is_integer() or t.is_float64()):
                 raise SqlUnsupported(f"{_shown(node)} of {t} is not supported")

@@ -1048,7 +1048,9 @@ DEC = ibis.table({"k": "int64", "d": "decimal(10, 2)"}, name="t")
 def test_quantile_of_a_decimal_is_refused_with_the_way_out():
     """No engine gives one value for it (#1921): the message names the cast."""
     for agg in (DEC.d.median(), DEC.d.quantile(0.5)):
-        with pytest.raises(Exception, match=r"cast the column to float64 first"):
+        with pytest.raises(
+            Exception, match=r"no engine gives one value.*cast the column to float64"
+        ):
             to_substrait_json(DEC.group_by("k").aggregate(q=agg))
 
 

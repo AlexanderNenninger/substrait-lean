@@ -129,7 +129,7 @@ def test_the_reference_lift_is_checked_too(query):
             "over a window is not supported",
         ),
         ("SELECT mode(qty) FROM orders", "breaks ties in the engine's order"),
-        ("SELECT median(cost) FROM orders", "of a DECIMAL is not supported yet"),
+        ("SELECT median(cost) FROM orders", "no engine gives one value for it"),
         ("SELECT quantile_cont(amount, -0.5) FROM orders", "between 0 and 1"),
         ("SELECT quantile_cont(amount, [0.25, 0.5]) FROM orders", "one number"),
         ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),
