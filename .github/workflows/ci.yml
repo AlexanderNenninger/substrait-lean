@@ -297,7 +297,7 @@ jobs:
           m=$(matrix "$backends")
           echo "matrix: $m"
           out "matrix=$m"
-          if grep -qE '^(float-bounds/|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
+          if grep -qE '^(float-bounds/|core/Sverify/Core/Float(Exact|Format)?\.lean$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
              <<< "$files"; then
             out floats=true
           else
