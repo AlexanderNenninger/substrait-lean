@@ -1,7 +1,7 @@
 """Incrementally maintained views on the refresh's engine, with delta plans from Lean.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 The verified part is the delta plan: `substrait-check --delta` compiles the
 view's Substrait plan with `Rel.delta` and applies the weight-column encoding
@@ -641,10 +641,11 @@ def content_digest(table: pa.Table) -> str:
 
 @dataclass
 class Stored:
-    """A view's state as a sink stored it, to resume a restarted pipeline
-    from (`Pipeline.view(..., resume=...)`). Trusted: the sink's table holds
-    exactly the view's rows at `sources`; it does while the sink is the only
-    writer, and the sources check that the last commit is the sink's."""
+    """A node's state as a sink stored it, which a restarted job's first
+    refresh resumes from (`DeltaSource.stored`, `IcebergSource.stored`).
+    Trusted: the sink's table holds exactly the node's rows at `sources`; it
+    does while the sink is the only writer, and the sources check that the
+    last commit is the sink's."""
 
     where: str
     """E.g. "data/big@v7"."""
@@ -653,19 +654,26 @@ class Stored:
     plan: str
     """`plan_digest` of the view's plan."""
     sources: dict[str, int]
+    """The version of each source the state is at."""
     digests: dict[str, str]
     """`table_digest` of each static table the view read."""
     table: pa.Table
+    """The state's rows."""
     table_ids: dict[str, str] | None = None
     """The source tables' ids the record names (`Contract.table_ids`), or
     None if the sink did not say: then they are read from its contract."""
     engine: str | None = None
+    """The engine that computed the state (`Contract.engine`), or None where
+    the record does not say; likewise the four below."""
     engine_version: str | None = None
+    """The version of the engine's library (`Contract.engine_version`)."""
     sverify: str | None = None
+    """The version of sverify that wrote the record (`Contract.sverify`)."""
     profile: str | None = None
+    """The profile the plan was verified under (`Contract.profile`)."""
     package: str | None = None
-    """What the record says about who wrote the state (`Contract.engine` …):
-    None where it does not."""
+    """The engine's package as `name==version`, for an engine from another
+    package than sverify (`Contract.package`)."""
 
 
 class StaticSource(Pipeable):
@@ -696,6 +704,9 @@ class StaticSource(Pipeable):
         version: Their version.
         digest: sha256 of their schema and bag of rows.
         name: The table's name in the plans that read it.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
     """
 
     def __init__(
@@ -859,13 +870,25 @@ class StaticSource(Pipeable):
 
 @dataclass
 class SourceRefresh:
+    """What one refresh read from one source: the versions it went from
+    and to, how it got the change, and how many rows it inserts and
+    deletes. `str()` gives one line."""
+
     table: str
+    """The source's name in the plans that read it."""
     start: int
+    """The version the refresh started from."""
     end: int
+    """The version it reached; `start` when nothing is new."""
     mode: Literal["unchanged", "change_feed", "snapshot_diff", "recomputed"]
+    """How the change was found: no new version, the source's change feed,
+    the difference of two snapshots, or a recompute from scratch."""
     detail: str = ""
+    """Why, in words: what the change rests on, or why it was recomputed."""
     inserts: int = 0
+    """The rows the change inserts."""
     deletes: int = 0
+    """The rows the change deletes."""
     schema: str = ""
     """How the source's schema changed in this batch (`SchemaChange`), or ""."""
 
@@ -887,7 +910,13 @@ class SourceRefresh:
 
 @dataclass
 class RefreshReport:
+    """What one refresh did to a node's state: what it read from each
+    source, how the preconditions on the batch were established, and how
+    each view was brought up to date. `str()` gives one line per fact;
+    `notable` lists what a log should show in full."""
+
     sources: list[SourceRefresh]
+    """What the refresh read from each source."""
     preconditions: list[Discharged]
     """How each precondition on the batch was established."""
     versions: dict[str, dict[str, int]]
@@ -917,6 +946,7 @@ class RefreshReport:
 
     @property
     def recomputed(self) -> list[str]:
+        """The sources whose change could not be applied incrementally."""
         return [s.table for s in self.sources if s.mode == "recomputed"]
 
     @property

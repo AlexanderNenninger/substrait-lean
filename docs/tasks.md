@@ -1918,7 +1918,7 @@ The [Open Data Contract Standard](https://bitol-io.github.io/open-data-contract-
 (ODCS, Bitol, Linux Foundation AI & Data) describes a dataset's contract in
 YAML: its schema, quality rules, descriptions and owners. Sverify writes a
 node's contract as ODCS and reads ODCS contracts as conditions.
-It writes ODCS v3.2.0 (`sverify.odcs.ODCS_VERSION`), and the tests validate
+It writes ODCS v3.2.0 (its `apiVersion`), and the tests validate
 every export against that release's JSON schema
 ([tests/standards/](../python/tests/standards/odcs-json-schema-v3.2.0.json),
 [test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:

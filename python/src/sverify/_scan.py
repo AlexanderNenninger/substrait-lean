@@ -66,6 +66,7 @@ class Native:
     """A table DuckDB reads where it is, with its Arrow `schema`."""
 
     schema: pa.Schema
+    """The table's schema."""
 
     def attach(
         self, db: duckdb.DuckDBPyConnection, name: str, *, table: bool = False
