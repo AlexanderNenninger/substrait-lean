@@ -8,9 +8,9 @@
   },
   "sverify_substrait": "0.106.0",
   "summary": {
-    "agree": 330,
+    "agree": 332,
     "disagree": 10,
-    "refused": 192,
+    "refused": 190,
     "skipped": 146
   },
   "refusals": {
@@ -18,44 +18,43 @@
     "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 16,
     "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls": 16,
     "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an ": 10,
-    "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 8,
-    "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 8,
     "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls": 8,
-    "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls": 6,
-    "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 6,
+    "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 8,
+    "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 8,
     "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 6,
     "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls": 6,
+    "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls": 6,
+    "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 6,
     "refused for Substrait: dec.arith'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an ": 5,
+    "no impl of regexp_replace in Substrait's YAMLs takes (string, string, string, string); cast the arguments to the types of one of its impls": 4,
+    "no impl of lag in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 4,
+    "no impl of lead in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 4,
+    "md5 is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 4,
+    "no impl of lt in Substrait's YAMLs takes (precision_timestamp<N>, date); cast the arguments to the types of one of its impls": 4,
     "array_agg is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 4,
     "the plan has a extensionSingle relation, which to_substrait does not write for other consumers yet; report.to_sql(dialect) writes the proved plan for an engine ": 4,
-    "no impl of lag in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 4,
     "no impl of substring in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls": 4,
-    "no impl of regexp_replace in Substrait's YAMLs takes (string, string, string, string); cast the arguments to the types of one of its impls": 4,
-    "md5 is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 4,
-    "no impl of lead in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 4,
-    "no impl of lt in Substrait's YAMLs takes (precision_timestamp<N>, date); cast the arguments to the types of one of its impls": 4,
     "refused for Substrait: cmp'…'annotate'…'s nan_order: Substrait allows UNORDERED where the proof uses GREATEST (ST-N, upstream/bugs/ST-N.json); no shim writes it": 3,
     "refused for Substrait: str.concat'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an": 3,
-    "no impl of max in Substrait's YAMLs takes (boolean); cast the arguments to the types of one of its impls": 2,
-    "bit_and is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
-    "no impl of nth_value in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 2,
-    "no impl of round in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls": 2,
-    "refused for Substrait: fp.elem'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an en": 2,
-    "upper maps non-ASCII text by a rule Substrait leaves open (ST-N, upstream/bugs/ST-N.json); report.to_sql(dialect) writes the proved plan for an engine instead": 2,
-    "regexp_match is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instea": 2,
-    "ilike is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
-    "ascii is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
-    "levenshtein is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
-    "regexp_extract is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inst": 2,
-    "no impl of add in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 2,
-    "sverify_raise is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inste": 2,
-    "no impl of add in Substrait's YAMLs takes (precision_time<N>, interval_day<N>); cast the arguments to the types of one of its impls": 2,
-    "try_varchar_bigint is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine ": 2,
-    "no impl of lag in Substrait's YAMLs takes (boolean, i64); cast the arguments to the types of one of its impls": 2,
     "no impl of lag in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls": 2,
+    "no impl of lag in Substrait's YAMLs takes (boolean, i64); cast the arguments to the types of one of its impls": 2,
     "no impl of lag in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls": 2,
     "no impl of equal in Substrait's YAMLs takes (date, precision_timestamp<N>); cast the arguments to the types of one of its impls": 2,
     "no impl of multiply in Substrait's YAMLs takes (decimal<N, N>, i64); cast the arguments to the types of one of its impls": 2,
+    "no impl of max in Substrait's YAMLs takes (boolean); cast the arguments to the types of one of its impls": 2,
+    "bit_and is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "try_varchar_bigint is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine ": 2,
+    "no impl of round in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls": 2,
+    "ascii is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "ilike is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "levenshtein is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "regexp_extract is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inst": 2,
+    "regexp_match is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instea": 2,
+    "upper maps non-ASCII text by a rule Substrait leaves open (ST-N, upstream/bugs/ST-N.json); report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "sverify_raise is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inste": 2,
+    "no impl of add in Substrait's YAMLs takes (precision_time<N>, interval_day<N>); cast the arguments to the types of one of its impls": 2,
+    "no impl of add in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 2,
+    "no impl of nth_value in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 2,
     "refused for Substrait: agg.stat'…'annotate'…'s pow_one_inf: Substrait allows ONE, NAN where the proof uses ONE; no shim writes it for this plan: export with shi": 1
   },
   "findings": {
@@ -1495,8 +1494,7 @@
       "outcome": "agree"
     },
     "coverage/math/exp [apply]": {
-      "outcome": "refused",
-      "reason": "refused for Substrait: fp.elem'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an en"
+      "outcome": "agree"
     },
     "coverage/math/isinf [annotate]": {
       "outcome": "agree"
@@ -1563,8 +1561,7 @@
       "outcome": "agree"
     },
     "coverage/math/trigonometry [apply]": {
-      "outcome": "refused",
-      "reason": "refused for Substrait: fp.elem'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an en"
+      "outcome": "agree"
     },
     "coverage/nulls/coalesce [annotate]": {
       "outcome": "agree"

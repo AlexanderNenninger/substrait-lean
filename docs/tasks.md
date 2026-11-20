@@ -1823,11 +1823,11 @@ in the `"apply"` and `"annotate"` modes, and CI's `evidence` job compares the
 validator's verdicts with the ledger
 [`substrait_validator.json`](../python/tests/substrait_validator.json),
 [`sverify_dev.substrait_validator`](../python/tools/sverify_dev/substrait_validator.py).
-On 2026-11-20: 330 exports valid, 10 with a recorded finding (time and
+On 2026-11-20: 332 exports valid, 10 with a recorded finding (time and
 timestamp literals the validator does not implement yet,
 [ST-19](../upstream/bugs/ST-19.json), and a decimal precision,
 [#1904](https://github.com/AlexanderNenninger/substrait-lean/issues/1904)),
-192 refused with their reason, 146 not proved.
+190 refused with their reason, 146 not proved.
 
 `node.to_substrait()` and `transform.to_substrait()` export the report of
 a node and of a transform's last call.
