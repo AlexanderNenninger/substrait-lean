@@ -77,7 +77,7 @@ Lean file; [proofs.md](proofs.md) lists each guarantee with its theorem.
 | ODCS contracts | A data contract in a standard format lets another team build on your table; Sverify writes the proved contract as ODCS. | The task page's [ODCS contracts](tasks.md#odcs-contracts) section | No notebook: [#1053] | No theorem: [#1053] |
 | The `sverify` command | You want the proof in CI and on the pull request, without a notebook; `sverify check` proves every transform and node in a file and prints the contract in plain words. | `sverify check file.py --diff` and `--fix`; each finding carries a code that `sverify explain` describes; "time budget exceeded" does not name `SVERIFY_TIMEOUT`: [#1056] | [06](../notebooks/06_running_in_production.py), "1. Check the file before it merges" | `contract_sound` ([Contracts.lean](../analysis/Sverify/Analysis/Contracts.lean)) for what it reports |
 | The pytest plugin | A contract belongs in the test suite you already run; the plugin's `assert_contract(node)` asserts a node's contract is proved and, with rows, checks it on them. | The task page's [Testing with pytest](tasks.md#testing-with-pytest) section | [06](../notebooks/06_running_in_production.py), "2. A test for CI" | `contract_sound` ([Contracts.lean](../analysis/Sverify/Analysis/Contracts.lean)) |
-| sverify-dbt | A dbt test that always holds still costs a query on every build; Sverify-dbt proves a project's tests from the tests upstream and lists those `dbt build` can skip. | `sverify-dbt check`, `suggest`, `--selectors`; the report's `needs` lists the source test to add; each model refusal names what dbt still runs or the rewrite | No notebook: [#1055]. [03](../notebooks/03_orders_mart.py) proves dbt-style tests with sverify itself | `contract_sound`, `Rel.keys_sound` under `semantics="duckdb"`; not named in [dbt/README.md](../dbt/README.md): [#1055] |
+| sverify-dbt | A dbt test that always holds still costs a query on every build; Sverify-dbt proves a project's tests from the tests upstream and lists those `dbt build` can skip. | `sverify-dbt check`, `suggest`, `--selectors`; the report's `needs` lists the source test to add; each model refusal names what dbt still runs or the rewrite | [08](../notebooks/08_dbt.py); [03](../notebooks/03_orders_mart.py) proves dbt-style tests with sverify itself | `contract_sound`, `Rel.keys_sound` under `semantics="duckdb"`; named in [dbt/README.md](../dbt/README.md) |
 
 ## Refusals and their exits
 
@@ -184,6 +184,5 @@ on 2026-11-07.
 [#1051]: https://github.com/AlexanderNenninger/substrait-lean/issues/1051
 [#1053]: https://github.com/AlexanderNenninger/substrait-lean/issues/1053
 [#1054]: https://github.com/AlexanderNenninger/substrait-lean/issues/1054
-[#1055]: https://github.com/AlexanderNenninger/substrait-lean/issues/1055
 [#1056]: https://github.com/AlexanderNenninger/substrait-lean/issues/1056
 [#1057]: https://github.com/AlexanderNenninger/substrait-lean/issues/1057
