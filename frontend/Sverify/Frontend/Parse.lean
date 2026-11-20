@@ -761,8 +761,9 @@ def calendarInterval (l : Json) : J Bool := do
 key and carried through; the rest is refused, and says so. -/
 def instantRefusal (what : String) : String :=
   s!"{what} is not supported yet (#1725): a timestamp with a time zone can be read, compared \
-    with other such columns, used as a key and written back; literals, conversions and \
-    calendar functions follow"
+    with other such columns, used as a key and written back, and converted to a timestamp at \
+    UTC (a cast to a timestamp, `x AT TIME ZONE 'UTC'` in SQL), which the calendar functions \
+    read (D69); a function of an instant that reads a zone is refused"
 
 def parseConstLiteral (j : Json) : J Const := do
   if intTags.any (fun (k, _) => (field? j k).isSome) &&
@@ -1538,7 +1539,10 @@ def mkTemporalCall? : String → List Expr → Option (J Expr)
     match Time.TimeUnit.ofName? u with
     | some u => pure (.un (.dateTrunc u) a)
     | none => throw s!"unsupported date_trunc unit '{u}'"
-  -- chrono's formats; DataFusion's `to_char`.
+  -- chrono's formats; DataFusion's `to_char`. Every directive reads the wall clock, so the
+  -- Ibis producer's `strftime` of an instant at UTC is this of its conversion (D69); a zone
+  -- directive (`%z`, `%Z`) would print `+0000` for an instant and nothing here, so adding
+  -- one to the list needs a decision of its own.
   | "strftime", [a, .lit (.str fmt)] | "to_char", [a, .lit (.str fmt)]
   | "date_format", [a, .lit (.str fmt)] => some <|
     match Time.parseFormat fmt.toList with

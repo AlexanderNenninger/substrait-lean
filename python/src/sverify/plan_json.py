@@ -91,7 +91,8 @@ class ProducerUnsupported(Unsupported):
 #: (D53, #1725).
 INSTANT_NOTE = (
     "(#1725): a timestamp with a time zone can be read, compared with other such columns, "
-    "used as a key and written back; literals, conversions and calendar functions follow"
+    "used as a key and written back, and converted to a timestamp at UTC (a cast to a "
+    "timestamp, `x AT TIME ZONE 'UTC'` in SQL), which the calendar functions read (D69)"
 )
 
 #: The spellings of the time zone UTC the readers produce (Arrow, Delta, Ibis).
