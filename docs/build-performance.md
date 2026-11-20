@@ -56,6 +56,28 @@ Otherwise the PR body says why it costs more, and its line in the budget may
 go up. After a PR that makes modules cheaper,
 `write-budget` from the CI artifact lowers the ceilings.
 
+CPU time on CI depends on the runner. The `lean` job runs on GitHub's
+`ubuntu-latest` and on self-hosted AWS spot instances of several types, and
+the same module's CPU time differs between them by a factor of about two. The
+`lean-timings` artifacts of 34 runs that rebuilt DuckDB's generated modules,
+from 2026-11-09 to 2026-11-19, with the modules unchanged since 2026-11-11:
+
+| module | runs | min CPU s | median | max | max/min |
+|---|---:|---:|---:|---:|---:|
+| `Sverify.DuckDB.LoweringOn.Arith` | 34 | 241 | 328 | 558 | 2.32 |
+| `Sverify.DuckDB.Lift.Duckdb.Arith` | 34 | 188 | 262 | 418 | 2.22 |
+| `Sverify.DuckDB.Lift.Duckdb.Compare` | 34 | 112 | 162 | 248 | 2.21 |
+| `Sverify.DuckDB.LoweringOn.Guards` | 34 | 124 | 146 | 236 | 1.90 |
+| `Sverify.DuckDB.LoweringOn.Integers` | 34 | 57 | 82 | 124 | 2.18 |
+| `Sverify.DuckDB.LoweringOn.Math` | 34 | 43 | 60 | 103 | 2.40 |
+
+The spread has no trend over those ten days: the highest values come on
+2026-11-11 as on 2026-11-19. A warning on one of these modules, with the
+module and its imports unchanged, is the runner; the ceilings came from the
+faster runners. Comparing a module's CPU time with another module's on the
+same run would take the runner out
+([#1865](https://github.com/AlexanderNenninger/substrait-lean/issues/1865)).
+
 ## The checker's speed
 
 The build budget covers the proofs; this covers what they compile to.
