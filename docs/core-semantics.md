@@ -1244,5 +1244,6 @@ to it, so links to an entry here still land.
 - <a id="d47-raise-value-or-open-where-engines-differ"></a>[D47. Raise, value or open where engines differ](decisions.md#d47-raise-value-or-open-where-engines-differ)
 - <a id="d48-a-result-is-determined-up-to-the-classes-its-observation-reads"></a>[D48. A result is determined up to the classes its observation reads](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)
 - <a id="d49-a-value-known-from-one-engine-is-provisional"></a>[D49. A value known from one engine is provisional](decisions.md#d49-a-value-known-from-one-engine-is-provisional)
+- <a id="d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand"></a>[D50. The frontends lift `AND` and `OR` so a guard protects the next operand](decisions.md#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand)
 - <a id="d53-a-timestamp-with-the-time-zone-utc-is-an-instant"></a>[D53. A timestamp with the time zone UTC is an instant](decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)
 - <a id="d54-the-lift-refines-the-dialect"></a>[D54. The lift refines the dialect](decisions.md#d54-the-lift-refines-the-dialect)
