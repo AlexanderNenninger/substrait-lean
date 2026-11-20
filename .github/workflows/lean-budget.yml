@@ -1,22 +1,21 @@
 name: Lean budget
 
 # Measures the Lean build budget (docs/build-performance.md, "The budget"):
-# a cold build of every module through the timing sysroot, after the
-# calibration, on GitHub's runners and on the AWS pool, whose CPUs differ.
-# Each job uploads a `lean-budget-<n>` artifact, and `write-budget` over all
-# of them writes scripts/lean-budget.json:
+# a cold build of every module through the timing sysroot, on GitHub's
+# runners and on the AWS pool, whose CPUs differ by up to 2.5 times. Each job
+# uploads a `lean-budget-<n>` artifact, and `write-budget` over all of them
+# writes scripts/lean-budget.json from each module's slowest run:
 #
 #   gh run download RUN -p 'lean-budget-*' -D budget
 #   python3 scripts/lean_timings.py write-budget budget/*/lean-timings.jsonl
 #
-# Runs when the calibration changes (every ceiling is in its units), and by hand.
+# Runs by hand, after a change that makes modules cheaper or a toolchain update.
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
       - .github/workflows/lean-budget.yml
-      - scripts/lean-calibration.lean
 
 permissions:
   contents: read
@@ -31,9 +30,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Two GitHub runners and four AWS spot instances: each draws its CPU
-        # from its pool's types.
-        runner: [github, github, aws, aws, aws, aws]
+        # Each draws its CPU from its pool's types.
+        runner: [github, aws, aws]
     runs-on: ${{ matrix.runner == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "linux", "x64", "aws"]') }}
     timeout-minutes: 120
     steps:
@@ -48,7 +46,6 @@ jobs:
         with:
           cache: "false"
       - run: python3 scripts/lean_timings.py sysroot "$LEAN_SYSROOT"
-      - run: python3 scripts/lean_timings.py calibrate "$LEAN_TIMINGS"
       # As CI's `lean` job builds: each package, then the root with the
       # generated proofs checked.
       - run: |

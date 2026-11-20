@@ -11,14 +11,8 @@ build itself is unchanged: same arguments, same outputs, same exit status.
     python3 scripts/lean_timings.py sysroot /tmp/lean-sysroot
     LEAN_SYSROOT=/tmp/lean-sysroot LEAN_TIMINGS=timings.jsonl lake build
     python3 scripts/lean_timings.py report timings.jsonl
-    python3 scripts/lean_timings.py calibrate timings.jsonl  # before the build
     python3 scripts/lean_timings.py check timings.jsonl   # against the budget
     python3 scripts/lean_timings.py replay timings.jsonl --out isolated.jsonl
-
-`calibrate` compiles `scripts/lean-calibration.lean` and records its CPU
-time in the log. The budget's CPU ceilings are in units of that time, so they
-hold on any runner: the same module's CPU time differs by about 2x between
-CI's runner types (#1865). RSS doesn't depend on the runner and stays in MB.
 
 `replay` runs each recorded module again, one at a time, with its outputs
 thrown away: the isolated numbers, free of the parallel build's contention.
@@ -38,12 +32,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 BUDGET = REPO / "scripts" / "lean-budget.json"
-CALIBRATION = REPO / "scripts" / "lean-calibration.lean"
-# A module's ceiling is this factor over its highest measured numbers ...
+# A module's ceiling is this factor over its measured numbers ...
 FACTOR = 1.5
 # ... and never below these floors, so a small module's noise fails nothing.
-# CPU is in calibrations (`cpu_cal`): one is 7 to 14 s of CPU on CI's runners.
-FLOOR_CPU_CAL = 3.0
+FLOOR_CPU_S = 30.0
 FLOOR_RSS_MB = 1536
 
 
@@ -117,52 +109,16 @@ def make_sysroot(dest: Path) -> None:
     print(dest)
 
 
-def _cpu_model() -> str:
-    try:
-        for line in Path("/proc/cpuinfo").read_text().splitlines():
-            if line.startswith("model name"):
-                return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return subprocess.run(
-        ["uname", "-m"], check=False, capture_output=True, text=True
-    ).stdout.strip()
-
-
-def calibrate(log: Path, runs: int = 3) -> float:
-    """Compile the calibration file `runs` times; record its fastest CPU time."""
-    real = _real_lean()
-    times = []
-    for _ in range(runs):
-        proc = subprocess.Popen([real, str(CALIBRATION)], stdout=subprocess.DEVNULL)
-        _, status, usage = os.wait4(proc.pid, 0)
-        if os.waitstatus_to_exitcode(status) != 0:
-            raise SystemExit(f"lean failed on {CALIBRATION}")
-        times.append(round(usage.ru_utime + usage.ru_stime, 2))
-    record = {"calibration": min(times), "runs": times, "cpu_model": _cpu_model()}
-    with open(log, "a") as f:
-        f.write(json.dumps(record) + "\n")
-    print(f"calibration: {min(times)} s of CPU (runs {times}) on {record['cpu_model']}")
-    return min(times)
-
-
 # --- reading the records ----------------------------------------------------
 
 
 def load(paths: list[Path]) -> dict[str, dict]:
-    """The last record of each module (a rebuild replaces an earlier one). A
-    log with a calibration gives its records `cpu_cal`, their CPU time in
-    calibrations."""
+    """The last record of each module (a rebuild replaces an earlier one)."""
     records: dict[str, dict] = {}
     for path in paths:
-        lines = [
-            json.loads(line) for line in path.read_text().splitlines() if line.strip()
-        ]
-        cal = next((r["calibration"] for r in lines if "calibration" in r), None)
-        for r in lines:
-            if "module" in r:
-                if cal:
-                    r["cpu_cal"] = round(r["cpu_s"] / cal, 3)
+        for line in path.read_text().splitlines():
+            if line.strip():
+                r = json.loads(line)
                 records[r["module"]] = r
     return records
 
@@ -174,9 +130,7 @@ def critical_path(records: dict[str, dict], key: str) -> tuple[float, list[str]]
     def visit(m: str) -> tuple[float, list[str]]:
         if m not in best:
             r = records[m]
-            prev = max(
-                (visit(i) for i in r["imports"] if i in records), default=(0.0, [])
-            )
+            prev = max((visit(i) for i in r["imports"] if i in records), default=(0.0, []))
             best[m] = (prev[0] + r[key], [*prev[1], m])
         return best[m]
 
@@ -195,9 +149,7 @@ def report(paths: list[Path], top: int, key: str) -> None:
     )
     print("| module | CPU s | wall s | RSS MB |\n|---|---:|---:|---:|")
     for r in rows[:top]:
-        print(
-            f"| {r['module']} | {r['cpu_s']:.1f} | {r['wall_s']:.1f} | {r['rss_mb']} |"
-        )
+        print(f"| {r['module']} | {r['cpu_s']:.1f} | {r['wall_s']:.1f} | {r['rss_mb']} |")
     print("\nBy RSS:\n\n| module | RSS MB | CPU s |\n|---|---:|---:|")
     for r in sorted(records.values(), key=lambda r: -r["rss_mb"])[:top]:
         print(f"| {r['module']} | {r['rss_mb']} | {r['cpu_s']:.1f} |")
@@ -211,17 +163,12 @@ def report(paths: list[Path], top: int, key: str) -> None:
 
 
 def peaks(paths: list[Path]) -> dict[str, dict]:
-    """Each module's highest calibrated CPU time and RSS over several
-    measurements, each log divided by its own calibration (several runner
-    types, so the ceiling covers the one where the module is relatively slowest)."""
+    """Each module's highest CPU time and RSS over several measurements."""
     out: dict[str, dict] = {}
     for path in paths:
-        records = load([path])
-        if any("cpu_cal" not in r for r in records.values()):
-            raise SystemExit(f"{path} has no calibration: record it with `calibrate`")
-        for m, r in records.items():
-            o = out.setdefault(m, {"cpu_cal": 0.0, "rss_mb": 0})
-            o["cpu_cal"] = max(o["cpu_cal"], r["cpu_cal"])
+        for m, r in load([path]).items():
+            o = out.setdefault(m, {"cpu_s": 0.0, "rss_mb": 0})
+            o["cpu_s"] = max(o["cpu_s"], r["cpu_s"])
             o["rss_mb"] = max(o["rss_mb"], r["rss_mb"])
     return out
 
@@ -229,7 +176,7 @@ def peaks(paths: list[Path]) -> dict[str, dict]:
 def ceilings(records: dict[str, dict]) -> dict[str, dict[str, float]]:
     return {
         m: {
-            "cpu_cal": round(max(FLOOR_CPU_CAL, FACTOR * r["cpu_cal"]), 1),
+            "cpu_s": round(max(FLOOR_CPU_S, FACTOR * r["cpu_s"])),
             "rss_mb": round(max(FLOOR_RSS_MB, FACTOR * r["rss_mb"])),
         }
         for m, r in sorted(records.items())
@@ -251,12 +198,10 @@ def check(paths: list[Path], budget_path: Path) -> list[tuple[str, str, float, f
     default = budget["default"]
     over = []
     records = load(paths)
-    if records and any("cpu_cal" not in r for r in records.values()):
-        print("lean budget: no calibration in the log, so CPU time is not checked")
     for m, r in sorted(records.items()):
         ceiling = budget["modules"].get(m, default)
-        for key in ("cpu_cal", "rss_mb"):
-            if key in r and key in ceiling and r[key] > ceiling[key]:
+        for key in ("cpu_s", "rss_mb"):
+            if r[key] > ceiling[key]:
                 over.append((m, key, r[key], ceiling[key]))
     print(f"lean budget: {len(records)} modules built, {len(over)} over their ceilings")
     for m, key, value, ceiling in over:
@@ -273,10 +218,7 @@ def check(paths: list[Path], budget_path: Path) -> list[tuple[str, str, float, f
         )
         summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary:
-            rows = [
-                f"| `{m}` | {key} | {value} | {ceiling} |"
-                for m, key, value, ceiling in over
-            ]
+            rows = [f"| `{m}` | {key} | {value} | {ceiling} |" for m, key, value, ceiling in over]
             with open(summary, "a") as f:
                 f.write(
                     "\n### Modules over their ceilings\n\n"
@@ -290,10 +232,9 @@ def check(paths: list[Path], budget_path: Path) -> list[tuple[str, str, float, f
 def write_budget(paths: list[Path], budget_path: Path) -> None:
     budget = {
         "comment": "Per-module ceilings of the Lean build: 1.5x the highest measured CPU time "
-        "and peak RSS, at least 3 calibrations and 1536 MB. CPU is `cpu_cal`, CPU time "
-        "divided by the run's calibration (scripts/lean-calibration.lean), so it holds on "
-        "any runner (docs/build-performance.md). Modules not listed get `default`.",
-        "default": {"cpu_cal": 6.0, "rss_mb": 2560},
+        "and peak RSS, at least 30 s and 1536 MB (docs/build-performance.md). "
+        "Modules not listed get `default`.",
+        "default": {"cpu_s": 60, "rss_mb": 2560},
         "modules": ceilings(peaks(paths)),
     }
     budget_path.write_text(json.dumps(budget, indent=1) + "\n")
@@ -348,13 +289,8 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser(
-        "sysroot", help="make a sysroot whose `lean` records each module"
-    )
+    s = sub.add_parser("sysroot", help="make a sysroot whose `lean` records each module")
     s.add_argument("dir", type=Path)
-    s = sub.add_parser("calibrate", help="record the calibration's CPU time in a log")
-    s.add_argument("log", type=Path)
-    s.add_argument("--runs", type=int, default=3)
     s = sub.add_parser("report", help="tables by time and RSS, and the critical path")
     s.add_argument("logs", type=Path, nargs="+")
     s.add_argument("--top", type=int, default=25)
@@ -372,8 +308,6 @@ def main() -> int:
     a = p.parse_args()
     if a.cmd == "sysroot":
         make_sysroot(a.dir)
-    elif a.cmd == "calibrate":
-        calibrate(a.log, a.runs)
     elif a.cmd == "report":
         report(a.logs, a.top, a.key)
     elif a.cmd == "check":

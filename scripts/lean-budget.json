@@ -7,41 +7,21 @@
  "modules": {
   "Main": {
    "cpu_s": 30,
-   "rss_mb": 2778
+   "rss_mb": 3118
   },
   "SubstraitCheck": {
    "cpu_s": 30,
-   "rss_mb": 2847
+   "rss_mb": 2940
   },
   "SubstraitCheckExamples.DummyEngine": {
    "cpu_s": 30,
-   "rss_mb": 2799
+   "rss_mb": 2936
   },
   "SubstraitLean": {
    "cpu_s": 30,
-   "rss_mb": 2769
-  },
-  "Sverify.Analysis.AllowedAnalysis": {
-   "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2854
   },
   "SubstraitLean.AnalysisCongr": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Frontend.Bind": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Core.Check": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Choices": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Core.Completeness": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -53,87 +33,27 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Analysis.Contracts": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Contracts.Facts": {
-   "cpu_s": 64,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Contracts.Lattice": {
-   "cpu_s": 43,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Contracts.Plan": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Contracts.Refine": {
-   "cpu_s": 35,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Contracts.Sound": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Contracts.Transfer": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Contracts.TransferSound": {
-   "cpu_s": 62,
-   "rss_mb": 1760
-  },
-  "Sverify.DuckDB.Profile": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.DuckDB.SQL": {
-   "cpu_s": 138,
-   "rss_mb": 1690
-  },
   "SubstraitLean.Engine": {
    "cpu_s": 30,
-   "rss_mb": 3009
+   "rss_mb": 2674
   },
   "SubstraitLean.EngineRobust": {
    "cpu_s": 30,
-   "rss_mb": 2691
+   "rss_mb": 2751
   },
   "SubstraitLean.EngineTables": {
    "cpu_s": 30,
-   "rss_mb": 2840
+   "rss_mb": 2889
   },
   "SubstraitLean.Epsilon": {
    "cpu_s": 30,
-   "rss_mb": 2721
-  },
-  "Sverify.Core.EvalFast": {
-   "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2886
   },
   "SubstraitLean.Examples": {
    "cpu_s": 30,
-   "rss_mb": 2754
-  },
-  "Sverify.Core.FloatArithCheck": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Core.FloatNear": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Guards": {
-   "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 3874
   },
   "SubstraitLean.Implied": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Incremental": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -153,81 +73,9 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Analysis.Infer": {
+  "SubstraitLean.IssuesAll": {
    "cpu_s": 30,
    "rss_mb": 1536
-  },
-  "Sverify.Analysis.Keys": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Knowledge": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.DuckDB.LiftCache": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.DuckDB.Lift": {
-   "cpu_s": 30,
-   "rss_mb": 2638
-  },
-  "Sverify.DuckDB.Lift.Duckdb.Aggregates": {
-   "cpu_s": 30,
-   "rss_mb": 2586
-  },
-  "Sverify.DuckDB.Lift.Duckdb.Arith": {
-   "cpu_s": 264,
-   "rss_mb": 4132
-  },
-  "Sverify.DuckDB.Lift.Duckdb.Casts": {
-   "cpu_s": 30,
-   "rss_mb": 2638
-  },
-  "Sverify.DuckDB.Lift.Duckdb.Compare": {
-   "cpu_s": 187,
-   "rss_mb": 3224
-  },
-  "Sverify.DuckDB.Lift.Duckdb.Math": {
-   "cpu_s": 98,
-   "rss_mb": 3024
-  },
-  "Sverify.DuckDB.Lift.Duckdb.Table": {
-   "cpu_s": 30,
-   "rss_mb": 2638
-  },
-  "Sverify.DuckDB.Lift.Reference.Aggregates": {
-   "cpu_s": 30,
-   "rss_mb": 2610
-  },
-  "Sverify.DuckDB.Lift.Reference.Arith": {
-   "cpu_s": 30,
-   "rss_mb": 2640
-  },
-  "Sverify.DuckDB.Lift.Reference.Casts": {
-   "cpu_s": 30,
-   "rss_mb": 2638
-  },
-  "Sverify.DuckDB.Lift.Reference.Compare": {
-   "cpu_s": 59,
-   "rss_mb": 2919
-  },
-  "Sverify.DuckDB.Lift.Reference.Math": {
-   "cpu_s": 30,
-   "rss_mb": 2662
-  },
-  "Sverify.DuckDB.Lift.Reference.Table": {
-   "cpu_s": 30,
-   "rss_mb": 2620
-  },
-  "Sverify.DuckDB.LiftHint": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.DuckDB.LiftSearch": {
-   "cpu_s": 30,
-   "rss_mb": 2736
   },
   "SubstraitLean.Lipschitz": {
    "cpu_s": 30,
@@ -249,137 +97,29 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Engines.Lowering": {
-   "cpu_s": 86,
-   "rss_mb": 1536
-  },
-  "Sverify.DuckDB.LoweringCache": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.DuckDB.Lowering": {
-   "cpu_s": 30,
-   "rss_mb": 2626
-  },
-  "Sverify.DuckDB.LoweringLemmas": {
-   "cpu_s": 58,
-   "rss_mb": 1536
-  },
-  "Sverify.DuckDB.LoweringOn.Arith": {
-   "cpu_s": 400,
-   "rss_mb": 7155
-  },
-  "Sverify.DuckDB.LoweringOn.Bits": {
-   "cpu_s": 33,
-   "rss_mb": 3040
-  },
-  "Sverify.DuckDB.LoweringOn.Guards": {
-   "cpu_s": 188,
-   "rss_mb": 5240
-  },
-  "Sverify.DuckDB.LoweringOn.Integers": {
-   "cpu_s": 104,
-   "rss_mb": 3129
-  },
-  "Sverify.DuckDB.LoweringOn.Math": {
-   "cpu_s": 78,
-   "rss_mb": 3124
-  },
-  "Sverify.DuckDB.LoweringOn.Native": {
-   "cpu_s": 74,
-   "rss_mb": 2878
-  },
-  "Sverify.DuckDB.LoweringOn.Powers": {
-   "cpu_s": 30,
-   "rss_mb": 2870
-  },
-  "Sverify.DuckDB.LoweringOn.Table": {
-   "cpu_s": 30,
-   "rss_mb": 2608
-  },
-  "Sverify.DuckDB.LoweringSchemas": {
-   "cpu_s": 30,
-   "rss_mb": 2577
-  },
-  "Sverify.Engines.LoweringHint": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Engines.LoweringSearch": {
-   "cpu_s": 30,
-   "rss_mb": 2790
-  },
-  "Sverify.Core.MarginCheck": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.MarginSound": {
-   "cpu_s": 36,
-   "rss_mb": 1653
-  },
   "SubstraitLean.Obligations": {
-   "cpu_s": 30,
-   "rss_mb": 3482
+   "cpu_s": 49,
+   "rss_mb": 3957
   },
-  "Sverify.Frontend.Parse": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Partition": {
-   "cpu_s": 46,
-   "rss_mb": 1830
-  },
-  "Sverify.Polars.Profile": {
-   "cpu_s": 31,
-   "rss_mb": 1536
-  },
-  "Sverify.Polars.Shims": {
+  "SubstraitLean.OpenSums": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Core.Pretty": {
+  "SubstraitLean.ProvedOn": {
    "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.ProfileImpl": {
-   "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2710
   },
   "SubstraitLean.Pruning": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Analysis.Quarantine": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
   "SubstraitLean.Realize": {
    "cpu_s": 30,
-   "rss_mb": 2704
+   "rss_mb": 2764
   },
-  "Sverify.Analysis.Refresh": {
+  "SubstraitLean.RunPlan": {
    "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Retention": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Core.Rewrites": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Rows": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.Safety": {
-   "cpu_s": 69,
-   "rss_mb": 1838
-  },
-  "Sverify.Analysis.Seam": {
-   "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2822
   },
   "SubstraitLean.Semantic": {
    "cpu_s": 30,
@@ -389,23 +129,123 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Spark.Profile": {
+  "SubstraitLean.Statements": {
    "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Spark.Shims": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Substrait.Profile": {
-   "cpu_s": 30,
-   "rss_mb": 1536
-  },
-  "Sverify.Core.SumBound": {
-   "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2984
   },
   "SubstraitLean.TableFormat": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.AllowedAnalysis": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.AsofSite": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Choices": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.ChoicesSound": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts.Facts": {
+   "cpu_s": 64,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts.Lattice": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts.Plan": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts.Refine": {
+   "cpu_s": 42,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts.Sound": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts.Transfer": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Contracts.TransferSound": {
+   "cpu_s": 80,
+   "rss_mb": 2152
+  },
+  "Sverify.Analysis.Guards": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Incremental": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Infer": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Keys": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Knowledge": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.MarginSound": {
+   "cpu_s": 35,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Partition": {
+   "cpu_s": 45,
+   "rss_mb": 1864
+  },
+  "Sverify.Analysis.ProfileImpl": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Quarantine": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Refines": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Refresh": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Retention": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Rows": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Analysis.Safety": {
+   "cpu_s": 105,
+   "rss_mb": 2050
+  },
+  "Sverify.Analysis.Seam": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -414,14 +254,10 @@
    "rss_mb": 1536
   },
   "Sverify.Analysis.TouchedFrames": {
-   "cpu_s": 40,
-   "rss_mb": 1536
-  },
-  "Sverify.Analysis.TouchedGroups": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.DuckDB.VarcharCasts": {
+  "Sverify.Analysis.TouchedGroups": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -433,9 +269,9 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "Sverify.Frontend.Write": {
+  "Sverify.Core": {
    "cpu_s": 30,
-   "rss_mb": 2286
+   "rss_mb": 1536
   },
   "Sverify.Core.Aggregate": {
    "cpu_s": 30,
@@ -457,6 +293,18 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
+  "Sverify.Core.CaseTable": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Check": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.Completeness": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
   "Sverify.Core.Conversions": {
    "cpu_s": 30,
    "rss_mb": 1536
@@ -473,8 +321,12 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
+  "Sverify.Core.EvalFast": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
   "Sverify.Core.Expr": {
-   "cpu_s": 32,
+   "cpu_s": 40,
    "rss_mb": 1536
   },
   "Sverify.Core.Float": {
@@ -482,6 +334,10 @@
    "rss_mb": 1536
   },
   "Sverify.Core.FloatArith": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.FloatArithCheck": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -497,21 +353,33 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
+  "Sverify.Core.FloatNear": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
   "Sverify.Core.Forall2": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
   "Sverify.Core.Functions": {
    "cpu_s": 30,
-   "rss_mb": 2002
+   "rss_mb": 2012
   },
   "Sverify.Core.Issue": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
   "Sverify.Core.Kinds": {
-   "cpu_s": 61,
-   "rss_mb": 1635
+   "cpu_s": 79,
+   "rss_mb": 1690
+  },
+  "Sverify.Core.MarginCheck": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.NoDouble": {
+   "cpu_s": 53,
+   "rss_mb": 1536
   },
   "Sverify.Core.Numeric": {
    "cpu_s": 30,
@@ -537,6 +405,10 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
+  "Sverify.Core.Pretty": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
   "Sverify.Core.Profile": {
    "cpu_s": 30,
    "rss_mb": 1536
@@ -553,6 +425,10 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
+  "Sverify.Core.Rewrites": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
   "Sverify.Core.Robust": {
    "cpu_s": 30,
    "rss_mb": 1536
@@ -562,10 +438,14 @@
    "rss_mb": 1536
   },
   "Sverify.Core.Scopes": {
-   "cpu_s": 51,
+   "cpu_s": 83,
    "rss_mb": 1536
   },
   "Sverify.Core.StatProps": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Core.SumBound": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -589,15 +469,199 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
+  "Sverify.DuckDB": {
+   "cpu_s": 30,
+   "rss_mb": 2649
+  },
+  "Sverify.DuckDB.AvgSet": {
+   "cpu_s": 30,
+   "rss_mb": 2698
+  },
+  "Sverify.DuckDB.Boxes": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.Engine": {
+   "cpu_s": 30,
+   "rss_mb": 2973
+  },
+  "Sverify.DuckDB.Functions": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.Lift": {
+   "cpu_s": 30,
+   "rss_mb": 2646
+  },
+  "Sverify.DuckDB.Lift.Duckdb.Aggregates": {
+   "cpu_s": 30,
+   "rss_mb": 2631
+  },
+  "Sverify.DuckDB.Lift.Duckdb.Arith": {
+   "cpu_s": 624,
+   "rss_mb": 3990
+  },
+  "Sverify.DuckDB.Lift.Duckdb.Casts": {
+   "cpu_s": 30,
+   "rss_mb": 2662
+  },
+  "Sverify.DuckDB.Lift.Duckdb.Compare": {
+   "cpu_s": 374,
+   "rss_mb": 3200
+  },
+  "Sverify.DuckDB.Lift.Duckdb.Math": {
+   "cpu_s": 201,
+   "rss_mb": 3038
+  },
+  "Sverify.DuckDB.Lift.Duckdb.Table": {
+   "cpu_s": 30,
+   "rss_mb": 2652
+  },
+  "Sverify.DuckDB.Lift.Reference.Aggregates": {
+   "cpu_s": 30,
+   "rss_mb": 2626
+  },
+  "Sverify.DuckDB.Lift.Reference.Arith": {
+   "cpu_s": 30,
+   "rss_mb": 2691
+  },
+  "Sverify.DuckDB.Lift.Reference.Casts": {
+   "cpu_s": 30,
+   "rss_mb": 2658
+  },
+  "Sverify.DuckDB.Lift.Reference.Compare": {
+   "cpu_s": 56,
+   "rss_mb": 2914
+  },
+  "Sverify.DuckDB.Lift.Reference.Math": {
+   "cpu_s": 30,
+   "rss_mb": 2668
+  },
+  "Sverify.DuckDB.Lift.Reference.Table": {
+   "cpu_s": 30,
+   "rss_mb": 2637
+  },
+  "Sverify.DuckDB.LiftCache": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.LiftHint": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.LiftSearch": {
+   "cpu_s": 30,
+   "rss_mb": 2889
+  },
+  "Sverify.DuckDB.Lowering": {
+   "cpu_s": 30,
+   "rss_mb": 2637
+  },
+  "Sverify.DuckDB.LoweringCache": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.LoweringLemmas": {
+   "cpu_s": 92,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.LoweringOn.Arith": {
+   "cpu_s": 879,
+   "rss_mb": 7166
+  },
+  "Sverify.DuckDB.LoweringOn.Bits": {
+   "cpu_s": 78,
+   "rss_mb": 3033
+  },
+  "Sverify.DuckDB.LoweringOn.Guards": {
+   "cpu_s": 335,
+   "rss_mb": 5655
+  },
+  "Sverify.DuckDB.LoweringOn.Integers": {
+   "cpu_s": 209,
+   "rss_mb": 3142
+  },
+  "Sverify.DuckDB.LoweringOn.Math": {
+   "cpu_s": 166,
+   "rss_mb": 3132
+  },
+  "Sverify.DuckDB.LoweringOn.Native": {
+   "cpu_s": 85,
+   "rss_mb": 2926
+  },
+  "Sverify.DuckDB.LoweringOn.Powers": {
+   "cpu_s": 53,
+   "rss_mb": 2865
+  },
+  "Sverify.DuckDB.LoweringOn.Table": {
+   "cpu_s": 30,
+   "rss_mb": 2650
+  },
+  "Sverify.DuckDB.LoweringSchemas": {
+   "cpu_s": 30,
+   "rss_mb": 2576
+  },
+  "Sverify.DuckDB.Profile": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.SQL": {
+   "cpu_s": 61,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.SumGuard": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.Tables": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.DuckDB.VarcharCasts": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines": {
+   "cpu_s": 30,
+   "rss_mb": 2592
+  },
   "Sverify.Engines.Engine": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.Entry": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
   "Sverify.Engines.Generated": {
    "cpu_s": 30,
-   "rss_mb": 2274
+   "rss_mb": 2385
+  },
+  "Sverify.Engines.Lowering": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.LoweringHint": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.LoweringSearch": {
+   "cpu_s": 30,
+   "rss_mb": 2805
+  },
+  "Sverify.Engines.NoDouble": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.Rewrite": {
+   "cpu_s": 30,
+   "rss_mb": 1536
   },
   "Sverify.Engines.Shims": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Engines.Sound": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -606,6 +670,74 @@
    "rss_mb": 1536
   },
   "Sverify.Engines.Transfer": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Frontend": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Frontend.Bind": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Frontend.Parse": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Frontend.SubstraitJson": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Frontend.Write": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Polars": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Polars.Engine": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Polars.Profile": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Polars.Shims": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Polars.Tables": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Spark": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Spark.Engine": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Spark.Profile": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Spark.Shims": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Spark.Tables": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Substrait": {
+   "cpu_s": 30,
+   "rss_mb": 1536
+  },
+  "Sverify.Substrait.Profile": {
    "cpu_s": 30,
    "rss_mb": 1536
   }

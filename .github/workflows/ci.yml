@@ -379,11 +379,8 @@ jobs:
       - uses: ./.github/actions/setup-lean
       # The build budget (docs/build-performance.md): the builds below run
       # `lean` through a sysroot that records each module's CPU time and peak
-      # RSS, and `check` warns on a module over its ceiling. CPU time counts in
-      # units of the calibration, compiled first on the same runner.
-      - run: |
-          python3 scripts/lean_timings.py sysroot "$RUNNER_TEMP/lean-sysroot"
-          python3 scripts/lean_timings.py calibrate "$RUNNER_TEMP/lean-timings.jsonl"
+      # RSS, and `check` warns on a module over its ceiling.
+      - run: python3 scripts/lean_timings.py sysroot "$RUNNER_TEMP/lean-sysroot"
       # The layer guards (#1189, #1162): each package builds on the layers
       # below it alone. The core imports no analysis and no engine, the
       # analysis no engine, the frontend neither engines-common nor an engine,
