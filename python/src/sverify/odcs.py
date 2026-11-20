@@ -537,6 +537,11 @@ _LOGICAL_IBIS = {
 }
 
 
+#: A time zone after a timestamp's time of day: `Z`, `+10:00`, `-0530`. A
+#: date alone (`2020-01-01`) has none.
+_OFFSET = re.compile(r"\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s*(Z|[+-]\d{2}(:?\d{2})?)$")
+
+
 def _ibis_type(p: Mapping[str, Any]) -> Any:
     import ibis.expr.datatypes as dt
     from ibis.backends.sql.datatypes import DuckDBType
@@ -671,6 +676,17 @@ class _Reader:
         query = str(rule.get("query", ""))
         if column is not None:
             query = query.replace("{property}", _quote(column))
+        # The object by its own name, as ODCS's examples write it (#864).
+        # A quoted name matches with its case, a bare one without (DuckDB's).
+        query = re.sub(
+            rf"(\b(?i:FROM)\s+){re.escape(_quote(self.table))}(?=\s|;|$)", r"\1{object}", query
+        )
+        query = re.sub(
+            rf"(\bFROM\s+){re.escape(self.table)}(?=\s|;|$)",
+            r"\1{object}",
+            query,
+            flags=re.IGNORECASE,
+        )
         if not _is_zero(rule):
             self.skip(column, rule, "a threshold on a count: sverify reads rules that must be 0")
             return
@@ -797,7 +813,17 @@ class _Reader:
                 self.valued.add(col)
         opts = p.get("logicalTypeOptions") or {}
         logical = p.get("logicalType")
-        cast = {"date": "DATE", "timestamp": "TIMESTAMP", "time": "TIME"}.get(str(logical))
+        # A temporal bound is a literal of the column's own type.
+        t = _ibis_type(p)
+        cast = (
+            ("TIMESTAMP" if t.timezone is None else "TIMESTAMPTZ")
+            if t.is_timestamp()
+            else "DATE"
+            if t.is_date()
+            else "TIME"
+            if t.is_time()
+            else None
+        )
         bounds = [
             ("minimum", sg.exp.GTE),
             ("exclusiveMinimum", sg.exp.GT),
@@ -809,6 +835,14 @@ class _Reader:
                 continue
             v = opts[key]
             lit = _lit(v)
+            if t.is_timestamp() and t.timezone is not None and not _OFFSET.search(str(v)):
+                # DuckDB reads it in the session's time zone (D53).
+                self.skip(col, {key: v}, f"a {key} without a time zone on a timestamp with one")
+                continue
+            if t.is_timestamp() and t.timezone is None and _OFFSET.search(str(v)):
+                # DuckDB's CAST to TIMESTAMP drops the offset (#864).
+                self.skip(col, {key: v}, f"a {key} with a time zone on a timestamp without one")
+                continue
             if cast is not None:
                 lit = sg.exp.cast(sg.exp.Literal.string(str(v)), cast)
             elif not isinstance(v, int | float) or isinstance(v, bool):
