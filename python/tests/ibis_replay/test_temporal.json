@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_temporal",
   "summary": {
-    "agree": 80,
+    "agree": 82,
     "disagree": 0,
-    "refused": 68,
+    "refused": 66,
     "unproved": 6,
     "skipped": 11
   },
@@ -327,12 +327,12 @@
     "test_subsecond_cast_to_timestamp[duckdb-timestamp(6)]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
-      "issue": 1922
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through other functions. A reference value for it is a ruling of its own; cast through epoch_us, or make_timestamp of an integer of microseconds"
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
-      "issue": 1922
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through other functions. A reference value for it is a ruling of its own; cast through epoch_us, or make_timestamp of an integer of microseconds"
     },
     "test_temporal_binop[duckdb-date-add-interval]": {
       "outcome": "agree"
@@ -618,9 +618,7 @@
       "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-ms-ms]": {
-      "outcome": "refused",
-      "construct": "Unsupported: truncating to milliseconds is not supported; truncate to a second or coarser",
-      "issue": 1929
+      "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-ns-ns]": {
       "outcome": "skipped",
@@ -633,9 +631,7 @@
       "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-us-us]": {
-      "outcome": "refused",
-      "construct": "Unsupported: truncating to microseconds is not supported; truncate to a second or coarser",
-      "issue": 1929
+      "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-year]": {
       "outcome": "agree"

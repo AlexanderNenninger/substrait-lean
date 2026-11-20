@@ -792,6 +792,24 @@ def test_time_arithmetic_outside_the_model_is_refused():
     assert code != 0 and "months" in out + err
 
 
+@pytest.mark.parametrize(("unit", "step"), [("ms", 1000), ("us", 1)])
+def test_ibis_truncates_a_timestamp_to_milliseconds_or_microseconds(unit, step):
+    """`ts.truncate("ms")` and `("us")` (#1929) floor to the unit, before 1970
+    too, in Lean and on DuckDB; nanoseconds stay refused."""
+    values = [None, 0, 1, 999, 1001, -1, -999, -1001, 1700000000123456, -62135596799999999]
+    expr = R_TS.select(x=R_TS.ts.truncate(unit))
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(plan, {"r": [(v,) for v in values]})))
+    want = [(None if v is None else v // step * step,) for v in values]
+    assert canonical(lean) == canonical(want)
+    con = connect()
+    put_table(con, "r", pa.table({"ts": pa.array(values, pa.timestamp("us"))}))
+    got = micros(run_plan(con, written_plan(to_substrait_json(expr)), "duckdb"))
+    assert canonical(got) == canonical(want)
+    with pytest.raises(Unsupported, match="nanoseconds"):
+        to_substrait_json(R_TS.select(x=R_TS.ts.truncate("ns")))
+
+
 EARLIER = R_TS.ts - ibis.interval(days=1)
 
 
