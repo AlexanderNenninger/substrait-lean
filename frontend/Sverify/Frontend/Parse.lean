@@ -2199,7 +2199,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- A struct casts field by field, which needs a struct the core cannot build
     -- (ruling 186: refused by design for 1.0, D66 reserved).
     if k matches .struct _ then
-      throw "casts of structs are not supported: sverify cannot build a struct (D66); cast its fields"
+      throw "casts of structs are not supported: sverify cannot build a struct value yet; cast its fields"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
