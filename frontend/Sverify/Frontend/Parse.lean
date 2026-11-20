@@ -522,25 +522,27 @@ def schemaBits (schema : Json) : List Nat :=
   | none => []
 
 /-- The width of an integer expression over columns of widths `cols` (64 for
-anything else). A literal does not widen (the parser looks at its type where
-it is an argument). -/
-def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
+anything else). An integer literal is as wide as its declared type (#1934, #1968): 64
+bits, or a `narrow` mark's (`declaredNarrow`). As an operand (`operand`) a
+literal does not widen the arithmetic around it, since the parser reads its type
+where it is an argument (`argBits`); a value (a column, a `CASE` branch) has no
+such context. A `NULL` widens nothing. -/
+def _root_.Substrait.Expr.bitsAt (operand : Bool) (cols : List Nat) : Expr → Nat
   | .field i => cols.getD i 64
-  | .lit _ => 8
+  | .lit .null => 8
+  | .lit _ => if operand then 8 else 64
   | .un (.wrap n) _ | .un (.narrow n) _ | .un (.narrowOrNull n) _ => n
-  | .un .neg a => a.bits cols
+  | .un .neg a => a.bitsAt operand cols
   | .bin .add a b | .bin .sub a b | .bin .mul a b | .bin .idiv a b | .bin .imod a b =>
-    max (a.bits cols) (b.bits cols)
-  | .ifThen _ t e => max (t.bits cols) (e.bits cols)
+    max (a.bitsAt true cols) (b.bitsAt true cols)
+  | .ifThen _ t e => max (t.bitsAt false cols) (e.bitsAt false cols)
   | _ => 64
 
-/-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
-model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
-it from widening the arithmetic around it, and a column has none (#1934). A
-narrower declared type is a `narrow` mark (`declaredNarrow`). -/
-def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
-  | .lit _ => 64
-  | e => e.bits cols
+/-- The width of an operand. -/
+def _root_.Substrait.Expr.bits (cols : List Nat) (e : Expr) : Nat := e.bitsAt true cols
+
+/-- The width of a column computed by `e`. -/
+def _root_.Substrait.Expr.colBits (cols : List Nat) (e : Expr) : Nat := e.bitsAt false cols
 
 def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
   | .read t => match tables.lookup t with
@@ -2091,11 +2093,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       return call
   | ("ifThen", t) =>
     -- A `CASE` without `ELSE` is `ELSE NULL`.
+    -- A branch's integer constant keeps its declared width (#1968).
+    let branch (j : Json) : J Expr := do return declaredNarrow j (← parseExpr fns cols bits j)
     let els ← match field? t "else" with
-      | some e => parseExpr fns cols bits e
+      | some e => branch e
       | none => pure (.lit .null)
     let clauses ← (← arrD t "ifs").mapM fun clause => do
-      return (← parseExpr fns cols bits (← field clause "if"), ← parseExpr fns cols bits (← field clause "then"))
+      return (← parseExpr fns cols bits (← field clause "if"), ← branch (← field clause "then"))
     match clauses with
     | [] => return els
     | (c, x) :: rest =>
