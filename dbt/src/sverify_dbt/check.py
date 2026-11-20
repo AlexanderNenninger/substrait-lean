@@ -299,7 +299,12 @@ class _Checker:
             res.tests.append(tr)
             got = mapping.test_conditions(t, side="ensures", table_of=lambda _: None)
             missing = [c for c in got.columns if c not in cols]
-            if missing:
+            if got.schema:
+                bad = got.schema(list(res.duckdb_types))
+                tr.status, tr.why = ("proved", None) if bad is None else ("not proved", bad)
+                if bad is None:
+                    self.proved.add(t.unique_id)
+            elif missing:
                 tr.skip(f"the model has no column {', '.join(missing)}")
             elif not got.conditions:
                 tr.skip(got.reason or "no condition")
