@@ -349,6 +349,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}; check that DuckDB "
             "runs it, or write the step in Ibis"
         ) from e
+    tree = tree.transform(_builtin_schema, copy=False)
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
     for node in tree.find_all(*_NONDETERMINISTIC):
@@ -395,6 +396,20 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__))
     return tree
+
+
+def _builtin_schema(n: sge.Expr) -> sge.Expr:
+    """A call qualified by its built-in schema (`main.lower(x)`,
+    `pg_catalog.lower(x)`, `system.main.lower(x)`) read as the bare function
+    (#328). SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
+    anonymous one, so the call is parsed again without its qualifier."""
+    if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
+        schema = n.this
+        if isinstance(schema, sge.Dot):
+            schema = schema.expression
+        if isinstance(schema, sge.Identifier) and schema.name.lower() in ("main", "pg_catalog"):
+            return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
+    return n
 
 
 def full_name(table: sge.Table | str) -> tuple[str, str, str]:

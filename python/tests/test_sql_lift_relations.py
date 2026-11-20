@@ -374,3 +374,54 @@ def test_verify_reads_qualified_inputs():
         tables={"shop.main.orders": {"x": "BIGINT"}, "archive.main.orders": {"x": "BIGINT"}},
     )
     assert "x: an integer ≥ 1" in str(report)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT main.lower(name) AS n FROM customers",
+        "SELECT pg_catalog.upper(name) AS n, system.main.length(name) AS k FROM customers",
+    ],
+)
+def test_a_call_qualified_by_a_built_in_schema_is_the_bare_function(query):
+    """#328: DuckDB reads `main.lower(x)` as `lower(x)`."""
+    json.dumps(lift(query, SCHEMAS).plan)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT i FROM range(1, 5) t(i)",
+        "SELECT * FROM generate_series(1, 5)",
+        "SELECT CAST(d AS DATE) AS day FROM UNNEST(generate_series(TIMESTAMP '2024-01-01',"
+        " TIMESTAMP '2024-01-31', INTERVAL '1 day')) AS t(d)",
+        "SELECT range FROM range(0, 10, 3)",
+        "SELECT i FROM range(5, 0, -2) t(i)",
+        "SELECT d::DATE AS day FROM"
+        " range(DATE '2024-01-01', DATE '2024-02-01', INTERVAL 1 DAY) t(d)",
+        "SELECT d FROM generate_series(TIMESTAMP '2024-01-01 00:00:00',"
+        " TIMESTAMP '2024-01-01 06:00:00', INTERVAL 3 HOUR) t(d)",
+        "SELECT s.day, count(o.id) AS n FROM"
+        " (SELECT d::DATE AS day FROM"
+        " range(DATE '2024-01-01', DATE '2024-01-04', INTERVAL 1 DAY) t(d)) s"
+        " LEFT JOIN orders o ON o.id = 1 GROUP BY s.day ORDER BY s.day",
+    ],
+)
+def test_series_with_constant_bounds_are_inputs(query):
+    """#321: `range` and `generate_series` with constant bounds, the date spine."""
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT * FROM range(1, (SELECT max(id) FROM orders))",
+        "SELECT * FROM range(1, 5, 0)",
+        "SELECT * FROM range(5, 1)",
+        "SELECT * FROM range(DATE '2024-01-01', DATE '2025-01-01', INTERVAL 1 MONTH)",
+    ],
+)
+def test_series_outside_the_subset_are_refused(query):
+    with pytest.raises(Refused):
+        lift(query, SCHEMAS)
