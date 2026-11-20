@@ -48,6 +48,8 @@ def Profile.spark.table : ProfileTable where
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
+    -- A NULL element is smaller than any value, in `<`, in sorts and in MIN and MAX (spark-list-order).
+    (none, "list_null_order", .oneOf ["LEAST"]),
     -- Partials per task, merged in the order the tasks finish.
     (none, "sum_order", .oneOf ["ANY"]),
     -- A whole partition at once, a growing frame by a running sum, any other
@@ -125,6 +127,12 @@ def Profile.spark.obs : ObsTable := [
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),
+  -- The reference's `<` of lists is NULL where a NULL element decides, and its MIN and MAX put
+  -- the element greatest; Spark's `<` is TRUE or FALSE and its order puts it least, and the
+  -- writer has no rewrite: lists are refused at both groups.
+  (none, "list_null_order", ({ ObsRow.native ["spark-list-order"] with
+    cls := .refused
+    note := "A NULL element is smallest: `array(1, NULL) < array(1, 2)` is true where the reference's is NULL, and MIN and MAX of arrays follow the same order, where the reference's put the element greatest (spark-list-order)." }).tracking 1484),
   -- Partial sums merged in the order the tasks finish: trees the reference
   -- allows, within #85's bound, varying run to run with the partitioning.
   (none, "sum_order", ObsRow.fsumOrder ["spark-sum-double", "spark-avg-double"]
