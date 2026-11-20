@@ -12,7 +12,18 @@ from _engines import PROFILED
 from sverify.engine import connect, put_table
 
 #: Values on and around .5 at scale 3, both signs.
-VALUES = ["2.500", "-2.500", "0.500", "-0.500", "2.499", "-2.499", "3.501", "0.000", "999.500"]
+VALUES = [
+    "2.500",
+    "-2.500",
+    "0.500",
+    "-0.500",
+    "2.499",
+    "-2.499",
+    "3.501",
+    "0.000",
+    "999.500",
+    "9999999.500",
+]
 QUERY = (
     "SELECT d, CAST(d AS BIGINT) AS i, CAST(d AS DECIMAL(10, 0)) AS w, "
     "CAST(d AS DECIMAL(10, 2)) AS c FROM t"
@@ -25,8 +36,9 @@ def half_away(v: Decimal, places: int) -> Decimal:
 
 @pytest.mark.parametrize("engine", PROFILED)
 def test_the_rescale_gives_duckdbs_value_on_each_engine(engine):
-    # The analysis bounds no rounding yet, so the overflow of a carry (999.5 to 1000) stays
-    # possible and the run is unverified: the route itself is not refused.
+    # The analysis does not bound `decimal_rescale` (not even a cast to DECIMAL(10, 0), which
+    # cannot overflow), so the overflow stays possible and the run is unverified: the route
+    # itself is not refused. The cast to an integer widens by one digit for the carry.
     report = sv.verify(QUERY, tables={"t": {"d": "DECIMAL(10,3)"}}, on_inferred="ignore")
     assert {i.kind for i in report.errors} == {"overflow"}
     con = connect()

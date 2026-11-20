@@ -188,8 +188,9 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
                 return g
     if t.is_integer() and a.type.is_decimal():
         # DuckDB rounds a decimal half away from zero, as the reference's rescale to
-        # scale 0 does (`decimal_rescale`); the exact cast of that is the value (#322).
-        whole = dt.Decimal(max(a.type.precision - a.type.scale, 1), 0, nullable=True)
+        # scale 0 does (`decimal_rescale`); the exact cast of that is the value (#322). One digit
+        # more than the integer part holds the carry (99.5 to 100).
+        whole = dt.Decimal(min(a.type.precision - a.type.scale + 1, 38), 0, nullable=True)
         return lf.to(lf.to(E(a.json, a.type), whole), t)
     # Other casts: pending generation (#268).
     if t.is_integer() and a.type.is_float64():
