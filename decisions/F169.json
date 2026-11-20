@@ -1,0 +1,16 @@
+{
+  "id": "F169",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Withdraws K5's side lemma; Rel.floatOpenSafeP_of_noDouble takes the decidable hypothesis r.closedB = true, the gate checks it, and integer BIT_* and QUANTILE_DISC plans are refused; widening closedB to .bit is a later PR.",
+  "supersedes": [
+    "F154.K5-closedB-lemma"
+  ],
+  "amends": [
+    "F154"
+  ],
+  "source": "fable-ruling-154-trackB-f3-nodouble.md",
+  "note": "Log entry 169, an amendment section inside the ruling 154 file. No D-number."
+}

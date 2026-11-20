@@ -6,12 +6,14 @@ ibis-substrait (Apache License 2.0); `__init__.py` notes the changes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, same_type
+from sverify.ibis_substrait.temporal import wall_clock
 from sverify.plan_json import Json, Unsupported, call, cast_json, literal
 
 
@@ -57,6 +59,17 @@ def _from_seconds(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
     return cast_json(call("multiply", [x(op.arg, dt.int64), literal(10**6, dt.int64)]), to)
 
 
+def _instant_to_calendar(x: Exprs, op: Any) -> Callable[..., Json]:
+    """The cast of an instant at UTC to a date or a time is that of its UTC
+    wall clock (D69, #1725)."""
+    t = op.arg.dtype
+    return (
+        wall_clock(x)
+        if t.is_timestamp() and t.timezone and (op.to.is_date() or op.to.is_time())
+        else x
+    )
+
+
 def _cast_to(x: Exprs, op: Any, try_: bool) -> Json:
     """A cast. To a second or millisecond timestamp it converts to the target's
     microsecond type first (a time zone included, D53) and then floors with
@@ -73,7 +86,7 @@ def _cast_to(x: Exprs, op: Any, try_: bool) -> Json:
     elif from_seconds := _from_seconds(x, op, try_, to):
         j = from_seconds
     else:
-        j = cast_json(x(op.arg), to, or_null=try_)
+        j = cast_json(_instant_to_calendar(x, op)(op.arg), to, or_null=try_)
     return j if narrow is None else call("date_trunc", [literal(narrow, dt.string), j])
 
 

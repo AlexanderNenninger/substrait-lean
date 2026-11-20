@@ -26,6 +26,8 @@ import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from sverify._unsupported import MemoryLimitError
+
 if TYPE_CHECKING:
     import duckdb
 
@@ -80,6 +82,45 @@ def limits() -> dict[str, bool | float | int | list[str] | str]:
         )
     spill = spill or os.path.join(tempfile.gettempdir(), f"sverify-spill-{os.getpid()}")
     return {"memory_limit": limit, "temp_directory": spill}
+
+
+def _out_of_memory(e: BaseException) -> bool:
+    """Whether `e`, or an exception it was raised from, is DuckDB running
+    out of its `memory_limit`."""
+    seen: set[int] = set()
+    cur: BaseException | None = e
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if type(cur).__name__ == "OutOfMemoryException" or "Out of Memory Error" in str(cur):
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
+def memory_limit_error(e: BaseException, stage: str, db: Any = None) -> MemoryLimitError | None:
+    """`e` as a `MemoryLimitError` where it is DuckDB out of memory, with the
+    limit the database `db` reports (the process's database by default);
+    None for any other error."""
+    if isinstance(e, MemoryLimitError) or not _out_of_memory(e):
+        return None
+    limit = "DuckDB's default"
+    try:
+        db = db if db is not None else _DB
+        if db is not None:
+            row = db.execute("SELECT current_setting('memory_limit')").fetchone()
+            limit = str(row[0]) if row else limit
+    except Exception:  # noqa: BLE001 - the limit only names itself in the message
+        pass
+    what = "refreshing" if stage == "refresh" else "running the plan"
+    return MemoryLimitError(
+        f"DuckDB ran out of its memory limit ({limit}) while {what}"
+        + ("; nothing was committed" if stage == "refresh" else "")
+        + ": raise it with SVERIFY_MEMORY_LIMIT or --memory-limit (such as 4GB), "
+        "or give the run less data",
+        stage=stage,
+        limit=limit,
+        setting="SVERIFY_MEMORY_LIMIT",
+    )
 
 
 def cursor() -> duckdb.DuckDBPyConnection:

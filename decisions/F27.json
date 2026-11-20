@@ -1,0 +1,19 @@
+{
+  "id": "F27",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Native lake scans (#173): one metadata-only scan descriptor; route A (engine Parquet reader) is the 1.0 route; credentials never travel; engines write sink files and sverify commits; state is Parquet; faithfulness is one differential property per engine.",
+  "issues": [
+    173,
+    1329,
+    1485,
+    1540
+  ],
+  "amended_by": [
+    "F53"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 27",
+  "note": "Design note design-native-scans-173.md, eight rulings, PR order N0-N10. No D-number. Entry 53 (F-1620-arrow-fallback) withdraws the design's section 3.1 refusal sentence; entry 56 (F-1639-driver-footers) admits an interim against rulings 1 and 4."
+}

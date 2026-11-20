@@ -1030,7 +1030,7 @@ out.
 ### The default observation
 
 Where `ensures` names no observation, a result's consumer observes
-`PLAN_BOUND` (`sverify.observation`, `Report.observation`): the rows of a
+`PLAN_BOUND` (`sverify.observation`, `Report.lenses`): the rows of a
 bag, doubles within the plan's bound and everything else exactly. Each
 component, with its default and the reason (#1285):
 
@@ -1043,7 +1043,7 @@ component, with its default and the reason (#1285):
 | `timestamps` | `ns` | Every digit. The reference's timestamps are microseconds and DuckDB and Polars hold at least that; Spark drops the digits past the sixth without an error ([`spark-timestamp-precision`](../engines/spark/facts/spark-timestamp-precision.json)), which a coarser default would hide. |
 | `strings` | `exact` | A difference in non-ASCII text is observed. The reference raises where `UPPER`, `LOWER` and the regular expression classes differ on non-ASCII text ([D51](decisions.md#d51-case-mapping-has-the-value-the-engines-agree-on)); ignoring it is a choice for the contract, the levels of `strings` ([What the string levels hide](#what-the-string-levels-hide)). |
 | `decimals` | `exact` | The scale of a decimal is part of its type, and `decimal_rescale` pins it on every engine ([`polars-decimal-arith`](../engines/polars/facts/polars-decimal-arith.json), [`spark-decimal-arith`](../engines/spark/facts/spark-decimal-arith.json)). |
-| `errors` | `exact` | A proved plan raises nowhere, and a plan proved with checks stops at the check that fails with its message, so no result compares errors. |
+| `errors` | `exact` | A proved plan raises nowhere, and a plan proved with checks stops at the check that fails with its message, so no result compares errors. On an input where the reference raises, an unproved run does what its engine's facts record at the probed version, and no theorem covers it. |
 
 A contract that names an observation (`sv.equivalent`) leaves each component
 it does not name exact, and `floats` too.

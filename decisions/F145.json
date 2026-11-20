@@ -1,0 +1,16 @@
+{
+  "id": "F145",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "A ruling on Snowflake's private profile; details in the private evidence.",
+  "issues": [
+    271
+  ],
+  "amended_by": [
+    "F147"
+  ],
+  "source": "fable-ruling-145-snowflake-round-zero-sign.md",
+  "note": "No D-number. Section 6 amended by ruling 147."
+}

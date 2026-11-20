@@ -737,10 +737,14 @@
   "native": "runs"
  },
  "dbt-generate-date-spine": {
-  "checker": "rejected",
-  "stage": "producer",
-  "detail": "FROM UNNEST(GENERATE_SERIES(CAST('2024-01-01' AS TIMESTAMP), C... is not supported; write this step in Ibis",
-  "native": "runs"
+  "checker": "verified",
+  "incremental": true,
+  "native": "runs",
+  "engines": {
+   "duckdb": "runs",
+   "polars": "runs",
+   "snowflake": "sql"
+  }
  },
  "dbt-accepted-values-test": {
   "checker": "verified",
@@ -1184,11 +1188,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": true,
-   "inferred": [
-    "store_sales: (_.ss_ext_sales_price >= 0.01)"
-   ]
+   "proved": true,
+   "guard_free": true
   },
   "verified_sql": {
    "duckdb": "yes"
@@ -1260,11 +1261,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": false,
-   "may_fail": [
-    "division by zero: (DECIMAL_TO_DOUBLE_2(DECIMAL_37_2(($5 * 100))) /. DECIMAL_TO_DOUBLE_2($6))"
-   ]
+   "proved": true,
+   "guard_free": false
   },
   "verified_sql": {
    "duckdb": "yes"

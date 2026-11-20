@@ -37,7 +37,7 @@
     "issues": {"description": "Issues of this repository.", "type": "array", "items": {"type": "integer"}},
     "prs": {"description": "PRs of this repository.", "type": "array", "items": {"type": "integer"}},
     "files": {"description": "Files of this repository that hold the workaround or a test of it, as paths from the repository root.", "type": "array", "items": {"type": "string"}},
-    "facts": {"description": "Engine facts (characterization/<engine>/facts/<id>.json) that record it.", "type": "array", "items": {"type": "string"}},
+    "facts": {"description": "Engine facts (engines/<engine>/facts/<id>.json) that record it.", "type": "array", "items": {"type": "string"}},
     "checked": {
       "description": "When the entry was last checked, and against which releases.",
       "type": "array",

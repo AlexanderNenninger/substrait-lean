@@ -1,0 +1,20 @@
+{
+  "id": "F5",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "#1484 round 4: the reference's text model is its own; differing defined values get no raise but a decision; written SQL raises only for issues Safety reports; D43 signed (nonAscii issue); D44 proposed and held; #1508, #1509 assignable.",
+  "issues": [
+    1484,
+    1506,
+    1508,
+    1509,
+    1511
+  ],
+  "amended_by": [
+    "F30"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 5",
+  "note": "Logged out of order near line 2742. File ruling-round4-text-guards-ntile.md. D44 later approved by the user (entry 24). The held non-ASCII question was answered by D51 (entry 44). 'assumed' rejected for the ASCII condition."
+}

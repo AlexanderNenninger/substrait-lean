@@ -1,5 +1,6 @@
 import Sverify.Analysis.Contracts
 import Sverify.Analysis.Safety
+import Sverify.Analysis.AssumedCheck
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
 import Sverify.Core.Check
@@ -1008,6 +1009,16 @@ where
 
 end Request
 
+/-- The arguments of the plan's aggregate and window measures: where an
+overflow to `±∞` is an issue under every profile (`Request.underReference`). -/
+def _root_.Substrait.Rel.aggArgs : Rel → List Expr
+  | .read _ | .values _ _ => []
+  | .fetch r _ _ | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r
+  | .unnest r _ => r.aggArgs
+  | .window r _ _ fns => r.aggArgs ++ (WinFn.aggs fns).map (·.arg)
+  | .aggregate r _ ms => r.aggArgs ++ ms.map (·.arg)
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => a.aggArgs ++ b.aggArgs
+
 namespace Request
 
 variable (R : Request)
@@ -1024,7 +1035,9 @@ def perKeyOf : String → List (List Nat × Nat) :=
 engine's profile with no report of its own yet, whose request gets the
 reference's report (`underProfile`'s `pending`, ruling 152 F1). Only DuckDB's
 lift (#575) and Substrait's profile have reports of their own, where an
-overflow to `±∞` is the value and no issue. -/
+overflow to `±∞` of a scalar operation is the value and no issue. An aggregate
+measure over doubles keeps it (`Rel.aggArgs`, ruling 200 A4(2)): the engine's
+running sum overflows where the exact sum, which the model gives, does not. -/
 def underReference : Bool :=
   !["duckdb", "substrait"].contains
     ((R.input.getObjValAs? String "profile").toOption.getD "reference")
@@ -1039,13 +1052,14 @@ def keysIn (K : KnowledgeEnv) : List (List Nat × Bool) := match R.transform wit
 
 /-- The issues the report lists under `K`: those of the plan with its reads
 and joins capped and its sums bounded per key (`Rel.issuesCapped`), and its
-constant errors, an overflow to `±∞` only under the reference
+constant errors, an overflow to `±∞` of a scalar operation only under the reference
 (`check_issues_sound`). -/
 def issuesIn (K : KnowledgeEnv) : List (Issue × Expr) := match R.transform with
   | some p =>
     if p.root.checkWF R.cat then
       ((p.root.issuesCapped R.cat K.cols K.facts (K.windows R.cat) K.keys R.caps R.perKeyOf) ++
-        p.root.constIssues).eraseDups.filter fun (i, _) => R.underReference || i != .infinite
+        p.root.constIssues).eraseDups.filter fun (i, e) =>
+          R.underReference || i != .infinite || p.root.aggArgs.contains e
     else []
   | none => []
 
@@ -1080,6 +1094,24 @@ def optimizedJson (K : KnowledgeEnv) : Json × List String :=
   match R.transform, R.optimizedIn K with
   | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log.map (·.name))
   | _, _ => (.null, [])
+
+/-- The report's `assumed_check` (#2018, ruling 195): the plan whose one row
+checks the assumed issues on the plan as written (`assumedCheck`), in the
+writer's JSON, and for each of its columns the index in the report's `issues`
+of the issue it checks. Null where the report has no assumed issue. -/
+def assumedCheckJson (K : KnowledgeEnv) : Json :=
+  let issues := R.issuesIn K
+  match R.transform with
+  | some p =>
+    if issues.any (·.1.assumed) then
+      match assumedCheck R.cat p.root issues with
+      | some (q, cols) => Json.mkObj [
+          ("plan", Write.writePlan (Write.planSchemas p) R.cat q
+            ((List.range cols.length).map (s!"c{·}"))),
+          ("issues", Lean.toJson cols)]
+      | none => .null
+    else .null
+  | none => .null
 
 end Request
 
@@ -1884,7 +1916,8 @@ theorem check_keys_sound {input : Json} {R : Request} {rep : Report}
 on data that meets the request and its bounds per key (`rows_per`), and whose
 windows and aggregates read fewer rows than the size hypothesis allows
 (`Rel.Small`), each issue of the transformation (`Rel.HasIssue`) is in the
-report, but an overflow to `±∞` under a profile other than the reference,
+report, but an overflow to `±∞` of a scalar operation under a profile other than
+the reference,
 where it is the engine's value. -/
 theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
@@ -1892,7 +1925,7 @@ theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
     (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
     (hsm : T.root.Small data) :
     ∀ p, T.root.HasIssue data false p →
-      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) := by
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs) := by
   intro p hp
   have hok := Request.check_ok (check_parse hR hc)
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
@@ -1905,14 +1938,18 @@ theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
   rw [hok.issues]
   simp only [Request.issuesIn, hT, htw, ↓reduceIte, List.mem_filter, List.mem_eraseDups,
     List.mem_append, KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity]
-  by_cases hinf : p.1 = .infinite ∧ R.underReference = false
+  by_cases hinf : p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs
   · exact .inr hinf
   · refine .inl ⟨.inl (by simpa [KnowledgeEnv.windows] using hin), ?_⟩
     obtain ⟨i, e⟩ := p
     simp only at hinf ⊢
     cases hr : R.underReference
-    · simp only [hr, and_true] at hinf
-      simp [hinf]
+    · by_cases hi : i = .infinite
+      · subst hi
+        by_cases he : e ∈ T.root.aggArgs
+        · simp [he]
+        · exact absurd ⟨rfl, hr, he⟩ hinf
+      · simp [hi]
     · simp
 
 /-- **A guard-free transformation needs no checks** (`Rel.guardFree_sound`):

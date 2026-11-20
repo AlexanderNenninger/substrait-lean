@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-08-core-exact-total",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The core is exact and total on its domain, with inexact values as Allowed sets or raises and everything approximate stated in a profile.",
+  "source": "memory:engine-behaviour-in-profiles.md",
+  "note": "From the user via Fable."
+}

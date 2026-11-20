@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-04-polars-pl3-division-pow",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Polars keeps its own division (approx within 2 ulps, with a subnormal-divisor guard); a negative base, -inf included, to a fractional power is guarded as a reference domain error, not shimmed.",
+  "issues": [
+    444
+  ],
+  "prs": [
+    622
+  ],
+  "source": "github:#622 body",
+  "note": "The user's decision on PL-3, relayed in the PR body."
+}

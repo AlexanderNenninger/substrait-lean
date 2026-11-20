@@ -34,7 +34,7 @@ def nullJ (t : String) : Json := Json.mkObj [("literal", Json.mkObj [("null", ty
 
 /-- The extension URN of a Substrait function. -/
 def urnOf (name : String) : String :=
-  if name == "sverify_fmod" then "extension:io.sverify:functions"
+  if name == "sverify_fmod" || name == "sverify_approx" then "extension:io.sverify:functions"
   else if ["equal", "lt", "is_null", "is_not_null", "is_nan", "greatest", "least",
       "greatest_skip_null", "least_skip_null"].contains name then
     "extension:io.substrait:functions_comparison"
@@ -65,7 +65,9 @@ def functions : List (Nat × String × String) :=
   let extremes := ["max:fp64", "min:fp64"]
   -- After them too: a cast of `round` or `ceil` is a seeded template (#1655).
   let rounding := ["round:fp64", "ceil:fp64"]
-  (typed ++ unary ++ guards ++ aggs ++ arith ++ extremes ++ rounding).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
+  -- Last: D52's source mark on a lifted aggregate's finish (#1608 12d-4).
+  let marks := ["sverify_approx:fp64_i64"]
+  (typed ++ unary ++ guards ++ aggs ++ arith ++ extremes ++ rounding ++ marks).zipIdx.map fun (n, i) => (i + 1, n, urnOf (Parse.baseName n))
 
 def fns : List (Nat × String) := functions.map fun (a, n, _) => (a, n)
 

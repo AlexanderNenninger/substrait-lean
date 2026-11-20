@@ -1,0 +1,16 @@
+{
+  "id": "F36",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The user approves D45 for windows, on the condition that -0.0 lands in the 0.0 group, which Fable confirms holds for group and partition keys; entry 28's hold is lifted.",
+  "prs": [
+    1575
+  ],
+  "amends": [
+    "F28"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 36",
+  "note": "User's words relayed by the coordinator: 'Do elements labeled with e.g. -0.0 end up in the 0.0 group? If so, then that's ok'."
+}

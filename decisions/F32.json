@@ -1,0 +1,16 @@
+{
+  "id": "F32",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "The no-raise premise leaves Engine.Sound and Engine.contract_sound; DuckDB carries it as the named side condition Engine.NoRaiseSide; D16 gets a dated amendment.",
+  "issues": [
+    1484
+  ],
+  "amends": [
+    "D16"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 32",
+  "note": "#1484 finding 13. File ruling-1484-f13-no-raise.md. No new D-number."
+}

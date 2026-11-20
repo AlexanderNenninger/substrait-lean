@@ -1,0 +1,23 @@
+{
+  "id": "F87",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1680 merges under (a) of ruling 75 with a line on #1329's 1.0 list (Spark refresh cost measured and stated, closes in N6c); the 2x gate was mis-set. N14 decided: the Polars store takes the parts form via one shared module.",
+  "issues": [
+    1329,
+    1660
+  ],
+  "prs": [
+    1680
+  ],
+  "amends": [
+    "F75"
+  ],
+  "amended_by": [
+    "F88"
+  ],
+  "source": "fable-ruling-1680-gate-miss.md",
+  "note": "N14's acceptance list here was replaced by ruling 88 (fable-ruling-n14-acceptance.md); see F87.N14ACC."
+}

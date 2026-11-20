@@ -1,0 +1,16 @@
+{
+  "id": "F87.N14ACC",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "superseded",
+  "summary": "N14 acceptance on the benchmark machine: non-compacting refresh at 8M within noise of 2M, compaction and first consolidating read on own lines, consolidation peak within 10% of 712/1813 MB.",
+  "issues": [
+    1329
+  ],
+  "superseded_by": [
+    "F88"
+  ],
+  "source": "fable-ruling-1680-gate-miss.md",
+  "note": "Marked in the file as replaced by ruling 88, 2026-11-19, kept for the record."
+}
