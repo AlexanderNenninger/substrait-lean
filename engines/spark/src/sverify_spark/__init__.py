@@ -34,7 +34,7 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
         "install both from the same release (`pip install -U sverify sverify-spark`)"
     )
 
-from sverify._unsupported import ISSUE_271, RANGE_GUARD
+from sverify._unsupported import ISSUE_271, MIN_MOD_GUARD, RANGE_GUARD
 from sverify.profiles import ProfilePlugin, Setting
 from sverify_spark.store import SparkStore
 
@@ -238,7 +238,7 @@ PLUGIN = ProfilePlugin(
             ISSUE_271,
         )
     },
-    guards=(RANGE_GUARD,),
+    guards=(RANGE_GUARD, MIN_MOD_GUARD),
     # `collect()` of an unordered list (the dialect refuses an ordered one).
     functions=frozenset({"array_agg"}),
     shim_text={"null_order": "NULLs sorted as the reference sorts them"},

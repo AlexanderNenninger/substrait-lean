@@ -587,3 +587,20 @@ def test_a_lens_remainder_lists_min_mod_neg_one(width):
     assert (
         verify("duckdb", "a IS NOT NULL", "SELECT a % 7 AS m FROM t").verdict == sv.Verdict.PROVED
     )
+
+
+def test_the_remainder_verdict_does_not_depend_on_the_engine():
+    """An engine changes whether a plan is accepted, never what it means
+    (#2058, ruling 206): the lens's `a % b` is one plan, whatever engine runs
+    it. DuckDB, Polars and Spark list its guard and accept it; an engine that
+    does not refuses it by naming the guard."""
+    from sverify import _support
+    from sverify.engine import connect, put_table, substrait_json, written_plan
+
+    con = connect()
+    put_table(con, "r", pa.table({"a": pa.array([1], pa.int64()), "b": pa.array([1], pa.int64())}))
+    plan = json.loads(written_plan(substrait_json(con, "SELECT a % b AS m FROM r", "duckdb")))
+    for engine in ("duckdb", "polars", "spark"):
+        _support.check(plan, engine)
+    with pytest.raises(ValueError, match="integer % under semantics="):
+        _support.check(plan, "snowflake")

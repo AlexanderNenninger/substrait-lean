@@ -1047,6 +1047,8 @@ class Exprs:
                     raise Unsupported(f"overflow = {prefs}")
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
                 return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
+            if name == "sverify_raise" and len(arg_js) == 2:
+                return self.raise_guard(arg_js)
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name in _PICKS:
@@ -1375,6 +1377,20 @@ class Exprs:
                 ),
             )
         return out
+
+    def raise_guard(self, arg_js: list[dict]) -> Val:
+        """`sverify_raise(dep, message)`: NULL, and an issue on every row where
+        the call is evaluated (`Profile.reference.un (.raise m)`); an enclosing
+        `CASE` restricts it to the rows that take its branch. Only the integer
+        `%` guard is listed (`ProfilePlugin.guards`, #2058)."""
+        dep = self(arg_js[0])
+        msg = arg_js[1].get("literal", {}).get("string", "")
+        # A NULL of no type: the `CASE` around it takes its other branch's.
+        return Val(
+            pl.lit(None),
+            pl.Null,
+            (*dep.issues, Issue(pl.lit(True), RuntimeIssue, msg)),
+        )
 
     def floor_divide(self, name: str, a: Val, b: Val) -> Val:
         """Integer `//` or `%` with `division_type` = `FLOOR`: Polars's own,
