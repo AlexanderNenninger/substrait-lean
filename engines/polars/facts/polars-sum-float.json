@@ -243,10 +243,23 @@
         }
       ],
       "notes": "Rerun on small inputs (3,000 or 5,000 rows) in a subprocess with POLARS_IDEAL_MORSEL_SIZE=64 and POLARS_SORT_PARTITION_THRESHOLD_BYTES=1024, which Polars reads at start-up: the same behaviour as the large inputs at the defaults (the unstable streaming sort, sums and var varying by run), so the probes stay cheap. The variables only move the thresholds; the large-input results at the defaults stand."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "track A's Lean worker (#1608 12b-1, D35 amended 2026-11-19), polars Python package, macOS arm64",
+      "evidence": [
+        {
+          "file": "engines/polars/tests/test_polars_int_sums.py",
+          "note": "a grouped sum in memory (Kahan's, COMPENSATED): the exact sum in every case"
+        }
+      ],
+      "notes": "Exactness on small integers: where every value is an integer-valued double and the magnitudes sum to at most 2^53, the engine's sum is the exact sum and its mean the exact mean rounded once (python/tests/_int_sums.py's cases). This is the evidence for D35's amendment on this engine's sum_order row."
     }
   ],
   "issues": [
     54,
-    85
+    85,
+    1608
   ]
 }

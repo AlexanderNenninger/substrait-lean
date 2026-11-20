@@ -125,6 +125,10 @@ def expr(
             return d.time_add(self.operand(a, "tod", ref, cols, "time + interval"), us)
         case Un(op="time_trunc", arg=a, param=unit):
             return d.time_trunc(unit, self.operand(a, "tod", ref, cols, "date_trunc"))
+        case Un(op="to_instant", arg=a):
+            return d.to_instant(self.operand(a, "time", ref, cols, "AT TIME ZONE 'UTC'"))
+        case Un(op="to_naive", arg=a):
+            return d.to_naive(self.operand(a, "instant", ref, cols, "AT TIME ZONE 'UTC'"))
         case Un(op="as_time", arg=a):
             return d.as_time(self.int_operand(a, ref, cols, "CAST to TIMESTAMP"))
         case Un(op="date_time", arg=a):
@@ -208,7 +212,7 @@ UN_KINDS: dict[str, FixedKind] = {
     "date_part": "int", "day_part": "int", "date_trunc": "time", "to_date": "date",
     "day_trunc": "date", "time_of_day": "tod", "as_time": "time", "bucket": "time",
     "strftime": "str", "time_add": "tod", "time_trunc": "tod", "date_time": "time",
-    "epoch_us": "int",
+    "epoch_us": "int", "to_instant": "instant", "to_naive": "time",
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {"date_diff": "int", "date_add": "date"}
 

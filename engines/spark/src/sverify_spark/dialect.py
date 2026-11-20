@@ -40,8 +40,10 @@ result is the Lean value, checked on a local Spark session by
   collation (`UTF8_LCASE`, ICU) would compare differently. `length`,
   `locate` and `substring` count characters. Regular expressions are
   Java's, which agree with Rust's on simple patterns (black boxes in Lean);
-  `RLIKE` searches. `upper`, `lower` and patterns with `\\d`, `\\w` or
-  `\\s` raise on non-ASCII text, where Java's tables differ from Rust's (#70).
+  `RLIKE` searches. `upper` and `lower` call the collated form, which does not follow the
+  JVM's default locale, and raise on the scalars the engines map differently (D51);
+  patterns with `\\d`, `\\w` or `\\s` raise on non-ASCII text, where Java's tables
+  differ from Rust's (#70).
 * **Decimals** (#27) follow the reference's types, which are Spark's own
   (`DecimalPrecision`) up to 38 digits; past them Spark cuts the scale to no
   less than 6 (`spark.sql.decimalOperations.allowPrecisionLoss`), so a sum
@@ -71,6 +73,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
+from sverify._unsupported import ISSUE_1725
 from sverify.sql.core import (
     I64_MAX,
     I64_MIN,
@@ -78,6 +81,7 @@ from sverify.sql.core import (
     Dialect,
     GuardIssue,
     Kind,
+    Lst,
     Unsupported,
     _timestamp_text,
 )
@@ -130,6 +134,14 @@ class SparkDialect(Dialect):
     def type_name(self, kind: Kind) -> str:
         if isinstance(kind, Dec):
             return super().type_name(kind)
+        if isinstance(kind, Lst):
+            if kind.elem is None:
+                raise Unsupported("a list whose elements' type is not known")
+            return f"ARRAY<{self.type_name(kind.elem)}>"
+        if kind == "instant":
+            raise self.to_duckdb(
+                "Spark has no map for a timestamp with a time zone yet", ISSUE_1725
+            )
         if kind not in _TYPES:
             raise self.to_duckdb(f"spark has no {kind} type (TIME needs Spark 4.1)")
         return _TYPES[kind]
@@ -141,6 +153,33 @@ class SparkDialect(Dialect):
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS STRING))"
         fail = self.cast(f"raise_error({text})", kind)
         return f"(CASE WHEN {dep} IS NULL THEN {self.null(kind)} ELSE {fail} END)"
+
+    # Lists (#94)
+
+    def unnest_from(self, source: str, lst: str, alias: str) -> str:
+        # `posexplode` counts from 0 and gives no row for a NULL or empty list.
+        e, i = self.quote("e"), self.quote("i")
+        return (
+            f"{source}, LATERAL (SELECT col AS {e}, CAST(pos + 1 AS BIGINT) AS {i} "
+            f"FROM (SELECT posexplode({lst}))) AS {alias}"
+        )
+
+    def list_lit(self, items: list[str], kind: Lst) -> str:
+        return self.cast(f"array({', '.join(items)})", kind)
+
+    def list_element(self, x: str, offset: int) -> str:
+        # `try_element_at` counts from 1 and from the end (-1 the last), and gives NULL out
+        # of range where `element_at` raises (spark-list-index).
+        return f"try_element_at({x}, {offset + 1 if offset >= 0 else offset})"
+
+    def cardinality(self, x: str) -> str:
+        return f"cardinality({x})"
+
+    def collect(self, v: str, order: Sequence[str]) -> str:
+        if order:
+            raise self.refused("array_agg")
+        # `collect_list` skips NULLs and gives `[]` for no values, where the model gives NULL.
+        return f"(CASE WHEN COUNT({v}) = 0 THEN NULL ELSE collect_list({v}) END)"
 
     # Literals
 
@@ -196,12 +235,6 @@ class SparkDialect(Dialect):
         # Half away from zero on the shortest decimal of the double, which is
         # the double's own rounding (a halfway double prints as one).
         return f"ROUND({x})"
-
-    def float_logb(self, x: str, b: str) -> str:
-        raise self.to_duckdb(
-            "Spark's LN is Java's StrictMath, not the C libm the Lean model uses "
-            "(spark-elem-rounding)"
-        )
 
     def float_pow(self, a: str, b: str) -> str:
         raise self.to_duckdb(
@@ -325,6 +358,26 @@ class SparkDialect(Dialect):
             )
         return self.cast(f"({a} {op} {b})", k)
 
+    def decimal_pair(self, what: str, ka: Kind | None, kb: Kind | None) -> None:
+        """Spark brings two decimals of different scales (a comparison, `IN`, a join key,
+        `GREATEST`, `LEAST`) to the wider type `DECIMAL(max(p₁ - s₁, p₂ - s₂) + max(s₁,
+        s₂), max(s₁, s₂))`, and where that has more than 38 digits cuts the scale, which
+        rounds the operand of the higher scale: `CAST(2 AS DECIMAL(38,0)) =
+        CAST(1.5 AS DECIMAL(38,10))` is true, and `GREATEST` of `1.50` and `1.5000000001`
+        is `1.50` (spark-decimal-compare-scale). A pair that fits compares exactly. An
+        operand of another or unknown kind (a `NULL` literal) is not checked."""
+        if not (isinstance(ka, Dec) or ka == "int") or not (isinstance(kb, Dec) or kb == "int"):
+            return
+        (p1, s1), (p2, s2) = _digits(ka), _digits(kb)
+        wide = max(p1 - s1, p2 - s2) + max(s1, s2)
+        if s1 != s2 and wide > 38:
+            raise Unsupported(
+                f"{what} of DECIMAL({p1}, {s1}) with DECIMAL({p2}, {s2}) on Spark: "
+                f"its common type has {wide} digits, and Spark rounds the operand of "
+                "the higher scale to fit 38 (spark-decimal-compare-scale); "
+                "cast an operand to fewer digits"
+            )
+
     def decimal_neg(self, a: str, k: Dec | None = None) -> str:
         # SP-1: `-x` rounds past 34 significant digits. `0 - x` is exact where
         # its type keeps the scale: up to 37 digits, or 38 at scale 6 or less.
@@ -412,10 +465,7 @@ class SparkDialect(Dialect):
     # Relations
 
     def row_ordinal(self) -> str:
-        raise Unsupported(
-            "Spark tables have no row order, so FETCH and windows over a named table "
-            "cannot follow the Lean model's list order (windows run with deterministic=True)"
-        )
+        raise self.no_row_order("Spark")
 
 
 def _float_const(sql: str) -> float | None:

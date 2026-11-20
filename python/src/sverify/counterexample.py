@@ -30,6 +30,7 @@ from typing import Any
 import ibis.expr.datatypes as dt_types
 
 from sverify._lean_eval import lean_values, with_tables
+from sverify.plan_json import is_utc
 
 EPOCH = dt.datetime(1970, 1, 1)
 
@@ -118,7 +119,7 @@ def domain(dtype: dt_types.DataType, literals: Mapping[str, set[object]]) -> Dom
         values = ["", "a", *sorted(literals["str"]), "b"]  # type: ignore[type-var]
     elif dtype.is_boolean():
         values = [False, True]
-    elif dtype.is_timestamp() and dtype.timezone is None:  # type: ignore[attr-defined]
+    elif dtype.is_timestamp() and (dtype.timezone is None or is_utc(dtype.timezone)):  # type: ignore[attr-defined]
         micros = sorted({v + d for v in literals["ts"] for d in (-1, 0, 1)})  # type: ignore[operator]
         # Python's datetimes stop at years 1 and 9999.
         lo, hi = dt.datetime.min - EPOCH, dt.datetime.max - EPOCH
@@ -128,6 +129,9 @@ def domain(dtype: dt_types.DataType, literals: Mapping[str, set[object]]) -> Dom
             if lo <= dt.timedelta(microseconds=m) <= hi
         ]
         values = [EPOCH, dt.datetime(2024, 1, 1), *near_ts]
+        if dtype.timezone is not None:  # type: ignore[attr-defined]
+            # An instant (D53): the same microseconds, labelled UTC.
+            values = [v.replace(tzinfo=dt.UTC) for v in values]  # type: ignore[attr-defined]
     elif dtype.is_date():
         values = [EPOCH.date(), dt.date(2024, 1, 1)]
     else:

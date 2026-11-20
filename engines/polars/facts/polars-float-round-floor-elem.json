@@ -53,7 +53,23 @@
       ]
     },
     {
-      "group": "fp.elem",
+      "group": "fp.pow",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.atan2",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.pow",
       "option": "pow_one_inf",
       "types": [
         "fp32"
@@ -78,7 +94,7 @@
     "`pl.arctan2` and `sqrt` keep the sign of a zero argument: `arctan2(-0.0, 1)` and `sqrt(-0.0)` are `-0.0`, `arctan2(0.0, -1)` is π and `arctan2(±0.0, -0.0)` is -π, in the column's own width (Float32 π is 3.141592502593994).",
     "`pow(1, ±inf)`, `pow(-1, ±inf)`, `pow(1, NaN)` and `pow(NaN, 0)` are 1.0 on Float32 as on Float64 (polars-pow-one-inf)."
   ],
-  "reference": "`round_zero_sign` = `IEEE`, `zero_sign` = `IEEE`, `pow_one_inf` = `ONE` (D40). `round`, `floor` and `ceil` return the float, so `float_to_int` does not arise.",
+  "reference": "The sign of a zero result of `round`, `floor` and `ceil` is `round_zero_sign`, left open by the reference (`eval` gives `+0.0`; the ruling of 2026-11-09 in duckdb-R15-round); `zero_sign` = `ONE_ZERO`; `pow_one_inf` = `ONE` (D40). `round`, `floor` and `ceil` return the float, so `float_to_int` does not arise.",
   "status": "no-finding",
   "evidence": "probe",
   "provenance": [

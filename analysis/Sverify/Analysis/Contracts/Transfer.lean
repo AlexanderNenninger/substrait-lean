@@ -615,6 +615,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ftod s, a => ftodAbs s a
   | .itos, a => { null := a.nonNum .int, str := a.int.isSome }
   | .widen, a => a
+  | .atUtc _, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a
   | .regexReplace _ _ _, a | .md5, a | .sha256, a =>
     { null := a.nonStr, str := a.str }
@@ -740,11 +741,12 @@ def pickAbs (both : Bound → Bound → Bound) (a b : AVal) : AVal :=
 
 /-! ### Double arithmetic (#582)
 
-A double `+`, `-`, `*`, `/` of finite doubles is bounded from its inputs'
-bounds, by `FloatCode.add_scaled` … `div_scaled` (D31, `FloatArith.lean`): on
-scaled values, the exact result's interval widened by its rounding, then
-back to codes. Where the inputs may be infinite or NaN, or the result may
-come near the largest double, the bound is `top`. -/
+A double `+`, `-`, `*` of finite doubles is bounded from its inputs' bounds by
+the exact result's ends, rounded as the operation rounds (`FloatCode.fadd_fin`,
+`fmul_fin`, `ofExact_mono`, D31, `FloatArith.lean`); a `/` by one divisor the
+same, and otherwise by `div_scaled`: the exact quotient's interval widened by
+its rounding, then back to codes. Where an input may be infinite or NaN, or
+has only one end, the bound is `top`. -/
 
 /-- The scaled ends of a bound of finite doubles' codes. -/
 def finEnds (x : Bound) : Option (Int × Int) :=
@@ -754,38 +756,58 @@ def finEnds (x : Bound) : Option (Int × Int) :=
     else none
   | _, _ => none
 
+/-- The lower end of a bound, where it is a finite double. -/
+def Bound.loFin (x : Bound) : Option Int :=
+  match x.lo with
+  | some l => if FloatCode.negInf < l ∧ l < FloatCode.posInf then some l else none
+  | none => none
+
+/-- The lower end of a bound, where it is a finite double at least `0`. -/
+def Bound.loNonneg (x : Bound) : Option Int :=
+  match x.lo with
+  | some l => if 0 ≤ l ∧ l < FloatCode.posInf then some l else none
+  | none => none
+
 /-- The codes whose scaled value is in `[l, h]`. -/
 def codeBound (l h : Int) : Bound := ⟨some (FloatCode.codeLo l), some (FloatCode.codeHi h)⟩
 
 /-- The largest magnitude in `[l, h]`. -/
 def endsMag (l h : Int) : Nat := max l.natAbs h.natAbs
 
-set_option exponentiation.threshold 3200 in
-/-- `x + y` (`sub`: `x - y`) of doubles. -/
+/-- `x + y` (`sub`: `x - y`) of doubles: the exact result's ends, rounded as the
+sum is (`FloatCode.ofExact`). Rounding is monotone (`ofExact_mono`), so the
+rounded ends bound the rounded result, with no widening. -/
 def faddBound (sub : Bool) (x y : Bound) : Bound :=
   match finEnds x, finEnds y with
   | some (la, ha), some (lb, hb) =>
-    let S := endsMag la ha + endsMag lb hb
-    if S ≤ 2 ^ 2097 then
-      let e : Int := ((S / 2 ^ 50 + 1 : Nat) : Int)
-      if sub then codeBound (la - hb - e) (ha - lb + e) else codeBound (la + lb - e) (ha + hb + e)
-    else Bound.top
-  | _, _ => Bound.top
+    if sub then ⟨some (FloatCode.ofExact (la - hb)), some (FloatCode.ofExact (ha - lb))⟩
+    else ⟨some (FloatCode.ofExact (la + lb)), some (FloatCode.ofExact (ha + hb))⟩
+  -- Finite lower ends only: a sum is at least the rounded sum of them, whatever the
+  -- operands are above (`+∞` and NaN included, `FloatCode.fadd_lower`).
+  | _, _ =>
+    match sub, x.loFin, y.loFin with
+    | false, some la, some lb => ⟨some (FloatCode.ofExact (FloatCode.scaled la + FloatCode.scaled lb)), none⟩
+    -- `x - y` with a finite lower end of `x` and a finite `y` (`FloatCode.fsub_lower`).
+    | true, some la, _ =>
+      match finEnds y with
+      | some (_, hb) => ⟨some (FloatCode.ofExact (FloatCode.scaled la - hb)), none⟩
+      | none => Bound.top
+    | _, _, _ => Bound.top
 
-set_option exponentiation.threshold 3200 in
-/-- `x * y` of doubles. -/
+/-- `x * y` of doubles: the exact products' ends, rounded as the product is. -/
 def fmulBound (x y : Bound) : Bound :=
   match finEnds x, finEnds y with
   | some (la, ha), some (lb, hb) =>
-    let P := endsMag la ha * endsMag lb hb
-    if P ≤ 2 ^ 3171 then
-      let E : Int := ((P / 2 ^ 50 + 2 ^ 1074 : Nat) : Int)
-      match (Bound.mul ⟨some la, some ha⟩ ⟨some lb, some hb⟩) with
-      | ⟨some l, some h⟩ =>
-        codeBound ((l - E) / ((2 ^ 1074 : Nat) : Int)) ((h + E) / ((2 ^ 1074 : Nat) : Int))
-      | _ => Bound.top
-    else Bound.top
-  | _, _ => Bound.top
+    match (Bound.mul ⟨some la, some ha⟩ ⟨some lb, some hb⟩) with
+    | ⟨some l, some h⟩ =>
+      ⟨some (FloatCode.ofExactDiv l FloatCode.unitK), some (FloatCode.ofExactDiv h FloatCode.unitK)⟩
+    | _ => Bound.top
+  -- Non-negative finite lower ends only (`FloatCode.fmul_lower`).
+  | _, _ =>
+    match x.loNonneg, y.loNonneg with
+    | some la, some lb =>
+      ⟨some (FloatCode.ofExactDiv (FloatCode.scaled la * FloatCode.scaled lb) FloatCode.unitK), none⟩
+    | _, _ => Bound.top
 
 /-- The least magnitude in `[l, h]`, where `0` is outside. -/
 def endsMin (l h : Int) : Nat := if 0 < l then l.natAbs else if h < 0 then h.natAbs else 0
@@ -795,6 +817,13 @@ set_option exponentiation.threshold 3200 in
 def fdivBound (x y : Bound) : Bound :=
   match finEnds x, finEnds y with
   | some (la, ha), some (lb, hb) =>
+    -- By one divisor `d ≠ 0`: the quotient is monotone in the dividend, as `a / 8`.
+    if lb = hb ∧ lb ≠ 0 then
+      if 0 < lb then ⟨some (FloatCode.ofExactDiv (la * FloatCode.unitK) lb.natAbs),
+          some (FloatCode.ofExactDiv (ha * FloatCode.unitK) lb.natAbs)⟩
+      else ⟨some (FloatCode.ofExactDiv (-(ha * FloatCode.unitK)) lb.natAbs),
+          some (FloatCode.ofExactDiv (-(la * FloatCode.unitK)) lb.natAbs)⟩
+    else
     let Ma := endsMag la ha
     let mb := endsMin lb hb
     if 0 < mb ∧ Ma * 2 ^ 1074 ≤ 2 ^ 2097 * mb then
@@ -814,10 +843,11 @@ def strMayNe (a b : AVal) : Bool :=
 
 /-! #### Signs (#441)
 
-Rounding keeps a result's sign (`FloatCode.add_nonneg` …), so a sum or
-product of non-negative doubles, or a quotient of one by a positive one,
-stays at least `0`; the absolute error of `faddBound` … alone would let its
-bound dip below. -/
+Rounding keeps a result's sign (`FloatCode.fdiv_nonneg_open`), so a quotient of a
+non-negative double by a positive one stays at least `0`; the absolute error
+of the general `fdivBound` alone would let its bound dip below. A sum, a
+product and a quotient by one divisor are rounded at their ends and need no
+such lift. -/
 
 /-- Does every value of the bound sit at or above code `0` (`+0.0`)? -/
 def Bound.nonneg (b : Bound) : Bool := b.lo.any (0 ≤ ·)
@@ -844,18 +874,15 @@ theorem Bound.nonneg_mem {b : Bound} {r : Int} (h : b.Mem r) (hn : b.nonneg = tr
   | some l => simp only [hlo, Option.any_some, decide_eq_true_eq] at hn; have := h.1 l hlo; omega
 
 set_option exponentiation.threshold 3200 in
-/-- Do `faddBound`'s guards hold? -/
-def faddOk (x y : Bound) : Bool :=
-  match finEnds x, finEnds y with
-  | some (la, ha), some (lb, hb) => decide (endsMag la ha + endsMag lb hb ≤ 2 ^ 2097)
-  | _, _ => false
+/-- Is every value of the bound above code `0` (positive, `+∞` and NaN included)? -/
+def Bound.posLo (b : Bound) : Bool := b.lo.any (0 < ·)
 
-set_option exponentiation.threshold 3200 in
-/-- Do `fmulBound`'s guards hold? -/
-def fmulOk (x y : Bound) : Bool :=
-  match finEnds x, finEnds y with
-  | some (la, ha), some (lb, hb) => decide (endsMag la ha * endsMag lb hb ≤ 2 ^ 3171)
-  | _, _ => false
+omit [Boxes.Ambient] in
+theorem Bound.posLo_mem {b : Bound} {r : Int} (h : b.Mem r) (hn : b.posLo = true) : 0 < r := by
+  unfold Bound.posLo at hn
+  cases hlo : b.lo with
+  | none => simp [hlo] at hn
+  | some l => simp only [hlo, Option.any_some, decide_eq_true_eq] at hn; have := h.1 l hlo; omega
 
 set_option exponentiation.threshold 3200 in
 /-- Do `fdivBound`'s guards hold? -/
@@ -865,18 +892,10 @@ def fdivOk (x y : Bound) : Bool :=
     decide (0 < endsMin lb hb ∧ endsMag la ha * 2 ^ 1074 ≤ 2 ^ 2097 * endsMin lb hb)
   | _, _ => false
 
-/-- `faddBound`, at least `0` for non-negative inputs. -/
-def faddBoundS (sub : Bool) (x y : Bound) : Bound :=
-  if !sub && x.nonneg && y.nonneg && faddOk x y then (faddBound sub x y).atLeast0
-  else faddBound sub x y
-
-/-- `fmulBound`, at least `0` for non-negative inputs. -/
-def fmulBoundS (x y : Bound) : Bound :=
-  if x.nonneg && y.nonneg && fmulOk x y then (fmulBound x y).atLeast0 else fmulBound x y
-
-/-- `fdivBound`, at least `0` for a non-negative dividend and a positive divisor. -/
+/-- `fdivBound`, at least `0` for a non-negative dividend and a positive divisor,
+also where either has one end only (`FloatCode.fdiv_nonneg_open`). -/
 def fdivBoundS (x y : Bound) : Bound :=
-  if x.nonneg && y.nonneg && fdivOk x y then (fdivBound x y).atLeast0 else fdivBound x y
+  if x.nonneg && y.posLo then (fdivBound x y).atLeast0 else fdivBound x y
 
 /-- Do `fdivBound`'s guards hold of two values' intervals? Then the divisor is
 neither zero nor NaN, and IEEE division (`BinFn.fdivIeee`, D39) is `fdiv`. -/
@@ -904,9 +923,9 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .dmul, a, b => arith decNK Bound.mul a b
   | .ddiv, a, b => divAbs decNK ddivBound a b
   | .dateAdd, a, b => arith dateAddNK Bound.add a b
-  | .fadd, a, b => arith floatsOnly (faddBoundS false) a b
-  | .fsub, a, b => arith floatsOnly (faddBoundS true) a b
-  | .fmul, a, b => arith floatsOnly fmulBoundS a b
+  | .fadd, a, b => arith floatsOnly (faddBound false) a b
+  | .fsub, a, b => arith floatsOnly (faddBound true) a b
+  | .fmul, a, b => arith floatsOnly fmulBound a b
   | .fdiv, a, b => arith floatsOnly fdivBoundS a b
   -- By a divisor that may be `±0.0`, `±∞` of either sign.
   | .fdivIeee, a, b =>

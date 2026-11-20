@@ -37,11 +37,9 @@ this model (`docs/proofs.md`, "What is trusted"). `Rel.HasIssue` assumes:
   counts as `AND`/`OR`, so `CASE WHEN b <> 0 THEN a / b > 1 ELSE false END`
   fails on `b = 0`. The parser makes those eager (`Parse.eagerly`);
   `Expr.ifThen` itself is lazy. Polars evaluates `coalesce`, `&` and `|` on
-  every row (`polars-exec-when-eager`); DataFusion's simplifier rewrites a
-  boolean `CASE` into `AND`/`OR`.
-* On DataFusion, `ABS` fails on the smallest integer (the parser writes `-a`
-  as `a / -1`), and the simplifier makes `POWER(x, 0)` the constant 1, so it
-  never fails.
+  every row (`polars-exec-when-eager`); an optimizer that rewrites a boolean
+  `CASE` into `AND`/`OR` does the same.
+* `ABS` fails on the smallest integer (the parser writes `-a` as `a / -1`).
 * Optimizers merge filters and push them down through projections and
   joins, so a filter condition may be evaluated on rows that a filter below it
   would remove: `t.filter(b != 0).filter(a / b > 1)` fails on `b = 0`.
@@ -145,13 +143,20 @@ def AVal.asciiOk (a : AVal) : Bool := a.ascii || a.plain || !a.str
 /-- Is every string `a` describes ASCII without a vertical tab? -/
 def AVal.plainOk (a : AVal) : Bool := a.plain || !a.str
 
+/-- Is every string `a` describes in `UPPER`'s agreed alphabet, none a scalar of its raise
+set (`Issue.caseDiffers`, D51)? ASCII text is. -/
+def AVal.upperOk (a : AVal) : Bool := a.upperAgreed || a.asciiOk
+
+/-- As `upperOk`, for `LOWER`. -/
+def AVal.lowerOk (a : AVal) : Bool := a.lowerAgreed || a.asciiOk
+
 omit [Boxes.Ambient] in
 theorem AVal.isAscii_of_asciiOk {a : AVal} {s : String} (h : a.Mem (.str s))
     (ho : a.asciiOk = true) : Text.isAscii s = true := by
   simp only [AVal.Mem, AVal.MemR] at h
   simp only [AVal.asciiOk] at ho
   cases hx : a.ascii <;> cases hy : a.plain <;> cases hz : a.str <;>
-    simp_all [Text.isPlain]
+    simp_all [AVal.textOk, Text.isPlain]
 
 omit [Boxes.Ambient] in
 theorem AVal.isPlain_of_plainOk {a : AVal} {s : String} (h : a.Mem (.str s))
@@ -159,7 +164,25 @@ theorem AVal.isPlain_of_plainOk {a : AVal} {s : String} (h : a.Mem (.str s))
   simp only [AVal.Mem, AVal.MemR] at h
   simp only [AVal.plainOk] at ho
   cases hx : a.ascii <;> cases hy : a.plain <;> cases hz : a.str <;>
-    simp_all [Text.isPlain]
+    simp_all [AVal.textOk, Text.isPlain]
+
+omit [Boxes.Ambient] in
+theorem AVal.not_upperRaises_of_upperOk {a : AVal} {s : String} (h : a.Mem (.str s))
+    (ho : a.upperOk = true) : Text.upperRaises s = false := by
+  simp only [AVal.upperOk, Bool.or_eq_true] at ho
+  rcases ho with ho | ho
+  · simp only [AVal.Mem, AVal.MemR, AVal.textOk, ho, Bool.and_eq_true] at h
+    simpa using h.2.1.2
+  · exact Text.upperRaises_of_isAscii (AVal.isAscii_of_asciiOk h ho)
+
+omit [Boxes.Ambient] in
+theorem AVal.not_lowerRaises_of_lowerOk {a : AVal} {s : String} (h : a.Mem (.str s))
+    (ho : a.lowerOk = true) : Text.lowerRaises s = false := by
+  simp only [AVal.lowerOk, Bool.or_eq_true] at ho
+  rcases ho with ho | ho
+  · simp only [AVal.Mem, AVal.MemR, AVal.textOk, ho, Bool.and_eq_true] at h
+    simpa using h.2.2
+  · exact Text.lowerRaises_of_isAscii (AVal.isAscii_of_asciiOk h ho)
 
 def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .neg, _, ar => if ar.within minI64 maxI64 then [] else [.wraps]
@@ -171,8 +194,9 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
       (if !Text.regexClasses p.toList || aa.plainOk then [] else [.nonAscii])
   | .regexExtract p _, aa, _ | .regexReplace p _ _, aa, _ =>
     if !Text.regexClasses p.toList || aa.plainOk then [] else [.nonAscii]
-  | .upper, aa, _ | .lower, aa, _ | .reverse, aa, _ | .ascii, aa, _ =>
-    if aa.asciiOk then [] else [.nonAscii]
+  | .upper, aa, _ => if aa.upperOk then [] else [.caseDiffers]
+  | .lower, aa, _ => if aa.lowerOk then [] else [.caseDiffers]
+  | .reverse, aa, _ | .ascii, aa, _ => if aa.asciiOk then [] else [.nonAscii]
   | .dateTrunc u, aa, ar =>
     if u.calendar then (if tsFits aa ar then [] else [.overflow])
     else if ar.within minI64 maxI64 then [] else [.wraps]
@@ -749,7 +773,7 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
     let tk := withAlts (c.cstrAlts true) ks ors
     let ek := withAlts (c.cstrAlts false) ks ors
     c.mayIssues env fs ks ors ++
-      (if ac.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if ac.tt then t.mayIssues (c.refine env) (fs ++ c.factsOf) tk.1 tk.2 else []) ++
       (if ac.nonBool || ac.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else [])
   -- The body on any element, with the row in scope (D28).
   | .hof _ l b => l.mayIssues env fs ks ors ++ b.mayIssues (AVal.top :: env) [] []
@@ -822,7 +846,7 @@ def Expr.mayIssuesA (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors :
     let tk := withAlts (c.cstrAlts true) ks ors
     let ek := withAlts (c.cstrAlts false) ks ors
     (rc.1 ++
-      (if rc.2.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if rc.2.tt then t.mayIssues (c.refine env) (fs ++ c.factsOf) tk.1 tk.2 else []) ++
       (if rc.2.nonBool || rc.2.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else []),
       (Expr.ifThen c t e).absD env fs ks)
   | .hof f l b =>
@@ -1002,7 +1026,27 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
         · have := Text.classesDiffer_of_isPlain p (AVal.isPlain_of_plainOk ha hok)
           simp_all
       · simp
-  case upper | lower | reverse | ascii =>
+  case upper =>
+    cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+    rename_i s
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i hn
+    simp only [UnFn.mayIssue]
+    split
+    · rename_i hok
+      exact absurd hn (by rw [AVal.not_upperRaises_of_upperOk ha hok]; simp)
+    · simp
+  case lower =>
+    cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
+    rename_i s
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk; rename_i hn
+    simp only [UnFn.mayIssue]
+    split
+    · rename_i hok
+      exact absurd hn (by rw [AVal.not_lowerRaises_of_lowerOk ha hok]; simp)
+    · simp
+  case reverse | ascii =>
     cases v <;> simp only [UnFn.issue, reduceCtorEq] at hk
     rename_i s
     split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
@@ -1497,7 +1541,8 @@ theorem Expr.mayIssuesC_sound {env : List AVal} {fs : List Fact} {ks : Assumptio
         have htt : (c.absD env fs ks).tt = true := hc
         simp only [htt, ite_true]
         have hw := withAlts_sound (Expr.cstrAlts_sound hct) hks hors
-        exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct) hfs hw.1 hw.2 t p hp
+        exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct)
+          (FactsHold.append hfs (Expr.factsOf_sound c hct)) hw.1 hw.2 t p hp
       · simp only [hct, ite_false, Bool.false_eq_true] at hp
         right
         have hf : (c.eval row).isTrue = false := by simpa using hct
@@ -1554,7 +1599,7 @@ def Rel.loose : Rel → Rel
   | .orderBy r _ | .distinct r => r.loose
   | .aggregate r gs ms => .aggregate r gs ms
   -- A filter on the other columns may run below an `UNNEST`, on rows whose
-  -- lists are empty (DataFusion's optimizer does): the loose rows are both.
+  -- lists are empty (an optimizer may do that): the loose rows are both.
   | .unnest r c => .unionAll (.unnest r.loose c) r.loose
 
 omit [Boxes.Ambient] in
@@ -2724,7 +2769,8 @@ def Expr.constIssues : Expr → List (Issue × Expr)
   | e@(.un _ a) => e.selfConstIssues ++ a.constIssues
   | e@(.bin _ a b) => e.selfConstIssues ++ a.constIssues ++ b.constIssues
   | e@(.ifThen c t x) => e.selfConstIssues ++ c.constIssues ++ t.constIssues ++ x.constIssues
-  | .hof _ l _ => l.constIssues
+  -- A lambda's body too: a constant in it that raises counts as everywhere else (D21).
+  | .hof _ l b => l.constIssues ++ b.constIssues
 
 /-- Every expression of a plan: conditions, projections, grouping keys and
 the measures' arguments and filters. -/
@@ -2749,5 +2795,9 @@ def Rel.constIssues (r : Rel) : List (Issue × Expr) :=
   (.ifThen (.bin .eq (.bin .idiv (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)))
     (.lit (.int 2)) (.lit .null))).constIssues.eraseDups.map (·.1) == [.divByZero]
 #guard letI := Boxes.Ambient.none; (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
+-- A raising constant in a lambda's body (`list_transform(xs, e -> e + 1 // 0)`) is counted too.
+#guard letI := Boxes.Ambient.none;
+  (Expr.hof .transform (.field 0) (.bin .add (.field 1) (.bin .idiv (.lit (.int 1)) (.lit (.int 0)))))
+    |>.constIssues.eraseDups.map (·.1) == [.divByZero]
 
 end Substrait

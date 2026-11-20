@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import ast
 import collections
+import functools
 import json
 import re
 import sys
@@ -34,10 +35,18 @@ BASELINE = Path(__file__).resolve().parents[2] / "tests" / "exits_baseline.json"
 
 #: The classes every refusal derives from, by name, and the helpers that build one.
 _ROOTS = {"SverifyError", "UnsupportedError", "Unsupported", "Refused", "ProducerRefused"}
+#: Data that breaks a condition, not a refusal of sverify's input.
+_DATA = {"PreconditionError", "PostconditionError"}
 _HELPER = re.compile(r"refus|unsupported", re.I)
 #: Classes whose message always ends with an action (`SqlUnsupported` adds a
 #: rewrite, or "write this step in Ibis").
-_OWN_EXIT = {"SqlUnsupported", "WriterUnsupported", "ProducerUnsupported", "refused"}
+_OWN_EXIT = {
+    "ConditionError",
+    "SqlUnsupported",
+    "WriterUnsupported",
+    "ProducerUnsupported",
+    "refused",
+}
 
 _VERBS = (
     "use|set|pass|write|run|add|declare|install|call|state|choose|give|say|rewrite|replace|"
@@ -61,6 +70,8 @@ class Site:
     cls: str
     message: str
     hint: str = ""
+    construct: str | None = None
+    """The text of the `construct=` argument (`{}` for a formatted part); None if not given."""
 
     @property
     def tier(self) -> str:
@@ -97,7 +108,21 @@ def _text(node: ast.AST, consts: dict[str, str]) -> str:
     return "{}"
 
 
-def sites(root: Path = SRC) -> list[Site]:
+def _construct_text(node: ast.AST) -> str:
+    """A `construct=` argument as text: its literal parts, `{}` for each computed part."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            str(v.value) if isinstance(v, ast.Constant) else "{}"
+            for v in node.values
+            if isinstance(v, ast.Constant | ast.FormattedValue)
+        )
+    return "{}"
+
+
+@functools.cache
+def _sites(root: Path) -> tuple[Site, ...]:
     """Every refusal `raise` under `root`."""
     trees = {
         p: ast.parse(p.read_text())
@@ -133,7 +158,7 @@ def sites(root: Path = SRC) -> list[Site]:
                 continue
             f = n.exc.func
             name = f.id if isinstance(f, ast.Name) else getattr(f, "attr", "")
-            if not (refusal(name) or _HELPER.search(name)):
+            if name in _DATA or not (refusal(name) or _HELPER.search(name)):
                 continue
             msg = _text(n.exc.args[0], consts) if n.exc.args else ""
             if not msg.strip() or msg.strip() == "{}":
@@ -143,13 +168,58 @@ def sites(root: Path = SRC) -> list[Site]:
                     if k.arg in ("message", "reason", "msg")
                 )
             hint = next((_text(k.value, consts) for k in n.exc.keywords if k.arg == "hint"), "")
-            out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint))
-    return out
+            if not re.sub(r"[{}\s]|\w+(?=})", "", msg) and not hint:
+                continue  # forwards a message another site built (`raise RouteError(refused)`)
+            if _wraps_caught(n.exc.args[0] if n.exc.args else None) and not hint:
+                continue  # a prefix on the caught error (`f"condition {c!r}: {e}"`)
+            construct = next(
+                (_construct_text(k.value) for k in n.exc.keywords if k.arg == "construct"), None
+            )
+            out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint, construct))
+    return tuple(out)
+
+
+def _wraps_caught(node: ast.AST | None) -> bool:
+    """An f-string that ends in the caught error (`{e}`, `{err}`): a prefix on
+    another site's message, which names its own exit."""
+    if not isinstance(node, ast.JoinedStr) or not node.values:
+        return False
+    last = node.values[-1]
+    return (
+        isinstance(last, ast.FormattedValue)
+        and isinstance(last.value, ast.Name)
+        and last.value.id in {"e", "err", "exc", "error"}
+    )
+
+
+def sites(root: Path = SRC) -> list[Site]:
+    """Every refusal `raise` under `root` (parsed once per process)."""
+    return list(_sites(root))
 
 
 def unnamed_by_file(found: list[Site] | None = None) -> dict[str, int]:
     """The count of sites that name no exit and give no hint, per file."""
     counts = collections.Counter(s.file for s in (found or sites()) if s.tier == "unnamed")
+    return dict(sorted(counts.items()))
+
+
+#: Where a refusal names its construct as data (#700): the SQL lift and the Ibis producer.
+CONSTRUCT_DIRS = ("sql_lift/", "ibis_substrait/")
+CONSTRUCT_BASELINE = BASELINE.with_name("construct_baseline.json")
+#: One spelling of a construct: `function md5` or SQL keywords in upper case.
+CONSTRUCT_FORM = re.compile(
+    r"function (\{\}|[a-z][a-z0-9_]*)|(\{\}|[A-Z][A-Z0-9]*)( (\{\}|[A-Z][A-Z0-9]*))*"
+)
+
+
+def construct_sites(found: list[Site] | None = None) -> list[Site]:
+    """The refusals of the lift and the producer."""
+    return [s for s in (found or sites()) if s.file.startswith(CONSTRUCT_DIRS)]
+
+
+def missing_construct_by_file(found: list[Site] | None = None) -> dict[str, int]:
+    """The count of lift and producer refusals that set no `construct`, per file."""
+    counts = collections.Counter(s.file for s in construct_sites(found) if s.construct is None)
     return dict(sorted(counts.items()))
 
 
@@ -169,6 +239,7 @@ def main() -> None:
             if s.tier == "unnamed":
                 print(f"{s.file}:{s.line} {s.cls}: {s.message}")
     if "--write-baseline" in sys.argv:
+        CONSTRUCT_BASELINE.write_text(json.dumps(missing_construct_by_file(found), indent=2) + "\n")
         BASELINE.write_text(json.dumps(unnamed_by_file(found), indent=2) + "\n")
 
 

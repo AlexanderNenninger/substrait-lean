@@ -23,7 +23,7 @@ from typing import Any
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 2:
+if getattr(_meta, "PLUGIN_API", None) != 3:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -67,7 +67,7 @@ def _run(
 
 def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: bool) -> Any:
     """The plan's result as a lazy weighted-table handle
-    (`sverify_polars.store.LazyState`): the merge that adds it to the state
+    (`sverify._parts.Lazy`): the merge that adds it to the state
     streams it into a file, so it is never collected."""
     from sverify_polars import engine
     from sverify_polars.store import lazy_plan
@@ -137,6 +137,7 @@ PLUGIN = ProfilePlugin(
     restore=_restore,
     runner=_run,
     local=True,
+    checks_assumed=True,
     modules=("polars", "numpy"),
     read_settings=_read_settings,
     run_tables=_run_tables,

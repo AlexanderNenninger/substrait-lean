@@ -141,7 +141,7 @@ def robust (es : List EngineProfile) (input : Json) : Except String Json := do
   let cat := R.cat
   let A := fun t => tableEnv (R.schemas t) (R.preOf t)
   let F := fun t => (R.preOf t).flatMap Expr.factsOf
-  let T := Rel.keyedWindows cat A F (fun _ => [])
+  let T := Rel.keyedWindows cat A F ⟨fun _ => []⟩
   let env := (plan.root.capReads R.caps).aeval cat A F T
   let names := if plan.names.length == env.length then plan.names
     else (List.range env.length).map (s!"#{·}")

@@ -35,8 +35,8 @@ generated modules (the lowering and the lift) are DuckDB's package's, which
 applies `check_generated` to them. -/
 
 /-- The checker's modes as a library, `Substrait.Checker.checkerMain`, so a
-package with an engine profile of its own can build a checker over
-`builtinEngines ++ [its profile]`. -/
+package with an engine of its own can build a checker over
+`builtinEntries ++ [its entry]`. -/
 lean_lib SubstraitCheck
 
 /-- An engine profile added from outside, as another package adds one: a

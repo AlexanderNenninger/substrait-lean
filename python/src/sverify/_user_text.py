@@ -3,7 +3,7 @@ positional `$i`, and the Ibis or SQL operator for Lean's (`/.`, `DOUBLE(…)`).
 
 Internal: not part of sverify's public API.
 
-The checker names an operation by `Expr.render` (`SubstraitLean/Pretty.lean`),
+The checker names an operation by `Expr.render` (`core/Sverify/Core/Pretty.lean`),
 where `$i` is the i-th column of the input of the relation the operation is
 in. The plan (Substrait protobuf JSON) says which columns each relation's
 input has: `columns` walks it, and `user_expr` names `$i` where every
@@ -67,29 +67,39 @@ def _field(e: Any) -> int | None:
     return None
 
 
-Seen = list[tuple[list[Any], set[int], dict[int, list[str]], set[tuple[int | None, ...]]]]
+_INTS = ("i8", "i16", "i32", "i64")
+
+Seen = list[tuple[list[Any], set[int], dict[int, list[str]], set[tuple[int | str | None, ...]]]]
 
 
-def _operand(e: Any) -> int | None | Literal[False]:
-    """A call's operand: its column, None for a literal (through casts), or
-    False for anything else."""
+def _int_text(lit: Mapping[str, Any]) -> str | None:
+    """An integer literal's value as text, None for any other literal."""
+    return next((str(int(v)) for k in _INTS if (v := lit.get(k)) is not None), None)
+
+
+def _operand(e: Any) -> int | str | None | Literal[False]:
+    """A call's operand: its column, a literal (through casts) as its integer
+    text, or None for another literal, or False for anything else."""
     f = _field(e)
     if f is not None:
         return f
     while isinstance(e, dict) and "cast" in e:
         e = e["cast"].get("input")
-    return None if isinstance(e, dict) and "literal" in e else False
+    if not isinstance(e, dict) or "literal" not in e:
+        return False
+    return _int_text(e["literal"])
 
 
-def _pairs(node: Any, out: set[tuple[int | None, ...]]) -> None:
+def _pairs(node: Any, out: set[tuple[int | str | None, ...]]) -> None:
     """The operands of each function call in an expression whose arguments
     are all columns or literals, with at least one column: `($1 - $3)` is
-    `(1, 3)` and `($1 * 2)` is `(1, None)`."""
+    `(1, 3)` and `($1 * 2)` is `(1, "2")`: a literal is its integer text (None
+    for any other), which tells one call from the same call in another relation."""
     if isinstance(node, dict):
         fn = node.get("scalarFunction")
         if isinstance(fn, dict):
             args = [_operand((a or {}).get("value")) for a in fn.get("arguments") or []]
-            if args and all(a is not False for a in args) and any(a is not None for a in args):
+            if args and all(a is not False for a in args) and any(type(a) is int for a in args):
                 out.add(tuple(args))  # type: ignore[arg-type]
         for v in node.values():
             _pairs(v, out)
@@ -132,6 +142,34 @@ def _measure_slot(m: Any, inp: list[Any], fns: Mapping[int, str]) -> _Slot:
     return slot
 
 
+#: The arithmetic a column computed on the way is shown as, in Lean's notation
+#: (`pretty` turns it into the user's): the same for integers and doubles.
+_ARITH = {"add": "+", "subtract": "-", "multiply": "*"}
+
+
+def _call_text(e: Any, inp: list[Any], fns: Mapping[int, str]) -> str | None:
+    """A column an earlier relation computes that does not reach the output,
+    as what it computes (`(amount * 2)`): arithmetic over named columns and
+    integer literals; None for anything else."""
+    while isinstance(e, dict) and "cast" in e:  # the widening Ibis writes around a literal
+        e = e["cast"].get("input")
+    if (f := _field(e)) is not None:
+        return _name(inp[f]) if f < len(inp) else None
+    if not isinstance(e, dict):
+        return None
+    lit = e.get("literal")
+    if isinstance(lit, dict):
+        return _int_text(lit)
+    fn = e.get("scalarFunction")
+    if not isinstance(fn, dict):
+        return None
+    op = _ARITH.get(_plan_read.base_name(fns.get(fn.get("functionReference", 0), "?")))
+    args = [_call_text((a or {}).get("value"), inp, fns) for a in fn.get("arguments") or []]
+    if op is None or len(args) != 2 or None in args:
+        return None
+    return f"({args[0]} {op} {args[1]})"
+
+
 def _settled(v: Any) -> str | None:
     """The name of a column that is certain: a table's, or the output's."""
     return v.name if isinstance(v, _Slot) else v
@@ -153,7 +191,7 @@ def columns(plan: Mapping[str, Any]) -> Seen:
     def record(inp: list[Any] | None, exprs: Any, measures=None) -> None:
         reads: set[int] = set()
         _refs(exprs, reads)
-        pairs: set[tuple[int | None, ...]] = set()
+        pairs: set[tuple[int | str | None, ...]] = set()
         _pairs(exprs, pairs)
         # An input whose names are not known is kept, as `[]`: a relation
         # that reads the columns makes their names ambiguous.
@@ -179,7 +217,9 @@ def columns(plan: Mapping[str, Any]) -> Seen:
                 else:
                     return _Slot()
             return f"{name}({', '.join(args)})"  # type: ignore[arg-type]
-        return _Slot()
+        slot = _Slot()
+        slot.fallback = _call_text(e, inp, fns)
+        return slot
 
     def walk(node: Any) -> list[Any] | None:
         if not isinstance(node, dict) or len(node) != 1:
@@ -266,7 +306,10 @@ def _names(expr: str, seen: Seen) -> tuple[dict[int, str], dict[int, list[str]]]
     # A call on columns and literals (`($1 - $3)`, `($1 * 2)`) is in a relation
     # that makes it.
     calls = {
-        tuple(int(t[1:]) if t[0] == "$" else None for t in (m[0], m[2]))
+        tuple(
+            int(t[1:]) if t[0] == "$" else t if re.fullmatch(r"-?\d+", t) else None
+            for t in (m[0], m[2])
+        )
         for m in re.findall(rf"\(({_OPERAND}) (\S+) ({_OPERAND})\)", expr)
         if m[0][0] == "$" or m[2][0] == "$"
     }

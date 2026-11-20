@@ -395,7 +395,7 @@ def test_integer_division_truncates():
         ("SELECT a // b AS q FROM r", -(2**63), -1),
         ("SELECT power(a, 3) AS q FROM r", 2**22, 0),
         ("SELECT power(a, -1) AS q FROM r", 2, 0),
-        ("SELECT CAST(f AS BIGINT) AS q FROM r", None, None),
+        ("SELECT CAST(floor(f) AS BIGINT) AS q FROM r", None, None),
     ],
 )
 def test_runtime_errors_raise(sql, a, b):
@@ -444,7 +444,7 @@ ROUNDING += [math.nan, NEG_NAN, math.inf, -math.inf, 9.2e18, -9.2e18, 1.005, Non
     [
         "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
         "SELECT f, power(f, 2) AS p FROM r",
-        "SELECT f, CAST(f AS BIGINT) AS i FROM r WHERE f > -1e18 AND f < 1e18",
+        "SELECT f, CAST(floor(f) AS BIGINT) AS i FROM r WHERE f > -1e18 AND f < 1e18",
         "SELECT CAST(i AS VARCHAR) AS s FROM r",
     ],
 )

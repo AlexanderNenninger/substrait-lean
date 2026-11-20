@@ -16,9 +16,10 @@ import math
 import re
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
-from decimal import ROUND_HALF_UP, Decimal, localcontext
+from decimal import ROUND_HALF_UP, Decimal
 
 from sverify._checker import decode_double, run_checker
+from sverify._decimals import scaled
 
 EPOCH = dt.datetime(1970, 1, 1)
 
@@ -29,9 +30,7 @@ def decimal_literal(v: Decimal, precision: int = 38, scale: int | None = None) -
     if scale is None:
         exponent = v.as_tuple().exponent
         scale = max(0, -exponent) if isinstance(exponent, int) else 0
-    # A context wide enough for 38 digits: the default's 28 would round them.
-    with localcontext(prec=80):
-        unscaled = int(v.scaleb(scale).to_integral_value(rounding=ROUND_HALF_UP))
+    unscaled = int(scaled(v, scale).to_integral_value(rounding=ROUND_HALF_UP))
     value = base64.b64encode(unscaled.to_bytes(16, "little", signed=True)).decode()
     return {"literal": {"decimal": {"value": value, "precision": precision, "scale": scale}}}
 
@@ -163,10 +162,31 @@ def lean_rows(plan_json: str) -> list[tuple]:
     return parse_rows(out)
 
 
+class LeanRaised(Exception):
+    """The reference raises on a row of the plan (`Expr.evalP`), where `Rel.eval`
+    goes on with a value (`NULL`, or an integer outside the type)."""
+
+
+def _raised(plan_json: str) -> str | None:
+    """The first error the reference raises anywhere in the plan (`--raises`:
+    filters, projections, joins on the pairs the hash join tests, and
+    aggregates); None where it raises none."""
+    code, out, _ = run_checker(("--raises",), plan_json)
+    return (out.strip() or None) if code == 0 else None
+
+
 def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
-    decimals and a `d` (so only approximately). `rows_only` asks the checker
-    for the rows alone (`--rows`), without the plan's other facts."""
+    decimals and a `d` (so only approximately). The rows are `Rel.eval`'s,
+    which has a value where the reference raises: that raises `LeanRaised`
+    (exported by `sverify.testing`), for a raise in a filter, a projection, an
+    aggregate or a window's aggregate on its frame (`--raises`). A join's
+    condition is checked on the pairs the checker's hash join tests only, so a
+    raise on a pair without matching keys can be missed. Every error it raises
+    is the reference's. `rows_only` asks the checker for the rows alone
+    (`--rows`), without the plan's other facts and without that check."""
+    if not rows_only and (err := _raised(plan_json)) is not None:
+        raise LeanRaised(err)
     out = _checked(plan_json, ("--rows",) if rows_only else ())
     return parse_rows(out, doubles=True)
 
@@ -237,7 +257,9 @@ def allows_rows(
     rows that tie on the exact columns pair up whatever order their doubles
     sort in.
 
-    The oracle is tested, not proved: `Rel.evalChoices` has no theorem yet
+    What the oracle accepts is allowed by the reference
+    (`Rel.evalChoices_allowed`) for plans without an ordered aggregate (`FIRST`,
+    `LAST`, `STRING_AGG`, `collect`, `MODE`); for the others it is tested
     (`docs/trusted-base.md`)."""
 
     def seq_ok(got: Sequence[object], classes: Sequence[Sequence[object]]) -> bool:

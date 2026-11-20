@@ -1,0 +1,42 @@
+{
+  "id": "polars-guarded-chain-no-inlining",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Stacked guarded levels are not inlined into a 2^k tree",
+  "verdict": "plan and run stay small at 40 levels",
+  "area": "execution",
+  "constructs": [
+    "CASE WHEN",
+    "project"
+  ],
+  "settings": {
+    "engine": "streaming",
+    "optimizations": [
+      "default",
+      "none"
+    ]
+  },
+  "description": [
+    "Forty stacked projections, each appending a reach and a guarded column that read the previous reach twice (so an optimizer that merges projections by substitution would build a tree of 2^40 copies), plan and run in well under a second of engine time and under 100 MB of extra memory. Optimized plan text by levels (5, 10, 20, 40): 2,377, 6,266, 17,724 and 55,044 characters (`LazyFrame.explain()`); planning 3 ms to 7 ms; running 4 ms to 11 ms; process peak 38 MB to 44 MB. The text grows about quadratically, not exponentially, for the same reason. The result matches the reference at every level."
+  ],
+  "reference": "No reference counterpart: the reference has no plan size. D50-d needs the plan of a chain of k guarded levels to cost time and memory linear in k.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "sverify_dev.guarded_columns (worker 4), on homelab, branch claude/d50d-probes",
+      "evidence": [
+        {
+          "file": "python/tools/sverify_dev/guarded_columns.py",
+          "note": "`python -m sverify_dev.guarded_columns p2 --engine polars`: Polars 2.1.0 (Python), streaming engine, Linux x86_64 (homelab); the P1 cases also ran on macOS arm64 for DuckDB and Polars with the same result."
+        }
+      ],
+      "notes": "Issue #1719 (D50-d). Probe rows: 3000, every third one the text `bad`, which a strict cast rejects."
+    }
+  ],
+  "issues": [
+    1719
+  ]
+}

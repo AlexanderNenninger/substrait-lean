@@ -72,30 +72,17 @@ DOUBLES = [0.0, 0.5, -0.5, 1.5, -1.5, 2.5, -2.5, 2.7, -2.7, 1e15 + 0.5, 9.2e18, 
 F = ibis.schema({"f": "float64"})
 
 
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r",
-        "SELECT f, CAST(f AS BIGINT) AS i FROM r",
-    ],
-)
-def test_rounding_semantics(sql):
+def test_rounding_semantics():
+    sql = "SELECT f, floor(f) AS x, ceil(f) AS y, round(f) AS z FROM r"
     con = connect()
     rows = [(f,) for f in DOUBLES]
     con.create("r", F, rows)
-    # ROUND is half away from zero, and casts truncate (DuckDB's round); the
-    # model has one zero.
+    # ROUND is half away from zero (DuckDB's round); the model has one zero.
     half_away = {f: math.copysign(math.floor(abs(f) + 0.5), f) + 0.0 for f in DOUBLES}
-    expected = [
-        (f, math.floor(f) + 0.0, math.ceil(f) + 0.0, half_away[f])
-        if "floor" in sql
-        else (f, int(f))
-        for f in DOUBLES
-    ]
+    expected = [(f, math.floor(f) + 0.0, math.ceil(f) + 0.0, half_away[f]) for f in DOUBLES]
     plan = inline_tables(json.loads(substrait_json(con, sql, "reference")), {"r": rows})
     got = lean_values(json.dumps(plan))
-    # Doubles come back printed, or as codes when tiny (±0.0); `CAST(... AS
-    # BIGINT)` as integers.
+    # Doubles come back printed, or as codes when tiny (±0.0).
     decoded = [
         tuple(
             decode_double(v) if isinstance(e, float) and isinstance(v, int) else v
@@ -156,7 +143,7 @@ def errors(expr) -> list[str]:
             T.filter(T.n != 0).filter((T.qty % T.n) > 1),
             ["division by zero"],
         ),
-        ("guard in the same AND", T.filter((T.n != 0) & ((T.qty % T.n) > 1)), ["division by zero"]),
+        ("guard in the same AND", T.filter((T.n != 0) & ((T.qty % T.n) > 1)), []),  # D50
         # `fmod(±inf, 2.5)` would be NaN, which no operation creates (#257).
         ("double modulus, constant", T.select(x=T.amount % 2.5), ["domain error"]),
         (
@@ -244,7 +231,7 @@ def test_duckdb_fails_only_where_reported(i, rows):
     )
     con = connect()
     put_table(con, "t", table)
-    plan = to_substrait_json(expr)
+    plan = written_plan(to_substrait_json(expr))
     try:
         duckdb_rows(plan, {"t": table})
     except duckdb.Error as e:

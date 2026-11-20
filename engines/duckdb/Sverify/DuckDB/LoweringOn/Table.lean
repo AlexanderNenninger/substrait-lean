@@ -56,6 +56,7 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.wrap a0 => some (Substrait.duckdbOn.wrap a0)
     | Substrait.UnFn.itos  => some (Substrait.duckdbOn.itos )
     | Substrait.UnFn.widen  => some (Substrait.duckdbOn.widen )
+    | Substrait.UnFn.atUtc a0 => some (Substrait.duckdbOn.atUtc a0)
     | Substrait.UnFn.upper  => some (Substrait.duckdbOn.upper )
     | Substrait.UnFn.lower  => some (Substrait.duckdbOn.lower )
     | Substrait.UnFn.length  => some (Substrait.duckdbOn.length )
@@ -177,6 +178,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.wrap", "native", 0),
   ("UnFn.itos", "native", 0),
   ("UnFn.widen", "native", 0),
+  ("UnFn.atUtc", "native", 0),
   ("UnFn.upper", "native", 0),
   ("UnFn.lower", "native", 0),
   ("UnFn.length", "native", 0),

@@ -1,0 +1,3 @@
+### Spark keeps a pipeline view's state in Parquet parts it writes and reads
+
+On Spark, an incremental view's state is a list of Parquet parts that Spark writes and reads, where it was an Arrow table in the Python process (#1329, #173). A refresh writes the change as a new part; the Lean merge plan adds the parts up when something reads the table or they pass a size bound. The driver's peak for four inserts into a filter view is 591 MB where it was 708 MB over two million rows, and 1289 MB where it was 1849 MB over eight million; a refresh takes about 2.9 times as long as before on a local session.

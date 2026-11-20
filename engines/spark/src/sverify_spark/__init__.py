@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 2:
+if getattr(_meta, "PLUGIN_API", None) != 3:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -36,7 +36,7 @@ if getattr(_meta, "PLUGIN_API", None) != 2:
 
 from sverify._unsupported import ISSUE_271, RANGE_GUARD
 from sverify.profiles import ProfilePlugin, Setting
-from sverify_spark.store import ArrowStore
+from sverify_spark.store import SparkStore
 
 #: The settings Spark's profile assumes.
 SETTINGS: tuple[Setting, ...] = (
@@ -127,6 +127,11 @@ def _run(
     _rename_tables(plan, names)
     spark = session if session is not None else spark_engine.session()
     tables = {alias: _table(con, t, spark) for t, alias in names.items()}
+    if keep:
+        from sverify_spark.store import lazy_plan
+
+        df = spark_engine.run_df(plan, tables, spark, deterministic=tie_free, finite=finite)
+        return lazy_plan(df, spark)
     return spark_engine.run(plan, tables, session, deterministic=tie_free, finite=finite)
 
 
@@ -137,11 +142,14 @@ def _table(con: Any, name: str, spark: Any) -> Any:
     DuckDB SQL, or files that are not local) reads through Arrow on a session that
     shares the driver's filesystem, and is refused on a Spark Connect or non-local-master session:
     the server-side read is N12 of #173."""
+    from sverify._parts import PartsState
     from sverify._scan import Scan
     from sverify._unsupported import Unsupported
     from sverify_spark.scan import shares_filesystem
 
     table = con.get(name)
+    if isinstance(table, PartsState):  # a state's files, as they are
+        return table
     if not isinstance(table, Scan) or not table.readable():
         return con._arrow[name]
     from sverify._scan import local_path
@@ -207,7 +215,7 @@ ROWS: Literal["sequence", "multiset"] = "multiset"
 
 PLUGIN = ProfilePlugin(
     "spark",
-    store=ArrowStore,
+    store=SparkStore,
     title="Spark",
     profile=True,
     translation="sverify's Spark SQL writer, with shims where Spark differs from the "
@@ -217,6 +225,7 @@ PLUGIN = ProfilePlugin(
     installed_version=_version,
     restore=_restore,
     runner=_run,
+    checks_assumed=True,
     rows=ROWS,
     session=_is_session,
     modules=("pyspark",),
@@ -230,5 +239,7 @@ PLUGIN = ProfilePlugin(
         )
     },
     guards=(RANGE_GUARD,),
+    # `collect()` of an unordered list (the dialect refuses an ordered one).
+    functions=frozenset({"array_agg"}),
     shim_text={"null_order": "NULLs sorted as the reference sorts them"},
 )

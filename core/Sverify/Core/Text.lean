@@ -1,3 +1,4 @@
+import Sverify.Core.CaseTable
 import Sverify.Core.Regex
 import Sverify.Core.Digest
 
@@ -239,17 +240,53 @@ def isAscii (s : String) : Bool := s.toList.all fun c => c.toNat < 128
 Rust's agree (`classesDiffer`). -/
 def isPlain (s : String) : Bool := isAscii s && !s.toList.contains '\x0b'
 
-def asciiOnly (f : String → String) (what : String) (s : String) : String :=
-  if isAscii s then f s
-  else panic! s!"{what} of non-ASCII text is not evaluated in Lean"
+/-- The scalar `c` under the mapping `t` of `CaseTable`: its entry, or itself. -/
+def mapScalar (t : Array (Nat × Nat)) (c : Char) : Char :=
+  match t.binSearch (c.toNat, 0) fun a b => a.1 < b.1 with
+  | some (_, v) => Char.ofNat v
+  | none => c
 
-def upperAscii (s : String) : String := asciiOnly String.toUpper "UPPER" s
-def lowerAscii (s : String) : String := asciiOnly String.toLower "LOWER" s
+/-- The scalars of `UPPER`'s raise set (`CaseTable.upperRaise`): the engines map them
+differently (D51). -/
+def upperRaises (s : String) : Bool := s.toList.any fun c => CaseTable.upperRaise.contains c.toNat
 
-/-- `UPPER`: Unicode case mapping (`'ß'` becomes `"SS"`). -/
-@[implemented_by upperAscii] opaque upper : String → String
-/-- `LOWER`: Unicode case mapping. -/
-@[implemented_by lowerAscii] opaque lower : String → String
+/-- The scalars of `LOWER`'s raise set (`CaseTable.lowerRaise`). -/
+def lowerRaises (s : String) : Bool := s.toList.any fun c => CaseTable.lowerRaise.contains c.toNat
+
+/-- `UPPER`: each scalar's upper case where the tier-1 engines agree on it, one
+scalar each (`CaseTable.upperMap`). On a string with a scalar of the raise set
+(`upperRaises`) the reference raises, and this value is not used. -/
+def upper (s : String) : String := s.map (mapScalar CaseTable.upperMap)
+
+/-- `LOWER`, as `upper` (`CaseTable.lowerMap`, `lowerRaises`). -/
+def lower (s : String) : String := s.map (mapScalar CaseTable.lowerMap)
+
+-- The sizes of the raise sets (D51): 157 for `UPPER`, 56 for `LOWER` and U+03A3.
+#guard CaseTable.upperRaise.length == 157
+#guard CaseTable.lowerRaise.length == 57
+
+set_option maxRecDepth 4096 in
+/-- No scalar of either raise set is ASCII, so ASCII text has the engines' value. -/
+theorem upperRaises_of_isAscii {s : String} (h : isAscii s = true) : upperRaises s = false := by
+  have hs : ∀ x ∈ CaseTable.upperRaise, 128 ≤ x := by decide
+  simp only [isAscii, List.all_eq_true, decide_eq_true_eq] at h
+  simp only [upperRaises, Bool.eq_false_iff, ne_eq, List.any_eq_true, List.contains_iff_mem, not_exists,
+    not_and]
+  intro c hc hm
+  have := h c hc
+  have := hs _ hm
+  omega
+
+set_option maxRecDepth 4096 in
+theorem lowerRaises_of_isAscii {s : String} (h : isAscii s = true) : lowerRaises s = false := by
+  have hs : ∀ x ∈ CaseTable.lowerRaise, 128 ≤ x := by decide
+  simp only [isAscii, List.all_eq_true, decide_eq_true_eq] at h
+  simp only [lowerRaises, Bool.eq_false_iff, ne_eq, List.any_eq_true, List.contains_iff_mem, not_exists,
+    not_and]
+  intro c hc hm
+  have := h c hc
+  have := hs _ hm
+  omega
 
 def ilikeAscii (s p : String) : Bool :=
   if isAscii s && isAscii p then like s.toLower p.toLower

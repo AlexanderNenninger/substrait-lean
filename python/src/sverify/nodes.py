@@ -34,6 +34,7 @@ source versions.
 from __future__ import annotations
 
 import json
+import logging
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
@@ -62,6 +63,9 @@ if TYPE_CHECKING:
     from sverify.contracts import ContractedTransform, Report
     from sverify.io._common import Contract, SinkWrite
     from sverify.routes import Route, RouteKind
+
+#: One INFO line per node and per commit of a refresh, for a job's task log.
+_log = logging.getLogger("sverify")
 
 
 class Sink(Protocol):
@@ -681,6 +685,9 @@ class Node:
             if self._stage is None:
                 self._stage = _Stage.build(self, leaves, versions, engine, sink, target)
                 out.started = self._stage.view.resumed or "computed"
+                out.record_changes = {
+                    f: list(v) for f, v in self._stage.view.record_changes.items()
+                }
                 out.preconditions = list(self._stage.pipe.preconditions)
                 out.postconditions = list(self._stage.view.postconditions)
                 out.quarantine = list(self._stage.pipe.quarantine)
@@ -705,6 +712,7 @@ class Node:
             _write_quarantine(self.name, stage, target, first)
         if sink is not None:
             out.write = sink._commit()
+            _log.info("%s: committed %s", self.name, _write_text(out.write))
         # After the write: a sink keeps the buckets the state drops.
         out.retention = self._stage.pipe.retire()
         return out
@@ -931,6 +939,10 @@ class StageRefresh:
     versions."""
     started: str | None = None
     """"computed", or "resumed from <table>@v<n>", on the first refresh."""
+    record_changes: dict[str, list[str | None]] = field(default_factory=dict)
+    """On a first refresh that resumed: what the record names differently from
+    this run, by field (`engine`, `engine_version`, `sverify`, `package`), as
+    `[recorded, now]`. A changed engine or engine version is also in `started`."""
     write: SinkWrite | None = None
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
@@ -1036,11 +1048,7 @@ class StageRefresh:
             if r.off is None
         ]
         if (w := self.write) is not None:
-            if w.mode == "skipped":
-                parts.append("already committed")
-            else:
-                at = "" if w.version is None else f" v{w.version}"
-                parts.append(f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}")
+            parts.append(_write_text(w))
         return f"{self.heading}: " + ", ".join(parts)
 
     def to_dict(self, *, examples: bool = False) -> dict[str, Any]:
@@ -1050,6 +1058,7 @@ class StageRefresh:
             "node": self.node,
             "outcome": self.outcome,
             "started": self.started,
+            "record_changes": self.record_changes,
             "held": self.held,
             "sources": [
                 {
@@ -1396,6 +1405,8 @@ class Group:
                     entry = StageRefresh(n.name, None, held=f"waiting for {', '.join(blocked)}")
                     waiting[id(n)] = n.name
                     done.append(entry)
+                    if _log.isEnabledFor(logging.INFO):
+                        _log.info("%s", entry.summary())
                     if runs is not None:
                         runs.start(n)
                         runs.complete(n, entry)
@@ -1408,6 +1419,8 @@ class Group:
                 if entry.held is not None and n._stage is None:
                     waiting[id(n)] = n.name
                 done.append(entry)
+                if _log.isEnabledFor(logging.INFO):
+                    _log.info("%s", entry.summary())
             return Refresh(done)
         except BaseException as e:
             if runs is not None:
@@ -1438,6 +1451,15 @@ class Group:
                 )
             )
         return out
+
+
+def _write_text(w: SinkWrite) -> str:
+    """A commit in the summary's words: "merge v5: +2 −0", or "already
+    committed" where the sink held the state."""
+    if w.mode == "skipped":
+        return "already committed"
+    at = "" if w.version is None else f" v{w.version}"
+    return f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}"
 
 
 def _held_text(h: Held, stage: _Stage | None) -> str:

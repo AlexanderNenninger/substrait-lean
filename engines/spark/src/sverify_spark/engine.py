@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING, Any
 import pyarrow as pa
 
 from sverify.sql import to_sql
-from sverify_spark import ROWS
 from sverify_spark.dialect import SPARK, SPARK_CONF
 
 try:
@@ -97,7 +96,7 @@ def spark_type(t: pa.DataType) -> str:
         return SPARK.type_name("float")
     if pa.types.is_timestamp(t):
         if t.tz is not None:
-            raise TypeError(f"{t}: only timestamps without a time zone (TIMESTAMP_NTZ)")
+            raise TypeError(f"{t}: only timestamps without a time zone (TIMESTAMP_NTZ; #1725)")
         return SPARK.type_name("time")
     if pa.types.is_date(t):
         return SPARK.type_name("date")
@@ -147,20 +146,30 @@ def put_tables(tables: Mapping[str, Any], spark: SparkSession | None = None) -> 
         if own and held.get(name) is table:
             continue
         if not isinstance(table, pa.Table):
+            from sverify._scan import Scan
             from sverify_spark.scan import spark_scan
 
+            if not isinstance(table, Scan):  # a state's files (`PartsState`)
+                table.view(spark).createOrReplaceTempView(name)
+                held.pop(name, None)  # the view no longer holds the Arrow table sent last
+                continue
             spark_scan(spark, table).createOrReplaceTempView(name)
             if own:
                 held[name] = table
             continue
-        schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
-        target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
-        # One chunk: `createDataFrame` of a table with an empty chunk loses the
-        # rows after it (SP-8).
-        data = table.cast(target).combine_chunks()
-        spark.createDataFrame(data, schema).createOrReplaceTempView(name)
+        arrow_frame(table, spark).createOrReplaceTempView(name)
         if own:
             held[name] = table
+
+
+def arrow_frame(table: pa.Table, spark: SparkSession) -> Any:
+    """An Arrow table as a `DataFrame` of `spark_type` columns. The frame
+    holds the rows only as long as something refers to it: no view names it."""
+    schema = ", ".join(f"{SPARK.quote(f.name)} {spark_type(f.type)}" for f in table.schema)
+    target = pa.schema([pa.field(f.name, arrow_type(f.type)) for f in table.schema])
+    # One chunk: `createDataFrame` of a table with an empty chunk loses the
+    # rows after it (SP-8).
+    return spark.createDataFrame(table.cast(target).combine_chunks(), schema)
 
 
 def run(
@@ -201,7 +210,20 @@ def run(
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
+    return run_df(plan, tables, spark, deterministic=deterministic, finite=finite).toArrow()
+
+
+def run_df(
+    plan: str | dict,
+    tables: Mapping[str, Any],
+    spark: SparkSession | None = None,
+    *,
+    deterministic: bool = False,
+    finite: bool = True,
+) -> Any:
+    """`run`, but the result stays a Spark `DataFrame`: nothing is collected.
+    A table is an Arrow table or a handle on files (`sverify_spark.store`)."""
     spark = spark or session()
-    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite, rows=ROWS)
+    sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
     put_tables(tables, spark)
-    return spark.sql(sql).toArrow()
+    return spark.sql(sql)

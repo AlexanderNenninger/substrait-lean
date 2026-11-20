@@ -1,4 +1,4 @@
-import SubstraitLean.TouchedGroups
+import Sverify.Analysis.TouchedGroups
 import SubstraitLean.TableFormat
 import Sverify.Core.Kinds
 import Sverify.Core.Allowed
@@ -380,11 +380,6 @@ theorem weight_lift_count (r : Row) : ∀ rows : Relation, (ZSet.lift rows).weig
     by_cases h : a = r
     · subst h; simp; omega
     · simp [h]
-
-/-- A measure allows the same values on a permutation of its rows. -/
-theorem Measure.Allowed.perm {m : Measure} {rows rows' : Relation} {v : Value}
-    (h : m.Allowed rows v) (hp : rows.Perm rows') : m.Allowed rows' v :=
-  let ⟨s, hs, ho, hv⟩ := h; ⟨s, hs.trans hp, ho, hv⟩
 
 /-! ## Aggregates
 

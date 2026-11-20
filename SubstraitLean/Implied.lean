@@ -294,7 +294,8 @@ omit [Boxes.Ambient] in
 theorem AVal.mem_transfer {a b a' : AVal} {u v : Value} (hu : a.Mem u) (hv : b.Mem v)
     (hk : u.kind = v.kind) (hn : a'.null = a.null) (htt : a'.tt = (a.tt && (b.tt || b.ff)))
     (hff : a'.ff = (a.ff && (b.tt || b.ff))) (hs : a'.str = (a.str && b.str))
-    (hss : a'.strs = a.strs) (hasc : a'.ascii = a.ascii) (hpl : a'.plain = a.plain) (hnk : a'.nk = a.nk.orElse fun _ => b.nk)
+    (hss : a'.strs = a.strs) (hasc : a'.ascii = a.ascii) (hpl : a'.plain = a.plain)
+    (hup : a'.upperAgreed = a.upperAgreed) (hlo : a'.lowerAgreed = a.lowerAgreed) (hnk : a'.nk = a.nk.orElse fun _ => b.nk)
     (hl : a'.list = (a.list && b.list)) (hel : a'.elems = a.elems) (hc : a'.card = a.card)
     (hst : a'.struct = (a.struct && b.struct)) (hfs : a'.fields = a.fields)
     (hi : ∀ (k : NumKind) n, u = k.val n → ∃ c, a'.int = some c ∧ c.Mem (k.norm n)) : a'.Mem u := by
@@ -419,7 +420,7 @@ theorem geTransfer_sound {env : List AVal} {row : Row} {i j : Nat} {strict : Boo
     EnvMem (geTransfer env i j strict) row := by
   unfold geTransfer
   refine refineCol_sound (refineCol_sound h ?_) ?_
-  · refine AVal.mem_transfer (h i) (h j) hk rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl fun k a ha => ?_
+  · refine AVal.mem_transfer (h i) (h j) hk rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl fun k a ha => ?_
     obtain ⟨b, hb, hba⟩ := hi k a ha
     have hmi := h i; have hmj := h j
     rw [ha, AVal.mem_val] at hmi; rw [hb, AVal.mem_val] at hmj
@@ -435,7 +436,7 @@ theorem geTransfer_sound {env : List AVal} {row : Row} {i j : Nat} {strict : Boo
         subst hl
         have := hmj.1 l' hjl
         cases strict <;> simp at hba ⊢ <;> omega
-  · refine AVal.mem_transfer (h j) (h i) hk.symm rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl fun k b hb => ?_
+  · refine AVal.mem_transfer (h j) (h i) hk.symm rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl fun k b hb => ?_
     obtain ⟨a, ha, hba⟩ := hj k b hb
     have hmi := h i; have hmj := h j
     rw [ha, AVal.mem_val] at hmi; rw [hb, AVal.mem_val] at hmj

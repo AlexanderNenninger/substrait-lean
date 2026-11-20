@@ -4,11 +4,44 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from importlib.metadata import version as _version
 from pathlib import Path
 
+from sverify.errors import UnsupportedError
+
+from sverify_dbt import formats
 from sverify_dbt.check import check
 from sverify_dbt.manifest import ProjectError
+from sverify_dbt.result import CheckResult
+
+#: The exit codes of `sverify check`: 0 holds, 1 not proved, 2 usage, 3 a model
+#: refused (`--fail-on refused`) or the check unsupported, 4 a budget, 6 an error.
+NOT_PROVED, USAGE, REFUSED, BUDGET, ERROR = 1, 2, 3, 4, 6
+
+
+def _hard_stop() -> None:
+    """The check did not stop in time: end the process."""
+    print("sverify-dbt: time budget exceeded", file=sys.stderr)
+    os._exit(BUDGET)
+
+
+def _timeout_asked(arg: float | None) -> bool:
+    """Whether `--timeout` or `$SVERIFY_TIMEOUT` sets a time budget."""
+    return arg is not None or bool(os.environ.get("SVERIFY_TIMEOUT", "").strip())
+
+
+def _render(result: CheckResult, fmt: str) -> str:
+    if fmt == "json":
+        return json.dumps(result.to_dict(), indent=2)
+    if fmt == "github":
+        return formats.github(result)
+    if fmt == "sarif":
+        return formats.sarif(result, _version("sverify-dbt"))
+    if fmt == "junit":
+        return formats.junit(result)
+    return str(result)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,7 +60,17 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("project", nargs="?", default=".", help="the dbt project's directory")
     c.add_argument("--target-path", default="target", help="the target directory (default target)")
     c.add_argument("--select", "-s", nargs="+", metavar="MODEL", help="models to report on")
-    c.add_argument("--json", action="store_true", help="print the result as JSON")
+    c.add_argument(
+        "--format",
+        "--output-format",
+        dest="format",
+        choices=["text", "json", "github", "sarif", "junit"],
+        default="text",
+        help="text (the default), json, or for CI: github (annotations), sarif, junit",
+    )
+    c.add_argument(
+        "--json", dest="format", action="store_const", const="json", help="--format json"
+    )
     c.add_argument(
         "--selectors",
         nargs="?",
@@ -44,12 +87,25 @@ def main(argv: list[str] | None = None) -> int:
         help="small inputs to try per unproved test (default 200; 0 skips the search)",
     )
     c.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        help="seconds for the whole project check (default: $SVERIFY_TIMEOUT, else no limit); "
+        "exit 4 past it",
+    )
+    c.add_argument(
+        "--memory-limit",
+        default=None,
+        help="DuckDB's memory limit, such as 2GB, past which it spills to disk "
+        "(default: $SVERIFY_MEMORY_LIMIT, else DuckDB's own); exit 4 past it",
+    )
+    c.add_argument(
         "--fail-on",
-        choices=["contract", "unproved", "never"],
+        choices=["contract", "unproved", "refused", "never"],
         default="contract",
-        help="exit with status 1 on a contract that does not match or a constraint not "
-        "proved (contract, the default), also on any test not proved or model refused "
-        "(unproved), or never",
+        help="exit 1 on a contract that does not match or a constraint not proved "
+        "(contract, the default); unproved: also on any test not proved; refused: all of "
+        "that, and exit 3 when a model was refused (sverify cannot read it); or never",
     )
     g = sub.add_parser(
         "suggest",
@@ -63,19 +119,41 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--select", "-s", nargs="+", metavar="MODEL", help="models to check")
     g.add_argument("--output", "-o", metavar="FILE", help="write the YAML to FILE")
     args = parser.parse_args(argv)
+    if args.command == "check" and args.selectors and args.select:
+        parser.error("--selectors needs a check of the whole project: drop --select")
     if args.command == "suggest":
         return _suggest(args)
+    from sverify.cli import _limits
+
     try:
-        result = check(
-            args.project,
-            target_path=args.target_path,
-            select=args.select,
-            counterexamples=args.counterexamples,
-        )
+        _limits.memory_limit_from(args.memory_limit)
+        # Off unless asked for: a project check is many models, and no limit
+        # existed before; `sverify check`'s 30 s is per file.
+        seconds = _limits.timeout_from(args.timeout) if _timeout_asked(args.timeout) else 0.0
+        budget = _limits.Budget(seconds, _hard_stop)
+        with budget.armed():
+            result = check(
+                args.project,
+                target_path=args.target_path,
+                select=args.select,
+                counterexamples=args.counterexamples,
+            )
+    except _limits.BudgetExceeded as e:
+        print(f"sverify-dbt: {e}", file=sys.stderr)
+        return BUDGET
+    except UnsupportedError as e:
+        print(f"sverify-dbt: {e}", file=sys.stderr)
+        return REFUSED
     except (ProjectError, ValueError) as e:
         print(f"sverify-dbt: {e}", file=sys.stderr)
-        return 2
-    print(json.dumps(result.to_dict(), indent=2) if args.json else result)
+        return USAGE
+    except Exception as e:
+        if _limits.is_out_of_memory(e):
+            print(f"sverify-dbt: memory budget exceeded ({e})", file=sys.stderr)
+            return BUDGET
+        print(f"sverify-dbt: error: {type(e).__name__}: {e}", file=sys.stderr)
+        return ERROR
+    print(_render(result, args.format))
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
         n = len({t.name for t in result.skippable})
@@ -84,13 +162,27 @@ def main(argv: list[str] | None = None) -> int:
             "`dbt build --exclude selector:sverify_proved` to skip them",
             file=sys.stderr,
         )
+    return _exit_code(result, args.fail_on)
+
+
+def _exit_code(result: CheckResult, fail_on: str) -> int:
+    """1 where something is not proved (`--fail-on`), else 3 where a model is
+    refused and `--fail-on refused` asks, else 0. A refused model's tests and
+    constraints are not checked, and its reason is the refusal, not a failed
+    gate (#891, 1.3)."""
+    if fail_on == "never":
+        return 0
     failed = bool(result.contract_errors or result.unproved_constraints)
-    if args.fail_on == "unproved":
+    if fail_on in ("unproved", "refused"):
         failed = failed or any(
-            m.refused or m.by_status("not proved") or m.by_status("not checked")
+            m.by_status("not proved") or (not m.refused and m.by_status("not checked"))
             for m in result.models
         )
-    return 1 if failed and args.fail_on != "never" else 0
+    if failed:
+        return NOT_PROVED
+    if fail_on == "refused" and any(m.refused for m in result.models):
+        return REFUSED
+    return 0
 
 
 def _suggest(args: argparse.Namespace) -> int:

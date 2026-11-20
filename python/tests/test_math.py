@@ -23,6 +23,7 @@ import ibis
 import pytest
 
 import sverify as sv
+from sverify._lean_eval import LeanRaised
 from sverify.contracts import decode_double
 from sverify.engine import connect, run_plan, written_plan
 from sverify.engines import ENGINES
@@ -233,9 +234,11 @@ def test_guards_rule_out_domain_errors(label, expr):
     assert not sv.verify(expr).errors, label
 
 
-def test_out_of_domain_is_null_in_lean():
+def test_out_of_domain_raises_in_lean():
     expr = X.select(x.k, a=x.x.sqrt(), b=x.i << x.n)
     rs = [(0, -4.0, None, None, 1, None, 64, None), (1, 4.0, None, None, 1, None, 63, None)]
-    lean = lean_values(json.dumps(inline_tables(to_substrait(expr), {"x": rs})))
-    got = table_rows(expr, lean, lean=True)
-    assert got == [(0, None, None), (1, 2.0, -(2**63))]
+    with pytest.raises(LeanRaised, match="domain"):
+        lean_values(json.dumps(inline_tables(to_substrait(expr), {"x": rs})))
+    # The row that stays in the domain evaluates.
+    lean = lean_values(json.dumps(inline_tables(to_substrait(expr), {"x": rs[1:]})))
+    assert table_rows(expr, lean, lean=True) == [(1, 2.0, -(2**63))]

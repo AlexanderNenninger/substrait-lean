@@ -2,7 +2,7 @@
 
 <!-- Generated from `bugs/*.json` by `python -m sverify_dev.bugs --write`. -->
 
-Sverify's upstream ledger holds 92 entries ([README](README.md)). 33 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
+Sverify's upstream ledger holds 94 entries ([README](README.md)). 34 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
 
 ## To report
 
@@ -25,6 +25,7 @@ Sverify's upstream ledger holds 92 entries ([README](README.md)). 33 are bugs to
 | [SP-5](bugs/SP-5.json) | Spark | ANSI mode: `floor` and `ceil` of NaN return 0 | pyspark 4.3.0 (2026-11-07) |
 | [SP-6](bugs/SP-6.json) | Spark | `to_timestamp` past the microsecond range raises a bare `ArithmeticException` | pyspark 4.3.0 (2026-11-07) |
 | [SP-7](bugs/SP-7.json) | Spark | `TIMESTAMP_SECONDS` of a decimal with more than six fractional digits raises a bare `Rounding necessary` | pyspark 4.3.0 (2026-11-07) |
+| [SP-9](bugs/SP-9.json) | Spark | `upper` and `lower` of a UTF8_BINARY string follow the JVM's default locale | pyspark 4.3.0, openjdk 21.0.13 (2026-11-18) |
 | [SG-8](bugs/SG-8.json) | SQLGlot | DuckDB: `INTERVAL '1 day ago'` loses `ago` and reads as a positive interval | sqlglot 30.30.0, sqlglot main b99f5d58b1 (2026-11-07) |
 | [SG-9](bugs/SG-9.json) | SQLGlot | DuckDB: `agg(x) EXPORT_STATE` parses as the column alias `EXPORT_STATE` | sqlglot 30.30.0, sqlglot main b99f5d58b1 (2026-11-07) |
 | [IB-1](bugs/IB-1.json) | Ibis | Every `execute()` warns: Ibis reads pandas's deprecated `future.infer_string` | ibis-framework 12.0.0, ibis main 6d40f963, duckdb 2.0.0, pandas 3.1.1 (2026-11-07) |
@@ -60,13 +61,13 @@ An open upstream issue covers these; the case is worth a comment there.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | DuckDB | 3 | 3 | 2 | 0 | 1 | 0 | 2 | 11 |
 | Polars | 9 | 0 | 0 | 2 | 3 | 0 | 0 | 14 |
-| Spark | 5 | 2 | 0 | 0 | 0 | 0 | 1 | 8 |
+| Spark | 6 | 2 | 0 | 0 | 0 | 0 | 1 | 9 |
 | SQLGlot | 2 | 0 | 7 | 0 | 1 | 0 | 0 | 10 |
 | Ibis | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
 | delta-rs | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 3 |
 | DataFusion | 5 | 5 | 6 | 3 | 5 | 0 | 1 | 25 |
-| Substrait | 3 | 0 | 0 | 0 | 0 | 14 | 0 | 17 |
-| total | 33 | 11 | 15 | 5 | 10 | 14 | 4 | 92 |
+| Substrait | 3 | 0 | 0 | 0 | 0 | 15 | 0 | 18 |
+| total | 34 | 11 | 15 | 5 | 10 | 15 | 4 | 94 |
 
 The classes:
 
@@ -84,4 +85,4 @@ fixed: [DD-1](bugs/DD-1.json), [DD-7](bugs/DD-7.json), [SG-1](bugs/SG-1.json), [
 
 not-a-bug: [DD-2](bugs/DD-2.json), [PL-3](bugs/PL-3.json), [PL-4](bugs/PL-4.json), [PL-13](bugs/PL-13.json), [SG-2](bugs/SG-2.json), [DF-5](bugs/DF-5.json), [DF-7](bugs/DF-7.json), [DF-23](bugs/DF-23.json), [DF-24](bugs/DF-24.json), [DF-25](bugs/DF-25.json).
 
-spec-gap: [ST-1](bugs/ST-1.json), [ST-2](bugs/ST-2.json), [ST-3](bugs/ST-3.json), [ST-4](bugs/ST-4.json), [ST-5](bugs/ST-5.json), [ST-6](bugs/ST-6.json), [ST-7](bugs/ST-7.json), [ST-8](bugs/ST-8.json), [ST-9](bugs/ST-9.json), [ST-10](bugs/ST-10.json), [ST-11](bugs/ST-11.json), [ST-12](bugs/ST-12.json), [ST-16](bugs/ST-16.json), [ST-17](bugs/ST-17.json).
+spec-gap: [ST-1](bugs/ST-1.json), [ST-2](bugs/ST-2.json), [ST-3](bugs/ST-3.json), [ST-4](bugs/ST-4.json), [ST-5](bugs/ST-5.json), [ST-6](bugs/ST-6.json), [ST-7](bugs/ST-7.json), [ST-8](bugs/ST-8.json), [ST-9](bugs/ST-9.json), [ST-10](bugs/ST-10.json), [ST-11](bugs/ST-11.json), [ST-12](bugs/ST-12.json), [ST-16](bugs/ST-16.json), [ST-17](bugs/ST-17.json), [ST-18](bugs/ST-18.json).

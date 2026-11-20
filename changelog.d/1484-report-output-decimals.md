@@ -1,0 +1,3 @@
+### `Report.output` types decimal aggregates as the run returns them
+
+`Report.output` took its types from Ibis, so a decimal `AVG` said `decimal(10, 2)` where the run returns `decimal(14, 6)`, and a decimal `SUM` said `decimal(38, 2)` where it returns `decimal(20, 2)`. The checker now reports each output column's type (`outputKinds`, from `Write.relKinds`), and `Report.output` states a decimal column's precision and scale as the checker types it, which the ODCS and OpenLineage exports and sverify-dbt's contract check read. A checker without the field leaves Ibis's types as they were ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)).

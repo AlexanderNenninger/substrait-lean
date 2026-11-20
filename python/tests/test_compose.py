@@ -57,7 +57,8 @@ def test_broken_link_names_both_sides():
         doubled(not_null(orders))
     msg = str(e.value)
     assert msg.startswith("doubled needs (_.amount >= 0) (it may be FALSE on some rows), ")
-    assert msg.endswith("not_null only guarantees _.amount.notnull()")
+    assert "not_null only guarantees _.amount.notnull(); state it in not_null's `ensures`" in msg
+    assert msg.endswith('or set `on_unproved="check"` to check it on the data')
 
 
 def test_obligation_may_follow_from_more_than_the_ensures():
@@ -148,3 +149,20 @@ def test_runtime_mode_checks_a_broken_link_on_data():
         lenient(not_null(bound_orders([(1, "ada", -5)])))
     prov = provenance(lenient(not_null(bound_orders([(1, "ada", 5)]))))
     assert prov is not None and prov.unproved_links == ["lenient: (_.amount >= 0) on t"]
+
+
+def test_an_incremental_view_over_an_unproved_link_names_its_exit():
+    """#1051: a link checked on data cannot be kept by a view; the message says
+    to prove it in the producer's `ensures`."""
+    from sverify.contracts import view_contract
+
+    @sv.transform(ensures=[_.amount.notnull()])
+    def not_null(orders):
+        return orders.filter(orders.amount.notnull())
+
+    @sv.transform(requires={"t": [_.amount >= 0]}, ensures=[_.amount >= 0], on_unproved="check")
+    def lenient(t):
+        return t
+
+    with pytest.raises(ValueError, match=r"not proved.*state them in the `ensures` of the"):
+        view_contract(lenient(not_null(bound_orders([(1, "ada", 5)]))))

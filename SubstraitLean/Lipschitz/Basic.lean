@@ -1,7 +1,7 @@
 import SubstraitLean.Compose
 import Sverify.Core.Ties
 import Sverify.Core.Robust
-import SubstraitLean.FloatNear
+import Sverify.Core.FloatNear
 import Sverify.Analysis.Knowledge
 
 /-!
@@ -102,15 +102,17 @@ theorem Value.Equiv.transfer {q : Obs} {c c' : ObsCtx} {i j : Nat} (hk : c.kind 
     cases w <;> first | exact e.elim | exact IntEquiv.transfer hk hn e
   | .dec _ _, w, e => by cases w <;> first | exact e.elim | exact ⟨e.1, IntEquiv.transfer hk hn e.2⟩
   | .str _, w, e => by cases w <;> first | exact e.elim | exact StrEquiv.transfer hk hs e
-  | .list as, w, e | .struct as, w, e => by
+  | .list as, w, e => by
     cases w <;> try exact e.elim
-    all_goals
-      rename_i bs
-      unfold Value.Equiv at e ⊢
-      cases hl : q.elements <;> simp only [hl] at e ⊢
-      · exact Value.EquivList.transfer hk hn hs as bs e
-      · obtain ⟨cs, hc, hp⟩ := e
-        exact ⟨cs, Value.EquivList.transfer hk hn hs as cs hc, hp⟩
+    rename_i bs
+    unfold Value.Equiv at e ⊢
+    cases hl : q.elements <;> simp only [hl] at e ⊢
+    · exact Value.EquivList.transfer hk hn hs as bs e
+    · obtain ⟨cs, hc, hp⟩ := e
+      exact ⟨cs, Value.EquivList.transfer hk hn hs as cs hc, hp⟩
+  | .struct as, w, e => by
+    cases w <;> try exact e.elim
+    exact Value.EquivList.transfer hk hn hs as _ e
 
 theorem Value.EquivList.transfer {q : Obs} {c c' : ObsCtx} {i j : Nat} (hk : c.kind i = c'.kind j)
     (hn : ∀ n a b, c.near n i a b → c'.near n j a b) (hs : ∀ s a b, c.strEq s a b → c'.strEq s a b) :

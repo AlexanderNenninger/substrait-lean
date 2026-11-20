@@ -1,0 +1,66 @@
+{
+  "id": "spark-case-collated",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`upper` and `lower` through `COLLATE UNICODE` give the same mapping in every JVM locale",
+  "verdict": "`collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')` maps as the D51 table under any JVM locale; the result is a plain byte-compared string",
+  "area": "strings",
+  "options": [
+    "char_set"
+  ],
+  "constructs": [
+    "collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')",
+    "collate(lower(collate(x, 'UNICODE')), 'UTF8_BINARY')"
+  ],
+  "settings": {
+    "spark.sql.icu.caseMappings.enabled": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "The plain `upper` and `lower` follow the JVM's default locale (`spark-case`): under `tr`, `az` or `lt` they map ASCII `I` and `i` in a string with a non-ASCII scalar otherwise, and the writer cannot read the locale of each executor's JVM. Wrapped as `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')` (and `lower`), the call takes the ICU branch with the collation's own locale, so the JVM's does not enter.",
+    "L1: driver and executor JVMs (`local-cluster`, one executor JVM per run) under `user.language` tr, az, lt, el, nl, hy and de: the collated form's `upper` and `lower` tables over every Unicode scalar are identical to the default table (no difference), and the context words (`Ié`, `İ`, `Ì`, `Í`, `Ĩ`, `ΑΣ`, `ΑΣΑ`, `ǆ`, `ß`, `ﬁ`) give the same results in every locale. The plain functions on the same executors differ under tr and az (`lower('Ié')` is `ıé`).",
+    "L2: pyspark 4.0.1 (bundled ICU 76.1, Unicode 16.0), 4.1.1 (ICU 77.1, Unicode 16.0), 4.2.0 and 4.3.0 (ICU 78.3, Unicode 17.0), each with `spark.sql.icu.caseMappings.enabled` true and false, on OpenJDK 21.0.13 (entries `pyspark_<version>_icu_<value>` of `case-tables-collated.json`): the two values give the same table on each, so the conf and the JDK do not enter this fact (the conf is read on the `UTF8_BINARY` branch only). 4.2.0 and 4.3.0 give the default table, 1580 scalars for `upper` and 1488 for `lower`; 4.0.1 and 4.1.1 lack 28 scalars per direction (`upper`: U+A7CF, U+A7D3, U+A7D5 and U+16EBB to U+16ED3; `lower`: U+A7CE, U+A7D2, U+A7D4 and U+16EA0 to U+16EB8), Unicode 17 additions. Every one lies in D51's raise sets (`tests/test_case_tables.py`), so the narrowed guard, the raise sets, holds on all four versions, and a new pyspark shows up as a new entry.",
+    "L3: the result is a string under `UTF8_BINARY` (`typeof` says `string collate UTF8_BINARY` on 4.3.0 and `string` on 4.0.1; its schema type is `StringType` on both): equality, `ORDER BY`, `GROUP BY`, `DISTINCT` and join keys go by bytes, and it concatenates and compares with an uncollated string without a collation error. The checks can fail: over `é`, `a`, `É`, `B`, `e` + U+0301 (canonically equal to `é`) and `z`, by bytes the upper-cased values are five distinct values, the decomposed row joins only itself and is not equal to `É`, and `ORDER BY` gives `A`, `B`, `E` + U+0301, `Z`, `É`, `É`; under `UNICODE` they would be four values with `É` before `Z`. Recorded on every pyspark of L2 (`string_checks` of each entry).",
+    "L4: an invalid UTF-8 value (`CAST(unhex('C3') AS STRING)`) gives U+FFFD under both the plain and the collated form. A table from sverify's readers holds none: pyarrow refuses invalid UTF-8 for a string array."
+  ],
+  "reference": "D51: `upper` and `lower` map each scalar as the engines agree and raise on the scalars they map differently; this form, with the raise set as its guard, is what Spark's writer emits. The probes ran on a local driver and a `local-cluster` executor; a cluster (Spark Connect, a managed service) whose build replaces ICU or the collation rules is outside this fact.",
+  "status": "workaround",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-18",
+      "method": "source-reading",
+      "checked_by": "D51 facts (Fable's ruling 66)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/sql/catalyst/util/CollationSupport.java#L188-L224",
+          "note": "`Upper.exec`: the `UTF8_BINARY` branch reads `useICU` and passes no locale; any other collation goes to `execICU`, which uses the collation's locale"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "sverify_dev.case_tables --collated, --executor-locale, collated_string_checks (D51 facts L1 to L4)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/case-tables-collated.json",
+          "note": "the collated tables as differences from the default table, per driver locale and per executor locale, and the context words (the string checks of the first probe, on pyspark 4.0.1 and 4.3.0, are superseded by those of the entries below)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-18",
+      "method": "probe",
+      "checked_by": "sverify_dev.case_tables --pyspark-entry (D51, ruling 68)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/case-tables-collated.json",
+          "note": "entries pyspark_<version>_icu_<true|false> for pyspark 4.0.1, 4.1.1, 4.2.0 and 4.3.0: the pyspark, JDK, bundled ICU and Unicode version, the collated tables as differences from the default table, the context words, and the string checks with `e` + U+0301 and `z`"
+        }
+      ]
+    }
+  ]
+}

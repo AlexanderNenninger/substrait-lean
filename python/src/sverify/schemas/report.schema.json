@@ -259,12 +259,34 @@
         }
       }
     },
+    "dialect_differences": {
+      "description": "For SQL, where the reference reads the text differently from DuckDB: the construct, where it is, both readings, an example and the spellings that mean the same under both semantics.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "construct", "where", "here", "dialect", "example", "spellings"],
+        "properties": {
+          "key": {"enum": ["corr_degenerate"]},
+          "construct": {"type": "string"},
+          "where": {"type": "string"},
+          "here": {"type": "string"},
+          "dialect": {"type": "string"},
+          "example": {"type": "string"},
+          "spellings": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
     "rewrites": {
       "description": "The rewrites of the optimized plan.",
       "type": "array",
       "items": {
         "type": "string"
       }
+    },
+    "run_gate": {
+      "description": "The gate that kept the plan as written in place of the rewrite (#1787), or null where the engine runs the rewrite.",
+      "type": ["string", "null"]
     },
     "implied": {
       "description": "A SQL condition per input table that every row reaching the result passes.",
@@ -315,6 +337,17 @@
         "array",
         "null"
       ]
+    },
+    "black_boxes": {
+      "description": "The black boxes the transformation calls, in the order of first call, each with the laws its row declares: what the proofs trust of them (substrait-check --contract's \"black_boxes\", #1484). Report.black_boxes maps each name to its laws.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "laws": {"type": "array"}
+        }
+      }
     },
     "floats_on": {
       "description": "Per engine, why its doubles may not meet the equivalence (empty where they do).",

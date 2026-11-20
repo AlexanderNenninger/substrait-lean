@@ -26,7 +26,7 @@ from ibis.common.deferred import Deferred
 
 from sverify import observation as _observation
 from sverify._duration import Duration, duration
-from sverify._unsupported import SverifyError
+from sverify._unsupported import ROWS_ASIDE, ROWS_HELD, SverifyError
 from sverify.counterexample import Counterexample
 from sverify.observation import Observation
 
@@ -67,9 +67,18 @@ class TableCondition:
     def label(self) -> str:
         raise NotImplementedError
 
-    def violations(self, table: ir.Table) -> int:
-        """How many rows of the bound `table` break it."""
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        """A relation of one row and one column, `v`, that counts how many rows
+        of the bound `table` break it, before `settle`; `tables` gives the other
+        tables of the connection by name. It is an ordinary Ibis relation: the
+        engine that runs the plan counts it, with the reference's meaning
+        (`sverify.report.violations`)."""
         raise NotImplementedError
+
+    def settle(self, v: int | None) -> int:
+        """The number of violations from the `v` its `count_query` gives (NULL
+        for a sum over no groups)."""
+        return int(v or 0)
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         """The `rows` that break it, with values compared by `key`, and
@@ -111,7 +120,7 @@ def _positions(cols: Sequence[str], names: Sequence[str]) -> list[int]:
 def _count(count: ir.Scalar) -> int:
     """The value of an Ibis count, fetched through Arrow: Ibis 12 converts
     `execute()`'s scalar through pandas, which warns under pandas 3.1
-    (#479)."""
+    (#479). For the row-wise conditions Ibis counts itself."""
     return int(count.to_pyarrow().as_py())
 
 
@@ -133,10 +142,10 @@ class Unique(TableCondition):
     def label(self) -> str:
         return f"unique({', '.join(self.cols)})"
 
-    def violations(self, table: ir.Table) -> int:
-        total: Any = table.count()
-        distinct: Any = table.select(*self.cols).distinct().count()
-        return _count(total) - _count(distinct)
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        # Rows beyond the first of each key (NULLs are one key).
+        keys = table.group_by(list(self.cols)).aggregate(n=ibis._.count())
+        return keys.aggregate(v=(keys.n - 1).sum())
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         keys = Counter(key(tuple(r[c] for c in self.cols)) for r in rows)
@@ -158,7 +167,7 @@ class Unique(TableCondition):
 
         if inserts.num_rows and (clash := duplicate_keys(new, self.cols, inserts)):
             raise PreconditionError(
-                f"{clash} inserted key(s) of {t} violate {self.label}",
+                f"{clash} inserted key(s) of {t} violate {self.label}{ROWS_ASIDE}",
                 source=t,
                 condition=self,
                 rows=_duplicate_rows(inserts, new, self.cols),
@@ -247,11 +256,11 @@ class References(TableCondition):
     def label(self) -> str:
         return f"references({self.col}, {self.table}.{self.other})"
 
-    def violations(self, table: ir.Table) -> int:
-        other = ibis.get_backend(table).table(self.table)
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        other = tables(self.table)
         present = table.filter(table[self.col].notnull())
-        missing: Any = present.anti_join(other, [present[self.col] == other[self.other]]).count()
-        return _count(missing)
+        missing = present.anti_join(other, [present[self.col] == other[self.other]])
+        return missing.aggregate(v=missing.count())
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         present = {key(r[self.other]) for r in other(self.table)}
@@ -332,11 +341,11 @@ class ArrivesWithin(TableCondition):
     def label(self) -> str:
         return f"arrives_within({self.col}, {show_duration(self.lateness)})"
 
-    def violations(self, table: ir.Table) -> int:
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
         # On one snapshot, only the NULLs break it; batches are checked by
         # the pipeline against the watermark.
-        nulls: Any = table.filter(table[self.col].isnull()).count()
-        return _count(nulls)
+        nulls = table.filter(table[self.col].isnull())
+        return nulls.aggregate(v=nulls.count())
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         return [r for r in rows if r[self.col] is None]
@@ -365,7 +374,7 @@ def arrives_within(
     of `col` (`ts.truncate("h")`, `ts.bucket(...)`) then drops the buckets
     that end at or before the watermark from its state, since no admissible
     batch changes them (`Retention.final_unchanged` in
-    `SubstraitLean/Retention.lean`), and keeps at most
+    `analysis/Sverify/Analysis/Retention.lean`), and keeps at most
     `⌈lateness / width⌉ + 1` buckets (`Retention.open_buckets_le`).
 
     Args:
@@ -422,9 +431,11 @@ class MaxRows(TableCondition):
     def label(self) -> str:
         return f"max_rows({self.n})"
 
-    def violations(self, table: ir.Table) -> int:
-        rows: Any = table.count()
-        return max(0, _count(rows) - self.n)
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
+        return table.aggregate(v=table.count())
+
+    def settle(self, v: int | None) -> int:
+        return max(0, int(v or 0) - self.n)
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         return rows[self.n :]
@@ -445,7 +456,9 @@ class MaxRows(TableCondition):
 
         if (n := row_count(new)) > self.n:
             raise PreconditionError(
-                f"{n - self.n} row(s) of {t} violate {self.label}", source=t, condition=self
+                f"{n - self.n} row(s) of {t} violate {self.label}{ROWS_HELD}",
+                source=t,
+                condition=self,
             )
         return Discharged(t, self.label, ON_DATA)
 
@@ -502,16 +515,16 @@ class RowsPer(TableCondition):
     def label(self) -> str:
         return f"rows_per({''.join(c + ', ' for c in self.cols)}at_most={self.n})"
 
-    def violations(self, table: ir.Table) -> int:
+    def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
         if not self.cols:
-            everything: Any = table.count()
-            return max(0, _count(everything) - self.n)
+            return table.aggregate(v=table.count())
         # Rows beyond the bound in each key's group.
         sizes = table.group_by(list(self.cols)).aggregate(rows=ibis._.count())
         big = sizes.filter(sizes.rows > self.n)
-        over: Any = (big.rows - self.n).sum()
-        # A sum over no groups is NULL.
-        return int(over.to_pyarrow().as_py() or 0)
+        return big.aggregate(v=(big.rows - self.n).sum())
+
+    def settle(self, v: int | None) -> int:
+        return int(v or 0) if self.cols else max(0, int(v or 0) - self.n)
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         # The rows beyond the first `n` of each key.
@@ -824,8 +837,8 @@ class CheckedCondition:
     """Proved on every result the reference allows, not only on the orders
     `proved` covers (`contract_sound_allowed`, or `contract_sound_allowed_closed`
     for a plan without open measures, `core/Sverify/Core/AllowedNear.lean`): the
-    plan has no open measure the condition reads (since D25 a double `SUM` or
-    `AVG` is not one; a statistical aggregate still is)."""
+    plan has no open measure the condition reads (since D25 and D30 a double `SUM`,
+    `AVG` or statistical aggregate is not one; `QUANTILE_CONT` still is)."""
     depends: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     """The components of an observation the condition's value depends on,
     as the checker computes them from the columns it reads (`Expr.depends`,
@@ -986,6 +999,10 @@ class PlannedCondition:
     """The plan, as protobuf JSON in Lean's form."""
 
 
+#: What a declared text column holds (`Inferred.fact`).
+TextFact = Literal["ascii", "plain", "upper_agreed", "lower_agreed"]
+
+
 class Inferred(str):
     """A bound inferred to rule out an overflow: a SQL condition on one
     column of an input table, labelled as the Ibis code that states it
@@ -995,9 +1012,11 @@ class Inferred(str):
     text: str
     column: str | None = None
     """The input column it bounds (set by `_render_needs`)."""
-    ascii: Literal["ascii", "plain"] | None = None
-    """For a text column's ASCII condition (#1506): `"plain"` also rules out
-    the vertical tab. The request declares the column so (`"ascii"`)."""
+    fact: TextFact | None = None
+    """For a text column's condition (#1506, D51): `"plain"` also rules out the vertical
+    tab, `"upper_agreed"` and `"lower_agreed"` the scalars `UPPER` and `LOWER` raise on
+    (the column is in the function's agreed alphabet). The request declares the column
+    so (`"text"`)."""
 
     def __new__(cls, sql: str, text: str) -> Inferred:
         out = super().__new__(cls, sql)

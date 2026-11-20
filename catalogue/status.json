@@ -23,7 +23,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -40,7 +40,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -57,7 +57,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -91,7 +91,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -108,7 +108,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -205,7 +205,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   }
  },
  "fin-dormant-reactivation": {
@@ -215,7 +215,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "fin-vwap": {
@@ -282,7 +282,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "fin-realized-volatility": {
@@ -302,7 +302,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "h2o-groupby-q1": {
@@ -373,7 +373,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -476,7 +476,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-silent-devices": {
@@ -496,7 +496,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-time-in-state": {
@@ -506,7 +506,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-counter-increase": {
@@ -516,7 +516,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-gapfill-locf": {
@@ -526,7 +526,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-downsample": {
@@ -546,7 +546,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-change-detection": {
@@ -556,7 +556,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-consecutive-threshold": {
@@ -566,7 +566,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "iot-daily-energy": {
@@ -687,7 +687,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "dbt-scd2-point-in-time": {
@@ -727,7 +727,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "dbt-org-hierarchy": {
@@ -789,7 +789,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "pa-day-n-retention": {
@@ -816,7 +816,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "pa-repeat-purchase-rate": {
@@ -846,7 +846,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "pa-median-order-value": {
@@ -876,7 +876,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "pa-string-agg": {
@@ -896,7 +896,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "pa-cumulative-signups": {
@@ -906,7 +906,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ssb-q1.1": {
@@ -933,7 +933,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -950,7 +950,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -967,7 +967,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -984,7 +984,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-asof-fx-tolerance": {
@@ -994,7 +994,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-resample-15min": {
@@ -1024,7 +1024,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-rolling-7day-calendar": {
@@ -1044,7 +1044,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-dau-rolling-7d": {
@@ -1064,7 +1064,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-mom-growth": {
@@ -1074,7 +1074,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-sessionize": {
@@ -1084,7 +1084,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-session-starts": {
@@ -1094,13 +1094,13 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "ts-local-day-revenue": {
   "checker": "rejected",
   "stage": "producer",
-  "detail": "orders.order_ts AT TIME ZONE 'Europe/Berlin' is not supported yet; write this step in Ibis",
+  "detail": "AT TIME ZONE 'Europe/Berlin': only 'UTC' is read, in the same way as a timestamp with a time zone (#1725): a timestamp with a time zone can be read, compared with other such columns, used as a key and",
   "native": "runs"
  },
  "ts-overlapping-bookings": {
@@ -1120,7 +1120,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "tpcds-q03": {
@@ -1130,7 +1130,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
    "proved": true,
@@ -1147,7 +1147,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
    "proved": true,
@@ -1181,7 +1181,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
    "proved": false,
@@ -1201,7 +1201,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
    "proved": true,
@@ -1294,7 +1294,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -1328,7 +1328,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -1464,7 +1464,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -1481,7 +1481,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -1515,7 +1515,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
    "proved": true,
@@ -1532,7 +1532,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -1617,7 +1617,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   },
   "contract": {
    "proved": true,
@@ -1634,7 +1634,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
    "proved": true,
@@ -1651,7 +1651,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-latest-argmax": {
@@ -1671,7 +1671,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-top-n-with-ties": {
@@ -1681,7 +1681,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-running-total": {
@@ -1691,7 +1691,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-moving-average": {
@@ -1701,7 +1701,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-percent-of-total": {
@@ -1711,7 +1711,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake tables have no row order, so FETCH and windows over a named table cannot follow the Lean model's list order (windows run with deterministic=True)"
+   "snowflake": "refused: Snowflake window functions need an ORDER BY: run it with engine='duckdb' (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
   }
  },
  "win-above-group-average": {
@@ -1731,7 +1731,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-gaps-and-islands": {
@@ -1741,7 +1741,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-forward-fill": {
@@ -1751,7 +1751,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  },
  "win-lag-change": {
@@ -1771,7 +1771,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "sql (tie_free)"
+   "snowflake": "sql"
   }
  }
 }

@@ -148,7 +148,10 @@ class Check:
         if budget.exceeded and self.code != BUDGET:
             self.code = BUDGET
             self.error = self.error or _error(
-                "timeout", f"time budget exceeded ({budget.seconds:g} s)", "BudgetExceeded"
+                "timeout",
+                f"time budget exceeded ({budget.seconds:g} s); "
+                "raise it with `--timeout` or `SVERIFY_TIMEOUT`",
+                "BudgetExceeded",
             )
 
     @property
@@ -412,6 +415,10 @@ def _dbt(args: argparse.Namespace, path: Path) -> int:
         return _emit(args, USAGE, result, lambda: message)
     project = path if path.is_dir() else path.parent
     flags = [] if args.format == "text" else ["--format", args.format]
+    if args.timeout is not None:
+        flags += ["--timeout", f"{args.timeout:g}"]
+    if args.memory_limit is not None:
+        flags += ["--memory-limit", args.memory_limit]
     return subprocess.call([exe, "check", str(project), *flags])
 
 

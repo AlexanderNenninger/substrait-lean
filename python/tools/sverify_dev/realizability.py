@@ -204,16 +204,16 @@ def render(t: dict[str, Any]) -> str:
         "",
         "## Summary",
         "",
-        "| Engine | Version | Translation | Shims | "
+        "| Engine | Version | Sound by | Under | Shims | "
         + " | ".join(LABELS.get(c, c) for c in CASES[0:1] + CASES[2:])
         + " | Refused functions |",
-        "|---|---|---|---|" + "---|" * (len(CASES) - 1) + "---|",
+        "|---|---|---|---|---|" + "---|" * (len(CASES) - 1) + "---|",
     ]
     for name, e in t.items():
         n = counts(e["rows"])
         cells = [str(n[c]) for c in CASES[0:1] + CASES[2:]]
         out.append(
-            f"| {_engines.title(name)} | {e['version']} | `{e['theorem']}` | "
+            f"| {_engines.title(name)} | {e['version']} | `{e['theorem']}` | `{e['side']}` | "
             f"{len(e['shims'])} | " + " | ".join(cells) + f" | {len(e['refused_functions'])} |"
         )
     out += [
@@ -253,8 +253,8 @@ def render(t: dict[str, Any]) -> str:
             "",
             f"## {title} {e['version']}",
             "",
-            f"{len(e['shims'])} shims ({by_cost}). The translation as a whole rests on "
-            f"`{e['theorem']}`.",
+            f"{len(e['shims'])} shims ({by_cost}). Its run is proved sound by "
+            f"`{e['theorem']}`, under `{e['side']}`.",
             "",
             "| Group | Option | Reference's tool | Reference | "
             f"{title} | Case | Level | Evidence |",

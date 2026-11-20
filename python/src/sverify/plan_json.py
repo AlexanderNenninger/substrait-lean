@@ -26,6 +26,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 
 from sverify import black_box
+from sverify._decimals import scaled
 from sverify._unsupported import Unsupported as _Unsupported
 
 Json = dict[str, Any]
@@ -50,14 +51,22 @@ class SqlUnsupported(Unsupported):
     one-to-one in a transform, and the `issue` that tracks the construct
     where an open one does."""
 
-    def __init__(self, message: str, hint: str | None = None, issue: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        issue: int | None = None,
+        *,
+        construct: str | None = None,
+        sql: str | None = None,
+    ):
         if hint:
             message = f"{message}; {hint}"
         elif "#" not in message and "Ibis" not in message:
             where = f" ({_ISSUES}/{issue})" if issue else ""
             tracked = f"tracked in #{issue}{where}; until then, " if issue else ""
             message = f"{message}; {tracked}write this step in Ibis"
-        super().__init__(message)
+        super().__init__(message, construct=construct, sql=sql)
 
 
 class ProducerUnsupported(Unsupported):
@@ -66,16 +75,32 @@ class ProducerUnsupported(Unsupported):
     what the user can do: rewrite the expression with a supported operation
     or a supported column type."""
 
-    def __init__(self, message: str, hint: str | None = None):
+    def __init__(self, message: str, hint: str | None = None, *, construct: str | None = None):
         if hint:
             message = f"{message}; {hint}"
         elif "#" not in message:
             message = f"{message}; rewrite it with a supported operation or column type"
-        super().__init__(message)
+        super().__init__(message, construct=construct)
 
 
 # --------------------------------------------------------------------------
 # Types and literals
+
+
+#: What a refusal of a timestamp with a time zone (an instant) says it can do instead
+#: (D53, #1725).
+INSTANT_NOTE = (
+    "(#1725): a timestamp with a time zone can be read, compared with other such columns, "
+    "used as a key and written back; literals, conversions and calendar functions follow"
+)
+
+#: The spellings of the time zone UTC the readers produce (Arrow, Delta, Ibis).
+UTC_ZONES = frozenset({"UTC", "Etc/UTC", "+00:00", "Z", "utc"})
+
+
+def is_utc(zone: str | None) -> bool:
+    """Is `zone` UTC, in a spelling a reader produces?"""
+    return zone in UTC_ZONES
 
 
 def type_json(dtype: Any, nullable: bool = True) -> Json:
@@ -113,16 +138,18 @@ def _type_json(dtype: Any) -> Json:
     if dtype.is_date():
         return {"date": NULLABLE}
     if dtype.is_timestamp():
-        if dtype.timezone is not None:
+        if dtype.timezone is not None and not is_utc(dtype.timezone):
             raise Unsupported(
-                "timestamps with a time zone are not supported yet (#323); cast the column to "
-                "a timestamp in UTC without a time zone before sverify reads the table"
+                f"timestamps with the time zone {dtype.timezone} are not supported yet "
+                f"{INSTANT_NOTE}; only UTC is read, as an instant"
             )
         if dtype.scale not in (None, 6):
             raise Unsupported(
                 "only microsecond timestamps are supported (#323); cast the column to "
                 "microseconds before sverify reads the table"
             )
+        if dtype.timezone is not None:
+            return {"precisionTimestampTz": {"precision": 6, **NULLABLE}}
         return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
     if dtype.is_time():
         return {"precisionTime": {"precision": 6, **NULLABLE}}
@@ -154,6 +181,14 @@ def struct_names(schema: Any) -> list[str]:
     return [n for name, t in schema.items() for n in names(name, t)]
 
 
+def _instant(value: dt_.datetime) -> str:
+    """The microseconds since 1970-01-01 00:00 UTC of an instant literal (D53): a
+    datetime with an offset or a zone is the instant it names, a naive one is read
+    as UTC. (A named zone in the *text* of a SQL literal is refused by the lift.)"""
+    at = value.astimezone(dt_.UTC) if value.tzinfo is not None else value.replace(tzinfo=dt_.UTC)
+    return str((at - EPOCH.replace(tzinfo=dt_.UTC)) // dt_.timedelta(microseconds=1))
+
+
 def literal(value: Any, dtype: Any) -> Json:
     if value is None or dtype.is_null():
         return {"literal": {"null": type_json(dtype)}}
@@ -175,11 +210,8 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"string": str(value)}}
     if dtype.is_timestamp():
         type_json(dtype)
-        if value.tzinfo is not None:
-            raise Unsupported(
-                "timestamps with a time zone are not supported yet (#323); cast the column to "
-                "a timestamp in UTC without a time zone before sverify reads the table"
-            )
+        if value.tzinfo is not None or dtype.timezone is not None:
+            return {"literal": {"precisionTimestampTz": {"precision": 6, "value": _instant(value)}}}
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
     if dtype.is_date():
@@ -220,7 +252,7 @@ def decimal_type_of(value: Any) -> Any:
     if not d.is_finite():
         raise ProducerUnsupported(f"decimal {d} is not supported")
     s = max(0, -int(d.as_tuple().exponent))
-    digits = len(str(abs(int(d.scaleb(s)))))
+    digits = len(str(abs(int(scaled(d, s)))))
     return dt.Decimal(precision=max(digits, s, 1), scale=s, nullable=True)
 
 
@@ -230,7 +262,7 @@ def decimal_literal(value: Any, dtype: Any) -> Json:
     the narrowest type that holds it."""
     if dtype.precision is None or dtype.scale is None:
         dtype = decimal_type_of(value)
-    unscaled = Decimal(value).scaleb(dtype.scale)
+    unscaled = scaled(value, dtype.scale)
     if unscaled != unscaled.to_integral_value():
         raise ProducerUnsupported(f"{value} has more than {dtype.scale} decimal places")
     if len(str(abs(int(unscaled)))) > dtype.precision:
@@ -538,6 +570,79 @@ def select(input: Json, width: int, exprs: list[Json]) -> Json:
     return input if fields == list(range(width)) else emit_rel(input, fields)
 
 
+#: The functions of a `plain` expression (`Expr.plain`, `Guard.lean`): they
+#: raise on no row, so they guard the operands after them.
+_PLAIN_FUNCTIONS = frozenset(
+    {
+        "equal", "not_equal", "lt", "lte", "gt", "gte", "is_null", "is_not_null", "not", "and",
+        "or",
+    }
+)  # fmt: skip
+
+
+def is_plain(e: Json) -> bool:
+    """Is `e` built from columns and literals by `=`, `<`, `IS NULL`, `NOT`, `AND`
+    and `OR` (and their spellings), a literal's cast or `IN` over such? Such an
+    expression raises on no row, apart from a constant's cast, which D21 gives to
+    the whole plan in the eager and in the lifted reading alike. A chain called plain
+    is written eager (D19); this table decides only which chains pay for the lift
+    (`Expr.plain` in `Guard.lean` is the narrower, proved one)."""
+    if "literal" in e or "selection" in e:
+        return True
+    if (c := e.get("cast")) is not None:  # a constant's cast raises on every row or on none
+        return "literal" in c["input"]
+    if (ol := e.get("singularOrList")) is not None:  # `x IN (…)` parses to `=` and `OR`
+        return is_plain(ol["value"]) and all(is_plain(o) for o in ol.get("options", []))
+    fn = e.get("scalarFunction")
+    if fn is None:
+        return False
+    names = {a: n for n, a in _COMPILER.get().functions.items()}
+    if names.get(fn["functionReference"]) not in _PLAIN_FUNCTIONS:
+        return False
+    return all(is_plain(a["value"]) for a in fn["arguments"])
+
+
+#: How many levels of nested `AND` and `OR` the lift guards (D50, interim): a connective
+#: below this many enclosing lifted ones is written eager. Step D50-d removes the cap.
+LIFT_LEVELS = 3
+
+
+def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
+    """`AND` or `OR` (`name`) of `operands`, in order (D50). Where every operand
+    is plain, or the plan is read as DuckDB reads it (`eager`), the eager connective
+    (`chain`); otherwise `sverify_and` or `sverify_or`, which the checker reads as
+    a guard: each operand runs only where the earlier ones do not decide the
+    result (`Expr.andG`, `Guard.lean`). Only the top `LIFT_LEVELS` levels of a nest
+    are lifted."""
+    if eager or len(operands) == 1 or semantics() == "duckdb" or all(is_plain(o) for o in operands):
+        return chain(name, operands)
+    names = {a: n for n, a in _COMPILER.get().functions.items()}
+    spliced: list[Json] = []
+    for o in operands:
+        fn = o.get("scalarFunction")
+        if fn is not None and names.get(fn["functionReference"]) == f"sverify_{name}":
+            spliced += [a["value"] for a in fn["arguments"]]  # a guard chain inside is one chain
+        else:
+            spliced.append(o)
+    return _cap_lift(call(f"sverify_{name}", spliced), names, 0)
+
+
+def _cap_lift(e: Any, names: dict[int, str], level: int) -> Any:
+    """`e` with every `sverify_and` and `sverify_or` at `LIFT_LEVELS` or more lifted
+    ones above it written as the eager `and` and `or`."""
+    if isinstance(e, list):
+        return [_cap_lift(x, names, level) for x in e]
+    if not isinstance(e, dict):
+        return e
+    fn = e.get("scalarFunction")
+    n = names.get(fn["functionReference"]) if fn is not None else None
+    if fn is not None and n in ("sverify_and", "sverify_or"):
+        below = level + 1
+        args = [_cap_lift(a["value"], names, below) for a in fn["arguments"]]
+        return chain(n.removeprefix("sverify_"), args) if level >= LIFT_LEVELS else call(n, args)
+    return {k: _cap_lift(v, names, level) for k, v in e.items()}
+
+
 def chain(name: str, args: list[Json]) -> Json:
     """`args` combined left to right with the binary function `name`."""
     out = args[0]
@@ -559,10 +664,16 @@ def distinct_rel(input: Json, width: int) -> Json:
 
 def read_rel(name: str, schema: Any) -> Json:
     """A read of the named table `name`, of the Ibis schema `schema`."""
-    struct = {
-        "types": [type_json(t, t.nullable) for t in schema.types],
-        "nullability": "NULLABILITY_REQUIRED",
-    }
+    types = []
+    for column, t in schema.items():
+        try:
+            types.append(type_json(t, t.nullable))
+        except Unsupported as e:
+            raise Unsupported(
+                f"column {column!r} of {name!r}: {e}; "
+                "only a column the query never reads is left out"
+            ) from e
+    struct = {"types": types, "nullability": "NULLABILITY_REQUIRED"}
     return {
         "read": {
             "baseSchema": {"names": struct_names(schema), "struct": struct},

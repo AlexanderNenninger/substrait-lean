@@ -2,13 +2,13 @@
   "id": "spark-case",
   "engine": "spark",
   "engine_version": "4.3.0",
-  "title": "`upper`, `lower`: Java's full Unicode mappings, in the JVM's default locale",
-  "verdict": "`char_set: UTF8` with full mappings (`ß` → `SS`, final sigma); ASCII fast path",
+  "title": "`upper`, `lower`: full Unicode mappings (ICU by default, the JVM's under a conf), in the JVM's default locale",
+  "verdict": "`char_set: UTF8` with full mappings (`ß` → `SS`, final sigma) under a JVM locale without special casing; ASCII fast path",
   "area": "strings",
   "options": [
     "char_set",
     "settings",
-    "non_ascii_text"
+    "case_mapping"
   ],
   "rows": [
     {
@@ -18,7 +18,7 @@
         "string"
       ]
     },
-    {"group": "str.case", "option": "non_ascii_text", "types": ["string"]}
+    {"group": "str.case", "option": "case_mapping", "types": ["string"]}
   ],
   "constructs": [
     "upper",

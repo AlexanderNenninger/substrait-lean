@@ -24,8 +24,6 @@ case label:
 
 * `REFUSED`: verified cases an engine refuses (`UnsupportedError`), with a pattern
   of the reason (`coverage_cases._common` explains the shared ones);
-* `TIE_FREE`: of those, the cases Snowflake and Spark run when the caller
-  promises no ties;
 * `NO_DUCKDB_SQL`: verified cases whose Ibis SQL DuckDB does not run, or
   computes otherwise than the plan; the tests compare every other verified
   case with DuckDB running Ibis's own DuckDB SQL, and these with the other
@@ -67,11 +65,11 @@ from sverify.engine import run_checker, written_plan
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
     APPROXIMATE,
+    APPROXIMATE_SPARK,
     CASES,
     DUCKDB_ORACLE,
     NO_DUCKDB_SQL,
     REFUSED,
-    TIE_FREE,
     UNORDERED_LISTS,
 )
 from sverify_dev.coverage_cases._common import TABLES, Case, L, M, Status, T, U
@@ -83,9 +81,9 @@ __all__ = [
     "NO_DUCKDB_SQL",
     "REFUSED",
     "TABLES",
-    "TIE_FREE",
     "UNORDERED_LISTS",
     "APPROXIMATE",
+    "APPROXIMATE_SPARK",
     "DUCKDB_ORACLE",
     "Case",
     "L",
@@ -112,7 +110,7 @@ def written(c: Case) -> str:
     return written_plan(to_substrait_json(c.build()))
 
 
-def refusal(plan: str, engine: str, tie_free: bool = False) -> str | None:
+def refusal(plan: str, engine: str) -> str | None:
     """Why `engine` refuses a verified case's plan (`written`), or None if it
     runs it: its SQL dialect writes the plan, or else its runner over tables
     runs it on empty tables (`ProfilePlugin.dialect`, `run_tables`)."""
@@ -122,7 +120,7 @@ def refusal(plan: str, engine: str, tie_free: bool = False) -> str | None:
     plugin = profiles.plugins()[engine]
     try:
         if plugin.dialect is not None:
-            plan_sql(json.loads(plan), plugin.dialect(), deterministic=tie_free)
+            plan_sql(json.loads(plan), plugin.dialect())
         else:
             assert plugin.run_tables is not None, engine
             tables = {t.get_name(): t.schema().to_pyarrow().empty_table() for t in TABLES}
@@ -196,11 +194,7 @@ def table(rs: list[Result]) -> str:
     ]
     for e in ENGINES:
         out = [r for r in verified if e in r.refused]
-        refused = " · ".join(
-            r.case.label
-            + (" (with `deterministic=True` it runs)" if r.case.label in TIE_FREE else "")
-            for r in out
-        )
+        refused = " · ".join(r.case.label for r in out)
         lines.append(f"| {_engines.title(e)} | {len(verified) - len(out)} | {refused or '—'} |")
     return "\n".join(lines)
 

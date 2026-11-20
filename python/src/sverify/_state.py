@@ -8,9 +8,8 @@ engine a pipeline runs on keeps it, in its own form: its plugin's `Store`
 (`ProfilePlugin.store`; `store_for`). sverify holds no state of its own and
 picks no store (#1189, #1288). DuckDB's (`sverify_duckdb.DuckDBStore`)
 is a table DuckDB holds between calls (`Resident`), so the state never passes
-through Python; Polars's (`sverify_polars.store.PolarsStore`) is a
-generation of Parquet files Polars writes and scans; Spark's keeps Arrow tables
-in the process for now (`sverify._arrow_state`).
+through Python; Polars's and Spark's are parts of Parquet files the engine
+writes and reads (`sverify._parts`).
 
 Whatever the store, weighted tables are added up by one plan (`Merger`):
 the union of two of them, grouped by every column, with the weights summed
@@ -37,19 +36,16 @@ __all__ = ["Merger", "State", "Store", "arrow_of", "by_keys", "store_for"]
 
 class Merger:
     """Adds up weighted tables with `schema` (the rows' columns, then
-    `WEIGHT`) by the plan Lean checked, run on the engine of `store` (DuckDB
-    for the interim Arrow store) over the tables of `con`.
+    `WEIGHT`) by the plan Lean checked, run on the engine of `store` over the
+    tables of `con`.
 
     Attributes:
         refused: Why the plan could not be written or run, if it could not:
             the tables are then added up in Arrow.
     """
 
-    def __init__(self, con, schema: pa.Schema, store: Store | None = None):
-        from sverify._arrow_state import ArrowOps
-
-        self.con, self.schema = con, schema
-        self.store = ArrowOps() if store is None else store
+    def __init__(self, con, schema: pa.Schema, store: Store):
+        self.con, self.schema, self.store = con, schema, store
         self._plan: str | None = None
         self.refused: str | None = None
 

@@ -533,7 +533,7 @@ theorem AVal.disjoint_ne {a b : AVal} {v w : Value} (hd : a.disjoint b = true) (
       simp only [AVal.Mem, AVal.MemR, Bool.and_eq_true] at ha hb
       rcases hs with hs | hs
       · simp_all
-      · exact strsDisjoint_false hs ha.1.1.2 hb.1.1.2
+      · exact strsDisjoint_false hs ha.1.2 hb.1.2
 
 /-- The first column on which the descriptions `ea` and `eb` share no value. -/
 def apartCol (ea eb : List AVal) : Option Nat :=
@@ -546,9 +546,23 @@ def unionKeys (ea eb : List AVal) (ka kb : List (List Nat)) : List (List Nat) :=
   | some c => (ka.flatMap fun k => kb.map fun k' => k ++ k' ++ [c]).take 16
   | none => []
 
+/-- What a plan assumes of each input table beyond its schema and facts: the
+conditions of `requires` that state something about pairs of rows. Today the
+keys, the column sets on which no two rows agree (`sv.unique`, `sv.key`). One
+structure, so that a new kind of condition is one field and not a parameter of
+every analysis. -/
+structure TableCond where
+  /-- The column sets of table `t` that are keys. -/
+  keys : String → List (List Nat)
+
+/-- The tables of `cat` satisfy the conditions `K`: the one hypothesis the
+key-reading analyses take. -/
+def TableCond.Hold (K : TableCond) (cat : Catalog) : Prop :=
+  ∀ t, ∀ k ∈ K.keys t, KeyOn k (cat t).rows
+
 def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → List (List Nat)
-  | .read t => K t
+    (K : TableCond) : Rel → List (List Nat)
+  | .read t => K.keys t
   | .values _ rows => if rows.length ≤ 1 then [[]] else []
   -- Columns the condition pins to a constant are redundant in a key.
   -- Columns the condition equates stand in for each other (#694).
@@ -587,9 +601,9 @@ bottom-up pass; `Rel.laneK_eq` proves it computes `Rel.keys`, and the
 `@[csimp]` lemma makes compiled code use it. -/
 
 /-- One node's keys from its inputs' lanes and keys. -/
-def Rel.keysStep (K : String → List (List Nat)) :
+def Rel.keysStep (K : TableCond) :
     Rel → Rel.Lane → Rel.Lane → List (List Nat) → List (List Nat) → List (List Nat)
-  | .read t, _, _, _, _ => K t
+  | .read t, _, _, _, _ => K.keys t
   | .values _ rows, _, _, _, _ => if rows.length ≤ 1 then [[]] else []
   | .filter _ c, _, _, ka, _ =>
       dedup ((ka.map (·.filter (!c.pinned.contains ·))).flatMap (eqVariants c))
@@ -610,7 +624,7 @@ def Rel.keysStep (K : String → List (List Nat)) :
 
 /-- The lane without window keys and the keys of every subplan, in one pass. -/
 def Rel.laneK (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → Rel.Lane × List (List Nat)
+    (K : TableCond) : Rel → Rel.Lane × List (List Nat)
   | r@(.filter a _) | r@(.project a _) | r@(.emit a _) | r@(.fetch a _ _) | r@(.window a _ _ _)
   | r@(.semi a _ _ _) | r@(.orderBy a _) | r@(.distinct a) | r@(.aggregate a _ _) | r@(.unnest a _) =>
       let p := a.laneK cat A F K
@@ -624,7 +638,7 @@ def Rel.laneK (cat : Catalog) (A : String → List AVal) (F : String → List Fa
 
 /-- **The pass computes the lane and `Rel.keys`.** -/
 theorem Rel.laneK_eq (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) :
+    (K : TableCond) (r : Rel) :
     r.laneK cat A F K = (r.lane cat A F .none false, r.keys cat A F K) := by
   induction r with
   | join a b ty on iha ihb =>
@@ -633,7 +647,7 @@ theorem Rel.laneK_eq (cat : Catalog) (A : String → List AVal) (F : String → 
 
 /-- `Rel.keys` by the pass. -/
 def Rel.keysLane (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) : List (List Nat) :=
+    (K : TableCond) (r : Rel) : List (List Nat) :=
   (r.laneK cat A F K).2
 
 omit [Boxes.Ambient] in
@@ -877,8 +891,8 @@ theorem KeyOn.of_subset {k : List Nat} {rows l : Relation} (h : KeyOn k rows)
 theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) :
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) :
     ∀ {r : Rel}, r.WF cat → ∀ k ∈ r.keys cat A F K, ∀ {out : Relation}, r.OrderAllowed cat out →
       KeyOn k out
   | .read t, _, k, hk, _, h => (hK t k hk).perm h.symm fun h => Ne.symm h
@@ -1078,8 +1092,8 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
 theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} (hwf : r.WF cat) :
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {r : Rel} (hwf : r.WF cat) :
     ∀ k ∈ r.keys cat A F K, KeyOn k (r.eval cat) :=
   fun k hk => Rel.keys_sound_all hcat hA hF hK hwf k hk (r.eval_orderAllowed cat)
 
@@ -1117,7 +1131,7 @@ theorem partners_le_one {B : Relation} {n : Nat} {on : Expr} {kb : List Nat} {x 
 
 /-- Does the join condition determine a key of the right side? -/
 def Rel.keyedJoin (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (a b : Rel) (on : Expr) : Bool :=
+    (K : TableCond) (a b : Rel) (on : Expr) : Bool :=
   (b.keys cat A F K).any (determines on (a.arity cat))
 
 /-- **A join on a key does not fan out**: inner or left, it has at most as
@@ -1125,8 +1139,8 @@ many rows as its left side. -/
 theorem Rel.join_length_le_of_keyed {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {a b : Rel} {ty : JoinType} {on : Expr}
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {a b : Rel} {ty : JoinType} {on : Expr}
     (hwf : (Rel.join a b ty on).WF cat) (hkey : Rel.keyedJoin cat A F K a b on = true) :
     ((Rel.join a b ty on).eval cat).length ≤ (a.eval cat).length := by
   obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hkey
@@ -1561,7 +1575,7 @@ theorem window_allColumns {part : List Nat} {sort : List SortKey} {fns : List Wi
 /-- Do the group's and the measure's sort columns contain a key of `r`? Then
 no two rows of a group tie in the measure's order. -/
 def Measure.keyedIn (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+    (K : TableCond) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
   (r.keys cat A F K).any fun k => k.all fun c => gs.contains (.field c) || m.sort.any (·.col == c)
 
 /-- Does the measure `m` of an aggregate over `r` grouped by `gs` take its
@@ -1571,7 +1585,7 @@ unless the group's and the order's columns contain a key, ties make the
 result the engine's. `MODE` ordered by its argument's column is total: rows
 that tie have one value. -/
 def Measure.totalIn (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
+    (K : TableCond) (r : Rel) (gs : List Expr) (m : Measure) : Bool :=
   !(m.fn matches .pick _ || m.fn matches .concat _ || m.fn matches .mode) ||
     (m.fn matches .mode && m.sort.any (m.arg == .field ·.col)) || m.keyedIn cat A F K r gs
 
@@ -1580,7 +1594,7 @@ and sort columns contain a derived key of its input, are its functions
 tie-free (`window_tieFree`: order-free, or ranks over the window's order),
 or does its partition cover every column? -/
 def Rel.windowTotalAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) (part : List Nat) (sort : List SortKey)
+    (K : TableCond) (r : Rel) (part : List Nat) (sort : List SortKey)
     (fns : List WinFn) : Bool :=
   (r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) ||
     fns.all (WinFn.tieFree sort) || (List.range (r.arity cat)).all (· ∈ part)
@@ -1589,7 +1603,7 @@ def Rel.windowTotalAt (cat : Catalog) (A : String → List AVal) (F : String →
 fixes: do the sort's columns contain a key of its input, and is no key
 clustered (whose groups the reference leaves in any order, `SortAllowed`)? -/
 def Rel.fetchTotalAt (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (i : Rel) (keys : List SortKey) : Bool :=
+    (K : TableCond) (i : Rel) (keys : List SortKey) : Bool :=
   ((i.keys cat A F K).any fun k => k.all fun c => keys.any (·.col == c)) && keys.all (!·.clustered)
 
 /-- Is every window deterministic: do its partition and sort columns contain
@@ -1597,7 +1611,7 @@ a derived key of its input (`Rel.window_deterministic`), or are its functions
 tie-free (`window_tieFree`), or does its partition cover every column
 (`Rel.window_allColumns`)? -/
 def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → Bool
+    (K : TableCond) : Rel → Bool
   | .read _ | .values _ _ => true
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ => r.windowsTotal cat A F K
@@ -1611,8 +1625,8 @@ def Rel.windowsTotal (cat : Catalog) (A : String → List AVal) (F : String → 
 theorem Rel.window_deterministic {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) {r : Rel} {part : List Nat}
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {r : Rel} {part : List Nat}
     {sort : List SortKey} {fns : List WinFn} (hwf : r.WF cat)
     (h : (r.keys cat A F K).any (fun k => k.all (· ∈ part ++ sort.map (·.col))) = true)
     {s : List Row} (hp : s.Perm (r.eval cat)) (hs : s.Pairwise (sortLe sort · · = true)) :
@@ -1639,15 +1653,15 @@ namespace Substrait
 variable [Boxes.Ambient]
 /-- The window-key oracle for strict window facts, from derived keys. -/
 def Rel.keyedWindows (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : WindowKeys := fun r part sort =>
+    (K : TableCond) : WindowKeys := fun r part sort =>
   (r.keys cat A F K).any fun k => k.all (· ∈ part ++ sort.map (·.col))
 
 /-- The window-key oracle of `ContractCheck` holds on every order. -/
 theorem Rel.keyedWindows_soundAll {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : String → List (List Nat)}
-    (hK : ∀ t, ∀ k ∈ K t, KeyOn k (cat t).rows) : (Rel.keyedWindows cat A F K).SoundAll cat := by
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) : (Rel.keyedWindows cat A F K).SoundAll cat := by
   intro r part sort h hwf i hi
   obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp h
   simp only [List.all_eq_true, decide_eq_true_eq] at hsub

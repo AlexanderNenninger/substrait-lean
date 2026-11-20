@@ -41,6 +41,7 @@ from hypothesis import HealthCheck, find, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NoSuchExample
 
+from sverify._lean_eval import LeanRaised
 from sverify_dev import fuzz, slt
 from sverify_dev.fuzz import BOOL, DOUBLE, INT
 
@@ -208,6 +209,8 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
     try:
         lean_rows = s.lean(plan)
         lean = _rows(lean_rows)
+    except LeanRaised as e:
+        lean = "error: " + str(e)
     except subprocess.CalledProcessError as e:
         lean = "error: " + slt._clip(((e.stderr or "") + (e.output or "")).strip()[-200:], 200)
     db = connect()
@@ -239,9 +242,15 @@ def check(query: fuzz.Query, tables: dict[str, list[tuple]]) -> Outcome:
     return Outcome(query.sql, s.tables, lean, duck, agree, issues)
 
 
+MEMORY: list[dict[str, Any]] = []
+"""The cases of the last `search` on which the checker went over its memory
+cap (#1074): `write` records each as a `checker_memory` result."""
+
+
 def search(target: str, budget: float, seed: int = 0) -> tuple[list[Outcome], int]:
     """Distinct, shrunk disagreements within `budget` seconds, and the
     number of cases checked."""
+    MEMORY.clear()
     rng = random.Random(seed)
     deadline = time.monotonic() + budget
     found: dict[str, Outcome] = {}
@@ -251,9 +260,15 @@ def search(target: str, budget: float, seed: int = 0) -> tuple[list[Outcome], in
     )
 
     def outcome(case: tuple) -> Outcome | None:
+        fuzz.note(case)
         try:
             out = check(*case)
         except fuzz.Refused:
+            return None
+        except fuzz.CheckerMemoryError as e:
+            if all(m["sql"] != case[0].sql for m in MEMORY):
+                f = fuzz.checker_memory(case, e)
+                MEMORY.append({**fuzz.case_json(case), "detail": f.detail, **f.extra})
             return None
         except Exception as e:  # noqa: BLE001 - a harness error is not a finding
             print(f"harness: {e!r}", file=sys.stderr)
@@ -299,7 +314,7 @@ def write(target: str, version: str, found: list[Outcome], checked: int, out: Pa
             "reason": "verify: " + "; ".join(o.issues) if o.issues else None,
         }
         for i, o in enumerate(sorted(found, key=lambda o: (len(o.sql), o.sql)))
-    ]
+    ] + [{"file": f"fuzz:{target}", "cls": "checker_memory", **m} for m in MEMORY]
     summary = {"agree": checked - len(found), "disagree": len(found), "refused": 0, "skipped": 0}
     source = "sverify_dev.duckdb_fuzz (generated queries, no DuckDB tests)"
     head = {
@@ -315,11 +330,21 @@ def write(target: str, version: str, found: list[Outcome], checked: int, out: Pa
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("target", choices=sorted(TARGETS))
+    parser.add_argument("target", nargs="?", choices=sorted(TARGETS))
     parser.add_argument("--budget", type=float, default=60.0, help="seconds (default 60)")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", type=Path, default=slt.REPLAY_DIR)
+    parser.add_argument(
+        "--replay", type=Path, help="check a recorded case (`fuzz.case_json`) again"
+    )
     args = parser.parse_args(argv)
+    if args.replay:
+        case = fuzz.case_of(json.loads(args.replay.read_text()))
+        out = check(*case[:2])
+        print(f"lean:   {out.lean}\nduckdb: {out.duckdb}\n{'agree' if out.agree else 'disagree'}")
+        raise SystemExit(0 if out.agree else 1)
+    if args.target is None:
+        parser.error("a target is required without --replay")
     found, checked = search(args.target, args.budget, args.seed)
     path = write(args.target, duckdb.__version__, found, checked, args.out)
     print(f"{len(found)} distinct finding(s) in {checked} cases -> {path}")

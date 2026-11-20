@@ -12,6 +12,7 @@ prove a plan from its inputs' schemas and the preconditions you state. No
 row is read. The result is a `Report`:
 
 ```python
+# skip: a template: expr and the contract are the reader's
 report = sv.verify(expr, requires={"orders": [...]}, ensures=[...])
 print(report)          # the contract in plain words: what holds, what each run checks, what is not proved
 print(report.details())  # the whole report, with the semantics, the evidence per engine and the routes
@@ -56,7 +57,8 @@ instead.
 - The observation. `report.observation` is what the result's consumer
   observes: rows as a multiset and doubles within the plan's bound unless
   `ensures` states otherwise with `sv.equivalent(...)`, and it prints the
-  bound (`equivalent(floats=plan, ≤ 1.1e-10)`).
+  bound (`equivalent(elements='multiset', floats=plan, ≤ 1.1e-10, zeros='canon')`). Every component's default is
+  in [the default observation](core-semantics.md#the-default-observation).
 - Determinism. `report.deterministic` is false when rows may tie in the
   order of a window, an ordered aggregate or a `LIMIT`, or the reference
   leaves a value open (the median of doubles, which member of a class of

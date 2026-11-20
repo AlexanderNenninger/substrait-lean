@@ -437,7 +437,7 @@ build on it like on any other precondition of a source.
 
 * The inference is untrusted: Lean proves the contract again with the
   inferred bounds added, so a wrong bound makes the proof fail
-  ([SubstraitLean/Infer.lean](../SubstraitLean/Infer.lean)).
+  ([analysis/Sverify/Analysis/Infer.lean](../analysis/Sverify/Analysis/Infer.lean)).
 * Bounds are rounded inward to round numbers (`3 * 10**18`, `2**62`) and
   timestamps to whole years (`(ts + ibis.interval(days=1)).truncate("M")`
   needs `_.ts < datetime(9999, 1, 1)`). A DATE or TIMESTAMP column lies in
@@ -514,8 +514,7 @@ print(report.details())
 * Filters, semi-joins and `DISTINCT` keep at most their input's rows,
   `LIMIT` at most its count, `UNION ALL` adds, and an aggregate without
   `GROUP BY` has one row. A join multiplies, or keeps the left side's rows
-  when its condition matches a `unique` key of the right side
-  (`Rel.capJoins_eval`).
+  when its condition matches a `unique` key of the right side.
 * A cap is checked on the data at call time and on every batch of an
   incremental view, or proved from the record counts of the Delta or Iceberg
   files a source reads.
@@ -545,11 +544,10 @@ assert not report.assumed and not report.errors
 ```
 
 * Filters, sorts, `LIMIT`, `DISTINCT`, semi-joins, projections and
-  `UNION ALL` keep the bounds (`Rel.perKey_sound` in
-  [Rows.lean](../analysis/Sverify/Analysis/Rows.lean)), and so does a join on a `unique`
+  `UNION ALL` keep the bounds, and so does a join on a `unique`
   key of its right side. A `unique` key is a bound of 1.
 * An aggregate grouping by all of a bound's columns has groups of at most
-  that many rows (`Rel.groupRows_sound`), which bounds its integer and
+  that many rows, which bounds its integer and
   decimal `SUM`s.
 * `Report.rows` is the bound on the result's rows.
 * It is checked on the data at call time (a `GROUP BY` of the columns, with
@@ -680,6 +678,12 @@ not hide the next. A `refresh()` in the file belongs under
 `if __name__ == "__main__":`; while sverify checks the file, it raises. A
 directory with a `dbt_project.yml` goes to `sverify-dbt check`.
 
+A `DeltaSource` or `IcebergSource` opens its table to learn its schema, which
+on a pull request means credentials and a network. Declare it instead,
+`DeltaSource(uri, schema=pa.schema([...]))`: `check` proves from the declared
+schema and opens nothing, and every refresh compares the table's schema with
+the declared one and raises `SchemaError` where they differ, or where a column declared NOT NULL is nullable in the table.
+
 The output starts with the contract in plain words, for a pull request's
 comment or a phone's screen: what the output guarantees, what each refresh
 checks on the data, and what is not proved, each finding with a code.
@@ -758,6 +762,7 @@ given wins over the variable, and the variable over the default.
 | `SVERIFY_TIMEOUT` | `--timeout` | | 30 | seconds for proof, planning and checking; 0 turns it off |
 | `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | none | DuckDB's `memory_limit`, such as `2GB` |
 | `SVERIFY_TEMP_DIRECTORY` | | | a directory under the system's temporary one | DuckDB's `temp_directory`, where it spills past the memory limit |
+| `SVERIFY_STATE_LOCATION` | | | a directory under the system's temporary one | where Polars and Spark write an incremental view's state as Parquet parts: a directory, or a URI (`s3://bucket/state`) that the driver and every executor read and write |
 | `SVERIFY_CACHE` | | | on | `off`, `0`, `false` or `no` turns the proof cache off ([Checking without running](#checking-without-running)) |
 | `SVERIFY_CACHE_DIR` | | | `$XDG_CACHE_HOME/sverify`, else `~/.cache/sverify` | where the proof cache lives |
 | `SVERIFY_SECRETS` | | `Resolver.from_config(path)` | the nearest `pyproject.toml` | the TOML file whose `[tool.sverify.secrets]` table configures named secrets ([Credentials](#credentials)) |
@@ -860,13 +865,12 @@ An `sv.sql` expression inside an Ibis transformation keeps its own. The report
 says which semantics it used (`Report.semantics`, a `semantics:` line).
 `semantics="polars"` is pending like Spark's: Polars floors integer `//` and
 `%`, so `-7 % 2` is `1` there, and until the checker reports under Polars's own
-profile ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271))
+profile
 the report is the reference's, with the stated `FLOOR` read by the core, and a
 `ProfilePendingWarning` says so ([engine-profiles.md](engine-profiles.md#polars-as-a-profile)).
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode, and doubles that overflow are ±inf with no precondition.
-Until the checker reports under Spark's own profile
-([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
+Until the checker reports under Spark's own profile,
 the report is the reference's, `report.semantics` says `"reference"`, a
 `ProfilePendingWarning` says so, and the plan reaches Spark through its
 translation ([engine-profiles.md](engine-profiles.md#spark-as-a-profile)).
@@ -902,12 +906,10 @@ aggregate whose input has delta rules recomputes only the groups a batch
 touches: Sverify takes the group keys of the input rows the batch inserts or
 deletes, recomputes those groups from the new input (a semi-join on the
 keys), and replaces their rows. This holds for every measure, because an
-aggregate's groups are independent (`TouchedGroups.touched_sound` in
-[`SubstraitLean/TouchedGroups.lean`](../SubstraitLean/TouchedGroups.lean)).
+aggregate's groups are independent (see [proved-theorems.md](proved-theorems.md)).
 A projection whose window functions share one `PARTITION BY`, with the
 partition keys among its columns, recomputes the partitions a batch touches
-the same way (`TouchedGroups.touched_window_sound`, for inputs without ties on
-the partition and sort columns). With a time bucket among the keys, the
+the same way, for inputs without ties on the partition and sort columns. With a time bucket among the keys, the
 recompute reads only the range the touched buckets cover.
 
 Window aggregates over bounded RANGE frames of one time column, such as the
@@ -918,7 +920,7 @@ table, without `PARTITION BY`), from the input rows in that span
 widened by the frame. Lean proves that a window value depends only on the
 rows in its frame, so this equals a full recompute for inputs without ties
 on the partition and time columns (`TouchedFrames.framed_batch` in
-[`SubstraitLean/TouchedFrames.lean`](../SubstraitLean/TouchedFrames.lean)),
+[`analysis/Sverify/Analysis/TouchedFrames.lean`](../analysis/Sverify/Analysis/TouchedFrames.lean)),
 and `status()` says "touched frames recomputed". The tests
 ([`test_touched_frames.py`](../python/tests/test_touched_frames.py)) compare
 every refresh with a full recompute on random streams with late rows, rows
@@ -1061,11 +1063,9 @@ refresh batch by batch and a recompute agree:
   have no rule for which rows break them. A batch that breaks one holds the
   node, as `"hold"` does, and the report says why.
 
-Every precondition holds on the rows kept: `Catalog.kept_sound` in
-[`Quarantine.lean`](../SubstraitLean/Quarantine.lean) proves it for this rule
-(on the snapshot with identical rows collapsed),
-so the node's contract (`contract_sound`, `Rel.keys_sound`) holds on what it
-reads. The batch checks then run on the kept rows as on any batch, and a row
+Every precondition holds on the rows kept: Lean proves it for this rule
+(on the snapshot with identical rows collapsed, see [proved-theorems.md](proved-theorems.md)),
+so the node's contract holds on what it reads. The batch checks then run on the kept rows as on any batch, and a row
 the rule let through by mistake would raise.
 [`tests/test_quarantine.py`](../python/tests/test_quarantine.py) compares
 every refresh of random batches with the rule.
@@ -1121,19 +1121,22 @@ tables. A table format plays four roles:
   files that changed are diffed, and the report says so.
   `refresh(audit=True)` also compares the batch with the new snapshot and
   every node with a recompute, before committing anything (`AuditError`).
-  On DuckDB, a Delta table, local or on S3, and a local Iceberg table are never
-  loaded into Python: the pipeline holds the Parquet files of its version,
-  with the rows that deletion vectors or position delete files remove, and
-  DuckDB reads them with `read_parquet`. A Delta table's partition values come
-  from its log, and its column mapping by name or by id is followed, so a
-  renamed column is found. Iceberg files are read by field id, and equality
-  deletes apply to the files written before them. S3 tables are read through
-  DuckDB's `httpfs` with a temporary secret made from the `Storage`, kept out
-  of SQL text and logs; with no explicit key, DuckDB's `aws` extension is
-  needed, and without it the table reads through Arrow (sverify installs
-  nothing). Partitioned Iceberg tables, Delta deletion vectors on S3, other
-  object stores and the other engines read through Arrow;
-  native scans for them are tracked in [an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/173).
+  A Delta table, local or on S3, and a local Iceberg table are never loaded
+  into Python: the pipeline holds the Parquet files of its version, with the
+  rows that deletion vectors or position delete files remove, and each engine
+  reads them itself: DuckDB with `read_parquet`, Polars with
+  `scan_parquet` on the streaming engine, Spark with its Parquet reader. A
+  Delta table's partition values come from its log, and its column mapping by
+  name or by id is followed, so a renamed column is found. Iceberg files are
+  read by field id, and equality deletes apply to the files written before
+  them. S3 tables are read through DuckDB's `httpfs` with a temporary secret
+  made from the `Storage`, kept out of SQL text and logs; with no explicit
+  key, DuckDB's `aws` extension is needed, and without it the table reads
+  through Arrow (sverify installs nothing). A table the scan cannot describe
+  also reads through Arrow: a Delta table with other reader features, column
+  mapping over nested columns, partition columns whose type the log's values
+  do not give exactly, or deletion vectors on S3; stores other than S3; an
+  Iceberg table whose files are not local Parquet or have no field ids.
 * A source of preconditions. `requires` conditions are proved from
   schema nullability, Delta CHECK constraints and per-file statistics:
   min/max of integers, doubles (only where the files count no NaN), dates
@@ -1538,18 +1541,17 @@ print(rollup.refresh())  # samples until 4:50, so the hours before 2:00 are fina
   their sinks keep those buckets as they were, and the report counts the
   expired rows. Lean proves that the final buckets in the sink and the open
   ones in the state are then a full recompute over every row the source
-  received, less the deletes at or after the watermark
-  (`Retention.expiry_sound`). A delete before the watermark in a bucket that
+  received, less the deletes at or after the watermark (see [proved-theorems.md](proved-theorems.md)).
+  A delete before the watermark in a bucket that
   is still open rejects the batch. With no view that drops buckets of `ts`,
   every delete is applied as it is.
 - A bucket that ends at or before the watermark is final. Lean proves that
   no admissible batch changes a final bucket, for every measure, so the
   final buckets kept in the sink and the open ones in the state add up to a
-  full recompute (`Retention.retention_sound` and `Retention.final_stable` in
-  [`SubstraitLean/Retention.lean`](../SubstraitLean/Retention.lean)).
+  full recompute (see [proved-theorems.md](proved-theorems.md)).
 - After the sink has written a refresh, the node drops the final buckets
-  from its state. At most `⌈lateness / width⌉ + 1` buckets stay open
-  (`Retention.open_buckets_le`), so the state holds that many rows per group.
+  from its state. At most `⌈lateness / width⌉ + 1` buckets stay open,
+  so the state holds that many rows per group.
   The refresh report gives the open and retired buckets, the bound and the
   watermark (`RetentionReport`).
 - The bucket is `ts.truncate(unit)` to a second, minute, hour or day, or
@@ -1601,8 +1603,10 @@ the following about the warehouse:
   `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time zone, NTZ
   timestamps, case-sensitive names), and strings use the default
   `UTF8_BINARY` collation.
-* Both have no row order, so sorts, `LIMIT` and windows are refused unless
-  the report is `deterministic` (a key on the order columns in the
+* Both have no row order. `to_sql` writes sorts, `LIMIT` and windows with ties
+  and a `LIMIT`'s rows open, as the reference allows (`rows="multiset"`, the
+  default for these engines), and refuses `rows="sequence"`, Lean's list order,
+  unless the report is `deterministic` (a key on the order columns in the
   contract, which `to_sql` reads from the report). A `SUM` or `AVG` of
   doubles runs natively, within the plan's bound of the reference's correctly
   rounded sum. Snowflake has no interval type, so interval-valued
@@ -1645,9 +1649,9 @@ only if one applies:
 
 | Route | When |
 |---|---|
-| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending until #1288 and #271) |
-| `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB, `Lowering.lower_correct`; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
-| `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check, `Rel.transfer_of_transferB`) |
+| `native` | the plan was proved under the engine's own profile (`semantics="duckdb"` on DuckDB; `"polars"` and `"spark"` are pending) |
+| `translated` | the plan was proved under the reference, and sverify's translation to the engine writes the reference's choices (proved for DuckDB; shims proved for Polars and Spark). Before 0.6 this route was `reference`, which `route=` still takes, with a `DeprecationWarning` |
+| `transfer` | the plan was proved under another profile, and at every option the plan reads, the engine's choices are within that profile's (the checker's transfer check) |
 | `recheck` | the checker proves the plan again under the engine's profile |
 
 `report.routes[engine]` records the route, with its class, which says what
@@ -1725,11 +1729,12 @@ row cap (`--contract`'s `epsilon`, `SubstraitLean/Epsilon.lean`). The
 values may cancel, so only an absolute bound holds, and the tolerance is
 absolute.
 
-Doubles follow one model. Without `sv.equivalent` in `ensures`, rows are a
-multiset, doubles are within the plan's bound and other values are exact:
-the same observation as `sv.equivalent(floats="plan")`, which
-`report.observation` prints with its bound, `equivalent(floats=plan, ≤
-2.2e-04)` here. `sv.equivalent(...)` states each component, and one you
+Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
+list elements are multisets, one zero and one NaN are read, doubles are within
+the plan's bound and other values are exact: the default observation
+([the table](core-semantics.md#the-default-observation)), which
+`report.observation` prints with its bound,
+`equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
 leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
 tolerance, and `floats="exact"` asks for the same bits. `verify` checks
 either against the plan's bound on each engine; where
@@ -1746,11 +1751,10 @@ component. A postcondition that reads what the observation ignores, such as
 tolerance. The checker names the components each condition's value depends
 on, from the columns it reads, and a condition that depends on none the
 observation ignores holds on every result equal to a proved one up to the
-observation (`Expr.robust_of_depends`,
-[Robust.lean](../core/Sverify/Core/Robust.lean)). A comparison with a constant
+observation. A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
-every such result (`Expr.narrow_sound`). A postcondition is proved on every
-result the reference allows (`contract_sound_allowed`), and
+every such result. A postcondition is proved on every
+result the reference allows, and
 `CheckedCondition.allowed` says so. A double `SUM` or `AVG` is one
 value, the exact sum rounded once, so this covers postconditions that read
 it; one that reads a statistical aggregate, whose value is still a choice of

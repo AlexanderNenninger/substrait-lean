@@ -1,4 +1,4 @@
-"""Touched-group recompute (`sverify._touched`, `SubstraitLean/TouchedGroups.lean`):
+"""Touched-group recompute (`sverify._touched`, `analysis/Sverify/Analysis/TouchedGroups.lean`):
 an aggregate without delta rules recomputes only the groups a batch touches,
 and its state equals a full recompute."""
 
@@ -325,14 +325,14 @@ def _double_sums(samples):
             SCHEMA,
             "recompute and diff",
             "recomputed and diffed",
-            "recomputed (not incrementally maintainable (left join",
+            "recomputed (not incrementally maintainable: no delta rule for left join over",
         ),
         (
             _running,
             SCHEMA,
             "touched groups",
             "1 touched group(s) recomputed",
-            "no delta rules: not incrementally maintainable (left join, fetch or window)",
+            "no delta rules: not incrementally maintainable: no delta rule for window over",
         ),
         (
             _integer_avg,

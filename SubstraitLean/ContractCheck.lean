@@ -2,12 +2,12 @@ import Sverify.Analysis.Contracts
 import Sverify.Analysis.Safety
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
-import SubstraitLean.Check
+import Sverify.Core.Check
 import Sverify.Frontend.Parse
-import SubstraitLean.Pretty
+import Sverify.Core.Pretty
 import SubstraitLean.Semantic
-import SubstraitLean.Write
-import SubstraitLean.Infer
+import Sverify.Frontend.Write
+import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
 import SubstraitLean.Implied
@@ -38,10 +38,12 @@ Input (JSON):
       -- on data within the caps (`Rel.capReads_eval`); float `SUM` and `AVG`
       -- get their error bounds from them (#85)
   "rows_per": {"<table>": [[[<col>, ...], <n>], ...]},
-  "ascii": {"<table>": {"<col>": "ascii" | "plain"}} }
-      -- text columns declared ASCII (`plain`: without a vertical tab either),
-      -- as trusted as the schema's nullability; `Issue.nonAscii` is ruled out
-      -- where every text operand is (`AVal.ascii`, D43)
+  "text": {"<table>": {"<col>": [<fact>, ...]}}, <fact> = "ascii" | "plain" | "upper_agreed" | "lower_agreed" }
+      -- facts of text columns: ASCII (`plain`: without a vertical tab either), or in the
+      -- agreed alphabet of `UPPER` (`upper_agreed`) or `LOWER` (`lower_agreed`), that is, free
+      -- of the scalars the engines map differently; as trusted as the schema's nullability.
+      -- `Issue.nonAscii` and `Issue.caseDiffers` are ruled out where every text operand has
+      -- the fact (`AVal.ascii`, `plain`, `upperAgreed`, `lowerAgreed`; D43, D51)
       -- at most <n> rows per value of the columns (`sv.rows_per`, `RowsPer`):
       -- an aggregate grouping by them has groups of at most <n> rows, which
       -- bound its integer and decimal `SUM`s (`Rel.issuesCapped_sound`)
@@ -84,7 +86,7 @@ def typeEnv : Nat → Json → AVal
     let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
     -- The column's number kind (#923).
     let nk : Option NumKind :=
-      if ["i8", "i16", "i32", "i64"].contains kind then some .int
+      if (Parse.intTags.lookup kind).isSome then some .int
       else if ["fp32", "fp64"].contains kind then some .float
       else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
       else if kind == "date" then some .date
@@ -95,8 +97,7 @@ def typeEnv : Nat → Json → AVal
     -- source read checks it (`sverify.engine.Connection.put`).
     -- The same for a narrow integer: its type's range (D46), which the run's
     -- schema check holds the data to (#1540).
-    let width : Option Nat := match kind with
-      | "i8" => some 7 | "i16" => some 15 | "i32" => some 31 | _ => none
+    let width : Option Nat := (Parse.narrowIntBits? ty).map (· - 1)
     if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
     else if let some w := width then
@@ -228,15 +229,15 @@ def needNe (n : String × Nat × Int) : Json :=
 def needNotNull (n : String × Nat) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2), ("not_null", Lean.toJson true)]
 
-/-- A text column of `table` that must be ASCII, without a vertical tab if `plain`. -/
-def needAscii (n : String × Nat × Bool) : Json :=
+/-- A text column of `table` that must satisfy a `TextNeed`. -/
+def needText (n : String × Nat × Infer.TextNeed) : Json :=
   Json.mkObj [("table", Lean.toJson n.1), ("col", Lean.toJson n.2.1),
-    ("ascii", Json.str (if n.2.2 then "plain" else "ascii"))]
+    ("text", Json.str n.2.2.name)]
 
 def _root_.Substrait.Infer.Bounds.json (b : Infer.Bounds) : Json :=
   Json.mkObj [("needs",
       Json.arr (b.needs.map need ++ b.nes.map needNe ++ b.notNull.map needNotNull ++
-        b.ascii.map needAscii).toArray),
+        b.text.map needText).toArray),
     ("split", Lean.toJson b.split),
     ("why", match b.why with | some w => Lean.toJson w | none => .null)]
 
@@ -272,6 +273,11 @@ structure Report where
   (`contract_sound_allowed`, `postAllowed`), beside `proved`'s every order. -/
   allowed : List Bool := []
   facts : List (String × String × Json)
+  /-- The output columns' types as the writer types them (`Write.relKinds`, the
+  reference's: a decimal `SUM` is `DECIMAL(min(38, p + 10), s)`, an `AVG` is
+  `DECIMAL(p + 4, s + 4)`, p up to 34; an integer carries its width, a computed
+  one is 64), as `outputKindJson` renders them, in the output's order. Empty where the transformation is not well-formed. -/
+  outputKinds : List Json := []
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
   /-- Does the transformation leave the engine no choice but the order of its
@@ -328,7 +334,7 @@ structure Report where
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
   rewrites : List String := []
-  /-- For each issue, what would rule it out (`SubstraitLean/Infer.lean`):
+  /-- For each issue, what would rule it out (`analysis/Sverify/Analysis/Infer.lean`):
   untrusted candidates, which the caller proves by adding them to the
   preconditions. -/
   bounds : List (Issue × Expr × Infer.Bounds) := []
@@ -340,7 +346,7 @@ structure Report where
   /-- The base-table columns `bounds` need not NULL (a divisor's `COUNT`). -/
   inferredNotNull : List (String × Nat) := []
   /-- The base-table text columns `bounds` need ASCII (D43). -/
-  inferredAscii : List (String × Nat × Bool) := []
+  inferredText : List (String × Nat × Infer.TextNeed) := []
   /-- Predicates the transformation implies on its base tables (#81): for
   each table, abstract rows (as column bounds) one of which every row that
   reaches the output lies in (`Rel.need`, `Rel.need_eval`). -/
@@ -418,6 +424,7 @@ def Report.json (r : Report) : Json :=
           | none => .null)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
+    ("outputKinds", Json.arr r.outputKinds.toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
     ("deterministic", Lean.toJson r.deterministic),
@@ -444,7 +451,7 @@ def Report.json (r : Report) : Json :=
           | some (_, _, b) => b.json
           | none => .null)]).toArray),
     ("inferred", Json.arr (r.inferred.map need ++ r.inferredNes.map needNe ++
-      r.inferredNotNull.map needNotNull ++ r.inferredAscii.map needAscii).toArray),
+      r.inferredNotNull.map needNotNull ++ r.inferredText.map needText).toArray),
     ("implied", Json.arr (r.implied.map fun (t, Es) =>
       Json.mkObj [("table", Lean.toJson t), ("any", Json.arr (Es.map fun E =>
         Json.arr (E.map fun (j, b) => need (t, j, b)).toArray).toArray)]).toArray),
@@ -521,7 +528,7 @@ def opName : Rel → String
 /-- Each relation of `r` in pre-order, with its depth, its row bound on
 the capped plan and an aggregate's bound on the rows of a group. -/
 def relationBounds (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (caps : String → Option Nat)
+    (K : TableCond) (caps : String → Option Nat)
     (P : String → List (List Nat × Nat)) (d : Nat) (r : Rel) :
     List (String × Nat × Option Nat × Option Nat) :=
   let group := match r with
@@ -569,7 +576,7 @@ def doublesTies (what : String) : String :=
 /-- What the relation `r` leaves open beyond its inputs: each check of
 `Rel.detPlan` at `r` that fails (`tiesIn_eq_nil`). -/
 def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → List (String × String)
+    (K : TableCond) : Rel → List (String × String)
   | .distinct r =>
     if (r.aeval cat A F .none).all AVal.noDoubles then [] else [("class", doublesTies "DISTINCT")]
   | .window r part sort fns =>
@@ -599,7 +606,7 @@ def tiesHere (cat : Catalog) (A : String → List AVal) (F : String → List Fac
 /-- **The reasons are the flag's**: `r` leaves nothing open
 (`Rel.detPlan`) exactly where no relation of it names a reason. -/
 theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) :
+    (K : TableCond) :
     ∀ r : Rel, (preorder r).flatMap (tiesHere cat A F K) = [] ↔ r.detPlan cat A F K = true
   | .read _ | .values _ _ => by simp [preorder, tiesHere, Rel.detPlan]
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .unnest r _ => by
@@ -638,11 +645,11 @@ theorem tiesIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String →
 /-- Where `r` leaves the order of ties open: each relation's index in
 `preorder r`, its operator and what is open. -/
 def tiePlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String × String) :=
+    (K : TableCond) (r : Rel) : List (Nat × String × String × String) :=
   (preorder r).zipIdx.flatMap fun (n, i) => (tiesHere cat A F K n).map fun (k, w) => (i, opName n, k, w)
 
 theorem tiePlaces_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) :
+    (K : TableCond) (r : Rel) :
     tiePlaces cat A F K r = [] ↔ r.detPlan cat A F K = true := by
   rw [← tiesIn_eq_nil]
   simp only [tiePlaces, List.flatMap_eq_nil_iff, List.map_eq_nil_iff, Prod.forall]
@@ -756,27 +763,17 @@ def combineIgnores (noOpen : Bool) (pre : List (Option (List String × List Stri
 
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
 `T.select(…)` from every order to every allowed result: `T` is closed
-(`Rel.closedB`, `contract_sound_allowed_closed`: no `VAR_*`, `STDDEV_*`,
-`COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is order-free
-since D25), or an aggregate whose open measures are double `SUM`s and `AVG`s
-over a closed plan (`Rel.floatOpenSafe_aggregate`), and the column is robust
-under that context without a tolerance (`Expr.robustB`), so it reads no open
-measure. A comparison of an open sum needs
-the shift of its tolerance (#929). -/
+(`Rel.closedB`, `contract_sound_allowed_closed`: no `QUANTILE_CONT`; a double
+`SUM`, `AVG` or statistical aggregate is order-free since D25 and D30), and the
+column is robust under the empty context without a tolerance (`Expr.robustB`),
+so it reads no open measure. A comparison of an open sum needs the shift of
+its tolerance (#929). -/
 def postAllowed (cat : Catalog) (r : Rel) (n : Nat) : List Bool :=
   match r with
   | .emit (.project t es) m =>
-    let ctx? : Option ObsCtx :=
-      if t.closedB then some {} else match t with
-        | .aggregate r gs ms =>
-          if r.closedB && ms.all (fun m => m.closedB || m.openB) then some (aggCtx gs.length ms)
-          else none
-        | _ => none
-    match ctx? with
-    | some ctx =>
-      if m.length != n then List.replicate n false
-      else m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan ctx (fun _ => none)
-    | none => List.replicate n false
+    if t.closedB && m.length == n then
+      m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan {} (fun _ => none)
+    else List.replicate n false
   | _ => List.replicate n false
 
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/
@@ -862,6 +859,24 @@ def parse (input : Json) : Except String Request := do
     pre := (t, cs) :: pre
   return { input, posts, requires, transform, tables, pre }
 
+/-- One output column's type for the report: a decimal with its precision and
+scale, an integer with its width in bits (`Rel.outBits`), otherwise the kind's
+name. -/
+def outputKindJson (k : Write.WKind) (bits : Nat) : Json := match k with
+  | .dec p s => Json.mkObj [("kind", "dec"), ("precision", Lean.toJson p), ("scale", Lean.toJson s)]
+  | .int => Json.mkObj [("kind", "int"), ("bits", Lean.toJson bits)]
+  | .float => Json.mkObj [("kind", "float")]
+  | .str => Json.mkObj [("kind", "str")]
+  | .bool => Json.mkObj [("kind", "bool")]
+  | .date => Json.mkObj [("kind", "date")]
+  | .time => Json.mkObj [("kind", "time")]
+  | .instant => Json.mkObj [("kind", "instant")]
+  | .interval => Json.mkObj [("kind", "interval")]
+  | .tod => Json.mkObj [("kind", "tod")]
+  | .list _ => Json.mkObj [("kind", "list")]
+  | .struct _ => Json.mkObj [("kind", "struct")]
+  | .other => Json.mkObj [("kind", "other")]
+
 namespace Request
 
 variable (R : Request)
@@ -875,16 +890,20 @@ def ensures : List Plan := match R.transform with
 
 /-- Each table's declared schema, as abstract values. -/
 def schemas (t : String) : List AVal :=
-  let declared := (R.input.getObjVal? "ascii").toOption.bind (·.getObjVal? t |>.toOption)
-  let flag (i : Nat) : Option String :=
-    declared.bind fun d => (d.getObjValAs? String (toString i)).toOption
+  let declared := (R.input.getObjVal? "text").toOption.bind (·.getObjVal? t |>.toOption)
+  let flags (i : Nat) : List String :=
+    match declared.bind fun d => (d.getObjVal? (toString i)).toOption with
+    | some (.arr ks) => ks.toList.filterMap fun | .str k => some k | _ => none
+    | _ => []
   match R.tables.lookup t with
   | some (_, s) => (schemaEnv s).zipIdx.map fun (a, i) =>
-    -- A text column declared ASCII (D43), as trusted as its nullability.
-    if !a.str then a else match flag i with
-      | some "plain" => { a with ascii := true, plain := true }
-      | some "ascii" => { a with ascii := true }
-      | _ => a
+    -- A text column's declared facts (D43, D51), as trusted as its nullability.
+    if !a.str then a else (flags i).foldl (fun a k => match k with
+      | "plain" => { a with ascii := true, plain := true }
+      | "ascii" => { a with ascii := true }
+      | "upper_agreed" => { a with upperAgreed := true }
+      | "lower_agreed" => { a with lowerAgreed := true }
+      | _ => a) a
   | none => []
 
 def preOf (t : String) : List Expr := (R.pre.filter (·.1 == t)).flatMap (·.2)
@@ -965,10 +984,14 @@ def wantedKeys : List (List Nat) :=
 def perKeyOf : String → List (List Nat × Nat) :=
   rowsPer ((R.input.getObjVal? "rows_per").toOption.getD (.obj {}))
 
-/-- Does the request ask for the reference (`profile`)? Under another profile
-an overflow to `±∞` is the engine's value and no issue (#575). -/
+/-- Is the report the reference's? It is under the reference, and under an
+engine's profile with no report of its own yet, whose request gets the
+reference's report (`underProfile`'s `pending`, ruling 152 F1). Only DuckDB's
+lift (#575) and Substrait's profile have reports of their own, where an
+overflow to `±∞` is the value and no issue. -/
 def underReference : Bool :=
-  ((R.input.getObjValAs? String "profile").toOption.getD "reference") == "reference"
+  !["duckdb", "substrait"].contains
+    ((R.input.getObjValAs? String "profile").toOption.getD "reference")
 
 /-- Each requested output key, and whether it contains a key the analysis
 derives under `K` (`check_keys_sound`). -/
@@ -1008,17 +1031,18 @@ def foreignKeysOf : ForeignKeys :=
   foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
 
 /-- The transformation rewritten under `K` with the inputs' facts, keys and
-foreign keys (`Rel.optimize`, `check_optimized_sound`), and the rewrites'
-names. -/
-def optimizedIn (K : KnowledgeEnv) : Option (Rel × List String) :=
-  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf
+foreign keys by every rule (`Rel.optimize`, `check_optimized_sound`), and the
+rules applied. The report shows it; the plan an engine runs is gated
+(`Request.runPlanIn`, `SubstraitLean/RunPlan.lean`). -/
+def optimizedIn (K : KnowledgeEnv) : Option (Rel × List Rule) :=
+  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf fun _ => true
 
 /-- The report's `optimized` and `rewrites`: `optimizedIn`'s plan in the
 writer's JSON (trusted, round-tripped where the CLI writes plans), and its
 rewrites. -/
 def optimizedJson (K : KnowledgeEnv) : Json × List String :=
   match R.transform, R.optimizedIn K with
-  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log)
+  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log.map (·.name))
   | _, _ => (.null, [])
 
 end Request
@@ -1026,7 +1050,7 @@ end Request
 /-- An operator over `x` that needs `x` determined exactly, where it is only
 determined up to the class (D48). -/
 def readsClass (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (x : Rel) (what : String) : List String :=
+    (K : TableCond) (x : Rel) (what : String) : List String :=
   if x.detClass cat A F K && !x.detPlan cat A F K then
     [s!"{what} reads a value picked from a class of doubles (0.0 and -0.0, the NaNs)"]
   else []
@@ -1035,7 +1059,7 @@ def readsClass (cat : Catalog) (A : String → List AVal) (F : String → List F
 `Rel.detClass` at `r` that fails (`classIn_eq_nil`). Open ties, and operators
 that read a value a class pick below them chose. -/
 def classHere (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) : Rel → List String
+    (K : TableCond) : Rel → List String
   | .filter r c => if c.canonSafe then [] else readsClass cat A F K r s!"WHERE {c.render}"
   | .project r es =>
     if es.all Expr.classCongr then [] else
@@ -1064,7 +1088,7 @@ def classHere (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | _ => []
 
 theorem readsClass_eq_nil {cat : Catalog} {A : String → List AVal} {F : String → List Fact}
-    {K : String → List (List Nat)} {x : Rel} {what : String} (hx : x.detClass cat A F K = true) :
+    {K : TableCond} {x : Rel} {what : String} (hx : x.detClass cat A F K = true) :
     readsClass cat A F K x what = [] ↔ x.detPlan cat A F K = true := by
   unfold readsClass
   cases h : x.detPlan cat A F K <;> simp [hx]
@@ -1072,7 +1096,7 @@ theorem readsClass_eq_nil {cat : Catalog} {A : String → List AVal} {F : String
 /-- **The class-level reasons are the flag's**: `r` is determined up to the
 class (`Rel.detClass`) exactly where no relation of it names a reason. -/
 theorem classIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) :
+    (K : TableCond) :
     ∀ r : Rel, (preorder r).flatMap (classHere cat A F K) = [] ↔ r.detClass cat A F K = true
   | .read _ | .values _ _ => by simp [preorder, classHere, Rel.detClass]
   | .emit r _ | .orderBy r _ | .distinct r => by
@@ -1150,11 +1174,11 @@ theorem classIn_eq_nil (cat : Catalog) (A : String → List AVal) (F : String �
 /-- Where `r` is open at the class level: each relation's index in
 `preorder r`, its operator and what is open. -/
 def classPlaces (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) : List (Nat × String × String) :=
+    (K : TableCond) (r : Rel) : List (Nat × String × String) :=
   (preorder r).zipIdx.flatMap fun (n, i) => (classHere cat A F K n).map (i, opName n, ·)
 
 theorem classPlaces_eq_nil (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (K : String → List (List Nat)) (r : Rel) :
+    (K : TableCond) (r : Rel) :
     classPlaces cat A F K r = [] ↔ r.detClass cat A F K = true := by
   rw [← classIn_eq_nil]
   simp only [classPlaces, List.flatMap_eq_nil_iff, List.map_eq_nil_iff, Prod.forall]
@@ -1290,6 +1314,14 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         fnames.zip ((fenv.zip (decs ++ List.replicate fenv.length none)).map fun (a, d) =>
           (a.render d, a.json d))
     | none => []
+  let outputKinds := match transform with
+    | some p =>
+      if p.root.checkWF cat then
+        let ks := Write.relKinds (Write.planSchemas p) cat p.root
+        let bits := p.root.outBits tables
+        (ks.zipIdx.map fun (k, i) => outputKindJson k (bits.getD i 64))
+      else []
+    | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
   -- Windows that order their partitions totally: otherwise a rerun may give
   -- other rows (D10).
@@ -1326,6 +1358,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
     ignores
     allowed
     facts
+    outputKinds
     keys
     windowsTotal := windowsDet
     issues
@@ -1338,8 +1371,8 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
       Infer.mergedNes (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     inferredNotNull :=
       Infer.mergedNotNull (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
-    inferredAscii :=
-      Infer.mergedAscii (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
+    inferredText :=
+      Infer.mergedText (bounds.filter fun (i, e, _) => i.isError && issues.contains (i, e))
     guardFree
     constant
     underAndOr := issuesUnderAndOr transform issues
@@ -1554,9 +1587,9 @@ every row of every result the reference allows
 the request (`DataMeets`).
 
 `check` analyses under the reference whatever profile the request names: a
-report under another one is the reference's, relabelled by `underProfile`
-(`SubstraitCheck.lean`), a trusted step until #271 gives those engines
-profiles of their own. A tolerance or an observation on the engine's doubles
+request for DuckDB's, Polars's or Spark's profile gets the reference's report,
+labelled `"reference"` and marked `"pending"` by `underProfile`
+(`SubstraitCheck.lean`), until #271 gives those engines reports of their own. A tolerance or an observation on the engine's doubles
 belongs to the engine's soundness (`Engine.Sound`), which starts from this
 conclusion.
 
@@ -1648,7 +1681,7 @@ theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `deterministic` is a theorem** (#1484, finding 9). When
 `check` reports the transformation deterministic, every result the reference
-allows for it, every order of the ties (`Rel.OrderAllowed`), is `Rel.eval`'s
+allows for it (`Rel.Allowed`), is `Rel.eval`'s
 up to the order of its rows, for any data that meets the request
 (`DataMeets`): through `Rel.detPlan` (`check_deterministic`) and
 `Rel.allowed_perm_eval`. -/
@@ -1656,7 +1689,7 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out → out.Perm (T.root.eval data) := by
+    ∀ {out : Relation}, T.root.Allowed data out → out.Perm (T.root.eval data) := by
   intro out ho
   rw [check_deterministic hR hc] at hdet
   simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
@@ -1665,7 +1698,17 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detPlan_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd ho
+
+/-- **A deterministic report means one result up to `Obs.members`** (the instance
+of `Rel.DeterminedUpTo` at the exact level, in every context: a multiset of rows
+is a permutation, `Relation.Equiv_multiset_perm`). -/
+theorem check_deterministic_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) (ctx : ObsCtx) :
+    T.root.DeterminedUpTo Obs.members ctx data :=
+  fun _ h => Relation.Equiv_multiset_perm.2 (check_deterministic_sound hR hc hD hT hdet h)
 
 /-- The report's `class_determined` is `Request.classDeterminedIn`'s. -/
 theorem check_classDetermined {input : Json} {R : Request} {rep : Report}
@@ -1681,7 +1724,7 @@ theorem check_classPlaces {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `class_determined` is a theorem** (D48). When `check`
 reports the transformation determined up to the class, every result the
-reference allows for it, every order of the ties (`Rel.OrderAllowed`), is
+reference allows for it (`Rel.Allowed`), is
 `Rel.eval`'s up to the order of its rows and the member of each class of D31
 (`Row.canon`), for any data that meets the request (`DataMeets`): through
 `Rel.detClass` and `Rel.allowed_canon_perm_eval`. -/
@@ -1689,7 +1732,7 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out →
+    ∀ {out : Relation}, T.root.Allowed data out →
       (out.map Row.canon).Perm ((T.root.eval data).map Row.canon) := by
   intro out ho
   rw [check_classDetermined hR hc] at hdet
@@ -1699,7 +1742,22 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detClass data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detClass_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd ho
+
+/-- **A class-determined report means one result up to `Obs.classes`** (the
+instance of `Rel.DeterminedUpTo` at the class level), in a context that reads
+every double of `Rel.eval`'s result as a double (`Relation.DoublesKinded`): the
+bridge `Relation.Equiv_classes_of_canon_perm` from `Row.canon`. The converse
+of the bridge fails (one kind per column), so `check_class_determined_sound`
+stays the primary theorem. -/
+theorem check_class_determined_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) (ctx : ObsCtx)
+    (hk : Relation.DoublesKinded ctx (T.root.eval data)) :
+    T.root.DeterminedUpTo Obs.classes ctx data :=
+  fun _ h => Relation.Equiv_classes_of_canon_perm
+    (check_class_determined_sound hR hc hD hT hdet h) hk
 
 /-! ### The other fields the engine theorems read (#1484, A4)
 
@@ -1794,12 +1852,13 @@ JSON (`Request.CheckOk.optimized`). -/
 theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List String}
+    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List Rule}
     (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
   simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
   rw [← Rel.optimize_congr hD.arity] at hq
-  have := Rel.optimize_sound hD.wf hK.cols hK.facts hK.keys hFK (check_transform_wf hR hc hD hT)
+  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hFK
+    (check_transform_wf hR hc hD hT)
   rw [hq] at this
   exact this
 

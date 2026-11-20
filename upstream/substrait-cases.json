@@ -40,8 +40,8 @@
       "disagree": 0
     },
     "datetime": {
-      "agree": 40,
-      "refused": 65,
+      "agree": 50,
+      "refused": 55,
       "disagree": 0
     },
     "list": {
@@ -65,8 +65,8 @@
       "disagree": 0
     },
     "string": {
-      "agree": 80,
-      "refused": 201,
+      "agree": 82,
+      "refused": 199,
       "disagree": 41
     },
     "window": {
@@ -75,8 +75,8 @@
       "disagree": 0
     },
     "all": {
-      "agree": 634,
-      "refused": 620,
+      "agree": 646,
+      "refused": 608,
       "disagree": 63
     }
   },
@@ -151,7 +151,6 @@
       "checker: unsupported function is_infinite/N": 6
     },
     "datetime": {
-      "checker: unsupported literal: {\"precisionTimestampTz\":{\"precision\":N,\"value\":\"N\"}}": 10,
       "checker: gte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
       "checker: lte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
       "checker: gt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
@@ -218,9 +217,7 @@
       "checker: concat is only supported with null_handling ACCEPT_NULLS": 4,
       "checker: contains: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,
       "checker: ends_with: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,
-      "checker: starts_with: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2,
-      "checker: rows not evaluated: LOWER of non-ASCII text is not evaluated in Lean": 1,
-      "checker: rows not evaluated: UPPER of non-ASCII text is not evaluated in Lean": 1
+      "checker: starts_with: option case_sensitivity = [CASE_INSENSITIVE] is not supported (the model does [CASE_SENSITIVE])": 2
     }
   },
   "disagreements": [

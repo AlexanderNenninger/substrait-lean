@@ -196,6 +196,7 @@ sequential sum. They cost a few integer operations per measure.
 A metrics rollup states its contract this way:
 
 ```python
+# skip: a fragment: the decorated function follows
 @sv.transform(
     requires={"metrics": [_.cpu >= 0, _.cpu <= 100, _.cpu.notnull(), sv.max_rows(10_000_000)]},
     ensures=[_.cpu_avg >= 0, _.cpu_avg <= 100],
@@ -228,6 +229,14 @@ and the first two steps are exact or nearly so, which keeps `n = 3` within
 `γ 3`. So two results of any of these orders are within twice the core's
 tolerance of each other, and one of them is within the tolerance plus `u` of
 the reference's correctly rounded sum, which `"epsilon"` reports:
+
+Integers add exactly. Where every value is an integer and `Σ |xᵢ| ≤ 2⁵³`, every
+partial sum is an integer binary64 holds, so every order above is the exact
+sum (`StdModel.Summed.int_exact`, [`IntExact.lean`](../float-bounds/FloatBounds/IntExact.lean)),
+under the model hypothesis `StdModel.ExactInts`. The core proves the shaped
+orders itself and states the others in `SumOrder` (D35, amended 2026-11-19);
+`"epsilon"` is then `0` for a `SUM` or `AVG` of converted integers with
+`N · max M 1 ≤ 2⁵²` (`Epsilon.intMeanExact`, #1608).
 
 | Theorem | `"epsilon"` |
 |---|---|
@@ -372,11 +381,22 @@ doubles decoded within `2u` of the codes' values:
 Scaled by `2¹⁰⁷⁴`, `u · tiny` is `1/2`, which the core's integer forms round
 up to `1`.
 
-The error term alone would let the bound of `x * y`, `x + y` or `x / y` of
-non-negative doubles dip below `0`. Rounding keeps the sign
-(`StdModel.nonneg`), so the last row raises those bounds to `0`
-(`faddBoundS` …): a revenue `SUM(qty * price)` of non-negative factors
-is proved at least `0`.
+The checker's bound of a finite `x + y`, `x - y` and `x * y` is the exact
+result's ends rounded as the operation rounds them (`FloatCode.fadd_fin`,
+`fmul_fin`, `ofExact_mono`): rounding is monotone, so no widening by an
+error term is needed, and a sum or product of non-negative doubles starts at
+`0` without a special case. So `x ∈ [0, 1]`, `y ∈ [0, 1]` give `x + y` in
+`[0, 2]`, and `amount ∈ [0, 10³⁰⁰)` gives `amount * 3 + 1` in `[1, 3 · 10³⁰⁰]`.
+A quotient by one divisor `d ≠ 0` (`a / 8`) is bounded the same way, by
+`ofExactDiv_mono` on the dividend's ends. A quotient by a divisor with a
+range keeps the error bound of `div_scaled`, raised to `0` for a non-negative
+dividend and a positive divisor (`faddBound`, `fmulBound`, `fdivBound`,
+`fdivBoundS` in `analysis/Sverify/Analysis/Contracts/Transfer.lean`).
+A sum of two bounds with finite lower ends keeps the sum of the ends as its
+lower end, and a product of two with finite lower ends at least `0` the
+product of them, whatever the operands are above (`+∞` and NaN included,
+`FloatCode.fadd_lower`, `fmul_lower`): `amount >= 0` alone gives `amount * 3 + 1`
+at least `1`, and proves it positive. A difference has no lower end from them.
 
 ## The generic properties of statistical aggregates
 

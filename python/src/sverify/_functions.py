@@ -74,6 +74,7 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
             Option("substring_range", None, ("ERROR", "COMPUTE"),
                    (("ERROR", "duckdb-substring-range"),)),
             Option("non_ascii_text", None, ("ERROR", "COMPUTE")),
+            Option("case_mapping", None, ("ERROR", "COMPUTE")),
             Option("case_sensitivity", "case_sensitivity",
                    ("CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII")),
             Option("char_set", "char_set", ("UTF8", "ASCII_ONLY")),
@@ -91,11 +92,13 @@ GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "int.bit": (),
         "int.shift": ("shift_range",),
-        "fp.elem": ("rounding", "on_domain_error", "pow_one_inf", "zero_sign"),
+        "fp.pow": ("rounding", "on_domain_error", "pow_one_inf", "zero_sign"),
+        "fp.atan2": ("rounding", "on_domain_error", "zero_sign"),
+        "fp.elem": ("rounding", "on_domain_error", "zero_sign"),
         "fp.log": ("rounding", "on_domain_error", "on_log_zero"),
         "str.sub": ("negative_start", "substring_range", "string_positions"),
         "str.match": ("case_sensitivity", "string_positions"),
-        "str.case": ("char_set", "non_ascii_text"),
+        "str.case": ("char_set", "case_mapping"),
         "str.concat": ("null_handling",),
         "str.plain": (),
         "str.opaque": (),
@@ -117,6 +120,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "negative_start"): _asked("WRAP_FROM_END", "LEFT_OF_BEGINNING"),  # #209
                 (None, "substring_range"): Choice(("ERROR",)),  # #336
                 (None, "non_ascii_text"): Choice(("ERROR",)),  # D43
+                (None, "case_mapping"): Choice(("ERROR",)),  # D51
                 (None, "case_sensitivity"): _asked("CASE_SENSITIVE"),
                 (None, "char_set"): _asked("UTF8"),
                 (None, "null_handling"): _asked("ACCEPT_NULLS"),
@@ -136,6 +140,7 @@ CHOICES: Mapping[str, Mapping[tuple[str | None, str], Choice]] = MappingProxyTyp
                 (None, "non_ascii_text"): Choice(
                     ("ERROR", "COMPUTE")
                 ),  # uncharacterised; open until a fact pins it
+                (None, "case_mapping"): Choice(("ERROR", "COMPUTE")),  # as non_ascii_text
                 (None, "case_sensitivity"): Choice(("CASE_SENSITIVE",)),
                 (None, "char_set"): Choice(("UTF8",)),
                 (None, "null_handling"): Choice(("ACCEPT_NULLS",)),
@@ -164,7 +169,7 @@ class No:
 
 
 #: The SQL writer's kinds of results that are not booleans (`UN_KINDS`).
-FixedKind = Literal["int", "float", "str", "time", "date", "tod"]
+FixedKind = Literal["int", "float", "str", "time", "instant", "date", "tod"]
 #: A function's arguments and result, as the SQL writer's kinds.
 ArgKind = Literal["str", "int", "float"]
 ResultKind = Literal["str", "int", "float", "bool"]
@@ -194,6 +199,8 @@ class Fn:
     """What its error messages call it; the name by default."""
     ascii: str = ""
     """Engines agree on ASCII text only: what the guard's error calls it."""
+    case: Literal["upper", "lower"] | None = None
+    """Engines agree off a raise set of scalars (`_case_tables`, D51): whose."""
     sql: Mapping[str, str | No] = field(default_factory=dict)
     """The SQL by dialect name, `""` for every other, with `{0}`, `{1}` for
     the operands; a dialect with neither refuses (`Dialect.refused`)."""
@@ -223,19 +230,15 @@ class Fn:
 
 
 def _libm(name: str) -> dict[str, str | No]:
-    """An elementary function of a double, C's `libm` on the engines that use it."""
-    sql: dict[str, str | No] = {
+    """An elementary function of a double: C's `libm` on DuckDB and Polars, Java's on
+    Spark, within the ulps its `fp.elem` and `fp.log` rows state (spark-elem-rounding)."""
+    return {
         "": f"{name.upper()}({{0}})",
         "snowflake": No(
             f"Snowflake's {name.upper()} is not documented to be C's libm, "
             "which the Lean model uses"
         ),
     }
-    if name != "sqrt":  # IEEE 754 rounds square roots correctly, as libm does.
-        sql["spark"] = No(
-            f"Spark's {name.upper()} is Java's StrictMath, not the C libm the Lean model uses"
-        )
-    return sql
 
 
 def _fp(name: str, anchor: int, group: str, lift: str, ibis: str) -> Fn:
@@ -273,7 +276,7 @@ FUNCTIONS: tuple[Fn, ...] = (
     _fp("asin", 108, "fp.elem", "Asin", "Asin"),
     _fp("acos", 109, "fp.elem", "Acos", "Acos"),
     _fp("atan", 110, "fp.elem", "Atan", "Atan"),
-    Fn("atan2", 111, "core", "fp.elem", ("float", "float"), "float", "fatan2", ibis=("Atan2",),
+    Fn("atan2", 111, "core", "fp.atan2", ("float", "float"), "float", "fatan2", ibis=("Atan2",),
        sql={"": "ATAN2({0}, {1})",
             "spark": No("Spark's ATAN2 is Java's StrictMath, not the C libm the Lean model uses"),
             "snowflake": No("Snowflake's ATAN2 is not documented to be C's libm")}),
@@ -289,11 +292,13 @@ FUNCTIONS: tuple[Fn, ...] = (
     _bit("bitwise_shift_right", 117, "BitwiseRightShift", "({0} >> {1})",
          "shiftright({0}, CAST({1} AS INT))", ""),
     # Strings (`core/Sverify/Core/Text.lean`): characters are Unicode scalar values.
-    # Upper and lower case are a black box, Rust's `str::to_uppercase`;
-    # engines map case with their own tables (`'ß'`).
-    _str("upper", 20, "str.case", 1, "str", expr=True, ascii="UPPER", sql={"": "UPPER({0})"},
+    # Upper and lower case map each scalar as DuckDB, Polars and Spark agree, and raise on the
+    # scalars they map differently (`'ß'`, D51).
+    _str("upper", 20, "str.case", 1, "str", expr=True, case="upper",
+         sql={"": "UPPER({0})", "spark": "collate(upper(collate({0}, 'UNICODE')), 'UTF8_BINARY')"},
          lift=("Upper",), ibis=("Uppercase",)),
-    _str("lower", 21, "str.case", 1, "str", expr=True, ascii="LOWER", sql={"": "LOWER({0})"},
+    _str("lower", 21, "str.case", 1, "str", expr=True, case="lower",
+         sql={"": "LOWER({0})", "spark": "collate(lower(collate({0}, 'UNICODE')), 'UTF8_BINARY')"},
          lift=("Lower",), ibis=("Lowercase",)),
     _str("character_length", 22, "str.plain", 1, "int", "length", expr=True, label="length",
          aliases=("char_length", "length"), ibis=("StringLength",),
@@ -344,6 +349,17 @@ FUNCTIONS: tuple[Fn, ...] = (
          lift=("MD5",)),
     _str("sha256", 209, "str.opaque", 1, "str", expr=True, sql={"duckdb": "sha256({0})"}),
 )  # fmt: skip
+
+#: The reference's operations on doubles whose result tells `-0.0` from
+#: `+0.0` beyond `canon` (ruling 160): `atan2` (either argument), IEEE
+#: division (`BinFn.fdivIeee`, the divisor) and `power` (`BinFn.fpow`, the base
+#: under a negative exponent). The reference casts no double to text. Every
+#: other operation on doubles maps the two zeros into one class. An engine
+#: whose read of a zero's sign can differ from the stored value (Snowflake,
+#: recorded privately) admits these only refused or guarded;
+#: `test_sql_snowflake.py::test_zero_sign_readers_are_refused_or_guarded`
+#: checks it, one check per name.
+ZERO_SIGN_READERS: tuple[str, ...] = ("atan2", "fdivIeee", "fpow")
 
 #: The rows by name and by each alias.
 BY_NAME: Mapping[str, Fn] = MappingProxyType(

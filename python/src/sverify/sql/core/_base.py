@@ -14,9 +14,10 @@ from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import Any, ClassVar, Literal
 
-from sverify import _decimals, _functions, _plan_read, _support, black_box
+from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
+from sverify._unsupported import ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -39,7 +40,9 @@ class Lst:
     elem: Any
 
 
-Kind = Literal["int", "float", "time", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+Kind = (
+    Literal["int", "float", "time", "instant", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+)
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
 #: guard that raises names, and the guards that are not an issue, `UNISSUED`:
@@ -57,6 +60,7 @@ GuardIssue = Literal[
     "raised",
     "infinite",
     "nonAscii",
+    "caseDiffers",
     "quantilePosition",
 ]
 
@@ -82,7 +86,9 @@ zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
 microseconds. `None` (unknown) is
 used for columns whose Substrait type the model does not know."""
 
-LeanKind = Literal["int", "float", "time", "date", "str", "bool", "tod", "other"] | Dec | Lst
+LeanKind = (
+    Literal["int", "float", "time", "instant", "date", "str", "bool", "tod", "other"] | Dec | Lst
+)
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
 
@@ -224,6 +230,7 @@ class Dialect:
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
             "time": "TIMESTAMP",
+            "instant": "TIMESTAMP WITH TIME ZONE",
             "date": "DATE",
             "tod": "TIME",
             "interval": "INTERVAL",
@@ -529,6 +536,16 @@ class Dialect:
     def time_sub_interval(self, ts: str, iv: str) -> str:
         return f"({ts} - {iv})"
 
+    def interval_micros(self, iv: str) -> str:
+        """The microseconds of an interval of days or less. New on DuckDB
+        only (#271)."""
+        raise self.not_written("an interval as a number")
+
+    def time_add_micros(self, ts: str, us: str, sub: bool) -> str:
+        """`ts ± us`, a count of microseconds from an expression. New on
+        DuckDB only (#271)."""
+        raise self.not_written("a timestamp plus a column's interval")
+
     def time_diff(self, a: str, b: str) -> str:
         """`a - b` for timestamps, as an interval."""
         return f"({a} - {b})"
@@ -584,6 +601,15 @@ class Dialect:
     def as_time(self, us: str) -> str:
         """`UnFn.asTime`: the timestamp `us` microseconds after 1970-01-01."""
         raise self.not_written("timestamps from microseconds")
+
+    def to_instant(self, ts: str) -> str:
+        """`UnFn.atUtc true`: the instant of a naive timestamp's wall clock in UTC,
+        the same microseconds; no session zone is read."""
+        raise self.not_written("timestamps with a time zone", ISSUE_1725)
+
+    def to_naive(self, instant: str) -> str:
+        """`UnFn.atUtc false`: the naive timestamp of an instant's UTC wall clock."""
+        raise self.not_written("timestamps with a time zone", ISSUE_1725)
 
     def date_time(self, d: str) -> str:
         """`UnFn.dateTime`: a DATE as the TIMESTAMP of its midnight (#807)."""
@@ -686,6 +712,12 @@ class Dialect:
         Regular expressions are black boxes in Lean; each engine has its
         own dialect, which agrees with Rust's on simple patterns."""
         raise self.not_written("regular expressions")
+
+    def case_differs(self, s: str, which: Literal["upper", "lower"]) -> str:
+        """Does `s` hold a scalar of `which`'s raise set (D51)? The one predicate of the
+        writers' guard (`_Writer.case_only`) and, negated, of the inferred precondition
+        `Report.check_inputs` checks."""
+        return self.regex_search(s, case_class(which))
 
     def regex_extract(self, s: str, pattern: str, group: int) -> str:
         """`UnFn.regexExtract` (#50): group `group` of the first match of the
@@ -822,11 +854,18 @@ class Dialect:
         scaled = f"{q} * {self.decimal_lit(1, Dec(k.s + 1, k.s))}"
         return self.case_when(f"{n} = 0", self.null(k), self.cast(scaled, k))
 
+    def decimal_pair(self, what: str, ka: Kind | None, kb: Kind | None) -> None:
+        """Called for a comparison, `GREATEST` or `LEAST` with a decimal operand, before
+        the engine brings the two to one type. A dialect whose common type rounds an
+        operand (Spark, past 38 digits, #1484) refuses the pair here; an operand of
+        unknown kind (a `NULL` literal) is not checked. Default: nothing."""
+
     def decimal_compare(self, op: str, a: str, ka: Kind | None, b: str, kb: Kind | None) -> str:
         """`a = b` or `a < b` (`op` is `eq` or `lt`) of decimals or integers, exactly, at
         any scales (#27). The engine's own comparison casts both sides to one
         type, which raises where a value does not fit it (#1498); a dialect
         that does so writes the comparison without the cast."""
+        self.decimal_pair("comparison", ka, kb)
         return self.eq(a, b) if op == "eq" else self.lt(a, b)
 
     def decimal_avg(self, v: str, a: Dec, k: Dec) -> str:
@@ -1054,6 +1093,17 @@ class Dialect:
         used where Lean's list order matters (below FETCH and windows)."""
         raise WriterUnsupported(f"{self.name} has no stable row order for tables")
 
+    def no_row_order(self, engine: str) -> Unsupported:
+        """The refusal of `row_ordinal` for an engine whose tables have no row
+        order, naming the two ways on."""
+        return Unsupported(
+            f'{engine} tables have no row order, so rows="sequence" cannot follow the Lean '
+            "model's list order for FETCH and windows over a named table; write "
+            'rows="multiset" (ties and the rows of a LIMIT are open, as the reference allows), '
+            "or run a report whose windows have no ties (deterministic=True), which writes "
+            "them with the sort keys alone"
+        )
+
     def subquery(self, select: str, alias: str) -> str:
         return f"({select}) AS {alias}"
 
@@ -1135,6 +1185,7 @@ StringBinOp = Literal[
 TemporalUnOp = Literal[
     "date_part", "date_trunc", "to_date", "day_part", "day_trunc", "add_months", "time_of_day",
     "as_time", "strftime", "bucket", "time_add", "time_trunc", "date_time", "epoch_us",
+    "to_instant", "to_naive",
 ]  # fmt: skip
 TemporalBinOp = Literal["date_add", "date_diff"]
 
@@ -1817,6 +1868,7 @@ _DATE_OPS = frozenset(
     {
         "date_part", "day_part", "date_trunc", "day_trunc", "to_date", "date_time",
         "add_months", "as_time", "time_of_day", "bucket", "strftime", "epoch_us",
+        "to_instant", "to_naive",
     }
 )  # fmt: skip
 
@@ -1941,7 +1993,7 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         case ("int" | "float" | "date" | "str" | "bool") as k, _:
             return k, k
         # Times are microseconds; a coarser precision is not modelled.
-        case ("time" | "tod") as k, int() as p if p >= 6:
+        case ("time" | "instant" | "tod") as k, int() as p if p >= 6:
             return k, k
         case "decimal", (p, sc):
             d = Dec(p, sc)
@@ -2111,6 +2163,14 @@ def _cast_const(ty: dict, c: Const) -> Const:
             if c.tag == "str":
                 return c
             raise WriterUnsupported("casts to strings are not supported")
+        # An instant literal: the microseconds of a timestamp literal, read at UTC (D53).
+        case "instant":
+            if c.tag == "int":
+                return Const("int", c.value, kind="instant")
+            raise WriterUnsupported(
+                "a cast of this value to a timestamp with a time zone is not supported "
+                + ISSUE_1725
+            )
     if isinstance(lean, Dec):
         return _cast_const_decimal(lean, c)
     raise WriterUnsupported(
@@ -2675,6 +2735,11 @@ class _Parser:
                     return Un("to_date", e)
                 if target == "tod" and k == "time":
                     return Un("time_of_day", e)
+                # The conversion at UTC (D53): the same microseconds, the other kind.
+                if target == "instant" and k == "time":
+                    return Un("to_instant", e)
+                if target == "time" and k == "instant":
+                    return Un("to_naive", e)
                 # Microseconds since 1970-01-01 (arrow's cast of an integer).
                 if target == "time" and k == "int":
                     return Un("as_time", e)
@@ -3470,7 +3535,10 @@ class _Parser:
                     fn = "std_pop" if pop else "std_samp"
                 if k == "int":
                     arg = Un("itof", arg)
-            case (("min" | "max"), ("int" | "float" | "str" | "bool" | "time" | "date")):
+            case (
+                ("min" | "max"),
+                ("int" | "float" | "str" | "bool" | "time" | "instant" | "date"),
+            ):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
                 raise WriterUnsupported(f"{name} of this type is not supported")
@@ -4962,6 +5030,8 @@ class _Writer:
         match k:
             case "time":
                 return d.timestamp_lit(v)
+            case "instant":
+                return d.to_instant(d.timestamp_lit(v))
             case "date":
                 return d.date_lit(v)
             case "tod":
@@ -5149,6 +5219,8 @@ class _Writer:
                 ka, kb = kind(a), kind(b)
                 k = ka or kb
                 d.require_ordered(k)
+                if isinstance(ka, Dec) or isinstance(kb, Dec):
+                    d.decimal_pair(op.upper(), ka, kb)
                 ca = ka if isinstance(ka, Dec) else k
                 cb = kb if isinstance(kb, Dec) else k
                 sa, sb = go(a, ca), go(b, cb)
@@ -5323,10 +5395,31 @@ class _Writer:
         fail = d.raise_(f"{what} of non-ASCII text differs between engines", x, kind, "nonAscii")
         return d.case_when(f"(NOT {ascii_text(d, x, classes)})", fail, value)
 
+    def case_only(self, x: str, value: str, which: Literal["upper", "lower"]) -> str:
+        """`value`, the engine's `UPPER` or `LOWER` of the string `x` (`which`), where the
+        engines agree: an error on a scalar they map differently (`Issue.caseDiffers`,
+        D51). The report lists the issue, and a plan whose text is declared free of
+        those scalars (or ASCII) has it proved away."""
+        d = self.d
+        fail = d.raise_(
+            f"{which.upper()} of a scalar the engines map differently", x, "str", "caseDiffers"
+        )
+        # Every scalar of the sets is outside ASCII, so the engine's own ASCII test comes
+        # first: ASCII text, most of it, never reaches the regular expression.
+        return d.case_when(f"(NOT {d.is_ascii(x)} AND {d.case_differs(x, which)})", fail, value)
+
     def int_operand(
         self, e: Expr, ref: Callable[[int], str], cols: list[Kind | None], what: str
     ) -> str:
         k = expr_kind(e, cols)
+        if k == "interval":
+            # Intervals are integer microseconds in the model (D58's delta
+            # divides the microseconds between two timestamps). The writer's
+            # interval kind never carries months (`Const` refuses them), so
+            # no month interval reaches the dialect's `interval_micros`.
+            if isinstance(e, Lit) and isinstance(e.value, int):
+                return self.d.int_lit(e.value)
+            return self.d.interval_micros(self.expr(e, ref, cols, "interval"))
         if k not in ("int", None) or (k is None and not (isinstance(e, Lit) and e.value is None)):
             raise Unsupported(f"{what} needs an integer, not {k or 'a value of unknown type'}")
         sql = self.expr(e, ref, cols, "int")
@@ -5450,6 +5543,12 @@ class _Writer:
             raise WriterUnsupported(
                 "date arithmetic is not in the Lean model (dates are days, intervals microseconds)"
             )
+        if op != "mul" and {ka, kb} == {"time", "int"} and (op == "add" or ka == "time"):
+            # A timestamp and a count of microseconds, as a column's count of an
+            # interval is written (`Time`: intervals are integers).
+            t, n = (a, b) if ka == "time" else (b, a)
+            us = self.int_operand(n, ref, cols, "adding to a timestamp")
+            return d.time_add_micros(self.expr(t, ref, cols, "time"), us, op == "sub")
         sa, sb = self.expr(a, ref, cols, ka or kb), self.expr(b, ref, cols, kb or ka)
         match op, ka or kb, kb or ka:
             case "add", "time", "interval":
@@ -5493,6 +5592,31 @@ def ascii_text(d: Dialect, x: str, vertical_tab_out: bool = False) -> str:
     return f"({plain} AND NOT ({x} LIKE {d.str_lit(VERTICAL_TAB_PATTERN)}))"
 
 
+def case_class(which: Literal["upper", "lower"]) -> str:
+    """The regular expression class of the scalars `UPPER` (`which`) raises on
+    (`_case_tables`, D51), written with the characters themselves and ranges of them:
+    every member is outside ASCII, so none is a metacharacter, and the pattern is in
+    the supported subset (`Text.simpleRegex`: 200 characters at most) that the lift
+    reads and RE2, Java's `Pattern` and Rust's `regex` share."""
+    runs: list[list[int]] = []
+    for c in _case_tables.raise_set(which):
+        if runs and runs[-1][1] + 1 == c:
+            runs[-1][1] = c
+        else:
+            runs.append([c, c])
+    return "[" + "".join(_class_run(lo, hi) for lo, hi in runs) + "]"
+
+
+def case_raises(text: str, which: Literal["upper", "lower"]) -> bool:
+    """Does `text` hold a scalar of `which`'s raise set (`Text.upperRaises`, `lowerRaises`)?"""
+    raised = frozenset(_case_tables.raise_set(which))
+    return any(ord(c) in raised for c in text)
+
+
+def _class_run(lo: int, hi: int) -> str:
+    return chr(lo) if lo == hi else f"{chr(lo)}-{chr(hi)}"
+
+
 def like_pattern(p: str) -> str:
     """`Text.tokens` as a pattern for `LIKE … ESCAPE '\\'`: a backslash escapes
     the next character, and a trailing one stands for itself (where SQL
@@ -5531,7 +5655,7 @@ def to_sql(
     guards: bool = True,
     unchecked: dict | None = None,
     finite: bool = True,
-    rows: Literal["sequence", "multiset"] = "sequence",
+    rows: Literal["sequence", "multiset"] | None = None,
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -5546,11 +5670,15 @@ def to_sql(
     requires). Then windows need no ordinal tiebreak, so engines without a
     stable scan order can run them; FETCH still needs one.
 
-    `rows="multiset"` leaves the order of rows open where `Rel.Allowed` does
-    (the observation's `rows` of anything but `"sequence"`): ties in a sort
-    and the rows a LIMIT keeps among them are the engine's choice, and the
-    result is ordered only where the plan's last sort orders it. The default
-    writes Lean's order, ties by the input's row order.
+    `rows` says what the SQL promises about the order of rows. `"multiset"`
+    leaves it open where `Rel.Allowed` does (the observation's `rows` of
+    anything but `"sequence"`): ties in a sort and the rows a LIMIT keeps among
+    them are the engine's choice, and the result is ordered only where the
+    plan's last sort orders it. `"sequence"` writes Lean's order, ties by the
+    input's row order, which needs a scan order the engine may not have. The
+    default is what the engine's runner writes (`ProfilePlugin.rows`):
+    `"multiset"` for Spark and Snowflake, `"sequence"` for DuckDB and for a
+    dialect no engine provides.
 
     `guards=False` leaves out the run-time checks (`Dialect.guards`). Only
     pass it for a plan whose contract report is `guard_free`, and run the
@@ -5617,6 +5745,13 @@ def to_sql(
         dialect = dialect_of(dialect)
     if isinstance(plan, str):
         plan = json.loads(plan)
+    if rows is None:
+        # What the engine's runner writes (`ProfilePlugin.rows`); a dialect no
+        # plugin provides keeps Lean's row order.
+        from sverify import profiles
+
+        found = profiles.find(dialect.name)
+        rows = found.rows if found is not None else "sequence"
     if not guards:
         dialect = replace(dialect, guards=False)
     if not finite:

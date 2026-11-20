@@ -23,10 +23,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import ibis
+import pyarrow as pa
 import pytest
 import sqlglot
 
 import sverify as sv
+from _repo import needs_repo
 from sverify.engine import run_checker
 from sverify.engines import substrait_json
 from sverify.ibis_substrait import to_substrait_json
@@ -157,7 +159,7 @@ def feature_plans() -> dict[str, dict]:
         ),
         "global_aggregate": o.aggregate(n=o.amount.count(), lo=o.customer.min()),
         "strings": c.select(
-            u=c.name.upper(),
+            u=c.name + "!",  # `UPPER` waits for Snowflake's case-mapping facts (D51)
             n=c.city.length(),
             s=c.city.substr(1, 3),
             p=c.city.find("o"),
@@ -222,6 +224,19 @@ def test_pipeline_snapshot(name: str):
     check_snapshot(f"pipeline_{name}", sql)
 
 
+@needs_repo
+def test_every_snapshot_has_a_test():
+    """Each Snowflake and Spark snapshot is a fixture's or a pipeline's, so
+    none outlives the test that wrote it (#211 left twelve behind)."""
+    names = {p.stem for p in accepted_fixtures()} | {f"pipeline_{n}" for n in ALL_PLANS}
+    for dialect in ("snowflake", "spark"):
+        suffix = f".{dialect}.sql"
+        orphans = [
+            p.name for p in SNAPSHOTS.glob(f"*{suffix}") if p.name.removesuffix(suffix) not in names
+        ]
+        assert not orphans, orphans
+
+
 # ------------------------------------------------------------ hooks on their own
 
 
@@ -231,12 +246,50 @@ def parses(sql: str) -> str:
 
 
 def test_float_literals():
+    # The base writer's: a zero keeps its sign (D31), one NaN; Snowflake reads
+    # these texts as IEEE does (Snowflake behaviour recorded privately).
     assert parses(SNOWFLAKE.float_lit(math.nan)) == "CAST('NaN' AS FLOAT)"
-    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-inf' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-Infinity' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(0.1)) == "CAST('0.1' AS FLOAT)"
-    # The model's one zero and one NaN.
-    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('-0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(0.0)) == "CAST('0' AS FLOAT)"
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
+
+
+def test_zero_sign_readers_are_refused_or_guarded():
+    """Ruling 160's gate: on Snowflake a column that holds -0.0 in every row
+    can read as +0.0 (Snowflake behaviour recorded privately), so each
+    operation that tells the zeros apart (`ZERO_SIGN_READERS`) is refused, or
+    raises before a result that would tell them apart. A name added to the
+    list needs a check here."""
+    from sverify._functions import BY_NAME, ZERO_SIGN_READERS, No
+    from sverify.engine import connect, put_table, written_plan
+
+    con = connect()
+    put_table(con, "t", pa.table({"a": [1.0], "b": [2.0]}))
+
+    def written(sql: str) -> str:
+        plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
+        return to_sql(json.loads(plan), SNOWFLAKE)
+
+    def atan2() -> None:
+        # Refused: the function table has no Snowflake SQL for it.
+        assert isinstance(BY_NAME["atan2"].sql["snowflake"], No)
+
+    def fdiv_ieee() -> None:
+        # The plain `/`, which raises at a zero divisor of either sign.
+        assert SNOWFLAKE.float_div("a", "b") == "(a / b)"
+        assert re.search(r'ELSE \(s\d+\."c0" / s\d+\."c1"\)', written("SELECT a / b AS q FROM t"))
+
+    def fpow() -> None:
+        # A ±inf result (a zero base under a negative exponent) raises first.
+        sql = written("SELECT power(a, b) AS p FROM t")
+        assert "POWER(" in sql and "sverify: overflow to infinity" in sql
+
+    checks = {"atan2": atan2, "fdivIeee": fdiv_ieee, "fpow": fpow}
+    assert set(checks) == set(ZERO_SIGN_READERS)
+    for name in ZERO_SIGN_READERS:
+        checks[name]()
 
 
 @pytest.mark.parametrize(
@@ -251,7 +304,7 @@ def test_moving_window_sums_of_doubles_add_the_frame_anew(label, native):
 
     case = next(c for c in coverage.CASES if c.label == label)
     plan = json.loads(written_plan(to_substrait_json(case.build())))
-    sql = to_sql(plan, SNOWFLAKE, deterministic=True)
+    sql = to_sql(plan, SNOWFLAKE, deterministic=True, rows="sequence")
     reduce = re.compile(
         r"REDUCE\(ARRAY_AGG\(s\d+\.\"c2\"\) OVER \([^)]*ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\),"
         r" CAST\(0 AS FLOAT\), \(acc FLOAT, x VARIANT\) -> acc \+ CAST\(x AS FLOAT\)\)"
@@ -290,7 +343,7 @@ def test_time_range_frames_order_by_microseconds():
 
     case = next(c for c in coverage.CASES if c.label == "rolling sum by time")
     plan = json.loads(written_plan(to_substrait_json(case.build())))
-    sql = to_sql(plan, SNOWFLAKE, deterministic=True)
+    sql = to_sql(plan, SNOWFLAKE, deterministic=True, rows="sequence")
     assert re.search(
         r"ORDER BY DATE_PART\(EPOCH_MICROSECOND, [^)]+\) ASC NULLS LAST"
         r" RANGE BETWEEN 604799999999 PRECEDING AND CURRENT ROW",
@@ -307,7 +360,9 @@ def test_set_operations_compare_with_equal_null(label):
     from sverify_dev import coverage
 
     case = next(c for c in coverage.CASES if c.label == label)
-    sql = to_sql(json.loads(written_plan(to_substrait_json(case.build()))), SNOWFLAKE)
+    sql = to_sql(
+        json.loads(written_plan(to_substrait_json(case.build()))), SNOWFLAKE, rows="sequence"
+    )
     assert re.search(r'EQUAL_NULL\(s\d+\."c0", s\d+\."c0"\)', sql)
     assert "THEN FALSE" not in sql
     sqlglot.parse_one(sql, read="snowflake")
@@ -326,6 +381,14 @@ def test_raise_of_a_string_raises():
     assert sql.startswith("TO_VARCHAR(CAST(") and sql.endswith("AS NUMBER(38,0)))")
     assert "AS VARCHAR)" not in sql
     assert parses(SNOWFLAKE.raise_("e", "x", "float", "raised")).endswith("AS FLOAT)")
+
+
+def test_regex_search_counts_matches():
+    # A search holds on '' for a pattern that matches the empty string; Snowflake's
+    # REGEXP_INSTR('', p) is 0 there, REGEXP_COUNT 1 (Snowflake behaviour recorded privately).
+    sql = parses(SNOWFLAKE.regex_search("s", "^$"))
+    assert sql == "(REGEXP_COUNT(s, '^$') > 0)"
+    assert "REGEXP_INSTR" not in sql
 
 
 def test_substring_positions_fit_32_bits():
@@ -369,7 +432,7 @@ def test_double_variance_reads_values_shifted_by_the_group_mean():
     req = {"t": [_.x.between(-1e10, 1e10)]}
     plan = sv.verify(t.group_by("k").aggregate(v=t.x.var()), requires=req).internal_plan
     assert plan is not None
-    sql = to_sql(plan, SNOWFLAKE)
+    sql = to_sql(plan, SNOWFLAKE, rows="sequence")
     assert re.search(r"- AVG\(.*?\) OVER \(PARTITION BY ", sql)
     assert 'VAR_SAMP(s3."t0")' in sql and 'ABS(s3."m0")' in sql
     sqlglot.parse_one(sql, read="snowflake")
@@ -377,7 +440,7 @@ def test_double_variance_reads_values_shifted_by_the_group_mean():
     distinct = sv.verify(query, tables={"t": t}, requires=req).internal_plan
     assert distinct is not None
     with pytest.raises(Unsupported, match="#1023"):
-        to_sql(distinct, SNOWFLAKE)
+        to_sql(distinct, SNOWFLAKE, rows="sequence")
 
 
 def test_integer_literals_fold():
@@ -402,9 +465,9 @@ def test_windows_and_relations():
     assert SNOWFLAKE.limit_offset(3, None) == "LIMIT NULL OFFSET 3"
     assert SNOWFLAKE.limit_offset(0, 2) == "LIMIT 2"
     with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["window"], SNOWFLAKE)
+        to_sql(NAMED_ORDERED["window"], SNOWFLAKE, rows="sequence")
     with pytest.raises(Unsupported, match="no row order"):
-        to_sql(NAMED_ORDERED["fetch"], SNOWFLAKE, deterministic=True)
+        to_sql(NAMED_ORDERED["fetch"], SNOWFLAKE, deterministic=True, rows="sequence")
 
 
 def test_identifiers_are_quoted():
@@ -496,29 +559,35 @@ def run_differential(
     Lean's evaluation; `retarget` points a query at the loaded tables."""
     plans = {**PLANS, **DELTA_PLANS}
     for name, plan in plans.items():
-        got = run(retarget(to_sql(plan, d)))
+        got = run(retarget(to_sql(plan, d, rows="sequence")))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     for name, plan in ORDERED_PLANS.items():
-        got = run(to_sql(plan, d))
+        got = run(to_sql(plan, d, rows="sequence"))
         assert got == lean_rows(plan, {}), name  # in Lean's row order
     for name, plan in TIE_FREE.items():
-        got = run(retarget(to_sql(plan, d, deterministic=True)))
+        got = run(retarget(to_sql(plan, d, deterministic=True, rows="sequence")))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     for name, plan in FEATURE_PLANS.items():
-        got = run(retarget(to_sql(plan, d)))
+        got = run(retarget(to_sql(plan, d, rows="sequence")))
         assert canonical(got) == canonical(lean_rows(plan, TABLES)), name
     con = sv.connect()
     create_tables(con, ORDERS, CUSTOMERS)
     for name, expr in SORTED.items():
         plan = json.loads(to_substrait_json(expr))
-        got = run(retarget(to_sql(plan, d, deterministic=True)))
+        got = run(retarget(to_sql(plan, d, deterministic=True, rows="sequence")))
         assert [tuple(map(normalize, r)) for r in got] == lean_rows(plan, TABLES), name
     for path in accepted_fixtures():
         plan = json.loads(path.read_text())
         if "namedTable" in path.read_text():
             continue  # schema-only tables: covered by the pipelines above
-        got = run(to_sql(plan, d))
-        assert canonical(got) == canonical(lean_rows(plan, {})), path.stem
+        try:
+            sql = to_sql(plan, d, rows="sequence")
+        except Unsupported as e:
+            # `UPPER` and `LOWER` of a column wait for Snowflake's case-mapping facts (D51).
+            if "case mapping is recorded privately" not in str(e):
+                raise
+            continue
+        assert canonical(run(sql)) == canonical(lean_rows(plan, {})), path.stem
 
 
 def snowflake_differential(cur, suffix: str) -> None:

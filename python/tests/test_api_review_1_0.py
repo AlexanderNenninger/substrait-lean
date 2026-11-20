@@ -28,9 +28,11 @@ PUBLIC = {
     "routes",
     "output",
     "ties",
+    "dialect_differences",
     "inputs",
     "preconditions",
     "internal_plan",
+    "black_boxes",
 }
 
 

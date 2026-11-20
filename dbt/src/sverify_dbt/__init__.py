@@ -13,11 +13,26 @@ whose inputs pass their tests, so `dbt build` may skip it
 (`dbt build --exclude selector:sverify_proved`).
 """
 
-from sverify_dbt.check import check
+from importlib.metadata import PackageNotFoundError, version
+
+import sverify
+
+try:
+    __version__ = version("sverify-dbt")
+except PackageNotFoundError:  # run from a source tree, not installed
+    __version__ = sverify.__version__
+if sverify.__version__ != __version__:
+    raise ImportError(
+        f"sverify-dbt {__version__} needs sverify {__version__}, found {sverify.__version__}: "
+        f"pip install sverify-dbt=={__version__} sverify=={__version__}"
+    )
+
+from sverify_dbt.check import check  # noqa: E402
 from sverify_dbt.manifest import Project, ProjectError, load
 from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, Needed, TestResult
 
 __all__ = [
+    "__version__",
     "CheckResult",
     "ContractIssue",
     "ModelResult",

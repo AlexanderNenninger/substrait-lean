@@ -1,6 +1,6 @@
 """Retention by watermark (#294): `arrives_within` on a source, checked on
 every batch, and a view over time buckets of it that drops the final buckets
-from its state (`sverify._retention`, `SubstraitLean/Retention.lean`)."""
+from its state (`sverify._retention`, `analysis/Sverify/Analysis/Retention.lean`)."""
 
 import math
 import random

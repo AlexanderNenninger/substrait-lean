@@ -21,7 +21,8 @@ the Substrait standard extensions (`functions_boolean.yaml`) specify.
 
 Doubles are integer *codes* (see `core/Sverify/Core/Float.lean`), so they share
 `Value.int` and the integer comparisons. Float arithmetic has its own
-operators (`fadd`, …), computed with native floats; rounding a double to an
+operators (`fadd`, …), the exact result rounded once (D31,
+`core/Sverify/Core/FloatArith.lean`); rounding a double to an
 integer is exact (see `core/Sverify/Core/Rounding.lean`).
 
 Integer division and remainder truncate toward zero unless the plan asks
@@ -126,6 +127,12 @@ inductive UnFn where
   /-- `CAST(x AS DOUBLE)` of a `FLOAT` (fp32): the same value, which a double
   holds exactly; it marks where a 32-bit double becomes a 64-bit one (#208). -/
   | widen
+  /-- The conversion between a timestamp and an instant at UTC (D53, #1725):
+  `true` reads a naive timestamp as the instant at that wall clock in UTC, `false`
+  gives the naive timestamp of an instant's UTC wall clock. It computes nothing:
+  the microseconds are the same, NULL stays NULL. It marks where the kind changes,
+  as `widen` marks 32 to 64 bits. -/
+  | atUtc (instant : Bool)
   /-- `UPPER`, `LOWER` (black boxes) and `CHARACTER_LENGTH` of a string. -/
   | upper | lower | length
   /-- `reverse(s)` and `ascii(s)` (the first code point, `0` for `''`). -/
@@ -185,8 +192,9 @@ inductive UnFn where
   `Parse.Rel.settleDivs` keeps `dkind` where that holds and reads the checked
   `decimal` otherwise, and `checkDecimalAvgWidth` holds the `AVG` to 38 digits (#1497). A comparison's
   side (`decimalCall`): the operand upscaled to the larger scale, whose precision
-  bounds nothing and which only the scale is read from (`Expr.eval` and
-  `Kind.comparable`), so the model compares the exact values (#1498). -/
+  nothing reads: evaluation takes only the scale (`UnFn.apply_dkind_precision`), as
+  do `Kind.comparable` and the contract transfer. The model compares the exact
+  values, and the writers do too (#1523, #1498). -/
   | dkind (p s : Nat)
   /-- A decimal brought to a scale `k` digits smaller: divided by `10ᵏ`,
   rounding half away from zero (`roundDiv10`). -/
@@ -428,6 +436,7 @@ def UnFn.apply : UnFn → Value → Value
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
   | .widen, v => v
+  | .atUtc _, v => v
   | .upper, .str s => .str (Text.upper s)
   | .lower, .str s => .str (Text.lower s)
   | .length, .str s => .int (Text.capped s.length)
@@ -494,6 +503,10 @@ def UnFn.apply : UnFn → Value → Value
 
 /-- D52: the mark changes no value. -/
 @[simp] theorem UnFn.apply_approx (k : Nat) (v : Value) : UnFn.apply (.approx k) v = v := rfl
+
+/-- Evaluation does not read a `dkind`'s precision: only the scale (#1484). -/
+theorem UnFn.apply_dkind_precision (p q s : Nat) (v : Value) :
+    UnFn.apply (.dkind p s) v = UnFn.apply (.dkind q s) v := rfl
 
 /-- Kleene conjunction: `false` dominates, otherwise any `null` gives `null`. -/
 def and3 : Value → Value → Value
@@ -616,6 +629,20 @@ def Value.canonV : Value → Value
   | .list vs => .list (vs.map Value.canonV)
   | .struct vs => .struct (vs.map Value.canonV)
   | v => v
+
+mutual
+/-- A value holds a double, at any depth of a list or struct: the values
+`canonV` changes. -/
+def Value.hasDouble : Value → Bool
+  | .float _ => true
+  | .list vs | .struct vs => Value.anyDouble vs
+  | _ => false
+
+/-- Some value of the list holds a double. -/
+def Value.anyDouble : List Value → Bool
+  | [] => false
+  | v :: vs => v.hasDouble || Value.anyDouble vs
+end
 
 omit [Boxes.Ambient] in
 theorem Value.canonV_float (c : Int) : (Value.float c).canonV = .float (FloatCode.canon c) := by

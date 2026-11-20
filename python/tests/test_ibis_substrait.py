@@ -17,9 +17,10 @@ from typing import cast
 import ibis
 import ibis.expr.datatypes as idt
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
+from sverify._lean_eval import LeanRaised
 from sverify.contracts import decode_double
 from sverify.engine import connect, put_table
 from sverify.ibis_substrait import Unsupported, to_substrait
@@ -36,15 +37,13 @@ from sverify_dev.coverage import (
 )
 
 VERIFIED = [c for c in CASES if c.expected == "verified"]
-#: Known gaps between Lean and DuckDB, fixed elsewhere.
-KNOWN_GAPS: dict[str, str] = {}
 #: Regular expressions are black boxes in Lean's semantics: not evaluated.
 OPAQUE = {"re_search"}
 #: LIMIT without a total order keeps whichever rows come first.
 UNORDERED = {"limit", "limit with offset", "order_by + limit"}
 #: Functions that raise outside their domains (`Issue.domain`, Lean: NULL),
 #: where DuckDB returns NaN, ±inf or a wrapped shift instead, which an
-#: error allows: compared row by row, Lean's NULL matching anything.
+#: error allows: compared row by row, a row where Lean raises is skipped.
 DOMAIN_ERRORS = {"sqrt", "ln", "log10, log2", "log(base)", "trigonometry", "shifts"}
 
 names = st.sampled_from(["ada", "bob", "cy", None])
@@ -112,23 +111,23 @@ def normalize(rows: list[tuple], schema: ibis.Schema, lean: bool) -> list[tuple]
 
 @pytest.mark.parametrize(
     "case",
-    [
-        pytest.param(c, marks=pytest.mark.xfail(reason=KNOWN_GAPS[c.label], strict=True))
-        if c.label in KNOWN_GAPS
-        else c
-        for c in VERIFIED
-        if c.label not in OPAQUE and c.label not in NO_DUCKDB_SQL
-    ],
+    [c for c in VERIFIED if c.label not in OPAQUE and c.label not in NO_DUCKDB_SQL],
     ids=lambda c: c.label,
 )
 @settings(
     max_examples=25, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
+# A zero divisor: `sum(qty) / sum(id)` with `id = 0` raises in the reference and in
+# DuckDB, which is an agreement (seed 17 of #1728).
+@example(t=[(0, "ada", None, 1, EPOCH, None)], u=[], lr=[])
 @given(t=t_rows(), u=u_rows, lr=l_rows)
 def test_plans_mean_what_ibis_means(case, t, u, lr):
     if case.label in DOMAIN_ERRORS:
         for row in t:
-            got, expected = lean_and_duckdb(case, [row], u, lr)
+            try:
+                got, expected = lean_and_duckdb(case, [row], u, lr)
+            except LeanRaised:
+                continue
             for g, e in zip(got, expected, strict=True):
                 assert all(a is None or a == b for a, b in zip(g, e, strict=True)), (g, e)
         return
@@ -160,8 +159,32 @@ def test_plans_mean_what_ibis_means(case, t, u, lr):
         assert canonical(got) == canonical(expected)
 
 
+#: What DuckDB's message says where the reference raises the issue: both
+#: raising it is an agreement.
+RAISES = {"divByZero": "division by zero", "wraps": "overflow", "overflow": "overflow"}
+RAISED = [("<raised>",)]
+
+
+def same_raise(issue: str, duck: object) -> bool:
+    """Whether DuckDB's error is the one the reference's `issue` stands for."""
+    return issue in RAISES and RAISES[issue] in str(duck).lower()
+
+
+def test_only_a_listed_issue_matches_duckdbs_error():
+    assert same_raise("divByZero", ValueError("Division by zero"))
+    assert not same_raise("divByZero", ValueError("Out of Range Error: Overflow"))
+    # An issue with no entry matches no error, whatever DuckDB says.
+    assert not same_raise("domain", ValueError("anything"))
+    assert not same_raise("nonAscii", ValueError(""))
+
+
 def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
-    """Lean's rows of the case's plan, and DuckDB's of Ibis's SQL."""
+    """Lean's rows of the case's plan, and DuckDB's of Ibis's SQL.
+
+    Where the reference raises, the case agrees (each side is `RAISED`) if
+    DuckDB raises the same error, or for a zero divisor gives ±inf or NaN, which
+    an error allows (`duckdb-R15-math-domain`). Where only one side raises
+    otherwise, its error propagates."""
     expr = case.build()
     con = connect()
     con.create("t", T.schema(), t)
@@ -169,12 +192,27 @@ def lean_and_duckdb(case, t, u, lr) -> tuple[list[tuple], list[tuple]]:
     con.create("l", L.schema(), lr)
     for name, table in MEMTABLES.items():
         put_table(con, name, table)
-    out = duckdb_ibis(con, expr)
     schema = expr.schema()
+    plan = inline_tables(to_substrait(expr), {"t": t, "u": u, "l": lr})
+    try:
+        out = duckdb_ibis(con, expr)
+    except Exception as duck:  # noqa: BLE001 - compared with the reference's raise below
+        try:
+            lean_values(json.dumps(plan))
+        except LeanRaised as lean:
+            issue = str(lean).rsplit(".", 1)[-1]
+            if same_raise(issue, duck):
+                return RAISED, RAISED
+        raise
     rows = list(zip(*(c.to_pylist() for c in out.columns), strict=True))
     expected = normalize(rows, schema, lean=False)
-    plan = inline_tables(to_substrait(expr), {"t": t, "u": u, "l": lr})
-    got = normalize(lean_values(json.dumps(plan)), schema, lean=True)
+    try:
+        got = normalize(lean_values(json.dumps(plan)), schema, lean=True)
+    except LeanRaised as lean:
+        non_finite = any(isinstance(v, float) and not math.isfinite(v) for r in rows for v in r)
+        if str(lean).endswith("divByZero") and non_finite:
+            return RAISED, RAISED
+        raise
     return got, expected
 
 

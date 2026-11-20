@@ -14,12 +14,14 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     # DuckDB's engine package (`engines/duckdb/`, #1189), released with sverify
-    # at its version: the default engine and the table store, installed as
-    # before. For now the base needs it, and DuckDB with it: an engine-free
-    # base (#1288) waits on a table store that does not.
-    "duckdb>=2.0.0",
-    "sverify-duckdb[run]==0.9.0.dev0",
-    "ibis-framework[duckdb]>=12.0.0",
+    # at its version, without DuckDB itself: it writes DuckDB's SQL, which
+    # `verify` needs. Running plans on DuckDB is the `duckdb` extra (#1288).
+    "sverify-duckdb==0.9.0.dev0",
+    "ibis-framework>=12.0.0",
+    # Ibis imports both unconditionally (its Arrow formats, its SQL compilers);
+    # only its DuckDB extra brought them.
+    "pyarrow-hotfix>=0.6",
+    "packaging>=23",
     "pyarrow>=26.0.0",
     # sverify's SQL lift is built on SQLGlot. From 30.18, SQLGlot reads a
     # DROP's names from `expressions`, so Ibis 12's DuckDB `create_table`
@@ -30,16 +32,22 @@ dependencies = [
     "substrait>=0.37.0",
 ]
 
-# DuckDB is the core: the default engine, and the table store behind
-# `sverify.connect()`. Other engines and table formats are extras; the SQL
-# dialects (DuckDB, Snowflake, Spark) need nothing.
+# `verify` and the SQL dialects (DuckDB, Snowflake, Spark) need no engine.
+# DuckDB, Polars and Spark, which run plans and hold tables, and the table
+# formats are extras (#1288).
 [project.optional-dependencies]
+# DuckDB is a package of its own (`engines/duckdb/`, #1189), released with
+# sverify at its version; `run` brings `duckdb`. Ibis reads and writes tables
+# through its DuckDB backend.
+duckdb = ["sverify-duckdb[run]==0.9.0.dev0", "ibis-framework[duckdb]>=12.0.0"]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
 # sverify at its version; `run` brings `polars` and `numpy`.
-polars = ["sverify-polars[run]==0.9.0.dev0"]
+# `sverify.connect()` holds its tables in DuckDB today, so the engines that run
+# through a connection bring it, until a connection has a table store of its own.
+polars = ["sverify-polars[run]==0.9.0.dev0", "sverify[duckdb]"]
 # Spark is a package of its own (`engines/spark/`, #1189), released with
 # sverify at its version; `run` brings PySpark.
-spark = ["sverify-spark[run]==0.9.0.dev0"]
+spark = ["sverify-spark[run]==0.9.0.dev0", "sverify[duckdb]"]
 delta = ["deltalake>=1.6.6"]
 # `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
 iceberg = ["pyiceberg[pyarrow,sql-sqlite]>=0.12.0"]
@@ -58,7 +66,7 @@ secrets-aws = ["boto3>=1.35"]
 secrets-gcp = ["google-cloud-secret-manager>=2.20"]
 secrets-azure = ["azure-identity>=1.17", "azure-keyvault-secrets>=4.8"]
 secrets-keychain = ["keyring>=25"]
-all = ["sverify[polars,spark,delta,iceberg,flight,testing,odcs,openlineage]"]
+all = ["sverify[duckdb,polars,spark,delta,iceberg,flight,testing,odcs,openlineage]"]
 
 # The command line (`sverify.cli`, #744).
 [project.scripts]
@@ -199,6 +207,8 @@ pythonpath = ["tests"]
 source = ["sverify", "sverify_dev", "sverify_polars", "sverify_spark", "sverify_duckdb"]
 branch = true
 patch = ["subprocess"]
+# Paths relative to the repository, so the shards' data files combine (CI's `coverage` job).
+relative_files = true
 
 [tool.coverage.report]
 skip_empty = true
@@ -345,6 +355,8 @@ shell = """
 marimo check --strict [0-9]*.py ../catalogue/backend_semantics.py || exit 1
 out=$(mktemp -d)
 for nb in [0-9]*.py ../catalogue/backend_semantics.py; do
+  # A notebook that needs sverify-dbt runs in the `dbt` job (this environment has no dbt).
+  if grep -q '"sverify-dbt"' "$nb"; then continue; fi
   echo "running $nb"
   marimo export html "$nb" -o "$out/$(basename "${nb%.py}").html" > /dev/null || exit 1
 done

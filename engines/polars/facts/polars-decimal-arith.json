@@ -191,6 +191,18 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3). `engines/polars/tests/test_polars_decimal.py` runs each decimal operation's written plan on Polars and DuckDB against `Rel.eval`."
+    },
+    {
+      "checked_at": "2026-11-19",
+      "method": "manual-repro",
+      "checked_by": "session claude/duckdb-coercions (polars 2.1.0, macOS arm64; #1484, ruling 131)",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'a':[Decimal(10**28)],'b':[Decimal('-0.0000000001')]}, schema={'a':pl.Decimal(38,0),'b':pl.Decimal(38,10)}).lazy().select((pl.col('a')+pl.col('b')).alias('x')).collect(engine=...)",
+          "observed": "in-memory and streaming, both operand orders: Decimal(precision=38, scale=10), 9999999999999999999999999999.9999999999 (the exact sum; no raise)"
+        }
+      ],
+      "notes": "The cancelling sum of an operand that DuckDB cannot cast to the result type (`duckdb-decimal-addsub-operand-cast`): Polars gives the exact value, as the reference does today. A value where the reference raises is sound."
     }
   ],
   "issues": [

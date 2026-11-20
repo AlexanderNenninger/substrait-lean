@@ -103,6 +103,7 @@ def Profile.substrait.table : ProfileTable where
     (none, "negative_start", yaml ["WRAP_FROM_END", "LEFT_OF_BEGINNING", "ERROR"]),
     (none, "substring_range", .oneOf ["COMPUTE"]),
     (none, "non_ascii_text", .oneOf ["COMPUTE"]),
+    (none, "case_mapping", .oneOf ["COMPUTE"]),
     (none, "case_sensitivity", yaml ["CASE_SENSITIVE", "CASE_INSENSITIVE", "CASE_INSENSITIVE_ASCII"]),
     (none, "char_set", yaml ["UTF8", "ASCII_ONLY"]),
     (none, "null_handling", yaml ["IGNORE_NULLS", "ACCEPT_NULLS"]),

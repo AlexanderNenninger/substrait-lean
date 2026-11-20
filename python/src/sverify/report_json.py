@@ -369,6 +369,7 @@ def route(d: Mapping[str, Any]) -> Route:
 def to_json(report: Report) -> Json:
     """`Report.to_json`, as a dict."""
     from sverify.conditions import label
+    from sverify.report import black_boxes_json
 
     return {
         "format": FORMAT,
@@ -404,7 +405,9 @@ def to_json(report: Report) -> Json:
             "places": [dataclasses.asdict(t) for t in report._tie_places],
             "needs": suggested_json(report.ties),
         },
+        "dialect_differences": [dataclasses.asdict(d) for d in report.dialect_differences],
         "rewrites": list(report._rewrites),
+        "run_gate": report._run_gate,
         "implied": dict(report._implied),
         "transfer": None if report._transfer is None else [dict(f) for f in report._transfer],
         "floats_on": {e: list(ps) for e, ps in report._floats_on.items()},
@@ -414,13 +417,15 @@ def to_json(report: Report) -> Json:
         "sorted": report._sorted,
         "checker": {"generated_proofs": report._generated_proofs},
         "depends": report._depends,
+        "black_boxes": black_boxes_json(report.black_boxes),
     }
 
 
 def from_json(data: str | Mapping[str, Any]) -> Report:
     """`Report.from_json`: see there."""
+    from sverify._dialect import DialectDifference
     from sverify.conditions import Inferred
-    from sverify.report import Report, TiePlace
+    from sverify.report import Report, TiePlace, black_boxes_from_json
 
     d = json.loads(data) if isinstance(data, str) else data
     fmt = d.get("format")
@@ -465,6 +470,8 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _params=list(d.get("params", [])),
         _hints=list(dict.fromkeys(i.hint for i in issues if i.hint)),
         _rewrites=list(d.get("rewrites", [])),
+        _run_gate=d.get("run_gate"),
+        dialect_differences=tuple(DialectDifference(**x) for x in d.get("dialect_differences", [])),
         rows=d.get("rows"),
         semantics=d.get("semantics", "reference"),
         observation=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
@@ -473,6 +480,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _sorted=d.get("sorted"),
         _generated_proofs=(d.get("checker") or {}).get("generated_proofs"),
         _depends=d.get("depends"),
+        black_boxes=black_boxes_from_json(d.get("black_boxes")),
         routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
         _transfer=d.get("transfer"),
         output=_output(d.get("output") or {}),

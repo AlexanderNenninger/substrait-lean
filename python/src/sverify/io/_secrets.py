@@ -316,7 +316,7 @@ class Bao:
             or os.environ.get("VAULT_ADDR")
         )
         if not addr:
-            raise Refused(f"no address: set {self.env_prefix}_ADDR or the backend's address")
+            raise Refused(f"no address: set `{self.env_prefix}_ADDR` or the backend's address")
         return addr.rstrip("/")
 
     def _request(self, path: str, token: str | None, body: Any = None) -> Any:
@@ -342,7 +342,9 @@ class Bao:
         except urllib.error.HTTPError as e:
             code = e.code
         # Outside the handler: the server's body may echo what it was sent.
-        raise Refused(f"the server answered HTTP {code}")
+        raise Refused(
+            f"the server answered HTTP {code}; check the secret's path, the token and the address"
+        )
 
     def _token(self) -> str:
         if self.auth == "token":
@@ -371,7 +373,7 @@ class Bao:
     def get(self, path: str) -> Value:
         mount, _, rest = path.partition("/")
         if not rest:
-            raise Refused("a path is <mount>/<path>")
+            raise Refused("a path is <mount>/<path>; write it with the mount first, as `secret/db`")
         if self.kv_version == 2:
             data = self._request(f"{mount}/data/{rest}", self._token())["data"]["data"]
         else:
@@ -415,7 +417,9 @@ class AzureKeyVault:
 
         vault, _, name = path.partition("/")
         if not name:
-            raise Refused("a path is <vault>/<secret>")
+            raise Refused(
+                "a path is <vault>/<secret>; write it with the vault first, as `myvault/db`"
+            )
         url = vault if vault.startswith("https://") else f"https://{vault}.vault.azure.net"
         return SecretClient(url, DefaultAzureCredential()).get_secret(name).value or ""
 

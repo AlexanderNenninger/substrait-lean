@@ -69,7 +69,7 @@ engines    DuckDB · Polars · Spark · Snowflake
   allows ([#1132](https://github.com/AlexanderNenninger/substrait-lean/pull/1132),
   [#1134](https://github.com/AlexanderNenninger/substrait-lean/pull/1134),
   [Which plans run on an engine](#which-plans-run-on-an-engine)). Where an
-  engine's choice of an open option differs from the reference's
+  engine's choice of an option differs from the reference's
   (`sum_order`, `stat_algo`), its result is within the plan's tolerance of
   one the reference allows (`Relation.Near`,
   [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929)).
@@ -89,8 +89,7 @@ The decisions below apply them; they add no semantics of their own.
   ([#899](https://github.com/AlexanderNenninger/substrait-lean/issues/899),
   [#1010](https://github.com/AlexanderNenninger/substrait-lean/pull/1010)),
   `Expr.robustB` that of `contract_sound_allowed`, and `Rel.FloatOpenSafe`
-  comes with two sufficient conditions (`Rel.floatOpenSafe_of_closed`,
-  `Rel.floatOpenSafe_aggregate`), as the kind checker's `Rel.kinds_sound`
+  comes with a sufficient condition (`Rel.floatOpenSafe_of_closed`), as the kind checker's `Rel.kinds_sound`
   carries the kinds (D28).
 - Work across epics goes interface first. A change that several epics build
   on lands as its interface before the epics change the definitions behind
@@ -149,6 +148,15 @@ Three kinds of semantics, each with one job.
   overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
   so neither of the two refines the other.
 
+A plan is verified up to an observation `o` when its verdict is one of the
+proved values and it is determined up to `o`: every result the reference
+allows is equal, up to `o`, to `Rel.eval`'s (`Rel.DeterminedUpTo`). A sound
+engine's model then gives that one observed answer (`Engine.Sound.equiv_eval`),
+and two sound engines agree on it (`Engine.sound_agree`). The proof outcome
+(`Report.verdict`) and the determinism (`Report.deterministic`) are two
+attributes of a report, and "verified" is the term read off both
+([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
+
 Black boxes are rows of a black-box catalogue (`Boxes`,
 `core/Sverify/Core/BlackBox.lean`) that engine packages supply: DuckDB's is
 `Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`). The core holds the
@@ -180,7 +188,13 @@ second:
 |---|---|---|---|
 | Error side | raises | `overflow` (`ERROR`), `on_division_by_zero`, `on_domain_error`, `on_log_zero`, `nan_creation`, double overflow to `±∞` (#575), `shift_range`, `substring_range`, `date_range`, `cast_failure` (`UNSPECIFIED`), `stat_degenerate` for `±∞` | no shim: the engine's behaviour there (a wrap, NULL, NaN, `±∞`, a panic) is never reached |
 | Value side | picks one value | `null_order`, `rounding` of `round`, `division_type`, floor or truncating division of negatives, `float_to_int`, `decimal_rescale`, `avg_int_result`, an empty `SUM`, string and list positions, `zero_sign`, `nan_kind`, `nan_order`, `list_null_order`, `stat_degenerate` for `CORR`, result types | native where the engine picks the same value; a shim otherwise |
-| Open | allows several | `sum_order`, `stat_algo`, `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `observed` within the plan's tolerance `ε` (#568, D22) otherwise |
+| Open | allows several | `quantile_interp`, `tie_pick`, `tie_order` | native where the engine's pick is one the reference allows; `observed` within the plan's tolerance `ε` (#568, D22) otherwise |
+
+`sum_order` and `stat_algo` are options of the core and choices of the engines,
+and the reference's value for both is `EXACT` ([D25](decisions.md#d25-float-aggregates-are-correctly-rounded-exact-sums),
+[D30](decisions.md#d30-statistical-aggregates-are-correctly-rounded-exact-moments)):
+a double `SUM` or a variance is one value, and an engine's result is `observed`
+within the plan's tolerance `ε` of it.
 
 An option the plan states itself (`overflow: SILENT`) is a value choice too.
 A precondition only checked on the data, such as a `SUM`'s overflow bound
@@ -284,7 +298,9 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
 | core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |
 | core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
-| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error`, `pow_one_inf` (`power`), `zero_sign` (`atan2` of `-0.0`) |
+| core | `fp.pow` | `power` on doubles | `rounding`, `on_domain_error`, `pow_one_inf`, `zero_sign` |
+| core | `fp.atan2` | `atan2` | `rounding`, `on_domain_error`, `zero_sign` (`atan2` of `-0.0`) |
+| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan` | `rounding`, `on_domain_error`, `zero_sign` |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
 | core | `fp.round` | `round` | `rounding`, `round_zero_sign`, `float_to_int` (where `round` returns a `BIGINT`) |
 | core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`), `float_to_int` (where they return a `BIGINT`) |
@@ -292,7 +308,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
 | strings | `str.match` | `like`, `strpos`, `starts_with`, `ends_with`, `replace` | `case_sensitivity` |
-| strings | `str.case` | `upper`, `lower` | `char_set`, `non_ascii_text` |
+| strings | `str.case` | `upper`, `lower` | `char_set`, `case_mapping` |
 | strings | `str.ascii` | `reverse`, `ascii`, `levenshtein`, `ilike`, `regexp_match`, `regexp_extract`, `regexp_replace` | `non_ascii_text` |
 | strings | `str.concat` | `str_concat` | `null_handling` |
 | strings | `str.plain` | `character_length`, `repeat`, `btrim`, `ltrim`, `rtrim` | none (the size hypothesis bounds their results) |
@@ -448,6 +464,7 @@ The Python side has the same three tables, as frozen dataclasses next to
 wave 3's function table (`python/src/sverify/_functions.py`):
 
 ```python
+# skip: a sketch of the tables' shape; the real definitions are in the source
 @dataclass(frozen=True)
 class Option:
     id: str
@@ -692,6 +709,7 @@ is a choice that accepts every value the plan states.
 | `negative_start` | all others | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`, `ERROR` | `WRAP_FROM_END`, `LEFT_OF_BEGINNING`; `WRAP_FROM_END` by default | choose |
 | `substring_range` | all others | `COMPUTE` | `ERROR` | raise |
 | `non_ascii_text` | all others | `COMPUTE` | `ERROR` | raise |
+| `case_mapping` | all others | `COMPUTE` | `ERROR` | raise |
 | `case_sensitivity` | all others | `CASE_SENSITIVE`, `CASE_INSENSITIVE`, `CASE_INSENSITIVE_ASCII` | `CASE_SENSITIVE` | choose |
 | `char_set` | all others | `UTF8`, `ASCII_ONLY` | `UTF8` | choose |
 | `null_handling` | all others | `IGNORE_NULLS`, `ACCEPT_NULLS` | `ACCEPT_NULLS` | choose |
@@ -1009,6 +1027,27 @@ the choices it uses: the option dependency report (step 3c) computes the
 set, and guard elimination (#83) drops the shims the inferred bounds rule
 out.
 
+### The default observation
+
+Where `ensures` names no observation, a result's consumer observes
+`PLAN_BOUND` (`sverify.observation`, `Report.observation`): the rows of a
+bag, doubles within the plan's bound and everything else exactly. Each
+component, with its default and the reason (#1285):
+
+| Component | Default | Why |
+|---|---|---|
+| `rows` | `multiset` | SQL gives no order without an `ORDER BY`, so the order of rows is never observed. An `ORDER BY` in the plan does not raise the level: `sequence` is the contract's own request. |
+| `elements` | `multiset` | The order of a list's elements is never observed, as the order of rows is not: SQL gives none without an `ORDER BY`. It counts with `elements="sequence"`, and an `ORDER BY` inside the aggregate is what makes it determined there; it does not raise the level ([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)). An unordered `collect` is then no tie place once the checker reads it. An unordered `string_agg` is one at every level, since its value is a string. |
+| `floats` | `plan` | Doubles are equal within the bound the checker computes for the plan (`Report.epsilon`, [float-bounds](float-bounds.md)), since engines sum in their own order. A column with no bound is exact. |
+| `zeros` | `canon` | `-0.0` equals `0.0` and every NaN equals every other, as the doubles' bound already reads them ([D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)); `zeros="exact"` observes the signs. |
+| `timestamps` | `ns` | Every digit. The reference's timestamps are microseconds and DuckDB and Polars hold at least that; Spark drops the digits past the sixth without an error ([`spark-timestamp-precision`](../engines/spark/facts/spark-timestamp-precision.json)), which a coarser default would hide. |
+| `strings` | `exact` | A difference in non-ASCII text is observed. The reference raises where `UPPER`, `LOWER` and the regular expression classes differ on non-ASCII text ([D51](decisions.md#d51-case-mapping-has-the-value-the-engines-agree-on)); ignoring it is a choice for the contract. |
+| `decimals` | `exact` | The scale of a decimal is part of its type, and `decimal_rescale` pins it on every engine ([`polars-decimal-arith`](../engines/polars/facts/polars-decimal-arith.json), [`spark-decimal-arith`](../engines/spark/facts/spark-decimal-arith.json)). |
+| `errors` | `exact` | A proved plan raises nowhere, and a plan proved with checks stops at the check that fails with its message, so no result compares errors. |
+
+A contract that names an observation (`sv.equivalent`) leaves each component
+it does not name exact, and `floats` too.
+
 ### The engines' profiles
 
 [The Polars example](engine-profiles.md#the-polars-example), which counts the
@@ -1205,3 +1244,6 @@ to it, so links to an entry here still land.
 - <a id="d47-raise-value-or-open-where-engines-differ"></a>[D47. Raise, value or open where engines differ](decisions.md#d47-raise-value-or-open-where-engines-differ)
 - <a id="d48-a-result-is-determined-up-to-the-classes-its-observation-reads"></a>[D48. A result is determined up to the classes its observation reads](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)
 - <a id="d49-a-value-known-from-one-engine-is-provisional"></a>[D49. A value known from one engine is provisional](decisions.md#d49-a-value-known-from-one-engine-is-provisional)
+- <a id="d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand"></a>[D50. The frontends lift `AND` and `OR` so a guard protects the next operand](decisions.md#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand)
+- <a id="d53-a-timestamp-with-the-time-zone-utc-is-an-instant"></a>[D53. A timestamp with the time zone UTC is an instant](decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)
+- <a id="d54-the-lift-refines-the-dialect"></a>[D54. The lift refines the dialect](decisions.md#d54-the-lift-refines-the-dialect)

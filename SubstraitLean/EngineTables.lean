@@ -1,52 +1,65 @@
 import Sverify.Engines.Transfer
-import Sverify.DuckDB.Tables
+import Sverify.Engines.Entry
+import Sverify.DuckDB.Engine
 import Sverify.Substrait.Profile
-import Sverify.Spark.Tables
-import Sverify.Polars.Tables
+import Sverify.Spark.Engine
+import Sverify.Polars.Engine
 
 /-!
 # The engines' tables, together (#444, step 3a)
 
-`builtinEngines`, the engine profiles of this repository, and the reports
+`builtinEntries`, the engines of this repository with their soundness
+proofs, `builtinEngines`, their tables, and the reports
 over them: `substrait-check --options` (`tablesJson`), `--dependencies`
 (`Rel.dependenciesJson`) and `--transfer` (`transferJson`). Each engine's
 choice table and observation rows are in its package
 (`engines/duckdb/Sverify/DuckDB/Tables.lean`,
 `engines/polars/Sverify/Polars/Tables.lean`,
 `engines/spark/Sverify/Spark/Tables.lean`), with the proof that it refines
-the core; the rows' constructors, `EngineProfile` and the JSON a table is
-reported in are engines-common (`engines/Sverify/Engines/Tables.lean`).
+the core, and the costs of the shims its rows name; each engine's `Engine`
+value and the proof that it is sound are in its package's `Engine.lean`. The
+rows' constructors, `EngineProfile`, `EngineEntry` and the JSON a table is
+reported in are engines-common (`engines/Sverify/Engines/Tables.lean`,
+`engines/Sverify/Engines/Entry.lean`).
 -/
 
 namespace Substrait
 
 /-! ## The engines -/
 
-/-- The engine profiles of this repository, DuckDB under its default
-settings. Each one's shims are named as its rows name them; Polars's are
-`engines/polars/src/sverify_polars/shims.py`'s `SHIMS` (named as their lemmas
-`Polars.<name>`), which `tests/test_realizability.py` checks against these. -/
-def builtinEngines : List EngineProfile := [
-  { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
-    translationTheorem := "Rel.duckdb_refines",
-    shims := [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
-      ("ORDER BY the keys", .sort), ("nan_through", .expression),
-      ("quantile_guard", .expression)] },
-  { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
-    translationTheorem := "Rel.polars_sound", executes := "streaming",
-    shims := [("null_order", .argument), ("round_half_away", .argument),
-      ("int_div_trunc", .expression), ("int_mod_trunc", .expression),
-      ("sum_empty_null", .expression), ("avg_int_declared", .expression),
-      ("one_zero", .expression), ("strpos_chars", .expression),
-      ("substring_wrap", .expression),
-      ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
-      ("max_nan_greatest", .expression), ("nan_through", .expression),
-      ("sort on the keys", .sort)] },
-  { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
-    translationTheorem := "Rel.spark_sound", executes := "batch",
-    shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-      ("atan2 refused", .expression), ("null_order", .argument), ("sort on the keys", .sort),
-      ("decimal_negate_sub", .expression)] }]
+/-- The engines of this repository, each with the proof that its run is
+sound (`Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`),
+DuckDB under its default settings. The checker is built over them
+(`checkerMain`). -/
+def builtinEntries : List EngineEntry := [
+  { (engine_entry% Engine.duckdb_sound) with
+    shims := Profile.duckdb.shimCosts,
+    -- `log(b, x)` is two libm calls and a division: the reference's own formula is 2.5 ulp
+    -- from exact, DuckDB's 2 (`duckdb-ulp-libm`).
+    elemUlps := [("logb", 2.0 + 2.5)] },
+  { (engine_entry% Engine.polars_sound) with
+    shims := Profile.polars.shimCosts, executes := "streaming",
+    -- `ln x / ln b`: within 2.1 ulp for `log10` and `log2` of the exact `ln x / ln b`
+    -- (`polars-ulp-libm`), plus the reference's 2; `log(b, x)` is the reference's formula twice.
+    elemUlps := [("log10", 2.1 + 2.0), ("log2", 2.1 + 2.0), ("logb", 2.5 + 2.5)] },
+  { (engine_entry% Engine.spark_sound) with
+    shims := Profile.spark.shimCosts, executes := "batch",
+    -- Java's functions, not the reference's `libm` (`spark-ulp-libm`, ruling 132):
+    -- S + R for `fp64`, `sin`, `cos` and `tan` guarded to `|x| ≤ 2²⁰` (`Epsilon.trigArgMax`).
+    sameLibm := false,
+    elemUlps := [("ln", 1.0 + 1.0), ("log10", 1.0 + 2.0), ("log2", 2.5 + 2.5), ("logb", 3.0 + 2.5),
+      ("sin", 1.0 + 1.0), ("cos", 1.0 + 1.0), ("tan", 1.0 + 3.0),
+      ("asin", 1.0 + 1.0), ("acos", 1.0 + 1.0), ("atan", 1.0 + 1.0)] }]
+
+/-- The tables of `builtinEntries`, as the reports read them. -/
+def builtinEngines : List EngineProfile := builtinEntries.map (·.rows)
+
+/-- Every elementary function has a bound on every engine: `sqrt` is correctly rounded and `exp`
+has `rule_exp` (one ulp on each side), so each other one has an `elemUlps` entry on an engine
+whose doubles are not the reference's (`Epsilon.opExtra` gives a function without one no bound). -/
+example : builtinEngines.all fun e => e.sameLibm ||
+    FMath.all.all fun f => f == .sqrt || f == .exp || (e.elemUlps.lookup f.name).isSome := by
+  decide +kernel
 
 variable [Boxes.Ambient]
 example : builtinEngines.all (·.rowsWf) := by decide +kernel

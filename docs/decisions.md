@@ -6,6 +6,11 @@ reference, the core and the profiles make, with when and why it was made.
 [reference-semantics.md](reference-semantics.md) states the resulting
 behaviour for users, without the history.
 
+A decision that a later one corrects or replaces, in whole or in part, carries
+a dated `Amended`, `Correction` or `Superseded` line under its heading, with
+a link to the later decision, and its text above that line is the history. The
+text of the later decision is the live rule, and each rule is stated there once.
+
 Every decision after D49 ends its section with a line, `Recomputes sinks: yes`
 or `Recomputes sinks: no`. A decision that changes a value of the reference or
 narrows what it allows says yes, and its D-number goes into
@@ -278,6 +283,10 @@ plan, against the `q` the postcondition names. The finest valid `q` is the
 
 ### D19. `AND` and `OR` raise eagerly
 
+Amended by [D50](#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand):
+the core stays eager, and the frontends lift an `AND` or `OR` over a raising
+operand so a guard protects it.
+
 An error in either operand of `AND` or `OR` may raise, whatever the other
 operand's value (#604). `p AND q` is not a guard for `q`: in
 `x <> 0 AND 10 // x > 1`, the division may run on the rows where `x = 0`.
@@ -326,6 +335,12 @@ takes (`Rel.constIssues` in `analysis/Sverify/Analysis/Safety.lean`): stricter t
 DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
 raise are rare in real queries. No precondition rules one out; the report
 names the constant.
+
+Note (2026-11-19, theory advisor): D19 states the reference's raise set. An
+engine may evaluate a conjunct on fewer pairs: a pair that another conjunct
+makes not TRUE is in no allowed result (`isTrue_and3`), so by D16 the engine
+may return there. Polars's hash-join keys do, and DuckDB's joins do. No
+reference value, allowed set or raise set changes.
 
 
 ### D20. Two observations per output
@@ -460,7 +475,7 @@ determinism has two levels: up to the member of each class of doubles
 
 An order-sensitive operator reads one sorted enumeration of its input, and
 its meaning is the set over all of them (`Lin` and `Sem`,
-`SubstraitLean/Seam.lean`, #928). Below an unordered operator, as with a
+`analysis/Sverify/Analysis/Seam.lean`, #928). Below an unordered operator, as with a
 `FETCH` without a total `ORDER BY` under a join, the order is forgotten and
 the result is a set of multisets (`Rel.Bags`): this is where the tie order's
 nondeterminism lives. `verify` and `run` allow such a plan, and the proofs
@@ -524,8 +539,9 @@ Three consequences:
   every result the reference allows for them.
 
   Amended (2026-11-07, #1017): this holds of closed plans (`Rel.closedB`); a
-  plan with open measures (`Measure.openB`) goes through
-  `contract_sound_allowed` and `Rel.FloatOpenSafe`.
+  plan with open measures goes through `contract_sound_allowed` and
+  `Rel.FloatOpenSafe`. Amended 2026-11-19: no double `SUM` or `AVG` is an open
+  measure after D25, so `Measure.openB` and the machinery for it are removed.
 - A tolerance is a metric: bounds add along a pipeline
   (`Near ε₁ a b → Near ε₂ b c → Near (ε₁ + ε₂) a c`), and no tolerance passes
   through a filter, group key or sort on a double column.
@@ -1011,8 +1027,9 @@ own.
 - `ANY` and `PAIRWISE` keep their trees (`FloatSums`) and `SEQUENTIAL` its
   permuted sequential sum, each with the bound.
 - `COMPENSATED` (Kahan's sum, Polars) and `SCALED_CONSTANT` (a constant run's
-  `fl(k · x)`, DuckDB) were any double. They are now the bound alone: no
-  theorem of the core reads their shape (`TreeSum.const` is float-bounds').
+  `fl(k · x)`, DuckDB) were any double. They are now the bound alone and
+  exactness on small integers: no theorem of the core reads their shape
+  (`TreeSum.const` is float-bounds').
 - `AvgOrder` follows: a sum within the bound, divided by the count.
 - `EXACT`, the reference's order (D25), is unchanged.
 - Window sums take their frame's `SumOrder` (`WinFn.AllowedP`): `TREE` and
@@ -1035,6 +1052,21 @@ are bounded. `SumOrder.bound` reads the bound as a range the abstract domain
 computes (finite, in `[sumLo, sumHi]`), which cuts `nan_creation`,
 `float_overflow` and the NaN cases of a comparison downstream (D34), and the
 margin check's theorem over its plan reads the same set.
+
+Amended 2026-11-19 (#1608 12b-1): in `SumOrder`, the behaviours with no
+shape (`SCALED_CONSTANT`, `COMPENSATED`) are the bound and exactness on small
+integers: where every double of `vs` is an integer and `Σ |vᵢ| ≤ 2⁵³`
+(`SmallInts`), `canon c` is the exact sum's. `AvgOrder` inherits it through
+its sum. The shaped behaviours prove it (`SumOrder.int_exact`), and a mean
+of such values is the reference's (`AvgOrder.int_exact`), so a double `SUM`
+or `AVG` of converted integers with `N · max M 1 ≤ 2⁵²` has no tolerance
+(`Epsilon.intMeanExact`). `float-bounds` backs the conjunct as
+`Summed.near` backs the bound: `StdModel.Summed.int_exact`, under the model
+hypothesis `StdModel.ExactInts` (integers up to `2⁵³` round to
+themselves). The reference's `EXACT`, `Rel.eval` and the reference's
+`Rel.Allowed` do not change. Engine profiles narrow on such sums, on each
+engine's evidence (`engines/*/tests/test_*int_sums.py` over
+`python/tests/_int_sums.py`; Snowflake's recorded privately).
 
 ### D36. Doubles have one zero and one NaN
 
@@ -1155,6 +1187,12 @@ refuses double `power`, so no portable plan meets it there. The scope is
 Why: an option states both engines' values, where a raise would take `1` from
 the plans that DuckDB and Polars compute alike.
 
+Note (2026-11-19, theory advisor, ruling 163): `pow_one_inf` is `power`'s alone, so
+`power` of doubles is the group `fp.pow` and `atan2` the group `fp.atan2`, where both were
+in `fp.elem`; the unary functions stay there, without `pow_one_inf`. Routes class by
+(group, option), so every unary function had inherited Spark's refusal of an option it
+never reads. No reference value or allowed set changes.
+
 Also decided: `float_to_int`'s scope reaches `floor`, `ceil` and one-argument
 `round` (`fp.floor`, `fp.round`), where an engine returns a `BIGINT` (Spark: NaN
 is `0`; `±∞` and values past 64 bits overflow,
@@ -1230,6 +1268,9 @@ keeps every option of the core named in this file.
 
 ### D43. Text the engines map differently is an issue, `nonAscii`
 
+Amended 2026-11-18 by [D51](#d51-case-mapping-has-the-value-the-engines-agree-on):
+`UPPER` and `LOWER` leave this decision for `case_mapping`. The rest stands.
+
 `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein` and a regular
 expression with a class (`\d`, `\w`, `\s`, `\b`) give Rust's values on ASCII
 text, and the engines give their own elsewhere: DuckDB maps `ß` to `ẞ` where
@@ -1243,7 +1284,7 @@ option names no table, so an engine profile states its own mapping.
 The condition is `Text.isAscii`, and for a class regular expression
 `Text.classesDiffer`: ASCII without the vertical tab (`Text.isPlain`). The
 analysis carries it as two flags of `AVal` (`ascii`, `plain`), set by a column
-declared ASCII in the checker's request (`"ascii"`, trusted as the schema's
+declared ASCII in the checker's request (`"text"`, trusted as the schema's
 nullability is) and by a literal's text, and `UnFn.mayIssue` and
 `BinFn.mayIssue` report `nonAscii` unless every text operand has them. For
 each reported issue the checker infers the base-table text columns that must
@@ -1260,17 +1301,73 @@ Plans with these functions on text not known to be ASCII move from proved to
 an inferred precondition under every `semantics`; a per-engine value, and the
 guard narrowing to the characters that differ, are later and rest on facts.
 
-The option sits on two groups, `str.case` (`upper`, `lower`) and `str.ascii`
-(`reverse`, `ascii`, `levenshtein`, `ilike` and the regular expressions),
-because a profile transfer reads options by group: it gives a call every
-option of its group, so the option sits on the groups whose functions can
-report the issue, and `str.plain` (`length`, `repeat`, trims) and `str.opaque`
-(`md5`, `sha256`) carry none. A `#guard` in `Scopes.lean` ties a function's
-group to the issue. The transfer is static: under `semantics="substrait"`,
-where `non_ascii_text` allows `COMPUTE`, those nine functions are unproved on
-the option whether or not the column is declared ASCII, as `substring_range`
-is on `str.sub`; a transfer that skips a raise option whose issue the analysis
-rules out is a follow-up.
+The option sits on the group `str.ascii` (`reverse`, `ascii`, `levenshtein`,
+`ilike` and the regular expressions; D51 moved `upper` and `lower` to
+`case_mapping` on `str.case`), because a profile transfer reads options by
+group: it gives a call every option of its group, so an option sits on the
+groups whose functions can report its issue, and `str.plain` (`length`,
+`repeat`, trims) and `str.opaque` (`md5`, `sha256`) carry none. A `#guard` in
+`Scopes.lean` ties a function's group to its issue. The transfer is static:
+under `semantics="substrait"`, where `non_ascii_text` allows `COMPUTE`, those
+seven functions are unproved on the option whether or not the column is
+declared ASCII, as `substring_range` is on `str.sub`; a transfer that skips a
+raise option whose issue the analysis rules out is a follow-up.
+
+### D51. Case mapping has the value the engines agree on
+
+Approved 2026-11-18 by the maintainer. It replaces D43's raise for `UPPER` and
+`LOWER`; D43 landed first as written.
+
+`UPPER` and `LOWER` map a character as DuckDB, Polars and Spark all map it, and
+raise on a character they map differently or that one of them does not know
+(D47, rule 4). The raise is the issue `Issue.caseDiffers`
+(`core/Sverify/Core/Issue.lean`) under the option `case_mapping` (`ERROR`,
+`COMPUTE`; the reference's value is `ERROR`, Substrait's `COMPUTE`).
+The tables are generated from one fact per engine and version
+(`python -m sverify_dev.case_mapping`: `core/Sverify/Core/CaseTable.lean` for
+the reference, `python/src/sverify/_case_tables.py` for the writers' guards and
+the inferred precondition) and are the intersection over the supported
+versions. A mapping that changes a string's length is outside the table.
+
+The alphabets are per function. `UPPER` raises on a string that holds one of
+the 157 scalar values DuckDB, Polars and Spark map differently
+(`characterization/case-differences.json`); `LOWER` on one of 56, or on every
+`Σ` (U+03A3), 57 in all. Every other scalar has the one scalar the three give,
+1,423 for `UPPER` and 1,431 for `LOWER`, and a scalar none maps stays as it is.
+`LOWER` raises on every `Σ` until the facts on its context (the final sigma
+reads each engine's Cased and Case_Ignorable sets on both sides) exist; the
+exact set is a later narrowing. No set is coarser than a scalar list: the
+facts cover every scalar, and a raise stays small and guardable (D47, rule 4).
+ASCII text is in neither set, so a column declared ASCII proves as under D43.
+
+The precondition names the agreed alphabet. Two declared column facts state
+it, one per function (`upper_agreed` and `lower_agreed` in the checker's
+request, `AVal.upperAgreed` and `AVal.lowerAgreed`): the column is in that
+function's agreed alphabet, none of its scalars in the function's raise set.
+The request holds a list of facts per column, under the key `text`
+(`"ascii"` and `"plain"` are facts in it). ASCII gives both
+(`Text.upperRaises_of_isAscii`, `Text.lowerRaises_of_isAscii`). Python renders
+the inferred precondition as one native regular expression class per engine
+and checks it on the data.
+
+`ILIKE`, `reverse`, `ascii`, `levenshtein` and the regular expressions keep
+D43. Regex classes follow by the same method under this number once their facts
+exist. `ILIKE` stays under D43 until its fold facts exist, one per engine: if
+every engine folds both operands with its own `lower`, it moves under `LOWER`'s
+set, on the pattern as well.
+
+Spark's writer calls `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')`:
+the plain function follows the JVM's default locale (`tr`, `az` and `lt` map
+`i` and `I` otherwise) and the collated form does not. Snowflake's writer
+refuses `UPPER` and `LOWER` of anything but a literal until its facts, kept
+privately, show the table. The ICU bundled with pyspark 4.0 and 4.1 lacks 28 scalars per
+direction that 4.2 and later map; every one is in the raise sets, so the guard holds on all
+of them (`spark-case-collated`).
+
+Why: real text is rarely ASCII, so D43's precondition bites, against D21's own
+condition. The engines agree on almost every letter.
+
+Recomputes sinks: no
 
 ### D44. `replace` with an empty pattern is the string unchanged
 
@@ -1469,6 +1566,76 @@ computes it" with no decision and no second engine's facts. The mark states
 what is known, and the rule for new functions (Lean and DuckDB first) keeps
 producing such rows.
 
+### D50. The frontends lift `AND` and `OR` so a guard protects the next operand
+
+Decided 2026-11-18, approved by the user.
+
+`WHERE qty <> 0 AND total / qty > 1` reads as a guard, and SQL users write
+it so. The SQL and Ibis frontends lift `p AND q` so that a raising operation in
+`q` runs only where `p` is not FALSE, and `OR` likewise where `p` is not TRUE.
+The core stays eager (D19), and `semantics="duckdb"` keeps DuckDB's eager
+reading, where DuckDB raises.
+
+The lift is the call `sverify_and` (`sverify_or`) over the operands, which the
+parser reads as nested `CASE` (`Expr.andLift`, `Frontend/Guard.lean`):
+`T_k = CASE WHEN p_k IS NOT FALSE THEN T_{k+1} ELSE 0`, ending in
+`CASE WHEN p_1 AND … AND p_n THEN 1 ELSE NULL`, and the conjunction is
+`T_1 = 1`. Its size is linear in the operands, and each operand is written
+three times: twice in `p IS NOT FALSE` (`p IS NULL OR p`) and once in the
+closing conjunction; a plain operand a fourth time, outside the chain. A lift
+inside an operand is written three times a level. Operands that cannot raise
+(`Expr.plain`, a syntactic check with no use of the analysis) stay outside; an
+`AND` of plain operands stays the eager `AND`, and its plan does not change.
+
+Proved (`Frontend/Guard.lean`, with the `OR` duals): on every row where the
+eager `AND` returns, the lift returns the same (`Expr.andLift_refines`); where
+an operand is FALSE and the operands before it do not raise, the lift is FALSE
+whatever follows (`Expr.andLift_false`); an error in a reached operand still
+surfaces (`Expr.andLift_error`); and the lift is TRUE, FALSE or NULL, so it can
+be an operand (`Expr.andLift_boolVal`). The `andG` lemmas are the chain's case
+lemmas. A constant subexpression that raises is outside the guard (D21,
+`Rel.constIssues`): `x <> 0 AND 1 // 0 = 1` raises for the whole plan under the
+lift as under the eager reading. The analysis refines the `THEN` branch by its condition and reads
+`p IS NULL OR p` as a fact on a column (`x <> c`, `0 <= c < x`).
+
+An engine runs the lifted plan on a recorded fact that its `CASE` evaluates the
+taken branch alone; an engine or a shape without such a fact refuses it. The facts:
+`duckdb-exec-short-circuit` (DuckDB runs it), `spark-exec-evaluation-order`
+(Spark runs it, also with a subexpression twice in a branch) and
+`polars-exec-when-eager` (Polars runs it, collected with common-subexpression
+elimination off, `polars-exec-cse-hoist`). Snowflake follows its private facts.
+Polars's masking excludes a branch under `group_by().agg` and `over()`; an
+aggregate's `FILTER` and a window's argument are tested in
+`tests/test_and_or_engines.py`.
+
+Interim limits, until step D50-d (a gate for 1.0):
+
+- Only the top three levels of a nest of `AND` and `OR` are lifted
+  (`LIFT_LEVELS`, `plan_json.py`; a connective's level is one more than the lifted
+  ones enclosing it). Below that the connective is the eager `AND` or `OR`: a
+  guard there does not protect the next operand, so the guarded operation is
+  reported as an inferred precondition, as before D50. The cap exists because a
+  lift nested in a lift multiplies the size: with a guarded leaf, depth 3 of
+  alternating connectives measured 29 times the eager plan's characters, and
+  depth 4 took 5,171 s in the checker. Since the lift has the eager value
+  wherever the eager reading returns (`Expr.andLift_refines`), a plan proved
+  under the cap stays proved when D50-d lifts the lower levels.
+- The analysis proves zero and null guards (`x <> c`, `0 <= c < x`). A range
+  guard before a cast (`x BETWEEN a AND b AND CAST(x AS BIGINT) > 1`) and a
+  pattern guard before a string cast run correctly on the engines, but are
+  reported as inferred preconditions; step D50-e (before 1.0) adds a
+  refinement through `p IS NOT FALSE` for the range guard. A pattern guard stays
+  unproved.
+
+Why: the eager reading made the commonest guard in SQL unprovable, and the
+engines that short-circuit give the value the user meant.
+
+The lift is the chain `Expr.andLift`, in place of the `Expr.guardBy` shape first
+approved (2026-11-18); the plain operands are found by `Expr.plain`.
+
+Recomputes sinks: no. The reference's values do not change: a plan that raises on no row
+computes what it did, and a lifted guard only removes a raise.
+
 ### D52. A source mark carries a construct's band
 
 Decided 2026-11-19 (#1608 12d-4, ruling 85): approved by the theory advisor.
@@ -1496,3 +1663,155 @@ others. It names no engine.
 decision that reads a marked value has one outcome over the band and every
 output column that reads one has a bound in the report, and keys. Elsewhere the report
 carries an error issue (`source_threshold`, `EngineRobust.sourceIssues`).
+
+### D53. A timestamp with the time zone UTC is an instant
+
+Decided 2026-11-19 (theory advisor).
+
+A timestamp with the time zone UTC is an instant. `Kind.timeTz` holds
+microseconds since 1970-01-01 00:00 UTC, the value the naive kind holds. The
+reference computes with an instant wherever no zone is read: comparison with
+another instant, `IS [NOT] DISTINCT FROM`, ordering, `MIN`, `MAX`, `COUNT`,
+`DISTINCT`, grouping, join keys, window keys, and `CASE`, `COALESCE` and
+`NULLIF` among instants. Everything that reads a calendar field of an instant
+is refused and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
+arithmetic with intervals, the difference of two instants, `date_trunc`,
+`extract`, a cast to a date or a string. A comparison of an instant with a
+naive timestamp is refused. Zones other than UTC are refused. The conversion is
+a function of the core that returns its argument; nothing else in `Rel.eval` and
+`Rel.Allowed` changes.
+
+Read in two steps. Step 1 read an instant column, computed with it and wrote it
+back as an instant (Arrow `timestamp[us, tz=UTC]`, Delta `timestamp`). Step 2
+adds the conversion between an instant and a naive timestamp at UTC
+(`UnFn.atUtc`: `x AT TIME ZONE 'UTC'` in SQL, the cast between `timestamp('UTC')`
+and `timestamp` in Ibis) and instant literals: a literal is an instant when its
+text or Python value carries an explicit offset, which is folded to UTC
+microseconds; it is the conversion of a timestamp literal, so it has the kind of
+every other instant expression. A literal without an offset reads the session
+zone and is refused; so are DuckDB's `CAST(tstz AS TIMESTAMP)`, `tstz::DATE` and
+`CAST(ts AS TIMESTAMPTZ)`, and a comparison, `IN`, `COALESCE`, `CASE` or set
+operation that mixes an instant with a naive timestamp, which DuckDB brings to
+the session's zone. The Ibis frontend refuses a mix too, and an explicit Ibis
+cast between the two kinds is the conversion.
+
+No option and no profile entry: the operations above read no zone, so the
+engines agree on them under every session zone
+([duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json),
+[polars-datetime-zone](../engines/polars/facts/polars-datetime-zone.json),
+[spark-time-zones](../engines/spark/facts/spark-time-zones.json)). DuckDB and
+Polars have a map for the instant, and a fact for each spelling of the conversion
+([duckdb-instant-conversion](../engines/duckdb/facts/duckdb-instant-conversion.json),
+[polars-instant-conversion](../engines/polars/facts/polars-instant-conversion.json));
+Spark and Snowflake refuse it and name the issue.
+
+Recomputes sinks: no
+
+Why: a Delta `timestamp` is an instant, and read as the naive kind it would
+return `timestamp_ntz` columns and let calendar functions run unstated, which a
+later kind would change. A refusal lifted later is a minor change, a corrected
+rule a major one. D53 gives a meaning to plans that had none, so no stored node
+changes its meaning.
+
+### D54. The lift refines the dialect
+
+Decided 2026-11-19 (theory advisor, ruling 105; #1484).
+
+Under `semantics="reference"`, a SQL text in dialect X lifts to a plan with
+this property: wherever the reference gives a value, X running the same text
+natively gives that value, up to the classes D47 leaves open and the float
+bands of D52 and D53. Where the reference raises, X may give a value, NaN or
+an infinity, and the inferred preconditions name those inputs. A construct that
+cannot meet this is refused by the lift, with a hint that names spellings
+that do. A construct whose two readings differ only on a named degenerate input
+class may be a listed exception, shown in the report.
+
+The text of a SQL query reads as DuckDB's under both semantics (`/`, `//`, NULL
+order, `replace`); the semantics is what the functions do. The two profiles
+differ in five fields. In two the reference raises where DuckDB gives NaN or
+`-inf` (`domain_error`, `log_zero`): a raise is visible and the inferred
+preconditions guard it. In three the reference gives another value:
+
+| `Profile` field | reference | DuckDB | where | the lift |
+|---|---|---|---|---|
+| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
+| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | refuses, with a hint |
+| `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
+
+R9 stays the reference's rule: the model's cast of a double or decimal truncates,
+and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
+which rounds, so the SQL lift refuses it under the reference until #322 gives
+the model a rounding cast (the user's choice on #1484, 2026-11-19). The hint
+for a double names the spellings with one meaning under both semantics,
+`CAST(round(x) AS BIGINT)`, `floor` and `ceil` (`round(x, 2)` is not one: it
+leaves a fraction); the hint for a decimal points at #322 and names none. `corr` stays a listed exception: the
+readings differ only on one pair or a constant side (ST-3), and refusing it
+would refuse every `corr`. `Report.dialect_differences` shows it with the
+construct, where it is, both readings, an example and the spellings.
+
+L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
+`Profile.reference`, and the verdict gains no value: the list says what the
+proof covers, and proved stays proved. A SQL query with `semantics="duckdb"`
+and an Ibis transformation list nothing. `semantics="reference"` stays the
+default for raw SQL ("verify two paths" and "portable everywhere" keep it).
+
+Recomputes sinks: no
+
+Why: a proof is about the plan the lift writes. A user reads it as a statement
+about the SQL they wrote, so where the plan's value differs from the text's
+the report says so. A refusal lifted later is a minor change, a changed value a
+major one (D17), so the casts are refused before a release and `corr` is listed.
+
+### D56. Decimal `+` and `-` check each operand at the result's scale
+
+Decided 2026-11-19 (theory advisor, ruling 131; the user, #1484: "If DDB can't
+run the behavior, we should disallow it").
+
+Decimal `+` and `-` across scales bring each operand to the result type
+`DECIMAL(p, s)` before they add. An operand whose rescaled value has more than
+`p` digits raises an overflow, also where the exact result would fit. Only an
+operand with `pᵢ + (s − sᵢ) > 38` can raise so, and the check is written for
+those operands only: `Parse.decimalCall` wraps them in `UnFn.decimal 38 s`, the
+checked rescale that `CASE`, `COALESCE` and `GREATEST` use. DuckDB casts both
+operands to the result type (fact `duckdb-decimal-addsub-operand-cast`). The
+raise is an overflow that a declared range guards: the inferred precondition is
+`|a| < 10^(38 − s)`. Substrait leaves the operand's rescale open ([ST-18](../upstream/bugs/ST-18.json)).
+
+`×` has no such cast: its result scale is `s₁ + s₂`.
+
+Recomputes sinks: no
+
+Why: DuckDB raises on a cancelling sum such as `DECIMAL(38,0) + DECIMAL(38,10)`
+at `10^28`, so a plan the reference accepted there would return a value that
+DuckDB cannot run. A raise the preconditions name is visible; a value the
+engine does not give is not.
+
+### D58. A timestamp's delta counts the unit boundaries crossed
+
+Decided 2026-11-19 (theory advisor, ruling 137).
+
+`a.delta(b, unit)` is `idx(a) - idx(b)`, an `int64`, where `idx(t)` is the
+floor of `t`'s microseconds divided by the unit's microseconds, for
+`microsecond`, `millisecond`, `second`, `minute`, `hour` and `day`. The floor
+puts a value before 1970 where `date_trunc` puts it. Two timestamps 1 µs apart
+across a boundary differ by 1; two almost a unit apart inside one unit differ
+by 0. NULL in gives NULL out, and nothing raises beyond the timestamps' own
+range (D32).
+
+DuckDB's `date_diff(part, start, end)` counts the same way with its arguments
+the other way round. The Ibis frontend writes the delta from existing
+functions: each side floored with `date_bin` from the epoch, the difference
+divided by the unit's microseconds, so Lean's model has no new function.
+
+`week`, `month`, `quarter`, `year` and `nanosecond` are refused until facts pin
+each engine's boundary (month, quarter and year are the next step).
+
+The delta of dates and times follows the same rule and is refused until built,
+and a time-zone-aware timestamp's delta is refused.
+
+Recomputes sinks: no
+
+Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duckdb/facts/duckdb-timestamp-date-diff.json))
+and Ibis documents the delta as the number of unit boundaries crossed
+([`TimestampValue.delta`](https://ibis-project.org/reference/expression-timestamps#ibis.expr.types.temporal.TimestampValue.delta)). The refused units are those where engines place the
+boundary differently.

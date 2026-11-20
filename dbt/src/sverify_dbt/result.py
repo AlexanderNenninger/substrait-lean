@@ -116,6 +116,8 @@ class CheckResult:
     tests: dict[str, Test] = field(repr=False)
     unit_tests: list[str] = field(default_factory=list)
     relations: dict[str, Relation] = field(default_factory=dict, repr=False)
+    selected: bool = False
+    """Whether the check reported on some models only (`check(select=...)`)."""
 
     def suggestions(self) -> list[Suggestion]:
         """The tests sverify suggests adding, so that it proves more: what
@@ -185,7 +187,14 @@ class CheckResult:
 
     @property
     def unproved_constraints(self) -> list[tuple[str, TestResult]]:
-        return [(m.name, c) for m in self.models for c in m.constraints if c.status != "proved"]
+        """The constraints that are not proved or, on a model that was read, not
+        checked. A refused model's are not: its reason is the refusal."""
+        return [
+            (m.name, c)
+            for m in self.models
+            for c in m.constraints
+            if c.status == "not proved" or (c.status == "not checked" and not m.refused)
+        ]
 
     def summary(self) -> str:
         tests = [t for m in self.models for t in m.tests]
@@ -246,9 +255,19 @@ class CheckResult:
         """Add (or replace) the selector `name` in a dbt selectors file,
         keeping its other selectors. dbt reads `selectors.yml` at the root
         of the project; then `dbt build --exclude selector:<name>` skips the
-        proved tests."""
+        proved tests.
+
+        Raises:
+            ValueError: The check reported on some models only: its selector
+                would drop the proved tests of the others, so `dbt build`
+                would run them again. Write it from a full check."""
         import yaml
 
+        if self.selected:
+            raise ValueError(
+                "a selector written from some models only drops the proved tests of the "
+                "others: write it from a check of the whole project (without --select)"
+            )
         path = Path(path)
         data: dict[str, Any] = {}
         if path.is_file():
@@ -263,7 +282,11 @@ class CheckResult:
 def _model_lines(m: ModelResult) -> list[str]:
     head = f"{m.name}" + (f" ({m.path})" if m.path else "")
     if m.refused:
-        return [head, f"  refused: {m.refused}"]
+        out = [head, f"  refused: {m.refused}"]
+        if m.constraints:
+            out.append("  contract constraints, not checked as the model was refused:")
+            out += [f"    {c.label}" for c in m.constraints]
+        return out
     out = [head]
     proved = [t for t in m.tests if t.status == "proved" and t.skippable]
     if proved:

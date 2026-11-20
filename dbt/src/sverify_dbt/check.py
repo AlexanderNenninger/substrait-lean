@@ -20,6 +20,8 @@ from typing import Any
 import duckdb
 import sqlglot as sg
 import sverify as sv
+from sverify.conditions import label as condition_label
+from sverify.errors import ConditionError
 
 from sverify_dbt import mapping
 from sverify_dbt.manifest import Project, Relation, Test, load
@@ -92,6 +94,7 @@ class _Checker:
             tests={t.unique_id: t for t in self.p.tests.values()},
             unit_tests=self.p.unit_tests,
             relations=self.p.relations,
+            selected=bool(select),
         )
 
     def _upstream(self, uids: set[str]) -> set[str]:
@@ -105,6 +108,27 @@ class _Checker:
         return out
 
     # ---- inputs -------------------------------------------------------------
+
+    def _inputs(self, m: Relation) -> list[Relation]:
+        """The relations `m`'s compiled SQL reads: its dependencies, with each
+        ephemeral model replaced by what it reads, transitively. dbt inlines an
+        ephemeral model into its consumer as a CTE, so the consumer's SQL names
+        the ephemeral's inputs and never the ephemeral model."""
+        out: dict[str, Relation] = {}
+
+        def add(unique_id: str) -> None:
+            r = self.p.relations.get(unique_id)
+            if r is None or unique_id in out:
+                return
+            if r.is_model and r.materialized == "ephemeral":
+                for d in r.depends_on:
+                    add(d)
+            else:
+                out[unique_id] = r
+
+        for d in m.depends_on:
+            add(d)
+        return list(out.values())
 
     def _ensure_relation(self, r: Relation) -> str | None:
         """Make `r` a table (sources, seeds) or view (models) of the scratch
@@ -205,6 +229,18 @@ class _Checker:
 
     def _model(self, m: Relation) -> ModelResult:
         res = ModelResult(name=m.name, unique_id=m.unique_id, path=m.path, ref=m.ref)
+        if m.materialized == "ephemeral":
+            readers = sorted(r.name for r in self.p.models if m.unique_id in r.depends_on)
+            res.notes.append(
+                "ephemeral: dbt inlines it into "
+                + (", ".join(readers) if readers else "no model")
+                + " and runs no test on it; it is checked there"
+            )
+            for t in self.p.tests_on(m.unique_id):
+                tr = TestResult(test=t.unique_id, name=t.name, label=t.short, kind="test")
+                tr.skip("dbt runs no test on an ephemeral model")
+                res.tests.append(tr)
+            return res
         if m.language != "sql":
             return res.refuse(
                 f"a {m.language} model: sverify reads SQL models only; dbt still runs its tests"
@@ -214,7 +250,7 @@ class _Checker:
                 "no compiled SQL in the manifest: run `dbt compile` (or `dbt build`) first; "
                 "`dbt parse`, `dbt ls` and a `dbt test` without the model leave it out"
             )
-        inputs = [self.p.relations[d] for d in m.depends_on if d in self.p.relations]
+        inputs = self._inputs(m)
         for r in inputs:
             why = self._ensure_relation(r)
             if why:
@@ -292,7 +328,6 @@ class _Checker:
     def _verify(self, res: ModelResult, tables: dict, requires: dict, ensures: list) -> Any:
         """`sv.verify` of the model; a condition sverify cannot read is
         dropped with its reason, and a model it cannot read is refused."""
-        conds = [c for _, cs in ensures for c in cs]
 
         def go(req: dict, ens: list) -> Any:
             with warnings.catch_warnings():
@@ -307,36 +342,61 @@ class _Checker:
                     counterexamples=self.counterexamples,
                 )
 
-        try:
-            return go(requires, conds)
-        except ValueError as e:  # sverify's Unsupported, and a bad condition
-            first = e
-        try:
-            go({t: [] for t in requires}, [])
-        except ValueError as e:
-            res.refuse(_refusal(e))
-            return None
-        # The SQL is fine: find the conditions sverify cannot read.
-        for t, cs in requires.items():
-            keep = []
-            for c in cs:
-                try:
-                    go({**{k: [] for k in requires}, t: [c]}, [])
-                    keep.append(c)
-                except ValueError as e:
-                    res.not_assumed.append(f"{t}: {_label(c)}: sverify cannot read it ({e})")
-            requires[t] = keep
-        for tr, cs in ensures:
+        while True:
             try:
-                go({t: [] for t in requires}, cs)
-            except ValueError as e:
-                tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
-        conds = [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
+                return go(
+                    requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
+                )
+            except ConditionError as e:  # drop the conditions it names, prove the rest (#699)
+                if not self._drop(e, res, requires, ensures):
+                    res.refuse(_refusal(e))
+                    return None
+            except ValueError as e:  # a refusal after planning: the model or a condition
+                return self._isolate(go, res, requires, ensures, e)
+
+    @staticmethod
+    def _isolate(go: Any, res: ModelResult, requires: dict, ensures: list, first: Exception) -> Any:
+        """A refusal `ConditionError` does not name (the checker's, after the
+        plans exist): refuse the model if it fails alone, else prove each
+        test's conditions on their own and skip the ones that fail."""
+        none = {t: [] for t in requires}
         try:
-            return go(requires, conds)
+            go(none, [])
         except ValueError:
             res.refuse(_refusal(first))
             return None
+        for tr, cs in ensures:
+            if tr.status == "not checked":
+                continue
+            try:
+                go(none, cs)
+            except ValueError as e:
+                tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
+        try:
+            return go(requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs])
+        except ValueError:
+            res.refuse(_refusal(first))
+            return None
+
+    @staticmethod
+    def _drop(e: ConditionError, res: ModelResult, requires: dict, ensures: list) -> bool:
+        """Drop every condition `e` names, with its reason; False if it
+        names none that is still there."""
+        dropped = False
+        for name, err in e.errors.items():
+            for t, cs in requires.items():
+                hit = [c for c in cs if _named(c) == name]
+                if hit:
+                    requires[t] = [c for c in cs if c not in hit]
+                    res.not_assumed.append(
+                        f"{t}: {_label(hit[0])}: sverify cannot read it ({_first_line(err)})"
+                    )
+                    dropped = True
+            for tr, cs in ensures:
+                if tr.status != "not checked" and any(_named(c) == name for c in cs):
+                    tr.skip(f"sverify cannot read its condition: {_first_line(err)}")
+                    dropped = True
+        return dropped
 
     def _read(self, report: Any, m: Relation, res: ModelResult, ensures: list) -> None:
         # `report.ensures` is in the order of the conditions given, each
@@ -582,6 +642,11 @@ def _why(c: Any) -> str:
     (`CheckedCondition.reason`; its `why` speaks of `sv.unique` and
     `requires`)."""
     return _WHY.get(c.reason, f"sverify only knows it is {c.value}")
+
+
+def _named(c: Any) -> str:
+    """A condition as the keys of `ConditionError.errors` name it."""
+    return condition_label(c)
 
 
 def _label(c: Any) -> str:

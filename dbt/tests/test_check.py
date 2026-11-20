@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+import sverify
 import yaml
 
 import sverify_dbt
@@ -135,6 +136,17 @@ def test_dbt_excludes_the_proved_tests(shop: Path, result: sverify_dbt.CheckResu
     dbt(shop, "compile")  # the selectors file parses
 
 
+def test_the_readmes_sample_is_what_check_prints(shop: Path) -> None:
+    """Each model's block in the README's sample output is a block of what
+    `check` prints on `examples/shop` (#891, 1.7)."""
+    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    start = readme.index("On the sample project in")
+    sample = readme[readme.index("```\n", start) + 4 :].split("\n```")[0]
+    printed = str(sverify_dbt.check(shop, counterexamples=0)).split("\n\n")
+    for block in sample.split("\n\n"):
+        assert block.strip() in [b.strip() for b in printed], block
+
+
 def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["check", str(shop), "--select", "stg_orders", "--counterexamples", "0"]) == 0
     out = capsys.readouterr().out
@@ -145,6 +157,11 @@ def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
     )
     data = json.loads(capsys.readouterr().out)
     assert {m["name"] for m in data["models"]} >= {"stg_orders", "org_depth"}
+    # `sverify check <dbt dir> --format json` forwards `--format` (#891).
+    assert main(["check", str(shop), "--format", "json", "--counterexamples", "0"]) == 0
+    assert json.loads(capsys.readouterr().out) == data
+    assert main(["check", str(shop), "--format", "text", "--counterexamples", "0"]) == 0
+    assert "stg_orders (models/staging/stg_orders.sql)" in capsys.readouterr().out
     assert main(["check", str(shop / "nowhere")]) == 2
 
 
@@ -163,6 +180,10 @@ sources:
             data_tests:
               - accepted_values: {arguments: {values: [card, cash]}}
       - name: untyped
+      - name: ledger
+        columns:
+          - {name: kind, data_type: varchar}
+          - {name: amount, data_type: "decimal(10,2)"}
 """
 
 
@@ -203,6 +224,70 @@ def test_contract_mismatch_and_inputs_without_types(make_project) -> None:
     assert "no column types" in (res["latest"].refused or "")
     assert "no column types" in (res["downstream"].refused or "")
     assert main(["check", str(root), "--counterexamples", "0"]) == 1
+
+
+def test_an_ephemeral_model_is_inlined_into_its_reader(make_project) -> None:
+    """dbt inlines an ephemeral model into each reader as a CTE: the reader
+    reads the ephemeral's inputs, which `check` finds two hops up (#891)."""
+    root = make_project(
+        {
+            "models/_sources.yml": SOURCES,
+            "models/stg.sql": (
+                "{{ config(materialized='ephemeral') }}\n"
+                "select id, cents from {{ source('raw', 'payments') }}\n"
+            ),
+            "models/totals.sql": (
+                "select id, sum(cents) as cents from {{ ref('stg') }} group by id\n"
+            ),
+            "models/_models.yml": """\
+            version: 2
+            models:
+              - name: totals
+                columns:
+                  - {name: id, data_tests: [unique]}
+              - name: stg
+                columns:
+                  - {name: id, data_tests: [not_null]}
+            """,
+        }
+    )
+    res = sverify_dbt.check(root, counterexamples=0)
+    assert res["totals"].refused is None, res["totals"].refused
+    # A test on the ephemeral model is listed, not checked: dbt runs none on it.
+    assert statuses(res["stg"]) == {"not_null(id)": "not checked"}
+    assert statuses(res["totals"]) == {"unique(id)": "proved"}
+    assert res["stg"].refused is None
+    assert any("inlines it into totals" in n for n in res["stg"].notes)
+
+
+def test_a_decimal_sum_notes_the_type_sverify_and_duckdb_differ_on(make_project) -> None:
+    """`Report.output` types a decimal `SUM` as the reference does, `DECIMAL(p + 10, s)`;
+    dbt's own SQL builds DuckDB's `DECIMAL(38, s)`; the contract check keeps DuckDB's (#1484)."""
+    root = make_project(
+        {
+            "models/_sources.yml": SOURCES,
+            "models/sums.sql": (
+                "select kind, sum(amount) as amount\n"
+                "from {{ source('raw', 'ledger') }} group by kind\n"
+            ),
+            "models/_models.yml": """\
+            version: 2
+            models:
+              - name: sums
+                config: {contract: {enforced: true}}
+                columns:
+                  - {name: kind, data_type: varchar}
+                  - {name: amount, data_type: "decimal(38,2)"}
+        """,
+        }
+    )
+    sums = sverify_dbt.check(root, counterexamples=0)["sums"]
+    assert sums.contract == []
+    assert any(
+        "column amount: sverify's plan has type DECIMAL(20,2), and DuckDB's SQL gives DECIMAL(38,2)"
+        in n
+        for n in sums.notes
+    )
 
 
 def test_model_tests_are_inputs_downstream(make_project) -> None:
@@ -464,3 +549,93 @@ def test_an_incremental_model_compiled_after_its_run_asks_for_full_refresh(make_
     assert why and "dbt compile --full-refresh" in why and "{{ this }}" in why
     dbt(root, "compile", "--full-refresh")
     assert sverify_dbt.check(root, counterexamples=0)["p"].refused is None
+
+
+def test_selectors_need_a_check_of_the_whole_project(shop: Path, tmp_path: Path) -> None:
+    """A selector written from `--select` would drop every other model's proved
+    tests, so `dbt build` would run them again (#891, 1.6)."""
+    partial = sverify_dbt.check(shop, select=["stg_orders"], counterexamples=0)
+    with pytest.raises(ValueError, match="whole project"):
+        partial.write_selectors(tmp_path / "selectors.yml")
+    with pytest.raises(SystemExit) as e:
+        main(["check", str(shop), "--select", "stg_orders", "--selectors"])
+    assert e.value.code == 2
+    full = sverify_dbt.check(shop, counterexamples=0)
+    assert full.write_selectors(tmp_path / "selectors.yml").is_file()
+
+
+def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
+    """#699: `verify` names the condition it cannot read; sverify-dbt drops it
+    and proves the others, in one retry per bad condition (no dbt needed)."""
+    from types import SimpleNamespace
+    from typing import Any, cast
+
+    from sverify_dbt.check import _Checker
+    from sverify_dbt.result import ModelResult, TestResult
+
+    bad, good = TestResult(None, None, "bad", "test"), TestResult(None, None, "good", "test")
+    res = ModelResult("m", "model.p.m", None, "m")
+    res.sql = "SELECT x FROM t"
+    ensures = [(bad, ["zz > 1"]), (good, ["x IS NOT NULL"])]
+    report = _Checker._verify(
+        cast(
+            Any,
+            SimpleNamespace(counterexamples=0, _drop=_Checker._drop, _isolate=_Checker._isolate),
+        ),
+        res,
+        {"t": {"x": "BIGINT NOT NULL"}},
+        {},
+        ensures,
+    )
+    assert bad.status == "not checked" and "cannot read" in (bad.why or "")
+    assert good.status == "pending" and report is not None
+    assert [r.condition for r in report.ensures] == ["x IS NOT NULL"]
+
+
+def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
+    """A refusal `ConditionError` does not name (the checker's) skips only the
+    test whose conditions fail; the others are proved."""
+    from sverify_dbt.check import _Checker
+    from sverify_dbt.result import ModelResult, TestResult
+
+    bad, good = TestResult(None, None, "bad", "test"), TestResult(None, None, "good", "test")
+    res = ModelResult("m", "model.p.m", None, "m")
+
+    def go(req: dict, ens: list) -> str:
+        if "boom" in ens:
+            raise ValueError("the checker refuses boom")
+        return "report"
+
+    out = _Checker._isolate(go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], ValueError("x"))
+    assert out == "report" and bad.status == "not checked" and good.status == "pending"
+
+
+def test_a_manifest_of_another_schema_version_warns(tmp_path: Path) -> None:
+    """sverify-dbt reads manifest v12; an older one reads, with a warning (#891, 1.8)."""
+    import json
+
+    from sverify_dbt.manifest import ProjectError, load
+
+    (tmp_path / "target").mkdir()
+    meta = {"dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v11.json"}
+    (tmp_path / "target" / "manifest.json").write_text(json.dumps({"metadata": meta}))
+    with pytest.warns(UserWarning, match="schema v12.*v11"), pytest.raises(ProjectError):
+        load(tmp_path)  # the adapter check follows
+
+
+def test_sverify_dbt_and_sverify_are_one_version() -> None:
+    assert sverify_dbt.__version__ == sverify.__version__
+
+
+def test_a_sverify_of_another_version_stops_the_import(monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib
+    import importlib.metadata
+
+    real = importlib.metadata.version
+    monkeypatch.setattr(
+        importlib.metadata, "version", lambda n: "0.0.1" if n == "sverify-dbt" else real(n)
+    )
+    with pytest.raises(ImportError, match="needs sverify"):
+        importlib.reload(sverify_dbt)
+    monkeypatch.undo()
+    importlib.reload(sverify_dbt)
