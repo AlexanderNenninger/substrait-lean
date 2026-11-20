@@ -67,38 +67,47 @@ def _ibis_backend() -> Any:
     return ibis.duckdb.from_connection(_duckdb.cursor())
 
 
+class _NoBackend:
+    """The Ibis backend of a bound table on a connection whose engine does not
+    hold its tables in Ibis's DuckDB backend: a table needs a source to be
+    bound, and this one exists without DuckDB. Where DuckDB is installed, a
+    member Ibis asks of it is the DuckDB backend's, made on first need
+    (`Connection._ibis`), as the pipelines' state tables and a user's own
+    Ibis query over the connection's tables need. Without DuckDB each such
+    member refuses, naming the engine to run on (`Report.run`)."""
+
+    def __init__(self, con: Connection, engine: Engine):
+        self._sverify_connection = con
+        self._engine = engine
+
+    @property
+    def name(self) -> str:
+        return "duckdb" if _importable("duckdb") else self._engine
+
+    def __getattr__(self, attr: str) -> Any:
+        if attr.startswith("__") or attr in ("_sverify_connection", "_engine"):
+            raise AttributeError(attr)
+        if _importable("duckdb"):
+            return getattr(self._sverify_connection._ibis, attr)
+        return _Refusal(self._engine)
+
+
 class _Refusal:
-    """What any member of `_NoBackend` is: calling it, or reading a member of
-    it (`compiler.to_sqlglot`), raises the refusal."""
+    """What a member of `_NoBackend` is without DuckDB: calling it, or reading
+    a member of it (`compiler.to_sqlglot`), raises the refusal."""
 
     def __init__(self, engine: Engine):
         self._engine = engine
 
     def __call__(self, *_args: Any, **_kwargs: Any) -> Any:
         raise NotImplementedError(
-            f"an Ibis expression on a {self._engine} connection is not executed through Ibis: "
-            f"run the plan with `Report.run(con, {self._engine!r})`, or use a DuckDB connection"
+            f"an Ibis expression on a {self._engine} connection is not executed through Ibis "
+            f"without DuckDB: run the plan with `Report.run(con, {self._engine!r})`, or "
+            f"install sverify[duckdb]"
         )
 
     def __getattr__(self, attr: str) -> Any:
         return self()
-
-
-class _NoBackend:
-    """The Ibis backend of a bound table on a connection whose engine is not
-    DuckDB: a table needs a source to be bound, and this one exists without
-    DuckDB. It runs nothing, and refuses every member Ibis asks of a backend
-    except its `name`; the connection's engine runs plans (`Report.run`)."""
-
-    def __init__(self, engine: Engine):
-        self.name = engine
-        self._sverify_connection: Connection | None = None
-        self._refusal = _Refusal(engine)
-
-    def __getattr__(self, attr: str) -> Any:
-        if attr.startswith("__") or attr in ("_refusal", "_sverify_connection", "name"):
-            raise AttributeError(attr)
-        return self._refusal
 
 
 class _Arrow(MutableMapping[str, pa.Table]):
@@ -189,7 +198,7 @@ class Connection:
         # connection, a stub that runs nothing on the others. The Ibis DuckDB
         # backend of those is made on first need (`_ibis`).
         self._duck: Any = None
-        self._source: Any = _NoBackend(self.engine) if self.engine != "duckdb" else self._ibis
+        self._source: Any = self._ibis if plugin.default else _NoBackend(self, self.engine)
         # A bound table keeps its backend alive, and the backend its connection.
         self._source._sverify_connection = self
 
@@ -301,7 +310,10 @@ class Connection:
             _check_times(table.schema)
             _check_calendar(table)
         if isinstance(table, Native) and self._duck is None:
-            _check_calendar_view(None, name, table)
+            if _importable("duckdb"):
+                self._ibis  # noqa: B018 - the rows are checked over a DuckDB view
+            else:
+                _check_calendar_view(None, name, table)
         self._tables[name] = table
         if self._duck is not None:
             try:
