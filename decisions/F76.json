@@ -1,0 +1,20 @@
+{
+  "id": "F76",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D50 lift statements in #1681 confirmed as case lemmas; required before the label: refinement theorem Expr.andLift_refines/orLift_refines, BoolVal closure, D50 tests, corrected D50 docs (copies, constants via D21), size measurements. Steps D50-b, -c, -d follow.",
+  "prs": [
+    1681
+  ],
+  "amends": [
+    "D50"
+  ],
+  "amended_by": [
+    "F77",
+    "F89"
+  ],
+  "source": "fable-ruling-1681-d50-lift-statements.md",
+  "note": "R4 and R5's probe bullet replaced by ruling 77 (F76.R4); D50-c narrowed by ruling 77; D50-d made a 1.0 gate by ruling 89."
+}

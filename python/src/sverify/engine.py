@@ -452,13 +452,14 @@ def lift_sql_plan(
 ) -> Any:
     """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
     `schemas` it reads."""
-    from sverify.sql_lift import lift
+    from sverify.sql_lift import full_name, lift
 
     try:
-        read = {t.name.lower() for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+        # By DuckDB's resolution: `shop.main.orders` reads the input of that key.
+        read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
     except sg.errors.ParseError:
         read = set()  # the lift says why
-    return lift(sql, {n: s for n, s in schemas.items() if n.lower() in read}, semantics)
+    return lift(sql, {n: s for n, s in schemas.items() if full_name(n) in read}, semantics)
 
 
 def quote(name: str) -> str:

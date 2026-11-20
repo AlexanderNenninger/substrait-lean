@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-05-verify-suggestions",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Reports suggest declarations that make a plan verify (max_rows, IS NOT NULL, unique), under on_inferred where they are preconditions.",
+  "issues": [
+    655
+  ],
+  "prs": [
+    669
+  ],
+  "source": "github:#669 body"
+}

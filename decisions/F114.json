@@ -1,0 +1,19 @@
+{
+  "id": "F114",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Report.output states the run's integer widths from outputKinds: int64 for computed integers, declared width for passed-through columns, the named width for explicit casts (writer writes the cast); casting the run to Ibis's widths is declined; timestamps normalised to timestamp(6).",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1706
+  ],
+  "amends": [
+    "F90"
+  ],
+  "source": "fable-ruling-report-output-ints.md",
+  "note": "Answers ruling 90's K4. Breaking change for readers of integer widths."
+}

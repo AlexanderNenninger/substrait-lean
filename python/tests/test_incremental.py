@@ -86,7 +86,7 @@ def test_count_and_sum_per_group_are_maintained(engine):
     orders = con.table("orders")
     query = orders.group_by("customer").aggregate(total=orders.amount.sum(), n=orders.count())
     view = IncrementalView(con, query, "v", engine)
-    assert view.strategy == "delta rules"
+    assert view.strategy == "state per group"
     view.apply({"orders": Changes(inserts=[(4, "cy", 7)], deletes=[(1, "ada", 30)])})
     assert view.rows() == view.recompute() == [("ada", None, 1), ("bob", 5, 1), ("cy", 7, 1)]
 

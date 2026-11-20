@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-05-pr-optimization-rule",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "superseded",
+  "summary": "Every pull request brings at least one measured optimization in the area it touches, with numbers in the PR body and no behaviour change.",
+  "prs": [
+    826
+  ],
+  "superseded_by": [
+    "U-2026-11-08-pr-two-improvements"
+  ],
+  "source": "github:#826 body"
+}

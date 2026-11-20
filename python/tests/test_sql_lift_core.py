@@ -91,7 +91,6 @@ def test_the_profiles_differ_only_in_what_functions_do():
         "name",
         "min_mod_neg_one",
         "float_to_int",
-        "decimal_to_int",
         "domain_error",
         "log_zero",
         "corr_degenerate",

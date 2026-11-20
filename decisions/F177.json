@@ -1,0 +1,19 @@
+{
+  "id": "F177",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "An integer cast to DECIMAL(p>=19, 0) is read as a decimal through the general branch; the wide-int-decimal special case is deleted in Lean, Python writer and Polars together; corrected reading noticed to users.",
+  "issues": [
+    16,
+    27,
+    1873,
+    1876
+  ],
+  "amended_by": [
+    "F179"
+  ],
+  "source": "fable-ruling-177-1876-wide-int-decimal.md",
+  "note": "No D-number (frontend reading under #27 and D56). Conditions W1-W12; W6 detailed by ruling 179."
+}

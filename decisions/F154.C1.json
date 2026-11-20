@@ -1,0 +1,13 @@
+{
+  "id": "F154.C1",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "superseded",
+  "summary": "Condition 1's expected guard results: an integer MAX passes htr at the three tier-1 tables and an integer AVG fails only at Polars and Spark.",
+  "superseded_by": [
+    "F171"
+  ],
+  "source": "fable-ruling-154-trackB-f3-nodouble.md",
+  "note": "Log entry 171: 'Both expectations were wrong'; MAX and AVG fail at all three engines; track B's #guards stand."
+}

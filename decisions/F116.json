@@ -1,0 +1,18 @@
+{
+  "id": "F116",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1329's join line measures the join sides kept to match, not the materialized output; amendments: Arrow-fed inputs leave the driver, R2/R3 are one projection lemma over Z-sets, lake sources need a pinned-snapshot precondition.",
+  "issues": [
+    1329,
+    1620,
+    1639
+  ],
+  "amended_by": [
+    "F173"
+  ],
+  "source": "fable-ruling-1329-join-state.md",
+  "note": "No D-number. Notes #1329 cites the wrong D-number (D34) for the reads analysis."
+}

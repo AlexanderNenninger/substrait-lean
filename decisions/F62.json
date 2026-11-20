@@ -1,0 +1,24 @@
+{
+  "id": "F62",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D51 raise sets: UPPER raises on strings holding one of 157 scalars, LOWER on 56 scalars plus every Σ (57); one set per function, no context sets; Spark's writer refuses non-ASCII UPPER/LOWER until its library and locale facts exist; generated Lean/Python table.",
+  "issues": [
+    1631
+  ],
+  "prs": [
+    1649
+  ],
+  "amends": [
+    "D51"
+  ],
+  "amended_by": [
+    "F66",
+    "F68",
+    "F80"
+  ],
+  "source": "fable-ruling-d51-raise-set.md",
+  "note": "File has no ruling number; fable-undelivered-1118.md lists it as entry 62. D51's text gains two sentences (alphabets per function; LOWER raises on every Σ). C2's locale gap is answered by F66; C3's Spark version point refined by F68/F80. Snowflake follows privately (C6)."
+}

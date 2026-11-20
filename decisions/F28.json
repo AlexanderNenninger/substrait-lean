@@ -1,0 +1,19 @@
+{
+  "id": "F28",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Windows join D45 as an amendment: a windowed MIN, MAX or QUANTILE_DISC picks within the class over the frame, in track A's second PR; its merge was held for the user.",
+  "prs": [
+    1512
+  ],
+  "amends": [
+    "D45"
+  ],
+  "amended_by": [
+    "F36"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 28",
+  "note": "File ruling-d45-windows.md. No D46. Hold lifted by the user's approval in entry 36. Also records native-scans assignments (N0 with worker 2, N10 waits for a Polars Cloud workspace)."
+}

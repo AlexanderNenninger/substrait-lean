@@ -3,7 +3,7 @@
   "ibis_substrait/temporal.py": 1,
   "sql_lift/_base.py": 105,
   "sql_lift/blackbox.py": 6,
-  "sql_lift/casts.py": 17,
+  "sql_lift/casts.py": 16,
   "sql_lift/core.py": 24,
   "sql_lift/nested.py": 15,
   "sql_lift/relations.py": 13,

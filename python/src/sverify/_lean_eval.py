@@ -175,6 +175,14 @@ def _raised(plan_json: str) -> str | None:
     return (out.strip() or None) if code == 0 else None
 
 
+def lean_assumed(plan_json: str) -> str | None:
+    """The first assumed issue (`Issue.assumed`) the plan as written runs into
+    on its virtual tables, by `Expr.issues` and the groups' true sums
+    (`--assumed`, `Rel.HasIssue`); None where it runs into none. The oracle of
+    `Report._check_assumed`'s tests (#2018)."""
+    return _checked(plan_json, ("--assumed",)).strip() or None
+
+
 def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:
     """Like `lean_rows`, but reads doubles too, which Lean prints with six
     decimals and a `d` (so only approximately). The rows are `Rel.eval`'s,

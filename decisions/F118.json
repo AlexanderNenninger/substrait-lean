@@ -1,0 +1,15 @@
+{
+  "id": "F118",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "sv.connect(\"spark\") exists; table conditions are counted as plans run by the engine's own runner (option b), not via Ibis's backend; no Ibis fallback; one plan per table; extras later drop sverify[duckdb].",
+  "issues": [
+    173,
+    1288,
+    1764
+  ],
+  "source": "fable-ruling-1764-spark-connection.md",
+  "note": "Ruling number 118 (file named after #1764). No D-number."
+}

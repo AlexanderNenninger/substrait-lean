@@ -1,0 +1,14 @@
+{
+  "id": "F2",
+  "date": "2026-11-16",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "#1484 round 3 structural findings slotted: S1 (cheap form), S3, S4 (through #1288) and S7 block, S2's label blocks; S2's theorem and raise mode go to wave 3.",
+  "issues": [
+    1484,
+    1288
+  ],
+  "source": "fable-rulings-night-1117.md, entry 2",
+  "note": "Date by context. Plan file plan-1484-1485.md section 14, sections 10-12 updated. dkind guidance to worker 2 is guidance, not a ruling."
+}

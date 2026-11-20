@@ -285,8 +285,9 @@ The refusal is safe, but every caller with schemas has to rewrite the SQL.
 Sverify-dbt rewrites each relation with SQLGlot to a name of its own,
 keeping the alias (`_rewrite`).
 
-Proposed: `tables` keys may be qualified (`"shop.main.orders"`), matched as
-DuckDB resolves names (catalog, schema, table, with the defaults).
+Closed in substrait-lean#706: `tables` keys may be qualified (`"shop.main.orders"`),
+matched as DuckDB resolves names (catalog, schema, table, with the defaults
+`memory` and `main`).
 
 ## Conditions
 

@@ -31,6 +31,10 @@ QUERIES = [
     " CAST('2024-1-' || CAST(amount + 1 AS VARCHAR) AS DATE) AS dt,"
     " CAST('2024-01-05T1' || CAST(amount AS VARCHAR) || ':30:00.25' AS TIMESTAMP) AS ts,"
     " TRY_CAST('12.3 p' AS DOUBLE) AS flagged, TRY_CAST(':' AS DOUBLE) AS missing FROM orders",
+    # A decimal to an integer or a coarser scale rounds half away from zero (#322).
+    "SELECT id, CAST(cost AS BIGINT) AS i, CAST(cost AS INTEGER) AS n,"
+    " CAST(cost AS DECIMAL(15, 1)) AS d, CAST(cost AS DECIMAL(5, 0)) AS w FROM orders",
+    "SELECT CAST(2.5 AS BIGINT) AS a, CAST(-2.5 AS BIGINT) AS b, CAST(0.49 AS BIGINT) AS c",
 ]
 
 
