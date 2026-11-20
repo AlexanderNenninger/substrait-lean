@@ -2982,11 +2982,28 @@ partial def capChains (fns : List (Nat × String)) (andA orA : Nat) (level : Nat
 def bindsCondition (fns : List (Nat × String)) (cond : Json) : Bool :=
   liftLevels < liftDepth fns cond && (nodesIn "subquery" cond).isEmpty
 
+/-- A projection's expressions the binder takes: one deeper than the cap, and no
+subquery or window function. -/
+def bindsProject (fns : List (Nat × String)) (ejs : List Json) : Bool :=
+  ejs.any (fun e => liftLevels < liftDepth fns e) &&
+    (ejs.flatMap (nodesIn "subquery")).isEmpty && (ejs.flatMap (nodesIn "windowFunction")).isEmpty
+
 /-- The plan with every chain beyond the cap read eagerly (`capChains`), but in
-the filter conditions the binder takes. -/
+the filter conditions and projections the binder takes. -/
 partial def capPlan (fns : List (Nat × String)) (andA orA : Nat) (j : Json) : Json :=
   match j with
   | .obj kvs =>
+    -- A projection the binder takes keeps its expressions; its input is capped.
+    let keep : Option String := (field? j "project").bind fun pj =>
+      match (field? pj "expressions").bind (·.getArr?.toOption) with
+      | some ejs => if bindsProject fns ejs.toList then some "project" else none
+      | none => none
+    if let some key := keep then
+      let pj := (field? j key).getD (Json.mkObj [])
+      let pj' := Json.mkObj ((match pj with | .obj m => m.toList | _ => []).map fun (k, v) =>
+        (k, if k == "expressions" then v else capPlan fns andA orA v))
+      Json.mkObj (kvs.toList.map fun (k, v) => (k, if k == key then pj' else capPlan fns andA orA v))
+    else
     match field? j "filter" with
     | some f =>
       match field? f "condition" with
@@ -3059,6 +3076,9 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
+      else if bindsProject fns ejs then
+        -- Beyond the cap, the chains are bound below the projection (D50-d).
+        pure (Rel.bindProject inp cols.length (← ejs.mapM (toLExpr fns cols bits)))
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).

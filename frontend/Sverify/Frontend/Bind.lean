@@ -161,6 +161,20 @@ def Rel.bindFilter (r : Rel) (w : Nat) (x : LExpr) : Rel :=
   let (s, c) := x.bind w none ⟨r, w⟩
   .emit (.filter s.rel c) (List.range w)
 
+/-- Bind the chains of each expression in turn, every row reached. -/
+def LExpr.bindList (w : Nat) (s : BindSt) : List LExpr → BindSt × List Expr
+  | [] => (s, [])
+  | x :: xs =>
+    let p := x.bind w none s
+    let q := LExpr.bindList w p.1 xs
+    (q.1, p.2 :: q.2)
+
+/-- A projection of `xs`, their chains bound below it and their levels dropped
+above it. -/
+def Rel.bindProject (r : Rel) (w : Nat) (xs : List LExpr) : Rel :=
+  let p := LExpr.bindList w ⟨r, w⟩ xs
+  .emit (.project p.1.rel p.2) (List.range w ++ (List.range xs.length).map (p.1.width + ·))
+
 
 /-! ## T1: the bound plan's rows (ruling 102, T1a to T1c)
 
@@ -343,6 +357,28 @@ omit [Boxes.Ambient] in
 theorem LExpr.fillAll_length (w : Nat) : ∀ xs : List LExpr, (LExpr.fillAll w xs).length = xs.length
   | [] => rfl
   | _ :: xs => by simp [LExpr.fillAll, LExpr.fillAll_length w xs]
+
+omit [Boxes.Ambient] in
+theorem LExpr.mem_fillAll {w : Nat} {e : Expr} : ∀ {xs : List LExpr}, e ∈ LExpr.fillAll w xs →
+    ∃ x ∈ xs, e = x.fill w
+  | [], h => by simp [LExpr.fillAll] at h
+  | x :: xs, h => by
+    simp only [LExpr.fillAll, List.mem_cons] at h
+    rcases h with rfl | h
+    · exact ⟨x, by simp, rfl⟩
+    · obtain ⟨y, hy, rfl⟩ := LExpr.mem_fillAll h
+      exact ⟨y, by simp [hy], rfl⟩
+
+omit [Boxes.Ambient] in
+theorem LExpr.fill_mem_fillAll {w : Nat} {x : LExpr} : ∀ {xs : List LExpr}, x ∈ xs →
+    x.fill w ∈ LExpr.fillAll w xs
+  | [], h => by simp at h
+  | y :: xs, h => by
+    simp only [List.mem_cons] at h
+    simp only [LExpr.fillAll, List.mem_cons]
+    rcases h with rfl | h
+    · exact .inl rfl
+    · exact .inr (LExpr.fill_mem_fillAll h)
 
 theorem LExpr.boolsAll_boolVal (w : Nat) (row : Row) :
     ∀ xs : List LExpr, LExpr.BoolsAll I w row xs → ∀ q ∈ LExpr.fillAll w xs, Expr.BoolValI I row q
@@ -767,6 +803,61 @@ theorem Rel.bindFilter_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (
   intro row hr
   have hr' := (List.mem_filter.mp hr).1
   exact map_range_getD row (F' row) w (hw row hr')
+
+omit [Boxes.Ambient] in
+theorem LExpr.bindList_length (w : Nat) : ∀ (s : BindSt) (xs : List LExpr),
+    (LExpr.bindList w s xs).2.length = xs.length
+  | _, [] => rfl
+  | s, _ :: xs => by simp [LExpr.bindList, LExpr.bindList_length w _ xs]
+
+/-- `bind_spec` for a list of expressions bound in turn. -/
+theorem LExpr.bindList_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) :
+    ∀ (xs : List LExpr) (s : BindSt) (F : Row → Row), s.Ext I cat r w F → LExpr.ScopedAll w xs →
+      ∃ F', Grows I cat r w s (LExpr.bindList w s xs).1 F F' ∧
+        (∀ e ∈ (LExpr.bindList w s xs).2, e.refsLt (LExpr.bindList w s xs).1.width) ∧
+        ∀ row ∈ r.eval cat I, LExpr.BoolsAll I w row xs →
+          (LExpr.bindList w s xs).2.map (·.eval (row ++ F' row) I) = (LExpr.fillAll w xs).map (·.eval row I)
+  | [], s, F, hs, _ => ⟨F, Grows.refl hs, by simp [LExpr.bindList], fun _ _ _ => by
+      simp [LExpr.bindList, LExpr.fillAll]⟩
+  | x :: xs, s, F, hs, ⟨hx, hxs⟩ => by
+    obtain ⟨F₁, hG₁, hr₁, hv₁⟩ := LExpr.bind_spec hI cat r w x none s F hs (by simp) hx
+    obtain ⟨F₂, hG₂, hr₂, hv₂⟩ := LExpr.bindList_spec hI cat r w xs _ F₁ hG₁.1 hxs
+    refine ⟨F₂, Grows.trans hG₁ hG₂, ?_, fun row hr ⟨⟨_, hbx⟩, hbxs⟩ => ?_⟩
+    · intro e he
+      simp only [LExpr.bindList, List.mem_cons] at he
+      rcases he with rfl | he
+      · exact Expr.refsLt_mono _ hG₂.2.2 hr₁
+      · exact hr₂ e he
+    · have hl₁ := hG₁.1.2.1 row hr
+      simp only [LExpr.bindList, List.map_cons, LExpr.fillAll]
+      rw [hv₂ row hr hbxs, eval_prefix hr₁ (by omega) (hG₂.2.1 row), hv₁ row hr (by simp [Reach]) hbx]
+
+/-- **T1 for a projection, rows**: the bound projection has the rows of the
+projection of the lifts. -/
+theorem Rel.bindProject_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (xs : List LExpr)
+    (hw : ∀ row ∈ r.eval cat I, row.length = w) (hx : LExpr.ScopedAll w xs)
+    (hb : ∀ row ∈ r.eval cat I, LExpr.BoolsAll I w row xs) :
+    (r.bindProject w xs).eval cat I = (r.project (LExpr.fillAll w xs)).eval cat I := by
+  have hs : BindSt.Ext I cat r w ⟨r, w⟩ (fun _ => []) :=
+    ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
+  obtain ⟨F', hG, _, hv⟩ := LExpr.bindList_spec hI cat r w xs ⟨r, w⟩ (fun _ => []) hs hx
+  simp only [Rel.bindProject, Rel.eval, hG.1.1, List.map_map]
+  apply List.map_congr_left
+  intro row hr
+  have hl := hG.1.2.1 row hr
+  have hlen := LExpr.bindList_length w ⟨r, w⟩ xs
+  simp only [Function.comp_apply, List.map_append, List.map_map]
+  rw [← hv row hr (hb row hr)]
+  congr 1
+  · rw [List.append_assoc]; exact map_range_getD row _ w (hw row hr)
+  · apply List.ext_getElem (by simp [hlen])
+    intro k h1 h2
+    simp only [List.getElem_map, List.getElem_range, Function.comp_apply]
+    rw [List.getD_eq_getElem?_getD, List.getElem?_append_right (by simp; omega)]
+    simp only [List.length_append]
+    rw [show (LExpr.bindList w ⟨r, w⟩ xs).1.width + k - (row.length + (F' row).length) = k by omega]
+    have hk : k < (LExpr.bindList w ⟨r, w⟩ xs).2.length := by simp at h2; omega
+    simp only [List.getElem?_map, List.getElem?_eq_getElem hk, Option.map_some, Option.getD_some]
 
 end Eval
 
@@ -1710,6 +1801,93 @@ theorem Rel.bindFilter_raises (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
     · rcases (hrow row hr).mp h with h | h
       · exact .inl (.inr ⟨row, hr, h⟩)
       · exact .inr ⟨_, ⟨row, hr, rfl⟩, h⟩
+
+
+/-- Raising is kept on a longer row by an expression reading below the shorter one's width. -/
+theorem raises_prefix {e : Expr} {row F F' : Row} {n : Nat} (he : e.refsLt n)
+    (hlen : row.length + F.length = n) (hp : F <+: F') : e.Raises (row ++ F') ↔ e.Raises (row ++ F) := by
+  rw [← Expr.raisesOn_reference, ← Expr.raisesOn_reference]
+  obtain ⟨G, rfl⟩ := hp
+  simp only [Expr.RaisesOn, ← List.append_assoc]
+  rw [Expr.evalP_append e G he (by simp [hlen])]
+
+/-- `bind_raise` for a list of expressions bound in turn. -/
+theorem LExpr.bindList_raise (cat : Catalog) (r : Rel) (w : Nat) :
+    ∀ (xs : List LExpr) (s : BindSt) (F : Row → Row), s.Ext RI cat r w F → LExpr.ScopedAll w xs →
+      ∃ L : Row → Prop,
+        ((LExpr.bindList w s xs).1.rel.Raises RP cat ↔ s.rel.Raises RP cat ∨ ∃ row ∈ r.eval cat RI, L row) ∧
+        ∀ F', (LExpr.bindList w s xs).1.Ext RI cat r w F' → ∀ row ∈ r.eval cat RI,
+          LExpr.BoolsAll RI w row xs →
+          ((∃ x ∈ xs, (x.fill w).Raises row) ↔
+            L row ∨ ∃ e ∈ (LExpr.bindList w s xs).2, e.Raises (row ++ F' row))
+  | [], s, F, hs, _ => ⟨fun _ => False, by simp [LExpr.bindList], fun _ _ _ _ _ => by simp [LExpr.bindList]⟩
+  | x :: xs, s, F, hs, ⟨hx, hxs⟩ => by
+    obtain ⟨Lx, hRx, hLx⟩ := LExpr.bind_raise cat r w x none s F hs (by simp) hx
+    obtain ⟨F₁, hG₁, hr₁, -⟩ := LExpr.bind_spec Profile.reference_logic cat r w x none s F hs (by simp) hx
+    obtain ⟨Lr, hRr, hLr⟩ := LExpr.bindList_raise cat r w xs _ F₁ hG₁.1 hxs
+    obtain ⟨F₂, hG₂, -, -⟩ := LExpr.bindList_spec Profile.reference_logic cat r w xs _ F₁ hG₁.1 hxs
+    refine ⟨fun row => Lx row ∨ Lr row, ?_, fun F' hF' row hr ⟨⟨_, hbx⟩, hbxs⟩ => ?_⟩
+    · simp only [LExpr.bindList]
+      rw [hRr, hRx]
+      constructor
+      · rintro ((h | ⟨row, hr, h⟩) | ⟨row, hr, h⟩)
+        · exact .inl h
+        · exact .inr ⟨row, hr, .inl h⟩
+        · exact .inr ⟨row, hr, .inr h⟩
+      · rintro (h | ⟨row, hr, (h | h)⟩)
+        · exact .inl (.inl h)
+        · exact .inl (.inr ⟨row, hr, h⟩)
+        · exact .inr ⟨row, hr, h⟩
+    · have hl₁ := hG₁.1.2.1 row hr
+      have hF₂ : F₂ row = F' row := BindSt.Ext.unique hG₂.1 hF' row hr
+      have hpre : F₁ row <+: F' row := hF₂ ▸ hG₂.2.1 row
+      have hx2 := ((hLx F₁ hG₁.1 row hr hbx).2 (by simp [Reach]))
+      have hxs2 := hLr F' hF' row hr hbxs
+      simp only [LExpr.bindList, List.mem_cons, exists_eq_or_imp]
+      rw [hx2, hxs2, raises_prefix hr₁ (by omega) hpre]
+      constructor
+      · rintro ((h | h) | (h | ⟨e, he, h⟩))
+        · exact .inl (.inl h)
+        · exact .inr (.inl h)
+        · exact .inl (.inr h)
+        · exact .inr (.inr ⟨e, he, h⟩)
+      · rintro ((h | h) | (h | ⟨e, he, h⟩))
+        · exact .inl (.inl h)
+        · exact .inr (.inl h)
+        · exact .inl (.inr h)
+        · exact .inr (.inr ⟨e, he, h⟩)
+
+/-- **T1 for a projection, raises**: under the reference the bound projection
+raises exactly where the projection of the lifts raises. -/
+theorem Rel.bindProject_raises (cat : Catalog) (r : Rel) (w : Nat) (xs : List LExpr)
+    (hw : ∀ row ∈ r.eval cat RI, row.length = w) (hx : LExpr.ScopedAll w xs)
+    (hb : ∀ row ∈ r.eval cat RI, LExpr.BoolsAll RI w row xs) :
+    (r.bindProject w xs).Raises RP cat ↔ (r.project (LExpr.fillAll w xs)).Raises RP cat := by
+  have hs : BindSt.Ext RI cat r w ⟨r, w⟩ (fun _ => []) :=
+    ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
+  obtain ⟨L, hR, hL⟩ := LExpr.bindList_raise cat r w xs ⟨r, w⟩ (fun _ => []) hs hx
+  obtain ⟨F', hG, -, -⟩ := LExpr.bindList_spec Profile.reference_logic cat r w xs ⟨r, w⟩ (fun _ => []) hs hx
+  have hfill : ∀ row, (∃ e ∈ LExpr.fillAll w xs, e.RaisesOn RP row) ↔ ∃ x ∈ xs, (x.fill w).Raises row := by
+    intro row
+    simp only [Expr.raisesOn_reference]
+    constructor
+    · rintro ⟨e, he, h⟩
+      obtain ⟨x, hx, rfl⟩ := LExpr.mem_fillAll he
+      exact ⟨x, hx, h⟩
+    · rintro ⟨x, hx, h⟩
+      exact ⟨_, LExpr.fill_mem_fillAll hx, h⟩
+  simp only [Rel.bindProject, Rel.Raises, hR, hG.1.1, List.mem_map]
+  constructor
+  · rintro ((h | ⟨row, hr, h⟩) | ⟨_, ⟨row, hr, rfl⟩, e, he, h⟩)
+    · exact .inl h
+    · exact .inr ⟨row, hr, (hfill row).mpr ((hL F' hG.1 row hr (hb row hr)).mpr (.inl h))⟩
+    · exact .inr ⟨row, hr, (hfill row).mpr ((hL F' hG.1 row hr (hb row hr)).mpr
+        (.inr ⟨e, he, (Expr.raisesOn_reference _ _).mp h⟩))⟩
+  · rintro (h | ⟨row, hr, h⟩)
+    · exact .inl (.inl h)
+    · rcases (hL F' hG.1 row hr (hb row hr)).mp ((hfill row).mp h) with h | ⟨e, he, h⟩
+      · exact .inl (.inr ⟨row, hr, h⟩)
+      · exact .inr ⟨_, ⟨row, hr, rfl⟩, e, he, (Expr.raisesOn_reference _ _).mpr h⟩
 
 end RaiseInv
 

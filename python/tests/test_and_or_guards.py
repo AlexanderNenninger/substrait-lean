@@ -120,3 +120,22 @@ def test_a_bound_filter_runs_as_the_lifted_one():
     got = sorted(report.run(con, unverified=True).to_pylist(), key=lambda r: (r["x"], r["z"]))
     want = sorted(t.filter(e).to_pyarrow().to_pylist(), key=lambda r: (r["x"], r["z"]))
     assert got == want
+
+
+def test_a_deep_nest_in_a_projection_is_bound_and_runs_as_the_lifted_one():
+    """A projected `AND`/`OR` nest deeper than the cap is bound below the projection
+    (`Rel.bindProject_eval`): it checks in time and DuckDB computes the lifted values."""
+    con = sv.connect()
+    rows = pa.table({"x": [0, 1, 2, 5, 20], "z": [0, 1, 0, 1, 0]})
+    con.put("t", rows)
+    t = con.table("t")
+    e = (t.x != 0) & ((10 // t.x) > 1)
+    for i in range(8):
+        e = ((t.z > 0) | e) if i % 2 == 0 else ((t.z > 0) & e)
+    expr = t.select(t.x, flag=e)
+    start = time.perf_counter()
+    report = sv.verify(expr, ensures=[], on_inferred="off")
+    assert time.perf_counter() - start < 60
+    got = sorted(report.run(con, unverified=True).to_pylist(), key=lambda r: r["x"])
+    want = sorted(expr.to_pyarrow().to_pylist(), key=lambda r: r["x"])
+    assert got == want
