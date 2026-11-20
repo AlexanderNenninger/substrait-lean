@@ -770,4 +770,129 @@ theorem Rel.bindFilter_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (
 
 end Eval
 
+
+/-! ## T1: the bound plan's raises (T1a, T1b)
+
+Under the reference, the bound filter raises exactly where the filter on
+D50's lift does: `Rel.bindFilter_raises`. A level raises only where its reach
+holds and its operand raises; the guards and running values are plain
+(`Expr.plain`) and raise nowhere. -/
+
+section Raises
+variable [Boxes.Ambient]
+
+/-- The outcome of entry `i` of a substitution. -/
+abbrev entryP (p : Profile) (σ : List Expr) (i : Nat) (row : Row) : Outcome :=
+  (σ.getD i (.lit .null)).evalP p row
+
+/-- Substituting entries with the same outcome gives the same outcome; and
+where an entry `t` reads eagerly raises, so does `t` with it substituted:
+where the outcomes differ, it is because such an entry raises. -/
+theorem Expr.evalP_subst_congr {p : Profile} :
+    ∀ (t : Expr) (row row' : Row) (σ σ' : List Expr),
+      (∀ i, t.reads i → entryP p σ i row = entryP p σ' i row' ∨
+          (t.eagerOnly i ∧ (entryP p σ i row).err?.isSome)) →
+      (t.subst σ).evalP p row = (t.subst σ').evalP p row' ∨
+        ((t.subst σ).evalP p row).err?.isSome ∧ ∃ i, t.reads i ∧ entryP p σ i row ≠ entryP p σ' i row'
+  | .lit _, _, _, _, _, _ => .inl rfl
+  | .field i, row, row', σ, σ', h => by
+    by_cases hq : entryP p σ i row = entryP p σ' i row'
+    · exact .inl hq
+    · rcases h i (by simp [Expr.reads]) with h | ⟨_, h⟩
+      · exact absurd h hq
+      · exact .inr ⟨h, i, by simp [Expr.reads], hq⟩
+  | .un f a, row, row', σ, σ', h => by
+    rcases Expr.evalP_subst_congr a row row' σ σ' h with h1 | ⟨h1, i, hi, hr⟩
+    · left; simp only [Expr.subst, Expr.evalP, h1]
+    · right; refine ⟨?_, i, hi, hr⟩
+      simp only [Expr.subst, Expr.evalP]
+      cases ha : (a.subst σ).evalP p row with
+      | error k => rfl
+      | ok v => simp [ha, Outcome.err?] at h1
+  | .bin f a b, row, row', σ, σ', h => by
+    have ha := Expr.evalP_subst_congr a row row' σ σ' (fun i hi => (h i (by simp [Expr.reads, hi])).imp id
+      fun ⟨he, hr⟩ => ⟨by simp only [Expr.eagerOnly, Bool.and_eq_true] at he; exact he.1, hr⟩)
+    have hb := Expr.evalP_subst_congr b row row' σ σ' (fun i hi => (h i (by simp [Expr.reads, hi])).imp id
+      fun ⟨he, hr⟩ => ⟨by simp only [Expr.eagerOnly, Bool.and_eq_true] at he; exact he.2, hr⟩)
+    rcases ha with ha | ⟨ha, i, hi, hr⟩
+    · rcases hb with hb | ⟨hb, i, hi, hr⟩
+      · left; simp only [Expr.subst, Expr.evalP, ha, hb]
+      · right; refine ⟨?_, i, by simp [Expr.reads, hi], hr⟩
+        simp only [Expr.subst, Expr.evalP]
+        cases hx : (a.subst σ).evalP p row with
+        | error k => rfl
+        | ok v =>
+          simp only [bind, Except.bind]
+          cases hy : (b.subst σ).evalP p row with
+          | error k => rfl
+          | ok y => simp [hy, Outcome.err?] at hb
+    · right; refine ⟨?_, i, by simp [Expr.reads, hi], hr⟩
+      simp only [Expr.subst, Expr.evalP]
+      cases hx : (a.subst σ).evalP p row with
+      | error k => rfl
+      | ok v => simp [hx, Outcome.err?] at ha
+  | .ifThen c t e, row, row', σ, σ', h => by
+    have hc := Expr.evalP_subst_congr c row row' σ σ' (fun i hi => (h i (by simp [Expr.reads, hi])).imp id
+      fun ⟨he, hr⟩ => ⟨by simp only [Expr.eagerOnly, Bool.and_eq_true] at he; exact he.1.1, hr⟩)
+    -- A branch reads only entries the `CASE` does not read eagerly: their outcomes agree.
+    have heq : ∀ i, (t.reads i ∨ e.reads i) → entryP p σ i row = entryP p σ' i row' := by
+      intro i hi
+      have hr : (Expr.ifThen c t e).reads i := by
+        simp only [Expr.reads, Bool.or_eq_true]; rcases hi with hi | hi
+        · exact .inl (.inr hi)
+        · exact .inr hi
+      rcases h i hr with h1 | ⟨he, _⟩
+      · exact h1
+      · rcases hi with hi | hi <;> simp [Expr.eagerOnly, hi] at he
+    have ht : (t.subst σ).evalP p row = (t.subst σ').evalP p row' := by
+      rcases Expr.evalP_subst_congr t row row' σ σ' (fun i hi => .inl (heq i (.inl hi))) with h1 | ⟨_, i, hi, hr⟩
+      · exact h1
+      · exact absurd (heq i (.inl hi)) hr
+    have he : (e.subst σ).evalP p row = (e.subst σ').evalP p row' := by
+      rcases Expr.evalP_subst_congr e row row' σ σ' (fun i hi => .inl (heq i (.inr hi))) with h1 | ⟨_, i, hi, hr⟩
+      · exact h1
+      · exact absurd (heq i (.inr hi)) hr
+    rcases hc with hc | ⟨hc, i, hi, hr⟩
+    · left; simp only [Expr.subst, Expr.evalP, hc, ht, he]
+    · right; refine ⟨?_, i, by simp [Expr.reads, hi], hr⟩
+      simp only [Expr.subst, Expr.evalP]
+      cases hx : (c.subst σ).evalP p row with
+      | error k => rfl
+      | ok v => simp [hx, Outcome.err?] at hc
+  | .hof f l b, row, row', σ, σ', h => by
+    have hl := Expr.evalP_subst_congr l row row' σ σ' (fun i hi => (h i (by simp [Expr.reads, hi])).imp id
+      fun ⟨he, hr⟩ => ⟨by simp only [Expr.eagerOnly, Bool.and_eq_true] at he; exact he.1, hr⟩)
+    -- The body reads only entries the lambda does not read eagerly: their outcomes agree.
+    have heq : ∀ i, b.reads (i + 1) → entryP p σ i row = entryP p σ' i row' := by
+      intro i hi
+      rcases h i (by simp [Expr.reads, hi]) with h1 | ⟨he, _⟩
+      · exact h1
+      · simp [Expr.eagerOnly, hi] at he
+    have hbody : ∀ x : Value, (b.subst (.field 0 :: σ.map (·.shift 0))).evalP p (x :: row) =
+        (b.subst (.field 0 :: σ'.map (·.shift 0))).evalP p (x :: row') := by
+      intro x
+      have hent : ∀ j, b.reads j → entryP p (.field 0 :: σ.map (·.shift 0)) j (x :: row) =
+          entryP p (.field 0 :: σ'.map (·.shift 0)) j (x :: row') := by
+        intro j hj
+        cases j with
+        | zero => rfl
+        | succ i =>
+          have h1 := heq i hj
+          simp only [entryP, List.getD_cons_succ, List.getD_eq_getElem?_getD, List.getElem?_map] at h1 ⊢
+          cases hσ : σ[i]? <;> cases hσ' : σ'[i]? <;>
+            simp_all [Expr.evalP_shift_cons, Expr.shift, Expr.evalP]
+      rcases Expr.evalP_subst_congr b (x :: row) (x :: row') _ _ (fun j hj => .inl (hent j hj)) with
+        k | ⟨_, j, hj, hr⟩
+      · exact k
+      · exact absurd (hent j hj) hr
+    rcases hl with hl | ⟨hl, i, hi, hr⟩
+    · left; simp only [Expr.subst, Expr.evalP, hl, hbody]
+    · right; refine ⟨?_, i, by simp [Expr.reads, hi], hr⟩
+      simp only [Expr.subst, Expr.evalP]
+      cases hx : (l.subst σ).evalP p row with
+      | error k => rfl
+      | ok v => simp [hx, Outcome.err?] at hl
+
+end Raises
+
 end Substrait
