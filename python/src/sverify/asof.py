@@ -1,7 +1,7 @@
 """ASOF joins, built from a join, a window and a filter.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 Ibis's `asof_join` compiles to DuckDB's syntax. `asof_join` here is a range
 join plus `ROW_NUMBER`, which every engine runs and the checker checks like
