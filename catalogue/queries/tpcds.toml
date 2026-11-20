@@ -160,11 +160,10 @@ ORDER BY lochierarchy DESC,
 LIMIT 100
 '''
 notes = "Ibis has no ROLLUP, so this is DataFusion SQL."
-# Not proved: a ROLLUP is a UNION ALL, which has no key, so the RANK over it counts as
-# nondeterministic and both postconditions are undetermined, although RANK does not
-# depend on how ties are broken (#471). The margin divides by SUM(ss_ext_sales_price),
-# which is 0 when every price is: `verify` proposes `ss_ext_sales_price >= 0.01`, which
-# TPC-DS data does not meet (it allows a price of 0).
+# The margin divides by SUM(ss_ext_sales_price), which is 0 when every price is: the
+# contract states `ss_ext_sales_price >= 0.01`, which TPC-DS data does not always meet (it
+# allows a price of 0). The RANK over the ROLLUP's UNION ALL does not depend on how ties are
+# broken (#471), and both postconditions are proved.
 requires = '''
 {
     'store_sales': ['ss_ext_sales_price BETWEEN 0.01 AND 30000'],
@@ -277,7 +276,7 @@ features = ["filter", "inner_join", "multi_join", "group_by", "sum", "window_ove
 pitfalls = ["division_by_zero: the ratio divides by the average, guarded by CASE WHEN avg <> 0 (see eager_evaluation)", "eager_evaluation: DataFusion may evaluate the division before the guard"]
 ibis = '''
 j = (
-    item.join(store_sales, store_sales.ss_item_sk == item.i_item_sk)
+    store_sales.join(item, store_sales.ss_item_sk == item.i_item_sk)
     .join(date_dim, store_sales.ss_sold_date_sk == date_dim.d_date_sk)
     .join(store, store_sales.ss_store_sk == store.s_store_sk)
     .filter(
@@ -306,10 +305,11 @@ q = (
     .limit(100)
 )
 '''
-# Not proved: the monthly sums, rescaled to compare with the average, may overflow their
-# decimal type, since no row cap bounds them (#470): TPC-DS gives approximate row counts
-# only, so no cap is stated. The division under `avg_monthly_sales != 0` is not seen as
-# guarded.
+# The caps are upper bounds above the specification's approximate row counts at scale
+# factor 100,000 (#470). `store_sales` is the left side of each join: the row cap follows a
+# join only through a key of its right side (`Rows.lean`), so the monthly sums stay bounded
+# and `sum_sales * 10000 - avg_monthly_sales` fits its decimal type. Prices start at 0.01, so
+# the average is positive and the division by it cannot divide by zero.
 requires = '''
 {
     'store_sales': [_.ss_sales_price.between(0.01, 300), sv.max_rows(10**12)],
@@ -349,8 +349,8 @@ q = rev.mutate(
 '''
 # The caps are upper bounds above the specification's approximate row counts at scale
 # factor 100,000 (about 2.9·10¹¹ store_sales, 502,000 items, 73,049 days), so
-# `itemrevenue * 100` stays within its decimal type (#470). Not proved: a class's revenue
-# may be 0 (TPC-DS allows a price of 0), so the ratio may divide by zero.
+# `itemrevenue * 100` stays within its decimal type (#470). A class's revenue is positive from
+# a price of 0.01 (TPC-DS allows a price of 0), so the ratio cannot divide by zero.
 requires = '''
 {
     'store_sales': [_.ss_ext_sales_price.between(0.01, 30000), sv.max_rows(10**12)],
