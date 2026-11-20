@@ -546,19 +546,166 @@ def unionKeys (ea eb : List AVal) (ka kb : List (List Nat)) : List (List Nat) :=
   | some c => (ka.flatMap fun k => kb.map fun k' => k ++ k' ++ [c]).take 16
   | none => []
 
+/-! ## Non-overlapping ranges (#814)
+
+`sv.non_overlapping(lo, hi, by=part)` on a table: every row has `lo` and,
+unless `hi` is NULL (an open end), `lo ≤ hi`; and two rows at different
+positions with the same `part` values (NULLs equal, as in `keyOf`) are apart:
+one's range `[lo, hi)` ends where or before the other's begins, a NULL `hi`
+satisfying neither side. The columns are numbers of one kind that `<` orders
+(integers, dates, timestamps, times, decimals). -/
+
+/-- The columns of a range condition. -/
+structure RangeCond where
+  /-- The columns the ranges are kept apart by. -/
+  part : List Nat
+  /-- The column the range starts at. -/
+  lo : Nat
+  /-- The column the range ends before. -/
+  hi : Nat
+  deriving DecidableEq
+
+/-- A value `<` orders as a number: not a double, string, boolean or list. -/
+def Value.IsOrd : Value → Prop
+  | .int _ | .date _ | .ts _ | .tod _ | .dec _ _ => True
+  | _ => False
+
+/-- `x`'s range ends where or before `y`'s begins: `x.hi ≤ y.lo`, both
+defined (the evaluator's `<` is FALSE, not NULL). -/
+def RangeCond.Before (c : RangeCond) (x y : Row) : Prop :=
+  BinFn.apply .lt (y.getD c.lo .null) (x.getD c.hi .null) = .bool false
+
+/-- The rows satisfy the range condition. -/
+def RangeOn (c : RangeCond) (rows : Relation) : Prop :=
+  (∀ x ∈ rows, (x.getD c.lo .null).IsOrd ∧ (x.getD c.hi .null = .null ∨
+      ((x.getD c.hi .null).IsOrd ∧
+        BinFn.apply .lt (x.getD c.hi .null) (x.getD c.lo .null) = .bool false))) ∧
+  rows.Pairwise fun x y => keyOf c.part x = keyOf c.part y → c.Before x y ∨ c.Before y x
+
 /-- What a plan assumes of each input table beyond its schema and facts: the
-conditions of `requires` that state something about pairs of rows. Today the
-keys, the column sets on which no two rows agree (`sv.unique`, `sv.key`). One
-structure, so that a new kind of condition is one field and not a parameter of
-every analysis. -/
+conditions of `requires` that state something about pairs of rows. The keys,
+the column sets on which no two rows agree (`sv.unique`, `sv.key`), and the
+non-overlapping ranges (`sv.non_overlapping`). One structure, so that a new
+kind of condition is one field and not a parameter of every analysis. -/
 structure TableCond where
   /-- The column sets of table `t` that are keys. -/
   keys : String → List (List Nat)
+  /-- The range conditions of table `t`. -/
+  ranges : String → List RangeCond := fun _ => []
 
 /-- The tables of `cat` satisfy the conditions `K`: the one hypothesis the
-key-reading analyses take. -/
-def TableCond.Hold (K : TableCond) (cat : Catalog) : Prop :=
-  ∀ t, ∀ k ∈ K.keys t, KeyOn k (cat t).rows
+analyses take. -/
+structure TableCond.Hold (K : TableCond) (cat : Catalog) : Prop where
+  keys : ∀ t, ∀ k ∈ K.keys t, KeyOn k (cat t).rows
+  ranges : ∀ t, ∀ c ∈ K.ranges t, RangeOn c (cat t).rows
+
+theorem RangeOn.perm {c : RangeCond} {rows rows' : Relation} (h : RangeOn c rows)
+    (hp : rows'.Perm rows) : RangeOn c rows' :=
+  ⟨fun x hx => h.1 x (hp.subset hx),
+    h.2.perm hp.symm fun {_ _} hxy hk => (hxy hk.symm).symm⟩
+
+theorem RangeOn.sublist {c : RangeCond} {rows rows' : Relation} (h : RangeOn c rows)
+    (hs : rows'.Sublist rows) : RangeOn c rows' :=
+  ⟨fun x hx => h.1 x (hs.subset hx), h.2.sublist hs⟩
+
+/-- A range condition after `Emit m`, where its columns are all kept. -/
+def RangeCond.emit (m : List Nat) (c : RangeCond) : Option RangeCond := do
+  let part ← emitKey m c.part
+  let lo ← (positions m c.lo).head?
+  let hi ← (positions m c.hi).head?
+  return ⟨part, lo, hi⟩
+
+theorem RangeOn.emit {m : List Nat} {c c' : RangeCond} {rows : Relation} (h : RangeOn c rows)
+    (he : c.emit m = some c') : RangeOn c' (rows.map fun row => m.map (row.getD · .null)) := by
+  simp only [RangeCond.emit, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+    Option.some.injEq] at he
+  obtain ⟨part, hpart, lo, hlo, hi, hhi, rfl⟩ := he
+  have hlo' : ∀ row : Row, (m.map (row.getD · .null)).getD lo .null = row.getD c.lo .null :=
+    fun row => positions_getD (List.mem_of_mem_head? hlo)
+  have hhi' : ∀ row : Row, (m.map (row.getD · .null)).getD hi .null = row.getD c.hi .null :=
+    fun row => positions_getD (List.mem_of_mem_head? hhi)
+  refine ⟨fun x hx => ?_, ?_⟩
+  · obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hx
+    dsimp only
+    rw [hlo', hhi']
+    exact h.1 r hr
+  · rw [List.pairwise_map]
+    refine h.2.imp fun {x y} hxy hk => ?_
+    dsimp only [RangeCond.Before] at hxy hk ⊢
+    rw [hlo', hhi', hlo', hhi']
+    exact hxy (by rwa [emitKey_keyOf hpart, emitKey_keyOf hpart] at hk)
+
+theorem RangeOn.append {c : RangeCond} {rows : Relation} (h : RangeOn c rows) {f : Row → Row}
+    (hf : ∀ x ∈ rows, ∃ e, f x = x ++ e) (hc : ∀ x ∈ rows, ∀ i ∈ c.lo :: c.hi :: c.part, i < x.length) :
+    RangeOn c (rows.map f) := by
+  have key : ∀ x ∈ rows, ∀ i, i < x.length → (f x).getD i .null = x.getD i .null := by
+    intro x hx i hi
+    obtain ⟨e, he⟩ := hf x hx
+    rw [he, getD_append_left' hi]
+  refine ⟨fun x hx => ?_, ?_⟩
+  · obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hx
+    rw [key r hr _ (hc r hr c.lo (by simp)), key r hr _ (hc r hr c.hi (by simp))]
+    exact h.1 r hr
+  · rw [List.pairwise_map]
+    refine h.2.imp_of_mem fun {x y} hx hy hxy hk => ?_
+    have kk : ∀ z ∈ rows, keyOf c.part (f z) = keyOf c.part z := fun z hz => by
+      simp only [keyOf, List.map_inj_left]
+      exact fun i hi => by rw [key z hz _ (hc z hz i (by simp [hi]))]
+    simp only [RangeCond.Before, key x hx _ (hc x hx c.lo (by simp)), key x hx _ (hc x hx c.hi (by simp)),
+      key y hy _ (hc y hy c.lo (by simp)), key y hy _ (hc y hy c.hi (by simp))]
+    exact hxy (by rwa [kk x hx, kk y hy] at hk)
+
+/-- The range conditions of a plan's output, as far as they are derived: a
+table's own, kept by a filter, a sort and a projection (which keeps its
+input's columns in place), and by an `Emit` that keeps their columns. -/
+def Rel.ranges (cat : Catalog) (K : TableCond) : Rel → List RangeCond
+  | .read t => K.ranges t
+  | .filter r _ | .orderBy r _ => r.ranges cat K
+  | .project r _ =>
+      (r.ranges cat K).filter fun c => (c.lo :: c.hi :: c.part).all (· < r.arity cat)
+  | .emit r m => (r.ranges cat K).filterMap (RangeCond.emit m)
+  | _ => []
+
+/-- `NOT x < col j` over left columns `x` (below `n`): `col j ≤ x`, as the
+frontends write `x >= col`. -/
+def lowerBound? (n : Nat) : Expr → Option (Nat × Expr)
+  | .un .not (.bin .lt x (.field j)) => if x.refsLtB n then some (j, x) else none
+  | _ => none
+
+omit [Boxes.Ambient] in
+theorem lowerBound?_spec {n j : Nat} {x e : Expr} (h : lowerBound? n e = some (j, x)) :
+    e = .un .not (.bin .lt x (.field j)) ∧ x.refsLt n := by
+  unfold lowerBound? at h
+  split at h
+  · rename_i x' j'
+    split at h
+    · rename_i hx
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨rfl, Expr.refsLtB_iff.mp hx⟩
+    · simp at h
+  · simp at h
+
+/-- Does the join condition `on` (over `n` left columns and the right's)
+keep each left row's partners among the ranges of `c` to one? It has a
+conjunct `lo ≤ x` (as `NOT x < lo`) and a conjunct `x < hi`, or `hi IS NULL OR
+x < hi`, for the same expression `x` of the left columns, and it determines the
+`part` columns from the left. Closed ends (`x ≤ hi`) have no rule. -/
+def rangeJoin (on : Expr) (n : Nat) (c : RangeCond) : Bool :=
+  determines on n c.part &&
+  on.conjuncts.any fun e₁ => match lowerBound? n e₁ with
+    | some (j, x) =>
+        j == n + c.lo &&
+        on.conjuncts.any fun e₂ =>
+          e₂ == .bin .lt x (.field (n + c.hi)) ||
+          e₂ == .bin .or (.un .isNull (.field (n + c.hi))) (.bin .lt x (.field (n + c.hi)))
+    | none => false
+
+/-- The keys a join on a range keeps: a left row has at most one partner, so
+every key of the left side is a key of the join. -/
+def rangedKeys (rs : List RangeCond) (on : Expr) (n : Nat) (ka : List (List Nat)) :
+    List (List Nat) :=
+  if rs.any (rangeJoin on n) then ka.filter (·.all (· < n)) else []
 
 def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : TableCond) : Rel → List (List Nat)
@@ -577,7 +724,8 @@ def Rel.keys (cat : Catalog) (A : String → List AVal) (F : String → List Fac
   | .emit r m => (r.keys cat A F K).filterMap (emitKey m)
   | .cross a b => crossKeys (a.arity cat) (a.keys cat A F K) (b.keys cat A F K)
   | .join a b ty on =>
-      joinEqKeys ty on (joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K))
+      joinEqKeys ty on (joinKeys (a.arity cat) on (a.keys cat A F K) (b.keys cat A F K)) ++
+        rangedKeys (b.ranges cat K) on (a.arity cat) (a.keys cat A F K)
   | .fetch r _ cnt => (if cnt.any (· ≤ 1) then [[]] else []) ++ r.keys cat A F K
   | .unionAll a b =>
       unionKeys (a.aeval cat A F .none) (b.aeval cat A F .none) (a.keys cat A F K) (b.keys cat A F K)
@@ -601,7 +749,7 @@ bottom-up pass; `Rel.laneK_eq` proves it computes `Rel.keys`, and the
 `@[csimp]` lemma makes compiled code use it. -/
 
 /-- One node's keys from its inputs' lanes and keys. -/
-def Rel.keysStep (K : TableCond) :
+def Rel.keysStep (cat : Catalog) (K : TableCond) :
     Rel → Rel.Lane → Rel.Lane → List (List Nat) → List (List Nat) → List (List Nat)
   | .read t, _, _, _, _ => K.keys t
   | .values _ rows, _, _, _, _ => if rows.length ≤ 1 then [[]] else []
@@ -612,7 +760,8 @@ def Rel.keysStep (K : TableCond) :
         (variants fun i => copyCols l.arity es i ++ linCols l.arity es l.env i)
   | .emit _ m, _, _, ka, _ => ka.filterMap (emitKey m)
   | .cross _ _, la, _, ka, kb => crossKeys la.arity ka kb
-  | .join _ _ ty on, la, _, ka, kb => joinEqKeys ty on (joinKeys la.arity on ka kb)
+  | .join _ b ty on, la, _, ka, kb =>
+      joinEqKeys ty on (joinKeys la.arity on ka kb) ++ rangedKeys (b.ranges cat K) on la.arity ka
   | .fetch _ _ cnt, _, _, ka, _ => (if cnt.any (· ≤ 1) then [[]] else []) ++ ka
   | .unionAll _ _, la, lb, ka, kb => unionKeys la.env lb.env ka kb
   | .window _ part _ fns, l, _, ka, _ =>
@@ -628,13 +777,13 @@ def Rel.laneK (cat : Catalog) (A : String → List AVal) (F : String → List Fa
   | r@(.filter a _) | r@(.project a _) | r@(.emit a _) | r@(.fetch a _ _) | r@(.window a _ _ _)
   | r@(.semi a _ _ _) | r@(.orderBy a _) | r@(.distinct a) | r@(.aggregate a _ _) | r@(.unnest a _) =>
       let p := a.laneK cat A F K
-      (r.laneStep cat A F .none false p.1 default, r.keysStep K p.1 default p.2 [])
+      (r.laneStep cat A F .none false p.1 default, r.keysStep cat K p.1 default p.2 [])
   | r@(.cross a b) | r@(.join a b _ _) | r@(.unionAll a b) =>
       let p := a.laneK cat A F K
       let q := b.laneK cat A F K
-      (r.laneStep cat A F .none false p.1 q.1, r.keysStep K p.1 q.1 p.2 q.2)
+      (r.laneStep cat A F .none false p.1 q.1, r.keysStep cat K p.1 q.1 p.2 q.2)
   | r@(.read _) | r@(.values _ _) =>
-      (r.laneStep cat A F .none false default default, r.keysStep K default default [] [])
+      (r.laneStep cat A F .none false default default, r.keysStep cat K default default [] [])
 
 /-- **The pass computes the lane and `Rel.keys`.** -/
 theorem Rel.laneK_eq (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
@@ -887,6 +1036,159 @@ theorem KeyOn.of_subset {k : List Nat} {rows l : Relation} (h : KeyOn k rows)
   (List.nodup_iff_pairwise_ne.mp hl).imp_of_mem fun hx hy hne heq =>
     hne (h.eq_of_keyOf (hsub _ hx) (hsub _ hy) heq)
 
+omit [Boxes.Ambient] in
+theorem length_le_one_of_pairwise_false {α : Type} :
+    ∀ {l : List α}, l.Pairwise (fun _ _ => False) → l.length ≤ 1
+  | [], _ | [_], _ => by simp
+  | _ :: b :: _, h => ((List.pairwise_cons.1 h).1 b (List.mem_cons_self ..)).elim
+
+omit [Boxes.Ambient] in
+theorem pairwise_of_length_le_one {α : Type} {l : List α} (R : α → α → Prop)
+    (h : l.length ≤ 1) : l.Pairwise R := by
+  rcases l with _ | ⟨a, _ | ⟨b, t⟩⟩
+  · exact List.Pairwise.nil
+  · exact List.pairwise_singleton _ _
+  · simp at h
+
+omit [Boxes.Ambient] in
+/-- A key of the rows `A` stays a key of what each of them expands to, when
+each expands to at most one row that keeps the key's columns. -/
+theorem flatMap_key_le_one {A : Relation} {ka : List Nat} {f : Row → Relation}
+    (hkA : KeyOn ka A) (hpre : ∀ x ∈ A, ∀ r ∈ f x, keyOf ka r = keyOf ka x)
+    (hlen : ∀ x ∈ A, (f x).length ≤ 1) : KeyOn ka (A.flatMap f) := by
+  have := flatMap_key (kR := []) hkA hpre fun x hx => pairwise_of_length_le_one _ (hlen x hx)
+  simpa using this
+
+omit [Boxes.Ambient] in
+/-- What `rangeJoin` finds in the condition. -/
+theorem rangeJoin_spec {on : Expr} {n : Nat} {c : RangeCond} (h : rangeJoin on n c = true) :
+    determines on n c.part = true ∧ ∃ x : Expr, x.refsLt n ∧
+      Expr.un .not (.bin .lt x (.field (n + c.lo))) ∈ on.conjuncts ∧
+      (Expr.bin .lt x (.field (n + c.hi)) ∈ on.conjuncts ∨
+        Expr.bin .or (.un .isNull (.field (n + c.hi))) (.bin .lt x (.field (n + c.hi))) ∈
+          on.conjuncts) := by
+  simp only [rangeJoin, Bool.and_eq_true, List.any_eq_true] at h
+  obtain ⟨hd, e₁, he₁, h1⟩ := h
+  refine ⟨hd, ?_⟩
+  cases hl : lowerBound? n e₁ with
+  | none => simp [hl] at h1
+  | some jx =>
+    obtain ⟨j, x⟩ := jx
+    obtain ⟨he, hx⟩ := lowerBound?_spec hl
+    simp only [hl, Bool.and_eq_true, beq_iff_eq, List.any_eq_true, Bool.or_eq_true] at h1
+    obtain ⟨hj, e₂, he₂, h2⟩ := h1
+    subst hj
+    subst he
+    refine ⟨x, hx, he₁, ?_⟩
+    rcases h2 with h2 | h2
+    · exact .inl (h2 ▸ he₂)
+    · exact .inr (h2 ▸ he₂)
+
+theorem lt_chain_dec (s₁ s₂ s₃ : Nat) (u₁ u₂ u₃ : Int)
+    (A : BinFn.apply .lt (.dec s₃ u₃) (.dec s₁ u₁) = .bool false)
+    (B : BinFn.apply .lt (.dec s₃ u₃) (.dec s₂ u₂) = .bool true)
+    (C : BinFn.apply .lt (.dec s₁ u₁) (.dec s₂ u₂) = .bool false) : False := by
+  simp only [BinFn.apply, Value.numPair] at A B C
+  by_cases h13 : s₃ = s₁ <;> by_cases h23 : s₃ = s₂ <;> by_cases h12 : s₁ = s₂ <;>
+    simp_all <;> omega
+
+/-- The ordered numbers `<` compares through their integers cannot make `x < hi`, `lo ≤ x` and
+`hi ≤ lo` all hold. -/
+theorem lt_chain_false {px lo hi : Value} (hlo : lo.IsOrd) (hhi : hi.IsOrd)
+    (A : BinFn.apply .lt px lo = .bool false) (B : BinFn.apply .lt px hi = .bool true)
+    (C : BinFn.apply .lt lo hi = .bool false) : False := by
+  cases lo <;> cases hi <;> cases px <;>
+    first
+    | exact lt_chain_dec _ _ _ _ _ _ A B C
+    | simp_all [Value.IsOrd, BinFn.apply, Value.numPair, decide_eq_false_iff_not, Int.not_lt] <;>
+        omega
+
+theorem range_lt_null (a : Value) : BinFn.apply .lt a .null = .null := by
+  cases a <;> rfl
+
+theorem eq_false_of_not_isTrue {v : Value} (h : (UnFn.apply .not v).isTrue = true) : v = .bool false := by
+  cases v <;> simp_all [UnFn.apply, Value.isTrue]
+  rename_i b; cases b <;> simp_all
+
+omit [Boxes.Ambient] in
+theorem eq_true_of_isTrue {v : Value} (h : v.isTrue = true) : v = .bool true := by
+  cases v <;> simp_all [Value.isTrue]
+  rename_i b; cases b <;> simp_all
+
+theorem eq_null_of_isNull {v : Value} (h : (UnFn.apply .isNull v).isTrue = true) : v = .null := by
+  cases v <;> simp_all [UnFn.apply, Value.isTrue]
+
+/-- **A left row has at most one partner among rows kept apart by a range.** -/
+theorem partners_le_one_range {B : Relation} {n : Nat} {on : Expr} {c : RangeCond} {x : Row}
+    (hx : x.length = n) (hB : RangeOn c B) (hj : rangeJoin on n c = true) :
+    ((B.map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 := by
+  subst hx
+  obtain ⟨hd, p, hp, h1, h2⟩ := rangeJoin_spec hj
+  apply length_le_one_of_pairwise_false
+  rw [List.pairwise_filter, List.pairwise_map]
+  refine hB.2.imp_of_mem fun {y y'} hy hy' hpair ht ht' => ?_
+  have hk := determines_sound hd rfl ht ht'
+  -- What a true condition says of a partner `z`: `lo ≤ p` and `p < hi`.
+  have lo_le : ∀ z, (on.eval (x ++ z)).isTrue = true →
+      BinFn.apply .lt (p.eval x) (z.getD c.lo .null) = .bool false := by
+    intro z ht
+    have h := Expr.conjuncts_sound _ ht _ h1
+    simp only [Expr.eval] at h
+    have := eq_false_of_not_isTrue h
+    rwa [Expr.eval_append z hp rfl, getD_append_right' ..] at this
+  have lt_hi : ∀ z, (on.eval (x ++ z)).isTrue = true → z.getD c.hi .null ≠ .null →
+      BinFn.apply .lt (p.eval x) (z.getD c.hi .null) = .bool true := by
+    intro z ht hn
+    rcases h2 with h2 | h2
+    · have h := Expr.conjuncts_sound _ ht _ h2
+      simp only [Expr.eval] at h
+      have := eq_true_of_isTrue h
+      rwa [Expr.eval_append z hp rfl, getD_append_right' ..] at this
+    · have h := Expr.conjuncts_sound _ ht _ h2
+      simp only [Expr.eval, BinFn.apply, isTrue_or3] at h
+      rcases Bool.or_eq_true_iff.mp h with h | h
+      · exact absurd (by rw [getD_append_right' ..] at h; exact eq_null_of_isNull h) hn
+      · have := eq_true_of_isTrue h
+        rwa [Expr.eval_append z hp rfl, getD_append_right' ..] at this
+  have key : ∀ u v, u ∈ B → v ∈ B → (on.eval (x ++ u)).isTrue = true →
+      (on.eval (x ++ v)).isTrue = true → c.Before u v → False := by
+    intro u v hu hv htu htv hb
+    have hn : u.getD c.hi .null ≠ .null := fun h => by
+      simp only [RangeCond.Before, h, range_lt_null] at hb
+      cases hb
+    obtain ⟨hlo, _⟩ := hB.1 v hv
+    obtain ⟨_, hhi⟩ := (hB.1 u hu)
+    rcases hhi with h | ⟨hhi, _⟩
+    · exact hn h
+    · exact lt_chain_false hlo hhi (lo_le v htv) (lt_hi u htu hn) hb
+  rcases hpair hk with hb | hb
+  · exact key y y' hy hy' ht ht' hb
+  · exact key y' y hy' hy ht' ht hb
+
+/-- **Derived range conditions hold on every order.** -/
+theorem Rel.ranges_sound_all {cat : Catalog} (hcat : cat.WF) {K : TableCond} (hK : K.Hold cat) :
+    ∀ {r : Rel}, r.WF cat → ∀ c ∈ r.ranges cat K, ∀ {out : Relation},
+      r.OrderAllowed cat out → RangeOn c out
+  | .read t, _, c, hc, _, h => (hK.ranges t c hc).perm h
+  | .filter r _, hwf, c, hc, _, ⟨i, hi, rfl⟩ =>
+      (Rel.ranges_sound_all hcat hK hwf.1 c hc hi).sublist List.filter_sublist
+  | .orderBy r _, hwf, c, hc, _, ⟨i, hi, h, _⟩ =>
+      (Rel.ranges_sound_all hcat hK hwf.1 c hc hi).perm h
+  | .project r es, hwf, c, hc, _, ⟨i, hi, rfl⟩ => by
+      simp only [Rel.ranges, List.mem_filter, List.all_eq_true, decide_eq_true_eq] at hc
+      obtain ⟨hc, hr⟩ := hc
+      exact (Rel.ranges_sound_all hcat hK hwf.1 c hc hi).append
+        (f := fun row => row ++ es.map (·.eval row)) (fun x _ => ⟨_, rfl⟩)
+        (fun x hx j hj => (orderAllowed_arity hcat hwf.1 hi x hx) ▸ hr j hj)
+  | .emit r m, hwf, c, hc, _, ⟨i, hi, rfl⟩ => by
+      simp only [Rel.ranges, List.mem_filterMap] at hc
+      obtain ⟨c₀, hc₀, he⟩ := hc
+      exact (Rel.ranges_sound_all hcat hK hwf.1 c₀ hc₀ hi).emit he
+  | .values .., _, c, hc, _, _ | .cross .., _, c, hc, _, _ | .join .., _, c, hc, _, _
+  | .fetch .., _, c, hc, _, _ | .unionAll .., _, c, hc, _, _ | .window .., _, c, hc, _, _
+  | .semi .., _, c, hc, _, _ | .distinct .., _, c, hc, _, _ | .aggregate .., _, c, hc, _, _
+  | .unnest .., _, c, hc, _, _ => by simp [Rel.ranges] at hc
+
 /-- **Derived keys hold on every order.** -/
 theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
@@ -895,7 +1197,7 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
     (hK : K.Hold cat) :
     ∀ {r : Rel}, r.WF cat → ∀ k ∈ r.keys cat A F K, ∀ {out : Relation}, r.OrderAllowed cat out →
       KeyOn k out
-  | .read t, _, k, hk, _, h => (hK t k hk).perm h.symm fun h => Ne.symm h
+  | .read t, _, k, hk, _, h => (hK.keys t k hk).perm h.symm fun h => Ne.symm h
   | .values _ rows, _, k, hk, _, h => by
       simp only [Rel.keys] at hk
       split at hk
@@ -950,7 +1252,28 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
         (keys_sound_all hcat hA hF hK hwf.1 ka hka hx)
         (keys_sound_all hcat hA hF hK hwf.2 kb hkb hy)).perm h.symm fun h => Ne.symm h
   | .join a b .inner on, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
-      simp only [Rel.keys, joinEqKeys, mem_dedup, List.mem_flatMap] at hk
+      simp only [Rel.keys, List.mem_append] at hk
+      rcases hk with hk | hk
+      case inr =>
+        unfold rangedKeys at hk
+        split at hk
+        · rename_i hr
+          simp only [List.mem_filter, List.all_eq_true, decide_eq_true_eq] at hk
+          obtain ⟨hka, hkr⟩ := hk
+          obtain ⟨c, hc, hj⟩ := List.any_eq_true.1 hr
+          have hB := Rel.ranges_sound_all hcat hK hwf.2.1 c hc hy
+          have hA' := orderAllowed_arity hcat hwf.1 hx
+          refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
+          show KeyOn _ _
+          simp only [crossRows, List.filter_flatMap]
+          exact flatMap_key_le_one (keys_sound_all hcat hA hF hK hwf.1 k hka hx)
+            (fun u hu r hr => by
+              simp only [List.mem_filter, List.mem_map] at hr
+              obtain ⟨⟨v, _, rfl⟩, _⟩ := hr
+              exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc)
+            (fun u hu => partners_le_one_range (hA' u hu) hB hj)
+        · simp at hk
+      simp only [joinEqKeys, mem_dedup, List.mem_flatMap] at hk
       obtain ⟨k₁, hk₁, hv⟩ := hk
       refine KeyOn.eqVariants ?_ (fun u hu => by
         have := h.subset hu
@@ -969,7 +1292,36 @@ theorem Rel.keys_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → List 
           exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc)
         (fun u hu => match_block (hA' u hu) (keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy))
   | .join a b .left on, hwf, k, hk, _, ⟨x, y, hx, hy, h⟩ => by
-      simp only [Rel.keys, joinEqKeys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
+      simp only [Rel.keys, List.mem_append] at hk
+      rcases hk with hk | hk
+      case inr =>
+        unfold rangedKeys at hk
+        split at hk
+        · rename_i hr
+          simp only [List.mem_filter, List.all_eq_true, decide_eq_true_eq] at hk
+          obtain ⟨hka, hkr⟩ := hk
+          obtain ⟨c, hc, hj⟩ := List.any_eq_true.1 hr
+          have hB := Rel.ranges_sound_all hcat hK hwf.2.1 c hc hy
+          have hA' := orderAllowed_arity hcat hwf.1 hx
+          refine List.Pairwise.perm ?_ h.symm fun h => Ne.symm h
+          show KeyOn _ _
+          refine flatMap_key_le_one (keys_sound_all hcat hA hF hK hwf.1 k hka hx)
+            (fun u hu r hr => ?_) (fun u hu => ?_)
+          · unfold leftJoinRow at hr
+            simp only [] at hr
+            split at hr
+            · simp only [List.mem_singleton] at hr; subst hr
+              exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc
+            · simp only [List.mem_filter, List.mem_map] at hr
+              obtain ⟨⟨v, _, rfl⟩, _⟩ := hr
+              exact keyOf_append_left fun c hc => hA' u hu ▸ hkr c hc
+          · unfold leftJoinRow
+            simp only []
+            split
+            · simp
+            · exact partners_le_one_range (hA' u hu) hB hj
+        · simp at hk
+      simp only [joinEqKeys, joinKeys, List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq, List.mem_map] at hk
       obtain ⟨ka, ⟨hka, hkr⟩, kb, hkb, rfl⟩ := hk
       have hA' := orderAllowed_arity hcat hwf.1 hx
@@ -1114,12 +1466,6 @@ theorem length_flatMap_le {α β : Type} {f : α → List β} {k : Nat} :
     simp only [List.flatMap_cons, List.length_append, List.length_cons, Nat.succ_mul]
     omega
 
-omit [Boxes.Ambient] in
-theorem length_le_one_of_pairwise_false {α : Type} :
-    ∀ {l : List α}, l.Pairwise (fun _ _ => False) → l.length ≤ 1
-  | [], _ | [_], _ => by simp
-  | _ :: b :: _, h => ((List.pairwise_cons.1 h).1 b (List.mem_cons_self ..)).elim
-
 /-- On a key of the right side that the condition determines, a left row has
 at most one partner. -/
 theorem partners_le_one {B : Relation} {n : Nat} {on : Expr} {kb : List Nat} {x : Row}
@@ -1129,10 +1475,47 @@ theorem partners_le_one {B : Relation} {n : Nat} {on : Expr} {kb : List Nat} {x 
   rw [List.pairwise_filter, List.pairwise_map]
   exact hkB.imp fun hne ht ht' => hne (determines_sound hd hx ht ht')
 
-/-- Does the join condition determine a key of the right side? -/
+/-- Does the join give each left row at most one partner: does the condition
+determine a key of the right side, or pick the one range of the right side's
+rows that holds a left expression (`rangeJoin`)? -/
 def Rel.keyedJoin (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : TableCond) (a b : Rel) (on : Expr) : Bool :=
-  (b.keys cat A F K).any (determines on (a.arity cat))
+  (b.keys cat A F K).any (determines on (a.arity cat)) ||
+    (b.ranges cat K).any (rangeJoin on (a.arity cat))
+
+/-- **A single-match join**: each left row has at most one partner. -/
+theorem Rel.keyedJoin_partners {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {a b : Rel} {on : Expr} (ha : a.WF cat) (hb : b.WF cat)
+    (hkey : Rel.keyedJoin cat A F K a b on = true) :
+    ∀ x ∈ a.eval cat,
+      (((b.eval cat).map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 := by
+  intro x hx
+  rcases Bool.or_eq_true_iff.1 hkey with hk | hr
+  · obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hk
+    exact partners_le_one (Rel.eval_arity hcat ha x hx)
+      (Rel.keys_sound hcat hA hF hK hb kb hkb) hd
+  · obtain ⟨c, hc, hj⟩ := List.any_eq_true.1 hr
+    exact partners_le_one_range (Rel.eval_arity hcat ha x hx)
+      (Rel.ranges_sound_all hcat hK hb c hc (Rel.eval_orderAllowed cat b)) hj
+
+/-- **A single-match join, on any order of the right side**: a left row of the
+left's arity has at most one partner in any order of `b`. -/
+theorem Rel.keyedJoin_partners_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {a b : Rel} {on : Expr} (hb : b.WF cat)
+    (hkey : Rel.keyedJoin cat A F K a b on = true) {y : Relation}
+    (hy : b.OrderAllowed cat y) {r : Row} (hr : r.length = a.arity cat) :
+    ((y.map (r ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 := by
+  rcases Bool.or_eq_true_iff.1 hkey with hk | hrg
+  · obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hk
+    exact partners_le_one hr (Rel.keys_sound_all hcat hA hF hK hb kb hkb hy) hd
+  · obtain ⟨c, hc, hj⟩ := List.any_eq_true.1 hrg
+    exact partners_le_one_range hr (Rel.ranges_sound_all hcat hK hb c hc hy) hj
 
 /-- **A join on a key does not fan out**: inner or left, it has at most as
 many rows as its left side. -/
@@ -1143,11 +1526,7 @@ theorem Rel.join_length_le_of_keyed {cat : Catalog} (hcat : cat.WF) {A : String 
     (hK : K.Hold cat) {a b : Rel} {ty : JoinType} {on : Expr}
     (hwf : (Rel.join a b ty on).WF cat) (hkey : Rel.keyedJoin cat A F K a b on = true) :
     ((Rel.join a b ty on).eval cat).length ≤ (a.eval cat).length := by
-  obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hkey
-  have hkB := Rel.keys_sound hcat hA hF hK hwf.2.1 kb hkb
-  have hp : ∀ x ∈ a.eval cat,
-      (((b.eval cat).map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 :=
-    fun x hx => partners_le_one (Rel.eval_arity hcat hwf.1 x hx) hkB hd
+  have hp := Rel.keyedJoin_partners hcat hA hF hK hwf.1 hwf.2.1 hkey
   refine Nat.le_trans ?_ (Nat.le_of_eq (Nat.mul_one _))
   cases ty with
   | inner =>

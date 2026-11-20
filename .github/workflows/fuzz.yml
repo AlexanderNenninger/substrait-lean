@@ -6,8 +6,11 @@ name: Fuzz
 # which PR CI never uses. Each matrix job is one batch of `SECONDS` with its
 # own seed, so a spot reclaim loses one batch. `report` folds the batches
 # into the ledger (the `fuzz-ledger` artifact, carried from night to night)
-# and writes the night's findings, new signatures first, to its summary for
-# triage. Nothing is filed anywhere.
+# and writes the night's findings to its summary for triage: first those
+# without an explanation in python/tools/sverify_dev/fuzz_explained.json (an
+# open issue, an engine fact or an upstream record, #747), each also a
+# warning, then the new ones. The run reports and never fails on them, and
+# nothing is filed anywhere.
 #
 # Pause: set the repository variable FUZZ_PAUSED to `true` (or
 # `gh workflow disable fuzz.yml`). Snowflake stays out of this run.
@@ -57,8 +60,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      # Under the pool's 4: a finished job's runner counts until it is gone,
-      # and the scale-up drops a job that finds the pool full (no retry).
+      # Under the pool's 4: a finished job's runner counts until it is gone.
       max-parallel: 3
       matrix:
         suite:
@@ -112,6 +114,7 @@ jobs:
     permissions:
       contents: read
       actions: read # the previous night's ledger
+      issues: read # the open issues the explanations name
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,7 +137,10 @@ jobs:
               break
             fi
           done
-          python3 python/tools/sverify_dev/fuzz_nightly.py merge \
+          # A rule in fuzz_explained.json that names a closed issue explains
+          # nothing (#747): the open issues, for the report's warnings.
+          gh issue list -R "$REPO" --state open -L 5000 --json number -q '[.[].number]' > open-issues.json
+          python3 python/tools/sverify_dev/fuzz_nightly.py merge --open-issues open-issues.json \
             --ledger fuzz-ledger.json --report fuzz-report.md batches
           cat fuzz-report.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -3,6 +3,7 @@ import Sverify.Analysis.Keys
 import Sverify.Core.Functions
 import Sverify.Core.Options
 import Sverify.Core.Kinds
+import Sverify.Frontend.Guard
 
 /-!
 # Parsing Substrait JSON plans
@@ -1422,6 +1423,10 @@ def mkCoreCall? : String → List Expr → Option (J Expr)
   -- `and` / `or` are variadic in Substrait.
   | "and", a :: as => some <| pure (as.foldl (.bin .and) a)
   | "or", a :: as => some <| pure (as.foldl (.bin .or) a)
+  -- The frontends' `AND` and `OR` as guards (D50): each operand runs only where
+  -- the earlier ones do not decide the result (`Expr.andLift`, `Guard.lean`).
+  | "sverify_and", ps@(_ :: _ :: _) => some <| pure (Expr.andLift ps)
+  | "sverify_or", ps@(_ :: _ :: _) => some <| pure (Expr.orLift ps)
   -- Null handling and `GREATEST`/`LEAST`, as conditionals. These duplicate
   -- their arguments, which is harmless: expressions have no side effects.
   -- Eager: every argument is evaluated on every row.
@@ -2796,7 +2801,7 @@ def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
   let cat : Catalog := fun t => match tables.lookup t with
     | some (n, _) => ⟨n, []⟩
     | none => ⟨0, []⟩
-  (r.keys cat (fun _ => []) (fun _ => []) ⟨fun _ => []⟩).contains []
+  (r.keys cat (fun _ => []) (fun _ => []) { keys := fun _ => [] }).contains []
 
 /-- `inp` with one more column: the value of the subquery `sq` on each row.
 
