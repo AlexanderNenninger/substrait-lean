@@ -5,6 +5,7 @@ import datetime as dt
 import json
 
 import ibis
+import pyarrow.compute as pc
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -13,6 +14,18 @@ from ibis import _
 import sverify as sv
 from sverify.engine import connect, substrait_json
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
+
+
+def pairs(left, right, by) -> int:
+    """The pairs of rows an as-of join compares: each left row with every right
+    row of its `by` group (rows with a NULL `by` value never match), counted on
+    Arrow tables: the rule `AsofSite.pairs` states for the engine's run."""
+    if not by:
+        return left.num_rows * right.num_rows
+    count = lambda t: t.group_by(list(by)).aggregate([([], "count_all")])  # noqa: E731
+    both = count(left).join(count(right), list(by), right_suffix="_right")
+    return pc.sum(pc.multiply(both["count_all"], both["count_all_right"])).as_py() or 0
+
 
 INT_SCHEMA = {"device": "int64", "ts": "int64"}
 T0 = dt.datetime(2024, 5, 1, 7, 0)
@@ -166,8 +179,6 @@ def _bound(rows_left: int, rows_right: int, groups: int):
 def test_the_pairs_the_join_compares_are_per_by_group():
     import pyarrow as pa
 
-    from sverify.asof import pairs
-
     left = pa.table({"d": [1, 1, 2, None], "t": [0, 1, 2, 3]})
     right = pa.table({"d": [1, 2, 2, 3, None], "t": [0, 1, 2, 3, 4]})
     assert pairs(left, right, []) == 4 * 5
@@ -198,8 +209,6 @@ def test_the_checkers_count_is_the_arrow_rule(left, right, by):
     """`AsofSite.pairs`, the plan a run evaluates, counts what `asof.pairs`
     counts on Arrow tables: one rule (ruling 162 A7)."""
     import pyarrow as pa
-
-    from sverify.asof import pairs
 
     con = connect()
     ts = {
@@ -322,8 +331,6 @@ def test_the_lifts_asof_join_is_an_as_of_site_too(sql):
     """The checker reads DuckDB's `ASOF JOIN`, as the lift writes it, as an
     as-of join (`Rel.asofSite`, ruling 162 A2); its count is the Arrow rule's.
     A SQL query states no `max_pairs`, so its run has no cap yet."""
-    from sverify.asof import pairs
-
     con, _, _ = _bound(30, 40, 3)
     schema = ibis.schema({"device": "int64", "ts": "int64"})
     report = sv.verify(sql, tables={"l": schema, "r": schema})

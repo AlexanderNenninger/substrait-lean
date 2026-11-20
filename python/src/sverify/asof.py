@@ -44,10 +44,8 @@ from typing import Any, Literal
 
 import ibis
 import ibis.expr.types as ir
-import pyarrow as pa
 
 from sverify._asof_cap import _CAPS
-from sverify._weighted import _call
 
 ROW = "_asof_row"
 RANK = "_asof_rank"
@@ -59,17 +57,6 @@ runs a join without a `tolerance` as an `ASOF JOIN`, which compares none; its
 range join (with a `tolerance`) compares about 10⁸ pairs in 4 to 7 seconds (homelab, one thread of
 `sverify.connect()`), 4·10⁸ in 24 and 1.6·10⁹ in 268; Polars's keyless join is a
 cross join of the same size."""
-
-
-def pairs(left: pa.Table, right: pa.Table, by: Sequence[str]) -> int:
-    """The pairs of rows an as-of join compares: each left row with every right
-    row of its `by` group (rows with a NULL `by` value never match)."""
-    if not by:
-        return left.num_rows * right.num_rows
-    count = lambda t: t.group_by(list(by)).aggregate([([], "count_all")])  # noqa: E731
-    both = count(left).join(count(right), list(by), right_suffix="_right")
-    product = _call("multiply", both["count_all"], both["count_all_right"])
-    return _call("sum", product).as_py() or 0
 
 
 def asof_join(
