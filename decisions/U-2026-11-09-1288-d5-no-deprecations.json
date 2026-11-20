@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-09-1288-d5-no-deprecations",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1288 decision 5: every deprecation alias goes now, none carried past 1.0.",
+  "issues": [
+    886,
+    1288
+  ],
+  "source": "fable-ruling-175-886-public-api.md",
+  "note": "Ruling 175 records that this later decision supersedes #886's 'do not remove' line (2026-11-05/06)."
+}

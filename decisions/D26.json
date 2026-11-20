@@ -1,0 +1,11 @@
+{
+  "id": "D26",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "NULL has two equalities: unknown in predicates, equal in GROUP BY, DISTINCT and set operations.",
+  "prs": [
+    562
+  ]
+}

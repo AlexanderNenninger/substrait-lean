@@ -1,0 +1,12 @@
+{
+  "id": "D67",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Opaque columns get a kind of their own with no value; every use but carrying them and IS NULL is refused.",
+  "issues": [
+    1958
+  ],
+  "note": "Signed in ruling 187; its section is in #2063, and its implementation is tracked in #1958."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "D44",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "replace with an empty pattern is the string unchanged.",
+  "issues": [
+    1508
+  ],
+  "prs": [
+    1551
+  ]
+}

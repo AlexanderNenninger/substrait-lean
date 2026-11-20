@@ -1,0 +1,21 @@
+{
+  "id": "F82",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "12d-2 builds with corrections A1-A5; no `Profile.duckdb` row for avg sets; 12b splits into 12b-1 (reference path exact) and 12b-2 (native DuckDB mean); new step 12d-4 surfaces the set at the lift.",
+  "issues": [
+    1608
+  ],
+  "amends": [
+    "F67",
+    "F79"
+  ],
+  "amended_by": [
+    "F85",
+    "F92"
+  ],
+  "source": "fable-ruling-12d2-12b-statements.md",
+  "note": "Corrects item 5 of ruling 79 and refines 12b of ruling 67. Its 'no change to Rel.eval' bullet amended by ruling 85 (D52 identity case); its '12d-4 and 12b-2 in one PR' amended by ruling 92 (two PRs)."
+}

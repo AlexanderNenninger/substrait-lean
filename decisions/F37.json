@@ -1,0 +1,10 @@
+{
+  "id": "F37",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Standing principle: where every engine compares class members equal, the reference may return any member; Fable may open a pinned member under three conditions (facts on every 1.0 engine, no key boundary moves, only the value opens).",
+  "source": "fable-rulings-night-1117.md, entry 37",
+  "note": "User's words relayed: 'If they compare equal on all engines, we don't care which one is returned.' Memory equivalence-class-values.md. Each such opening still gets a D-number or dated amendment."
+}

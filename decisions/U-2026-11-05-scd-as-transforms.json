@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-05-scd-as-transforms",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Slowly changing dimensions are supported as proved transforms over a change-feed source, not as a feature of their own.",
+  "issues": [
+    763
+  ],
+  "amended_by": [
+    "U-2026-11-19-scd2-into-1-0"
+  ],
+  "source": "github:#763 body",
+  "note": "Decided with the user."
+}

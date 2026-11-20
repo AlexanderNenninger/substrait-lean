@@ -3,8 +3,8 @@ that carry a report (`VerificationError`, `UnverifiedRunError`,
 `PostconditionError`), and the abstract values the checker established, as
 text (`render_fact`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 
@@ -22,6 +22,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import ibis
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
@@ -58,6 +59,7 @@ from sverify.conditions import (
     Inferred,
     Key,
     MaxRows,
+    NonOverlapping,
     PlannedCondition,
     PreconditionError,
     References,
@@ -97,6 +99,7 @@ Condition = (
     | ArrivesWithin
     | MaxRows
     | RowsPer
+    | NonOverlapping
     | Observation
     | PlannedCondition
     | Callable[[ir.Table], ir.BooleanValue]
@@ -321,8 +324,9 @@ class Issue:
     column)."""
     error: bool
     """True if a proof must rule it out. Every issue is one; a "SUM overflow"
-    or an "overflow to infinity" is also checked while the job runs, where
-    the transformation's SQL raises too."""
+    or an "overflow to infinity" is also checked on the data before the job
+    runs, by a plan whose result is the verdict (`Report._check_assumed`),
+    and the transformation's SQL raises too where an engine evaluates it."""
     hint: str | None = None
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
@@ -403,7 +407,8 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run, and no run raises."""
+    """Every postcondition holds on every run of the model, and no run raises. That
+    the model matches an engine rests on tests (`docs/trusted-base.md`)."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
@@ -509,6 +514,12 @@ class Report:
     rewrite), or None where the plan to run is the rewrite."""
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`: the marks of its expressions."""
+    _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
+    """The check of the assumed issues (#2018, ruling 195): a plan of one row
+    whose columns say where an issue of `assumed` occurs on the data, on the
+    plan as written (`assumedCheck`, `Sverify/Analysis/AssumedCheck.lean`),
+    and the issue each column checks, by the checker's kind and expression.
+    None without assumed issues."""
     _run_gates: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
     """Per engine (or `"to_sql"`), why its last run took the plan as written
     where the checker gave a rewrite (`_run_gate` is None): `"route"` (a route
@@ -550,6 +561,8 @@ class Report:
     _bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    """The integer bounds Lean found on each integer output column, lowest
+    and highest (None: unbounded), for hints."""
     rows: int | None = None
     """At most this many output rows, from the inputs' row caps (`max_rows`
     in `requires`, `Rel.maxRows`); None if nothing bounds them."""
@@ -561,8 +574,6 @@ class Report:
     """The profile the report is under (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
     computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
-    """The integer bounds Lean found on each integer output column, lowest
-    and highest (None: unbounded), for hints."""
     internal_plan: str | None = field(default=None, repr=False, compare=False)
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
@@ -655,6 +666,11 @@ class Report:
     not say. A checker without them proves with `sorry` in their place."""
     _sorted: bool | None = field(default=None, repr=False, compare=False)
     """Whether the plan's result comes out of a sort, as the checker reads it."""
+    _sequence_determined: bool = field(default=False, repr=False, compare=False)
+    """Every result the reference allows is its result row by row
+    (`check_sequence_determined_sound`): `_exact`, and the result comes out of
+    a sort whose columns contain a key of its input, so no rows tie. What a
+    `rows="sequence"` observation needs."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
@@ -975,28 +991,23 @@ class Report:
         self,
         con: Connection,
         engine: str | None = None,
-        *,
-        assumed_checked: bool = False,
-        _plan: str | None = None,
     ) -> None:
         """Check the tables of `con` against the schema the plan was verified
         for (`_check_schema`), the preconditions (`requires`, the inferred
-        bounds among them) and the `SUM`s assumed to fit (`assumed`), before
-        anything runs: a batch that breaks one is refused before the run, with
-        the schema difference or the precondition as the message.
+        bounds among them) and the issues assumed not to occur (`assumed`),
+        before anything runs: a batch that breaks one is refused before the
+        run, with the schema difference or the precondition as the message.
 
         With an `engine`, each table's conditions run there, as one plan the
         checker wrote (`condition_query`): a result that is not TRUE, or a
         plan that raises, is a violation, and a condition the engine's writer
         refuses refuses the check. Without one, Ibis counts on the table's own
-        backend.
+        backend. The assumed issues are checked by a plan of their own
+        (`_check_assumed`), on `engine` or the connection's.
 
         Args:
             con: The connection holding the tables.
             engine: The engine to check the conditions on.
-            assumed_checked: The run's engine checks the assumed issues as it
-                runs its translation (`ProfilePlugin.checks_assumed`), so they
-                are not run once more here on DuckDB.
 
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
@@ -1020,20 +1031,42 @@ class Report:
                         condition=c,
                         rows=violating_rows(table, c),
                     )
-        if self.assumed and self.internal_plan is not None and not assumed_checked:
-            # On the plan that runs (`_plan`, #1787); the plan as written for
-            # a caller outside `run`.
-            self._check_assumed(con, _plan or written_plan(self.internal_plan))
+        if self.assumed:
+            self._check_assumed(con, engine if engine is not None else con.engine)
 
-    def _check_assumed(self, con: Connection, plan: str) -> None:
-        """Check the assumptions on `plan` before an engine whose translation
-        does not check them as it runs (a route or an engine without
-        `checks_assumed`): the proved DuckDB translation checks a SUM as it
-        adds up, an operation on finite doubles as it gives its result (#575)."""
-        try:
-            run_plan(con, plan, "duckdb")
-        except Exception as e:
-            raise self._broken_assumption(e) or e from None
+    def _check_assumed(self, con: Connection, engine: str) -> None:
+        """Check the assumed issues on the data, on `engine` (#2018, ruling
+        195): the checker's plan (`_assumed_check`) returns one row, one
+        column per place in the plan as written where an issue may occur, `1`
+        where it occurs on some row that place evaluates. Its verdict is a
+        value in the result, which every engine computes: a guard inside the
+        plan that runs is a side effect an engine skips where it needs no
+        value (a column nothing reads, a filter or limit pushed below it, a
+        join to an empty input). Those guards stay, for data that changes
+        between the check and the run.
+
+        Raises:
+            PreconditionError: An assumed issue occurs on the data.
+        """
+        if self._assumed_check is None:
+            labels = ", ".join(_assumption(i) for i in self.assumed)
+            raise PreconditionError(
+                f"no check of the assumed precondition(s) {labels} for this report: "
+                "refused before the run"
+            )
+        plan, issues = self._assumed_check
+        # The flags read the values the guards would stop at, so the check
+        # runs without the guard against `±∞` (`finite`): its verdict is a value.
+        out = run_plan(con, json.dumps(plan), engine, finite=False)
+        row = list(out.to_pylist()[0].values()) if out.num_rows else []
+        if any(row):
+            found = {issues[j] for j, v in enumerate(row) if v}
+            # An issue the report shows folded with others names them all.
+            broken = [i for i in self.assumed if (i.kind, i.expr) in found] or self.assumed
+            labels = ", ".join(dict.fromkeys(_assumption(i) for i in broken))
+            raise PreconditionError(
+                f"the batch breaks an assumed precondition, {labels}: refused before the run"
+            )
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
         """Refuse a table that differs from the schema the plan was verified
@@ -1054,25 +1087,6 @@ class Report:
                 else:
                     out.append(f"{t}: {lab}")
         return out
-
-    def _broken_assumption(self, e: Exception) -> PreconditionError | None:
-        """The refusal for an error of an engine's translation that says an
-        assumed `SUM` or operation on finite doubles failed on the data; None
-        for any other error."""
-        message = str(e)
-        issues = ("SUM overflow", "overflow to infinity")  # a Polars guard's `issue`
-        if not (
-            getattr(e, "issue", None) in issues
-            or "overflow in SUM" in message
-            or "overflow to infinity" in message
-        ):
-            return None
-        broken = ", ".join(_assumption(i) for i in self.assumed)
-        err = PreconditionError(
-            f"the batch breaks an assumed precondition, {broken}: refused before the run"
-        )
-        err.__cause__ = e
-        return err
 
     def _source(self, table: str, c: Condition) -> str:
         """Where a precondition the data breaks came from, and what to do,
@@ -1229,12 +1243,6 @@ class Report:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
-        # The engine's translation of the plan checks each assumption as it
-        # runs (`ProfilePlugin.checks_assumed`).
-        run_on = profiles.find(chosen.engine) if chosen is not None else None
-        assumed_checked = (
-            check_requires and run_on is not None and run_on.checks_assumed and kind == "translated"
-        )
         # The plan this run runs, decided once: the checks below and the run
         # read the same one.
         run_engine = chosen.engine if chosen is not None else str(target)
@@ -1255,12 +1263,12 @@ class Report:
                     + ", ".join(unchecked)
                     + " of this report: refused before the run (check_requires=False skips them)"
                 )
-            self.check_inputs(con, target, assumed_checked=assumed_checked, _plan=plan)
+            self.check_inputs(con, target)
         else:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
             self._check_schema(con, target)
-        self.check_asof_pairs(con, engine)
+        self.check_asof_pairs(con, engine, skip=self._native_asof(plan, run_engine))
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)
@@ -1285,47 +1293,40 @@ class Report:
 
         def recheck(written: str) -> None:
             """The run's checks of the plan it runs, again for the plan as
-            written after a writer refused the rewrite."""
-            if check_requires and self.assumed and not assumed_checked:
-                self._check_assumed(con, written)
+            written after a writer refused the rewrite (the assumed issues are
+            checked on the plan as written already)."""
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
-        try:
-            if (
-                check_requires
-                and kind == "translated"
-                and self.semantics == "reference"
-                and self._guard_free
-                and theorem is not None
-            ):
-                out = self._with_plan(
+        if (
+            check_requires
+            and kind == "translated"
+            and self.semantics == "reference"
+            and self._guard_free
+            and theorem is not None
+        ):
+            out = self._with_plan(
+                plan,
+                run_engine,
+                lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                recheck,
+            )
+        else:
+            out = self._with_plan(
+                plan,
+                run_engine,
+                lambda plan: run_plan(
+                    con,
                     plan,
-                    run_engine,
-                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
-                    recheck,
-                )
-            else:
-                out = self._with_plan(
-                    plan,
-                    run_engine,
-                    lambda plan: run_plan(
-                        con,
-                        plan,
-                        engine,
-                        finite=finite,
-                        # A proved report's exact level justifies Spark's windows
-                        # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                        tie_free=self._exact and kind != "unverified",
-                    ),
-                    recheck,
-                )
-        except Exception as e:
-            # The translation's own checks of the assumptions, which `check_inputs`
-            # did not run first, refuse the batch as that run would have.
-            if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
-                raise refusal from e
-            raise
+                    engine,
+                    finite=finite,
+                    asof=self._native_asof(plan, run_engine),
+                    # A proved report's exact level justifies Spark's windows
+                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                    tie_free=self._exact and kind != "unverified",
+                ),
+                recheck,
+            )
         out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
@@ -1347,10 +1348,30 @@ class Report:
         schema = pa.schema(fields, metadata=out.schema.metadata)
         return out if schema.equals(out.schema) else out.cast(schema)
 
-    def check_asof_pairs(self, con: Connection, engine: Any) -> None:
+    def _native_asof(self, plan: str, engine: str) -> list[dict[str, Any]]:
+        """The as-of join sites (`_asof_checks`) `engine` writes as its own
+        ASOF JOIN when it runs `plan` (#1447, ruling 162): `plan` is the plan as
+        written, which the sites describe, and the engine's writer takes the
+        site (`sverify.sql.native_asof_sites`)."""
+        from sverify import profiles
+        from sverify.sql.core import native_asof_sites
+
+        plugin = profiles.find(engine)
+        if not self._asof_checks or plugin is None or plugin.dialect is None:
+            return []
+        assert self.internal_plan is not None
+        if plan != written_plan(self.internal_plan):
+            return []
+        return native_asof_sites(plan, plugin.dialect(), self._asof_checks)
+
+    def check_asof_pairs(
+        self, con: Connection, engine: Any, skip: Sequence[dict[str, Any]] = ()
+    ) -> None:
         """Count, on `engine`, the pairs each as-of join of the plan compares
         (`_asof_checks`), over the tables of `con` the plan reads too, and
         refuse the run where a count is over the cap (`_asof_max_pairs`).
+        The sites in `skip` are the ones the engine runs as its own ASOF JOIN,
+        which does not compare the pairs.
 
         Raises:
             UnsupportedError: An as-of join compares more pairs than the cap.
@@ -1361,6 +1382,8 @@ class Report:
         if cap is None:
             return
         for chk in self._asof_checks:
+            if any(chk is k for k in skip):
+                continue
             res = run_plan(con, written_plan(json.dumps(chk["plan"])), engine)
             n = int(res.column(0)[0].as_py() or 0)
             if n > cap:
@@ -1602,7 +1625,7 @@ class Report:
         them to the stated preconditions.
 
             report = sv.verify(expr)
-            if not report._proved:
+            if report.needs:
                 report = sv.verify(expr, requires=report.suggested_requires)
         """
         if self._on_inferred != "error":
@@ -2081,6 +2104,7 @@ class Report:
 
 #: Private fields that never had a public name: no deprecated alias.
 _REPORT_PRIVATE = [
+    "assumed_check",
     "table_params",
     "run_plan",
     "run_gate",
@@ -2088,6 +2112,7 @@ _REPORT_PRIVATE = [
     "run_gates",
     "asof_checks",
     "asof_max_pairs",
+    "sequence_determined",
 ]
 
 _REPORT_INTERNAL = [
@@ -2648,12 +2673,39 @@ def _not_true(column: Any) -> int:
     return sum(v is not True for v in column.to_pylist())
 
 
+def _columns_read(conds: Sequence[str], columns: Sequence[str]) -> list[str]:
+    """The columns SQL conditions read, in table order, as SQLGlot finds them
+    (DuckDB's identifiers match without case); empty, so that the whole
+    table is read, where one does not parse or names no column of it."""
+    import sqlglot as sg
+
+    by_name = {c.lower(): c for c in columns}
+    found: set[str] = set()
+    for cond in conds:
+        try:
+            tree = sg.parse_one(cond, read="duckdb")
+            names = {c.name.lower() for c in tree.find_all(sg.exp.Column)}
+        except sg.errors.ParseError:
+            return []
+        if not names <= by_name.keys():
+            return []
+        found |= {by_name[n] for n in names}
+    return [c for c in columns if c in found]
+
+
 def _run_conditions(
     con: Connection, table: ir.Table, conds: Sequence[Condition], engine: str
 ) -> pa.Table:
     """The columns of `conds` over `table`, from one checker-written plan run
     on `engine`: SQL conditions as one `SELECT`, Ibis ones as one `select`."""
-    if all(isinstance(c, str) for c in conds):
+    sqls = [c for c in conds if isinstance(c, str)]
+    if len(sqls) == len(conds):
+        # Only the columns the conditions name: the lift refuses a column of
+        # a type it does not read (float32), which no condition reads (#860).
+        named = _columns_read(sqls, table.columns)
+        if named and isinstance(op := table.op(), ops.DatabaseTable):
+            schema = ibis.schema({n: op.schema[n] for n in named})
+            table = ops.DatabaseTable(op.name, schema=schema, source=op.source).to_expr()
         items = ", ".join(f'({c}) AS "c{i}"' for i, c in enumerate(conds))
         query = f'SELECT {items} FROM "t" AS "t"'
         from sverify.ibis_substrait import SQLModel, sql_model_schema

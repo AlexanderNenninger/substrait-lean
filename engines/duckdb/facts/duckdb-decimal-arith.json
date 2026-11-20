@@ -127,6 +127,15 @@
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/types/decimal/decimal_overflow.test#L52-L62", "note": "DECIMAL(18,1) * DECIMAL(2,0) past 18 digits → Overflow in multiplication of DECIMAL"},
         {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/function/numeric/test_round.test#L65-L78", "note": "round half away from zero for DECIMAL and DOUBLE"}
       ]
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "features-m4 session (#322), duckdb 2.0.0, Python 3.12, macOS arm64",
+      "evidence": [
+        {"sql": "SELECT CAST(2.5::DECIMAL(3,1) AS BIGINT), CAST(-2.5::DECIMAL(3,1) AS BIGINT), CAST(1.25::DECIMAL(4,2) AS DECIMAL(4,1)), CAST(-0.125::DECIMAL(4,3) AS DECIMAL(4,2))", "observed": "3, -3, 1.3, -0.13"},
+        {"file": "engines/duckdb/probes/decimal_rescale.py", "note": "12300 random cases, 0 mismatches: CAST(dec AS DECIMAL(p,t)) for t < s and CAST(dec AS BIGINT), p up to 38 and shapes (4,3) to (38,38): every result is half away from zero, as `ROUND_HALF_UP`. The SQL lift reads a decimal cast to an integer as the rescale to scale 0 and the exact cast."}
+      ]
     }
   ],
   "issues": [

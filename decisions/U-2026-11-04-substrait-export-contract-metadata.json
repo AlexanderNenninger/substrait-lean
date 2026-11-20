@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-04-substrait-export-contract-metadata",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "to_substrait() carries requires and ensures as metadata in the exported plan, declared and inferred preconditions alike, in user terms and machine-readable form.",
+  "issues": [
+    664
+  ],
+  "prs": [
+    672
+  ],
+  "source": "github:#664 body"
+}

@@ -1,0 +1,13 @@
+{
+  "id": "F154.K5-closedB-lemma",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "withdrawn",
+  "summary": "Side lemma r.mayDouble = false implies r.closedB = true, used to derive Rel.floatOpenSafeP_of_noDouble without a closedness hypothesis.",
+  "superseded_by": [
+    "F169"
+  ],
+  "source": "fable-ruling-154-trackB-f3-nodouble.md",
+  "note": "Withdrawn in log entry 169: false for integer BIT_AND and QUANTILE_DISC measures; replaced by the side condition hcl : r.closedB = true."
+}

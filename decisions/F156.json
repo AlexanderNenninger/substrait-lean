@@ -1,0 +1,16 @@
+{
+  "id": "F156",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "#1838 meets ruling 151's M1 to M5 and merges once CI is green; ruling 151's refinement of 148 stands for the remaining move PRs.",
+  "issues": [
+    1444
+  ],
+  "prs": [
+    1838
+  ],
+  "source": "fable-ruling-156-1838-reread.md",
+  "note": "Confirms F151's refinement of F148. No D-number."
+}

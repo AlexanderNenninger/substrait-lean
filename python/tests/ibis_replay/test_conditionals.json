@@ -1,0 +1,61 @@
+{
+  "ibis": "12.0.0",
+  "source": "https://github.com/ibis-project/ibis/tree/12.0.0/ibis/backends/tests/test_conditionals.py",
+  "license": "Apache-2.0",
+  "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
+  "module": "test_conditionals",
+  "summary": {
+    "agree": 5,
+    "disagree": 0,
+    "refused": 6,
+    "unproved": 0,
+    "skipped": 0
+  },
+  "results": {
+    "test_ibis_case_still_works[duckdb-method-false-value]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_ibis_case_still_works[duckdb-method-false]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_ibis_case_still_works[duckdb-method-true]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_ibis_cases_column[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_ifelse_column[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_ifelse_select[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_substitute[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_value_cases_column[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_value_cases_null[duckdb]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_value_cases_scalar[duckdb-fallthrough]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_value_cases_scalar[duckdb-one_kwarg]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    }
+  }
+}

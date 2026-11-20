@@ -1,0 +1,23 @@
+{
+  "id": "F74",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "DuckDB's integer AVG depends on plan shape and platform; the DuckDB profile's avg(BIGINT) allows a set of doubles stated over every shape (no fact names a shape). #1675's label held until its texts say so; steps 12d-1/2/3 set. No D-number.",
+  "issues": [
+    1608
+  ],
+  "prs": [
+    1675
+  ],
+  "amends": [
+    "F67.12d",
+    "F71"
+  ],
+  "amended_by": [
+    "F79"
+  ],
+  "source": "fable-ruling-1675-avg-int-run.md",
+  "note": "Withdraws ruling 71's sentence '12d no longer gates semantics=duckdb on Linux'; ruling 67's remark on the last bit below 2^53 stands again for native shapes."
+}

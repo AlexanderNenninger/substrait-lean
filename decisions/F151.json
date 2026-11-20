@@ -1,0 +1,20 @@
+{
+  "id": "F151",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Approves #1838's Lean move once M1 to M5 are met (repair docs/proofs.md, two test assertions, IssuesAll in the no-engine test, Refresh to analysis, two links); import-free modules are placed by their subject.",
+  "issues": [
+    1444
+  ],
+  "prs": [
+    1826,
+    1838
+  ],
+  "amends": [
+    "F148"
+  ],
+  "source": "fable-ruling-151-1444-move-prs.md",
+  "note": "M4: 'Refinement of ruling 148' (its 'a module moves by its imports' sentence 'was too short'). No D-number."
+}

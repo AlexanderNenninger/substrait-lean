@@ -1,0 +1,19 @@
+{
+  "id": "F18",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "sverify_decimal_div is read back without a precision check, as on main; the reviewer's checked-decimal change is declined; a follow-up (S5) adds a kinds bound, else a recognised SUM/COUNT shape, else a refusal.",
+  "issues": [
+    1497
+  ],
+  "prs": [
+    1523
+  ],
+  "amends": [
+    "F8"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 18",
+  "note": "File ruling-1523-decimal-div-unchecked.md. Voids item 6 of entry 8. The S5 follow-up's statement is entry 48 (F-1497-decimal-div-statement). No D-number."
+}
