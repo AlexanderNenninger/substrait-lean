@@ -54,7 +54,6 @@ if TYPE_CHECKING:
     from sverify.nodes import Node
 
 __all__ = [
-    "ODCS_VERSION",
     "OdcsContract",
     "Unread",
     "UnreadRuleWarning",
