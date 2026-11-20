@@ -51,6 +51,11 @@ Running:
 * `ExportError` (`export_refused`): a plan has no conforming Substrait form
   that keeps its proof (`Report.to_substrait`); the message names the
   reason and the spec gap.
+* `MemoryLimitError` (`memory_limit`): a step ran out of the memory allowed
+  it: the checker past `SVERIFY_CHECKER_MEMORY_MB` during a proof, or
+  DuckDB past its `memory_limit` (`SVERIFY_MEMORY_LIMIT`) during a run or a
+  refresh, which then commits nothing. `.stage`, `.limit` and `.setting`
+  say which. A `MemoryError`.
 
 Setup:
 
@@ -88,7 +93,13 @@ Warnings:
 import warnings
 from typing import Any
 
-from sverify._unsupported import ConditionError, SverifyError, SverifyWarning, UnsupportedError
+from sverify._unsupported import (
+    ConditionError,
+    MemoryLimitError,
+    SverifyError,
+    SverifyWarning,
+    UnsupportedError,
+)
 from sverify.contracts import (
     CompositionError,
     InferredWarning,
@@ -148,6 +159,7 @@ __all__ = [
     "EngineVersionWarning",
     "ExportError",
     "InferredWarning",
+    "MemoryLimitError",
     "NotIncrementalError",
     "PostconditionError",
     "PreconditionError",

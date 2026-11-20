@@ -228,6 +228,12 @@ search-path = ["src", "tools", "tests", "tests/chaos", "scripts", "../engines/po
 
 # Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
 # from the project root. Lean tasks run in the project root and need `lake`.
+# poe runs each task through `uv run --no-sync`: a plain `uv run` would rebuild the package
+# after a pyproject or lock change, and the build hook's full `lake build` would start with no
+# slot (2026-11-20, load 160 on the laptop).
+[tool.poe]
+executor = { type = "uv", no-sync = true }
+
 [tool.poe.tasks.prove]
 help = "Check every Lean proof, the generated entries' included; warnings (including `sorry`) fail the build"
 cmd = "lake -R -Kcheck_generated=true build --wfail SubstraitLean"

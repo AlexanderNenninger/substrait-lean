@@ -624,7 +624,8 @@ def measureTerm (m : Measure) : MetaM Lean.Expr := do
 rows, then split on whether any value is not `NULL`. -/
 def aggTac (_defs : Array Name) : TermElabM Syntax := do
   let ev ← simpArgs #[``Substrait.Expr.evalP, ``List.getD_cons_zero, ``List.getD_cons_succ,
-    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_fdiv_float,
+    ``Outcome.ok_bind, ``DuckDBSQL.ref_itof, ``DuckDBSQL.ref_itof_null, ``DuckDBSQL.ref_approx,
+    ``DuckDBSQL.ref_fdiv_float,
     ``DuckDBSQL.ref_fdiv_null_l, ``DuckDBSQL.ref_fdiv_null_r, ``AggFn.apply, ``nanCase, ``isInfCode,
     ``Substrait.Expr.evalP, ``FloatCode.canon_ofInt,
     ``Lowering.beq_int, ``FloatCode.ofInt_ne_posInf, ``FloatCode.ofInt_ne_negInf,
@@ -689,6 +690,11 @@ def liftAgg (tbl : Name) (s : Semantics) (sE : Lean.Expr) (c : Name) (g : DuckAg
   let rows := aggSampleGroups g.arg
   let mut passed := 0
   for (ms, fin, kinds) in aggCandidates g do
+    -- D52: where DuckDB's construct is a set around the plan's value, the finish carries the mark.
+    let fin := match DuckAgg.mark s g with
+      | some k => (callJ? "sverify_approx:fp64_i64" [fin, litJ "i64" (toJson (toString k))] []
+          "fp64").getD fin
+      | none => fin
     let some (measures, finish) := parseAgg g ms fin kinds | continue
     let ok := rows.all fun vs => LoweringSearch.Outcome.agreeB
       (finish.evalP Profile.reference (measures.map (·.eval (vs.map ([·]))))) (.ok (g.eval s vs))

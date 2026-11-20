@@ -60,7 +60,7 @@ TARGETS = [
         sql="SELECT CAST(amount AS FLOAT) FROM t",
         issue=417,
         why="the model computes in binary64; rounding to binary32 after each step needs a model "
-        "of its own. Cast FLOAT columns to DOUBLE at the source",
+        "of its own. Sverify reads FLOAT columns (#1908); cast them to DOUBLE before arithmetic",
     ),
     target(
         AREA,

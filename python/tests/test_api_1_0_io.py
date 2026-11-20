@@ -30,16 +30,14 @@ def _quiet(fn, *args, **kwargs):
 
 def test_changes_lives_in_io() -> None:
     assert "Changes" not in sv.__all__ and "from_substrait" not in sv.__all__
-    with pytest.warns(DeprecationWarning, match="import it from sverify.io"):
-        assert sv.Changes is Changes
+    assert not hasattr(sv, "Changes")
 
 
 def test_from_substrait_is_a_classmethod_of_report() -> None:
     t = ibis.table({"k": "int64"}, name="t")
     exported = _quiet(sv.verify, t.select("k")).to_substrait()
     assert _quiet(sv.Report.from_substrait, exported).verdict == sv.Verdict.PROVED
-    with pytest.warns(DeprecationWarning, match="sverify.Report.from_substrait"):
-        assert sv.from_substrait(exported).verdict == sv.Verdict.PROVED  # type: ignore[operator]
+    assert not hasattr(sv, "from_substrait")
 
 
 # -- A2: condition arguments --------------------------------------------------------
@@ -47,8 +45,6 @@ def test_from_substrait_is_a_classmethod_of_report() -> None:
 
 def test_rows_per_takes_its_columns_as_unique_does() -> None:
     assert label(sv.rows_per("a", "b", at_most=3)) == "rows_per(a, b, at_most=3)"
-    with pytest.warns(DeprecationWarning, match=r"rows_per\(\*cols, at_most=\.\.\.\)"):
-        assert sv.rows_per(["a", "b"], at_most=3) == sv.rows_per("a", "b", at_most=3)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="needs at_most="):
         sv.rows_per("a")
 
@@ -56,10 +52,10 @@ def test_rows_per_takes_its_columns_as_unique_does() -> None:
 def test_arrives_within_takes_a_duration() -> None:
     iso = _quiet(sv.arrives_within, "ts", "PT15M")
     assert iso == sv.arrives_within("ts", timedelta(minutes=15))
-    with pytest.warns(DeprecationWarning, match="ISO 8601"):
-        assert sv.arrives_within("ts", minutes=15) == iso
-    with pytest.raises(TypeError, match="needs the lateness"):
-        sv.arrives_within("ts")
+    with pytest.raises(TypeError):
+        sv.arrives_within("ts", minutes=15)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        sv.arrives_within("ts")  # type: ignore[call-arg]
 
 
 def test_durations_read_iso_8601() -> None:
@@ -92,8 +88,6 @@ def test_approx_takes_the_tolerances_of_within() -> None:
 def test_sql_names_the_chained_table_with_name() -> None:
     step = _quiet(sv.sql, "SELECT id FROM orders", name="orders")
     assert step.as_ == "orders"
-    with pytest.warns(DeprecationWarning, match=r"sql\(as_=\.\.\.\) is deprecated"):
-        sv.sql("SELECT id FROM orders", as_="orders")  # type: ignore[call-overload]
 
 
 # -- A6: ContractedTransform.report -------------------------------------------------
@@ -131,21 +125,10 @@ def test_a_sink_and_its_source_read_the_contract(tmp_path) -> None:
     _quiet(node.refresh)
     assert _quiet(sink.contract).epoch == first.epoch + 1
     assert _quiet(sink.contract, at) == first
-    with pytest.warns(DeprecationWarning, match=r"call sink\.contract\(\)"):
-        assert sink.committed() == sink.contract()
+    assert not hasattr(sink, "committed")
 
 
-def test_a_custom_sink_overriding_committed_still_works() -> None:
-    with pytest.warns(DeprecationWarning, match="override contract"):
-
-        class Old(Sink):
-            def committed(self):
-                return None
-
-            def write(self, change):
-                return None
-
-    assert Old("t").contract() is None
+def test_a_sink_without_history_refuses_a_version() -> None:
     with pytest.raises(ValueError, match="keeps no history"):
         Sink("t").contract(3)
 
@@ -176,8 +159,8 @@ def test_maintain_takes_the_constructors_names(tmp_path) -> None:
     assert sink.vacuum_retention == timedelta(days=7)
     _quiet(_quiet(doubled, orders).write(sink).refresh)
     assert "vacuumed" in _quiet(sink.maintain, vacuum_retention="PT0S")
-    with pytest.warns(DeprecationWarning, match="write vacuum_retention="):
-        sink.maintain(vacuum=timedelta(0))
+    with pytest.raises(TypeError):
+        sink.maintain(vacuum=timedelta(0))  # type: ignore[call-arg]
 
 
 # -- E4: names are required ------------------------------------------------------------
