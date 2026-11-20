@@ -50,6 +50,10 @@ WAITS_ON: tuple[tuple[str, dict[str, Any]], ...] = (
     ("a share of rows", {"design": "sverify reads rules on every row"}),
     ("a lower bound on the row count", {"design": "a lower bound depends on the data"}),
     ("with a time zone on a timestamp without one", {"design": "the offset has no meaning there"}),
+    (
+        "without a time zone on a timestamp with one",
+        {"design": "its instant depends on the session"},
+    ),
 )
 
 

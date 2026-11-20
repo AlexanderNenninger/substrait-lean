@@ -463,9 +463,10 @@ def test_a_sql_rule_may_name_its_object() -> None:
 
 
 def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
-    """A bound with a time zone on a column with one is a TIMESTAMPTZ; on a
+    """A bound with a time zone on a column with one is a TIMESTAMPTZ. On a
     column without one it stays unread, since DuckDB's cast to TIMESTAMP
-    drops the offset (#864)."""
+    drops the offset, and so does a bound without one on a column with one,
+    which DuckDB would read in the session's time zone (D53, #864)."""
     props = [
         {"name": "a", "logicalType": "timestamp", "physicalType": "timestamptz",
          "logicalTypeOptions": {"minimum": "2020-01-01 00:00:00+10:00"}},
@@ -474,6 +475,8 @@ def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
         {"name": "b", "logicalType": "date", "logicalTypeOptions": {"minimum": "2020-01-01"}},
         {"name": "d", "logicalType": "timestamp", "physicalType": "timestamp",
          "logicalTypeOptions": {"minimum": "2020-01-01"}},
+        {"name": "z", "logicalType": "timestamp", "physicalType": "timestamptz",
+         "logicalTypeOptions": {"minimum": "2020-01-01 00:00:00"}},
     ]  # fmt: skip
     doc = {"apiVersion": "v3.2.0", "kind": "DataContract", "id": "x", "version": "1",
            "status": "active", "schema": [{"name": "t", "properties": props}]}  # fmt: skip
@@ -486,5 +489,6 @@ def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
         '("d" >= CAST(\'2020-01-01\' AS TIMESTAMP)) OR "d" IS NULL',
     ]
     assert [u.reason for u in contract.unread] == [
-        "a maximum with a time zone on a timestamp without one"
+        "a maximum with a time zone on a timestamp without one",
+        "a minimum without a time zone on a timestamp with one",
     ]

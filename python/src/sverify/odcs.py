@@ -832,6 +832,10 @@ class _Reader:
                 continue
             v = opts[key]
             lit = _lit(v)
+            if t.is_timestamp() and t.timezone is not None and not _OFFSET.search(str(v)):
+                # DuckDB reads it in the session's time zone (D53).
+                self.skip(col, {key: v}, f"a {key} without a time zone on a timestamp with one")
+                continue
             if t.is_timestamp() and t.timezone is None and _OFFSET.search(str(v)):
                 # DuckDB's CAST to TIMESTAMP drops the offset (#864).
                 self.skip(col, {key: v}, f"a {key} with a time zone on a timestamp without one")
