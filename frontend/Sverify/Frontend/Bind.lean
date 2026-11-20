@@ -223,21 +223,21 @@ end
 
 variable [Boxes.Ambient] in
 mutual
-/-- On `row`, every chain's operands, at every depth, are TRUE, FALSE or NULL
-(the hypothesis of `Expr.andLift_eval`). -/
-def LExpr.Bools (w : Nat) (row : Row) : LExpr → Prop
-  | .mk _ cs => LChain.BoolsAll w row cs
+/-- On `row`, under `I`, every chain's operands, at every depth, are TRUE, FALSE or NULL
+(the hypothesis of `Expr.andLift_evalI`). -/
+def LExpr.Bools (I : Impl) (w : Nat) (row : Row) : LExpr → Prop
+  | .mk _ cs => LChain.BoolsAll I w row cs
 /-- `Bools` of each chain. -/
-def LChain.BoolsAll (w : Nat) (row : Row) : List LChain → Prop
+def LChain.BoolsAll (I : Impl) (w : Nat) (row : Row) : List LChain → Prop
   | [] => True
-  | c :: cs => LChain.Bools w row c ∧ LChain.BoolsAll w row cs
+  | c :: cs => LChain.Bools I w row c ∧ LChain.BoolsAll I w row cs
 /-- `Bools` of a chain: each operand is TRUE, FALSE or NULL, and so are its chains'. -/
-def LChain.Bools (w : Nat) (row : Row) : LChain → Prop
-  | .mk _ ops => LExpr.BoolsAll w row ops
+def LChain.Bools (I : Impl) (w : Nat) (row : Row) : LChain → Prop
+  | .mk _ ops => LExpr.BoolsAll I w row ops
 /-- `Bools` of each operand, and its value TRUE, FALSE or NULL. -/
-def LExpr.BoolsAll (w : Nat) (row : Row) : List LExpr → Prop
+def LExpr.BoolsAll (I : Impl) (w : Nat) (row : Row) : List LExpr → Prop
   | [] => True
-  | x :: xs => (Expr.BoolVal row (LExpr.fill w x) ∧ LExpr.Bools w row x) ∧ LExpr.BoolsAll w row xs
+  | x :: xs => (Expr.BoolValI I row (LExpr.fill w x) ∧ LExpr.Bools I w row x) ∧ LExpr.BoolsAll I w row xs
 end
 
 theorem LChain.fillAll_length (w : Nat) : ∀ cs : List LChain, (LChain.fillAll w cs).length = cs.length
@@ -285,38 +285,38 @@ end
 
 
 section Eval
-variable [Boxes.Ambient]
+variable [Boxes.Ambient] {I : Impl}
 
 /-- The binder's state over the input `r`: its rows are `r`'s, `w` columns
 wide, each extended by `F`. -/
-def BindSt.Ext (cat : Catalog) (r : Rel) (w : Nat) (s : BindSt) (F : Row → Row) : Prop :=
-  s.rel.eval cat = (r.eval cat).map (fun row => row ++ F row) ∧
-    (∀ row ∈ r.eval cat, row.length = w ∧ w + (F row).length = s.width) ∧ w ≤ s.width
+def BindSt.Ext (I : Impl) (cat : Catalog) (r : Rel) (w : Nat) (s : BindSt) (F : Row → Row) : Prop :=
+  s.rel.eval cat I = (r.eval cat I).map (fun row => row ++ F row) ∧
+    (∀ row ∈ r.eval cat I, row.length = w ∧ w + (F row).length = s.width) ∧ w ≤ s.width
 
 /-- The reach `g` holds on `row` (`none`: everywhere). -/
-def Reach (g : Option Expr) (row : Row) : Prop := ∀ c ∈ g, (c.eval row).isTrue = true
+def Reach (I : Impl) (g : Option Expr) (row : Row) : Prop := ∀ c ∈ g, (c.eval row I).isTrue = true
 
 /-- An expression reading below the width of a row's extension `F` has the
 same value on a longer extension. -/
 theorem eval_ext {e : Expr} {row F G : Row} {n : Nat} (he : e.refsLt n)
-    (hlen : row.length + F.length = n) : e.eval (row ++ (F ++ G)) = e.eval (row ++ F) := by
+    (hlen : row.length + F.length = n) : e.eval (row ++ (F ++ G)) I = e.eval (row ++ F) I := by
   rw [← List.append_assoc]; exact Expr.eval_append G he (by simp [hlen])
 
 theorem eval_prefix {e : Expr} {row F F' : Row} {n : Nat} (he : e.refsLt n)
-    (hlen : row.length + F.length = n) (hp : F <+: F') : e.eval (row ++ F') = e.eval (row ++ F) := by
+    (hlen : row.length + F.length = n) (hp : F <+: F') : e.eval (row ++ F') I = e.eval (row ++ F) I := by
   obtain ⟨G, rfl⟩ := hp; exact eval_ext he hlen
 
 /-- Columns `0 … w-1` read the row. -/
 theorem map_range_field (row X : Row) (w : Nat) (h : row.length = w) :
-    ((List.range w).map Expr.field).map (·.eval (row ++ X)) = row := by
+    ((List.range w).map Expr.field).map (·.eval (row ++ X) I) = row := by
   subst h
   apply List.ext_getElem (by simp)
   intro i h1 h2
   simp [Expr.eval, List.getD_eq_getElem?_getD, List.getElem?_append_left h2, List.getElem?_eq_getElem h2]
 
 theorem BindSt.push_ext {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
-    (hs : s.Ext cat r w F) (e : Expr) :
-    (s.push e).1.Ext cat r w (fun row => F row ++ [e.eval (row ++ F row)]) := by
+    (hs : s.Ext I cat r w F) (e : Expr) :
+    (s.push e).1.Ext I cat r w (fun row => F row ++ [e.eval (row ++ F row) I]) := by
   refine ⟨?_, fun row hr => ?_, ?_⟩
   · simp only [BindSt.push, Rel.eval, hs.1, List.map_map]
     congr 1; funext row; simp
@@ -345,7 +345,7 @@ theorem LExpr.fillAll_length (w : Nat) : ∀ xs : List LExpr, (LExpr.fillAll w x
   | _ :: xs => by simp [LExpr.fillAll, LExpr.fillAll_length w xs]
 
 theorem LExpr.boolsAll_boolVal (w : Nat) (row : Row) :
-    ∀ xs : List LExpr, LExpr.BoolsAll w row xs → ∀ q ∈ LExpr.fillAll w xs, Expr.BoolVal row q
+    ∀ xs : List LExpr, LExpr.BoolsAll I w row xs → ∀ q ∈ LExpr.fillAll w xs, Expr.BoolValI I row q
   | [], _ => by simp [LExpr.fillAll]
   | x :: xs, ⟨⟨hx, _⟩, hxs⟩ => by
     intro q hq
@@ -354,46 +354,49 @@ theorem LExpr.boolsAll_boolVal (w : Nat) (row : Row) :
     · exact hx
     · exact LExpr.boolsAll_boolVal w row xs hxs q hq
 
-/-- A chain's lift has the eager value of its operands (`Expr.andLift_eval`). -/
-theorem LChain.fill_eval (w : Nat) (isAnd : Bool) (ops : List LExpr) (row : Row)
-    (hb : LExpr.BoolsAll w row ops) :
-    (LChain.fill w (.mk isAnd ops)).eval row =
-      foldOpt isAnd none ((LExpr.fillAll w ops).map (·.eval row)) := by
+/-- A chain's lift has the eager value of its operands (`Expr.andLift_evalI`). -/
+theorem LChain.fill_eval (hI : I.Logic) (w : Nat) (isAnd : Bool) (ops : List LExpr) (row : Row)
+    (hb : LExpr.BoolsAll I w row ops) :
+    (LChain.fill w (.mk isAnd ops)).eval row I =
+      foldOpt isAnd none ((LExpr.fillAll w ops).map (·.eval row I)) := by
   have hbv := LExpr.boolsAll_boolVal w row ops hb
+  have hfold : ∀ (f : BinFn) (h3 : Value → Value → Value), (∀ v w, I.bin f v w = h3 v w) →
+      ∀ (acc : Expr) (qs : List Expr), (qs.foldl (.bin f) acc).eval row I =
+        (qs.map (·.eval row I)).foldl h3 (acc.eval row I) := by
+    intro f h3 hf acc qs
+    induction qs generalizing acc with
+    | nil => rfl
+    | cons q qs ih => simp only [List.foldl_cons, ih, Expr.eval, hf, List.map_cons]
   cases isAnd with
   | true =>
     simp only [LChain.fill]
-    rw [Expr.andLift_eval row _ hbv]
-    cases h : LExpr.fillAll w ops with
+    rw [Expr.andLift_evalI hI row _ hbv]
+    cases LExpr.fillAll w ops with
     | nil => rfl
-    | cons p ps =>
-      simp only [Expr.conj, Expr.eval_foldl_and, List.map_cons, foldOpt, List.foldl_map, comb]
-      rfl
+    | cons p ps => simp only [Expr.conj, hfold .and and3 hI.and, List.map_cons, foldOpt, comb]; rfl
   | false =>
     simp only [LChain.fill]
-    rw [Expr.orLift_eval row _ hbv]
-    cases h : LExpr.fillAll w ops with
+    rw [Expr.orLift_evalI hI row _ hbv]
+    cases LExpr.fillAll w ops with
     | nil => rfl
-    | cons p ps =>
-      simp only [Expr.disj, Expr.eval_foldl_or, List.map_cons, foldOpt, List.foldl_map, comb]
-      rfl
+    | cons p ps => simp only [Expr.disj, hfold .or or3 hI.or, List.map_cons, foldOpt, comb]; rfl
 
 /-- The binder went from `s` (rows extended by `F`) to `s'` (by `F'`): `F'`
 extends `F` and the width grew. -/
-def Grows (cat : Catalog) (r : Rel) (w : Nat) (s s' : BindSt) (F F' : Row → Row) : Prop :=
-  s'.Ext cat r w F' ∧ (∀ row, F row <+: F' row) ∧ s.width ≤ s'.width
+def Grows (I : Impl) (cat : Catalog) (r : Rel) (w : Nat) (s s' : BindSt) (F F' : Row → Row) : Prop :=
+  s'.Ext I cat r w F' ∧ (∀ row, F row <+: F' row) ∧ s.width ≤ s'.width
 
 theorem Grows.refl {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
-    (hs : s.Ext cat r w F) : Grows cat r w s s F F :=
+    (hs : s.Ext I cat r w F) : Grows I cat r w s s F F :=
   ⟨hs, fun _ => List.prefix_refl _, Nat.le_refl _⟩
 
 theorem Grows.trans {cat : Catalog} {r : Rel} {w : Nat} {s₁ s₂ s₃ : BindSt} {F₁ F₂ F₃ : Row → Row}
-    (h₁ : Grows cat r w s₁ s₂ F₁ F₂) (h₂ : Grows cat r w s₂ s₃ F₂ F₃) : Grows cat r w s₁ s₃ F₁ F₃ :=
+    (h₁ : Grows I cat r w s₁ s₂ F₁ F₂) (h₂ : Grows I cat r w s₂ s₃ F₂ F₃) : Grows I cat r w s₁ s₃ F₁ F₃ :=
   ⟨h₂.1, fun row => (h₁.2.1 row).trans (h₂.2.1 row), Nat.le_trans h₁.2.2 h₂.2.2⟩
 
 theorem BindSt.push_grows {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
-    (hs : s.Ext cat r w F) (e : Expr) :
-    Grows cat r w s (s.push e).1 F (fun row => F row ++ [e.eval (row ++ F row)]) :=
+    (hs : s.Ext I cat r w F) (e : Expr) :
+    Grows I cat r w s (s.push e).1 F (fun row => F row ++ [e.eval (row ++ F row) I]) :=
   ⟨BindSt.push_ext hs e, fun _ => List.prefix_append _ _, by simp [BindSt.push]⟩
 
 omit [Boxes.Ambient] in
@@ -409,43 +412,44 @@ theorem and3_isTrue (a b : Value) : (and3 a b).isTrue = true ↔ a.isTrue = true
     simp [ha', hb', and3, Value.isTrue]
 
 /-- A guard's value: `g AND h` is TRUE exactly where both are. -/
-theorem guardAnd_isTrue (g : Option Expr) (h : Expr) (row : Row) :
-    ((guardAnd g h).eval row).isTrue = true ↔ Reach g row ∧ (h.eval row).isTrue = true := by
+theorem guardAnd_isTrue (hI : I.Logic) (g : Option Expr) (h : Expr) (row : Row) :
+    ((guardAnd g h).eval row I).isTrue = true ↔ Reach I g row ∧ (h.eval row I).isTrue = true := by
   cases g with
   | none => simp [guardAnd, Reach]
   | some g =>
-    simp only [guardAnd, Expr.eval, Impl.lean, BinFn.apply, Reach, Option.mem_def, Option.some.injEq,
+    simp only [guardAnd, Expr.eval, hI.and, Reach, Option.mem_def, Option.some.injEq,
       forall_eq']
     exact and3_isTrue _ _
 
-theorem guardCase_eval_reach {g : Option Expr} {u : Expr} {row : Row} (h : Reach g row) :
-    (guardCase g u).eval row = u.eval row := by
+theorem guardCase_eval_reach {g : Option Expr} {u : Expr} {row : Row} (h : Reach I g row) :
+    (guardCase g u).eval row I = u.eval row I := by
   cases g with
   | none => rfl
   | some g => simp only [guardCase, Expr.eval, h g rfl, ite_true]
 
-theorem guardCase_eval_not {g : Option Expr} {u : Expr} {row : Row} (h : ¬ Reach g row) :
-    (guardCase g u).eval row = .null := by
+theorem guardCase_eval_not {g : Option Expr} {u : Expr} {row : Row} (h : ¬ Reach I g row) :
+    (guardCase g u).eval row I = .null := by
   cases g with
   | none => exact absurd (fun _ h => nomatch h) h
   | some g =>
-    have : (g.eval row).isTrue = false := by
+    have : (g.eval row I).isTrue = false := by
       simp only [Reach, Option.mem_def, Option.some.injEq, forall_eq'] at h
       simpa using h
     simp only [guardCase, Expr.eval, this]; rfl
 
-theorem notFalse_isTrue {row : Row} {a : Expr} (hb : Expr.BoolVal row a) :
-    ((a.notFalse).eval row).isTrue = true ↔ a.eval row ≠ .bool false := by
-  rcases hb with h | ⟨b, h⟩
-  · simp [Expr.notFalse, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3, Value.isTrue]
-  · cases b <;> simp [Expr.notFalse, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3, Value.isTrue]
+theorem notFalse_isTrue (hI : I.Logic) {row : Row} {a : Expr} (hb : Expr.BoolValI I row a) :
+    ((a.notFalse).eval row I).isTrue = true ↔ a.eval row I ≠ .bool false := by
+  simp only [Expr.notFalse, Expr.eval, hI.or, hI.isNull]
+  rcases hb with h | ⟨b, h⟩ <;> rw [h]
+  · simp [UnFn.apply, or3, Value.isTrue]
+  · cases b <;> simp [UnFn.apply, or3, Value.isTrue]
 
-theorem notTrue_isTrue {row : Row} {a : Expr} (hb : Expr.BoolVal row a) :
-    ((a.notTrue).eval row).isTrue = true ↔ a.eval row ≠ .bool true := by
-  rcases hb with h | ⟨b, h⟩
-  · simp [Expr.notTrue, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3, Value.isTrue]
-  · cases b <;> simp [Expr.notTrue, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3,
-      Value.isTrue]
+theorem notTrue_isTrue (hI : I.Logic) {row : Row} {a : Expr} (hb : Expr.BoolValI I row a) :
+    ((a.notTrue).eval row I).isTrue = true ↔ a.eval row I ≠ .bool true := by
+  simp only [Expr.notTrue, Expr.eval, hI.or, hI.isNull, hI.not]
+  rcases hb with h | ⟨b, h⟩ <;> rw [h]
+  · simp [UnFn.apply, or3, Value.isTrue]
+  · cases b <;> simp [UnFn.apply, or3, Value.isTrue]
 
 omit [Boxes.Ambient] in
 /-- The value that decides a chain: FALSE for `AND`, TRUE for `OR`. -/
@@ -459,12 +463,12 @@ theorem comb_boolVal (isAnd : Bool) (a b : Value) :
   · exact or3_bool a b
   · exact and3_bool a b
 
-theorem joinOp_eval (isAnd : Bool) (acc : Option Expr) (e : Expr) (row : Row) :
-    (joinOp isAnd acc e).eval row =
-      match acc with | none => e.eval row | some a => comb isAnd (a.eval row) (e.eval row) := by
+theorem joinOp_eval (hI : I.Logic) (isAnd : Bool) (acc : Option Expr) (e : Expr) (row : Row) :
+    (joinOp isAnd acc e).eval row I =
+      match acc with | none => e.eval row I | some a => comb isAnd (a.eval row I) (e.eval row I) := by
   cases acc with
   | none => rfl
-  | some a => cases isAnd <;> rfl
+  | some a => cases isAnd <;> simp [joinOp, Expr.eval, hI.and, hI.or, comb]
 
 omit [Boxes.Ambient] in
 theorem joinOp_refsLt {isAnd : Bool} {acc : Option Expr} {e : Expr} {n : Nat}
@@ -493,17 +497,17 @@ theorem reachOf_refsLt {isAnd : Bool} {g acc : Option Expr} {n : Nat}
 
 /-- The reach of a level: where `g` holds, it holds unless the running value
 decides the chain. -/
-theorem reachOf_iff {isAnd : Bool} {g : Option Expr} {a : Expr} {row : Row}
-    (hb : Expr.BoolVal row a) (hg : Reach g row) :
-    Reach (reachOf isAnd g (some a)) row ↔ a.eval row ≠ .bool !isAnd := by
+theorem reachOf_iff (hI : I.Logic) {isAnd : Bool} {g : Option Expr} {a : Expr} {row : Row}
+    (hb : Expr.BoolValI I row a) (hg : Reach I g row) :
+    Reach I (reachOf isAnd g (some a)) row ↔ a.eval row I ≠ .bool !isAnd := by
   simp only [reachOf, Reach, Option.mem_def, Option.some.injEq, forall_eq']
-  rw [guardAnd_isTrue]
+  rw [guardAnd_isTrue hI]
   cases isAnd
-  · simp only [Bool.false_eq_true, ↓reduceIte, Bool.not_false]; rw [notTrue_isTrue hb]; exact ⟨fun h => h.2, fun h => ⟨hg, h⟩⟩
-  · simp only [↓reduceIte, Bool.not_true]; rw [notFalse_isTrue hb]; exact ⟨fun h => h.2, fun h => ⟨hg, h⟩⟩
+  · simp only [Bool.false_eq_true, ↓reduceIte, Bool.not_false]; rw [notTrue_isTrue hI hb]; exact ⟨fun h => h.2, fun h => ⟨hg, h⟩⟩
+  · simp only [↓reduceIte, Bool.not_true]; rw [notFalse_isTrue hI hb]; exact ⟨fun h => h.2, fun h => ⟨hg, h⟩⟩
 
 theorem reach_prefix {g : Option Expr} {row F F' : Row} {n : Nat} (hg : ∀ c ∈ g, c.refsLt n)
-    (hlen : row.length + F.length = n) (hp : F <+: F') : Reach g (row ++ F') ↔ Reach g (row ++ F) := by
+    (hlen : row.length + F.length = n) (hp : F <+: F') : Reach I g (row ++ F') ↔ Reach I g (row ++ F) := by
   cases g with
   | none => simp [Reach]
   | some c => simp only [Reach, Option.mem_def, Option.some.injEq, forall_eq', eval_prefix (hg c rfl) hlen hp]
@@ -516,21 +520,21 @@ theorem getD_append_single (l : List Value) (x : Value) (i : Nat) (h : l.length 
 /-- The bound body's and the lift's values: both read the row, then their
 chains' values. -/
 theorem subst_fields_eval (body : Expr) (row X : Row) (w : Nat) (h : row.length = w) (es : List Expr) :
-    (body.subst ((List.range w).map Expr.field ++ es)).eval (row ++ X) =
-      body.eval (row ++ es.map (·.eval (row ++ X))) := by
+    (body.subst ((List.range w).map Expr.field ++ es)).eval (row ++ X) I =
+      body.eval (row ++ es.map (·.eval (row ++ X) I)) I := by
   rw [Expr.eval_subst, List.map_append, map_range_field row X w h]
 
 mutual
 /-- **The binder's invariant**: the levels extend the input's rows, and where
 the reach `g` holds, the bound expression has the lift's value. -/
-theorem LExpr.bind_spec (cat : Catalog) (r : Rel) (w : Nat) :
-    ∀ (x : LExpr) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext cat r w F →
+theorem LExpr.bind_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) :
+    ∀ (x : LExpr) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext I cat r w F →
       (∀ c ∈ g, c.refsLt s.width) → x.Scoped w →
-      ∃ F', Grows cat r w s (x.bind w g s).1 F F' ∧ (x.bind w g s).2.refsLt (x.bind w g s).1.width ∧
-        ∀ row ∈ r.eval cat, Reach g (row ++ F row) → x.Bools w row →
-          (x.bind w g s).2.eval (row ++ F' row) = (x.fill w).eval row
+      ∃ F', Grows I cat r w s (x.bind w g s).1 F F' ∧ (x.bind w g s).2.refsLt (x.bind w g s).1.width ∧
+        ∀ row ∈ r.eval cat I, Reach I g (row ++ F row) → x.Bools I w row →
+          (x.bind w g s).2.eval (row ++ F' row) I = (x.fill w).eval row I
   | .mk body cs, g, s, F, hs, hg, ⟨hbody, hcs⟩ => by
-    obtain ⟨F', hG, hrefs, hlen, hv⟩ := LChain.bindAll_spec cat r w body 0 cs g s F hs hg hcs
+    obtain ⟨F', hG, hrefs, hlen, hv⟩ := LChain.bindAll_spec hI cat r w body 0 cs g s F hs hg hcs
     refine ⟨F', hG, ?_, ?_⟩
     · simp only [LExpr.bind]
       apply Expr.refsLt_subst hbody
@@ -549,38 +553,38 @@ theorem LExpr.bind_spec (cat : Catalog) (r : Rel) (w : Nat) :
       have hrow := (hG.1.2.1 row hr).1
       simp only [LExpr.bind, LExpr.fill]
       rw [subst_fields_eval body row (F' row) w hrow, hv row hr hreach hb]
-      have := subst_fields_eval body row [] w hrow (LChain.fillAll w cs)
+      have := subst_fields_eval (I := I) body row [] w hrow (LChain.fillAll w cs)
       simp only [List.append_nil] at this
       rw [this]
-theorem LChain.bindAll_spec (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
-    ∀ (i : Nat) (cs : List LChain) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext cat r w F →
+theorem LChain.bindAll_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
+    ∀ (i : Nat) (cs : List LChain) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext I cat r w F →
       (∀ c ∈ g, c.refsLt s.width) → LChain.ScopedAll w cs →
-      ∃ F', Grows cat r w s (LChain.bindAll w g s body i cs).1 F F' ∧
+      ∃ F', Grows I cat r w s (LChain.bindAll w g s body i cs).1 F F' ∧
         (∀ e ∈ (LChain.bindAll w g s body i cs).2, e.refsLt (LChain.bindAll w g s body i cs).1.width) ∧
         (LChain.bindAll w g s body i cs).2.length = cs.length ∧
-        ∀ row ∈ r.eval cat, Reach g (row ++ F row) → LChain.BoolsAll w row cs →
-          (LChain.bindAll w g s body i cs).2.map (·.eval (row ++ F' row)) =
-            (LChain.fillAll w cs).map (·.eval row)
+        ∀ row ∈ r.eval cat I, Reach I g (row ++ F row) → LChain.BoolsAll I w row cs →
+          (LChain.bindAll w g s body i cs).2.map (·.eval (row ++ F' row) I) =
+            (LChain.fillAll w cs).map (·.eval row I)
   | _, [], g, s, F, hs, _, _ => ⟨F, Grows.refl hs, by simp [LChain.bindAll], rfl,
       fun _ _ _ _ => by simp [LChain.bindAll, LChain.fillAll]⟩
   | i, c :: cs, g, s, F, hs, hg, ⟨hc, hcs⟩ => by
     -- The chain itself: bound, or filled in place.
-    have hp : ∃ F₁, Grows cat r w s
+    have hp : ∃ F₁, Grows I cat r w s
           (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).1 F F₁ ∧
         (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).2.refsLt
           (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).1.width ∧
-        ∀ row ∈ r.eval cat, Reach g (row ++ F row) → LChain.Bools w row c →
+        ∀ row ∈ r.eval cat I, Reach I g (row ++ F row) → LChain.Bools I w row c →
           (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).2.eval
-            (row ++ F₁ row) = (LChain.fill w c).eval row := by
+            (row ++ F₁ row) I = (LChain.fill w c).eval row I := by
       split
-      · exact LChain.bind_spec cat r w c g s F hs hg hc
+      · exact LChain.bind_spec hI cat r w c g s F hs hg hc
       · refine ⟨F, Grows.refl hs, Expr.refsLt_mono _ hs.2.2 (LChain.fill_refsLt w c hc), ?_⟩
         intro row hr _ _
         exact Expr.eval_append (F row) (LChain.fill_refsLt w c hc) (hs.2.1 row hr).1
     generalize hP : (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)) = P at hp
     obtain ⟨F₁, hG₁, hr₁, hv₁⟩ := hp
     have hg₁ : ∀ c ∈ g, c.refsLt P.1.width := fun c hc => Expr.refsLt_mono _ hG₁.2.2 (hg c hc)
-    obtain ⟨F₂, hG₂, hrs₂, hlen₂, hv₂⟩ := LChain.bindAll_spec cat r w body (i + 1) cs g P.1 F₁ hG₁.1 hg₁ hcs
+    obtain ⟨F₂, hG₂, hrs₂, hlen₂, hv₂⟩ := LChain.bindAll_spec hI cat r w body (i + 1) cs g P.1 F₁ hG₁.1 hg₁ hcs
     have hb : LChain.bindAll w g s body i (c :: cs) = ((LChain.bindAll w g P.1 body (i + 1) cs).1,
         P.2 :: (LChain.bindAll w g P.1 body (i + 1) cs).2) := by
       simp only [LChain.bindAll, hP]
@@ -593,33 +597,33 @@ theorem LChain.bindAll_spec (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
       · exact hrs₂ e he
     · intro row hr hreach ⟨hbc, hbcs⟩
       have hl₁ := (hG₁.1.2.1 row hr)
-      have hreach₁ : Reach g (row ++ F₁ row) :=
+      have hreach₁ : Reach I g (row ++ F₁ row) :=
         (reach_prefix hg (by have := (hs.2.1 row hr); omega) (hG₁.2.1 row)).mpr hreach
       simp only [List.map_cons, LChain.fillAll]
       rw [hv₂ row hr hreach₁ hbcs, ← hv₁ row hr hreach hbc,
         eval_prefix hr₁ (by omega) (hG₂.2.1 row)]
-theorem LChain.bind_spec (cat : Catalog) (r : Rel) (w : Nat) :
-    ∀ (c : LChain) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext cat r w F →
+theorem LChain.bind_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) :
+    ∀ (c : LChain) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext I cat r w F →
       (∀ c ∈ g, c.refsLt s.width) → c.Scoped w →
-      ∃ F', Grows cat r w s (LChain.bind w g s c).1 F F' ∧
+      ∃ F', Grows I cat r w s (LChain.bind w g s c).1 F F' ∧
         (LChain.bind w g s c).2.refsLt (LChain.bind w g s c).1.width ∧
-        ∀ row ∈ r.eval cat, Reach g (row ++ F row) → LChain.Bools w row c →
-          (LChain.bind w g s c).2.eval (row ++ F' row) = (LChain.fill w c).eval row
+        ∀ row ∈ r.eval cat I, Reach I g (row ++ F row) → LChain.Bools I w row c →
+          (LChain.bind w g s c).2.eval (row ++ F' row) I = (LChain.fill w c).eval row I
   | .mk isAnd ops, g, s, F, hs, hg, hops => by
-    obtain ⟨F', hG, hr, hv⟩ := LChain.bindOps_spec cat r w isAnd ops g s F none hs hg (by simp) hops
+    obtain ⟨F', hG, hr, hv⟩ := LChain.bindOps_spec hI cat r w isAnd ops g s F none hs hg (by simp) hops
     refine ⟨F', hG, hr, fun row hrow hreach hb => ?_⟩
-    rw [LChain.fill_eval w isAnd ops row hb]
+    rw [LChain.fill_eval hI w isAnd ops row hb]
     exact hv row hrow hreach hb (by simp)
-theorem LChain.bindOps_spec (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
+theorem LChain.bindOps_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
     ∀ (ops : List LExpr) (g : Option Expr) (s : BindSt) (F : Row → Row) (acc : Option Expr),
-      s.Ext cat r w F → (∀ c ∈ g, c.refsLt s.width) → (∀ a ∈ acc, a.refsLt s.width) →
+      s.Ext I cat r w F → (∀ c ∈ g, c.refsLt s.width) → (∀ a ∈ acc, a.refsLt s.width) →
       LExpr.ScopedAll w ops →
-      ∃ F', Grows cat r w s (LChain.bindOps w isAnd g s acc ops).1 F F' ∧
+      ∃ F', Grows I cat r w s (LChain.bindOps w isAnd g s acc ops).1 F F' ∧
         (LChain.bindOps w isAnd g s acc ops).2.refsLt (LChain.bindOps w isAnd g s acc ops).1.width ∧
-        ∀ row ∈ r.eval cat, Reach g (row ++ F row) → LExpr.BoolsAll w row ops →
-          (∀ a ∈ acc, Expr.BoolVal (row ++ F row) a) →
-          (LChain.bindOps w isAnd g s acc ops).2.eval (row ++ F' row) =
-            foldOpt isAnd (acc.map (·.eval (row ++ F row))) ((LExpr.fillAll w ops).map (·.eval row))
+        ∀ row ∈ r.eval cat I, Reach I g (row ++ F row) → LExpr.BoolsAll I w row ops →
+          (∀ a ∈ acc, Expr.BoolValI I (row ++ F row) a) →
+          (LChain.bindOps w isAnd g s acc ops).2.eval (row ++ F' row) I =
+            foldOpt isAnd (acc.map (·.eval (row ++ F row) I)) ((LExpr.fillAll w ops).map (·.eval row I))
   | [], g, s, F, acc, hs, _, ha, _ => by
     refine ⟨F, Grows.refl hs, ?_, fun row _ _ _ _ => ?_⟩
     · cases acc with
@@ -634,22 +638,22 @@ theorem LChain.bindOps_spec (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
         simp [LChain.bindOps, hpl]
       rw [hb]
       have hfx := Expr.refsLt_mono _ hs.2.2 (LExpr.fill_refsLt w x hx)
-      obtain ⟨F', hG, hr, hv⟩ := LChain.bindOps_spec cat r w isAnd xs g s F
+      obtain ⟨F', hG, hr, hv⟩ := LChain.bindOps_spec hI cat r w isAnd xs g s F
         (some (joinOp isAnd acc (LExpr.fill w x))) hs hg
         (fun a ha' => by
           simp only [Option.mem_def, Option.some.injEq] at ha'; subst ha'; exact joinOp_refsLt ha hfx) hxs
       refine ⟨F', hG, hr, fun row hrow hreach ⟨⟨hbx, _⟩, hbxs⟩ hba => ?_⟩
       have hl := (hs.2.1 row hrow)
-      have hxe : (LExpr.fill w x).eval (row ++ F row) = (LExpr.fill w x).eval row :=
+      have hxe : (LExpr.fill w x).eval (row ++ F row) I = (LExpr.fill w x).eval row I :=
         Expr.eval_append (F row) (LExpr.fill_refsLt w x hx) hl.1
       rw [hv row hrow hreach hbxs ?_]
-      · simp only [LExpr.fillAll, List.map_cons, foldOpt_cons, Option.map_some, joinOp_eval, hxe]
+      · simp only [LExpr.fillAll, List.map_cons, foldOpt_cons, Option.map_some, joinOp_eval hI, hxe]
         cases acc <;> rfl
       · intro a ha'
         simp only [Option.mem_def, Option.some.injEq] at ha'; subst ha'
-        rw [Expr.BoolVal, joinOp_eval]
+        rw [Expr.BoolValI, joinOp_eval hI]
         cases acc with
-        | none => show Expr.BoolVal _ _; unfold Expr.BoolVal; rw [hxe]; exact hbx
+        | none => show Expr.BoolValI I _ _; unfold Expr.BoolValI; rw [hxe]; exact hbx
         | some a => exact comb_boolVal _ _ _
     · -- An operand that may raise gets a level.
       have hb : LChain.bindOps w isAnd g s acc (x :: xs) =
@@ -661,7 +665,7 @@ theorem LChain.bindOps_spec (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
       rw [hb]
       generalize hreachDef : reachOf isAnd g acc = reach at *
       have hreachRefs : ∀ c ∈ reach, c.refsLt s.width := hreachDef ▸ reachOf_refsLt hg ha
-      obtain ⟨F₁, hG₁, hr₁, hv₁⟩ := LExpr.bind_spec cat r w x reach s F hs hreachRefs hx
+      obtain ⟨F₁, hG₁, hr₁, hv₁⟩ := LExpr.bind_spec hI cat r w x reach s F hs hreachRefs hx
       generalize hP : LExpr.bind w reach s x = P at hG₁ hr₁ hv₁
       have hcol : (joinOp isAnd acc (guardCase reach P.2)).refsLt P.1.width := by
         apply joinOp_refsLt (fun a ha' => Expr.refsLt_mono _ hG₁.2.2 (ha a ha'))
@@ -672,7 +676,7 @@ theorem LChain.bindOps_spec (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
       generalize hQ : P.1.push (joinOp isAnd acc (guardCase reach P.2)) = Q at hG₂
       have hQ2 : Q.2 = P.1.width := by rw [← hQ]; rfl
       have hQw : Q.1.width = P.1.width + 1 := by rw [← hQ]; rfl
-      obtain ⟨F₃, hG₃, hr₃, hv₃⟩ := LChain.bindOps_spec cat r w isAnd xs g Q.1 _ (some (.field Q.2))
+      obtain ⟨F₃, hG₃, hr₃, hv₃⟩ := LChain.bindOps_spec hI cat r w isAnd xs g Q.1 _ (some (.field Q.2))
         hG₂.1 (fun c hc => Expr.refsLt_mono _ (Nat.le_trans hG₁.2.2 hG₂.2.2) (hg c hc))
         (fun a ha' => by
           simp only [Option.mem_def, Option.some.injEq] at ha'; subst ha'; show Q.2 < Q.1.width; omega) hxs
@@ -680,17 +684,17 @@ theorem LChain.bindOps_spec (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
       have hl := hs.2.1 row hrow
       have hl₁ := hG₁.1.2.1 row hrow
       -- The level's value: the running value joined with the operand's, where it is reached.
-      have hlevel : (joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row) =
-          match acc.map (·.eval (row ++ F row)) with
-          | none => (LExpr.fill w x).eval row
-          | some a => comb isAnd a ((LExpr.fill w x).eval row) := by
-        rw [joinOp_eval]
-        have hacc : ∀ a ∈ acc, a.eval (row ++ F₁ row) = a.eval (row ++ F row) :=
+      have hlevel : (joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row) I =
+          match acc.map (·.eval (row ++ F row) I) with
+          | none => (LExpr.fill w x).eval row I
+          | some a => comb isAnd a ((LExpr.fill w x).eval row I) := by
+        rw [joinOp_eval hI]
+        have hacc : ∀ a ∈ acc, a.eval (row ++ F₁ row) I = a.eval (row ++ F row) I :=
           fun a ha' => eval_prefix (ha a ha') (by omega) (hG₁.2.1 row)
         cases acc with
         | none =>
           rw [← hreachDef] at hv₁ ⊢
-          have hR : Reach g (row ++ F₁ row) :=
+          have hR : Reach I g (row ++ F₁ row) :=
             (reach_prefix hg (by omega) (hG₁.2.1 row)).mpr hreach
           simp only [reachOf] at hv₁ ⊢
           rw [guardCase_eval_reach hR]
@@ -699,33 +703,33 @@ theorem LChain.bindOps_spec (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
           simp only [Option.map_some]
           rw [hacc a rfl]
           have hba' := hba a rfl
-          by_cases hR : Reach reach (row ++ F row)
-          · have hR₁ : Reach reach (row ++ F₁ row) := (reach_prefix hreachRefs (by omega) (hG₁.2.1 row)).mpr hR
+          by_cases hR : Reach I reach (row ++ F row)
+          · have hR₁ : Reach I reach (row ++ F₁ row) := (reach_prefix hreachRefs (by omega) (hG₁.2.1 row)).mpr hR
             rw [guardCase_eval_reach hR₁, hv₁ row hrow hR hbx']
-          · have hR₁ : ¬ Reach reach (row ++ F₁ row) :=
+          · have hR₁ : ¬ Reach I reach (row ++ F₁ row) :=
               fun h => hR ((reach_prefix hreachRefs (by omega) (hG₁.2.1 row)).mp h)
             rw [guardCase_eval_not hR₁]
             rw [← hreachDef] at hR
-            have hdec : a.eval (row ++ F row) = .bool !isAnd := by
-              have := (not_congr (reachOf_iff (isAnd := isAnd) hba' hreach)).mp hR
+            have hdec : a.eval (row ++ F row) I = .bool !isAnd := by
+              have := (not_congr (reachOf_iff hI (isAnd := isAnd) hba' hreach)).mp hR
               exact Classical.not_not.mp this
             rw [hdec, comb_decides, comb_decides]
       have hidx : (row ++ F₁ row).length = Q.2 := by
         rw [hQ2, List.length_append]; omega
       have hfield : (Expr.field Q.2).eval (row ++ (F₁ row ++
-          [(joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row)])) =
-          (joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row) := by
+          [(joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row) I])) I =
+          (joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row) I := by
         simp only [Expr.eval, ← List.append_assoc]
         exact getD_append_single _ _ _ hidx
-      have hacc₃ : ∀ a ∈ some (Expr.field Q.2), Expr.BoolVal (row ++ (F₁ row ++
-          [(joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row)])) a := by
+      have hacc₃ : ∀ a ∈ some (Expr.field Q.2), Expr.BoolValI I (row ++ (F₁ row ++
+          [(joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row) I])) a := by
         intro a ha'
         simp only [Option.mem_def, Option.some.injEq] at ha'; subst ha'
-        rw [Expr.BoolVal, hfield, hlevel]
+        rw [Expr.BoolValI, hfield, hlevel]
         cases acc with
         | none => exact hbx
         | some a => exact comb_boolVal _ _ _
-      have hreach₂ : Reach g (row ++ (F₁ row ++ [(joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row)])) :=
+      have hreach₂ : Reach I g (row ++ (F₁ row ++ [(joinOp isAnd acc (guardCase reach P.2)).eval (row ++ F₁ row) I])) :=
         (reach_prefix hg (by omega) ((hG₁.2.1 row).trans (List.prefix_append _ _))).mpr hreach
       rw [hv₃ row hrow hreach₂ hbxs hacc₃]
       simp only [LExpr.fillAll, List.map_cons, foldOpt_cons, Option.map_some]
@@ -743,22 +747,22 @@ theorem map_range_getD (row X : Row) (w : Nat) (h : row.length = w) :
 /-- **T1, rows**: the filter on the bound condition keeps the rows the filter on
 D50's lift keeps, in the same order, where every chain's operands are TRUE,
 FALSE or NULL. -/
-theorem Rel.bindFilter_eval (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
-    (hw : ∀ row ∈ r.eval cat, row.length = w) (hx : x.Scoped w)
-    (hb : ∀ row ∈ r.eval cat, x.Bools w row) :
-    (r.bindFilter w x).eval cat = (r.filter (x.fill w)).eval cat := by
-  have hs : BindSt.Ext cat r w ⟨r, w⟩ (fun _ => []) :=
+theorem Rel.bindFilter_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
+    (hw : ∀ row ∈ r.eval cat I, row.length = w) (hx : x.Scoped w)
+    (hb : ∀ row ∈ r.eval cat I, x.Bools I w row) :
+    (r.bindFilter w x).eval cat I = (r.filter (x.fill w)).eval cat I := by
+  have hs : BindSt.Ext I cat r w ⟨r, w⟩ (fun _ => []) :=
     ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
-  obtain ⟨F', hG, _, hv⟩ := LExpr.bind_spec cat r w x none ⟨r, w⟩ (fun _ => []) hs (by simp) hx
+  obtain ⟨F', hG, _, hv⟩ := LExpr.bind_spec hI cat r w x none ⟨r, w⟩ (fun _ => []) hs (by simp) hx
   simp only [Rel.bindFilter, Rel.eval, hG.1.1, List.filter_map, List.map_map]
-  have hf : List.filter ((fun row => (Expr.eval row (LExpr.bind w none ⟨r, w⟩ x).2).isTrue) ∘
-      fun row => row ++ F' row) (r.eval cat) =
-      List.filter (fun row => ((x.fill w).eval row).isTrue) (r.eval cat) :=
+  have hf : List.filter ((fun row => (Expr.eval row (LExpr.bind w none ⟨r, w⟩ x).2 I).isTrue) ∘
+      fun row => row ++ F' row) (r.eval cat I) =
+      List.filter (fun row => ((x.fill w).eval row I).isTrue) (r.eval cat I) :=
     List.filter_congr fun row hr => by
       simp only [Function.comp_apply]
       rw [hv row hr (by simp [Reach]) (hb row hr)]
   rw [hf]
-  conv => rhs; rw [← List.map_id (List.filter _ (r.eval cat))]
+  conv => rhs; rw [← List.map_id (List.filter _ (r.eval cat I))]
   apply List.map_congr_left
   intro row hr
   have hr' := (List.mem_filter.mp hr).1

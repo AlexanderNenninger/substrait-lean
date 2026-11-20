@@ -1112,9 +1112,9 @@ theorem isTrue_or3 (a b : Value) :
 
 /-- An expression that only looks at the first `n` columns ignores whatever
 is appended after them. This is the key lemma behind pushdown rewrites. -/
-theorem Expr.eval_append {e : Expr} {n : Nat} {row : Row} (extra : Row)
+theorem Expr.eval_append {I : Impl} {e : Expr} {n : Nat} {row : Row} (extra : Row)
     (he : e.refsLt n) (hlen : row.length = n) :
-    e.eval (row ++ extra) = e.eval row := by
+    e.eval (row ++ extra) I = e.eval row I := by
   induction e generalizing n row with
   | lit => rfl
   | field i =>
