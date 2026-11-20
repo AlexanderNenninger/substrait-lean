@@ -269,7 +269,10 @@ def same(got: Any, want: Any, bound: float) -> bool:
             return math.isnan(want) and math.isnan(got)
         if math.isinf(want):
             return got == want
-        return abs(got - want) <= bound and (got != 0.0 or math.copysign(1, got) == 1)
+        # Values stay raw (D31, #1794): a zero has the oracle's sign.
+        return abs(got - want) <= bound and (
+            got != 0.0 or math.copysign(1, got) == math.copysign(1, want)
+        )
     return got == want
 
 

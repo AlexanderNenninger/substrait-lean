@@ -20,6 +20,8 @@ from typing import Any
 import duckdb
 import sqlglot as sg
 import sverify as sv
+from sverify.conditions import label as condition_label
+from sverify.errors import ConditionError
 
 from sverify_dbt import mapping
 from sverify_dbt.manifest import Project, Relation, Test, load
@@ -92,6 +94,7 @@ class _Checker:
             tests={t.unique_id: t for t in self.p.tests.values()},
             unit_tests=self.p.unit_tests,
             relations=self.p.relations,
+            selected=bool(select),
         )
 
     def _upstream(self, uids: set[str]) -> set[str]:
@@ -325,7 +328,6 @@ class _Checker:
     def _verify(self, res: ModelResult, tables: dict, requires: dict, ensures: list) -> Any:
         """`sv.verify` of the model; a condition sverify cannot read is
         dropped with its reason, and a model it cannot read is refused."""
-        conds = [c for _, cs in ensures for c in cs]
 
         def go(req: dict, ens: list) -> Any:
             with warnings.catch_warnings():
@@ -340,36 +342,59 @@ class _Checker:
                     counterexamples=self.counterexamples,
                 )
 
-        try:
-            return go(requires, conds)
-        except ValueError as e:  # sverify's Unsupported, and a bad condition
-            first = e
-        try:
-            go({t: [] for t in requires}, [])
-        except ValueError as e:
-            res.refuse(_refusal(e))
-            return None
-        # The SQL is fine: find the conditions sverify cannot read.
-        for t, cs in requires.items():
-            keep = []
-            for c in cs:
-                try:
-                    go({**{k: [] for k in requires}, t: [c]}, [])
-                    keep.append(c)
-                except ValueError as e:
-                    res.not_assumed.append(f"{t}: {_label(c)}: sverify cannot read it ({e})")
-            requires[t] = keep
-        for tr, cs in ensures:
+        while True:
             try:
-                go({t: [] for t in requires}, cs)
-            except ValueError as e:
-                tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
-        conds = [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
+                return go(requires, _checked(ensures))
+            except ConditionError as e:  # drop the conditions it names, prove the rest (#699)
+                if not self._drop(e, res, requires, ensures):
+                    res.refuse(_refusal(e))
+                    return None
+            except ValueError as e:  # a refusal after planning: the model or a condition
+                return self._isolate(go, res, requires, ensures, e)
+
+    @staticmethod
+    def _isolate(go: Any, res: ModelResult, requires: dict, ensures: list, first: Exception) -> Any:
+        """A refusal `ConditionError` does not name (the checker's, after the
+        plans exist): refuse the model if it fails alone, else prove each
+        test's conditions on their own and skip the ones that fail."""
+        none = {t: [] for t in requires}
         try:
-            return go(requires, conds)
+            go(none, [])
         except ValueError:
             res.refuse(_refusal(first))
             return None
+        for tr, cs in ensures:
+            if tr.status == "not checked":
+                continue
+            try:
+                go(none, cs)
+            except ValueError as e:
+                tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
+        try:
+            return go(requires, _checked(ensures))
+        except ValueError:
+            res.refuse(_refusal(first))
+            return None
+
+    @staticmethod
+    def _drop(e: ConditionError, res: ModelResult, requires: dict, ensures: list) -> bool:
+        """Drop every condition `e` names, with its reason; False if it
+        names none that is still there."""
+        dropped = False
+        for name, err in e.errors.items():
+            for t, cs in requires.items():
+                hit = [c for c in cs if _named(c) == name]
+                if hit:
+                    requires[t] = [c for c in cs if c not in hit]
+                    res.not_assumed.append(
+                        f"{t}: {_label(hit[0])}: sverify cannot read it ({_first_line(err)})"
+                    )
+                    dropped = True
+            for tr, cs in ensures:
+                if tr.status != "not checked" and any(_named(c) == name for c in cs):
+                    tr.skip(f"sverify cannot read its condition: {_first_line(err)}")
+                    dropped = True
+        return dropped
 
     def _read(self, report: Any, m: Relation, res: ModelResult, ensures: list) -> None:
         # `report.ensures` is in the order of the conditions given, each
@@ -578,6 +603,11 @@ def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _checked(ensures: list) -> list:
+    """The conditions of the tests still to check, in order."""
+    return [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
+
+
 def _first_line(e: BaseException) -> str:
     lines = str(e).strip().splitlines()
     return lines[0] if lines else type(e).__name__
@@ -615,6 +645,11 @@ def _why(c: Any) -> str:
     (`CheckedCondition.reason`; its `why` speaks of `sv.unique` and
     `requires`)."""
     return _WHY.get(c.reason, f"sverify only knows it is {c.value}")
+
+
+def _named(c: Any) -> str:
+    """A condition as the keys of `ConditionError.errors` name it."""
+    return condition_label(c)
 
 
 def _label(c: Any) -> str:

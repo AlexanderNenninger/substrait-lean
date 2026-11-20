@@ -37,11 +37,11 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 ## Summary
 
-| Engine | Version | Translation | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
-|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Rel.duckdb_refines` | 5 | 25 | 1 | 4 | 4 | 0 | 17 | 0 |
-| Polars | 2.1.0 | `Rel.polars_sound` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Rel.spark_sound` | 6 | 26 | 1 | 5 | 3 | 2 | 16 | 0 |
+| Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 5 | 25 | 1 | 4 | 4 | 0 | 17 | 0 |
+| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 3 | 5 | 16 | 0 |
 
 Rows per evidence level:
 
@@ -49,7 +49,7 @@ Rows per evidence level:
 |---|---|---|---|---|---|---|---|
 | DuckDB | 6 | 13 | 18 | 2 | 0 | 0 | 17 |
 | Polars | 29 | 2 | 17 | 0 | 0 | 0 | 17 |
-| Spark | 17 | 13 | 13 | 0 | 0 | 0 | 16 |
+| Spark | 17 | 17 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -76,14 +76,13 @@ Rows per evidence level:
 | Polars | `strpos_chars` | expression | str.match: `string_positions` |
 | Spark | `decimal_negate_sub` | expression | dec.arith: `overflow` |
 | Spark | `int_sum_decimal` | expression | agg.isum: `overflow` |
-| Spark | `atan2 refused` | expression | fp.elem: `zero_sign` |
 | Spark | `int_avg_decimal` | expression | `avg_int_result` |
 | Spark | `null_order` | argument | `null_order` |
 | Spark | `sort on the keys` | sort | `clustered` |
 
 ## DuckDB 2.0.0
 
-5 shims (4 expression, 1 sort). The translation as a whole rests on `Rel.duckdb_refines`.
+5 shims (4 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -146,7 +145,7 @@ Rows per evidence level:
 
 ## Polars 2.1.0
 
-14 shims (2 argument, 11 expression, 1 sort). The translation as a whole rests on `Rel.polars_sound`.
+14 shims (2 argument, 11 expression, 1 sort). Its run is proved sound by `Engine.polars_sound`, under `Engine.GuardFreeSide`.
 
 | Group | Option | Reference's tool | Reference | Polars | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -228,7 +227,7 @@ Refused on Polars, with no expression there:
 
 ## Spark 4.3.0
 
-6 shims (1 argument, 4 expression, 1 sort). The translation as a whole rests on `Rel.spark_sound`.
+5 shims (1 argument, 3 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.GuardFreeSide`.
 
 | Group | Option | Reference's tool | Reference | Spark | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -248,6 +247,10 @@ Refused on Polars, with no expression there:
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | fuzz | tested: [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json) |
+| fp.atan2 | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
+| fp.pow | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
+| fp.elem | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json), [spark-ulp-libm](../engines/spark/facts/spark-ulp-libm.json) |
+| fp.log | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json), [spark-ulp-libm](../engines/spark/facts/spark-ulp-libm.json) |
 | agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json), [spark-sum-double](../engines/spark/facts/spark-sum-double.json), [spark-avg-double](../engines/spark/facts/spark-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN`, `NULL` | precondition: every argument is in its function's domain | proof | proved `Rel.spark_sound`; [spark-math-domain](../engines/spark/facts/spark-math-domain.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-math-domain](../engines/spark/facts/spark-math-domain.json) |
@@ -255,7 +258,8 @@ Refused on Polars, with no expression there:
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.spark_sound`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json), [spark-nonfinite-aggregates](../engines/spark/facts/spark-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | fuzz | tested: [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json), [spark-zero-order](../engines/spark/facts/spark-zero-order.json) |
-| fp.elem | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `atan2 refused` (expression) | fuzz | tested: [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json) |
+| fp.atan2 | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | refused | fuzz | tested: [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json), [spark-float-power-atan2](../engines/spark/facts/spark-float-power-atan2.json) |
+| fp.elem | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | probe | tested: [spark-unary-zero-sign](../engines/spark/facts/spark-unary-zero-sign.json) |
 | every | `round_zero_sign` | open | `ANY` | `POSITIVE` | native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json), [spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json) |
 | every | `pow_one_inf` | choose | `ONE` | `NAN` | refused | fuzz | tested: [spark-math-domain](../engines/spark/facts/spark-math-domain.json), [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [spark-nan-equality](../engines/spark/facts/spark-nan-equality.json) |

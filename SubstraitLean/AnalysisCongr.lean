@@ -347,24 +347,25 @@ theorem Rel.rule_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → 
     eagerAgg_congr h A F K, fkMatch_congr h A F K R]
 
 theorem Rel.stepN_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) :
-    ∀ (fuel : Nat) (r : Rel) (log : List String),
-      r.stepN c A F K R fuel log = r.stepN cat A F K R fuel log
+    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) :
+    ∀ (fuel : Nat) (r : Rel) (log : List Rule),
+      r.stepN c A F K R use fuel log = r.stepN cat A F K R use fuel log
   | 0, _, _ => rfl
   | fuel + 1, r, log => by
       simp only [stepN, rule_congr h A F K R r]
       split <;> try rfl
-      exact stepN_congr h A F K R fuel _ _
+      split <;> try rfl
+      exact stepN_congr h A F K R use fuel _ _
 
 theorem Rel.optimize_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
-    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) :
-    ∀ r : Rel, r.optimize c A F K R = r.optimize cat A F K R
+    (F : String → List Fact) (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) :
+    ∀ r : Rel, r.optimize c A F K R use = r.optimize cat A F K R use
   | .read _ | .values _ _ | .unnest _ _ => rfl
   | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
   | .distinct r | .aggregate r _ _ => by
-      simp only [optimize, step, optimize_congr h A F K R r, stepN_congr h A F K R]
+      simp only [optimize, step, optimize_congr h A F K R use r, stepN_congr h A F K R use]
   | .cross a b | .join a b _ _ | .unionAll a b | .semi a b _ _ => by
-      simp only [optimize, step, optimize_congr h A F K R a, optimize_congr h A F K R b,
-        stepN_congr h A F K R]
+      simp only [optimize, step, optimize_congr h A F K R use a, optimize_congr h A F K R use b,
+        stepN_congr h A F K R use]
 
 end Substrait

@@ -355,6 +355,55 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   join to a small keyed table is cheap in both engines, so aggregating first
   saves little.
 
+### The gate
+
+Every rule above is proved for every plan (`Rel.optimize_sound`), and the
+report shows the rewrite (`optimized`, `rewrites`). An engine runs the rewrite
+in place of the plan as written only where its rule is on and every check of
+`Request.runPlanIn` passes (`SubstraitLean/RunPlan.lean`, #1787): the
+request is under the reference, the rewrite refines the plan (up to the
+order of rows for a `multiset` observation, exactly under an `ORDER BY`
+otherwise), adds no issue, stays guard-free, reads no option and calls no
+function the plan does not, and no double occurs where the observation
+compares doubles within a bound. The report names the check that kept the
+plan as written (`run_gate`), and `check_run_plan_sound` proves the rest.
+`Report.run` takes the rewrite on the translated and transfer routes
+(`routes.RUNS_REWRITE`), where it checked the preconditions on its data
+(`check_requires=True`, the default): every rewrite rests on them, so
+`run(check_requires=False)` and `Report.to_sql`, which cannot see the data its
+SQL runs on, take the plan as written (ruling 150). The report says which
+plan an engine ran: `run_gate` names the checker's gate, and
+`Report._run_gates` the engine's own (`"route"`, `"unchecked"`, `"writer"`).
+
+A rule is on by default only with a measured gain on one engine, in run time
+or written SQL, and no loss beyond the bench's run-to-run spread on DuckDB,
+Polars and Spark. Snowflake was not measured. Eager aggregation keeps no bound
+on the rows it aggregates (`Rule.keepsSmall`), so the plan to run never uses
+it.
+
+Benchmark (`scripts/bench_optimizations.py 1000000 rules`, homelab, 12
+cores, 10⁶ rows, the median of 7 runs, as written / rewritten, with the
+spread, (max − min) / median, of the slower side in brackets; Spark times the
+query over views registered once). The `on` column is what `substrait-check
+--rules` prints, and `tests/test_run_plan.py` checks the two agree. Ruling 150
+turned seven rules on; a later bench with a median below 1 beyond the spread
+on DuckDB, Polars or Spark turns a rule off again. The others stay reachable
+through the request's `"rules"`.
+
+| Rule | Default | Polars | DuckDB | Spark | Written SQL | Why |
+|---|---|---|---|---|---|---|
+| filter implied by the contract | on | 2.1× (±77 %) | 1.15× (±21 %) | 1.20× (±23 %) | 244 → 122 | gain |
+| filter the contract rules out | on | 2.3× (±42 %) | 1.9× (±29 %) | 15× (±129 %) | 238 → 175 | gain |
+| left join under a filter rejecting NULLs | off | 1.32× (±26 %) | 0.89× (±44 %) | 0.97× (±24 %) | 505 → 506 | off: no gain beyond the spread |
+| left join on a foreign key | off | 1.14× (±35 %) | 0.87× (±43 %) | 1.04× (±24 %) | 399 → 400 | off: no gain beyond the spread |
+| DISTINCT on a key | on | 423× (±13 %) | 2.6× (±38 %) | 1.27× (±23 %) | 227 → 122 | gain |
+| GROUP BY a key | on | 12.6× (±26 %) | 2.5× (±16 %) | 1.01× (±31 %) | 276 → 301 | gain |
+| DISTINCT aggregate of a key | on | 8.2× (±19 %) | 3.7× (±48 %) | 1.28× (±39 %) | 244 → 235 | gain |
+| join on a foreign key, no column used | on | 106× (±18 %) | 4.0× (±55 %) | 1.30× (±36 %) | 364 → 172 | gain |
+| left join on a key, no column used | on | 119× (±21 %) | 4.0× (±41 %) | 1.14× (±28 %) | 363 → 172 | gain |
+| GROUP BY columns that others determine | off | slower | slower | not measured | | off: slower above |
+| aggregate below a join on a key | off | slower | slower | not measured | | off: slower above |
+
 ## 4. Partition and file pruning
 
 `sverify.io` reads Delta and Iceberg with per-file statistics, and
@@ -574,7 +623,7 @@ A window of aggregates over bounded RANGE frames of one time column
 (`sverify._touched.Framed`) is maintained by recomputing the rows near the
 change. A window row depends only on the rows of its partition whose time
 lies in its frame (`TouchedFrames.outRow_local` in
-[`SubstraitLean/TouchedFrames.lean`](../SubstraitLean/TouchedFrames.lean)).
+[`analysis/Sverify/Analysis/TouchedFrames.lean`](../analysis/Sverify/Analysis/TouchedFrames.lean)).
 So for frames from `start` to `end` around each row, `start ≤ 0 ≤ end`, and
 a batch whose changed rows lie in the touched partitions at times
 `[t0, t1]`, the output rows outside `[t0 - end, t1 - start]` keep their

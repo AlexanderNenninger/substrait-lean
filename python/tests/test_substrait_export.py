@@ -235,8 +235,9 @@ def test_apply_rewrites_the_gap(case: str) -> None:
     expr, requires, option = GAP_CASES[case]
     m = read(_verify(expr, requires).to_substrait(shims="apply")).manifest
     # D30: a consumer's own variance is within the plan's bound of the
-    # reference's exact moments rounded once.
-    assert m["class"] == ("observed" if case == "ST-3" else "exact")
+    # reference's exact moments rounded once, and a consumer's double keys
+    # pick a member of a zero's class, which the default observation reads as one.
+    assert m["class"] == "observed"
     assert any(s["option"] == option for s in m["shims"]), m["shims"]
     assert not m["assumptions"]
 
@@ -414,3 +415,19 @@ def test_a_condition_over_another_relation_is_refused() -> None:
     project["input"] = project["input"]["project"]["input"]
     with pytest.raises(ValueError, match="export it with this version"):
         _over(plan, other, "c")
+
+
+def test_a_text_fact_travels_and_is_checked_on_read_back() -> None:
+    """A text column's inferred fact (`reverse` needs ASCII, D43) has no
+    plan of its own: the export records it as a `text` precondition, the
+    read-back proves again with it and checks it on the data (#862)."""
+    S = ibis.table({"s": "string"}, name="s")
+    report = sv.verify(S.select(r=S.s.reverse()), on_inferred="warn")
+    back = sv.Report.from_substrait(report.to_substrait(format="binary"))
+    assert back.verdict == report.verdict == sv.Verdict.PROVED
+    (fact,) = read(report.to_substrait()).requires
+    assert fact["kind"] == "text" and fact["entry"]["fact"] == "ascii"
+    con = connect()
+    put_table(con, "s", pa.table({"s": ["abc", "äbc"]}))
+    with pytest.raises(PreconditionError, match="refused before the run"):
+        back.run(con, "duckdb")

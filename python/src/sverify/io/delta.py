@@ -1291,7 +1291,10 @@ class DeltaSink(_TableSink[DeltaTable]):
         stale = {k: v for k, v in have.items() if not _same_sql(contract.checks.get(k), v)}
         foreign = {k: v for k, v in stale.items() if not (replace and k.startswith("sverify_"))}
         if foreign:
-            raise ValueError(f"{self.uri} has constraints the view does not guarantee: {foreign}")
+            raise ValueError(
+                f"{self.uri} has constraints the view does not guarantee: {foreign}; "
+                "add them to the view's `ensures`, or drop them from the table"
+            )
         for k in stale:
             dt.alter.drop_constraint(k)
             del have[k]

@@ -75,7 +75,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   `LAG`/`LEAD`/`ROW_NUMBER` columns holds. Strict order uses an oracle saying
   which windows have a key (`WindowKeys`); `Rel.keyedWindows_soundAll` proves the
   one computed from `Rel.keys` right, which is what `contract_sound` asks for.
-* `IoT.window_complete` ([Completeness.lean](../SubstraitLean/Completeness.lean)): the
+* `IoT.window_complete` ([Completeness.lean](../core/Sverify/Core/Completeness.lean)): the
   converse of the contracts. If both sensors have valid readings at `t` and `t + 60`,
   the window at `t` is in the output, so no window is lost. It's built from one
   membership lemma per operator.
@@ -150,7 +150,7 @@ group (checked at run time: the job raises if it does not …)` (or
   (`Rel.SumsFit`, `Rel.noIssue_of_sumsFit`) that the SQL checks on the data while
   the job runs.
 * Bounds that rule out overflow are inferred
-  ([Infer.lean](../SubstraitLean/Infer.lean)): the range analysis run
+  ([Infer.lean](../analysis/Sverify/Analysis/Infer.lean)): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,
   filters, joins and `MIN`/`MAX` down to base-table columns. So are the
   ranges of codes that rule out domain errors, casts out of range, string

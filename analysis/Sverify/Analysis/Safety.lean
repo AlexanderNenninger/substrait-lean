@@ -773,7 +773,7 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
     let tk := withAlts (c.cstrAlts true) ks ors
     let ek := withAlts (c.cstrAlts false) ks ors
     c.mayIssues env fs ks ors ++
-      (if ac.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if ac.tt then t.mayIssues (c.refine env) (fs ++ c.factsOf) tk.1 tk.2 else []) ++
       (if ac.nonBool || ac.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else [])
   -- The body on any element, with the row in scope (D28).
   | .hof _ l b => l.mayIssues env fs ks ors ++ b.mayIssues (AVal.top :: env) [] []
@@ -846,7 +846,7 @@ def Expr.mayIssuesA (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors :
     let tk := withAlts (c.cstrAlts true) ks ors
     let ek := withAlts (c.cstrAlts false) ks ors
     (rc.1 ++
-      (if rc.2.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if rc.2.tt then t.mayIssues (c.refine env) (fs ++ c.factsOf) tk.1 tk.2 else []) ++
       (if rc.2.nonBool || rc.2.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else []),
       (Expr.ifThen c t e).absD env fs ks)
   | .hof f l b =>
@@ -1541,7 +1541,8 @@ theorem Expr.mayIssuesC_sound {env : List AVal} {fs : List Fact} {ks : Assumptio
         have htt : (c.absD env fs ks).tt = true := hc
         simp only [htt, ite_true]
         have hw := withAlts_sound (Expr.cstrAlts_sound hct) hks hors
-        exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct) hfs hw.1 hw.2 t p hp
+        exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct)
+          (FactsHold.append hfs (Expr.factsOf_sound c hct)) hw.1 hw.2 t p hp
       · simp only [hct, ite_false, Bool.false_eq_true] at hp
         right
         have hf : (c.eval row).isTrue = false := by simpa using hct
@@ -2768,7 +2769,8 @@ def Expr.constIssues : Expr → List (Issue × Expr)
   | e@(.un _ a) => e.selfConstIssues ++ a.constIssues
   | e@(.bin _ a b) => e.selfConstIssues ++ a.constIssues ++ b.constIssues
   | e@(.ifThen c t x) => e.selfConstIssues ++ c.constIssues ++ t.constIssues ++ x.constIssues
-  | .hof _ l _ => l.constIssues
+  -- A lambda's body too: a constant in it that raises counts as everywhere else (D21).
+  | .hof _ l b => l.constIssues ++ b.constIssues
 
 /-- Every expression of a plan: conditions, projections, grouping keys and
 the measures' arguments and filters. -/
@@ -2793,5 +2795,9 @@ def Rel.constIssues (r : Rel) : List (Issue × Expr) :=
   (.ifThen (.bin .eq (.bin .idiv (.lit (.int 1)) (.lit (.int 0))) (.lit (.int 1)))
     (.lit (.int 2)) (.lit .null))).constIssues.eraseDups.map (·.1) == [.divByZero]
 #guard letI := Boxes.Ambient.none; (Expr.bin .add (.field 0) (.bin .idiv (.lit (.int 6)) (.lit (.int 3)))).constIssues.isEmpty
+-- A raising constant in a lambda's body (`list_transform(xs, e -> e + 1 // 0)`) is counted too.
+#guard letI := Boxes.Ambient.none;
+  (Expr.hof .transform (.field 0) (.bin .add (.field 1) (.bin .idiv (.lit (.int 1)) (.lit (.int 0)))))
+    |>.constIssues.eraseDups.map (·.1) == [.divByZero]
 
 end Substrait

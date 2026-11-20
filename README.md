@@ -154,7 +154,7 @@ How much of the Ibis API gets through, from
 `main` after every merge by `uv run python -m sverify_dev.coverage --write-readme`):
 
 <!-- coverage:start -->
-187 of 212 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis; *inc.* marks incremental maintenance).
+190 of 213 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
@@ -164,20 +164,20 @@ How much of the Ibis API gets through, from
 | lists | ✓ unnest column · ✗ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* · ✓ pivot_longer *inc.* |
 | windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✓ rolling mean (rows) · ✓ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✓ min over a sliding frame · ✓ window sum of an expression · ✓ stddev over group · ✓ rolling variance (rows) |
 | numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
-| math | ✓ sign *inc.* · ✓ sqrt *inc.* · ✓ exp *inc.* · ✓ ln *inc.* · ✓ log10, log2 *inc.* · ✓ log(base) *inc.* · ✓ trigonometry *inc.* · ✓ degrees, radians *inc.* · ✓ pi, e *inc.* · ✓ isinf *inc.* · ✓ bitwise *inc.* · ✓ shifts *inc.* · ✓ logical xor *inc.* |
+| math | ✓ sign *inc.* · ✓ sqrt *inc.* · ✓ exp *inc.* · ✓ ln *inc.* · ✓ log10, log2 *inc.* · ✓ log(base) *inc.* · ✓ trigonometry *inc.* · ✓ atan2 *inc.* · ✓ degrees, radians *inc.* · ✓ pi, e *inc.* · ✓ isinf *inc.* · ✓ bitwise *inc.* · ✓ shifts *inc.* · ✓ logical xor *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lpad *inc.* · ✓ rpad *inc.* · ✓ repeat *inc.* · ✓ reverse *inc.* · ✓ right *inc.* · ✓ replace *inc.* · ✓ replace '' *inc.* · ✓ ilike *inc.* · ✓ find from *inc.* · ✓ ascii *inc.* · ✓ join *inc.* · ✓ levenshtein *inc.* · ✓ find_in_set *inc.* · ✓ capitalize *inc.* · ✓ slice *inc.* · ✗ translate · ✓ re_extract *inc.* · ✓ re_replace *inc.* · ✓ hexdigest *inc.* · ✗ hash · ✗ host |
-| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✗ timestamp + column interval · ✗ date + column months · ✗ timestamp delta · ✓ bucket *inc.* · ✓ group_by_dynamic (no overlap) · ✓ rolling sum by time · ✓ offset_by months and days *inc.* · ✓ month end *inc.* · ✗ group_by_dynamic (overlapping) · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✓ date from columns *inc.* · ✗ string to timestamp · ✓ time + interval *inc.* · ✓ time truncate *inc.* · ✗ strftime other directives · – between_time |
+| time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✓ timestamp + column interval *inc.* · ✗ date + column months · ✓ timestamp delta *inc.* · ✓ bucket *inc.* · ✓ group_by_dynamic (no overlap) · ✓ rolling sum by time · ✓ offset_by months and days *inc.* · ✓ month end *inc.* · ✗ group_by_dynamic (overlapping) · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✓ date from columns *inc.* · ✗ string to timestamp · ✓ time + interval *inc.* · ✓ time truncate *inc.* · ✗ strftime other directives · – between_time |
 | generic | ✓ try_cast *inc.* · ✓ try_cast string *inc.* · ✗ param · ✓ typeof *inc.* · ✗ random · ✗ uuid · ✗ now · ✗ today |
 
-Every engine runs the plans of the 187 verified operations, except:
+Every engine runs the plans of the 190 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| DuckDB | 187 | — |
-| Polars | 168 | first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · median, quantile · mode · argmin, argmax · stddev over group · rolling variance (rows) · levenshtein · re_extract · re_replace · hexdigest · date from columns · time + interval · time truncate · try_cast · try_cast string |
-| Snowflake | 129 | order_by (with `deterministic=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `deterministic=True` it runs) · non-equi join · scalar subquery, one row · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `deterministic=True` it runs) · lag (with `deterministic=True` it runs) · rank (with `deterministic=True` it runs) · dense_rank (with `deterministic=True` it runs) · cumsum (with `deterministic=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `deterministic=True` it runs) · first (with `deterministic=True` it runs) · percent_rank, cume_dist (with `deterministic=True` it runs) · running mean · rolling sum (interval) (with `deterministic=True` it runs) · rolling sum (range) (with `deterministic=True` it runs) · last, nth (with `deterministic=True` it runs) · max, count over frame (with `deterministic=True` it runs) · min over a sliding frame (with `deterministic=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · shifts · upper · capitalize · re_extract · re_replace · hexdigest · rolling sum by time (with `deterministic=True` it runs) · date from columns · time + interval · time truncate · try_cast · try_cast string |
-| Spark | 130 | order_by (with `deterministic=True` it runs) · limit · limit with offset · order_by + limit · order_by expression (with `deterministic=True` it runs) · non-equi join · scalar subquery, one row · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · row_number (with `deterministic=True` it runs) · lag (with `deterministic=True` it runs) · rank (with `deterministic=True` it runs) · dense_rank (with `deterministic=True` it runs) · cumsum (with `deterministic=True` it runs) · sum over group · rolling mean (rows) · rolling mean (interval) · ntile (with `deterministic=True` it runs) · first (with `deterministic=True` it runs) · percent_rank, cume_dist (with `deterministic=True` it runs) · running mean · rolling sum (interval) (with `deterministic=True` it runs) · rolling sum (range) (with `deterministic=True` it runs) · last, nth (with `deterministic=True` it runs) · max, count over frame (with `deterministic=True` it runs) · min over a sliding frame (with `deterministic=True` it runs) · window sum of an expression · stddev over group · rolling variance (rows) · exp · ln · log10, log2 · log(base) · trigonometry · re_extract · re_replace · hexdigest · rolling sum by time (with `deterministic=True` it runs) · time of day · time parts · compare times · date from columns · time + interval · time truncate · try_cast · try_cast string |
+| DuckDB | 190 | — |
+| Polars | 169 | first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · median, quantile · mode · argmin, argmax · stddev over group · rolling variance (rows) · levenshtein · re_extract · re_replace · hexdigest · timestamp + column interval · timestamp delta · date from columns · time + interval · time truncate · try_cast · try_cast string |
+| Snowflake | 152 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · unnest · median, quantile · mode · argmin, argmax · unnest column · list literal · sum over group · window sum of an expression · stddev over group · rolling variance (rows) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · atan2 · shifts · upper · capitalize · re_extract · re_replace · hexdigest · timestamp + column interval · timestamp delta · date from columns · time + interval · time truncate · try_cast · try_cast string |
+| Spark | 162 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect ordered · median, quantile · mode · argmin, argmax · sum over group · window sum of an expression · stddev over group · rolling variance (rows) · atan2 · re_extract · re_replace · hexdigest · timestamp + column interval · timestamp delta · time of day · time parts · compare times · date from columns · time + interval · time truncate · try_cast · try_cast string |
 <!-- coverage:end -->
 
 The engines refuse what they can't do as Lean does: `<` on strings is
@@ -196,20 +196,24 @@ To work on the project or run the tour from a clone, you need [uv](https://docs.
 rustup is to Rust, or uv to Python), and Java 17 or 21 for the Spark tests:
 
 ```bash
+# skip: installs software on the reader's machine
 brew install uv          # or: curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 ```bash
+# skip: installs software on the reader's machine
 brew install openjdk@21  # or: sudo apt install openjdk-21-jre-headless
 ```
 
 Homebrew's JDK is not on the `PATH`; point `JAVA_HOME` at it (in `~/.zshrc`):
 
 ```bash
+# skip: sets the reader's JAVA_HOME
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
 ```
 
 Without a JVM the Spark tests are skipped and everything else runs.
 ```bash
+# skip: installs software on the reader's machine
 curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
 ```
 
@@ -217,12 +221,15 @@ Open a new terminal so `lake` (Lean's build tool) is on your PATH, then run, fro
 the project root:
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd python && uv sync             # sverify with every extra, and the dev tools (pytest, hypothesis, …)
 ```
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run pytest                    # all pass; the Spark tests skip without a JVM
 ```
 
@@ -236,6 +243,7 @@ different binary, set `SVERIFY_CHECKER` to its path.
 Tasks are defined with [poe](https://poethepoet.natn.io) in `python/pyproject.toml`:
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd python && uv run poe qa       # everything below, in order; stops at the first failure
 ```
 
@@ -258,14 +266,16 @@ tasks need `lake` on your PATH.
 
 ### The tour
 
-The six notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
+The eight notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
 [`01_duplicate_payments.py`](notebooks/01_duplicate_payments.py). Open the whole folder, so the
 links between notebooks work:
 
 ```bash
+# skip: opens an editor server
 uvx marimo edit --sandbox notebooks              # from the project root
 ```
 ```bash
+# skip: opens a server
 uvx marimo run --sandbox --include-code notebooks   # read-only apps
 ```
 
@@ -282,6 +292,8 @@ environment works too: `uv run --project python marimo edit notebooks`.
 | 4 | [Contracts](notebooks/04_contracts.py) | `requires`/`ensures`, keys and relations, runtime errors, windows and ASOF joins, composing contracts |
 | 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, Spark and Snowflake SQL, doubles, time and text |
 | 6 | [Running it in production](notebooks/06_running_in_production.py) | `sverify check --diff` and `--fix`, a pytest test, credentials by name, OpenLineage, late rows and bounded state |
+| 7 | [Engines](notebooks/07_engines.py) | one proved plan on DuckDB, Polars and Spark, the routes that carry the proof, SQL for Spark and Snowflake, refusals and their exits |
+| 8 | [Your dbt project](notebooks/08_dbt.py) | `sverify_dbt.check`, the tests proved before the models run, a counterexample and its fix, `--selectors`, refusals and their exits |
 
 [catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a marimo app outside the tour: one
 expression asked of every engine. Under-the-hood detail is in
@@ -311,6 +323,7 @@ elan; the build hook runs `lake build` there.
 To run your own scripts with the package available, from the project root:
 
 ```bash
+# skip: runs the reader's pipeline
 uv run --project python python my_pipeline.py
 ```
 

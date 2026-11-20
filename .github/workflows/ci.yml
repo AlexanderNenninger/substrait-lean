@@ -196,6 +196,10 @@ jobs:
           out ledger=false
           out backlog=false
           out upstack=false
+          # The `test` matrix: the backends that run, and `core` in three shards.
+          matrix() {
+            echo "{\"backends\":[$1],\"include\":[{\"backends\":\"core\",\"shard\":\"1/3\"},{\"backends\":\"core\",\"shard\":\"2/3\"},{\"backends\":\"core\",\"shard\":\"3/3\"}]}"
+          }
           all() {
             out code=true
             out floats=true
@@ -205,7 +209,7 @@ jobs:
             out dbt=true
             out python=true
             out models=true
-            out 'matrix={"backends":["duckdb","spark","polars snowflake"],"include":[{"backends":"core","shard":"1/3"},{"backends":"core","shard":"2/3"},{"backends":"core","shard":"3/3"}]}'
+            out "matrix=$(matrix '"duckdb","spark","polars snowflake"')"
           }
           # A push to main whose tree a pull request's run already tested.
           tested() {
@@ -280,8 +284,9 @@ jobs:
           else
             out models=false
           fi
-          # sverify-dbt reads sverify, and what the checker proves.
-          if grep -qE '^(dbt/|python/|SubstraitLean/|core/|analysis/|engines/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          # sverify-dbt reads sverify, and what the checker proves; the tour's
+          # dbt notebook runs there too.
+          if grep -qE '^(dbt/|notebooks/08_dbt\.py$|python/|SubstraitLean/|core/|analysis/|engines/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out dbt=true
           else
             out dbt=false
@@ -289,9 +294,9 @@ jobs:
           backends='"duckdb"'
           [ "$(flag "$skip_spark")" = true ] && backends="$backends,\"spark\""
           [ "$(flag "$skip_polars")" = true ] && backends="$backends,\"polars snowflake\""
-          matrix="{\"backends\":[$backends],\"include\":[{\"backends\":\"core\",\"shard\":\"1/3\"},{\"backends\":\"core\",\"shard\":\"2/3\"},{\"backends\":\"core\",\"shard\":\"3/3\"}]}"
-          echo "matrix: $matrix"
-          out "matrix=$matrix"
+          m=$(matrix "$backends")
+          echo "matrix: $m"
+          out "matrix=$m"
           if grep -qE '^(float-bounds/|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
              <<< "$files"; then
             out floats=true
@@ -317,25 +322,7 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
       - id: cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: checker-bin
-          key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'frontend/lakefile.toml', 'frontend/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', 'engines/substrait/lakefile.toml', 'engines/substrait/lake-manifest.json', '**/*.lean') }}
-      - if: steps.cache.outputs.cache-hit != 'true'
-        uses: ./.github/actions/setup-lean
-        with:
-          save: "false"
-      - if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          lake build substrait-check
-          mkdir -p checker-bin
-          cp .lake/build/bin/substrait-check checker-bin/
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: substrait-check
-          path: checker-bin/substrait-check
-          retention-days: 3
-          if-no-files-found: error
+        uses: ./.github/actions/build-checker
       # The checker's speed against main's (docs/build-performance.md), on a
       # pull request that changes a Lean input: both answer the recorded
       # requests interleaved, and a request 1.3x as slow, or the set 1.1x,
@@ -384,7 +371,7 @@ jobs:
     needs: [route, changes]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -546,7 +533,7 @@ jobs:
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     # Spark stays on GitHub's runners for now: its runs were reclaimed twice on spot (#1737).
     runs-on: ${{ contains(matrix.backends, 'spark') && 'ubuntu-latest' || fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -565,8 +552,13 @@ jobs:
           BACKENDS: ${{ matrix.backends }}
           SVERIFY_SHARD: ${{ matrix.shard }}
           # The slowest tests, to see which to mark `slow` or what unbalances
-          # the shards.
-          PYTEST_ADDOPTS: --durations=25
+          # the shards. Outside pull requests (main, merge queue, release
+          # branches, a manual run), the coverage data of each shard for the
+          # `coverage` job (#750); tracing costs 1 to 2.8 min per job, which a
+          # pull request does not pay. `--cov-append` adds up the backends a
+          # shard runs one after another.
+          PYTEST_ADDOPTS: --durations=25${{ github.event_name != 'pull_request' && ' --cov --cov-append --cov-report=' || '' }}
+          COVERAGE_FILE: ${{ github.workspace }}/cov/.coverage.${{ strategy.job-index }}
         run: |
           status=0
           for b in $BACKENDS; do
@@ -577,6 +569,72 @@ jobs:
       # docs/coverage-targets.md), in the job summary; a gate from M6.
       - if: matrix.shard == '1/3'
         run: uv run --locked --project python python -m sverify_dev.coverage --targets >> "$GITHUB_STEP_SUMMARY"
+      - if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-${{ strategy.job-index }}
+          path: cov/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # The coverage of `sverify` over the shards of `test` (#750): combined, in the
+  # job summary, outside pull requests (main, merge queue, release branches, a
+  # manual run). It warns when lines and branches together fall under 89 % and never fails, and `qa` does not wait
+  # for it.
+  coverage:
+    needs: [test]
+    if: always() && needs.test.result != 'skipped' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          path: cov
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - working-directory: python
+        run: |
+          # The tests ran in this directory, so the relative paths line up.
+          {
+            uvx coverage combine ../cov/*/.coverage.* &&
+              uvx coverage json -o coverage.json &&
+              python3 scripts/coverage_summary.py coverage.json >> "$GITHUB_STEP_SUMMARY"
+          } || echo "::warning::The coverage report failed; see the log."
+
+  # A refresh's OpenLineage events against Marquez (#865): the job, its
+  # datasets, the run and the contract facet through Marquez's API. One
+  # container pair per run, so it runs outside pull requests (main, merge
+  # queue, release branches, a manual run) and, like `coverage`, `qa` does
+  # not wait for it.
+  marquez:
+    needs: [changes, checker]
+    if: needs.changes.outputs.python == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+          prune-cache: true
+          cache-suffix: pruned
+      - run: bash python/scripts/marquez.sh start | tee -a "$GITHUB_ENV"
+      - working-directory: python
+        env:
+          SVERIFY_MARQUEZ_REQUIRED: "1"
+        run: uv run --locked pytest tests/test_openlineage.py -k marquez -p no:cacheprovider
+      - if: always()
+        run: bash python/scripts/marquez.sh stop
 
   # The tests as the Wheels workflow runs them against the installed wheel:
   # from a copy outside the repository, with only the package's extras and
@@ -606,6 +664,38 @@ jobs:
           cache-suffix: pruned
       - run: bash python/scripts/wheel_tests.sh --editable python --fast -n 4 --dist worksteal
 
+  # sverify without DuckDB (#1288, #1485 item 16): the base install, no extra,
+  # in an environment that has no `duckdb`. `verify` proves a plan and writes
+  # SQL, every module imports, a run on DuckDB names the extra, and a Polars
+  # connection puts, verifies and runs (#1764).
+  no-duckdb:
+    needs: [changes, checker]
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: python/pyproject.toml
+          prune-cache: true
+          cache-suffix: pruned
+      - name: The base install has no DuckDB, and its tests pass
+        run: |
+          uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with pytest python - <<'PY'
+          import importlib.util
+          assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
+          PY
+          uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with-editable engines/polars --with polars --with numpy \
+            --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
+
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
   # the benchmarks and on every sqllogictest file the ledgers decided a query
   # of; a query that no longer agrees, or newly disagrees, fails the job.
@@ -616,10 +706,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The files split four ways (`--shard`); the benchmarks run in the first.
-        shard: [1/4, 2/4, 3/4, 4/4]
+        # The files split two ways (`--shard`); the benchmarks run in the first.
+        shard: [1/2, 2/2]
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 30
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -751,6 +841,112 @@ jobs:
           sys.exit(subprocess.run([sys.executable, "-m", "pytest", "-n", "auto", *tests]).returncode)
           EOF
 
+  # The outside-evidence gates (#867): sverify's outputs checked by tools
+  # others wrote, each with a ledger of agree, refused and disagree. Gates
+  # report and never block: a gate that finds a change from its ledger warns
+  # here and in the run's summary, and `qa` does not wait on this job.
+  #
+  # Ibis's backend tests (#860): `sverify_dev.ibis_replay` runs them on
+  # DuckDB with sverify as a plugin, and compares with the ledgers.
+  #
+  # substrait-validator (#862): no release reads the Substrait sverify
+  # writes, so the job builds it at the commit `sverify_dev.substrait_validator`
+  # pins (Rust, protoc 28.3 as its own CI uses), caches the wheel by that
+  # commit, and runs it in a venv of its own: its protobuf bindings
+  # (Substrait 0.88.1) cannot share a process with sverify's.
+  evidence:
+    needs: [route, changes, checker]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+          prune-cache: true
+          cache-suffix: pruned
+      # The validator's build, pinned: its commit, the Rust toolchain, maturin
+      # and protoc (28.3, as its own CI uses), all in the wheel's cache key.
+      - id: validator
+        env:
+          ARCH: ${{ runner.arch }}
+        run: |
+          commit=$(sed -n 's/^COMMIT = "\([0-9a-f]*\)"$/\1/p' python/tools/sverify_dev/substrait_validator.py)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "rust=1.96.1" >> "$GITHUB_OUTPUT"
+          echo "maturin=1.16.0" >> "$GITHUB_OUTPUT"
+          echo "protoc=28.3" >> "$GITHUB_OUTPUT"
+          case "$ARCH" in
+            ARM64) echo "protoc_arch=aarch_64" >> "$GITHUB_OUTPUT" ;;
+            *) echo "protoc_arch=x86_64" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - id: wheel
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/substrait-validator-wheel
+          key: substrait-validator-${{ steps.validator.outputs.commit }}-rust${{ steps.validator.outputs.rust }}-maturin${{ steps.validator.outputs.maturin }}-protoc${{ steps.validator.outputs.protoc }}-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.wheel.outputs.cache-hit != 'true'
+        env:
+          COMMIT: ${{ steps.validator.outputs.commit }}
+          RUSTUP_TOOLCHAIN: ${{ steps.validator.outputs.rust }}
+          PROTOC_VERSION: ${{ steps.validator.outputs.protoc }}
+          PROTOC_ARCH: ${{ steps.validator.outputs.protoc_arch }}
+          MATURIN: ${{ steps.validator.outputs.maturin }}
+        run: |
+          set -euo pipefail
+          if command -v rustup; then
+            rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          else
+            curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUSTUP_TOOLCHAIN"
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          src=$RUNNER_TEMP/substrait-validator
+          git init -q "$src" && cd "$src"
+          git fetch -q --depth 1 https://github.com/substrait-io/substrait-validator.git "$COMMIT"
+          git checkout -q FETCH_HEAD && git submodule update -q --init --depth 1
+          curl -sSLo "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-$PROTOC_ARCH.zip"
+          unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          PROTOC="$RUNNER_TEMP/protoc/bin/protoc" PROTOC_INCLUDE="$RUNNER_TEMP/protoc/include" \
+            uvx "maturin==$MATURIN" build --release -m py/Cargo.toml -i python3.12 -o ~/substrait-validator-wheel
+      - run: |
+          uv venv -q -p 3.12 "$RUNNER_TEMP/validator"
+          uv pip install -q -p "$RUNNER_TEMP/validator/bin/python" ~/substrait-validator-wheel/*.whl
+          echo "SUBSTRAIT_VALIDATOR_PYTHON=$RUNNER_TEMP/validator/bin/python" >> "$GITHUB_ENV"
+      - working-directory: python
+        run: uv sync --locked
+      - name: substrait-validator (#862)
+        working-directory: python
+        run: |
+          if ! uv run --no-sync python -m sverify_dev.substrait_validator --check > "$RUNNER_TEMP/gate.txt" 2>&1; then
+            echo "::warning title=substrait-validator gate::the export's validation differs from python/tests/substrait_validator.json; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/gate.txt"
+          { echo '### substrait-validator (#862)'; echo '```'; cat "$RUNNER_TEMP/gate.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      # Ibis's own backend tests on DuckDB (#860): the suite at the Ibis
+      # release uv.lock pins and its test data (70 MB), cached by both pins.
+      - id: ibis
+        run: |
+          f=python/tools/sverify_dev/ibis_replay.py
+          echo "key=$(sed -n 's/^IBIS_TAG = "\(.*\)"$/\1/p' $f)-$(sed -n 's/^DATA_COMMIT = "\(.*\)"$/\1/p' $f)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/ibis-replay
+          key: ibis-replay-${{ steps.ibis.outputs.key }}
+      - name: Ibis's backend tests (#860)
+        working-directory: python
+        run: |
+          if ! uv run --no-sync python -m sverify_dev.ibis_replay --check > "$RUNNER_TEMP/ibis.txt" 2>&1; then
+            echo "::warning title=Ibis replay gate::outcomes differ from python/tests/ibis_replay/; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/ibis.txt"
+          { echo "### Ibis's backend tests (#860)"; echo '```'; cat "$RUNNER_TEMP/ibis.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
   # sverify-dbt (dbt/): lint, typecheck and tests, then its check of the
   # sample project, `dbt build` without the tests it proved, and `dbt test`
   # of those on the data.
@@ -784,17 +980,40 @@ jobs:
           uv run --no-sync ruff check .
           uv run --no-sync ruff format --check .
           uv run --no-sync pyrefly check
+      # The sample project's packages once: the tests' copies of it take
+      # them (tests/conftest.py), and the steps below too.
+      - run: uv run --no-sync dbt --no-use-colors deps --project-dir examples/shop --profiles-dir examples/shop
       - run: uv run --no-sync pytest -q
       - env:
           DBT: uv run --no-sync dbt --no-use-colors
           SHOP: --project-dir examples/shop --profiles-dir examples/shop
         run: |
-          $DBT deps $SHOP
           $DBT compile $SHOP
           uv run --no-sync sverify-dbt check examples/shop --selectors
           $DBT seed $SHOP
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
+      # dbt packages' integration projects (#859): built with dbt on DuckDB
+      # and checked with sverify-dbt, against the ledgers in dbt/replay/.
+      # A gate: it reports a change as a warning and never fails the job.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/dbt-replay
+          key: dbt-replay-${{ hashFiles('dbt/src/sverify_dbt/replay.py') }}
+      - name: dbt packages' integration projects (#859)
+        env:
+          DO_NOT_TRACK: "1"
+        run: |
+          if ! uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1; then
+            echo "::warning title=dbt replay gate::outcomes differ from dbt/replay/; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/replay.txt"
+          { echo "### dbt packages' integration projects (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      # The tour's dbt notebook (`poe notebooks` skips it: the python/
+      # environment has no dbt).
+      - env:
+          DO_NOT_TRACK: "1"  # dbt's usage tracking can stall without network
+        run: uv run --no-sync --with marimo marimo export html ../notebooks/08_dbt.py -o "$RUNNER_TEMP/08_dbt.html"
 
   # The pipeline template (templates/pipelines/, #771), as a repository of
   # its own: its tests run its workflows' steps (check, refresh twice, the
@@ -893,7 +1112,7 @@ jobs:
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, outside-repo, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
+    needs: [changes, checker, lean, golden, static, test, outside-repo, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
     if: always()
     runs-on: ubuntu-latest
     steps:

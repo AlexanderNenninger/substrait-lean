@@ -18,7 +18,7 @@ from ibis import _
 import sverify as sv
 from sverify import routes
 from sverify.errors import ExportError, RouteError
-from sverify.observation import Observation, Within
+from sverify.observation import PLAN_BOUND, Observation, Within
 
 pytest.importorskip("polars")
 
@@ -46,15 +46,15 @@ def verify(con, ensures):
 
 def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     absent = verify(con, [])
-    plan = verify(con, [sv.equivalent(floats="plan")])
+    plan = verify(con, [sv.equivalent(floats="plan", zeros="canon", elements="multiset")])
     bound = routes.plan_bound(absent._epsilon)
     assert isinstance(bound, Within) and bound.abs and bound.abs > 0
     stated = verify(con, [sv.equivalent(floats=sv.within(abs=bound.abs))])
 
-    assert absent.observation == plan.observation == sv.equivalent(floats="plan")
+    assert absent.observation == plan.observation == PLAN_BOUND
     assert absent.observation.bound == plan.observation.bound == bound
-    assert str(absent.observation) == f"equivalent(floats=plan, ≤ {bound.abs:.1e})"
-    assert f"observes: equivalent(floats=plan, ≤ {bound.abs:.1e})" in absent.details()
+    assert f"floats=plan, ≤ {bound.abs:.1e}" in str(absent.observation)
+    assert f"floats=plan, ≤ {bound.abs:.1e}" in absent.details()
     assert (
         absent.verdict == sv.Verdict.PROVED
         and plan.verdict == sv.Verdict.PROVED
@@ -206,9 +206,10 @@ def test_a_window_over_a_key_has_a_class() -> None:
         assert route.kind == "translated"
         assert route.cls in routes.CLASSES
         # The window's sort keys are options the plan meets (#1032): the
-        # evidence is that of the engine's row for their NULL placement.
+        # evidence is that of the engine's row for their NULL placement,
+        # `Shim.null_order` on both.
         assert route.cls == "exact"
-        assert route.evidence == ("tested" if engine == "duckdb" else "proved")
+        assert route.evidence == "proved"
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])

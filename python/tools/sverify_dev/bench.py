@@ -211,6 +211,8 @@ def bench_notebooks(cache: Path) -> dict[str, dict[str, Run]]:
     env = {**os.environ, "SVERIFY_CACHE_DIR": str(cache / "notebooks")}
     env.pop("PYTHONDONTWRITEBYTECODE", None)
     for nb in sorted((ROOT / "notebooks").glob("[0-9]*.py")):
+        if '"sverify-dbt"' in nb.read_text():
+            continue  # needs dbt, which this environment lacks: the `dbt` job runs it
         runs = {}
         for kind in ("cold", "warm"):
             with tempfile.NamedTemporaryFile(suffix=".json") as f:

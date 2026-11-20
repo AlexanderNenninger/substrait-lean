@@ -41,9 +41,11 @@ def test_doc_renders(table):
 
 def test_engines_and_their_translations(table):
     assert set(table) == {"duckdb", "polars", "spark"}
-    assert table["duckdb"]["theorem"] == "Rel.duckdb_refines"
-    assert table["polars"]["theorem"] == "Rel.polars_sound"
-    assert table["spark"]["theorem"] == "Rel.spark_sound"
+    assert table["duckdb"]["theorem"] == "Engine.duckdb_sound"
+    assert table["polars"]["theorem"] == "Engine.polars_sound"
+    assert table["spark"]["theorem"] == "Engine.spark_sound"
+    assert table["duckdb"]["side"] == "Engine.NoRaiseSide"
+    assert table["polars"]["side"] == table["spark"]["side"] == "Engine.GuardFreeSide"
     for e in table.values():
         assert e["version"]
         assert not [r for r in e["rows"] if r["case"] == "inconsistent"]
@@ -130,9 +132,9 @@ def test_every_row_names_real_facts(table):
 def test_shim_counts(table):
     """D9's measure: the shims per engine. A new one is a deliberate edit."""
     assert {k: len(e["shims"]) for k, e in table.items()} == {
-        "duckdb": 5,
+        "duckdb": 6,
         "polars": 14,
-        "spark": 6,
+        "spark": 5,
     }
 
 

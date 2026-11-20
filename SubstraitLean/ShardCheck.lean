@@ -1,6 +1,6 @@
 import Sverify.Analysis.Partition
-import SubstraitLean.Write
-import SubstraitLean.Check
+import Sverify.Frontend.Write
+import Sverify.Core.Check
 import SubstraitLean.ContractCheck
 
 /-!

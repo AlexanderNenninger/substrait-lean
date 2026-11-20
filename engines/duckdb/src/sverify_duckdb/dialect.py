@@ -6,16 +6,16 @@ order with `rowid`. Its `=` and `<` on doubles are the model's: NaN equals
 itself and is largest, and -0.0 equals 0.0 (D31 keeps the values raw). Its `//` truncates BIGINTs
 (and is plain `/` on doubles), so integer division is built from `%`, which
 truncates, and is exact whichever way `//` rounds; `error()` raises where
-DataFusion fails at run time.
+the reference does.
 
 Strings: `length`, `strpos` and `substring` count code points (DuckDB has
 `*_grapheme` variants for grapheme clusters), and strings compare bytewise
 without a collation. `LIKE` has no escape character by default, so the SQL
-names one. Regular expressions are RE2's, DataFusion's Rust's: they agree on
+names one. Regular expressions are RE2's, Polars's Rust's: they agree on
 the simple patterns of `Text.simpleRegex`, but `\\d`, `\\w` and `\\s` are
 ASCII-only in RE2. `upper`/`lower` map case with utf8proc (black boxes in
-Lean; `'ß'` stays one character, where DataFusion writes `'SS'`). So the SQL
-raises on non-ASCII text where they would differ from DataFusion (#70).
+Lean; `'ß'` stays one character, where Rust's `to_uppercase` writes `'SS'`).
+So the SQL raises on non-ASCII text, where the engines would differ (#70).
 
 Where DuckDB computes a function differently from the reference (doubles'
 NaN and ±inf, the elementary functions outside their domains, division and
@@ -23,7 +23,7 @@ NaN and ±inf, the elementary functions outside their domains, division and
 the generated lowering's template, proved in Lean (`lowered`,
 `sverify.sql.lowering`, `engines/duckdb/facts/` R15).
 
-Times: `date_part`'s parts mean what they do in DataFusion (`millisecond`
+Times: `date_part`'s parts mean what they do in `Time.lean` (`millisecond`
 and `microsecond` within the minute, `week` ISO, `dow` from Sunday) on the
 proleptic calendar with a year 0. DuckDB's timestamps reach beyond the
 reference's (0001-01-01 to 9999-12-31, D32), so the writer raises outside them
@@ -71,6 +71,25 @@ class DuckDBDialect(Dialect):
 
     def interval_lit(self, micros: int) -> str:
         return f"to_microseconds({self.int_lit(micros)})"
+
+    def interval_micros(self, iv: str) -> str:
+        return f"epoch_us({iv})"
+
+    native_asof: ClassVar[bool] = True
+
+    def asof_join(
+        self,
+        left: str,
+        right: str,
+        eqs: Sequence[tuple[str, str]],
+        on: tuple[str, str],
+        outer: bool,
+    ) -> str:
+        cond = " AND ".join([*(f"{a} = {b}" for a, b in eqs), f"{on[0]} >= {on[1]}"])
+        return f"{left} ASOF {'LEFT ' if outer else ''}JOIN {right} ON {cond}"
+
+    def time_add_micros(self, ts: str, us: str, sub: bool) -> str:
+        return f"({ts} {'-' if sub else '+'} to_microseconds({us}))"
 
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
@@ -427,6 +446,13 @@ class DuckDBDialect(Dialect):
 
     def date_time(self, d: str) -> str:
         return f"CAST({d} AS TIMESTAMP)"
+
+    def to_instant(self, ts: str) -> str:
+        # By the microseconds, so that no session zone is read (duckdb-instant-conversion).
+        return f"make_timestamptz(epoch_us({ts}))"
+
+    def to_naive(self, instant: str) -> str:
+        return f"make_timestamp(epoch_us({instant}))"
 
     def epoch_us(self, ts: str) -> str:
         return f"epoch_us({ts})"

@@ -34,29 +34,6 @@ def Expr.must : Expr → List Nat
   | .ifThen c t e => c.must ++ t.must.filter (· ∈ e.must)
   | .hof _ l _ => l.must
 
-/-- Substituting expressions that evaluate to `vs` is evaluating on `vs`. -/
-theorem Expr.evalP_subst {p : Profile} {row : Row} {σ : List Expr} {vs : List Value}
-    (hσ : ∀ i, (σ.getD i (.lit .null)).evalP p row = .ok (vs.getD i .null)) :
-    ∀ t : Expr, (t.subst σ).evalP p row = t.evalP p vs
-  | .lit _ => rfl
-  | .field i => hσ i
-  | .un f a => by simp only [subst, evalP, evalP_subst hσ a]
-  | .bin f a b => by simp only [subst, evalP, evalP_subst hσ a, evalP_subst hσ b]
-  | .ifThen c t e => by simp only [subst, evalP, evalP_subst hσ c, evalP_subst hσ t, evalP_subst hσ e]
-  | .hof f l b => by
-    simp only [subst, evalP, evalP_subst hσ l]
-    congr 1; funext v; congr 1; funext x
-    refine evalP_subst (row := x :: row) (vs := x :: vs) (fun i => ?_) b
-    cases i with
-    | zero => rfl
-    | succ i => simp only [List.getD_cons_succ, getD_map_shift, Expr.evalP_shift_cons, hσ]
-
-theorem Outcome.bind_error {o : Outcome} {g : Value → Outcome} (h : o.err?.isSome) :
-    Outcome.err? (o >>= g) |>.isSome := by
-  cases o <;> simp_all [Outcome.err?] <;> rfl
-
-theorem Outcome.ok_bind {x : Value} {g : Value → Outcome} : (Except.ok x >>= g : Outcome) = g x := rfl
-
 /-- A template raises when an argument it always reads raises. -/
 theorem Expr.subst_raises {p : Profile} {row : Row} {σ : List Expr} {i : Nat}
     (hi : ((σ.getD i (.lit .null)).evalP p row).err?.isSome) :
@@ -748,6 +725,74 @@ theorem Lowering.lowerRel_sound {p : Profile} {L : Lowering p} (hL : L.Total) {c
     {r : Rel} (h : ¬(L.lowerRel r).Raises p cat) :
     (L.lowerRel r).eval cat p.impl = r.eval cat :=
   Rel.evalI_mapExprs (lowerE_exact hL) (fun _ => rfl) h
+
+/-! ## A partial table
+
+A table need not have an entry for every function: Spark's `/` raises on a zero
+divisor, so no template reaches IEEE division (`fdivIeee`) from it. A plan that
+uses only functions with entries is lowered as by a total table, and its
+lowering is exact on the expressions it has (`Rel.evalI_mapExprs_on`); a plan
+with a function the table lacks is refused, naming it, so the writer can say
+which construct and why. -/
+
+/-- The functions of `e` the table has no entry for, in order, each once. -/
+def Lowering.missing {p : Profile} (L : Lowering p) (e : Expr) : List String :=
+  (go e).eraseDups
+where
+  go : Expr → List String
+    | .lit _ | .field _ => []
+    | .un f a => (if (L.un f).isSome then [] else [(repr f).pretty]) ++ go a
+    | .bin f a b => (if (L.bin f).isSome then [] else [(repr f).pretty]) ++ go a ++ go b
+    | .ifThen c t e => go c ++ go t ++ go e
+    | .hof _ l b => go l ++ go b
+
+/-- **A plan lowered with a partial table**: every expression lowered, or the
+names of the functions the table has no entry for. -/
+def Lowering.lowerRel? {p : Profile} (L : Lowering p) (r : Rel) : Except (List String) Rel :=
+  if r.mappedExprs.all (fun e => (L.lower e).isSome) then .ok (r.mapExprs L.lowerE)
+  else .error (r.mappedExprs.flatMap L.missing).eraseDups
+
+/-- A lowered expression is exact wherever the table lowers it. -/
+theorem Lowering.lowerE_exact_of {p : Profile} (L : Lowering p) {e : Expr}
+    (he : (L.lower e).isSome) : Expr.Exact p (L.lowerE e) e := by
+  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp he
+  simpa only [lowerE, ht, Option.getD_some] using L.lower_exact ht
+
+/-- **A plan the partial table lowers runs correctly on the engine, or
+raises.** As `Lowering.lowerRel_sound`, for a table that need not be total:
+the plan's own expressions have entries. -/
+theorem Lowering.lowerRel?_sound {p : Profile} {L : Lowering p} {cat : Catalog} {r r' : Rel}
+    (hr : L.lowerRel? r = .ok r') (h : ¬r'.Raises p cat) : r'.eval cat p.impl = r.eval cat := by
+  unfold lowerRel? at hr
+  split at hr
+  · rename_i hall
+    cases hr
+    exact Rel.evalI_mapExprs_on (Q := fun e => (L.lower e).isSome = true)
+      (fun _ he => L.lowerE_exact_of he) (fun _ => rfl)
+      (fun e he => List.all_eq_true.mp hall e he) h
+  · cases hr
+
+/-- With a total table, `lowerRel?` lowers every plan, as `lowerRel` does. -/
+theorem Lowering.lowerRel?_total {p : Profile} {L : Lowering p} (hL : L.Total) (r : Rel) :
+    L.lowerRel? r = .ok (L.lowerRel r) := by
+  simp only [lowerRel?, lowerRel]
+  split
+  · rfl
+  · rename_i hn
+    exact absurd (List.all_eq_true.mpr fun e _ => lower_isSome hL e) hn
+
+-- An empty table refuses a plan that calls `NOT`, naming it; a plan of
+-- columns alone has nothing to lower and is kept as it is.
+#guard letI := Boxes.Ambient.none
+  match (⟨fun _ => none, fun _ => none⟩ : Lowering Profile.reference).lowerRel?
+      (.filter (.read "t") (.un .not (.field 0))) with
+  | .error ns => ns == ["Substrait.UnFn.not"]
+  | .ok _ => false
+#guard letI := Boxes.Ambient.none
+  match (⟨fun _ => none, fun _ => none⟩ : Lowering Profile.reference).lowerRel?
+      (.project (.read "t") [.field 1]) with
+  | .error _ => false
+  | .ok r => r == .project (.read "t") [.field 1]
 
 /-! ## Dropping guards in a plan -/
 

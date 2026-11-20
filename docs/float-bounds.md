@@ -196,6 +196,7 @@ sequential sum. They cost a few integer operations per measure.
 A metrics rollup states its contract this way:
 
 ```python
+# skip: a fragment: the decorated function follows
 @sv.transform(
     requires={"metrics": [_.cpu >= 0, _.cpu <= 100, _.cpu.notnull(), sv.max_rows(10_000_000)]},
     ensures=[_.cpu_avg >= 0, _.cpu_avg <= 100],
@@ -496,8 +497,15 @@ the others. A `STDDEV_*`'s goes through the square root, not mechanised.
 `CORR` has none: its error grows as a side's variance shrinks, and ranges
 give no lower bound on a variance. Snowflake's textbook formula on values
 shifted by their group's mean is the corrected two-pass algorithm;
-the shift keeps the reference's value (`momentNum_shift`), and its bound is
-recorded privately.
+the shift keeps the reference's value (`momentNum_shift`), and
+[`CorrTwoPass.lean`](../float-bounds/FloatBounds/CorrTwoPass.lean) bounds it for
+any shift `c` and any summation order (`StdModel.Summed`):
+`corrTwoPass_error` puts the result within
+`(2n + 9) u W + 7 u K √(n W) + 128 n² u² W + 64 n² u · tiny` of `S`, where
+`W = Σ (|xᵢ − c| + tiny)²` and `K = |Σ (xᵢ − c)|`. For the group's computed
+mean, `K` is of order `n u` and `W` is `S` to first order, so the bound is
+`(2n + 9) u S` to first order. The private fuzz measured `2 n u S`. Snowflake's
+`stat_algo` row, which cites the theorem, is private.
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` keep their descriptions in the
 checker ("a double ≥ 0 or NULL", "a double or NULL"): a useful upper bound of
@@ -508,6 +516,7 @@ contract can state the lower bound on the variances that `corr_le` needs.
 ## Checking the proofs
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run --project python poe -C python prove-floats
 ```
 

@@ -2,12 +2,12 @@ import Sverify.Analysis.Contracts
 import Sverify.Analysis.Safety
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
-import SubstraitLean.Check
+import Sverify.Core.Check
 import Sverify.Frontend.Parse
-import SubstraitLean.Pretty
+import Sverify.Core.Pretty
 import SubstraitLean.Semantic
-import SubstraitLean.Write
-import SubstraitLean.Infer
+import Sverify.Frontend.Write
+import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
 import SubstraitLean.Implied
@@ -88,7 +88,7 @@ def typeEnv : Nat → Json → AVal
     let nullable := (body.getObjValAs? String "nullability").toOption != some "NULLABILITY_REQUIRED"
     -- The column's number kind (#923).
     let nk : Option NumKind :=
-      if ["i8", "i16", "i32", "i64"].contains kind then some .int
+      if (Parse.intTags.lookup kind).isSome then some .int
       else if ["fp32", "fp64"].contains kind then some .float
       else if ["precisionTimestamp", "timestamp"].contains kind then some .ts
       else if kind == "date" then some .date
@@ -99,8 +99,7 @@ def typeEnv : Nat → Json → AVal
     -- source read checks it (`sverify.engine.Connection.put`).
     -- The same for a narrow integer: its type's range (D46), which the run's
     -- schema check holds the data to (#1540).
-    let width : Option Nat := match kind with
-      | "i8" => some 7 | "i16" => some 15 | "i32" => some 31 | _ => none
+    let width : Option Nat := (Parse.narrowIntBits? ty).map (· - 1)
     if kind == "i64" then
       { null := nullable, int := some ⟨some FloatCode.minI64, some FloatCode.maxI64⟩, nk := nk }
     else if let some w := width then
@@ -278,8 +277,8 @@ structure Report where
   facts : List (String × String × Json)
   /-- The output columns' types as the writer types them (`Write.relKinds`, the
   reference's: a decimal `SUM` is `DECIMAL(min(38, p + 10), s)`, an `AVG` is
-  `DECIMAL(p + 4, s + 4)`, p up to 34), as `outputKindJson` renders them, in the
-  output's order. Empty where the transformation is not well-formed. -/
+  `DECIMAL(p + 4, s + 4)`, p up to 34; an integer carries its width, a computed
+  one is 64), as `outputKindJson` renders them, in the output's order. Empty where the transformation is not well-formed. -/
   outputKinds : List Json := []
   /-- Requested output keys, and whether `Rel.keys_sound` proves them. -/
   keys : List (List Nat × Bool)
@@ -337,7 +336,7 @@ structure Report where
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
   rewrites : List String := []
-  /-- For each issue, what would rule it out (`SubstraitLean/Infer.lean`):
+  /-- For each issue, what would rule it out (`analysis/Sverify/Analysis/Infer.lean`):
   untrusted candidates, which the caller proves by adding them to the
   preconditions. -/
   bounds : List (Issue × Expr × Infer.Bounds) := []
@@ -772,27 +771,17 @@ def combineIgnores (noOpen : Bool) (pre : List (Option (List String × List Stri
 
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
 `T.select(…)` from every order to every allowed result: `T` is closed
-(`Rel.closedB`, `contract_sound_allowed_closed`: no `VAR_*`, `STDDEV_*`,
-`COVAR_*`, `CORR` or `QUANTILE_CONT`; a double `SUM` or `AVG` is order-free
-since D25), or an aggregate whose open measures are double `SUM`s and `AVG`s
-over a closed plan (`Rel.floatOpenSafe_aggregate`), and the column is robust
-under that context without a tolerance (`Expr.robustB`), so it reads no open
-measure. A comparison of an open sum needs
-the shift of its tolerance (#929). -/
+(`Rel.closedB`, `contract_sound_allowed_closed`: no `QUANTILE_CONT`; a double
+`SUM`, `AVG` or statistical aggregate is order-free since D25 and D30), and the
+column is robust under the empty context without a tolerance (`Expr.robustB`),
+so it reads no open measure. A comparison of an open sum needs the shift of
+its tolerance (#929). -/
 def postAllowed (cat : Catalog) (r : Rel) (n : Nat) : List Bool :=
   match r with
   | .emit (.project t es) m =>
-    let ctx? : Option ObsCtx :=
-      if t.closedB then some {} else match t with
-        | .aggregate r gs ms =>
-          if r.closedB && ms.all (fun m => m.closedB || m.openB) then some (aggCtx gs.length ms)
-          else none
-        | _ => none
-    match ctx? with
-    | some ctx =>
-      if m.length != n then List.replicate n false
-      else m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan ctx (fun _ => none)
-    | none => List.replicate n false
+    if t.closedB && m.length == n then
+      m.map fun j => (postExpr (t.arity cat) es j).robustB Obs.plan {} (fun _ => none)
+    else List.replicate n false
   | _ => List.replicate n false
 
 /-- The issues' expressions under an `AND` or `OR` of the plan. -/
@@ -879,10 +868,11 @@ def parse (input : Json) : Except String Request := do
   return { input, posts, requires, transform, tables, pre }
 
 /-- One output column's type for the report: a decimal with its precision and
-scale, otherwise the kind's name. -/
-def outputKindJson : Write.WKind → Json
+scale, an integer with its width in bits (`Rel.outBits`), otherwise the kind's
+name. -/
+def outputKindJson (k : Write.WKind) (bits : Nat) : Json := match k with
   | .dec p s => Json.mkObj [("kind", "dec"), ("precision", Lean.toJson p), ("scale", Lean.toJson s)]
-  | .int => Json.mkObj [("kind", "int")]
+  | .int => Json.mkObj [("kind", "int"), ("bits", Lean.toJson bits)]
   | .float => Json.mkObj [("kind", "float")]
   | .str => Json.mkObj [("kind", "str")]
   | .bool => Json.mkObj [("kind", "bool")]
@@ -1007,10 +997,14 @@ def wantedKeys : List (List Nat) :=
 def perKeyOf : String → List (List Nat × Nat) :=
   rowsPer ((R.input.getObjVal? "rows_per").toOption.getD (.obj {}))
 
-/-- Does the request ask for the reference (`profile`)? Under another profile
-an overflow to `±∞` is the engine's value and no issue (#575). -/
+/-- Is the report the reference's? It is under the reference, and under an
+engine's profile with no report of its own yet, whose request gets the
+reference's report (`underProfile`'s `pending`, ruling 152 F1). Only DuckDB's
+lift (#575) and Substrait's profile have reports of their own, where an
+overflow to `±∞` is the value and no issue. -/
 def underReference : Bool :=
-  ((R.input.getObjValAs? String "profile").toOption.getD "reference") == "reference"
+  !["duckdb", "substrait"].contains
+    ((R.input.getObjValAs? String "profile").toOption.getD "reference")
 
 /-- Each requested output key, and whether it contains a key the analysis
 derives under `K` (`check_keys_sound`). -/
@@ -1050,17 +1044,18 @@ def foreignKeysOf : ForeignKeys :=
   foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
 
 /-- The transformation rewritten under `K` with the inputs' facts, keys and
-foreign keys (`Rel.optimize`, `check_optimized_sound`), and the rewrites'
-names. -/
-def optimizedIn (K : KnowledgeEnv) : Option (Rel × List String) :=
-  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf
+foreign keys by every rule (`Rel.optimize`, `check_optimized_sound`), and the
+rules applied. The report shows it; the plan an engine runs is gated
+(`Request.runPlanIn`, `SubstraitLean/RunPlan.lean`). -/
+def optimizedIn (K : KnowledgeEnv) : Option (Rel × List Rule) :=
+  R.transform.map fun p => p.root.optimize R.cat K.cols K.facts K.keys R.foreignKeysOf fun _ => true
 
 /-- The report's `optimized` and `rewrites`: `optimizedIn`'s plan in the
 writer's JSON (trusted, round-tripped where the CLI writes plans), and its
 rewrites. -/
 def optimizedJson (K : KnowledgeEnv) : Json × List String :=
   match R.transform, R.optimizedIn K with
-  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log)
+  | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log.map (·.name))
   | _, _ => (.null, [])
 
 end Request
@@ -1335,7 +1330,9 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
   let outputKinds := match transform with
     | some p =>
       if p.root.checkWF cat then
-        (Write.relKinds (Write.planSchemas p) cat p.root).map outputKindJson
+        let ks := Write.relKinds (Write.planSchemas p) cat p.root
+        let bits := p.root.outBits tables
+        (ks.zipIdx.map fun (k, i) => outputKindJson k (bits.getD i 64))
       else []
     | none => []
   -- Keys: a requested key holds if it contains a derived one (`KeyOn.superset`).
@@ -1698,7 +1695,7 @@ theorem check_proved_conds {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `deterministic` is a theorem** (#1484, finding 9). When
 `check` reports the transformation deterministic, every result the reference
-allows for it, every order of the ties (`Rel.OrderAllowed`), is `Rel.eval`'s
+allows for it (`Rel.Allowed`), is `Rel.eval`'s
 up to the order of its rows, for any data that meets the request
 (`DataMeets`): through `Rel.detPlan` (`check_deterministic`) and
 `Rel.allowed_perm_eval`. -/
@@ -1706,7 +1703,7 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out → out.Perm (T.root.eval data) := by
+    ∀ {out : Relation}, T.root.Allowed data out → out.Perm (T.root.eval data) := by
   intro out ho
   rw [check_deterministic hR hc] at hdet
   simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
@@ -1715,7 +1712,17 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detPlan_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_perm_eval hD.wf hK hwf hd ho
+
+/-- **A deterministic report means one result up to `Obs.members`** (the instance
+of `Rel.DeterminedUpTo` at the exact level, in every context: a multiset of rows
+is a permutation, `Relation.Equiv_multiset_perm`). -/
+theorem check_deterministic_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.deterministic = true) (ctx : ObsCtx) :
+    T.root.DeterminedUpTo Obs.members ctx data :=
+  fun _ h => Relation.Equiv_multiset_perm.2 (check_deterministic_sound hR hc hD hT hdet h)
 
 /-- The report's `class_determined` is `Request.classDeterminedIn`'s. -/
 theorem check_classDetermined {input : Json} {R : Request} {rep : Report}
@@ -1731,7 +1738,7 @@ theorem check_classPlaces {input : Json} {R : Request} {rep : Report}
 
 /-- **The checker's `class_determined` is a theorem** (D48). When `check`
 reports the transformation determined up to the class, every result the
-reference allows for it, every order of the ties (`Rel.OrderAllowed`), is
+reference allows for it (`Rel.Allowed`), is
 `Rel.eval`'s up to the order of its rows and the member of each class of D31
 (`Row.canon`), for any data that meets the request (`DataMeets`): through
 `Rel.detClass` and `Rel.allowed_canon_perm_eval`. -/
@@ -1739,7 +1746,7 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) :
-    ∀ {out : Relation}, T.root.OrderAllowed data out →
+    ∀ {out : Relation}, T.root.Allowed data out →
       (out.map Row.canon).Perm ((T.root.eval data).map Row.canon) := by
   intro out ho
   rw [check_classDetermined hR hc] at hdet
@@ -1749,7 +1756,22 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
   have hd : T.root.detClass data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detClass_congr hD.arity]
     exact hdet.2
-  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd (Rel.orderAllowed_allowed ho)
+  exact Knowledge.allowed_canon_perm_eval hD.wf hK hwf hd ho
+
+/-- **A class-determined report means one result up to `Obs.classes`** (the
+instance of `Rel.DeterminedUpTo` at the class level), in a context that reads
+every double of `Rel.eval`'s result as a double (`Relation.DoublesKinded`): the
+bridge `Relation.Equiv_classes_of_canon_perm` from `Row.canon`. The converse
+of the bridge fails (one kind per column), so `check_class_determined_sound`
+stays the primary theorem. -/
+theorem check_class_determined_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hdet : rep.classDetermined = true) (ctx : ObsCtx)
+    (hk : Relation.DoublesKinded ctx (T.root.eval data)) :
+    T.root.DeterminedUpTo Obs.classes ctx data :=
+  fun _ h => Relation.Equiv_classes_of_canon_perm
+    (check_class_determined_sound hR hc hD hT hdet h) hk
 
 /-! ### The other fields the engine theorems read (#1484, A4)
 
@@ -1844,12 +1866,13 @@ JSON (`Request.CheckOk.optimized`). -/
 theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List String}
+    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List Rule}
     (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
   rw [← Rel.optimize_congr hD.arity] at hq
-  have := Rel.optimize_sound hD.wf hK.cols hK.facts hK.keys hFK (check_transform_wf hR hc hD hT)
+  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hFK
+    (check_transform_wf hR hc hD hT)
   rw [hq] at this
   exact this
 

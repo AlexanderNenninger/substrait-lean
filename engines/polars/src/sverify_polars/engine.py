@@ -18,13 +18,13 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   row with its matches in right order, a left join's unmatched row in its
   place), unions concatenate and windows emit rows in their sort order.
   `FetchRel` then takes the same rows as Lean.
-* Doubles have one zero and one NaN, as the float codes of
+* Doubles have one zero and one NaN as identity, as the float codes of
   `core/Sverify/Core/Float.lean` do: `-inf < … < 0.0 < … < inf < NaN`, `-0.0` is
   `0.0` and NaN equals itself. Comparisons, join keys, window partitions and
   sort keys use a key with that order (`_float_key`: the one zero and the
-  one positive NaN, which Polars orders and compares that way), and doubles
-  read from a table or made by an operation that can give `-0.0` go through
-  `canon`.
+  one positive NaN, which Polars orders and compares that way). Values stay
+  raw (D31, #1461): a read and a scalar result keep `-0.0`, so `cot(-0.0)` is
+  `-inf`; only a sum or difference gets IEEE's zero sign (`shims.ieee_zero_sum`).
 * Integers are unbounded in Lean. Columns are widened to `Int64` on read.
   `+`, `-` and `*` of `Int64` run natively, and a guard on 128 bits raises
   `IntegerOverflow` where Polars would wrap. Division and remainder truncate
@@ -48,8 +48,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   and `DISTINCT` keeps the first of equal rows (`dedup`), NULLs equal.
 * Strings are sequences of Unicode scalar values (`core/Sverify/Core/Text.lean`):
   positions and lengths count characters, not bytes. `UPPER`, `LOWER` and
-  regular expressions are black boxes in Lean; Polars computes them with the
-  same Rust code DataFusion uses (`str::to_uppercase`, the `regex` crate).
+  regular expressions are black boxes in Lean; Polars computes them with
+  Rust's `str::to_uppercase` and the `regex` crate.
 * `date_part` and `date_trunc` follow `core/Sverify/Core/Time.lean`: sub-day
   parts and truncations are integer arithmetic on the microseconds, calendar
   ones go through Polars' calendar, and the calendar functions raise outside
@@ -114,8 +114,8 @@ class RuntimeIssue(ArithmeticError):
 
 
 class IntegerOverflow(RuntimeIssue):
-    """`+`, `-`, `*` or negation left 64 bits. DataFusion wraps around; the
-    model's integers are unbounded, so the only faithful answer is to stop."""
+    """`+`, `-`, `*` or negation left 64 bits. The model's integers are
+    unbounded, so the only faithful answer is to stop."""
 
     issue = "overflow"
 
@@ -127,7 +127,7 @@ class SumOverflow(IntegerOverflow):
 
 
 class Overflow(RuntimeIssue):
-    """`MIN / -1` or an integer `POWER` outside 64 bits: DataFusion fails."""
+    """`MIN / -1` or an integer `POWER` outside 64 bits."""
 
     issue = "overflow"
 
@@ -225,7 +225,7 @@ def _float_key(e: pl.Expr) -> pl.Expr:
     return canon(e).fill_nan(math.nan)
 
 
-#: `BinFn.greatest`/`least`, as Lean writes them (and as DataFusion does).
+#: `BinFn.greatest`/`least`, as Lean writes them.
 _PICKS = ("greatest", "least", "greatest_skip_null", "least_skip_null")
 
 
@@ -393,7 +393,7 @@ def wide(v: Val) -> pl.Expr:
 
 def narrow(w: pl.Expr, out: DType, what: str, *vals: Val, kind=None) -> Val:
     """A 128-bit result back in 64 bits. Leaving them is an issue: an error
-    for `MIN / -1` (`kind`), and where DataFusion would wrap, `IntegerOverflow`
+    for `MIN / -1` (`kind`), and `IntegerOverflow` otherwise
     (the model's integers are unbounded, so wrapping would be wrong)."""
     outside = (w < I64_MIN) | (w > I64_MAX)
     return Val(
@@ -703,7 +703,7 @@ def like_regex(p: str, fold: bool = False) -> str:
     """`Text.like`'s pattern, or with `fold` `Text.ilike`'s, as a regular
     expression of the `regex` crate (polars-regex): `%` any characters, `_`
     one, a backslash makes the next character literal (a trailing one is
-    itself). `(?i)` folds case as DataFusion's `ILIKE` does (Unicode's simple
+    itself). `(?i)` folds case for `ILIKE` (Unicode's simple
     case folding); `(?s)` lets `.` match a newline; `$` is the end of the
     text. Every literal character is an escape `\\x{…}`."""
     out, k = [], 0
@@ -766,7 +766,7 @@ def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
 def regex_groups(p: str) -> int | None:
     """Entries of `regexp_match(s, p)` on a match (`_plan_read.regex_groups`).
     `None` if the pattern does not compile, asked of Polars, which compiles
-    patterns with DataFusion's `regex` crate."""
+    patterns with the `regex` crate."""
     try:
         pl.Series([""], dtype=pl.String).str.contains(p)
     except pl.exceptions.ComputeError:
@@ -1284,6 +1284,12 @@ class Exprs:
             # `UnFn.timeOfDay`; Polars' times are nanoseconds.
             tod = (wide(v) % US_PER_DAY * 1000).cast(pl.Int64).cast(pl.Time)
             return ts_only(v, tod, pl.Time, "CAST to TIME")
+        if "precisionTimestampTz" in target and v.dtype == US:
+            # `UnFn.atUtc true` (D53): the same microseconds, as an instant.
+            return Val(v.expr.dt.replace_time_zone("UTC"), INSTANT, v.issues)
+        if "precisionTimestamp" in target and v.dtype == INSTANT:
+            # `UnFn.atUtc false`: the naive timestamp of the instant's UTC wall clock.
+            return Val(v.expr.dt.replace_time_zone(None), US, v.issues)
         if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
             # `UnFn.asTime`: microseconds since 1970-01-01.
             return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)
@@ -1482,7 +1488,7 @@ class Exprs:
             return Val(e.is_null(), pl.Boolean, a.issues)
         if name in ("negate", "subtract"):
             if t == pl.Float64:
-                return Val(canon(-e), t, a.issues)  # NaN stays NaN
+                return Val(-e, t, a.issues)  # NaN stays NaN; `-0.0` is the reference's too (D31)
             if t in (pl.Int64, INTERVAL, pl.Null):
                 return narrow(
                     pl.lit(0, pl.Int128) - wide(a), pl.Int64 if t == pl.Null else t, "negation", a
@@ -1500,16 +1506,18 @@ class Exprs:
                 return Val(first_code_point(e), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
-            # A zero result is the one zero, as in `onMag`.
+            # Values stay raw (D31): a zero result keeps its sign.
             if name == "floor":
-                return Val(canon(e.floor()), t, a.issues)
+                return Val(e.floor(), t, a.issues)
             if name == "ceil":
-                return Val(canon(e.ceil()), t, a.issues)
+                return Val(e.ceil(), t, a.issues)
             if name == "round":
-                return Val(canon(shims.round_half_away(e)), t, a.issues)
+                return Val(shims.round_half_away(e), t, a.issues)
             # `|x|`, which a split double's partial rows report (#428).
             if name == "abs":
-                return Val(canon(e.abs()), t, a.issues)
+                # The reference's `if x < 0 then -x else x`: `abs(-0.0)` is `-0.0`, as it is
+                # in the written SQL (Polars's own `abs` gives `+0.0`).
+                return Val(pl.when(e < 0.0).then(-e).otherwise(e), t, a.issues)
             if name in FMATH_NATIVE or name in FMATH_LOGS:
                 return self.fmath(name, a)
         raise Unsupported(f"unsupported function {name}/1 on {t}")
@@ -1519,7 +1527,7 @@ class Exprs:
         e = a.expr
         bad = fmath_domain_error(name, e)
         safe = e if bad is None else pl.when(bad).then(1.0).otherwise(e)
-        y = canon((FMATH_NATIVE | FMATH_LOGS)[name](safe))
+        y = (FMATH_NATIVE | FMATH_LOGS)[name](safe)
         # Only `exp` of a finite double overflows (`UnFn.infIssue`, #575).
         inf = (
             (issue(shims.makes_infinite(y, e), InfiniteResult, f"{name} overflows to infinity"),)
@@ -1544,7 +1552,7 @@ class Exprs:
             x, y = a.expr.cast(pl.Float64), b.expr.cast(pl.Float64)
             if name == "atan2":
                 bad = (x == 0.0) & (y == 0.0)
-                return self.domain(bad, canon(pl.arctan2(x, y)), pl.Float64, name, a, b)
+                return self.domain(bad, pl.arctan2(x, y), pl.Float64, name, a, b)
             # `ln x / ln b` (`logb?`), with the arguments made safe where it fails.
             bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
             sx = pl.when(bad).then(2.0).otherwise(x)
@@ -1552,7 +1560,7 @@ class Exprs:
             # `logb?` divides once, exactly: Polars's `log` with a column base
             # is `ln x / ln b` per element, one IEEE division in the kernel
             # (polars-log-base), with no reciprocal.
-            return self.domain(bad, canon(sx.log(sy)), pl.Float64, name, a, b)
+            return self.domain(bad, sx.log(sy), pl.Float64, name, a, b)
         if name in BITWISE:
             if unify(ta, tb, name) not in (pl.Int64, pl.Null):
                 raise Unsupported(f"{name} of {ta} and {tb}")
@@ -1582,11 +1590,12 @@ class Exprs:
                     "where the reference's truncates as C's fmod; run it on DuckDB or Spark"
                 )
             # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
-            # in-memory engine (polars-zero-sign), so a sum or difference can
-            # be `-0.0` too.
-            ops = {"add": canon(x + y), "subtract": canon(x - y), "multiply": canon(x * y),
-                   "divide": canon(fdiv(x, y)), "divide_ieee": canon(fdiv(x, y)),
-                   "power": canon(x.pow(y))}  # fmt: skip
+            # in-memory engine (polars-zero-sign): a sum or difference gets
+            # IEEE's zero sign by a shim.
+            ops = {"add": shims.ieee_zero_sum(x + y, x, y, False),
+                   "subtract": shims.ieee_zero_sum(x - y, x, y, True), "multiply": x * y,
+                   "divide": fdiv(x, y), "divide_ieee": fdiv(x, y),
+                   "power": shims.ieee_zero_power(x.pow(y), x, y)}  # fmt: skip
             nan = issue(nan_case(name, x, y), DomainError, f"{name} would make a NaN")
             inf = (
                 issue(shims.makes_infinite(ops[name], x, y) & y.ne(0.0), InfiniteResult,
@@ -1797,7 +1806,7 @@ class Exprs:
         x = a.expr
         r = x.round(d, mode="half_away_from_zero")
         out = pl.when(~x.is_finite() | ~r.is_finite()).then(x).otherwise(r)
-        return Val(canon(out), pl.Float64, a.issues)
+        return Val(out, pl.Float64, a.issues)
 
 
 # --- Relations ---------------------------------------------------------------
@@ -1903,7 +1912,7 @@ def conform(e: pl.Expr, have: DType, want: DType, where: str) -> pl.Expr:
     single floats to doubles, `-0.0` as `0.0`. Anything else that would change
     values is refused."""
     if want == pl.Float64 and have in (pl.Float64, pl.Float32):
-        return canon(e.cast(pl.Float64))
+        return e.cast(pl.Float64)
     if have == want:
         return e
     if want == pl.Int64 and have.is_integer() and have not in (pl.UInt64, pl.Int128):
@@ -2080,7 +2089,7 @@ class Measure:
             return NativeAgg(
                 {name: agg, bad: v.is_infinite().any(), fin: v.is_finite().all(),
                  nan: v.is_nan().any()},
-                canon(shims.nan_through(clamped, pl.col(nan))),
+                shims.nan_through(clamped, pl.col(nan)),
                 ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
                  # `agg_makes_infinite`, its two halves read after the aggregation.
                  (pl.col(fin) & r.is_infinite(), InfiniteResult,
@@ -2382,7 +2391,7 @@ class Windows:
             odd = self.total((x.is_infinite() | x.is_nan()).fill_null(False).cast(pl.Int64), fr)
             self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteResult,
                                      f"{f.agg} overflows to infinity"))  # fmt: skip
-            return pl.when(some).then(canon(s if f.agg == "fsum" else s / n))
+            return pl.when(some).then(s if f.agg == "fsum" else s / n)
         if f.agg in ("fmin", "fmax"):
             # By the codes' order: NaN above every double, and one zero.
             nan = self.total(v.is_nan().fill_null(False).cast(pl.Int64), fr)
@@ -2778,7 +2787,14 @@ class Translator:
         multiset = self.rows == "multiset"
         lf = lf.with_columns(
             [ordered(g.expr, g.dtype).alias(k) for g, k in zip(groups, keys, strict=True)]
-            + ([] if multiset else [g.expr.alias(f"__sv_v{k}") for k, g in enumerate(groups)])
+            + (
+                []
+                if multiset
+                else [
+                    (canon(g.expr) if g.dtype == pl.Float64 else g.expr).alias(f"__sv_v{k}")
+                    for k, g in enumerate(groups)
+                ]
+            )
             + [m.values.alias(f"__sv_m{j}") for j, m in enumerate(ms)]
             + [
                 ordered(key.expr, key.dtype).alias(f"__sv_m{j}_k{i}")
@@ -2996,12 +3012,17 @@ class Translator:
             return kept.sort(_LEFT, maintain_order=True).select(left_cols), dtypes[:n]
         cols = [col(i) for i in range(len(dtypes))]
         if how == "left":
-            unmatched = left.join(matches.select(_LEFT), on=_LEFT, how="anti").with_columns(
-                [pl.lit(None, dtypes[i]).alias(col(i)) for i in range(n, len(dtypes))]
-                + [pl.lit(None, pl.UInt32).alias(_RIGHT)]
-            )
-            matches = pl.concat(
-                [matches.select(_LEFT, _RIGHT, *cols), unmatched.select(_LEFT, _RIGHT, *cols)]
+            # One read of the matches: a left join of the rows to them on the row index,
+            # NULLs for the right columns of a row without one. Reading them twice (an
+            # anti join, then a union) makes Polars cache them and fuse the filter into a
+            # nested-loop join below the `guard`, which then never sees a pair the
+            # condition rejects (#1857).
+            right_cols = [col(i) for i in range(n, len(dtypes))]
+            matches = left.join(
+                matches.select(_LEFT, _RIGHT, *right_cols),
+                on=_LEFT,
+                how="left",
+                maintain_order="left_right",
             )
         ordered_rows = matches.sort([_LEFT, _RIGHT], nulls_last=True, maintain_order=True)
         return ordered_rows.select(cols), dtypes

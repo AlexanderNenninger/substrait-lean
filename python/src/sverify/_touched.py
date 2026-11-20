@@ -15,7 +15,7 @@ whose input has delta rules is maintained in three steps per batch:
 
 Groups are independent, so this is the full recomputation for any measure
 (`TouchedGroups.touched_sound` and `TouchedGroups.touched_eval` in
-`SubstraitLean/TouchedGroups.lean`). Filters and projections over the
+`analysis/Sverify/Analysis/TouchedGroups.lean`). Filters and projections over the
 aggregate act on each output row, and keep the group keys, so they keep the
 split. This module is trusted glue: it recognises the shape on the Ibis
 expression and builds the three plans, which Lean checks as it checks any
@@ -78,7 +78,7 @@ class Framed:
 
     That the other output rows keep their values, and the recomputed ones
     get their full values, is `TouchedFrames.framed_batch` in
-    `SubstraitLean/TouchedFrames.lean`: a window value depends only on the
+    `analysis/Sverify/Analysis/TouchedFrames.lean`: a window value depends only on the
     rows of its partition in its frame (`TouchedFrames.outRow_local`). It
     assumes no two input rows tie on the partition columns and `ts`, and
     `start ≤ 0 ≤ end`, so `_frame` widens the span to hold the row itself.
@@ -283,7 +283,7 @@ def _ranged(name, agg, groups, touched, over) -> Ranged | None:
         b = _bucket(g)
         if isinstance(b, str) or b[0].rel != agg.parent:
             continue
-        f, width, _origin = b
+        f, width, _origin, _naive = b
         parent = agg.parent.to_expr()
         dtype = touched[f"k{i}"].type()
         bounds = ibis.table({"__lo": dtype, "__hi": dtype}, name=f"{name}$range")

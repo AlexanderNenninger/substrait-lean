@@ -24,6 +24,7 @@ Sverify-dbt is published with sverify, at the same version, from
 releases on:
 
 ```bash
+# skip: installs software on the reader's machine
 pip install sverify-dbt dbt-duckdb
 ```
 
@@ -32,6 +33,7 @@ pip install sverify-dbt dbt-duckdb
 Compile the project, then check it:
 
 ```bash
+# skip: needs a dbt project
 dbt docs generate   # writes target/catalog.json, where the column types come from
 dbt compile --full-refresh   # also after a `dbt run`: a plain compile renders `{{ this }}`
 sverify-dbt check .
@@ -80,6 +82,7 @@ subscription_arr (models/marts/subscription_arr.sql)
 selects:
 
 ```bash
+# skip: needs a dbt project
 sverify-dbt check . --selectors
 dbt build --exclude selector:sverify_proved
 ```
@@ -92,6 +95,7 @@ by hand, and tighten a bound where your data allows:
 [`examples/shop/PROOF-STATUS.md`](examples/shop/PROOF-STATUS.md) shows one.
 
 ```bash
+# skip: needs a dbt project
 sverify-dbt suggest .
 ```
 
@@ -99,18 +103,21 @@ The other options of `check`:
 
 | Option | What it does |
 |---|---|
-| `--select MODEL ...` | Report on these models (their upstream models are checked too) |
+| `--select MODEL ...` | Report on these models (their upstream models are checked too); not with `--selectors`, which needs the whole project |
 | `--format text\|json\|github\|sarif\|junit` | How to print the result (default `text`): `github` is one annotation per finding on the model's file, `sarif` a code-scanning log, `junit` a suite per model; `sverify check` forwards its own |
 | `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 4 past it |
 | `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
 | `--json` | Print the result as JSON (`--format json`) |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |
-| `--fail-on` | Exit with status 1 on a contract mismatch or an unproved constraint (`contract`, the default), also on any unproved test or refused model (`unproved`), or `never` |
+| `--fail-on` | Exit 1 on a contract mismatch or an unproved constraint (`contract`, the default); `unproved`: also on any unproved test; `refused`: all of that, and exit 3 when a model was refused (sverify cannot read it); `never` |
 | `--target-path` | The target directory, if not `target` |
+
+Exit codes, as in `sverify check`: 0 holds, 1 something is not proved, 2 usage (no manifest, an unknown model, another adapter), 3 a model is refused under `--fail-on refused` or the check is unsupported, 4 past `--timeout` or `--memory-limit`, 6 an error (the checker is missing, an I/O failure) with its message on stderr.
 
 The same from Python:
 
 ```python
+# skip: needs a compiled dbt project at path/to/project
 import sverify_dbt
 
 result = sverify_dbt.check("path/to/project")
@@ -193,9 +200,32 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   proved tests are listed as proved for the full refresh, and `dbt build`
   still runs them.
 
+## Evidence
+
+`python -m sverify_dbt.replay` builds the integration projects of
+dbt-utils 1.4.1 and dbt-expectations 0.10.10 with dbt on DuckDB, checks them
+with sverify-dbt and records every test beside dbt's own result, in
+[`replay/`](replay/) (#859). No test sverify-dbt proves fails in dbt's run.
+
+| Source | Proved | Not proved | Not checked | Refused | Inputs |
+|---|---|---|---|---|---|
+| dbt-utils 1.4.1 | 1 | 8 | 48 | 19 | 37 |
+| dbt-expectations 0.10.10 | 0 | 0 | 42 | 115 | 0 |
+
+These projects test macros more than they model data: most of their tests
+compare two relations or match patterns, which sverify-dbt does not map yet
+([#1936](https://github.com/AlexanderNenninger/substrait-lean/issues/1936),
+[#1937](https://github.com/AlexanderNenninger/substrait-lean/issues/1937)),
+and most of dbt-expectations' models read a float32 column
+([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908))
+or `random()`. Every refusal and test not checked names its issue or the
+reason it is by design ([`replay/constructs.json`](replay/constructs.json)).
+CI's `dbt` job replays them and warns when an outcome changes.
+
 ## Development
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd dbt
 uv sync
 uv run pytest

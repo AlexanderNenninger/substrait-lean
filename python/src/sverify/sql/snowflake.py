@@ -33,8 +33,10 @@ documentation they rest on:
   is Lean's code point order; `LENGTH`, `POSITION` and `SUBSTR` count
   characters; `POSITION('' IN s)` is 1, as probed (it is not documented).
   Regular expressions are POSIX extended with Perl's `\\d`,
-  `\\w` and `\\s` (black boxes in Lean); `REGEXP_INSTR` searches, where
-  `REGEXP_LIKE` would match the whole string. `SUBSTR` wraps positions and
+  `\\w` and `\\s` (black boxes in Lean); a search is `REGEXP_COUNT(s, p) > 0`,
+  where `REGEXP_LIKE` would match the whole string and `REGEXP_INSTR` of the
+  empty string is 0 even for a pattern that matches it (Snowflake behaviour
+  recorded privately). `SUBSTR` wraps positions and
   lengths at 32 bits, so they are clamped below 2^31 and raise from 2^32 on.
   `UPPER`, `LOWER` and patterns
   with `\\d`, `\\w` or `\\s` raise on non-ASCII text, where Snowflake's
@@ -68,7 +70,6 @@ recorded privately.
 from __future__ import annotations
 
 import datetime as dt
-import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -135,13 +136,6 @@ class SnowflakeDialect(Dialect):
         for c, e in (("\n", "\\n"), ("\r", "\\r"), ("\t", "\\t"), ("\0", "\\0")):
             s = s.replace(c, e)
         return "'" + "".join(f"\\u{ord(c):04x}" if ord(c) < 32 else c for c in s) + "'"
-
-    def float_lit(self, f: float) -> str:
-        if math.isnan(f):
-            return NAN
-        if math.isinf(f):
-            return "CAST('inf' AS FLOAT)" if f > 0 else "CAST('-inf' AS FLOAT)"
-        return f"CAST('{f + 0.0!r}' AS FLOAT)"  # `+ 0.0`: the one zero
 
     def int_lit(self, i: int) -> str:
         return str(i) if i >= 0 else f"({i})"
@@ -398,7 +392,9 @@ class SnowflakeDialect(Dialect):
     def int32_lit(k: int) -> str:
         """A literal start or length `k ≥ 0` as SUBSTR reads it."""
         if k >= SUBSTR_MAX:
-            raise Unsupported(f"a substring position or length of {k} is not below 2^32")
+            raise Unsupported(
+                f"a substring position or length of {k} is not below 2^32; use a smaller value"
+            )
         return str(min(k, INT32_MAX))
 
     def trim(self, s: str, chars: str, left: bool, right: bool) -> str:
@@ -406,7 +402,9 @@ class SnowflakeDialect(Dialect):
         return f"{f}({s}, {chars})"
 
     def regex_search(self, s: str, pattern: str) -> str:
-        return f"(REGEXP_INSTR({s}, {self.str_lit(pattern)}) > 0)"
+        # REGEXP_COUNT, not REGEXP_INSTR: a search of '' for `^$` or `x*`
+        # holds, and REGEXP_INSTR('', p) is 0 (Snowflake behaviour recorded privately).
+        return f"(REGEXP_COUNT({s}, {self.str_lit(pattern)}) > 0)"
 
     def case_differs(self, s: str, which: Literal["upper", "lower"]) -> str:
         # Snowflake's case mapping is recorded privately; until its table is, `UPPER` and

@@ -74,3 +74,57 @@ def test_a_duckdb_run_with_assumptions_runs_the_plan_once(monkeypatch):
     monkeypatch.setattr(report_module, "run_plan", spy)
     report.run(_con([1, 2, 3]), "duckdb")
     assert runs == ["duckdb"]
+
+
+@pytest.mark.parametrize("engine", ["polars", "spark"])
+def test_a_polars_or_spark_run_with_assumptions_does_not_run_on_duckdb(engine, monkeypatch):
+    """Their translations check the assumed `SUM`s as they run (#1484): the plan
+    runs on the target engine only, and a batch that breaks one is refused."""
+    pytest.importorskip("pyspark" if engine == "spark" else "polars")
+    report = sv.verify(
+        "SELECT SUM(x) AS s FROM t",
+        tables={"t": T},
+        requires={"t": [_.x.between(-(10**18), 10**18)]},
+    )
+    assert report.assumed and report.internal_plan
+    runs: list[str] = []
+    real = report_module.run_plan
+
+    def spy(con, plan, eng, **kw):
+        runs.append(eng if isinstance(eng, str) else "session")
+        return real(con, plan, eng, **kw)
+
+    monkeypatch.setattr(report_module, "run_plan", spy)
+    out = report.run(_con([1, 2, 3]), engine)
+    assert out.to_pylist() == [{"s": 6}]
+    assert "duckdb" not in runs
+    with pytest.raises(PreconditionError, match="assumed precondition"):
+        report.run(
+            _con([10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18, 10**18]),
+            engine,
+        )
+
+
+def test_polars_checks_the_assumed_sum_on_the_guard_free_route_too(monkeypatch):
+    """A guard-free report on Polars runs without its other checks, and the
+    assumed `SUM` keeps its own (`NO_GUARDS`): a batch that breaks it is
+    refused on that route (#1484)."""
+    pytest.importorskip("polars")
+    report = sv.verify(
+        "SELECT SUM(x) AS s FROM t",
+        tables={"t": T},
+        requires={"t": [_.x.between(-(10**18), 10**18)]},
+    )
+    assert report._guard_free and report.assumed
+    routes: list[str] = []
+    real = report_module.run_guard_free
+
+    def spy(*args, **kw):
+        routes.append("guard_free")
+        return real(*args, **kw)
+
+    monkeypatch.setattr(report_module, "run_guard_free", spy)
+    assert report.run(_con([1, 2, 3]), "polars").to_pylist() == [{"s": 6}]
+    assert routes == ["guard_free"]
+    with pytest.raises(PreconditionError, match="assumed precondition"):
+        report.run(_con([10**18] * 10), "polars")

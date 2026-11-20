@@ -23,10 +23,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import ibis
+import pyarrow as pa
 import pytest
 import sqlglot
 
 import sverify as sv
+from _repo import needs_repo
 from sverify.engine import run_checker
 from sverify.engines import substrait_json
 from sverify.ibis_substrait import to_substrait_json
@@ -191,7 +193,7 @@ TIE_FREE = {"window_tie_free": NAMED_ORDERED["window"]}
 def snowflake_sql(plan: dict, tie_free: bool = False) -> str:
     """The query, or the reason it is refused, for snapshots."""
     try:
-        return to_sql(plan, SNOWFLAKE, deterministic=tie_free, rows="sequence")
+        return to_sql(plan, SNOWFLAKE, deterministic=tie_free)
     except Unsupported as e:
         return f"-- Unsupported: {e}"
 
@@ -222,6 +224,19 @@ def test_pipeline_snapshot(name: str):
     check_snapshot(f"pipeline_{name}", sql)
 
 
+@needs_repo
+def test_every_snapshot_has_a_test():
+    """Each Snowflake and Spark snapshot is a fixture's or a pipeline's, so
+    none outlives the test that wrote it (#211 left twelve behind)."""
+    names = {p.stem for p in accepted_fixtures()} | {f"pipeline_{n}" for n in ALL_PLANS}
+    for dialect in ("snowflake", "spark"):
+        suffix = f".{dialect}.sql"
+        orphans = [
+            p.name for p in SNAPSHOTS.glob(f"*{suffix}") if p.name.removesuffix(suffix) not in names
+        ]
+        assert not orphans, orphans
+
+
 # ------------------------------------------------------------ hooks on their own
 
 
@@ -231,12 +246,50 @@ def parses(sql: str) -> str:
 
 
 def test_float_literals():
+    # The base writer's: a zero keeps its sign (D31), one NaN; Snowflake reads
+    # these texts as IEEE does (Snowflake behaviour recorded privately).
     assert parses(SNOWFLAKE.float_lit(math.nan)) == "CAST('NaN' AS FLOAT)"
-    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-inf' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-math.inf)) == "CAST('-Infinity' AS FLOAT)"
     assert parses(SNOWFLAKE.float_lit(0.1)) == "CAST('0.1' AS FLOAT)"
-    # The model's one zero and one NaN.
-    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(-0.0)) == "CAST('-0.0' AS FLOAT)"
+    assert parses(SNOWFLAKE.float_lit(0.0)) == "CAST('0' AS FLOAT)"
     assert SNOWFLAKE.float_lit(-math.nan) == SNOWFLAKE.float_lit(math.nan)
+
+
+def test_zero_sign_readers_are_refused_or_guarded():
+    """Ruling 160's gate: on Snowflake a column that holds -0.0 in every row
+    can read as +0.0 (Snowflake behaviour recorded privately), so each
+    operation that tells the zeros apart (`ZERO_SIGN_READERS`) is refused, or
+    raises before a result that would tell them apart. A name added to the
+    list needs a check here."""
+    from sverify._functions import BY_NAME, ZERO_SIGN_READERS, No
+    from sverify.engine import connect, put_table, written_plan
+
+    con = connect()
+    put_table(con, "t", pa.table({"a": [1.0], "b": [2.0]}))
+
+    def written(sql: str) -> str:
+        plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
+        return to_sql(json.loads(plan), SNOWFLAKE)
+
+    def atan2() -> None:
+        # Refused: the function table has no Snowflake SQL for it.
+        assert isinstance(BY_NAME["atan2"].sql["snowflake"], No)
+
+    def fdiv_ieee() -> None:
+        # The plain `/`, which raises at a zero divisor of either sign.
+        assert SNOWFLAKE.float_div("a", "b") == "(a / b)"
+        assert re.search(r'ELSE \(s\d+\."c0" / s\d+\."c1"\)', written("SELECT a / b AS q FROM t"))
+
+    def fpow() -> None:
+        # A ±inf result (a zero base under a negative exponent) raises first.
+        sql = written("SELECT power(a, b) AS p FROM t")
+        assert "POWER(" in sql and "sverify: overflow to infinity" in sql
+
+    checks = {"atan2": atan2, "fdivIeee": fdiv_ieee, "fpow": fpow}
+    assert set(checks) == set(ZERO_SIGN_READERS)
+    for name in ZERO_SIGN_READERS:
+        checks[name]()
 
 
 @pytest.mark.parametrize(
@@ -328,6 +381,14 @@ def test_raise_of_a_string_raises():
     assert sql.startswith("TO_VARCHAR(CAST(") and sql.endswith("AS NUMBER(38,0)))")
     assert "AS VARCHAR)" not in sql
     assert parses(SNOWFLAKE.raise_("e", "x", "float", "raised")).endswith("AS FLOAT)")
+
+
+def test_regex_search_counts_matches():
+    # A search holds on '' for a pattern that matches the empty string; Snowflake's
+    # REGEXP_INSTR('', p) is 0 there, REGEXP_COUNT 1 (Snowflake behaviour recorded privately).
+    sql = parses(SNOWFLAKE.regex_search("s", "^$"))
+    assert sql == "(REGEXP_COUNT(s, '^$') > 0)"
+    assert "REGEXP_INSTR" not in sql
 
 
 def test_substring_positions_fit_32_bits():

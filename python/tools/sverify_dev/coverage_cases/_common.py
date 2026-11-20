@@ -87,20 +87,19 @@ V, R, X = "verified", "rejected", "upstream"
 #:
 #: * `lt` on strings is undefined in the model (`BinFn.apply` has no case for
 #:   it, so it is NULL, where SQL compares), so no engine may run it.
-#: * Snowflake and Spark tables have no row order, which FETCH and a stable
-#:   sort's or a window's ties follow. Sorts and windows run with
-#:   `deterministic=True`. A `SUM` or `AVG` of doubles needs no order (D25):
-#:   every engine runs it natively, within the plan's bound.
+#: * A `SUM` or `AVG` of doubles needs no order (D25): every engine runs it
+#:   natively, within the plan's bound. FETCH and windows over a named table run
+#:   on Snowflake and Spark with ties open (`to_sql`'s `rows` follows the engine).
 #: * Spark has no TIME type before 4.1.
-NO_ROW_ORDER = {"snowflake": "no row order", "spark": "no row order"}
 #: New functions run on DuckDB only until the generated lowerings (#271).
 DUCKDB_ONLY = {
     "polars": "see #271",
-    "snowflake": "no row order|see #271",
-    "spark": "no row order|see #271",
+    "snowflake": "see #271",
+    "spark": "see #271",
 }
-#: Spark and Snowflake have no lists yet; DuckDB has (#94).
-NO_LISTS = {
-    "snowflake": "see #271|no row order",
-    "spark": "see #271|no row order",
-}
+#: Windows with no ORDER BY, which Spark's and Snowflake's writers refuse (#271).
+NO_ORDER_BY = {"snowflake": "need an ORDER BY", "spark": "need an ORDER BY"}
+#: Snowflake has no lists yet; DuckDB, Polars and Spark have (#94).
+NO_LISTS_SNOWFLAKE = {"snowflake": "see #271"}
+#: Spark has no ordered `array_agg` (`collect_list` has no ORDER BY).
+NO_ORDERED_LISTS = {**NO_LISTS_SNOWFLAKE, "spark": "see #271"}

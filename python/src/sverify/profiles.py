@@ -16,9 +16,9 @@ brings:
 
 - a profile: `versions`, `translation`, `settings`, `shim_text`,
   `installed_version`, `restore`, `checker`. A profile from outside has a
-  Lean package that requires substrait-lean, states its `EngineProfile`,
-  checks it with `#check_engine_profiles` and builds a checker over
-  `builtinEngines ++ [its profile]` (`SubstraitCheckExamples/DummyEngine.lean`);
+  Lean package that requires substrait-lean, proves its `Engine` sound, states
+  its `EngineEntry`, checks it with `#check_engine_profiles` and builds a
+  checker over `builtinEntries ++ [its entry]` (`SubstraitCheckExamples/DummyEngine.lean`);
   its plugin names that checker. With it installed, `verify(semantics=...)`
   checks under the profile and `sverify.routes.choose` routes plans to the
   engine with their class. `$SVERIFY_CHECKER` still takes precedence over a
@@ -132,6 +132,11 @@ class ProfilePlugin:
     and the rows of a `LIMIT` open, and each statement picks its own."""
     local: bool = False
     """A `Connection` takes the engine as the one it runs plans on."""
+    checks_assumed: bool = False
+    """Its run of a translated plan checks the report's assumed issues as it
+    runs (an integer `SUM` that leaves its type, an operation on finite doubles
+    that gives `±∞`, #575) and raises, so `Report.run` does not run the plan on
+    DuckDB first to check them."""
     session: Callable[[Any], bool] | None = None
     """Recognises a session of the engine passed as `engine=` in place of
     its name (a Spark session)."""

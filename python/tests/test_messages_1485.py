@@ -77,7 +77,9 @@ def test_a_condition_the_check_cannot_read_is_not_flagged():
 
 
 def test_a_misspelt_column_in_requires_gets_a_suggestion():
-    with pytest.raises(AttributeError, match=r"no column 'amout'; did you mean 'amount'\?"):
+    with pytest.raises(
+        sv.errors.ConditionError, match=r"no column 'amout'; did you mean 'amount'\?"
+    ):
         sv.verify(ORDERS, requires={"orders": [_.amout > 5]}, ensures=[])
 
 

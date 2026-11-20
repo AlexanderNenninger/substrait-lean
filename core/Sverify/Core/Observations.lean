@@ -57,8 +57,11 @@ def TimeUnit.rank : TimeUnit → Nat
 inductive TimeObs | exact | truncated (unit : TimeUnit)
   deriving Repr, DecidableEq
 
-/-- Strings: exactly, up to NFC, or up to case folding (which normalises). -/
-inductive StringObs | exact | nfc | casefold
+/-- Strings: exactly, up to NFC, up to case folding (which normalises), or up to
+their ASCII skeleton: the code points below U+0080 of the compatibility caseless
+key (Unicode D146), so a string without an ASCII decomposition drops out. Each
+level is a function of the string alone, finer to coarser. -/
+inductive StringObs | exact | nfc | casefold | ascii
   deriving Repr, DecidableEq
 
 /-- Errors: which error, only its kind, or only that it raises. -/
@@ -80,6 +83,14 @@ structure Obs where
 /-- The identity: everything observed. -/
 def Obs.exact : Obs := {}
 
+/-- Rows as a multiset and every member read exactly: the exact level of the
+checker's `deterministic` (D48). -/
+def Obs.members : Obs := { rows := .multiset }
+
+/-- Rows as a multiset and one zero and one NaN: the class level of the
+checker's `class_determined` (D48). -/
+def Obs.classes : Obs := { rows := .multiset, zeros := .canon }
+
 def RowsObs.rank : RowsObs → Nat
   | .sequence => 0 | .tiesPermuted => 1 | .multiset => 2
 
@@ -100,7 +111,7 @@ def TimeObs.le : TimeObs → TimeObs → Bool
   | .truncated _, .exact => false
 
 def StringObs.rank : StringObs → Nat
-  | .exact => 0 | .nfc => 1 | .casefold => 2
+  | .exact => 0 | .nfc => 1 | .casefold => 2 | .ascii => 3
 
 def ErrorObs.rank : ErrorObs → Nat
   | .exact => 0 | .kind => 1 | .raises => 2
@@ -356,7 +367,7 @@ def Obs.json (q : Obs) : Json :=
     ("timestamps", toJson (match q.times with
       | .exact => "exact"
       | .truncated u => match u with | .ns => "ns" | .us => "us" | .ms => "ms" | .s => "s")),
-    ("strings", toJson (match q.strings with | .exact => "exact" | .nfc => "nfc" | .casefold => "casefold")),
+    ("strings", toJson (match q.strings with | .exact => "exact" | .nfc => "nfc" | .casefold => "casefold" | .ascii => "ascii")),
     ("decimals", toJson (match q.decimals with | .exact => "exact" | .value => "value")),
     ("errors", toJson (match q.errors with | .exact => "exact" | .kind => "kind" | .raises => "raises"))]
 
@@ -382,7 +393,8 @@ def obsLevels : List (String × List (String × Obs)) := [
   ("zeros", [("exact", {}), ("canon", { zeros := .canon })]),
   ("timestamps", [("ns", {}), ("us", { times := .truncated .us }), ("ms", { times := .truncated .ms }),
     ("s", { times := .truncated .s })]),
-  ("strings", [("exact", {}), ("nfc", { strings := .nfc }), ("casefold", { strings := .casefold })]),
+  ("strings", [("exact", {}), ("nfc", { strings := .nfc }), ("casefold", { strings := .casefold }),
+    ("ascii", { strings := .ascii })]),
   ("decimals", [("exact", {}), ("value", { decimals := .value })]),
   ("errors", [("exact", {}), ("kind", { errors := .kind }), ("raises", { errors := .raises })])]
 

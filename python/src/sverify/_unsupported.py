@@ -7,6 +7,7 @@ names are in `sverify.errors`. `Unsupported` is the internal modules' short
 name for `UnsupportedError`; `sverify.errors.Unsupported` is deprecated.
 """
 
+from collections.abc import Mapping
 from typing import ClassVar
 
 #: Where #271 is, for refusals: an engine that does not run a function yet.
@@ -59,9 +60,43 @@ class UnsupportedError(SverifyError, ValueError):
 
     code = "unsupported"
 
+    def __init__(self, *args: object, construct: str | None = None, sql: str | None = None):
+        super().__init__(*args)
+        self.construct = construct
+        """The construct refused, as `"function md5"` for a function (its lower-case
+        name as the user writes it) and otherwise the SQL keywords in upper case
+        (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`); None where the refusal names none."""
+        self.sql = sql
+        """The SQL fragment the SQL lift refused; None for the Ibis producer."""
+
 
 Unsupported = UnsupportedError
 """The internal modules' name for `UnsupportedError`."""
+
+
+class ConditionError(UnsupportedError):
+    """Conditions of `requires` or `ensures` that sverify cannot read: a
+    column the table or the result does not have, SQL outside what the lift
+    reads, a construct outside the model, an Ibis condition that does not
+    type-check or names a column the table lacks. `verify` reads every condition
+    before it proves anything and raises once, naming all of them; the query
+    itself is not refused. Fix or drop those conditions.
+    `sverify.errors.ConditionError`.
+
+    Attributes:
+        errors: Each unreadable condition, by its label, with its own
+            refusal (an `UnsupportedError`; its message says why).
+    """
+
+    code = "condition_unreadable"
+
+    def __init__(self, errors: Mapping[str, UnsupportedError]):
+        self.errors = dict(errors)
+        listed = "".join(f"\n  {label}: {e}" for label, e in self.errors.items())
+        super().__init__(
+            f"{len(self.errors)} condition(s) cannot be read:{listed}\n"
+            "fix or drop them; the query is not refused"
+        )
 
 
 class SverifyWarning(UserWarning):
