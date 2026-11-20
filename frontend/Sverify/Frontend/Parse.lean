@@ -2154,6 +2154,26 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if (ty.getObjVal? "fp32").toOption.isSome then
       if k == .float && argBits bits input e == 32 then return e
       throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
+    -- A boolean is 1 or 0, and NULL stays NULL (#1911); a narrower integer
+    -- keeps its width through a `narrow` mark, as a projected constant does.
+    if k == .bool && (target == .int || target == .float) then
+      let bit (v : Int) : Expr := .lit (if target == .float then .float (FloatCode.ofInt v) else .int v)
+      let b := Expr.ifThen e (bit 1) (.ifThen (.un .not e) (bit 0) (.lit .null))
+      let n := intBits ty
+      return if target == .int && n < 64 then .un (.narrow n) b else b
+    -- A list casts element by element (#1919): `transform(l, x -> CAST(x AS t))`.
+    if let .list ek := k then
+      if target != k then
+        if let some et := ((ty.getObjVal? "list").toOption).bind (·.getObjVal? "type" |>.toOption) then
+          let x := Json.mkObj [("selection", Json.mkObj [("rootReference", Json.mkObj []),
+            ("directReference", Json.mkObj [("structField", Json.mkObj [("field", (0 : Int))])])])]
+          let body ← parseExpr fns (ek :: cols) (64 :: bits)
+            (Json.mkObj [("cast", (c.setObjVal! "type" et).setObjVal! "input" x)])
+          return .hof .transform e body
+    -- A struct casts field by field, which needs a struct the core cannot build
+    -- (ruling 186: refused by design for 1.0, D66 reserved).
+    if k matches .struct _ then
+      throw "casts of structs are not supported: sverify cannot build a struct (D66); cast its fields"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
