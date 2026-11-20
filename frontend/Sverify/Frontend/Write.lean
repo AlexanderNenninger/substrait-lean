@@ -145,8 +145,10 @@ def writeDouble (c : Int) : Json :=
   else
     let (negative, m) := FloatCode.finiteParts c
     let mant : Int := m * 5 ^ 1074
-    -- Lean renders a zero mantissa with a large exponent as `0.e-1064`.
-    if m == 0 then Json.num 0 else Json.num ⟨if negative then -mant else mant, 1074⟩
+    -- Lean renders a zero mantissa with a large exponent as `0.e-1064`, and a
+    -- JSON number has no `-0.0`: its text form does (D31, as the parser reads it).
+    if m == 0 then (if negative then "-0.0" else Json.num 0)
+    else Json.num ⟨if negative then -mant else mant, 1074⟩
 
 /-- A decimal literal of precision `p`: its unscaled integer (#27). -/
 def writeDecimal (p s : Nat) (m : Int) : Json :=
