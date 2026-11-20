@@ -14,8 +14,8 @@ access, or an input column whose kind may hold a double.
 The lemmas here are about values: a function that is not `mayDouble` gives no
 double on arguments without one, and a value of a kind that is not
 `mayDouble` holds none. On such values the options that read only doubles
-(`floatOnlyOptions`) are out of scope. `Rel.transfer_of_noDouble`
-(`engines/Sverify/Engines/NoDouble.lean`) builds on them.
+(`floatOnlyOptions`) are out of scope. `Rel.transfer_of_noDouble` builds on
+them.
 -/
 
 namespace Substrait
