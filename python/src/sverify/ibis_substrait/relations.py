@@ -31,6 +31,7 @@ from sverify.plan_json import (
     emit_rel,
     field_ref,
     literal,
+    logical,
     project_rel,
     read_rel,
     select,
@@ -96,7 +97,7 @@ def _filter(op: Any) -> Json:
         input = {"join": {"left": input, "right": rel(inner), "expression": on, "type": kind}}
     if not conds:
         return input
-    return {"filter": {"input": input, "condition": chain("and", conds)}}
+    return {"filter": {"input": input, "condition": logical("and", conds)}}
 
 
 def _pivot_longer(op: Any) -> Any | None:
