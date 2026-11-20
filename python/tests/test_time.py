@@ -311,11 +311,13 @@ _COUNTS = [("s", 1_000_000), ("ms", 1_000), ("us", 1)]
 
 @pytest.mark.parametrize(("unit", "per"), _COUNTS)
 def test_a_count_past_year_9999_is_reported(unit, per):
-    expr = T.select(t=T.n.to_timestamp(unit=unit))
+    expr = T.select(t=T.n.as_timestamp(unit))
     assert kinds(expr) == (["overflow"], [])
-    inside = T.filter(T.n.between(0, 4_000_000_000_000 // per)).select(
-        t=T.n.to_timestamp(unit=unit)
-    )
+    # Bounded so that the count in microseconds fits 64 bits: only the range of
+    # 0001 to 9999 is left to report, which main did not.
+    wide = T.filter(T.n.between(0, 9_000_000_000_000_000_000 // per))
+    assert kinds(wide.select(t=wide.n.as_timestamp(unit))) == (["overflow"], [])
+    inside = T.filter(T.n.between(0, 4_000_000_000_000 // per)).select(t=T.n.as_timestamp(unit))
     assert kinds(inside) == ([], [])
 
 
@@ -323,7 +325,7 @@ def test_a_count_past_year_9999_is_reported(unit, per):
 def test_a_count_past_year_9999_fails_on_every_engine(unit, per):
     count = (TS_MAX + 1) // per + (0 if per == 1 else 1)
     assert count * per > TS_MAX
-    expr = T.select(t=T.n.to_timestamp(unit=unit))
+    expr = T.select(t=T.n.as_timestamp(unit))
     plan = written_plan(to_substrait_json(expr))
     for engine, error in [("polars", polars_engine.Overflow), ("duckdb", Exception)]:
         con = connect()
