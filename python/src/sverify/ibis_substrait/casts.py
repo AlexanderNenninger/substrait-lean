@@ -16,11 +16,10 @@ from sverify.ibis_substrait.temporal import wall_clock
 from sverify.plan_json import Json, Unsupported, call, cast_json, literal
 
 
-def _from_varchar(x: Exprs, op: Any, try_: bool) -> Json | None:
+def _from_varchar(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None:
     """A cast of a string (#806): the black box of its target, DuckDB's
     rules, as the SQL lift reads one (`sql_lift/casts.py`); a narrower
     integer is the BIGINT cast down. None for the other targets."""
-    to = op.to
     if not op.arg.dtype.is_string():
         return None
     if isinstance(op.arg, ops.Literal) and not try_:
@@ -33,7 +32,7 @@ def _from_varchar(x: Exprs, op: Any, try_: bool) -> Json | None:
         (to.is_float64, "double", dt.float64),
         (to.is_boolean, "boolean", dt.boolean),
         (to.is_date, "date", dt.date),
-        (lambda: to.is_timestamp() and to.timezone is None, "timestamp", dt.timestamp),
+        (lambda: isinstance(to, dt.Timestamp) and to.timezone is None, "timestamp", dt.timestamp),
     ):
         if accepts():
             j = call(f"{'try_' if try_ else ''}varchar_{name}", [x(op.arg)])
@@ -52,19 +51,31 @@ def _instant_to_calendar(x: Exprs, op: Any) -> Exprs:
     )
 
 
+def _cast_to(x: Exprs, op: Any, try_: bool) -> Json:
+    """A cast. To a second or millisecond timestamp it converts to the target's
+    microsecond type first (a time zone included, D53) and then floors with
+    `date_trunc`, whatever the source: the reference's timestamps count
+    microseconds (D61)."""
+    to, narrow = op.to, None
+    if isinstance(to, dt.Timestamp) and to.scale in (0, 3):
+        narrow = "second" if to.scale == 0 else "millisecond"
+        to = to.copy(scale=6)
+    if same_type(op.arg.dtype, to):
+        j = x(op.arg)
+    elif from_string := _from_varchar(x, op, try_, to):
+        j = from_string
+    else:
+        j = cast_json(_instant_to_calendar(x, op)(op.arg), to, or_null=try_)
+    return j if narrow is None else call("date_trunc", [literal(narrow, dt.string), j])
+
+
 def _cast(x: Exprs, op: Any) -> Json:
-    if same_type(op.arg.dtype, op.to):
-        return x(op.arg)
-    return _from_varchar(x, op, False) or cast_json(_instant_to_calendar(x, op)(op.arg), op.to)
+    return _cast_to(x, op, False)
 
 
 def _try_cast(x: Exprs, op: Any) -> Json:
     """`TRY_CAST`: NULL where the cast fails (#58)."""
-    if same_type(op.arg.dtype, op.to):
-        return x(op.arg)
-    return _from_varchar(x, op, True) or cast_json(
-        _instant_to_calendar(x, op)(op.arg), op.to, or_null=True
-    )
+    return _cast_to(x, op, True)
 
 
 #: DuckDB's names of the types of `typeof` (`duckdb-typeof-names`).
@@ -106,7 +117,9 @@ def _typeof(x: Exprs, op: Any) -> Json:
             "typeof is only supported of a column; select the expression as a column first"
         )
     t = cast("dt.DataType", column.dtype)
-    name = duckdb_type_name(t)
+    # A second or millisecond column is read as microseconds (D61): its type
+    # in the run is TIMESTAMP, which the declared type's name does not say.
+    name = None if isinstance(t, dt.Timestamp) and t.scale in (0, 3) else duckdb_type_name(t)
     if name is None:
         raise Unsupported(
             f"typeof of a {t} column is not supported; write the type's name as a constant"

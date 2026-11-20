@@ -82,7 +82,7 @@ SQL string ─► SQLGlot lift ────────────────�
 | `templates/` | A template repository for pipelines ([templates/pipelines/README.md](templates/pipelines/README.md)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
-| `upstream/` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream: one JSON document per bug ([the bugs](upstream/bugs/)) |
+| `upstream/` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream: one JSON document per bug ([the bugs](upstream/bugs/)), and [a report](upstream/REPORT.md) of what is filed, fixed and still to report, with the counts per project |
 | `changelog.d/` | One fragment per user-visible change; the release folds them into `CHANGELOG.md` |
 
 ## Documents
