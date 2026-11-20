@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import math
 import re
-import warnings
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -354,15 +353,7 @@ class ArrivesWithin(TableCondition):
         return CheckedCondition(self.label, False, "lateness is checked on a source's batches")
 
 
-def arrives_within(
-    col: str,
-    within: Duration | None = None,
-    *,
-    days: float | None = None,
-    hours: float | None = None,
-    minutes: float | None = None,
-    seconds: float | None = None,
-) -> ArrivesWithin:
+def arrives_within(col: str, within: Duration) -> ArrivesWithin:
     """A bound on lateness: every row a batch inserts or deletes has `col` at
     most this far behind the largest `col` seen before the batch.
 
@@ -381,10 +372,6 @@ def arrives_within(
         col: The time column of the input, a timestamp.
         within: The lateness, a `timedelta` or an ISO 8601 duration:
             `arrives_within("ts", "PT15M")`.
-        days: Deprecated: write `within`.
-        hours: Deprecated: write `within`.
-        minutes: Deprecated: write `within`.
-        seconds: Deprecated: write `within`.
 
     Returns:
         An `ArrivesWithin` condition, for `requires`.
@@ -392,22 +379,7 @@ def arrives_within(
     Raises:
         ValueError: The lateness is negative.
     """
-    given = {"days": days, "hours": hours, "minutes": minutes, "seconds": seconds}
-    units = {k: v for k, v in given.items() if v is not None}
-    if units:
-        if within is not None:
-            raise TypeError("arrives_within takes within= or the units, not both")
-        warnings.warn(
-            "arrives_within(col, days=, hours=, minutes=, seconds=) is deprecated; write "
-            'arrives_within(col, within), a timedelta or an ISO 8601 duration ("PT15M")',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        lateness = timedelta(**units)
-    elif within is None:
-        raise TypeError('arrives_within needs the lateness: arrives_within(col, "PT15M")')
-    else:
-        lateness = duration(within, "arrives_within's lateness")
+    lateness = duration(within, "arrives_within's lateness")
     if lateness < timedelta(0):
         raise ValueError(f"arrives_within needs a lateness of 0 or more, not {lateness}")
     return ArrivesWithin(col, lateness)
@@ -550,7 +522,7 @@ class RowsPer(TableCondition):
         return CheckedCondition(self.label, False, "rows per key are checked on inputs only")
 
 
-def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
+def rows_per(*cols: str, at_most: int | None = None) -> RowsPer:
     """A bound on the rows per key: at most `at_most` rows agree on `cols`,
     `rows_per("customer", "day", at_most=3)`.
 
@@ -582,25 +554,13 @@ def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
         ValueError: A column is not a name, or `at_most` is missing or
             negative.
     """
-    if len(cols) in (1, 2) and not isinstance(cols[0], str):
-        # 0.x: rows_per(["a", "b"], 3) or rows_per(["a", "b"], at_most=3).
-        warnings.warn(
-            "rows_per(cols, at_most) is deprecated; write rows_per(*cols, at_most=...)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if len(cols) == 2:
-            if at_most is not None:
-                raise TypeError("rows_per got at_most twice")
-            at_most = int(cols[1])  # type: ignore[arg-type]
-        cols = tuple(cols[0])
     if not all(isinstance(c, str) for c in cols):
         raise ValueError("rows_per takes the key's column names, rows_per('a', 'b', at_most=3)")
     if at_most is None:
         raise ValueError("rows_per needs at_most=, the most rows that may share the key")
     if at_most < 0:
         raise ValueError(f"rows_per needs a bound of 0 or more, not {at_most}")
-    return RowsPer(tuple(cols), int(at_most))  # type: ignore[arg-type]
+    return RowsPer(cols, int(at_most))
 
 
 @dataclass(frozen=True)
