@@ -274,6 +274,7 @@ the guard. The modules below it import it as
 | `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
 | `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |
+| `LoweringGuards.lean` | The template guards no engine owns (NaN of IEEE operations, a zero divisor, an elementary function's domain), for every engine's hand-written schemas (#271) |
 | `Generated.lean` | The `check_generated` switch for the generated modules |
 | `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
 | `Rewrite.lean` | Running a rewritten plan (#1787): the engine's run of a refinement is allowed for the plan as written, contracts verified on the plan as written hold on it, and `Engine.runPlan` falls back to the plan as written |
