@@ -289,6 +289,8 @@ def _cause(issue: Issue) -> str:
         )
     if re.search(r" [-+] ", issue.shown):
         return " (NaN from +inf minus +inf: bound the columns in requires)"
+    if re.search(r" \* ", issue.shown):
+        return " (NaN from 0 times ±inf: bound the columns in requires)"
     return ""
 
 
