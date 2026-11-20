@@ -313,9 +313,9 @@ q = (
 requires = '''
 {
     'store_sales': [_.ss_sales_price.between(0.01, 300), sv.max_rows(10**12)],
-    'item': [sv.unique('i_item_sk')],
-    'date_dim': [sv.unique('d_date_sk')],
-    'store': [sv.unique('s_store_sk')],
+    'item': [sv.unique('i_item_sk'), sv.max_rows(10**7)],
+    'date_dim': [sv.unique('d_date_sk'), sv.max_rows(10**5)],
+    'store': [sv.unique('s_store_sk'), sv.max_rows(10**4)],
 }
 '''
 ensures = '''
