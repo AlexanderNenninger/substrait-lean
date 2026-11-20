@@ -1,0 +1,11 @@
+{
+  "id": "D2",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The core may raise everywhere, and each profile states its raise set.",
+  "prs": [
+    562
+  ]
+}

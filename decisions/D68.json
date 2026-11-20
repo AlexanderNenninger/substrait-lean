@@ -1,0 +1,12 @@
+{
+  "id": "D68",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "reserved",
+  "summary": "Reserved for a decimal quantile_cont, refused at 1.0.",
+  "prs": [
+    1982
+  ],
+  "note": "Reserved in ruling 191."
+}

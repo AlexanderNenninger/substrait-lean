@@ -19,6 +19,7 @@ import contextlib
 import contextvars
 import datetime as dt_
 import math
+import struct
 from collections.abc import Iterable, Iterator
 from decimal import Decimal
 from typing import Any
@@ -91,7 +92,8 @@ class ProducerUnsupported(Unsupported):
 #: (D53, #1725).
 INSTANT_NOTE = (
     "(#1725): a timestamp with a time zone can be read, compared with other such columns, "
-    "used as a key and written back; literals, conversions and calendar functions follow"
+    "used as a key and written back, and converted to a timestamp at UTC (a cast to a "
+    "timestamp, `x AT TIME ZONE 'UTC'` in SQL), which the calendar functions read (D69)"
 )
 
 #: The spellings of the time zone UTC the readers produce (Arrow, Delta, Ibis).
@@ -123,6 +125,10 @@ def _type_json(dtype: Any) -> Json:
         return {f"i{dtype.nbytes * 8}": NULLABLE}
     if dtype.is_float64():
         return {"fp64": NULLABLE}
+    # Read and compared as their values, which doubles hold exactly; arithmetic
+    # on them rounds to 32 bits, which the checker refuses (#417).
+    if dtype.is_float32():
+        return {"fp32": NULLABLE}
     if dtype.is_decimal():
         if dtype.precision is None or dtype.scale is None:
             raise Unsupported(
@@ -161,6 +167,11 @@ def _type_json(dtype: Any) -> Json:
         return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     if dtype.is_struct():
         return {"struct": {"types": [type_json(t) for t in dtype.types], **NULLABLE}}
+    if dtype.is_binary():
+        raise Unsupported(
+            "sverify reads no binary values (#1918): encode them as text at the source "
+            "(hex or base64), or leave the column out"
+        )
     if dtype.is_uuid():
         raise Unsupported(
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
@@ -200,12 +211,19 @@ def literal(value: Any, dtype: Any) -> Json:
         key = type_json(dtype)
         name = next(iter(key))
         return {"literal": {name: str(value) if name == "i64" else int(value)}}
-    if dtype.is_float64():
+    if dtype.is_float64() or dtype.is_float32():
         x = float(value)  # raw (D31): -0.0 as the text "-0.0", a NaN as one below
+        if dtype.is_float32():
+            # The single's own value, whose round-trip digits the frontend reads
+            # without rounding again (ruling 186 P4).
+            try:
+                x = struct.unpack("<f", struct.pack("<f", x))[0]
+            except OverflowError as e:
+                raise ProducerUnsupported(f"{value} does not fit {dtype}") from e
         text: Any = "NaN" if math.isnan(x) else "-0.0" if str(x) == "-0.0" else x
         if math.isinf(x):
             text = "Infinity" if x > 0 else "-Infinity"
-        return {"literal": {"fp64": text}}
+        return {"literal": {"fp64" if dtype.is_float64() else "fp32": text}}
     if dtype.is_decimal():
         return decimal_literal(value, dtype)
     if dtype.is_string():
@@ -235,6 +253,8 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_struct():
         fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
         return {"literal": {"struct": {"fields": fields}}}
+    if dtype.is_binary():
+        type_json(dtype)  # refuses, saying why (#1918)
     raise ProducerUnsupported(f"literal of type {dtype} is not supported")
 
 

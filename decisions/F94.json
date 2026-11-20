@@ -1,0 +1,24 @@
+{
+  "id": "F94",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D50-d inputs: step d1 rewrites the guard chain as CASE WHEN NOT p THEN FALSE ELSE p AND (...) END (two copies only where a raising operand follows); no checker sharing for 1.0; linear size undecided pending d1's table and a profile (d2).",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1681
+  ],
+  "amends": [
+    "D50",
+    "F89"
+  ],
+  "amended_by": [
+    "F102",
+    "F95"
+  ],
+  "source": "fable-ruling-d50d-inputs.md",
+  "note": "No D-number; D50's second paragraph gets a dated amendment (E3); ruling 89's cap restated in copies (E6). Mentions a candidate core form as D53, which F95 leaves free (D53 later used for UTC instants by F97). D50-e folds into d1."
+}

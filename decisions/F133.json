@@ -1,0 +1,17 @@
+{
+  "id": "F133",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "#1796 merges as is; D57 signed: the reference's double (and fp32) abs becomes IEEE, clearing the sign (abs(-0.0)=+0.0), in a facts-first follow-up PR; writers then emit native abs.",
+  "issues": [
+    1461,
+    1794
+  ],
+  "prs": [
+    1796
+  ],
+  "source": "fable-ruling-133-double-abs-d57.md",
+  "note": "Assigns D57. Snowflake behaviour recorded privately. Reported to the user for notice."
+}

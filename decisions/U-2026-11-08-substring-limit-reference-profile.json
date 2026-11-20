@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-08-substring-limit-reference-profile",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The substring range limit belongs to the reference profile (substring_range ERROR), not to DuckDB; only the justification comments change.",
+  "prs": [
+    1172
+  ],
+  "amends": [
+    "U-2026-11-03-strings-2pow32"
+  ],
+  "source": "github:#1172 body"
+}

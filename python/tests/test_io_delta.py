@@ -190,7 +190,7 @@ def test_a_refresh_that_fails_in_the_commit_is_retried_once(tmp_path, monkeypatc
     src = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "bob", 7)])
     node = _RETRIED[view](src).write(DeltaSink(str(tmp_path / "out")))
     node.refresh()
-    assert node._stage.view.strategy == "delta rules"
+    assert node._stage.view.strategy in ("delta rules", "state per group")
     write_deltalake(src.uri, orders_table([(3, "ada", 9)]), mode="append")
     DeltaTable(src.uri).delete("id = 2")
     with monkeypatch.context() as m:

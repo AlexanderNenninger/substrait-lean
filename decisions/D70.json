@@ -1,0 +1,22 @@
+{
+  "id": "D70",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "A probed engine version claims in full, an unprobed version within the probed minor warns, and a version outside the range is refused; package bounds equal the range.",
+  "prs": [
+    2051,
+    2052
+  ],
+  "amends": [
+    "D14"
+  ],
+  "amended_by": [
+    "F198.addendum",
+    "F199",
+    "F200",
+    "U-2026-11-20-engine-versions"
+  ],
+  "note": "Signed in ruling 198, amended by its addendum, with ruling 200's clarification; the maintainer chose one probed minor per engine. Its section is in #2063; the guard is tracked in #2052."
+}

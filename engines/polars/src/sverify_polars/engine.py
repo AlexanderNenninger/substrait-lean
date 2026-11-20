@@ -172,6 +172,15 @@ class InfiniteResult(RuntimeIssue):
     issue = "overflow to infinity"
 
 
+class InfiniteAggregate(InfiniteResult):
+    """The same for a `SUM` or `AVG` (`Measure.makesInf`): under
+    `semantics="duckdb"` (`finite="aggregates"`) the check stays while the
+    operations' own are dropped, since DuckDB's running sum can overflow where
+    the exact one does not (#2057)."""
+
+    issue = "aggregate overflow to infinity"
+
+
 class SubnormalDivisor(RuntimeIssue):
     """A double divided by a subnormal: the translation's precondition for
     Polars's division, which goes through the divisor's reciprocal (PL-3,
@@ -195,13 +204,20 @@ class VarianceNaN(RuntimeIssue):
 ALL_GUARDS = frozenset(
     {"overflow", "SUM overflow", "division by zero", "negative exponent", "cast out of range",
      "invalid regular expression", "domain error", "raised by a guard", "overflow to infinity",
+     "aggregate overflow to infinity",
      "subnormal divisor", "variance computed as NaN"}
 )  # fmt: skip
 #: `guards=False`: the checks of the preconditions a `guard_free` report
 #: assumes (`Issue.assumed`): integer `SUM`s fit, and no operation on finite
 #: doubles gives `±∞` (#575).
 NO_GUARDS = frozenset(
-    {"SUM overflow", "overflow to infinity", "subnormal divisor", "variance computed as NaN"}
+    {
+        "SUM overflow",
+        "overflow to infinity",
+        "aggregate overflow to infinity",
+        "subnormal divisor",
+        "variance computed as NaN",
+    }
 )
 
 
@@ -301,7 +317,7 @@ def literal(lit: dict) -> tuple[Any, DType]:
         case "str":
             return v, pl.String
         case "float":
-            return v + 0.0, pl.Float64  # the one zero
+            return v, pl.Float64  # raw, -0.0 too (D31)
         case "decimal":
             m, p, s = v
             return Decimal(m).scaleb(-s), decimal_type(p, s)
@@ -1053,6 +1069,9 @@ class Exprs:
                 # A chain of `BinFn.greatest`/`least`, as one pick over its
                 # values: nested `when`s would each read the whole chain.
                 return self.pick(name, [self(v) for v in self.pick_leaves(name, arg_js)])
+            if name == "sverify_approx" and len(arg_js) == 2:
+                # D52: a source mark for the checker; the plan's own value runs.
+                return self(arg_js[0])
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
@@ -1557,7 +1576,7 @@ class Exprs:
                 bad = (x == 0.0) & (y == 0.0)
                 return self.domain(bad, pl.arctan2(x, y), pl.Float64, name, a, b)
             # `ln x / ln b` (`logb?`), with the arguments made safe where it fails.
-            bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
+            bad = x.is_not_null() & y.is_not_null() & ((x <= 0.0) | (y <= 0.0) | (y == 1.0))
             sx = pl.when(bad).then(2.0).otherwise(x)
             sy = pl.when(bad).then(2.0).otherwise(y)
             # `logb?` divides once, exactly: Polars's `log` with a column base
@@ -2048,7 +2067,7 @@ class Measure:
                  inf: shims.agg_makes_infinite(v.sum(), v)},
                 r,
                 ((pl.col(nan), DomainError, f"{self.fn} of +inf and -inf would make a NaN"),
-                 (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
+                 (pl.col(inf), InfiniteAggregate, f"{self.fn} overflows to infinity")),
             )  # fmt: skip
         if self.fn == "count":
             return NativeAgg({name: v.count().cast(pl.Int64)}, r)
@@ -2095,7 +2114,7 @@ class Measure:
                 shims.nan_through(clamped, pl.col(nan)),
                 ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
                  # `agg_makes_infinite`, its two halves read after the aggregation.
-                 (pl.col(fin) & r.is_infinite(), InfiniteResult,
+                 (pl.col(fin) & r.is_infinite(), InfiniteAggregate,
                   f"{self.fn} overflows to infinity (the result, or a step of Polars's "
                   "algorithm)"),
                  # Finite values give no NaN in the reference; Polars's algorithm
@@ -2392,7 +2411,7 @@ class Windows:
             # Finite values whose sum overflows (`Measure.makesInf`, #575).
             # A frame of `+∞` and `-∞` gives NaN, as in the reference.
             odd = self.total((x.is_infinite() | x.is_nan()).fill_null(False).cast(pl.Int64), fr)
-            self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteResult,
+            self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteAggregate,
                                      f"{f.agg} overflows to infinity"))  # fmt: skip
             return pl.when(some).then(s if f.agg == "fsum" else s / n)
         if f.agg in ("fmin", "fmax"):
@@ -2441,7 +2460,9 @@ def checks_of(guards: Guards) -> frozenset[str]:
     if guards is False:
         return NO_GUARDS
     names = frozenset(guards)
-    unknown = names - ALL_GUARDS - {InfiniteResult.issue}
+    if InfiniteResult.issue in names:  # an aggregate's overflow is one of them
+        names |= {InfiniteAggregate.issue}
+    unknown = names - ALL_GUARDS
     if unknown:
         raise ValueError(f"unknown issues to guard: {sorted(unknown)}")
     return names

@@ -273,7 +273,7 @@ T = ibis.table({"ts": "timestamp", "n": "int64"}, name="t")
 def kinds(expr) -> tuple[list[str], list[str]]:
     """What Lean reports, without the bounds `verify` would infer (#244)."""
     r = sv.verify(expr, on_inferred="off")
-    return [i.kind for i in r.errors], [i.kind for i in r.warnings]
+    return [i.kind for i in r.errors], [i.kind for i in r.issues if not i.error]
 
 
 SINCE_2000 = T.ts.between(datetime(2000, 1, 1), datetime(2100, 1, 1))
@@ -417,6 +417,40 @@ def test_timestamp_plus_column_interval_at_the_edge():
             both(ts, n)
 
 
+@pytest.mark.parametrize("unit", ["W", "D", "h", "m", "s"])
+def test_an_integer_cast_to_an_interval_is_its_count(unit):
+    """An integer cast to an interval is the integer's count of the unit (#1926,
+    Ibis's own `test_interval_add_cast_column`): the plan of
+    `n.as_interval(unit)`, whose multiplication is checked."""
+    expected = to_substrait(T.select(x=T.ts + T.n.as_interval(unit)))
+    assert to_substrait(T.select(x=T.ts + T.n.cast(f"interval('{unit}')"))) == expected
+
+
+def test_a_date_plus_a_cast_count_of_days():
+    """A NULL count gives NULL and a negative one goes back (ruling 186 T4). A
+    count may leave the dates, so the report shows the overflow (T3)."""
+    expr = T.select(
+        x=T.ts.date() + T.n.cast("interval('D')"), y=T.ts.date() - T.n.cast("interval('D')")
+    )
+    report = sv.verify(expr)
+    assert [i.kind for i in report.issues] == ["overflow", "overflow"]
+    con = sv.connect()
+    data = pa.table(
+        {"ts": pa.array([datetime(2020, 1, 1, 5)] * 3, pa.timestamp("us")), "n": [10, -10, None]}
+    )
+    con.put("t", data)
+    for engine in ["duckdb", "polars"]:
+        got = report.run(con, engine, unverified=True)
+        assert got.column("x").to_pylist() == [date(2020, 1, 11), date(2019, 12, 22), None]
+        assert got.column("y").to_pylist() == [date(2019, 12, 22), date(2020, 1, 11), None]
+
+
+@pytest.mark.parametrize("unit", ["M", "Y", "ms"])
+def test_a_cast_count_of_months_or_milliseconds_is_refused(unit):
+    with pytest.raises(Unsupported, match="interval"):
+        to_substrait(T.select(x=T.ts + T.n.cast(f"interval('{unit}')")))
+
+
 def test_years_and_truncations_grow_with_the_timestamp():
     report = sv.verify(
         T.filter(T.ts >= datetime(2024, 1, 1), T.ts < datetime(2025, 1, 1)).select(
@@ -425,7 +459,7 @@ def test_years_and_truncations_grow_with_the_timestamp():
         ensures=[_.y == 2024, _.m.between(1, 12), _.d.between(1, 31), _.t >= datetime(2024, 1, 1)],
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.facts["y"] == "the integer 2024"
+    assert str(report.facts["y"]) == "the integer 2024"
 
 
 def test_parts_of_a_column_read_are_not_null():
@@ -546,6 +580,37 @@ def test_dates_outside_the_range_fail(x, d):
         run_plan(con, written, "polars")
     with pytest.raises(duckdb.Error, match="sverify"):
         run_plan(con, written, "duckdb")
+
+
+@pytest.mark.parametrize("k", [-7, -1, 1, 7, 10**6])
+@pytest.mark.parametrize("d", [DAY_MIN, DAY_MIN + 6, DAY_MAX - 6, DAY_MAX])
+def test_a_constant_day_shift_raises_exactly_where_it_leaves_the_dates(k, d):
+    """`date + k` for a constant `k` checks one range of the date (#1608 item 10):
+    DuckDB raises just where `d + k` leaves the reference's dates, and gives
+    `d + k` elsewhere."""
+    con = connect()
+    put_table(con, "r", pa.table({"d": pa.array([d], pa.int32()).cast(pa.date32())}))
+    written = written_plan(to_substrait_json(R_DATES.select(x=R_DATES.d + ibis.interval(days=k))))
+    if DAY_MIN <= d + k <= DAY_MAX:
+        got = run_plan(con, written, "duckdb").column("x").cast(pa.int32()).to_pylist()
+        assert got == [d + k]
+    else:
+        with pytest.raises(duckdb.Error, match="sverify"):
+            run_plan(con, written, "duckdb")
+
+
+@pytest.mark.parametrize("unit", ["W", "M", "Q", "Y"])
+def test_date_trunc_keeps_the_first_and_last_dates(unit):
+    """A truncation keeps a date of the reference's range in it, so its check
+    reads the date alone (#1608 item 10): the first and last dates truncate on
+    DuckDB without raising. (A date outside the range never reaches it: the
+    read refuses one, D32.)"""
+    con = connect()
+    written = written_plan(to_substrait_json(R_DATES.select(x=R_DATES.d.truncate(unit))))
+    days = pa.array([DAY_MIN, DAY_MAX], pa.int32()).cast(pa.date32())
+    put_table(con, "r", pa.table({"d": days}))
+    got = run_plan(con, written, "duckdb").column("x").cast(pa.int32()).to_pylist()
+    assert got[0] == DAY_MIN and DAY_MIN <= got[1] <= DAY_MAX
 
 
 D = ibis.table({"d": "date", "ts": "timestamp", "n": "int64"}, name="t")

@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-09-incremental-compensated-state",
+  "date": "2026-11-09",
+  "decided_by": "coordinator",
+  "scope": "architecture",
+  "status": "superseded",
+  "summary": "Maintained double sums use a compensated state within epsilon by default, with recompute on drift.",
+  "issues": [
+    1329
+  ],
+  "superseded_by": [
+    "U-2026-11-19-exact-limb-state"
+  ],
+  "source": "memory:incremental-store-1-0-gate.md",
+  "note": "The memory does not say who made the 2026-11-09 revision; Fable's ruling 141 carried it."
+}

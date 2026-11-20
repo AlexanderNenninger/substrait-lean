@@ -33,7 +33,7 @@ import uuid
 import warnings
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import pyarrow as pa
@@ -83,7 +83,7 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
-from sverify import _deprecated, _quarantine
+from sverify import _quarantine
 from sverify._duration import Duration, duration
 from sverify._scan import EqualityDelete, Scan, ScanSnapshot, local_path
 from sverify._unsupported import SverifyWarning
@@ -1446,7 +1446,6 @@ class IcebergSink(_TableSink[Table]):
         *,
         snapshot_retention: Duration | None = None,
         min_snapshots: int | None = None,
-        expire: timedelta | None = None,
     ) -> dict[str, int]:
         """Compact the table, and with `snapshot_retention`, expire the
         snapshots older than that and delete the files only they referenced. The compaction
@@ -1468,7 +1467,6 @@ class IcebergSink(_TableSink[Table]):
                 None, no expiry.
             min_snapshots: The newest snapshots the expiry keeps. Default:
                 the sink's `min_snapshots`.
-            expire: Deprecated name of `snapshot_retention`.
 
         Returns:
             The counts of data files the compaction removed and added
@@ -1482,13 +1480,6 @@ class IcebergSink(_TableSink[Table]):
             CommitFailedException: Another writer committed to the table
                 during the compaction (pyiceberg's).
         """
-        if expire is not None:
-            warnings.warn(
-                "IcebergSink.maintain(expire=...) is deprecated; write snapshot_retention=...",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            snapshot_retention = expire
         expire = None if snapshot_retention is None else duration(snapshot_retention)
         if not self.catalog.table_exists(self.identifier):
             return {}
@@ -1655,6 +1646,3 @@ class IcebergSink(_TableSink[Table]):
             else:
                 _commit_rows(tx, t, rows, deletes, props)
         return SinkWrite(mode, None, contract, rows.num_rows, deleted)
-
-
-_deprecated.add(IcebergSink, {"create_options_ignored": "_create_options_ignored"})

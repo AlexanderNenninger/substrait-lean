@@ -1,0 +1,21 @@
+{
+  "id": "F109",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The decimal cast refusal's hint points at #322 and names no spelling; the double cast hint names round, floor and ceil (no trunc); (b)'s PR adds no decimal rounding and no TRUNC; #1744 accepted with float_to_int/decimal_to_int leaving the differences table in (b)'s PR.",
+  "issues": [
+    322,
+    1484
+  ],
+  "prs": [
+    1744
+  ],
+  "amends": [
+    "F105",
+    "U-2026-11-19-rounding-cast-refusal"
+  ],
+  "source": "fable-ruling-cast-hint-decimals.md",
+  "note": "The decimal cast returns via ruling 106's step C2. Also notes K1-K5 of ruling 100 as met/assigned."
+}

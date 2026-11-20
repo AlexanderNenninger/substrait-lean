@@ -1,0 +1,22 @@
+{
+  "id": "F181",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Decimal % accepted as D62 (truncated remainder at common scale, conditions M1-M9); unnest keep_empty=True accepted as frontend composition; unnest offset= dropped (D64 reserved); substring with length expression dropped (D63 reserved, general ternary node).",
+  "issues": [
+    27,
+    1917,
+    1923,
+    1941
+  ],
+  "prs": [
+    1951
+  ],
+  "amended_by": [
+    "F188"
+  ],
+  "source": "fable-ruling-181-lift-dates-substr-dmod-unnest.md",
+  "note": "D62 signed (lifts recorded dec.div refusal; notice to user). D63 and D64 reserved."
+}

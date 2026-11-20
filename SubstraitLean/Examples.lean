@@ -2,6 +2,7 @@ import Sverify.Core.Kinds
 import Sverify.Analysis.Refresh
 import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Profile
+import Sverify.DuckDB.AvgSet
 import Sverify.Core.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
@@ -427,6 +428,7 @@ end Substrait.Examples
 #print axioms Substrait.transferB_of_reads_sub
 #print axioms Substrait.ContractCheck.run_plan_noRaise_duckdb
 #print axioms Substrait.ContractCheck.Request.issuesIn_sound
+#print axioms Substrait.ContractCheck.verdict_proved_sound
 #print axioms Substrait.ContractCheck.verified_holds_run_plan
 #print axioms Substrait.ContractCheck.verified_holds_run_plan_duckdb
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
@@ -450,3 +452,6 @@ end Substrait.Examples
 #print axioms Substrait.Engine.spark_contract_example
 #print axioms Substrait.Refresh.no_corruption
 #print axioms Substrait.Refresh.record_describes_table
+#print axioms Substrait.UnFn.apply_approx
+#print axioms Substrait.DuckAgg.avgBigint_nearRel
+#print axioms Substrait.Lift.duckdb_marked

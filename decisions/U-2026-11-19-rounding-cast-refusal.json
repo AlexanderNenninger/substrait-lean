@@ -1,0 +1,23 @@
+{
+  "id": "U-2026-11-19-rounding-cast-refusal",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "User's (b): under the reference the SQL lift refuses CAST of a double or decimal to an integer, with hints, until #322 (D54).",
+  "issues": [
+    322,
+    1484
+  ],
+  "prs": [
+    1744
+  ],
+  "amends": [
+    "F105"
+  ],
+  "amended_by": [
+    "F109"
+  ],
+  "source": "fable-ruling-1744-v2.md",
+  "note": "Relayed as 'the user's (b)' in rulings 111 and 173; the user's own decision date is not in these files (file date used)."
+}

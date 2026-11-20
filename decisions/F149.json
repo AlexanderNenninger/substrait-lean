@@ -1,0 +1,19 @@
+{
+  "id": "F149",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1828 keeps its scope; P1b follows as its own PR, strengthening check_deterministic_sound and check_class_determined_sound from OrderAllowed to Allowed with DeterminedUpTo corollaries (Obs.members, Obs.classes); no FloatOpenSafe side condition.",
+  "issues": [
+    1285
+  ],
+  "prs": [
+    1828
+  ],
+  "amends": [
+    "F139"
+  ],
+  "source": "fable-ruling-149-1285-p1b-restatements.md",
+  "note": "'Amends ruling 139 §1b in one sentence' (the lift needing Rel.FloatOpenSafe was wrong). No D-number."
+}

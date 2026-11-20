@@ -1,0 +1,16 @@
+{
+  "id": "F104.S2c",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "superseded",
+  "summary": "Control test S2(c): `HAVING AVG(x) < 2e7` with x in [0, 1e7] should stay proved under 12d-4.",
+  "issues": [
+    1735
+  ],
+  "superseded_by": [
+    "F108"
+  ],
+  "source": "fable-ruling-12d4-source-threshold.md",
+  "note": "Ruling 108: 'my control was wrong'; restated as a threshold beyond the lifted quotient's abstract range, with ratioSharpen as a follow-up."
+}

@@ -1,0 +1,19 @@
+{
+  "id": "F162",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "ASOF join (#1447 item 6): no new core node (C rejected); the pair cap stays as interim; native DuckDB ASOF JOIN admitted under A1-A8 (one fact, Lean shape recognition, cap moved to the run); item stays open until A and the run-time count land.",
+  "issues": [
+    805,
+    1447,
+    1463
+  ],
+  "amended_by": [
+    "F164",
+    "F170"
+  ],
+  "source": "fable-ruling-162-1447-asof-join.md",
+  "note": "The Polars keyless join_where part (verdict 3, P1-P7) is split out as F162.P and was later dropped."
+}
