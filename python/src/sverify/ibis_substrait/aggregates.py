@@ -221,8 +221,16 @@ def quantile(x: Exprs, op: Any) -> Json:
         )
     t = op.arg.dtype
     cont = t.is_integer() or t.is_floating()
+    if t.is_decimal():
+        # No engine computes one value for it: DuckDB truncates a double
+        # interpolation, Spark and Polars return doubles (D68 is reserved).
+        raise ProducerUnsupported(
+            f"{type(op).__name__.lower()} of {t} is not supported: no engine gives one value "
+            "for it; cast the column to float64 first: x.cast('float64').quantile(q)",
+            construct=op_construct(op),
+        )
     if not (cont or t.is_string() or t.is_date()):
-        # DuckDB interpolates decimals and timestamps in their own types.
+        # DuckDB interpolates timestamps in their own type.
         raise ProducerUnsupported(
             f"{type(op).__name__.lower()} of {t} is not supported yet",
             construct=op_construct(op),

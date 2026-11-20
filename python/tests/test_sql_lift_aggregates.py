@@ -306,3 +306,18 @@ def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measure
     }
     assert len(aggregates[("reference", "sum(DOUBLE)")]["measures"]) == 1
     assert len(aggregates[("duckdb", "sum(DOUBLE)")]["measures"]) == 3
+
+
+def test_quantile_disc_of_a_decimal_beyond_2_pow_53_selects_exactly():
+    """`quantile_disc` of a DECIMAL whose unscaled value exceeds 2^53 is an
+    exact selection from the group (#1921)."""
+    from decimal import Decimal
+
+    import pyarrow as pa
+
+    from _pipelines import arrow_table
+
+    rows = [(Decimal("9007199254740993.01"),), (Decimal("9007199254740993.03"),), (None,)]
+    tables = {"t": arrow_table(pa.schema([pa.field("d", pa.decimal128(20, 2))]), rows)}
+    result = check("SELECT quantile_disc(d, 0.5) AS q, quantile_disc(d, 1) AS top FROM t", tables)
+    assert result.ok, f"{result.stage}: {result.detail}"
