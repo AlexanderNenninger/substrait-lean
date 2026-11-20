@@ -1,8 +1,8 @@
 """A source's cursor as JSON, for the contracts a sink writes and the
 quarantine table (#730: below both).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 """
 
 from __future__ import annotations

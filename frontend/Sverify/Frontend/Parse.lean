@@ -71,7 +71,23 @@ def isValuesKey (t : String) : Bool := t.startsWith "$values "
 its expressions, where they say more than `Expr.kind`: the model has a
 timestamp, a double's `0.0` and a typed `NULL` as plain values (#96). Its
 `baseSchema` has one type per expression, `{}` where `Expr.kind` holds. -/
-def projectKey (es : List Expr) : String := s!"$project {reprStr es}"
+def projectKey (es : List Expr) : String :=
+  s!"$project {es.length}:" ++ String.join (es.map exprKey)
+where
+  /-- An expression as a string, as `valueKey` writes a value: a tag, a
+  function by its `reprStr` with its length first, and the operands' keys.
+  `reprStr` of the expression printed every double's code in decimal and
+  pretty-printed the tree, and the writer and the parser look a projection
+  up at every node above it: most of a nested double expression's check
+  (#1952). -/
+  exprKey : Expr → String
+    | .lit v => "l" ++ valueKey v
+    | .field i => s!"c{i};"
+    | .un f a => "u" ++ fnKey (reprStr f) ++ exprKey a
+    | .bin f a b => "b" ++ fnKey (reprStr f) ++ exprKey a ++ exprKey b
+    | .ifThen c t e => "i" ++ exprKey c ++ exprKey t ++ exprKey e
+    | .hof f l b => "h" ++ fnKey (reprStr f) ++ exprKey l ++ exprKey b
+  fnKey (s : String) : String := s!"{s.length}:{s}"
 
 /-- An entry of `Tables` that is not a named table. -/
 def isInternalKey (t : String) : Bool := t.startsWith "$"
@@ -188,16 +204,6 @@ partial def typeKind (ty : Json) : Kind :=
 
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
-
-/-- A decimal of scale 0 and at least 19 digits holds every 64-bit integer
-exactly, and adding, subtracting or multiplying such decimals is exact, so the
-model keeps their values as integers. DataFusion casts to `DECIMAL(20, 0)` to
-mix signed and unsigned integers (`ROW_NUMBER() - 1`). -/
-def wideIntDecimal (ty : Json) : Bool :=
-  match (ty.getObjVal? "decimal").toOption with
-  | some d => (d.getObjValAs? Nat "scale").toOption.getD 0 == 0 &&
-      19 ≤ (d.getObjValAs? Nat "precision").toOption.getD 0
-  | none => false
 
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -364,6 +370,17 @@ def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
     cols.getD c .other
   | .agg m _ _ => m.kind cols
 
+/-- The kinds the source plan declares for a projection of `es` (`projectKey`),
+`[]` where it declares none. A plan without such an entry never prints its
+expressions: `Rel.kinds` asks at every projection on every call, and the key's
+`reprStr` made that quadratic in the plan's depth. -/
+def declaredProjectKinds (tables : Tables) (es : List Expr) : List Kind :=
+  if tables.any (·.1.startsWith "$project ") then
+    match tables.lookup (projectKey es) with
+    | some (_, s) => schemaKinds s
+    | none => []
+  else []
+
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
     | some (_, s) => schemaKinds s
@@ -374,9 +391,7 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .filter r _ | .fetch r _ _ => r.kinds tables
   | .project r es =>
       let ks := r.kinds tables
-      let declared := match tables.lookup (projectKey es) with
-        | some (_, s) => schemaKinds s
-        | none => []
+      let declared := declaredProjectKinds tables es
       ks ++ es.zipIdx.map fun (e, i) => match declared[i]? with
         | some k => if k == .other then e.kind ks else k
         | none => e.kind ks
@@ -525,6 +540,14 @@ def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
   | .ifThen _ t e => max (t.bits cols) (e.bits cols)
   | _ => 64
 
+/-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
+model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
+it from widening the arithmetic around it, and a column has none (#1934). A
+narrower declared type is a `narrow` mark (`declaredNarrow`). -/
+def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
+  | .lit _ => 64
+  | e => e.bits cols
+
 def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
   | .read t => match tables.lookup t with
     | some (_, s) => schemaBits s
@@ -561,7 +584,7 @@ def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Table
         | _ => 64
 
 /-- The width of each column of a relation's rows as the parser tracks it. -/
-def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.bits tables
+def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.colBits tables
 
 /-- An expression's width in the plan the writer writes: a column keeps its declared width,
 every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
@@ -619,13 +642,19 @@ def singleTie (f : Float) : Bool :=
 #guard singleTie (1.0 + 2.0 ^ (-24 : Float)) && singleTie (-(1.0 + 2.0 ^ (-24 : Float)))
 #guard !singleTie 0.1 && !singleTie 1.5
 
+/-- A projected integer constant `e`, written as `j`, at its declared width
+(`argBits`: a literal's tag, or the target of a cast the parser folded,
+`CAST(5 AS INTEGER)`). Narrower than 64 bits, the column keeps that width
+through a `narrow` mark, which changes no value: the parser has checked that
+the constant fits. -/
+def declaredNarrow (j : Json) (e : Expr) : Expr :=
+  match e with
+  | .lit (.int _) => let n := argBits [] j e; if n < 64 then .un (.narrow n) e else e
+  | e => e
+
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
-  if wideIntDecimal ty then
-    match c with
-    | .int i | .dec i _ 0 => return .int i
-    | _ => throw "cannot cast this value to an integer decimal"
   match typeKind ty with
   | .float =>
     let some f := c.toFloat? | throw "cannot cast this value to a double"
@@ -2007,7 +2036,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if hasFloat then
         throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
       if let some e ← decimalCall cols (baseName name) outTy parsed then return e
-    else if (out matches .dec _ _) && !wideIntDecimal outTy then
+    else if out matches .dec _ _ then
       throw s!"{name}: a DECIMAL result of non-decimal arguments is not supported"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
@@ -2131,7 +2160,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if k == .timeTz && target == .timeTz then return e
     if k == .timeTz || target == .timeTz then
       throw (instantRefusal "a cast to or from a timestamp with a time zone, but at UTC to a timestamp,")
-    if k == .int && wideIntDecimal (← field c "type") then return e
     -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
     -- checking the precision. To a smaller scale rounds half away from zero;
     -- to an integer truncates toward zero.
@@ -2169,6 +2197,26 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if (ty.getObjVal? "fp32").toOption.isSome then
       if k == .float && argBits bits input e == 32 then return e
       throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
+    -- A boolean is 1 or 0, and NULL stays NULL (#1911); a narrower integer
+    -- keeps its width through a `narrow` mark, as a projected constant does.
+    if k == .bool && (target == .int || target == .float) then
+      let bit (v : Int) : Expr := .lit (if target == .float then .float (FloatCode.ofInt v) else .int v)
+      let b := Expr.ifThen e (bit 1) (.ifThen (.un .not e) (bit 0) (.lit .null))
+      let n := intBits ty
+      return if target == .int && n < 64 then .un (.narrow n) b else b
+    -- A list casts element by element (#1919): `transform(l, x -> CAST(x AS t))`.
+    if let .list ek := k then
+      if target != k then
+        if let some et := ((ty.getObjVal? "list").toOption).bind (·.getObjVal? "type" |>.toOption) then
+          let x := Json.mkObj [("selection", Json.mkObj [("rootReference", Json.mkObj []),
+            ("directReference", Json.mkObj [("structField", Json.mkObj [("field", (0 : Int))])])])]
+          let body ← parseExpr fns (ek :: cols) (64 :: bits)
+            (Json.mkObj [("cast", (c.setObjVal! "type" et).setObjVal! "input" x)])
+          return .hof .transform e body
+    -- A struct casts field by field, which needs a struct the core cannot build
+    -- (ruling 186: refused by design for 1.0, D66 reserved).
+    if k matches .struct _ then
+      throw "casts of structs are not supported: sverify cannot build a struct (D66); cast its fields"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
@@ -2706,7 +2754,7 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
   -- An `AVG` with a double result is a double in the expressions over it.
   let wcols := avgs.foldl (init := cols ++ hoisted.map (·.kind cols) ++ (windowed.kinds []).drop n')
     fun ks (c, _, _, dbl) => if dbl then ks.set c .float else ks
-  let wbits := bits ++ hoisted.map (·.bits bits) ++ (windowed.bits []).drop n'
+  let wbits := bits ++ hoisted.map (·.colBits bits) ++ (windowed.bits []).drop n'
   let withAvgs (e : Expr) : Expr := avgs.foldl (init := e) fun e (c, p, s, dbl) =>
     let (total, count) := (Expr.field c, Expr.field (c + 1))
     -- A double: the sum as a double by the count, NULL without values.
@@ -2837,7 +2885,7 @@ def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
   let cat : Catalog := fun t => match tables.lookup t with
     | some (n, _) => ⟨n, []⟩
     | none => ⟨0, []⟩
-  (r.keys cat (fun _ => []) (fun _ => []) ⟨fun _ => []⟩).contains []
+  (r.keys cat (fun _ => []) (fun _ => []) { keys := fun _ => [] }).contains []
 
 /-- `inp` with one more column: the value of the subquery `sq` on each row.
 
@@ -2985,10 +3033,11 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         parseWindowProject fns inp cols bits ejs
       else if k != 0 then
         let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
+        let es := (ejs.zip es).map fun (j, e) => declaredNarrow j e
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else
-        let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
+        let es ← ejs.mapM fun e => do return declaredNarrow e (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
         if es.isEmpty then pure inp else
           recordDeclaredKinds fns cols ejs es

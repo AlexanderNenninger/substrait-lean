@@ -303,6 +303,37 @@ def test_runtime_issues(label, expr, errs, warns):
     assert kinds(expr) == (errs, warns), label
 
 
+# An integer count of seconds, milliseconds or microseconds is a timestamp of
+# the reference only inside 0001 to 9999 (D32, #1947): the cast reaches the
+# range check once the count is in microseconds.
+_COUNTS = [("s", 1_000_000), ("ms", 1_000), ("us", 1)]
+
+
+@pytest.mark.parametrize(("unit", "per"), _COUNTS)
+def test_a_count_past_year_9999_is_reported(unit, per):
+    expr = T.select(t=T.n.as_timestamp(unit))
+    assert kinds(expr) == (["overflow"], [])
+    # Bounded so that the count in microseconds fits 64 bits: only the range of
+    # 0001 to 9999 is left to report, which main did not.
+    wide = T.filter(T.n.between(0, 9_000_000_000_000_000_000 // per))
+    assert kinds(wide.select(t=wide.n.as_timestamp(unit))) == (["overflow"], [])
+    inside = T.filter(T.n.between(0, 4_000_000_000_000 // per)).select(t=T.n.as_timestamp(unit))
+    assert kinds(inside) == ([], [])
+
+
+@pytest.mark.parametrize(("unit", "per"), _COUNTS)
+def test_a_count_past_year_9999_fails_on_every_engine(unit, per):
+    count = (TS_MAX + 1) // per + (0 if per == 1 else 1)
+    assert count * per > TS_MAX
+    expr = T.select(t=T.n.as_timestamp(unit))
+    plan = written_plan(to_substrait_json(expr))
+    for engine, error in [("polars", polars_engine.Overflow), ("duckdb", Exception)]:
+        con = connect()
+        put_table(con, "t", pa.table({"ts": pa.array([0], pa.timestamp("us")), "n": [count]}))
+        with pytest.raises(error):
+            run_plan(con, plan, engine)
+
+
 def _delta_probes() -> list[tuple[str, datetime, datetime, int]]:
     """The probe pairs of the fact `duckdb-timestamp-date-diff`: DuckDB's
     `date_diff(unit, start, end)`, as (unit, start, end, observed)."""

@@ -9,6 +9,7 @@ import warnings
 from importlib.metadata import entry_points
 from pathlib import Path
 
+import ibis
 import pyarrow as pa
 import pytest
 from hypothesis import given, settings
@@ -351,3 +352,24 @@ def test_cases_refuses_types_it_cannot_generate():
     node = same(source([], {"xs": "array<int64>"}, name="t"))
     with pytest.raises(TypeError, match=r"cannot generate values of t.xs"):
         cases(node)
+
+
+# -- an Ibis expression a contracted transform returned (#711) ----------------------
+
+
+def test_assert_contract_takes_the_ibis_table_a_transform_returned():
+    @sv.transform(requires={"orders": [_.amount >= 0, _.amount < 1000]}, ensures=[_.doubled >= 0])
+    def doubled_ibis(orders):
+        return orders.select(orders.id, doubled=orders.amount * 2)
+
+    orders = ibis.table({"id": "int64", "amount": "int64"}, name="orders")
+    expr = doubled_ibis(orders)
+    assert assert_contract(expr) is None
+    rows = pa.table({"id": [1, 2], "amount": [30, 0]})
+    for data in (rows, rows.to_pylist(), [(1, 30), (2, 0)]):
+        out = assert_contract(expr, data={"orders": data}, expected=[(1, 60), (2, 0)])
+        assert out.num_rows == 2
+    with pytest.raises(AssertionError, match=r"violate \(_.amount >= 0\)"):
+        assert_contract(expr, data={"orders": [(1, -1)]})
+    with pytest.raises(TypeError, match="has no contract"):
+        assert_contract(orders)

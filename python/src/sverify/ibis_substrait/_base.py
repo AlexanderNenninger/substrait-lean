@@ -20,6 +20,7 @@ import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
 from sverify import _decimals, _functions
+from sverify.ibis_substrait._constructs import class_construct, op_construct
 from sverify.plan_json import (
     INSTANT_NOTE,
     Json,
@@ -98,7 +99,8 @@ class Exprs:
             # the operations the producer does not map yet (#60).
             raise ProducerUnsupported(
                 f"{_OP_LABELS.get(name, name)} is not supported"
-                + (f": {reason}" if reason else f" yet ({_ISSUE_60})")
+                + (f": {reason}" if reason else f" yet ({_ISSUE_60})"),
+                construct=class_construct(name),
             )
         return rule(self, op)
 
@@ -312,7 +314,10 @@ def table_rules(
 def rel(op: Any) -> Json:
     rule = _RELS.get(type(op))
     if rule is None:
-        raise Unsupported(f"{type(op).__name__} is not supported yet ({_ISSUE_60})")
+        raise Unsupported(
+            f"{type(op).__name__} is not supported yet ({_ISSUE_60})",
+            construct=op_construct(op),
+        )
     return rule(op)
 
 
