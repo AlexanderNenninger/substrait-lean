@@ -202,6 +202,8 @@ end Substrait.Examples
 #print axioms Substrait.emit_project_identity
 #print axioms Substrait.Rel.incremental_sound
 #print axioms Substrait.Rel.zeval_lift
+#print axioms Substrait.Rel.zeval_prune
+#print axioms Substrait.Rel.incremental_sound_prune
 #print axioms Substrait.Rel.incrementalK_sound
 #print axioms Substrait.Rel.delta_evalK_eq
 #print axioms Substrait.Rel.eval_eq_evalK

@@ -383,6 +383,16 @@ theorem sortLe_totalPre : ∀ ks, TotalPre (sortLe ks)
   | [] => ⟨fun _ _ _ _ _ => rfl, fun _ _ => rfl⟩
   | k :: ks => k.le_totalPre.lex (sortLe_totalPre ks)
 
+/-- Rows that agree on the sort columns sort alike. -/
+theorem sortLe_congr {ks : List SortKey} {x x' y y' : Row}
+    (hx : ∀ k ∈ ks, x'.getD k.col .null = x.getD k.col .null)
+    (hy : ∀ k ∈ ks, y'.getD k.col .null = y.getD k.col .null) : sortLe ks x' y' = sortLe ks x y := by
+  induction ks with
+  | nil => rfl
+  | cons k ks ih =>
+    simp only [List.mem_cons, forall_eq_or_imp] at hx hy
+    simp only [sortLe, lexLe, SortKey.le, hx.1, hy.1, ih hx.2 hy.2]
+
 /-! ## Orders a profile allows
 
 A profile picks the NULL placement of an open key (`nf`), and the order of a

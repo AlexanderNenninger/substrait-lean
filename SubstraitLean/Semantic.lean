@@ -812,17 +812,6 @@ theorem flatMap_single {A : Relation} {G : Row → Relation}
   · obtain ⟨w, hw⟩ := h x hx
     exact ⟨w, by simp [hw]⟩
 
-omit [Boxes.Ambient] in
-/-- Rows that agree on the sort columns sort alike. -/
-theorem sortLe_congr {ks : List SortKey} {x x' y y' : Row}
-    (hx : ∀ k ∈ ks, x'.getD k.col .null = x.getD k.col .null)
-    (hy : ∀ k ∈ ks, y'.getD k.col .null = y.getD k.col .null) : sortLe ks x' y' = sortLe ks x y := by
-  induction ks with
-  | nil => rfl
-  | cons k ks ih =>
-    simp only [List.mem_cons, forall_eq_or_imp] at hx hy
-    simp only [sortLe, lexLe, SortKey.le, hx.1, hy.1, ih hx.2 hy.2]
-
 theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
     (h : ∀ x ∈ grp, ∀ e ∈ m.exprs, e.eval (g x) = e.eval x) : m.eval (grp.map g) = m.eval grp := by
   have hin : ∀ l : Relation, (∀ x ∈ l, x ∈ grp) → m.inputs (l.map g) = m.inputs l := by

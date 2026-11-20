@@ -63,6 +63,7 @@ the project's one axiom (the trusted table below).
 | `Rel.floatOpenSafeP_of_noDouble` | … and such a plan without open measures is `Rel.FloatOpenSafeP` over the table | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
+| `Rel.zeval_prune` | … and over a store pruned to the columns the view reads, every row keeps its weight | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
 <!-- axioms:end -->
 
