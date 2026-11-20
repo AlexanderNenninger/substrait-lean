@@ -157,6 +157,8 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     OVERFLOW_HINT,
     PARAMS_NOTE,
     RUNTIME_CHECK,
+    SOURCE_THRESHOLD,
+    SOURCE_THRESHOLD_HINT,
     SUM_ASSUMED,
     TIES_HINT,
     TRUNC_HINT,
@@ -2063,6 +2065,8 @@ def _issues(
         bound = _merged_bound([i["bound"] for i in members])
         if constant:
             text = CONSTANT_HINT
+        elif kind == SOURCE_THRESHOLD:
+            text = SOURCE_THRESHOLD_HINT
         elif any(i["error"] for i in members):
             text = hint(bound)
         else:

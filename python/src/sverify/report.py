@@ -268,6 +268,20 @@ INFINITE_HINT = (
 )
 
 
+#: The kind of a decision on an `AVG` of integers that DuckDB may take the other way
+#: (#1735, D52): the query's own `avg` is within a band of the value verified.
+SOURCE_THRESHOLD = "source_threshold"
+
+#: What a report says of such a decision (ruling 104): the construct, the consequence
+#: and the ways out. 12b-2 restores the comparisons of the mean with integers.
+SOURCE_THRESHOLD_HINT = (
+    "DuckDB's AVG of integers returns a double within a band of the value sverify verified, "
+    "so on DuckDB this query may keep other rows than the verified plan, or the column has "
+    "no bound. Keep the mean away from the threshold with a precondition, or compare exact "
+    "columns: SUM(y) > c * COUNT(y) for an integer c"
+)
+
+
 #: What a report says of a constant that raises (#609, D21).
 CONSTANT_HINT = (
     "this operation reads no column and raises: DuckDB evaluates it when it "
@@ -325,9 +339,10 @@ class Issue:
     """"division by zero", "overflow" (an integer result that does not fit its
     declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
     "domain error", "SUM overflow" (a `SUM` leaving its type: 64 bits for
-    integers, the result's precision for decimals), or "overflow to infinity"
+    integers, the result's precision for decimals), "overflow to infinity"
     (an operation on finite doubles, or their `SUM` or `AVG`, giving
-    `±∞`)."""
+    `±∞`), or "source_threshold" (a decision on DuckDB's `AVG` of integers,
+    which DuckDB may take the other way, #1735)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""

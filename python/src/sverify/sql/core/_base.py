@@ -3890,6 +3890,10 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", Bin("lt", a, b))
         case "normalized_interval", [a]:
             return a
+        case "sverify_approx", [a, Lit()]:
+            # `UnFn.approx k` (D52): a source mark for the checker, the identity
+            # for an engine, which computes the plan's value inside the band.
+            return a
         case (("is_nan" | "isnan"), [a]):
             return Bin("eq", a, Lit(math.nan, "float"))
         case (("and" | "or"), [a, *rest]):

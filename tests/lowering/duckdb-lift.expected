@@ -2360,7 +2360,10 @@
    "anchor": 47},
   {"urn": "extension:io.substrait:functions_rounding",
    "name": "ceil:fp64",
-   "anchor": 48}],
+   "anchor": 48},
+  {"urn": "extension:io.sverify:functions",
+   "name": "sverify_approx:fp64_i64",
+   "anchor": 49}],
  "aggregates":
  [{"semantics": "duckdb",
    "result": "fp64",
@@ -2392,24 +2395,31 @@
     {"scalarFunction":
      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
       "options": [],
-      "functionReference": 2,
+      "functionReference": 49,
       "arguments":
       [{"value":
-        {"cast":
-         {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
-          "input":
-          {"selection":
-           {"rootReference": {},
-            "directReference": {"structField": {"field": 0}}}},
-          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
-       {"value":
-        {"cast":
-         {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
-          "input":
-          {"selection":
-           {"rootReference": {},
-            "directReference": {"structField": {"field": 1}}}},
-          "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}}}},
+        {"scalarFunction":
+         {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+          "options": [],
+          "functionReference": 2,
+          "arguments":
+          [{"value":
+            {"cast":
+             {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+              "input":
+              {"selection":
+               {"rootReference": {},
+                "directReference": {"structField": {"field": 0}}}},
+              "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}},
+           {"value":
+            {"cast":
+             {"type": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+              "input":
+              {"selection":
+               {"rootReference": {},
+                "directReference": {"structField": {"field": 1}}}},
+              "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}}}]}}},
+       {"value": {"literal": {"i64": "17"}}}]}}}},
   {"semantics": "duckdb",
    "result": "fp64",
    "construct": "sum(DOUBLE)",
