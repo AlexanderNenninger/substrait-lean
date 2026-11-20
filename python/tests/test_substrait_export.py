@@ -431,3 +431,16 @@ def test_a_text_fact_travels_and_is_checked_on_read_back() -> None:
     put_table(con, "s", pa.table({"s": ["abc", "äbc"]}))
     with pytest.raises(PreconditionError, match="refused before the run"):
         back.run(con, "duckdb")
+
+
+def test_set_inputs_of_two_decimal_precisions_are_refused() -> None:
+    """A full outer join of two sums is written as a set relation whose inputs
+    differ in decimal precision, which Substrait does not allow: the export
+    says so, and `to_sql` still writes the plan (#1904)."""
+    a = ibis.table({"k": "int64", "d": "decimal(10,2)"}, name="a")
+    b = ibis.table({"k": "int64", "d": "decimal(12,2)"}, name="b")
+    ga, gb = (t.group_by("k").agg(s=t.d.sum()) for t in (a, b))
+    report = _verify(ga.outer_join(gb, "k").select(ga.k, x=ga.s, y=gb.s))
+    with pytest.raises(ExportError, match=r"inputs of a set relation differ.*#1904"):
+        report.to_substrait(shims="annotate")
+    assert "SELECT" in report.to_sql("spark").upper()
