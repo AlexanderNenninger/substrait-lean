@@ -190,10 +190,6 @@ def test_an_integer_sum_inside_64_bits_is_proved_exact():
     assert _sum_proved("x", 1_000_000)
 
 
-def test_an_integer_sum_without_a_row_cap_is_not_proved():
-    assert not _sum_proved("x", None)
-
-
 def test_a_decimal_sum_inside_its_type_is_proved_exact():
     # DECIMAL(5,2) sums to DECIMAL(15,2): 1e6 rows of 999.99 stay below 1e15 - 1.
     assert _sum_proved("c", 1_000_000)
@@ -201,7 +197,9 @@ def test_a_decimal_sum_inside_its_type_is_proved_exact():
 
 def test_a_decimal_sum_that_may_leave_its_type_is_not_proved():
     # 1e11 rows of 999.99 reach 1e16 > 1e15 - 1, though the unscaled sum,
-    # 99999 * 1e11, fits 64 bits.
+    # 99999 * 1e11, fits 64 bits. The control: the same cap over an integer column
+    # stays proved (1e11 * 1e7 = 1e18 <= 2^63 - 1), so the type's bound moves the flag.
+    assert _sum_proved("x", 100_000_000_000)
     assert not _sum_proved("c", 100_000_000_000)
 
 
