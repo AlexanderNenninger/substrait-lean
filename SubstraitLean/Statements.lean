@@ -182,11 +182,11 @@ theorem checked_keys {input : Json} {R : Request} {rep : Report} {T : Plan}
 /-- **Every issue that can happen on any order is reported**
 (`check_issues_sound_all`), on the views of a join's inputs included (an
 engine that pushes a condition into one input, #1484 R3), but an overflow to
-`±∞` under a profile other than the reference. -/
+`±∞` of a scalar operation under a profile other than the reference. -/
 theorem checked_issues_all {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) {data : Catalog} (hD : DataAssumed R data T) :
     ∀ p, T.root.HasIssueAll data false p →
-      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) :=
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs) :=
   check_issues_sound_all h.parsed h.checked hD.meets h.transform hD.rowsPer hD.smallAll
 
 /-- **Every issue that can happen on `Rel.eval`'s order is reported**, one
@@ -194,7 +194,7 @@ order of `checked_issues_all`'s. -/
 theorem checked_issues {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) {data : Catalog} (hD : DataAssumed R data T) :
     ∀ p, T.root.HasIssue data false p →
-      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) :=
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs) :=
   fun p hp => checked_issues_all h hD p (Rel.hasIssueAll_of_hasIssue hp)
 
 end Substrait.ContractCheck
