@@ -321,7 +321,9 @@ class _Checker:
             ):
                 continue
             if len(candidates) > _BLAME_COLUMNS or budget[0] < 1:
-                continue  # too many columns to try: sverify-dbt suggests nothing
+                why = f"not searched for a source test: {len(candidates)} uncovered input columns"
+                tr.why = f"{tr.why}; {why}" if tr.why else why
+                continue
             budget[0] -= 1
             held = self._holds_with(res, tables, requires, cs, candidates)
             for pair in list(held or []):
