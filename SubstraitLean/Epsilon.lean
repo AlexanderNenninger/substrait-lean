@@ -663,7 +663,7 @@ def inputs? (input : Json) : Except String (Option Inputs) := do
     | none => (preOf t).flatMap Expr.factsOf
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
-  let T := Rel.keyedWindows cat A F ⟨fun _ => []⟩
+  let T := Rel.keyedWindows cat A F { keys := fun _ => [] }
   return some ⟨tj, plan, cat, A, F, caps, root, T⟩
 
 /-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
@@ -1131,7 +1131,7 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
   let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
   let A := fun t => tableEnv (schemas t) (preOf t)
   let F := fun t => (preOf t).flatMap Expr.factsOf
-  let T := Rel.keyedWindows cat A F ⟨fun _ => []⟩
+  let T := Rel.keyedWindows cat A F { keys := fun _ => [] }
   let aggs := aggNodes plan.root
   let keys := doubleKeys (Write.planSchemas plan) cat plan.root
   let empty := aggs.any fun (r, gs, ms) => ms.any fun m =>
