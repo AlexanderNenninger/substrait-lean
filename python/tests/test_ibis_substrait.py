@@ -287,7 +287,6 @@ def test_timestamp_literals_are_not_local_time():
     ("build", "message"),
     [
         (lambda: t.select(x=t.qty.cast("uint8")), "unsigned"),
-        (lambda: t.select(x=t.amount.cast("float32")), "float32"),
         (lambda: t.sample(0.5), "Sample"),
     ],
 )

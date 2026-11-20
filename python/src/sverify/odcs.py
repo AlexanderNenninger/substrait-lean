@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import uuid
 import warnings
@@ -55,7 +56,6 @@ if TYPE_CHECKING:
     from sverify.nodes import Node
 
 __all__ = [
-    "ODCS_VERSION",
     "OdcsContract",
     "Unread",
     "UnreadRuleWarning",
@@ -214,6 +214,7 @@ def export(
     )
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql, not_null_column
+    from sverify.report import proved_not_null
     from sverify.report_json import _sverify_version
 
     report = node.report
@@ -237,7 +238,7 @@ def export(
         if col in flags and rank[st] > rank.get(flags[col].get(name, ""), -1):
             flags[col][name] = st
 
-    for col in report.not_null:
+    for col in proved_not_null(report):
         flag(col, "required", "proved")
     for c in report.ensures:
         cond, st, lab = c.condition, _status(c), c.label
@@ -746,15 +747,15 @@ class _Reader:
         if metric == "rowCount":
             n = None
             if "mustBeLessOrEqualTo" in rule:
-                n = rule["mustBeLessOrEqualTo"]
+                n = math.floor(rule["mustBeLessOrEqualTo"])
             elif "mustBeLessThan" in rule:
-                n = rule["mustBeLessThan"] - 1
+                n = math.ceil(rule["mustBeLessThan"]) - 1
             elif "mustBeBetween" in rule and min(rule["mustBeBetween"]) <= 0:
-                n = max(rule["mustBeBetween"])
-            if n is None or n != int(n) or n < 0:
+                n = math.floor(max(rule["mustBeBetween"]))
+            if n is None or n < 0:
                 self.skip(column, rule, "a lower bound on the row count: sverify reads caps")
             else:
-                self.out.append(max_rows(int(n)))
+                self.out.append(max_rows(n))
             return
         if not _is_zero(rule):
             self.skip(column, rule, "a threshold on a count: sverify reads rules that must be 0")

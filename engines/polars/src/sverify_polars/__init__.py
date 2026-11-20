@@ -30,7 +30,7 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
         "install both from the same release (`pip install -U sverify sverify-polars`)"
     )
 
-from sverify.profiles import ProfilePlugin, Setting
+from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_polars.store import PolarsStore
 
 #: The settings Polars's profile assumes.
@@ -55,7 +55,7 @@ _ENV = {"engine_affinity": ("POLARS_ENGINE_AFFINITY", "auto")}
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
+    con: Any, plan_json: str, session: Any, *, keep: bool, finite: Finite, tie_free: bool
 ) -> Any:
     from sverify.engine import read_tables
 
@@ -65,17 +65,27 @@ def _run(
     return _run_tables(plan_json, tables, finite=finite)
 
 
-def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: bool) -> Any:
+def _checks(checks: frozenset[str], finite: Finite) -> frozenset[str]:
+    """`checks` without the overflow-to-infinity ones `finite` leaves out: all
+    for False, the operations' own for "aggregates"."""
+    from sverify_polars import engine
+
+    if finite is True:
+        return checks
+    gone = {engine.InfiniteResult.issue}
+    if not finite:
+        gone.add(engine.InfiniteAggregate.issue)
+    return checks - gone
+
+
+def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: Finite) -> Any:
     """The plan's result as a lazy weighted-table handle
     (`sverify._parts.Lazy`): the merge that adds it to the state
     streams it into a file, so it is never collected."""
     from sverify_polars import engine
     from sverify_polars.store import lazy_plan
 
-    checks = engine.ALL_GUARDS
-    if not finite:
-        checks -= {engine.InfiniteResult.issue}
-    return lazy_plan(engine.to_lazy(plan_json, tables, guards=checks))
+    return lazy_plan(engine.to_lazy(plan_json, tables, guards=_checks(engine.ALL_GUARDS, finite)))
 
 
 def _table(con: Any, name: str) -> Any:
@@ -92,14 +102,16 @@ def _table(con: Any, name: str) -> Any:
 
 
 def _run_tables(
-    plan_json: str, tables: Mapping[str, Any], *, guard_free: bool = False, finite: bool = True
+    plan_json: str,
+    tables: Mapping[str, Any],
+    *,
+    guard_free: bool = False,
+    finite: Finite = True,
 ) -> Any:
     from sverify_polars import engine
 
     checks = engine.NO_GUARDS if guard_free else engine.ALL_GUARDS
-    if not finite:
-        checks -= {engine.InfiniteResult.issue}
-    return engine.run(plan_json, tables, guards=checks)
+    return engine.run(plan_json, tables, guards=_checks(checks, finite))
 
 
 def _fallbacks(plan: Mapping[str, Any], tables: Mapping[str, Any]) -> Sequence[str]:
@@ -137,7 +149,6 @@ PLUGIN = ProfilePlugin(
     restore=_restore,
     runner=_run,
     local=True,
-    checks_assumed=True,
     modules=("polars", "numpy"),
     read_settings=_read_settings,
     run_tables=_run_tables,

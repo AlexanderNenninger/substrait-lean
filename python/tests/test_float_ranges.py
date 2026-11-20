@@ -9,7 +9,7 @@ import sverify as sv
 
 
 def facts(expr, **kw) -> str:
-    return sv.verify(expr, counterexamples=0, **kw).facts["v"]
+    return str(sv.verify(expr, counterexamples=0, **kw).facts["v"])
 
 
 def bounded():
@@ -41,7 +41,7 @@ def test_a_sum_keeps_its_lower_end_and_a_product_by_a_constant_proves_positive()
     t = t.filter(t.amount.between(0, 1e300))
     report = sv.verify(t.select(v=t.amount * 3 + 1), ensures=[ibis._.v > 0], counterexamples=0)
     assert report.verdict == sv.Verdict.PROVED
-    assert report.facts["v"] == "a double ≥ 1.0 and ≤ 3e+300"
+    assert str(report.facts["v"]) == "a double ≥ 1.0 and ≤ 3e+300"
     # `amount * 3` alone can be `0`, so the same statement is not proved of it.
     report = sv.verify(t.select(v=t.amount * 3), ensures=[ibis._.v > 0], counterexamples=0)
     assert report.verdict == sv.Verdict.UNPROVED
@@ -70,16 +70,23 @@ def test_a_bound_with_one_end_proves_the_headline_case():
     t = t.filter(t.amount >= 0)
     report = sv.verify(t.select(v=t.amount * 3 + 1), ensures=[ibis._.v > 0], counterexamples=0)
     assert report.verdict != sv.Verdict.UNPROVED
-    assert report.facts["v"] == "a double ≥ 1.0"
-    assert sv.verify(t.select(v=t.amount + 1), counterexamples=0).facts["v"] == "a double ≥ 1.0"
+    assert str(report.facts["v"]) == "a double ≥ 1.0"
+    assert (
+        str(sv.verify(t.select(v=t.amount + 1), counterexamples=0).facts["v"]) == "a double ≥ 1.0"
+    )
     # `amount * 3` can be `0`, and the ends below `0` are not kept.
     assert sv.verify(
         t.select(v=t.amount * 3), ensures=[ibis._.v > 0], counterexamples=0
     ).verdict == (sv.Verdict.UNPROVED)
     # A difference keeps the lower end too, where the subtrahend is a finite range
     # (`FloatCode.fsub_lower`); a subtrahend with no upper end keeps nothing.
-    assert sv.verify(t.select(v=t.amount - 1), counterexamples=0).facts["v"] == "a double ≥ -1.0"
-    assert sv.verify(t.select(v=t.amount - t.amount), counterexamples=0).facts["v"] == "any double"
+    assert (
+        str(sv.verify(t.select(v=t.amount - 1), counterexamples=0).facts["v"]) == "a double ≥ -1.0"
+    )
+    assert (
+        str(sv.verify(t.select(v=t.amount - t.amount), counterexamples=0).facts["v"])
+        == "any double"
+    )
 
 
 def test_a_quotient_of_a_non_negative_dividend_by_a_positive_divisor_is_at_least_zero():
@@ -87,8 +94,8 @@ def test_a_quotient_of_a_non_negative_dividend_by_a_positive_divisor_is_at_least
     The upper end is not kept: `y` may be NaN, which is above every bound."""
     t = ibis.table({"x": "!float64", "y": "!float64"}, name="t")
     t = t.filter((t.x >= 0) & (t.y >= 1))
-    assert sv.verify(t.select(v=t.x / t.y), counterexamples=0).facts["v"] == "a double ≥ 0.0"
-    assert sv.verify(t.select(v=10 / t.y), counterexamples=0).facts["v"] == "a double ≥ 0.0"
+    assert str(sv.verify(t.select(v=t.x / t.y), counterexamples=0).facts["v"]) == "a double ≥ 0.0"
+    assert str(sv.verify(t.select(v=10 / t.y), counterexamples=0).facts["v"]) == "a double ≥ 0.0"
 
 
 def test_a_one_ended_bound_is_sound_at_infinity_and_nan_on_data():

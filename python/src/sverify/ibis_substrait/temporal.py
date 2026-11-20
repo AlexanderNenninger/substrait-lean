@@ -14,6 +14,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, register_refusals
+from sverify.ibis_substrait._constructs import class_construct
 from sverify.plan_json import (
     EPOCH,
     Json,
@@ -43,7 +44,8 @@ def _truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit in ("millisecond", "microsecond", "nanosecond"):
         raise Unsupported(
-            f"truncating to {unit}s is not supported; truncate to a second or coarser"
+            f"truncating to {unit}s is not supported; truncate to a second or coarser",
+            construct="function truncate",
         )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
@@ -53,8 +55,25 @@ def _truncate(x: Exprs, op: Any) -> Json:
 # added to a date or timestamp; days added to a date may be a column's count.
 
 
+#: The units an integer cast to an interval may have (ruling 186 T1).
+_CAST_UNITS = frozenset({"W", "D", "h", "m", "s"})
+
+
+def _from_integer(op: Any) -> Any:
+    """`op`, with a cast of an integer to an interval of weeks, days, hours,
+    minutes or seconds read as the `IntervalFromInteger` it means
+    (`i.cast("interval('D')")`, #1926). Months and years stay refused."""
+    match op:
+        case ops.Cast(arg=arg, to=dt.Interval(unit=unit)) if (
+            arg.dtype.is_integer() and unit.short in _CAST_UNITS
+        ):
+            return ops.IntervalFromInteger(arg, unit=unit)
+    return op
+
+
 def _const_interval(op: Any) -> tuple[int, int] | None:
     """An interval expression of constants, as months and microseconds."""
+    op = _from_integer(op)
     match op:
         case ops.Literal(value=v, dtype=t) if v is not None:
             return interval_parts(v, t)
@@ -81,13 +100,18 @@ def _interval(x: Exprs, op: Any) -> Json:
     c = _const_interval(op)
     if c is not None:
         return interval_json(*c)
+    op = _from_integer(op)
     if isinstance(op, ops.IntervalFromInteger):
         months, micros = interval_parts(1, dt.Interval(unit=op.unit))
         if months:
-            raise ProducerUnsupported("a column's count of months or years is not supported")
+            raise ProducerUnsupported(
+                "a column's count of months or years is not supported", construct="INTERVAL"
+            )
         return call("multiply", [x(op.arg, dt.int64), interval_json(0, micros)])
     if isinstance(op, ops.IntervalBinary):
-        raise ProducerUnsupported(f"{type(op).__name__} of non-constant intervals is not supported")
+        raise ProducerUnsupported(
+            f"{type(op).__name__} of non-constant intervals is not supported", construct="INTERVAL"
+        )
     return x(op)
 
 
@@ -119,7 +143,9 @@ def _date_diff(x: Exprs, op: Any) -> Json:
 
 def _date_delta(x: Exprs, op: Any) -> Json:
     if op.part.value != "day":
-        raise Unsupported(f"delta in {op.part.value}s is not supported; use days")
+        raise Unsupported(
+            f"delta in {op.part.value}s is not supported; use days", construct="function delta"
+        )
     return call("date_diff", [x(op.left), x(op.right)])
 
 
@@ -187,7 +213,9 @@ def _sub_second(divisor: int) -> Callable[[Exprs, Any], Json]:
 def _date_truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit not in ("day", "week", "month", "quarter", "year"):
-        raise ProducerUnsupported(f"truncating a date to a {unit} is not supported")
+        raise ProducerUnsupported(
+            f"truncating a date to a {unit} is not supported", construct="function truncate"
+        )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 
@@ -216,11 +244,16 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
             # `make_date` of columns (#809), which raises outside the calendar.
             return make_date_json(*(x(a, dt.int64) for a in op.args))
         if values is None:
-            raise Unsupported(f"{what} of columns is not supported, only of constants")
+            raise Unsupported(
+                f"{what} of columns is not supported, only of constants",
+                construct=class_construct(what),
+            )
         try:
             value = build(*values)
         except (ValueError, OverflowError) as e:
-            raise ProducerUnsupported(f"{what} of {values}: {e}") from e
+            raise ProducerUnsupported(
+                f"{what} of {values}: {e}", construct=class_construct(what)
+            ) from e
         return literal(value, dtype)
 
     return rule
@@ -232,7 +265,10 @@ _UNIX_MICROS = {"s": 1_000_000, "ms": 1_000, "us": 1}
 def _from_unix(x: Exprs, op: Any) -> Json:
     k = _UNIX_MICROS.get(op.unit.short)
     if k is None:
-        raise ProducerUnsupported(f"timestamps from {op.unit.plural} are not supported")
+        raise ProducerUnsupported(
+            f"timestamps from {op.unit.plural} are not supported",
+            construct="function to_timestamp",
+        )
     us = x(op.arg, dt.int64)
     if k != 1:
         us = call("multiply", [us, literal(k, dt.int64)])
@@ -241,9 +277,9 @@ def _from_unix(x: Exprs, op: Any) -> Json:
 
 def _strftime(x: Exprs, op: Any) -> Json:
     if not op.arg.dtype.is_timestamp():
-        raise Unsupported("strftime is only supported of timestamps")
+        raise Unsupported("strftime is only supported of timestamps", construct="function strftime")
     if not isinstance(op.format_str, ops.Literal):
-        raise Unsupported("strftime formats must be constants")
+        raise Unsupported("strftime formats must be constants", construct="function strftime")
     return call("strftime", [x(op.arg), literal(op.format_str.value, dt.string)])
 
 
@@ -253,7 +289,9 @@ def _bucket(x: Exprs, op: Any) -> Json:
     c = _const_interval(op.interval)
     o = (0, 0) if op.offset is None else _const_interval(op.offset)
     if c is None or c[0] or c[1] <= 0 or o is None or o[0]:
-        raise Unsupported("bucket needs constant intervals of days or less")
+        raise Unsupported(
+            "bucket needs constant intervals of days or less", construct="function bucket"
+        )
     origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(o[1])}}}
     return call("date_bin", [interval_json(0, c[1]), x(op.arg), origin])
 
@@ -271,7 +309,10 @@ def _timestamp_delta(x: Exprs, op: Any) -> Json:
     divided by the unit."""
     unit = op.part.value
     if unit not in _DELTA_MICROS:
-        raise Unsupported(f"delta in {unit}s is not supported; use days or a shorter unit")
+        raise Unsupported(
+            f"delta in {unit}s is not supported; use days or a shorter unit",
+            construct="function delta",
+        )
     us = _DELTA_MICROS[unit]
     origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": "0"}}}
 
@@ -289,9 +330,13 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         c = _const_interval(op.right)
         if c is None:
-            raise Unsupported("a time of day plus an interval needs a constant interval")
+            raise Unsupported(
+                "a time of day plus an interval needs a constant interval", construct="INTERVAL"
+            )
         if c[0]:
-            raise ProducerUnsupported("a time of day plus months or years is not supported")
+            raise ProducerUnsupported(
+                "a time of day plus months or years is not supported", construct="INTERVAL"
+            )
         return call(name, [x(op.left), interval_json(0, c[1])])
 
     return rule
@@ -300,7 +345,10 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
 def _time_truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit not in ("hour", "minute", "second", "millisecond", "microsecond"):
-        raise ProducerUnsupported(f"truncating a time of day to a {unit} is not supported")
+        raise ProducerUnsupported(
+            f"truncating a time of day to a {unit} is not supported",
+            construct="function truncate",
+        )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])
 
 
@@ -310,51 +358,79 @@ def _between_time(x: Exprs, op: Any) -> Json:
     return between(t, lo, hi)
 
 
-register(
-    {
-        ops.ExtractYear: _date_part("year"),
-        ops.ExtractQuarter: _date_part("quarter"),
-        ops.ExtractMonth: _date_part("month"),
-        ops.ExtractDay: _date_part("day"),
-        ops.ExtractDayOfYear: _date_part("doy"),
-        ops.ExtractHour: _date_part("hour"),
-        ops.ExtractMinute: _date_part("minute"),
-        ops.ExtractSecond: _date_part("second"),
-        ops.Date: _date,
-        ops.TimestampTruncate: _truncate,
-        ops.TimestampAdd: _temporal_add("add"),
-        ops.TimestampSub: _temporal_add("subtract"),
-        ops.TimestampDiff: lambda x, op: call("subtract", [x(op.left), x(op.right)]),
-        ops.DateAdd: _temporal_add("add"),
-        ops.DateSub: _temporal_add("subtract"),
-        ops.DateDiff: _date_diff,
-        ops.DateDelta: _date_delta,
-        ops.DateTruncate: _date_truncate,
-        ops.DayOfWeekIndex: _day_of_week_index,
-        ops.DayOfWeekName: _day_of_week_name,
-        ops.ExtractIsoYear: _iso_year,
-        ops.ExtractEpochSeconds: _epoch_seconds,
-        ops.ExtractMillisecond: _sub_second(1000),
-        ops.ExtractMicrosecond: _sub_second(1),
-        ops.IntervalFromInteger: _interval_value,
-        ops.IntervalAdd: _interval_value,
-        ops.IntervalSubtract: _interval_value,
-        ops.IntervalMultiply: _interval_value,
-        ops.DateFromYMD: _from_parts(dt_.date, dt.date, "DateFromYMD"),
-        ops.TimestampFromYMDHMS: _from_parts(dt_.datetime, dt.timestamp, "TimestampFromYMDHMS"),
-        ops.TimeFromHMS: _from_parts(dt_.time, dt.time, "TimeFromHMS"),
-        ops.TimestampFromUNIX: _from_unix,
-        ops.Strftime: _strftime,
-        ops.Time: lambda x, op: cast_json(x(op.arg), dt.time),
-        ops.BetweenTime: _between_time,
-        ops.TimeAdd: _time_add("add"),
-        ops.TimeSub: _time_add("subtract"),
-        ops.TimeTruncate: _time_truncate,
-        ops.TimestampBucket: _bucket,
-        ops.TimestampDelta: _timestamp_delta,
-        ops.ExtractWeekOfYear: _date_part("week"),
-    }
-)
+def wall_clock(x: Exprs) -> Callable[..., Json]:
+    """`x`, reading an instant at UTC as its UTC wall clock (D69, #1725): the
+    cast to a naive timestamp, written once per argument, so a rule that
+    reads its argument several times sees one kind."""
+
+    def on(e: Any, *rest: Any) -> Json:
+        j = x(e, *rest)
+        t = e.dtype
+        return cast_json(j, dt.timestamp) if t.is_timestamp() and t.timezone else j
+
+    return on
+
+
+def _wall_clock(rule: Callable[[Any, Any], Json]) -> Callable[[Exprs, Any], Json]:
+    return lambda x, op: rule(wall_clock(x), op)
+
+
+#: The operations whose result is not an instant (D69): a date, a time, a part,
+#: a string, or a naive timestamp. Arithmetic and differences of instants stay
+#: refused.
+_ON_WALL_CLOCK = (
+    ops.ExtractYear, ops.ExtractQuarter, ops.ExtractMonth, ops.ExtractDay, ops.ExtractDayOfYear,
+    ops.ExtractHour, ops.ExtractMinute, ops.ExtractSecond, ops.ExtractWeekOfYear,
+    ops.ExtractMillisecond, ops.ExtractMicrosecond, ops.ExtractIsoYear,
+    ops.ExtractEpochSeconds, ops.DayOfWeekIndex, ops.DayOfWeekName, ops.Date, ops.Time,
+    ops.TimestampTruncate, ops.TimestampBucket, ops.Strftime, ops.BetweenTime,
+)  # fmt: skip
+
+_TEMPORAL: dict[Any, Callable[[Exprs, Any], Json]] = {
+    ops.ExtractYear: _date_part("year"),
+    ops.ExtractQuarter: _date_part("quarter"),
+    ops.ExtractMonth: _date_part("month"),
+    ops.ExtractDay: _date_part("day"),
+    ops.ExtractDayOfYear: _date_part("doy"),
+    ops.ExtractHour: _date_part("hour"),
+    ops.ExtractMinute: _date_part("minute"),
+    ops.ExtractSecond: _date_part("second"),
+    ops.Date: _date,
+    ops.TimestampTruncate: _truncate,
+    ops.TimestampAdd: _temporal_add("add"),
+    ops.TimestampSub: _temporal_add("subtract"),
+    ops.TimestampDiff: lambda x, op: call("subtract", [x(op.left), x(op.right)]),
+    ops.DateAdd: _temporal_add("add"),
+    ops.DateSub: _temporal_add("subtract"),
+    ops.DateDiff: _date_diff,
+    ops.DateDelta: _date_delta,
+    ops.DateTruncate: _date_truncate,
+    ops.DayOfWeekIndex: _day_of_week_index,
+    ops.DayOfWeekName: _day_of_week_name,
+    ops.ExtractIsoYear: _iso_year,
+    ops.ExtractEpochSeconds: _epoch_seconds,
+    ops.ExtractMillisecond: _sub_second(1000),
+    ops.ExtractMicrosecond: _sub_second(1),
+    ops.IntervalFromInteger: _interval_value,
+    ops.IntervalAdd: _interval_value,
+    ops.IntervalSubtract: _interval_value,
+    ops.IntervalMultiply: _interval_value,
+    ops.DateFromYMD: _from_parts(dt_.date, dt.date, "DateFromYMD"),
+    ops.TimestampFromYMDHMS: _from_parts(dt_.datetime, dt.timestamp, "TimestampFromYMDHMS"),
+    ops.TimeFromHMS: _from_parts(dt_.time, dt.time, "TimeFromHMS"),
+    ops.TimestampFromUNIX: _from_unix,
+    ops.Strftime: _strftime,
+    ops.Time: lambda x, op: cast_json(x(op.arg), dt.time),
+    ops.BetweenTime: _between_time,
+    ops.TimeAdd: _time_add("add"),
+    ops.TimeSub: _time_add("subtract"),
+    ops.TimeTruncate: _time_truncate,
+    ops.TimestampBucket: _bucket,
+    ops.TimestampDelta: _timestamp_delta,
+    ops.ExtractWeekOfYear: _date_part("week"),
+}
+
+register({k: _wall_clock(v) if k in _ON_WALL_CLOCK else v for k, v in _TEMPORAL.items()})
 
 
 register_refusals(

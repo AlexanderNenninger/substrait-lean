@@ -257,7 +257,7 @@ def atIssue (env : List AVal) (fs : List Fact) : Issue × Expr → Except String
     need env fs Time.dayMin Time.dayMax (.un (.addMonths m false) a)
   | (.overflow, .un (.addMonths m true) a) =>
     need env fs Time.tsMin Time.tsMax (.un (.addMonths m true) a)
-  | (.overflow, .un .timeOfDay a) | (.overflow, .un (.strftime _) a)
+  | (.overflow, .un .timeOfDay a) | (.overflow, .un (.strftime _) a) | (.overflow, .un .asTime a)
   | (.overflow, .un (.datePart _) a) =>
     need env fs Time.tsMin Time.tsMax a
   | (.overflow, .un (.dayPart _) a) => need env fs Time.dayMin Time.dayMax a

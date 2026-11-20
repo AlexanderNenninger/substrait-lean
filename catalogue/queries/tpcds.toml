@@ -160,14 +160,13 @@ ORDER BY lochierarchy DESC,
 LIMIT 100
 '''
 notes = "Ibis has no ROLLUP, so this is DataFusion SQL."
-# Not proved: a ROLLUP is a UNION ALL, which has no key, so the RANK over it counts as
-# nondeterministic and both postconditions are undetermined, although RANK does not
-# depend on how ties are broken (#471). The margin divides by SUM(ss_ext_sales_price),
-# which is 0 when every price is: `verify` proposes `ss_ext_sales_price >= 0.01`, which
-# TPC-DS data does not meet (it allows a price of 0).
+# The margin divides by SUM(ss_ext_sales_price), which is 0 when every price is: the
+# contract states `ss_ext_sales_price >= 0.01`, which TPC-DS data does not always meet (it
+# allows a price of 0). The RANK over the ROLLUP's UNION ALL does not depend on how ties are
+# broken (#471), and both postconditions are proved.
 requires = '''
 {
-    'store_sales': ['ss_ext_sales_price BETWEEN 0 AND 30000'],
+    'store_sales': ['ss_ext_sales_price BETWEEN 0.01 AND 30000'],
     'date_dim': [sv.unique('d_date_sk')],
     'item': [sv.unique('i_item_sk')],
     'store': [sv.unique('s_store_sk')],
@@ -306,10 +305,10 @@ q = (
     .limit(100)
 )
 '''
-# Not proved: the monthly sums, rescaled to compare with the average, may overflow their
-# decimal type, since no row cap bounds them (#470): TPC-DS gives approximate row counts
-# only, so no cap is stated. The division under `avg_monthly_sales != 0` is not seen as
-# guarded.
+# Not proved: `sum_sales - avg_monthly_sales` may overflow its decimal type and the ratio
+# may divide by zero, though the monthly sums and their average are each bounded and
+# positive under these preconditions (#2015). The division under `avg_monthly_sales != 0`
+# is not seen as guarded.
 requires = '''
 {
     'store_sales': [_.ss_sales_price.between(0, 300)],
@@ -349,11 +348,11 @@ q = rev.mutate(
 '''
 # The caps are upper bounds above the specification's approximate row counts at scale
 # factor 100,000 (about 2.9·10¹¹ store_sales, 502,000 items, 73,049 days), so
-# `itemrevenue * 100` stays within its decimal type (#470). Not proved: a class's revenue
-# may be 0 (TPC-DS allows a price of 0), so the ratio may divide by zero.
+# `itemrevenue * 100` stays within its decimal type (#470). A class's revenue is positive from
+# a price of 0.01 (TPC-DS allows a price of 0), so the ratio cannot divide by zero.
 requires = '''
 {
-    'store_sales': [_.ss_ext_sales_price.between(0, 30000), sv.max_rows(10**12)],
+    'store_sales': [_.ss_ext_sales_price.between(0.01, 30000), sv.max_rows(10**12)],
     'item': [sv.unique('i_item_sk'), sv.max_rows(10**7)],
     'date_dim': [sv.unique('d_date_sk'), sv.max_rows(10**5)],
 }

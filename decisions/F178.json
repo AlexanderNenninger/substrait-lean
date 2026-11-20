@@ -1,0 +1,19 @@
+{
+  "id": "F178",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1873 (exact limb state) is signed with condition R1 (attach checks zero-count and group-membership invariants) and changes R2-R4 (drop dead b=10 split step, keep rebuild figure, fix wording).",
+  "issues": [
+    271,
+    1329,
+    1873,
+    1876
+  ],
+  "prs": [
+    1873
+  ],
+  "source": "fable-ruling-178-1873-review.md",
+  "note": "Reviews conditions S1-S6 of ruling 174 and E1-E8 of note 167 (E2 'met as amended'). No D-number."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-08-semantics-x-is-profile-choice",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "semantics=\"X\" is a choice of profile to verify under, not a frontend-only mode; the note claiming the reference is the only verification semantics is withdrawn.",
+  "issues": [
+    1189
+  ],
+  "source": "github:#1189 comment 6720522725"
+}

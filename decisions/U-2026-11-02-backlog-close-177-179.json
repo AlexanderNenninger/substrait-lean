@@ -1,0 +1,18 @@
+{
+  "id": "U-2026-11-02-backlog-close-177-179",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Issues 177, 178 and 179 are closed as not wanted for now; focus stays on verified DuckDB SQL, the reference model and developer experience.",
+  "issues": [
+    177,
+    178,
+    179
+  ],
+  "amended_by": [
+    "U-2026-11-05-dbt-package-reopened"
+  ],
+  "source": "github:#177 comment 6576299796",
+  "note": "#177 (dbt) was reopened on 2026-11-05; #178 and #179 stay closed."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-05-report-json-sarif-shape",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The report JSON stays its own format, but its findings take SARIF's result shape so --format sarif is a thin wrapper.",
+  "issues": [
+    736,
+    793
+  ],
+  "source": "github:#793 comment 6660262276"
+}

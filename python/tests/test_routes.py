@@ -45,6 +45,18 @@ def test_explicit_route_is_taken_or_refused(con) -> None:
         routes.choose(report, "duckdb", "sideways")  # type: ignore[arg-type]
 
 
+def test_explicit_route_refusal_names_its_exit(con) -> None:
+    """A refused explicit route says how to reach the engine (#1046)."""
+    duck = sv.verify(
+        "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
+    )
+    r = routes.choose(duck, "polars", "translated")
+    assert r.refused and "verify with semantics='reference' to run on polars" in r.reason
+    ref = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")})
+    r = routes.choose(ref, "duckdb", "native")
+    assert r.refused and 'route="auto" tries every route' in r.reason
+
+
 def test_run_chooses_a_route_by_default(con) -> None:
     duck = sv.verify(
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
@@ -131,18 +143,23 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     assert strict.refused and "rerun must give the same result" in strict.reason
 
 
-def test_sequence_needs_a_sorted_result(con) -> None:
+def test_sequence_needs_a_total_sort(con) -> None:
+    """`rows="sequence"` needs a result the plan orders without ties: sorted
+    on columns that contain a key of its input (`check_sequence_determined_sound`).
+    A result sorted on a non-key keeps its ties open."""
     t = con.table("t")
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
     assert "not sorted" in routes.choose(unsorted, "duckdb").reason
-    ordered = sv.verify(
-        t.select("k", "i").order_by([ibis.asc("k", nulls_first=True), "i"]),
-        requires=req,
-        ensures=[seq],
-    )
-    assert routes.choose(ordered, "duckdb").kind == "translated"
+    order = [ibis.asc("k", nulls_first=True), "i"]
+    tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
+    assert not tied._sequence_determined
+    assert "not sorted on a key" in routes.choose(tied, "duckdb").reason
+    keyed = {"t": [*req["t"], sv.unique("k", "i")]}
+    total = sv.verify(t.select("k", "i").order_by(order), requires=keyed, ensures=[seq])
+    assert total._sequence_determined
+    assert routes.choose(total, "duckdb").kind == "translated"
 
 
 def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -384,3 +401,38 @@ def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:
     assert "`x * COUNT(y) > SUM(y)`" in text
     assert "compares the exact mean, not the rounded one" in text
     assert "its product must fit BIGINT" in text
+
+
+def test_a_failed_transfer_check_is_not_kept(monkeypatch) -> None:
+    """The checker's transfer answer is kept per process, a failure is not:
+    a timeout once does not stick (#862)."""
+    import subprocess
+
+    from sverify import routes
+
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired("substrait-check", 60)
+        return subprocess.CompletedProcess(args, 0, stdout='{"ok": true}')
+
+    routes._answer.cache_clear()
+    monkeypatch.setattr(subprocess, "run", run)
+    assert routes._transfer("checker", "{}") is None
+    assert routes._transfer("checker", "{}") == '{"ok": true}'
+    assert routes._transfer("checker", "{}") == '{"ok": true}'
+    assert len(calls) == 2
+    routes._answer.cache_clear()
+
+
+# -- the engine version a report's profile describes (#710) ---------------------------
+
+
+def test_engine_version_is_the_profiles():
+    sql, tables = "select k from t", {"t": {"k": "BIGINT"}}
+    r = sv.verify(sql, tables=tables, semantics="duckdb")
+    assert r.engine_version == routes.probed_version("duckdb") is not None
+    assert sv.Report.from_json(r.to_json()).engine_version == r.engine_version
+    assert sv.verify(sql, tables=tables).engine_version is None

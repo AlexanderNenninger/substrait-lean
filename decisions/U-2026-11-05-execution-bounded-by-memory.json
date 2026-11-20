@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-05-execution-bounded-by-memory",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The CLI's 30 s timeout never bounds query execution, which is bounded by memory limits.",
+  "issues": [
+    783
+  ],
+  "source": "memory:product-vision.md"
+}

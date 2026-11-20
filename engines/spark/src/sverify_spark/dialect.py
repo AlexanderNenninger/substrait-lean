@@ -13,8 +13,9 @@ result is the Lean value, checked on a local Spark session by
   integer constant is cast. `SUM` of `BIGINT` raises as soon as a partial
   sum overflows, though Lean's is the true total: it adds `DECIMAL(38,0)`
   values instead (exact) and checks the total against 64 bits.
-* **Doubles** are IEEE, but in ANSI mode `/` raises on a zero divisor, so
-  `x / 0.0` is spelled out (±inf by the sign of `x`, or NaN).
+* **Doubles** are IEEE, but in ANSI mode `/` raises on a zero divisor of
+  either sign, IEEE division (`on_division_by_zero` = `IEEE`) included: that
+  raise is what `sparkBin .fdivIeee` states (ruling 161).
   `CAST(x AS BIGINT)` truncates, raises on NaN and ±inf, but saturates at
   2⁶³: the range is checked first. `FLOOR` and `CEIL` return `BIGINT`, so
   they keep NaN, ±inf and large values as they are. `POWER` is Java's
@@ -67,8 +68,6 @@ result is the Lean value, checked on a local Spark session by
 
 from __future__ import annotations
 
-import math
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
@@ -206,17 +205,6 @@ class SparkDialect(Dialect):
         return f"aggregate({reps}, {self.int_lit(1)}, (acc, e) -> acc * e)"
 
     # Doubles
-
-    def float_div(self, a: str, b: str) -> str:
-        if (c := _float_const(b)) is not None and c != 0:
-            return f"({a} / {b})"
-        nan, inf, ninf = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf))
-        # The divisor is the one zero, +0.0.
-        by_zero = (
-            f"(CASE WHEN {a} IS NULL THEN {self.null('float')} "
-            f"WHEN isnan({a}) OR {a} = 0 THEN {nan} WHEN {a} > 0 THEN {inf} ELSE {ninf} END)"
-        )
-        return f"(CASE WHEN {b} = 0 THEN {by_zero} ELSE {a} / {b} END)"
 
     def whole(self, fn: str, x: str) -> str:
         """`fn` (FLOOR or CEIL, which return BIGINT) on a double. Doubles of
@@ -466,12 +454,6 @@ class SparkDialect(Dialect):
 
     def row_ordinal(self) -> str:
         raise self.no_row_order("Spark")
-
-
-def _float_const(sql: str) -> float | None:
-    """The value of a `float_lit` constant, or None for other SQL."""
-    m = re.fullmatch(r"CAST\('([^']*)' AS DOUBLE\)", sql)
-    return float(m.group(1)) if m else None
 
 
 SPARK: Dialect = SparkDialect("spark")

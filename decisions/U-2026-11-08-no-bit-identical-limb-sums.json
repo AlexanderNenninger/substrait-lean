@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-08-no-bit-identical-limb-sums",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Bit-identical batch double sums via integer limbs are declined on cost, and compensated window sums go after 1.0.",
+  "issues": [
+    918,
+    1272
+  ],
+  "amended_by": [
+    "U-2026-11-19-exact-limb-state"
+  ],
+  "source": "memory:reference-generic-algorithms.md",
+  "note": "Decided via Fable."
+}

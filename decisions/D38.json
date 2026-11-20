@@ -1,0 +1,11 @@
+{
+  "id": "D38",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "An operation on finite doubles whose IEEE result is ±∞ raises; ±∞ from the data passes through.",
+  "issues": [
+    575
+  ]
+}

@@ -200,6 +200,8 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
     | .kind (.list _) | .kind .other => some (.kind .int)
     | _ => none
   | .raise _ | .bbox _ => some (.kind .other)
+  -- D52: a source mark is the identity.
+  | .approx _ => some t
   | .flatten => match t with
     | .kind (.list (.list k)) => some (.kind (.list k))
     | .kind (.list .other) | .kind .other => some (.kind (.list .other))
@@ -356,7 +358,7 @@ def UnFn.out : UnFn → Kind
   | .timeOfDay => .tod
   | .decimal p s | .dkind p s => .dec p s
   | .wrap _ | .widen | .atUtc _ | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _
-  | .flatten | .raise _ | .bbox _ => .other
+  | .flatten | .raise _ | .bbox _ | .approx _ => .other
 
 theorem UnFn.apply_out (f : UnFn) (v : Value) : (f.apply v).hasKind f.out = true := by
   cases f
@@ -413,6 +415,8 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
         first
           | (exfalso; simp at h; done)
           | (cases h; cases v <;> simp_all [UnFn.apply, KT.has, KT.toKind, Value.hasKind])
+  case approx k =>
+    simp only [UnFn.kindOf, Option.some.injEq] at h; subst h; simpa [UnFn.apply] using hv
   all_goals simp only [UnFn.kindOf, UnFn.out, Option.ite_none_right_eq_some, Option.some.injEq] at h hout
   all_goals first
     | (obtain ⟨_, rfl⟩ := h; exact hout)

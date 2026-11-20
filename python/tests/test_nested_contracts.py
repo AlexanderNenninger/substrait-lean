@@ -24,7 +24,7 @@ def test_a_filtered_list_keeps_its_length_bound():
         ensures=[_.tags.length() <= 5, _.tags.length() >= 0],
     )
     assert report.verdict == sv.Verdict.PROVED, report.unproved
-    assert report.facts["tags"] == "a list (length ≤ 5; of a string or NULL)"
+    assert str(report.facts["tags"]) == "a list (length ≤ 5; of a string or NULL)"
 
 
 def test_elements_are_not_null_after_fill_null():

@@ -1,0 +1,20 @@
+{
+  "id": "F104",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "A decision on a source-marked value is a verdict-level error issue (`source_threshold`) in 12d-4, closing #1735; binding conditions C-rows, C-out, C-contract and taint rules M1-M3; D52 gains a dated sentence.",
+  "issues": [
+    1608,
+    1735
+  ],
+  "amends": [
+    "D52"
+  ],
+  "amended_by": [
+    "F108"
+  ],
+  "source": "fable-ruling-12d4-source-threshold.md",
+  "note": "Ruling 108 amends it in two places: question P's last sentence replaced by rule C-key, and the S2(c) control (see F104.S2c). R-sort relaxation left open pending test (h)."
+}

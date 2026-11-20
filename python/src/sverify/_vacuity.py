@@ -21,7 +21,6 @@ from ibis.common.deferred import Deferred
 
 Atom = tuple[str, str, Fraction]  # (column, comparison, number)
 
-_SQL = {">": ">", ">=": ">=", "<": "<", "<=": "<=", "=": "="}
 _FLIP = {">": "<", ">=": "<=", "<": ">", "<=": ">=", "=": "="}
 _IBIS = {
     ops.Greater: ">",

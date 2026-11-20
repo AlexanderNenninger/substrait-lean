@@ -609,8 +609,11 @@ def UnFn.abs : UnFn → AVal → AVal
   | .narrowOrNull n, a => narrowAbs n a
   | .wrap _, a => a
   | .decimal _ s, a | .dkind _ s, a => mapAbs intOrDec (fun _ => .dec s) id (fun _ => false) a
-  | .dround _, a | .dtrunc _, a =>
-      mapAbs intOrDec (fun _ => .int) (fun _ => Bound.top) (fun _ => false) a
+  -- Truncation and rounding are monotone, so the interval maps through them
+  -- (#1876): a decimal cast back to an integer keeps its operand's bound.
+  | .dround k, a => mapAbs intOrDec (fun _ => .int) (·.mapMono (roundDiv10 k)) (fun _ => false) a
+  | .dtrunc k, a =>
+      mapAbs intOrDec (fun _ => .int) (·.mapMono (·.tdiv (10 ^ k))) (fun _ => false) a
   | .dtof s, a => convAbs intOrDec (FloatCode.decConv s) a
   | .ftod s, a => ftodAbs s a
   | .itos, a => { null := a.nonNum .int, str := a.int.isSome }
@@ -647,11 +650,22 @@ def UnFn.abs : UnFn → AVal → AVal
   | .structField i, a => a.fieldAbs i
   | .listElement off, a => a.elementAbs off
   | .flatten, a => a.flattenAbs
+  -- D52: a source mark is the identity.
+  | .approx _, a => a
   | .cardinality, a => a.cardAbs
   | .raise _, _ => { null := true }
   | .isNum _, _ => { tt := true, ff := true }
   | .fit _ _, _ => AVal.top
   | .bbox n, a => BlackBox.scalarAbs n !a.null
+
+-- A decimal of scale 2 in [-123.45, 123.45] truncates to [-123, 123] and rounds
+-- to [-123, 123] (half away from zero), where the integer was unbounded (#1876).
+#guard letI := Boxes.Ambient.none
+  (UnFn.abs (.dtrunc 2) { int := some ⟨some (-12345), some 12345⟩, nk := some (.dec 2) }).int ==
+    some ⟨some (-123), some 123⟩
+#guard letI := Boxes.Ambient.none
+  (UnFn.abs (.dround 2) { int := some ⟨some (-12350), some 12349⟩, nk := some (.dec 2) }).int ==
+    some ⟨some (-124), some 123⟩
 
 /-- Arithmetic of numbers of kinds `tbl` takes, by `op` on the intervals. -/
 def arith (tbl : NumKind → NumKind → Option NumKind) (op : Bound → Bound → Bound) (a b : AVal) :

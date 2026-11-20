@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-03-reference-default-semantics",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The reference semantics is the default everywhere, and DuckDB's semantics is an explicit opt-in via semantics=.",
+  "issues": [
+    411
+  ],
+  "prs": [
+    420
+  ],
+  "amended_by": [
+    "U-2026-11-09-one-verb-verify"
+  ],
+  "source": "github:#420 body",
+  "note": "The user-facing name became 'portable' on 2026-11-09."
+}

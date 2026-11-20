@@ -1,0 +1,23 @@
+{
+  "id": "F180",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1935 (public API closure) is signed after R1-R6: hints not dropped silently, walk covers MRO, sverify candidate wins, MACHINERY set in tests, CLIENT_VERSION unlisted, nodes.Sink protocol deleted; 12 TableCondition names get underscores later.",
+  "issues": [
+    886,
+    1288,
+    1795,
+    1873,
+    1935
+  ],
+  "prs": [
+    1935
+  ],
+  "amends": [
+    "F175"
+  ],
+  "source": "fable-ruling-180-1935-public-api-review.md",
+  "note": "Reviews ruling 175 as applied; waives ruling 175's rule 8 ('document them meanwhile') for the 12 machinery names. No D-number."
+}
