@@ -442,6 +442,7 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `Textbook.lean` | The textbook one-pass algorithm |
 | `TwoPass.lean`, `TwoPassRel.lean` | Lean's two-pass algorithm, absolute and relative to the variance |
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |
+| `CorrTwoPass.lean` | The corrected two-pass formula on shifted doubles (Snowflake's `VAR_*` on mean-shifted values), its sums in any order: within `(2n + 9) u W + 7 u K √(n W) + 128 n² u² W + 64 n² u · tiny` of `S` (`corrTwoPass_error`, #1810) |
 | `Welford.lean`, `WelfordRel.lean` | Welford's update and Chan's merge, absolute and relative |
 | `MergeRel.lean`, `CovRel.lean` | Chan's merge and the covariance, relative to the spread |
 | `Chan.lean`, `ChanCorr.lean` | DuckDB's `VAR_*`, `STDDEV_*` and `CORR` meet `StatProps` |
