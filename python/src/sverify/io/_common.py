@@ -25,7 +25,7 @@ import sqlglot as sg
 from sverify import _deprecated, profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
-from sverify._unsupported import SverifyError
+from sverify._unsupported import MemoryLimitError, SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.plan_json import is_utc
@@ -573,7 +573,6 @@ def drift(committed: Contract, node: Any) -> Drift:
     proof of it as a postcondition of the node. No promise is kept without
     its text in the fresh record or a proof."""
     from sverify.contracts import verify, view_contract
-    from sverify.errors import MemoryLimitError
 
     expr = node._query()._expr
     vc = view_contract(expr)
