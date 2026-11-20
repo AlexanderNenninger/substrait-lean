@@ -284,3 +284,15 @@ def test_the_docs_state_the_default_observation() -> None:
         and len(cells := [c.strip() for c in line.strip("|").split("|")]) > 2
     }
     assert rows == {name: str(getattr(PLAN_BOUND, name)) for name, _ in _COMPONENTS}
+
+
+def test_a_lens_on_element_order_keeps_a_condition_on_a_list_column_dependent():
+    """`ensures list_position(pair, a) = 1` changes between results equal up
+    to `elements="multiset"`, so a condition reading a list column depends on
+    the order of its elements; one reading a scalar does not (#2005)."""
+    from sverify.observation import PLAN_BOUND, dependencies
+
+    cols = {"pair": ibis.dtype("array<int64>"), "a": ibis.dtype("int64")}
+    assert dependencies(PLAN_BOUND, object(), cols, ["pair", "a"]) == ["elements"]
+    assert dependencies(PLAN_BOUND, object(), cols, ["a"]) == []
+    assert dependencies(Observation(), object(), cols, ["pair"]) == []
