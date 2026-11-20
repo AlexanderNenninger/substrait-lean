@@ -310,7 +310,7 @@ def _between_time(x: Exprs, op: Any) -> Json:
     return between(t, lo, hi)
 
 
-def wall_clock(x: Exprs) -> Exprs:
+def wall_clock(x: Exprs) -> Callable[..., Json]:
     """`x`, reading an instant at UTC as its UTC wall clock (D69, #1725): the
     cast to a naive timestamp, written once per argument, so a rule that
     reads its argument several times sees one kind."""
@@ -323,7 +323,7 @@ def wall_clock(x: Exprs) -> Exprs:
     return on
 
 
-def _wall_clock(rule: Callable[[Exprs, Any], Json]) -> Callable[[Exprs, Any], Json]:
+def _wall_clock(rule: Callable[[Any, Any], Json]) -> Callable[[Exprs, Any], Json]:
     return lambda x, op: rule(wall_clock(x), op)
 
 

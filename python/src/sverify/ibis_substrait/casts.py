@@ -6,6 +6,7 @@ ibis-substrait (Apache License 2.0); `__init__.py` notes the changes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 import ibis.expr.datatypes as dt
@@ -40,7 +41,7 @@ def _from_varchar(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
     return None
 
 
-def _instant_to_calendar(x: Exprs, op: Any) -> Exprs:
+def _instant_to_calendar(x: Exprs, op: Any) -> Callable[..., Json]:
     """The cast of an instant at UTC to a date or a time is that of its UTC
     wall clock (D69, #1725)."""
     t = op.arg.dtype
