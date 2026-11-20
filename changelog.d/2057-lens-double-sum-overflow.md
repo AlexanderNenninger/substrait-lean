@@ -1,0 +1,3 @@
+### A double sum under `semantics="duckdb"` keeps its overflow check
+
+Under `semantics="duckdb"`, a `sum` or `avg` of doubles no longer drops the overflow to `±∞` from its issues: DuckDB's running sum overflows where the model's exact sum stays finite (`avg(1e308, 1e308)` is `inf` in DuckDB), so a verification over an unbounded double column is `proved_with_checks` where it was `proved`, and a run refuses a batch that overflows. A scalar operation's `±∞` stays the engine's value there. The check also tests the total for NaN where no input is NaN: partial sums that overflow in both directions combine to NaN ([#2057](https://github.com/AlexanderNenninger/substrait-lean/issues/2057)).

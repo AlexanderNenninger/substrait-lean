@@ -106,6 +106,7 @@ from sverify.contracts import (
     References,
     TableCondition,
     Unique,
+    _mentioned_names,
     discharge,
     label,
     register_facts,
@@ -131,6 +132,7 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     to_arrow,
     written_plan,
 )
+from sverify.ibis_substrait.prune import mentioning
 from sverify.report import refuse_schema
 from sverify_duckdb import DuckDBStore
 
@@ -1035,7 +1037,12 @@ class IncrementalView:
         self.record_changes: dict[str, tuple[str | None, str | None]] = {}
         """What a resumed record says differently from this run: by field, the
         record's value and this run's (`Contract.engine` …)."""
-        self._plan(query, standalone=pipeline is None)
+        # The plans of the view's strategies read the columns the view and its
+        # conditions mention, as `verify` writes them (`contracts._verify_once`).
+        conditions = [*(contract.guarantees + contract.checked)] if contract else []
+        names = _mentioned_names(query, contract.requires if contract else {}, conditions)
+        with mentioning(names):
+            self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.not_null: list[str] = contract.not_null if contract else []

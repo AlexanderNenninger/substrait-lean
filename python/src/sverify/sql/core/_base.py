@@ -12,7 +12,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+if TYPE_CHECKING:
+    from sverify.profiles import Finite
 
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
@@ -163,11 +166,14 @@ class Dialect:
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `analysis/Sverify/Analysis/Guards.lean`). Integer `SUM` keeps its check."""
-    finite: bool = True
+    finite: Finite = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
-    precondition. Off (`to_sql(..., finite=False)`) for a plan verified under
-    an engine's semantics that allows `±∞` (`verify(semantics="duckdb")`)."""
+    precondition. `"aggregates"` (`to_sql(..., finite="aggregates")`) for a plan
+    verified under an engine's semantics (`verify(semantics="duckdb")`): an
+    operation's `±∞` is the engine's value there, but an aggregate's running sum
+    overflows where the model's exact one does not (ruling 200 A4(2)), so
+    only the aggregates keep the check. `False` writes none."""
 
     def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
         """A refusal of this dialect for `reason`, where DuckDB's writer
@@ -4962,7 +4968,10 @@ class _Writer:
                 # Finite values whose sum overflows (#575), kept without guards.
                 top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
                 total = self.agg_finite(
-                    total, f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}", f"MIN({v})"
+                    total,
+                    f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}",
+                    f"MIN({v})",
+                    self.no_nan(v),
                 )
                 if not d.guards:
                     return total
@@ -5291,7 +5300,11 @@ class _Writer:
                 total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
                 # Finite values whose sum overflows (#575), kept without guards.
                 top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
-                return self.agg_finite(total, f"NOT {d.float_eq(top, d.float_lit(math.inf))}")
+                return self.agg_finite(
+                    total,
+                    f"NOT {d.float_eq(top, d.float_lit(math.inf))}",
+                    nan_free=self.no_nan(v, w),
+                )
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
         f = "MIN" if m.fn == "min" else "MAX"
@@ -5671,14 +5684,19 @@ class _Writer:
     def date_trunc(self, unit: str, ts: str) -> str:
         """`Time.trunc`. To a week or longer it raises outside the reference's
         timestamps (`Issue.overflow`, D32). To a day or less it wraps below
-        -2⁶³ µs, which no engine's timestamps reach."""
+        -2⁶³ µs, which no engine's timestamps reach. Truncation keeps the order
+        and leaves the reference's first instant, a Monday's midnight that
+        starts its month, quarter and year, as it is: the result is below it
+        just where `ts` is, so the check reads `ts` alone (#1608 item 10). This
+        holds for the units the model has, which stop at a year; a decade or a
+        century would break it (DuckDB's decade of year 1 is year 0)."""
         d = self.d
         t = d.date_trunc(unit, ts)
         if unit not in ("week", "month", "quarter", "year") or not d.guards:
             return t
         lo, hi = d.timestamp_lit(TS_MIN), d.timestamp_lit(TS_MAX)
         fail = d.raise_(f"date_trunc to a {unit} {OUTSIDE_TS}", ts, "time", "overflow")
-        return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
+        return d.case_when(f"({ts} > {hi} OR {ts} < {lo})", fail, t)
 
     def ts_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
         """`r`, raising where the timestamp `ts` is outside the reference's
@@ -5709,16 +5727,32 @@ class _Writer:
         out = [pieces.get(t, d.str_lit("%" if t == "%%" else t)) for t in tokens]
         return "(" + " || ".join(out or [d.str_lit("")]) + ")"
 
-    def date_range(self, x: str, f: Callable[[str], str], lo: int, hi: int, what: str) -> str:
+    def date_range(
+        self,
+        x: str,
+        f: Callable[[str], str],
+        lo: int,
+        hi: int,
+        what: str,
+        *,
+        decided: tuple[int, int] | None = None,
+    ) -> str:
         """`rangeIssue`: the DATE `f(x)`, raising unless `x` and it are within
         `[lo, hi]` days. `f` sees only dates in range, so the engine's own range
-        errors cannot come first."""
+        errors cannot come first. `decided` is the range of `x` for which both
+        are in range, where the caller knows it (#1608 item 10): then one
+        comparison of `x` checks both, and the result is not computed twice."""
         d = self.d
         if not d.guards:
             return f(x)
+        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
+        if decided is not None:
+            a, b = d.int_lit(decided[0]), d.int_lit(decided[1])
+            r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {a} AND {b} THEN {x} END)")
+            # NULL (so not raising) where `x` is NULL.
+            return d.case_when(f"({d.date_days(x)} NOT BETWEEN {a} AND {b})", fail, r)
         lo_, hi_ = d.int_lit(lo), d.int_lit(hi)
         r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {lo_} AND {hi_} THEN {x} END)")
-        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
         # NULL (so not raising) where `x` or the result is NULL.
         bad = (
             f"({d.date_days(x)} NOT BETWEEN {lo_} AND {hi_} "
@@ -5823,14 +5857,34 @@ class _Writer:
             )
         return d.bool_lit(False)
 
-    def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
+    def no_nan(self, v: str, over: str = "") -> str:
+        """No value of `v` is NaN (in the frame `over`, for a window)."""
+        d = self.d
+        flag = d.case_when(d.is_nan(v), d.int_lit(1), d.int_lit(0))
+        return f"MAX({flag}){' ' + over if over else ''} = {d.int_lit(0)}"
+
+    def agg_finite(
+        self,
+        value: str,
+        finite: str | None = None,
+        dep: str | None = None,
+        nan_free: str | None = None,
+    ) -> str:
         """An aggregate's `value`, raising where it is `±∞` though its values
         are finite (`finite`, if the caller has not ruled them out:
-        `Measure.makesInf`, #575)."""
+        `Measure.makesInf`, #575). A sum whose partial sums overflow in
+        both directions is NaN, which the inputs do not explain: with
+        `nan_free`, the condition that no input is NaN, a NaN `value` raises
+        too (ruling 200 A4(3))."""
         d = self.d
         if not d.finite:
             return value
-        cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
+        bad = d.is_inf(value)
+        if nan_free is not None:
+            bad = f"({bad} OR {d.is_nan(value)})"
+        cond = bad if finite is None else f"({finite} AND {bad})"
+        if nan_free is not None:
+            cond = f"({nan_free} AND {cond})"
         return d.case_when(
             cond, d.raise_("overflow to infinity", dep or value, "float", "infinite"), value
         )
@@ -5842,7 +5896,7 @@ class _Writer:
         assumption that a double operation does not overflow. Kept without
         guards, as a `SUM`'s check is (`Rel.guardFree_sound`)."""
         d = self.d
-        if not d.finite:
+        if d.finite is not True:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
         sql = self.bind(sql)
@@ -5999,7 +6053,7 @@ def to_sql(
     deterministic: bool = False,
     guards: bool = True,
     unchecked: dict | None = None,
-    finite: bool = True,
+    finite: Finite = True,
     rows: Literal["sequence", "multiset"] | None = None,
     asof: Sequence[dict] = (),
 ) -> str:
@@ -6104,8 +6158,8 @@ def to_sql(
         rows = found.rows if found is not None else "sequence"
     if not guards:
         dialect = replace(dialect, guards=False)
-    if not finite:
-        dialect = replace(dialect, finite=False)
+    if finite is not True:
+        dialect = replace(dialect, finite=finite)
     _support.check(plan, dialect.name, Unsupported)
     p = parse_plan(plan, asof if dialect.native_asof else ())
     n = arity(p.root)

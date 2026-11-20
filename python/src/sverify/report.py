@@ -49,6 +49,7 @@ from sverify.observation import Observation, _deterministic_arg
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
+    from sverify.profiles import Finite
     from sverify.routes import Route, RouteKind
 from sverify.conditions import (
     DATA_CHECK,
@@ -78,6 +79,13 @@ default), DuckDB's, whose SQL also means what DuckDB computes, or an
 installed engine's profile (`ProfilePlugin.profile`): Polars's or Spark's,
 or Substrait's own, as its extension YAMLs state it.
 `sverify.contracts.semantics_names` lists them."""
+
+
+def _finite(strict: bool) -> Finite:
+    """A run's `finite`: every overflow to ±∞ where the reference's precondition
+    applies (`strict`), else only an aggregate's, whose engine sum overflows
+    where the exact one does not (#2057)."""
+    return True if strict else "aggregates"
 
 
 def _transfer_failure(f: Mapping[str, Any]) -> str:
@@ -398,8 +406,10 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run of the model, and no run raises. That
-    the model matches an engine rests on tests (`docs/trusted-base.md`)."""
+    """Every postcondition holds on every result the reference allows for the
+    transformation, and no run raises (`verdict_proved_sound`). On an engine
+    they hold by its evidence line: that the model matches the engine rests on
+    tests (`docs/trusted-base.md`)."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
@@ -951,7 +961,7 @@ class Report:
                 recheck(written)
             return f(written)
 
-    def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
+    def _sql_route(self, dialect: Any) -> tuple[Any, Finite]:
         """The dialect `dialect` names, and whether its SQL checks the
         reference's `±∞` precondition, for this report's plan; refused as
         `run` refuses it."""
@@ -987,7 +997,7 @@ class Report:
             if not routes.verified(self):
                 raise UnverifiedRunError(self, chosen)
             raise routes.RouteError(chosen)
-        return d, self.semantics == "reference" or chosen.kind == "translated"
+        return d, _finite(self.semantics == "reference" or chosen.kind == "translated")
 
     def check_inputs(
         self,
@@ -1281,10 +1291,12 @@ class Report:
             and (chosen is not None or streaming == "require")
         ):
             self._streaming(con, chosen, streaming, plugin.engine, fallbacks, plan)
-        # The check of an overflow to ±∞ is the reference's precondition
-        # (#575): it is written for a plan verified under the reference, and
-        # for one that reaches the engine through the reference's route.
-        finite = self.semantics == "reference" or kind == "translated"
+        # The check of an operation's overflow to ±∞ is the reference's
+        # precondition (#575): it is written for a plan verified under the
+        # reference, and for one that reaches the engine through the
+        # reference's route. An aggregate's keeps it on every route: the
+        # engine's running sum overflows where the exact one does not.
+        finite = _finite(self.semantics == "reference" or kind == "translated")
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
         # translation, a guard-free plan runs without its per-row checks on an

@@ -401,11 +401,6 @@ def f_arrow(rows: list[tuple]) -> pa.Table:
     )
 
 
-def f_shards(rows: list[tuple], where: list[int]) -> list[dict[str, pa.Table]]:
-    pairs = list(zip(rows, where, strict=True))
-    return [{"f": f_arrow([r for r, k in pairs if k == i])} for i in range(4)]
-
-
 def lean_sum(xs: list[float]) -> float | None:
     """`floatSum`: the values added in one pass, in order, from `0.0`."""
     if not xs:
