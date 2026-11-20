@@ -163,7 +163,7 @@ def test_proved_not_null_reaches_the_sink(tmp_path):
     rows = pa.table({"region": ["eu", "us", "eu"], "amount": [1, 2, 3]})
     node = StaticSource(rows, name="orders").pipe(totals)
     assert node.report is not None
-    assert set(node.report.not_null) >= {"region", "total", "n"}
+    assert {c for c, t in node.report.output.items() if not t.nullable} >= {"region", "total", "n"}
     stored = node.write(DeltaSink(str(tmp_path / "totals")))
     stored.refresh()
     from deltalake import DeltaTable
@@ -179,7 +179,19 @@ def test_proved_not_null_reaches_the_sink(tmp_path):
 def test_maybe_null_column_stays_nullable():
     t = ibis.table({"k": "int64", "v": "int64"}, name="t")
     r = sv.verify(t.group_by("k").aggregate(m=t.v.max()))
-    assert "m" not in r.not_null and "k" not in r.not_null
+    assert r.output["m"].nullable and r.output["k"].nullable
+
+
+def test_output_types_a_proved_never_null_column_not_nullable():
+    """#704: `count(*)` is never NULL, and `Report.output` says so as a type."""
+    r = sv.verify("select k, count(*) as c from t group by k", tables={"t": {"k": "VARCHAR"}})
+    assert r.output["c"] == ibis.dtype("!int64") and r.output["k"].nullable
+    again = sv.Report.from_json(r.to_json())
+    assert again.output == r.output
+    # A report written before #704 types `c` nullable and lists it under not_null.
+    doc = json.loads(r.to_json())
+    doc["output"]["c"] = "int64"
+    assert sv.Report.from_json(doc).output["c"] == ibis.dtype("!int64")
 
 
 # -- isin as a range ------------------------------------------------------------------

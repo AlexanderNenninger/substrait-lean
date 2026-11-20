@@ -78,6 +78,7 @@ def plan(name: str, query: ir.Table | str) -> Semi | str:
     """How to maintain the view `name` of `query` from a count per key, or
     why it cannot be."""
     from sverify.engine import NotIncrementalError, delta_plans, plan_json, written_plan
+    from sverify.ibis_substrait.prune import narrowed
 
     if isinstance(query, str):
         return "the view is SQL"
@@ -86,8 +87,8 @@ def plan(name: str, query: ir.Table | str) -> Semi | str:
         return found
     node, left, right, lkeys, rkeys, anti = found
     try:
-        left_deltas = delta_plans(plan_json(None, left.to_expr()))  # type: ignore[arg-type]
-        right_deltas = delta_plans(plan_json(None, right.to_expr()))  # type: ignore[arg-type]
+        left_deltas = delta_plans(plan_json(None, narrowed(left.to_expr())))  # type: ignore[arg-type]
+        right_deltas = delta_plans(plan_json(None, narrowed(right.to_expr())))  # type: ignore[arg-type]
     except NotIncrementalError as e:
         return f"an input of the join has no delta rules ({e})"
 

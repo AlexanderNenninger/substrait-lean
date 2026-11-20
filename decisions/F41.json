@@ -1,0 +1,16 @@
+{
+  "id": "F41",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "looseSub stays on Rel.hasIssue_of_raises, in its own PR before A6; before 1.0 HasIssue reads conditions over loose or padded rows so the theorem covers left joins over filtered subqueries.",
+  "issues": [
+    1484
+  ],
+  "amends": [
+    "F3"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 41",
+  "note": "FM round 9. File ruling-fm9-noraise.md. No D-number; verdicts unchanged."
+}

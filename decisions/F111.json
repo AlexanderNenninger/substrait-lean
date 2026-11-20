@@ -1,0 +1,16 @@
+{
+  "id": "F111",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1744 (D54 refusal of rounding casts) accepted in shape with three changes: decimal hint names no spelling (ruling 109 stands), one predicate refuses CAST(round(x, d)) on both paths, a test for the where values.",
+  "issues": [
+    322
+  ],
+  "prs": [
+    1744
+  ],
+  "source": "fable-ruling-1744-v2.md",
+  "note": "Removes the decimal spelling from D54's text in docs/decisions.md (text edit, D54 unchanged in substance)."
+}

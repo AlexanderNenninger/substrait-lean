@@ -1,0 +1,19 @@
+{
+  "id": "F129",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1787 step 2 built with eight conditions: `Rule` enum with per-rule default, exact ORDER BY shape for sequence, issue gate with per-rule `keepsIssues`, reads/functions subsets, reference profile only, foreign keys in the statement, `Small` per rule, one plan accessor.",
+  "issues": [
+    1787
+  ],
+  "prs": [
+    1791
+  ],
+  "amended_by": [
+    "F136"
+  ],
+  "source": "fable-ruling-129-1787-step2.md",
+  "note": "G2.5 (near gate) amended by ruling 136. No D-number."
+}

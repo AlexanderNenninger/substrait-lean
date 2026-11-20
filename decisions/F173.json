@@ -1,0 +1,20 @@
+{
+  "id": "F173",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "The pruned copy of an Arrow-fed input is a State of the engine's Store (the maintained view project S t), fixed at a seal after the view is made; refuse at registration where a snapshot is missing, never keep-all. StaticSource keeps its API. No D-number.",
+  "issues": [
+    322,
+    1329
+  ],
+  "amends": [
+    "F116"
+  ],
+  "amended_by": [
+    "F176"
+  ],
+  "source": "fable-ruling-173-1329-input-copy.md",
+  "note": "Closes ruling 116's conditional reduction (not required). Ruling 105 and D54 stand. One sentence ('a table the user's own source object holds is the user's input') corrected by ruling 176. C1/C2 user-visible notice points."
+}

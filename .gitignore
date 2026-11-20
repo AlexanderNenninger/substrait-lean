@@ -30,3 +30,6 @@ __marimo__/
 .coverage
 .coverage.*
 coverage.json
+
+# The maintainer's rulings held back from the public ledger (`sverify_dev.decisions`).
+/decisions/private/

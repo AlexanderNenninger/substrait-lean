@@ -106,6 +106,7 @@ from sverify.contracts import (
     References,
     TableCondition,
     Unique,
+    _mentioned_names,
     discharge,
     label,
     register_facts,
@@ -131,6 +132,7 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     to_arrow,
     written_plan,
 )
+from sverify.ibis_substrait.prune import mentioning
 from sverify.report import refuse_schema
 from sverify_duckdb import DuckDBStore
 
@@ -937,8 +939,8 @@ class RefreshReport:
     """For each window view maintained by touched frames (`sverify._touched`):
     how many output rows near the change were recomputed
     (`TouchedFrames.framed_batch`)."""
-    diffed: list[str] = field(default_factory=list)
-    """The views the batch recomputed in full and diffed."""
+    diffed: dict[str, str] = field(default_factory=dict)
+    """The views the batch recomputed in full and diffed, each with why."""
     quarantine: list[QuarantineReport] = field(default_factory=list)
     """For each source with rows set aside (`on_violation="quarantine"`,
     #184): what the batch set aside, released and deleted, and how many
@@ -967,7 +969,7 @@ class RefreshReport:
         lines += [
             f"view {v}: {n} row(s) in touched frames recomputed" for v, n in self.framed.items()
         ]
-        lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
+        lines += [f"view {v}: recomputed and diffed ({why})" for v, why in self.diffed.items()]
         lines += [
             f"quarantine: {q}" for q in self.quarantine if q.quarantined or q.released or q.deleted
         ]
@@ -1035,12 +1037,17 @@ class IncrementalView:
         self.record_changes: dict[str, tuple[str | None, str | None]] = {}
         """What a resumed record says differently from this run: by field, the
         record's value and this run's (`Contract.engine` …)."""
-        self._plan(query, standalone=pipeline is None)
+        # The plans of the view's strategies read the columns the view and its
+        # conditions mention, as `verify` writes them (`contracts._verify_once`).
+        conditions = [*(contract.guarantees + contract.checked)] if contract else []
+        names = _mentioned_names(query, contract.requires if contract else {}, conditions)
+        with mentioning(names):
+            self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.not_null: list[str] = contract.not_null if contract else []
         """The columns the view's proved report shows never NULL, in every
-        state (`Report.not_null`)."""
+        state (not nullable in `Report.output`)."""
         self.checked: list[Condition] = contract.checked if contract else []
         """Postconditions that were not proved, checked on every state
         instead (`on_unproved="check"`): on the first in full, then on the
@@ -1166,16 +1173,25 @@ class IncrementalView:
 
     @property
     def strategy(self) -> str:
-        """How a batch changes the view: "delta rules" (also for `COUNT`,
-        `SUM` and `DISTINCT` kept from a state per group), "touched groups"
-        (the groups or partitions the batch touches, recomputed), "touched
-        frames" (window rows near the change, recomputed) or "recompute and
-        diff"."""
+        """How a batch changes the view, one of "delta rules", "state per
+        group" (`COUNT`, `SUM`, `MIN`, `MAX`, `DISTINCT` or a semi join kept
+        from a state per group), "touched groups" (the groups or partitions
+        the batch touches, recomputed), "touched frames" (window rows near
+        the change, recomputed) or "recompute and diff"."""
         if self.fallback is None:
-            return "delta rules"
+            return "state per group" if self.linear or self.semi else "delta rules"
         if self.touched is None:
             return "recompute and diff"
         return "touched frames" if self.touched.framed is not None else "touched groups"
+
+    @property
+    def cause(self) -> str | None:
+        """Why the view has no delta rules, or None where it has them (or
+        a state per group). For a recompute, the operator that causes it."""
+        if self.fallback is None:
+            return None
+        off = f"; no touched groups: {self.touched_off}" if self.touched_off else ""
+        return f"{self.fallback}{off}" if self.touched is None else self.fallback
 
     @property
     def recomputed(self) -> bool:
@@ -2479,7 +2495,7 @@ class Pipeline:
         read_new: set[str] = set()
         touched: dict[str, int] = {}
         framed: dict[str, int] = {}
-        diffed: list[str] = []
+        diffed: dict[str, str] = {}
         groups: dict[str, pa.Table] = {}
         for v in self._views:
             if v.recomputed or rerun & set(v.tables):
@@ -2496,7 +2512,7 @@ class Pipeline:
             rerun = v.recomputed or any(t in stale for t in v.tables)
             if rerun:
                 stale.add(v.name)
-                diffed.append(v.name)
+                diffed[v.name] = v.cause or "it reads a view that is recomputed"
                 delta = v._diff(new_tables)
                 if (g := v._groups_on(new_tables)) is not None:
                     groups[v.name] = g
@@ -2511,7 +2527,7 @@ class Pipeline:
             elif v.touched is not None:
                 delta, n, how = v._touched_change(deltas, new_tables)
                 if how == "diff":
-                    diffed.append(v.name)
+                    diffed[v.name] = v.cause or "its touched groups fall back to a diff"
                 else:
                     (framed if how == "frames" else touched)[v.name] = n
             else:
@@ -2642,8 +2658,8 @@ class _Commit:
     """The groups each view maintained by touched groups recomputed."""
     framed: dict[str, int] = field(default_factory=dict)
     """The output rows each framed window view recomputed (tested only)."""
-    diffed: list[str] = field(default_factory=list)
-    """The views recomputed and diffed."""
+    diffed: dict[str, str] = field(default_factory=dict)
+    """The views recomputed and diffed, each with why."""
     groups: dict[str, pa.Table] = field(default_factory=dict)
     """The new state per group of each view kept from one (`sverify._linear`)."""
 

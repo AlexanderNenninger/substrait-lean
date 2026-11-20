@@ -1,0 +1,11 @@
+{
+  "id": "D22",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "A route's class is one of exact, observed, shim or refused, and tolerances are observations.",
+  "prs": [
+    562
+  ]
+}

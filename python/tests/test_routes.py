@@ -425,3 +425,14 @@ def test_a_failed_transfer_check_is_not_kept(monkeypatch) -> None:
     assert routes._transfer("checker", "{}") == '{"ok": true}'
     assert len(calls) == 2
     routes._answer.cache_clear()
+
+
+# -- the engine version a report's profile describes (#710) ---------------------------
+
+
+def test_engine_version_is_the_profiles():
+    sql, tables = "select k from t", {"t": {"k": "BIGINT"}}
+    r = sv.verify(sql, tables=tables, semantics="duckdb")
+    assert r.engine_version == routes.probed_version("duckdb") is not None
+    assert sv.Report.from_json(r.to_json()).engine_version == r.engine_version
+    assert sv.verify(sql, tables=tables).engine_version is None

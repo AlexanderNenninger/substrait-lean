@@ -213,21 +213,25 @@ def test_substrait_manifest_only_gains_keys() -> None:
         assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
 
 
-def test_substrait_manifest_of_format_1() -> None:
-    """A manifest of format 1, written before 1.0, reads with the names of
-    format 2 (`semantics`, `equivalence`); a newer format is refused."""
+def test_substrait_manifest_of_formats_1_and_2() -> None:
+    """A manifest of format 1 or 2, written before 1.0, reads with the names
+    of format 3 (`semantics`, `lenses`, `lenses_components`, an `up_to`
+    entry's `lenses`); a newer format is refused."""
     from sverify.substrait_export import FORMAT, _manifest
 
     def text(v: str, c: str) -> str:
         return (FORMATS / v / "substrait" / f"{c}.json").read_text()
 
-    olds = [(v, c) for v, c in EXPORTS if '"profile"' in text(v, c)]
-    assert olds, "no export of format 1 among the fixtures"
-    for v, c in olds:
-        m = read(text(v, c)).manifest
-        assert m["format"] == FORMAT == 2
-        assert "profile" not in m and "observation" not in m
-        assert m["semantics"] in ("reference", "substrait") and isinstance(m["equivalence"], str)
+    for old_key in ('"profile"', '"equivalence"'):
+        olds = [(v, c) for v, c in EXPORTS if old_key in text(v, c)]
+        assert olds, f"no export with {old_key} among the fixtures"
+        for v, c in olds:
+            m = read(text(v, c)).manifest
+            assert m["format"] == FORMAT == 3
+            gone = {"profile", "observation", "equivalence", "equivalence_components"}
+            assert not gone & set(m)
+            assert m["semantics"] in ("reference", "substrait") and isinstance(m["lenses"], str)
+            assert all("equivalence" not in u and "observation" not in u for u in m["up_to"])
     with pytest.raises(ValueError, match="upgrade sverify"):
         _manifest({"format": FORMAT + 1})
 
@@ -296,17 +300,77 @@ def test_report_reads(version: str, case: str) -> None:
         # Written before the first line said "proved with checks" (#1484).
         stored = f"proved with checks: {len(report.assumed)} assumption"
         stored += "" if len(report.assumed) == 1 else "s"
+    # The first line is prose: "assumption" became "run-time check" (#1997).
+    stored = re.sub(r"(\d+) assumption(s?)$", r"\1 run-time check\2", stored)
     assert report._summary == stored
     assert [c.label for c in report.ensures] == [c["properties"]["label"] for c in doc["ensures"]]
     assert [n.code for n in report.needs] == [n["code"] for n in doc["needs"]]
     assert set(report.routes) == set(doc["routes"])
     now = json.loads(report.to_json())
     _valid(now, "report.schema.json")
+    if doc["format"] < 4:
+        now = _needs_by_label(now)
+        # Format 3 wrote no bounds: the rest of each column's facts compares.
+        now["facts"] = {
+            c: {"text": f["text"], "nullable": f["nullable"]} for c, f in now["facts"].items()
+        }
+    doc = _as_format_4(doc)
     assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
     skip = {"sverify", "format", "verdict", "summary"}
     assert {k: v for k, v in now.items() if k in doc and k not in skip} == {
         k: v for k, v in doc.items() if k not in skip
     }
+
+
+def _as_format_4(doc: dict) -> dict:
+    """A report of format 2 or 3 as format 4 writes the same report: its
+    `equivalence` named `lenses`, in a route and a postcondition's reason
+    code too; each of `facts` an object (its text, and the nullability
+    `not_null` gave; format 3 wrote no bounds, which the caller leaves out
+    of the comparison); each of a postcondition's `needs` the whole `needed` object
+    (only its table and label were written: `_needs_by_label` compares
+    those)."""
+    if doc["format"] >= 4:
+        return doc
+    out = {("lenses" if k == "equivalence" else k): v for k, v in doc.items()}
+    out["routes"] = {
+        e: {("lenses" if k == "equivalence" else k): v for k, v in r.items()}
+        for e, r in doc.get("routes", {}).items()
+    }
+    not_null = set(doc.get("not_null", ()))
+    out["facts"] = {
+        c: {"text": t, "nullable": c not in not_null} for c, t in doc.get("facts", {}).items()
+    }
+    # The reason code `observation`, written `equivalence`, is `lenses`.
+    out["ensures"] = [
+        {**e, "ruleId": "lenses"} if e.get("ruleId") == "equivalence" else e
+        for e in doc.get("ensures", [])
+    ]
+    # The columns `not_null` lists read back not nullable (#704).
+    out["output"] = {
+        c: f"!{t}" if c in doc.get("not_null", ()) and not t.startswith("!") else t
+        for c, t in doc.get("output", {}).items()
+    }
+    return out
+
+
+def _needs_by_label(doc: dict) -> dict:
+    """`doc` with each postcondition's `needs` cut to the table and label
+    that format 3 wrote."""
+    ensures = [
+        {
+            **e,
+            "properties": {
+                **e["properties"],
+                "needs": [
+                    {"table": n["table"], "label": n["label"]}
+                    for n in e["properties"].get("needs", [])
+                ],
+            },
+        }
+        for e in doc.get("ensures", [])
+    ]
+    return {**doc, "ensures": ensures}
 
 
 def test_report_only_gains_keys() -> None:
@@ -325,7 +389,9 @@ def test_report_only_gains_keys() -> None:
     _valid(now, "report.schema.json")
     for version, case in REPORTS:
         if case == "proved":
-            old = json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+            old = _as_format_4(
+                json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+            )
             assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
             for c_old, c_now in zip(old["ensures"], now["ensures"], strict=True):
                 assert set(c_old) <= set(c_now)

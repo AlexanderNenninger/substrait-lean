@@ -80,17 +80,6 @@ _MODULES = {
 
 
 def __getattr__(name: str) -> Any:
-    if name == "FlightLog":
-        import warnings
-
-        warnings.warn(
-            "sverify.io.FlightLog is deprecated; import it from sverify.testing",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        from sverify.io.flight import FlightLog
-
-        return FlightLog
     if name not in _MODULES:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     return getattr(importlib.import_module(f"sverify.io.{_MODULES[name]}"), name)

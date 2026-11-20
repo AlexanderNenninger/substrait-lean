@@ -6,7 +6,7 @@ Internal: not part of sverify's public API.
 The checker names an operation by `Expr.render` (`core/Sverify/Core/Pretty.lean`),
 where `$i` is the i-th column of the input of the relation the operation is
 in. The plan (Substrait protobuf JSON) says which columns each relation's
-input has: `columns` walks it, and `user_expr` names `$i` where every
+input has: `columns` walks it, and `named` names `$i` where every
 relation that reads all of the expression's columns gives them the same
 names. Where it cannot tell, the expression keeps Lean's notation.
 """
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import math
 import re
 from collections.abc import Collection, Mapping, Sequence
 from datetime import date, datetime, timedelta
@@ -422,16 +423,82 @@ def _drop_implicit_casts(s: str) -> str:
     return s
 
 
+#: A double as Lean prints it (`%f`, six decimals, and a `d`): `3.000000d`,
+#: or `1e302` as its 303 digits (#885, #1997). A decimal literal has no
+#: `d`, and its digits are its scale.
+_LEAN_DOUBLE = re.compile(r"(?<![\w.])(\d+\.\d+)d\b")
+
+
+#: From 2^33 on a double's spacing is at least 2^-19 > 1e-6, so a fraction
+#: would show in `%f`'s six decimals: `.000000` there means integral.
+_SIX_DECIMALS_EXACT = 2.0**33
+
+
+def _number(v: Any) -> float | None:
+    """A literal's value as a double; None where it is not a finite number.
+    An `i64` is a string in the plan's JSON."""
+    try:
+        f = float(v) if isinstance(v, (int, float, str)) else None
+    except ValueError:
+        return None
+    return f if f is not None and math.isfinite(f) else None
+
+
+def plan_doubles(plans: Any) -> dict[str, str]:
+    """The numeric literals of `plans` (the transform's and its conditions'
+    plans, every plan a shown expression can come from) by the text Lean
+    prints for them as doubles (`%f`, the sign apart, as `_LEAN_DOUBLE`
+    reads it), each as Python's `repr` writes it: `{"3.000000": "3.0"}`.
+    An integer counts as the double it is cast to (`value * 3`). A text
+    that two different literals print as is left out: it doesn't say which
+    it is. The map vouches for literals only: a shown expression carries
+    the plans' terms, and a value the checker derives that is no literal
+    keeps Lean's six decimals unless `_short_double`'s 2^33 rule applies."""
+    found: dict[str, set[float]] = {}
+
+    def walk(x: Any) -> None:
+        if isinstance(x, dict):
+            for k in ("fp64", "i8", "i16", "i32", "i64"):
+                if (v := _number(x.get(k))) is not None:
+                    found.setdefault(f"{abs(v):.6f}", set()).add(abs(v))
+            for y in x.values():
+                walk(y)
+        elif isinstance(x, list):
+            for y in x:
+                walk(y)
+
+    walk(plans)
+    return {k: repr(next(iter(v))) for k, v in found.items() if len(v) == 1}
+
+
+def _short_double(m: re.Match[str], doubles: Mapping[str, str]) -> str:
+    """A double literal as Python's `repr` writes it (`3.0`, `1e+302`) where
+    its value is known: the one literal of the plans that Lean's text is the
+    `%f` of (`plan_doubles`), or an integral one from 2^33 on, where `%f` shows any
+    fraction. Any other stays as Lean wrote it: `%f` rounded it to six
+    decimals, so `3.000000` may be `3.0000001`, and a shorter text would read
+    as exact."""
+    if (exact := doubles.get(m[1])) is not None:
+        return exact
+    whole, frac = m[1].split(".")
+    if not frac.strip("0") and float(whole) >= _SIX_DECIMALS_EXACT:
+        return repr(float(whole))
+    return m[1]
+
+
 def pretty(
     out: str,
     dialect: Dialect = "ibis",
     temporal: Collection[str] = (),
+    doubles: Mapping[str, str] | None = None,
 ) -> str:
     """A named expression (`named`) with the user's operators and casts:
     `/` of integers as Ibis's `//`, `DECIMAL_10_2(TO_DECIMAL_2(x))` as the
     cast the user wrote, a timestamp plus microseconds as an interval
-    (`temporal` names the timestamp columns), no implicit casts."""
+    (`temporal` names the timestamp columns), no implicit casts. `doubles`
+    gives the plan's double literals exactly (`plan_doubles`)."""
     out = _drop_implicit_casts(out)
+    out = _LEAN_DOUBLE.sub(lambda m: _short_double(m, doubles or {}), out)
     out = re.sub(r"(\d)d\b", r"\1", out)
     # A cast to a decimal: `DECIMAL_p_s(TO_DECIMAL_s(x))` (a double's), or
     # `DECIMAL_p_s(x)`, `TO_DECIMAL_s(x)` alone (the precision is the plan's).
@@ -496,19 +563,6 @@ def interval_text(us: int, dialect: Dialect = "ibis") -> str:
             sql = name.upper().removesuffix("S")
             return f"INTERVAL {k} {sql}"
     return str(us)  # pragma: no cover - every count of microseconds has a unit
-
-
-def user_expr(
-    expr: str,
-    plan: Mapping[str, Any] | None,
-    dialect: Dialect = "ibis",
-    temporal: Collection[str] = (),
-    measure: bool = False,
-) -> str | None:
-    """`expr` (Lean's notation) with column names and the user's operators;
-    None where the plan does not say which columns it reads."""
-    out = named(expr, plan, measure)
-    return None if out is None else pretty(out, dialect, temporal)
 
 
 # -- one issue per expression the user wrote -----------------------------------

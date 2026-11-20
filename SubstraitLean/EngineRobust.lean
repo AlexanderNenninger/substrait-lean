@@ -166,4 +166,61 @@ def robust (es : List EngineProfile) (input : Json) : Except String Json := do
   return toJson (out.map fun b => Json.mkObj [("robust", toJson b),
     ("proved_on", toJson (if b then signKeptOn es else []))])
 
+
+/-- `"source_threshold"` issues of a `--contract` request (D52, ruling 104):
+where the plan carries a source mark, every row decision that reads a marked
+value has one outcome over the band (C-rows), every output column that reads
+one has a bound (C-out), every postcondition that reads one holds over it
+(C-contract), and every reported key holds through a key inside it that reads
+none (C-key, ruling 108). Each failure is an error issue: the source may keep other rows,
+or give other values, than the plan Sverify verified. Checked for the engine
+the request's `"profile"` names, or for every engine. -/
+def sourceIssues (es : List EngineProfile) (input : Json) : Except String (List Json) := do
+  let some ⟨_, plan, cat, A, F, _, root, T⟩ ← Epsilon.inputs? input | return []
+  -- No mark, no tainted value: nothing to check (every request comes here).
+  unless Epsilon.Rel.hasMark root do return []
+  let deps := Epsilon.Rel.markDeps cat root
+  let prof := (input.getObjValAs? String "profile").toOption
+  let engines := match prof with
+    | some e => if es.any (fun (E : EngineProfile) => E.name == e) then [e]
+      else es.map (fun (E : EngineProfile) => E.name)
+    | none => es.map (fun (E : EngineProfile) => E.name)
+  let issue (what : String) : Json := Json.mkObj [("kind", toJson "source_threshold"),
+    ("error", toJson true), ("assumed", toJson false), ("expr", toJson what),
+    ("constant", toJson false), ("under_and_or", toJson false), ("bound", .null)]
+  -- C-rows: a decision that may differ over the band.
+  let rows := (engines.flatMap fun e => (Epsilon.rowSites es e cat A F T root).filterMap
+    fun (ok, dep, what) => if !ok && dep then some what else none).eraseDups
+  -- C-out: an output column that reads a marked value and has no bound.
+  let names := if plan.names.length == deps.length then plan.names
+    else (List.range deps.length).map (s!"#{·}")
+  -- Each engine's column bounds, computed once: one pass over the plan per engine.
+  let bounds := engines.map fun e => Epsilon.colEps es e cat A F T root
+  let cols := ((names.zip deps).zipIdx.filterMap fun ((n, d), i) =>
+    if d && bounds.any (fun b => (b.bind (·.getD i none)).isNone)
+    then some s!"the column {n}" else none)
+  -- C-contract: a postcondition that reads a marked column and does not hold over the band.
+  let rob ← robust es input
+  let R ← ContractCheck.parse input
+  let robs := (rob.getArr?.toOption.getD #[]).toList.map fun j =>
+    (j.getObjValAs? Bool "robust").toOption.getD false
+  let posts := (R.posts.flatMap fun p =>
+      let cs := (List.range deps.length).map Expr.field ++ p.exprs
+      p.mapping.map fun j => cs.getD j (.lit .null)).zip robs
+  let contract := posts.filterMap fun (e, r) =>
+    if !r && Epsilon.Expr.markDep deps e then some s!"the postcondition {e.render}" else none
+  -- C-key (ruling 108): a reported key holds on the engine's result only through
+  -- a derived key inside it that reads no marked column.
+  let keys := match R.transform with
+    | some p =>
+      let K := R.kenv
+      let derived := p.root.keys R.cat K.cols K.facts K.keys
+      let pdeps := Epsilon.Rel.markDeps R.cat p.root
+      (R.keysIn K).filterMap fun (k, ok) =>
+        if !ok || derived.any (fun k' => k'.all (k.contains ·) && k'.all fun c => !pdeps.getD c true)
+        then none
+        else some s!"the key [{", ".intercalate (k.map fun c => names.getD c s!"#{c}")}]"
+    | none => []
+  return (rows ++ cols ++ contract ++ keys).map issue
+
 end Substrait.EngineRobust

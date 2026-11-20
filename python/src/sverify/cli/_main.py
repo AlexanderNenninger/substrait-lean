@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import difflib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -30,7 +31,6 @@ from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._limits import (
     Budget,
     BudgetExceeded,
-    is_out_of_memory,
     memory_limit_from,
     timeout_from,
 )
@@ -94,6 +94,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
     try:
         from sverify.errors import (
             AuditError,
+            MemoryLimitError,
             PostconditionError,
             PreconditionError,
             UnsupportedError,
@@ -104,7 +105,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
 
     if isinstance(e, BudgetExceeded):
         return BUDGET, "memory" if e.what == "memory" else "timeout"
-    if is_out_of_memory(e):
+    if isinstance(e, MemoryLimitError):
         return BUDGET, "memory"
     if isinstance(e, UsageError | FileNotFoundError):
         return USAGE, "usage"
@@ -125,6 +126,10 @@ class Check:
         self.unchecked = unchecked
         self.error: dict[str, Any] | None = None
         self._uses: list[tuple[str, Any]] | None = None
+        self.drift: dict[str, Any] | None = None
+        """With `--against-sink`, per stored node, how its contract compares
+        with its sink's last committed one; None for a sink with none."""
+        self._drift_findings: list[dict[str, Any]] = []
         if d.error is not None:
             self.code, kind = _classify(d.error)
             self.error = _error(kind, d.error)
@@ -180,7 +185,33 @@ class Check:
     def findings(self) -> list[dict[str, Any]]:
         out = [f for c in self.checked for f in _findings.of(c)]
         out += [_findings.unchecked(t, self.d) for t in self.unchecked]
-        return out + _findings.credentials(self.credential_uses())
+        return out + _findings.credentials(self.credential_uses()) + self._drift_findings
+
+    def compare_sinks(self) -> None:
+        """`--against-sink` (#769, ruling 189): each stored node's contract
+        against its sink's last committed one. Reads the record, no data. A
+        sink that cannot be read is an error of its own (exit 6)."""
+        from sverify.io._common import drift
+        from sverify.nodes import _Stored
+
+        self.drift = {}
+        for var, node in self.d.nodes.items():
+            if (self.target is not None and var != self.target) or not isinstance(node, _Stored):
+                continue
+            try:
+                committed = node.sink.contract()
+                got = None if committed is None else drift(committed, node)
+            except BudgetExceeded:
+                raise
+            except Exception as e:  # noqa: BLE001 - never reported as unchanged
+                self.code, self.error = ERROR, _error("error", f"{var}'s sink: {e}")
+                return
+            self.drift[var] = None if got is None else got.to_dict()
+            if got is None:
+                continue
+            self._drift_findings += _findings.drift(var, got)
+            if any(got.weakened.values()) and self.code in (OK,):
+                self.code = NOT_PROVED
 
     def document(self) -> dict[str, Any]:
         return {
@@ -192,6 +223,7 @@ class Check:
             "credentials": [{"node": v, **u.to_dict()} for v, u in self.credential_uses()],
             "error": self.error,
             "budget": {"timeout": self.budget.seconds, "elapsed": round(self.budget.elapsed, 3)},
+            **({} if self.drift is None else {"drift": self.drift}),
         }
 
     def text(self, full: bool = False) -> str:
@@ -344,6 +376,9 @@ def cmd_check(args: argparse.Namespace) -> int:
     if path.is_dir() or path.name == "dbt_project.yml":
         return _dbt(args, path)
     d, check = _check_file(args, path, target)
+    if args.against_sink:
+        with check.budget.armed():
+            check.compare_sinks()
     if not (args.fix or args.diff):
         return _show(args, check)
     plan = place(path, check.checked)
@@ -442,6 +477,12 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     d = Discovery(path)
     budget.on_hard_stop = _on_hard_stop(args, d, target, budget)
     result: dict[str, Any] = {"file": str(path), "target": target, "nodes": [], "error": None}
+    if args.engine == "polars" and os.environ.get("SVERIFY_MEMORY_LIMIT", "").strip():
+        # Polars has no memory cap sverify can set (#783): say so once.
+        print(
+            "note: the memory limit bounds DuckDB and Spark's driver; it does not reach Polars",
+            file=sys.stderr,
+        )
     try:
         with planned(budget.disarm), budget.armed():
             load(path, d)
@@ -543,8 +584,9 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--memory-limit",
         default=None,
-        help="DuckDB's memory limit, such as 2GB, past which it spills to disk "
-        "(default: $SVERIFY_MEMORY_LIMIT, else DuckDB's own)",
+        help="the data engine's memory limit, such as 2GB: DuckDB's, past which it spills "
+        "to disk, and Spark's driver memory; it does not reach Polars "
+        "(default: $SVERIFY_MEMORY_LIMIT, else each engine's own)",
     )
     p = _Parser(
         prog="sverify",
@@ -570,7 +612,13 @@ def parser() -> argparse.ArgumentParser:
         help="write the preconditions the proofs need into requires=, then check again",
     )
     fix.add_argument("--diff", action="store_true", help="show what --fix would write")
-    c.set_defaults(run=cmd_check)
+    c.add_argument(
+        "--against-sink",
+        action="store_true",
+        help="compare each stored node's contract with the one its sink last committed: "
+        "a committed promise the node no longer proves is contract_weakened (exit 1)",
+    )
+    c.set_defaults(run=cmd_check, against_sink=False)
     r = sub.add_parser(
         "refresh",
         parents=[common],

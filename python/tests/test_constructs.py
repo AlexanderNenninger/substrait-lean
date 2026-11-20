@@ -4,10 +4,8 @@
 name as the user writes it) and otherwise the SQL keywords in upper case
 (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`). `sverify_dev.exits` counts the
 refusals of `sql_lift/` and `ibis_substrait/` that set none, per file;
-`construct_baseline.json` holds the count; a file's count may not rise above it.
-A PR that sets constructs may lower it, with
-
-    python -m sverify_dev.exits --write-baseline
+`construct_baseline.json` is `{}`: every site sets one, and a refusal without
+`construct=` fails here.
 """
 
 import json
@@ -76,6 +74,15 @@ def test_an_ibis_aggregate_refusal_names_its_function():
     assert e.value.construct == "function approx_nunique" and e.value.sql is None
 
 
+def test_the_sql_lift_names_the_fragment_it_refused():
+    import sverify as sv
+
+    with pytest.raises(sv.errors.UnsupportedError) as e:
+        sv.verify("select md5(x) as h from t", tables={"t": {"x": "BIGINT"}})
+    assert e.value.construct == "function md5"
+    assert "MD5" in (e.value.sql or "").upper()
+
+
 def test_the_op_table_names_real_ibis_operations_by_one_spelling():
     """The method names a user calls, for the operations a refusal can name."""
     import ibis.expr.operations as ops
@@ -101,3 +108,22 @@ def test_the_producer_never_spells_a_construct_from_an_ibis_class_name():
                 if "__name__" in text or ".upper()" in text:
                     bad.append(f"{p.name}:{n.value.lineno}: {text}")
     assert not bad, "\n".join(bad)
+
+
+def test_a_node_that_is_no_function_is_named_in_sql_keywords():
+    """Ruling 126: SQL keywords, not sqlglot's joined class name."""
+    import sqlglot.expressions as sge
+
+    from sverify.sql_lift._base import _keywords
+
+    assert _keywords(sge.GroupingSets()) == "GROUPING SETS"
+    assert _keywords(sge.NullSafeNEQ()) == "IS DISTINCT FROM"
+    assert _keywords(sge.NullSafeEQ()) == "IS NOT DISTINCT FROM"
+
+
+def test_the_whole_query_refusals_about_a_function_carry_its_sql():
+    import sverify as sv
+
+    with pytest.raises(sv.errors.UnsupportedError) as e:
+        sv.verify("select foo_bar(x) as h from t", tables={"t": {"x": "BIGINT"}})
+    assert e.value.construct == "function foo_bar" and "foo_bar" in (e.value.sql or "").lower()

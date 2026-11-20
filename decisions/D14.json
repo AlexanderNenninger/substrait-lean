@@ -1,0 +1,16 @@
+{
+  "id": "D14",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "An engine profile records the versions its facts were probed at; another version warns and another major version is refused.",
+  "prs": [
+    562
+  ],
+  "amended_by": [
+    "D70",
+    "F198",
+    "U-2026-11-20-engine-versions"
+  ]
+}

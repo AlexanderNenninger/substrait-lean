@@ -38,7 +38,7 @@ def test_a_filter_selects_the_disjunct(requires, ensures):
     q = t.filter(_.a > 0).select("a", "b")
     report = verify(q, {"t": requires}, ensures)
     assert report.verdict == sv.Verdict.PROVED
-    assert report.facts["b"] == "an integer ≤ -1"
+    assert str(report.facts["b"]) == "an integer ≤ -1"
 
 
 @pytest.mark.parametrize("not_null", [True, False])
@@ -58,7 +58,7 @@ def test_a_case_branch_narrows_a_computed_column():
     q = t.select(d=ibis.ifelse(_.a > 0, -_.b, 1))
     report = verify(q, {"t": [IMPLIES, *NOT_NULL, _.b > -1000]}, [_.d >= 1])
     assert report.verdict == sv.Verdict.PROVED
-    assert report.facts["d"] == "an integer in [1, 999]"
+    assert str(report.facts["d"]) == "an integer in [1, 999]"
 
 
 def test_a_projection_renames_the_columns_of_a_fact():
