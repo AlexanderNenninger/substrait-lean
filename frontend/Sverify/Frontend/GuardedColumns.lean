@@ -1,4 +1,5 @@
 import Sverify.Frontend.Guard
+import Sverify.Core.Robust
 
 /-!
 # Guarded columns: D50's lift in linear size (D50-d, #1719)
@@ -94,11 +95,6 @@ structure BindSt where
 /-- One level: `rel` with the column `e` appended; its index. -/
 def BindSt.push (s : BindSt) (e : Expr) : BindSt × Nat :=
   (⟨.project s.rel [e], s.width + 1⟩, s.width)
-
-/-- Is `e` a column reference? -/
-def Expr.isField : Expr → Bool
-  | .field _ => true
-  | _ => false
 
 /-- The reach `g` as a column: a compound reach is appended once, so that a
 chain's levels read one column and a nest's plan grows linearly with its depth
