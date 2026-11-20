@@ -809,7 +809,7 @@ jobs:
       - working-directory: python
         run: |
           uv run --locked python -m sverify_dev.facts --strict
-          uv run --locked python -m sverify_dev.bugs
+          uv run --locked python -m sverify_dev.bugs --stale  # warns on a thread unchecked for 90 days
       # test_functions checks the facts Lean's tables cite; test_probe and
       # test_probe_polars the probes' `probes.json`; test_polars_shims the
       # facts its shims cite and `areas.json`; test_substrait_cases the
