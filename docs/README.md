@@ -71,6 +71,7 @@ release on PyPI.
 | [engines.md](engines.md) | The engines, how to choose one, and what to install | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers | Design |
 | [proved-theorems.md](proved-theorems.md) | The theorems behind each guarantee, by their Lean names: contracts, composition, runtime errors, incremental views, table formats | |
+| [theorems/README.md](theorems/README.md) | One page per top-level theorem: what it says, what it assumes, the Lean statement line by line, an example | |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
