@@ -375,15 +375,14 @@ def test_a_column_of_months_or_years_moves_a_date_as_duckdb_does():
         got = [r[0] for r in lean_values(json.dumps(plan))]
         want = duckdb_ibis(con, expr).columns[0].to_pylist()
 
-        per_day = name.startswith("d ")
-
-        def code(v):
-            if v is None:
-                return None
-            us = (v - D.datetime(1970, 1, 1)) // D.timedelta(microseconds=1)
-            return us // 86_400_000_000 if per_day else us
-
-        assert [code(w) for w in want] == got, name
+        unit = 86_400_000_000 if name.startswith("d ") else 1
+        codes = [
+            None
+            if v is None
+            else (v - D.datetime(1970, 1, 1)) // D.timedelta(microseconds=1) // unit
+            for v in want
+        ]
+        assert codes == got, name
 
 
 def test_a_date_part_of_a_constant_computed_from_literals():
