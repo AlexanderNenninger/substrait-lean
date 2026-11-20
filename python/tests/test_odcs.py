@@ -504,9 +504,7 @@ def test_read_lists_what_it_cannot_read_with_reasons():
     assert caps == [10, 20]
     assert any(isinstance(x, Unique) and x.cols == ("code", "n") for x in c.tables["t"])
     assert not any(isinstance(x, References) for x in c.tables["t"])
-    assert "REGEXP_FULL_MATCH(\"code\", '^[a-z]+$')" in " ".join(
-        labels
-    )  # logicalTypeOptions.pattern
+    assert "REGEXP_MATCHES(\"code\", '^[a-z]+$')" in " ".join(labels)  # logicalTypeOptions.pattern
     assert 'NOT "n" IS NULL' in labels  # missingValues: [null]
     assert "NOT COALESCE((n > 5), FALSE)" in labels
     reasons = [u.reason for u in c.unread]
@@ -653,7 +651,7 @@ def test_read_foreign_keys_on_the_object_and_by_id():
     assert any(u.reason.startswith("a composite foreign key") for u in c.unread)
 
 
-def test_read_pattern_is_a_full_match_condition_inside_the_regex_subset():
+def test_read_pattern_is_a_search_condition_inside_the_regex_subset():
     """`logicalTypeOptions.pattern` reads inside the subset all engines agree on
     and stays unread outside it, with that reason (#1957)."""
     with pytest.warns(odcs.UnreadRuleWarning):
@@ -676,3 +674,12 @@ def test_a_pattern_condition_with_braces_is_a_requirement():
         ensures=[ibis._.n.isnull() | (ibis._.n >= 0)],
     )
     assert report.verdict == sv.Verdict.PROVED, report.details()
+
+
+def test_an_unanchored_pattern_is_a_search():
+    """ODCS patterns are ECMA-262 and unanchored: `ACC[0-9]{8}` holds of
+    'xACC12345678y'; the condition is a search, not a full match."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    cond = [x for x in c.tables["orders"] if isinstance(x, str) and "ACC" in x]
+    assert cond and "REGEXP_MATCHES" in cond[0].upper() and "FULL" not in cond[0].upper()

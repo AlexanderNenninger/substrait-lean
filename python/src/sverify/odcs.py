@@ -874,7 +874,7 @@ class _Reader:
         if "pattern" in opts:
             pat = opts["pattern"]
             if isinstance(pat, str) and simple_regex(pat):
-                e = sg.exp.RegexpFullMatch(this=_ident(col), expression=_lit(pat))
+                e = sg.exp.RegexpLike(this=_ident(col), expression=_lit(pat))
                 self.out.append(_or_null(col, e, self.required(col)))
             else:
                 self.skip(
