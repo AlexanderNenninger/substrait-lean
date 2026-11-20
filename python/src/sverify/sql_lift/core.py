@@ -449,7 +449,8 @@ def _pow(lf: _Lift, node: sge.Pow, sub: Sub, scope: list[Column]) -> E:
 
 def _angle(factor: float) -> Callable[..., E]:
     """`radians(x)` is `x * (pi / 180)` and `degrees(x)` `x * (180 / pi)`,
-    DuckDB's own constants (#1938), so the product is the generated `DOUBLE * DOUBLE`."""
+    DuckDB's own constants (`duckdb-radians-degrees`, #1938), so the product is
+    the generated `DOUBLE * DOUBLE`."""
 
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         (x,) = _doubles(lf, [sub(node.this)], type(node).__name__.lower())

@@ -568,7 +568,7 @@ def make_timestamp_json(y: Json, m: Json, d: Json, h: Json, mi: Json, sec: Json)
     """`make_timestamp(y, m, d, h, mi, s)` of integers (#1928): the date at
     midnight plus `h` hours, `mi` minutes and `s` seconds, NULL if an argument
     is. DuckDB accepts `h` from 0 to 24, `mi` from 0 to 59 and `s` from 0 to
-    60, in all at most a day, and raises otherwise (probed, DuckDB 2.0.0); the
+    60, in all at most a day, and raises otherwise (`duckdb-make-timestamp-ranges`); the
     date is `make_date_json`'s."""
 
     def within(a: Json, lo: int, hi: int) -> Json:
