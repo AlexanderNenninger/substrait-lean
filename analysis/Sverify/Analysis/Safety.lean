@@ -790,22 +790,6 @@ operand of `OR` under the left one's refinement, and the branches of a `CASE`
 or a lambda's body, which `Expr.absD` evaluates under other environments. The
 `@[csimp]` lemma makes compiled code run it; the proofs keep `Expr.mayIssues`. -/
 
-/-- `Expr.absD` of `.bin f a b` from its operands' values `aa` and `ab`
-(`Expr.absD_bin`). -/
-def Expr.absBin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn) (a b : Expr)
-    (aa ab : AVal) : AVal :=
-  narrowAll ks (.bin f a b) <|
-    if f = .or ∧ aa.nonBool = false then
-      orSplit aa (b.absD (useFacts fs ((Expr.un .not a).refine env)) fs (a.cstrs false ++ ks))
-    else if f = .or ∧ aa.int.isNone = true ∧ aa.str = false ∧ aa.nested = false then
-      orSplitNull aa (b.absD (useFacts fs ((a.refineNeg env).map AVal.prune)) fs (a.cstrs false ++ ks))
-    else sharpen fs f a b aa ab (f.abs aa ab)
-
-theorem Expr.absD_bin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn)
-    (a b : Expr) :
-    (Expr.bin f a b).absD env fs ks = Expr.absBin env fs ks f a b (a.absD env fs ks) (b.absD env fs ks) :=
-  rfl
-
 /-- `Expr.nonZero` given `x`'s abstract value `ax` (`Expr.nonZero_eq_nonZeroA`). -/
 def Expr.nonZeroA (env : List AVal) (fs : List Fact) (ks : Assumptions) (k : NumKind) (x : Expr)
     (ax : AVal) : Bool :=
@@ -838,7 +822,7 @@ def Expr.mayIssuesA (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors :
   | .bin f a b =>
     let ra := a.mayIssuesA env fs ks ors
     let rb := b.mayIssuesA env fs ks ors
-    let ar := Expr.absBin env fs ks f a b ra.2 rb.2
+    let ar := Expr.absBin env fs ks f a b ra.2 (fun _ => rb.2) (fun env' ks' => b.absD env' fs ks')
     (ra.1 ++ rb.1 ++
       (f.mayIssueX ra.2 rb.2 ar (b.nonZeroA env fs ks f.divKind rb.2) a.strBytes?
         (Expr.nanExcluded env fs ks ors f a b) ++ f.mayInf ra.2 rb.2).map (·, .bin f a b), ar)
@@ -861,7 +845,7 @@ theorem Expr.mayIssuesA_eq (env : List AVal) (fs : List Fact) (ks : Assumptions)
     simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors a, Expr.mayIssues, Expr.absD]
   | .bin f a b => by
     simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors a,
-      Expr.mayIssuesA_eq env fs ks ors b, Expr.mayIssues, Expr.nonZero_eq_nonZeroA, Expr.absD_bin]
+      Expr.mayIssuesA_eq env fs ks ors b, Expr.mayIssues, Expr.nonZero_eq_nonZeroA, Expr.absD]
   | .ifThen c t e => by
     simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors c, Expr.mayIssues]
   | .hof f l b => by

@@ -762,7 +762,8 @@ proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
   app;
 - `sarif`: a SARIF 2.1.0 log for code scanning
   (`github/codeql-action/upload-sarif`), one rule per code, with
-  `explain`'s text.
+  `explain`'s text. A transform's first `needs` result carries a fix: the
+  edits `check --fix` makes to its `requires=`, as byte ranges of the file.
 
 The codes are snake case (`may_be_false`), as the report's `reason` and
 issue `kind` write them; `explain` reads kebab case too. The exit codes are:
@@ -1917,7 +1918,7 @@ The [Open Data Contract Standard](https://bitol-io.github.io/open-data-contract-
 (ODCS, Bitol, Linux Foundation AI & Data) describes a dataset's contract in
 YAML: its schema, quality rules, descriptions and owners. Sverify writes a
 node's contract as ODCS and reads ODCS contracts as conditions.
-It writes ODCS v3.2.0 (`sverify.odcs.ODCS_VERSION`), and the tests validate
+It writes ODCS v3.2.0 (its `apiVersion`), and the tests validate
 every export against that release's JSON schema
 ([tests/standards/](../python/tests/standards/odcs-json-schema-v3.2.0.json),
 [test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:
