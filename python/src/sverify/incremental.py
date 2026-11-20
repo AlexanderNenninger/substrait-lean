@@ -1651,7 +1651,7 @@ class IncrementalView:
     def _retires(self) -> bool:
         """The view drops its final buckets: it has retention and every sink
         keeps what the state drops."""
-        return self.retention is not None and all(_keeps_retired(s) for s in self._sinks)
+        return self.retention is not None and all(s.keeps_retired for s in self._sinks)
 
     def _kept(self, result: State) -> State:
         """The rows of a result (or a weighted table) whose change the view
@@ -2095,7 +2095,7 @@ class Pipeline:
                 continue
             report = RetentionReport(v.name, spec.column, 0, 0, spec.bound, None)
             out.append(report)
-            if bad := [s for s in v._sinks if not _keeps_retired(s)]:
+            if bad := [s for s in v._sinks if not s.keeps_retired]:
                 report.off = (
                     f"sink {bad[0].name} may rewrite its whole table, which would drop "
                     "the retired buckets"
@@ -2795,15 +2795,3 @@ def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
         (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
     return concat([rest, expanded(consolidated(kept, inserts))])
-
-
-def _keeps_retired(sink: Any) -> bool:
-    """Whether `sink` keeps the rows a view drops from its state: the
-    sink's `_keeps_retired`, or a custom sink's own `keeps_retired`."""
-    for k in type(sink).__mro__:
-        own = k.__dict__.get("keeps_retired")
-        if own is not None and not isinstance(own, property):
-            return bool(own)
-        if "_keeps_retired" in k.__dict__:
-            return bool(k.__dict__["_keeps_retired"])
-    return False
