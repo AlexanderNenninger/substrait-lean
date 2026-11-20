@@ -1004,6 +1004,13 @@ class _Lift:
         if offset is not None:
             body["offsetExpr"] = literal(_count(offset.expression, "OFFSET"), dt.int64)
         if limit is not None:
+            if opts := limit.args.get("limit_options"):
+                if opts.args.get("percent") or opts.args.get("with_ties"):
+                    raise SqlUnsupported(
+                        "LIMIT with PERCENT or WITH TIES is not supported yet",
+                        hint="write a row count: LIMIT n",
+                        construct="LIMIT",
+                    )
             body["countExpr"] = literal(_count(limit.expression, "LIMIT"), dt.int64)
         return {"fetch": body}
 

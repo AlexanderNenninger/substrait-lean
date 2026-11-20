@@ -444,3 +444,34 @@ def test_a_column_qualified_by_schema_and_table_still_resolves():
             json.dumps(lift(query, schema).plan)
         except Refused as e:
             assert str(e)  # a clear refusal is acceptable too
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT count(*) AS n FROM range(100) TABLESAMPLE 10 ROWS",
+        "SELECT count(*) AS n FROM generate_series(1, 100) TABLESAMPLE 10 PERCENT",
+    ],
+)
+def test_a_sample_of_a_series_is_refused(sql):
+    """#321: DuckDB samples the series; reading it whole would be a wrong count."""
+    with pytest.raises(ValueError, match="TABLESAMPLE|SAMPLE"):
+        sv.verify(sql, on_inferred="ignore")
+
+
+@pytest.mark.parametrize("tail", ["LIMIT 75%", "LIMIT 10 PERCENT", "FETCH FIRST 5 ROWS WITH TIES"])
+def test_a_percent_limit_is_not_read_as_a_row_count(tail):
+    """DuckDB's `LIMIT 75%` keeps three quarters of the rows, not 75."""
+    with pytest.raises(ValueError, match="PERCENT|WITH TIES"):
+        sv.verify(
+            f"SELECT x FROM generate_series(1, 100) AS t(x) ORDER BY x {tail}", on_inferred="ignore"
+        )
+
+
+def test_a_bigint_sum_over_a_series_keeps_its_64_bit_check():
+    """DuckDB sums a BIGINT into a HUGEINT (8192 rows of 9e18 give 7.4e22). The
+    reference's sum is 64 bits and its fit is a checked precondition: the plan is
+    not proved without it, and the run refuses a batch that breaks it."""
+    sql = "SELECT sum(CASE WHEN x >= 0 THEN 9000000000000000000::BIGINT END) AS s FROM range(8192) AS t(x)"
+    report = sv.verify(sql, on_inferred="ignore")
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS

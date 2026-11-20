@@ -366,6 +366,12 @@ def _series(tree: sge.Expr) -> sge.Expr:
         else:
             return n
         name = "range" if series.args.get("is_end_exclusive") else "generate_series"
+        if n.args.get("sample"):
+            raise SqlUnsupported(
+                f"{name} with TABLESAMPLE is not supported",
+                hint="sample the input before sverify reads it; write this step in Ibis",
+                construct=f"function {name}",
+            )
         start, end = _constant(series.args["start"]), _constant(series.args["end"])
         step_node = series.args.get("step")
         if start is None or end is None:
