@@ -13,10 +13,11 @@ Layer: `Allowed`. Axioms: `propext`, `Classical.choice`, `Quot.sound`
 `contract_sound_allowed` asks for `FloatOpenSafe`, a property of the plan
 that is a statement about every allowed result. This theorem swaps it for
 `Rel.closedB`, a Boolean the checker computes on the plan's syntax: a plan
-is closed when none of its measures is `VAR_*`, `STDDEV_*`, `COVAR_*`,
-`CORR` or `QUANTILE_CONT`. A double `SUM` or `AVG` is closed, since the
-reference rounds their exact value once and every order an engine adds in
-stays within the plan's bound.
+is closed when each of its measures is order-free (`AggFn.orderFree`: the
+reference's value does not depend on the order of the rows, as for `SUM`,
+`AVG`, `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR`, which are rounded once from
+exact values) or sorts its rows. The open ones are `BIT_AND`, `BIT_OR`,
+`BIT_XOR`, `QUANTILE_CONT` and the black-box aggregates.
 
 ## The statement, line by line
 
@@ -40,8 +41,9 @@ The conclusion is the same: every value of every row of every result
 
 - A proof that depends on the engine's order of addition, for a plan with a
   double sum. The check is purely syntactic, so a plan can't pass it by luck.
-- A plan with an open `STDDEV` being called closed: it fails `closedB`
-  and goes the longer way through `FloatOpenSafe`.
+- A plan with an open measure, such as a `QUANTILE_CONT`, being called
+  closed: it fails `closedB` and goes the longer way through
+  `FloatOpenSafe`.
 
 ## What it does not cover
 

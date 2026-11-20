@@ -73,9 +73,9 @@ theorem contract_sound_allowed {cat : Catalog} (hcat : cat.WF)
 ## Its side conditions
 
 The checker decides `hrob` (`robustB`), `hQ` and `hproved`. `hsafe` is
-decided by `Rel.closedB` for a plan whose measures are not `VAR_*`,
-`STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`
-([`contract_sound_allowed_closed`](contract_sound_allowed_closed.md)), and
+decided by `Rel.closedB` for a plan whose measures are order-free or sort
+their rows, which leaves out `BIT_*`, `QUANTILE_CONT` and the black-box
+aggregates ([`contract_sound_allowed_closed`](contract_sound_allowed_closed.md)), and
 by the engine's table otherwise.
 
 ## Example
