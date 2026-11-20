@@ -72,6 +72,7 @@ def test_the_top_level_is_small():
         "group",
         "key",
         "max_rows",
+        "non_overlapping",
         "references",
         "rows_per",
         "sql",
