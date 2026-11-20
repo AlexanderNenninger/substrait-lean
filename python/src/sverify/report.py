@@ -22,6 +22,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 import ibis
+import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
@@ -2671,12 +2672,39 @@ def _not_true(column: Any) -> int:
     return sum(v is not True for v in column.to_pylist())
 
 
+def _columns_read(conds: Sequence[str], columns: Sequence[str]) -> list[str]:
+    """The columns SQL conditions read, in table order, as SQLGlot finds them
+    (DuckDB's identifiers match without case); empty, so that the whole
+    table is read, where one does not parse or names no column of it."""
+    import sqlglot as sg
+
+    by_name = {c.lower(): c for c in columns}
+    found: set[str] = set()
+    for cond in conds:
+        try:
+            tree = sg.parse_one(cond, read="duckdb")
+            names = {c.name.lower() for c in tree.find_all(sg.exp.Column)}
+        except sg.errors.ParseError:
+            return []
+        if not names <= by_name.keys():
+            return []
+        found |= {by_name[n] for n in names}
+    return [c for c in columns if c in found]
+
+
 def _run_conditions(
     con: Connection, table: ir.Table, conds: Sequence[Condition], engine: str
 ) -> pa.Table:
     """The columns of `conds` over `table`, from one checker-written plan run
     on `engine`: SQL conditions as one `SELECT`, Ibis ones as one `select`."""
-    if all(isinstance(c, str) for c in conds):
+    sqls = [c for c in conds if isinstance(c, str)]
+    if len(sqls) == len(conds):
+        # Only the columns the conditions name: the lift refuses a column of
+        # a type it does not read (float32), which no condition reads (#860).
+        named = _columns_read(sqls, table.columns)
+        if named and isinstance(op := table.op(), ops.DatabaseTable):
+            schema = ibis.schema({n: op.schema[n] for n in named})
+            table = ops.DatabaseTable(op.name, schema=schema, source=op.source).to_expr()
         items = ", ".join(f'({c}) AS "c{i}"' for i, c in enumerate(conds))
         query = f'SELECT {items} FROM "t" AS "t"'
         from sverify.ibis_substrait import SQLModel, sql_model_schema
