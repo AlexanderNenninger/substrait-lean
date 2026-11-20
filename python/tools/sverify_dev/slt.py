@@ -853,7 +853,7 @@ class Replay:
         """Check `plan` and compare Lean's and the engine's results with the
         expected ones."""
         from sverify.engine import run_checker, run_plan, written_plan
-        from sverify.testing import lean_values
+        from sverify.testing import LeanRaised, lean_values
 
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
@@ -862,6 +862,7 @@ class Replay:
 
         # Lean on the plan with the tables inlined.
         lean_err = None
+        raised = False  # the evaluator's own error, not a failure of this tool
         lean_rows: list[list[str]] = []
         try:
             inlined = _typed_inline(json.loads(plan), rows, self.con)
@@ -884,11 +885,17 @@ class Replay:
                 res.cls, res.reason = "refused", "checker: rows not evaluated (a black box)"
                 return res
             lean_err = "error: " + _clip(text[-200:], 200)
+        except LeanRaised as e:  # the reference raises (`lean_values`)
+            lean_err, raised = _error(e), True
         except Exception as e:  # noqa: BLE001 - recorded
             lean_err = _error(e)
         if lean_err is not None:
             res.lean = lean_err
         if lean_err is not None and semantics() == "reference":
+            if not raised:
+                # A crash or a timeout of this tool is no evidence either way.
+                res.cls, res.reason = "refused", f"tool: {_clip(lean_err, 200)}"
+                return res
             # The reference raises: it gives no value, so the plan's text and
             # DuckDB's native result are not in conflict (principle L of #1484).
             res.cls, res.reason = "agree", "reference raises: " + _clip(lean_err, 120)
@@ -913,8 +920,9 @@ class Replay:
             # L2 compares the reference's value with DuckDB's own on the same
             # text; the plan written back for DuckDB has the reference's
             # meaning, which is not what it is compared with.
-            res.cls = "agree" if lean_ok else "disagree"
-            if not lean_ok:
+            # A `verify` issue is the reference raising on a row: it agrees.
+            res.cls = "agree" if lean_ok or found else "disagree"
+            if res.cls == "disagree":
                 res.side = "lean"
             return res
 
@@ -1454,7 +1462,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("areas", nargs="*", help="areas under test/sql (default: all)")
     parser.add_argument("--version", help="DuckDB version (default: uv.lock's)")
-    parser.add_argument("--out", type=Path, default=REPLAY_DIR)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="the ledgers' directory (default: engines/duckdb/replay, or its reference/ "
+        "subdirectory under --semantics reference)",
+    )
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
     parser.add_argument(
@@ -1466,6 +1480,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
     os.environ[SEMANTICS_ENV] = args.semantics
+    if args.out is None:
+        args.out = REPLAY_DIR / "reference" if args.semantics == "reference" else REPLAY_DIR
     version = args.version or duckdb_version()
     root = fetch(version)
     for area, files in test_files(root, args.areas).items():
@@ -1478,7 +1494,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             results += res
             if skip:
                 skipped[rel] = skip
-        path = write_ledger(area, version, results, skipped, args.out)
+        # Only a reference ledger says so: the committed ones stay as they are.
+        head = {"semantics": "reference"} if args.semantics == "reference" else None
+        path = write_ledger(area, version, results, skipped, args.out, head=head)
         counts = Counter(r["cls"] for r in results)
         print(f"{area}: {dict(counts)} ({len(skipped)} files skipped) -> {path}", flush=True)
     write_summary(args.out)

@@ -389,6 +389,30 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
     assert r.duckdb in ('[["nan"]]', '[["-nan"]]'), r.duckdb
 
 
+def test_the_reference_replay_agrees_where_the_reference_raises(tmp_path, monkeypatch):
+    """L2 of #1484 (`--semantics reference`): the reference raising where
+    DuckDB gives NaN agrees; a value DuckDB does not give disagrees."""
+    monkeypatch.setenv(slt.SEMANTICS_ENV, "reference")
+    path = tmp_path / "ref.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            query I
+            select sin('inf'::DOUBLE)
+            ----
+            nan
+
+            query I
+            select CAST(1.5::DOUBLE AS INTEGER)
+            ----
+            2
+            """
+        )
+    )
+    results, _ = slt.replay_file(path, "area/ref.test")
+    assert [r.cls for r in results] == ["agree", "disagree"], [(r.cls, r.reason) for r in results]
+
+
 def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     """Where the test expects an error, the reference raises with DuckDB:
     Lean's side agrees (#747)."""
