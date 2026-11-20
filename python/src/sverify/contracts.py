@@ -75,7 +75,7 @@ import warnings
 import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, get_args
 
 import ibis
@@ -1921,9 +1921,17 @@ def _guess_bounds(
             q = f'"{col}"' if not col.isidentifier() else col
             if dtype.is_timestamp() or dtype.is_date():
                 ctor, sql = ("datetime", "TIMESTAMP") if dtype.is_timestamp() else ("date", "DATE")
+                instant = dtype.is_timestamp() and bool(getattr(dtype, "timezone", None))
+                if instant and dialect != "ibis":
+                    continue  # TIMESTAMPTZ '…' follows the session zone in SQL (D53)
                 lo, hi = (datetime, datetime) if ctor == "datetime" else (date, date)
+                # An instant is bounded by instants (D69, #1725): a naive bound is refused.
+                tz = {"tzinfo": UTC} if instant else {}
                 conds: list[Condition] = (
-                    [getattr(ibis._, col) >= lo(1900, 1, 1), getattr(ibis._, col) < hi(2200, 1, 1)]
+                    [
+                        getattr(ibis._, col) >= lo(1900, 1, 1, **tz),
+                        getattr(ibis._, col) < hi(2200, 1, 1, **tz),
+                    ]
                     if dialect == "ibis"
                     else [f"{q} >= {sql} '1900-01-01'", f"{q} < {sql} '2200-01-01'"]
                 )

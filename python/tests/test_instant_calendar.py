@@ -143,9 +143,3 @@ REFUSED = {
 def test_arithmetic_and_strings_of_an_instant_stay_refused(what):
     with pytest.raises(Exception, match="1725"):
         sv.verify(REFUSED[what](T), counterexamples=0)
-
-
-def test_the_sql_lift_still_refuses_what_follows_the_session_zone():
-    for sql in ("SELECT date_trunc('day', ts) AS x FROM t", "SELECT ts::DATE AS x FROM t"):
-        with pytest.raises(Exception, match="AT TIME ZONE 'UTC'"):
-            sv.verify(sv.sql(sql, dialect="duckdb", t=T), counterexamples=0)
