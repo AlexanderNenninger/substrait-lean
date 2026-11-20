@@ -12,6 +12,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, same_type
+from sverify.ibis_substrait.temporal import wall_clock
 from sverify.plan_json import Json, Unsupported, call, cast_json, literal
 
 
@@ -40,17 +41,30 @@ def _from_varchar(x: Exprs, op: Any, try_: bool) -> Json | None:
     return None
 
 
+def _instant_to_calendar(x: Exprs, op: Any) -> Exprs:
+    """The cast of an instant at UTC to a date or a time is that of its UTC
+    wall clock (D69, #1725)."""
+    t = op.arg.dtype
+    return (
+        wall_clock(x)
+        if t.is_timestamp() and t.timezone and (op.to.is_date() or op.to.is_time())
+        else x
+    )
+
+
 def _cast(x: Exprs, op: Any) -> Json:
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
-    return _from_varchar(x, op, False) or cast_json(x(op.arg), op.to)
+    return _from_varchar(x, op, False) or cast_json(_instant_to_calendar(x, op)(op.arg), op.to)
 
 
 def _try_cast(x: Exprs, op: Any) -> Json:
     """`TRY_CAST`: NULL where the cast fails (#58)."""
     if same_type(op.arg.dtype, op.to):
         return x(op.arg)
-    return _from_varchar(x, op, True) or cast_json(x(op.arg), op.to, or_null=True)
+    return _from_varchar(x, op, True) or cast_json(
+        _instant_to_calendar(x, op)(op.arg), op.to, or_null=True
+    )
 
 
 #: DuckDB's names of the types of `typeof` (`duckdb-typeof-names`).

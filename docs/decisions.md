@@ -1646,7 +1646,8 @@ reference computes with an instant wherever no zone is read: comparison with
 another instant, `IS [NOT] DISTINCT FROM`, ordering, `MIN`, `MAX`, `COUNT`,
 `DISTINCT`, grouping, join keys, window keys, and `CASE`, `COALESCE` and
 `NULLIF` among instants. Everything that reads a calendar field of an instant
-is refused and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
+is refused (opened for the Ibis frontend at UTC by
+[D69](#d69-calendar-functions-of-an-instant-at-utc-in-ibis)) and names [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725):
 arithmetic with intervals, the difference of two instants, `date_trunc`,
 `extract`, a cast to a date or a string. A comparison of an instant with a
 naive timestamp is refused. Zones other than UTC are refused. The conversion is
@@ -1787,3 +1788,41 @@ Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duc
 and Ibis documents the delta as the number of unit boundaries crossed
 ([`TimestampValue.delta`](https://ibis-project.org/reference/expression-timestamps#ibis.expr.types.temporal.TimestampValue.delta)). The refused units are those where engines place the
 boundary differently.
+
+### D69. Calendar functions of an instant at UTC, in Ibis
+
+Decided 2026-11-20 (theory advisor, ruling 193; #1725). Opens what D53 left as
+"a later decision".
+
+A function of a `timestamp('UTC')` expression whose Ibis result type is not an
+instant (a date, a time of day, an integer part, a string of the supported
+`strftime` directives, or the naive timestamp of `truncate` and `bucket`) means
+that function of the instant's UTC wall clock: `f (atUtc false x)`, whatever the
+session's time zone. The Ibis producer writes the conversion into the plan (the
+cast to a naive timestamp), so `t.ts.truncate('D')` is the plan of
+`t.ts.cast('timestamp').truncate('D')`. The parser keeps refusing a calendar
+function of an instant, so a plan states its zone or is refused: the SQL lift
+reads DuckDB's spellings, which follow the session zone (D53, D54). The core,
+the options and the profiles are unchanged.
+
+Opened: `date()`, `time()` and the casts to a date and a time, the extract
+operations, `epoch_seconds`, `truncate`, `bucket` and `strftime`. A zone
+directive of `strftime` (`%z`, `%Z`) needs a decision of its own.
+
+Stays refused: arithmetic with intervals, the difference of two instants, a cast
+to a string, zones other than UTC, a mix with a naive timestamp, and the SQL
+spellings that follow DuckDB's session zone (`date_trunc('day', tstz)`,
+`tstz::DATE`), which name `x AT TIME ZONE 'UTC'`. Spark and Snowflake refuse the
+conversion and name the issue.
+
+Ibis's own DuckDB backend compiles `t.ts.date()` to `CAST(ts AS DATE)` and
+`truncate` to `DATE_TRUNC('DAY', ts)`, which follow the session zone, so it
+agrees with sverify only under `TimeZone = 'UTC'`.
+
+Recomputes sinks: no
+
+Why: Ibis 12 types `truncate` and `bucket` of an instant as a naive timestamp,
+and the plan's output kind follows the expression's type. Facts:
+[duckdb-instant-conversion](../engines/duckdb/facts/duckdb-instant-conversion.json),
+[polars-instant-conversion](../engines/polars/facts/polars-instant-conversion.json),
+[duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json).
