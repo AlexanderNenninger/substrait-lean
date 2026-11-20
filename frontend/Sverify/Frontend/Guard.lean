@@ -1383,6 +1383,124 @@ theorem Expr.orLift_evalI {I : Impl} (hI : I.Logic) (row : Row) (ps : List Expr)
         · simp only [hf, ↓reduceIte]
           split <;> simp [or3]
 
+/-! ## Where the lift raises (D50-d)
+
+The lift raises exactly where some operand raises after operands that all go
+on (`Expr.Go`: no raise, not FALSE). From `andLift_error`, `andLift_false` and
+`andLift_refines` alone. -/
+
+omit [Boxes.Ambient] in
+/-- A list's first element without `P`, if any. -/
+theorem List.first_not {α : Type} (P : α → Prop) : ∀ l : List α,
+    (∀ x ∈ l, P x) ∨ ∃ pre q post, l = pre ++ q :: post ∧ (∀ x ∈ pre, P x) ∧ ¬ P q
+  | [] => .inl (by simp)
+  | a :: l => by
+    by_cases ha : P a
+    · rcases List.first_not P l with h | ⟨pre, q, post, rfl, hpre, hq⟩
+      · exact .inl fun x hx => by
+          rcases List.mem_cons.mp hx with rfl | hx
+          · exact ha
+          · exact h x hx
+      · exact .inr ⟨a :: pre, q, post, rfl, fun x hx => by
+          rcases List.mem_cons.mp hx with rfl | hx
+          · exact ha
+          · exact hpre x hx, hq⟩
+    · exact .inr ⟨[], a, l, rfl, by simp, ha⟩
+
+theorem Expr.refOutcome_isSome (row : Row) (e : Expr) :
+    (firstError (e.issues row)).isSome ↔ ∃ k, e.refOutcome row = .error k := by
+  unfold Expr.refOutcome
+  cases firstError (e.issues row) <;> simp
+
+/-- **Where the `AND` lift raises**: an operand raises, and every operand
+before it goes on. -/
+theorem Expr.andLift_raises_iff (row : Row) (ps : List Expr)
+    (hbv : ∀ q ∈ ps, firstError (q.issues row) = none → Expr.BoolVal row q) :
+    (firstError ((Expr.andLift ps).issues row)).isSome ↔
+      ∃ pre p post, ps = pre ++ p :: post ∧ (∀ q ∈ pre, Expr.Go row q) ∧
+        (firstError (p.issues row)).isSome := by
+  by_cases hnp : ∃ q ∈ ps, q.plain = false
+  · constructor
+    · intro h
+      rw [Expr.refOutcome_isSome] at h
+      obtain ⟨k, hk⟩ := h
+      rcases List.first_not (Expr.Go row) ps with hall | ⟨pre, p, post, rfl, hpre, hp⟩
+      · exfalso
+        have hn : firstError ((Expr.conj ps).issues row) = none :=
+          Expr.conj_firstError_none row ps (fun q hq => (hall q hq).1)
+        have hok : (Expr.conj ps).refOutcome row = .ok ((Expr.conj ps).eval row) := by
+          unfold Expr.refOutcome; rw [hn]
+        rw [Expr.andLift_refines row ps _ (fun q hq => (hall q hq).2.2) hok] at hk
+        cases hk
+      · by_cases hpr : firstError (p.issues row) = none
+        · exfalso
+          have hb := hbv p (by simp) hpr
+          have hf : p.eval row = .bool false :=
+            Classical.byContradiction fun hf => hp ⟨hpr, hf, hb⟩
+          rw [Expr.andLift_false row pre p post hpre hpr hb hf hnp] at hk
+          cases hk
+        · exact ⟨pre, p, post, rfl, hpre, Option.isSome_iff_ne_none.mpr hpr⟩
+    · rintro ⟨pre, p, post, rfl, hpre, hp⟩
+      obtain ⟨k, hk⟩ := Option.isSome_iff_exists.mp hp
+      rw [Expr.refOutcome_isSome]
+      exact ⟨k, Expr.andLift_error row pre p post k hpre hk hnp⟩
+  · -- Every operand plain: the eager `AND`, which raises nowhere, nor does any operand.
+    have hpl : ∀ q ∈ ps, q.plain = true := by
+      intro q hq
+      exact Classical.byContradiction fun h => hnp ⟨q, hq, by simpa using h⟩
+    have hlen : (ps.filter Expr.plain).length = ps.length := by
+      rw [List.filter_eq_self.mpr (fun q hq => hpl q hq)]
+    simp only [Expr.andLift, hlen, ↓reduceIte]
+    rw [Expr.conj_firstError_none row ps (fun q hq => by rw [Expr.issues_plain row q (hpl q hq)]; rfl)]
+    simp only [Option.isSome_none, Bool.false_eq_true, false_iff, not_exists, not_and]
+    intro pre p post hps _ hp
+    rw [Expr.issues_plain row p (hpl p (by simp [hps]))] at hp
+    exact absurd hp (by simp [firstError])
+
+/-- **Where the `OR` lift raises**: an operand raises, and every operand before
+it goes on (`Expr.GoOr`: no raise, not TRUE). -/
+theorem Expr.orLift_raises_iff (row : Row) (ps : List Expr)
+    (hbv : ∀ q ∈ ps, firstError (q.issues row) = none → Expr.BoolVal row q) :
+    (firstError ((Expr.orLift ps).issues row)).isSome ↔
+      ∃ pre p post, ps = pre ++ p :: post ∧ (∀ q ∈ pre, Expr.GoOr row q) ∧
+        (firstError (p.issues row)).isSome := by
+  by_cases hnp : ∃ q ∈ ps, q.plain = false
+  · constructor
+    · intro h
+      rw [Expr.refOutcome_isSome] at h
+      obtain ⟨k, hk⟩ := h
+      rcases List.first_not (Expr.GoOr row) ps with hall | ⟨pre, p, post, rfl, hpre, hp⟩
+      · exfalso
+        have hn : firstError ((Expr.disj ps).issues row) = none :=
+          Expr.disj_firstError_none row ps (fun q hq => (hall q hq).1)
+        have hok : (Expr.disj ps).refOutcome row = .ok ((Expr.disj ps).eval row) := by
+          unfold Expr.refOutcome; rw [hn]
+        rw [Expr.orLift_refines row ps _ (fun q hq => (hall q hq).2.2) hok] at hk
+        cases hk
+      · by_cases hpr : firstError (p.issues row) = none
+        · exfalso
+          have hb := hbv p (by simp) hpr
+          have ht : p.eval row = .bool true :=
+            Classical.byContradiction fun ht => hp ⟨hpr, ht, hb⟩
+          rw [Expr.orLift_true row pre p post hpre hpr hb ht hnp] at hk
+          cases hk
+        · exact ⟨pre, p, post, rfl, hpre, Option.isSome_iff_ne_none.mpr hpr⟩
+    · rintro ⟨pre, p, post, rfl, hpre, hp⟩
+      obtain ⟨k, hk⟩ := Option.isSome_iff_exists.mp hp
+      rw [Expr.refOutcome_isSome]
+      exact ⟨k, Expr.orLift_error row pre p post k hpre hk hnp⟩
+  · have hpl : ∀ q ∈ ps, q.plain = true := by
+      intro q hq
+      exact Classical.byContradiction fun h => hnp ⟨q, hq, by simpa using h⟩
+    have hlen : (ps.filter Expr.plain).length = ps.length := by
+      rw [List.filter_eq_self.mpr (fun q hq => hpl q hq)]
+    simp only [Expr.orLift, hlen, ↓reduceIte]
+    rw [Expr.disj_firstError_none row ps (fun q hq => by rw [Expr.issues_plain row q (hpl q hq)]; rfl)]
+    simp only [Option.isSome_none, Bool.false_eq_true, false_iff, not_exists, not_and]
+    intro pre p post hps _ hp
+    rw [Expr.issues_plain row p (hpl p (by simp [hps]))] at hp
+    exact absurd hp (by simp [firstError])
+
 /-! ## The lift reads what its operands read -/
 
 omit [Boxes.Ambient] in
