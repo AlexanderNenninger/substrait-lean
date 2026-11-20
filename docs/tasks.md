@@ -505,7 +505,7 @@ print(report.details())
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
 # semantics: reference
-# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #241)
+# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #1985)
 # evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
 # evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)
 # known about the output:
@@ -1821,6 +1821,20 @@ the export handles it in one of these ways:
 A refusal raises `sverify.errors.ExportError`, which names the reason and
 the gap. So does an unproved report, a plan proved under an engine's
 profile, and a function outside Substrait's YAMLs.
+
+Sverify validates the plans it exports with Substrait's own validator,
+[`substrait-validator`](https://github.com/substrait-io/substrait-validator),
+built at the commit the gate pins (it implements Substrait 0.88.1; no
+release reads 0.106). Every coverage case and catalogue query is exported
+in the `"apply"` and `"annotate"` modes, and CI's `evidence` job compares the
+validator's verdicts with the ledger
+[`substrait_validator.json`](../python/tests/substrait_validator.json),
+[`sverify_dev.substrait_validator`](../python/tools/sverify_dev/substrait_validator.py).
+On 2026-11-20: 332 exports valid, 10 with a recorded finding (time and
+timestamp literals the validator does not implement yet,
+[ST-19](../upstream/bugs/ST-19.json), and a decimal precision,
+[#1904](https://github.com/AlexanderNenninger/substrait-lean/issues/1904)),
+190 refused with their reason, 146 not proved.
 
 `node.to_substrait()` and `transform.to_substrait()` export the report of
 a node and of a transform's last call.

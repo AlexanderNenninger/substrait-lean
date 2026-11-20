@@ -75,6 +75,19 @@ class DuckDBDialect(Dialect):
     def interval_micros(self, iv: str) -> str:
         return f"epoch_us({iv})"
 
+    native_asof: ClassVar[bool] = True
+
+    def asof_join(
+        self,
+        left: str,
+        right: str,
+        eqs: Sequence[tuple[str, str]],
+        on: tuple[str, str],
+        outer: bool,
+    ) -> str:
+        cond = " AND ".join([*(f"{a} = {b}" for a, b in eqs), f"{on[0]} >= {on[1]}"])
+        return f"{left} ASOF {'LEFT ' if outer else ''}JOIN {right} ON {cond}"
+
     def time_add_micros(self, ts: str, us: str, sub: bool) -> str:
         return f"({ts} {'-' if sub else '+'} to_microseconds({us}))"
 
