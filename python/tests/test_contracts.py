@@ -13,6 +13,7 @@ import sverify as sv
 from _pipelines import bound_orders
 from sverify.contracts import OVERFLOW_HINT, violations
 from sverify.errors import PostconditionError, PreconditionError, VerificationError
+from sverify.report import ColumnFacts
 from sverify_dev.examples import customers, orders
 
 
@@ -442,7 +443,7 @@ def test_sql_facts_describe_timestamps_and_dates():
     assert facts == sv.verify(t.select("host", "minute", "day")).facts
     assert str(facts["minute"]) == "any timestamp or NULL"
     assert str(facts["day"]) == "any date or NULL"
-    assert (facts["minute"].nullable, facts["minute"].lower, facts["minute"].upper) == (True, None, None)
+    assert facts["minute"] == ColumnFacts(nullable=True)
     bounded = sv.verify(
         "SELECT minute FROM t WHERE minute >= TIMESTAMP '2026-01-01 00:00:00'",
         tables={"t": t.schema()},
