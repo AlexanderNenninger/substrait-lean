@@ -203,7 +203,8 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
     ]
     x, y = lf.to(a, t).json, lf.to(b, t).json
     mod = _fn("modulus", [x, y], t, opts)
-    if lf.profile.min_mod_neg_one == "ERROR":
+    positive = isinstance(node.expression, sge.Literal) and node.expression.is_int
+    if lf.profile.min_mod_neg_one == "ERROR" and not positive:
         # DuckDB raises at `MIN % -1` (`duckdb-R15-int-modulus`), where the
         # reference's remainder, 0, fits: an in-plan raise, so a bound on
         # either operand discharges it (D54, #2058).

@@ -559,15 +559,18 @@ def test_a_folded_constant_is_not_a_literal():
     assert lift("SELECT v + CAST(100 AS INTEGER) AS x FROM t", schema).schema["x"] == dt.int32
 
 
-def test_a_lens_remainder_lists_min_mod_neg_one():
+@pytest.mark.parametrize("width", [64, 32])
+def test_a_lens_remainder_lists_min_mod_neg_one(width):
     """DuckDB raises at `MIN % -1`, where the reference's 0 fits (#2058): under
     `semantics="duckdb"` the issue is listed, and a bound on either operand
-    discharges it; under the reference there is none."""
-    t = ibis.table({"a": "int64", "b": "int64"}, name="t")
+    discharges it; under the reference there is none. A literal divisor
+    needs no guard."""
+    t = ibis.table({"a": f"int{width}", "b": f"int{width}"}, name="t")
+    low = -(2 ** (width - 1))
 
-    def verify(semantics, requires):
+    def verify(semantics, requires, sql="SELECT a % b AS m FROM t"):
         return sv.verify(
-            "SELECT a % b AS m FROM t",
+            sql,
             tables={"t": t},
             semantics=semantics,
             requires={"t": [requires]},
@@ -578,6 +581,9 @@ def test_a_lens_remainder_lists_min_mod_neg_one():
     unbounded = verify("duckdb", "b <> 0")
     assert unbounded.verdict != sv.Verdict.PROVED
     assert any("MIN % -1" in str(i) for i in unbounded.issues)
-    for bound in ("b > 0", "b <> 0 AND a > -9223372036854775807"):
+    for bound in ("b > 0", f"b <> 0 AND a > {low + 1}"):
         assert verify("duckdb", bound).verdict == sv.Verdict.PROVED
     assert verify("reference", "b <> 0").verdict == sv.Verdict.PROVED
+    assert (
+        verify("duckdb", "a IS NOT NULL", "SELECT a % 7 AS m FROM t").verdict == sv.Verdict.PROVED
+    )
