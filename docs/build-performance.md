@@ -42,8 +42,25 @@ A generated module's entries are proved only with `check_generated` on.
 ## The budget
 
 [`scripts/lean-budget.json`](../scripts/lean-budget.json) holds a ceiling per
-module, 1.5 times its measured CPU time and peak RSS, at least 30 s and
-1.5 GB, and a default for modules it doesn't list. CI's `lean` job builds
+module, 1.5 times its highest measured CPU time and peak RSS, at least 3
+calibrations and 1.5 GB, and a default for modules it doesn't list.
+
+CPU time counts in calibrations (`cpu_cal`). CI's runners differ: the same
+module's CPU time varies by about 2 times between GitHub's runners and the
+AWS spot types, with no change to the module
+([#1865](https://github.com/AlexanderNenninger/substrait-lean/issues/1865)).
+Before the build, `calibrate` compiles
+[`scripts/lean-calibration.lean`](../scripts/lean-calibration.lean), a file
+of `simp`, `omega`, `grind` and reduction that imports only Lean, three times on
+the same runner and records its fastest CPU time. Each module's CPU time is
+divided by it. RSS doesn't depend on the runner and stays in MB. The
+[Lean budget workflow](../.github/workflows/lean-budget.yml) builds every
+module cold on two GitHub runners and four AWS instances, and `write-budget`
+over its artifacts takes each module's highest ratio, so a runner where a
+module is relatively slow is covered. It runs when the calibration file
+changes, since every ceiling is in its units.
+
+CI's `lean` job builds
 through the timing sysroot and runs `check` on the modules it rebuilt: the
 others came from the cache, unchanged with everything they import. A module
 over its ceiling is a warning on the job, naming the module, its time or
@@ -52,8 +69,8 @@ RSS and its ceiling, and a table in the job's summary, beside the report; the
 
 A module over its ceiling gets cheaper in the same PR where that is cheap.
 Otherwise the PR body says why it costs more, and its line in the budget may
-go up. After a PR that makes modules cheaper,
-`write-budget` from the CI artifact lowers the ceilings.
+go up. After a PR that makes modules cheaper, a run of the Lean budget
+workflow and `write-budget` over its artifacts lower the ceilings.
 
 ## The checker's speed
 

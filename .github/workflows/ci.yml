@@ -379,8 +379,11 @@ jobs:
       - uses: ./.github/actions/setup-lean
       # The build budget (docs/build-performance.md): the builds below run
       # `lean` through a sysroot that records each module's CPU time and peak
-      # RSS, and `check` fails on a module over its ceiling.
-      - run: python3 scripts/lean_timings.py sysroot "$RUNNER_TEMP/lean-sysroot"
+      # RSS, and `check` warns on a module over its ceiling. CPU time counts in
+      # units of the calibration, compiled first on the same runner.
+      - run: |
+          python3 scripts/lean_timings.py sysroot "$RUNNER_TEMP/lean-sysroot"
+          python3 scripts/lean_timings.py calibrate "$RUNNER_TEMP/lean-timings.jsonl"
       # The layer guards (#1189, #1162): each package builds on the layers
       # below it alone. The core imports no analysis and no engine, the
       # analysis no engine, the frontend neither engines-common nor an engine,
@@ -390,52 +393,31 @@ jobs:
       # each package's .lake.
       - run: lake build --wfail
         working-directory: core
-        env:
+        env: &lean-timings
           LAKE_OVERRIDE_LEAN: "true"
           LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
           LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
       - run: lake build --wfail
         working-directory: analysis
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: frontend
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/polars
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/spark
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/duckdb
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/substrait
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       # The core, the analysis and engines-common are parametric in the
       # black-box catalogue: they declare no `Boxes.Ambient` instance. Only an
       # engine package does, as a `scoped instance` (#1189).
@@ -457,10 +439,7 @@ jobs:
       # `poe prove` runs, for every default target), before `uv run`'s
       # editable install builds substrait-check.
       - run: lake -R -Kcheck_generated=true build --wfail
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       # Only the modules this run rebuilt are measured: the others restored
       # from the cache, unchanged with all they import.
       - name: Build budget

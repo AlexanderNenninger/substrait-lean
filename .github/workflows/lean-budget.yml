@@ -1,0 +1,64 @@
+name: Lean budget
+
+# Measures the Lean build budget (docs/build-performance.md, "The budget"):
+# a cold build of every module through the timing sysroot, after the
+# calibration, on GitHub's runners and on the AWS pool, whose CPUs differ.
+# Each job uploads a `lean-budget-<n>` artifact, and `write-budget` over all
+# of them writes scripts/lean-budget.json:
+#
+#   gh run download RUN -p 'lean-budget-*' -D budget
+#   python3 scripts/lean_timings.py write-budget budget/*/lean-timings.jsonl
+#
+# Runs when the calibration changes (every ceiling is in its units), and by hand.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/lean-budget.yml
+      - scripts/lean-calibration.lean
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    if: >-
+      github.event_name != 'pull_request'
+      || (github.event.pull_request.head.repo.full_name == github.repository
+      && !startsWith(github.head_ref, 'batch/'))
+    name: measure (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two GitHub runners and four AWS spot instances: each draws its CPU
+        # from its pool's types.
+        runner: [github, github, aws, aws, aws, aws]
+    runs-on: ${{ matrix.runner == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "linux", "x64", "aws"]') }}
+    timeout-minutes: 120
+    steps:
+      - run: |
+          { echo "LAKE_OVERRIDE_LEAN=true"
+            echo "LEAN_SYSROOT=$RUNNER_TEMP/lean-sysroot"
+            echo "LEAN_TIMINGS=$RUNNER_TEMP/lean-timings.jsonl"; } >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-lean
+        with:
+          cache: "false"
+      - run: python3 scripts/lean_timings.py sysroot "$LEAN_SYSROOT"
+      - run: python3 scripts/lean_timings.py calibrate "$LEAN_TIMINGS"
+      # As CI's `lean` job builds: each package, then the root with the
+      # generated proofs checked.
+      - run: |
+          for d in core analysis frontend engines engines/polars engines/spark engines/duckdb engines/substrait; do
+            (cd "$d" && lake build)
+          done
+          lake -R -Kcheck_generated=true build
+      - run: python3 scripts/lean_timings.py report --top 15 "$LEAN_TIMINGS" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lean-budget-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/lean-timings.jsonl
+          retention-days: 30
