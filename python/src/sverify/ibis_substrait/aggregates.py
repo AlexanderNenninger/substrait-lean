@@ -251,7 +251,10 @@ def split_multi_quantiles(metric: Any) -> Any:
         qs = m.quantile
         if not (isinstance(qs, ops.Literal) and isinstance(qs.value, tuple | list)):
             raise Unsupported("quantile() needs constant fractions", construct="function quantile")
-        one = [ops.Quantile(m.arg, ops.Literal(q, qs.dtype.value_type), m.where) for q in qs.value]
+        one = [
+            ops.Quantile(m.arg, ops.Literal(q, qs.dtype.value_type), m.where)  # pyrefly: ignore
+            for q in qs.value
+        ]
         # DuckDB's list is NULL, not a list of NULLs, for a group with no value.
         empty = ops.Equals(ops.Count(m.arg, m.where), ops.Literal(0, dt.int64))
         swap[m] = ops.IfElse(empty, ops.Literal(None, m.dtype), ops.Array(tuple(one)))

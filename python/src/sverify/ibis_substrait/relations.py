@@ -207,12 +207,15 @@ def _count_distinct_rows(op: Any, x: Exprs) -> Json:
     cd = next(iter(op.metrics.values()))
     if len(op.metrics) != 1 or not isinstance(cd, ops.CountDistinctStar):
         raise Unsupported(
-            "nunique() of rows beside other aggregates is not supported",
+            "nunique() of rows beside other aggregates is not supported; "
+            "take it in an aggregation of its own and join the results",
             construct="function nunique",
         )
     if cd.where is not None and op.groups:
         raise Unsupported(
-            "nunique(where=) of rows under group_by is not supported", construct="function nunique"
+            "nunique(where=) of rows under group_by is not supported; "
+            "filter the table first",
+            construct="function nunique",
         )
     input = rel(op.parent)
     if cd.where is not None:
@@ -226,7 +229,7 @@ def _count_distinct_rows(op: Any, x: Exprs) -> Json:
             "input": distinct,
             "groupingExpressions": [field_ref(i) for i in range(len(groups))],
             "groupings": ([{"expressionReferences": list(range(len(groups)))}] if groups else []),
-            "measures": [measure(x, ops.CountStar(op.parent, None))],
+            "measures": [measure(x, ops.CountStar(op.parent, None))],  # pyrefly: ignore
         }
     }
 
