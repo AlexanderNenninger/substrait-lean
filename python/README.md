@@ -92,6 +92,7 @@ except VerificationError as e:
 ## Install
 
 ```bash
+# skip: installs software on the reader's machine
 pip install sverify                # or: uv add sverify; verifies, runs nothing
 pip install 'sverify[duckdb]'      # and runs plans on DuckDB, the default engine
 pip install 'sverify[all]'         # with every engine in the 1.x promise and both table formats
@@ -122,6 +123,7 @@ outside sverify's model (the other codes are in
 report for GitHub's code scanning.
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify check pipelines/orders.py
 ```
 
@@ -216,6 +218,7 @@ Each night, when `main` has changed, the
 `<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
 
 ```bash
+# skip: installs software on the reader's machine
 uv add "sverify>=0.8.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 pip install --pre sverify --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 ```
@@ -233,6 +236,7 @@ one build for that long. `--find-links` sees every build on the page and picks
 the newest. Copy a URL from the release page:
 
 ```bash
+# skip: installs software on the reader's machine
 pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-<version>-py3-none-<platform>.whl"
 ```
 
@@ -389,6 +393,7 @@ the Ibis coverage table in its README, and
 ## Development
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 git clone https://github.com/AlexanderNenninger/substrait-lean
 cd substrait-lean/python
 uv sync                          # builds substrait-check with lake (needs elan) and links it in

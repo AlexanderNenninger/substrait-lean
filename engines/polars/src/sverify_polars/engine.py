@@ -3012,12 +3012,17 @@ class Translator:
             return kept.sort(_LEFT, maintain_order=True).select(left_cols), dtypes[:n]
         cols = [col(i) for i in range(len(dtypes))]
         if how == "left":
-            unmatched = left.join(matches.select(_LEFT), on=_LEFT, how="anti").with_columns(
-                [pl.lit(None, dtypes[i]).alias(col(i)) for i in range(n, len(dtypes))]
-                + [pl.lit(None, pl.UInt32).alias(_RIGHT)]
-            )
-            matches = pl.concat(
-                [matches.select(_LEFT, _RIGHT, *cols), unmatched.select(_LEFT, _RIGHT, *cols)]
+            # One read of the matches: a left join of the rows to them on the row index,
+            # NULLs for the right columns of a row without one. Reading them twice (an
+            # anti join, then a union) makes Polars cache them and fuse the filter into a
+            # nested-loop join below the `guard`, which then never sees a pair the
+            # condition rejects (#1857).
+            right_cols = [col(i) for i in range(n, len(dtypes))]
+            matches = left.join(
+                matches.select(_LEFT, _RIGHT, *right_cols),
+                on=_LEFT,
+                how="left",
+                maintain_order="left_right",
             )
         ordered_rows = matches.sort([_LEFT, _RIGHT], nulls_last=True, maintain_order=True)
         return ordered_rows.select(cols), dtypes

@@ -34,8 +34,9 @@ def test_every_notebook_installs_the_release(script, tmp_path):
     for nb in written:
         meta = script.header(nb.read_text())
         assert "uv" not in meta.get("tool", {}), nb.name
-        [dep] = [d for d in meta["dependencies"] if d.startswith("sverify")]
-        assert dep.endswith("==0.2.0"), (nb.name, dep)
+        deps = [d for d in meta["dependencies"] if d.startswith("sverify")]
+        assert deps, nb.name
+        assert all(d.endswith("==0.2.0") for d in deps), (nb.name, deps)
         assert "](../" not in nb.read_text(), nb.name
     assert (tmp_path / "README.md").read_text().startswith("# Published notebooks")
 
@@ -86,3 +87,23 @@ def test_other_sources_are_kept(script):
     meta = script.header(script.rewrite(nb, "0.2.0"))
     assert meta["dependencies"] == ["sverify==0.2.0", "other"]
     assert meta["tool"]["uv"]["sources"] == {"other": {"git": "https://example.com/other"}}
+
+
+def test_sverify_dbt_is_pinned_with_sverify(script):
+    nb = """# /// script
+# dependencies = [
+#     "dbt-duckdb",
+#     "sverify[duckdb]",
+#     "sverify-dbt",
+# ]
+#
+# [tool.uv.sources]
+# sverify = { path = "../python", editable = true }
+# sverify-dbt = { path = "../dbt", editable = true }
+# ///
+"""
+    assert script.header(script.rewrite(nb, "0.2.0"))["dependencies"] == [
+        "dbt-duckdb",
+        "sverify[duckdb]==0.2.0",
+        "sverify-dbt==0.2.0",
+    ]

@@ -16,6 +16,7 @@ against the comment under it.
 ## Install
 
 ```bash
+# skip: installs software on the reader's machine
 pip install sverify                 # or: uv add sverify
 pip install 'sverify[duckdb,polars,delta]' # the steps below use DuckDB, Polars and Delta Lake
 ```
