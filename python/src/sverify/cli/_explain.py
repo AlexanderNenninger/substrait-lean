@@ -133,6 +133,19 @@ CODES: dict[str, str] = {
         'Name them instead: `Storage(credentials="lake")`, `Secret("env:NAME")`, '
         "or leave them to the store's default chain."
     ),
+    "contract_weakened": (
+        "With `--against-sink`: a promise of the contract a stored node's sink last "
+        "committed (a NOT NULL column, a CHECK constraint, a unique key) that the node, as "
+        "the file now defines it, does not prove. Consumers of the sink rely on it. A CHECK "
+        "whose text changed is kept when sverify proves the old text from the new contract. "
+        "Restore the guarantee in the transform's `ensures`, or accept the change knowingly "
+        "and let the next refresh record the new contract."
+    ),
+    "plan_changed": (
+        "With `--against-sink`: the stored node's plan, or its profile, differs from the "
+        "one its sink last committed, so the next refresh recomputes the node rather than "
+        "resuming its state. A note: the contract may be unchanged."
+    ),
     "usage": "The command line is wrong: a flag, a missing file, or a node the file lacks.",
     "error": "The file raised an error of its own while sverify imported it: see the message.",
 }
@@ -142,6 +155,7 @@ CODES: dict[str, str] = {
 LEVELS: dict[str, str] = {
     "observation": "note",
     "unchecked": "warning",
+    "plan_changed": "note",
     "sum_overflow": "warning",
     "scope": "warning",
     "inline_credentials": "warning",

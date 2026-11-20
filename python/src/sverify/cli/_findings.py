@@ -12,6 +12,7 @@ from sverify.cli import _explain
 
 if TYPE_CHECKING:
     from sverify.cli._discover import Checked, Discovery
+    from sverify.io._common import Drift
     from sverify.io._credentials import CredentialUse
 
 
@@ -59,6 +60,54 @@ def of(c: Checked) -> list[dict[str, Any]]:
     if r.floats_unmet:
         out.append(_finding(c, "floats", r.floats_unmet))
     out += [_finding(c, "composition", m) for m in c.links]
+    return out
+
+
+def drift(var: str, d: Drift) -> list[dict[str, Any]]:
+    """The findings of a stored node's contract against its sink's record
+    (`--against-sink`): one `contract_weakened` per committed promise it no
+    longer proves, and a `plan_changed` note."""
+
+    def finding(code: str, message: str, condition: str | None = None) -> dict[str, Any]:
+        out = {
+            "code": code,
+            "level": _explain.level_of(code),
+            "message": message,
+            "item": var,
+            "nodes": [var],
+            "line": None,
+        }
+        return out if condition is None else {**out, "condition": condition}
+
+    w = d.weakened
+    out = [
+        finding(
+            "contract_weakened",
+            f"the sink promised {c} IS NOT NULL; not proved now",
+            f"{c} IS NOT NULL",
+        )
+        for c in w["not_null"]
+    ]
+    out += [
+        finding(
+            "contract_weakened", f"the sink promised CHECK ({t}); {d.why.get(t, 'not proved')}", t
+        )
+        for t in w["checks"]
+    ]
+    out += [
+        finding(
+            "contract_weakened",
+            f"the sink promised unique({', '.join(u)}); not proved now",
+            f"unique({', '.join(u)})",
+        )
+        for u in w["unique"]
+    ]
+    if d.plan_changed:
+        old, new = d.profiles
+        text = "the plan differs from the one the sink last committed"
+        if (old or "reference") != new:
+            text += f" (profile {old or 'reference'} then, {new} now)"
+        out.append(finding("plan_changed", text))
     return out
 
 

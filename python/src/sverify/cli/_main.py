@@ -126,6 +126,10 @@ class Check:
         self.unchecked = unchecked
         self.error: dict[str, Any] | None = None
         self._uses: list[tuple[str, Any]] | None = None
+        self.drift: dict[str, Any] | None = None
+        """With `--against-sink`, per stored node, how its contract compares
+        with its sink's last committed one; None for a sink with none."""
+        self._drift_findings: list[dict[str, Any]] = []
         if d.error is not None:
             self.code, kind = _classify(d.error)
             self.error = _error(kind, d.error)
@@ -181,7 +185,33 @@ class Check:
     def findings(self) -> list[dict[str, Any]]:
         out = [f for c in self.checked for f in _findings.of(c)]
         out += [_findings.unchecked(t, self.d) for t in self.unchecked]
-        return out + _findings.credentials(self.credential_uses())
+        return out + _findings.credentials(self.credential_uses()) + self._drift_findings
+
+    def compare_sinks(self) -> None:
+        """`--against-sink` (#769, ruling 189): each stored node's contract
+        against its sink's last committed one. Reads the record, no data. A
+        sink that cannot be read is an error of its own (exit 6)."""
+        from sverify.io._common import drift
+        from sverify.nodes import _Stored
+
+        self.drift = {}
+        for var, node in self.d.nodes.items():
+            if (self.target is not None and var != self.target) or not isinstance(node, _Stored):
+                continue
+            try:
+                committed = node.sink.contract()
+                got = None if committed is None else drift(committed, node)
+            except BudgetExceeded:
+                raise
+            except Exception as e:  # noqa: BLE001 - never reported as unchanged
+                self.code, self.error = ERROR, _error("error", f"{var}'s sink: {e}")
+                return
+            self.drift[var] = None if got is None else got.to_dict()
+            if got is None:
+                continue
+            self._drift_findings += _findings.drift(var, got)
+            if any(got.weakened.values()) and self.code in (OK,):
+                self.code = NOT_PROVED
 
     def document(self) -> dict[str, Any]:
         return {
@@ -193,6 +223,7 @@ class Check:
             "credentials": [{"node": v, **u.to_dict()} for v, u in self.credential_uses()],
             "error": self.error,
             "budget": {"timeout": self.budget.seconds, "elapsed": round(self.budget.elapsed, 3)},
+            **({} if self.drift is None else {"drift": self.drift}),
         }
 
     def text(self, full: bool = False) -> str:
@@ -344,6 +375,9 @@ def cmd_check(args: argparse.Namespace) -> int:
     if path.is_dir() or path.name == "dbt_project.yml":
         return _dbt(args, path)
     d, check = _check_file(args, path, target)
+    if args.against_sink:
+        with check.budget.armed():
+            check.compare_sinks()
     if not (args.fix or args.diff):
         return _show(args, check)
     plan = place(path, check.checked)
@@ -577,7 +611,13 @@ def parser() -> argparse.ArgumentParser:
         help="write the preconditions the proofs need into requires=, then check again",
     )
     fix.add_argument("--diff", action="store_true", help="show what --fix would write")
-    c.set_defaults(run=cmd_check)
+    c.add_argument(
+        "--against-sink",
+        action="store_true",
+        help="compare each stored node's contract with the one its sink last committed: "
+        "a committed promise the node no longer proves is contract_weakened (exit 1)",
+    )
+    c.set_defaults(run=cmd_check, against_sink=False)
     r = sub.add_parser(
         "refresh",
         parents=[common],

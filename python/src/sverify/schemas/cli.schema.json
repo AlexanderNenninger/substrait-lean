@@ -32,6 +32,24 @@
       "required": ["timeout", "elapsed"],
       "properties": {"timeout": {"type": "number"}, "elapsed": {"type": "number"}}
     },
+    "drift": {
+      "description": "check --against-sink (#769): per stored node, its contract against the one its sink last committed; null where the sink has committed none. A promise is weakened when the node no longer proves it (contract_weakened); checks are SQL texts.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "null"},
+          {
+            "type": "object",
+            "required": ["weakened", "added", "plan_changed"],
+            "properties": {
+              "weakened": {"$ref": "#/$defs/promises"},
+              "added": {"$ref": "#/$defs/promises"},
+              "plan_changed": {"type": "boolean"}
+            }
+          }
+        ]
+      }
+    },
     "fixes": {
       "description": "check --fix and --diff: the preconditions each transform needs, per parameter, as code for requires=.",
       "type": "array",
@@ -89,6 +107,15 @@
     "text": {"description": "explain: what the code means and how to fix it.", "type": "string"}
   },
   "$defs": {
+    "promises": {
+      "type": "object",
+      "required": ["not_null", "checks", "unique"],
+      "properties": {
+        "not_null": {"type": "array", "items": {"type": "string"}},
+        "checks": {"type": "array", "items": {"type": "string"}},
+        "unique": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
+      }
+    },
     "item": {
       "type": "object",
       "required": ["name", "nodes", "status", "summary", "links", "report"],

@@ -710,6 +710,16 @@ short in an agent's context. `check --diff` shows the preconditions the
 proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
 `check --fix` writes them and checks the file again.
 
+`check --against-sink` compares each stored node's contract with the one
+its sink last committed, reading the record and no data. A committed
+promise the node no longer proves is a `contract_weakened` finding, and
+the check exits 1: a NOT NULL column it no longer proves, a unique key it
+widened, or a CHECK whose text is gone and whose proof from the new
+contract fails. A tightened bound, a smaller key or a reordered list of
+conditions is no drift, and a changed plan or profile is a `plan_changed`
+note ([test_drift.py](../python/tests/test_drift.py)). The preconditions a
+contract added are not compared: the sink's record does not store them.
+
 `--format` (or `--output-format`) chooses the output:
 
 - `text`, the default, as above;
