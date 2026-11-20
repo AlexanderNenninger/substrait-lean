@@ -165,9 +165,16 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
     good.put("u", pa.table({"x": [2.0, -3.0], "y": [4.0, 0.5]}))
     out = run_both(report, good)
     assert all(math.isfinite(z) for z in out["polars"].column("z").to_pylist())
-    # Polars is observed here, as for a product that is proved outright.
     for e in ("duckdb", "spark"):
         assert route_of(report, e).cls == "exact"
+    # Polars is observed for any double product, proved outright or not: its
+    # route reads `-0.0` as `0.0` (facts polars-zero-sign, polars-zero-add).
+    proved = sv.verify(
+        u.select(z=u.x * u.y),
+        requires={"u": [_.x.between(-1e150, 1e150), _.y.between(-1e150, 1e150)]},
+    )
+    assert proved.verdict == sv.Verdict.PROVED
+    assert route_of(proved, "polars").cls == route_of(report, "polars").cls == "observed"
     bad = sv.connect()
     bad.put("u", pa.table({"x": [1e200], "y": [1e200]}))
     for e in ENGINES:
