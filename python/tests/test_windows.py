@@ -449,3 +449,62 @@ def test_a_windowed_min_of_doubles_picks_a_member_of_a_class():
     assert "keeps any member of a class of doubles" in doubles._tie_places[0].what
     ints = sv.verify(t.select(t.s, t.t, lo=t.n.min().over(w)), requires=keyed)
     assert ints.deterministic
+
+
+G = ibis.table({"pk": "int64", "id": "int64", "s": "string"}, name="g")
+TZ = ibis.table({"tk": "string", "time": "timestamp('UTC')", "bid": "int64"}, name="z")
+
+
+@settings(max_examples=25, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.integers(0, 8),
+            st.one_of(st.none(), st.sampled_from(["a", "b|c", ""])),
+        ),
+        max_size=8,
+        unique_by=lambda r: r[1],
+    )
+)
+def test_group_concat_over_a_window_matches_duckdb(rows):
+    """`group_concat(sep=).over(rows=(0, None))` (#1915): the frame's strings
+    in the window's order (unique ids), NULLs skipped."""
+    expr = G.mutate(t=G.s.group_concat(sep="|").over(group_by="pk", order_by="id", rows=(0, None)))
+    con = connect()
+    con.create("g", G.schema(), rows)
+    expected = [tuple(r.values()) for r in duckdb_ibis(con, expr).to_pylist()]
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"g": rows})))
+    assert canonical(lean) == canonical(expected)
+    got = run_plan(con, written_plan(json.dumps(plan)), "duckdb").to_pylist()
+    assert canonical([tuple(r.values()) for r in got]) == canonical(expected)
+
+
+@settings(max_examples=25, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.sampled_from(["a", "b"]),
+            st.integers(0, 40),
+            st.one_of(st.none(), st.integers(-5, 5)),
+        ),
+        max_size=8,
+    )
+)
+def test_range_frame_over_a_timestamp_with_time_zone_matches_duckdb(rows):
+    """A RANGE frame with an interval offset over a `timestamptz` key (#1931)."""
+    from datetime import UTC, datetime, timedelta
+
+    rows = [(k, datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=s), b) for k, s, b in rows]
+    expr = TZ.select(
+        "tk", a=TZ.bid.sum().over(range=(-ibis.interval(seconds=10), 0), order_by=TZ.time)
+    )
+    con = connect()
+    con.create("z", TZ.schema(), rows)
+    expected = [tuple(r.values()) for r in duckdb_ibis(con, expr).to_pylist()]
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"z": rows})))
+    assert canonical(lean) == canonical(expected)
+    got = run_plan(con, written_plan(json.dumps(plan)), "duckdb").to_pylist()
+    assert canonical([tuple(r.values()) for r in got]) == canonical(expected)

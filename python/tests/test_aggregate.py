@@ -1040,3 +1040,10 @@ def test_quantiles_are_refused_on_other_engines(agg):
 def test_quantile_refusals_say_what(agg, message):
     with pytest.raises(Exception, match=message):
         to_substrait_json(Q.group_by("k").aggregate(v=agg))
+
+
+def test_group_concat_with_a_constant_expression_as_separator():
+    """`sep=ibis.literal(":") + ":"` folds to `"::"` (#1914)."""
+    expr = Q.group_by("k").aggregate(c=Q.s.group_concat(ibis.literal(":") + ":", where=Q.i > 0))
+    plan = json.loads(to_substrait_json(expr))
+    assert '"string": "::"' in json.dumps(plan)

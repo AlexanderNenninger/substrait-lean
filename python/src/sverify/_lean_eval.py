@@ -46,6 +46,9 @@ def literal(v: object) -> dict:
         return {"literal": {"i64": str(v)}}
     if isinstance(v, str):
         return {"literal": {"string": v}}
+    if isinstance(v, dt.datetime) and v.tzinfo is not None:
+        micros = (v - EPOCH.replace(tzinfo=dt.UTC)) // dt.timedelta(microseconds=1)
+        return {"literal": {"precisionTimestampTz": {"precision": 6, "value": str(micros)}}}
     if isinstance(v, dt.datetime):
         micros = (v - EPOCH) // dt.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}

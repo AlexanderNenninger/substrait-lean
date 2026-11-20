@@ -238,6 +238,9 @@ class DuckDBDialect(Dialect):
     def window_pick(self, fn: str, v: str, w: str) -> str:
         return f"{'FIRST' if fn == 'first' else 'LAST'}_VALUE({v} IGNORE NULLS) {w}"
 
+    def window_string_agg(self, v: str, sep: str, w: str) -> str:
+        return f"string_agg({v}, {sep}) {w}"
+
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         return f"string_agg({v}, {sep}{_order_by(order)})"
 
