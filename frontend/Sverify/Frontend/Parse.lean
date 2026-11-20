@@ -71,7 +71,23 @@ def isValuesKey (t : String) : Bool := t.startsWith "$values "
 its expressions, where they say more than `Expr.kind`: the model has a
 timestamp, a double's `0.0` and a typed `NULL` as plain values (#96). Its
 `baseSchema` has one type per expression, `{}` where `Expr.kind` holds. -/
-def projectKey (es : List Expr) : String := s!"$project {reprStr es}"
+def projectKey (es : List Expr) : String :=
+  s!"$project {es.length}:" ++ String.join (es.map exprKey)
+where
+  /-- An expression as a string, as `valueKey` writes a value: a tag, a
+  function by its `reprStr` with its length first, and the operands' keys.
+  `reprStr` of the expression printed every double's code in decimal and
+  pretty-printed the tree, and the writer and the parser look a projection
+  up at every node above it: most of a nested double expression's check
+  (#1952). -/
+  exprKey : Expr → String
+    | .lit v => "l" ++ valueKey v
+    | .field i => s!"c{i};"
+    | .un f a => "u" ++ fnKey (reprStr f) ++ exprKey a
+    | .bin f a b => "b" ++ fnKey (reprStr f) ++ exprKey a ++ exprKey b
+    | .ifThen c t e => "i" ++ exprKey c ++ exprKey t ++ exprKey e
+    | .hof f l b => "h" ++ fnKey (reprStr f) ++ exprKey l ++ exprKey b
+  fnKey (s : String) : String := s!"{s.length}:{s}"
 
 /-- An entry of `Tables` that is not a named table. -/
 def isInternalKey (t : String) : Bool := t.startsWith "$"
@@ -162,19 +178,20 @@ partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
   if intTags.any (fun (k, _) => has k) then .int
   else if ["fp32", "fp64"].any has then .float
-  -- Times are microseconds; a coarser precision (Calcite's `TIMESTAMP` is
-  -- seconds) would truncate, which is not modelled.
+  -- Times are microseconds: a coarser precision (Calcite's `TIMESTAMP` is seconds) would
+  -- truncate, and a finer one (nanoseconds) would be read as a count of microseconds, which
+  -- compares raw counts of different units (#2004). Neither is modelled.
   else if has "timestamp" then .time
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
-    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .time else .other
   -- An instant (#1725): microseconds, as the naive kind.
   else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then
-    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .timeTz else .other
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .timeTz else .other
   else if has "timestampTz" then .timeTz
   else if has "date" then .date
   else if has "time" then .tod
   else if let some t := (ty.getObjVal? "precisionTime").toOption then
-    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .tod else .other
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .tod else .other
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
@@ -188,16 +205,11 @@ partial def typeKind (ty : Json) : Kind :=
 
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
-
-/-- A decimal of scale 0 and at least 19 digits holds every 64-bit integer
-exactly, and adding, subtracting or multiplying such decimals is exact, so the
-model keeps their values as integers. DataFusion casts to `DECIMAL(20, 0)` to
-mix signed and unsigned integers (`ROW_NUMBER() - 1`). -/
-def wideIntDecimal (ty : Json) : Bool :=
-  match (ty.getObjVal? "decimal").toOption with
-  | some d => (d.getObjValAs? Nat "scale").toOption.getD 0 == 0 &&
-      19 ≤ (d.getObjValAs? Nat "precision").toOption.getD 0
-  | none => false
+-- Nanoseconds are not microseconds (#2004).
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 6)])]) == .time
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .other
 
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -271,6 +283,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ | .un .ftoiOrNull _
   | .un (.narrowOrNull _) _ => .int
   | .un (.wrap _) a => a.kind cols
+  | .un (.approx _) a => a.kind cols
   | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
   | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
@@ -364,6 +377,17 @@ def _root_.Substrait.WinFn.kind (cols : List Kind) : WinFn → Kind
     cols.getD c .other
   | .agg m _ _ => m.kind cols
 
+/-- The kinds the source plan declares for a projection of `es` (`projectKey`),
+`[]` where it declares none. A plan without such an entry never prints its
+expressions: `Rel.kinds` asks at every projection on every call, and the key's
+`reprStr` made that quadratic in the plan's depth. -/
+def declaredProjectKinds (tables : Tables) (es : List Expr) : List Kind :=
+  if tables.any (·.1.startsWith "$project ") then
+    match tables.lookup (projectKey es) with
+    | some (_, s) => schemaKinds s
+    | none => []
+  else []
+
 def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .read t => match tables.lookup t with
     | some (_, s) => schemaKinds s
@@ -374,9 +398,7 @@ def _root_.Substrait.Rel.kinds (tables : Tables) : Rel → List Kind
   | .filter r _ | .fetch r _ _ => r.kinds tables
   | .project r es =>
       let ks := r.kinds tables
-      let declared := match tables.lookup (projectKey es) with
-        | some (_, s) => schemaKinds s
-        | none => []
+      let declared := declaredProjectKinds tables es
       ks ++ es.zipIdx.map fun (e, i) => match declared[i]? with
         | some k => if k == .other then e.kind ks else k
         | none => e.kind ks
@@ -525,6 +547,14 @@ def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
   | .ifThen _ t e => max (t.bits cols) (e.bits cols)
   | _ => 64
 
+/-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
+model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
+it from widening the arithmetic around it, and a column has none (#1934). A
+narrower declared type is a `narrow` mark (`declaredNarrow`). -/
+def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
+  | .lit _ => 64
+  | e => e.bits cols
+
 def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
   | .read t => match tables.lookup t with
     | some (_, s) => schemaBits s
@@ -561,7 +591,7 @@ def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Table
         | _ => 64
 
 /-- The width of each column of a relation's rows as the parser tracks it. -/
-def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.bits tables
+def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.colBits tables
 
 /-- An expression's width in the plan the writer writes: a column keeps its declared width,
 every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
@@ -607,18 +637,47 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
         then intBits ty else if e.readsField then e.bits cols else 64
     | none => if e.readsField then e.bits cols else 64
 
+/-- Is the double `f` halfway between two adjacent singles? A value rounded
+to `f` and then to a single rounds twice there, and may land on the other
+single than the value's nearest. -/
+def singleTie (f : Float) : Bool :=
+  let s := f.toFloat32
+  if s.toFloat == f || s.isNaN || s.isInf then false else
+  let other := Float32.ofBits (if (s.toFloat < f) == (0 ≤ f) then s.toBits + 1 else s.toBits - 1)
+  (s.toFloat + other.toFloat) / 2 == f
+
+#guard singleTie (1.0 + 2.0 ^ (-24 : Float)) && singleTie (-(1.0 + 2.0 ^ (-24 : Float)))
+#guard !singleTie 0.1 && !singleTie 1.5
+
+/-- A projected integer constant `e`, written as `j`, at its declared width
+(`argBits`: a literal's tag, or the target of a cast the parser folded,
+`CAST(5 AS INTEGER)`). Narrower than 64 bits, the column keeps that width
+through a `narrow` mark, which changes no value: the parser has checked that
+the constant fits. -/
+def declaredNarrow (j : Json) (e : Expr) : Expr :=
+  match e with
+  | .lit (.int _) => let n := argBits [] j e; if n < 64 then .un (.narrow n) e else e
+  | e => e
+
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
-  if wideIntDecimal ty then
-    match c with
-    | .int i | .dec i _ 0 => return .int i
-    | _ => throw "cannot cast this value to an integer decimal"
   match typeKind ty with
   | .float =>
     let some f := c.toFloat? | throw "cannot cast this value to a double"
-    -- To a `FLOAT`: the nearest single-precision value (#208).
-    return .flt (if (ty.getObjVal? "fp32").toOption.isSome then f.toFloat32.toFloat else f)
+    if (ty.getObjVal? "fp32").toOption.isNone then return .flt f
+    -- To a `FLOAT`: the nearest single-precision value (#208), rounded once, as
+    -- DuckDB casts (ruling 186 P3, duckdb-coerce-real). An integer within 2^53
+    -- is its double exactly; a decimal or a string goes through its nearest
+    -- double, which rounds to the decimal's single unless it is a tie.
+    if let .int i := c then
+      if 2 ^ 53 < i.natAbs then
+        throw s!"a cast of {i} to FLOAT (fp32) would round twice; cast it to DOUBLE"
+    if (c matches .dec .. || c matches .str _) && singleTie f then
+      throw "a cast of this value to FLOAT (fp32) would round twice; cast it to DOUBLE"
+    let s := f.toFloat32
+    if s.isInf && !f.isInf then throw "the value does not fit a FLOAT (fp32)"
+    return .flt s.toFloat
   | .int =>
     let some i := c.toInt? | throw "cannot cast this value to an integer"
     let bits := intBits ty
@@ -674,19 +733,11 @@ def castConst (ty : Json) (c : Const) : J Const := do
     if fitsDigits p m then return .dec m p s
     else throw s!"cast to DECIMAL({p}, {s}) overflows"
   | _ =>
-    -- A constant cast to a timestamp coarser than microseconds: only where it
-    -- truncates nothing (`CAST('2024-01-15 00:00:00' AS TIMESTAMP)` in Calcite).
+    -- A constant cast to a timestamp of another precision floors to that unit
+    -- (D61), which the model does not state (#2004).
     if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
       let p := (t.getObjValAs? Nat "precision").toOption.getD 0
-      let us ← match c with
-        | .str s => match Time.parseTimestamp? s with
-          | some us => pure us
-          | none => throw s!"cannot parse timestamp '{s}'"
-        | .ts us => pure us
-        | .date d => pure (d * Time.usPerDay)
-        | _ => throw "cannot cast this value to a timestamp"
-      if us % 10 ^ (6 - p) == 0 then return .ts us
-      else throw s!"cast to a timestamp of precision {p} truncates"
+      throw s!"cast to a timestamp of precision {p} is not supported: timestamps are read at microsecond precision"
     throw "unsupported cast type"
 
 /-- A day/second interval in microseconds. -/
@@ -734,8 +785,9 @@ def calendarInterval (l : Json) : J Bool := do
 key and carried through; the rest is refused, and says so. -/
 def instantRefusal (what : String) : String :=
   s!"{what} is not supported yet (#1725): a timestamp with a time zone can be read, compared \
-    with other such columns, used as a key and written back; literals, conversions and \
-    calendar functions follow"
+    with other such columns, used as a key and written back, and converted to a timestamp at \
+    UTC (a cast to a timestamp, `x AT TIME ZONE 'UTC'` in SQL), which the calendar functions \
+    read (D69); a function of an instant that reads a zone is refused"
 
 def parseConstLiteral (j : Json) : J Const := do
   if intTags.any (fun (k, _) => (field? j k).isSome) &&
@@ -798,14 +850,12 @@ def parseConstLiteral (j : Json) : J Const := do
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
     if p ≤ 6 then return .tod (v * 10 ^ (6 - p))
-    else if v % 10 ^ (p - 6) == 0 then return .tod (v / 10 ^ (p - 6))
     else throw "times finer than microseconds are not supported"
   -- Precision `p` counts units of 10⁻ᵖ s (a `TIMESTAMP '…'` literal may be at 0).
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
     if p ≤ 6 then return .ts (v * 10 ^ (6 - p))
-    else if v % 10 ^ (p - 6) == 0 then return .ts (v / 10 ^ (p - 6))
     else throw "timestamps finer than microseconds are not supported"
   | (k, n) =>
     let i ← getInt n
@@ -1513,7 +1563,10 @@ def mkTemporalCall? : String → List Expr → Option (J Expr)
     match Time.TimeUnit.ofName? u with
     | some u => pure (.un (.dateTrunc u) a)
     | none => throw s!"unsupported date_trunc unit '{u}'"
-  -- chrono's formats; DataFusion's `to_char`.
+  -- chrono's formats; DataFusion's `to_char`. Every directive reads the wall clock, so the
+  -- Ibis producer's `strftime` of an instant at UTC is this of its conversion (D69); a zone
+  -- directive (`%z`, `%Z`) would print `+0000` for an instant and nothing here, so adding
+  -- one to the list needs a decision of its own.
   | "strftime", [a, .lit (.str fmt)] | "to_char", [a, .lit (.str fmt)]
   | "date_format", [a, .lit (.str fmt)] => some <|
     match Time.parseFormat fmt.toList with
@@ -1590,6 +1643,11 @@ def mkFloatCall : String → List Expr → J Expr
   | "abs", [a] => pure (.ifThen (.bin .lt a (.lit (.float 0))) (.un .fneg a) a)
   | "round", [a, .lit (.int 0)] => pure (.un .fround a)
   | "round", [a, .lit (.int d)] => pure (.un (.froundTo d) a)
+  -- D52: a source mark, the identity; `k` a literal natural number.
+  | "sverify_approx", [a, .lit (.int k)] =>
+    if 0 ≤ k then pure (.un (.approx k.toNat) a)
+    else throw s!"sverify_approx: the bound {k} is negative"
+  | "sverify_approx", _ => throw "sverify_approx takes a double and a literal natural number"
   -- `core/Sverify/Core/Numeric.lean`.
   | name, args => match Functions.read? Functions.core .float name args with
     | some e => pure e
@@ -1783,7 +1841,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let p ← natD t "precision"
       let v ← getInt (← field t "value")
       if p ≤ 6 then return .un (.atUtc true) (.lit (.ts (v * 10 ^ (6 - p))))
-      else if v % 10 ^ (p - 6) == 0 then return .un (.atUtc true) (.lit (.ts (v / 10 ^ (p - 6))))
       else throw "timestamps finer than microseconds are not supported"
     if let some us := field? l "timestampTz" then
       return .un (.atUtc true) (.lit (.ts (← getInt us)))
@@ -1849,10 +1906,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols bits sj)
-    -- A timestamp of any precision: a coarser one is `.other` to `typeKind`,
-    -- and a date plus an interval typed as either is refused alike.
+    -- A function's result typed as a timestamp of up to microseconds is the exact
+    -- microsecond value (`date - 5 days` is `precision_timestamp<0>` in Substrait's
+    -- own cases); a finer one is `.other`, as everywhere (#2004).
     let outTy := (field? f "outputType").getD .null
-    let out := if (field? outTy "precisionTimestamp").isSome then Kind.time else typeKind outTy
+    let out := match (field? outTy "precisionTimestamp").bind (·.getObjValAs? Nat "precision" |>.toOption) with
+      | some p => if p ≤ 6 then Kind.time else .other
+      | none => typeKind outTy
     if let some e ← temporalArith (parseExpr fns cols bits) cols (baseName name) argJs out then return e
     if comparisonFns.contains (baseName name) then
       for a in argJs do
@@ -1969,7 +2029,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- (a plan may type `POWER` of integers as a double).
     let outTy := (field? f "outputType").getD .null
     let floats := ["add", "subtract", "multiply", "divide", "modulus", "negate", "abs", "power",
-      "floor", "ceil", "round"] ++ doubleFns
+      "floor", "ceil", "round", "sverify_approx"] ++ doubleFns
     let hasFloat := (argJs.zip parsed).any fun (j, e) => e.kind cols == .float || doubleJ fns j
     let floatCall := floats.contains (baseName name) &&
       (out == .float || hasFloat || doubleFns.contains (baseName name))
@@ -1984,13 +2044,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if hasFloat then
         throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
       if let some e ← decimalCall cols (baseName name) outTy parsed then return e
-    else if (out matches .dec _ _) && !wideIntDecimal outTy then
+    else if out matches .dec _ _ then
       throw s!"{name}: a DECIMAL result of non-decimal arguments is not supported"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
     -- double's code.
-    -- `ROUND(x, d)`: the digits stay an integer.
-    let keepInt (k : Nat) : Bool := baseName name == "round" && k == 1
+    -- `ROUND(x, d)`: the digits stay an integer; so does D52's band `k`.
+    let keepInt (k : Nat) : Bool := (baseName name == "round" || baseName name == "sverify_approx") && k == 1
     let args ← ((argJs.zip parsed).zipIdx).mapM fun ((j, e), k) => do
       if (hasFloat || floatCall) && !keepInt k then
         if let some (.int i) ← constOf? fns j then return Expr.lit (.float (FloatCode.ofInt i))
@@ -2108,7 +2168,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if k == .timeTz && target == .timeTz then return e
     if k == .timeTz || target == .timeTz then
       throw (instantRefusal "a cast to or from a timestamp with a time zone, but at UTC to a timestamp,")
-    if k == .int && wideIntDecimal (← field c "type") then return e
     -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
     -- checking the precision. To a smaller scale rounds half away from zero;
     -- to an integer truncates toward zero.
@@ -2117,7 +2176,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let e' ← match k with
         | .dec _ s₀ => pure (if s₀ ≤ s then upscale (s - s₀) e else .un (.dround (s₀ - s)) e)
         | .int => pure (upscale s e)
-        | .float => pure (.un (.ftod s) e)
+        | .float =>
+          -- A FLOAT's decimal digits depend on its width (ruling 186 P5).
+          if argBits bits input e == 32 then
+            throw "casts of FLOAT (fp32) values to DECIMAL are not modelled; cast them to DOUBLE first"
+          pure (.un (.ftod s) e)
         | _ => throw s!"unsupported cast from {repr k} to DECIMAL({p}, {s})"
       return .un (.decimal p s) e'
     if let .dec p₀ s₀ := k then
@@ -2142,6 +2205,26 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if (ty.getObjVal? "fp32").toOption.isSome then
       if k == .float && argBits bits input e == 32 then return e
       throw "casts to FLOAT (fp32) are not modelled; they round to 32 bits"
+    -- A boolean is 1 or 0, and NULL stays NULL (#1911); a narrower integer
+    -- keeps its width through a `narrow` mark, as a projected constant does.
+    if k == .bool && (target == .int || target == .float) then
+      let bit (v : Int) : Expr := .lit (if target == .float then .float (FloatCode.ofInt v) else .int v)
+      let b := Expr.ifThen e (bit 1) (.ifThen (.un .not e) (bit 0) (.lit .null))
+      let n := intBits ty
+      return if target == .int && n < 64 then .un (.narrow n) b else b
+    -- A list casts element by element (#1919): `transform(l, x -> CAST(x AS t))`.
+    if let .list ek := k then
+      if target != k then
+        if let some et := ((ty.getObjVal? "list").toOption).bind (·.getObjVal? "type" |>.toOption) then
+          let x := Json.mkObj [("selection", Json.mkObj [("rootReference", Json.mkObj []),
+            ("directReference", Json.mkObj [("structField", Json.mkObj [("field", (0 : Int))])])])]
+          let body ← parseExpr fns (ek :: cols) (64 :: bits)
+            (Json.mkObj [("cast", (c.setObjVal! "type" et).setObjVal! "input" x)])
+          return .hof .transform e body
+    -- A struct casts field by field, which needs a struct the core cannot build
+    -- (ruling 186: refused by design for 1.0, D66 reserved).
+    if k matches .struct _ then
+      throw "casts of structs are not supported: sverify cannot build a struct (D66); cast its fields"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
@@ -2261,6 +2344,15 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
       | _ => pure (none, a :: rest)
     | _, js => pure (none, js)
   let args ← argJs.mapM fun a => field a "value"
+  -- An aggregate whose result depends on the width of FLOAT (fp32) values: a
+  -- sum, a mean, a moment, an interpolated quantile (ruling 186 P5). The ones
+  -- below only pick, order or count values.
+  if !["count", "min", "max", "first", "last", "any_value", "mode", "arg_min", "arg_max",
+      "array_agg", "quantile_disc"].contains name then
+    for j in args do
+      let e ← parseExpr fns cols bits j
+      if e.kind cols == .float && argBits bits j e == 32 then
+        throw s!"{name} of FLOAT (fp32) values is not modelled; cast them to DOUBLE first"
   -- Doubles, or integers converted to doubles, as a two-argument aggregate's.
   let double (j : Json) : J Expr := do
     let e ← parseExpr fns cols bits j
@@ -2670,7 +2762,7 @@ def parseWindowProject (fns : List (Nat × String)) (inp : Rel) (cols : List Kin
   -- An `AVG` with a double result is a double in the expressions over it.
   let wcols := avgs.foldl (init := cols ++ hoisted.map (·.kind cols) ++ (windowed.kinds []).drop n')
     fun ks (c, _, _, dbl) => if dbl then ks.set c .float else ks
-  let wbits := bits ++ hoisted.map (·.bits bits) ++ (windowed.bits []).drop n'
+  let wbits := bits ++ hoisted.map (·.colBits bits) ++ (windowed.bits []).drop n'
   let withAvgs (e : Expr) : Expr := avgs.foldl (init := e) fun e (c, p, s, dbl) =>
     let (total, count) := (Expr.field c, Expr.field (c + 1))
     -- A double: the sum as a double by the count, NULL without values.
@@ -2733,9 +2825,10 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   -- The model's times are microseconds (`typeKind`).
   for ty in ← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types" do
     if unsignedType ty then throw "unsigned integer columns are not supported"
-    if let some t := field? ty "precisionTimestamp" then
-      if (← natD t "precision") < 6 then
-        throw "timestamp columns coarser than microseconds are not supported"
+    for tag in ["precisionTimestamp", "precisionTimestampTz", "precisionTime"] do
+      if let some t := field? ty tag then
+        if (← natD t "precision") != 6 then
+          throw "timestamp and time columns of a precision other than microseconds are not supported"
   let base ← match ← oneof "read type" r ["namedTable", "virtualTable"] with
     | ("namedTable", t) =>
       let names ← (← arrD t "names").mapM (·.getStr?)
@@ -2949,10 +3042,11 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         parseWindowProject fns inp cols bits ejs
       else if k != 0 then
         let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
+        let es := (ejs.zip es).map fun (j, e) => declaredNarrow j e
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else
-        let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
+        let es ← ejs.mapM fun e => do return declaredNarrow e (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
         if es.isEmpty then pure inp else
           recordDeclaredKinds fns cols ejs es

@@ -73,7 +73,7 @@ theorem check_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
   obtain ⟨⟨⟨-, hloose⟩, -⟩, -⟩ := hg
   obtain ⟨p, hp⟩ := Rel.hasIssue_of_raises false hloose
     (Lowering.lowerRel_raises Lowering.duckdb_total hr)
-  rcases check_issues_sound hR hc hD hT hP hsm p hp with h | ⟨-, h⟩
+  rcases check_issues_sound hR hc hD hT hP hsm p hp with h | ⟨-, h, -⟩
   · rw [hi] at h; cases h
   · rw [href] at h; cases h
 

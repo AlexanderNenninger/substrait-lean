@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-03-principle-3-reasonable-effort",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Reference principle 3 reads \"Every engine can follow it with reasonable effort\": each choice must be implementable on every engine with a reasonable shim or translation.",
+  "issues": [
+    185
+  ],
+  "amends": [
+    "U-2026-11-01-reference-principles"
+  ],
+  "source": "github:#185 comment 6605156873"
+}

@@ -1,7 +1,7 @@
 """Substrait producers, and DuckDB or Polars as consumer.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `connect()` gives a `Connection`: named Arrow tables, the engine that runs
 plans over them (DuckDB by default), and Ibis tables bound to them
@@ -47,6 +47,7 @@ from sverify._scan import Native, Resident, Scan
 from sverify._store import instants_in_utc
 from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
+from sverify.profiles import Finite
 
 Engine = str
 """An engine's name, as its plugin registers it (`sverify.profiles`):
@@ -304,11 +305,13 @@ class Connection:
         """
         self.drop(name)
         if isinstance(table, Native):
+            _refuse_coarse_timestamps(table.schema)
             if isinstance(table, Scan):
                 table = replace(table, schema=plain_schema(table.schema))
         else:
             _check_times(table.schema)
             _check_calendar(table)
+            table = _widen_timestamps(table)
         if isinstance(table, Native) and self._duck is None:
             if _importable("duckdb"):
                 self._ibis  # noqa: B018 - the rows are checked over a DuckDB view
@@ -450,13 +453,14 @@ def lift_sql_plan(
 ) -> Any:
     """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
     `schemas` it reads."""
-    from sverify.sql_lift import lift
+    from sverify.sql_lift import full_name, lift
 
     try:
-        read = {t.name.lower() for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+        # By DuckDB's resolution: `shop.main.orders` reads the input of that key.
+        read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
     except sg.errors.ParseError:
         read = set()  # the lift says why
-    return lift(sql, {n: s for n, s in schemas.items() if n.lower() in read}, semantics)
+    return lift(sql, {n: s for n, s in schemas.items() if full_name(n) in read}, semantics)
 
 
 def quote(name: str) -> str:
@@ -626,7 +630,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: Literal[False] = False,
-    finite: bool = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table: ...
@@ -639,7 +643,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool,
-    finite: bool = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident: ...
@@ -651,7 +655,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool = False,
-    finite: bool = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
@@ -676,8 +680,10 @@ def run_plan(
             Other engines ignore it. Default: False.
         finite: On DuckDB, Polars and Spark, check that no operation on finite
             doubles gives `±∞` (`Issue.infinite`), the reference's
-            precondition. Default: True; `Report.run` passes False for a
-            plan verified with `semantics="duckdb"`, which allows `±∞`.
+            precondition. Default: True; `Report.run` passes `"aggregates"` for
+            a plan verified with `semantics="duckdb"`, which allows an
+            operation's `±∞` but not an aggregate's (ruling 200 A4(2)); False
+            writes no check.
         tie_free: On Spark, the plan's windows have no ties on data that
             meets its preconditions (a proved report's `deterministic`), so
             they run with the sort keys alone (`to_sql`'s `deterministic`).
@@ -742,7 +748,7 @@ def run_plan(
 
 
 def run_guard_free(
-    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool = True
+    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: Finite = True
 ) -> pa.Table:
     """Run a plan whose contract report is `guard_free` on `engine` without
     its other per-row checks, on data that meets its preconditions. The
@@ -818,6 +824,36 @@ def _calendar_error(column: str, what: str, count: int, example: str) -> Excepti
         f"{column} holds {what} outside 0001–9999 ({count}, e.g. {example}); the reference's "
         "calendar covers 0001–9999. Filter them, or read the column as text."
     )
+
+
+def _refuse_coarse_timestamps(schema: pa.Schema) -> None:
+    """Refuse a table DuckDB reads where it is with a second or millisecond
+    timestamp column: only an Arrow table is widened to microseconds at the
+    read (`_widen_timestamps`), and an engine that meets the two units in one
+    comparison or join truncates the finer side (`polars-ts-units-compare-coarse`).
+    The scan's projection will widen them (#323)."""
+    from sverify.plan_json import Unsupported
+
+    for f in schema:
+        if pa.types.is_timestamp(f.type) and f.type.unit in ("s", "ms"):
+            raise Unsupported(
+                f"{f.name} is a timestamp in {'seconds' if f.type.unit == 's' else 'milliseconds'} "
+                "in a table the engine reads where it is; sverify reads these as microseconds "
+                "only from an Arrow table so far (#323): cast the column to microseconds"
+            )
+
+
+def _widen_timestamps(table: pa.Table) -> pa.Table:
+    """Read the second and millisecond timestamp columns as microseconds (D61):
+    exact, since `_check_calendar` holds every value in 0001–9999. No engine
+    then sees two units in one operation."""
+    fields = [
+        pa.field(f.name, pa.timestamp("us", tz=f.type.tz), f.nullable, f.metadata)
+        if pa.types.is_timestamp(f.type) and f.type.unit in ("s", "ms")
+        else f
+        for f in table.schema
+    ]
+    return table.cast(pa.schema(fields)) if fields != list(table.schema) else table
 
 
 def _check_calendar(table: pa.Table) -> None:

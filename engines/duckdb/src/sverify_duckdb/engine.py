@@ -1,7 +1,7 @@
 """DuckDB as an engine, through SQL generated from the plan.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `run` writes the plan as SQL with `sverify.sql.to_sql` (whose semantics are
 Lean's `Rel.eval`, see `sverify.sql.core`) and runs it on an in-process
@@ -21,6 +21,7 @@ import pyarrow as pa
 
 from sverify import _duckdb
 from sverify._scan import Native, Resident
+from sverify.profiles import Finite
 from sverify.sql import to_sql
 from sverify_duckdb.dialect import DUCKDB
 
@@ -31,7 +32,7 @@ else:
 
 
 @functools.lru_cache(maxsize=4096)
-def _sql(plan: str, guards: bool = True, finite: bool = True, asof: str = "[]") -> str:
+def _sql(plan: str, guards: bool = True, finite: Finite = True, asof: str = "[]") -> str:
     """`to_sql` of a JSON plan, memoized: an incremental view runs the same
     delta plans on every batch. `asof`: the plan's as-of join sites, as JSON."""
     return to_sql(json.loads(plan), DUCKDB, guards=guards, finite=finite, asof=json.loads(asof))
@@ -82,7 +83,7 @@ def run(
     *,
     guards: bool = True,
     keep: Literal[False] = False,
-    finite: bool = True,
+    finite: Finite = True,
     asof: Sequence[dict] = (),
 ) -> pa.Table: ...
 
@@ -94,7 +95,7 @@ def run(
     *,
     guards: bool = True,
     keep: Literal[True],
-    finite: bool = True,
+    finite: Finite = True,
     asof: Sequence[dict] = (),
 ) -> Resident: ...
 
@@ -105,7 +106,7 @@ def run(
     *,
     guards: bool = True,
     keep: bool = False,
-    finite: bool = True,
+    finite: Finite = True,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
     """Run a Substrait JSON plan on DuckDB over `tables`: Arrow tables, or

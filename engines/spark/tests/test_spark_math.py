@@ -171,3 +171,27 @@ def test_a_base_of_one_raises() -> None:
 def test_a_domain_error_raises_where_spark_gives_null_or_nan(label: str, x: float) -> None:
     with pytest.raises(Exception, match="domain"):
         on_spark(T.select(T.k, v=FUNCS[label]()), [x])
+
+
+@pytest.mark.parametrize(
+    ("x", "b", "raises"),
+    [
+        (None, 0.0, False), (None, 1.0, False), (None, -1.0, False),  # NULL before the domain
+        (-1.0, None, False), (0.0, None, False),
+        (1.0, 0.0, True), (5.0, 1.0, True), (-1.0, 2.0, True),
+    ],
+)  # fmt: skip
+def test_log_of_a_null_argument_is_null_before_the_domain_is_read(
+    x: float | None, b: float | None, raises: bool
+) -> None:
+    """`Expr.issues` reads `log(x, b)` with both arguments present (#1990): `log(NULL, 0)` is NULL
+    on Spark and on DuckDB, where the written plan raised."""
+    t = ibis.table({"k": "int64", "x": "float64", "b": "float64"}, name="t")
+    sql = to_sql(written_plan(json.dumps(to_substrait(t.select(t.k, v=t.x.log(t.b))))), SPARK)
+    s = session()
+    s.createDataFrame([(0, x, b)], "k BIGINT, x DOUBLE, b DOUBLE").createOrReplaceTempView("t")
+    if raises:
+        with pytest.raises(Exception, match="domain"):
+            s.sql(sql).collect()
+    else:
+        assert s.sql(sql).collect()[0][1] is None

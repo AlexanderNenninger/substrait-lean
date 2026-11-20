@@ -112,6 +112,18 @@ def drop_unmentioned(
     }
 
 
+def narrowed(expr: ir.Table) -> ir.Table:
+    """`expr` without the blocking columns no plan of this verification
+    mentions: the input of an operator, planned on its own, outputs every
+    column it has (`mentions` counts an output), so it is cut to the names of
+    the whole view first."""
+    names = _MENTIONED.get()
+    if names is None or EVERYTHING in names:
+        return expr
+    kept = [c for c, d in expr.schema().items() if c in names or not blocks(d)]
+    return expr.select(*kept) if len(kept) < len(expr.columns) else expr
+
+
 def prune_unmentioned(expr: ir.Table) -> ir.Table:
     """`expr` with the blocking columns of its tables that no plan of this
     verification mentions dropped from them."""

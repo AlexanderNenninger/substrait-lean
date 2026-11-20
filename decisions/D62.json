@@ -1,0 +1,12 @@
+{
+  "id": "D62",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Decimal % is the truncated remainder at the operands' common scale.",
+  "prs": [
+    1951
+  ],
+  "note": "Signed in rulings 181 and 188; its section is in #2063. Facts in #1951; the function tracked in #1941."
+}

@@ -364,9 +364,12 @@ in place of the plan as written only where its rule is on and every check of
 `Request.runPlanIn` passes (`SubstraitLean/RunPlan.lean`, #1787): the
 request is under the reference, the rewrite refines the plan (up to the
 order of rows for a `multiset` observation, exactly under an `ORDER BY`
-otherwise), adds no issue, stays guard-free, reads no option and calls no
-function the plan does not, and no double occurs where the observation
-compares doubles within a bound. The report names the check that kept the
+otherwise), neither plan has an issue, the rewrite stays guard-free, reads
+no option and calls no function the plan does not, and no double occurs where
+the observation compares doubles within a bound. `Same` equates the
+reference's results and says nothing of where a plan raises, so a rule that
+drops a part of the plan that may raise, such as an unused join input with an
+`assumed` overflow, keeps the plan as written (#2006). The report names the check that kept the
 plan as written (`run_gate`), and `check_run_plan_sound` proves the rest.
 `Report.run` takes the rewrite on the translated and transfer routes
 (`routes.RUNS_REWRITE`), where it checked the preconditions on its data
@@ -538,11 +541,16 @@ sequence of batches the state finishes to the aggregate of the current rows
 [`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)):
 a delete cancels its insert exactly. Over 1,000 batches of the prototype
 (`python -m sverify_dev.ivm_float_sum`), a running double sum was off in
-17,226 of 18,432 group results, the worst by 9.4·10¹⁴ ulps. The engine gives each changed row's value with the checked `contrib`
-plan, and `sverify._exact_sum` adds the values up and rounds, since splitting
-a double into mantissa and exponent and rounding a 2,100-bit integer have no
-Substrait or Ibis form ([what is trusted](proofs.md#what-is-trusted)). The
-state is rebuilt from the inputs when a job starts: about 2 s for 10⁷ rows.
+17,226 of 18,432 group results, the worst by 9.4·10¹⁴ ulps. The engine keeps the integer itself, in limbs: a finite double is
+`m · 2^(p - 1074)`, and `m · 2^(p mod 32)` adds to limb `p div 32` of the
+group, a `DECIMAL(38,0)` row of the group state that the checked `contrib`
+and `merge` plans add up per group with the engine's `SUM` (#1447). Python
+reads back the limbs of the touched groups only and rounds them once
+([what is trusted](proofs.md#what-is-trusted)). A group keeps 1 to 2 limbs
+for `Σx` and 3 to 5 for `Σx²` on typical data. The state is rebuilt from the
+inputs when a job starts: 1.8 s for 10⁷ rows in 1,000 groups once the
+checker's answer on the plans is cached, 8.2 s the first time
+(`sverify_dev.ivm_float_sum --init 10000000`, DuckDB, homelab).
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` of doubles keep their exact moments
 the same way: the count, `Σx`, `Σx²`, and for pairs `Σy`, `Σxy`, `Σy²`, with

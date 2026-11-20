@@ -2,8 +2,8 @@
 long-lived `--serve` process for every request, and the integer codes its
 answers write doubles in.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from pathlib import Path
 
 from sverify import _proof_cache, _stages
 from sverify._meta import PROTOCOL
-from sverify._unsupported import SverifyError, UnsupportedError
+from sverify._unsupported import MemoryLimitError, SverifyError, UnsupportedError
 
 #: Where the constructs Lean's model does not cover yet are tracked: the exit
 #: of a checker refusal that names none of its own.
@@ -149,11 +149,16 @@ def _checker_file() -> Path:
     return path
 
 
-class CheckerMemoryError(SverifyError, MemoryError):
+class CheckerMemoryError(MemoryLimitError):
     """A checker request went over the checker's memory cap
-    (`SVERIFY_CHECKER_MEMORY_MB`) and the checker was stopped (#1074)."""
+    (`SVERIFY_CHECKER_MEMORY_MB`) and the checker was stopped (#1074): a
+    `MemoryLimitError` of stage `"proof"`."""
 
-    code = "checker_memory"
+    def __init__(self, message: str, cap_mb: int | None = None):
+        cap = memory_cap_mb() if cap_mb is None else cap_mb
+        super().__init__(
+            message, stage="proof", limit=f"{cap} MB", setting="SVERIFY_CHECKER_MEMORY_MB"
+        )
 
 
 def memory_cap_mb() -> int:
@@ -254,7 +259,8 @@ class _Checker:
                     raise CheckerMemoryError(
                         f"substrait-check used {self.over >> 20} MB on one request, over its "
                         f"cap of {cap} MB, and was stopped (#1074). Set SVERIFY_CHECKER_MEMORY_MB "
-                        "to raise the cap (0 turns it off)"
+                        "to raise the cap (0 turns it off)",
+                        cap,
                     ) from e
                 raise
             self.busy.clear()

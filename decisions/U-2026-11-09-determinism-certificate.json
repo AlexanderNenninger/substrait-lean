@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-09-determinism-certificate",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Determinism is a proved certificate over whichever profile a plan is verified under, and the deterministic profile is dropped, with reproducible= as the rewrite that earns it.",
+  "source": "memory:determinism-as-certificate.md",
+  "note": "Changes no Allowed set; presentation layer only."
+}

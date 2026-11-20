@@ -127,7 +127,7 @@ def test_the_json_document(tmp_path, capsys):
     assert set(item) == {"name", "nodes", "status", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
     assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
-    assert item["report"]["format"] == 3 and item["report"]["proved"] is False
+    assert item["report"]["format"] == 4 and item["report"]["proved"] is False
 
 
 def test_one_node_of_a_file(tmp_path, capsys):
@@ -456,11 +456,31 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     assert done.returncode == 4, done.stderr
     doc = json.loads(done.stdout)
     assert doc["error"]["code"] == "memory"
+    assert doc["error"]["type"] == "MemoryLimitError"
     assert not sink.exists()
     env["SVERIFY_MEMORY_LIMIT"] = "2GB"
     done = subprocess.run(argv, capture_output=True, text=True, env=env)
     assert done.returncode == 0, done.stdout + done.stderr
     assert sink.exists()
+    # A breach after an earlier commit leaves that commit as it was (M7).
+    from deltalake import DeltaTable
+
+    from sverify.io import DeltaSink
+
+    version, contract = DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract()
+    assert contract is not None
+    # A new version of the source, in another file (Python caches the first's
+    # bytecode), so the refresh computes again.
+    newer = tmp_path / "newer.py"
+    newer.write_text(path.read_text().replace('name="orders",', 'name="orders", version=2,'))
+    again = [sys.executable, "-m", "sverify.cli", "refresh", f"{newer}:stored", "--json"]
+    done = subprocess.run(
+        [*again, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
+    )
+    assert done.returncode == 4, done.stdout + done.stderr
+    assert json.loads(done.stdout)["error"]["code"] == "memory"
+    after = (DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract())
+    assert after == (version, contract)
 
 
 def test_a_dbt_project_needs_sverify_dbt(tmp_path, capsys, monkeypatch):
@@ -566,7 +586,7 @@ def test_github_annotations(tmp_path, capsys):
     assert line.startswith(
         f"::error file={path},line={line_no},title=sverify may_be_false%3A paid::"
     )
-    assert "ensures (_.amount > 20)" in line and "%0Acounterexample: " in line
+    assert "::amount > 20: it may be FALSE" in line and "%0Acounterexample: " in line
 
 
 def test_sarif(tmp_path, capsys):
@@ -587,6 +607,17 @@ def test_sarif(tmp_path, capsys):
         loc = r["locations"][0]["physicalLocation"]
         assert loc["artifactLocation"]["uri"] == str(path) and loc["region"]["startLine"] > 0
     assert "counterexample" in results[2]["properties"]
+    # The first `needs` result carries the fix `check --fix` writes (#793).
+    [fix] = results[0]["fixes"]
+    assert "fixes" not in results[1] and "fixes" not in results[2]
+    [change] = fix["artifactChanges"]
+    assert change["artifactLocation"]["uri"] == str(path)
+    fixed = path.read_bytes()
+    for rep in sorted(change["replacements"], key=lambda r: -r["deletedRegion"]["byteOffset"]):
+        at, n = rep["deletedRegion"]["byteOffset"], rep["deletedRegion"]["byteLength"]
+        fixed = fixed[:at] + rep["insertedContent"]["text"].encode() + fixed[at + n :]
+    assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
+    assert fixed == path.read_bytes()
 
 
 def test_help_lists_the_exit_codes(capsys):

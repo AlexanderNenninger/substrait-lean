@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-01-omitted-option-is-error",
+  "date": "2026-11-01",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "When a plan omits overflow or on_division_by_zero, the reference raises (ERROR at the declared width); SILENT, SATURATE and NULL apply only when the plan asks.",
+  "issues": [
+    185,
+    202,
+    209
+  ],
+  "source": "github:#185 comment 6556191881",
+  "note": "Recorded as 'Decided' without naming the user; later comments on #202/#209 call it a reference decision that stands."
+}

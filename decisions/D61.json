@@ -1,0 +1,18 @@
+{
+  "id": "D61",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Timestamps count microseconds or nanoseconds; second and millisecond columns are read as microseconds, narrowing casts floor, and µs to ns raises overflow outside 64 bits.",
+  "issues": [
+    323,
+    2004
+  ],
+  "prs": [
+    1837,
+    1839,
+    2019
+  ],
+  "note": "Signed in ruling 142; its section is written in open #2019."
+}

@@ -21,7 +21,7 @@ and records the route in `Report.routes`. An explicit route
 
 Each route carries the plan's class on `E`: `exact` (every result
 `E` gives is one the reference allows), `observed` (equal to one up to an
-observation, `Route.observation`: rows as a multiset, a tolerance on
+observation, `Route.lenses`: rows as a multiset, a tolerance on
 doubles, …), `shim` or `refused`, the worst over the options the proof
 depends on. The checker gives it, with its evidence, in its verdict on `E`
 (`"engines"`, `SubstraitLean/Realize.lean`), from the class, observation and
@@ -115,7 +115,7 @@ class EngineProfile:
     engine: str
     versions: tuple[str, ...]
     """The engine versions the profile's facts were probed at
-    (`characterization/<engine>/facts/`)."""
+    (`engines/<engine>/facts/`)."""
 
 
 def shim_text(name: str) -> str:
@@ -185,7 +185,7 @@ class EngineVersionWarning(SverifyWarning):
 
 class EngineVersionError(SverifyError, RuntimeError):
     """The engine's major version differs from the one its profile's facts
-    were probed at: re-run the probes (`characterization/<engine>/`) first."""
+    were probed at: re-run the probes (`engines/<engine>/`) first."""
 
     code = "engine_version"
 
@@ -204,7 +204,11 @@ class EngineSettingsError(SverifyError, RuntimeError):
 
 
 class RouteError(SverifyError, ValueError):
-    """No route takes the plan to the engine; `route` says why."""
+    """No route takes the plan to the engine; `route` says why.
+
+    Attributes:
+        route: The refused route, with its `reason`.
+    """
 
     code = "route_refused"
 
@@ -218,6 +222,7 @@ class Route:
     """How a plan reaches an engine (`choose`), or why it does not."""
 
     engine: str
+    """The engine, by name."""
     kind: Taken | None
     """The route taken; `"unverified"` for a plan that is not proved, run
     with `unverified=True`; None when the plan is refused."""
@@ -263,7 +268,7 @@ class Route:
     """On Polars, the nodes of the plan's streaming plan that run on the
     in-memory engine (`sverify_polars.engine.fallback_nodes`), recorded by
     `Report.run`: the in-memory engine's facts hold for those."""
-    observation: Observation | None = None
+    lenses: Observation | None = None
     """For an `"observed"` route: the observation up to which the engine's
     result equals one the reference allows, the coarsest over the options
     the proof depends on (rows as a multiset, a tolerance on doubles from
@@ -278,7 +283,7 @@ class Route:
     tolerance."""
     facts: tuple[str, ...] = ()
     """The engine facts behind the choices the class rests on
-    (`characterization/<engine>/facts/`)."""
+    (`engines/<engine>/facts/`)."""
     theorems: tuple[str, ...] = ()
     """The Lean theorems that prove those choices, where they are proved."""
     version: str | None = None
@@ -291,6 +296,7 @@ class Route:
 
     @property
     def refused(self) -> bool:
+        """Whether no route takes the plan to the engine (`kind` is None)."""
         return self.kind is None
 
     def __str__(self) -> str:
@@ -305,8 +311,8 @@ class Route:
         if self.cls == "shim" and self.shims:
             what = dict.fromkeys(shim_text(n) for n in (x.split(": ", 1)[-1] for x in self.shims))
             out += f" ({'; '.join(what)})"
-        if self.cls == "observed" and self.observation is not None:
-            out += f": {observed_text(self.observation)}"
+        if self.cls == "observed" and self.lenses is not None:
+            out += f": {observed_text(self.lenses)}"
         if self.evidence:
             out += "; evidence " + evidence_text(self, self.engine)
         if self.cls and self.kind != "translated":
@@ -390,7 +396,7 @@ def check_version(engine: str, version: str | None = None) -> str | None:
             f"{engine} {version} is another major version than the facts of "
             f'semantics="{engine}", probed at {probed}: install a '
             f"{_major(prof.versions[0])}.x release of {engine}; "
-            f"running {version} needs its facts probed again (characterization/{engine}/)"
+            f"running {version} needs its facts probed again (engines/{engine}/facts/)"
         )
     msg = (
         f'{engine} {version} is not a version the facts of semantics="{engine}" were '
@@ -897,7 +903,7 @@ def floats_on(report: Report) -> dict[str, list[str]]:
     and the plan's bound (`epsilon`) does not: empty where the engine meets
     it. Empty under any profile but the reference's (a native route is
     exact), and for a plan without doubles."""
-    observation = report.observation
+    observation = report.lenses
     if observation.floats == "plan" or report.semantics != "reference":
         return {}
     if not any(getattr(t, "is_floating", bool)() for t in report.output.values()):
@@ -968,8 +974,8 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
     (by column, the postcondition's label): a condition proved of the
     reference's value need not hold of a value near it. One that holds of
     every value near it is not held (`CheckedCondition.robust`)."""
-    if report.observation.floats != "plan":
-        return report.observation, {}
+    if report.lenses.floats != "plan":
+        return report.lenses, {}
     held: dict[str, str] = {}
     doubles = [c for c, t in report.output.items() if getattr(t, "is_floating", bool)()]
     for c in report.ensures:
@@ -978,7 +984,7 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
         for col in doubles if c.reads is None else c.reads:
             if col in doubles:
                 held.setdefault(col, c.label)
-    return replace(report.observation, bound=None), held
+    return replace(report.lenses, bound=None), held
 
 
 # -- the re-check -------------------------------------------------------------
@@ -1250,7 +1256,7 @@ def not_verified(report: Report) -> str:
     parts += [f"needs {n}" for n in report._needs_lines()]
     if report.floats_unmet:
         first = next(ps[0] for ps in report._floats_on.values() if ps)
-        want = "exact doubles" if report.observation.floats == "exact" else "tolerance on doubles"
+        want = "exact doubles" if report.lenses.floats == "exact" else "tolerance on doubles"
         parts.append(f"no engine meets the observation's {want}: {first}")
         see.append("report.details()")
     if report.needs:
@@ -1336,7 +1342,7 @@ def choose(
 
     if not verified(report):
         if report.floats_unmet:
-            cap = max_rows_fix(report, e, report.observation)
+            cap = max_rows_fix(report, e, report.lenses)
             return replace(refuse(not_verified(report) + _cap_text(cap)), suggested=cap)
         return refuse(not_verified(report))
     reproducible = _deterministic_arg("choose", deterministic, reproducible)
@@ -1362,9 +1368,10 @@ def choose(
             "ties stay open: the engine picks their order, every proof holds for any "
             "pick, and a rerun may pick another"
         )
-    if report.observation.rows == "sequence" and not report._sorted:
+    if report.lenses.rows == "sequence" and not report._sequence_determined:
         return refuse(
-            "the postcondition observes the rows as a sequence, and the plan's result is not sorted"
+            "the postcondition observes the rows as a sequence, and the plan does not fix their "
+            "order: its result is not sorted on a key of its input"
         )
     try:
         _support.check(plan, e)
@@ -1393,8 +1400,8 @@ def choose(
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
         gives = got.observation
-        if gives is not None and gives.rows == "sequence" and not report._sorted:
-            # The reference leaves the order of an unsorted result open.
+        if gives is not None and gives.rows == "sequence" and not report._sequence_determined:
+            # The reference leaves open the order of an unsorted result and of tied sort keys.
             gives = replace(gives, rows="multiset")
         return Route(
             e,
@@ -1409,7 +1416,7 @@ def choose(
             got.shims,
             reproducible,
             rerun_evidence,
-            observation=gives,
+            lenses=gives,
             bound_proved=got.bound_proved,
             facts=got.facts,
             theorems=got.theorems,

@@ -155,7 +155,7 @@ def test_contracts_see_through_rewrites(label, expr, ensures, facts):
     report = sv.verify(expr, requires=requires, ensures=ensures)
     assert report.verdict == sv.Verdict.PROVED, f"{label}: {report}"
     for col, fact in facts.items():
-        assert report.facts[col] == fact, label
+        assert str(report.facts[col]) == fact, label
 
 
 def test_clip_keeps_its_bounds_given_non_null_input():
