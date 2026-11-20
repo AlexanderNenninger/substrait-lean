@@ -1864,7 +1864,9 @@ def _prove_once(
             )
         checked[-1].condition = c
     seen = _user_text.columns(transform_plan)
-    doubles = _user_text.plan_doubles(transform_plan)
+    # Every plan a shown expression's literals can come from: a text two
+    # literals share (the transform's 3.0000001, a condition's 3.0) is dropped.
+    doubles = _user_text.plan_doubles([transform_plan, req_plans, ens_plans])
     temporal = {
         c for sch in [*schemas.values(), result] for c, t in sch.items() if t.is_timestamp()
     }

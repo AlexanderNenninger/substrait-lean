@@ -121,7 +121,19 @@ def test_a_large_double_constant_reads_as_python_writes_it() -> None:
     # would read as exact.
     text = sv.verify(t.select(scaled=t.value * 3.0000001 + 3.0)).details()
     assert "value * 3.000000 + 3.000000 stays finite" in text
-    from sverify._user_text import pretty
+    # A condition's literal counts too: the transform's 3.0000001 beside a
+    # precondition's 3.0 claims neither's text, so no expression reads as the
+    # other's value.
+    text = sv.verify(
+        t.select(scaled=t.value * 3.0000001), requires={"s": [_.value <= 3.0]}
+    ).details()
+    assert "assumes: value * 3.000000 stays finite" in text
+    from sverify._user_text import plan_doubles, pretty
+
+    lit = {"literal": {"fp64": 3.0000001}}
+    assert plan_doubles([lit, [{"literal": {"fp64": 3.0}}]]) == {}
+    assert plan_doubles([lit, {"literal": {"i64": "3"}}]) == {}
+    assert plan_doubles([lit]) == {"3.000000": "3.0000001"}
 
     # Without the plan's literal, `.000000` proves integral only from 2^33 on.
     assert pretty("(y *. 3.000000d)") == "y * 3.000000"

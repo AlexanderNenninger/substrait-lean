@@ -6,7 +6,7 @@ Internal: not part of sverify's public API.
 The checker names an operation by `Expr.render` (`core/Sverify/Core/Pretty.lean`),
 where `$i` is the i-th column of the input of the relation the operation is
 in. The plan (Substrait protobuf JSON) says which columns each relation's
-input has: `columns` walks it, and `user_expr` names `$i` where every
+input has: `columns` walks it, and `named` names `$i` where every
 relation that reads all of the expression's columns gives them the same
 names. Where it cannot tell, the expression keeps Lean's notation.
 """
@@ -444,12 +444,16 @@ def _number(v: Any) -> float | None:
     return f if f is not None and math.isfinite(f) else None
 
 
-def plan_doubles(plan: Mapping[str, Any] | None) -> dict[str, str]:
-    """The plan's numeric literals by the text Lean prints for them as
-    doubles (`%f`, the sign apart, as `_LEAN_DOUBLE` reads it), each as
-    Python's `repr` writes it: `{"3.000000": "3.0"}`. An integer counts as
-    the double it is cast to (`value * 3`). A text that two different
-    literals print as is left out: it doesn't say which it is."""
+def plan_doubles(plans: Any) -> dict[str, str]:
+    """The numeric literals of `plans` (the transform's and its conditions'
+    plans, every plan a shown expression can come from) by the text Lean
+    prints for them as doubles (`%f`, the sign apart, as `_LEAN_DOUBLE`
+    reads it), each as Python's `repr` writes it: `{"3.000000": "3.0"}`.
+    An integer counts as the double it is cast to (`value * 3`). A text
+    that two different literals print as is left out: it doesn't say which
+    it is. The map vouches for literals only: a shown expression carries
+    the plans' terms, and a value the checker derives that is no literal
+    keeps Lean's six decimals unless `_short_double`'s 2^33 rule applies."""
     found: dict[str, set[float]] = {}
 
     def walk(x: Any) -> None:
@@ -463,14 +467,14 @@ def plan_doubles(plan: Mapping[str, Any] | None) -> dict[str, str]:
             for y in x:
                 walk(y)
 
-    walk(plan)
+    walk(plans)
     return {k: repr(next(iter(v))) for k, v in found.items() if len(v) == 1}
 
 
 def _short_double(m: re.Match[str], doubles: Mapping[str, str]) -> str:
     """A double literal as Python's `repr` writes it (`3.0`, `1e+302`) where
-    its value is known: a literal of the plan that Lean's text is the `%f`
-    of (`plan_doubles`), or an integral one from 2^33 on, where `%f` shows any
+    its value is known: the one literal of the plans that Lean's text is the
+    `%f` of (`plan_doubles`), or an integral one from 2^33 on, where `%f` shows any
     fraction. Any other stays as Lean wrote it: `%f` rounded it to six
     decimals, so `3.000000` may be `3.0000001`, and a shorter text would read
     as exact."""
@@ -559,19 +563,6 @@ def interval_text(us: int, dialect: Dialect = "ibis") -> str:
             sql = name.upper().removesuffix("S")
             return f"INTERVAL {k} {sql}"
     return str(us)  # pragma: no cover - every count of microseconds has a unit
-
-
-def user_expr(
-    expr: str,
-    plan: Mapping[str, Any] | None,
-    dialect: Dialect = "ibis",
-    temporal: Collection[str] = (),
-    measure: bool = False,
-) -> str | None:
-    """`expr` (Lean's notation) with column names and the user's operators;
-    None where the plan does not say which columns it reads."""
-    out = named(expr, plan, measure)
-    return None if out is None else pretty(out, dialect, temporal, plan_doubles(plan))
 
 
 # -- one issue per expression the user wrote -----------------------------------
