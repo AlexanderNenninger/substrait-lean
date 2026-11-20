@@ -1,0 +1,40 @@
+{
+  "id": "polars-ts-units-compare-coarse",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "A comparison of two Datetime units casts to the coarser",
+  "verdict": "truncates the finer side",
+  "area": "temporal",
+  "options": [
+    "timestamp_precision"
+  ],
+  "constructs": [
+    "==",
+    "<",
+    "Datetime"
+  ],
+  "description": [
+    "`Datetime(\"ms\") == Datetime(\"us\")` casts both sides to the coarser unit: 1.5 s as ms equals 1.5005 s as us. DuckDB compares the same pair on the timeline and gives false.",
+    "This is why a scan widens a coarser unit to microseconds once, before any operation sees two units."
+  ],
+  "reference": "D61: scans read s and ms as microseconds; a microsecond and a nanosecond timestamp meet only through a written cast.",
+  "status": "deviation",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "worker 5, #323 (D61), 2026-11-19",
+      "evidence": [
+        {
+          "sql": "DataFrame({m: 1500 as Datetime('ms'), u: 1500500 as Datetime('us')}).select(m == u, m < u)",
+          "observed": "(True, False)"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python). DuckDB 2.0.0 for `select m=u, m<u` over `TIMESTAMP_MS '1970-01-01 00:00:01.5'` and `TIMESTAMP '1970-01-01 00:00:01.5005'`: (false, true)."
+    }
+  ],
+  "issues": [
+    323
+  ]
+}
