@@ -1840,6 +1840,10 @@ class _Lift:
             if v is not None:
                 if t.is_float64():
                     v = float(v)
+                elif t.is_float32():
+                    # The checker folds the cast, rounding once as DuckDB does, or
+                    # refuses where it cannot (ruling 186 P3, `castConst`).
+                    v = None
                 elif t.is_decimal():
                     # A double's exact binary value: `_fits` folds it only
                     # where the decimal holds it exactly (10.0, 2.5, not 0.1).
@@ -1886,14 +1890,18 @@ class _Lift:
 
     def common(self, es: list[E], what: str, sum_digits: bool = False) -> Any:
         """The type DuckDB brings `es` to as one value: the widest integer;
-        a double if one is; else a decimal with the most integer digits and
+        a double if one is; a float32 if one is; else a decimal with the most integer digits and
         the largest scale (plus a digit for `+` and `-`)."""
         ts = [e.type for e in es if not e.type.is_null()]
         if not ts:
             return dt.null
-        if all(_numeric(t) for t in ts):
+        if all(_numeric(t) or t.is_float32() for t in ts):
             if any(t.is_float64() for t in ts):
                 return dt.float64
+            # DuckDB brings a REAL and an integer or a decimal to a REAL
+            # (`0.3::REAL = 0.3` is true), and a REAL and a DOUBLE to a DOUBLE.
+            if any(t.is_float32() for t in ts):
+                return dt.float32
             if any(t.is_decimal() for t in ts):
                 p, s = _decimals.common(_digits(t) for t in ts)
                 return _decimal(p + int(sum_digits), s)
