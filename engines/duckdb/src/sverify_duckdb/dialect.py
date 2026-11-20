@@ -69,6 +69,9 @@ class DuckDBDialect(Dialect):
     def type_name(self, kind: Kind) -> str:
         return "DOUBLE" if kind == "float" else super().type_name(kind)
 
+    def cte_hint(self, materialized: bool) -> str:
+        return "MATERIALIZED " if materialized else "NOT MATERIALIZED "
+
     def interval_lit(self, micros: int) -> str:
         return f"to_microseconds({self.int_lit(micros)})"
 

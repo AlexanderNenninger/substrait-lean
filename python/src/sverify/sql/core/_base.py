@@ -520,6 +520,17 @@ class Dialect:
         inf, ninf = self.float_lit(math.inf), self.float_lit(-math.inf)
         return f"({self.float_eq(x, inf)} OR {self.float_eq(x, ninf)})"
 
+    def cte_hint(self, materialized: bool) -> str:
+        """The hint that a common table expression is computed once
+        (`materialized`) or inlined where it is read, where the dialect has
+        one."""
+        return ""
+
+    def not_finite(self, x: str) -> str:
+        """TRUE for NaN and `±∞`, NULL for NULL: the condition a double
+        aggregate's checks read (ruling 200 A4(3), ruling 212 C1)."""
+        return f"({self.is_inf(x)} OR {self.is_nan(x)})"
+
     def float_rank(self, x: str) -> str:
         """1 for NaN, 0 for other doubles, NULL for NULL: NaN is above `inf`."""
         return f"(CASE WHEN {x} IS NULL THEN NULL WHEN {self.is_nan(x)} THEN 1 ELSE 0 END)"
@@ -782,6 +793,12 @@ class Dialect:
 
     # Decimals (#27). The reference computes them exactly; a dialect whose
     # engine does too, with the hooks below, sets `decimals`.
+
+    two_stage_sums: ClassVar[bool] = False
+    """Internal (ruling 212 C5): write a grouped double `SUM` or `AVG` in two
+    stages (`SqlWriter.aggregate`), where it is measured to pay on the engine
+    and every `sum_order` behaviour of its table has a proof or a probed fact
+    that a finite sum has finite values (`tests/test_two_stage_sums.py`)."""
 
     orders_text: bool = False
     """Whether the dialect writes ordering comparisons of strings and booleans
@@ -4271,6 +4288,26 @@ def inputs(r: Rel) -> list[Rel]:
             return [r.input]
 
 
+#: The kinds of group key the two-stage double `SUM` compares with `IS NOT
+#: DISTINCT FROM` as its engine groups them (ruling 212 C3), with decimals.
+_TWO_STAGE_KEYS = frozenset({"int", "str", "bool", "date", "time"})
+
+#: The measures `aggregate` writes from their rows in order, not by `measure`.
+_PICKS = frozenset({"first", "last", "string_agg", "collect", "mode"})
+
+
+def _same_bag(r: Rel) -> bool:
+    """Whether every read of `r` gives the same rows (ruling 212 C2): reads,
+    filters, projections and joins of them, which leave no choice open."""
+    match r:
+        case Read() | Values():
+            return True
+        case Filter() | Project() | Emit() | Cross() | Join():
+            return all(map(_same_bag, inputs(r)))
+        case _:
+            return False
+
+
 def open_choices(r: Rel) -> list[str]:
     """The nodes of `r` whose rows `Rel.Allowed` leaves open: a `FETCH` takes
     the first rows of an order that may have ties, and a window with a function
@@ -4842,6 +4879,8 @@ class _Writer:
             level = self.select(items, d.subquery(level, b))
             b = self.alias()
             keys = [col(c) for c in g_cols]
+        if not needs and not firsts and self.two_stage(i, g_kinds, measures):
+            return self.two_stage_aggregate(level, g_cols, m_cols, t_cols, measures, ks)
         out = [
             f"{d.zero_rep(col(c), 'keys') if g_kinds[i] == 'float' else col(c)} AS {self.c(i)}"
             for i, c in enumerate(g_cols)
@@ -4872,6 +4911,97 @@ class _Writer:
             out.append(f"COALESCE(MIN({self.ordinal(b)}), {d.int_lit(0)}) AS {d.quote(ORD)}")
         rest = f"GROUP BY {', '.join(keys)}" if keys else ""
         return self.select(out, d.subquery(level, b), rest)
+
+    def two_stage(
+        self, i: Rel, g_kinds: Sequence[Kind | None], measures: Sequence[Measure]
+    ) -> bool:
+        """Whether `aggregate` writes its double `SUM`s and `AVG`s in two
+        stages (ruling 212): the dialect asks for it (`two_stage_sums`), a
+        measure is one whose checks the one-stage form writes (C4), the keys
+        compare NULL-safely as the engine groups them (C3), and both reads
+        of the input give the same rows (C2)."""
+        d = self.d
+        return (
+            d.two_stage_sums
+            and bool(d.guards or d.finite)
+            and any(ms.fn in ("fsum", "avg") for ms in measures)
+            # Measures `measure` writes alone: no pick, sort or DISTINCT.
+            and not any(ms.distinct or ms.sort or ms.fn in _PICKS for ms in measures)
+            and all(k in _TWO_STAGE_KEYS or isinstance(k, Dec) for k in g_kinds)
+            and _same_bag(i)
+        )
+
+    def two_stage_aggregate(
+        self,
+        level: str,
+        g_cols: Sequence[str],
+        m_cols: Sequence[str],
+        t_cols: dict[int, str],
+        measures: Sequence[Measure],
+        ks: list[Kind | None],
+    ) -> str:
+        """`aggregate`'s groups in two stages (ruling 212, #1608 item 7). The
+        first computes every measure, a double `SUM` or `AVG` as its engine
+        sum and count only. The second computes those measures' checks
+        (`sum_checks`) only over the rows of the groups where a sum is not
+        finite, NaN included, and is joined back on the keys: where a sum is
+        finite its checks cannot fire (`SumOrder.isFinCode`, and the probed
+        facts for the orders it has no shape for), so they are NULL there.
+        Each value is added once, by the first stage. `level` is the
+        aggregate's input with its keys (`g_cols`) and arguments (`m_cols`)."""
+        d = self.d
+        src, one, two = self.alias(), self.alias(), self.alias()
+        a, b = self.alias(), self.alias()
+        sums = [k for k, ms in enumerate(measures) if ms.fn in ("fsum", "avg")]
+
+        def nd(x: str, y: str) -> str:
+            return d.not_distinct(x, y) or f"({x} IS NOT DISTINCT FROM {y})"
+
+        def at(t: str, c: str) -> str:
+            return self.ref(t, c)
+
+        # Stage 1: the keys, every other measure as the one-stage form writes
+        # it, and each double sum's engine sum and count.
+        items = [f"{at(a, c)} AS {c}" for c in g_cols]
+        for k, ms in enumerate(measures):
+            v = at(a, m_cols[k])
+            if k in sums:
+                items.append(f"{d.float_sum(v, '')} AS {d.quote(f's{k}')}")
+                items.append(f"COUNT({v}) AS {d.quote(f'n{k}')}")
+            else:
+                shifted = at(a, t_cols[k]) if k in t_cols else None
+                sql = self.measure(ms, v, expr_kind(ms.arg, ks), "", shifted)
+                items.append(f"{sql} AS {d.quote(f'x{k}')}")
+        keys = [at(a, c) for c in g_cols]
+        stage1 = self.select(items, f"{src} AS {a}", f"GROUP BY {', '.join(keys)}" if keys else "")
+        # Stage 2: the checks, over the rows of the groups whose sum is not finite.
+        bad = " OR ".join(d.not_finite(at(one, d.quote(f"s{k}"))) for k in sums)
+        match = " AND ".join([bad and f"({bad})", *(nd(at(one, c), at(b, c)) for c in g_cols)])
+        items = [f"{at(b, c)} AS {c}" for c in g_cols]
+        for k in sums:
+            for name, sql in zip("uvwz", self.sum_checks(at(b, m_cols[k])), strict=True):
+                items.append(f"{sql} AS {d.quote(f'{name}{k}')}")
+        keys = [at(b, c) for c in g_cols]
+        rest = f"WHERE EXISTS (SELECT 1 FROM {one} WHERE {match})"
+        stage2 = self.select(
+            items, f"{src} AS {b}", rest + (f" GROUP BY {', '.join(keys)}" if keys else "")
+        )
+        # The groups, with the checks joined on.
+        on = " AND ".join(nd(at(one, c), at(two, c)) for c in g_cols) or d.bool_lit(True)
+        out = [f"{at(one, c)} AS {self.c(j)}" for j, c in enumerate(g_cols)]
+        for k in range(len(measures)):
+            if k in sums:
+                checks = [at(two, d.quote(f"{name}{k}")) for name in "uvwz"]
+                total, count = at(one, d.quote(f"s{k}")), at(one, d.quote(f"n{k}"))
+                sql = self.float_total(measures[k].fn, total, count, checks)
+            else:
+                sql = at(one, d.quote(f"x{k}"))
+            out.append(f"{sql} AS {self.c(len(g_cols) + k)}")
+        ctes = (
+            f"{src} AS {d.cte_hint(False)}({level}), {one} AS {d.cte_hint(True)}({stage1}), "
+            f"{two} AS ({stage2})"
+        )
+        return f"WITH {ctes} " + self.select(out, f"{one} LEFT JOIN {two} ON {on}")
 
     def measure(
         self, m: Measure, v: str, kind: Kind | None, o: str, shifted: str | None = None
@@ -4961,30 +5091,7 @@ class _Writer:
                     bad, d.raise_("domain error", f"MIN({v})", "float", "domain"), value
                 )
             case "fsum" | "avg":
-                total = d.float_sum(v, o)
-                if m.fn == "avg":
-                    total = d.float_div(total, d.int_to_float(f"COUNT({v})"))
-                total = d.case_when(f"COUNT({v}) = {d.int_lit(0)}", d.null("float"), total)
-                # Finite values whose sum overflows (#575), kept without guards.
-                top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
-                total = self.agg_finite(
-                    total,
-                    f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}",
-                    f"MIN({v})",
-                    self.no_nan(v),
-                )
-                if not d.guards:
-                    return total
-                # `+∞` and `-∞` would sum to NaN, which no operation creates (#257).
-                # NaN sorts above `+∞`, so the largest number leaves NaN out.
-                top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), v)})"
-                both = (
-                    f"({d.float_eq(top, d.float_lit(math.inf))} AND "
-                    f"{d.float_eq(f'MIN({v})', d.float_lit(-math.inf))})"
-                )
-                return d.case_when(
-                    both, d.raise_("domain error", f"MIN({v})", "float", "domain"), total
-                )
+                return self.float_total(m.fn, d.float_sum(v, o), f"COUNT({v})", self.sum_checks(v))
         # `Value.le`: strings by code point (no collation), FALSE < TRUE.
         f = "MIN" if m.fn == "min" else "MAX"
         if kind == "bool":
@@ -5863,6 +5970,41 @@ class _Writer:
         flag = d.case_when(d.is_nan(v), d.int_lit(1), d.int_lit(0))
         return f"MAX({flag}){' ' + over if over else ''} = {d.int_lit(0)}"
 
+    def sum_checks(self, v: str) -> tuple[str, str, str, str]:
+        """The aggregates a double `SUM` or `AVG` of `v` checks its value
+        with (`float_total`): the largest magnitude and the largest value
+        that are not NaN, the smallest value, and that no value is NaN."""
+        d = self.d
+        top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
+        top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), v)})"
+        return top_abs, top, f"MIN({v})", self.no_nan(v)
+
+    def float_total(self, fn: str, total: str, count: str, checks: Sequence[str]) -> str:
+        """A double `SUM` (`fn` `fsum`) or `AVG` from its engine sum `total`
+        and its count, checked by `checks` (`sum_checks`): NULL without
+        values, the overflow of finite values (#575) and both infinities among
+        them. In the two-stage form (`aggregate`) the checks are columns of
+        the second stage, NULL for a group whose sum is finite, where neither
+        check can fire (`SumOrder.isFinCode`)."""
+        d = self.d
+        top_abs, top, low, nan_free = checks
+        if fn == "avg":
+            total = d.float_div(total, d.int_to_float(count))
+        total = d.case_when(f"{count} = {d.int_lit(0)}", d.null("float"), total)
+        # Finite values whose sum overflows (#575), kept without guards.
+        total = self.agg_finite(
+            total, f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}", low, nan_free
+        )
+        if not d.guards:
+            return total
+        # `+∞` and `-∞` would sum to NaN, which no operation creates (#257).
+        # NaN sorts above `+∞`, so the largest number leaves NaN out.
+        both = (
+            f"({d.float_eq(top, d.float_lit(math.inf))} AND "
+            f"{d.float_eq(low, d.float_lit(-math.inf))})"
+        )
+        return d.case_when(both, d.raise_("domain error", low, "float", "domain"), total)
+
     def agg_finite(
         self,
         value: str,
@@ -5879,9 +6021,7 @@ class _Writer:
         d = self.d
         if not d.finite:
             return value
-        bad = d.is_inf(value)
-        if nan_free is not None:
-            bad = f"({bad} OR {d.is_nan(value)})"
+        bad = d.is_inf(value) if nan_free is None else d.not_finite(value)
         cond = bad if finite is None else f"({finite} AND {bad})"
         if nan_free is not None:
             cond = f"({nan_free} AND {cond})"
