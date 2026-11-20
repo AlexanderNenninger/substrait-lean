@@ -407,14 +407,20 @@ def test_runtime_errors_raise(sql, a, b):
         duckdb_rows(plan_json, {"r": r})
 
 
-def test_remainder_by_minus_one_is_zero():
+@pytest.mark.parametrize("width", [pa.int64(), pa.int32(), pa.int16()], ids=str)
+def test_remainder_by_minus_one_is_zero(width):
     """`MIN % -1` is 0 in the reference; DuckDB's `%` raises there, so it is
-    written out. Under DuckDB's semantics the plan raises as DuckDB does (#2058)."""
-    r = ints(a=[-(2**63), 5, None], b=[-1, -1, -1])
+    written out. Under DuckDB's semantics the plan raises as DuckDB does, at
+    each width's own MIN (#2058)."""
+    low = -(2 ** (width.bit_width - 1))
+    r = pa.table({"a": pa.array([low, 5, None], width), "b": pa.array([-1, -1, -1], width)})
     sql = "SELECT a % b AS m FROM r"
     assert check_three_ways(sql, {"r": r}, "reference") == [(0,), (0,), (None,)]
-    with pytest.raises(duckdb.Error):
+    with pytest.raises(duckdb.Error, match="MIN % -1"):
         duckdb_rows(plan_of(sql, {"r": r}), {"r": r})
+    # Without the MIN row the lens runs and agrees with Lean.
+    rest = r.slice(1)
+    assert check_three_ways(sql, {"r": rest}) == [(0,), (None,)]
 
 
 def test_integer_powers_are_exact():
