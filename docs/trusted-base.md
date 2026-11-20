@@ -58,7 +58,9 @@ the project's one axiom (the trusted table below).
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`, and `Rel.floatOpenSafeP_of_noDouble` for a closed plan without doubles; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
+| `Rel.transfer_of_noDouble` | A result a table allows for a plan without doubles, the reference allows, where the table with the reference's choices at the options only doubles read (`floatOnlyOptions`) transfers (`transferB`) | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
+| `Rel.floatOpenSafeP_of_noDouble` | … and such a plan without open measures is `Rel.FloatOpenSafeP` over the table | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
@@ -266,6 +268,17 @@ place, and what retires it.
      hypothesis until track A's follow-up (rulings 135 (b) and 146). Other shapes (a double `SUM` read by
      a filter, a join or a key) are the tolerance bound
      [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
+     For a plan in which no double occurs (`Rel.mayDouble`) and no measure
+     is open (`Rel.closedB`), `Rel.floatOpenSafeP_of_noDouble` discharges it
+     where the table, with the reference's choices at the options only
+     doubles read (`floatOnlyOptions`), transfers (`transferB`); the run
+     plan's `near` gate checks both at each built-in engine (ruling 154).
+     The rows are taken to have the request's kinds (`Catalog.HasKinds`),
+     which the gate reads as `Request.tableKinds` and does not check of the
+     data, and a plugin's table stays open. It stays open for plans with a double, and for plans without one that read
+     an option where the table leaves the reference outside that list (an
+     integer `MIN`, `MAX` or `AVG` at every built-in engine, through
+     `list_null_order` and `avg_int_result`).
 
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside `Engine.Runs`. Raising only where the reference may is a separate claim
