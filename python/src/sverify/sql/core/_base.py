@@ -4078,6 +4078,48 @@ def unchecked_slots(r: Rel, marks: dict) -> dict[int, frozenset[int]]:
 ORD = "o"
 
 
+def _window_calls(sql: str) -> list[str]:
+    """The window aggregate calls in `sql`, `F(…) OVER (…)`, outermost first.
+    Parentheses inside string literals do not count."""
+    quoted = [False] * len(sql)
+    q = False
+    for i, ch in enumerate(sql):
+        if ch == "'":
+            q = not q
+        quoted[i] = q
+
+    def match(i: int, step: int, open_: str, close: str) -> int:
+        depth = 0
+        while 0 <= i < len(sql):
+            if not quoted[i]:
+                if sql[i] == open_:
+                    depth += 1
+                elif sql[i] == close:
+                    depth -= 1
+                    if depth == 0:
+                        return i
+            i += step
+        return -1
+
+    out: list[str] = []
+    i = 0
+    while (k := sql.find(" OVER (", i)) != -1:
+        i = k + 1
+        if k == 0 or sql[k - 1] != ")" or quoted[k]:
+            continue
+        start = match(k - 1, -1, ")", "(")
+        end = match(k + len(" OVER "), 1, "(", ")")
+        if start <= 0 or end < 0:
+            continue
+        name = start
+        while name > 0 and (sql[name - 1].isalnum() or sql[name - 1] == "_"):
+            name -= 1
+        if name < start:
+            out.append(sql[name : end + 1])
+            i = end + 1
+    return out
+
+
 @dataclass
 class _Writer:
     d: Dialect
@@ -4869,7 +4911,48 @@ class _Writer:
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
         # Written last, so a refusal in an expression comes before the input's.
         src = inner or self.child(i, self.stable and not copies)
-        return self.select(items, d.subquery(src, a))
+        return self.bound_windows(items, m, a, d.subquery(src, a), ordered)
+
+    def bound_windows(self, items: list[str], m: int, a: str, src: str, ordered: bool) -> str:
+        """The window layer `items` over `src` (alias `a`, `m` input columns).
+        A function whose guard repeats a window aggregate (an integer `SUM`'s
+        overflow check reads it four times) gets each such aggregate once, as
+        a column of this layer, and its guard in a layer above (#1608 item 5).
+        Every engine computes a window function on every row before the
+        expressions around it, so the bound column is what the repeats were."""
+        d = self.d
+        own = re.compile(rf"\b{re.escape(a)}\.")
+        binds: list[tuple[str, str]] = []
+        outer: dict[int, str] = {}
+        for j in range(m, len(items) - (1 if ordered else 0)):
+            expr, _, alias = items[j].rpartition(" AS ")
+            calls = {c for c in _window_calls(expr) if expr.count(c) > 1}
+            if not calls:
+                continue
+            names = {}
+            for c in calls:
+                name = next((n for n, t in binds if t == c), None)
+                if name is None:
+                    name = d.quote(f"w{len(binds)}")
+                    binds.append((name, c))
+                names[c] = name
+            rewritten = expr
+            for c in sorted(calls, key=len, reverse=True):
+                rewritten = rewritten.replace(c, f"{{b}}.{names[c]}")
+            if own.search(rewritten):
+                # It reads an input column outside a window aggregate: unchanged.
+                continue
+            outer[j] = f"{rewritten} AS {alias}"
+        if not outer:
+            return self.select(items, src)
+        b = self.alias()
+        inner = [it for j, it in enumerate(items) if j not in outer]
+        inner += [f"{c} AS {name}" for name, c in binds if any(name in o for o in outer.values())]
+        top = []
+        for j, it in enumerate(items):
+            col = it.rpartition(" AS ")[2]
+            top.append(outer[j].replace("{b}", b) if j in outer else f"{b}.{col} AS {col}")
+        return self.select(top, d.subquery(self.select(inner, src), b))
 
     def framed(
         self,
