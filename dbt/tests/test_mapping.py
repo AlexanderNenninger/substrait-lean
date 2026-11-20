@@ -72,6 +72,10 @@ def test_row_counts_are_caps() -> None:
     assert conds(t(be, None, max_value=5, strictly=True)) == [sv.max_rows(4)]
     assert conds(t(be, None, max_value=5, strictly=True), "requires") == [sv.max_rows(4)]
     assert not conds(t(be, None, min_value=0, max_value=5, strictly=True))
+    never = mapping.test_conditions(
+        t(be, None, max_value=0, strictly=True), side="ensures", table_of=lambda _: None
+    )
+    assert never.conditions == [] and "always fails" in (never.reason or "")
     eq = "dbt_expectations.expect_table_row_count_to_equal"
     assert conds(t(eq, None, value=0)) == [sv.max_rows(0)]
     grouped = mapping.test_conditions(

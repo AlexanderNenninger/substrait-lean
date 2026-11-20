@@ -122,6 +122,8 @@ def _row_count(test: Test, base: str, side: str, row_filter: str | None) -> Mapp
         strict = bool(kw.get("strictly", False))
     if hi is not None:
         hi = int(hi) - 1 if strict else int(hi)  # `count < hi` is a cap of hi - 1
+    if hi is not None and hi < 0:
+        return _mapped([], "no row count meets this upper bound: dbt's test always fails")
     if side == "requires":
         return _mapped([sv.max_rows(hi)] if hi is not None else [])
     if lo is not None and (lo > 0 or strict):
