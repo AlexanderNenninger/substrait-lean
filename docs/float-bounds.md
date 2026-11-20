@@ -349,6 +349,14 @@ over the least magnitude of the reference's value. A difference of nearly
 equal values has a range that reaches zero, so it gets none: cancellation
 loses relative accuracy, and the report does not claim it.
 
+The core's own rounding meets the standard model:
+`float-bounds/FloatBridge/Codes.lean` (#1196) proves that `FloatCode.ofExact`,
+after the nearest multiple of `2⁻¹⁰⁷⁴`, is a `StdModel` (`FloatBridge.model`),
+and that on multiples of `2⁻¹⁰⁷⁴`, the values the core adds, it is `ofExact`
+(`model_fl_grid`). So the theorems here about `StdModel.fl` hold of the
+core's codes with no trusted link; `NativeLink` remains the link for Lean's
+`Float`.
+
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's
 manual states and the probes measured (0.502 ulp on macOS,

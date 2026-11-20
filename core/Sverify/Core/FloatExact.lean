@@ -400,6 +400,148 @@ theorem ofExact_rel {S : Int} (h : S.natAbs ≤ 2 ^ 2097) :
   simp only [Int.natCast_one, Int.one_mul, Nat.one_mul] at hw hu
   exact ⟨hfin, by omega⟩
 
+/-! ### Rounding an integer up to the largest double (#1196)
+
+What `FloatBridge` (in `float-bounds/`) needs to read `ofExact` as a rounding
+of the reals: it is finite up to the largest double, rounds a double to itself
+(so rounding twice is rounding once), and moves an integer `g` by at most
+`(|g| − 1) / 2⁵³` where it moves it at all. -/
+
+/-- The largest double rounds to itself. -/
+theorem ofExact_maxMag : ofExact (maxMag : Int) = posCode maxMag := by
+  have hm : (2 ^ 53 - 1) * 2 ^ 2045 ≤ maxMag := Nat.le_of_eq maxMag_def.symm
+  have h := ofExact_exact false (k := 2 ^ 53 - 1) (s := 2045) (by omega) hm
+  rw [← maxMag_def] at h
+  rw [ofMag_eq false (Nat.le_refl _)] at h
+  simpa [exact, scaled_posCode (Nat.le_refl _)] using h
+
+/-- An integer up to the largest double rounds to a finite double. -/
+theorem ofExact_fin_of_le {g : Int} (hg : g.natAbs ≤ maxMag) : IsFin (ofExact g) := by
+  have hp := posInf_eq; have hn := negInf_eq
+  have hpos : posCode maxMag = 2 * (maxMag : Int) + 1 := by
+    simp [posCode, show maxMag ≠ 0 from Nat.pos_iff_ne_zero.mp maxMag_pos]
+  have hup : ofExact g ≤ posCode maxMag := ofExact_maxMag ▸ ofExact_mono (by omega)
+  have hlow : ofExact (-g) ≤ posCode maxMag := ofExact_maxMag ▸ ofExact_mono (by omega)
+  rw [ofExact_neg] at hlow
+  unfold IsFin; omega
+
+/-- The rounded magnitude: at most `2⁵³` significant bits' worth. -/
+theorem roundMagDiv_form (a : Nat) : ∃ r : Nat, r ≤ 2 ^ 53 ∧
+    roundMagDiv a 1 = r * 2 ^ gridExp a 1 := by
+  refine ⟨rndDiv a (1 * 2 ^ gridExp a 1), ?_, rfl⟩
+  have hlt := lt_of_gridExp a 1
+  rw [Nat.div_one, Nat.pow_add] at hlt
+  have hq : a / (1 * 2 ^ gridExp a 1) < 2 ^ 53 := by
+    rw [Nat.one_mul, Nat.div_lt_iff_lt_mul (Nat.two_pow_pos _), Nat.mul_comm]; exact hlt
+  have := rndDiv_le a (1 * 2 ^ gridExp a 1)
+  omega
+
+/-- Rounding twice is rounding once. -/
+theorem roundMagDiv_idem (a : Nat) : roundMagDiv (roundMagDiv a 1) 1 = roundMagDiv a 1 := by
+  obtain ⟨r, hr, he⟩ := roundMagDiv_form a
+  rw [he]
+  rcases Nat.lt_or_eq_of_le hr with h | h
+  · exact roundMagDiv_exact h
+  · subst h
+    have : 2 ^ 53 * 2 ^ gridExp a 1 = 2 ^ 52 * 2 ^ (gridExp a 1 + 1) := by
+      rw [← Nat.pow_add, ← Nat.pow_add]; congr 1; omega
+    rw [this]; exact roundMagDiv_exact (by decide)
+
+/-- **Rounding a double's value gives the double**: `ofExact` of the rounded value of
+`g` is the rounding of `g`. -/
+theorem ofExact_idem {g : Int} (hg : g.natAbs ≤ maxMag) :
+    ofExact (scaled (ofExact g)) = ofExact g := by
+  have hm : roundMagDiv g.natAbs 1 ≤ maxMag := by
+    have hf := ofExact_fin_of_le hg
+    have hp := posInf_eq; have hn := negInf_eq
+    apply Classical.byContradiction; intro hlt
+    unfold IsFin ofExact ofExactDiv posCode at hf
+    simp only [show maxMag < roundMagDiv g.natAbs 1 by omega, ↓reduceIte] at hf
+    split at hf <;> omega
+  unfold ofExact ofExactDiv
+  by_cases hneg : g < 0
+  · simp only [hneg, ↓reduceIte, scaled_neg_posCode hm]
+    by_cases h0 : roundMagDiv g.natAbs 1 = 0
+    · simp [h0, roundMagDiv_zero, posCode]
+    · simp only [show -(roundMagDiv g.natAbs 1 : Int) < 0 by omega, ↓reduceIte, Int.natAbs_neg,
+        Int.natAbs_natCast, roundMagDiv_idem]
+  · simp only [hneg, ↓reduceIte, scaled_posCode hm, Int.natAbs_natCast, roundMagDiv_idem,
+      show ¬ (roundMagDiv g.natAbs 1 : Int) < 0 by omega]
+
+/-- The value `ofExact` gives an integer up to the largest double: its rounded
+magnitude, with its sign. -/
+theorem scaled_ofExact {g : Int} (hg : g.natAbs ≤ maxMag) :
+    scaled (ofExact g) = if g < 0 then -(roundMagDiv g.natAbs 1 : Int) else roundMagDiv g.natAbs 1 := by
+  have hm : roundMagDiv g.natAbs 1 ≤ maxMag := by
+    have hf := ofExact_fin_of_le hg
+    have hp := posInf_eq; have hn := negInf_eq
+    apply Classical.byContradiction; intro hlt
+    unfold IsFin ofExact ofExactDiv posCode at hf
+    simp only [show maxMag < roundMagDiv g.natAbs 1 by omega, ↓reduceIte] at hf
+    split at hf <;> omega
+  unfold ofExact ofExactDiv
+  by_cases hneg : g < 0
+  · simp only [hneg, ↓reduceIte, scaled_neg_posCode hm]
+  · simp only [hneg, ↓reduceIte, scaled_posCode hm]
+
+/-- The rounded value keeps the sign. -/
+theorem scaled_ofExact_nonneg {g : Int} (hg : g.natAbs ≤ maxMag) (h : 0 ≤ g) : 0 ≤ scaled (ofExact g) := by
+  rw [scaled_ofExact hg]; simp [show ¬ g < 0 by omega]
+
+theorem scaled_ofExact_nonpos {g : Int} (hg : g.natAbs ≤ maxMag) (h : g ≤ 0) : scaled (ofExact g) ≤ 0 := by
+  rw [scaled_ofExact hg]
+  by_cases hneg : g < 0
+  · simp [hneg]
+  · have : g = 0 := by omega
+    subst this; simp [roundMagDiv_zero]
+
+/-- The rounded value is at most the largest double. -/
+theorem scaled_ofExact_le {g : Int} (hg : g.natAbs ≤ maxMag) : (scaled (ofExact g)).natAbs ≤ maxMag := by
+  have hm : roundMagDiv g.natAbs 1 ≤ maxMag := by
+    have hf := ofExact_fin_of_le hg
+    have hp := posInf_eq; have hn := negInf_eq
+    apply Classical.byContradiction; intro hlt
+    unfold IsFin ofExact ofExactDiv posCode at hf
+    simp only [show maxMag < roundMagDiv g.natAbs 1 by omega, ↓reduceIte] at hf
+    split at hf <;> omega
+  rw [scaled_ofExact hg]; split <;> simp [hm]
+
+/-- **Where `ofExact` moves an integer, it moves it by at most `(|g| − 1) / 2⁵³`**:
+the integers below `2⁵³` and the least of each binade above are doubles. -/
+theorem ofExact_err_near {g : Int} (hg : g.natAbs ≤ maxMag) :
+    scaled (ofExact g) = g ∨ 2 ^ 53 * (scaled (ofExact g) - g).natAbs + 1 ≤ g.natAbs := by
+  have hf := ofExact_fin_of_le hg
+  have hw := ofExactDiv_within (v := g) (n := 1) (by omega) hf
+  rw [ofExactDiv_one] at hw
+  simp only [Int.natCast_one, Int.one_mul, Nat.one_mul] at hw
+  unfold ulpDiv at hw
+  generalize he : gridExp g.natAbs 1 = e at hw
+  by_cases he0 : e = 0
+  · left; subst he0; simp at hw; omega
+  · have hle := le_of_gridExp (a := g.natAbs) (n := 1) (by omega)
+    rw [he, Nat.div_one] at hle
+    by_cases heq : g.natAbs = 2 ^ (e + 52)
+    · left
+      have hk : g.natAbs = 2 ^ 52 * 2 ^ e := by rw [heq, Nat.pow_add, Nat.mul_comm]
+      have h := ofExact_exact (decide (g < 0)) (k := 2 ^ 52) (s := e) (by decide) (by omega)
+      have hx : exact (ofMag (decide (g < 0)) (2 ^ 52 * 2 ^ e)) = g := by
+        rw [exact, ofMag_eq _ (by omega)]
+        by_cases hn : g < 0
+        · simp only [hn, decide_true, ↓reduceIte, scaled_neg_posCode (show 2 ^ 52 * 2 ^ e ≤ maxMag by omega)]; omega
+        · simp only [hn, decide_false, Bool.false_eq_true, ↓reduceIte,
+            scaled_posCode (show 2 ^ 52 * 2 ^ e ≤ maxMag by omega)]; omega
+      rw [hx] at h
+      rw [h]; exact hx
+    · right
+      have : 2 ^ e * 2 ^ 52 ≤ g.natAbs - 1 := by rw [← Nat.pow_add]; omega
+      have h1 := Nat.mul_le_mul_right (2 ^ 52) hw
+      have h53 : (2 : Nat) ^ 53 = 2 * 2 ^ 52 := by rfl
+      rw [h53]
+      have hE : 1 ≤ (2 : Nat) ^ e := Nat.one_le_two_pow
+      generalize (scaled (ofExact g) - g).natAbs = d at h1 ⊢
+      generalize (2 : Nat) ^ e = E at h1 this hE
+      omega
+
 /-- `ofExactDiv` does not see a common factor. -/
 theorem ofExactDiv_mul_mul (v : Int) {k n : Nat} (hk : 0 < k) :
     ofExactDiv (k * v) (k * n) = ofExactDiv v n := by

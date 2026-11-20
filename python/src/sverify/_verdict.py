@@ -81,6 +81,7 @@ def verdict(
         black_boxes=black_boxes_from_json(out.get("black_boxes")),
         _engines=out.get("engines"),
         _sorted=out.get("sorted"),
+        _sequence_determined=out.get("sequence_determined", False),
         _generated_proofs=generated_proofs(),
         _contract=dict(request),
         _transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
