@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://alexandernenninger.github.io/substrait-lean/schemas/openlineage-contract-facet/1.json",
+  "$id": "https://alexandernenninger.github.io/substrait-lean/schemas/openlineage-contract-facet/2.json",
   "title": "sverify_contract: the OpenLineage dataset facet of a node's contract",
-  "description": "The custom dataset facet sverify adds to the output of each refreshed node in its OpenLineage events (sverify.openlineage, #792): the node's contract, each postcondition's status, the route and class, quarantined rows, and the verified plan exported to Substrait, from which a downstream job proves the contract again. Format 1. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). Keys reuse the report JSON's names (report.schema.json).",
+  "description": "The custom dataset facet sverify adds to the output of each refreshed node in its OpenLineage events (sverify.openlineage, #792): the node's contract, each postcondition's status, the route and class, quarantined rows, and the verified plan exported to Substrait, from which a downstream job proves the contract again. Format 2, which named format 1's equivalence lenses. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). Keys reuse the report JSON's names (report.schema.json).",
   "type": "object",
   "allOf": [
     {"$ref": "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/DatasetFacet"}
   ],
   "required": ["_producer", "_schemaURL", "format", "sverify", "node", "plan", "proved", "ensures"],
   "properties": {
-    "format": {"description": "The version of this format.", "const": 1},
+    "format": {"description": "The version of this format.", "const": 2},
     "sverify": {"description": "The version of sverify that wrote the facet.", "type": "string"},
     "node": {"description": "The node's name: the job's name.", "type": "string"},
     "plan": {

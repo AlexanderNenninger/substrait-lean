@@ -87,8 +87,9 @@ SPEC_VERSION = "2-0-2"
 #: The `openlineage-python` release `sverify[openlineage]` installs and the
 #: tests run against.
 CLIENT_VERSION = "1.55.0"
-#: The version of the `sverify_contract` facet's format.
-FACET_FORMAT = 1
+#: The version of the `sverify_contract` facet's format. Format 2 (1.0)
+#: names `equivalence` `lenses` (`Report.lenses`).
+FACET_FORMAT = 2
 #: The `_schemaURL` of the `sverify_contract` facet: its JSON schema's `$id`
 #: (`sverify/schemas/openlineage-contract-facet.schema.json`).
 FACET_SCHEMA_URL = (

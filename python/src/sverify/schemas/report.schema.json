@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/report.schema.json",
   "title": "sverify report",
-  "description": "A report as Report.to_json writes it and Report.from_json reads it (#736). Format 2. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Conditions appear as their labels, the text str(report) prints. Postconditions, issues and assumptions are findings in the shape of a SARIF 2.1.0 result (#793): ruleId, level, kind, message.text, and sverify's own fields under properties.",
+  "description": "A report as Report.to_json writes it and Report.from_json reads it (#736). Format 4. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Conditions appear as their labels, the text str(report) prints. Postconditions, issues and assumptions are findings in the shape of a SARIF 2.1.0 result (#793): ruleId, level, kind, message.text, and sverify's own fields under properties.",
   "type": "object",
   "required": [
     "format",

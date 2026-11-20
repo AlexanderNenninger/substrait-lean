@@ -49,10 +49,11 @@ SUBSTRAIT_VERSION = (0, 106, 0)
 #: The protobuf package and type URL of the contract message.
 PACKAGE = "io.sverify.substrait.v1"
 TYPE_URL = f"type.googleapis.com/{PACKAGE}.Contract"
-#: The version of the manifest's format. Format 2 (1.0) says `semantics`
-#: and `equivalence` where format 1 said `profile` and `observation`; `read`
-#: reads both.
-FORMAT = 2
+#: The version of the manifest's format. Format 2 says `semantics` and
+#: `equivalence` where format 1 said `profile` and `observation`; format 3
+#: (1.0) says `lenses`, `lenses_components` and `up_to[].lenses` where
+#: format 2 said `equivalence` (`Report.lenses`); `read` reads all three.
+FORMAT = 3
 
 Json = dict[str, Any]
 Format = Literal["json", "binary"]
@@ -1239,7 +1240,7 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                     "group": g,
                     "option": o,
                     "gap": "ST-9",
-                    "equivalence": {},
+                    "lenses": {},
                     "why": "IEEE 754's default rounding, which fp64 follows; tested, "
                     "not stated by the YAML",
                 }
@@ -1271,12 +1272,12 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
             q = from_json(r["q"])
             missed = q.coarser_than(report.lenses)
             if not missed:
-                h.up_to.append({"group": g, "option": o, "equivalence": r["q"]})
+                h.up_to.append({"group": g, "option": o, "lenses": r["q"]})
                 continue
             if missed == ["floats"] and q.floats == "plan" and (met := _plan_bound_met(report)):
                 # D25: the consumer adds in its own order, within the plan's
                 # proved bound, which meets the postconditions' tolerance.
-                h.up_to.append({"group": g, "option": o, "equivalence": {"floats": met}})
+                h.up_to.append({"group": g, "option": o, "lenses": {"floats": met}})
                 continue
             observed = (
                 f"{where}: a Substrait consumer agrees with the reference only up to {q}, "
@@ -1589,13 +1590,13 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "class": "assumed"
         if handling.assumptions
         else "observed"
-        if any(u.get("equivalence") for u in handling.up_to)
+        if any(u.get("lenses") for u in handling.up_to)
         or routes.plan_bound(report._epsilon) is not None
         else "exact",
         "evidence": "tested" if any(u.get("gap") == "ST-9" for u in handling.up_to) else "proved",
         "shims_mode": shims,
-        "equivalence": str(observation),
-        "equivalence_components": {
+        "lenses": str(observation),
+        "lenses_components": {
             k: (str(v) if not isinstance(v, str) else v)
             for k, v in dataclasses.asdict(observation).items()
             if k != "bound"
@@ -1635,11 +1636,14 @@ class Imported:
     ensures: list[Json]
 
 
-#: The manifest's keys that format 2 renamed (K1, K2).
+#: The manifest's keys that formats 2 (K1, K2) and 3 (`Report.lenses`)
+#: renamed, by their earlier names; an `up_to` entry's key moved with them.
 _RENAMED = {
     "profile": "semantics",
-    "observation": "equivalence",
-    "observation_components": "equivalence_components",
+    "observation": "lenses",
+    "observation_components": "lenses_components",
+    "equivalence": "lenses",
+    "equivalence_components": "lenses_components",
 }
 
 
@@ -1657,11 +1661,10 @@ def _manifest(m: Mapping[str, Any]) -> Json:
             f"reads format {FORMAT} or older: upgrade sverify"
         )
     out = dict(m)
-    if fmt < 2:
+    if fmt < FORMAT:
         out = {_RENAMED.get(k, k): v for k, v in out.items()}
         out["up_to"] = [
-            {("equivalence" if k == "observation" else k): v for k, v in u.items()}
-            for u in out.get("up_to") or []
+            {_RENAMED.get(k, k): v for k, v in u.items()} for u in out.get("up_to") or []
         ]
         out["format"] = FORMAT
     if isinstance(out.get("rows"), float) and out["rows"].is_integer():
@@ -1811,12 +1814,10 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
                 else _table_condition(r["entry"])
             )
     components = {
-        k: v
-        for k, v in (m.get("equivalence_components") or {}).items()
-        if k not in ("floats", "bound")
+        k: v for k, v in (m.get("lenses_components") or {}).items() if k not in ("floats", "bound")
     }
     observation = dataclasses.replace(
-        Observation(floats=_floats_component(m.get("equivalence_components") or {})), **components
+        Observation(floats=_floats_component(m.get("lenses_components") or {})), **components
     )
     report = verdict(
         out,

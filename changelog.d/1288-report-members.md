@@ -6,8 +6,12 @@ API changes, with no aliases ([#1288](https://github.com/AlexanderNenninger/subs
 - `Issue.suggested` is removed: read `Issue.needs`. `on_inferred="silent"` is refused with a `ValueError`: write `"ignore"`.
 - `Report.facts` maps each column to a `ColumnFacts` (`nullable`, `lower`, `upper`; `str()` gives the words it held before), in the report JSON too ([#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704)).
 - `Report.suggestions` is removed: read `c.needs` of each `c` in `report.ensures`.
-- `Report.lenses` is the one name for what the result's consumer observes: it replaces `Report.observation` and `Report.equivalence`, and `Route.observation` is `Route.lenses`. A postcondition whose `reason` was `"observation"` reads `"lenses"`, and `str(report)` prints a `lenses:` line. The report JSON's key is `lenses` (in a route too), as is the OpenLineage contract facet's.
-- The report JSON is format 4: `lenses`, each of `facts` an object, and each of a postcondition's `needs` a whole `needed` object. Formats 2 and 3 are still read.
+- `Report.lenses` is the one name for what the result's consumer observes: it replaces `Report.observation` and `Report.equivalence`, and `Route.observation` is `Route.lenses`. A postcondition whose `reason` was `"observation"` reads `"lenses"`, and `str(report)` prints a `lenses:` line.
+- Three written formats follow the name, each with a new version; files written before still read:
+  - the report's JSON, format 4: `lenses` for `equivalence` (in a route too), each of `facts` an object, and each of a postcondition's `needs` a whole `needed` object;
+  - the Substrait contract manifest, format 3: `lenses`, `lenses_components` and an `up_to` entry's `lenses` for the `equivalence` names;
+  - the OpenLineage facet `sverify_contract`, format 2 (its schema URL ends in `/2.json`): `lenses` for `equivalence`.
+  A release older than this one refuses the new formats and says to upgrade.
 - `Report.warnings` is removed. It was always empty; `report.issues` with `error` false is the same list.
 - `Report.not_null` is removed: `Report.output` types each column the checker proves never NULL as not nullable (`count(*)` is `!int64`), so `[c for c, t in report.output.items() if not t.nullable]` is the list ([#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704)). The report JSON keeps its `not_null` list, and a report written before reads back with those columns not nullable.
 

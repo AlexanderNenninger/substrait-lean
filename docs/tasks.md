@@ -1838,9 +1838,9 @@ Within 1.x the message and the manifest only gain fields, and
 | `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
 | `extension_urns` | the YAMLs the plan's calls come from |
 | `semantics` | the semantics the plan was proved under |
-| `class` | `exact`, `observed` (equal up to `equivalence`) or `assumed` (with annotated choices) |
+| `class` | `exact`, `observed` (equal up to `lenses`) or `assumed` (with annotated choices) |
 | `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
-| `equivalence`, `equivalence_components` | what the postconditions tell apart (`sv.equivalent`) |
+| `lenses`, `lenses_components` | what the postconditions tell apart (`Report.lenses`, `sv.equivalent`) |
 | `pinned` | each pinned option, its values and the calls that state it |
 | `shims`, `assumptions`, `unexercised`, `up_to` | each gap and how the export handled it |
 | `deterministic`, `rows`, `params`, `output` | as in the report |
