@@ -64,11 +64,11 @@ def test_a_raise_that_appears_or_goes_is_error_side(old: str, new: str, cls: str
     assert canary.classify(old, new) == cls
 
 
-def _doc(**rows: object) -> dict:
+def _doc(**rows: dict) -> dict:
     return {
         "duckdb": "x",
         "probes": [{"construct": c, "sql": "SELECT 1", **r} for c, r in rows.items()],
-    }  # type: ignore[misc]
+    }
 
 
 def test_drift_names_each_changed_row_and_its_class() -> None:
