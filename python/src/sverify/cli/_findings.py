@@ -112,6 +112,17 @@ def drift(var: str, d: Drift) -> list[dict[str, Any]]:
     return out
 
 
+def checked_only(c: Checked) -> dict[str, Any]:
+    """With `--require-proved`: a node whose postconditions are checked on the
+    data, not proved."""
+    return _finding(
+        c,
+        "checked_only",
+        "its unproved postconditions are checked on the data at each refresh "
+        f"({', '.join(c.relaxations) or 'on_unproved'}), and --require-proved asks for a proof",
+    )
+
+
 def unchecked(name: str, d: Discovery) -> dict[str, Any]:
     t = next((t for t in d.transforms.values() if t.name == name), None)
     code = getattr(getattr(t, "fn", None), "__code__", None)

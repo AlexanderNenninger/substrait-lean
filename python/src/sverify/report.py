@@ -251,9 +251,8 @@ _DECIMAL_ARG = re.compile(r"DECIMAL_(\d+)_(\d+)\(")
 
 #: How a report explains an operation it assumes stays finite (#575).
 FINITE_ASSUMED = (
-    "stays finite on finite inputs (checked at run time: the data is checked "
-    'before the run, which is refused if it overflows to ±inf; on_inferred="off" '
-    "makes it an error)"
+    "stays finite on finite inputs (checked at run time: the plan raises and "
+    'commits nothing if it overflows to ±inf; on_inferred="off" makes it an error)'
 )
 
 
