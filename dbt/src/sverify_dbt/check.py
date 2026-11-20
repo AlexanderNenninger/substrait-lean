@@ -228,7 +228,13 @@ class _Checker:
     # ---- one model ----------------------------------------------------------
 
     def _model(self, m: Relation) -> ModelResult:
-        res = ModelResult(name=m.name, unique_id=m.unique_id, path=m.path, ref=m.ref)
+        res = ModelResult(
+            name=m.name,
+            unique_id=m.unique_id,
+            path=m.path,
+            ref=m.ref,
+            enforced=bool(m.contract),
+        )
         if m.materialized == "ephemeral":
             readers = sorted(r.name for r in self.p.models if m.unique_id in r.depends_on)
             res.notes.append(
