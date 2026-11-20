@@ -141,8 +141,8 @@ class Source(Pipeable, ABC):
     reads; the views' joins and keys read the pipeline's own copy in the
     engine's store. That table is state sverify holds, of the size of the
     input, and the 1.0 size bar of #1329 does not cover it. It has no
-    metadata: preconditions on it are checked on the rows. Versions count reads, and a sink records the
-    version of each source next to its cursor. A restarted job reads the
+    metadata: preconditions on it are checked on the rows. Versions count
+    reads, and a sink records the version of each source next to its cursor. A restarted job reads the
     whole table again, unless the source implements `restore`: then it
     starts from the table as of the cursor its sink recorded, and the first
     refresh reads only what is new since (`read(cursor)`). A source that
