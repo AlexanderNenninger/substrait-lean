@@ -1784,7 +1784,7 @@ theorem check_sequence_determined_sound {input : Json} {R : Request} {rep : Repo
   simp only [Request.sequenceDeterminedIn, hT, Bool.and_eq_true] at hseq
   obtain ⟨hdet, hs⟩ := hseq
   simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hdet.1)
   have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detPlan_congr hD.arity]
