@@ -635,7 +635,8 @@ jobs:
 
   # sverify without DuckDB (#1288, #1485 item 16): the base install, no extra,
   # in an environment that has no `duckdb`. `verify` proves a plan and writes
-  # SQL, every module imports, and a run on DuckDB names the extra.
+  # SQL, every module imports, a run on DuckDB names the extra, and a Polars
+  # connection puts, verifies and runs (#1764).
   no-duckdb:
     needs: [changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
@@ -661,6 +662,7 @@ jobs:
           assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
           PY
           uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with-editable engines/polars --with polars --with numpy \
             --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on

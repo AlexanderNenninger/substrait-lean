@@ -92,3 +92,30 @@ def test_an_engine_that_is_installed_is_not_told_to_install_it() -> None:
         """
     )
     assert "sverify[spark]" not in out
+
+
+def test_a_polars_connection_needs_no_duckdb() -> None:
+    """`connect("polars")` holds Arrow tables: `put`, `table`, `verify` and `run`
+    work with no DuckDB, and an Ibis expression on the connection refuses to
+    execute, naming the engine to run on (#1764)."""
+    import pytest
+
+    pytest.importorskip("polars")
+    out = run(
+        """
+        import pyarrow as pa, sverify as sv
+        from ibis import _
+        con = sv.connect("polars")
+        con.put("t", pa.table({"k": pa.array([1, 2, 3], pa.int64())}))
+        t = con.table("t")
+        report = sv.verify(t.select(y=t.k + 1), requires={"t": [_.k.between(0, 9)]},
+                           ensures=[_.y >= 1], counterexamples=0)
+        rows = report.run(con, "polars").to_pylist()
+        try:
+            t.execute()
+        except NotImplementedError as e:
+            refused = "polars" in str(e)
+        print(report.verdict, rows, refused, "duckdb" in {m for m, v in sys.modules.items() if v})
+        """
+    )
+    assert out == "proved [{'y': 2}, {'y': 3}, {'y': 4}] True False"

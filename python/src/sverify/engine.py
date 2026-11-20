@@ -29,7 +29,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import sqlglot as sg
 
-from sverify import _duckdb, _engines, _stages
+from sverify import _engines, _stages
 from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
     _CHECKER,
     _REBUILD,
@@ -62,7 +62,27 @@ ENGINES: tuple[Engine, ...] = _engines.LOCAL
 def _ibis_backend() -> Any:
     """An Ibis DuckDB backend on a cursor of its own to the process's
     database (`sverify._duckdb`), where the tables DuckDB holds live too."""
+    from sverify import _duckdb
+
     return ibis.duckdb.from_connection(_duckdb.cursor())
+
+
+class _NoBackend:
+    """The Ibis backend of a bound table on a connection whose engine is not
+    DuckDB: a table needs a source to be bound, and this one exists without
+    DuckDB. It runs nothing; the connection's engine runs plans (`Report.run`)."""
+
+    def __init__(self, engine: Engine):
+        self.name = engine
+        self._sverify_connection: Connection | None = None
+
+    def _refuse(self, *_args: Any, **_kwargs: Any) -> Any:
+        raise NotImplementedError(
+            f"an Ibis expression on a {self.name} connection is not executed through Ibis: "
+            f"run the plan with `Report.run(con, {self.name!r})`, or use a DuckDB connection"
+        )
+
+    execute = to_pyarrow = to_pyarrow_batches = to_pandas = raw_sql = sql = _refuse
 
 
 class _Arrow(MutableMapping[str, pa.Table]):
@@ -149,9 +169,13 @@ class Connection:
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
         self._arrow: MutableMapping[str, pa.Table] = _Arrow(self)
-        self._ibis: Any = _ibis_backend()
+        # The backend a bound table reads through: DuckDB's on a DuckDB
+        # connection, a stub that runs nothing on the others. The Ibis DuckDB
+        # backend of those is made on first need (`_ibis`).
+        self._duck: Any = None
+        self._source: Any = _NoBackend(self.engine) if self.engine != "duckdb" else self._ibis
         # A bound table keeps its backend alive, and the backend its connection.
-        self._ibis._sverify_connection = self
+        self._source._sverify_connection = self
 
     def table(self, name: str) -> ir.Table:
         """Table `name` as an Ibis table bound to the connection. Its schema is
@@ -168,7 +192,7 @@ class Connection:
             KeyError: The connection has no table `name`.
         """
         schema = ibis.Schema.from_pyarrow(self.schema(name))
-        return ops.DatabaseTable(name, schema=schema, source=self._ibis).to_expr()
+        return ops.DatabaseTable(name, schema=schema, source=self._source).to_expr()
 
     @property
     def arrow(self) -> MutableMapping[str, pa.Table]:
@@ -190,6 +214,18 @@ class Connection:
             stacklevel=2,
         )
         return self._ibis
+
+    @property
+    def _ibis(self) -> Any:
+        """The Ibis DuckDB backend, made on first need with the tables the
+        connection holds. A DuckDB connection asks for it at once; the others
+        only when something executes DuckDB SQL over their tables."""
+        if self._duck is None:
+            self._duck = _ibis_backend()
+            self._duck._sverify_connection = self
+            for name, table in self._tables.items():
+                self._attach(name, table)
+        return self._duck
 
     def create(
         self, name: str, schema: ibis.Schema | pa.Schema, rows: Iterable[tuple] = ()
@@ -231,8 +267,8 @@ class Connection:
 
     def put(self, name: str, table: pa.Table | Native) -> None:
         """Add or replace table `name`, as it is: no copy. The engines read
-        `-0.0` as `0.0` and every NaN as one, as the model has them. The
-        table is registered with the Ibis backend.
+        `-0.0` as `0.0` and every NaN as one, as the model has them. A DuckDB
+        connection registers the table with its Ibis backend.
 
         Args:
             name: The table's name.
@@ -244,20 +280,28 @@ class Connection:
         if isinstance(table, Native):
             if isinstance(table, Scan):
                 table = replace(table, schema=plain_schema(table.schema))
-            self._tables[name] = table
+        else:
+            _check_times(table.schema)
+            _check_calendar(table)
+        self._tables[name] = table
+        if self._duck is not None or self.engine == "duckdb":
+            try:
+                self._attach(name, table)
+            except BaseException:
+                self.drop(name)
+                raise
+
+    def _attach(self, name: str, table: pa.Table | Native) -> None:
+        """Make table `name` visible to the Ibis DuckDB backend: registered if
+        it is Arrow, viewed where it is if it is a `Native`."""
+        db = self._duck.con
+        if isinstance(table, Native):
             # A scan whose files were removed is held, but cannot be read.
             if table.readable():
-                self._views[name] = table.attach(self._ibis.con, name)
-                try:
-                    _check_calendar_view(self._ibis.con, name, table)
-                except BaseException:
-                    self.drop(name)
-                    raise
-            return
-        _check_times(table.schema)
-        _check_calendar(table)
-        self._tables[name] = table
-        self._ibis.con.register(name, table)
+                self._views[name] = table.attach(db, name)
+                _check_calendar_view(db, name, table)
+        else:
+            db.register(name, table)
 
     def drop(self, name: str) -> None:
         """Remove table `name`; nothing happens if there is none."""
@@ -265,8 +309,8 @@ class Connection:
             return
         if (drop := self._views.pop(name, None)) is not None:
             drop()
-        elif isinstance(table, pa.Table):
-            self._ibis.con.unregister(name)
+        elif isinstance(table, pa.Table) and self._duck is not None:
+            self._duck.con.unregister(name)
 
 
 def _importable(module: str) -> bool:
