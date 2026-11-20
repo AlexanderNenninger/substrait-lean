@@ -78,7 +78,6 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
     assert set(shims) == {
         "int_sum_decimal",
         "int_avg_decimal",
-        "atan2 refused",
         "null_order",
         "sort on the keys",
         "decimal_negate_sub",

@@ -152,7 +152,7 @@ theorem Obs.stringsAt_rank {q' q : Obs} {ctx : ObsCtx} {col : Nat}
 mutual
 /-- **Two values of column `col` equal up to `q`**: the same constructor,
 integers by `IntEquiv`, strings by `StrEquiv`, lists elementwise, or as a
-multiset where `q.elements` is. -/
+multiset where `q.elements` is, structs field by field. -/
 def Value.Equiv (q : Obs) (ctx : ObsCtx) (col : Nat) : Value → Value → Prop
   | .null, .null => True
   | .bool a, .bool b => a = b
@@ -161,9 +161,11 @@ def Value.Equiv (q : Obs) (ctx : ObsCtx) (col : Nat) : Value → Value → Prop
     IntEquiv q ctx col a b
   | .dec s a, .dec t b => s = t ∧ IntEquiv q ctx col a b
   | .str a, .str b => StrEquiv q ctx col a b
-  | .list as, .list bs | .struct as, .struct bs => match q.elements with
+  | .list as, .list bs => match q.elements with
     | .sequence => Value.EquivList q ctx col as bs
     | .multiset => ∃ cs, Value.EquivList q ctx col as cs ∧ cs.Perm bs
+  -- A struct's fields are positional: its fields compare in order at every level.
+  | .struct as, .struct bs => Value.EquivList q ctx col as bs
   | _, _ => False
 
 /-- Lists of values of column `col`, elementwise. -/
@@ -217,11 +219,12 @@ theorem Value.Equiv.refl (h : ctx.ReflAt q) : ∀ v, Value.Equiv q ctx col v v
   | .int a | .float a | .date a | .ts a | .tod a => IntEquiv.refl h a
   | .dec _ a => ⟨rfl, IntEquiv.refl h a⟩
   | .str a => StrEquiv.refl h a
-  | .list as | .struct as => by
+  | .list as => by
     unfold Value.Equiv
     split
     · exact Value.EquivList.refl h as
     · exact ⟨as, Value.EquivList.refl h as, .refl _⟩
+  | .struct as => Value.EquivList.refl h as
 
 theorem Value.EquivList.refl (h : ctx.ReflAt q) : ∀ vs, Value.EquivList q ctx col vs vs
   | [] => trivial
@@ -253,17 +256,19 @@ theorem Value.Equiv.symm (h : ctx.WF) : ∀ a b, Value.Equiv q ctx col a b → V
     cases b <;> first | exact e.elim | exact IntEquiv.symm h e
   | .dec _ _, b, e => by cases b <;> first | exact e.elim | exact ⟨e.1.symm, IntEquiv.symm h e.2⟩
   | .str _, b, e => by cases b <;> first | exact e.elim | exact StrEquiv.symm h e
-  | .list as, b, e | .struct as, b, e => by
+  | .list as, b, e => by
     cases b <;> try exact e.elim
-    all_goals
-      rename_i bs
-      unfold Value.Equiv at e ⊢
-      cases hl : q.elements <;> simp only [hl] at e ⊢
-      · exact Value.EquivList.symm h as bs e
-      · obtain ⟨cs, hl, hp⟩ := e
-        obtain ⟨ds, hd, hf⟩ :=
-          Forall2.perm hp (Value.equivList_iff.1 (Value.EquivList.symm h as cs hl))
-        exact ⟨ds, Value.equivList_iff.2 hf, hd.symm⟩
+    rename_i bs
+    unfold Value.Equiv at e ⊢
+    cases hl : q.elements <;> simp only [hl] at e ⊢
+    · exact Value.EquivList.symm h as bs e
+    · obtain ⟨cs, hl, hp⟩ := e
+      obtain ⟨ds, hd, hf⟩ :=
+        Forall2.perm hp (Value.equivList_iff.1 (Value.EquivList.symm h as cs hl))
+      exact ⟨ds, Value.equivList_iff.2 hf, hd.symm⟩
+  | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    exact Value.EquivList.symm h as _ e
 
 theorem Value.EquivList.symm (h : ctx.WF) :
     ∀ as bs, Value.EquivList q ctx col as bs → Value.EquivList q ctx col bs as
@@ -317,20 +322,23 @@ theorem Value.Equiv.trans (h : ObsCtx.Comp c₁ c₂ c₃) :
   | .str _, b, d, e₁, e₂ => by
     cases b <;> try exact e₁.elim
     cases d <;> first | exact e₂.elim | exact StrEquiv.trans h e₁ e₂
-  | .list as, b, d, e₁, e₂ | .struct as, b, d, e₁, e₂ => by
+  | .list as, b, d, e₁, e₂ => by
     cases b <;> try exact e₁.elim
-    all_goals cases d <;> try exact e₂.elim
-    all_goals
-      rename_i bs ds
-      unfold Value.Equiv at e₁ e₂ ⊢
-      cases hc11 : q.elements <;> simp only [hc11] at e₁ e₂ ⊢
-      · exact Value.EquivList.trans h as bs ds e₁ e₂
-      · obtain ⟨cs, h₁, p₁⟩ := e₁
-        obtain ⟨cs', h₂, p₂⟩ := e₂
-        -- `as R cs ~ bs R cs' ~ ds`: move `cs ~ bs` past `bs R cs'`.
-        obtain ⟨es, pe, fe⟩ := Forall2.perm p₁.symm (Value.equivList_iff.1 h₂)
-        have := Value.EquivList.trans h as cs es h₁ (Value.equivList_iff.2 fe)
-        exact ⟨es, this, pe.symm.trans p₂⟩
+    cases d <;> try exact e₂.elim
+    rename_i bs ds
+    unfold Value.Equiv at e₁ e₂ ⊢
+    cases hc11 : q.elements <;> simp only [hc11] at e₁ e₂ ⊢
+    · exact Value.EquivList.trans h as bs ds e₁ e₂
+    · obtain ⟨cs, h₁, p₁⟩ := e₁
+      obtain ⟨cs', h₂, p₂⟩ := e₂
+      -- `as R cs ~ bs R cs' ~ ds`: move `cs ~ bs` past `bs R cs'`.
+      obtain ⟨es, pe, fe⟩ := Forall2.perm p₁.symm (Value.equivList_iff.1 h₂)
+      have := Value.EquivList.trans h as cs es h₁ (Value.equivList_iff.2 fe)
+      exact ⟨es, this, pe.symm.trans p₂⟩
+  | .struct as, b, d, e₁, e₂ => by
+    cases b <;> try exact e₁.elim
+    cases d <;> try exact e₂.elim
+    exact Value.EquivList.trans h as _ _ e₁ e₂
 
 theorem Value.EquivList.trans (h : ObsCtx.Comp c₁ c₂ c₃) :
     ∀ as bs ds, Value.EquivList q c₁ col as bs → Value.EquivList q c₂ col bs ds →
@@ -399,18 +407,20 @@ theorem Value.Equiv.mono (hc : ctx.WF) (h : q'.le q = true) :
     cases b <;> first | exact e.elim | exact IntEquiv.mono hc h e
   | .dec _ _, b, e => by cases b <;> first | exact e.elim | exact ⟨e.1, IntEquiv.mono hc h e.2⟩
   | .str _, b, e => by cases b <;> first | exact e.elim | exact StrEquiv.mono hc h e
-  | .list as, b, e | .struct as, b, e => by
+  | .list as, b, e => by
     cases b <;> try exact e.elim
-    all_goals
-      rename_i bs
-      obtain ⟨-, hl, -⟩ := Obs.le_parts h
-      unfold Value.Equiv at e ⊢
-      cases hq' : q'.elements <;> cases hq : q.elements <;>
-        simp only [hq', hq, ElemsObs.le, reduceCtorEq] at hl e ⊢
-      · exact Value.EquivList.mono hc h as bs e
-      · exact ⟨bs, Value.EquivList.mono hc h as bs e, .refl _⟩
-      · obtain ⟨cs, hc', hp⟩ := e
-        exact ⟨cs, Value.EquivList.mono hc h as cs hc', hp⟩
+    rename_i bs
+    obtain ⟨-, hl, -⟩ := Obs.le_parts h
+    unfold Value.Equiv at e ⊢
+    cases hq' : q'.elements <;> cases hq : q.elements <;>
+      simp only [hq', hq, ElemsObs.le, reduceCtorEq] at hl e ⊢
+    · exact Value.EquivList.mono hc h as bs e
+    · exact ⟨bs, Value.EquivList.mono hc h as bs e, .refl _⟩
+    · obtain ⟨cs, hc', hp⟩ := e
+      exact ⟨cs, Value.EquivList.mono hc h as cs hc', hp⟩
+  | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    exact Value.EquivList.mono hc h as _ e
 
 theorem Value.EquivList.mono (hc : ctx.WF) (h : q'.le q = true) :
     ∀ as bs, Value.EquivList q' ctx col as bs → Value.EquivList q ctx col as bs
@@ -464,13 +474,15 @@ theorem Value.Equiv.eq_of_valExact (hq : q.valExact = true) :
     obtain ⟨-, -, -, -, hs⟩ := Obs.valExact_iff.1 hq
     change StrEquiv q ctx col _ _ at e
     unfold StrEquiv StrEquivAt Obs.stringsAt at e; simp only [hs, ite_self] at e; exact congrArg _ e
-  | .list as, b, e | .struct as, b, e => by
+  | .list as, b, e => by
     cases b <;> try exact e.elim
-    all_goals
-      rename_i bs
-      obtain ⟨hl, -⟩ := Obs.valExact_iff.1 hq
-      unfold Value.Equiv at e; simp only [hl] at e
-      exact congrArg _ (Value.EquivList.eq_of_valExact hq as bs e)
+    rename_i bs
+    obtain ⟨hl, -⟩ := Obs.valExact_iff.1 hq
+    unfold Value.Equiv at e; simp only [hl] at e
+    exact congrArg _ (Value.EquivList.eq_of_valExact hq as bs e)
+  | .struct as, b, e => by
+    cases b <;> try exact e.elim
+    exact congrArg _ (Value.EquivList.eq_of_valExact hq as _ e)
 
 theorem Value.EquivList.eq_of_valExact (hq : q.valExact = true) :
     ∀ as bs, Value.EquivList q ctx col as bs → as = bs
@@ -657,6 +669,124 @@ theorem Relation.Equiv_multiset_perm {a b : Relation} :
 
 end
 
+/-! ## The class level: `Row.canon` and `Obs.classes` -/
+
+/-- Every double of `rel`, at any depth of a list or struct, sits in a column
+`ctx` reads as a double. One kind per column: a struct column with a double
+field and an integer field has kind `double`, and `IntEquiv` then compares its
+integer field through `fp64.canon` too, which `Row.canon` leaves alone. So
+`Relation.Equiv_classes_of_canon_perm` is not an iff, and the checker's
+`Perm` statements stay the primary theorems. -/
+def Relation.DoublesKinded (ctx : ObsCtx) (rel : Relation) : Prop :=
+  ∀ row ∈ rel, ∀ i v, row[i]? = some v → v.hasDouble = true → ctx.kind i = .double
+
+theorem ObsCtx.reflAt_classes (ctx : ObsCtx) : ctx.ReflAt Obs.classes :=
+  ⟨fun n h => by simp [Obs.classes] at h, fun s h hne => by simp [Obs.classes] at h; exact absurd h.symm hne⟩
+
+mutual
+/-- Two values with one canonical form are equal up to `Obs.classes` where
+every double of the second sits in a double column. -/
+theorem Value.Equiv.of_canon {ctx : ObsCtx} {col : Nat} :
+    ∀ (w v : Value), v.canonV = w.canonV → (w.hasDouble = true → ctx.kind col = .double) →
+      Value.Equiv Obs.classes ctx col v w
+  | .float c, v, h, hk => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq, Value.float.injEq] at h
+    next c' =>
+      have hd := hk (by simp only [Value.hasDouble])
+      show IntEquiv Obs.classes ctx col c' c
+      unfold IntEquiv
+      rw [hd]
+      exact h
+  | .list ws, v, h, hk => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq, Value.list.injEq] at h
+    next vs =>
+      exact Value.EquivList.of_canon ws vs h (by
+        intro hd; apply hk; simp only [Value.hasDouble]; exact hd)
+  | .struct ws, v, h, hk => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq, Value.struct.injEq] at h
+    next vs =>
+      exact Value.EquivList.of_canon ws vs h (by
+        intro hd; apply hk; simp only [Value.hasDouble]; exact hd)
+  | .null, v, h, _ | .bool _, v, h, _ | .int _, v, h, _ | .date _, v, h, _ | .ts _, v, h, _
+  | .tod _, v, h, _ | .dec _ _, v, h, _ | .str _, v, h, _ => by
+    cases v <;> simp only [Value.canonV, reduceCtorEq] at h <;> (try cases h) <;>
+      exact Value.Equiv.refl (ObsCtx.reflAt_classes ctx) _
+
+theorem Value.EquivList.of_canon {ctx : ObsCtx} {col : Nat} :
+    ∀ (ws vs : List Value), vs.map Value.canonV = ws.map Value.canonV →
+      (Value.anyDouble ws = true → ctx.kind col = .double) →
+      Value.EquivList Obs.classes ctx col vs ws
+  | [], [], _, _ => trivial
+  | [], _ :: _, h, _ => by simp at h
+  | _ :: _, [], h, _ => by simp at h
+  | w :: ws, v :: vs, h, hk => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    exact ⟨Value.Equiv.of_canon w v h.1 (fun hd => hk (by simp [Value.anyDouble, hd])),
+      Value.EquivList.of_canon ws vs h.2 (fun hd => hk (by simp [Value.anyDouble, hd]))⟩
+end
+
+theorem Row.EquivFrom.of_canon {ctx : ObsCtx} :
+    ∀ (i : Nat) (s r : Row), r.map Value.canonV = s.map Value.canonV →
+      (∀ j v, s[j]? = some v → v.hasDouble = true → ctx.kind (i + j) = .double) →
+      Row.EquivFrom Obs.classes ctx i r s
+  | _, [], [], _, _ => trivial
+  | _, [], _ :: _, h, _ => by simp at h
+  | _, _ :: _, [], h, _ => by simp at h
+  | i, b :: bs, a :: as, h, hk => by
+    simp only [List.map_cons, List.cons.injEq] at h
+    refine ⟨Value.Equiv.of_canon b a h.1 (fun hd => hk 0 b rfl hd), 
+      Row.EquivFrom.of_canon (i + 1) bs as h.2 fun j v hv hd => ?_⟩
+    rw [show i + 1 + j = i + (j + 1) by omega]
+    exact hk (j + 1) v hv hd
+
+/-- Rows are as many as their images and each keeps its image: a permutation of
+`b` with the images of `a`. -/
+theorem exists_perm_map_eq {α β : Type _} (f : α → β) [DecidableEq β] :
+    ∀ (as bs : List α), (as.map f).Perm (bs.map f) → ∃ p : List α, p.Perm bs ∧ p.map f = as.map f
+  | [], bs, h => by
+    have : bs.map f = [] := (List.Perm.nil_eq h).symm
+    have hb : bs = [] := by simpa using this
+    exact ⟨[], by simp [hb], rfl⟩
+  | a :: as, bs, h => by
+    classical
+    have hmem : f a ∈ bs.map f := h.subset (by simp)
+    obtain ⟨b, hb, hfb⟩ := List.mem_map.1 hmem
+    have hp : bs.Perm (b :: bs.erase b) := List.perm_cons_erase hb
+    have h2 : (f a :: as.map f).Perm (f b :: (bs.erase b).map f) := by
+      have := h.trans ((hp.map f))
+      simpa using this
+    rw [hfb] at h2
+    obtain ⟨p', hp', hm⟩ := exists_perm_map_eq f as (bs.erase b) ((List.perm_cons (f a)).1 h2)
+    exact ⟨b :: p', (hp'.cons b).trans hp.symm, by simp [hm, hfb]⟩
+
+/-- **Rows equal up to their canonical forms are equal up to `Obs.classes`**,
+where every double of the second relation sits in a double column
+(`Relation.DoublesKinded`): the bridge from `Row.canon` (D31, D48) to
+`Relation.Equiv`. It needs no `ctx.WF`: at this observation floats and strings
+are exact, so `ctx.ReflAt` holds for every context. -/
+theorem Relation.Equiv_classes_of_canon_perm {ctx : ObsCtx} {a b : Relation}
+    (h : (a.map Row.canon).Perm (b.map Row.canon)) (hk : Relation.DoublesKinded ctx b) :
+    Relation.Equiv Obs.classes ctx a b := by
+  classical
+  obtain ⟨p, hp, hm⟩ := exists_perm_map_eq Row.canon a b h
+  refine ⟨p, ?_, hp⟩
+  have key : ∀ (a p : Relation), p.map Row.canon = a.map Row.canon →
+      (∀ s ∈ p, ∀ j v, s[j]? = some v → v.hasDouble = true → ctx.kind j = .double) →
+      Forall2 (Row.Equiv Obs.classes ctx) a p := by
+    intro a
+    induction a with
+    | nil => intro p h _; cases p with
+      | nil => exact .nil
+      | cons _ _ => simp at h
+    | cons x xs ih => intro p h hk; cases p with
+      | nil => simp at h
+      | cons y ys =>
+        simp only [List.map_cons, List.cons.injEq] at h
+        refine .cons ?_ (ih ys h.2 fun s hs => hk s (List.mem_cons_of_mem _ hs))
+        exact Row.EquivFrom.of_canon 0 y x h.1.symm (by
+          simpa using hk y (List.mem_cons_self ..))
+  exact key a p hm fun s hs j v hv hd => hk s (hp.subset hs) j v hv hd
+
 /-! ## Near: a tolerance in codes -/
 
 /-- A per-column tolerance in codes, an ulp count (`none`: exact). -/
@@ -757,6 +887,20 @@ example : Value.Equiv { zeros := .canon } { kind := fun _ => .double } 0 (.int f
   show fp64.canon fp64.negZero = fp64.canon 0
   rw [fp64.canon_negZero, fp64.canon_eq_self]
   have := fp64.negZero_eq; have := fp64.negNan_eq; omega
+
+/-- The bridge's side condition is met: `-0.0` and `+0.0` as `.float` values in a
+double column, equal up to `Obs.classes` through `Relation.Equiv_classes_of_canon_perm`. -/
+example : Relation.Equiv Obs.classes { kind := fun _ => .double }
+    [[.float fp64.negZero]] [[.float 0]] := by
+  refine Relation.Equiv_classes_of_canon_perm ?_ ?_
+  · have e : fp64.canon fp64.negZero = fp64.canon 0 := by
+      rw [fp64.canon_negZero, fp64.canon_eq_self]
+      have := fp64.negZero_eq; have := fp64.negNan_eq; omega
+    have e' : FloatCode.canon fp64.negZero = FloatCode.canon 0 := e
+    simp only [List.map_cons, List.map_nil, Row.canon, Value.canonV, e']
+    exact .refl _
+  · intro row hr i v hv hd
+    rfl
 
 example : ¬ Value.Equiv {} { kind := fun _ => .double } 0 (.int fp64.negZero) (.int 0) := by
   show ¬ fp64.negZero = 0; have := fp64.negZero_eq; omega

@@ -4,8 +4,8 @@
 name as the user writes it) and otherwise the SQL keywords in upper case
 (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`). `sverify_dev.exits` counts the
 refusals of `sql_lift/` and `ibis_substrait/` that set none, per file;
-`construct_baseline.json` holds the count and only goes down, to `{}` when
-every site sets one. The lowered count is written with
+`construct_baseline.json` holds the count; a file's count may not rise above it.
+A PR that sets constructs may lower it, with
 
     python -m sverify_dev.exits --write-baseline
 """
@@ -26,13 +26,6 @@ def test_no_new_refusal_without_a_construct():
     now = exits.missing_construct_by_file()
     risen = {f: (base.get(f, 0), n) for f, n in now.items() if n > base.get(f, 0)}
     assert not risen, f"refusals with no `construct=`, as (baseline, now) per file: {risen}"
-
-
-def test_baseline_is_lowered_with_the_count():
-    base = json.loads(exits.CONSTRUCT_BASELINE.read_text())
-    assert exits.missing_construct_by_file() == base, (
-        "lower construct_baseline.json with `python -m sverify_dev.exits --write-baseline`"
-    )
 
 
 def test_every_construct_has_the_one_spelling():

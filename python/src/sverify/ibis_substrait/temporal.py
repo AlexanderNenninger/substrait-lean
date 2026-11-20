@@ -278,6 +278,30 @@ def _bucket(x: Exprs, op: Any) -> Json:
     return call("date_bin", [interval_json(0, c[1]), x(op.arg), origin])
 
 
+#: The microseconds of the units of a timestamp's delta (D58).
+_DELTA_MICROS = {
+    "microsecond": 1, "millisecond": 1_000, "second": 1_000_000,
+    "minute": 60_000_000, "hour": 3_600_000_000, "day": 86_400_000_000,
+}  # fmt: skip
+
+
+def _timestamp_delta(x: Exprs, op: Any) -> Json:
+    """`a.delta(b, unit)` is the units crossed from `b` to `a` (D58): each
+    side floored to its unit (`date_bin` from the epoch), the difference
+    divided by the unit."""
+    unit = op.part.value
+    if unit not in _DELTA_MICROS:
+        raise Unsupported(f"delta in {unit}s is not supported; use days or a shorter unit")
+    us = _DELTA_MICROS[unit]
+    origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": "0"}}}
+
+    def floor(e: Any) -> Json:
+        return call("date_bin", [interval_json(0, us), x(e), origin])
+
+    diff = call("subtract", [floor(op.left), floor(op.right)])
+    return call("divide", [diff, literal(us, dt.int64)])
+
+
 def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
     """`TimeAdd`, `TimeSub`: a time of day plus a constant interval, which
     wraps around midnight (`duckdb-time-plus-interval`)."""
@@ -354,6 +378,7 @@ register(
         ops.TimeSub: _time_add("subtract"),
         ops.TimeTruncate: _time_truncate,
         ops.TimestampBucket: _bucket,
+        ops.TimestampDelta: _timestamp_delta,
         ops.ExtractWeekOfYear: _date_part("week"),
     }
 )

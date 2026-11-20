@@ -5,9 +5,14 @@ comparisons, arithmetic, numeric functions and NULLs, and `sv.sql` itself;
 the other areas are in `test_sql_lift_<area>.py`."""
 
 import json
+import re
 from typing import Any
 
+import duckdb
 import ibis
+import ibis.expr.datatypes as dt
+import numpy as np
+import pyarrow as pa
 import pytest
 
 import sverify as sv
@@ -20,8 +25,9 @@ from sverify.errors import VerificationError
 from sverify.io import StaticSource
 from sverify.plan_json import Unsupported as Refused
 from sverify.sql_lift import DUCKDB, REFERENCE, lift
-from sverify_dev import catalogue
-from sverify_dev.lift import check, score
+from sverify.testing import LeanRaised, lean_values
+from sverify_dev import catalogue, slt
+from sverify_dev.lift import check, duckdb_result, score
 
 pytestmark = pytest.mark.backend("duckdb")
 
@@ -459,3 +465,92 @@ def test_a_sum_of_non_negative_products_is_non_negative():
         counterexamples=0,
     )
     assert report.verdict == sv.Verdict.PROVED, report
+
+
+# -- an integer literal next to a narrow integer column (#1484) ----------------
+
+_WIDTHS = {"int8": "TINYINT", "int16": "SMALLINT", "int32": "INTEGER", "int64": "BIGINT"}
+# `nullif` is typed as its first argument, not by the literal (the next PR).
+_LITERAL_QUERIES = [
+    "v + {L}",
+    "{L} - v",
+    "v * {L}",
+    "v % {L}",
+    "v // {L}",
+    "coalesce(v, {L})",
+    "greatest(v, {L})",
+    "CASE WHEN v > 0 THEN v ELSE {L} END",
+]
+_LITERALS = [127, 128, -128, -129, 32767, 32768, 2**31 - 1, 2**31]
+
+
+def _narrow_table(width: str) -> pa.Table:
+    t = getattr(pa, width)()
+    info = np.iinfo(width)
+    return pa.table({"v": pa.array([int(info.min), -1, 1, int(info.max)], t)})
+
+
+def _duckdb_typeof(query: str, table: pa.Table) -> str:
+    con = duckdb.connect()
+    con.register("t", table)
+    return str(con.execute(f"SELECT typeof(x) FROM ({query}) s LIMIT 1").fetchall()[0][0])
+
+
+@pytest.mark.parametrize("width", _WIDTHS)
+@pytest.mark.parametrize("template", _LITERAL_QUERIES)
+@pytest.mark.parametrize("literal", _LITERALS)
+def test_an_integer_literal_has_the_type_duckdb_gives_it(width, template, literal):
+    """A literal that fits the column takes its type (`tinyint + 100` is a
+    TINYINT), one that does not widens it; the lift types it the same
+    (`duckdb-coerce-int-literal-width`)."""
+    table = _narrow_table(width)
+    query = f"SELECT {template.format(L=literal)} AS x FROM t"
+    duck = _duckdb_typeof(query, table)
+    lifted = lift(query, {"t": ibis.Schema.from_pyarrow(table.schema)})
+    got = {"int8": "TINYINT", "int16": "SMALLINT", "int32": "INTEGER", "int64": "BIGINT"}[
+        str(lifted.schema["x"])
+    ]
+    assert got == duck, query
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("width", ["int8", "int16", "int32"])
+@pytest.mark.parametrize("template", ["v + {L}", "{L} - v", "v * {L}", "greatest(v, {L})"])
+@pytest.mark.parametrize("literal", _LITERALS)
+def test_an_integer_literal_raises_where_duckdb_does(width, template, literal):
+    """The plan's value, or its raise, is DuckDB's: `tinyint + 100` overflows
+    at 8 bits in both (the check evaluates the plan in Lean)."""
+    table = _narrow_table(width)
+    query = f"SELECT {template.format(L=literal)} AS x FROM t"
+    try:
+        expected: list | None = duckdb_result(query, {"t": table}).column("x").to_pylist()
+    except duckdb.Error:
+        expected = None
+    plan = json.dumps(lift(query, {"t": ibis.Schema.from_pyarrow(table.schema)}).plan)
+    rows = {"t": [(v,) for v in table.column("v").to_pylist()]}
+    inlined = json.dumps(slt._typed_inline(json.loads(plan), rows, None))
+    try:
+        got: list | None = [r[0] for r in lean_values(inlined)]
+    except LeanRaised:
+        got = None
+    assert got == expected, query
+
+
+@pytest.mark.parametrize(
+    ("query", "cast"),
+    [
+        ("SELECT [v, 100] AS x FROM t", "CAST(100 AS INTEGER)"),
+        ("SELECT lag(v, 1, 100) OVER (ORDER BY v) AS x FROM t", "CAST(100 AS INTEGER)"),
+    ],
+)
+def test_an_unprobed_context_refuses_a_literal_next_to_a_narrow_column(query, cast):
+    with pytest.raises(UnsupportedError, match=re.escape(cast)):
+        lift(query, {"t": ibis.schema({"v": "int8"})})
+
+
+def test_a_folded_constant_is_not_a_literal():
+    """`i8 + (50 + 50)` is an INTEGER and returns 200, as in DuckDB: only a
+    literal node takes the column's type."""
+    schema = {"t": ibis.schema({"v": "int8"})}
+    assert lift("SELECT v + (50 + 50) AS x FROM t", schema).schema["x"] == dt.int32
+    assert lift("SELECT v + CAST(100 AS INTEGER) AS x FROM t", schema).schema["x"] == dt.int32

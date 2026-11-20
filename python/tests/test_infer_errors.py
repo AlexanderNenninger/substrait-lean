@@ -1,7 +1,7 @@
 """Inferred preconditions for runtime errors besides overflow: division by
 zero, domain errors, casts out of range, string arguments, decimal
 precision and date arithmetic. Like #244's bounds, Lean proposes them
-(`SubstraitLean/Infer.lean`), the unchanged proof checks them, and they are
+(`analysis/Sverify/Analysis/Infer.lean`), the unchanged proof checks them, and they are
 checked on the data."""
 
 import functools

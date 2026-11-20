@@ -109,7 +109,7 @@ def test_repro_writes_a_core_case_and_prints_its_replay(tmp_path, monkeypatch, c
     ledger, night = nightly.merge({}, [a])
     path = tmp_path / "ledger.json"
     path.write_text(json.dumps(ledger))
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(nightly.tempfile, "gettempdir", lambda: str(tmp_path))
     nightly.main(["repro", str(path), night[0]["id"]])
     out = capsys.readouterr().out
     assert (
@@ -117,6 +117,7 @@ def test_repro_writes_a_core_case_and_prints_its_replay(tmp_path, monkeypatch, c
     )
 
 
+@pytest.mark.slow
 def test_batch_stops_at_its_wall_time_and_records_it(tmp_path, monkeypatch):
     sleeper = ([nightly.sys.executable, "-c", "import time; time.sleep(60)"], {})
     monkeypatch.setattr(nightly, "command", lambda *a: sleeper)
@@ -138,6 +139,7 @@ CASE = {
 }
 
 
+@pytest.mark.slow
 def test_a_stopped_batch_records_the_case_it_was_on(tmp_path, monkeypatch):
     # The fuzzer writes each case to $SVERIFY_FUZZ_PROGRESS before checking
     # it; here the "case" hangs and the wall-time limit stops the batch.
@@ -198,3 +200,19 @@ def test_the_checker_over_its_cap_is_a_memory_finding(tmp_path):
         ["core:checker", "SELECT ?", "memory"],
         ["duckdb:float_arith:checker", "SELECT ? FROM t", "memory"],
     ]
+
+
+@pytest.mark.slow
+def test_a_crashed_fuzzer_is_not_ok_and_names_its_last_case(tmp_path, monkeypatch):
+    code = (
+        "import json, os, sys; "
+        f"open(os.environ['SVERIFY_FUZZ_PROGRESS'], 'w').write(json.dumps({CASE!r})); "
+        "sys.exit(1)"
+    )
+    monkeypatch.setattr(nightly, "command", lambda *a: ([nightly.sys.executable, "-c", code], {}))
+    # A relative --out, as the workflow passes it: the batch writes there all the same.
+    monkeypatch.chdir(tmp_path)
+    rec = nightly.batch("core", 4, 1, nightly.Path("out"), timeout=30, rss_mb=10**6)
+    assert rec["status"] == "exit 1"
+    (found,) = nightly.findings(tmp_path / "out")
+    assert found["sig"] == ["core:crash", "SELECT i + ? FROM t", "crash"]

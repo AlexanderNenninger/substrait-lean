@@ -132,6 +132,20 @@ def test_an_overflow_to_infinity_is_the_reference_s_error(monkeypatch: pytest.Mo
     assert "overflow to infinity" not in {i["kind"] for i in duck["issues"]}
 
 
+def test_a_pending_profile_keeps_the_reference_s_issues(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An engine profile with no report of its own gets the reference's
+    report, labelled so (`underProfile`'s `pending`): with the reference's
+    issues, the overflow to ±∞ among them (ruling 152 F1)."""
+    pytest.importorskip("sverify_polars")
+    expr = T.select(y=T.x * T.x)
+    from sverify.errors import ProfilePendingWarning
+
+    with pytest.warns(ProfilePendingWarning):
+        out = _checker_out(monkeypatch, expr, semantics="polars", on_inferred="ignore")
+    assert out.get("pending") == "polars"
+    assert "overflow to infinity" in {i["kind"] for i in out["issues"]}
+
+
 def test_an_engine_without_a_profile_gets_a_verdict(monkeypatch) -> None:
     """An engine with no profile in the checker (a plugin's from outside):
     the translation's tests stand for the plan, and the checker says so

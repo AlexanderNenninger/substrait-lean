@@ -5,7 +5,7 @@ from __future__ import annotations
 import ibis
 
 from sverify_dev.coverage_cases._common import (
-    NO_LISTS,
+    NO_LISTS_SNOWFLAKE,
     Case,
     R,
     V,
@@ -37,6 +37,6 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
-    "unnest column": NO_LISTS,
-    "list literal": NO_LISTS,
+    "unnest column": NO_LISTS_SNOWFLAKE,
+    "list literal": NO_LISTS_SNOWFLAKE,
 }
