@@ -449,34 +449,6 @@ theorem BindSt.push_grows {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : 
     Grows I cat r w s (s.push e).1 F (fun row => F row ++ [e.eval (row ++ F row) I]) :=
   ⟨BindSt.push_ext hs e, fun _ => List.prefix_append _ _, by simp [BindSt.push]⟩
 
-/-- The anchored reach holds where the reach did, over a state that grew. -/
-theorem BindSt.anchor_spec {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
-    (hs : s.Ext I cat r w F) (g : Option Expr) (hg : ∀ c ∈ g, c.refsLt s.width) :
-    ∃ F', Grows I cat r w s (s.anchor g).1 F F' ∧
-      (∀ c ∈ (s.anchor g).2, c.refsLt (s.anchor g).1.width) ∧
-      ∀ row ∈ r.eval cat I, (Reach I (s.anchor g).2 (row ++ F' row) ↔ Reach I g (row ++ F row)) := by
-  cases g with
-  | none => exact ⟨F, Grows.refl hs, by simp [BindSt.anchor], fun _ _ => by simp [BindSt.anchor, Reach]⟩
-  | some c =>
-    by_cases hc : c.isField = true
-    · have ha : s.anchor (some c) = (s, some c) := by simp [BindSt.anchor, hc]
-      rw [ha]
-      exact ⟨F, Grows.refl hs, hg, fun _ _ => Iff.rfl⟩
-    · have ha : s.anchor (some c) = ((s.push c).1, some (.field (s.push c).2)) := by
-        simp [BindSt.anchor, hc]
-      rw [ha]
-      refine ⟨_, BindSt.push_grows hs c, ?_, fun row hr => ?_⟩
-      · intro c' hc'
-        simp only [Option.mem_def, Option.some.injEq] at hc'
-        subst hc'
-        show s.width < s.width + 1
-        omega
-      · have hl := hs.2.1 row hr
-        have hidx : (row ++ F row).length = (s.push c).2 := by
-          simp [BindSt.push]; omega
-        simp only [Reach, Option.mem_def, Option.some.injEq, forall_eq', Expr.eval, ← List.append_assoc]
-        rw [getD_append_single _ _ _ hidx]
-
 omit [Boxes.Ambient] in
 theorem and3_isTrue (a b : Value) : (and3 a b).isTrue = true ↔ a.isTrue = true ∧ b.isTrue = true := by
   constructor
@@ -594,6 +566,34 @@ omit [Boxes.Ambient] in
 theorem getD_append_single (l : List Value) (x : Value) (i : Nat) (h : l.length = i) :
     (l ++ [x]).getD i .null = x := by
   subst h; simp [List.getD_eq_getElem?_getD]
+
+/-- The anchored reach holds where the reach did, over a state that grew. -/
+theorem BindSt.anchor_spec {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
+    (hs : s.Ext I cat r w F) (g : Option Expr) (hg : ∀ c ∈ g, c.refsLt s.width) :
+    ∃ F', Grows I cat r w s (s.anchor g).1 F F' ∧
+      (∀ c ∈ (s.anchor g).2, c.refsLt (s.anchor g).1.width) ∧
+      ∀ row ∈ r.eval cat I, (Reach I (s.anchor g).2 (row ++ F' row) ↔ Reach I g (row ++ F row)) := by
+  cases g with
+  | none => exact ⟨F, Grows.refl hs, by simp [BindSt.anchor], fun _ _ => by simp [BindSt.anchor, Reach]⟩
+  | some c =>
+    by_cases hc : c.isField = true
+    · have ha : s.anchor (some c) = (s, some c) := by simp [BindSt.anchor, hc]
+      rw [ha]
+      exact ⟨F, Grows.refl hs, hg, fun _ _ => Iff.rfl⟩
+    · have ha : s.anchor (some c) = ((s.push c).1, some (.field (s.push c).2)) := by
+        simp [BindSt.anchor, hc]
+      rw [ha]
+      refine ⟨_, BindSt.push_grows hs c, ?_, fun row hr => ?_⟩
+      · intro c' hc'
+        simp only [Option.mem_def, Option.some.injEq] at hc'
+        subst hc'
+        show s.width < s.width + 1
+        omega
+      · have hl := hs.2.1 row hr
+        have hidx : (row ++ F row).length = (s.push c).2 := by
+          simp [BindSt.push]; omega
+        simp only [Reach, Option.mem_def, Option.some.injEq, forall_eq', Expr.eval, ← List.append_assoc]
+        rw [getD_append_single _ _ _ hidx]
 
 /-- The bound body's and the lift's values: both read the row, then their
 chains' values. -/
