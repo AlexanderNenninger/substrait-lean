@@ -98,3 +98,22 @@ def test_each_fact_is_a_postcondition_that_proves():
             continue
         failed += [(case.label, e.label, e.why) for e in again.ensures if not e.proved]
     assert not failed, failed
+
+
+def test_a_bound_at_the_types_edge_is_none_on_its_own_side() -> None:
+    """An integer or decimal bound at the type's limit says nothing the type
+    does not, on its own side only; a time-zoned timestamp's bound is UTC."""
+    from datetime import UTC, datetime
+
+    import ibis.expr.datatypes as dt
+
+    from sverify.report import _bound_value
+
+    top = 2**63 - 1
+    assert _bound_value(top, {}, dt.int64, upper=True) is None
+    assert _bound_value(top, {}, dt.int64, upper=False) == top
+    dec = {"decimal": {"precision": 5, "scale": 2}}
+    assert _bound_value(99999, dec, dt.Decimal(5, 2), upper=True) is None
+    assert str(_bound_value(99999, dec, dt.Decimal(5, 2), upper=False)) == "999.99"
+    utc = _bound_value(0, {}, dt.Timestamp(timezone="UTC"), upper=False)
+    assert utc == datetime(1970, 1, 1, tzinfo=UTC)

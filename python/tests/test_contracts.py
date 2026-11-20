@@ -440,7 +440,10 @@ def test_sql_facts_describe_timestamps_and_dates():
     # The lift knows the SQL's types: no integer codes in the facts (#452).
     t = ibis.table({"host": "string", "minute": "timestamp", "day": "date"}, name="t")
     facts = sv.verify("SELECT host, minute, day FROM t", tables={"t": t.schema()}).facts
-    assert facts == sv.verify(t.select("host", "minute", "day")).facts
+    ibis_facts = sv.verify(t.select("host", "minute", "day")).facts
+    # The same values and the same words (`ColumnFacts` compares no text).
+    assert facts == ibis_facts
+    assert {c: str(f) for c, f in facts.items()} == {c: str(f) for c, f in ibis_facts.items()}
     assert str(facts["minute"]) == "any timestamp or NULL"
     assert str(facts["day"]) == "any date or NULL"
     assert facts["minute"] == ColumnFacts(nullable=True)

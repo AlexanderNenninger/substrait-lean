@@ -16,7 +16,7 @@ import re
 import warnings
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, overload
@@ -2290,14 +2290,19 @@ def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any, upper: 
     if k is None or dtype is None:
         return None
     if (dec := abstract.get("decimal")) is not None:
-        return _decimals.scaled(k, -dec["scale"])
+        widest = 10 ** dec["precision"] - 1
+        return None if _beyond(k, (-widest, widest), upper) else _decimals.scaled(k, -dec["scale"])
     if dtype.is_floating():
         # A code between two doubles (even, but not 0) is a strict bound,
         # which `col >= lower` does not state; such a bound is left out.
         x = decode_double(k)
         return x if (k == 0 or k % 2 == 1) and math.isfinite(x) else None
     if dtype.is_timestamp():
-        return None if _beyond(k, _TIMESTAMP_SPAN, upper) else _EPOCH + timedelta(microseconds=k)
+        if _beyond(k, _TIMESTAMP_SPAN, upper):
+            return None
+        at = _EPOCH + timedelta(microseconds=k)
+        # A timestamp with a time zone holds instants, which the codes count in UTC.
+        return at if dtype.timezone is None else at.replace(tzinfo=UTC)
     if dtype.is_date():
         return None if _beyond(k, _DATE_SPAN, upper) else _EPOCH_DAY + timedelta(days=k)
     if dtype.is_interval():
@@ -2305,8 +2310,7 @@ def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any, upper: 
     if not dtype.is_integer():
         return None
     # A bound at or past the type's own limits says nothing the type does not.
-    lo, hi = dtype.bounds
-    return k if lo < k < hi else None
+    return None if _beyond(k, dtype.bounds, upper) else k
 
 
 def column_facts(abstract: Mapping[str, Any], dtype: Any, text: str) -> ColumnFacts:

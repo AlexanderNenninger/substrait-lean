@@ -417,12 +417,16 @@ class _Checker:
             if any(r.condition is not c for r, c in zip(checked, cs, strict=True)):
                 tr.skip("sverify reported on another condition")
                 continue
-            # A test is not proved while the model needs source tests, nor
-            # when its proof used an inferred bound (#701).
+            # A test is not proved while the model needs source tests: the
+            # model may fail first. One whose proof used an inferred bound
+            # says so (#701).
             bad = [c for c in checked if not c.portable]
             if not bad and not needed:
                 tr.status = "proved"
-            elif not bad or bad[0].reason == "needs":
+            elif not bad:
+                tr.status = "not proved"
+                tr.why = "it holds, but the model may fail without the source tests under 'needs'"
+            elif bad[0].reason == "needs":
                 tr.status = "not proved"
                 tr.why = "proved only with the source tests listed under 'needs'"
             else:
