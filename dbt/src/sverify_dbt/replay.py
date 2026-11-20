@@ -54,6 +54,8 @@ class Source:
     name: str
     repo: str
     tag: str
+    commit: str
+    """The tag's commit: the replay fetches it, so a moved tag changes nothing."""
     project: str
     """The integration project's directory in the repository."""
     license: str
@@ -66,6 +68,7 @@ SOURCES = {
             "dbt-utils",
             "https://github.com/dbt-labs/dbt-utils",
             "1.4.1",
+            "49b932cb1f6fd0f7dfbf9048512db6415f570b20",
             "integration_tests",
             "Apache-2.0",
         ),
@@ -73,6 +76,7 @@ SOURCES = {
             "dbt-expectations",
             "https://github.com/metaplane/dbt-expectations",
             "0.10.10",
+            "f93478ca00b48347073f6a39217ac18bf6685820",
             "integration_tests",
             "Apache-2.0",
         ),
@@ -81,16 +85,22 @@ SOURCES = {
 
 
 def extract(source: Source, dest: Path) -> Path:
-    """The source's repository at its tag, copied to `dest`, with a DuckDB
+    """The source's repository at its commit, copied to `dest`, with a DuckDB
     profile; the integration project's directory."""
-    clone = CACHE / f"{source.name}-{source.tag}"
+    clone = CACHE / f"{source.name}-{source.commit[:12]}"
+    git = ["git", "-C", str(clone)]
     if not (clone / ".git").exists():
-        clone.parent.mkdir(parents=True, exist_ok=True)
+        clone.mkdir(parents=True, exist_ok=True)
+        subprocess.run([*git, "init", "-q"], check=True)
         subprocess.run(
-            ["git", "-c", "advice.detachedHead=false", "clone", "-q", "--depth", "1"]
-            + ["--branch", source.tag, source.repo, str(clone)],
-            check=True,
+            [*git, "fetch", "-q", "--depth", "1", source.repo, source.commit], check=True
         )
+        subprocess.run(
+            [*git, "-c", "advice.detachedHead=false", "checkout", "-q", "FETCH_HEAD"], check=True
+        )
+    head = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
+    if head.stdout.strip() != source.commit:
+        raise SystemExit(f"{source.name}: {clone} is at {head.stdout.strip()}, not {source.commit}")
     shutil.copytree(clone, dest, ignore=shutil.ignore_patterns(".git"))
     project = dest / source.project
     name = re.search(r"^profile:\s*['\"]?([\w-]+)", (project / "dbt_project.yml").read_text(), re.M)
@@ -129,12 +139,25 @@ def run(source: Source) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / source.name)
         _dbt(project, "deps")
+        packages = _packages(project / "package-lock.yml")
         _dbt(project, "build")
         statuses = _statuses(project / "target" / "run_results.json")
         _dbt(project, "docs", "generate", "--no-compile")
         proj = load(project)
         result = check(proj, counterexamples=0)
-    return _records(proj, result, statuses)
+    return {"packages": packages, "results": _records(proj, result, statuses)}
+
+
+def _packages(lock: Path) -> list[str]:
+    """The hub packages `dbt deps` resolved (`package-lock.yml`), as
+    `package@version`: the projects state ranges, so a new release changes
+    what the replay runs."""
+    import yaml
+
+    if not lock.exists():
+        return []
+    entries = yaml.safe_load(lock.read_text()).get("packages") or []
+    return sorted(f"{e['package']}@{e['version']}" for e in entries if "package" in e)
 
 
 def _statuses(path: Path) -> dict[str, str]:
@@ -204,7 +227,8 @@ def waits_on(reason: str) -> dict[str, Any]:
     return {}
 
 
-def ledger(source: Source, results: dict[str, Any]) -> dict[str, Any]:
+def ledger(source: Source, run: dict[str, Any]) -> dict[str, Any]:
+    results = run["results"]
     for r in results.values():
         reason = r.get("construct") or (r.get("why") if r["outcome"] == "not checked" else None)
         if reason:
@@ -214,6 +238,8 @@ def ledger(source: Source, results: dict[str, Any]) -> dict[str, Any]:
         "source": source.name,
         "repo": source.repo,
         "tag": source.tag,
+        "commit": source.commit,
+        "packages": run["packages"],
         "project": source.project,
         "license": source.license,
         "summary": {k: counts.get(k, 0) for k in OUTCOMES},
@@ -224,6 +250,9 @@ def ledger(source: Source, results: dict[str, Any]) -> dict[str, Any]:
 
 def changes(fresh: dict[str, Any], stored: dict[str, Any]) -> list[str]:
     out = [f"unsound: {k}: {r['test']}" for k, r in fresh["results"].items() if r.get("unsound")]
+    if fresh["packages"] != stored.get("packages"):
+        # Another release of a dependency: the outcomes below are of other code.
+        out.append(f"packages: {stored.get('packages')} -> {fresh['packages']}")
     old = stored.get("results", {})
 
     def key(r: dict[str, Any]) -> tuple:

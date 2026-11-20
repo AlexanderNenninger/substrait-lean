@@ -2,6 +2,8 @@
   "source": "dbt-utils",
   "repo": "https://github.com/dbt-labs/dbt-utils",
   "tag": "1.4.1",
+  "commit": "49b932cb1f6fd0f7dfbf9048512db6415f570b20",
+  "packages": [],
   "project": "integration_tests",
   "license": "Apache-2.0",
   "summary": {

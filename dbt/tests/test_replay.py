@@ -25,11 +25,13 @@ def test_one_ledger_per_source(ledgers) -> None:
     assert set(ledgers) == set(replay.SOURCES)
     for name, led in ledgers.items():
         source = replay.SOURCES[name]
-        assert (led["repo"], led["tag"], led["license"]) == (
+        assert (led["repo"], led["tag"], led["commit"], led["license"]) == (
             source.repo,
             source.tag,
+            source.commit,
             source.license,
         )
+        assert all("@" in p for p in led["packages"])
 
 
 def test_no_proved_test_fails_in_dbt(ledgers) -> None:

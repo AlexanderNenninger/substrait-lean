@@ -2,6 +2,10 @@
   "source": "dbt-expectations",
   "repo": "https://github.com/metaplane/dbt-expectations",
   "tag": "0.10.10",
+  "commit": "f93478ca00b48347073f6a39217ac18bf6685820",
+  "packages": [
+    "godatadriven/dbt_date@0.21.0"
+  ],
   "project": "integration_tests",
   "license": "Apache-2.0",
   "summary": {
@@ -442,7 +446,7 @@
       "model": "timeseries_data_grouped",
       "outcome": "refused",
       "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
-      "dbt": "warn",
+      "dbt": "pass",
       "design": "a random value differs on every run, so no proof covers the model"
     },
     "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_data_row_value__date_day__6__False__True.c9497af54d": {
@@ -450,7 +454,7 @@
       "model": "timeseries_data",
       "outcome": "refused",
       "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
-      "dbt": "pass",
+      "dbt": "warn",
       "design": "a random value differs on every run, so no proof covers the model"
     },
     "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_data_row_value__date_day__6__True.86019a24d0": {
@@ -458,7 +462,7 @@
       "model": "timeseries_data",
       "outcome": "refused",
       "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
-      "dbt": "pass",
+      "dbt": "warn",
       "design": "a random value differs on every run, so no proof covers the model"
     },
     "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_hourly_data_extended_row_value_log__cast_date_hour_as_dbt_expectations_type_datetime___hour__6__False__12__48.c200505cc1": {
@@ -482,7 +486,7 @@
       "model": "timeseries_data_grouped",
       "outcome": "refused",
       "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
-      "dbt": "fail",
+      "dbt": "pass",
       "design": "a random value differs on every run, so no proof covers the model"
     },
     "dbt_expectations_expect_column_values_to_be_within_n_stdevs_timeseries_data_grouped_row_value__group_id__6.da57b4267f": {
