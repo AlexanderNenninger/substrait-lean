@@ -433,13 +433,13 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
   -- that band over the argument's range, rounded up, where the argument is
   -- exact; no bound otherwise. It does not test `engine`: one bound, whoever
   -- runs the SQL (ruling 82).
-  -- Proved by the theorem that states the band (ruling 85): `true` over an
-  -- exact argument.
-  | .un (.approx k) a => (exprEps es engine env cols a).bind fun (x, _) => do
+  -- Proved by the theorem that states the band (ruling 85) where the argument
+  -- is exact with a proof (`exactP`).
+  | .un (.approx k) a => (exprEps es engine env cols a).bind fun (x, p) => do
     guard (x == 0.0)
     let m ← doubleMag env a
     let band := Float.ofNat k * Float.scaleB 1.0 (-53) * m
-    return (band * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074), true)
+    return (band * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074), p)
   | .bin .lt a b | .bin .eq a b => do
     -- `rule_threshold`: where the ranges, widened by `ε`, do not straddle, the
     -- comparison has one outcome on both sides.
@@ -811,7 +811,7 @@ def inputs? (input : Json) : Except String (Option Inputs) := do
     | none => (preOf t).flatMap Expr.factsOf
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
-  let T := Rel.keyedWindows cat A F ⟨fun _ => []⟩
+  let T := Rel.keyedWindows cat A F { keys := fun _ => [] }
   return some ⟨tj, plan, cat, A, F, caps, root, T⟩
 
 /-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
@@ -1294,7 +1294,7 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
   let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
   let A := fun t => tableEnv (schemas t) (preOf t)
   let F := fun t => (preOf t).flatMap Expr.factsOf
-  let T := Rel.keyedWindows cat A F ⟨fun _ => []⟩
+  let T := Rel.keyedWindows cat A F { keys := fun _ => [] }
   let aggs := aggNodes plan.root
   let keys := doubleKeys (Write.planSchemas plan) cat plan.root
   let empty := aggs.any fun (r, gs, ms) => ms.any fun m =>
