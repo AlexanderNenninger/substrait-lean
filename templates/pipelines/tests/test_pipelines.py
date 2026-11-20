@@ -31,6 +31,11 @@ def lake(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def writes_of(doc: dict) -> dict[str, dict]:
+    """Each refreshed node's write, by node name."""
+    return {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
+
+
 @pytest.fixture
 def env(tmp_path: Path) -> dict[str, str]:
     out = {k: v for k, v in os.environ.items() if not k.startswith("GITHUB_")}
@@ -85,7 +90,7 @@ def test_refresh_then_catalog(env, tmp_path):
     )
     assert done.returncode == 0, done.stdout + done.stderr
     doc = json.loads((tmp_path / "refresh.json").read_text())
-    writes = {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
+    writes = writes_of(doc)
     assert writes["gdp"]["inserted"] == 1100
     assert writes["trade_openness"]["inserted"] == 110
 
@@ -93,7 +98,7 @@ def test_refresh_then_catalog(env, tmp_path):
     again = lake("refresh", "--out", str(tmp_path / "again.json"), env=env)
     assert again.returncode == 0, again.stdout + again.stderr
     doc = json.loads((tmp_path / "again.json").read_text())
-    writes = {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
+    writes = writes_of(doc)
     assert (writes["trade_openness"]["inserted"], writes["trade_openness"]["deleted"]) == (0, 0)
 
     assert json.loads((tmp_path / "check.json").read_text())["exit"] == 0
