@@ -1,0 +1,89 @@
+{
+  "id": "duckdb-asof-join",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`ASOF [LEFT] JOIN ... ON eqs AND l.t >= r.t` matches the shape of sverify.asof_join",
+  "verdict": "no-finding: the join returns a result the as-of shape allows",
+  "area": "relations",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "ASOF JOIN",
+    "ASOF LEFT JOIN"
+  ],
+  "settings": {},
+  "description": [
+    "Per left row, the right row of its equality group with the greatest `r.t` at or before `l.t` (`l.t >= r.t`, equal values match). A NULL key or a NULL `t` on either side never matches. LEFT keeps the unmatched left rows with NULLs, INNER drops them. Equal left rows each keep their match: the join returns one row per matched left row. At a tie on `r.t` the result is one of the tied rows, whole (every right column comes from the same row). With no equality there is one group. An empty right side matches nothing; an empty left side gives no rows.",
+    "Probed on DATE, TIMESTAMP, INTEGER, BIGINT and VARCHAR `t` and on INTEGER and VARCHAR keys. Doubles are not covered (NaN and the zeros): the writer keeps the range join for them (ruling 162 A3). The strict and mirrored comparisons (`>`, `<=`, `<`) are not covered either: the writer emits `>=` only."
+  ],
+  "reference": [
+    "`sverify.asof_join` and the lift of DuckDB's `ASOF JOIN` (`sverify.sql_lift`, #805) write the shape: the left rows numbered, the inner (left) join on the equalities and `NOT(l.t < r.t)`, ranked per left row by `r.t` descending, the first kept. The DuckDB writer emits `ASOF JOIN` for that shape (#1447 item 6); at a tie on `r.t` the pick may differ from the range join's, and the report says `deterministic` is false there."
+  ],
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "Claude session for #1447 (duckdb 2.0.0, Python)",
+      "evidence": [
+        {
+          "sql": "SELECT l.id, r.v FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) ASOF LEFT JOIN (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) ON l.k = r.k AND l.t >= r.t ORDER BY l.id",
+          "observed": "[(1, 100), (2, 101), (3, 101), (4, None), (5, 103), (6, None), (7, None), (8, None), (9, None)]"
+        },
+        {
+          "sql": "SELECT l.id, r.v FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) ASOF JOIN (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) ON l.k = r.k AND l.t >= r.t ORDER BY l.id",
+          "observed": "[(1, 100), (2, 101), (3, 101), (5, 103)]"
+        },
+        {
+          "sql": "SELECT l.id, r.v, r.t FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) ASOF LEFT JOIN (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) ON l.k = r.k AND l.t >= r.t WHERE l.id IN (1, 2, 3) ORDER BY l.id",
+          "observed": "[(1, 100, 5), (2, 101, 8), (3, 101, 8)]"
+        },
+        {
+          "sql": "SELECT l.id, r.v FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) ASOF LEFT JOIN (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) ON l.k = r.k AND l.id = r.v - 99 AND l.t >= r.t ORDER BY l.id",
+          "observed": "[(1, 100), (2, 101), (3, 102), (4, None), (5, None), (6, None), (7, None), (8, None), (9, None)]"
+        },
+        {
+          "sql": "SELECT l.id, r.v FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) ASOF LEFT JOIN (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) ON l.t >= r.t ORDER BY l.id",
+          "observed": "[(1, 100), (2, 104), (3, 104), (4, 107), (5, 103), (6, 103), (7, None), (8, 104), (9, None)]"
+        },
+        {
+          "sql": "SELECT l.id, r.v FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) ASOF LEFT JOIN (SELECT * FROM (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) WHERE false) r ON l.k = r.k AND l.t >= r.t ORDER BY l.id",
+          "observed": "[(1, None), (2, None), (3, None), (4, None), (5, None), (6, None), (7, None), (8, None), (9, None)]"
+        },
+        {
+          "sql": "SELECT count(*) FROM (SELECT * FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) WHERE false) l ASOF JOIN (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) ON l.k = r.k AND l.t >= r.t",
+          "observed": "[(0,)]"
+        },
+        {
+          "sql": "SELECT count(*) FROM (VALUES (1,5,1),(1,10,2),(1,10,3),(1,4,4),(2,7,5),(NULL,7,6),(3,NULL,7),(4,9,8),(1,NULL,9)) AS l(k,t,id) ASOF LEFT JOIN (VALUES (1,5,100),(1,8,101),(1,8,102),(2,7,103),(2,9,104),(NULL,7,105),(3,NULL,106),(3,1,107),(1,NULL,108)) AS r(k,t,v) ON l.k = r.k AND l.t >= r.t",
+          "observed": "[(9,)]"
+        },
+        {
+          "sql": "SELECT a.t, b.t FROM (SELECT DATE '2024-01-02'::DATE AS t) a ASOF LEFT JOIN (SELECT DATE '2024-01-01'::DATE AS t) b ON a.t >= b.t",
+          "observed": "[(datetime.date(2024, 1, 2), datetime.date(2024, 1, 1))]"
+        },
+        {
+          "sql": "SELECT a.t, b.t FROM (SELECT TIMESTAMP '2024-01-02 00:00:00'::TIMESTAMP AS t) a ASOF LEFT JOIN (SELECT TIMESTAMP '2024-01-01 00:00:00'::TIMESTAMP AS t) b ON a.t >= b.t",
+          "observed": "[(datetime.datetime(2024, 1, 2, 0, 0), datetime.datetime(2024, 1, 1, 0, 0))]"
+        },
+        {
+          "sql": "SELECT a.t, b.t FROM (SELECT 5::BIGINT AS t) a ASOF LEFT JOIN (SELECT 3::BIGINT AS t) b ON a.t >= b.t",
+          "observed": "[(5, 3)]"
+        },
+        {
+          "sql": "SELECT a.t, b.t FROM (SELECT 5::INTEGER AS t) a ASOF LEFT JOIN (SELECT 3::INTEGER AS t) b ON a.t >= b.t",
+          "observed": "[(5, 3)]"
+        },
+        {
+          "sql": "SELECT a.t, b.t FROM (SELECT 'b'::VARCHAR AS t) a ASOF LEFT JOIN (SELECT 'a'::VARCHAR AS t) b ON a.t >= b.t",
+          "observed": "[('b', 'a')]"
+        },
+        {
+          "sql": "SELECT a.k, b.v FROM (SELECT 'x' AS k, 5 AS t) a ASOF LEFT JOIN (SELECT 'x' AS k, 4 AS t, 7 AS v) b ON a.k = b.k AND a.t >= b.t",
+          "observed": "[('x', 7)]"
+        }
+      ]
+    }
+  ]
+}

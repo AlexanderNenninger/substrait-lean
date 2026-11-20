@@ -16,6 +16,7 @@ Lake runs `lean` from the sysroot it finds through `LEAN_SYSROOT` (with
 outputs.
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 python3 scripts/lean_timings.py sysroot /tmp/lean-sysroot
 LAKE_OVERRIDE_LEAN=true LEAN_SYSROOT=/tmp/lean-sysroot LEAN_TIMINGS=t.jsonl lake build
 python3 scripts/lean_timings.py report t.jsonl          # by time, by RSS, the critical path
@@ -84,6 +85,7 @@ merge's first parent, or, without one, built in the job from main; the log
 says which.
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 python3 scripts/checker_speed.py BASE_CHECKER HEAD_CHECKER
 uv run python -m sverify_dev.checker_requests --checker .lake/build/bin/substrait-check
 ```

@@ -16,6 +16,7 @@ con.create("orders", ibis.schema({"id": "int64", "customer": "string", "amount":
 ```
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 lake build                                                  # proofs + CLI
 tests/run.sh                                                # golden tests for the CLI
 ```
