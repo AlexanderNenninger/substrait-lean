@@ -209,10 +209,12 @@ def snapshot_diff(old: pa.Table, new: pa.Table) -> pa.Table:
     return consolidated(weighted(new, 1), weighted(old.cast(new.schema), -1))
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Snapshot:
     """A table at one version, as a source hands it to a pipeline: what
     `VersionedSource.snapshot` returns.
+
+    Built by keyword: a versioned source of your own returns one.
 
     Attributes:
         version: The version.
@@ -228,10 +230,12 @@ class Snapshot:
     `table.schema`)."""
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SourceBatch:
     """What a versioned source has between a recorded version and its latest
     one: what `VersionedSource.changes` returns.
+
+    Built by keyword: a versioned source of your own returns one.
 
     Either `changes` from the format's change feed (the net change, with
     `facts` about the inserted rows and the `trusted` assumption it rests
@@ -284,7 +288,7 @@ class SourceBatch:
         Returns:
             A batch from `version` to `version`.
         """
-        return cls(version, version, list(facts), schema=schema)
+        return cls(start=version, end=version, snapshot_facts=list(facts), schema=schema)
 
     @classmethod
     def from_changes(
@@ -322,9 +326,9 @@ class SourceBatch:
             The batch.
         """
         return cls(
-            since,
-            until,
-            list(snapshot_facts),
+            start=since,
+            end=until,
+            snapshot_facts=list(snapshot_facts),
             changes=Changes(inserts=inserts, deletes=deletes),
             facts=list(facts),
             trusted=trusted,
@@ -360,9 +364,9 @@ class SourceBatch:
             The batch.
         """
         return cls(
-            since,
-            until,
-            list(snapshot_facts),
+            start=since,
+            end=until,
+            snapshot_facts=list(snapshot_facts),
             snapshot=table,
             fallback=reason,
             schema=table.schema if schema is None else schema,
@@ -835,7 +839,7 @@ class StaticSource(Pipeable):
         """
         if version not in (None, self.version):
             raise ValueError(f"a static table only has version {self.version}")
-        return Snapshot(self.version, self.table, [])
+        return Snapshot(version=self.version, table=self.table, facts=[])
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from version `since` to the current one, as a refresh

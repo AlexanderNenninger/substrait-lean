@@ -70,7 +70,7 @@ class Events(Source):
 
     def read(self, since):
         new = self.log[since or 0 :]
-        return Batch(pa.Table.from_pylist(new), cursor=len(self.log)) if new else None
+        return Batch(table=pa.Table.from_pylist(new), cursor=len(self.log)) if new else None
 
     def restore(self, cursor):
         if cursor > len(self.log):

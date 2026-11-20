@@ -355,12 +355,15 @@ def not_null_column(sql: str) -> str | None:
 CONTRACT_FORMAT = 2
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Contract:
     """What a sink records with each commit: which plan produced the data,
     from which source versions, and what it proved about every row.
 
     `DeltaSource.contract()` and `IcebergSource.contract()` read it back.
+    sverify builds it, and a sink of your own stores `to_json()` and reads it
+    back with `from_json`: user code does not construct one. Its fields are
+    keyword-only.
 
     Attributes:
         node: The stored node's name.
@@ -471,9 +474,11 @@ class ConcurrentWriteError(SverifyError, RuntimeError):
     code = "concurrent_write"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SinkWrite:
     """What storing a node's state did, in any sink.
+
+    Built by keyword: a sink of your own may return one from `write`.
 
     `mode` is how: `created` the table, `overwrite` it, `merge` the change
     (Delta), `append` the new rows or write the change `row_level` (Iceberg),

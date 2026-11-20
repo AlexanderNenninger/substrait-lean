@@ -61,7 +61,9 @@ class Direct:
         return self.v
 
     def snapshot(self, version: int | None = None) -> Snapshot:
-        return Snapshot(self.v if version is None else version, rows(0, self.n), [])
+        return Snapshot(
+            version=self.v if version is None else version, table=rows(0, self.n), facts=[]
+        )
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         end = self.v if until is None else until
@@ -79,10 +81,10 @@ class Appended(Source):
 
     def read(self, since):
         if since is None:
-            return Batch(rows(0, self.n), cursor=self.n)
+            return Batch(table=rows(0, self.n), cursor=self.n)
         if self.last == since:
             return None
-        return Batch(rows(since, since + CHANGE), cursor=since + CHANGE)
+        return Batch(table=rows(since, since + CHANGE), cursor=since + CHANGE)
 
 
 @sv.transform()

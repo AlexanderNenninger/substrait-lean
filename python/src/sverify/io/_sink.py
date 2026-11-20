@@ -386,7 +386,7 @@ class Sink:
             self._written = view.serial if same else None
             self._synced = _state_key(done) if self._written is not None else None
             self._keep(view, contract, None)
-            return SinkWrite("skipped", self._version(), contract)
+            return SinkWrite(mode="skipped", version=self._version(), contract=contract)
         elif self._written is not None and done is not None and _state_key(done) != self._synced:
             # Another commit than the one this process wrote, skipped to or
             # resumed from: a change since `_written` would land on a state
@@ -408,12 +408,14 @@ class Sink:
             # The other writer committed this very state: nothing is left to
             # write, and this refresh reports what the next one would.
             self._keep(view, contract, None)
-            return SinkWrite("skipped", self._version(), contract)
+            return SinkWrite(mode="skipped", version=self._version(), contract=contract)
         self._pending = None
         if out is None:
             mode = "overwrite" if change.replace else "update"
             n_in, n_out = change.inserts.num_rows, change.deletes.num_rows
-            out = SinkWrite(mode, self._version(), contract, n_in, n_out)
+            out = SinkWrite(
+                mode=mode, version=self._version(), contract=contract, inserted=n_in, deleted=n_out
+            )
         self._written = view.serial
         self._last = contract
         self._synced = _state_key(contract)
@@ -753,7 +755,7 @@ class _Kept:
     def snapshot(self, version: int | None = None) -> Snapshot:
         if version not in (None, self.version):
             raise ValueError(f"{self.name} keeps only its latest write, v{self.version}")
-        return Snapshot(self.version, self._table(), [])
+        return Snapshot(version=self.version, table=self._table(), facts=[])
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         table = self._table()
@@ -790,7 +792,13 @@ class _FnSink(Sink):
 
     def write(self, change: SinkChange) -> SinkWrite:
         self.fn(change.table)
-        return SinkWrite("overwrite", None, change.contract, change.table.num_rows, 0)
+        return SinkWrite(
+            mode="overwrite",
+            version=None,
+            contract=change.contract,
+            inserted=change.table.num_rows,
+            deleted=0,
+        )
 
 
 def sink_from(

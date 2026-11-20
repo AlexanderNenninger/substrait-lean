@@ -437,7 +437,7 @@ class Verdict(StrEnum):
         raise TypeError("a Verdict is not a bool: compare it with Verdict.PROVED, ...")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Report:
     """What the checker proved about a transformation, returned by `verify` and kept
     in `ContractedTransform.report`.
@@ -445,6 +445,9 @@ class Report:
     `str(report)` lists each postcondition with its status, the possible
     runtime errors and warnings, and what is known about each output column;
     in a notebook the report renders as tables.
+
+    sverify builds it; user code reads it and does not construct one
+    (`Report.from_json` reads one back). Its fields are keyword-only.
     """
 
     requires: dict[str, list[str]]

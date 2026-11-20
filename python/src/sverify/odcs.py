@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 import sqlglot as sg
 
+from sverify._unsupported import SverifyWarning
 from sverify.io._common import public_uri
 
 if TYPE_CHECKING:
@@ -73,7 +74,7 @@ _DIALECT = "duckdb"
 _ZERO = ({"mustBe": 0}, {"mustBeLessThan": 1}, {"mustBeLessOrEqualTo": 0})
 
 
-class UnreadRuleWarning(UserWarning):
+class UnreadRuleWarning(SverifyWarning):
     """`read` met rules it cannot read as conditions; `OdcsContract.unread`
     lists them with the reason."""
 
