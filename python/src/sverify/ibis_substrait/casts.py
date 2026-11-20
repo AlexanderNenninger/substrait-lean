@@ -25,7 +25,9 @@ def _from_varchar(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
         # A constant: Lean folds it, as it did (`DATE '1998-12-01'` in TPC-H).
         return None
     if to.is_decimal():
-        raise Unsupported(f"a cast of a string to {to} is not supported yet (#27)")
+        raise Unsupported(
+            f"a cast of a string to {to} is not supported yet (#27)", construct="CAST"
+        )
     for accepts, name, via in (
         (to.is_integer, "bigint", dt.int64),
         (to.is_float64, "double", dt.float64),
@@ -102,7 +104,8 @@ def _typeof(x: Exprs, op: Any) -> Json:
     column: Any = op.arg
     if not isinstance(column, ops.Field):
         raise Unsupported(
-            "typeof is only supported of a column; select the expression as a column first"
+            "typeof is only supported of a column; select the expression as a column first",
+            construct="function typeof",
         )
     t = cast("dt.DataType", column.dtype)
     # A second or millisecond column is read as microseconds (D61): its type
@@ -110,7 +113,8 @@ def _typeof(x: Exprs, op: Any) -> Json:
     name = None if isinstance(t, dt.Timestamp) and t.scale in (0, 3) else duckdb_type_name(t)
     if name is None:
         raise Unsupported(
-            f"typeof of a {t} column is not supported; write the type's name as a constant"
+            f"typeof of a {t} column is not supported; write the type's name as a constant",
+            construct="function typeof",
         )
     return literal(name, dt.string)
 

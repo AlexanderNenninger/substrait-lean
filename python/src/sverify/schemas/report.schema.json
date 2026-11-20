@@ -354,6 +354,10 @@
         }
       }
     },
+    "sequence_determined": {
+      "description": "Every result the reference allows is its result row by row (check_sequence_determined_sound): deterministic, and the result comes out of a sort whose columns contain a key of its input.",
+      "type": "boolean"
+    },
     "sorted": {
       "description": "Whether the plan's result comes out of a sort, as the checker reads it.",
       "type": [

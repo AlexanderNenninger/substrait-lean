@@ -3,8 +3,8 @@ that carry a report (`VerificationError`, `UnverifiedRunError`,
 `PostconditionError`), and the abstract values the checker established, as
 text (`render_fact`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 
@@ -397,7 +397,8 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run, and no run raises."""
+    """Every postcondition holds on every run of the model, and no run raises. That
+    the model matches an engine rests on tests (`docs/trusted-base.md`)."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
@@ -657,6 +658,11 @@ class Report:
     not say. A checker without them proves with `sorry` in their place."""
     _sorted: bool | None = field(default=None, repr=False, compare=False)
     """Whether the plan's result comes out of a sort, as the checker reads it."""
+    _sequence_determined: bool = field(default=False, repr=False, compare=False)
+    """Every result the reference allows is its result row by row
+    (`check_sequence_determined_sound`): `_exact`, and the result comes out of
+    a sort whose columns contain a key of its input, so no rows tie. What a
+    `rows="sequence"` observation needs."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
@@ -2090,6 +2096,7 @@ _REPORT_PRIVATE = [
     "asof_checks",
     "asof_max_pairs",
     "stated_facts",
+    "sequence_determined",
 ]
 
 _REPORT_INTERNAL = [

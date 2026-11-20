@@ -37,6 +37,8 @@ class TestResult:
     """Tests on the inputs under which it would be proved: per input, the
     column and the test's YAML."""
     conditions: list[Any] = field(default_factory=list, repr=False)
+    blocker: str | None = field(default=None, repr=False)
+    """`CheckedCondition.reason` of the condition that is not proved."""
 
     def skip(self, why: str) -> None:
         self.status, self.why = "not checked", why
@@ -76,6 +78,8 @@ class ModelResult:
     ref: str
     refused: str | None = None
     """Why the model was not checked at all."""
+    enforced: bool = False
+    """Whether the model has an enforced contract."""
     tests: list[TestResult] = field(default_factory=list)
     constraints: list[TestResult] = field(default_factory=list)
     """The contract's constraints, when the contract is enforced."""
@@ -186,9 +190,16 @@ class CheckResult:
         return [(m.name, i) for m in self.models for i in m.contract or []]
 
     @property
+    def refused_contracts(self) -> list[ModelResult]:
+        """The models with an enforced contract that sverify refused: their
+        contract is not checked, which a gate on contracts must not read as
+        met."""
+        return [m for m in self.models if m.refused and m.enforced]
+
+    @property
     def unproved_constraints(self) -> list[tuple[str, TestResult]]:
         """The constraints that are not proved or, on a model that was read, not
-        checked. A refused model's are not: its reason is the refusal."""
+        checked. A refused model's are not: `refused_contracts` lists it."""
         return [
             (m.name, c)
             for m in self.models

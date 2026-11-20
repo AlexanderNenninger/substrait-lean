@@ -2,6 +2,7 @@ import Sverify.Engines.Engine
 import Sverify.Engines.Entry
 import Sverify.Engines.Generated
 import Sverify.Engines.Lowering
+import Sverify.Engines.LoweringGuards
 import Sverify.Engines.LoweringHint
 import Sverify.Engines.LoweringSearch
 import Sverify.Engines.NoDouble

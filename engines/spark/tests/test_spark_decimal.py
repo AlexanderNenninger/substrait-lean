@@ -157,3 +157,18 @@ def test_an_avg_of_decimals_is_refused_on_spark(con) -> None:
     g = ibis.table({"k": "int64", "x": "decimal(10,2)"}, name="g")
     with pytest.raises(Unsupported, match="AVG of decimals"):
         to_sql(written_plan(to_substrait_json(g.aggregate(v=g.x.mean()))), SPARK)
+
+
+def test_a_product_after_a_wide_integer_decimal_cast_is_exact_on_spark() -> None:
+    """#1876 (ruling 177, W2): `CAST(i AS DECIMAL(38,0)) * j` above 2⁶³ is the
+    exact product at 38 digits on Spark, typed `DECIMAL(38, 0)`, where the cast
+    used to be dropped and the product run at 64 bits."""
+    from sverify_spark import engine as spark_engine
+
+    t = ibis.table({"i": "int64", "j": "int64"}, name="w")
+    q = t.select(p=t.i.cast("decimal(38, 0)") * t.j)
+    plan = written_plan(json.dumps(json.loads(to_substrait_json(q))))
+    rows = pa.table({"i": [2**40, 3], "j": [2**30, -4]})
+    out = spark_engine.run(plan, {"w": rows}, session())
+    assert pa.types.is_decimal(out.schema.field("p").type)
+    assert [int(v) for v in out.column("p").to_pylist()] == [2**70, -12]
