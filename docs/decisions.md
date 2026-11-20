@@ -182,7 +182,9 @@ is [the realizability table](realizability.md) ([#900](https://github.com/Alexan
 
 An engine profile is tied to the engine's versions: it records the version,
 or range, its facts were probed at. A run on another version warns, and a
-run on another major version is refused until the probes are re-run. A new
+run on another major version is refused until the probes are re-run
+(amended by [D70](#d70-engine-versions-probed-in-range-out-of-range): an
+unprobed minor is refused too). A new
 version that changes a fact gets a new fact with `supersedes` (the `engine-fact`
 skill) and a new row in the profile. Facts hold for the version they
 were probed at, and the profile is only as good as its facts.
@@ -1787,3 +1789,35 @@ Why: DuckDB is the default oracle ([`duckdb-timestamp-date-diff`](../engines/duc
 and Ibis documents the delta as the number of unit boundaries crossed
 ([`TimestampValue.delta`](https://ibis-project.org/reference/expression-timestamps#ibis.expr.types.temporal.TimestampValue.delta)). The refused units are those where engines place the
 boundary differently.
+
+### D70. Engine versions: probed, in range, out of range
+
+Decided 2026-11-20 (theory advisor, ruling 198). Amends D14.
+
+An engine profile states the versions its facts were probed at and one
+range around them: the minor releases that hold a probed version, from the
+lowest probed patch up. A profile whose engine has no such releases states
+its own range. The engine package's dependency bound is that range:
+`duckdb>=2.0.0,<2.1`, `polars>=2.1.0,<2.2`, `pyspark>=4.3.0,<4.4`, and
+sverify-dbt's own DuckDB bound is the same
+(`python/tests/test_routes.py::test_the_package_bound_is_the_profiles_range`).
+
+A run that claims a guarantee on a probed version claims it in full. On an
+unprobed version inside the range it warns, and the route records the
+version (`Route.unprobed_version`): the proof stands, and the engine step
+assumes that this version computes what the probed one does. Outside the
+range the run is refused until the probes are re-run. `unverified=True`
+runs it anyway and claims nothing.
+
+No guarantee rests on an engine raising. An input the proof excludes is
+excluded by a proved precondition or by a check whose verdict is a value
+the engine returns. A version that raises on fewer inputs changes no
+verified run, and one that raises on more stops a run with the engine's
+error.
+
+At 1.0 a profile holds no row indexed by version. When a probed version
+changes a value that a lowering, a shim or a check reads, the lowering is
+rewritten to read the engine only where the versions in range agree, where
+one native expression does it. Otherwise the profile moves to the new
+version and the range's floor moves with it. A change on the error side
+supersedes its fact and keeps both versions.

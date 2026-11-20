@@ -11,7 +11,7 @@ dependencies = [
     # (.claude/skills/release-sverify/SKILL.md bumps both).
     "sverify==0.9.0.dev0",
     # sverify-dbt reads each model's inputs from DuckDB and checks on it.
-    "duckdb>=2.0.0",
+    "duckdb>=2.0.0,<2.1",
     "ibis-framework[duckdb]>=12.0.0",
     # Rewrites the relations of each model's compiled SQL to its inputs' names.
     "sqlglot>=30.17.0",

@@ -727,6 +727,10 @@
         "deterministic": {
           "type": "boolean"
         },
+        "unprobed_version": {
+          "description": "The engine version the run is on where it is in the profile's range but not probed (D70); absent on a probed version.",
+          "type": "string"
+        },
         "warnings": {
           "type": "array",
           "items": {

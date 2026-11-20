@@ -458,8 +458,9 @@ ANSI mode, `timestampType`, the session time zone, `caseSensitive` and
 `escapedStringLiterals` refuse every run when they differ from `SPARK_CONF`;
 `legacy.statisticalAggregate`, `decimalOperations.allowPrecisionLoss` and
 `legacy.percentileDiscCalculation` refuse the plans whose options they
-change. A run on another Spark version warns, and on another major version is
-refused. Tested, and trusted: that Spark computes as the model says
+change. A run on an unprobed Spark 4.3 patch warns, and on another minor is
+refused ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)).
+The version a session of yours reports decides. Tested, and trusted: that Spark computes as the model says
 (`engines/spark/tests/test_spark_profile.py`, `engines/spark/tests/test_sql_spark.py`).
 
 ## Engine profiles from outside

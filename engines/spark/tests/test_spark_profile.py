@@ -132,10 +132,15 @@ def test_a_legacy_setting_refuses_only_the_plans_it_changes() -> None:
 
 
 def test_another_spark_version() -> None:
+    """D70: an unprobed 4.3 patch warns; another minor or major is refused."""
     with pytest.warns(EngineVersionWarning):
-        routes.check_version("spark", "4.2.0")
-    with pytest.raises(EngineVersionError, match="probed at 4.3.0"):
-        routes.check_version("spark", "3.5.4")
+        routes.check_version("spark", "4.3.9")
+    for v in ("4.2.0", "4.4.0", "3.5.4"):
+        with pytest.raises(
+            EngineVersionError,
+            match=r"probed at 4\.3\.0: install a version of spark in >=4\.3\.0,<4\.4",
+        ):
+            routes.check_version("spark", v)
 
 
 def test_semantics_is_checked() -> None:

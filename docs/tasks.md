@@ -2057,8 +2057,13 @@ reads the settings the plan will run under and compares them:
 - Polars: an engine affinity that forces another engine than streaming
   (`pl.Config.set_engine_affinity("in-memory")`) refuses the run, since
   sverify runs Polars's streaming engine.
-- Another engine version warns (`EngineVersionWarning`), and another major
-  version is refused (`EngineVersionError`) until the probes are re-run.
+- An unprobed patch of the probed minor warns (`EngineVersionWarning`) and
+  is recorded on the route (`Route.unprobed_version`); another minor or
+  major is refused (`EngineVersionError`) until the probes are re-run, and
+  runs with `run(..., unverified=True)`
+  ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)). To
+  refuse every unprobed version, turn the warning into an error:
+  `warnings.simplefilter("error", sverify.errors.EngineVersionWarning)`.
 
 `lines.get_backend()`, the backend of a table of the connection, is its Ibis
 DuckDB backend, for SQL of your own, such as
