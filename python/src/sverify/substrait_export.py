@@ -1713,6 +1713,9 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "deterministic": report.deterministic,
         "rows": report.rows,
         "params": list(report._params),
+        # The as-of join cap a run holds to (#1863); the checks themselves
+        # come from the checker again at import.
+        "asof_max_pairs": report._asof_max_pairs,
         "output": {k: str(v) for k, v in report.output.items()},
         "checker_contract": {
             k: report._contract[k]
@@ -1945,6 +1948,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         _params=list(m.get("params") or []),
     )
     report._conditions = conditions
+    report._asof_max_pairs = m.get("asof_max_pairs")
     return split_assumed(report)
 
 

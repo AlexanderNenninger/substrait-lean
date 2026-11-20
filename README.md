@@ -196,20 +196,24 @@ To work on the project or run the tour from a clone, you need [uv](https://docs.
 rustup is to Rust, or uv to Python), and Java 17 or 21 for the Spark tests:
 
 ```bash
+# skip: installs software on the reader's machine
 brew install uv          # or: curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 ```bash
+# skip: installs software on the reader's machine
 brew install openjdk@21  # or: sudo apt install openjdk-21-jre-headless
 ```
 
 Homebrew's JDK is not on the `PATH`; point `JAVA_HOME` at it (in `~/.zshrc`):
 
 ```bash
+# skip: sets the reader's JAVA_HOME
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
 ```
 
 Without a JVM the Spark tests are skipped and everything else runs.
 ```bash
+# skip: installs software on the reader's machine
 curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
 ```
 
@@ -217,12 +221,15 @@ Open a new terminal so `lake` (Lean's build tool) is on your PATH, then run, fro
 the project root:
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd python && uv sync             # sverify with every extra, and the dev tools (pytest, hypothesis, …)
 ```
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run pytest                    # all pass; the Spark tests skip without a JVM
 ```
 
@@ -236,6 +243,7 @@ different binary, set `SVERIFY_CHECKER` to its path.
 Tasks are defined with [poe](https://poethepoet.natn.io) in `python/pyproject.toml`:
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd python && uv run poe qa       # everything below, in order; stops at the first failure
 ```
 
@@ -258,14 +266,16 @@ tasks need `lake` on your PATH.
 
 ### The tour
 
-The seven notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
+The eight notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
 [`01_duplicate_payments.py`](notebooks/01_duplicate_payments.py). Open the whole folder, so the
 links between notebooks work:
 
 ```bash
+# skip: opens an editor server
 uvx marimo edit --sandbox notebooks              # from the project root
 ```
 ```bash
+# skip: opens a server
 uvx marimo run --sandbox --include-code notebooks   # read-only apps
 ```
 
@@ -283,6 +293,7 @@ environment works too: `uv run --project python marimo edit notebooks`.
 | 5 | [Pipelines and engines](notebooks/05_pipelines_and_engines.py) | incremental views, nodes and sinks, DuckDB, Polars, Spark and Snowflake SQL, doubles, time and text |
 | 6 | [Running it in production](notebooks/06_running_in_production.py) | `sverify check --diff` and `--fix`, a pytest test, credentials by name, OpenLineage, late rows and bounded state |
 | 7 | [Engines](notebooks/07_engines.py) | one proved plan on DuckDB, Polars and Spark, the routes that carry the proof, SQL for Spark and Snowflake, refusals and their exits |
+| 8 | [Your dbt project](notebooks/08_dbt.py) | `sverify_dbt.check`, the tests proved before the models run, a counterexample and its fix, `--selectors`, refusals and their exits |
 
 [catalogue/backend_semantics.py](catalogue/backend_semantics.py) is a marimo app outside the tour: one
 expression asked of every engine. Under-the-hood detail is in
@@ -312,6 +323,7 @@ elan; the build hook runs `lake build` there.
 To run your own scripts with the package available, from the project root:
 
 ```bash
+# skip: runs the reader's pipeline
 uv run --project python python my_pipeline.py
 ```
 

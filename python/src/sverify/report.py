@@ -288,8 +288,10 @@ def _cause(issue: Issue) -> str:
             f" (NaN where {m[1]} holds both +inf and -inf: bound it in requires, "
             f"e.g. `_.{m[1]}.between(-1e300, 1e300)`)"
         )
-    if re.search(r" [-+] ", issue.shown):
+    if re.fullmatch(r"\w+ [-+] \w+", issue.shown):
         return " (NaN from +inf minus +inf: bound the columns in requires)"
+    if re.fullmatch(r"\w+ \* \w+", issue.shown):
+        return " (NaN from 0 times ±inf: bound the columns in requires)"
     return ""
 
 
