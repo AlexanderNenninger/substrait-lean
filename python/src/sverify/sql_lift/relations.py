@@ -318,7 +318,9 @@ def _group_all(tree: sge.Expr) -> sge.Expr:
         keys: list[sge.Expression] = []
         for item in sel.expressions:
             if item.find(sge.Window):
-                raise SqlUnsupported("GROUP BY ALL with a window function in the SELECT")
+                raise SqlUnsupported(
+                    "GROUP BY ALL with a window function in the SELECT", construct="GROUP BY ALL"
+                )
             if not item.find(sge.AggFunc):
                 keys.append(item.unalias().copy())
         sel.set("group", sge.Group(expressions=keys) if keys else None)

@@ -524,12 +524,13 @@ def _strftime(lf: _Lift, node: sge.TimeToStr, sub: Sub, scope: list[Column]) -> 
     `Time.parseFormat`; the checker refuses any other. A date is its midnight."""
     fmt = node.args.get("format")
     if not (isinstance(fmt, sge.Literal) and fmt.is_string):
-        raise Unsupported("strftime needs a constant format")
+        raise Unsupported("strftime needs a constant format", construct="function strftime")
     # `%F` and `%T` are the model's (chrono's), but DuckDB rejects them.
     if bad := [d for d in re.findall(r"%(.?)", fmt.this) if d not in "YmdHMSj%" or not d]:
         raise Unsupported(
             f"strftime format '{fmt.this}': %{bad[0]} is not supported; "
-            "only %Y %m %d %H %M %S %j and %% are"
+            "only %Y %m %d %H %M %S %j and %% are",
+            construct="function strftime",
         )
     a = lf.to(_when(sub(node.this)), _TS)
     return E(_fn("strftime", [a.json, literal(fmt.this, dt.string)], dt.string), dt.string)

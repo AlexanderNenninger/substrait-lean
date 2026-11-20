@@ -297,7 +297,7 @@ def _right_of(lf: _Lift, s: E, n: E) -> E:
     as the constant rule, chosen by comparisons, so that no start leaves the
     range of offsets `substring` takes (`n + size < 0` is `-n` past the end)."""
     if not n.type.is_integer():
-        raise SqlUnsupported(f"right by a {n.type} is not supported")
+        raise SqlUnsupported(f"right by a {n.type} is not supported", construct="function right")
     (s_,) = _strings(lf, [s], "right")
     n_ = lf.to(n, dt.int64).json
     i64 = lambda v: literal(v, dt.int64)  # noqa: E731

@@ -301,7 +301,7 @@ def test_a_plan_that_reads_no_table_runs_on_duckdb_and_polars_refuses_it():
     # column nothing reads; a Polars frame without columns has no rows.
     import sverify as sv
 
-    report = sv.verify(ibis.literal([1, 2, 3]).length().name("n").as_table())
+    report = sv.verify(ibis.literal([1, 2, 3]).length().name("n").as_table())  # pyrefly: ignore
     con = connect()
     assert report.run(con, engine="duckdb").to_pylist() == [{"n": 3}]
     with pytest.raises(Exception, match="relation without columns"):
@@ -391,5 +391,5 @@ def test_a_date_part_of_a_constant_computed_from_literals():
     import datetime as D
 
     lit = ibis.literal(D.date(2024, 12, 30))
-    report = __import__("sverify").verify(lit.iso_year().name("x").as_table())
+    report = __import__("sverify").verify(lit.iso_year().name("x").as_table())  # pyrefly: ignore
     assert report.run(connect(), engine="duckdb").to_pylist() == [{"x": 2025}]

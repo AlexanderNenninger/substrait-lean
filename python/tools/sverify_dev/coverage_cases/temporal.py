@@ -73,7 +73,7 @@ CASES: list[Case] = [
     case(
         "time",
         "date + column months",
-        R,
+        V,
         lambda: t.select(x=t.ts.date() + t.qty.as_interval("M")),
     ),
     case(

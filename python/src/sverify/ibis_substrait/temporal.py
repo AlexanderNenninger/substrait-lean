@@ -231,7 +231,10 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
             return make_date_json(*(x(a, dt.int64) for a in op.args))
         if values is None and isinstance(op, ops.TimestampFromYMDHMS):
             if not all(a.dtype.is_integer() for a in op.args):
-                raise Unsupported(f"{what} of columns is only supported of integers")
+                raise Unsupported(
+                    f"{what} of columns is only supported of integers",
+                    construct="function make_timestamp",
+                )
             return make_timestamp_json(*(x(a, dt.int64) for a in op.args))
         if values is None:
             raise Unsupported(f"{what} of columns is not supported, only of constants")
