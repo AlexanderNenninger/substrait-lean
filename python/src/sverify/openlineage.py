@@ -70,9 +70,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CLIENT_VERSION",
-    "FACET_FORMAT",
-    "FACET_SCHEMA_URL",
-    "SPEC_VERSION",
     "Assertion",
     "Events",
     "Lineage",

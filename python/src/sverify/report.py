@@ -1600,7 +1600,7 @@ class Report:
         them to the stated preconditions.
 
             report = sv.verify(expr)
-            if not report._proved:
+            if report.needs:
                 report = sv.verify(expr, requires=report.suggested_requires)
         """
         if self._on_inferred != "error":

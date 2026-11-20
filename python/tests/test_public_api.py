@@ -1,10 +1,15 @@
-"""The public API is `sverify`, `sverify.io`, `sverify.engines`,
-`sverify.testing`, `sverify.errors`, `sverify.cli`, `sverify.odcs` and
-`sverify.openlineage`, and every name in it is documented: a class or
-function by its own docstring, any other value in its module's docstring."""
+"""The public API (`docs/stability.md`) is the `__all__` of `sverify`,
+`sverify.io`, `sverify.engines`, `sverify.types`, `sverify.testing`,
+`sverify.errors`, `sverify.cli`, `sverify.odcs` and `sverify.openlineage`,
+and the members without an underscore of the classes among them. Every name
+in it is documented (a class or function by its own docstring, any other
+value in its module's docstring), the API reference lists each, and every
+sverify class a public name returns, holds or takes is public too."""
 
 import importlib
 import inspect
+import sys
+import typing
 
 import pytest
 
@@ -14,6 +19,7 @@ PUBLIC = [
     "sverify",
     "sverify.io",
     "sverify.engines",
+    "sverify.types",
     "sverify.testing",
     "sverify.errors",
     "sverify.cli",
@@ -71,12 +77,31 @@ def test_the_top_level_is_small():
     ]
 
 
-HELD = {"nodes.Group", "nodes.Refresh", "nodes.Status", "nodes.NodeStatus", "nodes.StageRefresh"}
-"""Documented because users hold them (`Node.refresh()`, `status()`,
-`sv.group`), and in no `__all__`."""
+UNLISTED = {
+    # Deprecated; removed under #1288's decision 5.
+    "engines.create_table",
+    "engines.table_rows",
+    # The OpenLineage client sverify[openlineage] pins, which no event
+    # carries; documented in the module's docstring.
+    "openlineage.CLIENT_VERSION",
+}
+"""In an `__all__` and out of the reference."""
 
-UNLISTED = {"engines.create_table", "engines.table_rows"}
-"""In an `__all__` and out of the reference: deprecated."""
+EXCLUDED = {
+    # Reached only through `Dialect`'s SQL-writing methods, which are
+    # outside the promise (`docs/stability.md`).
+    "sverify.black_box.BlackBox": "Dialect's SQL-writing methods",
+    "sverify.sql.core._base.Dec": "Dialect's SQL-writing methods",
+    "sverify.sql.core._base.Lst": "Dialect's SQL-writing methods",
+    "sverify.sql.core._base.Unsupported": "Dialect's SQL-writing methods; a deprecated alias",
+    # What `Node.write` asks of a sink, as a protocol; `io.Sink` is the
+    # public class that implements it.
+    "sverify.nodes.Sink": "the protocol io.Sink implements",
+    # A `Native` table `run` can return; `Native`'s members are outside the
+    # promise while the native scans move into the engine packages.
+    "sverify._scan.Resident": "a Native",
+}
+"""Sverify classes a public name reaches that are not public, with why."""
 
 
 def _reference() -> list[dict]:
@@ -97,7 +122,7 @@ def test_the_reference_lists_the_public_api():
     for name in PUBLIC:
         prefix = "" if name == "sverify" else name.removeprefix("sverify.") + "."
         public |= {prefix + n for n in importlib.import_module(name).__all__}
-    assert toc - public == HELD, "in the reference, in no __all__"
+    assert toc - public == set(), "in the reference, in no __all__"
     assert public - toc == UNLISTED, "in an __all__, not in the reference"
 
 
@@ -113,6 +138,69 @@ def test_the_reference_lists_members_that_exist():
             )
             names = set(dir(cls)).union(*(vars(k).get("__annotations__", {}) for k in cls.__mro__))
             assert set(entry["members"]) <= names, entry["name"]
+
+
+def _hints(obj, owner) -> dict:
+    """The resolved type hints of `obj`, where the names its module imports
+    for type checking only are looked up among sverify's modules."""
+    names: dict = {k: getattr(typing, k) for k in typing.__all__}
+    for mod in list(sys.modules.values()):
+        if getattr(mod, "__name__", "").startswith("sverify"):
+            for k, v in vars(mod).items():
+                names.setdefault(k, v)
+    module = sys.modules[obj.__module__]
+    local = dict(vars(owner)) if inspect.isclass(owner) else None
+    try:
+        return typing.get_type_hints(obj, globalns={**names, **vars(module)}, localns=local)
+    except (NameError, AttributeError):  # a third-party type (polars, duckdb, hypothesis)
+        return {}
+
+
+def _reached(obj):
+    """The hints of a public function, or of a class's public fields and of
+    its public methods' and properties' parameters and returns."""
+    if inspect.isclass(obj):
+        yield from (t for n, t in _hints(obj, obj).items() if not n.startswith("_"))
+        for n, member in vars(obj).items():
+            f = member.fget if isinstance(member, property) else getattr(member, "__func__", member)
+            if not n.startswith("_") and inspect.isfunction(f):
+                yield from _hints(f, obj).values()
+    elif inspect.isfunction(obj):
+        yield from _hints(obj, obj).values()
+
+
+def _classes(hint):
+    if inspect.isclass(hint):
+        yield hint
+    for arg in typing.get_args(hint):
+        yield from _classes(arg)
+
+
+def test_every_type_a_public_name_reaches_is_public():
+    """Closure: a sverify class a public name returns, holds or takes,
+    through any number of steps, is in a public `__all__` or in `EXCLUDED`."""
+    public = {
+        id(getattr(module, n))
+        for module in map(importlib.import_module, PUBLIC)
+        for n in module.__all__
+    }
+    todo = [getattr(m, n) for m in map(importlib.import_module, PUBLIC) for n in m.__all__]
+    seen: set[int] = set()
+    missing = {}
+    while todo:
+        obj = todo.pop()
+        if id(obj) in seen:
+            continue
+        seen.add(id(obj))
+        for hint in _reached(obj):
+            for cls in _classes(hint):
+                if cls.__module__.partition(".")[0] != "sverify":
+                    continue
+                name = f"{cls.__module__}.{cls.__qualname__}"
+                if id(cls) not in public and name not in EXCLUDED:
+                    missing[name] = obj.__qualname__
+                todo.append(cls)
+    assert missing == {}, "reached, and in no public __all__ (name: reached from)"
 
 
 def test_verdict_has_no_truth_value():
