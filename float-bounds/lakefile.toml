@@ -1,5 +1,5 @@
 name = "float-bounds"
-defaultTargets = ["FloatBounds"]
+defaultTargets = ["FloatBounds", "FloatBridge"]
 
 # Kept apart from the core package so that `SubstraitLean` stays free of
 # Mathlib (see docs/float-bounds.md).
