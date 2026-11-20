@@ -50,7 +50,8 @@ def _from_seconds(x: Exprs, op: Any, try_: bool) -> Json | None:
     if try_ or op.to.timezone is not None or op.to.scale not in (None, 6):
         raise Unsupported(
             f"a {'try_' if try_ else ''}cast of an integer to {op.to} is not supported; "
-            'write .as_timestamp("s") for seconds since the epoch'
+            'write .as_timestamp("s") for seconds since the epoch',
+            construct="TRY_CAST" if try_ else "CAST",
         )
     return cast_json(call("multiply", [x(op.arg, dt.int64), literal(10**6, dt.int64)]), op.to)
 
