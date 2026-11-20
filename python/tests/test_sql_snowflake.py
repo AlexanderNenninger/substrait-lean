@@ -700,9 +700,9 @@ def test_real_snowflake_matches_lean():
     (`SVERIFY_<uuid>`, in the connection's database), dropped afterwards. A
     role that may not create one runs in the connection's schema: its tables
     are temporary, so no other session sees them and none outlives the run."""
-    import snowflake.connector
+    with snowflake_connection() as conn:  # skips without an account
+        import snowflake.connector
 
-    with snowflake_connection() as conn:
         cur = conn.cursor()
         schema = f"SVERIFY_{uuid.uuid4().hex[:12].upper()}"
         try:
