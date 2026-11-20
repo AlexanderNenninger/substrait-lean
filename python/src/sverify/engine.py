@@ -47,6 +47,7 @@ from sverify._scan import Native, Resident, Scan
 from sverify._store import instants_in_utc
 from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
+from sverify.profiles import Finite
 
 Engine = str
 """An engine's name, as its plugin registers it (`sverify.profiles`):
@@ -628,7 +629,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: Literal[False] = False,
-    finite: bool | str = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table: ...
@@ -641,7 +642,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool,
-    finite: bool | str = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident: ...
@@ -653,7 +654,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool = False,
-    finite: bool | str = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
@@ -746,7 +747,7 @@ def run_plan(
 
 
 def run_guard_free(
-    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool | str = True
+    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: Finite = True
 ) -> pa.Table:
     """Run a plan whose contract report is `guard_free` on `engine` without
     its other per-row checks, on data that meets its preconditions. The

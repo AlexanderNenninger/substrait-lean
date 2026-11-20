@@ -12,7 +12,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+if TYPE_CHECKING:
+    from sverify.profiles import Finite
 
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
@@ -163,7 +166,7 @@ class Dialect:
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `analysis/Sverify/Analysis/Guards.lean`). Integer `SUM` keeps its check."""
-    finite: bool | str = True
+    finite: Finite = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
     precondition. `"aggregates"` (`to_sql(..., finite="aggregates")`) for a plan
@@ -5931,7 +5934,7 @@ def to_sql(
     deterministic: bool = False,
     guards: bool = True,
     unchecked: dict | None = None,
-    finite: bool | str = True,
+    finite: Finite = True,
     rows: Literal["sequence", "multiset"] | None = None,
     asof: Sequence[dict] = (),
 ) -> str:

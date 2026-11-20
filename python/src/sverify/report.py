@@ -49,6 +49,7 @@ from sverify.observation import Observation, _deterministic_arg
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
+    from sverify.profiles import Finite
     from sverify.routes import Route, RouteKind
 from sverify.conditions import (
     DATA_CHECK,
@@ -78,6 +79,13 @@ default), DuckDB's, whose SQL also means what DuckDB computes, or an
 installed engine's profile (`ProfilePlugin.profile`): Polars's or Spark's,
 or Substrait's own, as its extension YAMLs state it.
 `sverify.contracts.semantics_names` lists them."""
+
+
+def _finite(strict: bool) -> Finite:
+    """A run's `finite`: every overflow to ±∞ where the reference's precondition
+    applies (`strict`), else only an aggregate's, whose engine sum overflows
+    where the exact one does not (#2057)."""
+    return True if strict else "aggregates"
 
 
 def _transfer_failure(f: Mapping[str, Any]) -> str:
@@ -936,7 +944,7 @@ class Report:
                 recheck(written)
             return f(written)
 
-    def _sql_route(self, dialect: Any) -> tuple[Any, bool | str]:
+    def _sql_route(self, dialect: Any) -> tuple[Any, Finite]:
         """The dialect `dialect` names, and whether its SQL checks the
         reference's `±∞` precondition, for this report's plan; refused as
         `run` refuses it."""
@@ -972,7 +980,7 @@ class Report:
             if not routes.verified(self):
                 raise UnverifiedRunError(self, chosen)
             raise routes.RouteError(chosen)
-        return d, self.semantics == "reference" or chosen.kind == "translated" or "aggregates"
+        return d, _finite(self.semantics == "reference" or chosen.kind == "translated")
 
     def check_inputs(
         self,
@@ -1279,7 +1287,7 @@ class Report:
         # reference, and for one that reaches the engine through the
         # reference's route. An aggregate's keeps it on every route: the
         # engine's running sum overflows where the exact one does not.
-        finite = self.semantics == "reference" or kind == "translated" or "aggregates"
+        finite = _finite(self.semantics == "reference" or kind == "translated")
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
         # translation, a guard-free plan runs without its per-row checks on an
