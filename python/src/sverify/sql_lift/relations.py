@@ -327,13 +327,29 @@ def _group_all(tree: sge.Expr) -> sge.Expr:
     return tree
 
 
+_QUALIFY_COLUMN = "_sverify_qualify"
+
+
 def _qualify(tree: sge.Expr) -> sge.Expr:
     """`QUALIFY` (#319) as the filter of a subquery over the window columns
     (SQLGlot's `eliminate_qualify`, the form its dialects without QUALIFY
     print)."""
     for sel in list(tree.find_all(sge.Select)):
         if sel.args.get("qualify") is not None:
+            if any(i.name == "_w" for i in sel.find_all(sge.Identifier)):
+                raise SqlUnsupported(
+                    "QUALIFY in a query that names a column `_w`", construct="QUALIFY"
+                )
             new = eliminate_qualify(sel)  # a new outer SELECT around `sel`
+            if new is not sel:
+                # The window column is the rewrite's: name it so no table's
+                # column collides, and keep a star from exposing it.
+                for i in new.find_all(sge.Identifier):
+                    if i.name == "_w":
+                        i.set("this", _QUALIFY_COLUMN)
+                for star in new.args["expressions"]:
+                    if isinstance(star, sge.Star):
+                        star.set("except_", [sge.column(_QUALIFY_COLUMN)])
             if sel is tree:
                 tree = new
             elif new is not sel:

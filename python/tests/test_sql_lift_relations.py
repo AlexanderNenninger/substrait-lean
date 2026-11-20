@@ -74,6 +74,10 @@ QUERIES = [
     " (PARTITION BY customer ORDER BY amount DESC, id) = 1",
     "SELECT customer, amount, rank() OVER (PARTITION BY customer ORDER BY amount) AS r FROM orders"
     " QUALIFY r <= 2",
+    # A star keeps the table's columns, without the rewrite's window column.
+    "SELECT * FROM orders QUALIFY row_number() OVER"
+    " (PARTITION BY customer ORDER BY amount, id) = 1",
+    "SELECT o.* FROM orders o QUALIFY rank() OVER (PARTITION BY customer ORDER BY amount, id) = 1",
     "TABLE customers EXCEPT ALL SELECT name, region FROM customers WHERE region = 'eu'",
     # #803: VALUES in FROM and as a CTE, typed across rows.
     "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (NULL, 'c')) v(k, s)",
