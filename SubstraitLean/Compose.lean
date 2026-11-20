@@ -169,12 +169,13 @@ theorem Triple.of_contract {S : String → List AVal} {pre : String → List Exp
 
 /-- What `Rel.keys_sound` proves, as a triple. -/
 theorem Triple.of_keys {S : String → List AVal} {pre : String → List Expr}
-    {K : TableCond} {r : Rel} {ks : List (List Nat)}
+    {K : TableCond} (hR : K.ranges = fun _ => []) {r : Rel} {ks : List (List Nat)}
     (h : ∀ cat : Catalog, cat.WF → Sat (Spec S pre K) cat → r.WF cat →
       ∀ k ∈ ks, k ∈ r.keys cat (Spec.env S pre) (Spec.facts pre) K) :
     Triple (Spec S pre K) r.query fun rows => ∀ k ∈ ks, KeyOn k rows :=
   fun cat hcat hsat hwf k hk =>
-    Rel.keys_sound hcat (Spec.env_sound hsat) (Spec.facts_sound hsat) (fun t => (hsat t).2.2) hwf k
+    Rel.keys_sound hcat (Spec.env_sound hsat) (Spec.facts_sound hsat)
+      ⟨fun t => (hsat t).2.2, fun t c hc => by simp [hR] at hc⟩ hwf k
       (h cat hcat hsat hwf k hk)
 
 /-- What `Rel.aeval_sound` proves, as a triple: the output rows match any
