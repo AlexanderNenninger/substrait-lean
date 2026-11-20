@@ -1501,6 +1501,22 @@ theorem Rel.keyedJoin_partners {cat : Catalog} (hcat : cat.WF) {A : String → L
     exact partners_le_one_range (Rel.eval_arity hcat ha x hx)
       (Rel.ranges_sound_all hcat hK hb c hc (Rel.eval_orderAllowed cat b)) hj
 
+/-- **A single-match join, on any order of the right side**: a left row of the
+left's arity has at most one partner in any order of `b`. -/
+theorem Rel.keyedJoin_partners_all {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {a b : Rel} {on : Expr} (hb : b.WF cat)
+    (hkey : Rel.keyedJoin cat A F K a b on = true) {y : Relation}
+    (hy : b.OrderAllowed cat y) {r : Row} (hr : r.length = a.arity cat) :
+    ((y.map (r ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 := by
+  rcases Bool.or_eq_true_iff.1 hkey with hk | hrg
+  · obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hk
+    exact partners_le_one hr (Rel.keys_sound_all hcat hA hF hK hb kb hkb hy) hd
+  · obtain ⟨c, hc, hj⟩ := List.any_eq_true.1 hrg
+    exact partners_le_one_range hr (Rel.ranges_sound_all hcat hK hb c hc hy) hj
+
 /-- **A join on a key does not fan out**: inner or left, it has at most as
 many rows as its left side. -/
 theorem Rel.join_length_le_of_keyed {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
