@@ -368,6 +368,10 @@ SLIDING_EXPRS = [
     # `varOf` over a frame (#54), of a sample and of a population.
     W.select("k", d=W.v.std().over(ibis.window(order_by="ts", preceding=3, following=0))),
     W.select("k", "s", v=W.v.var(how="pop").over(group_by="s"), d=W.q.std().over(group_by="s")),
+    # Partitions and sort keys that are expressions (#1930).
+    W.select("k", a=W.q.sum().over(group_by=W.s + 1, order_by=W.k * 2)),
+    W.select("k", a=W.q.sum().over(group_by=ibis.literal(1), order_by=W.k)),
+    W.select("k", r=ibis.row_number().over(order_by=-W.k)),
 ]
 
 #: Distinct timestamps, `k` minutes in (the ROWS frames follow their order), doubles that

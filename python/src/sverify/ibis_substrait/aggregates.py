@@ -205,8 +205,8 @@ def quantile(x: Exprs, op: Any) -> Json:
             construct=op_construct(op),
         )
     if isinstance(op, ops.MultiQuantile):
-        raise Unsupported(
-            "quantile() of several fractions is not supported; take one at a time",
+        raise ProducerUnsupported(
+            "quantile() of several fractions outside an aggregation is not supported",
             construct="function quantile",
         )
     if isinstance(op, ops.Median):
@@ -241,16 +241,25 @@ def quantile(x: Exprs, op: Any) -> Json:
     return out
 
 
+def split_multi_quantiles(metric: Any) -> Any:
+    """`metric` with each `quantile([q1, q2])` as the array of its quantiles,
+    `[quantile(q1), quantile(q2)]` (#1910): one measure per fraction, which
+    `quantile` reads."""
+    swap = {}
+    for m in metric.find(ops.MultiQuantile):
+        qs = m.quantile
+        if not (isinstance(qs, ops.Literal) and isinstance(qs.value, tuple | list)):
+            raise Unsupported("quantile() needs constant fractions", construct="function quantile")
+        one = [ops.Quantile(m.arg, ops.Literal(q, qs.dtype.value_type), m.where) for q in qs.value]
+        swap[m] = ops.Array(tuple(one))
+    return metric.replace(swap) if swap else metric
+
+
 def mode(x: Exprs, op: Any) -> Json:
     """`mode()` (#53): the most frequent value, and of the values that tie the
     smallest, `MODE(x ORDER BY x)`. DuckDB's own `MODE(x)` breaks ties in the
     order it reads the rows."""
-    arg = x(op.arg)
-    if "selection" not in arg:
-        raise Unsupported(
-            "mode() of an expression is not supported; select it as a column first",
-            construct="function mode",
-        )
+    arg = x(op.arg)  # a column: `Aggregate` projects an expression first (#1909)
     agg: Json = {
         "functionReference": _anchor("mode"),
         "arguments": [{"value": arg}],

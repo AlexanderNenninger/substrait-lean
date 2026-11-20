@@ -1033,10 +1033,85 @@ def test_quantiles_are_refused_on_other_engines(agg):
     [
         (Q.x.approx_median(), "each engine's own estimate"),
         (Q.x.approx_quantile(0.5), "each engine's own estimate"),
-        (Q.x.quantile([0.25, 0.5]), "several fractions"),
-        ((Q.i + 1).mode(), "select it as a column"),
     ],
 )
 def test_quantile_refusals_say_what(agg, message):
     with pytest.raises(Exception, match=message):
         to_substrait_json(Q.group_by("k").aggregate(v=agg))
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.integers(-3, 3)),
+            st.just(0.0),
+            st.just("a"),
+        ),
+        max_size=9,
+    )
+)
+def test_mode_of_an_expression_agrees_with_duckdb(rows):
+    """`mode(i + 1)` is projected as a column first (#1909): Lean and DuckDB
+    give the same rows."""
+    plan = to_substrait_json(Q.group_by("k").aggregate(m=(Q.i + 1).mode()))
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
+    con = connect()
+    con.create("t", Q.schema(), rows)
+    got = sorted(
+        (tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()),
+        key=repr,
+    )
+    assert [tuple(r) for r in lean] == got, (lean, got)
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.integers(-3, 3)),
+            st.one_of(st.none(), st.sampled_from([0.5, 1.0, 2.25, -3.0])),
+            st.just("a"),
+        ),
+        max_size=9,
+    )
+)
+def test_quantile_of_several_fractions_agrees_with_duckdb(rows):
+    """`quantile([0.25, 0.5])` is the array of two measures (#1910)."""
+    plan = to_substrait_json(Q.group_by("k").aggregate(q=Q.x.quantile([0.25, 0.5])))
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    con = connect()
+    con.create("t", Q.schema(), rows)
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert len(lean) == len(got)
+    lean_by_k = {k: [decode_double(v) if isinstance(v, int) else v for v in qs] for k, qs in lean}
+    for r in got:
+        assert lean_by_k[r["k"]] == pytest.approx(r["q"])
+
+
+@pytest.mark.parametrize("where", [False, True])
+@settings(max_examples=30, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.integers(-1, 1)),
+            st.just(0.0),
+            st.one_of(st.none(), st.sampled_from(["a", "b"])),
+        ),
+        max_size=9,
+    )
+)
+def test_count_distinct_of_rows_agrees_with_duckdb(where, rows):
+    """`nunique()` of a table counts its distinct rows, NULLs equal (#1912)."""
+    expr = Q.aggregate(n=Q.nunique(where=Q.i > 0 if where else None))
+    plan = to_substrait_json(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    con = connect()
+    con.create("t", Q.schema(), rows)
+    got = [tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()]
+    assert [tuple([v]) if not isinstance(v, tuple) else v for v in lean] == got
+    expect = duckdb_sql(con, ibis.to_sql(expr, dialect="duckdb")).to_pylist()
+    assert got == [tuple(r.values()) for r in expect]

@@ -129,6 +129,13 @@ CASES: list[Case] = [
     case("aggregation", "mode", V, lambda: t.group_by("name").aggregate(m=t.qty.mode())),
     case(
         "aggregation",
+        "mode of an expression",
+        V,
+        lambda: t.group_by("name").aggregate(m=(t.qty + 1).mode()),
+    ),
+    case("aggregation", "nunique of rows", V, lambda: t.aggregate(n=t.nunique(where=t.qty > 1))),
+    case(
+        "aggregation",
         "argmin, argmax",
         V,
         lambda: t.group_by("name").aggregate(a=t.qty.argmin(t.amount), b=t.id.argmax(t.qty)),
@@ -137,7 +144,7 @@ CASES: list[Case] = [
     case(
         "aggregation",
         "quantile of several",
-        R,
+        V,
         lambda: t.aggregate(q=t.amount.quantile([0.25, 0.75])),
     ),
 ]
@@ -150,6 +157,8 @@ REFUSED: dict[str, dict[str, str]] = {
     "group_concat": DUCKDB_ONLY,
     "median, quantile": DUCKDB_ONLY,
     "mode": DUCKDB_ONLY,
+    "mode of an expression": DUCKDB_ONLY,
+    "quantile of several": DUCKDB_ONLY,
     "argmin, argmax": DUCKDB_ONLY,
     "collect": NO_LISTS_SNOWFLAKE,
     "collect ordered": NO_ORDERED_LISTS,
@@ -162,7 +171,7 @@ UNORDERED_LISTS = {"collect"}
 
 # DuckDB's own QUANTILE_CONT may round its interpolation past the values,
 # which the written plan keeps between them (#53).
-APPROXIMATE = {"std", "cov, corr", "median, quantile"}
+APPROXIMATE = {"std", "cov, corr", "median, quantile", "quantile of several"}
 
 NO_DUCKDB_SQL = {
     # CORR is NULL for fewer than two pairs or a flat side (the SQL standard);
@@ -178,6 +187,7 @@ NO_DUCKDB_SQL = {
     # Ibis writes MODE(x), whose ties DuckDB breaks in its own order; the
     # plan takes the smallest of them (#53).
     "mode": "DuckDB's MODE breaks ties in its own order",
+    "mode of an expression": "DuckDB's MODE breaks ties in its own order",
     # Ibis writes FIRST(x ORDER BY y), which keeps a NULL x; ARG_MIN skips it.
     "argmin, argmax": "Ibis's FIRST keeps NULLs, and ties are the engine's",
 }

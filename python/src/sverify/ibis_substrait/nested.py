@@ -128,8 +128,18 @@ def _table_unnest(op: Any) -> Json:
     return {"extensionSingle": {"input": rel(op.parent), "detail": detail}}
 
 
+def _array(x: Exprs, op: Any) -> Json:
+    """`[a, b]` as `list_prepend(a, list_prepend(b, []))`, the elements of a
+    list that are not constants (#1910)."""
+    out = literal([], op.dtype)
+    for e in reversed(op.exprs):
+        out = call("list_prepend", [x(e, op.dtype.value_type), out])
+    return out
+
+
 register(
     {
+        ops.Array: _array,
         ops.StructField: _struct_field,
         ops.ArrayIndex: _array_index,
         ops.ArrayLength: _unary("cardinality"),

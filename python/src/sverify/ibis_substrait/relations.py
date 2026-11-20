@@ -19,7 +19,7 @@ from ibis.expr.schema import Schema
 
 from sverify._plan_read import function_names
 from sverify.ibis_substrait._base import Exprs, _sort_key, register, register_rels, rel, same_type
-from sverify.ibis_substrait.aggregates import measure
+from sverify.ibis_substrait.aggregates import measure, split_multi_quantiles
 from sverify.ibis_substrait.windows import _row_number_from_zero, _window_functions, window
 from sverify.plan_json import (
     Json,
@@ -145,6 +145,26 @@ def _pivot_longer(op: Any) -> Any | None:
     return union.select(**{k: v.to_expr() for k, v in values.items()}).op()
 
 
+def _staged(parent: Any, exprs: Iterable[Any]) -> dict[Any, int]:
+    """The expressions among `exprs` that are not columns of `parent`, each
+    with the column it gets when `_stage` appends them after `parent`'s: the
+    Lean parser reads partitions, sort keys and `mode`'s argument as columns."""
+    width = len(parent.schema)
+    found: dict[Any, int] = {}
+    for e in exprs:
+        if isinstance(e, ops.Field) and e.rel == parent:
+            continue
+        found.setdefault(e, width + len(found))
+    return found
+
+
+def _stage(input: Json, parent: Any, staged: dict[Any, int]) -> Json:
+    if not staged:
+        return input
+    x = Exprs({parent: 0})
+    return {"project": {"input": input, "expressions": [x(e) for e in staged]}}
+
+
 def _project(op: Any) -> Json:
     if (unpivot := _pivot_longer(op)) is not None:
         return rel(unpivot)
@@ -155,25 +175,72 @@ def _project(op: Any) -> Json:
         x = Exprs({op.parent: 0})
         return select(input, len(op.parent.schema), [x(v) for v in values])
     # Window functions first, in a projection of their own (the Lean parser
-    # reads them only as whole expressions), then the values over them.
+    # reads them only as whole expressions), then the values over them. A
+    # partition or sort key that is an expression is projected before them (#1930).
     width = len(op.parent.schema)
-    x = Exprs({op.parent: 0})
-    windowed = {"project": {"input": input, "expressions": [window(x, w) for w in wins]}}
+    staged = _staged(
+        op.parent, [k for w in wins for k in (*w.group_by, *(o.arg for o in w.order_by))]
+    )
+    x = Exprs({op.parent: 0}, staged)
+    windowed = {
+        "project": {
+            "input": _stage(input, op.parent, staged),
+            "expressions": [window(x, w) for w in wins],
+        }
+    }
+    width += len(staged)
     cols = {w: width + i for i, w in enumerate(wins)}
     y = Exprs({op.parent: 0}, cols)
     exprs = [_row_number_from_zero(y, v) for v in values]
     return project_rel(windowed, width + len(wins), exprs)
 
 
-def _aggregate(op: Any) -> Json:
-    x = Exprs({op.parent: 0})
+def _count_distinct_rows(op: Any, x: Exprs) -> Json:
+    """`nunique()` of a table (`COUNT(DISTINCT (a, b, …))`, #1912) as the rows
+    left after a `DISTINCT` over the group keys and every column, counted
+    (NULLs are equal there, as in the struct). `where=` filters the rows
+    first, so it needs no group keys: a group with no matching row would
+    vanish."""
+    cd = next(iter(op.metrics.values()))
+    if len(op.metrics) != 1 or not isinstance(cd, ops.CountDistinctStar):
+        raise Unsupported(
+            "nunique() of rows beside other aggregates is not supported",
+            construct="function nunique",
+        )
+    if cd.where is not None and op.groups:
+        raise Unsupported(
+            "nunique(where=) of rows under group_by is not supported", construct="function nunique"
+        )
+    input = rel(op.parent)
+    if cd.where is not None:
+        input = {"filter": {"input": input, "condition": x(cd.where)}}
     groups = [x(g) for g in op.groups.values()]
-    metrics = list(op.metrics.values())
+    n = len(op.parent.schema)
+    cols = [field_ref(i) for i in range(n)]
+    distinct = distinct_rel(project_rel(input, n, groups + cols), len(groups) + n)
+    return {
+        "aggregate": {
+            "input": distinct,
+            "groupingExpressions": [field_ref(i) for i in range(len(groups))],
+            "groupings": ([{"expressionReferences": list(range(len(groups)))}] if groups else []),
+            "measures": [measure(x, ops.CountStar(op.parent, None))],
+        }
+    }
+
+
+def _aggregate(op: Any) -> Json:
+    if any(isinstance(m, ops.CountDistinctStar) for m in op.metrics.values()):
+        return _count_distinct_rows(op, Exprs({op.parent: 0}))
+    metrics = [split_multi_quantiles(m) for m in op.metrics.values()]
     # Arithmetic over reductions (`a.sum() / b.sum()`, #67): each reduction
     # is a measure of its own, and a projection computes the metrics from them.
     reductions = _reductions(metrics)
+    # `mode` of an expression reads a column projected before it (#1909).
+    staged = _staged(op.parent, [r.arg for r in reductions if isinstance(r, ops.Mode)])
+    x = Exprs({op.parent: 0}, staged)
+    groups = [x(g) for g in op.groups.values()]
     body: Json = {
-        "input": rel(op.parent),
+        "input": _stage(rel(op.parent), op.parent, staged),
         "groupingExpressions": groups,
         "groupings": [{"expressionReferences": list(range(len(groups)))}] if groups else [],
         "measures": [measure(x, m) for m in reductions],
