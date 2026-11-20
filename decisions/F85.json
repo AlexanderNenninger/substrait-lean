@@ -1,0 +1,19 @@
+{
+  "id": "F85",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The 12d-4 source mark is a core identity `.un (.approx k)` in the plan, no side channel; lowerings erase it; `exprEps` reads its band. Assigns D52; `Around` is an obligation for marked integer quotients.",
+  "issues": [
+    1608
+  ],
+  "amends": [
+    "F82"
+  ],
+  "amended_by": [
+    "F197"
+  ],
+  "source": "fable-ruling-12d4-mark.md",
+  "note": "D52 decided 2026-11-19 here; D52 later gains dated amendments from rulings 92, 104 and 108."
+}

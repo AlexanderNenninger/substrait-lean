@@ -1,0 +1,16 @@
+{
+  "id": "F120",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Staging `Rel.evalChoices_allowed` behind a decidable `Rel.ChoicesSupported` is accepted with four conditions: PR 1 carries ruling 113 part 0, the predicate lives only in the theorem, each later PR removes one case, PR 2 handles aggregates with open cells.",
+  "issues": [
+    1484
+  ],
+  "amends": [
+    "F113"
+  ],
+  "source": "fable-ruling-113-staging.md",
+  "note": "File is named ruling-113 but its heading is Ruling 120. No D-number."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "F9",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A2: the worker's FETCH counterexample is false, so Rel.Allowed, SortAllowed and D10 stay; rep.deterministic := detPlan is accepted over Rel.Allowed with seven conditions in the same PR.",
+  "issues": [
+    1484
+  ],
+  "amended_by": [
+    "F10"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 9",
+  "note": "#1484 finding 9. File ruling-a2-determinism-flag.md. Candidate hole Rel.fetchTotalAt left to A2's first step. Condition 4's expectation is corrected by entry 10 (QUANTILE_CONT of doubles is a real open flip). No D-number."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "F34",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D45 window statements approved for the build: Rel.OrderAllowed's window case opens as Rel.Allowed's, and the PR builds on #1544's head.",
+  "prs": [
+    1544
+  ],
+  "source": "fable-rulings-night-1117.md, entry 34",
+  "note": "File ruling-d45-windows-statements.md. Entry 28's conditions and the user's yes before merge stand."
+}

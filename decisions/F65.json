@@ -1,0 +1,19 @@
+{
+  "id": "F65",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1658 (D46 step A2): a transform on bound tables needs no run check; a view's first load calls refuse_schema. #1658 meets the A2 gate for #1643 once green. Follow-up A3 adds non-null checks on Scan/Resident.",
+  "issues": [
+    1643
+  ],
+  "prs": [
+    1658
+  ],
+  "amends": [
+    "F57"
+  ],
+  "source": "fable-ruling-1658-a2-bound-inputs.md",
+  "note": "Drops 'the pipeline's bound inputs' from the A2 list of the #1641 ruling; D46 text gains the reason."
+}

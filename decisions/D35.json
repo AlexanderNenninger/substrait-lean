@@ -1,0 +1,16 @@
+{
+  "id": "D35",
+  "date": "2026-11-08",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Engine summation orders are bounded sets (SumOrder), bounding every behaviour but EXACT.",
+  "issues": [
+    929,
+    1608
+  ],
+  "amended_by": [
+    "F86"
+  ],
+  "note": "Sign-off delegated to the theory advisor by the maintainer. Amended 2026-11-19 (#1608 12b-1): exactness on small integers."
+}

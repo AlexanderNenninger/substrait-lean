@@ -25,6 +25,9 @@ class Fix:
     conditions: dict[str, list[str]]
     placed: bool = False
     reason: str | None = None
+    edits: list[tuple[int, int, str]] = field(default_factory=list)
+    """The edits that place it, as byte ranges of the file and their new
+    text; the `from ibis import _` it needs goes with the first fix."""
 
 
 @dataclass
@@ -81,7 +84,7 @@ def place(path: Path, checked: list[Checked]) -> Plan:
 
     transforms = {id(c.transform): c.transform for c in checked}
     edits: list[tuple[int, int, str]] = []
-    uses_underscore = False
+    first_underscore: Fix | None = None
     for fix in plan.fixes:
         t = next(t for t in transforms.values() if t.name == fix.transform)
         call = _decorator(tree, t)
@@ -93,12 +96,15 @@ def place(path: Path, checked: list[Checked]) -> Plan:
             fix.reason = edit
             continue
         edits += edit
-        fix.placed = True
-        uses_underscore |= any(c.startswith("_.") for cs in fix.conditions.values() for c in cs)
+        fix.placed, fix.edits = True, list(edit)
+        if any(c.startswith("_.") for cs in fix.conditions.values() for c in cs):
+            first_underscore = first_underscore or fix
     if not edits:
         return plan
-    if uses_underscore and not _imports_underscore(tree):
-        edits.append(_import_edit(tree, at))
+    if first_underscore is not None and not _imports_underscore(tree):
+        imported = _import_edit(tree, at)
+        edits.append(imported)
+        first_underscore.edits.append(imported)
     out = source
     for start, end, text in sorted(edits, key=lambda e: (e[0], e[1]), reverse=True):
         out = out[:start] + text.encode() + out[end:]

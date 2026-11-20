@@ -1,0 +1,13 @@
+{
+  "id": "F122",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Spark cross-scale decimal comparison past 38 digits is refused (#1777); an exact FLOOR/CEIL same-scale shim follows before 1.0 after a Spark fact probe; upstream candidate recorded.",
+  "issues": [
+    1777
+  ],
+  "source": "fable-ruling-1777-spark-decimal-compare.md",
+  "note": "Ruling number 122; builds on ruling 110 (native when p+k<=38). No D-number."
+}

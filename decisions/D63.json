@@ -1,0 +1,12 @@
+{
+  "id": "D63",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "reserved",
+  "summary": "Reserved for substring with a length expression (a general ternary), dropped for now.",
+  "prs": [
+    1951
+  ],
+  "note": "Reserved in ruling 181."
+}

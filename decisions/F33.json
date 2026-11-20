@@ -1,0 +1,16 @@
+{
+  "id": "F33",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Integer AVG (.iavg) enters AggFn.orderFree in a follow-up PR of track A's after #1544 merges, before the next release branch; #1544 ships naming its flips as known.",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1544
+  ],
+  "source": "fable-rulings-night-1117.md, entry 33",
+  "note": "File ruling-a2-integer-avg.md. Reaffirmed in entry 40 with the corrected count (one flip, not 17). No D-number."
+}

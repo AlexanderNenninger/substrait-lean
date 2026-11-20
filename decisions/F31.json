@@ -1,0 +1,17 @@
+{
+  "id": "F31",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D46 signed: an i8/i16/i32/i64 column's values lie in its declared width and an out-of-range source value fails the read, named; the run check (A) lands before typeEnvD's narrow bounds (B).",
+  "issues": [
+    1540,
+    1541
+  ],
+  "prs": [
+    1564
+  ],
+  "source": "fable-rulings-night-1117.md, entry 31",
+  "note": "File ruling-type-bounds-narrow-ints.md. Reviewed in entries 57 and 61 (F-1641-d46-run-check, F-1641-d46-ok)."
+}

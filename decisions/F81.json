@@ -1,0 +1,13 @@
+{
+  "id": "F81",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Step 12e confirmed: COUNT's abstract upper bound comes from the input's row cap (`Measure.abs` count case), `abs_sound` keeps its statement; the cap reaches a subquery's COUNT except through relations without `maxRows`.",
+  "issues": [
+    1608
+  ],
+  "source": "fable-ruling-12e-count-row-cap.md",
+  "note": "No D-number. Builds on rulings 69 and 70; recommends 12b and 12d-2 go to one Lean worker."
+}

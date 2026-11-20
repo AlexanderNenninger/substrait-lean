@@ -1,0 +1,19 @@
+{
+  "id": "F8",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1523 decimals: the comparison's dkind 38 s stays unchecked; before merge dkind's docstring is corrected, a strict xfail names #1497, the compare-scale fact is added and #1497 stays open for S7.",
+  "issues": [
+    1497
+  ],
+  "prs": [
+    1523
+  ],
+  "amended_by": [
+    "F18"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 8",
+  "note": "File ruling-1523-decimal-dkind.md. Delivered late (message cap). Item 6 (a #guard for the new sverify_decimal_div refusal) is voided by entry 18. No D-number."
+}

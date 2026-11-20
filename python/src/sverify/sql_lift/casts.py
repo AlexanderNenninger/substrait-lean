@@ -133,6 +133,15 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         raise SqlUnsupported(
             f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported"
         )
+    if isinstance(t, dt.Timestamp) and t.scale in (0, 3):
+        # DuckDB's cast to TIMESTAMP_S or TIMESTAMP_MS truncates toward zero
+        # (`duckdb-ts-narrow-toward-zero`); the model's narrowing floors (D61).
+        raise SqlUnsupported(
+            f"CAST to {node.to.sql(DIALECT)} truncates toward zero in DuckDB; "
+            "write date_trunc to the unit instead",
+            issue=323,
+            construct="CAST",
+        )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
     # DuckDB casts to and from a timestamp with a time zone in the session's zone (D53).
@@ -186,26 +195,27 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         ):
             if _same(a.type, src) and _same(t, to) and (g := _generated(lf, f"CAST({sql})", [a])):
                 return g
+    if t.is_integer() and a.type.is_decimal():
+        # DuckDB rounds a decimal half away from zero, as the reference's rescale to
+        # scale 0 does (`decimal_rescale`); the exact cast of that is the value (#322). One digit
+        # more than the integer part holds the carry (99.5 to 100).
+        whole = dt.Decimal(min(a.type.precision - a.type.scale + 1, 38), 0, nullable=True)
+        return lf.to(lf.to(E(a.json, a.type), whole), t)
     # Other casts: pending generation (#268).
-    if t.is_integer() and (a.type.is_float64() or a.type.is_decimal()):
-        rounding = lf.profile.float_to_int if a.type.is_float64() else lf.profile.decimal_to_int
-        key = "float_to_int" if a.type.is_float64() else "decimal_to_int"
-        if rounding != "TRUNCATE":
+    if t.is_integer() and a.type.is_float64():
+        if lf.profile.float_to_int != "TRUNCATE":
             raise SqlUnsupported(
-                f"CAST of a {a.type} to {t} rounds ({rounding}) in DuckDB, which the "
-                f"model's casts (they truncate) cannot state yet (#322); {REFUSED[key]}"
+                f"CAST of a {a.type} to {t} rounds ({lf.profile.float_to_int}) in DuckDB, which "
+                f"the model's casts (they truncate) cannot state yet (#322); "
+                f"{REFUSED['float_to_int']}"
             )
         # `round`, `floor` and `ceil` leave an integral double: both readings agree.
         if _rounding(node) is None:
             raise SqlUnsupported(
                 f"CAST of a {a.type} to {t} is DuckDB's cast, which rounds "
-                f"({getattr(DUCKDB, key)}); sverify's reference truncates (R9); "
-                f"{REFUSED[key]}"
+                f"({DUCKDB.float_to_int}); sverify's reference truncates (R9); "
+                f"{REFUSED['float_to_int']}"
             )
-    if t.is_decimal() and a.type.is_decimal() and t.scale < a.type.scale:
-        raise SqlUnsupported(
-            f"CAST of a {a.type} to {t} rounds, which is not supported yet", issue=322
-        )
     # A numeric constant becomes a literal of the type, where that is exact
     # (not a double or decimal made an integer, nor one that doesn't fit).
     exact = not (t.is_integer() and not a.type.is_integer())

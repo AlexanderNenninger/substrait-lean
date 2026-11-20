@@ -1,0 +1,22 @@
+{
+  "id": "F79",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Profile.duckdb's integer AVG becomes a set: either neighbour of the exact quotient for |s| <= 2^53, a relative bound c*2^-53 above; #1675 may merge as a facts PR; step 12d-2 adds DuckAgg.Allowed and three lemmas, no regeneration. No D-number.",
+  "issues": [
+    1608
+  ],
+  "prs": [
+    1675
+  ],
+  "amends": [
+    "F74"
+  ],
+  "amended_by": [
+    "F82"
+  ],
+  "source": "fable-ruling-1675-avg-int-profile.md",
+  "note": "States it completes ruling 74 and withdraws nothing in it."
+}

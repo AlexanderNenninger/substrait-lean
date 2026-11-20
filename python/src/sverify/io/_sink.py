@@ -1,8 +1,8 @@
 """Sinks: where `Node.write` stores a node. sverify decides what to write
 and when (exactly once per state, with the contract); a sink only writes.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Sink`, `SinkChange`, `sink_from`) are re-exported by
 `sverify.io`.
 """

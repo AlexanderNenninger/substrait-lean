@@ -1,0 +1,16 @@
+{
+  "id": "F76.R4",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "superseded",
+  "summary": "Polars route assumed to collect with common-subexpression elimination on; a guarded strict cast in a lifted plan is refused on Polars until D50-c; D50 text names the CASE facts per engine (R5 probe bullet).",
+  "prs": [
+    1681
+  ],
+  "superseded_by": [
+    "F77"
+  ],
+  "source": "fable-ruling-1681-d50-lift-statements.md",
+  "note": "Withdrawn in this form by ruling 77: the stale fact reference; the engine already collects with comm_subexpr_elim off. P1-P3 of ruling 77 replace R4 and R5's probe bullet."
+}
