@@ -535,10 +535,9 @@ def _component(dtype: Any) -> str | None:
         return "decimals"
     if dtype.is_integer() or dtype.is_boolean() or dtype.is_date() or dtype.is_time():
         return None
-    if dtype.is_null() or dtype.is_interval():
-        return None
-    # A list, a struct, a map, and any type the checker cannot tell from one
-    # (JSON, unknown): as Lean's `mayHoldList`, which counts `other` (#2005).
+    # Every other type is a kind `mayHoldList` (`ContractCheck.lean`) counts:
+    # a list or struct, and `Kind.other`, which `Parse.typeKind` gives a map,
+    # an interval, NULL, JSON, a UUID and any type it does not know (#2005).
     return "elements"
 
 
