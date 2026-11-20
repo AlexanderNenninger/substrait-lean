@@ -389,6 +389,37 @@ def test_a_domain_error_is_the_verifiers(tmp_path):
     assert r.duckdb in ('[["nan"]]', '[["-nan"]]'), r.duckdb
 
 
+def test_the_reference_replay_agrees_where_the_reference_raises(tmp_path, monkeypatch):
+    """L2 of #1484 (`--semantics reference`): the reference raising where
+    DuckDB gives NaN agrees, and a `verify` issue agrees as static (no value
+    differs here since #1484's refusal of the rounding casts, so `disagree` has
+    no cheap case)."""
+    monkeypatch.setenv(slt.SEMANTICS_ENV, "reference")
+    path = tmp_path / "ref.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            query I
+            select sin('inf'::DOUBLE)
+            ----
+            nan
+
+            query I
+            select corr(x, y) from (values (1.0::DOUBLE, 1.0::DOUBLE)) t(x, y)
+            ----
+            nan
+            """
+        )
+    )
+    results, _ = slt.replay_file(path, "area/ref.test")
+    assert [r.cls for r in results] == ["agree", "agree"], [(r.cls, r.reason) for r in results]
+    # `corr` of one pair is NULL here and NaN in DuckDB: only `verify`'s issue
+    # (a static check) agrees, marked as such.
+    assert (results[1].reason or "").startswith(slt.STATIC), results[1].reason
+    # `sin('inf')` is the evaluator's own raise (`LeanRaised`), not a static issue.
+    assert (results[0].reason or "").startswith("reference raises"), results[0].reason
+
+
 def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     """Where the test expects an error, the reference raises with DuckDB:
     Lean's side agrees (#747)."""
@@ -406,6 +437,14 @@ def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     (r,), _ = slt.replay_file(path, "area/mod.test")
     assert r.cls == "agree", r
     assert r.lean == "error: Substrait.Issue.divByZero"
+    # The default mode has no static agreements, however the case is judged.
+    led = slt.write_ledger("area", "2.0.0", [slt.asdict(r)], {}, tmp_path)
+    assert "agree_static" not in json.loads(led.read_text())
+    assert not (r.reason or "").startswith(slt.STATIC)
+    # Counted apart under the reference's reading, from the reason alone.
+    static = {**slt.asdict(r), "reason": slt.STATIC + " an issue"}
+    led = slt.write_ledger("area", "2.0.0", [static, slt.asdict(r)], {}, tmp_path)
+    assert json.loads(led.read_text())["agree_static"] == 1
 
 
 def test_a_time_of_24_00_is_refused(tmp_path):

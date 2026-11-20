@@ -541,11 +541,7 @@ theorem Rel.perKey_sound (hcat : cat.WF)
         rcases hmem with hm | ⟨k, hk, rfl⟩
         · exact perKey_sound hcat hA hF hK hP hw.1 kn hm
         · exact RowsPer.of_keyOn (Rel.keys_sound hcat hA hF hK hw.1 k hk)
-      obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hkey
-      have hkB := Rel.keys_sound hcat hA hF hK hw.2.1 kb hkb
-      have hp : ∀ x ∈ a.eval cat,
-          (((b.eval cat).map (x ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 :=
-        fun x hx => partners_le_one (Rel.eval_arity hcat hw.1 x hx) hkB hd
+      have hp := Rel.keyedJoin_partners hcat hA hF hK hw.1 hw.2.1 hkey
       have hpre : ∀ x, ∀ row ∈ ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue),
           ∃ y, row = x ++ y := fun x row hrow => by
         obtain ⟨y, _, rfl⟩ := List.mem_map.1 (List.mem_filter.1 hrow).1
