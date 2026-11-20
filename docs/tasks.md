@@ -528,6 +528,45 @@ print(report.details())
   `n` values in `[lo, hi]` add up to within `[min(0, n·lo), max(0, n·hi)]`,
   so arithmetic on the sum can be proved to fit.
 
+### Non-overlapping ranges
+
+A point-in-time join to a type-2 dimension keeps the fact table's key only if
+the dimension's validity ranges do not overlap. `sv.non_overlapping("valid_from",
+"valid_to", by="customer_id")` in `requires` states that: every row has a start,
+the end is NULL (an open end, at most one per customer) or not before it, and two
+rows of a customer end where or before the other begins. The data check is one
+query over the ranges ordered by start; its count is the rows that break it.
+
+```python
+facts = ibis.table({"order_id": "!int64", "customer_id": "!int64", "ts": "!int64"}, name="facts")
+versions = ibis.table(
+    {"customer_id": "!int64", "valid_from": "!int64", "valid_to": "int64", "city": "string"},
+    name="versions",
+)
+during = (
+    (facts.customer_id == versions.customer_id)
+    & (versions.valid_from <= facts.ts)
+    & (versions.valid_to.isnull() | (facts.ts < versions.valid_to))
+)
+city_of = facts.left_join(versions, during).select(facts.order_id, versions.city)
+report = sv.verify(
+    city_of,
+    requires={
+        "facts": [sv.unique("order_id")],
+        "versions": [sv.non_overlapping("valid_from", "valid_to", by="customer_id")],
+    },
+    ensures=[sv.unique("order_id")],
+)
+assert report.verdict == sv.Verdict.PROVED
+```
+
+Lean gives each order at most one version when the join condition equates the
+`by` columns, tests `valid_from <= x` and `x < valid_to` (or `valid_to IS NULL OR
+x < valid_to`) for one expression `x` of the order's columns; the join keeps the
+orders' keys (`Rel.keys`). A closed end (`x <= valid_to`) matches two versions at a
+boundary and has no rule. `dbt_utils.mutually_exclusive_ranges` is the same test
+in dbt.
+
 ### Rows per key
 
 `sv.rows_per("customer", at_most=n)` in `requires` states that at most

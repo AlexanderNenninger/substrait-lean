@@ -107,6 +107,7 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     Inferred,
     Key,
     MaxRows,
+    NonOverlapping,
     PreconditionError,
     References,
     RelationRows,
@@ -1182,6 +1183,8 @@ def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
     """The output columns `cond` reads; None where that is not known."""
     if isinstance(cond, Unique | RowsPer):
         return list(cond.cols)
+    if isinstance(cond, NonOverlapping):
+        return [cond.lo, cond.hi, *cond.by]
     if isinstance(cond, References | ArrivesWithin):
         return [cond.col]
     if isinstance(cond, MaxRows):
@@ -1657,6 +1660,10 @@ def _prove_once(
         return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.fact)
 
     req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
+    for t, cs in requires.items():
+        for c in cs:
+            if isinstance(c, NonOverlapping) and t in schemas:
+                c.check_types(t, schemas[t])
 
     unreadable: dict[str, _Unsupported] = {}
 
@@ -1713,6 +1720,7 @@ def _prove_once(
     foreign_keys = entries("references")
     caps = {t: min(ns) for t, ns in entries("max_rows").items() if ns}
     per_key = {t: ps for t, ps in entries("rows_per").items() if ps}
+    ranges = {t: rs for t, rs in entries("ranges").items() if rs}
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
@@ -1722,6 +1730,7 @@ def _prove_once(
         "references": foreign_keys,
         "max_rows": caps,
         "rows_per": per_key,
+        "ranges": ranges,
         "text": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 
@@ -2859,9 +2868,12 @@ def view_contract(expr: ir.Table) -> ViewContract:
             f"not proved ({'; '.join(unproved)}); state them in the `ensures` of the "
             "transformation that produces those inputs, so they are proved"
         )
-    if per_key := [label(c) for cs in requires.values() for c in cs if isinstance(c, RowsPer)]:
+    if per_key := [
+        label(c) for cs in requires.values() for c in cs if isinstance(c, RowsPer | NonOverlapping)
+    ]:
         raise ValueError(
-            "cannot maintain incrementally: batches are not checked against rows_per yet "
+            "cannot maintain incrementally: batches are not checked against rows_per or "
+            "non_overlapping yet "
             f"(#219): {', '.join(per_key)}"
         )
     return ViewContract(
