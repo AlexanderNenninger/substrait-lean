@@ -4,7 +4,7 @@
   "decided_by": "fable",
   "scope": "engines",
   "status": "in-force",
-  "summary": "Spark's IEEE division CASE that gave the wrong infinity at a -0.0 divisor is a bug: Spark writes plain '/', and a zero divisor raises as the model states; the Snowflake writer follows the same rule.",
+  "summary": "Spark's IEEE division CASE that gave the wrong infinity at a -0.0 divisor is a bug: Spark writes plain '/', and a zero divisor raises as the model states; the ruling also covers Snowflake, with details in the private evidence.",
   "prs": [
     1841,
     1846

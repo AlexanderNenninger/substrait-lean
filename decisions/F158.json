@@ -4,7 +4,7 @@
   "decided_by": "fable",
   "scope": "engines",
   "status": "in-force",
-  "summary": "Snowflake's fold-against-execute rows stand as classified, and a claim at an up-to row holds up to its class; one open case is answered by ruling 160; details in the private evidence.",
+  "summary": "A ruling on Snowflake's private profile; details in the private evidence.",
   "issues": [
     271
   ],
@@ -12,5 +12,5 @@
     "F147"
   ],
   "source": "fable-ruling-158-snowflake-r4.md",
-  "note": "Corrects the wording of ruling 147. Reads D16's trusted claim at an up-to row as up to q."
+  "note": "Corrects the wording of ruling 147."
 }

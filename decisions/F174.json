@@ -4,7 +4,7 @@
   "decided_by": "fable",
   "scope": "engines",
   "status": "in-force",
-  "summary": "E7 of note 167 becomes: DuckDB, Polars and Spark run the exact limbs (Spark probed); Snowflake keeps E7 as written; fold-back option A declined. One binary split on every engine; E2's per-row check reworded to a normal-form check. No D-number.",
+  "summary": "E7 of note 167 becomes: DuckDB, Polars and Spark run the exact limbs (Spark probed); the Snowflake part is in the private evidence; fold-back option A declined. One binary split on every engine; E2's per-row check reworded to a normal-form check. No D-number.",
   "issues": [
     1447,
     1873

@@ -16,5 +16,5 @@
     "F174"
   ],
   "source": "fable-note-167-exact-limb-state.md",
-  "note": "Log entry 167; the conditions are in fable-note-167-exact-limb-state.md. No D-number. Amended 2026-11-20 by ruling 174: E7 now has DuckDB, Polars and Spark run limbs (Snowflake keeps today's path); E2's check is a normal-form check tested against frexp."
+  "note": "Log entry 167; the conditions are in fable-note-167-exact-limb-state.md. No D-number. Amended 2026-11-20 by ruling 174: E7 now has DuckDB, Polars and Spark run limbs (Snowflake: private evidence); E2's check is a normal-form check tested against frexp."
 }
