@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -150,6 +151,34 @@ def _issue(url: str) -> str:
     return f"[{m[1]}#{m[2]}]({url})" if m else url
 
 
+def _handling(b: Bug) -> str:
+    """The first sentence of how sverify handles the entry, or the facts that record it."""
+    text = b.get("handling") or ""
+    if isinstance(text, list):
+        text = text[0]
+    first = re.split(r"(?<=[.;:])\s", text.strip(), maxsplit=1)[0].replace("|", "\\|")
+    if len(first) > 110:
+        first = first[:107].rstrip() + "..."
+    return first or ", ".join(b.get("facts", [])) or "none"
+
+
+#: An open thread (filed, or a duplicate of an open issue) is checked within this many days.
+STALE_DAYS = 90
+
+
+def stale_threads(docs: dict[Path, Bug], today: date, days: int = STALE_DAYS) -> list[str]:
+    """Ids of entries with an open upstream thread whose last check is older than
+    `days` (or has no date): their status may have moved upstream."""
+    out = []
+    for b in docs.values():
+        if b["status"] not in ("filed", "duplicate") or not b.get("upstream"):
+            continue
+        dates = [c["checked_at"] for c in b["checked"] if c["checked_at"] != "unknown"]
+        if not dates or (today - date.fromisoformat(max(dates))).days > days:
+            out.append(b["id"])
+    return sorted(out)
+
+
 def render(docs: dict[Path, Bug]) -> str:
     """`upstream/REPORT.md`: the bugs to report, the open issues to comment
     on, and the count of each class by project."""
@@ -187,6 +216,22 @@ def render(docs: dict[Path, Bug]) -> str:
     out += [
         f"| {link(b['id'])} | {PROJECTS[b['project']].name} | {_issue(b['upstream'][0])} |"
         for b in by_class["duplicate"]
+    ]
+    threads = [b for b in bugs if classify(b) in ("filed", "fixed") and b.get("upstream")]
+    out += [
+        "",
+        "## Filed and fixed",
+        "",
+        "What was reported upstream and where it stands, with how sverify handles each.",
+        "",
+        "| Entry | Project | Status | Upstream | Fixed in | How sverify handles it |",
+        "|---|---|---|---|---|---|",
+    ]
+    out += [
+        f"| {link(b['id'])} | {PROJECTS[b['project']].name} | {b['status']} | "
+        f"{', '.join(_issue(u) for u in b['upstream'])} | {b.get('fixed_in', '')} | "
+        f"{_handling(b)} |"
+        for b in threads
     ]
     shown = [c for c in CLASSES if by_class[c]]
     out += [

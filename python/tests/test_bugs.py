@@ -5,6 +5,7 @@ backlog (`tests/lift_backlog.json`) exists and has a reason."""
 
 import json
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -117,3 +118,24 @@ def test_validate_backlog_finds_problems(tmp_path):
     ]
     backlog.write_text(json.dumps({"tests": [{"test": "tests/test_x.py::test_c"}]}))
     assert "'reason' is a required property" in "\n".join(bugs.validate_backlog(backlog))
+
+
+def test_every_open_thread_was_checked_lately():
+    """An entry with an open upstream thread (filed, or a duplicate of an open
+    issue) was checked within `STALE_DAYS`: its status may have moved. Check it
+    again (`upstream-report` skill, step 2) and add a `checked` entry."""
+    from datetime import date
+
+    stale = bugs.stale_threads(bugs.load(), date.today())
+    assert not stale, f"upstream threads not checked in {bugs.STALE_DAYS} days: {stale}"
+
+
+def test_stale_threads_finds_an_old_check():
+    from datetime import date
+
+    old = _bug(status="filed", upstream=["https://github.com/o/r/issues/1"])
+    old["checked"] = [{"checked_at": "2026-01-01", "against": {"duckdb": "1"}}]
+    fresh = _bug(id="DD-2", status="filed", upstream=["https://github.com/o/r/issues/2"])
+    fresh["checked"] = [{"checked_at": "2026-11-01", "against": {"duckdb": "1"}}]
+    docs = {Path("a"): old, Path("b"): fresh}
+    assert bugs.stale_threads(docs, date(2026, 11, 20)) == [old["id"]]
