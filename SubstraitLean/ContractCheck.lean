@@ -745,9 +745,10 @@ the columns it reads, `"elements"` only where it reads the list bare) and
 the observation's ignored components it depends on, but for `"zeros"`
 (`Expr.robust_of_depends_canon`) and `"floats"` under the plan's bound or an
 `approx` condition (`floatsOk`). `"elements"` stays where the condition reads
-a column that may hold a list (`mayHoldList`): `Expr.robust_of_depends_canon`
-needs it exact in every column read, so the checker spares only the columns
-that hold no list (#2005). -/
+a column that may hold a list (`mayHoldList`) other than as the argument of
+`cardinality` (`Expr.listCols`): `Expr.robust_of_depends_canon` needs it exact
+in every other column read, so the checker spares only the columns that hold
+no list (#2005). -/
 def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens : List String)
     (floatsOk : Bool) : List (Option (List String × List String)) :=
   match postExprs cat tables r with
@@ -762,14 +763,15 @@ def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens 
         let opened := (e.cols.filterMap fun c => match t.openCol cat c with
           | some "elements" => if bare.contains c then some "elements" else none
           | o => o).eraseDups
-        let base := (e.depends ctx).eraseDups.filter fun c =>
+        let base := (e.dependsC ctx).eraseDups.filter fun c =>
           c != "zeros" && c != "elements" && coarsens.contains c && !(c == "floats" && floatsOk)
         -- A lens that ignores the order of a list's elements ignores it in
-        -- every list the condition reads, bare or not (#2005): a position
-        -- (`list_position(l, a) = 1`) changes between lens-equal results.
-        -- Only a column that cannot hold a list is spared.
+        -- every list the condition reads but through `cardinality` (#2005): a
+        -- position (`list_position(l, a) = 1`) changes between lens-equal
+        -- results, a length does not (`Expr.eval_congr_card`). Only a column
+        -- that cannot hold a list is spared.
         let listy := coarsens.contains "elements" &&
-          e.cols.any fun c => mayHoldList (ks.getD c .other)
+          e.listCols.any fun c => mayHoldList (ks.getD c .other)
         some (opened, if listy then base ++ ["elements"] else base)
   | none => List.replicate n none
 
