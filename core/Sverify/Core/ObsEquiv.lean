@@ -53,7 +53,7 @@ structure ObsCtx.WF (ctx : ObsCtx) : Prop where
   str_refl : ∀ s a, ctx.strEq s a a
   str_symm : ∀ s a b, ctx.strEq s a b → ctx.strEq s b a
   str_trans : ∀ s a b d, ctx.strEq s a b → ctx.strEq s b d → ctx.strEq s a d
-  str_mono : ∀ a b, ctx.strEq .nfc a b → ctx.strEq .casefold a b
+  str_mono : ∀ s t a b, s.rank ≤ t.rank → ctx.strEq s a b → ctx.strEq t a b
 
 /-- Three contexts that compose: the same keys and kinds, and `c₁`'s
 relations followed by `c₂`'s within `c₃`'s. `Comp ctx ctx ctx` is
@@ -73,7 +73,7 @@ theorem ObsCtx.WF.default : ObsCtx.WF {} where
   str_refl _ _ := rfl
   str_symm _ _ _ h := h.symm
   str_trans _ _ _ _ h₁ h₂ := h₁.trans h₂
-  str_mono _ _ h := h
+  str_mono _ _ _ _ _ h := h
 
 /-- A context composes with itself when its tolerances are transitive (the
 default's equality is). -/
@@ -126,6 +126,7 @@ def StrEquivAt (s : StringObs) (ctx : ObsCtx) (a b : String) : Prop :=
   | .exact => a = b
   | .nfc => ctx.strEq .nfc a b
   | .casefold => ctx.strEq .casefold a b
+  | .ascii => ctx.strEq .ascii a b
 
 /-- How `q` observes the strings of column `col`: as it says in a string
 column, exactly elsewhere. -/
@@ -396,7 +397,7 @@ theorem StrEquiv.mono (hc : ctx.WF) (h : q'.le q = true) {a b : String}
   unfold StrEquiv StrEquivAt at *
   cases hq' : q'.stringsAt ctx col <;> cases hq : q.stringsAt ctx col <;>
     simp only [hq', hq, StringObs.rank] at hs e ⊢ <;> try omega
-  all_goals first | exact e | (subst e; exact hc.str_refl _ _) | exact hc.str_mono _ _ e
+  all_goals first | exact e | (subst e; exact hc.str_refl _ _) | exact hc.str_mono _ _ _ _ (by simp [StringObs.rank]) e
 
 mutual
 theorem Value.Equiv.mono (hc : ctx.WF) (h : q'.le q = true) :
@@ -835,7 +836,7 @@ theorem ObsCtx.ofTol_wf (kind : Nat → ColKind) (t : Tol) : (ObsCtx.ofTol kind 
   str_refl _ _ := rfl
   str_symm _ _ _ h := h.symm
   str_trans _ _ _ _ h₁ h₂ := h₁.trans h₂
-  str_mono _ _ h := h
+  str_mono _ _ _ _ _ h := h
 
 theorem Tol.near_add {t₁ t₂ : Tol} {c : Nat} {a b d : Int} (h₁ : t₁.near c a b) (h₂ : t₂.near c b d) :
     (t₁.add t₂).near c a d := by

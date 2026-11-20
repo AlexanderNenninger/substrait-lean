@@ -22,6 +22,12 @@ engine first and refuses more than `max_pairs` (default `MAX_PAIRS`, 10⁸),
 naming the exits: `by` columns, fewer rows, a larger cap. So the cap holds
 whatever the rows come from: Arrow tables, files or an engine's tables.
 
+DuckDB runs a join without a `tolerance`, on integer, date, timestamp or string
+columns, as its own `ASOF JOIN` (`duckdb-asof-join`, #1447): it compares no
+pairs, so its run takes no count and has no cap. At a tie on the right it may
+pick another of the tied rows than the range join does; the report already
+says `deterministic` is false there.
+
 No theorem is about ASOF joins: the plan is proved as any plan is. What an
 ASOF join promises, stated in `ensures`, is proved for each plan by the
 theorems every contract rests on (`docs/proofs.md`): `on_right <= on` and
@@ -38,10 +44,8 @@ from typing import Any, Literal
 
 import ibis
 import ibis.expr.types as ir
-import pyarrow as pa
 
 from sverify._asof_cap import _CAPS
-from sverify._weighted import _call
 
 ROW = "_asof_row"
 RANK = "_asof_rank"
@@ -49,20 +53,10 @@ RANK = "_asof_rank"
 MAX_PAIRS = 10**8
 """The default cap on the pairs of rows the join compares (`asof_join`'s
 `max_pairs`): each left row with every right row of its `by` group. DuckDB
-compares about 10⁸ pairs in 4 to 7 seconds (homelab, one thread of
+runs a join without a `tolerance` as an `ASOF JOIN`, which compares none; its
+range join (with a `tolerance`) compares about 10⁸ pairs in 4 to 7 seconds (homelab, one thread of
 `sverify.connect()`), 4·10⁸ in 24 and 1.6·10⁹ in 268; Polars's keyless join is a
 cross join of the same size."""
-
-
-def pairs(left: pa.Table, right: pa.Table, by: Sequence[str]) -> int:
-    """The pairs of rows an as-of join compares: each left row with every right
-    row of its `by` group (rows with a NULL `by` value never match)."""
-    if not by:
-        return left.num_rows * right.num_rows
-    count = lambda t: t.group_by(list(by)).aggregate([([], "count_all")])  # noqa: E731
-    both = count(left).join(count(right), list(by), right_suffix="_right")
-    product = _call("multiply", both["count_all"], both["count_all_right"])
-    return _call("sum", product).as_py() or 0
 
 
 def asof_join(
@@ -104,7 +98,8 @@ def asof_join(
             engine before each run (`Report.run`), whatever the tables are;
             the join is a range join, so its cost is that count, quadratic
             in the rows (an engine's range join with a `tolerance` may skip
-            most of them: DuckDB's does). Above it, the run raises
+            most of them: DuckDB's does). DuckDB's `ASOF JOIN`, which runs a
+            join without a `tolerance`, takes no count. Above it, the run raises
             `UnsupportedError`. `None`: no cap. Default `MAX_PAIRS`, 10⁸,
             which keeps DuckDB's join under about 7 seconds.
 

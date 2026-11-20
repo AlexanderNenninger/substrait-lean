@@ -1,0 +1,514 @@
+{
+  "ibis": "12.0.0",
+  "source": "https://github.com/ibis-project/ibis/tree/12.0.0/ibis/backends/tests/test_string.py",
+  "license": "Apache-2.0",
+  "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
+  "module": "test_string",
+  "summary": {
+    "agree": 44,
+    "disagree": 0,
+    "refused": 34,
+    "unproved": 19,
+    "skipped": 30
+  },
+  "results": {
+    "test_array_string_join[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayStringJoin is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_capitalize[duckdb-empty]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-leading_digit]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-leading_space]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-lower_to_upper]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-mixed_to_upper]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-mixed_with_digit]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-mixed_with_hyphen]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-mixed_with_space]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-no_change]": {
+      "outcome": "unproved",
+      "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
+    },
+    "test_capitalize[duckdb-none]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-add-abc-def-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-add-abc-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-add-abc-typed-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-add-null-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-concat-abc-def-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-concat-abc-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-concat-abc-typed-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat[duckdb-concat-null-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat_with_null[duckdb-a-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat_with_null[duckdb-null-a]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_concat_with_null[duckdb-null-null]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_empty_array_string_join[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_levenshtein[duckdb-ibis]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_levenshtein[duckdb-python]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_multiple_subs[duckdb]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_no_conditional_percent_escape[duckdb-case]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_no_conditional_percent_escape[duckdb-ifelse]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_non_match_regex_search_is_false[duckdb]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_parse_url[duckdb-authority]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-file]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-host]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-path]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-protocol]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-query-dynamic-key]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-query-key]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-query]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-ref]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_parse_url[duckdb-userinfo]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_re_replace_global[duckdb]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_re_split[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: RegexSplit is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_re_split_column[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: RegexSplit is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_re_split_column_multiple_patterns[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: RegexSplit is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_string[duckdb-ascii_str]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-complex_like_escape]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-complex_like_escape_match]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-concat_column_scalar]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-concat_columns]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-concat_scalar_column]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-contains]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-endswith-simple]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-endswith]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-find]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-find_in_set]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-find_in_set_all_missing]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-find_start]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-ilike]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-join]": {
+      "outcome": "unproved",
+      "reason": "domain error: ((IF NOT(IS_NULL((… + …))) THEN (… + …) ELSE … + IF NOT(IS_NULL((… + string_col))) THEN (… + string_col) ELSE …) + IF NOT(IS_NULL((… + …))) THEN ("
+    },
+    "test_string[duckdb-length]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-like]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-lower]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-lpad]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-lstrip]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_extract]": {
+      "outcome": "unproved",
+      "reason": "non-ASCII text: REGEXP_EXTRACT_…_0(((… + string_col) + …))"
+    },
+    "test_string[duckdb-re_extract_group]": {
+      "outcome": "unproved",
+      "reason": "non-ASCII text: REGEXP_EXTRACT_…_1(((… + string_col) + …))"
+    },
+    "test_string[duckdb-re_extract_group_1]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_extract_group_2]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_extract_group_3]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_extract_group_at_beginning]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_extract_group_at_end]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_extract_posix]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: the regular expression … is outside the supported subset. Lean's model does not cover it yet: rew",
+      "design": "the regular expressions all engines agree on are a documented subset (docs/reference-semantics.md)"
+    },
+    "test_string[duckdb-re_extract_whole_group]": {
+      "outcome": "unproved",
+      "reason": "non-ASCII text: REGEXP_EXTRACT_…_0((string_col + …))"
+    },
+    "test_string[duckdb-re_replace]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_replace_posix]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: the regular expression … is outside the supported subset. Lean's model does not cover it yet: rew",
+      "design": "the regular expressions all engines agree on are a documented subset (docs/reference-semantics.md)"
+    },
+    "test_string[duckdb-re_search]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-re_search_posix]": {
+      "outcome": "unproved",
+      "reason": "invalid regular expression: REGEXP_MATCH_…(string_col)"
+    },
+    "test_string[duckdb-re_search_substring]": {
+      "outcome": "unproved",
+      "reason": "non-ASCII text: REGEXP_MATCH_…(((… + string_col) + …))"
+    },
+    "test_string[duckdb-repeat_left]": {
+      "outcome": "unproved",
+      "reason": "overflow: string_col REPEAT N"
+    },
+    "test_string[duckdb-repeat_method]": {
+      "outcome": "unproved",
+      "reason": "overflow: string_col REPEAT N"
+    },
+    "test_string[duckdb-repeat_right]": {
+      "outcome": "unproved",
+      "reason": "overflow: string_col REPEAT N"
+    },
+    "test_string[duckdb-replace]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-reverse]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-rlike]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-rpad]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-rstrip]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-split]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: StringSplit is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_string[duckdb-startswith-simple]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-startswith]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-strip]": {
+      "outcome": "agree"
+    },
+    "test_string[duckdb-translate]": {
+      "outcome": "refused",
+      "construct": "Unsupported: translate is not modelled yet (#60): the reference semantics has no character mapping; chain .replace() for each character",
+      "issue": 60
+    },
+    "test_string[duckdb-upper]": {
+      "outcome": "agree"
+    },
+    "test_string_col_is_unicode[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_string_literal[duckdb-string-quote1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: typeof is only supported of a column; select the expression as a column first",
+      "design": "an expression's type is each engine's own inference (#508)"
+    },
+    "test_string_literal[duckdb-string-quote2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: typeof is only supported of a column; select the expression as a column first",
+      "design": "an expression's type is each engine's own inference (#508)"
+    },
+    "test_string_literal[duckdb-string]": {
+      "outcome": "refused",
+      "construct": "Unsupported: typeof is only supported of a column; select the expression as a column first",
+      "design": "an expression's type is each engine's own inference (#508)"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-contains]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-contains_multi]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-find]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-find_in_set]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-find_in_set_w_comma]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-len]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-lower]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-lpad_gt]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-lpad_lt]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-lstrip]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-rpad]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-rpad_gt]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-rstrip]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-strip]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_accents_and_emoji[duckdb-upper]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_no_accents_and_no_emoji[duckdb-lpad_gt]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_no_accents_and_no_emoji[duckdb-lpad_lt]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_no_accents_and_no_emoji[duckdb-rpad_gt]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_string_methods_no_accents_and_no_emoji[duckdb-rpad_lt]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_subs_with_re_replace[duckdb]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_substr_with_null_values[duckdb]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_substring[duckdb-expr_empty_slice]": {
+      "outcome": "agree"
+    },
+    "test_substring[duckdb-expr_slice_begin]": {
+      "outcome": "unproved",
+      "reason": "domain error: date_string_col SUBSTRING_FOR_ALL_LEFT_OF_BEGINNING IF NOT((((LENGTH(date_string_col) - N) + N) < N)) THEN ((LENGTH(date_string_col) - N) + N) ELS"
+    },
+    "test_substring[duckdb-expr_slice_begin_end]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: substring lengths must be constants. Lean's model does not cover it yet: rewrite the step, or fin",
+      "issue": 1923
+    },
+    "test_substring[duckdb-expr_slice_end]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: substring lengths must be constants. Lean's model does not cover it yet: rewrite the step, or fin",
+      "issue": 1923
+    },
+    "test_substring[duckdb-left]": {
+      "outcome": "agree"
+    },
+    "test_substring[duckdb-negative-index]": {
+      "outcome": "agree"
+    },
+    "test_substring[duckdb-positive-index]": {
+      "outcome": "agree"
+    },
+    "test_substring[duckdb-right]": {
+      "outcome": "agree"
+    },
+    "test_substring[duckdb-slice]": {
+      "outcome": "agree"
+    },
+    "test_substring[duckdb-substr-start-only]": {
+      "outcome": "agree"
+    },
+    "test_substring[duckdb-substr]": {
+      "outcome": "agree"
+    }
+  }
+}
