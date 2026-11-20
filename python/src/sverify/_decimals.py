@@ -9,8 +9,8 @@ take the most integer digits and the largest scale. A precision is at most
 incremental views read the rules here, and the SQL lift its common type. The
 lift's arithmetic types are DuckDB's (`sverify.sql_lift`), its own semantics.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 """
 
 from __future__ import annotations
