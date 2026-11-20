@@ -808,6 +808,72 @@ jobs:
           sys.exit(subprocess.run([sys.executable, "-m", "pytest", "-n", "auto", *tests]).returncode)
           EOF
 
+  # The outside-evidence gates (#867): sverify's outputs checked by tools
+  # others wrote, each with a ledger of agree, refused and disagree. Gates
+  # report and never block: a gate that finds a change from its ledger warns
+  # here and in the run's summary, and `qa` does not wait on this job.
+  #
+  # substrait-validator (#862): no release reads the Substrait sverify
+  # writes, so the job builds it at the commit `sverify_dev.substrait_validator`
+  # pins (Rust, protoc 28.3 as its own CI uses), caches the wheel by that
+  # commit, and runs it in a venv of its own: its protobuf bindings
+  # (Substrait 0.88.1) cannot share a process with sverify's.
+  evidence:
+    needs: [route, changes, checker]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+          prune-cache: true
+          cache-suffix: pruned
+      - id: validator
+        run: |
+          commit=$(sed -n 's/^COMMIT = "\([0-9a-f]*\)"$/\1/p' python/tools/sverify_dev/substrait_validator.py)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - id: wheel
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/substrait-validator-wheel
+          key: substrait-validator-${{ steps.validator.outputs.commit }}-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.wheel.outputs.cache-hit != 'true'
+        env:
+          COMMIT: ${{ steps.validator.outputs.commit }}
+        run: |
+          set -euo pipefail
+          command -v cargo || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; }
+          export PATH="$HOME/.cargo/bin:$PATH"
+          src=$RUNNER_TEMP/substrait-validator
+          git init -q "$src" && cd "$src"
+          git fetch -q --depth 1 https://github.com/substrait-io/substrait-validator.git "$COMMIT"
+          git checkout -q FETCH_HEAD && git submodule update -q --init --depth 1
+          curl -sSLo "$RUNNER_TEMP/protoc.zip" https://github.com/protocolbuffers/protobuf/releases/download/v28.3/protoc-28.3-linux-x86_64.zip
+          unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
+          PROTOC="$RUNNER_TEMP/protoc/bin/protoc" PROTOC_INCLUDE="$RUNNER_TEMP/protoc/include" \
+            uvx maturin build --release -m py/Cargo.toml -i python3.12 -o ~/substrait-validator-wheel
+      - run: |
+          uv venv -q -p 3.12 "$RUNNER_TEMP/validator"
+          uv pip install -q -p "$RUNNER_TEMP/validator/bin/python" ~/substrait-validator-wheel/*.whl
+          echo "SUBSTRAIT_VALIDATOR_PYTHON=$RUNNER_TEMP/validator/bin/python" >> "$GITHUB_ENV"
+      - working-directory: python
+        run: uv sync --locked
+      - name: substrait-validator (#862)
+        working-directory: python
+        run: |
+          if ! uv run --no-sync python -m sverify_dev.substrait_validator --check > "$RUNNER_TEMP/gate.txt" 2>&1; then
+            echo "::warning title=substrait-validator gate::the export's validation differs from python/tests/substrait_validator.json; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/gate.txt"
+          { echo '### substrait-validator (#862)'; echo '```'; cat "$RUNNER_TEMP/gate.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
   # sverify-dbt (dbt/): lint, typecheck and tests, then its check of the
   # sample project, `dbt build` without the tests it proved, and `dbt test`
   # of those on the data.

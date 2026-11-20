@@ -1,0 +1,2479 @@
+{
+  "validator": {
+    "repo": "https://github.com/substrait-io/substrait-validator",
+    "commit": "157c13913ac2e95786d86e75558d4967eabff662",
+    "license": "Apache-2.0",
+    "validator": "0.1.4",
+    "substrait": "0.88.1"
+  },
+  "sverify_substrait": "0.106.0",
+  "summary": {
+    "agree": 330,
+    "disagree": 10,
+    "refused": 192,
+    "skipped": 146
+  },
+  "refusals": {
+    "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 18,
+    "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 16,
+    "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls": 16,
+    "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an ": 10,
+    "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 8,
+    "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 8,
+    "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls": 8,
+    "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls": 6,
+    "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 6,
+    "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 6,
+    "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls": 6,
+    "refused for Substrait: dec.arith'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an ": 5,
+    "array_agg is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 4,
+    "the plan has a extensionSingle relation, which to_substrait does not write for other consumers yet; report.to_sql(dialect) writes the proved plan for an engine ": 4,
+    "no impl of lag in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 4,
+    "no impl of substring in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls": 4,
+    "no impl of regexp_replace in Substrait's YAMLs takes (string, string, string, string); cast the arguments to the types of one of its impls": 4,
+    "md5 is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 4,
+    "no impl of lead in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 4,
+    "no impl of lt in Substrait's YAMLs takes (precision_timestamp<N>, date); cast the arguments to the types of one of its impls": 4,
+    "refused for Substrait: cmp'…'annotate'…'s nan_order: Substrait allows UNORDERED where the proof uses GREATEST (ST-N, upstream/bugs/ST-N.json); no shim writes it": 3,
+    "refused for Substrait: str.concat'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an": 3,
+    "no impl of max in Substrait's YAMLs takes (boolean); cast the arguments to the types of one of its impls": 2,
+    "bit_and is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "no impl of nth_value in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 2,
+    "no impl of round in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls": 2,
+    "refused for Substrait: fp.elem'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an en": 2,
+    "upper maps non-ASCII text by a rule Substrait leaves open (ST-N, upstream/bugs/ST-N.json); report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "regexp_match is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instea": 2,
+    "ilike is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "ascii is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "levenshtein is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead": 2,
+    "regexp_extract is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inst": 2,
+    "no impl of add in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 2,
+    "sverify_raise is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inste": 2,
+    "no impl of add in Substrait's YAMLs takes (precision_time<N>, interval_day<N>); cast the arguments to the types of one of its impls": 2,
+    "try_varchar_bigint is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine ": 2,
+    "no impl of lag in Substrait's YAMLs takes (boolean, i64); cast the arguments to the types of one of its impls": 2,
+    "no impl of lag in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls": 2,
+    "no impl of lag in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls": 2,
+    "no impl of equal in Substrait's YAMLs takes (date, precision_timestamp<N>); cast the arguments to the types of one of its impls": 2,
+    "no impl of multiply in Substrait's YAMLs takes (decimal<N, N>, i64); cast the arguments to the types of one of its impls": 2,
+    "refused for Substrait: agg.stat'…'annotate'…'s pow_one_inf: Substrait allows ONE, NAN where the proof uses ONE; no shim writes it for this plan: export with shi": 1
+  },
+  "findings": {
+    "0001 not yet implemented: PrecisionTime literals are not yet implemented": {
+      "plans": 2,
+      "record": "ST-19"
+    },
+    "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented": {
+      "plans": 7,
+      "record": "ST-19"
+    },
+    "4005 mismatched types: all set inputs must have matching schemas: N vs. N on parameter path N.precision": {
+      "plans": 1,
+      "record": "#1904"
+    }
+  },
+  "results": {
+    "catalogue/clickbench-q06 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/clickbench-q06 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/clickbench-q09 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/clickbench-q09 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/clickbench-q13 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/clickbench-q13 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/clickbench-q21 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/clickbench-q21 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/clickbench-q28 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of regexp_replace in Substrait's YAMLs takes (string, string, string, string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/clickbench-q28 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of regexp_replace in Substrait's YAMLs takes (string, string, string, string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/clickbench-q37 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/clickbench-q37 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/clickbench-q42 [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/clickbench-q42 [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/dbt-accepted-values-test [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-accepted-values-test [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-generate-date-spine": {
+      "outcome": "skipped",
+      "reason": "FROM UNNEST(GENERATE_SERIES(CAST('…' AS TIMESTAMP), C... is not supported; write this step in Ibis"
+    },
+    "catalogue/dbt-mrr-movements [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/dbt-mrr-movements [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/dbt-org-hierarchy": {
+      "outcome": "skipped",
+      "reason": "WITH RECURSIVE is not supported yet (#N)"
+    },
+    "catalogue/dbt-pivot-conditional [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: qty * price; fix what it names and verify again"
+    },
+    "catalogue/dbt-pivot-conditional [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: qty * price; fix what it names and verify again"
+    },
+    "catalogue/dbt-pivot-wider [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-pivot-wider [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-relationships-test [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-relationships-test [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-scd2-from-updates [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lead in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/dbt-scd2-from-updates [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lead in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/dbt-scd2-point-in-time [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-scd2-point-in-time [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-surrogate-key [annotate]": {
+      "outcome": "refused",
+      "reason": "md5 is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/dbt-surrogate-key [apply]": {
+      "outcome": "refused",
+      "reason": "md5 is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/dbt-union-sources [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-union-sources [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-unique-test [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-unique-test [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-unpivot-longer [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-unpivot-longer [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-unpivot-union [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/dbt-unpivot-union [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-ar-aging [annotate]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/fin-ar-aging [apply]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/fin-bollinger [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: price; may fail: domain error: avg(price) + std_dev(price) * N.N; may fail: domain error: avg(price) - std_dev(price) * N."
+    },
+    "catalogue/fin-bollinger [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: price; may fail: domain error: avg(price) + std_dev(price) * N.N; may fail: domain error: avg(price) - std_dev(price) * N."
+    },
+    "catalogue/fin-dormant-reactivation [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/fin-dormant-reactivation [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/fin-double-entry-check [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-double-entry-check [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-duplicate-payments [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-duplicate-payments [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-fifo-pnl [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: sum(qty) - qty; may fail: overflow: (sum(qty) LEAST sum(qty)) - ((sum(qty) - qty) GREATEST (sum(qty) - qty)); may fail: domain"
+    },
+    "catalogue/fin-fifo-pnl [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: sum(qty) - qty; may fail: overflow: (sum(qty) LEAST sum(qty)) - ((sum(qty) - qty) GREATEST (sum(qty) - qty)); may fail: domain"
+    },
+    "catalogue/fin-impossible-travel [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-impossible-travel [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-log-returns [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: price / lag(price); may fail: domain error: LN((price / lag(price))); fix what it names and verify again"
+    },
+    "catalogue/fin-log-returns [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: price / lag(price); may fail: domain error: LN((price / lag(price))); fix what it names and verify again"
+    },
+    "catalogue/fin-max-drawdown [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: price / max(price); may fail: domain error: price / max(price); fix what it names and verify again"
+    },
+    "catalogue/fin-max-drawdown [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: price / max(price); may fail: domain error: price / max(price); fix what it names and verify again"
+    },
+    "catalogue/fin-ohlc [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/fin-ohlc [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/fin-realized-volatility [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: price / lag(price); may fail: domain error: LN((price / lag(price))); may fail: domain error: $N; fix what it names an"
+    },
+    "catalogue/fin-realized-volatility [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: price / lag(price); may fail: domain error: LN((price / lag(price))); may fail: domain error: $N; fix what it names an"
+    },
+    "catalogue/fin-reconciliation [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-reconciliation [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-rfm [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-rfm [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/fin-running-balance [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-running-balance [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: dec.arith'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/fin-structuring [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-structuring [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: dec.arith'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/fin-velocity-check [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-velocity-check [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/fin-volume-spike [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/fin-volume-spike [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/fin-vwap [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/fin-vwap [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/h2o-groupby-q1 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q1 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q10 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q10 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q3 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q3 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q6 [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: std(v3); fix what it names and verify again"
+    },
+    "catalogue/h2o-groupby-q6 [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: std(v3); fix what it names and verify again"
+    },
+    "catalogue/h2o-groupby-q7 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q7 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/h2o-groupby-q8 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q8 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q9 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-groupby-q9 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.stat'…'annotate'…'s pow_one_inf: Substrait allows ONE, NAN where the proof uses ONE; no shim writes it for this plan: export with shi"
+    },
+    "catalogue/h2o-join-q1 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-join-q1 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-join-q3 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-join-q3 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-join-q5 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/h2o-join-q5 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/iot-change-detection [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-change-detection [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-condition-duration [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (boolean, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-condition-duration [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (boolean, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-consecutive-threshold [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-consecutive-threshold [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-counter-increase [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: packets - lag(packets); fix what it names and verify again"
+    },
+    "catalogue/iot-counter-increase [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: packets - lag(packets); fix what it names and verify again"
+    },
+    "catalogue/iot-daily-energy [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: max(kwh_total) - min(kwh_total); fix what it names and verify again"
+    },
+    "catalogue/iot-daily-energy [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: max(kwh_total) - min(kwh_total); fix what it names and verify again"
+    },
+    "catalogue/iot-downsample [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: temperature; fix what it names and verify again"
+    },
+    "catalogue/iot-downsample [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: temperature; fix what it names and verify again"
+    },
+    "catalogue/iot-event-correlation [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/iot-event-correlation [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/iot-gapfill-locf [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: $N; fix what it names and verify again"
+    },
+    "catalogue/iot-gapfill-locf [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: $N; fix what it names and verify again"
+    },
+    "catalogue/iot-latest-reading [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/iot-latest-reading [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/iot-silent-devices [annotate]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented"
+      ]
+    },
+    "catalogue/iot-silent-devices [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/iot-time-in-state [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lead in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-time-in-state [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lead in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/iot-time-weighted-average [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: ($N *. DOUBLE($N)); may fail: division by zero: ($N /. DOUBLE($N)); fix what it names and verify again"
+    },
+    "catalogue/iot-time-weighted-average [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: ($N *. DOUBLE($N)); may fail: division by zero: ($N /. DOUBLE($N)); fix what it names and verify again"
+    },
+    "catalogue/job-1a [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/job-1a [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/job-2a [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/job-2a [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/job-6a [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/job-6a [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of min in Substrait's YAMLs takes (string); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/pa-cohort-retention [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/pa-cohort-retention [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/pa-cumulative-signups [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-cumulative-signups [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-day-n-retention [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of equal in Substrait's YAMLs takes (date, precision_timestamp<N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/pa-day-n-retention [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of equal in Substrait's YAMLs takes (date, precision_timestamp<N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/pa-first-touch [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-first-touch [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-funnel-ordered [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-funnel-ordered [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/pa-histogram [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: cast out of range: BIGINT(FLOOR((amount / N.N))); may fail: overflow: BIGINT(FLOOR((amount / N.N))) * N; fix what it names and verify ag"
+    },
+    "catalogue/pa-histogram [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: cast out of range: BIGINT(FLOOR((amount / N.N))); may fail: overflow: BIGINT(FLOOR((amount / N.N))) * N; fix what it names and verify ag"
+    },
+    "catalogue/pa-market-basket [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-market-basket [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-median-order-value [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "catalogue/pa-median-order-value [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "catalogue/pa-ntile-free-spenders [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); fix what it names and verify again"
+    },
+    "catalogue/pa-ntile-free-spenders [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); fix what it names and verify again"
+    },
+    "catalogue/pa-repeat-purchase-rate [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: (DOUBLE($N) /. DOUBLE($N)); fix what it names and verify again"
+    },
+    "catalogue/pa-repeat-purchase-rate [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: (DOUBLE($N) /. DOUBLE($N)); fix what it names and verify again"
+    },
+    "catalogue/pa-string-agg [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-string-agg [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-users-without-orders [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-users-without-orders [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/pa-zscore-outliers [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: (value - avg(value)) / IF (std_dev(value) == N.N) THEN NULL ELSE std_dev(value); fix what it names and verify again"
+    },
+    "catalogue/pa-zscore-outliers [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: (value - avg(value)) / IF (std_dev(value) == N.N) THEN NULL ELSE std_dev(value); fix what it names and verify again"
+    },
+    "catalogue/ssb-q1.1 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ssb-q1.1 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/ssb-q2.1 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ssb-q2.1 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/ssb-q3.1 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ssb-q3.1 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/ssb-q4.1 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ssb-q4.1 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q03 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q03 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q07 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q07 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: dec.arith'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/tpcds-q27 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q27 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q36 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q36 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q42 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q42 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpcds-q51 [annotate]": {
+      "outcome": "disagree",
+      "findings": [
+        "4005 mismatched types: all set inputs must have matching schemas: N vs. N on parameter path N.precision"
+      ]
+    },
+    "catalogue/tpcds-q51 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/tpcds-q89 [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * N) - avg_monthly_sales)) < N.N) THEN (N.N - DECIMAL_22_6(((sum_sales * N) - avg_mo"
+    },
+    "catalogue/tpcds-q89 [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DECIMAL_22_6(IF (DECIMAL_22_6(((sum_sales * N) - avg_monthly_sales)) < N.N) THEN (N.N - DECIMAL_22_6(((sum_sales * N) - avg_mo"
+    },
+    "catalogue/tpcds-q98 [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: (DECIMAL_TO_DOUBLE_2(DECIMAL_37_2(($N * N))) /. DECIMAL_TO_DOUBLE_2($N)); fix what it names and verify again"
+    },
+    "catalogue/tpcds-q98 [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: (DECIMAL_TO_DOUBLE_2(DECIMAL_37_2(($N * N))) /. DECIMAL_TO_DOUBLE_2($N)); fix what it names and verify again"
+    },
+    "catalogue/tpch-q01 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lt in Substrait's YAMLs takes (precision_timestamp<N>, date); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q01 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lt in Substrait's YAMLs takes (precision_timestamp<N>, date); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q02 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q02 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/tpch-q03 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q03 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q04 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q04 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q05 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q05 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q06 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q06 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q07 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q07 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q08 [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/tpch-q08 [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/tpch-q09 [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/tpch-q09 [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/tpch-q10 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q10 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q11 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of multiply in Substrait's YAMLs takes (decimal<N, N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q11 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of multiply in Substrait's YAMLs takes (decimal<N, N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q12 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q12 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q13 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q13 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q14 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q14 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q15 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q15 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q16 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q16 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q17 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q17 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: dec.arith'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/tpch-q18 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q18 [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: dec.arith'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/tpch-q19 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q19 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of subtract in Substrait's YAMLs takes (i64, decimal<N, N>); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q20 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q20 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (date, interval_compound); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q21 [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q21 [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/tpch-q22 [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/tpch-q22 [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/ts-asof-fx-tolerance [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount * rate; fix what it names and verify again"
+    },
+    "catalogue/ts-asof-fx-tolerance [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount * rate; fix what it names and verify again"
+    },
+    "catalogue/ts-asof-trades-quotes [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ts-asof-trades-quotes [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/ts-date-spine [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ts-date-spine [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/ts-dau-rolling-7d [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lt in Substrait's YAMLs takes (precision_timestamp<N>, date); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/ts-dau-rolling-7d [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lt in Substrait's YAMLs takes (precision_timestamp<N>, date); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/ts-hourly-rollup [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: mean(value); fix what it names and verify again"
+    },
+    "catalogue/ts-hourly-rollup [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: mean(value); fix what it names and verify again"
+    },
+    "catalogue/ts-local-day-revenue": {
+      "outcome": "skipped",
+      "reason": "AT TIME ZONE '…': only '…' is read, in the same way as a timestamp with a time zone (#N): a timestamp with a time zone can be read, compared with other such col"
+    },
+    "catalogue/ts-mom-growth [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); may fail: domain error: (revenue - prev_revenue) / prev_revenue; may fail: division by zero: (revenue - prev_"
+    },
+    "catalogue/ts-mom-growth [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); may fail: domain error: (revenue - prev_revenue) / prev_revenue; may fail: division by zero: (revenue - prev_"
+    },
+    "catalogue/ts-overlapping-bookings [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ts-overlapping-bookings [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/ts-pack-intervals [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/ts-pack-intervals [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "catalogue/ts-resample-15min [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: mean(value); fix what it names and verify again"
+    },
+    "catalogue/ts-resample-15min [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: mean(value); fix what it names and verify again"
+    },
+    "catalogue/ts-rolling-7day-calendar [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); fix what it names and verify again"
+    },
+    "catalogue/ts-rolling-7day-calendar [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); fix what it names and verify again"
+    },
+    "catalogue/ts-rolling-time-window [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: value; fix what it names and verify again"
+    },
+    "catalogue/ts-rolling-time-window [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: value; fix what it names and verify again"
+    },
+    "catalogue/ts-session-starts [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/ts-session-starts [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/ts-sessionize [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/ts-sessionize [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "catalogue/ts-weekly-active-users [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/ts-weekly-active-users [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/win-above-group-average [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/win-above-group-average [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: cmp'…'annotate'…'s nan_order: Substrait allows UNORDERED where the proof uses GREATEST (ST-N, upstream/bugs/ST-N.json); no shim writes it"
+    },
+    "catalogue/win-dedup-latest [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/win-dedup-latest [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/win-forward-fill [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/win-forward-fill [apply]": {
+      "outcome": "agree"
+    },
+    "catalogue/win-gaps-and-islands [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ($N + DAYS -($N)); fix what it names and verify again"
+    },
+    "catalogue/win-gaps-and-islands [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ($N + DAYS -($N)); fix what it names and verify again"
+    },
+    "catalogue/win-keyset-pagination [annotate]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented"
+      ]
+    },
+    "catalogue/win-keyset-pagination [apply]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented"
+      ]
+    },
+    "catalogue/win-lag-change [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount - lag(amount); fix what it names and verify again"
+    },
+    "catalogue/win-lag-change [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount - lag(amount); fix what it names and verify again"
+    },
+    "catalogue/win-latest-argmax [annotate]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/win-latest-argmax [apply]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "catalogue/win-moving-average [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: value; fix what it names and verify again"
+    },
+    "catalogue/win-moving-average [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: value; fix what it names and verify again"
+    },
+    "catalogue/win-ntile-quartiles [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); fix what it names and verify again"
+    },
+    "catalogue/win-ntile-quartiles [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: sum(amount); fix what it names and verify again"
+    },
+    "catalogue/win-percent-of-total [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: salary / sum(salary); fix what it names and verify again"
+    },
+    "catalogue/win-percent-of-total [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: division by zero: salary / sum(salary); fix what it names and verify again"
+    },
+    "catalogue/win-running-total [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "catalogue/win-running-total [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "catalogue/win-top-n-per-group [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: (DOUBLE($N) *. $N); fix what it names and verify again"
+    },
+    "catalogue/win-top-n-per-group [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: (DOUBLE($N) *. $N); fix what it names and verify again"
+    },
+    "catalogue/win-top-n-with-ties [annotate]": {
+      "outcome": "agree"
+    },
+    "catalogue/win-top-n-with-ties [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/any, all [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of max in Substrait's YAMLs takes (boolean); cast the arguments to the types of one of its impls"
+    },
+    "coverage/aggregation/any, all [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of max in Substrait's YAMLs takes (boolean); cast the arguments to the types of one of its impls"
+    },
+    "coverage/aggregation/approx_median": {
+      "outcome": "skipped",
+      "reason": "ApproxMedian is not supported: its value is each engine's own estimate; use median() or quantile() for the exact value"
+    },
+    "coverage/aggregation/approx_nunique": {
+      "outcome": "skipped",
+      "reason": "approx_nunique is not supported: its value is each engine's own estimate; use nunique() for the exact count"
+    },
+    "coverage/aggregation/argmin, argmax [annotate]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/argmin, argmax [apply]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/arithmetic over aggregates [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: max(qty) - min(qty); fix what it names and verify again"
+    },
+    "coverage/aggregation/arithmetic over aggregates [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: max(qty) - min(qty); fix what it names and verify again"
+    },
+    "coverage/aggregation/bit_and, bit_or, bit_xor [annotate]": {
+      "outcome": "refused",
+      "reason": "bit_and is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/bit_and, bit_or, bit_xor [apply]": {
+      "outcome": "refused",
+      "reason": "bit_and is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/collect [annotate]": {
+      "outcome": "refused",
+      "reason": "array_agg is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/collect [apply]": {
+      "outcome": "refused",
+      "reason": "array_agg is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/collect include_null": {
+      "outcome": "skipped",
+      "reason": "collect(include_null=True) is not supported; use collect(), which skips nulls"
+    },
+    "coverage/aggregation/collect ordered [annotate]": {
+      "outcome": "refused",
+      "reason": "array_agg is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/collect ordered [apply]": {
+      "outcome": "refused",
+      "reason": "array_agg is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/count() [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/count() [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/count, max, mean [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: mean(amount); fix what it names and verify again"
+    },
+    "coverage/aggregation/count, max, mean [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: mean(amount); fix what it names and verify again"
+    },
+    "coverage/aggregation/cov, corr [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount PAIR qty; fix what it names and verify again"
+    },
+    "coverage/aggregation/cov, corr [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount PAIR qty; fix what it names and verify again"
+    },
+    "coverage/aggregation/distinct [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/distinct [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/distinct(on=) [annotate]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/distinct(on=) [apply]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/first, last ordered [annotate]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/first, last ordered [apply]": {
+      "outcome": "refused",
+      "reason": "first is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/aggregation/group_by sum [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/group_by sum [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/group_concat [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/group_concat [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/group_concat ordered [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/group_concat ordered [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/having [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/having [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/median, quantile [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/aggregation/median, quantile [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/aggregation/mode [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/mode [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/nunique [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/nunique [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/quantile of several": {
+      "outcome": "skipped",
+      "reason": "quantile() of several fractions is not supported; take one at a time"
+    },
+    "coverage/aggregation/scalar subquery [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/scalar subquery [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: cmp'…'annotate'…'s nan_order: Substrait allows UNORDERED where the proof uses GREATEST (ST-N, upstream/bugs/ST-N.json); no shim writes it"
+    },
+    "coverage/aggregation/std [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: std(amount); fix what it names and verify again"
+    },
+    "coverage/aggregation/std [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: std(amount); fix what it names and verify again"
+    },
+    "coverage/aggregation/sum(where=) [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/sum(where=) [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/unnest [annotate]": {
+      "outcome": "refused",
+      "reason": "the plan has a extensionSingle relation, which to_substrait does not write for other consumers yet; report.to_sql(dialect) writes the proved plan for an engine "
+    },
+    "coverage/aggregation/unnest [apply]": {
+      "outcome": "refused",
+      "reason": "the plan has a extensionSingle relation, which to_substrait does not write for other consumers yet; report.to_sql(dialect) writes the proved plan for an engine "
+    },
+    "coverage/aggregation/value_counts [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/aggregation/value_counts [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/generic/now": {
+      "outcome": "skipped",
+      "reason": "ibis.now() is not supported: the time differs between runs; pass the time in as a column or constant; rewrite it with a supported operation or column type"
+    },
+    "coverage/generic/param": {
+      "outcome": "skipped",
+      "reason": "ScalarParameter is not supported: bind it: pass params={param: value} to verify, which proves the transform for that value (an unbound parameter as any value of"
+    },
+    "coverage/generic/random": {
+      "outcome": "skipped",
+      "reason": "RandomScalar is not supported: each run gives another value, so no contract can be proved about it; rewrite it with a supported operation or column type"
+    },
+    "coverage/generic/today": {
+      "outcome": "skipped",
+      "reason": "ibis.today() is not supported: the date differs between runs; pass the date in as a column or constant; rewrite it with a supported operation or column type"
+    },
+    "coverage/generic/try_cast [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/generic/try_cast [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/generic/try_cast string [annotate]": {
+      "outcome": "refused",
+      "reason": "try_varchar_bigint is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine "
+    },
+    "coverage/generic/try_cast string [apply]": {
+      "outcome": "refused",
+      "reason": "try_varchar_bigint is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine "
+    },
+    "coverage/generic/typeof [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/generic/typeof [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/generic/uuid": {
+      "outcome": "skipped",
+      "reason": "RandomUUID is not supported: each run gives another value, so no contract can be proved about it; rewrite it with a supported operation or column type"
+    },
+    "coverage/joins/anti join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/anti join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/correlated scalar subquery": {
+      "outcome": "skipped",
+      "reason": "column name refers to a relation outside its input (correlated subqueries are only supported in EXISTS)"
+    },
+    "coverage/joins/cross join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/cross join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/difference [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/difference [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/difference all [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/difference all [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/exists [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/exists [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/exists, uncorrelated [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/exists, uncorrelated [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/inner join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/inner join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/intersect [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/intersect [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/intersect all [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/intersect all [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/isin subquery [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/isin subquery [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/isin subquery in select [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/isin subquery in select [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/left join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/left join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/non-equi join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/non-equi join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/not exists [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/not exists [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/notin subquery [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/notin subquery [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/outer join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/outer join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/right join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/right join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/scalar subquery in select [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/scalar subquery in select [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/scalar subquery, many rows": {
+      "outcome": "skipped",
+      "reason": "substrait-check --contract refuses the plan: a scalar subquery must have at most one row (the engines raise on more), and the checker cannot prove it (it can fo"
+    },
+    "coverage/joins/scalar subquery, one row [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/scalar subquery, one row [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/semi join [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/semi join [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/union all [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/union all [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/union distinct [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/joins/union distinct [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/lists/list column [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/lists/list column [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/lists/list literal [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/lists/list literal [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/lists/pivot_longer [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/lists/pivot_longer [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/lists/unnest column [annotate]": {
+      "outcome": "refused",
+      "reason": "the plan has a extensionSingle relation, which to_substrait does not write for other consumers yet; report.to_sql(dialect) writes the proved plan for an engine "
+    },
+    "coverage/lists/unnest column [apply]": {
+      "outcome": "refused",
+      "reason": "the plan has a extensionSingle relation, which to_substrait does not write for other consumers yet; report.to_sql(dialect) writes the proved plan for an engine "
+    },
+    "coverage/lists/unnest keep_empty": {
+      "outcome": "skipped",
+      "reason": "unnest(keep_empty=True) is not supported; rewrite it with a supported operation or column type"
+    },
+    "coverage/math/atan2 [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount ATAN2 qty; fix what it names and verify again"
+    },
+    "coverage/math/atan2 [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount ATAN2 qty; fix what it names and verify again"
+    },
+    "coverage/math/bitwise [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/bitwise [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/math/degrees, radians [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/degrees, radians [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/math/exp [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/exp [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: fp.elem'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an en"
+    },
+    "coverage/math/isinf [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/isinf [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/math/ln [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/ln [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/math/log(base) [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount LOGB N.N; may fail: domain error: amount LOGB qty; fix what it names and verify again"
+    },
+    "coverage/math/log(base) [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount LOGB N.N; may fail: domain error: amount LOGB qty; fix what it names and verify again"
+    },
+    "coverage/math/log10, log2 [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/log10, log2 [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/math/logical xor [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/logical xor [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/math/pi, e [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/pi, e [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/math/shifts [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: qty >> id; fix what it names and verify again"
+    },
+    "coverage/math/shifts [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: qty >> id; fix what it names and verify again"
+    },
+    "coverage/math/sign [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/sign [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: cmp'…'annotate'…'s nan_order: Substrait allows UNORDERED where the proof uses GREATEST (ST-N, upstream/bugs/ST-N.json); no shim writes it"
+    },
+    "coverage/math/sqrt [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: SQRT(qty); fix what it names and verify again"
+    },
+    "coverage/math/sqrt [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: SQRT(qty); fix what it names and verify again"
+    },
+    "coverage/math/trigonometry [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/math/trigonometry [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: fp.elem'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an en"
+    },
+    "coverage/nulls/coalesce [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/nulls/coalesce [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/nulls/fill_null [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/nulls/fill_null [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/nulls/nullif [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/nulls/nullif [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/+, -, * [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: qty * N - id + N; fix what it names and verify again"
+    },
+    "coverage/numbers/+, -, * [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: qty * N - id + N; fix what it names and verify again"
+    },
+    "coverage/numbers/abs [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/abs [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/cast double → int [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/cast double → int [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/cast int → double [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/cast int → double [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/cast int → string [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/cast int → string [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/ceil, floor [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: cast out of range: BIGINT(CEIL(amount)); may fail: cast out of range: BIGINT(FLOOR(amount)); fix what it names and verify again"
+    },
+    "coverage/numbers/ceil, floor [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: cast out of range: BIGINT(CEIL(amount)); may fail: cast out of range: BIGINT(FLOOR(amount)); fix what it names and verify again"
+    },
+    "coverage/numbers/clip [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/clip [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/float division [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/float division [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/greatest [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/greatest [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/integer division [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/integer division [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/least [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/least [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/mod [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/mod [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/numbers/power [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: qty ** N; fix what it names and verify again"
+    },
+    "coverage/numbers/power [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: qty ** N; fix what it names and verify again"
+    },
+    "coverage/numbers/round [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of round in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/numbers/round [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of round in Substrait's YAMLs takes (fp64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/rows/alias [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/alias [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/between [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/between [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/cases [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/cases [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/constant table [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/constant table [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/drop, rename [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/drop, rename [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/drop_null [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/drop_null [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/fill_null all [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/fill_null all [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/fill_null table [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/fill_null table [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/filter, select [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/filter, select [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/ifelse [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/ifelse [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/isin [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/isin [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/isnull [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/isnull [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/limit [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/limit [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/limit count()": {
+      "outcome": "skipped",
+      "reason": "LIMIT and OFFSET must be integers (Ibis writes a subquery otherwise)"
+    },
+    "coverage/rows/limit expression": {
+      "outcome": "skipped",
+      "reason": "LIMIT and OFFSET must be integers (Ibis writes a subquery otherwise)"
+    },
+    "coverage/rows/limit with offset [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/limit with offset [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/memtable [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/memtable [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/mutate [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/mutate [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/notin [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/notin [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/order_by + limit [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/order_by + limit [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/order_by [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/order_by [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/order_by expression [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/order_by expression [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/sample": {
+      "outcome": "skipped",
+      "reason": "Sample is not supported yet (see #N, https://github.com/AlexanderNenninger/substrait-lean/issues/N)"
+    },
+    "coverage/rows/sql query [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/sql query [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/sql view [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/rows/sql view [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/ascii [annotate]": {
+      "outcome": "refused",
+      "reason": "ascii is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/ascii [apply]": {
+      "outcome": "refused",
+      "reason": "ascii is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/capitalize [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: text the engines'…' case mapping treats differently: LOWER((name SUBSTRING_FOR_ALL N)); fix what it names and verify again"
+    },
+    "coverage/strings/capitalize [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: text the engines'…' case mapping treats differently: LOWER((name SUBSTRING_FOR_ALL N)); fix what it names and verify again"
+    },
+    "coverage/strings/concat [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/concat [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: str.concat'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an"
+    },
+    "coverage/strings/contains [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/contains [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/find from [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/find from [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/find_in_set [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/find_in_set [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/hash": {
+      "outcome": "skipped",
+      "reason": "Hash is not supported: hash() is the engine'…'md5'…'sha256'); rewrite it with a supported operation or column type"
+    },
+    "coverage/strings/hexdigest [annotate]": {
+      "outcome": "refused",
+      "reason": "md5 is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/hexdigest [apply]": {
+      "outcome": "refused",
+      "reason": "md5 is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/host": {
+      "outcome": "skipped",
+      "reason": "ExtractHost is not supported: URL parts are not modelled; extract them with re_extract; rewrite it with a supported operation or column type"
+    },
+    "coverage/strings/ilike [annotate]": {
+      "outcome": "refused",
+      "reason": "ilike is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/ilike [apply]": {
+      "outcome": "refused",
+      "reason": "ilike is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/join [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: ((IF NOT(IS_NULL((\"…\" + name))) THEN (\"…\" + name) ELSE \"…\" + IF NOT(IS_NULL((\"…\" + \"…\"))) THEN (\"…\" + \"…\") ELSE \"…\") + IF "
+    },
+    "coverage/strings/join [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: ((IF NOT(IS_NULL((\"…\" + name))) THEN (\"…\" + name) ELSE \"…\" + IF NOT(IS_NULL((\"…\" + \"…\"))) THEN (\"…\" + \"…\") ELSE \"…\") + IF "
+    },
+    "coverage/strings/length [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/length [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/levenshtein [annotate]": {
+      "outcome": "refused",
+      "reason": "levenshtein is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/levenshtein [apply]": {
+      "outcome": "refused",
+      "reason": "levenshtein is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/like [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/like [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/lpad [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/lpad [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: str.concat'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an"
+    },
+    "coverage/strings/re_extract [annotate]": {
+      "outcome": "refused",
+      "reason": "regexp_extract is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inst"
+    },
+    "coverage/strings/re_extract [apply]": {
+      "outcome": "refused",
+      "reason": "regexp_extract is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inst"
+    },
+    "coverage/strings/re_replace [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of regexp_replace in Substrait's YAMLs takes (string, string, string, string); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/re_replace [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of regexp_replace in Substrait's YAMLs takes (string, string, string, string); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/re_search [annotate]": {
+      "outcome": "refused",
+      "reason": "regexp_match is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instea"
+    },
+    "coverage/strings/re_search [apply]": {
+      "outcome": "refused",
+      "reason": "regexp_match is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instea"
+    },
+    "coverage/strings/repeat [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: name REPEAT qty; fix what it names and verify again"
+    },
+    "coverage/strings/repeat [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: name REPEAT qty; fix what it names and verify again"
+    },
+    "coverage/strings/replace '' [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/replace '' [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/replace [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/replace [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/reverse [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/reverse [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/right [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/right [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/rpad [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/rpad [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: str.concat'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an"
+    },
+    "coverage/strings/slice [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/slice [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/startswith [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/startswith [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/strip [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/strip [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/strings/substr [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/substr [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of substring in Substrait's YAMLs takes (string, i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/strings/translate": {
+      "outcome": "skipped",
+      "reason": "translate is not modelled yet (#N): the reference semantics has no character mapping; chain .replace() for each character"
+    },
+    "coverage/strings/upper [annotate]": {
+      "outcome": "refused",
+      "reason": "upper maps non-ASCII text by a rule Substrait leaves open (ST-N, upstream/bugs/ST-N.json); report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/strings/upper [apply]": {
+      "outcome": "refused",
+      "reason": "upper maps non-ASCII text by a rule Substrait leaves open (ST-N, upstream/bugs/ST-N.json); report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/between_time": {
+      "outcome": "skipped",
+      "reason": "Arguments ts:timestamp and Literal(N:N:N):time are not comparable"
+    },
+    "coverage/time/bucket [annotate]": {
+      "outcome": "refused",
+      "reason": "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/bucket [apply]": {
+      "outcome": "refused",
+      "reason": "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/compare times [annotate]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTime literals are not yet implemented"
+      ]
+    },
+    "coverage/time/compare times [apply]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTime literals are not yet implemented"
+      ]
+    },
+    "coverage/time/compare with literal [annotate]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented"
+      ]
+    },
+    "coverage/time/compare with literal [apply]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented"
+      ]
+    },
+    "coverage/time/constant interval arithmetic [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/constant interval arithmetic [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/date + column months": {
+      "outcome": "skipped",
+      "reason": "a column's count of months or years is not supported; rewrite it with a supported operation or column type"
+    },
+    "coverage/time/date + days [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DATE(ts) + DAYS N; fix what it names and verify again"
+    },
+    "coverage/time/date + days [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DATE(ts) + DAYS N; fix what it names and verify again"
+    },
+    "coverage/time/date + years [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_12(DATE(ts)); fix what it names and verify again"
+    },
+    "coverage/time/date + years [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_12(DATE(ts)); fix what it names and verify again"
+    },
+    "coverage/time/date - column days [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DATE(ts) + DAYS -(qty); fix what it names and verify again"
+    },
+    "coverage/time/date - column days [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DATE(ts) + DAYS -(qty); fix what it names and verify again"
+    },
+    "coverage/time/date - date [annotate]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/date - date [apply]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/date - months [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_-N(DATE(ts)); fix what it names and verify again"
+    },
+    "coverage/time/date - months [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_-N(DATE(ts)); fix what it names and verify again"
+    },
+    "coverage/time/date [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/date [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/date delta [annotate]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/date delta [apply]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/date from columns [annotate]": {
+      "outcome": "refused",
+      "reason": "sverify_raise is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inste"
+    },
+    "coverage/time/date from columns [apply]": {
+      "outcome": "refused",
+      "reason": "sverify_raise is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine inste"
+    },
+    "coverage/time/date from constants [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/date from constants [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/date parts [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/date parts [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/date truncate [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/date truncate [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/day_of_week [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/day_of_week [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/day_of_week name [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/day_of_week name [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/epoch_seconds [annotate]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/epoch_seconds [apply]": {
+      "outcome": "refused",
+      "reason": "date_diff is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/group_by_dynamic (no overlap) [annotate]": {
+      "outcome": "refused",
+      "reason": "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/group_by_dynamic (no overlap) [apply]": {
+      "outcome": "refused",
+      "reason": "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/group_by_dynamic (overlapping)": {
+      "outcome": "skipped",
+      "reason": "Unnest is not supported yet (see #N, https://github.com/AlexanderNenninger/substrait-lean/issues/N)"
+    },
+    "coverage/time/iso_year [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DAY_PART_year((DATE(ts) + DAYS (N - ((DATE_PART_dow(ts) + N) % N)))); fix what it names and verify again"
+    },
+    "coverage/time/iso_year [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: DAY_PART_year((DATE(ts) + DAYS (N - ((DATE_PART_dow(ts) + N) % N)))); fix what it names and verify again"
+    },
+    "coverage/time/millisecond, microsecond [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/millisecond, microsecond [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/month end [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_1(DAY_TRUNC_month(DATE(ts))) + DAYS -N; fix what it names and verify again"
+    },
+    "coverage/time/month end [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_1(DAY_TRUNC_month(DATE(ts))) + DAYS -N; fix what it names and verify again"
+    },
+    "coverage/time/offset_by months and days [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_1(ts) + N; fix what it names and verify again"
+    },
+    "coverage/time/offset_by months and days [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_1(ts) + N; fix what it names and verify again"
+    },
+    "coverage/time/rolling sum by time [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/rolling sum by time [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/strftime [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/strftime [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/strftime other directives": {
+      "outcome": "skipped",
+      "reason": "substrait-check --contract refuses the plan: strftime format '…' is not supported (only %Y %m %d %H %M %S %j %F %T %%). Lean's model does not cover it yet: rewr"
+    },
+    "coverage/time/string to timestamp": {
+      "outcome": "skipped",
+      "reason": "StringToTimestamp is not supported yet (see #N, https://github.com/AlexanderNenninger/substrait-lean/issues/N)"
+    },
+    "coverage/time/time + interval [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (precision_time<N>, interval_day<N>); cast the arguments to the types of one of its impls"
+    },
+    "coverage/time/time + interval [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (precision_time<N>, interval_day<N>); cast the arguments to the types of one of its impls"
+    },
+    "coverage/time/time of day [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/time of day [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/time parts [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/time parts [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/time truncate [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/time truncate [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/timestamp + column interval [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/time/timestamp + column interval [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of add in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/time/timestamp + interval [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/timestamp + interval [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/timestamp + months [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_13(ts); fix what it names and verify again"
+    },
+    "coverage/time/timestamp + months [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: overflow: ADD_MONTHS_13(ts); fix what it names and verify again"
+    },
+    "coverage/time/timestamp delta [annotate]": {
+      "outcome": "refused",
+      "reason": "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/timestamp delta [apply]": {
+      "outcome": "refused",
+      "reason": "date_bin is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/timestamp from constants [annotate]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented"
+      ]
+    },
+    "coverage/time/timestamp from constants [apply]": {
+      "outcome": "disagree",
+      "findings": [
+        "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented"
+      ]
+    },
+    "coverage/time/timestamp from unix [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/time/timestamp from unix [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/time/truncate [annotate]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/truncate [apply]": {
+      "outcome": "refused",
+      "reason": "date_trunc is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/year [annotate]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/time/year [apply]": {
+      "outcome": "refused",
+      "reason": "date_part is not a function of Substrait's YAMLs: a conforming consumer would not know it; report.to_sql(dialect) writes the proved plan for an engine instead"
+    },
+    "coverage/windows/cumsum [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/cumsum [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/dense_rank [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/dense_rank [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/first [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/first [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/lag [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/windows/lag [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of lag in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/windows/last, nth [annotate]": {
+      "outcome": "refused",
+      "reason": "no impl of nth_value in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/windows/last, nth [apply]": {
+      "outcome": "refused",
+      "reason": "no impl of nth_value in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls"
+    },
+    "coverage/windows/max, count over frame [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/max, count over frame [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "coverage/windows/min over a sliding frame [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/min over a sliding frame [apply]": {
+      "outcome": "refused",
+      "reason": "refused for Substrait: agg.order'…'annotate' to ship it as an assumption; change what the reasons name, or report.to_sql(dialect) writes the proved plan for an "
+    },
+    "coverage/windows/ntile [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/ntile [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/percent_rank, cume_dist [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/percent_rank, cume_dist [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/rank [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/rank [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/rolling mean (interval) [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/rolling mean (interval) [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/rolling mean (rows) [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/rolling mean (rows) [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/rolling sum (interval) [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/rolling sum (interval) [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/rolling sum (range) [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/rolling sum (range) [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/rolling variance (rows) [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/rolling variance (rows) [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/row_number [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/row_number [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/running mean [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/running mean [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/stddev over group [annotate]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/stddev over group [apply]": {
+      "outcome": "skipped",
+      "reason": "not verified: may fail: domain error: amount; fix what it names and verify again"
+    },
+    "coverage/windows/sum over group [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/sum over group [apply]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/window sum of an expression [annotate]": {
+      "outcome": "agree"
+    },
+    "coverage/windows/window sum of an expression [apply]": {
+      "outcome": "agree"
+    }
+  }
+}

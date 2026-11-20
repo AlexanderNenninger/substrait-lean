@@ -505,22 +505,13 @@ def lean_transfer(source: str, target: str, depends: Sequence[Mapping[str, Any]]
     is authoritative: `{"ok": bool, "failures": [...]}`; None where the
     checker has none. A route reads the same check from the checker's
     verdict on the engine (`"transfer"`)."""
-    import subprocess
-
     from sverify.engine import checker_path
 
-    request = json.dumps({"from": source, "to": target, "depends": list(depends)})
+    request = json.dumps({"from": source, "to": target, "depends": list(depends)}, sort_keys=True)
+    out = _transfer(str(checker_path()), request)
     try:
-        out = subprocess.run(
-            [str(checker_path()), "--transfer"],
-            input=request,
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=60,
-        ).stdout
-        found = json.loads(out)
-    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        found = json.loads(out) if out is not None else None
+    except json.JSONDecodeError:
         return None
     if not isinstance(found, dict) or "ok" not in found:
         return None
@@ -528,6 +519,26 @@ def lean_transfer(source: str, target: str, depends: Sequence[Mapping[str, Any]]
     if failures is None:
         failures = [found["failure"]] if found.get("failure") else []
     return {"ok": bool(found["ok"]), "failures": failures}
+
+
+@functools.lru_cache(maxsize=512)
+def _transfer(checker: str, request: str) -> str | None:
+    """The checker's answer to a transfer request: a function of the request
+    and the checker alone, so each is asked once per process (an export
+    asks it per `shims` mode, #862)."""
+    import subprocess
+
+    try:
+        return subprocess.run(
+            [checker, "--transfer"],
+            input=request,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=60,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def row(profile: str, group: str | None, option: str) -> dict | None:
