@@ -62,6 +62,13 @@ def check(
     return _Checker(proj, counterexamples).run(set(select) if select else None)
 
 
+#: The bounds of the search for input tests that prove a model test
+#: (`_blame_nulls`): at most this many uncovered input columns, and this many
+#: extra checker calls per model.
+_BLAME_COLUMNS = 12
+_BLAME_CALLS = 24
+
+
 class _Checker:
     def __init__(self, project: Project, counterexamples: int):
         self.p = project
@@ -305,6 +312,7 @@ class _Checker:
             for c in tables[self.names[r.unique_id]]
             if c not in self._not_null(r)
         ]
+        budget = [_BLAME_CALLS]
         for tr, cs in ensures:
             if (
                 tr.status != "not proved"
@@ -312,9 +320,15 @@ class _Checker:
                 or tr.blocker not in ("may_be_false", "may_be_null")
             ):
                 continue
+            if len(candidates) > _BLAME_COLUMNS or budget[0] < 1:
+                continue  # too many columns to try: sverify-dbt suggests nothing
+            budget[0] -= 1
             held = self._holds_with(res, tables, requires, cs, candidates)
             for pair in list(held or []):
+                if budget[0] < 1:
+                    break
                 rest = [x for x in held or [] if x != pair]
+                budget[0] -= 1
                 if rest and self._holds_with(res, tables, requires, cs, rest):
                     held = rest
             for r, c in held or []:
