@@ -220,8 +220,8 @@ def test_needed_text_is_a_field() -> None:
 
 def test_equivalence_is_the_observation() -> None:
     report = _quiet(sv.verify, T.select("k"), ensures=[sv.equivalent(rows="sequence")])
-    assert report.equivalence is report.observation
-    assert report.equivalence.rows == "sequence"
+    assert not hasattr(report, "observation") and not hasattr(report, "equivalence")
+    assert report.lenses.rows == "sequence"
 
 
 def test_inferred_warn_still_warns() -> None:

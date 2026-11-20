@@ -1,0 +1,26 @@
+{
+  "id": "U-2026-11-19-exact-limb-state",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Maintained double SUM, AVG, VAR, STDDEV, COVAR and CORR stay exact (D25, D30); the state moves into the engines as integer limbs; no compensated and no quantised state.",
+  "issues": [
+    1329,
+    1447
+  ],
+  "prs": [
+    1873
+  ],
+  "supersedes": [
+    "F141.1",
+    "U-2026-11-09-incremental-compensated-state"
+  ],
+  "amends": [
+    "F141",
+    "U-2026-11-03-reference-generic-properties",
+    "U-2026-11-08-no-bit-identical-limb-sums"
+  ],
+  "source": "fable-note-167-exact-limb-state.md",
+  "note": "Relayed in note 167; #1329 item 8 text superseded, exact limb state is 1.0 M2 work (#1447 items 1-2). The 2026-11-08 settlement on batch plans is not reopened."
+}

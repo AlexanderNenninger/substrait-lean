@@ -1,0 +1,15 @@
+{
+  "id": "F56",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1639 (N5) accepted as an interim: the Spark driver reads Parquet footers only for local paths on a shared filesystem; other cases follow ruling 3 or raise Unsupported. New step N12 (route A opens no data file in the driver) required before 1.0.",
+  "issues": [
+    173
+  ],
+  "prs": [
+    1639
+  ],
+  "source": "fable-ruling-1639-driver-footers.md"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "F110",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Declined: the upscaled side of a cross-scale decimal comparison keeps dkind 38 s, not the checked decimal; DuckDB's writer compares exactly since #1523; allowed an rfl lemma that evaluation ignores the precision; Spark needs its own fact and writer follow-up.",
+  "issues": [
+    1484,
+    1498
+  ],
+  "prs": [
+    1523
+  ],
+  "source": "fable-ruling-dkind-compare-side.md",
+  "note": "No D-number. Spark follow-up later handled under ruling 122 (#1777) per the index."
+}

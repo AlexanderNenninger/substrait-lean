@@ -13,6 +13,7 @@ import sverify as sv
 from _pipelines import bound_orders
 from sverify.contracts import OVERFLOW_HINT, violations
 from sverify.errors import PostconditionError, PreconditionError, VerificationError
+from sverify.report import ColumnFacts
 from sverify_dev.examples import customers, orders
 
 
@@ -29,10 +30,10 @@ def test_postconditions_are_proved():
     report = doubled.report
     assert report is not None
     assert report.verdict == sv.Verdict.PROVED
-    assert report.facts["doubled"] == "an integer ≥ 22"
+    assert str(report.facts["doubled"]) == "an integer ≥ 22"
     assert "(_.amount < 4611686018427387904)" in report.requires["orders"]  # stated (#655)
     assert report._inferred == {}
-    assert report.facts["id"] == "any integer"  # never NULL, by the precondition
+    assert str(report.facts["id"]) == "any integer"  # never NULL, by the precondition
 
 
 def test_unprovable_postcondition_is_refused():
@@ -43,7 +44,7 @@ def test_unprovable_postcondition_is_refused():
     with pytest.raises(VerificationError) as e:
         plus_one(orders)
     assert e.value.report.unproved[0].value == "TRUE or FALSE"
-    assert e.value.report.facts["total"] == "an integer ≥ 1"
+    assert str(e.value.report.facts["total"]) == "an integer ≥ 1"
 
 
 def test_null_propagates_unless_ruled_out():
@@ -83,7 +84,7 @@ def test_inner_join_keeps_facts_left_join_does_not():
     assert sv.verify(inner, requires=pre, ensures=[_.city.notnull()]).verdict == sv.Verdict.PROVED
     report = sv.verify(left, requires=pre, ensures=[_.city.notnull()])
     assert report.verdict == sv.Verdict.UNPROVED
-    assert "NULL" in report.facts["city"]
+    assert "NULL" in str(report.facts["city"])
 
 
 def test_sql_transform_and_conditions():
@@ -431,21 +432,27 @@ def test_a_date_beyond_year_9999_is_described_without_overflow():
     jobs = ibis.table({"started_at": "!timestamp"}, name="jobs")
     sql = "SELECT CAST(started_at AS DATE) AS day, count(*) AS n FROM jobs GROUP BY day"
     facts = sv.verify(sql, tables={"jobs": jobs.schema()}).facts
-    assert facts["day"] == "any date"
+    assert str(facts["day"]) == "any date"
+    assert (facts["day"].lower, facts["day"].upper) == (None, None)
 
 
 def test_sql_facts_describe_timestamps_and_dates():
     # The lift knows the SQL's types: no integer codes in the facts (#452).
     t = ibis.table({"host": "string", "minute": "timestamp", "day": "date"}, name="t")
     facts = sv.verify("SELECT host, minute, day FROM t", tables={"t": t.schema()}).facts
-    assert facts == sv.verify(t.select("host", "minute", "day")).facts
-    assert facts["minute"] == "any timestamp or NULL"
-    assert facts["day"] == "any date or NULL"
+    ibis_facts = sv.verify(t.select("host", "minute", "day")).facts
+    # The same values and the same words (`ColumnFacts` compares no text).
+    assert facts == ibis_facts
+    assert {c: str(f) for c, f in facts.items()} == {c: str(f) for c, f in ibis_facts.items()}
+    assert str(facts["minute"]) == "any timestamp or NULL"
+    assert str(facts["day"]) == "any date or NULL"
+    assert facts["minute"] == ColumnFacts(nullable=True)
     bounded = sv.verify(
         "SELECT minute FROM t WHERE minute >= TIMESTAMP '2026-01-01 00:00:00'",
         tables={"t": t.schema()},
     ).facts
-    assert bounded["minute"] == "a timestamp ≥ 2026-01-01 00:00:00"
+    assert str(bounded["minute"]) == "a timestamp ≥ 2026-01-01 00:00:00"
+    assert bounded["minute"].lower == datetime(2026, 1, 1)
 
 
 def test_a_bound_on_abs_bounds_the_value():
@@ -462,4 +469,4 @@ def test_a_bound_on_abs_bounds_the_value():
                 t.mutate(s=agg.over(w)), requires={"t": [cond, _.x.notnull()]}, ensures=[]
             )
             assert not report.issues
-            assert report.facts["x"] == shown
+            assert str(report.facts["x"]) == shown

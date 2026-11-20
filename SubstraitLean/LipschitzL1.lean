@@ -984,7 +984,7 @@ A table of three columns of at most 10 rows, the third a double with an
 `M₁` budget of 8 codes. -/
 
 private def exCat1 : Catalog := fun _ => ⟨3, []⟩
-private def exK1 : KnowledgeEnv := fun _ => ⟨[], [], [], some 10⟩
+private def exK1 : KnowledgeEnv := fun _ => ⟨[], [], [], some 10, []⟩
 private def exT1 : String → Tol := fun _ c => if c = 2 then some 8 else none
 private def exB (r : Rel) : Option (List (Option Nat)) :=
   (r.tol1 exCat1 exK1 exT1).map fun t => (List.range 6).map t
@@ -1001,7 +1001,7 @@ private def exB (r : Rel) : Option (List (Option Nat)) :=
 /-- The table's knowledge: at most 10 rows, the double in `[-10⁶, 10⁶]`. -/
 private def exK1r : KnowledgeEnv := fun _ =>
   ⟨[AVal.top, AVal.top, AVal.num false ⟨some (FloatCode.ofFloat (-1.0e6)), some (FloatCode.ofFloat 1.0e6)⟩ .float],
-    [], [], some 10⟩
+    [], [], some 10, []⟩
 private def exS (r : Rel) : Option (List Bool) :=
   (r.tol1 exCat1 exK1r exT1).map fun t => (List.range 4).map fun c => (t c).isSome
 

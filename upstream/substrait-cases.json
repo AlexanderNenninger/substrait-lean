@@ -20,8 +20,8 @@
       "disagree": 14
     },
     "arithmetic_decimal": {
-      "agree": 38,
-      "refused": 90,
+      "agree": 37,
+      "refused": 91,
       "disagree": 0
     },
     "arithmetic_unsigned": {
@@ -35,8 +35,8 @@
       "disagree": 0
     },
     "comparison": {
-      "agree": 154,
-      "refused": 29,
+      "agree": 152,
+      "refused": 31,
       "disagree": 0
     },
     "datetime": {
@@ -75,8 +75,8 @@
       "disagree": 0
     },
     "all": {
-      "agree": 646,
-      "refused": 608,
+      "agree": 643,
+      "refused": 611,
       "disagree": 63
     }
   },
@@ -126,12 +126,12 @@
       "checker: sqrt of DECIMAL is not supported yet (#N)": 12,
       "checker: avg: option overflow is not supported": 6,
       "checker: factorial of DECIMAL is not supported yet (#N)": 5,
+      "checker: factorial: a DECIMAL result of non-decimal arguments is not supported": 2,
+      "checker: negate: a DECIMAL result of non-decimal arguments is not supported": 2,
       "checker: the expected result raises (Substrait.Issue.overflow)": 2,
-      "checker: unsupported function factorial/N": 2,
       "checker: bitwise_and: a DECIMAL result of non-decimal arguments is not supported": 1,
       "checker: bitwise_or: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: bitwise_xor: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: negate: a DECIMAL result of non-decimal arguments is not supported": 1
+      "checker: bitwise_xor: a DECIMAL result of non-decimal arguments is not supported": 1
     },
     "arithmetic_unsigned": {
       "harness: unsigned integers (u!u8) are not modelled": 18,
@@ -148,7 +148,9 @@
     "comparison": {
       "checker: unsupported function between/N": 17,
       "checker: unsupported function is_finite/N": 6,
-      "checker: unsupported function is_infinite/N": 6
+      "checker: unsupported function is_infinite/N": 6,
+      "checker: coalesce: a DECIMAL result of non-decimal arguments is not supported": 1,
+      "checker: nullif: a DECIMAL result of non-decimal arguments is not supported": 1
     },
     "datetime": {
       "checker: gte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,

@@ -1,0 +1,11 @@
+{
+  "id": "D40",
+  "date": "2026-11-09",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "power(±1, ±∞) is C's pow (1), the pow_one_inf option.",
+  "amended_by": [
+    "F163"
+  ]
+}

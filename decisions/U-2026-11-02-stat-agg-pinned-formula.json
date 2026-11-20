@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-02-stat-agg-pinned-formula",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "Lean pins one two-pass formula for std, var, corr and cov of doubles, which every engine must follow.",
+  "issues": [
+    54
+  ],
+  "superseded_by": [
+    "U-2026-11-02-stat-agg-native"
+  ],
+  "source": "github:#54 comment 6574092612",
+  "note": "Recorded as 'Decided (via the coordinator)'; reversed by the user the same day."
+}

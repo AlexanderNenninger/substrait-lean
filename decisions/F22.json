@@ -1,0 +1,16 @@
+{
+  "id": "F22",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "DuckDB quantile zero sign: QUANTILE_CONT and median print the canonical zero now; QUANTILE_DISC of doubles needs D45 (picks within the class), proposed and held; #1512 holds its zero_sign rerun change until the user answers.",
+  "prs": [
+    1512
+  ],
+  "amended_by": [
+    "F24"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 22",
+  "note": "File ruling-1512-quantile-zero.md. D45 approved by the user in entry 24 (wording in entry 25). Options B and C declined. Closes entry 17's hand-off."
+}

@@ -220,7 +220,7 @@ def test_stddev_samp_of_an_integer_is_proved_as_ibiss():
     jobs = ibis.table({"workflow": "!string", "duration_s": "int64"}, name="jobs")
     query = "SELECT workflow, stddev_samp(duration_s) AS sd FROM jobs GROUP BY workflow"
     report = sv.verify(query, tables={"jobs": jobs})
-    assert report.facts["sd"] == "a double ≥ 0.0 or NULL", report
+    assert str(report.facts["sd"]) == "a double ≥ 0.0 or NULL", report
     ibis_report = sv.verify(jobs.group_by("workflow").aggregate(sd=jobs.duration_s.std()))
     assert report.facts == ibis_report.facts
     plan = lift(query, {"jobs": jobs.schema()}).plan

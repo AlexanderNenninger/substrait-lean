@@ -1,0 +1,20 @@
+{
+  "id": "F175",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Public = names in a public module's __all__ plus non-underscore members of its classes; held types go to a new re-export module sverify.types (18 names), top level stays at 19; five version constants leave __all__; PR B removes all deprecated spellings.",
+  "issues": [
+    886,
+    1288
+  ],
+  "prs": [
+    1795
+  ],
+  "amended_by": [
+    "F180"
+  ],
+  "source": "fable-ruling-175-886-public-api.md",
+  "note": "Report member questions left to #1288 API-5. The name sverify.types goes on the user's notice list."
+}

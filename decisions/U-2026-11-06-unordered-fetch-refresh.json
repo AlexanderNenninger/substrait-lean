@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-06-unordered-fetch-refresh",
+  "date": "2026-11-06",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Unordered FETCH is allowed in verify and run but refused in refresh unless deterministic or reproducible.",
+  "source": "memory:road-to-1-0.md"
+}

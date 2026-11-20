@@ -27,6 +27,14 @@ night it was seen, a count, its seeds and one example. `report` prints the
 night's findings, new ones first, for triage; nothing is filed anywhere.
 `repro` prints the one command that reproduces a ledger entry.
 
+The gate of #747: every mismatch has an explanation. `fuzz_explained.json`
+beside this file holds the rules, each matching signatures (`kind`, a regular
+expression over the `shape`, optionally the value `class`) to an open issue,
+an engine fact (`engines/<engine>/facts/<id>.json`) or an upstream record
+(`upstream/bugs/<id>.json`). `merge` records each entry's explanation, and the
+report lists the night's unexplained signatures, and the rules whose issue is
+closed, as warnings. It reports; it never fails the run.
+
 `merge`, `report` and `repro` use the standard library only, so they run on
 any Python 3.12 without installing sverify.
 """
@@ -51,6 +59,9 @@ from typing import Any
 
 PYTHON_DIR = Path(__file__).resolve().parents[2]
 """`python/`: where the batches run."""
+REPO = PYTHON_DIR.parent
+EXPLAINED = Path(__file__).with_name("fuzz_explained.json")
+"""The rules that explain mismatches (#747)."""
 
 #: Examples per Hypothesis test, as a multiple of each test's own count.
 EXAMPLES = "3"
@@ -321,9 +332,52 @@ def findings(batch_dir: Path) -> list[dict[str, Any]]:
 # --- the ledger ----------------------------------------------------------------------
 
 
-def merge(ledger: dict[str, Any], batch_dirs: Iterable[Path]) -> tuple[dict[str, Any], list[dict]]:
+# --- explanations (#747) --------------------------------------------------------------
+
+
+def load_rules(path: Path = EXPLAINED) -> list[dict[str, Any]]:
+    return json.loads(path.read_text())["rules"] if path.exists() else []
+
+
+def rule_problems(rules: list[dict[str, Any]], repo: Path = REPO) -> list[str]:
+    """What is wrong with the rules: a missing field, a bad pattern, an
+    explanation that names no existing fact or upstream record."""
+    out = []
+    for i, r in enumerate(rules):
+        what = [k for k in ("issue", "fact", "upstream") if k in r]
+        if len(what) != 1 or "kind" not in r or "shape" not in r:
+            out.append(f"rule {i}: needs `kind`, `shape` and one of issue, fact or upstream")
+            continue
+        try:
+            re.compile(r["shape"])
+        except re.error as e:
+            out.append(f"rule {i}: shape: {e}")
+        if "fact" in r and not list(repo.glob(f"engines/*/facts/{r['fact']}.json")):
+            out.append(f"rule {i}: no fact {r['fact']} in engines/*/facts/")
+        if "upstream" in r and not (repo / "upstream" / "bugs" / f"{r['upstream']}.json").exists():
+            out.append(f"rule {i}: no upstream record upstream/bugs/{r['upstream']}.json")
+    return out
+
+
+def explanation(sig: Sequence[str], rules: list[dict[str, Any]]) -> str | None:
+    """`#123`, `fact DD-4` or `upstream DUCK-7` for the first rule matching the
+    signature `[kind, shape, class]`, or None."""
+    kind, shape_, cls = sig
+    for r in rules:
+        if r["kind"] == kind and re.search(r["shape"], shape_) and r.get("class", cls) == cls:
+            if "issue" in r:
+                return f"#{r['issue']}"
+            return f"fact {r['fact']}" if "fact" in r else f"upstream {r['upstream']}"
+    return None
+
+
+def merge(
+    ledger: dict[str, Any], batch_dirs: Iterable[Path], rules: list[dict[str, Any]] | None = None
+) -> tuple[dict[str, Any], list[dict]]:
     """The ledger with the batches' findings folded in, and the night's
-    findings (each marked `new` when its signature is not in the ledger yet)."""
+    findings (each marked `new` when its signature is not in the ledger yet,
+    and with its explanation under `rules`, or None)."""
+    rules = load_rules() if rules is None else rules
     entries: dict[str, Any] = dict(ledger.get("entries", {}))
     night: list[dict] = []
     batches: list[dict] = []
@@ -350,22 +404,30 @@ def merge(ledger: dict[str, Any], batch_dirs: Iterable[Path]) -> tuple[dict[str,
             e["count"] += 1
             if f["seed"] not in e["seeds"]:
                 e["seeds"] = (e["seeds"] + [f["seed"]])[-5:]
-            night.append({**f, "id": key, "new": new})
+            e["explained"] = explanation(f["sig"], rules)
+            night.append({**f, "id": key, "new": new, "explained": e["explained"]})
     return {"version": 1, "entries": dict(sorted(entries.items())), "last_batches": batches}, night
 
 
-def report(night: list[dict], batches: list[dict]) -> str:
-    """The night's findings for triage, new signatures first, in Markdown."""
+def report(night: list[dict], batches: list[dict], closed: Iterable[int] = ()) -> str:
+    """The night's findings for triage, unexplained first, then new, then the
+    rest, in Markdown. `closed`: issues no longer open, so a rule naming one
+    explains nothing."""
+    closed_refs = {f"#{n}" for n in closed}
     by_id: dict[str, dict] = {}
     for f in night:
-        by_id.setdefault(f["id"], f)
+        g: dict[str, Any] = {"explained": None, **f}
+        if g["explained"] in closed_refs:
+            g.update(explained=None, stale=g["explained"])
+        by_id.setdefault(g["id"], g)
     lost = [b for b in batches if b["status"] != "ok"]
     new = [f for f in by_id.values() if f["new"]]
+    unexplained = [f for f in by_id.values() if not f["explained"]]
     lines = [
         "# Nightly fuzz",
         "",
         f"{len(batches)} batches ({len(lost)} stopped), {len(by_id)} distinct signatures, "
-        f"{len(new)} new.",
+        f"{len(new)} new, {len(unexplained)} without an explanation (#747).",
         "",
     ]
     if lost:
@@ -377,20 +439,43 @@ def report(night: list[dict], batches: list[dict]) -> str:
         ]
         lines.append("")
     for title, group in (
-        ("New", new),
-        ("Seen before", [f for f in by_id.values() if not f["new"]]),
+        ("Unexplained", unexplained),
+        ("New", [f for f in new if f["explained"]]),
+        ("Seen before", [f for f in by_id.values() if not f["new"] and f["explained"]]),
     ):
         if not group:
             continue
         lines += [f"## {title}", ""]
-        for f in sorted(group, key=lambda f: f["sig"]):
+        if title == "Unexplained":
             lines += [
-                f"- `{f['id']}` {' | '.join(f['sig'])} (seed {f['seed']})",
+                "Each needs an open issue, an engine fact or an upstream record, and a rule in "
+                "`python/tools/sverify_dev/fuzz_explained.json` that names it.",
+                "",
+            ]
+        for f in sorted(group, key=lambda f: f["sig"]):
+            why = f" → {f['explained']}" if f["explained"] else ""
+            stale = f" (its rule names {f['stale']}, which is closed)" if f.get("stale") else ""
+            lines += [
+                f"- `{f['id']}` {' | '.join(f['sig'])} (seed {f['seed']}){why}{stale}",
                 f"  repro: `python3 python/tools/sverify_dev/fuzz_nightly.py repro "
                 f"fuzz-ledger.json {f['id']}`",
             ]
         lines.append("")
     return "\n".join(lines)
+
+
+def warnings(night: list[dict], closed: Iterable[int] = ()) -> list[str]:
+    """One GitHub annotation per unexplained signature of the night."""
+    closed_refs = {f"#{n}" for n in closed}
+    seen: dict[str, dict] = {}
+    for f in night:
+        seen.setdefault(f["id"], f)
+    return [
+        f"::warning title=Fuzz mismatch without an issue (#747)::{f['id']} "
+        f"{' | '.join(f['sig'])[:200]}"
+        for f in seen.values()
+        if not f.get("explained") or f["explained"] in closed_refs
+    ]
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -406,6 +491,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     m = sub.add_parser("merge", help="fold batch directories into the ledger; print the report")
     m.add_argument("--ledger", type=Path, required=True, help="read if it exists, then written")
     m.add_argument("--report", type=Path, required=True)
+    m.add_argument(
+        "--open-issues",
+        type=Path,
+        help="JSON list of the open issue numbers; a rule naming another explains nothing",
+    )
     m.add_argument("dirs", type=Path, nargs="*")
     r = sub.add_parser("repro", help="the command that reproduces a ledger entry")
     r.add_argument("ledger", type=Path)
@@ -420,10 +510,19 @@ def main(argv: Sequence[str] | None = None) -> None:
     elif args.cmd == "merge":
         old = json.loads(args.ledger.read_text()) if args.ledger.exists() else {}
         dirs = sorted({p.parent for d in args.dirs for p in d.rglob("batch.json")})
-        new, night = merge(old, dirs)
+        rules = load_rules()
+        for problem in rule_problems(rules):
+            print(f"::warning title=fuzz_explained.json::{problem}")
+        new, night = merge(old, dirs, rules)
+        closed: set[int] = set()
+        if args.open_issues:
+            open_ = set(json.loads(args.open_issues.read_text()))
+            closed = {r["issue"] for r in rules if "issue" in r and r["issue"] not in open_}
         args.ledger.write_text(json.dumps(new, indent=1) + "\n")
-        args.report.write_text(report(night, new["last_batches"]) + "\n")
+        args.report.write_text(report(night, new["last_batches"], closed) + "\n")
         print(args.report.read_text())
+        if os.environ.get("GITHUB_ACTIONS"):
+            print("\n".join(warnings(night, closed)))
     else:
         entry = json.loads(args.ledger.read_text())["entries"][args.id]
         if "{file}" in entry["repro"]:

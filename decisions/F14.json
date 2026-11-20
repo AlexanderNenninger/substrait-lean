@@ -1,0 +1,17 @@
+{
+  "id": "F14",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1515 accepted: the recheck route from a DuckDB report to Polars goes; a plan reading zero_sign fails the transfer check, auto refuses and leads with the reference, and the re-check returns with #271.",
+  "issues": [
+    271,
+    1442
+  ],
+  "prs": [
+    1515
+  ],
+  "source": "fable-rulings-night-1117.md, entry 14",
+  "note": "File ruling-1515-recheck-to-polars.md. Amends rulings-1116.md section 2.7 (DuckDB to Polars recheck). No D-number."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "F26",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#900: build DuckDB's QUANTILE_CONT position band with quantile_disc at q +/- 1e-15 inside it, a write-time refusal above 21 decimals and one remaining raise at n1 >= 10^14; owed a fact, a fast test and Hypothesis membership.",
+  "issues": [
+    900
+  ],
+  "source": "fable-rulings-night-1117.md, entry 26",
+  "note": "File ruling-900-position-band.md. Corrects the error bound and notes the bypassed domain raise. Fable ran an exact simulation and DuckDB probes."
+}

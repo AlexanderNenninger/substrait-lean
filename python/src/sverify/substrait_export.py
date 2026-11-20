@@ -49,10 +49,11 @@ SUBSTRAIT_VERSION = (0, 106, 0)
 #: The protobuf package and type URL of the contract message.
 PACKAGE = "io.sverify.substrait.v1"
 TYPE_URL = f"type.googleapis.com/{PACKAGE}.Contract"
-#: The version of the manifest's format. Format 2 (1.0) says `semantics`
-#: and `equivalence` where format 1 said `profile` and `observation`; `read`
-#: reads both.
-FORMAT = 2
+#: The version of the manifest's format. Format 2 says `semantics` and
+#: `equivalence` where format 1 said `profile` and `observation`; format 3
+#: (1.0) says `lenses`, `lenses_components` and `up_to[].lenses` where
+#: format 2 said `equivalence` (`Report.lenses`); `read` reads all three.
+FORMAT = 3
 
 Json = dict[str, Any]
 Format = Literal["json", "binary"]
@@ -744,6 +745,36 @@ class _Typer:
 
     # expressions
 
+    @staticmethod
+    def _one_branch_type(branches: list[Json], outs: list[Ty]) -> None:
+        """Give an `ifThen`'s literal branches the type of its other branches,
+        which Substrait asks of them (#862): a NULL the writer could not type
+        (it writes i64), and a decimal literal written at the precision of
+        its digits, widened to the others' at the same scale. Neither changes
+        a value."""
+        pairs = list(zip(branches, outs, strict=True))
+        typed = [t for b, t in pairs if "literal" not in b]
+        typed = typed or [t for b, t in pairs if "null" not in b["literal"]]
+        if not typed or any(t != typed[0] for t in typed):
+            return
+        target = typed[0]
+        for i, b in enumerate(branches):
+            lit = b.get("literal")
+            if lit is None or outs[i] == target:
+                continue
+            if "null" in lit:
+                b["literal"] = {"null": target.json()}
+            elif (
+                "decimal" in lit
+                and target.name == "decimal"
+                and outs[i].params[1] == target.params[1]
+                and outs[i].params[0] <= target.params[0]
+            ):
+                lit["decimal"]["precision"] = target.params[0]
+            else:
+                continue
+            outs[i] = target
+
     def expr(self, e: Json, cols: list[Ty]) -> Ty:
         if "selection" in e:
             sel = e["selection"]
@@ -805,8 +836,12 @@ class _Typer:
             for c in it.get("ifs", []):
                 self.expr(c["if"], cols)
                 outs.append(self.expr(c["then"], cols))
+            branches = [c["then"] for c in it.get("ifs", [])] + (
+                [it["else"]] if "else" in it else []
+            )
             if "else" in it:
                 outs.append(self.expr(it["else"], cols))
+            self._one_branch_type(branches, outs)
             return outs[0]
         if "singularOrList" in e:
             s = e["singularOrList"]
@@ -1239,7 +1274,7 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                     "group": g,
                     "option": o,
                     "gap": "ST-9",
-                    "equivalence": {},
+                    "lenses": {},
                     "why": "IEEE 754's default rounding, which fp64 follows; tested, "
                     "not stated by the YAML",
                 }
@@ -1269,18 +1304,18 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
             from sverify.observation import from_json
 
             q = from_json(r["q"])
-            missed = q.coarser_than(report.observation)
+            missed = q.coarser_than(report.lenses)
             if not missed:
-                h.up_to.append({"group": g, "option": o, "equivalence": r["q"]})
+                h.up_to.append({"group": g, "option": o, "lenses": r["q"]})
                 continue
             if missed == ["floats"] and q.floats == "plan" and (met := _plan_bound_met(report)):
                 # D25: the consumer adds in its own order, within the plan's
                 # proved bound, which meets the postconditions' tolerance.
-                h.up_to.append({"group": g, "option": o, "equivalence": {"floats": met}})
+                h.up_to.append({"group": g, "option": o, "lenses": {"floats": met}})
                 continue
             observed = (
                 f"{where}: a Substrait consumer agrees with the reference only up to {q}, "
-                f"and the postconditions observe its {', '.join(missed)} ({report.observation}); "
+                f"and the postconditions observe its {', '.join(missed)} ({report.lenses}); "
                 f"state {', '.join(missed)} in sv.equivalent(...)"
             )
         if shims == "annotate":
@@ -1382,12 +1417,80 @@ def _messages() -> tuple[type, type]:
     return contract, condition
 
 
+def _text_fact(text: str, entry: Json) -> Any:
+    """A text column's fact read back: the inferred condition the export
+    recorded, which a run checks by its SQL (#862)."""
+    from sverify.conditions import Inferred
+
+    out = Inferred(entry["sql"], text)
+    out.column, out.fact = entry["column"], entry["fact"]
+    return out
+
+
+#: A relation's kind in protobuf JSON: the one key that is not `common`.
+_REL_KINDS = frozenset(
+    {"read", "filter", "fetch", "aggregate", "sort", "join", "project", "set", "cross"}
+    | {"extensionSingle", "extensionMulti", "extensionLeaf", "reference", "write", "ddl"}
+    | {"hashJoin", "mergeJoin", "nestedLoopJoin", "window", "exchange", "expand", "update"}
+)
+
+
+def _well_formed(node: Any) -> Any:
+    """`node` (a plan or part of one, changed in place) in the form
+    `substrait-validator` checks (#862), with the same meaning:
+
+    * a project with no expressions, the writer's way to put an emit on any
+      relation, becomes that emit on its input (composed with the input's
+      own), since a `ProjectRel` takes one or more expressions;
+    * a typed NULL literal's type is nullable;
+    * a virtual table's literal is nullable where its column is, so that each
+      row has the schema's type."""
+    if isinstance(node, list):
+        for v in node:
+            _well_formed(v)
+        return node
+    if not isinstance(node, dict):
+        return node
+    for v in node.values():
+        _well_formed(v)
+    if isinstance(node.get("null"), dict):  # a typed NULL literal
+        for t in node["null"].values():
+            if isinstance(t, dict):
+                t.setdefault("nullability", "NULLABILITY_NULLABLE")
+    proj = node.get("project")
+    if isinstance(proj, dict) and not proj.get("expressions") and "input" in proj:
+        inner = proj["input"]
+        (kind,) = [k for k in inner if k in _REL_KINDS] or [None]
+        mapping = proj.get("common", {}).get("emit", {}).get("outputMapping")
+        if kind is not None and mapping is not None:
+            common = inner[kind].setdefault("common", {})
+            below = common.get("emit", {}).get("outputMapping")
+            if below is not None:
+                mapping = [below[int(i)] for i in mapping]
+            common.pop("direct", None)
+            common["emit"] = {"outputMapping": mapping}
+            del node["project"]
+            node.update(inner)
+    read = node.get("read")
+    if isinstance(read, dict) and "virtualTable" in read:
+        types = read.get("baseSchema", {}).get("struct", {}).get("types", [])
+        nullable = [
+            next(iter(t.values()), {}).get("nullability") == "NULLABILITY_NULLABLE" for t in types
+        ]
+        for row in read["virtualTable"].get("expressions", []):
+            for f, n in zip(row.get("fields", []), nullable, strict=False):
+                lit = f.get("literal")
+                if n and isinstance(lit, dict) and "null" not in lit:
+                    lit["nullable"] = True
+    return node
+
+
 def _plan_message(plan: Json) -> Any:
     from google.protobuf import json_format
     from substrait import plan_pb2
 
     try:
-        return json_format.ParseDict(plan, plan_pb2.Plan())
+        return json_format.ParseDict(_well_formed(copy.deepcopy(plan)), plan_pb2.Plan())
     except json_format.ParseError as e:
         raise ExportError(
             f"the plan is not Substrait {_version()}: {e}",
@@ -1426,7 +1529,7 @@ def _table_condition_json(c: Any) -> Json:
 def _table_condition(j: Mapping[str, Any]) -> Any:
     from sverify import conditions
 
-    allowed = {"Unique", "References", "ArrivesWithin", "MaxRows", "RowsPer"}
+    allowed = {"Unique", "References", "ArrivesWithin", "MaxRows", "RowsPer", "NonOverlapping"}
     cls = j.get("class")
     if cls not in allowed:
         raise ValueError(f"unknown table condition {cls!r}")
@@ -1472,11 +1575,11 @@ def export(report: Report, format: Format = "json", *, shims: Shims = "apply") -
     packed = any_pb2.Any()
     packed.Pack(contract, type_url_prefix="type.googleapis.com/")
     msg.advanced_extensions.optimization.append(packed)
+    # A plan declares the `Any` messages it carries (#862).
+    msg.expected_type_urls.append(TYPE_URL)
     if format == "binary":
         return msg.SerializeToString(deterministic=True)
-    if format == "json":
-        return json_format.MessageToJson(msg, sort_keys=True)
-    raise ValueError(f"format must be 'json' or 'binary', not {format!r}")
+    return json_format.MessageToJson(msg, sort_keys=True)
 
 
 def contract_json(report: Report, *, shims: Shims = "apply") -> Json:
@@ -1507,8 +1610,12 @@ def _refuse_unverified(report: Report) -> None:
 
 
 def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
+    from google.protobuf import struct_pb2
+
     from sverify import routes
+    from sverify.conditions import Inferred, TableCondition, label
     from sverify.engine import written_plan
+    from sverify.report import _assumption
 
     if shims not in SHIMS:
         raise ValueError(f"shims must be one of {', '.join(map(repr, SHIMS))}, not {shims!r}")
@@ -1536,15 +1643,11 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "producer": f"sverify {_sverify_version()}",
     }
     contract_cls, condition_cls = _messages()
-    from google.protobuf import struct_pb2
-
     c = contract_cls()
     requires_plans = iter(report._contract.get("requires", []))
     for table, conds in report._conditions.items():
         inferred = {str(x) for x in report._inferred.get(table, [])}
         for cond in conds:
-            from sverify.conditions import TableCondition, label
-
             entry = condition_cls(
                 table=table,
                 text=label(cond),
@@ -1553,13 +1656,18 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
             if isinstance(cond, TableCondition):
                 entry.kind = type(cond).__name__
                 entry.entry.struct_value.update(_table_condition_json(cond))
+            elif isinstance(cond, Inferred) and cond.fact:
+                # A text column's fact has no plan: the checker reads it from
+                # the request's `text`, which the manifest keeps (#862).
+                entry.kind = "text"
+                entry.entry.struct_value.update(
+                    {"column": cond.column, "fact": cond.fact, "sql": str(cond)}
+                )
             else:
                 entry.kind = "row"
                 entry.plan.CopyFrom(_plan_message(_condition(next(requires_plans))))
             c.requires.append(entry)
     for i in report.assumed:
-        from sverify.report import _assumption
-
         c.requires.append(condition_cls(text=_assumption(i), kind="assumed", inferred=True))
     ens_plans = iter(report._contract.get("ensures", []))
     posts = report._postconditions or []
@@ -1568,8 +1676,6 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
             "this report keeps no postconditions to export",
             hint="re-run sv.verify",
         )
-    from sverify.conditions import TableCondition
-
     for cond, checked in zip(posts, report.ensures, strict=True):
         entry = condition_cls(text=checked.label, proved=checked.proved)
         if isinstance(cond, TableCondition):
@@ -1579,7 +1685,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
             entry.kind = "row"
             entry.plan.CopyFrom(_plan_message(_condition(next(ens_plans), checked.label)))
         c.ensures.append(entry)
-    observation = report.observation
+    observation = report.lenses
     manifest: Json = {
         "format": FORMAT,
         "sverify": _sverify_version(),
@@ -1589,13 +1695,13 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "class": "assumed"
         if handling.assumptions
         else "observed"
-        if any(u.get("equivalence") for u in handling.up_to)
+        if any(u.get("lenses") for u in handling.up_to)
         or routes.plan_bound(report._epsilon) is not None
         else "exact",
         "evidence": "tested" if any(u.get("gap") == "ST-9" for u in handling.up_to) else "proved",
         "shims_mode": shims,
-        "equivalence": str(observation),
-        "equivalence_components": {
+        "lenses": str(observation),
+        "lenses_components": {
             k: (str(v) if not isinstance(v, str) else v)
             for k, v in dataclasses.asdict(observation).items()
             if k != "bound"
@@ -1608,10 +1714,21 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
         "deterministic": report.deterministic,
         "rows": report.rows,
         "params": list(report._params),
+        # The as-of join cap a run holds to (#1863); the checks themselves
+        # come from the checker again at import.
+        "asof_max_pairs": report._asof_max_pairs,
         "output": {k: str(v) for k, v in report.output.items()},
         "checker_contract": {
             k: report._contract[k]
-            for k in ("keys", "ensures_keys", "references", "max_rows", "rows_per")
+            for k in (
+                "keys",
+                "ensures_keys",
+                "references",
+                "max_rows",
+                "rows_per",
+                "ranges",
+                "text",
+            )
             if k in report._contract
         },
     }
@@ -1635,11 +1752,14 @@ class Imported:
     ensures: list[Json]
 
 
-#: The manifest's keys that format 2 renamed (K1, K2).
+#: The manifest's keys that formats 2 (K1, K2) and 3 (`Report.lenses`)
+#: renamed, by their earlier names; an `up_to` entry's key moved with them.
 _RENAMED = {
     "profile": "semantics",
-    "observation": "equivalence",
-    "observation_components": "equivalence_components",
+    "observation": "lenses",
+    "observation_components": "lenses_components",
+    "equivalence": "lenses",
+    "equivalence_components": "lenses_components",
 }
 
 
@@ -1657,11 +1777,10 @@ def _manifest(m: Mapping[str, Any]) -> Json:
             f"reads format {FORMAT} or older: upgrade sverify"
         )
     out = dict(m)
-    if fmt < 2:
+    if fmt < FORMAT:
         out = {_RENAMED.get(k, k): v for k, v in out.items()}
         out["up_to"] = [
-            {("equivalence" if k == "observation" else k): v for k, v in u.items()}
-            for u in out.get("up_to") or []
+            {_RENAMED.get(k, k): v for k, v in u.items()} for u in out.get("up_to") or []
         ]
         out["format"] = FORMAT
     if isinstance(out.get("rows"), float) and out["rows"].is_integer():
@@ -1697,6 +1816,9 @@ def read(data: str | bytes | Mapping[str, Any]) -> Imported:
         raise ValueError(f"the plan carries no sverify contract ({TYPE_URL})")
     del msg.advanced_extensions.optimization[:]
     msg.advanced_extensions.optimization.extend(rest)
+    urls = [u for u in msg.expected_type_urls if u != TYPE_URL]
+    del msg.expected_type_urls[:]
+    msg.expected_type_urls.extend(urls)
     if not rest and not msg.advanced_extensions.HasField("enhancement"):
         msg.ClearField("advanced_extensions")
     d = json_format.MessageToDict(found)
@@ -1756,7 +1878,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     from sverify.conditions import CheckedCondition, PlannedCondition
     from sverify.engine import run_checker
     from sverify.observation import Observation
-    from sverify.report import Issue
+    from sverify.report import Issue, column_facts
 
     imp = read(data)
     m = imp.manifest
@@ -1770,6 +1892,8 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         "references": stored.get("references", {}),
         "max_rows": _ints(stored.get("max_rows", {})),
         "rows_per": stored.get("rows_per", {}),
+        "ranges": stored.get("ranges", {}),
+        "text": stored.get("text", {}),
     }
     for e in imp.ensures:
         if e.get("kind") == "row":
@@ -1808,15 +1932,15 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
             conditions.setdefault(r["table"], []).append(
                 PlannedCondition(r["text"], json.dumps(_lean_plan(r["plan"])))
                 if r.get("kind") == "row"
+                else _text_fact(r["text"], r["entry"])
+                if r.get("kind") == "text"
                 else _table_condition(r["entry"])
             )
     components = {
-        k: v
-        for k, v in (m.get("equivalence_components") or {}).items()
-        if k not in ("floats", "bound")
+        k: v for k, v in (m.get("lenses_components") or {}).items() if k not in ("floats", "bound")
     }
     observation = dataclasses.replace(
-        Observation(floats=_floats_component(m.get("equivalence_components") or {})), **components
+        Observation(floats=_floats_component(m.get("lenses_components") or {})), **components
     )
     report = verdict(
         out,
@@ -1828,12 +1952,15 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         semantics=m.get("semantics", "reference"),
         requires=requires,
         ensures=checked,
-        facts={f["name"]: f["value"] for f in out["facts"]},
+        facts={
+            f["name"]: column_facts(f.get("abstract") or {}, None, f["value"]) for f in out["facts"]
+        },
         internal_plan=json.dumps(imp.plan),
-        observation=observation,
+        lenses=observation,
         _params=list(m.get("params") or []),
     )
     report._conditions = conditions
+    report._asof_max_pairs = m.get("asof_max_pairs")
     return split_assumed(report)
 
 
@@ -1996,7 +2123,7 @@ def _plan_bound_met(report: Any) -> dict[str, float] | None:
     from sverify.observation import Within
     from sverify.routes import _bounds
 
-    floats = report.observation.floats
+    floats = report.lenses.floats
     if not isinstance(floats, Within) or not report._epsilon:
         return None
     met: dict[str, float] = {}

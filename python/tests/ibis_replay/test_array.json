@@ -1,0 +1,870 @@
+{
+  "ibis": "12.0.0",
+  "source": "https://github.com/ibis-project/ibis/tree/12.0.0/ibis/backends/tests/test_array.py",
+  "license": "Apache-2.0",
+  "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
+  "module": "test_array",
+  "summary": {
+    "agree": 5,
+    "disagree": 0,
+    "refused": 131,
+    "unproved": 0,
+    "skipped": 46
+  },
+  "results": {
+    "test_array_agg_bool[duckdb-no-nulls-alls]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayAll is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_bool[duckdb-no-nulls-anys]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayAny is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_bool[duckdb-nulls-alls]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayAll is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_bool[duckdb-nulls-anys]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayAny is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-no-nulls-maxs]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMax is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-no-nulls-means]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMean is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-no-nulls-mins]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMin is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-no-nulls-modes]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMode is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-no-nulls-sums]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySum is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-nulls-maxs]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMax is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-nulls-means]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMean is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-nulls-mins]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMin is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-nulls-modes]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayMode is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_agg_numeric[duckdb-nulls-sums]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySum is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_column[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat_scalar[duckdb-<lambda>0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat_scalar[duckdb-<lambda>1]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat_some_empty[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat_variadic[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat_with_null[duckdb-left]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat_with_null[duckdb-right]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_concat_with_null_non_constant[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_contains[duckdb-x-1]": {
+      "outcome": "refused",
+      "construct": "run: Unsupported: lambdas have no SQL form yet (#94)",
+      "issue": 94
+    },
+    "test_array_contains[duckdb-y-a]": {
+      "outcome": "refused",
+      "construct": "run: Unsupported: lambdas have no SQL form yet (#94)",
+      "issue": 94
+    },
+    "test_array_discovery[duckdb]": {
+      "outcome": "skipped",
+      "reason": "executes nothing"
+    },
+    "test_array_filter[duckdb-deferred-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter[duckdb-deferred-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter[duckdb-lambda-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter[duckdb-lambda-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter[duckdb-partial-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter[duckdb-partial-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index[duckdb-lambda-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index[duckdb-lambda-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index[duckdb-partial-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index[duckdb-partial-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index_lambda[duckdb-lambda-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index_lambda[duckdb-lambda-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index_lambda[duckdb-partial-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_filter_with_index_lambda[duckdb-partial-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_flatten[duckdb-empty]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayFlatten is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_flatten[duckdb-happy]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayFlatten is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_flatten[duckdb-mixed_nulls]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayFlatten is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_flatten[duckdb-nulls_only]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayFlatten is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_index[duckdb-0]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_array_index[duckdb-1]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_array_index[duckdb-2]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_array_intersect[duckdb-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_intersect[duckdb-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_length[duckdb]": {
+      "outcome": "refused",
+      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
+      "issue": 1916
+    },
+    "test_array_literal_with_exprs[duckdb-array]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_literal_with_exprs[duckdb-float-float]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_literal_with_exprs[duckdb-float-int]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_literal_with_exprs[duckdb-int-float-exprs]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_literal_with_exprs[duckdb-int-float]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_literal_with_exprs[duckdb-int-int]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_map[duckdb-deferred-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map[duckdb-deferred-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map[duckdb-lambda-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map[duckdb-lambda-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map[duckdb-partial-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map[duckdb-partial-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map_with_conflicting_names[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map_with_index[duckdb-lambda-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map_with_index[duckdb-lambda-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map_with_index[duckdb-partial-no_nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_map_with_index[duckdb-partial-nulls]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_of_struct_unnest[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Alias is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_position[duckdb-none-empty]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayPosition is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_position[duckdb-some-empty]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayPosition is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_radd_concat[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_remove[duckdb-all-non-empty-arrays]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_remove[duckdb-including-empty-array]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_remove[duckdb-nested-null]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_remove[duckdb-non-nested-null]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_repeat[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_repeat_column[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_scalar[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb--3--1]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb--3-None]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-1-1]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-1-3]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-2-3]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-2-5]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-3-None]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-None-3]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-None-None]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_slice[duckdb-nulls]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySlice is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_sort[duckdb-empty]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySort is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_sort[duckdb-nonempty]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArraySort is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_array_union[duckdb-all-non-empty-arrays]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_union[duckdb-including-empty-array]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_unique[duckdb-not_null]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_array_unique[duckdb-null]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_complex_array_map[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_flatten[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayFlatten is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_list_literal[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_np_array_literal[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_range_single_argument[duckdb--2]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_single_argument[duckdb-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_single_argument[duckdb-2]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_single_argument_unnest[duckdb--2]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_single_argument_unnest[duckdb-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_single_argument_unnest[duckdb-2]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1--7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1--7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1--7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1-0--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1-0-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1-0-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1-7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1-7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--1-7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2--7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2--7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2--7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2-0--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2-0-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2-0-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2-7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2-7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb--2-7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1--7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1--7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1--7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1-0--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1-0-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1-0-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1-7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1-7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-1-7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2--7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2--7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2--7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2-0--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2-0-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2-0-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2-7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2-7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step[duckdb-2-7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb--7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb--7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb--7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb-0--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb-0-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb-0-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb-7--7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb-7-0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_range_start_stop_step_zero[duckdb-7-7]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: IntegerRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_repr_timestamp_array[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_table_unnest[duckdb-deferred]": {
+      "outcome": "agree"
+    },
+    "test_table_unnest[duckdb-lambda]": {
+      "outcome": "agree"
+    },
+    "test_table_unnest[duckdb-string]": {
+      "outcome": "agree"
+    },
+    "test_table_unnest_array_of_struct_of_array[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_table_unnest_column_expr[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_table_unnest_with_keep_empty[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: unnest(keep_empty=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 1917
+    },
+    "test_table_unnest_with_offset[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: unnest(offset=) is not supported; rewrite it with a supported operation or column type",
+      "issue": 1917
+    },
+    "test_timestamp_range[duckdb-none-neg_inner]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range[duckdb-none-neg_outer]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range[duckdb-none-pos]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range[duckdb-utc-neg_inner]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range[duckdb-utc-neg_outer]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range[duckdb-utc-pos]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range_zero_step[duckdb-none-neg]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range_zero_step[duckdb-none-pos]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range_zero_step[duckdb-utc-neg]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_timestamp_range_zero_step[duckdb-utc-pos]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: TimestampRange is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_complex[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_default_name[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_empty_array[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_idempotent[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_no_nulls[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_range[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_simple[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_struct[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_unnest_struct_with_multiple_fields[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Unnest is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_zip[duckdb-1]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_zip[duckdb-5]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_zip_null[duckdb-non-null-zip-null]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_zip_null[duckdb-null-zip-non-null]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_zip_null[duckdb-null-zip-null]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_zip_unnest_lift[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    }
+  }
+}

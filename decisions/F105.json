@@ -1,0 +1,18 @@
+{
+  "id": "F105",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "DuckDB SQL under the default semantics: semantics='reference' stays the default (C rejected); principle L (the lift refines the dialect) reserved as D54; Report gains a dialect-differences list (verdict unchanged); no opt-out flag; corr_degenerate a listed exception.",
+  "issues": [
+    322,
+    1484
+  ],
+  "amended_by": [
+    "F109",
+    "U-2026-11-19-rounding-cast-refusal"
+  ],
+  "source": "fable-ruling-sql-dialect-gap-1484.md",
+  "note": "Reserves D54. Point 5 (rounding casts) was held for the user; amended in-file after the user chose (b)."
+}
