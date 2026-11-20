@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-02-sql-text-reads-as-duckdb",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "DuckDB SQL text reads as DuckDB's in both semantics modes (division, integer division, NULLs last, literal and decimal typing); semantics only changes what functions do where DuckDB and the reference differ.",
+  "issues": [
+    239
+  ],
+  "prs": [
+    252
+  ],
+  "source": "github:#252 body",
+  "note": "Decided with the user."
+}

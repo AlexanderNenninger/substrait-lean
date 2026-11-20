@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-19-rewrites-every-profile",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Proved rewrites apply under every profile whose analysis proves their preconditions, not only under the reference.",
+  "issues": [
+    1787
+  ],
+  "source": "github:#1787 comment 7017411317"
+}

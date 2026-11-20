@@ -10,7 +10,7 @@ Each bug is a document `bugs/<id>.json` in the format of
 [`bug.schema.json`](bug.schema.json). Add one whenever you find a bug, in the
 same PR as the workaround. Engine behaviour that is documented and intended,
 and differs from the reference model, goes into that engine's
-characterization (`characterization/<engine>/facts/`) and profile.
+facts (`engines/<engine>/facts/`) and profile.
 
 Gaps in Substrait's spec are entries too, with `kind: "spec-gap"`: a behaviour
 the extension YAMLs or the docs leave unstated though Substrait could express

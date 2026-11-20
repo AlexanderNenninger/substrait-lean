@@ -1,0 +1,11 @@
+{
+  "id": "D4",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A NaN is one of two codes, by its sign; no modelled function reads a payload.",
+  "prs": [
+    562
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "F103",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "sv.non_overlapping(lo, hi, *, by=()): NULL hi is the open end, by NULLs equal, zero-length allowed; held beside the keys in a bundle replacing K; a range-join single-match rule for inner/left joins, no closed-endpoint rule; native data check; dbt mutually_exclusive_ranges mapping.",
+  "issues": [
+    814,
+    1485
+  ],
+  "amended_by": [
+    "F134"
+  ],
+  "source": "fable-ruling-non-overlapping-814.md",
+  "note": "Three PRs: bundle refactor, condition and rule, sverify-dbt mapping."
+}

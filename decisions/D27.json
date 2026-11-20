@@ -1,0 +1,11 @@
+{
+  "id": "D27",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Rel.Small (string, window and aggregate sizes) is the only size assumption, a hypothesis and never an axiom.",
+  "prs": [
+    562
+  ]
+}

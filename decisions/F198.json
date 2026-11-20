@@ -1,0 +1,28 @@
+{
+  "id": "F198",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "D70 signed, amending D14: a probed engine version claims in full, an unprobed version in the probed minor warns and is marked on the route, outside the range is refused; package bounds equal the range; no guarantee rests on an engine raise; daily canary.",
+  "issues": [
+    1484,
+    2045,
+    2052,
+    2053,
+    2054
+  ],
+  "prs": [
+    2046
+  ],
+  "amends": [
+    "D14"
+  ],
+  "amended_by": [
+    "F198.addendum",
+    "F199",
+    "U-2026-11-20-engine-versions"
+  ],
+  "source": "fable-ruling-198-engine-versions.md",
+  "note": "D70 'Amends D14'. Bounds duckdb>=2.0.0,<2.1, polars>=2.1.0,<2.2, pyspark>=4.3.0,<4.4. F5 run-time probes left to the user after 1.0."
+}

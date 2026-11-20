@@ -12,7 +12,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+if TYPE_CHECKING:
+    from sverify.profiles import Finite
 
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
@@ -163,11 +166,14 @@ class Dialect:
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `analysis/Sverify/Analysis/Guards.lean`). Integer `SUM` keeps its check."""
-    finite: bool = True
+    finite: Finite = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
-    precondition. Off (`to_sql(..., finite=False)`) for a plan verified under
-    an engine's semantics that allows `±∞` (`verify(semantics="duckdb")`)."""
+    precondition. `"aggregates"` (`to_sql(..., finite="aggregates")`) for a plan
+    verified under an engine's semantics (`verify(semantics="duckdb")`): an
+    operation's `±∞` is the engine's value there, but an aggregate's running sum
+    overflows where the model's exact one does not (ruling 200 A4(2)), so
+    only the aggregates keep the check. `False` writes none."""
 
     def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
         """A refusal of this dialect for `reason`, where DuckDB's writer
@@ -202,7 +208,7 @@ class Dialect:
     def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
         """`overflow` = `mode` (`SILENT` or `SATURATE`) of `op` (`+`, `-`, `*`, or
         `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
-        raise self.not_written(f"overflow = {mode}", "see #241")
+        raise self.not_written(f"overflow = {mode}", "see #271")
 
     def lowered(
         self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
@@ -1108,8 +1114,8 @@ class Dialect:
             f'{engine} tables have no row order, so rows="sequence" cannot follow the Lean '
             "model's list order for FETCH and windows over a named table; write "
             'rows="multiset" (ties and the rows of a LIMIT are open, as the reference allows), '
-            "or run a report whose windows have no ties (deterministic=True), which writes "
-            "them with the sort keys alone"
+            "or order by a key that is unique too and verify again: once `report.deterministic` "
+            "is True, `report.to_sql(dialect)` writes the windows with the sort keys alone"
         )
 
     def subquery(self, select: str, alias: str) -> str:
@@ -1128,6 +1134,22 @@ class Dialect:
 
     def cross_join(self, left: str, right: str) -> str:
         return f"{left} CROSS JOIN {right}"
+
+    native_asof: ClassVar[bool] = False
+    """The dialect writes an as-of join natively (`asof_join`)."""
+
+    def asof_join(
+        self,
+        left: str,
+        right: str,
+        eqs: Sequence[tuple[str, str]],
+        on: tuple[str, str],
+        outer: bool,
+    ) -> str:
+        """`left ASOF [LEFT] JOIN right ON l = r AND ... AND l.on >= r.on`: per
+        left row the right row of its equality group with the greatest `r.on`
+        at or before `l.on` (#1447, ruling 162). New on DuckDB only."""
+        raise self.not_written("an ASOF JOIN")
 
     def union_all(self, a: str, b: str) -> str:
         return f"{a} UNION ALL {b}"
@@ -2107,13 +2129,6 @@ def _parse_timestamp(s: str) -> int | None:
     return ((days * 24 + int(h)) * 60 + int(mi)) * 60_000_000 + int(sec) * 1_000_000 + micros
 
 
-def _wide_int_decimal(ty: Any) -> bool:
-    """`Parse.wideIntDecimal`: a decimal of scale 0 and at least 19 digits,
-    whose values the model keeps as integers."""
-    d = ty.get("decimal") if isinstance(ty, dict) else None
-    return isinstance(d, dict) and d.get("scale", 0) == 0 and d.get("precision", 0) >= 19
-
-
 def _interval_type(ty: Any) -> bool:
     return isinstance(ty, dict) and ("intervalDayToSecond" in ty or "intervalCompound" in ty)
 
@@ -2122,13 +2137,6 @@ def _cast_const(ty: dict, c: Const) -> Const:
     lean, kind = _type_kinds(ty)
     if c.tag == "null":
         return Const("null", kind=kind)
-    if _wide_int_decimal(ty):
-        if c.tag == "int" or (c.tag == "dec" and c.scale == 0):
-            return Const("int", c.value, kind="int")
-        raise WriterUnsupported(
-            "cannot cast this value to an integer decimal",
-            hint=MALFORMED_PLAN,
-        )
     match lean:
         case "float":
             f = c.to_float()
@@ -2398,9 +2406,117 @@ class _Cols:
     sql: list[Kind | None]
 
 
+_ASOF_KINDS = frozenset({"int", "date", "time", "str"})
+"""The kinds of an as-of join's columns that the writer writes natively: the
+bare comparisons the DuckDB fact `duckdb-asof-join` probed. Doubles stay out
+until the fact covers NaN and the zeros (ruling 162 A3)."""
+
+
+def _asof_numbered(r: Rel) -> tuple[list[Any], Rel, tuple[int, ...]] | None:
+    """A relation that numbers the rows of `L` with `ROW_NUMBER` (partitioned by
+    the columns `part` of `L`), under emits and projections: each of its columns
+    as `("l", i)` for column `i` of `L`, `"n"` for the number or the number less
+    one, `"x"` for anything else; `L`; and `part`."""
+    match r:
+        case Window(input=i, part=part, fns=(f,)) if f.fn == "row_number":
+            n = arity(i)
+            return [*(("l", c) for c in range(n)), "n"], i, part
+        case Project(input=i, exprs=es):
+            found = _asof_numbered(i)
+            if found is None:
+                return None
+            src, left, part = found
+            return src + [_asof_tag(e, src) for e in es], left, part
+        case Emit(input=i, mapping=m):
+            found = _asof_numbered(i)
+            if found is None or any(k >= len(found[0]) for k in m):
+                return None
+            return [found[0][k] for k in m], found[1], found[2]
+    return None
+
+
+def _asof_tag(e: Expr, tags: list[Any]) -> Any:
+    """What a projected expression is: a copy of a column (its tag), the number
+    less one (`"n"`), or `"x"`."""
+    match e:
+        case Field(index=i) if i < len(tags):
+            return tags[i]
+        case Bin(op="sub", left=Field(index=i), right=Lit(value=1)) if i < len(tags) and tags[
+            i
+        ] in ("n", "rank"):
+            return "n" if tags[i] == "n" else "rank-1"
+    return "x"
+
+
+def _asof_layers(
+    r: Rel, join: Join, nl: int, src: list[Any], part: tuple[int, ...], ron: int
+) -> list[Any] | None:
+    """The layers of an as-of site above its join: the output columns of `r` as
+    columns of the join, or None where the layers are not the builder's and the
+    lift's (`sverify.asof_join`, `sql_lift`): a `ROW_NUMBER` that numbers each
+    left row's matches, latest first (partitioned by what identifies the left
+    row, sorted by the right `on` descending), a filter that keeps its first, and
+    emits and projections of columns around them. Any other filter or window
+    changes the rows or their number, and keeps the range join."""
+    layers: list[Rel] = []
+    node = r
+    while node is not join:
+        if not isinstance(node, Filter | Project | Window | Emit):
+            return None
+        layers.append(node)
+        node = node.input
+    tags: list[Any] = [("c", i) for i in range(arity(join))]
+    ranked = kept = False
+    for layer in reversed(layers):
+        match layer:
+            case Emit(mapping=m):
+                if any(k >= len(tags) for k in m):
+                    return None
+                tags = [tags[k] for k in m]
+            case Project(exprs=es):
+                tags = tags + [_asof_tag(e, tags) for e in es]
+            case Window(part=p, sort=(key,), fns=(f,)) if not ranked and f.fn == "row_number":
+                # The left row's identity: the number and what the numbering partitions by.
+                ident = {src[t[1]] for t in (tags[c] for c in p) if t[0] == "c" and t[1] < nl}
+                want = {"n", *(("l", c) for c in part)}
+                if (
+                    not key.desc
+                    or tags[key.col] != ("c", nl + ron)
+                    or not want <= ident
+                    or any(tags[c][0] != "c" or tags[c][1] >= nl for c in p)
+                ):
+                    return None
+                ranked = True
+                tags = tags + ["rank"]
+            case Filter(cond=Bin(op="eq", left=Field(index=i), right=Lit(value=v))) if (
+                ranked and not kept and i < len(tags)
+            ):
+                if (tags[i], v) not in (("rank", 1), ("rank-1", 0)):
+                    return None
+                kept = True
+            case _:
+                return None
+    if not (ranked and kept) or any(not isinstance(t, tuple) for t in tags):
+        return None
+    return [t[1] if t[0] == "c" else None for t in tags]
+
+
+def _asof_join_below(r: Rel) -> Join | None:
+    """The join under the layers of `r`."""
+    while not isinstance(r, Join):
+        if not isinstance(r, Filter | Project | Window | Emit):
+            return None
+        r = r.input
+    return r
+
+
 class _Parser:
     def __init__(self, plan: dict):
         self.fns = _plan_read.function_names(plan, Unsupported)
+        self.sites: dict[int, dict] = {}
+        """The as-of join sites by `id` of their JSON node."""
+        self.native: dict[int, NativeAsof] = {}
+        """The sites written natively, by `id` of their relation."""
 
     def name(self, anchor: int) -> str:
         if anchor not in self.fns:
@@ -2481,7 +2597,7 @@ class _Parser:
                     name = full_name = "modulus"
                 arg_js = [_req(a, "value") for a in _arr(v, "arguments")]
                 if name in ("any_match", "all_match", "transform", "filter"):
-                    raise Unsupported("lambdas have no SQL form yet (#94)")
+                    raise Unsupported("lambdas have no SQL form yet (#348)")
                 # `array_length(regexp_match(s, p))`: NULL if `p` does not match.
                 if name == "array_length" and len(arg_js) == 1:
                     g = _field(arg_js[0], "scalarFunction")
@@ -2580,9 +2696,8 @@ class _Parser:
                     dec = self.decimal_call(name, parsed, _field(v, "outputType"), cols)
                     if dec is not None:
                         return dec
-                # `Parse.wideIntDecimal`: other decimal results are not modelled.
-                decimal = isinstance(out_ty, dict) and "decimal" in out_ty
-                if decimal and not _wide_int_decimal(out_ty):
+                # A decimal result of non-decimal arguments is not modelled.
+                if isinstance(out_ty, dict) and "decimal" in out_ty:
                     raise WriterUnsupported(f"{name}: decimal results are not supported")
                 out = _lean_type_kind(out_ty)
                 floats = (
@@ -2702,9 +2817,6 @@ class _Parser:
                 k = lean_expr_kind(e, cols.lean)
                 # `TRY_CAST` (#58): NULL where the cast fails.
                 or_null = _field(v, "failureBehavior") == "FAILURE_BEHAVIOR_RETURN_NULL"
-                # `Parse.wideIntDecimal`; a duration compared with an interval.
-                if k == "int" and _wide_int_decimal(_req(v, "type")):
-                    return e
                 # Decimals (#27): rescaled, rounding half away from zero to a
                 # smaller scale; to an integer truncates toward zero.
                 if isinstance(target, Dec):
@@ -3110,6 +3222,60 @@ class _Parser:
 
     def rel(self, j: dict) -> Rel:
         """`parseRel`."""
+        out = self._rel(j)
+        site = self.sites.get(id(j))
+        if site is not None and (nat := self.native_asof(out, site)) is not None:
+            self.native[id(out)] = nat
+        return out
+
+    def native_asof(self, r: Rel, site: dict) -> NativeAsof | None:
+        """The site `r` as a native ASOF JOIN, or None where it keeps the range
+        join: a tolerance (ruling 162 A4), a numbering the checker does not
+        read (`form`), or columns that are not plain integers, dates,
+        timestamps or strings (A3: the bare comparisons the DuckDB fact
+        `duckdb-asof-join` probed). The checker recognised the shape
+        (`Rel.asofSite_sound`); what is checked here is that this parse of
+        it has the same columns."""
+        if site.get("tolerance") or site.get("form") not in ("builder", "lift"):
+            return None
+        join = _asof_join_below(r)
+        numbered = None if join is None else _asof_numbered(join.left)
+        if join is None or numbered is None or (join.type == "left") != bool(site.get("outer")):
+            return None
+        src, left, part = numbered
+        nl, nr = len(src), arity(join.right)
+        col = lambda i: src[i][1] if src[i][0] == "l" else None  # noqa: E731
+        try:
+            keys = tuple((col(a), b) for a, b in site["keys"])
+            lon, ron = col(site["lon"]), site["ron"]
+        except (KeyError, TypeError, IndexError):
+            return None
+        trace = _asof_layers(r, join, nl, src, part, site["ron"])
+        pairs = [*keys, (lon, ron)]
+        if (
+            trace is None
+            or len(trace) != arity(r)
+            or any(a is None or not 0 <= b < nr for a, b in pairs)
+        ):
+            return None
+        lk, rk = kinds(left), kinds(join.right)
+        if any(lk[a] != rk[b] or lk[a] not in _ASOF_KINDS for a, b in pairs):  # type: ignore[index]
+            return None
+        out: list[tuple[bool, int]] = []
+        for k in trace:
+            if k is None:
+                return None
+            if k < nl:
+                c = col(k)
+                if c is None:
+                    return None
+                out.append((True, c))
+            else:
+                out.append((False, k - nl))
+        path = json.dumps(site.get("json_path") or [])
+        return NativeAsof(left, join.right, keys, lon, ron, join.type == "left", tuple(out), path)  # type: ignore[arg-type]
+
+    def _rel(self, j: dict) -> Rel:
         kind, r = _oneof(
             "relation",
             j,
@@ -3741,6 +3907,10 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", Bin("lt", a, b))
         case "normalized_interval", [a]:
             return a
+        case "sverify_approx", [a, Lit()]:
+            # `UnFn.approx k` (D52): a source mark for the checker, the identity
+            # for an engine, which computes the plan's value inside the band.
+            return a
         case (("is_nan" | "isnan"), [a]):
             return Bin("eq", a, Lit(math.nan, "float"))
         case (("and" | "or"), [a, *rest]):
@@ -3887,21 +4057,21 @@ def _div_by_zero(
     mode: str, double: bool, div: Callable[[Expr, Expr], Expr], a: Expr, b: Expr
 ) -> Expr:
     """`Parse.divByZero`: `div a b` under `on_division_by_zero` = `mode`; other
-    than `ERROR`, a `CASE` on the divisor around the division. `IEEE` and
-    `LIMIT` are only for dividing doubles (`Parse.optionAccepts`)."""
+    than `ERROR`, a `CASE` on the divisor around the division. `LIMIT` is only
+    for dividing doubles (`Parse.optionAccepts`). `IEEE` division of doubles is
+    `BinFn.fdivIeee` (D39), written before this is reached, so `IEEE` here is
+    a `%` or an integer division, which it does not apply to."""
     q = div(a, b)
     if mode == "ERROR":
         return q
     fdiv = isinstance(q, Bin) and q.op == "fdiv"
-    if mode not in ("IEEE", "LIMIT", "NULL") or (not fdiv and mode != "NULL"):
+    if mode not in ("LIMIT", "NULL") or (not fdiv and mode != "NULL"):
         raise WriterUnsupported(f"on_division_by_zero = {mode} is not supported")
     lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
     nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
     is_nan = Bin("eq", a, nan)
-    if mode == "IEEE":
-        by_zero: Expr = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
-                           If(Bin("lt", lit(0.0), a), Lit(math.inf, "float"), nan)))  # fmt: skip
-    elif mode == "LIMIT":
+    by_zero: Expr
+    if mode == "LIMIT":
         by_zero = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
                                      Lit(math.inf, "float")))  # fmt: skip
     else:
@@ -3947,26 +4117,95 @@ def _float_call(name: str, args: list[Expr]) -> Expr:
     )
 
 
+@dataclass(frozen=True)
+class NativeAsof:
+    """An as-of join site (`Rel.asofSite`, #1447) the writer writes as the
+    dialect's native ASOF JOIN: the numbered left side without its numbers,
+    the right side, the key columns (left, right), the `on` columns, whether
+    the join is a LEFT one, and the site's output columns, each from the left
+    or the right (`True`: left) side."""
+
+    left: Rel
+    right: Rel
+    keys: tuple[tuple[int, int], ...]
+    lon: int
+    ron: int
+    outer: bool
+    out: tuple[tuple[bool, int], ...]
+    path: str
+    """The site's `json_path`, as JSON text."""
+
+
 @dataclass
 class Plan:
     root: Rel
     names: list[str]
+    native: dict[int, NativeAsof] = field(default_factory=dict)
+    """The as-of join sites written natively, by `id` of their node."""
 
 
-def parse_plan(plan: dict) -> Plan:
-    """Read a Substrait JSON plan (as a dict) into the model, as `parsePlan` does."""
-    p = _Parser(plan)
+def parse_plan(plan: dict, asof: Sequence[dict] = ()) -> Plan:
+    """Read a Substrait JSON plan (as a dict) into the model, as `parsePlan` does.
+
+    `asof`: the plan's as-of join sites, as the checker reports them
+    (`asof_checks`, `Rel.asofSites`); `Plan.native` has those it can write as
+    the dialect's ASOF JOIN."""
     root = next((_field(r, "root") for r in _arr(plan, "relations") if _field(r, "root")), None)
     if root is None:
         raise WriterUnsupported(
             "plan has no root relation",
             hint=MALFORMED_PLAN,
         )
-    rel = p.rel(_req(root, "input"))
+    p = _Parser(plan)
+    top = _req(root, "input")
+    for site in asof:
+        node = _walk_json(top, site.get("json_path") or [])
+        if node is not None:
+            p.sites[id(node)] = site
+    rel = p.rel(top)
     names = _arr(root, "names")
     if not all(isinstance(n, str) for n in names):
         raise Unsupported("root names must be strings")
-    return Plan(rel, names)
+    return Plan(rel, names, p.native)
+
+
+def native_asof_sites(plan: dict | str, dialect: Dialect | str, asof: Sequence[dict]) -> list[dict]:
+    """The sites of `asof` that `to_sql(plan, dialect, asof=asof)` writes as the
+    dialect's ASOF JOIN (and so needs no pair count, #1447 ruling 162 A7)."""
+    if isinstance(dialect, str):
+        from sverify.sql import dialect_of
+
+        dialect = dialect_of(dialect)
+    if not dialect.native_asof or not asof:
+        return []
+    p = parse_plan(json.loads(plan) if isinstance(plan, str) else plan, asof)
+    live: set[int] = set()
+    todo = [p.root]
+    while todo:
+        r = todo.pop()
+        live.add(id(r))
+        todo.extend(inputs(r))
+    paths = {nat.path for k, nat in p.native.items() if k in live}
+    return [s for s in asof if json.dumps(s.get("json_path") or []) in paths]
+
+
+def _walk_json(node: dict, path: Sequence[Any]) -> dict | None:
+    """The relation at `path` below `node`: steps `input`, `left`, `right`, or
+    `inputs` with an index (`Rel.jsonPath`); None where the plan has no such
+    relation."""
+    steps = iter(path)
+    for step in steps:
+        body = next(iter(node.values()), None) if len(node) == 1 else None
+        if not isinstance(body, dict):
+            return None
+        child = body.get(step)
+        if step == "inputs":
+            i = next(steps, None)
+            child = child[i] if isinstance(child, list) and isinstance(i, int) else None
+        if not isinstance(child, dict):
+            return None
+        node = child
+    return node
 
 
 # --------------------------------------------------------------------------
@@ -4095,6 +4334,55 @@ def unchecked_slots(r: Rel, marks: dict) -> dict[int, frozenset[int]]:
 ORD = "o"
 
 
+def _window_calls(sql: str) -> list[str]:
+    """The window aggregate calls in `sql`, `F(…) OVER (…)`, outermost first.
+    Parentheses inside string literals (`'…'`) and quoted identifiers
+    (`"…"`, backquoted in Spark) do not count; a quote of the other kind inside
+    one of them is a character (a column named `it's`), and a doubled quote
+    escapes itself."""
+    quoted = [False] * len(sql)
+    q: str | None = None
+    for i, ch in enumerate(sql):
+        if q is None:
+            if ch in "'\"`":
+                q = ch
+        elif ch == q:
+            # A doubled quote stays inside: it closes here and opens again next.
+            q = None
+        quoted[i] = q is not None or ch in "'\"`"
+
+    def match(i: int, step: int, open_: str, close: str) -> int:
+        depth = 0
+        while 0 <= i < len(sql):
+            if not quoted[i]:
+                if sql[i] == open_:
+                    depth += 1
+                elif sql[i] == close:
+                    depth -= 1
+                    if depth == 0:
+                        return i
+            i += step
+        return -1
+
+    out: list[str] = []
+    i = 0
+    while (k := sql.find(" OVER (", i)) != -1:
+        i = k + 1
+        if k == 0 or sql[k - 1] != ")" or quoted[k]:
+            continue
+        start = match(k - 1, -1, ")", "(")
+        end = match(k + len(" OVER "), 1, "(", ")")
+        if start <= 0 or end < 0:
+            continue
+        name = start
+        while name > 0 and (sql[name - 1].isalnum() or sql[name - 1] == "_"):
+            name -= 1
+        if name < start:
+            out.append(sql[name : end + 1])
+            i = end + 1
+    return out
+
+
 @dataclass
 class _Writer:
     d: Dialect
@@ -4105,6 +4393,8 @@ class _Writer:
     a projection's expressions are slots 0, 1, …, and slot 0 of an aggregate
     is all of its grouping expressions and measures' arguments and filters."""
     n: int = 0
+    native: dict[int, NativeAsof] = field(default_factory=dict)
+    """The as-of join sites to write natively, by `id` of their node."""
     seq: bool = True
     """Write Lean's row order (`rows="sequence"`): every relation carries its
     ordinal and ties break by it. Off, only the rows an `OrderBy` orders carry
@@ -4206,6 +4496,24 @@ class _Writer:
 
     # Relations: each returns a SELECT with columns c0… (and `o` when ordered).
 
+    def asof(self, site: NativeAsof, ordered: bool) -> str:
+        """A site as the dialect's ASOF JOIN over its sides: the left rows in
+        their own order (the site's output has one row per left row, in the
+        order of the numbered left side, which keeps its input's)."""
+        d = self.d
+        la, ra = self.alias(), self.alias()
+        lsub = d.subquery(self.rel(site.left, ordered), la)
+        rsub = d.subquery(self.rel(site.right, False), ra)
+        items = [
+            f"{self.ref(la if left else ra, self.c(j))} AS {self.c(k)}"
+            for k, (left, j) in enumerate(site.out)
+        ]
+        if ordered:
+            items.append(f"{self.ordinal(la)} AS {d.quote(ORD)}")
+        eqs = [(self.ref(la, self.c(a)), self.ref(ra, self.c(b))) for a, b in site.keys]
+        on = (self.ref(la, self.c(site.lon)), self.ref(ra, self.c(site.ron)))
+        return self.select(items, d.asof_join(lsub, rsub, eqs, on, site.outer))
+
     def rel(self, r: Rel, ordered: bool) -> str:
         d = self.d
         n = arity(r)
@@ -4213,6 +4521,8 @@ class _Writer:
             raise WriterUnsupported("relations without columns have no SQL form")
         if not self.seq:
             ordered = ordered and chain_orders(r)
+        if (site := self.native.get(id(r))) is not None:
+            return self.asof(site, ordered)
         match r:
             case Read(name=name, columns=columns):
                 if len(columns) != n:
@@ -4679,7 +4989,10 @@ class _Writer:
                 # Finite values whose sum overflows (#575), kept without guards.
                 top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
                 total = self.agg_finite(
-                    total, f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}", f"MIN({v})"
+                    total,
+                    f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}",
+                    f"MIN({v})",
+                    self.no_nan(v),
                 )
                 if not d.guards:
                     return total
@@ -4886,7 +5199,53 @@ class _Writer:
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
         # Written last, so a refusal in an expression comes before the input's.
         src = inner or self.child(i, self.stable and not copies)
-        return self.select(items, d.subquery(src, a))
+        return self.bound_windows(items, m, a, d.subquery(src, a), ordered)
+
+    def bound_windows(self, items: list[str], m: int, a: str, src: str, ordered: bool) -> str:
+        """The window layer `items` over `src` (alias `a`, `m` input columns).
+        A function whose guard repeats a window aggregate (an integer `SUM`'s
+        overflow check reads it four times) gets each such aggregate once, as
+        a column of this layer, and its guard in a layer above (#1608 item 5).
+        Every engine computes a window function on every row before the
+        expressions around it, so the bound column is what the repeats were."""
+        d = self.d
+        own = re.compile(rf"\b{re.escape(a)}\.")
+        binds: list[tuple[str, str]] = []
+        found: dict[int, tuple[str, str, dict[str, str]]] = {}
+        for j in range(m, len(items) - (1 if ordered else 0)):
+            expr, _, alias = items[j].rpartition(" AS ")
+            calls = {c for c in _window_calls(expr) if expr.count(c) > 1}
+            if not calls:
+                continue
+            names = {}
+            for c in calls:
+                name = next((n for n, t in binds if t == c), None)
+                if name is None:
+                    name = d.quote(f"w{len(binds)}")
+                    binds.append((name, c))
+                names[c] = name
+            rest = expr
+            for c in sorted(calls, key=len, reverse=True):
+                rest = rest.replace(c, "")
+            if own.search(rest):
+                # It reads an input column outside a window aggregate: unchanged.
+                continue
+            found[j] = (expr, alias, names)
+        if not found:
+            return self.select(items, src)
+        b = self.alias()
+        outer: dict[int, str] = {}
+        for j, (expr, alias, names) in found.items():
+            for c in sorted(names, key=len, reverse=True):
+                expr = expr.replace(c, f"{b}.{names[c]}")
+            outer[j] = f"{expr} AS {alias}"
+        inner = [it for j, it in enumerate(items) if j not in outer]
+        inner += [f"{c} AS {name}" for name, c in binds if any(name in o for o in outer.values())]
+        top = []
+        for j, it in enumerate(items):
+            col = it.rpartition(" AS ")[2]
+            top.append(outer.get(j, f"{b}.{col} AS {col}"))
+        return self.select(top, d.subquery(self.select(inner, src), b))
 
     def framed(
         self,
@@ -4968,7 +5327,11 @@ class _Writer:
                 total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
                 # Finite values whose sum overflows (#575), kept without guards.
                 top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
-                return self.agg_finite(total, f"NOT {d.float_eq(top, d.float_lit(math.inf))}")
+                return self.agg_finite(
+                    total,
+                    f"NOT {d.float_eq(top, d.float_lit(math.inf))}",
+                    nan_free=self.no_nan(v, w),
+                )
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
             case "string_agg":
@@ -5154,6 +5517,9 @@ class _Writer:
                     f"(NOT {d.float_lt(zero, x)} OR NOT {d.float_lt(zero, base)} "
                     f"OR {d.float_eq(base, d.float_lit(1.0))})"
                 )
+                # `Expr.issues` reads a call with both arguments present: a NULL in either
+                # makes the result NULL before the domain is looked at (#1990).
+                bad = d.case_when(d.or3(d.is_null(x), d.is_null(base)), d.bool_lit(False), bad)
                 return self.domain(x, bad, d.float_logb(x, base))
             case Bin(op="bit", left=a, right=b, param=name):
                 sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))
@@ -5347,14 +5713,19 @@ class _Writer:
     def date_trunc(self, unit: str, ts: str) -> str:
         """`Time.trunc`. To a week or longer it raises outside the reference's
         timestamps (`Issue.overflow`, D32). To a day or less it wraps below
-        -2⁶³ µs, which no engine's timestamps reach."""
+        -2⁶³ µs, which no engine's timestamps reach. Truncation keeps the order
+        and leaves the reference's first instant, a Monday's midnight that
+        starts its month, quarter and year, as it is: the result is below it
+        just where `ts` is, so the check reads `ts` alone (#1608 item 10). This
+        holds for the units the model has, which stop at a year; a decade or a
+        century would break it (DuckDB's decade of year 1 is year 0)."""
         d = self.d
         t = d.date_trunc(unit, ts)
         if unit not in ("week", "month", "quarter", "year") or not d.guards:
             return t
         lo, hi = d.timestamp_lit(TS_MIN), d.timestamp_lit(TS_MAX)
         fail = d.raise_(f"date_trunc to a {unit} {OUTSIDE_TS}", ts, "time", "overflow")
-        return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
+        return d.case_when(f"({ts} > {hi} OR {ts} < {lo})", fail, t)
 
     def ts_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
         """`r`, raising where the timestamp `ts` is outside the reference's
@@ -5385,16 +5756,32 @@ class _Writer:
         out = [pieces.get(t, d.str_lit("%" if t == "%%" else t)) for t in tokens]
         return "(" + " || ".join(out or [d.str_lit("")]) + ")"
 
-    def date_range(self, x: str, f: Callable[[str], str], lo: int, hi: int, what: str) -> str:
+    def date_range(
+        self,
+        x: str,
+        f: Callable[[str], str],
+        lo: int,
+        hi: int,
+        what: str,
+        *,
+        decided: tuple[int, int] | None = None,
+    ) -> str:
         """`rangeIssue`: the DATE `f(x)`, raising unless `x` and it are within
         `[lo, hi]` days. `f` sees only dates in range, so the engine's own range
-        errors cannot come first."""
+        errors cannot come first. `decided` is the range of `x` for which both
+        are in range, where the caller knows it (#1608 item 10): then one
+        comparison of `x` checks both, and the result is not computed twice."""
         d = self.d
         if not d.guards:
             return f(x)
+        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
+        if decided is not None:
+            a, b = d.int_lit(decided[0]), d.int_lit(decided[1])
+            r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {a} AND {b} THEN {x} END)")
+            # NULL (so not raising) where `x` is NULL.
+            return d.case_when(f"({d.date_days(x)} NOT BETWEEN {a} AND {b})", fail, r)
         lo_, hi_ = d.int_lit(lo), d.int_lit(hi)
         r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {lo_} AND {hi_} THEN {x} END)")
-        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
         # NULL (so not raising) where `x` or the result is NULL.
         bad = (
             f"({d.date_days(x)} NOT BETWEEN {lo_} AND {hi_} "
@@ -5499,14 +5886,34 @@ class _Writer:
             )
         return d.bool_lit(False)
 
-    def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
+    def no_nan(self, v: str, over: str = "") -> str:
+        """No value of `v` is NaN (in the frame `over`, for a window)."""
+        d = self.d
+        flag = d.case_when(d.is_nan(v), d.int_lit(1), d.int_lit(0))
+        return f"MAX({flag}){' ' + over if over else ''} = {d.int_lit(0)}"
+
+    def agg_finite(
+        self,
+        value: str,
+        finite: str | None = None,
+        dep: str | None = None,
+        nan_free: str | None = None,
+    ) -> str:
         """An aggregate's `value`, raising where it is `±∞` though its values
         are finite (`finite`, if the caller has not ruled them out:
-        `Measure.makesInf`, #575)."""
+        `Measure.makesInf`, #575). A sum whose partial sums overflow in
+        both directions is NaN, which the inputs do not explain: with
+        `nan_free`, the condition that no input is NaN, a NaN `value` raises
+        too (ruling 200 A4(3))."""
         d = self.d
         if not d.finite:
             return value
-        cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
+        bad = d.is_inf(value)
+        if nan_free is not None:
+            bad = f"({bad} OR {d.is_nan(value)})"
+        cond = bad if finite is None else f"({finite} AND {bad})"
+        if nan_free is not None:
+            cond = f"({nan_free} AND {cond})"
         return d.case_when(
             cond, d.raise_("overflow to infinity", dep or value, "float", "infinite"), value
         )
@@ -5518,7 +5925,7 @@ class _Writer:
         assumption that a double operation does not overflow. Kept without
         guards, as a `SUM`'s check is (`Rel.guardFree_sound`)."""
         d = self.d
-        if not d.finite:
+        if d.finite is not True:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
         sql = self.bind(sql)
@@ -5675,8 +6082,9 @@ def to_sql(
     deterministic: bool = False,
     guards: bool = True,
     unchecked: dict | None = None,
-    finite: bool = True,
+    finite: Finite = True,
     rows: Literal["sequence", "multiset"] | None = None,
+    asof: Sequence[dict] = (),
 ) -> str:
     """SQL for a Substrait JSON plan, with the semantics `Rel.eval` gives it.
 
@@ -5726,6 +6134,10 @@ def to_sql(
             `±∞` (`Dialect.finite`), the reference's precondition (#575).
             Default: True; False for a plan verified with
             `semantics="duckdb"`.
+        asof: The plan's as-of join sites as the checker reports them
+            (`asof_checks`, `Report`'s `_asof_checks`). A dialect with
+            `native_asof` writes those it can as its ASOF JOIN, with no
+            pair count to take (#1447). Default: none.
 
     Returns:
         One SQL query in the dialect. It reads the plan's tables by their
@@ -5775,10 +6187,10 @@ def to_sql(
         rows = found.rows if found is not None else "sequence"
     if not guards:
         dialect = replace(dialect, guards=False)
-    if not finite:
-        dialect = replace(dialect, finite=False)
+    if finite is not True:
+        dialect = replace(dialect, finite=finite)
     _support.check(plan, dialect.name, Unsupported)
-    p = parse_plan(plan)
+    p = parse_plan(plan, asof if dialect.native_asof else ())
     n = arity(p.root)
     names = p.names or [f"c{i}" for i in range(n)]
     if len(names) != n:
@@ -5789,6 +6201,7 @@ def to_sql(
     for k in kinds(p.root):
         dialect.result_kind(k)
     w = _Writer(dialect, deterministic, seq=rows == "sequence")
+    w.native = p.native
     if unchecked is not None:
         w.unchecked = unchecked_slots(p.root, unchecked)
     ordered = order_matters(p.root) if w.seq else chain_orders(p.root)

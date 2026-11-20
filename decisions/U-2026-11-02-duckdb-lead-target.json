@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-02-duckdb-lead-target",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The verified SQL pipeline is planned with DuckDB as the lead target.",
+  "issues": [
+    231
+  ],
+  "source": "github:#231 comment 6570453498",
+  "note": "Decided with the user."
+}

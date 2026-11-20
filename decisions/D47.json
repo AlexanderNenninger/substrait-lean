@@ -1,0 +1,11 @@
+{
+  "id": "D47",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Where tier-1 engines differ, the reference raises, gives a value or stays open by the first rule that applies.",
+  "amends": [
+    "D21"
+  ]
+}

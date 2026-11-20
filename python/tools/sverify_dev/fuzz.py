@@ -65,7 +65,6 @@ from sverify.testing import EPOCH, duckdb_sql, inline_tables, lean_values
 from sverify_polars import engine as polars_engine
 
 INT, DOUBLE, STRING, BOOL, TS = "int", "double", "string", "bool", "ts"
-SQL_TYPES = {INT: "BIGINT", DOUBLE: "DOUBLE", STRING: "VARCHAR", BOOL: "BOOLEAN", TS: "TIMESTAMP"}
 IBIS_TYPES = {INT: "int64", DOUBLE: "float64", STRING: "string", BOOL: "boolean", TS: "timestamp"}
 
 TABLES: dict[str, dict[str, str]] = {
@@ -513,7 +512,9 @@ def check(
         try:
             whole = s.lean(s.plan(query.base))
             split = [r for part in parts for r in s.lean(s.plan(part))]
-        except Refused:
+        except (Refused, LeanRaised):
+            # A predicate that raises (a zero divisor) partitions nothing;
+            # the runtime oracle covers the raise itself.
             pass
         else:
             if not same_rows(whole, split):

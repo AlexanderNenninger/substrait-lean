@@ -1,0 +1,16 @@
+{
+  "id": "F68",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "D51 facts on #1649: L1 and L4 accepted, L3 accepted on the type, L2 accepted as a statement without evidence; the D51 Lean/Python PR records L2 per pyspark and conf, makes L3's checks able to fail, and names ICU versions.",
+  "prs": [
+    1649
+  ],
+  "amends": [
+    "F62",
+    "F66"
+  ],
+  "source": "fable-ruling-d51-facts-l1-l4.md"
+}

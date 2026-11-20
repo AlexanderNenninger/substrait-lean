@@ -17,6 +17,7 @@ Each construct gets one of three marks:
 ## The number
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run python -m sverify_dev.coverage --targets
 ```
 
@@ -76,6 +77,18 @@ Real queries decide what is in. The sources, measured on 2026-11-05:
   use, so its counts break ties. Of the refusals, 3,932 are out of scope
   (DuckDB's catalog functions, file readers, sequences, settings, aggregate
   states) and 680 are names the harness cannot resolve.
+- Ibis's own backend tests (`sverify_dev.ibis_replay`, Ibis 12.0.0 on
+  DuckDB, the ledgers in
+  [`python/tests/ibis_replay/`](../python/tests/ibis_replay/constructs.json)):
+  of 1,214 tests in twelve modules, 431 agree (every expression they run is
+  proved and gives Ibis's rows), none disagree, 594 are refused, 65 are
+  not proved and 124 skipped. Every refused construct names its issue or
+  the reason it is refused by design. Two refusals hold most of them:
+  float32 columns, which Ibis's `functional_alltypes` has
+  ([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908),
+  205 tests), and plans that read no table
+  ([#1916](https://github.com/AlexanderNenninger/substrait-lean/issues/1916),
+  136).
 
 The measurement found one thing worth stating on its own: the SQL lift
 trails the Ibis producer. Regex functions, `right`, `lpad`, `string_agg`,
@@ -236,7 +249,7 @@ is what the probe gives.
 | correlated scalar subqueries, ANY and ALL | decorrelating needs the count bug handled and at most one row proved per outer row ([#504](https://github.com/AlexanderNenninger/substrait-lean/issues/504)); a join with a grouped aggregate verifies today | [#813](https://github.com/AlexanderNenninger/substrait-lean/issues/813) |
 | WITH RECURSIVE | a fixpoint in the model, with termination; the shop's test on it is not provable without an acyclic hierarchy anyway | [#320](https://github.com/AlexanderNenninger/substrait-lean/issues/320) |
 | SAMPLE and POSITIONAL JOIN | random, or row order, which a table does not have |  |
-| fp32 (FLOAT) | the model computes in binary64; rounding to binary32 after each step needs a model of its own. Cast FLOAT columns to DOUBLE at the source | [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) |
+| fp32 (FLOAT) | the model computes in binary64; rounding to binary32 after each step needs a model of its own. Sverify reads FLOAT columns ([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908)); cast them to DOUBLE before arithmetic | [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) |
 | now, current_date, random, uuid | another value on every run, so no proof covers it; pass the date in as a value (dynamic parameters, [#354](https://github.com/AlexanderNenninger/substrait-lean/issues/354)) | [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
 | hash() | the engine's own hash, which changes between versions; md5 or sha256 verify |  |
 | JSON | no JSON type in the model; flatten JSON at the source into typed columns |  |

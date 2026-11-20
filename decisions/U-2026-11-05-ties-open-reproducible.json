@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-05-ties-open-reproducible",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference leaves tie order and tie pick open, contracts must hold for every tie choice, and a total order is needed only when reproducible= asks.",
+  "source": "memory:determinism-as-certificate.md",
+  "note": "Reframes the earlier rule that ties are fixed only by the deterministic profile."
+}

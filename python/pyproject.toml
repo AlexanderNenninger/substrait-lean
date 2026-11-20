@@ -41,12 +41,13 @@ dependencies = [
 # through its DuckDB backend.
 duckdb = ["sverify-duckdb[run]==0.9.0.dev0", "ibis-framework[duckdb]>=12.0.0"]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
-# sverify at its version; `run` brings `polars` and `numpy`.
-# `sverify.connect()` holds its tables in DuckDB today, so the engines that run
-# through a connection bring it, until a connection has a table store of its own.
-polars = ["sverify-polars[run]==0.9.0.dev0", "sverify[duckdb]"]
+# sverify at its version; `run` brings `polars` and `numpy`. A connection on
+# Polars holds Arrow tables and needs no DuckDB (#1764).
+polars = ["sverify-polars[run]==0.9.0.dev0"]
 # Spark is a package of its own (`engines/spark/`, #1189), released with
-# sverify at its version; `run` brings PySpark.
+# sverify at its version; `run` brings PySpark. Spark runs plans over a
+# connection's tables but does not hold them (it is not a local engine), so a
+# connection needs DuckDB or Polars: this extra brings DuckDB (#1764).
 spark = ["sverify-spark[run]==0.9.0.dev0", "sverify[duckdb]"]
 delta = ["deltalake>=1.6.6"]
 # `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
@@ -227,6 +228,12 @@ search-path = ["src", "tools", "tests", "tests/chaos", "scripts", "../engines/po
 
 # Tasks: `uv run poe <task>` from python/, or `uv run --project python poe <task>`
 # from the project root. Lean tasks run in the project root and need `lake`.
+# poe runs each task through `uv run --no-sync`: a plain `uv run` would rebuild the package
+# after a pyproject or lock change, and the build hook's full `lake build` would start with no
+# slot (2026-11-20, load 160 on the laptop).
+[tool.poe]
+executor = { type = "uv", no-sync = true }
+
 [tool.poe.tasks.prove]
 help = "Check every Lean proof, the generated entries' included; warnings (including `sorry`) fail the build"
 cmd = "lake -R -Kcheck_generated=true build --wfail SubstraitLean"

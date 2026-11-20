@@ -1,0 +1,13 @@
+{
+  "id": "F47",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D50: entry 46's chain is replaced by a nested THEN shape (shape A); an analysis change (B) passes condition facts to the THEN branch; a TRUE-only guard is refused.",
+  "amends": [
+    "F46"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 47",
+  "note": "Appended to ruling-d50-guardby.md. No D-number. Later D50 rulings (76, 77, 89, 94, 95, 102) build on this shape."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-lowerings-lifts-symmetric",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Lowerings and lifts stay separate machineries, each with one shape across every target engine or source frontend.",
+  "source": "memory:engine-behaviour-in-profiles.md"
+}

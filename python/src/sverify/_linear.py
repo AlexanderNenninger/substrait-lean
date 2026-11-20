@@ -12,10 +12,10 @@ the same with every column a key and no measures: a count per row. A
 `DECIMAL` `AVG` keeps the sum and the count of its values, and divides them
 when it finishes, as the model computes it (`Parse.decimalAvgs`). A `MIN`
 or `MAX` keeps the extreme of its values in `__s`. A `SUM`, `AVG`, `VAR`,
-`STDDEV`, `COVAR` or `CORR` of doubles keeps its exact moments beside the
-state (`sverify._exact_sum`, `LinearAgg.no_drift`): `contrib` gives each
-changed row's value (a pair's second in `__t`), and `__s` is the value
-finished from them.
+`STDDEV`, `COVAR` or `CORR` of doubles keeps its exact moments as limb rows
+of the state (`sverify._exact_sum`, `LinearAgg.no_drift`): `contrib` adds
+each changed row's limbs to its group's (`__l` the limb's code, `__v` its
+value), and `__s` is the value finished from them.
 
 A batch updates the state at the cost of the change, without reading the
 view's input:
@@ -55,6 +55,7 @@ weight, which raises if that product leaves 64 bits.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 import ibis
@@ -100,11 +101,8 @@ class Linear:
     state with it; the others merge."""
     exact: tuple[_exact_sum.Exact, ...] = ()
     """The `SUM`s, `AVG`s and statistical aggregates of doubles: their exact
-    moments are kept beside the state (`sverify._exact_sum`), and their
+    moments are limb rows of the state (`sverify._exact_sum`), and their
     `__s` is the finished value."""
-    values: str | None = None
-    """With an exact measure: each input row's contribution, unaggregated,
-    which `sverify._exact_sum.fold` adds up into the initial state."""
 
 
 #: Why a view has no state per group when it is not one this module keeps:
@@ -118,6 +116,7 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
     it cannot be."""
     from sverify.engine import NotIncrementalError, delta_plans, plan_json, written_plan
     from sverify.ibis_substrait.core import DecimalDiv
+    from sverify.ibis_substrait.prune import narrowed
 
     if isinstance(query, str):
         return SQL
@@ -127,7 +126,7 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
     node, groups, measures, names, what = found
     if missing := [g for g in groups if g not in names]:
         return f"the view does not output the key {missing[0]} unchanged"
-    parent = node.parent.to_expr()
+    parent = narrowed(node.parent.to_expr())
     try:
         deltas = delta_plans(plan_json(None, parent))  # type: ignore[arg-type]
     except NotIncrementalError as e:
@@ -137,6 +136,17 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
         return written_plan(plan_json(None, expr))  # type: ignore[arg-type]
 
     keys = [f"k{i}" for i in range(len(groups))]
+
+    exact = tuple(
+        _exact_sum.Exact(i, m.kind, m.sample, m.sqrt)
+        for i, m in enumerate(measures)
+        if m.kind in EXACT_KINDS
+    )
+    if exact and any(m.kind in ("min", "max") for m in measures):
+        return (
+            "a SUM, AVG or statistical aggregate of doubles beside a MIN or MAX: the touched "
+            "groups are recomputed"
+        )
 
     def contributions(rows: ir.Table, weight: Any = None) -> ir.Table:
         """Each row's contribution, times its `weight` (None: 1)."""
@@ -177,7 +187,43 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
             if m.arg2 is not None:
                 # `__t` after `__s`, as the state's columns are.
                 cols[f"__t{i}"] = cols.pop(f"__t{i}")
-        return rows.select(**cols)
+        main = rows.select(**cols)
+        if not exact:
+            return main
+        # A double SUM, AVG or statistical aggregate: its exact moments as limb
+        # rows beside the group's own row (`sverify._exact_sum`).
+        main = main.mutate(
+            **{
+                _exact_sum.CODE: ibis.null("int32"),
+                _exact_sum.VALUE: ibis.literal(Decimal(0), _exact_sum.LIMB_TYPE),
+            }
+        )
+        pre: dict[str, Any] = {k: cols[k] for k in keys}
+        pre["__w"] = cols[COUNT]
+        specs = []
+        for e in exact:
+            m = measures[e.index]
+            pre[f"__ok{e.index}"] = ibis.ifelse(cols[f"__n{e.index}"] != 0, 1, 0)
+            pre[f"__x{e.index}"] = cols[f"__s{e.index}"]
+            second = None
+            if m.arg2 is not None:
+                pre[f"__y{e.index}"] = cols[f"__t{e.index}"]
+                second = f"__y{e.index}"
+            specs.append((e, f"__x{e.index}", second, f"__ok{e.index}"))
+        parts = _exact_sum.limbs(rows.select(**pre), keys, specs)
+        schema = main.schema()
+        filler = {
+            c: ibis.literal(0, t) if c == COUNT or c.startswith("__n") else ibis.null(t)
+            for c, t in schema.items()
+            if c not in (*keys, _exact_sum.CODE, _exact_sum.VALUE)
+        }
+        for i, m in enumerate(measures):
+            if m.kind not in EXACT_KINDS and f"__s{i}" in filler:
+                filler[f"__s{i}"] = ibis.literal(0, schema[f"__s{i}"])
+        parts = parts.select(
+            **{c: filler[c] if c in filler else parts[c].cast(t) for c, t in schema.items()}
+        )
+        return main.union(parts, distinct=False)
 
     def added(rows: ir.Table) -> ir.Table:
         sums: dict[str, Any] = {COUNT: rows[COUNT].sum()}
@@ -194,21 +240,23 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
             )
             if m.arg2 is not None:
                 sums[f"__t{i}"] = rows[f"__t{i}"].max()
-        return rows.group_by(keys).aggregate(**sums)
+        if not exact:
+            return rows.group_by(keys).aggregate(**sums)
+        # Ibis types a decimal's SUM wider than the plan does: keep the limb's.
+        sums[_exact_sum.VALUE] = rows[_exact_sum.VALUE].sum().cast(_exact_sum.LIMB_TYPE)
+        out = rows.group_by([*keys, _exact_sum.CODE]).aggregate(**sums)
+        # A limb that adds up to 0 is no row: the state is the same for the
+        # same rows, whatever came and went.
+        out = out.filter(out[_exact_sum.CODE].isnull() | (out[_exact_sum.VALUE] != 0))
+        return out.select(*rows.columns)
 
-    exact = tuple(
-        _exact_sum.Exact(i, m.kind, m.sample, m.sqrt)
-        for i, m in enumerate(measures)
-        if m.kind in EXACT_KINDS
-    )
-    if exact and any(m.kind in ("min", "max") for m in measures):
-        return (
-            "a SUM, AVG or statistical aggregate of doubles beside a MIN or MAX: the touched "
-            "groups are recomputed"
-        )
     init = added(contributions(parent))
     changed = ibis.table({**parent.schema(), WEIGHT_IN: "int64"}, name=f"{name}$in")
     contrib = contributions(changed, changed[WEIGHT_IN])
+    if exact:
+        # Added up per group and limb in the engine: what reaches the driver
+        # is bounded by the touched groups, not the changed rows (#1447).
+        contrib = added(contrib)
     old = ibis.table(contrib.schema(), name=f"{name}$old")
     new = ibis.table(contrib.schema(), name=f"{name}$contrib")
     merge = write(added(old.union(new, distinct=False)))
@@ -261,7 +309,6 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
         finish=write(view),
         regroup=regroup,
         exact=exact,
-        values=write(contributions(parent)) if exact else None,
     )
 
 

@@ -1,0 +1,16 @@
+{
+  "id": "F86",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "12b-1 is a core theorem: integer-valued double sums and means within 2^53 are exact for every sum-order behaviour; `StdModel.ExactInts` accepted as a hypothesis (not axiom), `Nearest` not needed; D35 amended to add exactness on small integers for shapeless orders.",
+  "issues": [
+    1608
+  ],
+  "amends": [
+    "D35"
+  ],
+  "source": "fable-ruling-12b1-int-exact.md",
+  "note": "Answers track A on ruling 82's two failed checks; chooses a fourth route (d). 12b-1 is its own PR before 12d-4."
+}

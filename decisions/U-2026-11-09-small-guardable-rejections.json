@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-09-small-guardable-rejections",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference's hard rejections stay a small enumerable set (zero divisors, overflow, domain errors) that users can guard with preconditions.",
+  "source": "memory:reference-rejections-small-guardable.md"
+}

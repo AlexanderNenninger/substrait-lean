@@ -1,0 +1,264 @@
+{
+  "ibis": "12.0.0",
+  "source": "https://github.com/ibis-project/ibis/tree/12.0.0/ibis/backends/tests/test_join.py",
+  "license": "Apache-2.0",
+  "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
+  "module": "test_join",
+  "summary": {
+    "agree": 81,
+    "disagree": 0,
+    "refused": 1,
+    "unproved": 0,
+    "skipped": 0
+  },
+  "results": {
+    "test_filtering_join[duckdb-anti]": {
+      "outcome": "agree"
+    },
+    "test_filtering_join[duckdb-semi]": {
+      "outcome": "agree"
+    },
+    "test_join_conflicting_columns[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_join_then_filter_no_column_overlap[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_join_with_pandas[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_join_with_pandas_non_null_typed_columns[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false-false-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false-false-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-false]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true-true-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true-true-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-inner-true]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false-false-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false-false-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-false]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true-true-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true-true-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-left-true]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false-false-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false-false-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-false]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true-true-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true-true-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-outer-true]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false-false-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false-false-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-false]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true-literal]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true-true-const-expr-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true-true-expr-const-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true-true-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true-true-literal-list]": {
+      "outcome": "agree"
+    },
+    "test_join_with_trivial_predicate[duckdb-right-true]": {
+      "outcome": "agree"
+    },
+    "test_mutate_then_join_no_column_overlap[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_mutating_join[duckdb-inner]": {
+      "outcome": "agree"
+    },
+    "test_mutating_join[duckdb-left]": {
+      "outcome": "agree"
+    },
+    "test_mutating_join[duckdb-outer]": {
+      "outcome": "agree"
+    },
+    "test_mutating_join[duckdb-right]": {
+      "outcome": "agree"
+    },
+    "test_outer_join_nullability[duckdb-left-x]": {
+      "outcome": "agree"
+    },
+    "test_outer_join_nullability[duckdb-left-xy]": {
+      "outcome": "agree"
+    },
+    "test_outer_join_nullability[duckdb-outer-x]": {
+      "outcome": "agree"
+    },
+    "test_outer_join_nullability[duckdb-outer-xy]": {
+      "outcome": "agree"
+    },
+    "test_outer_join_nullability[duckdb-right-x]": {
+      "outcome": "agree"
+    },
+    "test_outer_join_nullability[duckdb-right-xy]": {
+      "outcome": "agree"
+    },
+    "test_positional_join[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: positional joins are not supported; rewrite it with a supported operation or column type",
+      "design": "a positional join pairs rows by the engine's own order"
+    }
+  }
+}

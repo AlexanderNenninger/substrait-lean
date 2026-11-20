@@ -1,0 +1,19 @@
+{
+  "id": "F144",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Addendum to ruling 139 after the default-lens decision: 139 stands; unordered collect is determined at the default, unordered string_agg is a tie place at every observation; Value.Equiv's struct arm is a defect fixed in P1; P3 becomes required.",
+  "issues": [
+    1285
+  ],
+  "prs": [
+    1815
+  ],
+  "amends": [
+    "F139"
+  ],
+  "source": "fable-ruling-144-1285-default-lens-addendum.md",
+  "note": "'Addendum to ruling 139'; P3 'was optional in 139 and is now required'. Four sentences of #1815 corrected before merge. No D-number."
+}

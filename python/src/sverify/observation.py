@@ -44,7 +44,7 @@ Rows = Literal["sequence", "ties permuted", "multiset"]
 Elements = Literal["sequence", "multiset"]
 Exactness = Literal["exact", "canon"]
 Precision = Literal["ns", "us", "ms", "s"]
-Strings = Literal["exact", "nfc"]
+Strings = Literal["exact", "nfc", "casefold", "ascii"]
 Decimals = Literal["exact", "value"]
 Errors = Literal["exact", "kind"]
 
@@ -52,7 +52,7 @@ _ROWS: tuple[str, ...] = ("sequence", "ties permuted", "multiset")
 _ELEMENTS: tuple[str, ...] = ("sequence", "multiset")
 _ZEROS: tuple[str, ...] = ("exact", "canon")
 _PRECISIONS: tuple[str, ...] = ("ns", "us", "ms", "s")
-_STRINGS: tuple[str, ...] = ("exact", "nfc")
+_STRINGS: tuple[str, ...] = ("exact", "nfc", "casefold", "ascii")
 _DECIMALS: tuple[str, ...] = ("exact", "value")
 _ERRORS: tuple[str, ...] = ("exact", "kind")
 #: The components in order, with their chains from fine to coarse (floats:
@@ -165,7 +165,11 @@ class Observation:
     """The finest precision observed: `"us"` ignores nanoseconds, `"ms"`
     microseconds, `"s"` milliseconds."""
     strings: Strings = "exact"
-    """`"nfc"`: strings equal after Unicode normalisation (NFC)."""
+    """`"nfc"`: strings equal after Unicode normalisation (NFC); `"casefold"`:
+    also after case folding (`string_key`); `"ascii"`: also with every code
+    point above U+007F dropped, so `søren` equals `sren` and two strings in a
+    non-Latin script equal each other. The keys follow the running Python's
+    `unicodedata.unidata_version`."""
     decimals: Decimals = "exact"
     """`"value"`: `1.50` equals `1.5`; the scale is ignored."""
     errors: Errors = "exact"
@@ -175,7 +179,7 @@ class Observation:
     without an order); `"sequence"`: it counts."""
     bound: Within | None = field(default=None, compare=False)
     """With `floats="plan"`, the plan's bound as a tolerance, where the
-    report knows it (`Report.observation`): printed beside `floats=plan`,
+    report knows it (`Report.lenses`): printed beside `floats=plan`,
     and used by `equal`. Equality of observations ignores it. Without it,
     `equal` compares doubles under `"plan"` exactly, one zero and one NaN
     (`reads_members`, D48)."""
@@ -279,9 +283,9 @@ class Observation:
                 [[None if v is None else sorted(v, key=_order_key) for v in c.to_pylist()]],
                 type=t,
             )
-        if (pa.types.is_string(t) or pa.types.is_large_string(t)) and self.strings == "nfc":
+        if (pa.types.is_string(t) or pa.types.is_large_string(t)) and self.strings != "exact":
             return pa.chunked_array(
-                [[None if v is None else unicodedata.normalize("NFC", v) for v in c.to_pylist()]],
+                [[None if v is None else string_key(self.strings, v) for v in c.to_pylist()]],
                 type=t,
             )
         return c
@@ -359,6 +363,8 @@ class Observation:
 
     @property
     def label(self) -> str:
+        """The observation in one line, `equivalent(...)` with each component
+        that is not exact; `str()` gives the same."""
         return str(self)
 
 
@@ -372,7 +378,7 @@ def _holds_floats(t: pa.DataType) -> bool:
 
 
 def _bound_text(w: Within) -> str:
-    """A plan's bound as `observes:` prints it: `2.0e-07` where it has only
+    """A plan's bound as `lenses:` prints it: `2.0e-07` where it has only
     an absolute bound, the kinds otherwise."""
     kinds = [(n, getattr(w, n)) for n in ("abs", "rel", "ulps") if getattr(w, n) is not None]
     if [n for n, _ in kinds] == ["abs"]:
@@ -419,7 +425,7 @@ EXACT = Observation(rows="sequence")
 EXACT_MULTISET = Observation()
 #: Rows and list elements as multisets, one zero and one NaN, doubles within
 #: the plan's bound (`Report.epsilon`), other values exact: what `ensures`
-#: observes where it names no observation (`Report.observation`), and what a
+#: observes where it names no observation (`Report.lenses`), and what a
 #: sink's rerun must reproduce by default.
 PLAN_BOUND = Observation(floats="plan", zeros="canon", elements="multiset")
 
@@ -457,7 +463,9 @@ def equivalent(
         zeros: `"canon"` makes `-0.0` equal `0.0` and every NaN equal.
         timestamps: The finest precision observed: `"ms"` ignores
             microseconds and nanoseconds. Default `"ns"`, every digit.
-        strings: `"nfc"` compares strings after Unicode normalisation.
+        strings: `"nfc"` compares strings after Unicode normalisation,
+            `"casefold"` also after case folding, `"ascii"` also ignoring
+            every code point above U+007F (`string_key`).
         decimals: `"value"` ignores a decimal's scale (`1.50` equals `1.5`).
         errors: `"kind"` ignores an error's message.
         elements: `"multiset"` ignores the order of a list's elements, as a
@@ -488,6 +496,30 @@ def split(ensures: Sequence[Any]) -> tuple[Observation | None, list[Any]]:
     return (found[0] if found else None), [c for c in ensures if not isinstance(c, Observation)]
 
 
+def string_key(level: str, s: str) -> str:
+    """The key two strings share when they are equal at `level`, a function
+    of the string alone (so each level is an equivalence). `"nfc"` is
+    `NFC(s)`; `"casefold"` is `NFD(casefold(NFD(s)))`, Unicode's canonical
+    caseless match (D145); `"ascii"` is the code points below U+0080 of
+    `NFKD(casefold(NFKD(casefold(NFD(s)))))`, the compatibility caseless
+    match (D146), then the drop. Each key is a function of the previous
+    level's. The keys follow `unicodedata.unidata_version` (stable for
+    assigned code points; they can differ for code points assigned after
+    Unicode 15.0, Python 3.12)."""
+    if level == "exact":
+        return s
+    if level == "nfc":
+        return unicodedata.normalize("NFC", s)
+    nfd = unicodedata.normalize("NFD", s)
+    canonical = unicodedata.normalize("NFD", nfd.casefold())
+    if level == "casefold":
+        return canonical
+    compat = unicodedata.normalize(
+        "NFKD", unicodedata.normalize("NFKD", canonical.casefold()).casefold()
+    )
+    return "".join(ch for ch in compat if ord(ch) < 0x80)
+
+
 # -- which conditions depend on what the observation ignores (D12) -----------
 
 
@@ -501,6 +533,8 @@ def _component(dtype: Any) -> str | None:
         return "strings"
     if dtype.is_decimal():
         return "decimals"
+    if dtype.is_array() or dtype.is_struct() or dtype.is_map():
+        return "elements"
     return None
 
 
@@ -546,7 +580,7 @@ def dependencies(
         why_open = (open_columns or {}).get(n)
         if why_open is not None and why_open not in out:
             out.append(why_open)
-    ignored = set(observation.ignored()) - {"rows", "zeros", "errors", "elements"}
+    ignored = set(observation.ignored()) - {"rows", "zeros", "errors"}
     for comp in (_component(columns[n]) for n in names):
         if comp is None or comp not in ignored or comp in out:
             continue

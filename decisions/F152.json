@@ -1,0 +1,19 @@
+{
+  "id": "F152",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Rewrites apply wherever their verification holds: under semantics='duckdb' no rule theorem changes and the gate opens in RunPlan.lean (R1); pending profiles use the reference's gate; engine profiles need a refinement under one table after #271.",
+  "issues": [
+    271,
+    575,
+    1288,
+    1787
+  ],
+  "prs": [
+    1829
+  ],
+  "source": "fable-ruling-152-1787-rewrites-under-profiles.md",
+  "note": "Corrects #1787's item text (R5). Finding F1: pending profiles labelled 'reference' drop the ±inf precondition (bug). U1/U2 (optimize keyword defaults) held for the user. No D-number."
+}

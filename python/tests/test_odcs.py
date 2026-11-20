@@ -316,6 +316,38 @@ def test_read_maps_rules_to_conditions():
     )
 
 
+@pytest.mark.parametrize(
+    ("bound", "cap"),
+    [
+        ({"mustBeLessOrEqualTo": 2.5}, 2),
+        ({"mustBeLessOrEqualTo": 3.0}, 3),
+        ({"mustBeLessThan": 2.5}, 2),
+        ({"mustBeLessThan": 3}, 2),
+        ({"mustBeBetween": [0, 2.5]}, 2),
+    ],
+)
+def test_read_rounds_a_fractional_row_cap_down(bound, cap):
+    # Row counts are whole numbers, so a cap of 2.5 rows is a cap of 2.
+    doc = textwrap.dedent(
+        """
+        apiVersion: v3.2.0
+        kind: DataContract
+        id: caps
+        version: 1.0.0
+        status: active
+        schema:
+          - name: t
+            properties:
+              - name: a
+                logicalType: integer
+        """
+    )
+    doc = yaml.safe_load(doc)
+    doc["schema"][0]["quality"] = [{"metric": "rowCount", **bound}]
+    c = odcs.read(doc, strict=True)
+    assert [x.n for x in c.conditions() if isinstance(x, MaxRows)] == [cap]
+
+
 def test_read_strict_raises_on_unread_rules():
     with pytest.raises(ValueError, match="6 ODCS rule"):
         odcs.read(DOC, strict=True)
@@ -386,3 +418,212 @@ def test_cli_contract_export(tmp_path, capsys):
     assert main(["contract", "export", f"{path}:p", "-o", str(out), "--id", "paid-v1"]) == 0
     assert valid(json.loads(out.read_text()))["id"] == "paid-v1"
     assert main(["contract", "export", f"{path}:nope"]) != 0
+
+
+READ_MORE = {
+    "apiVersion": "v3.1.0",
+    "kind": "DataContract",
+    "id": "more",
+    "version": "1",
+    "schema": [
+        {
+            "name": "t",
+            "properties": [
+                {
+                    "name": "code",
+                    "logicalType": "string",
+                    "required": True,
+                    "enum": [{"value": "a"}, "b"],
+                    "logicalTypeOptions": {"minLength": 1, "maxLength": 3, "pattern": "^[a-z]+$"},
+                },
+                {
+                    "name": "n",
+                    "logicalType": "integer",
+                    "logicalTypeOptions": {"exclusiveMinimum": 0, "maximum": 9, "multipleOf": 3},
+                    "quality": [
+                        {
+                            "metric": "missingValues",
+                            "arguments": {"missingValues": [None]},
+                            "mustBe": 0,
+                        },
+                        {"metric": "nullValues", "unit": "percent", "mustBeLessThan": 5},
+                        {"metric": "averageValue", "mustBe": 0},
+                    ],
+                },
+                {
+                    "name": "d",
+                    "logicalType": "date",
+                    "logicalTypeOptions": {"maximum": "2030-01-01"},
+                    "relationships": [{"to": "a.b.c"}, {"type": "other", "to": "x.y"}, "x"],
+                },
+                {"name": "b", "logicalType": "boolean", "logicalTypeOptions": {"minimum": True}},
+            ],
+            "relationships": [{"to": "elsewhere.id"}],
+            "quality": [
+                {"metric": "rowCount", "mustBeLessThan": 11},
+                {"metric": "rowCount", "mustBeBetween": [0, 20]},
+                {"metric": "rowCount", "mustBeLessOrEqualTo": 2.5},
+                {
+                    "metric": "duplicateValues",
+                    "arguments": {"properties": ["code", "n"]},
+                    "mustBe": 0,
+                },
+                {"metric": "duplicateValues", "arguments": {"properties": ["nope"]}, "mustBe": 0},
+                {"metric": "nullValues", "mustBe": 0},
+                {
+                    "type": "sql",
+                    "query": "SELECT COUNT(*) FROM {object} WHERE nope > 1",
+                    "mustBe": 0,
+                },
+                {"type": "sql", "query": "SELECT COUNT(*) FROM {object} WHERE n >", "mustBe": 0},
+                {
+                    "type": "sql",
+                    "query": "SELECT COUNT(*) FROM {object} WHERE n IN (SELECT 1)",
+                    "mustBe": 0,
+                },
+                {"type": "sql", "query": "SELECT 1", "mustBe": 0},
+                {"type": "sql", "query": "SELECT COUNT(*) FROM {object} WHERE n > 5", "mustBe": 0},
+                {"type": "weird"},
+                "not a rule",
+            ],
+        }
+    ],
+}
+
+
+def test_read_missing_values_with_values():
+    doc = {
+        "apiVersion": "v3.1.0",
+        "kind": "DataContract",
+        "id": "x",
+        "version": "1",
+        "schema": [
+            {
+                "name": "t",
+                "properties": [
+                    {
+                        "name": "n",
+                        "logicalType": "integer",
+                        "quality": [
+                            {
+                                "metric": "missingValues",
+                                "arguments": {"missingValues": [0, -1, None]},
+                                "mustBe": 0,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (cond,) = odcs.read(doc, strict=True).tables["t"]
+    assert label(cond) == 'NOT "n" IS NULL AND NOT "n" IN (0, -1)'
+
+
+def test_read_lists_what_it_cannot_read_with_reasons():
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(READ_MORE)
+    labels = [label(x) for x in c.tables["t"]]
+    # Bounds and lengths become conditions; required + an IN list needs no
+    # separate NOT NULL.
+    assert "\"code\" IN ('a', 'b')" in labels
+    assert 'NOT "code" IS NULL' not in labels
+    assert 'LENGTH("code") >= 1' in labels and 'LENGTH("code") <= 3' in labels
+    assert '("n" > 0) OR "n" IS NULL' in labels and '("n" <= 9) OR "n" IS NULL' in labels
+    assert '("d" <= CAST(\'2030-01-01\' AS DATE)) OR "d" IS NULL' in labels
+    # A row cap from `mustBeLessThan` (n - 1), from a range starting at 0 and
+    # from a fractional `mustBeLessOrEqualTo: 2.5`, which floors to 2 (#1892).
+    caps = sorted(x.n for x in c.tables["t"] if isinstance(x, MaxRows))
+    assert caps == [2, 10, 20]
+    assert any(isinstance(x, Unique) and x.cols == ("code", "n") for x in c.tables["t"])
+    assert not any(isinstance(x, References) for x in c.tables["t"])
+    assert 'NOT "n" IS NULL' in labels  # missingValues: [null]
+    assert "NOT COALESCE((n > 5), FALSE)" in labels
+    reasons = [u.reason for u in c.unread]
+    expect = [
+        "logicalTypeOptions.pattern",
+        "logicalTypeOptions.multipleOf",
+        "a share of rows",
+        "metric 'averageValue' sverify does not read",
+        "a relationship sverify does not read",
+        "a relationship sverify does not read",
+        "a relationship sverify does not read",
+        "a minimum sverify cannot read for boolean",
+        "a relationship on the object",
+        "a key over columns the object lacks",
+        "metric 'nullValues' on a whole object",
+        "reads columns the object lacks",
+        "SQL that does not parse",
+        "reads columns the object lacks",
+        "a SQL rule of another shape",
+        "a rule of type 'weird'",
+        "not a rule",
+    ]
+    for want in expect:
+        assert any(r.startswith(want) for r in reasons), (want, reasons)
+    assert len(reasons) == len(expect)
+
+
+def test_export_maps_every_column_type():
+    table = pa.table(
+        {
+            "i": pa.array([1], pa.int32()),
+            "f": pa.array([1.5], pa.float64()),
+            "dec": pa.array([1], pa.decimal128(10, 2)),
+            "b": pa.array([True]),
+            "ts": pa.array([0], pa.timestamp("us")),
+            "d": pa.array([0], pa.date32()),
+            "t": pa.array([0], pa.time64("us")),
+            "arr": pa.array([[1]], pa.list_(pa.int64())),
+            "st": pa.array([{"x": 1}], pa.struct([("x", pa.int64())])),
+            "s": pa.array(["a"]),
+        }
+    )
+
+    @sv.transform(requires={"w": []}, ensures=[sv.max_rows(5)], on_unproved="check")
+    def passthrough(w):
+        return w
+
+    doc = valid(odcs.export(StaticSource(table, name="w").pipe(passthrough)))
+    logical = {p["name"]: p["logicalType"] for p in doc["schema"][0]["properties"]}
+    assert logical == {
+        "i": "integer",
+        "f": "number",
+        "dec": "number",
+        "b": "boolean",
+        "ts": "timestamp",
+        "d": "date",
+        "t": "time",
+        "arr": "array",
+        "st": "object",
+        "s": "string",
+    }
+    assert prop(doc, "dec")["physicalType"] == "DECIMAL(10, 2)"
+
+
+def test_export_writes_row_rates_references_and_keys():
+    @sv.transform(
+        requires={"orders": REQUIRES},
+        ensures=[
+            sv.rows_per("customer", at_most=5),
+            sv.references("customer", to=("customers", "id")),
+            sv.key("id"),
+        ],
+        on_unproved="check",
+    )
+    def kept(orders):
+        return orders
+
+    doc = valid(odcs.export(orders().pipe(kept)))
+    (rate,) = [r for r in doc["schema"][0]["quality"] if r.get("type") == "sql"]
+    assert rate["dimension"] == "uniqueness" and rate["mustBe"] == 0
+    assert rate["query"] == (
+        'SELECT COUNT(*) FROM (SELECT "customer" FROM {object} GROUP BY "customer" '
+        "HAVING COUNT(*) > 5)"
+    )
+    assert prop(doc, "customer")["relationships"] == [{"type": "foreignKey", "to": "customers.id"}]
+    assert prop(doc, "id")["primaryKey"] and prop(doc, "id")["required"]
+    # The rate reads back as the same condition.
+    back = odcs.read(doc, strict=True).conditions()
+    assert any(isinstance(c, RowsPer) and c.cols == ("customer",) and c.n == 5 for c in back)
+    assert any(isinstance(c, References) and c.col == "customer" for c in back)

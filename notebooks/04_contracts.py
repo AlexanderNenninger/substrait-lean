@@ -174,6 +174,38 @@ def _(mo):
     out of reach of the analysis (the list at the end of this section says
     what it tracks), so a refusal means "not proved".
 
+    The refusal's "would hold with" line is the other half of the answer: a
+    precondition on one input column under which Lean proves the promise.
+    Sverify proves it before suggesting it. Each postcondition in
+    `report.ensures` carries these as `needs`, ready for `requires=`, so we
+    can take the suggestion and verify again:
+    """)
+    return
+
+
+@app.cell
+def _(mo, orders, sv):
+    from ibis import _
+
+    _plus_one = orders.select(orders.id, total=orders.amount + 1)
+    _requires = [_.amount >= 0, _.amount < 1_000_000_000]
+    _first = sv.verify(_plus_one, requires={"orders": _requires}, ensures=[_.total > 5])
+    [_suggested] = _first.ensures[0].needs
+    _fixed = sv.verify(
+        _plus_one, requires={"orders": [*_requires, _suggested.condition]}, ensures=[_.total > 5]
+    )
+    assert _first.verdict == sv.Verdict.UNPROVED and _fixed.verdict == sv.Verdict.PROVED
+    mo.md(f"Suggested: `{_suggested.code}`. With it stated, the verdict is `{_fixed.verdict}`.")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Stating it moves the question upstream, where it belongs: each run now
+    checks `amount >= 5` on the data, and an order of 3 is refused at the
+    input, before it can break the promise at the output.
+
     ## Contracts on real data
 
     So far the table had no data, and the proof covered every possible
@@ -447,6 +479,37 @@ def _(con_refs, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    A cap on the whole table is more than this sum needs. Each customer
+    adds up only their own orders, so a bound per customer is enough:
+    `sv.rows_per("customer", at_most=1000)` says no customer has more than
+    a thousand orders, and a thousand amounts of at most a million fit
+    64 bits. The data is checked for it like a key (`sv.unique` is
+    `rows_per` with `at_most=1`):
+    """)
+    return
+
+
+@app.cell
+def _(con_refs, sv):
+    from ibis import _
+
+    _orders = con_refs.table("orders")
+    _totals = _orders.group_by("customer").aggregate(total=_orders.amount.sum())
+    per_customer = sv.verify(
+        _totals,
+        requires={
+            "orders": [_.amount >= 0, _.amount <= 1_000_000, sv.rows_per("customer", at_most=1000)]
+        },
+        ensures=[_.total >= 0],
+    )
+    assert per_customer.verdict == sv.Verdict.PROVED and not per_customer.assumed
+    per_customer.verdict
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Relations between columns
 
     Filter and join conditions such as `a.t = b.t + 1`, `start < end` or
@@ -530,6 +593,47 @@ def _(mo):
     `analysis/Sverify/Analysis/Contracts.lean`: a fact `x − y ∈ [lo, hi]` or `x ≠ k`
     taken from a condition holds on every row that passes it, and every
     operator above keeps it.
+
+    ## Typed values
+
+    Say the billing job sums prices with two decimals. A total that rounds
+    away a cent still looks right, and nobody gets paged. Every value
+    Sverify models has a kind: an integer, a double, a decimal with its
+    scale, a date, a timestamp. A double never passes for an integer, and a
+    decimal keeps its scale through a `SUM`. A plan that mixes kinds the
+    checker can't type is refused before it runs. A column it can't read at
+    all is refused when we state the contract, and the refusal names the
+    cast that gets past it:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, mo, sv):
+    from sverify.errors import UnsupportedError
+
+    _items = ibis.table({"id": "int64", "price": "decimal(10,2)", "qty": "uint8"}, name="items")
+    _total = sv.verify(_items.group_by("id").agg(total=_items.price.sum()))
+    try:
+        sv.verify(_items.select(_items.id, _items.qty))
+    except UnsupportedError as _e:
+        _refusal = f"`{type(_e).__name__}`: {_e}"
+    else:
+        raise AssertionError("an unsigned column should be refused")
+    mo.md(
+        f"The type of `total`, a `SUM` of `decimal(10, 2)`: `{_total.output['total']}`\n\n"
+        f"Reading the unsigned column: {_refusal}"
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The sum keeps the scale of two, and its width grows to hold it. The proof
+    behind the kinds is `Rel.kinds_sound`: a well-kinded plan evaluates to
+    values of the kinds it states
+    ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proofs.md)).
 
     ## Runtime errors
 

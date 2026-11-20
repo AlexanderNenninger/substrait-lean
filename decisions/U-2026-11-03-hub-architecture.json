@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-03-hub-architecture",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "The architecture is a hub: a loose core with Substrait, the reference and each engine as refinements.",
+  "source": "memory:reference-generic-algorithms.md"
+}

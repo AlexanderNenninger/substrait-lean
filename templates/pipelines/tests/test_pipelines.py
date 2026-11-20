@@ -31,6 +31,11 @@ def lake(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def writes_of(doc: dict) -> dict[str, dict]:
+    """Each refreshed node's write, by node name."""
+    return {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
+
+
 @pytest.fixture
 def env(tmp_path: Path) -> dict[str, str]:
     out = {k: v for k, v in os.environ.items() if not k.startswith("GITHUB_")}
@@ -61,6 +66,18 @@ def test_check_proves_every_pipeline(env, tmp_path):
     assert "no two rows share (geo, unit, na_item, time)" in comment
 
 
+def test_check_exports_each_node_as_a_plan_that_proves_again(env, tmp_path):
+    done = lake("check", "--plans", str(tmp_path / "plans"), env=env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    names = sorted(p.name for p in (tmp_path / "plans").iterdir())
+    assert names == [
+        "gdp.gdp_table.substrait.json",
+        "gdp.trade_openness_table.substrait.json",
+    ]
+    for p in (tmp_path / "plans").iterdir():
+        assert json.loads(p.read_text())["relations"]
+
+
 def test_refresh_then_catalog(env, tmp_path):
     # The check first, in the same process, as the workflows run it.
     done = lake(
@@ -73,7 +90,7 @@ def test_refresh_then_catalog(env, tmp_path):
     )
     assert done.returncode == 0, done.stdout + done.stderr
     doc = json.loads((tmp_path / "refresh.json").read_text())
-    writes = {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
+    writes = writes_of(doc)
     assert writes["gdp"]["inserted"] == 1100
     assert writes["trade_openness"]["inserted"] == 110
 
@@ -81,7 +98,7 @@ def test_refresh_then_catalog(env, tmp_path):
     again = lake("refresh", "--out", str(tmp_path / "again.json"), env=env)
     assert again.returncode == 0, again.stdout + again.stderr
     doc = json.loads((tmp_path / "again.json").read_text())
-    writes = {n["node"]: n["write"] for r in doc["runs"] for n in r["result"]["nodes"]}
+    writes = writes_of(doc)
     assert (writes["trade_openness"]["inserted"], writes["trade_openness"]["deleted"]) == (0, 0)
 
     assert json.loads((tmp_path / "check.json").read_text())["exit"] == 0

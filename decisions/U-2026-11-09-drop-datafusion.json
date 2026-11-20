@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-09-drop-datafusion",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "DataFusion is removed from sverify entirely, with its upstream bug entries kept as history.",
+  "prs": [
+    1356
+  ],
+  "supersedes": [
+    "U-2026-11-05-datafusion-not-reference",
+    "U-2026-11-08-datafusion-tier-3"
+  ],
+  "source": "memory:datafusion-not-reference.md"
+}
