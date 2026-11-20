@@ -544,7 +544,9 @@ and `merge` plans add up per group with the engine's `SUM` (#1447). Python
 reads back the limbs of the touched groups only and rounds them once
 ([what is trusted](proofs.md#what-is-trusted)). A group keeps 1 to 2 limbs
 for `Σx` and 3 to 5 for `Σx²` on typical data. The state is rebuilt from the
-inputs when a job starts.
+inputs when a job starts: 1.8 s for 10⁷ rows in 1,000 groups once the
+checker's answer on the plans is cached, 8.2 s the first time
+(`sverify_dev.ivm_float_sum --init 10000000`, DuckDB, homelab).
 
 `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` of doubles keep their exact moments
 the same way: the count, `Σx`, `Σx²`, and for pairs `Σy`, `Σxy`, `Σy²`, with

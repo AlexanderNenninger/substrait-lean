@@ -1,9 +1,9 @@
 """`SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` and `CORR` of doubles maintained
 from an exact state (#918 Part B, `sverify._exact_sum`,
-`SubstraitLean/IncrementalFloat.lean`): the glue's fold and finish against
-exact rationals and against the checker's `floatSumCR`, `varOf`, `covOf` and
-`corrOf`, and a pipeline that keeps them exactly over random inserts and
-deletes."""
+`SubstraitLean/IncrementalFloat.lean`): the engine's limbs against exact
+moments, the glue's finish against exact rationals and against the checker's
+`floatSumCR`, `varOf`, `covOf` and `corrOf`, and a pipeline that keeps them
+exactly over random inserts and deletes."""
 
 from __future__ import annotations
 
@@ -126,8 +126,7 @@ def _limbs(engine: str, kind: str, ks, xs, ys, ws, key_type: str = "int64") -> d
     return {k: _exact_sum.moments(e, g) for k, g in slots.items() if any(g.values())}
 
 
-# Spark runs the limbs with the split that needs no POWER or LOG2 (E7 of
-# ruling 167, pending Fable's sign-off on #1873).
+# Spark runs the limbs too: the split needs no POWER or LOG2 (#1873).
 ENGINES = ["duckdb", "polars", pytest.param("spark", marks=pytest.mark.backend("spark"))]
 
 
@@ -143,7 +142,7 @@ def test_the_split_is_frexp(engine):
     """The engine's split of a double into mantissa and grid position is
     `frexp`'s: every `2^k` and `2^k - ulp` (so every literal and every step of
     the split), the subnormals' edges, the largest double, both signs, and
-    random values across the range (S2, S4 of ruling 174)."""
+    random values across the range (#1873)."""
     from sverify.engine import connect, put_table, run_plan, written_plan
 
     rng = random.Random(174)
@@ -237,8 +236,9 @@ def _state(n: int, slots: dict[tuple[int, int], int | None]) -> pa.Table:
 
 def test_attach_finishes_from_limbs_and_guards_them():
     """The finish reads a group's limbs; past the limbs' headroom (E1), with
-    a failed split (E2) or a NULL limb (an overflow an engine let through,
-    S5 of ruling 174) it raises."""
+    a failed split (E2), a NULL limb (an overflow an engine let through), a
+    measure with no values but limbs, or limb rows outside their group's own
+    row (#1873) it raises."""
     e = [_exact_sum.Exact(0, "fsum")]
     got = _exact_sum.attach(
         _state(2, {(_exact_sum.X, 1073 // 32): 3 * 2 ** (1073 % 32)}), ["k0"], e, check=True
@@ -252,6 +252,15 @@ def test_attach_finishes_from_limbs_and_guards_them():
         _exact_sum.attach(_state(1, {(_exact_sum.BROKEN, 0): 1}), ["k0"], e, check=False)
     with pytest.raises(ValueError, match="limb of measure 0 is NULL"):
         _exact_sum.attach(_state(1, {(_exact_sum.X, 3): None}), ["k0"], e, check=False)
+    with pytest.raises(ValueError, match="measure 0 has no values but limbs"):
+        _exact_sum.attach(_state(0, {(_exact_sum.X, 3): 1}), ["k0"], e, check=False)
+    one = _state(1, {(_exact_sum.X, 3): 1})
+    two_own = pa.concat_tables([one, one.slice(0, 1)])
+    with pytest.raises(ValueError, match="two own rows"):
+        _exact_sum.attach(two_own, ["k0"], e, check=False)
+    stray = one.set_column(0, "k0", pa.array([1, 2], pa.int64()))
+    with pytest.raises(ValueError, match="no own row of its group"):
+        _exact_sum.attach(stray, ["k0"], e, check=False)
 
 
 def test_finish_rounds_once():
@@ -423,8 +432,7 @@ def test_a_refresh_on_spark_without_ansi_is_refused():
     """A refresh meets the settings check before any plan runs
     (`sverify.routes.choose`, `check_settings`). Without ANSI, Spark's
     `DECIMAL(38,0)` `SUM` gives NULL on overflow (`spark-decimal-arith`),
-    so a limb's sum would fail silently: the refresh is refused (S5 of
-    ruling 174)."""
+    so a limb's sum would fail silently: the refresh is refused (#1873)."""
     from sverify.routes import EngineSettingsError
     from sverify_spark import engine
 
@@ -441,6 +449,23 @@ def test_a_refresh_on_spark_without_ansi_is_refused():
         spark.conf.set("spark.sql.ansi.enabled", "true")
     node.refresh(engine="spark")
     assert rows(node)[0][1] == 4.0
+
+
+def test_deleting_a_row_a_group_does_not_hold_raises():
+    """Deleting `(0, 2.0)` from `{(0, 1.0)}` returns the group's count to 0
+    but leaves limbs that are not: the change raises rather than keep them
+    for the group's next rows (#1873)."""
+    from sverify._weighted import weighted
+
+    src = StaticSource(table([(0, 1.0)]), name="t")
+    node = src.pipe(sums)
+    node.refresh()
+    assert node._stage is not None
+    view = node._stage.view
+    # The pipeline refuses such a delete before any view runs: call the
+    # view's change step with it directly.
+    with pytest.raises(ValueError, match="not in the inputs: measure 0 has no values but limbs"):
+        view._linear_change({"t": weighted(table([(0, 2.0)]), -1)}, {})
 
 
 def test_no_drift_where_a_running_sum_drifts():
@@ -546,8 +571,9 @@ def test_maintained_statistics_are_exact(seed, engine):
         _check(node, live, ("vs", "dp", "cs", "r"))
 
 
-def test_the_exact_fold_needs_no_numpy():
-    """The base package does not declare numpy (#1447): the fold is Arrow's."""
+def test_the_exact_state_needs_no_numpy():
+    """The base package does not declare numpy (#1447): the limbs are the
+    engine's and the finish reads them with Arrow."""
     import subprocess
     import sys
 

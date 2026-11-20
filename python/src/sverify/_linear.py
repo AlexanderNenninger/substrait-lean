@@ -12,10 +12,10 @@ the same with every column a key and no measures: a count per row. A
 `DECIMAL` `AVG` keeps the sum and the count of its values, and divides them
 when it finishes, as the model computes it (`Parse.decimalAvgs`). A `MIN`
 or `MAX` keeps the extreme of its values in `__s`. A `SUM`, `AVG`, `VAR`,
-`STDDEV`, `COVAR` or `CORR` of doubles keeps its exact moments beside the
-state (`sverify._exact_sum`, `LinearAgg.no_drift`): `contrib` gives each
-changed row's value (a pair's second in `__t`), and `__s` is the value
-finished from them.
+`STDDEV`, `COVAR` or `CORR` of doubles keeps its exact moments as limb rows
+of the state (`sverify._exact_sum`, `LinearAgg.no_drift`): `contrib` adds
+each changed row's limbs to its group's (`__l` the limb's code, `__v` its
+value), and `__s` is the value finished from them.
 
 A batch updates the state at the cost of the change, without reading the
 view's input:

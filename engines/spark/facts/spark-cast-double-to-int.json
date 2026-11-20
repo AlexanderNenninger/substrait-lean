@@ -144,7 +144,7 @@
     {
       "checked_at": "2026-11-20",
       "method": "probe",
-      "checked_by": "sverify_dev.probe_spark (session claude/exact-limb-state, #1873, ruling 174)",
+      "checked_by": "sverify_dev.probe_spark (session claude/exact-limb-state, #1873)",
       "evidence": [
         {
           "file": "engines/spark/probes/probes.json",

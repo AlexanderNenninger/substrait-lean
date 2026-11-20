@@ -439,9 +439,9 @@ integer per value (`exactOf`: the value in units of `2⁻¹⁰⁷⁴`; `sqOf`,
 `scaled`'s products in units of `2⁻²¹⁴⁸`), which `no_drift` adds up batch by
 batch (`featIn`). The engine holds that sum in limbs. Each value is a list of
 pieces `(p, v)`, `v` at bit `p`, which add up to its integer: that is the
-split of a double into a mantissa and a grid position, which the engine
-checks on every row and which is trusted (`docs/trusted-base.md`, E2 and E4
-of ruling 167). A piece adds `v · 2^(p mod 32)` to limb `p / 32`, and the
+split of a double into a mantissa and a grid position, whose normal form
+the engine checks on every row and which is trusted (`docs/trusted-base.md`,
+#1873). A piece adds `v · 2^(p mod 32)` to limb `p / 32`, and the
 limbs read back as `Σ limb j · 2^(32 j)` (`limbs_grouped`) are the sum of the
 pieces, the feature's integer. Each limb is a sum over the rows itself, so
 it is linear over Z-sets as the feature is. -/

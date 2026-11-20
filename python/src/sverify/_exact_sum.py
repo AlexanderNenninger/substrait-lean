@@ -31,8 +31,7 @@ normal form, an integer mantissa below `2⁵³` and, for a normal value, at
 least `2⁵²`; a row that fails counts in the `BROKEN` slot, which raises at the
 finish. A limb holds at most `HEADROOM` pieces' worth before `DECIMAL(38,0)`
 could overflow, so the finish raises for a group with more values, and for a
-NULL limb, an overflow an engine let through (E1 and E2 of ruling 167, E2 as
-ruling 174 amends it).
+NULL limb, an overflow an engine let through (#1873 lists the conditions).
 
 It is trusted glue (`docs/proofs.md`): the engine computes the limbs with
 the checked plans, and this module reads them back for the touched groups
@@ -216,12 +215,16 @@ def _split(t: ir.Table, c: str) -> ir.Table:
         }
     )
     t = t.mutate(**{a: t[s]})
-    for b in range(10, -1, -1):
-        # `2¹⁰²⁴` is past the largest double: halve `a` and compare with `2¹⁰²³`.
-        big = t[a] * 0.5 >= 2.0**1023 if b == 10 else t[a] >= 2.0 ** (2**b)
-        down = t[a] * 2.0**-512 * 2.0**-512 if b == 10 else t[a] * 2.0 ** -(2**b)
+    # `a < 2¹⁰²⁴`, so ten steps (exponents 0 to 1023) bring it into `[1, 2)`.
+    for b in range(9, -1, -1):
+        big = t[a] >= 2.0 ** (2**b)
         step = ibis.literal(2**b, "int64")
-        t = t.mutate(**{a: ibis.ifelse(big, down, t[a]), e: t[e] + ibis.ifelse(big, step, zero)})
+        t = t.mutate(
+            **{
+                a: ibis.ifelse(big, t[a] * 2.0 ** -(2**b), t[a]),
+                e: t[e] + ibis.ifelse(big, step, zero),
+            }
+        )
     # The mantissa: `a · 2⁵²` signed for a normal value; for a subnormal, the
     # scaled value above (its exponent is clamped to -1022).
     sub = t[e] < -1022
@@ -473,9 +476,11 @@ def _call(name: str, *args: Any) -> Any:
 def attach(state: pa.Table, keys: Sequence[str], exact: Sequence[Exact], check: bool) -> pa.Table:
     """`state` (a group's own row and its limb rows, per group) with each
     exact measure's `__s` finished from its limbs. Raises where a group has
-    more values than the limbs hold, or a value's split failed; with `check`,
-    also where the written plan raises. Python reads the state's rows only,
-    a chunk at a time: a group's rows and limbs, never an input row."""
+    more values than the limbs hold, a value's split failed, a limb is NULL,
+    a measure with no values has limbs that are not 0, or a limb row has no
+    own row of its group; with `check`, also where the written plan raises.
+    Python reads the state's rows only, a chunk at a time: a group's rows and
+    limbs, never an input row."""
     if not exact:
         return state
     canon = canonical_keys(state.select(list(keys)), keys)
@@ -500,6 +505,13 @@ def attach(state: pa.Table, keys: Sequence[str], exact: Sequence[Exact], check: 
     def flush() -> None:
         for e, n in zip(exact, counts, strict=True):
             own = {s: v for (i, s), v in slots.items() if i == e.index}
+            if n == 0 and any(own.values()):
+                # Linear over Z-sets, a measure with no values has no limbs;
+                # one left means a deleted row the group did not hold.
+                raise ValueError(
+                    f"changes delete rows that are not in the inputs: measure {e.index} "
+                    "has no values but limbs that are not 0 (#1447)"
+                )
             if own.get(BROKEN, 0):
                 raise ValueError(f"a double's split into limbs failed in measure {e.index} (#1447)")
             if n >= HEADROOM:
@@ -515,13 +527,20 @@ def attach(state: pa.Table, keys: Sequence[str], exact: Sequence[Exact], check: 
     for batch in rows.to_batches(max_chunksize=_CHUNK):
         for r in batch.to_pylist():
             code = r[CODE]
+            key = key_of([r[k] for k in keys])
             if code is None:
                 if cur is not None:
+                    if key == cur:
+                        raise ValueError("a group of the exact state has two own rows (#1447)")
                     flush()
-                cur = key_of([r[k] for k in keys])
+                cur = key
                 counts = [r[n] or 0 for n in ns]
                 slots = {}
                 continue
+            if key != cur:  # sorted by key, then code: a group's own row comes first
+                raise ValueError(
+                    "a limb row of the exact state has no own row of its group (#1447)"
+                )
             i, rest = divmod(code, _SLOTS * _LIMBS)
             slot, limb = divmod(rest, _LIMBS)
             if i in by_index:
