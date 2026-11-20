@@ -3,8 +3,8 @@ that carry a report (`VerificationError`, `UnverifiedRunError`,
 `PostconditionError`), and the abstract values the checker established, as
 text (`render_fact`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 
@@ -553,6 +553,8 @@ class Report:
     _bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    """The integer bounds Lean found on each integer output column, lowest
+    and highest (None: unbounded), for hints."""
     rows: int | None = None
     """At most this many output rows, from the inputs' row caps (`max_rows`
     in `requires`, `Rel.maxRows`); None if nothing bounds them."""
@@ -564,8 +566,6 @@ class Report:
     """The profile the report is under (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
     computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
-    """The integer bounds Lean found on each integer output column, lowest
-    and highest (None: unbounded), for hints."""
     internal_plan: str | None = field(default=None, repr=False, compare=False)
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
@@ -1628,7 +1628,7 @@ class Report:
         them to the stated preconditions.
 
             report = sv.verify(expr)
-            if not report._proved:
+            if report.needs:
                 report = sv.verify(expr, requires=report.suggested_requires)
         """
         if self._on_inferred != "error":
