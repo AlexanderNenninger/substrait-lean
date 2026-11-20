@@ -6,6 +6,8 @@ in it is documented (a class or function by its own docstring, any other
 value in its module's docstring), the API reference lists each, and every
 sverify class a public name returns, holds or takes is public too."""
 
+import ast
+import functools
 import importlib
 import inspect
 import sys
@@ -140,40 +142,95 @@ def test_the_reference_lists_members_that_exist():
             assert set(entry["members"]) <= names, entry["name"]
 
 
-def _hints(obj, owner) -> dict:
-    """The resolved type hints of `obj`, where the names its module imports
-    for type checking only are looked up among sverify's modules."""
-    names: dict = {k: getattr(typing, k) for k in typing.__all__}
-    for mod in list(sys.modules.values()):
-        if getattr(mod, "__name__", "").startswith("sverify"):
-            for k, v in vars(mod).items():
-                names.setdefault(k, v)
-    module = sys.modules[obj.__module__]
-    local = dict(vars(owner)) if inspect.isclass(owner) else None
-    try:
-        return typing.get_type_hints(obj, globalns={**names, **vars(module)}, localns=local)
-    except (NameError, AttributeError):  # a third-party type (polars, duckdb, hypothesis)
-        return {}
+@functools.cache
+def _scope(module: str) -> dict:
+    """The names an annotation in `module` may use: the module's own, and
+    those it imports for type checking only (its `if TYPE_CHECKING:`
+    imports, run here; one of a package that is not installed is skipped)."""
+    mod = sys.modules[module]
+    scope = dict(vars(mod))
+    missing: set[str] = set()
+    tree = ast.parse(inspect.getsource(mod))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and ast.unparse(node.test) in (
+            "TYPE_CHECKING",
+            "_TYPE_CHECKING",
+        ):
+            for stmt in node.body:
+                if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+                    try:
+                        exec(compile(ast.Module([stmt], []), module, "exec"), scope)  # noqa: S102
+                    except ImportError:
+                        missing |= {(a.asname or a.name).partition(".")[0] for a in stmt.names}
+    scope["__not_installed__"] = missing
+    return scope
 
 
-def _reached(obj):
+def _sverify(cls: type) -> bool:
+    return cls.__module__.partition(".")[0] == "sverify"
+
+
+def _resolved(annotations: dict, module: str, where: str, unresolved: set):
+    """Each annotation of `annotations` resolved on its own, in `module`'s
+    scope (`_scope`); one that cannot be goes to `unresolved` as
+    `where.name`."""
+    scope = _scope(module)
+    for name, hint in annotations.items():
+        if isinstance(hint, str):
+            try:
+                hint = eval(hint, scope)  # noqa: S307 (sverify's own annotations)
+            except NameError as e:
+                if e.name not in scope["__not_installed__"]:
+                    unresolved.add(f"{where}.{name}")
+                continue
+        yield name, hint
+
+
+def _function(member):
+    """The function behind a method, property or cached property, or None."""
+    for attr in ("fget", "func", "__func__"):
+        member = getattr(member, attr, member)
+    return member if inspect.isfunction(member) else None
+
+
+def _reached(obj, unresolved: set):
     """The hints of a public function, or of a class's public fields and of
-    its public methods' and properties' parameters and returns."""
-    if inspect.isclass(obj):
-        yield from (t for n, t in _hints(obj, obj).items() if not n.startswith("_"))
-        for n, member in vars(obj).items():
-            f = member.fget if isinstance(member, property) else getattr(member, "__func__", member)
-            if not n.startswith("_") and inspect.isfunction(f):
-                yield from _hints(f, obj).values()
-    elif inspect.isfunction(obj):
-        yield from _hints(obj, obj).values()
+    its public methods' and properties' parameters and returns, inherited
+    from its sverify bases too."""
+    if inspect.isfunction(obj):
+        yield from (
+            h
+            for _, h in _resolved(obj.__annotations__, obj.__module__, obj.__qualname__, unresolved)
+        )
+        return
+    if not inspect.isclass(obj):
+        return
+    done: set[str] = set()
+    for base in filter(_sverify, obj.__mro__):
+        own = vars(base).get("__annotations__", {})
+        public = {n: h for n, h in own.items() if not n.startswith("_") and n not in done}
+        for _name, hint in _resolved(public, base.__module__, base.__qualname__, unresolved):
+            yield hint
+        for name, member in vars(base).items():
+            f = _function(member)
+            if name.startswith("_") or name in done or f is None:
+                continue
+            done.add(name)
+            yield from (
+                h for _, h in _resolved(f.__annotations__, f.__module__, f.__qualname__, unresolved)
+            )
+        done |= set(own)
 
 
 def _classes(hint):
     if inspect.isclass(hint):
         yield hint
     for arg in typing.get_args(hint):
-        yield from _classes(arg)
+        if isinstance(arg, (list, tuple)):  # `Callable[[A], B]`'s parameters
+            for a in arg:
+                yield from _classes(a)
+        else:
+            yield from _classes(arg)
 
 
 def test_every_type_a_public_name_reaches_is_public():
@@ -187,20 +244,22 @@ def test_every_type_a_public_name_reaches_is_public():
     todo = [getattr(m, n) for m in map(importlib.import_module, PUBLIC) for n in m.__all__]
     seen: set[int] = set()
     missing = {}
+    unresolved: set[str] = set()
     while todo:
         obj = todo.pop()
         if id(obj) in seen:
             continue
         seen.add(id(obj))
-        for hint in _reached(obj):
+        for hint in _reached(obj, unresolved):
             for cls in _classes(hint):
-                if cls.__module__.partition(".")[0] != "sverify":
+                if not _sverify(cls):
                     continue
                 name = f"{cls.__module__}.{cls.__qualname__}"
                 if id(cls) not in public and name not in EXCLUDED:
                     missing[name] = obj.__qualname__
                 todo.append(cls)
     assert missing == {}, "reached, and in no public __all__ (name: reached from)"
+    assert unresolved == set(), "an annotation that names nothing"
 
 
 def test_verdict_has_no_truth_value():
