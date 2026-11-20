@@ -1,0 +1,39 @@
+{
+  "id": "polars-ts-widen-wraps",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Widening a Datetime of huge counts to microseconds wraps",
+  "verdict": "wraps where DuckDB raises",
+  "area": "temporal",
+  "options": [
+    "timestamp_precision"
+  ],
+  "constructs": [
+    "cast",
+    "Datetime"
+  ],
+  "description": [
+    "Casting an Arrow `timestamp[s]` holding 2^62 (read as `Datetime(\"ms\")`) to `Datetime(\"us\")` multiplies by 1000 without a check: the count wraps. DuckDB raises `ConversionException` (\"Could not convert Timestamp(S) to Timestamp(US)\"). Inside 0001..9999 (D32) nothing wraps.",
+    "A scan that widens s and ms to microseconds needs a range check on Polars."
+  ],
+  "reference": "D61: s and ms are read as microseconds, exactly; D32 bounds the years.",
+  "status": "deviation",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "worker 5, #323 (D61), 2026-11-19",
+      "evidence": [
+        {
+          "sql": "pl.from_arrow(pa.table({x: pa.array([2**62], pa.timestamp('s'))})).select(pl.col('x').cast(pl.Datetime('us')))",
+          "observed": "[datetime(1970, 1, 1, 0, 0)]"
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python). DuckDB 2.0.0: `ConversionException` on the same table."
+    }
+  ],
+  "issues": [
+    323
+  ]
+}
