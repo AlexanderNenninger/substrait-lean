@@ -1848,6 +1848,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       else throw "timestamps finer than microseconds are not supported"
     if let some us := field? l "timestampTz" then
       return .un (.atUtc true) (.lit (.ts (← getInt us)))
+  -- A typed decimal NULL has its declared decimal kind, so a call of such NULLs
+  -- (`negate(null::dec?<38,0>)`) is a decimal call (#2026): `DECIMAL(p, s)` of NULL is NULL.
+  if let some t := (field? j "literal").bind (field? · "null") then
+    if let .dec p s := typeKind t then return .un (.decimal p s) (.lit .null)
   if let some c ← constOf? fns j then return ← constExpr c
   if (field? j "literal").isSome then
     throw "month and year intervals are only supported added to a date or timestamp"
