@@ -119,3 +119,51 @@ def test_a_polars_connection_needs_no_duckdb() -> None:
         """
     )
     assert out == "proved [{'y': 2}, {'y': 3}, {'y': 4}] True False"
+
+
+def test_a_scan_with_dates_out_of_range_is_refused_on_a_polars_connection() -> None:
+    """D32: a date outside 0001-9999 in a file reaches no run. A connection
+    without DuckDB has no view to check the rows over, so the files' statistics
+    must show the range, and a file whose statistics do not is refused."""
+    import pytest
+
+    pytest.importorskip("polars")
+    out = run(
+        """
+        import datetime, tempfile, os
+        import pyarrow as pa, pyarrow.parquet as pq, sverify as sv
+        from sverify._scan import Scan
+        schema = pa.schema([("d", pa.date32())])
+        d = tempfile.mkdtemp()
+        good, bad = os.path.join(d, "good.parquet"), os.path.join(d, "bad.parquet")
+        pq.write_table(pa.table({"d": pa.array([datetime.date(2020, 1, 1)], pa.date32())}), good)
+        pq.write_table(pa.table({"d": pa.array([3_000_000], pa.int32()).cast(pa.date32())}), bad)
+        con = sv.connect("polars")
+        con.put("good", Scan((good,), schema))
+        try:
+            con.put("bad", Scan((bad,), schema))
+        except Exception as e:
+            print(type(e).__name__, "0001" in str(e) or "9999" in str(e), con.has("bad"))
+        """
+    )
+    assert out.endswith("True False"), out
+
+
+def test_a_bound_polars_table_refuses_every_ibis_execution_path() -> None:
+    import pytest
+
+    pytest.importorskip("polars")
+    out = run(
+        """
+        import ibis, pyarrow as pa, sverify as sv
+        con = sv.connect("polars")
+        con.put("t", pa.table({"k": pa.array([1], pa.int64())}))
+        t = con.table("t")
+        for call in (lambda: ibis.to_sql(t), lambda: t.compile(), lambda: t.to_pyarrow()):
+            try:
+                call()
+            except NotImplementedError as e:
+                print("polars" in str(e))
+        """
+    )
+    assert out.split() == ["True"] * 3, out
