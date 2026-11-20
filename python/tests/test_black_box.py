@@ -110,6 +110,28 @@ def test_lean_does_not_evaluate_entropy():
     assert result.stage == "oracle A" and "black box Lean does not evaluate" in result.detail
 
 
+def test_a_law_break_is_refused():
+    # A black box whose function breaks a declared law (non-NULL, and it gives
+    # NULL): the model keeps the row's sample there, and the checker refuses
+    # the rows instead of showing it (#1484).
+    code, out, err = run_checker(("--law-break-selftest",), "x")
+    assert code == 1 and out == ""
+    assert "rows not evaluated: black box law_break_selftest broke a declared law" in err
+
+
+def test_a_raise_is_not_a_law_break():
+    # `varchar_bigint` declares non-NULL and its evaluator gives NULL on 'bad',
+    # where the row raises: the checker reports the raise and does not panic
+    # (ruling 154; the replay's `transitive_filter_bounds.test:83`).
+    from sverify.testing import LeanRaised, inline_tables, lean_values
+
+    schemas = {"t": ibis.schema({"s": "string"})}
+    plan = lift("SELECT CAST(s AS BIGINT) AS i FROM t", schemas, "duckdb").plan
+    with pytest.raises(LeanRaised) as raised:
+        lean_values(json.dumps(inline_tables(plan, {"t": [("bad",)]})))
+    assert "broke a declared law" not in str(raised.value)
+
+
 @pytest.mark.parametrize("semantics", ["duckdb", "reference"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
@@ -128,6 +150,12 @@ def test_the_laws_prove_contracts(query, ensures, semantics):
     )
     assert report.verdict == sv.Verdict.PROVED, report
     assert not report.errors
+    # The report names the laws the proof trusts, from the checker (#1484).
+    name = "entropy" if "entropy" in query else "base64"
+    # The verdict does not read them; str() names what it trusts (ruling 140).
+    assert list(report.black_boxes) == [name]
+    assert all(isinstance(law, tuple) for law in report.black_boxes[name])
+    assert f"trusts: black box {name} keeps its declared laws" in str(report)
 
 
 def test_what_the_laws_do_not_say_stays_unproved():

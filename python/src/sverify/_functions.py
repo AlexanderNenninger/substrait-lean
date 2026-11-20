@@ -92,7 +92,9 @@ GROUPS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         "int.bit": (),
         "int.shift": ("shift_range",),
-        "fp.elem": ("rounding", "on_domain_error", "pow_one_inf", "zero_sign"),
+        "fp.pow": ("rounding", "on_domain_error", "pow_one_inf", "zero_sign"),
+        "fp.atan2": ("rounding", "on_domain_error", "zero_sign"),
+        "fp.elem": ("rounding", "on_domain_error", "zero_sign"),
         "fp.log": ("rounding", "on_domain_error", "on_log_zero"),
         "str.sub": ("negative_start", "substring_range", "string_positions"),
         "str.match": ("case_sensitivity", "string_positions"),
@@ -228,19 +230,15 @@ class Fn:
 
 
 def _libm(name: str) -> dict[str, str | No]:
-    """An elementary function of a double, C's `libm` on the engines that use it."""
-    sql: dict[str, str | No] = {
+    """An elementary function of a double: C's `libm` on DuckDB and Polars, Java's on
+    Spark, within the ulps its `fp.elem` and `fp.log` rows state (spark-elem-rounding)."""
+    return {
         "": f"{name.upper()}({{0}})",
         "snowflake": No(
             f"Snowflake's {name.upper()} is not documented to be C's libm, "
             "which the Lean model uses"
         ),
     }
-    if name != "sqrt":  # IEEE 754 rounds square roots correctly, as libm does.
-        sql["spark"] = No(
-            f"Spark's {name.upper()} is Java's StrictMath, not the C libm the Lean model uses"
-        )
-    return sql
 
 
 def _fp(name: str, anchor: int, group: str, lift: str, ibis: str) -> Fn:
@@ -278,7 +276,7 @@ FUNCTIONS: tuple[Fn, ...] = (
     _fp("asin", 108, "fp.elem", "Asin", "Asin"),
     _fp("acos", 109, "fp.elem", "Acos", "Acos"),
     _fp("atan", 110, "fp.elem", "Atan", "Atan"),
-    Fn("atan2", 111, "core", "fp.elem", ("float", "float"), "float", "fatan2", ibis=("Atan2",),
+    Fn("atan2", 111, "core", "fp.atan2", ("float", "float"), "float", "fatan2", ibis=("Atan2",),
        sql={"": "ATAN2({0}, {1})",
             "spark": No("Spark's ATAN2 is Java's StrictMath, not the C libm the Lean model uses"),
             "snowflake": No("Snowflake's ATAN2 is not documented to be C's libm")}),
@@ -351,6 +349,17 @@ FUNCTIONS: tuple[Fn, ...] = (
          lift=("MD5",)),
     _str("sha256", 209, "str.opaque", 1, "str", expr=True, sql={"duckdb": "sha256({0})"}),
 )  # fmt: skip
+
+#: The reference's operations on doubles whose result tells `-0.0` from
+#: `+0.0` beyond `canon` (ruling 160): `atan2` (either argument), IEEE
+#: division (`BinFn.fdivIeee`, the divisor) and `power` (`BinFn.fpow`, the base
+#: under a negative exponent). The reference casts no double to text. Every
+#: other operation on doubles maps the two zeros into one class. An engine
+#: whose read of a zero's sign can differ from the stored value (Snowflake,
+#: recorded privately) admits these only refused or guarded;
+#: `test_sql_snowflake.py::test_zero_sign_readers_are_refused_or_guarded`
+#: checks it, one check per name.
+ZERO_SIGN_READERS: tuple[str, ...] = ("atan2", "fdivIeee", "fpow")
 
 #: The rows by name and by each alias.
 BY_NAME: Mapping[str, Fn] = MappingProxyType(

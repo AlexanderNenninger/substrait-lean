@@ -203,6 +203,13 @@ states the condition (None: unset)."""
 _LIFTED = ("reference", "duckdb")
 
 
+#: The rewrite rules the checker may apply to the plan an engine runs, by
+#: their report names (`Rule.name`), in place of the gate's defaults
+#: (`Rule.onByDefault`, `substrait-check --rules`, #1787). For benches and
+#: tests; None takes the defaults.
+_RULES: list[str] | None = None
+
+
 def _expr_semantics(transform: Transform) -> Semantics:
     """The semantics an unstated `verify(semantics=...)` takes: an expression
     whose SQL (`sverify.sql`) is all lifted with DuckDB's semantics has
@@ -624,7 +631,7 @@ def _render_needs(
 
 def _why_hint(why: str, show: Callable[[str], str]) -> str:
     """Why no bound on an input column rules an issue out, from the
-    inference's reason (`SubstraitLean/Infer.lean`), in the user's terms."""
+    inference's reason (`analysis/Sverify/Analysis/Infer.lean`), in the user's terms."""
     m = re.fullmatch(r"it divides by (.+), which the inference does not look into", why)
     if m and re.fullmatch(r"-?0(\.0*)?d?", m[1]):
         return "it divides by the constant 0, so every row it reaches raises: change the divisor"
@@ -641,7 +648,7 @@ def _hint(
     show: Callable[[str], str] = lambda e: e,
 ) -> str | None:
     """What a report suggests for one overflow, from what the inference
-    found (`SubstraitLean/Infer.lean`)."""
+    found (`analysis/Sverify/Analysis/Infer.lean`)."""
     if bound is None:
         return None
     if bound["why"] is not None:
@@ -955,7 +962,7 @@ def infer_bounds(
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred.
 
-    Lean's `SubstraitLean/Infer.lean` runs the range analysis backwards: for
+    Lean's `analysis/Sverify/Analysis/Infer.lean` runs the range analysis backwards: for
     each overflow it may not rule out, the range of each input column that
     does (`amount * 2` on BIGINT fits when `amount < 2**62`). Those bounds
     are candidates only. The ones on the tables in `assume` (all tables if
@@ -999,6 +1006,10 @@ def infer_bounds(
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
+    if out._asof_checks and not isinstance(transform, str):
+        from sverify._asof_cap import max_pairs_of
+
+        out._asof_max_pairs = max_pairs_of(transform)
     if on_inferred == "off" and out._margin_checks:
         # Nothing is checked on the data: a threshold filter on a double sum
         # may keep other groups than the reference's (#568).
@@ -1677,10 +1688,15 @@ def _prove_once(
         # components itself (#1071, `Report.ignores` in ContractCheck.lean).
         contract["observation"] = {
             "coarsens": [c for c in observed.ignored()],
+            # The rows level by name: the plan to run may refine the plan
+            # as written up to the order of rows only under `multiset` (#1787).
+            "rows": observed.rows,
             "floats_plan": observed.floats == "plan",
             "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
             "sql": isinstance(transform, str),
         }
+    if _RULES is not None:
+        contract["rules"] = list(_RULES)
     if semantics != "reference":
         # The profile decides which issues are errors (an overflow to ±∞ is
         # the reference's alone, #575) and, for those beyond DuckDB's lift,

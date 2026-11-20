@@ -18,9 +18,9 @@
     "`ResolveDecimalArithmeticTypes` gives `+` and `-` the type `DECIMAL(max(pᵢ - sᵢ) + max s + 1, max s)`, capped at 38 digits, and casts every operand to it. With `a DECIMAL(38,0) = 10^28` and `b DECIMAL(38,10) = -0.0000000001` the result is `DECIMAL(38,10)`; `a + b`, and `a - b` with `b = 0.0000000001`, raise `Casting value \"10000000000000000000000000000\" to type DECIMAL(38,10) failed`, although the exact sum, 9999999999999999999999999999.9999999999, has 38 digits. It can happen only where the precision is capped and the scales differ: an operand with `pᵢ + (s - sᵢ) > 38`. Large operands that do not cancel raise in any model."
   ],
   "reference": [
-    "The model checks the result only: `Parse.decimalCall` upscales both operands as exact integers and wraps the sum in `UnFn.decimal p s`, so it returns the exact value and reports no overflow where DuckDB raises (#1498's shape for `+` and `-`). The planned fix is a checked rescale of the operand in the reference's reading (D56, held for the user); explicit casts in the writer do not help, since DuckDB raises on the cast written or implied."
+    "The model checks the result only: `Parse.decimalCall` upscales both operands as exact integers and wraps the sum in `UnFn.decimal p s`, so it returns the exact value and reports no overflow where DuckDB raises (#1498's shape for `+` and `-`). D56 checks the operand: `Parse.decimalCall` wraps an operand with `pᵢ + (s - sᵢ) > 38` in `UnFn.decimal 38 s`, so the reference raises where DuckDB does, and the inferred precondition is `|a| < 10^(38 - s)`. Explicit casts in the writer would not help, since DuckDB raises on the cast written or implied."
   ],
-  "status": "open",
+  "status": "fixed",
   "evidence": "probe",
   "provenance": [
     {

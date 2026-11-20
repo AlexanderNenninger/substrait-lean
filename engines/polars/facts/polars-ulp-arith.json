@@ -27,7 +27,7 @@
       ]
     },
     {
-      "group": "fp.elem",
+      "group": "fp.pow",
       "option": "rounding",
       "types": [
         "fp32",

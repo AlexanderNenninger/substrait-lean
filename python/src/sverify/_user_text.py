@@ -3,7 +3,7 @@ positional `$i`, and the Ibis or SQL operator for Lean's (`/.`, `DOUBLE(…)`).
 
 Internal: not part of sverify's public API.
 
-The checker names an operation by `Expr.render` (`SubstraitLean/Pretty.lean`),
+The checker names an operation by `Expr.render` (`core/Sverify/Core/Pretty.lean`),
 where `$i` is the i-th column of the input of the relation the operation is
 in. The plan (Substrait protobuf JSON) says which columns each relation's
 input has: `columns` walks it, and `user_expr` names `$i` where every

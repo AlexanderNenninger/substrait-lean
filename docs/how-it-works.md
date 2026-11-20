@@ -88,7 +88,7 @@ The CLI also reports whether the plan is in the incremental fragment
 it back out as JSON and re-parsing gives the same plan (`roundtrip: ok`).
 
 The parser ([Parse.lean](../frontend/Sverify/Frontend/Parse.lean)) and writer
-([Write.lean](../SubstraitLean/Write.lean)) are trusted, unproved code. The
+([Write.lean](../frontend/Sverify/Frontend/Write.lean)) are trusted, unproved code. The
 proofs are about `Rel`, so a parser bug would make the CLI check the wrong plan.
 The golden tests in `tests/fixtures` are the guard against that. The
 `df_*.json` fixtures are real plans that DataFusion's Substrait producer wrote

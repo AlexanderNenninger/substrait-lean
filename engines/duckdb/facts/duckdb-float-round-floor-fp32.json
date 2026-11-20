@@ -53,7 +53,23 @@
       ]
     },
     {
-      "group": "fp.elem",
+      "group": "fp.pow",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.atan2",
+      "option": "zero_sign",
+      "types": [
+        "fp32",
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.pow",
       "option": "pow_one_inf",
       "types": [
         "fp32"
@@ -74,7 +90,7 @@
     "`atan2` and `sqrt` keep the sign of a zero argument: `atan2(-0.0, 1)` and `sqrt(-0.0)` are `-0.0`, `atan2(0.0, -1)` is π and `atan2(±0.0, -0.0)` is -π. `atan2` of FLOATs is typed DOUBLE (the arguments are cast); `sqrt` and `power` of FLOATs likewise give DOUBLE.",
     "`power(1, ±inf)`, `power(-1, ±inf)`, `power(1, NaN)` and `power(NaN, 0)` are 1.0 on FLOAT arguments, as on DOUBLE (duckdb-pow-one-inf)."
   ],
-  "reference": "`round_zero_sign` = `IEEE` (D-ruling of 2026-11-09), `zero_sign` = `IEEE`, `pow_one_inf` = `ONE` (D40). `round`, `floor` and `ceil` return the double, so `float_to_int` does not arise.",
+  "reference": "The sign of a zero result of `round`, `floor` and `ceil` is `round_zero_sign`, left open by the reference (`eval` gives `+0.0`; the ruling of 2026-11-09 in duckdb-R15-round); `zero_sign` = `ONE_ZERO`; `pow_one_inf` = `ONE` (D40). `round`, `floor` and `ceil` return the double, so `float_to_int` does not arise.",
   "status": "no-finding",
   "evidence": "probe",
   "provenance": [

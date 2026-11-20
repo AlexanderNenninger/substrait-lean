@@ -150,7 +150,7 @@ group (checked at run time: the job raises if it does not …)` (or
   (`Rel.SumsFit`, `Rel.noIssue_of_sumsFit`) that the SQL checks on the data while
   the job runs.
 * Bounds that rule out overflow are inferred
-  ([Infer.lean](../SubstraitLean/Infer.lean)): the range analysis run
+  ([Infer.lean](../analysis/Sverify/Analysis/Infer.lean)): the range analysis run
   backwards from each overflow `Rel.mayIssues` reports, through projections,
   filters, joins and `MIN`/`MAX` down to base-table columns. So are the
   ranges of codes that rule out domain errors, casts out of range, string

@@ -148,6 +148,15 @@ Three kinds of semantics, each with one job.
   overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
   so neither of the two refines the other.
 
+A plan is verified up to an observation `o` when its verdict is one of the
+proved values and it is determined up to `o`: every result the reference
+allows is equal, up to `o`, to `Rel.eval`'s (`Rel.DeterminedUpTo`). A sound
+engine's model then gives that one observed answer (`Engine.Sound.equiv_eval`),
+and two sound engines agree on it (`Engine.sound_agree`). The proof outcome
+(`Report.verdict`) and the determinism (`Report.deterministic`) are two
+attributes of a report, and "verified" is the term read off both
+([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
+
 Black boxes are rows of a black-box catalogue (`Boxes`,
 `core/Sverify/Core/BlackBox.lean`) that engine packages supply: DuckDB's is
 `Boxes.duckdb` (`engines/duckdb/Sverify/DuckDB/Boxes.lean`). The core holds the
@@ -289,7 +298,9 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
 | core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |
 | core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
-| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error`, `pow_one_inf` (`power`), `zero_sign` (`atan2` of `-0.0`) |
+| core | `fp.pow` | `power` on doubles | `rounding`, `on_domain_error`, `pow_one_inf`, `zero_sign` |
+| core | `fp.atan2` | `atan2` | `rounding`, `on_domain_error`, `zero_sign` (`atan2` of `-0.0`) |
+| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan` | `rounding`, `on_domain_error`, `zero_sign` |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
 | core | `fp.round` | `round` | `rounding`, `round_zero_sign`, `float_to_int` (where `round` returns a `BIGINT`) |
 | core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`), `float_to_int` (where they return a `BIGINT`) |
@@ -453,6 +464,7 @@ The Python side has the same three tables, as frozen dataclasses next to
 wave 3's function table (`python/src/sverify/_functions.py`):
 
 ```python
+# skip: a sketch of the tables' shape; the real definitions are in the source
 @dataclass(frozen=True)
 class Option:
     id: str
@@ -1232,5 +1244,6 @@ to it, so links to an entry here still land.
 - <a id="d47-raise-value-or-open-where-engines-differ"></a>[D47. Raise, value or open where engines differ](decisions.md#d47-raise-value-or-open-where-engines-differ)
 - <a id="d48-a-result-is-determined-up-to-the-classes-its-observation-reads"></a>[D48. A result is determined up to the classes its observation reads](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)
 - <a id="d49-a-value-known-from-one-engine-is-provisional"></a>[D49. A value known from one engine is provisional](decisions.md#d49-a-value-known-from-one-engine-is-provisional)
+- <a id="d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand"></a>[D50. The frontends lift `AND` and `OR` so a guard protects the next operand](decisions.md#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand)
 - <a id="d53-a-timestamp-with-the-time-zone-utc-is-an-instant"></a>[D53. A timestamp with the time zone UTC is an instant](decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)
 - <a id="d54-the-lift-refines-the-dialect"></a>[D54. The lift refines the dialect](decisions.md#d54-the-lift-refines-the-dialect)

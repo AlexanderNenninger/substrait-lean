@@ -1,6 +1,7 @@
 import SubstraitLean.ShardCheck
 import SubstraitLean.EngineTables
 import Sverify.Core.MarginCheck
+import Sverify.Analysis.AsofSite
 
 /-!
 # The float tolerance of a plan's outputs (#444, #85)
@@ -226,9 +227,12 @@ rules of `float-bounds/FloatBounds/Propagate.lean`:
 * `*`: `(ma εb + mb εa + εa εb)(1 + u) + 2u (ma mb + t)` (`rule_mul`);
 * `/` by a divisor the same on both sides, `|b| ≥ lb > 0`:
   `(εa / lb)(1 + u) + 2u (ma / lb + t)` (`rule_div`); Polars's `/` by a
-  literal multiplies by the reciprocal (`fl(x · fl(1/y))`,
-  polars-scalar-divisor): `(εa / lb)(1 + u)² + (3u + u²)(ma / lb) +
-  (u (1 + u)(ma + εa) + 2u) t` (`rule_div_recip`);
+  divisor with no column reference (a literal, a constant expression) multiplies by the
+  reciprocal (`fl(x · fl(1/y))`, polars-scalar-divisor): `(εa / lb)(1 + u)² +
+  (3u + u²)(ma / lb) + (u (1 + u)(ma + εa) + 2u) t` (`rule_div_recip`), stated only where
+  `lb ≥ t`, so `1 / y` is finite. It is at least `rule_div`'s term by term
+  (`rule_div_le_recip`), so a plan Polars divides exactly (a frame shorter than its
+  threads) is covered too;
 * `abs`, negation: `εa` (`rule_abs`); `FLOOR`, `CEIL`, `ROUND`: `εa + 1`
   (`rule_floor`, `rule_ceil`, `rule_round`); a cast to an integer: `εa + 2`
   (`rule_trunc`); `sqrt` of `a ≥ εa`: `Δ (1 + u) + 2u (√ha + t)`,
@@ -349,19 +353,48 @@ quotient by a divisor bounded away from 0, a logarithm of a finite double). -/
 def resultMag (env : List AVal) (e : Expr) : Option Float :=
   (magOf env e).orElse fun _ => match e with
     | .bin .fdiv a b => do return (← magOf env a) / (← minAbsOf env b)
-    | .un (.fmath .log10) _ => some 309.0
+    | .un (.fmath .log10) _ => some 324.0
     | .un (.fmath .log2) _ => some 1075.0
+    | .un (.fmath .ln) _ => some 745.0
+    | .un (.fmath .sin) _ | .un (.fmath .cos) _ => some 1.0
+    | .un (.fmath .asin) _ | .un (.fmath .atan) _ => some 1.5707963267948968
+    | .un (.fmath .acos) _ => some 3.1415926535897936
     | _ => none
 
-/-- An engine's own error at one call, beyond the reference's, relative to
-`u` and the result's bound: its logarithms by `ln / ln` (Polars), DuckDB's
-`log(b, x)`. Polars's `/` by a literal has its own rule (`exprEps`). -/
-def opExtra (engine : String) : Expr → Option Float
-  | .un (.fmath .log10) _ | .un (.fmath .log2) _ =>
-    if engine == "polars" then some (2.0 * (2.1 + 1.0)) else some 0.0
-  | .bin .flogb _ _ =>
-    some (2.0 * ((if engine == "polars" then 2.1 else 1.4) + 1.0))
-  | _ => some 0.0
+/-- The key of an elementary function in `EngineProfile.elemUlps`. `sqrt` and `exp` have none:
+`sqrt` is correctly rounded everywhere, and `exp` has its own rule in `exprEps` (`rule_exp`, one
+ulp on each side, which Java's specification gives `exp` too), so neither reaches `opExtra`. -/
+def elemKey : Expr → Option String
+  | .un (.fmath .sqrt) _ | .un (.fmath .exp) _ => none
+  | .un (.fmath f) _ => some f.name
+  | .bin .flogb _ _ => some "logb"
+  | .bin .fpow _ _ => some "pow"
+  | .bin .fatan2 _ _ => some "atan2"
+  | _ => none
+
+/-- An engine's own error at one call, beyond the reference's, relative to `u`
+and the result's bound: twice its `elemUlps` entry. An elementary function
+without an entry is the reference's on an engine that calls its `libm`
+(`sameLibm`), and has no bound on one that does not. -/
+def opExtra (es : List EngineProfile) (engine : String) (e : Expr) : Option Float :=
+  match elemKey e with
+  | none => some 0.0
+  | some k =>
+    let ep := engineNamed? es engine
+    match ep.bind (·.elemUlps.lookup k) with
+    | some v => some (2.0 * v)
+    | none => if ep.all (·.sameLibm) then some 0.0 else none
+
+/-- The largest `|x|` for which an engine's `sin`, `cos` and `tan` are bounded:
+Java gives them one ulp for every argument, where glibc's large-argument
+reduction, the reference's side, errs by more (ruling 132). -/
+def trigArgMax : Float := 1048576.0
+
+/-- `sin`, `cos` and `tan`, which carry the guard `trigArgMax` on an engine
+whose own values they are. -/
+def trigArg? : Expr → Option Expr
+  | .un (.fmath .sin) a | .un (.fmath .cos) a | .un (.fmath .tan) a => some a
+  | _ => none
 
 /-- An operation the engines may compute otherwise than the reference, on
 the same inputs, with no rule here: the platform's `libm` (`pow`, `atan2`,
@@ -382,28 +415,31 @@ def exactP : Option (Float × Bool) → Bool
 /-- How far an engine's value of `e` may be from the reference's, from the
 columns' errors `cols` (`none`: not bounded), and whether a rule of
 `Propagate.lean` proves it. -/
-def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × Bool))) :
+def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols : List (Option (Float × Bool))) :
     Expr → Option (Float × Bool)
   | .lit _ => some (0.0, true)
   | .field i => cols.getD i none
-  | .un .fneg a => exprEps engine env cols a
-  | .un .itof a => (exprEps engine env cols a).bind fun (x, p) =>
+  | .un .fneg a => exprEps es engine env cols a
+  | .un .itof a => (exprEps es engine env cols a).bind fun (x, p) =>
     if x == 0.0 then some (0.0, p) else none
   | .bin .lt a b | .bin .eq a b => do
     -- `rule_threshold`: where the ranges, widened by `ε`, do not straddle, the
     -- comparison has one outcome on both sides.
-    let (ea, pa) ← exprEps engine env cols a
-    let (eb, pb) ← exprEps engine env cols b
+    let (ea, pa) ← exprEps es engine env cols a
+    let (eb, pb) ← exprEps es engine env cols b
     if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
     let (la, ha) ← rangeOf env a
     let (lb, hb) ← rangeOf env b
     guard (clearlyBelow (ha + ea) (lb - eb) || clearlyBelow (hb + eb) (la - ea))
     return (0.0, pa && pb)
   | e@(.bin f a b) => do
-    let (ea, pa) ← exprEps engine env cols a
-    let (eb, pb) ← exprEps engine env cols b
+    let (ea, pa) ← exprEps es engine env cols a
+    let (eb, pb) ← exprEps es engine env cols b
     let u := unitRound
-    let recip := engine == "polars" && (match f, b with | .fdiv, .lit _ => true | _, _ => false)
+    -- Polars multiplies by the reciprocal for any length-1 divisor, one with no column
+    -- reference included (polars-scalar-divisor); `rule_div_le_recip` says the bound also
+    -- covers the exact kernel it takes for a short frame.
+    let recip := engine == "polars" && f == .fdiv && b.cols.isEmpty
     match f with
     | .fadd | .fsub =>
       if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
@@ -422,6 +458,9 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
       guard (eb == 0.0)
       if ea == 0.0 && !recip then return (0.0, pa && pb)
       let lb ← minAbsOf env b
+      -- Below the smallest normal `1 / y` overflows and Polars gives inf or NaN where the
+      -- rule would state a finite bound: no bound there (the row's precondition, ruling 157).
+      guard (!recip || tinyF ≤ lb)
       match magOf env a with
       | some ma =>
         guard (fits (ma / lb + ea / lb))
@@ -434,13 +473,13 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
         let mq ← resultMag env e
         return (ea / lb + 2.0 * u * mq + (if recip then 3.0 * u * mq else 0.0), false)
     | _ =>
-      let extra ← opExtra engine e
+      let extra ← opExtra es engine e
       if ea == 0.0 && eb == 0.0 && extra == 0.0 then return (0.0, pa && pb && !inexact e)
       guard (ea == 0.0 && eb == 0.0)
       return (extra * u * (← resultMag env e), false)
   | .un (.fmath .sqrt) a => do
     -- `rule_sqrt`: correctly rounded on both sides.
-    let (ea, pa) ← exprEps engine env cols a
+    let (ea, pa) ← exprEps es engine env cols a
     if ea == 0.0 then return (0.0, pa)
     let (la, ha) ← rangeOf env a
     guard (la - ea ≥ 0.0)
@@ -451,40 +490,45 @@ def exprEps (engine : String) (env : List AVal) (cols : List (Option (Float × B
     return (d * (1.0 + u) + 2.0 * u * (Float.sqrt ha + tinyF), pa)
   | .un .ffloor a | .un .fceil a | .un .fround a => do
     -- `rule_floor`, `rule_ceil`, `rule_round`: a step of one.
-    let (ea, pa) ← exprEps engine env cols a
+    let (ea, pa) ← exprEps es engine env cols a
     if ea == 0.0 then return (0.0, pa)
     return (ea + 1.0, pa)
   | .un .ftoi a => do
     -- `rule_trunc`: each side within one of its input.
-    let (ea, pa) ← exprEps engine env cols a
+    let (ea, pa) ← exprEps es engine env cols a
     if ea == 0.0 then return (0.0, pa)
     return (ea + 2.0, pa)
   | .un (.fmath .exp) a => do
     -- `rule_exp`: the platform's `libm` on both sides, one ulp each.
-    let (ea, pa) ← exprEps engine env cols a
+    let (ea, pa) ← exprEps es engine env cols a
     let ha ← hiOf env a
     let u := unitRound
     guard (ha + ea ≤ 709.0)
     return (ea * Float.exp (ha + ea) * (1.0 + 2.0 * u) + 4.0 * u * (Float.exp ha + tinyF), pa)
   | e@(.un _ a) => do
-    let (ea, pa) ← exprEps engine env cols a
-    let extra ← opExtra engine e
+    let (ea, pa) ← exprEps es engine env cols a
+    let extra ← opExtra es engine e
+    -- Spark's `sin`, `cos` and `tan` are bounded for arguments up to `trigArgMax`.
+    if extra != 0.0 then
+      match trigArg? e with
+      | some a' => guard ((magOf env a').any (· ≤ trigArgMax))
+      | none => pure ()
     if ea == 0.0 && extra == 0.0 then return (0.0, pa && !inexact e)
     if ea == 0.0 then return (extra * unitRound * (← resultMag env e), false)
     none
   | .ifThen c@(.bin .lt a (.lit (.float 0))) t@(.un .fneg a₁) f => do
     -- `abs` as the parser writes it: `rule_abs`, whatever the sign of `a`.
     if a₁ == a && f == a then
-      let (ea, pa) ← exprEps engine env cols a
+      let (ea, pa) ← exprEps es engine env cols a
       return (ea, pa)
-    let et ← exprEps engine env cols t
-    let ef ← exprEps engine env cols f
-    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps engine env cols c))
+    let et ← exprEps es engine env cols t
+    let ef ← exprEps es engine env cols f
+    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps es engine env cols c))
   | .ifThen c t f => do
-    let et ← exprEps engine env cols t
-    let ef ← exprEps engine env cols f
+    let et ← exprEps es engine env cols t
+    let ef ← exprEps es engine env cols f
     -- A condition that may differ between engines may pick the other branch.
-    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps engine env cols c))
+    return (max et.1 ef.1, et.2 && ef.2 && exactP (exprEps es engine env cols c))
   | .hof _ _ _ => none
 
 /-- `cs` with every flag cleared where `ok` fails: rows or groups that may
@@ -508,7 +552,7 @@ def marginCovered (es : List EngineProfile) (engine : String) (cat : Catalog) (e
     (cs : List (Option (Float × Bool))) (r : Rel) (c : Expr) : Bool :=
   let on := es.filter (·.name == engine)
   match (Rel.filter r c).marginSite cat with
-  | some s => ordersProved on && (!s.win || windowSumsBounded on) && exactP (exprEps engine env cs s.thr)
+  | some s => ordersProved on && (!s.win || windowSumsBounded on) && exactP (exprEps es engine env cs s.thr)
   | none => false
 
 /-- Each column's error on `engine`, and whether it is proved, for plans of
@@ -519,7 +563,7 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
   | .read t => some ((List.range (cat t).arity).map fun _ => some (0.0, true))
   | .values n _ => some ((List.range n).map fun _ => some (0.0, true))
   | .filter r c => (colEps es engine cat A F T r).map fun cs =>
-      keepIf (exactP (exprEps engine (r.aeval cat A F T) cs c) ||
+      keepIf (exactP (exprEps es engine (r.aeval cat A F T) cs c) ||
         marginCovered es engine cat (r.aeval cat A F T) cs r c) cs
   | .orderBy r keys => (colEps es engine cat A F T r).map fun cs =>
       keepIf (keys.all fun k => exactP (cs.getD k.col none)) cs
@@ -531,12 +575,12 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
   | .join a b _ on => do
     let cs := (← colEps es engine cat A F T a) ++ (← colEps es engine cat A F T b)
     let env := a.aeval cat A F T ++ b.aeval cat A F T
-    return keepIf (exactP (exprEps engine env cs on)) cs
+    return keepIf (exactP (exprEps es engine env cs on)) cs
   | .semi a b _ on => do
     let ca ← colEps es engine cat A F T a
     let cs := ca ++ (← colEps es engine cat A F T b)
     let env := a.aeval cat A F T ++ b.aeval cat A F T
-    return keepIf (exactP (exprEps engine env cs on)) ca
+    return keepIf (exactP (exprEps es engine env cs on)) ca
   | .unionAll a b => do
     let ca ← colEps es engine cat A F T a
     let cb ← colEps es engine cat A F T b
@@ -549,13 +593,13 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
           sort.all fun k => exactP (cs.getD k.col none)) cs ++
         fns.map fun _ => none
   | .project r xs => (colEps es engine cat A F T r).map fun cs =>
-      cs ++ xs.map (exprEps engine (r.aeval cat A F T) cs)
+      cs ++ xs.map (exprEps es engine (r.aeval cat A F T) cs)
   | .aggregate r gs ms => (colEps es engine cat A F T r).map fun cs =>
       let env := r.aeval cat A F T
-      let keys := gs.all fun g => exactP (exprEps engine env cs g)
+      let keys := gs.all fun g => exactP (exprEps es engine env cs g)
       keepIf keys <| gs.map (fun _ => some (0.0, true)) ++ ms.map fun m => do
-        let (ea, pa) ← exprEps engine env cs m.arg
-        let pf := m.filter.all fun c => exactP (exprEps engine env cs c)
+        let (ea, pa) ← exprEps es engine env cs m.arg
+        let pf := m.filter.all fun c => exactP (exprEps es engine env cs c)
         match m.fn with
         | .fsum | .avg =>
           let (order, _) ← measureEps env m r.maxRows
@@ -581,7 +625,7 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
   | .read _ | .values _ _ => true
   | .filter r c => rowsExact es engine cat A F T r &&
       (colEps es engine cat A F T r).any fun cs =>
-        exactP (exprEps engine (r.aeval cat A F T) cs c) ||
+        exactP (exprEps es engine (r.aeval cat A F T) cs c) ||
           marginCovered es engine cat (r.aeval cat A F T) cs r c
   | .orderBy r keys => rowsExact es engine cat A F T r &&
       (colEps es engine cat A F T r).any fun cs => keys.all fun k => exactP (cs.getD k.col none)
@@ -594,13 +638,13 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
     rowsExact es engine cat A F T a && rowsExact es engine cat A F T b &&
       match colEps es engine cat A F T a, colEps es engine cat A F T b with
       | some ca, some cb =>
-        exactP (exprEps engine (a.aeval cat A F T ++ b.aeval cat A F T) (ca ++ cb) on)
+        exactP (exprEps es engine (a.aeval cat A F T ++ b.aeval cat A F T) (ca ++ cb) on)
       | _, _ => false
   | .aggregate r gs ms => rowsExact es engine cat A F T r &&
       (colEps es engine cat A F T r).any fun cs =>
         let env := r.aeval cat A F T
-        gs.all (fun g => exactP (exprEps engine env cs g)) &&
-          ms.all fun m => m.filter.all fun c => exactP (exprEps engine env cs c)
+        gs.all (fun g => exactP (exprEps es engine env cs g)) &&
+          ms.all fun m => m.filter.all fun c => exactP (exprEps es engine env cs c)
 
 /-- Does the plan read or write a single-precision column? Polars sums
 `Float32` in single precision (polars-sum-float), which no bound here covers. -/
@@ -724,7 +768,7 @@ def marginChecksJson (es : List EngineProfile) (input : Json) : Except String Js
     | r@(.filter i c) =>
       let ic := i.capReads caps
       let static := es.all fun e => (colEps es e.name cat A F T ic).any fun cs =>
-        exactP (exprEps e.name (ic.aeval cat A F T) cs c)
+        exactP (exprEps es e.name (ic.aeval cat A F T) cs c)
       (if static then [] else (r.marginSite cat).toList.map (r, ·)) ++ sites i
     | .project i _ | .emit i _ | .fetch i _ _ | .window i .. | .orderBy i _ | .distinct i
     | .aggregate i _ _ | .unnest i _ => sites i
@@ -770,6 +814,54 @@ def marginChecksJson (es : List EngineProfile) (input : Json) : Except String Js
           "bound per group from its count and Σ|x|)"))),
       ("conditions", toJson marginConditions),
       ("engines", Json.mkObj engines)]
+
+/-- A path of child indices over `Rel` nodes (`Rel.asofSitesAt`) as a path in
+the JSON `Write.writeRel` writes, from `relations[0].root.input`: the key of
+each step (`input`, `left`, `right`, or `inputs` and an index), and none for
+an `EMIT`, which `Write` puts on its input's `RelCommon`, nor for the
+projection of an `EMIT` of a projection of an aggregate with decimal `AVG`s,
+which `Write` writes as one aggregate node. -/
+def _root_.Substrait.Rel.jsonPath : Rel → List Nat → List Json
+  | _, [] => []
+  | .emit p@(.project (.aggregate r gs ms) qs) m, 0 :: ps =>
+    -- `Write` writes the three as one aggregate node where they hold decimal `AVG`s.
+    match Write.decimalAvgsOf gs.length ms qs m, ps with
+    | some _, 0 :: 0 :: ps' => "input" :: r.jsonPath ps'
+    | some _, _ => []
+    | none, _ => p.jsonPath ps
+  | .emit r _, 0 :: ps => r.jsonPath ps
+  | .filter r _, 0 :: ps | .project r _, 0 :: ps | .fetch r _ _, 0 :: ps
+  | .orderBy r _, 0 :: ps | .distinct r, 0 :: ps | .aggregate r _ _, 0 :: ps
+  | .unnest r _, 0 :: ps | .window r .., 0 :: ps => "input" :: r.jsonPath ps
+  | .join a _ _ _, 0 :: ps | .cross a _, 0 :: ps | .semi a _ _ _, 0 :: ps => "left" :: a.jsonPath ps
+  | .join _ b _ _, 1 :: ps | .cross _ b, 1 :: ps | .semi _ b _ _, 1 :: ps =>
+    "right" :: b.jsonPath ps
+  | .unionAll a _, 0 :: ps => "inputs" :: toJson 0 :: a.jsonPath ps
+  | .unionAll _ b, 1 :: ps => "inputs" :: toJson 1 :: b.jsonPath ps
+  | _, _ => []
+
+/-- `"asof_checks"` of a `--contract` request (#1447, ruling 162 A2 and A7):
+per as-of join of the plan (`Rel.asofSites`), the count of the pairs its
+range join compares (`AsofSite.pairs`), as a plan of its own, and where and
+what the site is for a writer: the path to its node (child indices from the
+root, 0 for an input or a join's left side, 1 for the right; `json_path` the
+same in the written JSON, `Rel.jsonPath`), its shape
+(`AsofForm`), the keys as (left column, right column) pairs, `lon` and
+`ron` (the left columns are the join's left input's, the right ones the
+right input's own), whether it is a LEFT join and whether it has more
+conjuncts (a tolerance). `Report.run` evaluates the count on the engine
+before the plan and refuses the run above the cap `asof_join` states,
+whatever the rows come from. -/
+def asofChecksJson (input : Json) : Except String Json := do
+  let some ⟨_, plan, cat, _, _, _, _, _⟩ ← inputs? input | return Json.arr #[]
+  let schemaOf := Write.planSchemas plan
+  return Json.arr <| (plan.root.asofSites cat).toArray.map fun (path, s) =>
+    Json.mkObj [("plan", Write.writePlan schemaOf plan.catalog s.pairs ["pairs"]),
+      ("path", toJson path), ("json_path", Json.arr (plan.root.jsonPath path).toArray),
+      ("form", toJson s.form.name),
+      ("keys", toJson (s.keys.map fun (l, r) => [l, r])), ("lon", toJson s.lon),
+      ("ron", toJson s.ron), ("outer", toJson (s.type == .left)),
+      ("tolerance", toJson !s.rest.isEmpty)]
 
 /-- Where an output column comes from, as far as window aggregates of doubles
 go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that
@@ -890,7 +982,7 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
       let reads := m.arg :: part.map .field ++ sort.map (.field ·.col) ++ m.filter.toList
       let p := !hasFp32 tj && ordersProved es && (es.map (·.name)).all fun engine =>
         match colEps es engine cat A F T r with
-        | some cs => reads.all fun e => exactP (exprEps engine (r.aeval cat A F T) cs e)
+        | some cs => reads.all fun e => exactP (exprEps es engine (r.aeval cat A F T) cs e)
         | none => false
       some (name, match measureEps (r.aeval cat A F T) m r.maxRows with
         | some (e, rel) => boundJson e rel p
@@ -903,7 +995,7 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
   -- The measure's values, rows and groups are the same on every engine.
   let same (m : Measure) : Bool := !hasFp32 tj && ordersProved es &&
     (es.map (·.name)).all fun engine => match colEps es engine cat A F T r with
-      | some cs => (m.arg :: gs ++ m.filter.toList).all fun e => exactP (exprEps engine env cs e)
+      | some cs => (m.arg :: gs ++ m.filter.toList).all fun e => exactP (exprEps es engine env cs e)
       | none => false
   let doubles := (doubleIdx ms).filterMap (ms[·]?)
   let names := if plan.names.length == srcs.length then plan.names

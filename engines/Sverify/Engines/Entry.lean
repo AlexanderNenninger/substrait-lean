@@ -47,6 +47,11 @@ structure EngineEntry where
   /-- Where the engine executes, as `--options` reports it (`"streaming"`,
   `"batch"`), or empty. -/
   executes : String := ""
+  /-- Do the engine's doubles call the reference's `libm`? (`EngineProfile.sameLibm`) -/
+  sameLibm : Bool := true
+  /-- The engine's elementary functions that are not the reference's, S + R in ulps
+  (`EngineProfile.elemUlps`). -/
+  elemUlps : List (String × Float) := []
 
 open Lean Elab Term Meta in
 /-- `engine_entry% thm`: the entry whose proof is `thm`, with `soundName` the
@@ -62,7 +67,7 @@ elab "engine_entry% " thm:ident : term => do
     return body.getAppArgs.back!.getAppFn.constName?
   let some side := side? | throwError
     "engine_entry%: the side condition of {n} is no named predicate; state it as a definition"
-  let stx ← `(EngineEntry.mk _ _ @$(mkCIdent n) $(quote n) $(quote side) [] "")
+  let stx ← `(EngineEntry.mk _ _ @$(mkCIdent n) $(quote n) $(quote side) [] "" true [])
   elabTermEnsuringType stx (some (mkConst ``EngineEntry))
 
 /-- A name as the checker reports it, without the `Substrait` namespace. -/
@@ -77,7 +82,7 @@ every catalogue. -/
 def EngineEntry.rows (e : EngineEntry) : EngineProfile :=
   letI := Boxes.Ambient.none
   { table := e.engine.table, obs := withReruns e.engine.obs, shims := e.shims,
-    executes := e.executes }
+    executes := e.executes, sameLibm := e.sameLibm, elemUlps := e.elemUlps }
 
 def EngineEntry.name (e : EngineEntry) : String := e.rows.name
 

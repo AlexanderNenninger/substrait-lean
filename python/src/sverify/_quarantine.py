@@ -17,7 +17,7 @@ A stage's base table for source `t` holds `kept(S)` of the source's snapshot
   the snapshot (D24), the same whether computed in full or batch by batch.
 
 Each condition is closed under subsets, so `kept(S)` meets every one
-(`SubstraitLean/Quarantine.lean`, applied to the snapshot with identical
+(`analysis/Sverify/Analysis/Quarantine.lean`, applied to the snapshot with identical
 rows collapsed), and the node's contract theorem (`contract_sound`) holds
 on it. The pipeline's batch checks run unchanged on
 the kept change after the split: a mistake here raises rather than letting a

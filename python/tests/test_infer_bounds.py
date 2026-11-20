@@ -1,5 +1,5 @@
 """Inferred bounds against overflow (#244): Lean's backward range analysis
-(`SubstraitLean/Infer.lean`) proposes them, the unchanged contract proof
+(`analysis/Sverify/Analysis/Infer.lean`) proposes them, the unchanged contract proof
 checks them, and they behave like `requires` on data and metadata."""
 
 import functools
