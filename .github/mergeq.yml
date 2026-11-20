@@ -1,0 +1,20 @@
+# Configuration of the batch merge queue service (mergeq) for this repository.
+# dry_run: true makes the service only log what it would do, beside the laptop queue
+# (agentic-tools/merge-queue), which stays in charge until the dry run matches it.
+# The values mirror the laptop queue: qd.sh (batches of 16, gather 6 PRs or 10 min) and
+# merge_tree.py --ignore-own-ci --hold.
+base: main
+ready_label: reviewed
+required_checks: [qa]
+batch:
+  max: 16
+  gather_min: 6
+  gather_wait: 10m
+  timeout: 3h
+ignore_own_ci: true
+cancel_workflows: [ci.yml]
+on_failure: hold
+base_moved_ignore_prefix: "Regenerate generated"
+merge_method: merge
+stuck_runner_label: aws
+dry_run: true
