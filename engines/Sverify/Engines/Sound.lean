@@ -194,8 +194,8 @@ engine whose choices are the reference's at every option `r` reads has it
 from there (`Rel.floatOpenSafeP_of_transferB`). `transferB` fails on every
 engine at `sum_order`; for an aggregate at the root whose double `SUM`s and
 `AVG`s are near the correctly rounded ones (`Rel.SumsNear`),
-`Rel.floatOpenSafeP_aggregate` (`SubstraitLean/OpenSums.lean`) discharges it,
-and `Engine.polars_sum_example` applies it to a double `SUM` on Polars. Elsewhere
+`Rel.floatOpenSafeP_aggregate` (`OpenSums.lean`) discharges it, and
+`Engine.polars_sum_example` applies it to a double `SUM` on Polars. Elsewhere
 (`stat_algo`, `quantile_interp`, `zero_sign`, a double `SUM` below a filter or a
 join) nothing discharges it yet (#929). -/
 def Rel.FloatOpenSafeP (q : Obs) (ctx : ObsCtx) (t : ProfileTable) (cat : Catalog) (r : Rel) :

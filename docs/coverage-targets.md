@@ -17,6 +17,7 @@ Each construct gets one of three marks:
 ## The number
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run python -m sverify_dev.coverage --targets
 ```
 
@@ -76,6 +77,18 @@ Real queries decide what is in. The sources, measured on 2026-11-05:
   use, so its counts break ties. Of the refusals, 3,932 are out of scope
   (DuckDB's catalog functions, file readers, sequences, settings, aggregate
   states) and 680 are names the harness cannot resolve.
+- Ibis's own backend tests (`sverify_dev.ibis_replay`, Ibis 12.0.0 on
+  DuckDB, the ledgers in
+  [`python/tests/ibis_replay/`](../python/tests/ibis_replay/constructs.json)):
+  of 1,214 tests in twelve modules, 431 agree (every expression they run is
+  proved and gives Ibis's rows), none disagree, 594 are refused, 65 are
+  not proved and 124 skipped. Every refused construct names its issue or
+  the reason it is refused by design. Two refusals hold most of them:
+  float32 columns, which Ibis's `functional_alltypes` has
+  ([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908),
+  205 tests), and plans that read no table
+  ([#1916](https://github.com/AlexanderNenninger/substrait-lean/issues/1916),
+  136).
 
 The measurement found one thing worth stating on its own: the SQL lift
 trails the Ibis producer. Regex functions, `right`, `lpad`, `string_agg`,

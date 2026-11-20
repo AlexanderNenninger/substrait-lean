@@ -2503,13 +2503,13 @@ _facts: dict[tuple[int, str], tuple[weakref.ref[Any], list[Fact]]] = {}
 
 def register_facts(con: Connection, name: str, facts: Sequence[Fact] | None) -> None:
     """Record (or with None, forget) what metadata says about table `name`."""
-    key = (id(con._ibis), name)
+    key = (id(con._source), name)
     if facts is None:
         _facts.pop(key, None)
     else:
         for k in [k for k, (ref, _) in _facts.items() if ref() is None]:
             del _facts[k]
-        _facts[key] = (weakref.ref(con._ibis), list(facts))
+        _facts[key] = (weakref.ref(con._source), list(facts))
 
 
 def table_facts(table: ir.Table) -> list[Fact] | None:

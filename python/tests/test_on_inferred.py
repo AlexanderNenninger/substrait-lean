@@ -126,3 +126,50 @@ def test_infer_false_still_turns_inference_off(con) -> None:
     report = sv.verify(t.select(t.k, per=t.total // t.qty), on_inferred="off")
     assert report._inferred == {} and _needed(report) == {}
     assert any(i.kind == "division by zero" for i in report.errors)
+
+
+def test_an_assumed_precondition_is_checked_beside_a_column_sverify_does_not_read() -> None:
+    """The run checks an inferred precondition over the columns it names: a
+    float32 column the query never reads does not refuse the run (#860,
+    found by Ibis's `test_value_counts_on_expr`)."""
+    c = sv.connect()
+    c.put("t", pa.table({"x": pa.array([1.5], pa.float32()), "n": pa.array([1], pa.int64())}))
+    t = c.table("t")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", InferredWarning)
+        report = sv.verify(t.select(m=t.n + 1), on_inferred="warn")
+    assert report.run(c, "duckdb").column("m").to_pylist() == [2]
+
+
+def test_a_quoted_and_an_unquoted_precondition_are_both_checked_beside_float32() -> None:
+    """Declared SQL preconditions are often unquoted (`amount > 0`); the run
+    checks them over the columns they read, found by SQLGlot, also beside an
+    inferred one that quotes its column (#860)."""
+    c = sv.connect()
+    c.put(
+        "t",
+        pa.table(
+            {
+                "x": pa.array([1.5, 2.5], pa.float32()),
+                "n": pa.array([1, 2], pa.int64()),
+                "Amount": pa.array([5, 0], pa.int64()),
+            }
+        ),
+    )
+    t = c.table("t")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", InferredWarning)
+        report = sv.verify(t.select(m=t.n + 1), requires={"t": ["amount > 0"]}, on_inferred="warn")
+    with pytest.raises(PreconditionError, match="refused before the run"):
+        report.run(c, "duckdb")
+    c.put(
+        "t",
+        pa.table(
+            {
+                "x": pa.array([1.5], pa.float32()),
+                "n": pa.array([1], pa.int64()),
+                "Amount": pa.array([5], pa.int64()),
+            }
+        ),
+    )
+    assert report.run(c, "duckdb").column("m").to_pylist() == [2]

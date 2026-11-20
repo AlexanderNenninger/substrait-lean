@@ -60,6 +60,15 @@ class UnsupportedError(SverifyError, ValueError):
 
     code = "unsupported"
 
+    def __init__(self, *args: object, construct: str | None = None, sql: str | None = None):
+        super().__init__(*args)
+        self.construct = construct
+        """The construct refused, as `"function md5"` for a function (its lower-case
+        name as the user writes it) and otherwise the SQL keywords in upper case
+        (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`); None where the refusal names none."""
+        self.sql = sql
+        """The SQL fragment the SQL lift refused; None for the Ibis producer."""
+
 
 Unsupported = UnsupportedError
 """The internal modules' name for `UnsupportedError`."""

@@ -13,6 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, _sort_key
+from sverify.ibis_substrait._constructs import op_construct
 from sverify.plan_json import Json, ProducerUnsupported, Unsupported, call, decimal_literal
 from sverify.plan_json import anchor as _anchor
 
@@ -26,7 +27,8 @@ def measure(x: Exprs, op: Any) -> Json:
         # estimate, so no plan gives the same answer on every engine.
         raise Unsupported(
             "approx_nunique is not supported: its value is each engine's own estimate; "
-            "use nunique() for the exact count"
+            "use nunique() for the exact count",
+            construct="function approx_nunique",
         )
     if isinstance(op, ops.CountStar):
         name, args = "count", []
@@ -75,7 +77,10 @@ def measure(x: Exprs, op: Any) -> Json:
     elif isinstance(op, ops.ArgMin | ops.ArgMax):
         return arg_min_max(x, op)
     else:
-        raise ProducerUnsupported(f"aggregate {type(op).__name__} is not supported")
+        raise ProducerUnsupported(
+            f"aggregate {type(op).__name__} is not supported",
+            construct=op_construct(op),
+        )
     agg: Json = {
         "functionReference": _anchor(name),
         "arguments": [{"value": a} for a in args],
@@ -97,16 +102,21 @@ def collect(x: Exprs, op: Any) -> Json:
     of the elements is the engine's choice."""
     if op.include_null:
         raise Unsupported(
-            "collect(include_null=True) is not supported; use collect(), which skips nulls"
+            "collect(include_null=True) is not supported; use collect(), which skips nulls",
+            construct="function collect",
         )
     if op.distinct:
-        raise ProducerUnsupported("collect(distinct=True) is not supported")
+        raise ProducerUnsupported(
+            "collect(distinct=True) is not supported", construct="function collect"
+        )
     arg = x(op.arg)
     sorts = []
     for k in op.order_by:
         key = _sort_key(x, k)
         if "selection" not in key["expr"]:
-            raise Unsupported("collect(order_by=) must order by columns")
+            raise Unsupported(
+                "collect(order_by=) must order by columns", construct="function collect"
+            )
         sorts.append(key)
     agg: Json = {
         "functionReference": _anchor("array_agg"),
@@ -126,14 +136,21 @@ def group_concat(x: Exprs, op: Any) -> Json:
     only some string (`Measure.abs`), and `verify` reports the result as not
     deterministic (`Rel.windowsTotal`)."""
     if not isinstance(op.sep, ops.Literal):
-        raise Unsupported("group_concat needs a constant separator")
+        raise Unsupported(
+            "group_concat needs a constant separator", construct="function group_concat"
+        )
     if not op.arg.dtype.is_string():
-        raise Unsupported(f"group_concat of {op.arg.dtype} is not supported; cast it to string")
+        raise Unsupported(
+            f"group_concat of {op.arg.dtype} is not supported; cast it to string",
+            construct="function group_concat",
+        )
     sorts = []
     for k in op.order_by:
         key = _sort_key(x, k)
         if "selection" not in key["expr"]:
-            raise Unsupported("group_concat(order_by=) must order by columns")
+            raise Unsupported(
+                "group_concat(order_by=) must order by columns", construct="function group_concat"
+            )
         sorts.append(key)
     agg: Json = {
         "functionReference": _anchor("string_agg"),
@@ -153,12 +170,16 @@ def first_last(x: Exprs, op: Any) -> Json:
     reported as the engine's choice unless the group is a key."""
     name = "first" if isinstance(op, ops.First) else "last"
     if op.include_null:
-        raise ProducerUnsupported(f"{name}(include_null=True) is not supported")
+        raise ProducerUnsupported(
+            f"{name}(include_null=True) is not supported", construct=f"function {name}"
+        )
     sorts = []
     for k in op.order_by:
         key = _sort_key(x, k)
         if "selection" not in key["expr"]:
-            raise Unsupported(f"{name}(order_by=) must order by columns")
+            raise Unsupported(
+                f"{name}(order_by=) must order by columns", construct=f"function {name}"
+            )
         sorts.append(key)
     agg: Json = {
         "functionReference": _anchor(name),
@@ -180,23 +201,32 @@ def quantile(x: Exprs, op: Any) -> Json:
     if isinstance(op, ops.ApproxMedian | ops.ApproxQuantile):
         raise Unsupported(
             f"{type(op).__name__} is not supported: its value is each engine's own estimate; "
-            "use median() or quantile() for the exact value"
+            "use median() or quantile() for the exact value",
+            construct=op_construct(op),
         )
     if isinstance(op, ops.MultiQuantile):
-        raise Unsupported("quantile() of several fractions is not supported; take one at a time")
+        raise Unsupported(
+            "quantile() of several fractions is not supported; take one at a time",
+            construct="function quantile",
+        )
     if isinstance(op, ops.Median):
         q: Any = 0.5
     elif isinstance(op.quantile, ops.Literal) and isinstance(op.quantile.value, int | float):
         q = op.quantile.value
     else:
-        raise Unsupported("quantile() needs a constant fraction")
+        raise Unsupported("quantile() needs a constant fraction", construct="function quantile")
     if not 0 <= q <= 1:
-        raise Unsupported("quantile() needs a fraction between 0 and 1")
+        raise Unsupported(
+            "quantile() needs a fraction between 0 and 1", construct="function quantile"
+        )
     t = op.arg.dtype
     cont = t.is_integer() or t.is_floating()
     if not (cont or t.is_string() or t.is_date()):
         # DuckDB interpolates decimals and timestamps in their own types.
-        raise ProducerUnsupported(f"{type(op).__name__.lower()} of {t} is not supported yet")
+        raise ProducerUnsupported(
+            f"{type(op).__name__.lower()} of {t} is not supported yet",
+            construct=op_construct(op),
+        )
     agg: Json = {
         "functionReference": _anchor("quantile_cont" if cont else "quantile_disc"),
         "arguments": [
@@ -217,7 +247,10 @@ def mode(x: Exprs, op: Any) -> Json:
     order it reads the rows."""
     arg = x(op.arg)
     if "selection" not in arg:
-        raise Unsupported("mode() of an expression is not supported; select it as a column first")
+        raise Unsupported(
+            "mode() of an expression is not supported; select it as a column first",
+            construct="function mode",
+        )
     agg: Json = {
         "functionReference": _anchor("mode"),
         "arguments": [{"value": arg}],
@@ -238,7 +271,10 @@ def arg_min_max(x: Exprs, op: Any) -> Json:
     name = "arg_min" if isinstance(op, ops.ArgMin) else "arg_max"
     key = x(op.key)
     if "selection" not in key:
-        raise Unsupported(f"{name} orders by a column only; select the key as a column first")
+        raise Unsupported(
+            f"{name} orders by a column only; select the key as a column first",
+            construct=f"function {name}",
+        )
     agg: Json = {
         "functionReference": _anchor(name),
         "arguments": [{"value": x(op.arg)}, {"value": key}],

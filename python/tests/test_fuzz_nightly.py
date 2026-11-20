@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+from _repo import needs_repo
+
 nightly = pytest.importorskip("sverify_dev.fuzz_nightly")
 
 
@@ -99,9 +101,9 @@ def test_report_lists_stopped_batches_and_new_findings(tmp_path):
         "peak_rss_mb": 7300,
     }
     text = nightly.report(night, [*ledger["last_batches"], lost])
-    assert "2 batches (1 stopped), 1 distinct signatures, 1 new." in text
+    assert "2 batches (1 stopped), 1 distinct signatures, 1 new, 1 without an explanation" in text
     assert "`duckdb:float_special` seed 3: memory" in text
-    assert "## New" in text and "repro fuzz-ledger.json" in text
+    assert "## Unexplained" in text and "repro fuzz-ledger.json" in text
 
 
 def test_repro_writes_a_core_case_and_prints_its_replay(tmp_path, monkeypatch, capsys):
@@ -216,3 +218,49 @@ def test_a_crashed_fuzzer_is_not_ok_and_names_its_last_case(tmp_path, monkeypatc
     assert rec["status"] == "exit 1"
     (found,) = nightly.findings(tmp_path / "out")
     assert found["sig"] == ["core:crash", "SELECT i + ? FROM t", "crash"]
+
+
+RULES = [
+    {"kind": "core:rows:polars", "shape": r"i \+ \?", "class": "null", "issue": 1234},
+    {"kind": "hypothesis:AssertionError", "shape": "test_floats", "fact": "DD-1"},
+]
+
+
+def test_a_rule_explains_its_signatures_only(tmp_path):
+    a = _batch(tmp_path / "a", "core", 7, **{"core.json": CORE})
+    h = _batch(tmp_path / "h", "hypothesis:1/6", 9, **{"junit.xml": JUNIT})
+    ledger, night = nightly.merge({}, [a, h], RULES)
+    assert sorted(e["explained"] for e in ledger["entries"].values()) == ["#1234", "fact DD-1"]
+    # Another value class is another mismatch: the rule doesn't cover it.
+    nan = _batch(tmp_path / "n", "core", 8, **{"core.json": CORE.replace("None", "nan")})
+    _, night = nightly.merge({}, [nan], RULES)
+    assert night[0]["explained"] is None
+    text = nightly.report(night, [])
+    assert "1 without an explanation" in text and "## Unexplained" in text
+
+
+def test_a_rule_naming_a_closed_issue_explains_nothing(tmp_path):
+    a = _batch(tmp_path / "a", "core", 7, **{"core.json": CORE})
+    _, night = nightly.merge({}, [a], RULES)
+    text = nightly.report(night, [], closed={1234})
+    assert "1 without an explanation" in text and "which is closed" in text
+    assert len(nightly.warnings(night, closed={1234})) == 1
+    assert nightly.warnings(night) == []
+
+
+def test_rule_problems_name_bad_rules(tmp_path):
+    (tmp_path / "upstream" / "bugs").mkdir(parents=True)
+    (tmp_path / "upstream" / "bugs" / "DUCK-1.json").write_text("{}")
+    rules = [
+        {"kind": "k", "shape": "(", "issue": 1},
+        {"kind": "k", "shape": "x", "fact": "nope"},
+        {"kind": "k", "shape": "x", "upstream": "DUCK-1"},
+        {"kind": "k", "shape": "x", "issue": 1, "fact": "DD-1"},
+    ]
+    problems = nightly.rule_problems(rules, tmp_path)
+    assert [p.split(":")[0] for p in problems] == ["rule 0", "rule 1", "rule 3"]
+
+
+@needs_repo
+def test_the_explanations_file_is_well_formed():
+    assert nightly.rule_problems(nightly.load_rules()) == []

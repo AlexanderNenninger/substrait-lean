@@ -147,20 +147,34 @@ def test_a3_overflowing_batch_is_refused_before_the_run(con) -> None:
             report.run(bad, e, route="auto")
 
 
-@waits_for("#1803: the run-time check of x * y staying finite does not discharge its domain error")
 def test_a4_double_product_that_may_reach_infinity(con) -> None:
-    """`x * y` on doubles: the bounds that keep it finite are inferred and
-    checked on the data; a verified run never yields a new `±∞`."""
+    """`x * y` on doubles. Two conditions, kept apart (#1803): `0 * ±inf` is
+    NaN, a domain error that only a bound on the columns rules out; and a
+    product of finite values that overflows to `±∞` is assumed and checked on
+    the data, so a verified run never yields a new `±∞`."""
     u = ibis.table({"x": "float64", "y": "float64"}, name="u")
-    report = sv.verify(u.select(z=u.x * u.y))
-    assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report._inferred.get("u"), "the bounds that keep x * y finite"
+    unbounded = sv.verify(u.select(z=u.x * u.y))
+    assert unbounded.verdict == sv.Verdict.UNPROVED
+    assert [i.kind for i in unbounded.issues] == ["domain error"]
+    assert "0 times" in str(unbounded)
+    finite = [_.x.between(-1e300, 1e300), _.y.between(-1e300, 1e300)]
+    report = sv.verify(u.select(z=u.x * u.y), requires={"u": finite})
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, str(report)
+    assert [i.kind for i in report.assumed] == ["overflow to infinity"]
     good = sv.connect()
     good.put("u", pa.table({"x": [2.0, -3.0], "y": [4.0, 0.5]}))
     out = run_both(report, good)
     assert all(math.isfinite(z) for z in out["polars"].column("z").to_pylist())
-    for e in ENGINES:
+    for e in ("duckdb", "spark"):
         assert route_of(report, e).cls == "exact"
+    # Polars is observed for any double product, proved outright or not: its
+    # route reads `-0.0` as `0.0` (facts polars-zero-sign, polars-zero-add).
+    proved = sv.verify(
+        u.select(z=u.x * u.y),
+        requires={"u": [_.x.between(-1e150, 1e150), _.y.between(-1e150, 1e150)]},
+    )
+    assert proved.verdict == sv.Verdict.PROVED
+    assert route_of(proved, "polars").cls == route_of(report, "polars").cls == "observed"
     bad = sv.connect()
     bad.put("u", pa.table({"x": [1e200], "y": [1e200]}))
     for e in ENGINES:
