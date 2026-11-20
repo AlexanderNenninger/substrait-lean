@@ -628,7 +628,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: Literal[False] = False,
-    finite: bool = True,
+    finite: bool | str = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table: ...
@@ -641,7 +641,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool,
-    finite: bool = True,
+    finite: bool | str = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident: ...
@@ -653,7 +653,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool = False,
-    finite: bool = True,
+    finite: bool | str = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
@@ -678,8 +678,10 @@ def run_plan(
             Other engines ignore it. Default: False.
         finite: On DuckDB, Polars and Spark, check that no operation on finite
             doubles gives `±∞` (`Issue.infinite`), the reference's
-            precondition. Default: True; `Report.run` passes False for a
-            plan verified with `semantics="duckdb"`, which allows `±∞`.
+            precondition. Default: True; `Report.run` passes `"aggregates"` for
+            a plan verified with `semantics="duckdb"`, which allows an
+            operation's `±∞` but not an aggregate's (ruling 200 A4(2)); False
+            writes no check.
         tie_free: On Spark, the plan's windows have no ties on data that
             meets its preconditions (a proved report's `deterministic`), so
             they run with the sort keys alone (`to_sql`'s `deterministic`).
@@ -744,7 +746,7 @@ def run_plan(
 
 
 def run_guard_free(
-    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool = True
+    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool | str = True
 ) -> pa.Table:
     """Run a plan whose contract report is `guard_free` on `engine` without
     its other per-row checks, on data that meets its preconditions. The

@@ -630,7 +630,7 @@ theorem Request.issuesIn_sound (R : Request) {data : Catalog} (hD : DataMeets R 
     (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
     (hsm : T.root.Small data) :
     ∀ p, T.root.HasIssue data false p →
-      p ∈ R.issuesIn R.kenv ∨ (p.1 = .infinite ∧ R.underReference = false) := by
+      p ∈ R.issuesIn R.kenv ∨ (p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs) := by
   intro p hp
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hw)
@@ -639,14 +639,18 @@ theorem Request.issuesIn_sound (R : Request) {data : Catalog} (hD : DataMeets R 
   rw [Rel.issuesCapped_congr hD.arity] at hin
   simp only [Request.issuesIn, hT, hw, ↓reduceIte, List.mem_filter, List.mem_eraseDups,
     List.mem_append, KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity]
-  by_cases hinf : p.1 = .infinite ∧ R.underReference = false
+  by_cases hinf : p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs
   · exact .inr hinf
   · refine .inl ⟨.inl (by simpa [KnowledgeEnv.windows] using hin), ?_⟩
     obtain ⟨i, e⟩ := p
     simp only at hinf ⊢
     cases hr : R.underReference
-    · simp only [hr, and_true] at hinf
-      simp [hinf]
+    · by_cases hi : i = .infinite
+      · subst hi
+        by_cases he : e ∈ T.root.aggArgs
+        · simp [he]
+        · exact absurd ⟨rfl, hr, he⟩ hinf
+      · simp [hi]
     · simp
 
 /-- The data meets the request with another root: the root is no part of
@@ -681,7 +685,7 @@ theorem run_plan_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
   cases hl
   obtain ⟨p, hp⟩ := Rel.hasIssue_of_raises false hloose
     (Lowering.lowerRel_raises Lowering.duckdb_total hr)
-  rcases (R.withRoot s).issuesIn_sound (hD.withRoot s) hT' hw hP (hss hsm) p hp with h | ⟨-, h⟩
+  rcases (R.withRoot s).issuesIn_sound (hD.withRoot s) hT' hw hP (hss hsm) p hp with h | ⟨-, h, -⟩
   · rw [hi] at his
     simp only [List.all_eq_true, List.contains_iff_mem, List.not_mem_nil] at his
     exact absurd (his p h) (by simp)

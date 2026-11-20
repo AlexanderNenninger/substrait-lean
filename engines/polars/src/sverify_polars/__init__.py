@@ -55,7 +55,7 @@ _ENV = {"engine_affinity": ("POLARS_ENGINE_AFFINITY", "auto")}
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
+    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool | str, tie_free: bool
 ) -> Any:
     from sverify.engine import read_tables
 
@@ -65,7 +65,7 @@ def _run(
     return _run_tables(plan_json, tables, finite=finite)
 
 
-def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: bool) -> Any:
+def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: bool | str) -> Any:
     """The plan's result as a lazy weighted-table handle
     (`sverify._parts.Lazy`): the merge that adds it to the state
     streams it into a file, so it is never collected."""
@@ -92,7 +92,11 @@ def _table(con: Any, name: str) -> Any:
 
 
 def _run_tables(
-    plan_json: str, tables: Mapping[str, Any], *, guard_free: bool = False, finite: bool = True
+    plan_json: str,
+    tables: Mapping[str, Any],
+    *,
+    guard_free: bool = False,
+    finite: bool | str = True,
 ) -> Any:
     from sverify_polars import engine
 

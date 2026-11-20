@@ -163,11 +163,14 @@ class Dialect:
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `analysis/Sverify/Analysis/Guards.lean`). Integer `SUM` keeps its check."""
-    finite: bool = True
+    finite: bool | str = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
-    precondition. Off (`to_sql(..., finite=False)`) for a plan verified under
-    an engine's semantics that allows `±∞` (`verify(semantics="duckdb")`)."""
+    precondition. `"aggregates"` (`to_sql(..., finite="aggregates")`) for a plan
+    verified under an engine's semantics (`verify(semantics="duckdb")`): an
+    operation's `±∞` is the engine's value there, but an aggregate's running sum
+    overflows where the model's exact one does not (ruling 200 A4(2)), so
+    only the aggregates keep the check. `False` writes none."""
 
     def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
         """A refusal of this dialect for `reason`, where DuckDB's writer
@@ -4931,7 +4934,10 @@ class _Writer:
                 # Finite values whose sum overflows (#575), kept without guards.
                 top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
                 total = self.agg_finite(
-                    total, f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}", f"MIN({v})"
+                    total,
+                    f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}",
+                    f"MIN({v})",
+                    self.no_nan(v),
                 )
                 if not d.guards:
                     return total
@@ -5214,7 +5220,11 @@ class _Writer:
                 total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
                 # Finite values whose sum overflows (#575), kept without guards.
                 top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
-                return self.agg_finite(total, f"NOT {d.float_eq(top, d.float_lit(math.inf))}")
+                return self.agg_finite(
+                    total,
+                    f"NOT {d.float_eq(top, d.float_lit(math.inf))}",
+                    nan_free=self.no_nan(v, w),
+                )
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
         f = "MIN" if m.fn == "min" else "MAX"
@@ -5743,14 +5753,34 @@ class _Writer:
             )
         return d.bool_lit(False)
 
-    def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
+    def no_nan(self, v: str, over: str = "") -> str:
+        """No value of `v` is NaN (in the frame `over`, for a window)."""
+        d = self.d
+        flag = d.case_when(d.is_nan(v), d.int_lit(1), d.int_lit(0))
+        return f"MAX({flag}){' ' + over if over else ''} = {d.int_lit(0)}"
+
+    def agg_finite(
+        self,
+        value: str,
+        finite: str | None = None,
+        dep: str | None = None,
+        nan_free: str | None = None,
+    ) -> str:
         """An aggregate's `value`, raising where it is `±∞` though its values
         are finite (`finite`, if the caller has not ruled them out:
-        `Measure.makesInf`, #575)."""
+        `Measure.makesInf`, #575). A sum whose partial sums overflow in
+        both directions is NaN, which the inputs do not explain: with
+        `nan_free`, the condition that no input is NaN, a NaN `value` raises
+        too (ruling 200 A4(3))."""
         d = self.d
         if not d.finite:
             return value
-        cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
+        bad = d.is_inf(value)
+        if nan_free is not None:
+            bad = f"({bad} OR {d.is_nan(value)})"
+        cond = bad if finite is None else f"({finite} AND {bad})"
+        if nan_free is not None:
+            cond = f"({nan_free} AND {cond})"
         return d.case_when(
             cond, d.raise_("overflow to infinity", dep or value, "float", "infinite"), value
         )
@@ -5762,7 +5792,7 @@ class _Writer:
         assumption that a double operation does not overflow. Kept without
         guards, as a `SUM`'s check is (`Rel.guardFree_sound`)."""
         d = self.d
-        if not d.finite:
+        if d.finite is not True:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
         sql = self.bind(sql)
@@ -5919,7 +5949,7 @@ def to_sql(
     deterministic: bool = False,
     guards: bool = True,
     unchecked: dict | None = None,
-    finite: bool = True,
+    finite: bool | str = True,
     rows: Literal["sequence", "multiset"] | None = None,
     asof: Sequence[dict] = (),
 ) -> str:
@@ -6024,8 +6054,8 @@ def to_sql(
         rows = found.rows if found is not None else "sequence"
     if not guards:
         dialect = replace(dialect, guards=False)
-    if not finite:
-        dialect = replace(dialect, finite=False)
+    if finite is not True:
+        dialect = replace(dialect, finite=finite)
     _support.check(plan, dialect.name, Unsupported)
     p = parse_plan(plan, asof if dialect.native_asof else ())
     n = arity(p.root)

@@ -116,7 +116,7 @@ DEFAULTS: Mapping[str, str] = {
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
+    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool | str, tie_free: bool
 ) -> Any:
     from sverify.engine import _rename_tables, read_tables
     from sverify_spark import engine as spark_engine

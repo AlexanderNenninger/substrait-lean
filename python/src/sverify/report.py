@@ -936,7 +936,7 @@ class Report:
                 recheck(written)
             return f(written)
 
-    def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
+    def _sql_route(self, dialect: Any) -> tuple[Any, bool | str]:
         """The dialect `dialect` names, and whether its SQL checks the
         reference's `±∞` precondition, for this report's plan; refused as
         `run` refuses it."""
@@ -972,7 +972,7 @@ class Report:
             if not routes.verified(self):
                 raise UnverifiedRunError(self, chosen)
             raise routes.RouteError(chosen)
-        return d, self.semantics == "reference" or chosen.kind == "translated"
+        return d, self.semantics == "reference" or chosen.kind == "translated" or "aggregates"
 
     def check_inputs(
         self,
@@ -1274,10 +1274,12 @@ class Report:
             and (chosen is not None or streaming == "require")
         ):
             self._streaming(con, chosen, streaming, plugin.engine, fallbacks, plan)
-        # The check of an overflow to ±∞ is the reference's precondition
-        # (#575): it is written for a plan verified under the reference, and
-        # for one that reaches the engine through the reference's route.
-        finite = self.semantics == "reference" or kind == "translated"
+        # The check of an operation's overflow to ±∞ is the reference's
+        # precondition (#575): it is written for a plan verified under the
+        # reference, and for one that reaches the engine through the
+        # reference's route. An aggregate's keeps it on every route: the
+        # engine's running sum overflows where the exact one does not.
+        finite = self.semantics == "reference" or kind == "translated" or "aggregates"
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
         # translation, a guard-free plan runs without its per-row checks on an

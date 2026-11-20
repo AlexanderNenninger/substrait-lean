@@ -160,7 +160,7 @@ def _run(
     session: Any,
     *,
     keep: bool,
-    finite: bool,
+    finite: bool | str,
     tie_free: bool,
     asof: Sequence[dict] = (),
 ) -> Any:
@@ -175,7 +175,7 @@ def _run(
 
 
 def _run_tables(
-    plan_json: str, tables: Any, *, guard_free: bool = False, finite: bool = True
+    plan_json: str, tables: Any, *, guard_free: bool = False, finite: bool | str = True
 ) -> Any:
     from sverify_duckdb import engine as duckdb_engine
 
