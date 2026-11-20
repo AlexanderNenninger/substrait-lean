@@ -2971,7 +2971,7 @@ partial def capChains (fns : List (Nat × String)) (andA orA : Nat) (level : Nat
     let anchor := if level ≥ liftLevels then (if isAnd then andA else orA)
       else ((field? j "scalarFunction").bind fun f => (natD f "functionReference").toOption).getD 0
     let f := (field? j "scalarFunction").getD (Json.mkObj [])
-    Json.mkObj [("scalarFunction", f.setObjVal! "functionReference" (toJson anchor)
+    Json.mkObj [("scalarFunction", f.setObjVal! "functionReference" (Lean.toJson anchor)
       |>.setObjVal! "arguments" (Json.arr (args.map fun a => Json.mkObj [("value", a)]).toArray))]
   | none => match j with
     | .obj kvs => Json.mkObj (kvs.toList.map fun (k, v) => (k, capChains fns andA orA level v))
