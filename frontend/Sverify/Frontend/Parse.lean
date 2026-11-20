@@ -178,19 +178,20 @@ partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
   if intTags.any (fun (k, _) => has k) then .int
   else if ["fp32", "fp64"].any has then .float
-  -- Times are microseconds; a coarser precision (Calcite's `TIMESTAMP` is
-  -- seconds) would truncate, which is not modelled.
+  -- Times are microseconds: a coarser precision (Calcite's `TIMESTAMP` is seconds) would
+  -- truncate, and a finer one (nanoseconds) would be read as a count of microseconds, which
+  -- compares raw counts of different units (#2004). Neither is modelled.
   else if has "timestamp" then .time
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
-    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .time else .other
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .time else .other
   -- An instant (#1725): microseconds, as the naive kind.
   else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then
-    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .timeTz else .other
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .timeTz else .other
   else if has "timestampTz" then .timeTz
   else if has "date" then .date
   else if has "time" then .tod
   else if let some t := (ty.getObjVal? "precisionTime").toOption then
-    if 6 ≤ ((t.getObjValAs? Nat "precision").toOption.getD 0) then .tod else .other
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .tod else .other
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
@@ -204,6 +205,11 @@ partial def typeKind (ty : Json) : Kind :=
 
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
+-- Nanoseconds are not microseconds (#2004).
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 6)])]) == .time
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .other
 
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -703,19 +709,11 @@ def castConst (ty : Json) (c : Const) : J Const := do
     if fitsDigits p m then return .dec m p s
     else throw s!"cast to DECIMAL({p}, {s}) overflows"
   | _ =>
-    -- A constant cast to a timestamp coarser than microseconds: only where it
-    -- truncates nothing (`CAST('2024-01-15 00:00:00' AS TIMESTAMP)` in Calcite).
+    -- A constant cast to a timestamp of another precision floors to that unit
+    -- (D61), which the model does not state (#2004).
     if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
       let p := (t.getObjValAs? Nat "precision").toOption.getD 0
-      let us ← match c with
-        | .str s => match Time.parseTimestamp? s with
-          | some us => pure us
-          | none => throw s!"cannot parse timestamp '{s}'"
-        | .ts us => pure us
-        | .date d => pure (d * Time.usPerDay)
-        | _ => throw "cannot cast this value to a timestamp"
-      if us % 10 ^ (6 - p) == 0 then return .ts us
-      else throw s!"cast to a timestamp of precision {p} truncates"
+      throw s!"cast to a timestamp of precision {p} is not supported: timestamps are read at microsecond precision"
     throw "unsupported cast type"
 
 /-- A day/second interval in microseconds. -/
@@ -827,14 +825,12 @@ def parseConstLiteral (j : Json) : J Const := do
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
     if p ≤ 6 then return .tod (v * 10 ^ (6 - p))
-    else if v % 10 ^ (p - 6) == 0 then return .tod (v / 10 ^ (p - 6))
     else throw "times finer than microseconds are not supported"
   -- Precision `p` counts units of 10⁻ᵖ s (a `TIMESTAMP '…'` literal may be at 0).
   | ("precisionTimestamp", t) =>
     let p ← natD t "precision"
     let v ← getInt (← field t "value")
     if p ≤ 6 then return .ts (v * 10 ^ (6 - p))
-    else if v % 10 ^ (p - 6) == 0 then return .ts (v / 10 ^ (p - 6))
     else throw "timestamps finer than microseconds are not supported"
   | (k, n) =>
     let i ← getInt n
@@ -1812,7 +1808,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let p ← natD t "precision"
       let v ← getInt (← field t "value")
       if p ≤ 6 then return .un (.atUtc true) (.lit (.ts (v * 10 ^ (6 - p))))
-      else if v % 10 ^ (p - 6) == 0 then return .un (.atUtc true) (.lit (.ts (v / 10 ^ (p - 6))))
       else throw "timestamps finer than microseconds are not supported"
     if let some us := field? l "timestampTz" then
       return .un (.atUtc true) (.lit (.ts (← getInt us)))
@@ -1878,10 +1873,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             let [sj, pj] := gargs | throw "regexp_match with flags is not supported"
             let some (.str p) ← constOf? fns pj | throw "regular expressions must be constants"
             return .un (.regexMatch p) (← parseExpr fns cols bits sj)
-    -- A timestamp of any precision: a coarser one is `.other` to `typeKind`,
-    -- and a date plus an interval typed as either is refused alike.
+    -- A function's result typed as a timestamp of up to microseconds is the exact
+    -- microsecond value (`date - 5 days` is `precision_timestamp<0>` in Substrait's
+    -- own cases); a finer one is `.other`, as everywhere (#2004).
     let outTy := (field? f "outputType").getD .null
-    let out := if (field? outTy "precisionTimestamp").isSome then Kind.time else typeKind outTy
+    let out := match (field? outTy "precisionTimestamp").bind (·.getObjValAs? Nat "precision" |>.toOption) with
+      | some p => if p ≤ 6 then Kind.time else .other
+      | none => typeKind outTy
     if let some e ← temporalArith (parseExpr fns cols bits) cols (baseName name) argJs out then return e
     if comparisonFns.contains (baseName name) then
       for a in argJs do
@@ -2781,9 +2779,10 @@ def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   -- The model's times are microseconds (`typeKind`).
   for ty in ← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types" do
     if unsignedType ty then throw "unsigned integer columns are not supported"
-    if let some t := field? ty "precisionTimestamp" then
-      if (← natD t "precision") < 6 then
-        throw "timestamp columns coarser than microseconds are not supported"
+    for tag in ["precisionTimestamp", "precisionTimestampTz", "precisionTime"] do
+      if let some t := field? ty tag then
+        if (← natD t "precision") != 6 then
+          throw "timestamp and time columns of a precision other than microseconds are not supported"
   let base ← match ← oneof "read type" r ["namedTable", "virtualTable"] with
     | ("namedTable", t) =>
       let names ← (← arrD t "names").mapM (·.getStr?)
