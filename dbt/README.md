@@ -24,6 +24,7 @@ Sverify-dbt is published with sverify, at the same version, from
 releases on:
 
 ```bash
+# skip: installs software on the reader's machine
 pip install sverify-dbt dbt-duckdb
 ```
 
@@ -32,6 +33,7 @@ pip install sverify-dbt dbt-duckdb
 Compile the project, then check it:
 
 ```bash
+# skip: needs a dbt project
 dbt docs generate   # writes target/catalog.json, where the column types come from
 dbt compile --full-refresh   # also after a `dbt run`: a plain compile renders `{{ this }}`
 sverify-dbt check .
@@ -80,6 +82,7 @@ subscription_arr (models/marts/subscription_arr.sql)
 selects:
 
 ```bash
+# skip: needs a dbt project
 sverify-dbt check . --selectors
 dbt build --exclude selector:sverify_proved
 ```
@@ -92,6 +95,7 @@ by hand, and tighten a bound where your data allows:
 [`examples/shop/PROOF-STATUS.md`](examples/shop/PROOF-STATUS.md) shows one.
 
 ```bash
+# skip: needs a dbt project
 sverify-dbt suggest .
 ```
 
@@ -199,6 +203,7 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 ## Development
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd dbt
 uv sync
 uv run pytest

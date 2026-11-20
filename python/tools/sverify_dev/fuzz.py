@@ -513,7 +513,9 @@ def check(
         try:
             whole = s.lean(s.plan(query.base))
             split = [r for part in parts for r in s.lean(s.plan(part))]
-        except Refused:
+        except (Refused, LeanRaised):
+            # A predicate that raises (a zero divisor) partitions nothing;
+            # the runtime oracle covers the raise itself.
             pass
         else:
             if not same_rows(whole, split):
