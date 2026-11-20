@@ -189,16 +189,6 @@ partial def typeKind (ty : Json) : Kind :=
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
 
-/-- A decimal of scale 0 and at least 19 digits holds every 64-bit integer
-exactly, and adding, subtracting or multiplying such decimals is exact, so the
-model keeps their values as integers. DataFusion casts to `DECIMAL(20, 0)` to
-mix signed and unsigned integers (`ROW_NUMBER() - 1`). -/
-def wideIntDecimal (ty : Json) : Bool :=
-  match (ty.getObjVal? "decimal").toOption with
-  | some d => (d.getObjValAs? Nat "scale").toOption.getD 0 == 0 &&
-      19 ≤ (d.getObjValAs? Nat "precision").toOption.getD 0
-  | none => false
-
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
   | some tys => tys.toList.map typeKind
@@ -610,10 +600,6 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
-  if wideIntDecimal ty then
-    match c with
-    | .int i | .dec i _ 0 => return .int i
-    | _ => throw "cannot cast this value to an integer decimal"
   match typeKind ty with
   | .float =>
     let some f := c.toFloat? | throw "cannot cast this value to a double"
@@ -1984,7 +1970,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if hasFloat then
         throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
       if let some e ← decimalCall cols (baseName name) outTy parsed then return e
-    else if (out matches .dec _ _) && !wideIntDecimal outTy then
+    else if out matches .dec _ _ then
       throw s!"{name}: a DECIMAL result of non-decimal arguments is not supported"
     -- An integer constant next to a double, or in a double function, stands
     -- for that double (DataFusion leaves `bpm >= 30` uncast); give it the
@@ -2108,7 +2094,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if k == .timeTz && target == .timeTz then return e
     if k == .timeTz || target == .timeTz then
       throw (instantRefusal "a cast to or from a timestamp with a time zone, but at UTC to a timestamp,")
-    if k == .int && wideIntDecimal (← field c "type") then return e
     -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
     -- checking the precision. To a smaller scale rounds half away from zero;
     -- to an integer truncates toward zero.
