@@ -1765,8 +1765,8 @@ _RENAMED = {
 
 def _manifest(m: Mapping[str, Any]) -> Json:
     """The manifest in this version's format: an earlier format's keys
-    renamed and its `"reference"` semantics `"portable"` (format 3 that says
-    `"reference"` is refused), `rows` an integer (a Struct holds every number as a double).
+    renamed and its `"reference"` semantics `"portable"`, `rows` an integer
+    (a Struct holds every number as a double).
 
     Raises:
         ValueError: The manifest's format is newer than this version reads.
@@ -1787,7 +1787,7 @@ def _manifest(m: Mapping[str, Any]) -> Json:
     if "semantics" in out:
         from sverify.report_json import _portable
 
-        out["semantics"] = _portable(out["semantics"], fmt < FORMAT, "the plan's sverify contract")
+        out["semantics"] = _portable(out["semantics"], fmt < FORMAT)
     if isinstance(out.get("rows"), float) and out["rows"].is_integer():
         out["rows"] = int(out["rows"])
     if isinstance(out.get("format"), float):

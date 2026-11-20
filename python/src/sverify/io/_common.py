@@ -351,9 +351,8 @@ def not_null_column(sql: str) -> str | None:
 
 
 #: The version of the sink's contract record's format (`Contract.format`).
-#: Format 2 names the node `node`; format 1 called it `view`. Format 3 (1.0)
-#: calls the profile `"portable"`, which formats 1 and 2 call `"reference"`.
-CONTRACT_FORMAT = 3
+#: Format 2 (1.0) names the node `node`; format 1 called it `view`.
+CONTRACT_FORMAT = 2
 
 
 @dataclass
@@ -412,8 +411,7 @@ class Contract:
     those of the release."""
     profile: str | None = None
     """The profile the plan was verified under (`verify(semantics=...)`); the
-    plan's digest includes it unless it is `"portable"`, which a
-    record of format 1 or 2 calls `"reference"`."""
+    plan's digest includes it unless it is `"portable"`."""
     package: str | None = None
     """For an engine that comes from another package than sverify, that package
     as `name==version`: its facts ship with it."""
@@ -458,11 +456,6 @@ class Contract:
             )
         if fmt < 2 and "view" in data:
             data = {**data, "node": data["view"]}
-        if data.get("profile") is not None:
-            from sverify.report_json import _portable
-
-            profile = _portable(data["profile"], fmt < 3, "the sink's contract record")
-            data = {**data, "profile": profile}
         known = Contract.__dataclass_fields__
         return Contract(**{k: v for k, v in data.items() if k in known and k != "format"})
 

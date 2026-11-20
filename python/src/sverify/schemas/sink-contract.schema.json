@@ -7,8 +7,8 @@
   "required": ["node", "plan", "sources", "epoch", "not_null", "checks", "unique"],
   "properties": {
     "format": {
-      "description": "The version of this format. Format 3 (1.0) calls the profile portable, which formats 1 and 2 call reference.",
-      "const": 3
+      "description": "The version of this format.",
+      "const": 2
     },
     "node": {
       "description": "The stored node's name.",
@@ -70,7 +70,7 @@
       "type": "string"
     },
     "profile": {
-      "description": "The profile the plan was verified under (verify(semantics=...)). The plan's digest includes it unless it is \"portable\", which a record of format 1 or 2 calls \"reference\".",
+      "description": "The profile the plan was verified under (verify(semantics=...)). The plan's digest includes it unless it is \"portable\".",
       "type": "string"
     },
     "package": {

@@ -46,19 +46,11 @@ Json = dict[str, Any]
 RENAMED = "'reference' is called 'portable' since 1.0"
 
 
-def _portable(semantics: str, before_1_0: bool, what: str) -> str:
-    """`semantics` as 1.0 names it. A file of a format before 1.0's
-    (`before_1_0`) says `"reference"` for `"portable"`; one of 1.0's format
-    that says it was not written by a release, and is refused.
-
-    Raises:
-        ValueError: `what`, of 1.0's format, says `"reference"`.
-    """
-    if semantics != "reference":
-        return semantics
-    if before_1_0:
-        return "portable"
-    raise ValueError(f'{what} says semantics "reference", which no release wrote: {RENAMED}')
+def _portable(semantics: str, before_1_0: bool) -> str:
+    """`semantics` as 1.0 names it: a document of a format before 1.0's
+    (`before_1_0`) says `"reference"` for `"portable"`. 1.0's formats keep
+    no second name, so there the value reads as written (ruling 214)."""
+    return "portable" if before_1_0 and semantics == "reference" else semantics
 
 
 def _sverify_version() -> str:
@@ -440,7 +432,7 @@ def route(d: Mapping[str, Any], fmt: int = FORMAT) -> Route:
     return Route(
         d["engine"],
         d["kind"],
-        _portable(d["semantics"], fmt < 4, "the report's route"),
+        _portable(d["semantics"], fmt < 4),
         d["reason"],
         deterministic=d.get("deterministic", True),
         warnings=tuple(d.get("warnings", ())),
@@ -581,7 +573,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _run_gate=d.get("run_gate"),
         dialect_differences=tuple(DialectDifference(**x) for x in d.get("dialect_differences", [])),
         rows=d.get("rows"),
-        semantics=_portable(d.get("semantics", "portable"), fmt < 4, "the report's JSON"),
+        semantics=_portable(d.get("semantics", "portable"), fmt < 4),
         engine_version=d.get("engine_version"),
         # A report written before the name `lenses` calls them `equivalence`.
         lenses=lenses(lens) if (lens := d.get("lenses", d.get("equivalence"))) else _plan_bound(),
