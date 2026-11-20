@@ -562,6 +562,79 @@ def select(input: Json, width: int, exprs: list[Json]) -> Json:
     return input if fields == list(range(width)) else emit_rel(input, fields)
 
 
+#: The functions of a `plain` expression (`Expr.plain`, `Guard.lean`): they
+#: raise on no row, so they guard the operands after them.
+_PLAIN_FUNCTIONS = frozenset(
+    {
+        "equal", "not_equal", "lt", "lte", "gt", "gte", "is_null", "is_not_null", "not", "and",
+        "or",
+    }
+)  # fmt: skip
+
+
+def is_plain(e: Json) -> bool:
+    """Is `e` built from columns and literals by `=`, `<`, `IS NULL`, `NOT`, `AND`
+    and `OR` (and their spellings), a literal's cast or `IN` over such? Such an
+    expression raises on no row, apart from a constant's cast, which D21 gives to
+    the whole plan in the eager and in the lifted reading alike. A chain called plain
+    is written eager (D19); this table decides only which chains pay for the lift
+    (`Expr.plain` in `Guard.lean` is the narrower, proved one)."""
+    if "literal" in e or "selection" in e:
+        return True
+    if (c := e.get("cast")) is not None:  # a constant's cast raises on every row or on none
+        return "literal" in c["input"]
+    if (ol := e.get("singularOrList")) is not None:  # `x IN (…)` parses to `=` and `OR`
+        return is_plain(ol["value"]) and all(is_plain(o) for o in ol.get("options", []))
+    fn = e.get("scalarFunction")
+    if fn is None:
+        return False
+    names = {a: n for n, a in _COMPILER.get().functions.items()}
+    if names.get(fn["functionReference"]) not in _PLAIN_FUNCTIONS:
+        return False
+    return all(is_plain(a["value"]) for a in fn["arguments"])
+
+
+#: How many levels of nested `AND` and `OR` the lift guards (D50, interim): a connective
+#: below this many enclosing lifted ones is written eager. Step D50-d removes the cap.
+LIFT_LEVELS = 3
+
+
+def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
+    """`AND` or `OR` (`name`) of `operands`, in order (D50). Where every operand
+    is plain, or the plan is read as DuckDB reads it (`eager`), the eager connective
+    (`chain`); otherwise `sverify_and` or `sverify_or`, which the checker reads as
+    a guard: each operand runs only where the earlier ones do not decide the
+    result (`Expr.andG`, `Guard.lean`). Only the top `LIFT_LEVELS` levels of a nest
+    are lifted."""
+    if eager or len(operands) == 1 or semantics() == "duckdb" or all(is_plain(o) for o in operands):
+        return chain(name, operands)
+    names = {a: n for n, a in _COMPILER.get().functions.items()}
+    spliced: list[Json] = []
+    for o in operands:
+        fn = o.get("scalarFunction")
+        if fn is not None and names.get(fn["functionReference"]) == f"sverify_{name}":
+            spliced += [a["value"] for a in fn["arguments"]]  # a guard chain inside is one chain
+        else:
+            spliced.append(o)
+    return _cap_lift(call(f"sverify_{name}", spliced), names, 0)
+
+
+def _cap_lift(e: Any, names: dict[int, str], level: int) -> Any:
+    """`e` with every `sverify_and` and `sverify_or` at `LIFT_LEVELS` or more lifted
+    ones above it written as the eager `and` and `or`."""
+    if isinstance(e, list):
+        return [_cap_lift(x, names, level) for x in e]
+    if not isinstance(e, dict):
+        return e
+    fn = e.get("scalarFunction")
+    n = names.get(fn["functionReference"]) if fn is not None else None
+    if fn is not None and n in ("sverify_and", "sverify_or"):
+        below = level + 1
+        args = [_cap_lift(a["value"], names, below) for a in fn["arguments"]]
+        return chain(n.removeprefix("sverify_"), args) if level >= LIFT_LEVELS else call(n, args)
+    return {k: _cap_lift(v, names, level) for k, v in e.items()}
+
+
 def chain(name: str, args: list[Json]) -> Json:
     """`args` combined left to right with the binary function `name`."""
     out = args[0]
