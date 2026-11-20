@@ -1296,7 +1296,9 @@ class Exprs:
             us = v.expr.cast(pl.Int64)
             bad = (us < TS_MIN) | (us > TS_MAX)
             safe = pl.when(bad).then(None).otherwise(us).cast(US)
-            return Val(safe, US, (*v.issues, issue(bad, Overflow, f"CAST to TIMESTAMP {OUTSIDE_TS}")))
+            return Val(
+                safe, US, (*v.issues, issue(bad, Overflow, f"CAST to TIMESTAMP {OUTSIDE_TS}"))
+            )
         if "date" in target and v.dtype == US:
             # `UnFn.toDate`: days since 1970-01-01, rounding down.
             days = v.expr.dt.epoch("us") // US_PER_DAY
