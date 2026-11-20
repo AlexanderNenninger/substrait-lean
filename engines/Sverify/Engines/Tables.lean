@@ -32,7 +32,7 @@ def prototypeSlice : List String :=
    "nan_equality", "sum_order", "avg_int_result", "empty_group_aggregates", "null_order", "clustered",
    "tie_order", "tie_pick", "negative_start", "case_sensitivity", "string_positions",
    "null_join_keys", "float_overflow", "stat_algo", "quantile_interp", "decimal_rescale",
-   "window_sum_algo"]
+   "window_sum_algo", "list_null_order"]
 
 /-- The theorems of the package `float-bounds` (Mathlib, kept out of the core)
 that rows name as evidence. The core cannot see them: the `run_cmd` at the
@@ -44,6 +44,7 @@ def floatBoundsTheorems : List String :=
    "FloatBounds.StdModel.core_var_chan", "FloatBounds.StdModel.core_cov_chan",
    "FloatBounds.StdModel.core_corr_chan", "FloatBounds.StdModel.epsilon_sum_cr",
    "FloatBounds.StdModel.epsilon_avg_cr", "FloatBounds.StdModel.epsilon_var_cr",
+   "FloatBounds.StdModel.epsilon_stddev_cr",
    "FloatBounds.StdModel.epsilon_cov_cr", "FloatBounds.StdModel.TreeSum.sign",
    "FloatBounds.StdModel.TreeSum.avg_sign"]
 

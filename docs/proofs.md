@@ -8,6 +8,9 @@ Sverify's guarantees are theorems of the Lean project in
 guarantee rests on, what each of them assumes, and the one job of every
 module. [How it works](how-it-works.md) explains the checks in prose.
 
+The theorems of the contract family have a page each, with an example you
+can run: [theorem cards](theorems/README.md).
+
 The top-level statements, over named predicates a reviewer can read without
 the checker's internals, are in one file:
 [`Statements.lean`](../SubstraitLean/Statements.lean).
@@ -29,18 +32,19 @@ contract's preconditions.
 
 | Guarantee | Layer | Theorem | Module |
 |---|---|---|---|
-| A proved postcondition is TRUE on every output row | `eval` | `contract_sound` | `Contracts/Sound.lean` |
-| … in every row order the reference allows | `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
+| A proved postcondition is TRUE on every output row | `eval` | [`contract_sound`](theorems/contract_sound.md) | `Contracts/Sound.lean` |
+| … in every row order the reference allows | `OrderAllowed` | [`contract_sound_all`](theorems/contract_sound_all.md) | `Contracts/Sound.lean` |
 | What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s on the postcondition's conditions projected over the request's transformation, which `parse` builds itself, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088, #1484) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
 | When `substrait-check --contract` reports a postcondition proved and the transformation `closed` (no open measure: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; open ties are allowed), it holds on the rows each engine's model computes for the translated plan (#1484, A6), on any data that meets the request: DuckDB's (default settings, verified under the reference and lowered by `Lowering.duckdb`) on a report without issues under the reference that is `guard_free`, Polars's and Spark's on a `guard_free` one, each side condition taken from the report | `Allowed` | `check_proved_on`, `check_proved_on_duckdb`, `check_proved_on_polars`, `check_proved_on_spark`, `check_noRaise_duckdb`, `check_guardFreeSide` | `ProvedOn.lean` |
 | When `substrait-check --contract` reports the transformation `deterministic`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows, for any data that meets the request (`DataMeets`, #1484) | `Allowed` | `check_deterministic_sound`, `check_deterministic_determined` (determined up to the exact level, any context) | `ContractCheck.lean` |
 | When it reports the transformation `class_determined`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows and the member of each class of D31 (`Row.canon`, D48); the class level drops the exact level's `noDoubles` guards, and above a class pick admits only operators that read their input up to the class, the others named in `class_places` | `Allowed` | `check_class_determined_sound`, `check_class_determined_determined` (determined up to the class level, where every double sits in a double column), `Relation.Equiv_classes_of_canon_perm`, `Rel.allowed_canon_perm_eval`, `classIn_eq_nil` | `ContractCheck.lean`, `AllowedAnalysis.lean` |
+| When it reports the transformation `sequence_determined`, every result the reference allows for it is `Rel.eval`'s row by row: it is `deterministic`, and its sort's columns contain a key of its input, none clustered (`Rel.seqTotal`, `Rel.fetchTotalAt`) | `Allowed` | `check_sequence_determined_sound`, `check_sequence_determined_determined`, `Rel.allowed_eq_eval`, `Rel.orderBy_allowed_eq` | `ContractCheck.lean`, `AllowedAnalysis.lean` |
 | A key `substrait-check --contract` reports proved is a key of every result the reference allows for the transformation, on data that meets the request (#1484) | `OrderAllowed` | `check_keys_sound` | `ContractCheck.lean` |
 | Every issue the transformation can run into is in the report's `issues`, on data that meets the request, its bounds per key and the size hypothesis (#1484) | `eval` | `check_issues_sound` | `ContractCheck.lean` |
 | Every issue the transformation can run into on any order the reference allows, and on the rows of each join input an engine may push a condition into (an empty other input included, #1484 R3), is in the report's `issues`, on data that meets the request, its bounds per key and the size hypothesis on every order | `OrderAllowed` | `check_issues_sound_all`, `Rel.issuesCapped_sound_all`, `checked_issues_all` | `IssuesAll.lean`, `Statements.lean` |
 | A transformation the report calls `guard_free` computes the same rows with any faithful functions (#1484) | `eval` | `check_guard_free_sound` | `ContractCheck.lean` |
 | The plan the report writes as `optimized` is well-formed, has the transformation's arity and gives its rows, on data that meets the request and its foreign keys (#1484) | `eval` | `check_optimized_sound` | `ContractCheck.lean` |
-| The plan an engine runs in place of the transformation (`run_plan`, #1787) refines it up to the order of rows, and exactly unless the observation's rows level is `multiset`; it is as small as the transformation, reads no option and calls no function it does not, has no issue it lacks, and is guard-free where it is; the report names the gate that keeps the transformation otherwise (`run_gate`). The `near` gate lets the rewrite run under `floats_plan` only where neither plan has a double or an open measure and each transfers to the reference past the options only doubles read at every built-in engine, where `Rel.floatOpenSafeP_of_noDouble` discharges `Engine.contract_sound_runs_near`'s `hsafeE` (ruling 154) | `Allowed` | `check_run_plan_sound`, `Rel.belowOrder_refines`, `Rel.rule_small`, `Rel.optimize_small`, `transferB_of_reads_sub` | `RunPlan.lean` |
+| The plan an engine runs in place of the transformation (`run_plan`, #1787) refines it up to the order of rows, and exactly unless the observation's rows level is `multiset`; it is as small as the transformation, reads no option and calls no function it does not, has no issue where the transformation has none (and runs only then, #2006), and is guard-free where it is; the report names the gate that keeps the transformation otherwise (`run_gate`). The `near` gate lets the rewrite run under `floats_plan` only where neither plan has a double or an open measure and each transfers to the reference past the options only doubles read at every built-in engine, where `Rel.floatOpenSafeP_of_noDouble` discharges `Engine.contract_sound_runs_near`'s `hsafeE` (ruling 154) | `Allowed` | `check_run_plan_sound`, `Rel.belowOrder_refines`, `Rel.rule_small`, `Rel.optimize_small`, `transferB_of_reads_sub` | `RunPlan.lean` |
 | A verified postcondition holds on an engine's run of the plan to run, and on DuckDB's model of it from the report alone (the gate gives its side condition) | `Allowed` | `verified_holds_run_plan`, `verified_holds_run_plan_duckdb`, `run_plan_noRaise_duckdb`, `Request.issuesIn_sound` | `Statements.lean`, `RunPlan.lean` |
 | The same on one hypothesis, the analysis's (`Knowledge`) | `eval`, `OrderAllowed` | `Knowledge.contract_sound`, `Knowledge.contract_sound_all`, `Knowledge.duckdb_sound` | `Knowledge.lean` |
 | The analysis is sound: what it knows of a relation holds of its rows | `eval`, `OrderAllowed` | `Rel.analyse_sound`, `Rel.analyse_sound_all` | `Knowledge.lean` |
@@ -99,12 +103,13 @@ contract's preconditions.
 | An engine's double `SUM` of integers with `Σ \|xᵢ\| ≤ 2⁵³` is the exact sum under every `sum_order`, and its `AVG` the reference's (D35, amended 2026-11-19), so a measure of converted integers with `N · max M 1 ≤ 2⁵²` has no tolerance | `AllowedP` | `SumOrder.int_exact`, `AvgOrder.int_exact`, `FloatSums.int_exact`, `floatSum_int` | `MarginSound.lean` |
 | The margin check of a threshold filter on a double `SUM` or `AVG` (#929), in the core's doubles: a group's row `marginCount` does not flag passes the check, and a group passing it on one sum or mean `AllowedP` allows has every allowed sum or mean, and the reference's, strictly on one side of `t` | `AllowedP` | `margin_row`, `check_sum`, `check_avg`, `margin_sum`, `margin_avg` | `MarginSound.lean` |
 | A delta plan computes the change of the view | `zeval` | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
+| A view over a store whose table holds only the columns the view reads (`Rel.readsOnly`, decided), consolidated, gives every row its weight, and the delta rule holds over that store (#1329, ruling 116 A2) | `zeval` | `Rel.zeval_prune`, `Rel.incremental_sound_prune` | `Incremental.lean` |
 | `Rel.eval` is weighted evaluation over `Nat`: every unordered arm (filter, project, emit, cross, joins, union, sort, `DISTINCT`, semi and anti joins, unnest) at once, with the ordered and aggregate nodes read through the seam | `eval` | `Rel.eval_eq_evalK` | `WSet.lean` |
 | The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `zeval`, `eval` | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `zeval` | `Rel.weighted_eval` | `Weighted.lean` |
 | Union-free terms add up to the plan | `zeval` | `Rel.zeval_terms` | `Terms.lean` |
 | `COUNT`, `SUM` and `DISTINCT` are maintained from their state, one row per class of keys, as the reference allows | `Allowed` | `aggregate_maintained`, `distinct_maintained` | `IncrementalAgg.lean` |
-| `SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` and `CORR` of doubles are maintained exactly, with no drift over any batches | `eval` | `no_drift`, `floatState_sound`, `varState_sound`, `covState_sound`, `corrState_sound` | `IncrementalFloat.lean` |
+| `SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` and `CORR` of doubles are maintained exactly, with no drift over any batches | `eval` | `no_drift`, `floatState_sound`, `varState_sound`, `covState_sound`, `corrState_sound`, `limbs_grouped` | `IncrementalFloat.lean` |
 | `MIN`, `MAX` and exact `AVG` are maintained under inserts, as the reference allows | `Allowed` | `extreme_maintained`, `finish_iavg` | `IncrementalMinMax.lean` |
 | Semi and anti joins are maintained from a match count | `eval` | `semi_maintained` | `IncrementalSemi.lean` |
 | Recomputing only the touched groups or frames is exact | `eval` | `touched_sound`, `touched_window_sound`, `framed_sound` | `TouchedGroups.lean`, `TouchedFrames.lean` |
@@ -215,7 +220,7 @@ as the guard. Engines-common and the modules below import it as
 | Module | Job |
 |---|---|
 | `WSet.lean` | Relations with weights in any `K`, `Rel.evalK`, delta rules and delta plans over `K` |
-| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output |
+| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output; evaluation sees only weights (`Rel.zeval_weight_congr`); the columns a plan reads (`Rel.colsOf`) and the store pruned to them (`Rel.zeval_prune`) |
 | `Weighted.lean` | Z-set plans as bag plans with a weight column |
 | `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
 | `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
@@ -279,6 +284,7 @@ the guard. The modules below it import it as
 | `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
 | `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |
+| `LoweringGuards.lean` | The template guards no engine owns (NaN of IEEE operations, a zero divisor, an elementary function's domain), for every engine's hand-written schemas (#271) |
 | `Generated.lean` | The `check_generated` switch for the generated modules |
 | `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
 | `Rewrite.lean` | Running a rewritten plan (#1787): the engine's run of a refinement is allowed for the plan as written, contracts verified on the plan as written hold on it, and `Engine.runPlan` falls back to the plan as written |
@@ -444,13 +450,14 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `Arith.lean` | One double operation, bounded from its inputs |
 | `Moments.lean` | Exact moments and the scale of the variance bounds |
 | `Variance.lean` | Variance, covariance and correlation bounds for any algorithm |
+| `FloatBridge/Codes.lean` | The bridge to the core (#1196): the core's rounding (`FloatCode.ofExact` after the nearest multiple of `2⁻¹⁰⁷⁴`) is a `StdModel` (`FloatBridge.model`), and on multiples of `2⁻¹⁰⁷⁴` it is `ofExact` (`model_fl_grid`) |
 | `Textbook.lean` | The textbook one-pass algorithm |
 | `TwoPass.lean`, `TwoPassRel.lean` | Lean's two-pass algorithm, absolute and relative to the variance |
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |
 | `CorrTwoPass.lean` | The corrected two-pass formula on shifted doubles (Snowflake's `VAR_*` on mean-shifted values), its sums in any order: within `(2n + 9) u W + 7 u K √(n W) + 128 n² u² W + 64 n² u · tiny` of `S` (`corrTwoPass_error`, #1810) |
 | `Welford.lean`, `WelfordRel.lean` | Welford's update and Chan's merge, absolute and relative |
 | `MergeRel.lean`, `CovRel.lean` | Chan's merge and the covariance, relative to the spread |
-| `Chan.lean`, `ChanCorr.lean` | DuckDB's `VAR_*`, `STDDEV_*` and `CORR` meet `StatProps` |
+| `Chan.lean`, `ChanCorr.lean` | DuckDB's `VAR_*`, `STDDEV_*` and `CORR` meet `StatProps`; an engine's `VAR_*`, `STDDEV_*` and `COVAR_*` are within `statEps` of the reference's (`epsilon_var_cr`, `epsilon_stddev_cr`, `epsilon_cov_cr`) |
 | `CoreStats.lean`, `CoreKappa.lean` | The statistical properties of `StatProps.lean`, proved over the reals; trusted facts before D30 |
 
 ## Generated modules

@@ -33,15 +33,23 @@ def _run(monkeypatch: pytest.MonkeyPatch, result: CheckResult, *flags: str) -> i
     return main(["check", ".", *flags])
 
 
-def test_a_refused_model_with_a_contract_does_not_fail_the_default_gate(monkeypatch, capsys):
-    result = _project(rec=_refused())
-    assert _run(monkeypatch, result) == 0
-    out = capsys.readouterr().out
-    assert "refused: no WITH RECURSIVE" in out and "primary_key(id)" in out  # and says why
+def test_a_refused_model_with_an_enforced_contract_fails_the_default_gate(monkeypatch, capsys):
+    rec = _refused()
+    rec.enforced = True
+    result = _project(rec=rec)
+    assert _run(monkeypatch, result) == cli.NOT_PROVED
+    captured = capsys.readouterr()
+    assert "refused: no WITH RECURSIVE" in captured.out and "primary_key(id)" in captured.out
+    assert "rec has an enforced contract" in captured.err and "no WITH RECURSIVE" in captured.err
+    assert _run(monkeypatch, result, "--fail-on", "never") == 0
+
+
+def test_a_refused_model_without_a_contract_does_not_fail_the_default_gate(monkeypatch):
+    assert _run(monkeypatch, _project(rec=_model("rec").refuse("no WITH RECURSIVE"))) == 0
 
 
 def test_refused_models_gate_only_where_asked(monkeypatch):
-    result = _project(rec=_refused())
+    result = _project(rec=_model("rec").refuse("no WITH RECURSIVE"))
     assert _run(monkeypatch, result, "--fail-on", "unproved") == 0
     assert _run(monkeypatch, result, "--fail-on", "refused") == cli.REFUSED
 
@@ -55,7 +63,8 @@ def test_an_unproved_test_fails_unproved_with_1(monkeypatch):
     both = _project(bad=m, rec=_refused())
     # `refused` includes `unproved`: the unproved test comes first, as exit 1.
     assert _run(monkeypatch, both, "--fail-on", "refused") == cli.NOT_PROVED
-    assert _run(monkeypatch, _project(rec=_refused()), "--fail-on", "refused") == cli.REFUSED
+    plain = _project(rec=_model("rec").refuse("x"))
+    assert _run(monkeypatch, plain, "--fail-on", "refused") == cli.REFUSED
     assert _run(monkeypatch, both, "--fail-on", "unproved") == cli.NOT_PROVED
 
 

@@ -1,7 +1,7 @@
 """Steps: what `Node.pipe` takes, and `pipe` on sources.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
     orders.pipe(paid).pipe(enrich, customers=customers)
 
