@@ -111,7 +111,8 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i64 => some Substrait.duckdbOn.fit_saturate_i64
     | Substrait.UnFn.isNum a0 => some (Substrait.duckdbOn.isNum a0)
     | Substrait.UnFn.bbox a0 => some (Substrait.duckdbOn.bbox a0)
-    | Substrait.UnFn.flatten  => some (Substrait.duckdbOn.flatten ),
+    | Substrait.UnFn.flatten  => some (Substrait.duckdbOn.flatten )
+    | Substrait.UnFn.approx a0 => some (Substrait.duckdbOn.approx a0),
    fun f => match f with
     | Substrait.BinFn.add  => some (Substrait.duckdbOn.add )
     | Substrait.BinFn.sub  => some (Substrait.duckdbOn.sub )
@@ -233,6 +234,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.isNum", "native", 0),
   ("UnFn.bbox", "native", 0),
   ("UnFn.flatten", "native", 0),
+  ("UnFn.approx", "native", 0),
   ("BinFn.add", "native", 0),
   ("BinFn.sub", "native", 0),
   ("BinFn.mul", "native", 0),

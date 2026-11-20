@@ -1640,6 +1640,37 @@ approved (2026-11-18); the plain operands are found by `Expr.plain`.
 Recomputes sinks: no. The reference's values do not change: a plan that raises on no row
 computes what it did, and a lifted guard only removes a raise.
 
+### D52. A source mark carries a construct's band
+
+Decided 2026-11-19 (#1608 12d-4, ruling 85): approved by the theory advisor.
+
+`UnFn.approx k` is the identity in `Rel.eval` under every profile. It records
+that the source a plan was lifted from computes this value with a construct
+of its own, and that the construct's value lies within `k · 2⁻⁵³`, relatively,
+of the plan's. `Rel.Allowed` and the options do not change, and no profile
+reads the mark. The checker's tolerance analysis reads it (`Epsilon.exprEps`):
+over an exact argument, the band over the argument's range. The reference's
+values do not move. Substrait carries it as sverify's own function
+`sverify_approx(x, k)` with `k` a literal; every engine's lowering erases it,
+so the written SQL is unchanged.
+
+The first construct is DuckDB's `avg` of integers under `semantics="duckdb"`,
+a set of doubles around the plan's value (`DuckAgg.Allowed`, `duckdb-avg-int`).
+The lift marks that entry's finish with `DuckAgg.nearRel`, the band
+`DuckAgg.avgBigint_nearRel` proves (`DuckAgg.mark`).
+
+Why the core: a tier-1 engine's SQL returns one of several doubles where the
+lifted plan can state one. The mark is what lets the checker bound the
+others. It names no engine.
+
+2026-11-19 (ruling 104): a plan that carries a mark is proved only where every
+decision that reads a marked value has one outcome over the band and every
+output column that reads one has a bound in the report, and keys. Elsewhere the report
+carries an error issue (`source_threshold`, `EngineRobust.sourceIssues`).
+
+Recomputes sinks: no. The reference's values do not move, and a mark only
+narrows what is proved.
+
 ### D53. A timestamp with the time zone UTC is an instant
 
 Decided 2026-11-19 (theory advisor).

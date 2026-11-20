@@ -490,7 +490,12 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
         let runPlan := match ContractCheck.parse j with
           | .ok R => R.runPlanJson ++ [("assumed_check", R.assumedCheckJson R.kenv)]
           | .error _ => []
-        let base := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
+        let withRun := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
+        -- A decision on a marked value (D52, ruling 104): an error issue.
+        let source := (EngineRobust.sourceIssues es j).toOption.getD []
+        let issues := ((withRun.getObjValAs? (Array Lean.Json) "issues").toOption.getD #[]) ++
+          source.toArray
+        let base := withRun |>.setObjVal! "issues" (Lean.Json.arr issues)
             |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
@@ -501,7 +506,7 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
               | .ok R => (R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[])
               | .error _ => Lean.Json.arr #[])
         match underProfile es j (engines.foldl (fun r (k, v) => r.setObjVal! k v) base)
-            report.allProved with
+            (report.allProved && source.isEmpty) with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>
           IO.println out.compress

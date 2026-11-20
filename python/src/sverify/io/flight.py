@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import json
 import threading
-import warnings
 from collections.abc import Iterator
 from typing import Any
 
@@ -82,8 +81,6 @@ class FlightSource(Source):
         secret: The bearer token, by name or reference (`sverify.io.Secret`,
             such as `"env:FLIGHT_TOKEN"`), read at each connection and sent
             as the `authorization` header. Default: None.
-        token: The bearer token's value. Deprecated: it travels with the
-            source; name it with `secret` instead. Default: None.
         timeout: Seconds a call may take. Default: 30.
 
     Examples:
@@ -121,21 +118,13 @@ class FlightSource(Source):
         name: str | None = None,
         schema: pa.Schema | None = None,
         secret: str | Secret | None = None,
-        token: str | None = None,
         timeout: float = 30.0,
     ):
         super().__init__(name or table, schema=schema, assumes=ASSUMES)
         self.location, self.table = location, table
         self.secret = as_secret(secret, "FlightSource(secret=)")
         """The bearer token, by name or reference, or None."""
-        if token is not None:
-            warnings.warn(
-                "FlightSource(token=) is deprecated: name the token with secret= "
-                "(such as secret='env:FLIGHT_TOKEN'), so no value travels with the source",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        self.token, self.timeout = token, timeout
+        self.timeout = timeout
         self._client: fl.FlightClient | None = None
         self._held: dict[int, pa.RecordBatch] = {}
         """The batches read and not dropped yet, by number, in order."""
@@ -154,7 +143,7 @@ class FlightSource(Source):
         """The batches numbered in `(after, until]`, and the server's floor."""
         if self._client is None:
             self._client = fl.connect(self.location)
-        token = self.secret.value() if self.secret is not None else self.token
+        token = self.secret.value() if self.secret is not None else None
         headers = [(b"authorization", f"Bearer {token}".encode())] if token else []
         options = fl.FlightCallOptions(headers=headers, timeout=self.timeout)
         ticket = {"table": self.table, "after": after, "until": until}

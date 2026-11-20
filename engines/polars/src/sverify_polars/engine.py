@@ -1069,6 +1069,9 @@ class Exprs:
                 # A chain of `BinFn.greatest`/`least`, as one pick over its
                 # values: nested `when`s would each read the whole chain.
                 return self.pick(name, [self(v) for v in self.pick_leaves(name, arg_js)])
+            if name == "sverify_approx" and len(arg_js) == 2:
+                # D52: a source mark for the checker; the plan's own value runs.
+                return self(arg_js[0])
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:

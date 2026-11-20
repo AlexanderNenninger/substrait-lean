@@ -610,14 +610,13 @@ def test_a_stated_tolerance_is_checked_against_the_bound():
         run_sharded(plan, shards, sharded=["f"], reproducible=sv.equivalent())
 
 
-def test_float_order_is_deprecated():
+def test_run_sharded_takes_reproducible_not_float_order():
     plan = float_plan("SELECT SUM(x) AS s FROM f")
     shards = [{"f": f_arrow([(0, 1.0)])}, {"f": f_arrow([(0, 2.0)])}]
-    with pytest.warns(DeprecationWarning, match="float_order"):
-        got = run_sharded(plan, shards, sharded=["f"], float_order="any")
+    got = run_sharded(plan, shards, sharded=["f"], reproducible=PLAN)
     assert got.to_pylist() == [{"s": 3.0}]
-    with pytest.raises(TypeError, match="not both"):
-        run_sharded(plan, shards, sharded=["f"], float_order="any", reproducible=PLAN)
+    with pytest.raises(TypeError):
+        run_sharded(plan, shards, sharded=["f"], float_order="any")  # type: ignore[call-overload]
 
 
 def test_run_sharded_refuses_a_table_that_differs_from_the_plans_schema() -> None:

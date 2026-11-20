@@ -267,6 +267,7 @@ reference:
       - errors.UnsupportedError
       - errors.SqlError
       - errors.ExportError
+      - errors.MemoryLimitError
       - errors.CheckerVersionError
       - errors.EngineVersionError
       - errors.EngineSettingsError

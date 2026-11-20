@@ -3890,6 +3890,10 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", Bin("lt", a, b))
         case "normalized_interval", [a]:
             return a
+        case "sverify_approx", [a, Lit()]:
+            # `UnFn.approx k` (D52): a source mark for the checker, the identity
+            # for an engine, which computes the plan's value inside the band.
+            return a
         case (("is_nan" | "isnan"), [a]):
             return Bin("eq", a, Lit(math.nan, "float"))
         case (("and" | "or"), [a, *rest]):
@@ -4036,21 +4040,21 @@ def _div_by_zero(
     mode: str, double: bool, div: Callable[[Expr, Expr], Expr], a: Expr, b: Expr
 ) -> Expr:
     """`Parse.divByZero`: `div a b` under `on_division_by_zero` = `mode`; other
-    than `ERROR`, a `CASE` on the divisor around the division. `IEEE` and
-    `LIMIT` are only for dividing doubles (`Parse.optionAccepts`)."""
+    than `ERROR`, a `CASE` on the divisor around the division. `LIMIT` is only
+    for dividing doubles (`Parse.optionAccepts`). `IEEE` division of doubles is
+    `BinFn.fdivIeee` (D39), written before this is reached, so `IEEE` here is
+    a `%` or an integer division, which it does not apply to."""
     q = div(a, b)
     if mode == "ERROR":
         return q
     fdiv = isinstance(q, Bin) and q.op == "fdiv"
-    if mode not in ("IEEE", "LIMIT", "NULL") or (not fdiv and mode != "NULL"):
+    if mode not in ("LIMIT", "NULL") or (not fdiv and mode != "NULL"):
         raise WriterUnsupported(f"on_division_by_zero = {mode} is not supported")
     lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
     nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
     is_nan = Bin("eq", a, nan)
-    if mode == "IEEE":
-        by_zero: Expr = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
-                           If(Bin("lt", lit(0.0), a), Lit(math.inf, "float"), nan)))  # fmt: skip
-    elif mode == "LIMIT":
+    by_zero: Expr
+    if mode == "LIMIT":
         by_zero = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
                                      Lit(math.inf, "float")))  # fmt: skip
     else:

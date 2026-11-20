@@ -27,7 +27,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _hooks
+from sverify import _decimals, _deprecated, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -268,6 +268,20 @@ INFINITE_HINT = (
 )
 
 
+#: The kind of a decision on an `AVG` of integers that DuckDB may take the other way
+#: (#1735, D52): the query's own `avg` is within a band of the value verified.
+SOURCE_THRESHOLD = "source_threshold"
+
+#: What a report says of such a decision (ruling 104): the construct, the consequence
+#: and the ways out. 12b-2 restores the comparisons of the mean with integers.
+SOURCE_THRESHOLD_HINT = (
+    "DuckDB's AVG of integers returns a double within a band of the value sverify verified, "
+    "so on DuckDB this query may keep other rows than the verified plan, or the column has "
+    "no bound. Keep the mean away from the threshold with a precondition, or compare exact "
+    "columns: SUM(y) > c * COUNT(y) for an integer c"
+)
+
+
 #: What a report says of a constant that raises (#609, D21).
 CONSTANT_HINT = (
     "this operation reads no column and raises: DuckDB evaluates it when it "
@@ -325,9 +339,10 @@ class Issue:
     """"division by zero", "overflow" (an integer result that does not fit its
     declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
     "domain error", "SUM overflow" (a `SUM` leaving its type: 64 bits for
-    integers, the result's precision for decimals), or "overflow to infinity"
+    integers, the result's precision for decimals), "overflow to infinity"
     (an operation on finite doubles, or their `SUM` or `AVG`, giving
-    `±∞`)."""
+    `±∞`), or "source_threshold" (a decision on DuckDB's `AVG` of integers,
+    which DuckDB may take the other way, #1735)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
@@ -1312,35 +1327,40 @@ class Report:
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
-        if (
-            check_requires
-            and kind == "translated"
-            and self.semantics == "reference"
-            and self._guard_free
-            and theorem is not None
-        ):
-            out = self._with_plan(
-                plan,
-                run_engine,
-                lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
-                recheck,
-            )
-        else:
-            out = self._with_plan(
-                plan,
-                run_engine,
-                lambda plan: run_plan(
-                    con,
+        try:
+            if (
+                check_requires
+                and kind == "translated"
+                and self.semantics == "reference"
+                and self._guard_free
+                and theorem is not None
+            ):
+                out = self._with_plan(
                     plan,
-                    engine,
-                    finite=finite,
-                    asof=self._native_asof(plan, run_engine),
-                    # A proved report's exact level justifies Spark's windows
-                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                    tie_free=self._exact and kind != "unverified",
-                ),
-                recheck,
-            )
+                    run_engine,
+                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                    recheck,
+                )
+            else:
+                out = self._with_plan(
+                    plan,
+                    run_engine,
+                    lambda plan: run_plan(
+                        con,
+                        plan,
+                        engine,
+                        finite=finite,
+                        asof=self._native_asof(plan, run_engine),
+                        # A proved report's exact level justifies Spark's windows
+                        # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                        tie_free=self._exact and kind != "unverified",
+                    ),
+                    recheck,
+                )
+        except Exception as e:
+            if (oom := _duckdb.memory_limit_error(e, "run")) is not None:
+                raise oom from e
+            raise
         out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
@@ -1841,7 +1861,8 @@ class Report:
     @property
     def _summary(self) -> str:
         """The report's first line, by the verdict: "proved"; "proved with
-        checks: " and the assumptions that run time checks ("2 assumptions");
+        checks: " and how many each run checks on the data ("2 run-time
+        checks", the lines `while it runs:` lists, #1997);
         or "NOT proved: " and what is missing, counted ("1 of 2
         postconditions not proved, 1 possible runtime error")."""
         match self.verdict:
@@ -1849,7 +1870,7 @@ class Report:
                 return "proved"
             case Verdict.PROVED_WITH_CHECKS:
                 k = len(self.assumed)
-                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+                return f"proved with checks: {k} run-time check{'' if k == 1 else 's'}"
             case _:
                 return f"NOT proved: {', '.join(self._counts())}"
 

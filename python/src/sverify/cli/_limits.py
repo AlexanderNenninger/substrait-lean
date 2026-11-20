@@ -68,19 +68,6 @@ def memory_limit_from(arg: str | None) -> str | None:
     return limit
 
 
-def is_out_of_memory(e: BaseException) -> bool:
-    """Whether `e`, or an exception it was raised from, is DuckDB running
-    out of its `memory_limit`."""
-    seen: set[int] = set()
-    cur: BaseException | None = e
-    while cur is not None and id(cur) not in seen:
-        seen.add(id(cur))
-        if type(cur).__name__ == "OutOfMemoryException" or "Out of Memory Error" in str(cur):
-            return True
-        cur = cur.__cause__ or cur.__context__
-    return False
-
-
 class Budget:
     """A time budget for the stages it is `armed` over."""
 
