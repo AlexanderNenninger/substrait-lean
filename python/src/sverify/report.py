@@ -2087,6 +2087,7 @@ _REPORT_PRIVATE = [
     "run_gates",
     "asof_checks",
     "asof_max_pairs",
+    "stated_facts",
 ]
 
 _REPORT_INTERNAL = [
@@ -2241,9 +2242,17 @@ class PostconditionError(SverifyError):
 
 
 _EPOCH_DAY = date(1970, 1, 1)
+_EPOCH = datetime(1970, 1, 1)
 
 
 _MICROSECOND = timedelta(microseconds=1)
+# What a Python datetime and date hold, the years 1 to 9999, as the checker's
+# codes (microseconds and days from 1970-01-01): the reference's own range
+# (D32). Bounds at or past them say nothing the type does not.
+_TIMESTAMP_SPAN = (datetime.min - _EPOCH) // _MICROSECOND, (datetime.max - _EPOCH) // _MICROSECOND
+_DATE_SPAN = (date.min - _EPOCH_DAY).days, (date.max - _EPOCH_DAY).days
+# An interval as long as two of the reference's timestamps apart.
+_WIDEST = (datetime.max - datetime.min) // _MICROSECOND
 
 
 @dataclass(frozen=True)
@@ -2267,9 +2276,15 @@ class ColumnFacts:
         return self._text
 
 
-def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any) -> Any:
-    """The checker's integer code `k` of a bound as a value of `dtype`
-    (`render_fact` reads the same codes); None where it has none."""
+def _beyond(k: int, span: tuple[int, int], upper: bool) -> bool:
+    """Whether a bound reaches the edge of `span` on its own side."""
+    return k >= span[1] if upper else k <= span[0]
+
+
+def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any, upper: bool) -> Any:
+    """The checker's integer code `k` of a lower (or `upper`) bound as a
+    value of `dtype` (`render_fact` reads the same codes); None where it has
+    none, or where the bound says nothing the type does not."""
     if k is None or dtype is None:
         return None
     if (dec := abstract.get("decimal")) is not None:
@@ -2280,17 +2295,11 @@ def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any) -> Any:
         x = decode_double(k)
         return x if (k == 0 or k % 2 == 1) and math.isfinite(x) else None
     if dtype.is_timestamp():
-        try:
-            return datetime(1970, 1, 1) + timedelta(microseconds=k)
-        except OverflowError:
-            return None
+        return None if _beyond(k, _TIMESTAMP_SPAN, upper) else _EPOCH + timedelta(microseconds=k)
     if dtype.is_date():
-        try:
-            return _EPOCH_DAY + timedelta(days=k)
-        except OverflowError:
-            return None
+        return None if _beyond(k, _DATE_SPAN, upper) else _EPOCH_DAY + timedelta(days=k)
     if dtype.is_interval():
-        return timedelta(microseconds=k)
+        return None if _beyond(k, (-_WIDEST, _WIDEST), upper) else timedelta(microseconds=k)
     if not dtype.is_integer():
         return None
     # A bound at or past the type's own limits says nothing the type does not.
@@ -2304,8 +2313,8 @@ def column_facts(abstract: Mapping[str, Any], dtype: Any, text: str) -> ColumnFa
     lo, hi = (None if rng.get(e) is None else int(rng[e]) for e in ("lo", "hi"))
     return ColumnFacts(
         abstract.get("null") is not False,
-        _bound_value(lo, abstract, dtype),
-        _bound_value(hi, abstract, dtype),
+        _bound_value(lo, abstract, dtype, upper=False),
+        _bound_value(hi, abstract, dtype, upper=True),
         text,
     )
 
@@ -2331,16 +2340,15 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         show: Callable[[int], str] = lambda k: repr(decode_double(k))  # noqa: E731
         noun = "a double"
     elif dtype.is_timestamp():
-        epoch = datetime(1970, 1, 1)
-        span = (datetime.min - epoch) // _MICROSECOND, (datetime.max - epoch) // _MICROSECOND
+        span = _TIMESTAMP_SPAN
         show = lambda k: (  # noqa: E731
-            (epoch + timedelta(microseconds=k)).isoformat(sep=" ")
+            (_EPOCH + timedelta(microseconds=k)).isoformat(sep=" ")
             if span[0] <= k <= span[1]
             else f"{k:+} µs from 1970-01-01"
         )
         noun = "a timestamp"
     elif dtype.is_date():
-        span = (date.min - _EPOCH_DAY).days, (date.max - _EPOCH_DAY).days
+        span = _DATE_SPAN
         show = lambda k: (  # noqa: E731
             (_EPOCH_DAY + timedelta(days=k)).isoformat()
             if span[0] <= k <= span[1]
@@ -2370,9 +2378,8 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         if dtype.is_interval():
             # And an interval as long as two of the reference's timestamps
             # apart, or longer.
-            widest = (datetime.max - datetime.min) // _MICROSECOND
-            lo = None if lo is not None and lo <= -widest else lo
-            hi = None if hi is not None and hi >= widest else hi
+            lo = None if lo is not None and lo <= -_WIDEST else lo
+            hi = None if hi is not None and hi >= _WIDEST else hi
         if lo is None and hi is None:
             parts.append(f"any {noun.split(' ', 1)[1]}")
         elif lo is not None and hi is not None and lo == hi:

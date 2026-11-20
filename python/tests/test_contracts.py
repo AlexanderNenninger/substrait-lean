@@ -431,7 +431,8 @@ def test_a_date_beyond_year_9999_is_described_without_overflow():
     jobs = ibis.table({"started_at": "!timestamp"}, name="jobs")
     sql = "SELECT CAST(started_at AS DATE) AS day, count(*) AS n FROM jobs GROUP BY day"
     facts = sv.verify(sql, tables={"jobs": jobs.schema()}).facts
-    assert facts["day"] == "any date"
+    assert str(facts["day"]) == "any date"
+    assert (facts["day"].lower, facts["day"].upper) == (None, None)
 
 
 def test_sql_facts_describe_timestamps_and_dates():
@@ -439,13 +440,15 @@ def test_sql_facts_describe_timestamps_and_dates():
     t = ibis.table({"host": "string", "minute": "timestamp", "day": "date"}, name="t")
     facts = sv.verify("SELECT host, minute, day FROM t", tables={"t": t.schema()}).facts
     assert facts == sv.verify(t.select("host", "minute", "day")).facts
-    assert facts["minute"] == "any timestamp or NULL"
-    assert facts["day"] == "any date or NULL"
+    assert str(facts["minute"]) == "any timestamp or NULL"
+    assert str(facts["day"]) == "any date or NULL"
+    assert (facts["minute"].nullable, facts["minute"].lower, facts["minute"].upper) == (True, None, None)
     bounded = sv.verify(
         "SELECT minute FROM t WHERE minute >= TIMESTAMP '2026-01-01 00:00:00'",
         tables={"t": t.schema()},
     ).facts
-    assert bounded["minute"] == "a timestamp ≥ 2026-01-01 00:00:00"
+    assert str(bounded["minute"]) == "a timestamp ≥ 2026-01-01 00:00:00"
+    assert bounded["minute"].lower == datetime(2026, 1, 1)
 
 
 def test_a_bound_on_abs_bounds_the_value():
