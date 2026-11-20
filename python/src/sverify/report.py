@@ -403,7 +403,8 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run, and no run raises."""
+    """Every postcondition holds on every run of the model, and no run raises. That
+    the model matches an engine rests on tests (`docs/trusted-base.md`)."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
