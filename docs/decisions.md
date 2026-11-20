@@ -1884,7 +1884,7 @@ literal and no cast. Each lowering writes a plain column reference, and the repo
 the column's declared type and nullability and nothing else. `Rel.eval` and
 `Rel.Allowed` do not change.
 
-Implemented by [#1977](https://github.com/AlexanderNenninger/substrait-lean/pull/1977).
+Implementation tracked in [#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958).
 
 Recomputes sinks: no
 
