@@ -175,7 +175,7 @@ def window(x: Exprs, op: Any) -> Json:
         if getattr(func, "where", None) is not None:
             raise ProducerUnsupported(
                 "first/last with where= in a window is not supported",
-                construct="function " + type(func).__name__.lower(),
+                construct=op_construct(func),
             )
         if not isinstance(func.arg, ops.Field):
             raise Unsupported(
