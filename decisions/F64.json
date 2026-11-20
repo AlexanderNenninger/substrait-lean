@@ -1,0 +1,15 @@
+{
+  "id": "F64",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The Polars translator gains rows='multiset' (plain group-by, no maintain_order, canonical float keys); PolarsStore.merge passes it. Options (2) DuckDB merge and (3) hand-written consolidation declined; (1) is a fallback. Follow-up N13. No D-number.",
+  "issues": [
+    173,
+    1288,
+    1329
+  ],
+  "source": "fable-ruling-173-n6a-merge-memory.md",
+  "note": "#173 step N6a."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "F97.Z4",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "Z4: the conversion is AT TIME ZONE 'UTC' in SQL and the timestamp('UTC')/timestamp cast in Ibis, and needs no new function in Rel.eval.",
+  "issues": [
+    1725
+  ],
+  "superseded_by": [
+    "F101"
+  ],
+  "source": "fable-ruling-utc-timestamps.md",
+  "note": "Only the last sentence (no new function) is superseded: F101 says 'Ruling 97 was wrong on one point ... It needs one' and 'Z4 loses its last sentence'. The spellings stand."
+}

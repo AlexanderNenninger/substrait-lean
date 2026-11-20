@@ -1,0 +1,19 @@
+{
+  "id": "F194",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Functional dependencies for #1992/#1993: agreement up to canonV (FDOn, membership form), one walk with Rel.keys, one transfer lemma; exactly-one for how=left is a separate later theorem; no D-number.",
+  "issues": [
+    1517,
+    1795,
+    1992,
+    1993
+  ],
+  "amended_by": [
+    "F196"
+  ],
+  "source": "fable-ruling-194-1992-1993-functional-dependencies.md",
+  "note": "Amended by ruling 196: F4 withdrawn (replaced by P2), F8 sharpened by P5, equality dependencies kept; F1-F3 and F5-F13 stand."
+}

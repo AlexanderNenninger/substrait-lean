@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-02-isthmus-dropped",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Isthmus and Calcite are dropped as a SQL frontend, leaving SQLGlot and Ibis as the frontends.",
+  "issues": [
+    211,
+    231
+  ],
+  "source": "memory:isthmus-dropped.md"
+}

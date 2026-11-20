@@ -39,7 +39,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 6 | 26 | 1 | 4 | 5 | 0 | 17 | 0 |
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 7 | 27 | 1 | 4 | 5 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
 | Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 3 | 5 | 16 | 0 |
 
@@ -47,7 +47,7 @@ Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 14 | 5 | 22 | 1 | 0 | 0 | 17 |
+| DuckDB | 14 | 5 | 22 | 3 | 0 | 0 | 15 |
 | Polars | 29 | 2 | 17 | 0 | 0 | 0 | 17 |
 | Spark | 17 | 17 | 14 | 0 | 0 | 0 | 16 |
 
@@ -57,6 +57,7 @@ Rows per evidence level:
 |---|---|---|---|
 | DuckDB | `MIN % -1 written out` | expression | `min_mod_neg_one` |
 | DuckDB | `round: 0.0 for a negative value that rounds to zero` | expression | `round_zero_sign` |
+| DuckDB | `list_lt` | expression | `list_null_order` |
 | DuckDB | `nan_through` | expression | agg.var: `stat_algo` |
 | DuckDB | `quantile_guard` | expression | `quantile_interp` |
 | DuckDB | `null_order` | argument | `null_order` |
@@ -83,7 +84,7 @@ Rows per evidence level:
 
 ## DuckDB 2.0.0
 
-6 shims (1 argument, 4 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
+7 shims (1 argument, 5 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -125,8 +126,8 @@ Rows per evidence level:
 | every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
-| every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
-| agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
+| every | `list_null_order` | choose | `NULL` | `GREATEST` | shim `list_lt` (expression) | engine_test | tested: [duckdb-R11](../engines/duckdb/facts/duckdb-R11.json) |
+| agg.order | `list_null_order` | choose | `GREATEST` | `GREATEST` | native | engine_test | tested: [duckdb-R11](../engines/duckdb/facts/duckdb-R11.json) |
 | every | `sum_order` | choose | `EXACT` | `ANY`, `SCALED_CONSTANT` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../engines/duckdb/facts/duckdb-avg-double.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [duckdb-var-stddev](../engines/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../engines/duckdb/facts/duckdb-covar.json), [duckdb-corr](../engines/duckdb/facts/duckdb-corr.json) |
 | agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | proof | proved `Stat.nanGuard_varStat`; [duckdb-var-stddev](../engines/duckdb/facts/duckdb-var-stddev.json), [duckdb-var-pop-one-value](../engines/duckdb/facts/duckdb-var-pop-one-value.json) |

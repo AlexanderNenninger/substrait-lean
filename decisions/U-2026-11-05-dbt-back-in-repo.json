@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-05-dbt-back-in-repo",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "sverify-dbt lives in this repository under dbt/ and is released with sverify at one version.",
+  "issues": [
+    732,
+    757
+  ],
+  "source": "memory:satellite-repos.md"
+}

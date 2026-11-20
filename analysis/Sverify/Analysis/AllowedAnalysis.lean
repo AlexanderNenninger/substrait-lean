@@ -95,6 +95,18 @@ def Rel.detPlan (cat : Catalog) (A : String → List AVal) (F : String → List 
       gs.all (fun g => (g.abs (r.aeval cat A F .none)).noDoubles) &&
       ms.all (Measure.pickFixed cat A F r)
 
+/-- Does `r`, which leaves no choice but the order of its rows (`Rel.detPlan`),
+leave none about that order either? Its root, under filters and projections, is
+an `ORDER BY` (or a `FETCH` over one) whose columns contain a key of its input,
+none clustered (`Rel.fetchTotalAt`): the sort has no ties, so every engine gives
+the rows in one order. Any other root is not certified. -/
+def Rel.seqTotal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) : Rel → Bool
+  | .filter r _ | .project r _ | .emit r _ => r.seqTotal cat A F K
+  | .orderBy i keys => Rel.fetchTotalAt cat A F K i keys
+  | .fetch (.orderBy i keys) _ _ => Rel.fetchTotalAt cat A F K i keys
+  | _ => false
+
 omit [Boxes.Ambient] in
 theorem crossRows_perm {xs xs' ys ys' : Relation} (hx : xs.Perm xs') (hy : ys.Perm ys') :
     (crossRows xs ys).Perm (crossRows xs' ys') :=
@@ -157,6 +169,30 @@ theorem Rel.window_perm_of_detAt {cat : Catalog} (hcat : cat.WF) {A : String →
       (fun h => by cases h) x hx) (by simpa using hnd)
       (by rw [Rel.aeval_length hwf, Rel.eval_arity hcat hwf x hx])
 
+/-- **An `ORDER BY` whose columns contain a key of its input, none clustered,
+has one order**: every allowed order of the input's rows, sorted, is the order
+`Rel.eval` takes (`Rel.fetchTotalAt`). -/
+theorem Rel.orderBy_allowed_eq {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {i : Rel} {keys : List SortKey} (hwf : i.WF cat)
+    (hk : Rel.fetchTotalAt cat A F K i keys = true) {o : Relation}
+    (hp : o.Perm (i.eval cat)) (hsort : SortAllowed keys o) :
+    o = (i.eval cat).mergeSort (sortLe keys) := by
+  simp only [Rel.fetchTotalAt, Bool.and_eq_true] at hk
+  obtain ⟨hk, hcl⟩ := hk
+  obtain ⟨cmp, -, hsort⟩ := hsort
+  rw [sortLeWith_unclustered cmp hcl] at hsort
+  obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
+  have hko : KeyOn (keys.map (·.col)) o :=
+    ((keys_sound hcat hA hF hK hwf k hk).superset fun c hc => by
+      obtain ⟨kk, hkk, he⟩ := List.any_eq_true.mp (List.all_eq_true.mp hsub c hc)
+      exact List.mem_map.mpr ⟨kk, hkk, by simpa using he⟩).perm hp.symm fun h => Ne.symm h
+  exact eq_of_perm_of_pairwise (hp.trans (List.mergeSort_perm _ _).symm) hsort (mergeSort_sorted _ _)
+    fun x hx y hy hxy hyx => KeyOn.eq_of_keyOf hko hx hy (by
+      simpa [keyOf, Function.comp_def] using sortLe_antisymm hxy hyx)
+
 /-- **A plan without choices allows only `Rel.eval`'s rows**, in any order. -/
 theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
     {F : String → List Fact}
@@ -186,20 +222,10 @@ theorem Rel.allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {A : String → Li
     have hy' := allowed_perm_eval hcat hA hF hK hwf.2.1 hd.2 hy
     exact h.trans ((flatMap_perm_congr fun z _ => leftJoinRow_perm z hy').trans
       (hx'.flatMap_right _))
-  | .fetch (.orderBy i keys) _ cnt, hwf, hd, _, ⟨o, ⟨i', hi', hpo, cmp, _, hsort⟩, he⟩ => by
-    simp only [detPlan, Rel.fetchTotalAt, Bool.and_eq_true] at hd
-    obtain ⟨hdi, hk, hcl⟩ := hd
-    have hp : o.Perm (i.eval cat) := hpo.trans (allowed_perm_eval hcat hA hF hK hwf.1 hdi hi')
-    rw [sortLeWith_unclustered cmp hcl] at hsort
-    obtain ⟨k, hk, hsub⟩ := List.any_eq_true.mp hk
-    have hko : KeyOn (keys.map (·.col)) o :=
-      ((keys_sound hcat hA hF hK hwf.1 k hk).superset fun c hc => by
-        obtain ⟨kk, hkk, he⟩ := List.any_eq_true.mp (List.all_eq_true.mp hsub c hc)
-        exact List.mem_map.mpr ⟨kk, hkk, by simpa using he⟩).perm hp.symm fun h => Ne.symm h
-    have ho : o = (i.eval cat).mergeSort (sortLe keys) :=
-      eq_of_perm_of_pairwise (hp.trans (List.mergeSort_perm _ _).symm) hsort (mergeSort_sorted _ _)
-        fun x hx y hy hxy hyx => KeyOn.eq_of_keyOf hko hx hy (by
-          simpa [keyOf, Function.comp_def] using sortLe_antisymm hxy hyx)
+  | .fetch (.orderBy i keys) _ cnt, hwf, hd, _, ⟨o, ⟨i', hi', hpo, cmp, hv, hsort⟩, he⟩ => by
+    simp only [detPlan, Bool.and_eq_true] at hd
+    have hp : o.Perm (i.eval cat) := hpo.trans (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hi')
+    have ho := Rel.orderBy_allowed_eq hcat hA hF hK hwf.1 hd.2 hp ⟨cmp, hv, hsort⟩
     subst ho he
     cases cnt <;> exact .refl _
   | .fetch (.read _) _ _, _, hd, _, _ | .fetch (.values _ _) _ _, _, hd, _, _
@@ -288,6 +314,42 @@ admits only those with a congruence lemma: `emit`, `ORDER BY`, `DISTINCT`,
 `UNION ALL`, a filter whose condition is `Expr.canonSafe`, and a projection of
 columns and literals (`Expr.classCongr`). Any other operator needs inputs
 determined exactly. -/
+
+/-- **A plan without choices and with a total sort allows only `Rel.eval`'s
+rows in `Rel.eval`'s order** (`Rel.seqTotal`). -/
+theorem Rel.allowed_eq_eval {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) :
+    ∀ {r : Rel}, r.WF cat → r.detPlan cat A F K = true → r.seqTotal cat A F K = true →
+      ∀ {out : Relation}, r.Allowed cat out → out = r.eval cat
+  | .filter r _, hwf, hd, hs, _, ⟨i, hi, rfl⟩ => by
+    rw [allowed_eq_eval hcat hA hF hK (r := r) hwf.1 hd hs hi]; rfl
+  | .project r _, hwf, hd, hs, _, ⟨i, hi, rfl⟩ => by
+    rw [allowed_eq_eval hcat hA hF hK (r := r) hwf.1 hd hs hi]; rfl
+  | .emit r _, hwf, hd, hs, _, ⟨i, hi, rfl⟩ => by
+    rw [allowed_eq_eval hcat hA hF hK (r := r) hwf.1 hd hs hi]; rfl
+  | .orderBy r keys, hwf, hd, hs, _, ⟨i, hi, hpo, hsort⟩ => by
+    have hp : _ := hpo.trans (allowed_perm_eval hcat hA hF hK (r := r) hwf.1 hd hi)
+    exact Rel.orderBy_allowed_eq hcat hA hF hK hwf.1 hs hp hsort
+  | .fetch (.orderBy i keys) _ cnt, hwf, hd, hs, _, ⟨o, ⟨i', hi', hpo, hsort⟩, he⟩ => by
+    simp only [detPlan, Bool.and_eq_true] at hd
+    have hp : o.Perm (i.eval cat) := hpo.trans (allowed_perm_eval hcat hA hF hK hwf.1 hd.1 hi')
+    have ho := Rel.orderBy_allowed_eq hcat hA hF hK hwf.1 hd.2 hp hsort
+    subst ho he
+    rfl
+  | .read _, _, _, hs, _, _ | .values _ _, _, _, hs, _, _ | .cross _ _, _, _, hs, _, _
+  | .join _ _ _ _, _, _, hs, _, _ | .unionAll _ _, _, _, hs, _, _ | .window _ _ _ _, _, _, hs, _, _
+  | .semi _ _ _ _, _, _, hs, _, _ | .distinct _, _, _, hs, _, _ | .aggregate _ _ _, _, _, hs, _, _
+  | .unnest _ _, _, _, hs, _, _ | .fetch (.read _) _ _, _, _, hs, _, _
+  | .fetch (.values _ _) _ _, _, _, hs, _, _ | .fetch (.filter _ _) _ _, _, _, hs, _, _
+  | .fetch (.project _ _) _ _, _, _, hs, _, _ | .fetch (.emit _ _) _ _, _, _, hs, _, _
+  | .fetch (.cross _ _) _ _, _, _, hs, _, _ | .fetch (.join _ _ _ _) _ _, _, _, hs, _, _
+  | .fetch (.fetch _ _ _) _ _, _, _, hs, _, _ | .fetch (.unionAll _ _) _ _, _, _, hs, _, _
+  | .fetch (.window _ _ _ _) _ _, _, _, hs, _, _ | .fetch (.semi _ _ _ _) _ _, _, _, hs, _, _
+  | .fetch (.distinct _) _ _, _, _, hs, _, _ | .fetch (.aggregate _ _ _) _ _, _, _, hs, _, _
+  | .fetch (.unnest _ _) _ _, _, _, hs, _, _ => by simp [seqTotal] at hs
 
 /-- Does the expression read a row only up to the class of each value: a
 column or a literal? -/

@@ -1,0 +1,17 @@
+{
+  "id": "F174",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "E7 of note 167 becomes: DuckDB, Polars and Spark run the exact limbs (Spark probed); the Snowflake part is in the private evidence; fold-back option A declined. One binary split on every engine; E2's per-row check reworded to a normal-form check. No D-number.",
+  "issues": [
+    1447,
+    1873
+  ],
+  "amends": [
+    "F167"
+  ],
+  "source": "fable-ruling-174-1873-e7-spark-limbs.md",
+  "note": "Amends E7 and E2 of fable-note-167-exact-limb-state.md. D25, D30 unchanged."
+}

@@ -3,8 +3,8 @@ relations that sverify's producers write (the Ibis producer,
 `sverify.ibis_substrait`, and the SQL lift, `sverify.sql_lift`), with the
 functions and encodings `frontend/Sverify/Frontend/Parse.lean` reads.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 Moved here from `sverify.ibis_substrait` (derived from ibis-substrait, Apache
 License 2.0; see `ibis_substrait/LICENSE`), so that both producers write

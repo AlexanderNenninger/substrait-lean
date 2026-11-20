@@ -1,0 +1,11 @@
+{
+  "id": "D34",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "An option differs from the reference only on its scope, a predicate stated beside the option.",
+  "amended_by": [
+    "F171"
+  ]
+}

@@ -53,6 +53,7 @@ def _modules() -> list[Path]:
         *(DUCKDB / "DuckDB").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
+        *(ROOT / "float-bounds" / "FloatBridge").glob("*.lean"),
     ]
     return sorted(p for p in lean if not any(d in p.parents for d in GENERATED_DIRS))
 
@@ -77,6 +78,7 @@ def test_every_module_has_a_line(module):
             SUBSTRAIT,
             DUCKDB,
             ROOT / "float-bounds" / "FloatBounds",
+            ROOT / "float-bounds",
             ROOT / "SubstraitLean",
         ]
         if d in module.parents
@@ -110,6 +112,7 @@ def _theorems() -> set[str]:
         *(DUCKDB / "DuckDB").glob("*.lean"),
         *(ROOT / "SubstraitLean").rglob("*.lean"),
         *(ROOT / "float-bounds" / "FloatBounds").glob("*.lean"),
+        *(ROOT / "float-bounds" / "FloatBridge").glob("*.lean"),
     ]:
         spaces: list[str] = []
         for line in p.read_text().splitlines():

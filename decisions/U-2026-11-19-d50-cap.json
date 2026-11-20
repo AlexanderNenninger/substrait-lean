@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-19-d50-cap",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The user keeps D50's lift cap at 1.0 for JOIN ... ON conditions and lambda bodies.",
+  "issues": [
+    1719
+  ],
+  "amends": [
+    "F102"
+  ],
+  "source": "fable-undelivered-1118.md",
+  "note": "'User's answers 2026-11-19: ... entry 102's cap stays at 1.0 for JOIN … ON conditions and lambda bodies.'"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "F24",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The user approves D44 (replace with an empty pattern is s) and D45 (QUANTILE_DISC of doubles picks within the class, as MIN and MAX); Fable sets their build conditions and owners.",
+  "amends": [
+    "F22"
+  ],
+  "amended_by": [
+    "F25"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 24",
+  "note": "User's words relayed by the coordinator: 'Agree on D44. On D45 yes, we should allow any value.' File review-conditions-d44-d45.md. D44 to worker 1 (#1543), D45 to track A after #1544."
+}

@@ -1,0 +1,11 @@
+{
+  "id": "D1",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Lean holds the option and profile tables; Python mirrors them and a test compares the two.",
+  "prs": [
+    562
+  ]
+}

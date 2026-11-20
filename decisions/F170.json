@@ -1,0 +1,21 @@
+{
+  "id": "F170",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The Polars join_where swap of rulings 162/164 is dropped on its measurements (cross join plus filter is faster and smaller); a facts-and-docs PR follows (fact polars-join-where, D19 note); #1857 is a Polars wrong-result bug needing an owner.",
+  "issues": [
+    1447,
+    1857
+  ],
+  "supersedes": [
+    "F162.P"
+  ],
+  "amends": [
+    "F162",
+    "F164"
+  ],
+  "source": "fable-outbox-1119.md",
+  "note": "No fable-ruling-170 file. Drops the join_where admission of F162 (P1-P7) and F164's split permission for that PR."
+}

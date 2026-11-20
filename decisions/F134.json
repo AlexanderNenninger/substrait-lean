@@ -1,0 +1,19 @@
+{
+  "id": "F134",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1795 unifies `Rel.keyedJoin` for Keys, Rows and AnalysisCongr only; `joinElim` and `eagerAgg` stay key-only, range joins there go to the #1787 backlog after step 2.",
+  "issues": [
+    1787
+  ],
+  "prs": [
+    1795
+  ],
+  "amends": [
+    "F103"
+  ],
+  "source": "fable-ruling-134-1795-scope.md",
+  "note": "Explicitly amends ruling 103 point 6 (the two Semantic.lean sites leave #1795's scope)."
+}

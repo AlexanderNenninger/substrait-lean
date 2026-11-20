@@ -1,0 +1,13 @@
+{
+  "id": "D54",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The SQL lift refines the dialect: lifted DuckDB SQL means DuckDB's value; rounding casts are refused until #322.",
+  "issues": [
+    322,
+    1484
+  ],
+  "source": "ruling 105"
+}
