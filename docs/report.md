@@ -46,11 +46,11 @@ instead.
 - The postconditions. `report.ensures` has one entry per postcondition: its
   label, whether it is proved, what the checker found, a counterexample
   where one was found, and the preconditions that would prove it
-  (`report.suggestions`).
+  (`needs`).
 - The runtime errors. `report.issues` lists the errors the checker could
   not rule out (division by zero, overflow, a bad cast), each with the
   operation and its fix; `report.errors` those an engine fails on.
-- What is known about the output. `report.facts` per column, `report.not_null`,
+- What is known about the output. `report.facts` per column, `report.output` (the types, not nullable where never NULL),
   `report.rows` (a bound on the output's rows from the inputs' row caps).
 - The semantics. `report.semantics` is the profile the proof is under
   ([Verifying: the two paths](verifying.md)).

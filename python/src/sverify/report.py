@@ -108,6 +108,7 @@ Transform = ir.Table | str
 
 UnprovedReason = Literal[
     "observation",
+    "needs",
     "not_a_key",
     "ties",
     "always_false",
@@ -432,10 +433,6 @@ class Report:
     found."""
     facts: dict[str, str] = field(default_factory=dict)
     """What the checker established about each output column."""
-    not_null: list[str] = field(default_factory=list)
-    """The output columns the checker proved never NULL, from what it
-    established about them (`facts`), in the output's order. A stored node
-    of a proved report writes them as NOT NULL columns."""
     deterministic: bool = True
     """True when every result the reference allows is one up to row order
     and up to the member of each class of doubles (`-0.0` and `0.0`; every
@@ -548,6 +545,8 @@ class Report:
     _bounds: dict[str, tuple[int | None, int | None]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    """The integer bounds Lean found on each integer output column, lowest
+    and highest (None: unbounded), for hints."""
     rows: int | None = None
     """At most this many output rows, from the inputs' row caps (`max_rows`
     in `requires`, `Rel.maxRows`); None if nothing bounds them."""
@@ -559,8 +558,12 @@ class Report:
     """The profile the report is under (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
     computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
-    """The integer bounds Lean found on each integer output column, lowest
-    and highest (None: unbounded), for hints."""
+    engine_version: str | None = None
+    """The engine version the profile of `semantics` describes: the version
+    its facts were probed at (the first, where they were probed at several).
+    None under the reference and `"substrait"`, which describe no engine.
+    A tool that runs the plan's SQL on its own engine (dbt) compares it with
+    the installed version; `run` checks it itself (`EngineVersionError`)."""
     internal_plan: str | None = field(default=None, repr=False, compare=False)
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
@@ -603,7 +606,10 @@ class Report:
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types, a decimal's precision and
     scale as the reference types them (`docs/reference-semantics.md`, Decimals):
-    the checker's, which a run returns, not Ibis's."""
+    the checker's, which a run returns, not Ibis's. A column is not nullable
+    where the checker proves it never NULL (`count(*)`, a key, a column of
+    a NOT NULL input), from what it established about it (`facts`); a stored
+    node of a proved report writes those as NOT NULL columns."""
     _epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
@@ -1600,7 +1606,7 @@ class Report:
         them to the stated preconditions.
 
             report = sv.verify(expr)
-            if not report._proved:
+            if report.needs:
                 report = sv.verify(expr, requires=report.suggested_requires)
         """
         if self._on_inferred != "error":
@@ -1734,27 +1740,6 @@ class Report:
     def errors(self) -> list[Issue]:
         """The `issues` an engine fails on at run time (`Issue.error` is true)."""
         return [i for i in self.issues if i.error]
-
-    @property
-    def warnings(self) -> list[Issue]:
-        """The `issues` that do not count against a proof. None do: an
-        `SUM` that may leave its type is an error (`errors`)."""
-        return [i for i in self.issues if not i.error]
-
-    @property
-    def suggestions(self) -> dict[str, list[Needed]]:
-        """For each unproved postcondition with one, the preconditions under
-        which it would be proved, one `Needed` each, by the postcondition's
-        label (`{"(_.y <= 100)": [Needed(table="orders", label="(_.x <= 50)", …)]}`)."""
-        return {
-            c.label: [
-                _needed(t, x, self._dialect, text=f"{label(x)} on {t} would prove {c.label}")
-                for t, cs in c.suggested.items()
-                for x in cs
-            ]
-            for c in self.ensures
-            if c.suggested
-        }
 
     @property
     def unproved(self) -> list[CheckedCondition]:
@@ -1959,8 +1944,8 @@ class Report:
             more = []
             if c.counterexample is not None:
                 more.append(f"counterexample: {c.counterexample}")
-            if c.suggested:
-                more.append(_would_hold(c))
+            if w := _would_hold(c):
+                more.append(w)
             why = c.why if not c.proved else _observation.why(c.ignores)
             out.append((f"{plain(c.label)}: {why}", more))
         out += [(n, []) for n in self._needs_lines()]
@@ -1995,8 +1980,8 @@ class Report:
             lines.append(f"ensures {c.label}: {c.message}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
-            if c.suggested:
-                lines.append(f"  {_would_hold(c)}")
+            if w := _would_hold(c):
+                lines.append(f"  {w}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
         lines += self._trusts_lines()
         lines += [f"checks at run time: {c['label']}" for c in self._margin_checks]
@@ -2031,8 +2016,8 @@ class Report:
         rows = []
         for c in self.ensures:
             rows.append(f"| `{c.label}` | {status(c)} |")
-            if c.suggested:
-                rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
+            if w := _would_hold(c):
+                rows.append(f"| suggestion | {w.replace('|', '\\|')} |")
         for n in self._needs_lines():
             rows.append(f"| needs | ❌ {n.replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
@@ -2129,11 +2114,14 @@ release. `plan` is `internal_plan`."""
 _deprecated.add(Report, {**{old: "_" + old for old in _REPORT_INTERNAL}, "plan": "internal_plan"})
 
 
-def _would_hold(c: CheckedCondition) -> str:
-    """The suggestion line of an unproved postcondition."""
+def _would_hold(c: CheckedCondition) -> str | None:
+    """The suggestion line of an unproved postcondition; None where it has
+    no suggestion, or where `why` names what it needs already."""
+    if not c.needs or c.reason == "needs":
+        return None
     parts = [
-        f"{', '.join(f'`{label(x)}`' for x in cs)} in the requires of {t!r}"
-        for t, cs in c.suggested.items()
+        f"{', '.join(f'`{lab}`' for lab in labs)} in the requires of {t!r}"
+        for t, labs in _labels_by_table(c.needs).items()
     ]
     return "would hold with " + " and ".join(parts)
 
@@ -2186,8 +2174,8 @@ def error_text(report: Report) -> str:
             if c.counterexample is not None:
                 line += f" (counterexample: {c.counterexample})"
             lines.append(line)
-            if c.suggested:
-                lines.append(f"    {_would_hold(c)}")
+            if w := _would_hold(c):
+                lines.append(f"    {w}")
         elif c.ignores:
             lines.append(f"  not proved: {c.label}: {_observation.why(c.ignores)}")
     hints: list[str] = []
@@ -2353,8 +2341,8 @@ class Needed:
     """A precondition a proof needs that `requires` does not state: a bound
     on one input column. `Report.needs` lists those the proof needs
     (`on_inferred="error"` does not assume them), `Issue.needs` those that
-    rule out one runtime error, and `Report.suggestions` those under which
-    an unproved postcondition would be proved."""
+    rule out one runtime error, and `CheckedCondition.needs` those under
+    which an unproved postcondition is proved."""
 
     table: str
     """The input table."""
@@ -2370,7 +2358,7 @@ class Needed:
     """The whole condition as DuckDB's SQL, NULL passing where the column
     is nullable: `"qty" IS NULL OR "qty" < 9000000000000000000`."""
     label: str
-    """The condition as `Report.needed` lists it: `(_.qty < 9 * 10**18)`."""
+    """The condition as `str(report)` lists it: `(_.qty < 9 * 10**18)`."""
     code: str
     """The condition as the Python a user writes in `requires`, for an
     editor's quick fix: `_.qty < 9 * 10**18`, `_.qty != 0`,
@@ -2404,6 +2392,21 @@ def _needed(
     n = Needed(table, column, op, value, sql, lab, _unparen(lab), issue, text=text)
     cond = _needed_deferred(n) if dialect == "ibis" else None
     return replace(n, condition=cond if cond is not None else n.sql)
+
+
+def proved_not_null(report: Report) -> list[str]:
+    """The output columns `report` proves never NULL, in the output's order:
+    those `Report.output` types as not nullable."""
+    return [c for c, t in report.output.items() if not getattr(t, "nullable", True)]
+
+
+def _by_table(needs: Sequence[Needed]) -> dict[str, list[Condition]]:
+    """The conditions of `needs` per input table, in order, ready for `requires=`."""
+    out: dict[str, list[Condition]] = {}
+    for n in needs:
+        if n.condition is not None:
+            out.setdefault(n.table, []).append(n.condition)
+    return out
 
 
 def _labels_by_table(needs: Sequence[Needed]) -> dict[str, tuple[str, ...]]:

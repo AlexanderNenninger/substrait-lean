@@ -347,6 +347,7 @@ def contract_facet(
     from sverify.contracts import MaxRows, Unique
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql
+    from sverify.report import proved_not_null
 
     report = node.report
     if report is None:
@@ -382,7 +383,7 @@ def contract_facet(
         "equivalence": str(report.observation),
         "requires": {t: list(labs) for t, labs in report.requires.items()},
         "ensures": ensures,
-        "not_null": list(report.not_null),
+        "not_null": proved_not_null(report),
     }
     if plan:
         export = _export(report)

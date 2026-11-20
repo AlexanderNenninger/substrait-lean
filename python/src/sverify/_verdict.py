@@ -49,6 +49,7 @@ def verdict(
     """
     from sverify.conditions import RelationRows
     from sverify.report import Report, black_boxes_from_json, class_places, tie_places
+    from sverify.routes import probed_version
 
     semantics = context.get("semantics", "reference")
     return Report(
@@ -83,6 +84,7 @@ def verdict(
         _generated_proofs=generated_proofs(),
         _contract=dict(request),
         _transfer=(out.get("transfer") or {}).get("failures") if semantics == "substrait" else None,
+        engine_version=probed_version(semantics),
         **context,
     )
 

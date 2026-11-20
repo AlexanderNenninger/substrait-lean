@@ -122,7 +122,7 @@ class CheckResult:
     def suggestions(self) -> list[Suggestion]:
         """The tests sverify suggests adding, so that it proves more: what
         each model needs (`Report.needs`), and the tests on the inputs under
-        which an unproved test would hold (`CheckedCondition.suggested`).
+        which an unproved test would hold (`CheckedCondition.needs`).
         One per relation, column and test."""
         by_ref = {r.ref: r for r in self.relations.values()}
         out: dict[tuple, Suggestion] = {}

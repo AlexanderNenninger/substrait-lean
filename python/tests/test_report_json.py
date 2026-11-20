@@ -57,8 +57,10 @@ def test_proved() -> None:
         ("unique(id)", "proved", "none", "pass"),
     ]
     assert doc["equivalence"]["text"] and "observation" not in doc
-    assert doc["facts"]["d"] and doc["output"] == {"id": "int64", "d": "int64"}
-    assert doc["not_null"] == report.not_null
+    assert doc["facts"]["d"]
+    assert doc["output"] == {c: str(t) for c, t in report.output.items()}
+    assert doc["not_null"] == [c for c, t in report.output.items() if not t.nullable]
+    assert sv.Report.from_json(doc).output == report.output
 
 
 def test_unproved_with_reasons_and_counterexample() -> None:

@@ -217,7 +217,7 @@ def test_decimal_sum_does_not_wrap():
     """Engines add decimals in 128 bits, unlike `BIGINT`s: a sum fits its
     type's 20 digits unless a group is huge, which the job checks."""
     report = sv.verify("SELECT sum(a) AS s FROM t", tables=SCHEMAS)
-    assert report.errors == [] and report.warnings == []
+    assert report.issues == []
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
     assert "fits DECIMAL(20, 2) in every group" in str(report)
 

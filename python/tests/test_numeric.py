@@ -221,7 +221,7 @@ def test_duckdb_fails_only_where_reported(i, rows):
     error) or an engine would wrap around (a warning)."""
     expr = PIPELINES[i]
     report = sv.verify(expr, on_inferred="off")
-    reported = report.errors + report.warnings
+    reported = report.issues
     table = pa.table(
         {
             "qty": pa.array([q for q, _ in rows], pa.int64()),

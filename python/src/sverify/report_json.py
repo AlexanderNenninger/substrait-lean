@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -121,6 +121,13 @@ def suggested_json(suggested: Mapping[str, Any]) -> list[Json]:
     ]
 
 
+def _needs(needs: Any) -> tuple[Needed, ...]:
+    """The `Needed` of a list of `needed` objects, as SQL."""
+    from sverify.report import _needed
+
+    return tuple(_needed(t, lab, "sql") for t, labs in suggested(needs).items() for lab in labs)
+
+
 def suggested(needs: Any) -> dict[str, list[Any]]:
     """Labels per table, from a list of `needed` objects; those without a
     table are left out."""
@@ -211,7 +218,7 @@ def assumed_json(i: Issue) -> Json:
 def issue(d: Mapping[str, Any], assumed: bool = False) -> Issue:
     """An issue as `issue_json` or `assumed_json` wrote it: `assumed` for
     the report's `"assumed"` list."""
-    from sverify.report import Issue, _needed
+    from sverify.report import Issue
 
     p = d.get("properties") or {}
     rule = d["ruleId"]
@@ -225,9 +232,7 @@ def issue(d: Mapping[str, Any], assumed: bool = False) -> Issue:
         under_and_or=p.get("under_and_or", False),
         _labels=tuple(n["label"] for n in p.get("needs") or ()),
         shown=p.get("shown"),
-        needs=[
-            _needed(t, lab, "sql") for t, labs in suggested(p.get("needs")).items() for lab in labs
-        ],
+        needs=list(_needs(p.get("needs"))),
         assumed=assumed,
     )
 
@@ -235,6 +240,8 @@ def issue(d: Mapping[str, Any], assumed: bool = False) -> Issue:
 def checked_json(c: CheckedCondition) -> Json:
     """A postcondition, as a finding: `pass` where it is proved, `fail`
     where it is not. Its rule is `reason`, or `proved`."""
+    from sverify.report import _labels_by_table
+
     cx = c.counterexample
     proved_level = "note" if c.reason else "none"
     level = proved_level if c.proved else "warning" if c.checked else "error"
@@ -252,7 +259,7 @@ def checked_json(c: CheckedCondition) -> Json:
             "reads": None if c.reads is None else list(c.reads),
             "nullable": None if c.nullable is None else list(c.nullable),
             "approx": c.approx,
-            "needs": suggested_json(c.suggested),
+            "needs": suggested_json(_labels_by_table(c.needs)),
             "counterexample": None
             if cx is None
             else {
@@ -283,7 +290,7 @@ def checked(d: Mapping[str, Any]) -> CheckedCondition:
             dict(cx["columns"]),
         ),
         checked=p.get("checked", False),
-        suggested=suggested(p.get("needs")),
+        needs=_needs(p.get("needs")),
         ignores=tuple(p.get("ignores", ())),
         reads=None if p.get("reads") is None else tuple(p["reads"]),
         approx=p.get("approx", False),
@@ -368,7 +375,7 @@ def route(d: Mapping[str, Any]) -> Route:
 def to_json(report: Report) -> Json:
     """`Report.to_json`, as a dict."""
     from sverify.conditions import label
-    from sverify.report import black_boxes_json
+    from sverify.report import black_boxes_json, proved_not_null
 
     return {
         "format": FORMAT,
@@ -377,6 +384,7 @@ def to_json(report: Report) -> Json:
         "verdict": str(report.verdict),
         "summary": report._summary,
         "semantics": report.semantics,
+        "engine_version": report.engine_version,
         "dialect": report._dialect,
         "on_inferred": report._on_inferred,
         "equivalence": equivalence_json(report.observation),
@@ -397,7 +405,7 @@ def to_json(report: Report) -> Json:
         "assumed": [assumed_json(i) for i in report.assumed],
         "needs": [needed_json(n) for n in report.needs],
         "facts": dict(report.facts),
-        "not_null": list(report.not_null),
+        "not_null": proved_not_null(report),
         "output": {k: str(v) for k, v in report.output.items()},
         "routes": {e: route_json(r) for e, r in report.routes.items()},
         "ties": {
@@ -455,7 +463,6 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         requires={t: list(labs) for t, labs in (d.get("requires") or {}).items()},
         ensures=[checked(c) for c in d.get("ensures", [])],
         facts=dict(d.get("facts") or {}),
-        not_null=list(d.get("not_null", [])),
         deterministic=d.get("deterministic", True),
         # A report written before D48 has one level, the exact one.
         _exact=d.get("deterministic_exact", d.get("deterministic", True)),
@@ -473,6 +480,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         dialect_differences=tuple(DialectDifference(**x) for x in d.get("dialect_differences", [])),
         rows=d.get("rows"),
         semantics=d.get("semantics", "reference"),
+        engine_version=d.get("engine_version"),
         observation=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
         _floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
         _engines=d.get("engines"),
@@ -482,7 +490,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         black_boxes=black_boxes_from_json(d.get("black_boxes")),
         routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
         _transfer=d.get("transfer"),
-        output=_output(d.get("output") or {}),
+        output=_output(d.get("output") or {}, d.get("not_null") or ()),
         _dialect=d.get("dialect", "ibis"),
         ties=suggested(ties.get("needs")),
         # 0.6 wrote "silent" for what is now "ignore".
@@ -497,8 +505,10 @@ def _plan_bound() -> Observation:
     return PLAN_BOUND
 
 
-def _output(types: Mapping[str, str]) -> dict[str, Any]:
-    """The output's types, as Ibis types where Ibis reads them."""
+def _output(types: Mapping[str, str], not_null: Collection[str]) -> dict[str, Any]:
+    """The output's types, as Ibis types where Ibis reads them; the `not_null`
+    columns are not nullable (a report written before #704 types them
+    nullable)."""
     import ibis
 
     out: dict[str, Any] = {}
@@ -507,6 +517,8 @@ def _output(types: Mapping[str, str]) -> dict[str, Any]:
             out[k] = ibis.dtype(v)
         except Exception:  # a type this Ibis does not read: keep the text
             out[k] = v
+        else:
+            out[k] = out[k].copy(nullable=False) if k in not_null else out[k]
     return out
 
 

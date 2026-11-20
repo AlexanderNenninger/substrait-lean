@@ -402,7 +402,6 @@ class _Checker:
         # `report.ensures` is in the order of the conditions given, each
         # with its condition (`CheckedCondition.condition`).
         results = iter(report.ensures)
-        needed = report.needs
         res.needed = _needed(report, self, m)
         res.may_fail = [str(i) for i in report.errors]
         res.deterministic = report.deterministic
@@ -419,21 +418,23 @@ class _Checker:
             if any(r.condition is not c for r, c in zip(checked, cs, strict=True)):
                 tr.skip("sverify reported on another condition")
                 continue
+            # A test whose proof used an inferred bound is not proved (#701);
+            # one that holds without the bounds is, beside `needs`.
             bad = [c for c in checked if not c.portable]
-            if not bad and needed:
+            if not bad:
+                tr.status = "proved"
+            elif bad[0].reason == "needs":
                 tr.status = "not proved"
                 tr.why = "proved only with the source tests listed under 'needs'"
-            elif not bad:
-                tr.status = "proved"
             else:
                 c = bad[0]
                 tr.status = "not proved"
                 tr.why = _why(c)
                 tr.counterexample = str(c.counterexample) if c.counterexample else None
-                tr.would_hold = {
-                    _user_table(t, self): [mapping.as_dbt_test(_sql(x)) for x in xs]
-                    for t, xs in (c.suggested or {}).items()
-                }
+                tr.would_hold = {}
+                for n in c.needs:
+                    tests = tr.would_hold.setdefault(_user_table(n.table, self), [])
+                    tests.append(mapping.as_dbt_test(n.sql))
             if tr.status == "proved" and tr.test:
                 self.proved.add(tr.test)
         if m.materialized == "incremental":
@@ -651,11 +652,6 @@ def _named(c: Any) -> str:
 
 def _label(c: Any) -> str:
     return c if isinstance(c, str) else c.label
-
-
-def _sql(c: Any) -> str:
-    """A suggested condition as SQL, as far as it can be."""
-    return str(c) if isinstance(c, str) else getattr(c, "label", str(c))
 
 
 def _user_table(name: str, checker: _Checker) -> str:

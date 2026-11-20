@@ -384,3 +384,14 @@ def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:
     assert "`x * COUNT(y) > SUM(y)`" in text
     assert "compares the exact mean, not the rounded one" in text
     assert "its product must fit BIGINT" in text
+
+
+# -- the engine version a report's profile describes (#710) ---------------------------
+
+
+def test_engine_version_is_the_profiles():
+    sql, tables = "select k from t", {"t": {"k": "BIGINT"}}
+    r = sv.verify(sql, tables=tables, semantics="duckdb")
+    assert r.engine_version == routes.probed_version("duckdb") is not None
+    assert sv.Report.from_json(r.to_json()).engine_version == r.engine_version
+    assert sv.verify(sql, tables=tables).engine_version is None

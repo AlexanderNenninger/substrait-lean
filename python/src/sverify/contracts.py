@@ -173,6 +173,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     UnverifiedRunError,
     VerificationError,
     _assumption,
+    _by_table,
     _cause,
     _labels_by_table,
     _needed,
@@ -186,6 +187,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     _would_hold,
     condition_query,
     error_text,
+    proved_not_null,
     render_fact,
     tie_places,
     violating_rows,
@@ -1006,6 +1008,8 @@ def infer_bounds(
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
+    if out._on_inferred == "error" and any(c._inferred_used for c in out.ensures):
+        out.ensures = [_needing(c, out.needs) for c in out.ensures]
     if out._asof_checks and not isinstance(transform, str):
         from sverify._asof_cap import max_pairs_of
 
@@ -1065,6 +1069,18 @@ def __getattr__(name: str) -> Any:
         )
         return InferredWarning
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
+    """`c` not proved where its proof used inferred preconditions (#701),
+    with those it used as its `needs`: the bounds, and the `IS NOT NULL`s
+    inferred for this postcondition."""
+    if not c._inferred_used:
+        return c
+    used = tuple(
+        n for n in needs if n.issue is None or n.issue.kind != NULL_KIND or n.issue.expr == c.label
+    )
+    return replace(c, proved=False, needs=used) if used else c
 
 
 def _checked_on_inferred(v: str) -> OnInferred:
@@ -1213,6 +1229,8 @@ def _infer_bounds(
         return finish(report, schemas, requires)
     # Counterexamples only for the final proof.
     report, raw, schemas = once(requires, 0)
+    # What the stated preconditions alone prove (#701).
+    stated = [c.proved for c in report.ensures]
     extra = {
         t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
     }
@@ -1239,6 +1257,10 @@ def _infer_bounds(
     widened = {t: list(cs) for t, cs in requires.items()}
     _merge(widened, report._inferred)
     report = finish(report, schemas, widened)
+    report.ensures = [
+        replace(c, _inferred_used=True) if c.proved and not alone else c
+        for c, alone in zip(report.ensures, stated, strict=True)
+    ]
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
     # runs: the row caps (#219) and the bounds do not rule them out.
@@ -1471,15 +1493,21 @@ def _confirm_suggestions(report: Report, requires, once) -> Report:
     """`report` with only the suggestions a proof confirms: each unproved
     postcondition's suggested preconditions are added to `requires` (and to
     what was inferred), and kept if the postcondition is then proved."""
+    # The postconditions each suggestion set proves: postconditions that
+    # share a suggestion share its proof.
+    proved_with: dict[tuple[str, ...], set[str]] = {}
     ensures = []
     for c in report.ensures:
-        if c.suggested:
-            widened = {t: list(cs) for t, cs in requires.items()}
-            _merge(widened, report._inferred)
-            _merge(widened, c.suggested)
-            again = once(widened, 0)[0]
-            if not any(e.label == c.label and e.proved for e in again.ensures):
-                c = replace(c, suggested={})
+        if c.needs:
+            key = tuple(sorted(f"{n.table}.{n.label}" for n in c.needs))
+            if key not in proved_with:
+                widened = {t: list(cs) for t, cs in requires.items()}
+                _merge(widened, report._inferred)
+                _merge(widened, _by_table(c.needs))
+                again = once(widened, 0)[0]
+                proved_with[key] = {e.label for e in again.ensures if e.proved}
+            if c.label not in proved_with[key]:
+                c = replace(c, needs=())
         ensures.append(c)
     return replace(report, ensures=ensures)
 
@@ -1769,6 +1797,9 @@ def _prove_once(
         cols = next(key_iter)
         return ok, None if ok else find(cols)
 
+    from sverify import _user_text
+
+    dialect: _user_text.Dialect = "sql" if isinstance(transform, str) else "ibis"
     checked = []
     for c in ensures:
         if isinstance(c, TableCondition):
@@ -1784,7 +1815,11 @@ def _prove_once(
             # `Rel.eval`'s one order, rarely shows; breaking the ties with
             # a key proves it (#691).
             cex = None if e["proved"] or ties else find(p)
-            suggested = _suggested(e.get("suggest"), schemas, assumable)
+            needs = tuple(
+                _needed(t, x, dialect, text=f"{label(x)} on {t} would prove {e['name']}")
+                for t, cs in _suggested(e.get("suggest"), schemas, assumable).items()
+                for x in cs
+            )
             depends = e.get("depends")
             checked.append(
                 CheckedCondition(
@@ -1792,7 +1827,7 @@ def _prove_once(
                     e["proved"],
                     e["value"],
                     cex,
-                    suggested=suggested,
+                    needs=needs,
                     ties=ties,
                     depends=None if depends is None else tuple(depends),
                     allowed=bool(e.get("allowed")),
@@ -1802,9 +1837,6 @@ def _prove_once(
                 )
             )
         checked[-1].condition = c
-    from sverify import _user_text
-
-    dialect: _user_text.Dialect = "sql" if isinstance(transform, str) else "ibis"
     seen = _user_text.columns(transform_plan)
     temporal = {
         c for sch in [*schemas.values(), result] for c, t in sch.items() if t.is_timestamp()
@@ -1819,6 +1851,7 @@ def _prove_once(
 
     # The plan as the report keeps it, written once (#1088).
     plan_text = json.dumps(transform_plan)
+    never_null = {f["name"] for f in out["facts"] if f.get("abstract", {}).get("null") is False}
     report = verdict(
         out,
         request=contract,
@@ -1827,11 +1860,6 @@ def _prove_once(
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
         facts={f["name"]: describe(f) for f in out["facts"]},
-        not_null=[
-            f["name"]
-            for f in out["facts"]
-            if f["name"] in dtypes and f.get("abstract", {}).get("null") is False
-        ],
         issues=_issues(
             out["issues"],
             # Ibis's `//` and `%` floor, and the producer writes them in the
@@ -1849,7 +1877,7 @@ def _prove_once(
         _bounds=_int_bounds(out["facts"], dtypes),
         _implied=_implied_sql(out.get("implied", []), schemas),
         internal_plan=plan_text,
-        output=dtypes,
+        output={c: t.copy(nullable=False) if c in never_null else t for c, t in dtypes.items()},
         _postconditions=list(ensures),
         inputs=dict(schemas),
     )
@@ -2786,7 +2814,7 @@ class ViewContract:
     """Postconditions that were not proved, which the view checks on every
     state (`on_unproved="check"`)."""
     not_null: list[str] = field(default_factory=list)
-    """The columns the proved report shows never NULL (`Report.not_null`):
+    """The columns the proved report shows never NULL (`Report.output`):
     they hold in every state, as `guarantees` do."""
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
@@ -2826,7 +2854,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.guarantees) if prov else [],
         prov,
         list(prov.checked) if prov else [],
-        list(prov.report.not_null) if prov and prov.report._proved else [],
+        proved_not_null(prov.report) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
         profile=prov.report.semantics if prov else "reference",
         deterministic=bool(prov and prov.report.deterministic),

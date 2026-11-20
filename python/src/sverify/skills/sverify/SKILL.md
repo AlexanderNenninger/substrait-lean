@@ -116,7 +116,7 @@ transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"ignore"` assumes it and checks it on the data, and
 `on_inferred="off"` infers and assumes nothing. For the rest, the `hint:` lines of
 `str(report)` name the bound to add, and an unproved comparison with a constant comes with
-the precondition that proves it (`report.suggestions`). An integer `SUM` that
+the precondition that proves it (`needs` of its entry in `report.ensures`). An integer `SUM` that
 may overflow is listed in `report.assumed` and checked at run time (an error
 with `on_inferred="off"`); a row cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
 `NULLIF`/`ifelse`, or bound it in `requires`.

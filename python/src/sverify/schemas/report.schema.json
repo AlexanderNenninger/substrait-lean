@@ -42,6 +42,13 @@
       "description": "The report's first line, for display: \"proved\", or \"NOT proved: \" and what is missing, counted. Tools read verdict and the findings.",
       "type": "string"
     },
+    "engine_version": {
+      "description": "The engine version the profile of semantics describes, the version its facts were probed at (Report.engine_version); null under the reference and substrait.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "semantics": {
       "description": "The semantics the report is under. 1.x may add values.",
       "type": "string",
@@ -196,7 +203,7 @@
       }
     },
     "not_null": {
-      "description": "The output columns the checker proved never NULL (Report.not_null), in the output's order.",
+      "description": "The output columns the checker proved never NULL (not nullable in Report.output), in the output's order.",
       "type": "array",
       "items": {
         "type": "string"
@@ -382,6 +389,7 @@
               "examples": [
                 "proved",
                 "equivalence",
+                "needs",
                 "not_a_key",
                 "ties",
                 "always_false",

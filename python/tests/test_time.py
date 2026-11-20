@@ -273,7 +273,7 @@ T = ibis.table({"ts": "timestamp", "n": "int64"}, name="t")
 def kinds(expr) -> tuple[list[str], list[str]]:
     """What Lean reports, without the bounds `verify` would infer (#244)."""
     r = sv.verify(expr, on_inferred="off")
-    return [i.kind for i in r.errors], [i.kind for i in r.warnings]
+    return [i.kind for i in r.errors], [i.kind for i in r.issues if not i.error]
 
 
 SINCE_2000 = T.ts.between(datetime(2000, 1, 1), datetime(2100, 1, 1))

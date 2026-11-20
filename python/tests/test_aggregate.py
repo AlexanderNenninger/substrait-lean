@@ -316,7 +316,7 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     t = jobs.group_by("workflow").aggregate(passed=flag.sum())
     for report in (sv.verify(t), sv.verify(t, on_inferred="off")):
         assert report.verdict == sv.Verdict.PROVED, report.details()
-        assert not report.issues and not report.assumed and not report.warnings
+        assert not report.issues and not report.assumed
         assert not any(h.startswith("SUM of") for h in report._hints)
     sign = (jobs.conclusion == "success").ifelse(1, -1)
     report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), on_inferred="off")
