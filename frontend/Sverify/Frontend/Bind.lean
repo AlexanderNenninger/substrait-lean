@@ -32,8 +32,6 @@ its expression stays filled (CASE branches bind in step D50-d3d).
 
 namespace Substrait
 
-variable [Boxes.Ambient]
-
 mutual
 /-- A condition with its chains kept apart: `body` reads the row's columns
 `0 … w-1` and, at `w + i`, the value of `chains[i]`. -/
@@ -155,5 +153,169 @@ above it. -/
 def Rel.bindFilter (r : Rel) (w : Nat) (x : LExpr) : Rel :=
   let (s, c) := x.bind w none ⟨r, w⟩
   .emit (.filter s.rel c) (List.range w)
+
+
+/-! ## T1: the bound plan's rows (ruling 102, T1a to T1c)
+
+Under the reference, a filter on the bound condition keeps the rows the
+filter on D50's lift keeps: `Rel.bindFilter_eval`. The invariant: after each
+level, the plan's rows are the input's rows, each extended by the levels'
+columns, and wherever its reach holds, a chain's running column holds the
+eager conjunction (disjunction) of the operands so far, which is the lift's
+value (`Expr.andLift_eval`, `Expr.orLift_eval`). -/
+
+theorem Expr.refsLt_mono : ∀ (e : Expr) {n m : Nat}, n ≤ m → e.refsLt n → e.refsLt m
+  | .lit _, _, _, _, _ => trivial
+  | .field _, _, _, h, he => Nat.lt_of_lt_of_le he h
+  | .un _ a, _, _, h, he => Expr.refsLt_mono a h he
+  | .bin _ a b, _, _, h, he => ⟨Expr.refsLt_mono a h he.1, Expr.refsLt_mono b h he.2⟩
+  | .ifThen c t e, _, _, h, he =>
+    ⟨Expr.refsLt_mono c h he.1, Expr.refsLt_mono t h he.2.1, Expr.refsLt_mono e h he.2.2⟩
+  | .hof _ l b, _, _, h, he => ⟨Expr.refsLt_mono l h he.1, Expr.refsLt_mono b (Nat.succ_le_succ h) he.2⟩
+
+/-- Substituting expressions that read below `n` for the columns below `k`
+that `e` reads gives an expression that reads below `n`. -/
+theorem Expr.refsLt_subst {n : Nat} : ∀ {k : Nat} {σ : List Expr} {e : Expr},
+    e.refsLt k → (∀ i < k, (σ.getD i (.lit .null)).refsLt n) → (e.subst σ).refsLt n
+  | _, _, .lit _, _, _ => trivial
+  | _, _, .field i, he, hσ => hσ i he
+  | _, _, .un _ a, he, hσ => Expr.refsLt_subst (e := a) he hσ
+  | _, _, .bin _ a b, he, hσ => ⟨Expr.refsLt_subst he.1 hσ, Expr.refsLt_subst he.2 hσ⟩
+  | _, _, .ifThen c t e, he, hσ =>
+    ⟨Expr.refsLt_subst he.1 hσ, Expr.refsLt_subst he.2.1 hσ, Expr.refsLt_subst he.2.2 hσ⟩
+  | k, σ, .hof _ l b, he, hσ => by
+    refine ⟨Expr.refsLt_subst he.1 hσ, Expr.refsLt_subst (k := k + 1) he.2 ?_⟩
+    intro i hi
+    cases i with
+    | zero => show (Expr.field 0).refsLt (n + 1); exact Nat.succ_pos n
+    | succ i =>
+      show ((σ.map (fun x : Expr => x.shift 0)).getD i (Expr.lit .null)).refsLt (n + 1)
+      have := hσ i (by omega)
+      simp only [List.getD_eq_getElem?_getD, List.getElem?_map] at this ⊢
+      cases h : σ[i]? with
+      | none => trivial
+      | some x => simp only [h, Option.map_some, Option.getD_some] at this ⊢; exact Expr.refsLt_shift 0 this
+
+mutual
+/-- Every column `x` and its chains read is in scope: the row's `w` columns,
+and in a body the chains it holds. -/
+def LExpr.Scoped (w : Nat) : LExpr → Prop
+  | .mk body cs => body.refsLt (w + cs.length) ∧ LChain.ScopedAll w cs
+/-- `Scoped` of each chain. -/
+def LChain.ScopedAll (w : Nat) : List LChain → Prop
+  | [] => True
+  | c :: cs => LChain.Scoped w c ∧ LChain.ScopedAll w cs
+/-- `Scoped` of a chain: of each operand. -/
+def LChain.Scoped (w : Nat) : LChain → Prop
+  | .mk _ ops => LExpr.ScopedAll w ops
+/-- `Scoped` of each operand. -/
+def LExpr.ScopedAll (w : Nat) : List LExpr → Prop
+  | [] => True
+  | x :: xs => LExpr.Scoped w x ∧ LExpr.ScopedAll w xs
+end
+
+variable [Boxes.Ambient] in
+mutual
+/-- On `row`, every chain's operands, at every depth, are TRUE, FALSE or NULL
+(the hypothesis of `Expr.andLift_eval`). -/
+def LExpr.Bools (w : Nat) (row : Row) : LExpr → Prop
+  | .mk _ cs => LChain.BoolsAll w row cs
+/-- `Bools` of each chain. -/
+def LChain.BoolsAll (w : Nat) (row : Row) : List LChain → Prop
+  | [] => True
+  | c :: cs => LChain.Bools w row c ∧ LChain.BoolsAll w row cs
+/-- `Bools` of a chain: each operand is TRUE, FALSE or NULL, and so are its chains'. -/
+def LChain.Bools (w : Nat) (row : Row) : LChain → Prop
+  | .mk _ ops => LExpr.BoolsAll w row ops
+/-- `Bools` of each operand, and its value TRUE, FALSE or NULL. -/
+def LExpr.BoolsAll (w : Nat) (row : Row) : List LExpr → Prop
+  | [] => True
+  | x :: xs => (Expr.BoolVal row (LExpr.fill w x) ∧ LExpr.Bools w row x) ∧ LExpr.BoolsAll w row xs
+end
+
+theorem LChain.fillAll_length (w : Nat) : ∀ cs : List LChain, (LChain.fillAll w cs).length = cs.length
+  | [] => rfl
+  | _ :: cs => by simp [LChain.fillAll, LChain.fillAll_length w cs]
+
+mutual
+theorem LExpr.fill_refsLt (w : Nat) : ∀ x : LExpr, x.Scoped w → (x.fill w).refsLt w
+  | .mk body cs, ⟨hb, hcs⟩ => by
+    simp only [LExpr.fill]
+    apply Expr.refsLt_subst hb
+    intro i hi
+    have hlen : (LChain.fillAll w cs).length = cs.length := LChain.fillAll_length w cs
+    by_cases hiw : i < w
+    · rw [List.getD_eq_getElem?_getD, List.getElem?_append_left (by simpa using hiw)]
+      simp [hiw]; exact hiw
+    · rw [List.getD_eq_getElem?_getD, List.getElem?_append_right (by simp; omega)]
+      simp only [List.length_map, List.length_range]
+      have hj : i - w < (LChain.fillAll w cs).length := by omega
+      rw [List.getElem?_eq_getElem hj, Option.getD_some]
+      exact LChain.fillAll_refsLt w cs hcs _ (List.getElem_mem hj)
+theorem LChain.fillAll_refsLt (w : Nat) : ∀ cs : List LChain, LChain.ScopedAll w cs →
+    ∀ e ∈ LChain.fillAll w cs, e.refsLt w
+  | [], _ => by simp [LChain.fillAll]
+  | c :: cs, ⟨hc, hcs⟩ => by
+    intro e he
+    simp only [LChain.fillAll, List.mem_cons] at he
+    rcases he with rfl | he
+    · exact LChain.fill_refsLt w c hc
+    · exact LChain.fillAll_refsLt w cs hcs e he
+theorem LChain.fill_refsLt (w : Nat) : ∀ c : LChain, c.Scoped w → (c.fill w).refsLt w
+  | .mk true ops, h => Expr.andLift_refsLt (LExpr.fillAll_refsLt w ops h)
+  | .mk false ops, h => Expr.orLift_refsLt (LExpr.fillAll_refsLt w ops h)
+theorem LExpr.fillAll_refsLt (w : Nat) : ∀ xs : List LExpr, LExpr.ScopedAll w xs →
+    ∀ e ∈ LExpr.fillAll w xs, e.refsLt w
+  | [], _ => by simp [LExpr.fillAll]
+  | x :: xs, ⟨hx, hxs⟩ => by
+    intro e he
+    simp only [LExpr.fillAll, List.mem_cons] at he
+    rcases he with rfl | he
+    · exact LExpr.fill_refsLt w x hx
+    · exact LExpr.fillAll_refsLt w xs hxs e he
+end
+
+
+
+section Eval
+variable [Boxes.Ambient]
+
+/-- The binder's state over the input `r`: its rows are `r`'s, `w` columns
+wide, each extended by `F`. -/
+def BindSt.Ext (cat : Catalog) (r : Rel) (w : Nat) (s : BindSt) (F : Row → Row) : Prop :=
+  s.rel.eval cat = (r.eval cat).map (fun row => row ++ F row) ∧
+    ∀ row ∈ r.eval cat, row.length = w ∧ w + (F row).length = s.width
+
+/-- The reach `g` holds on `row` (`none`: everywhere). -/
+def Reach (g : Option Expr) (row : Row) : Prop := ∀ c ∈ g, (c.eval row).isTrue = true
+
+/-- An expression reading below the width of a row's extension `F` has the
+same value on a longer extension. -/
+theorem eval_ext {e : Expr} {row F G : Row} {n : Nat} (he : e.refsLt n)
+    (hlen : row.length + F.length = n) : e.eval (row ++ (F ++ G)) = e.eval (row ++ F) := by
+  rw [← List.append_assoc]; exact Expr.eval_append G he (by simp [hlen])
+
+theorem eval_prefix {e : Expr} {row F F' : Row} {n : Nat} (he : e.refsLt n)
+    (hlen : row.length + F.length = n) (hp : F <+: F') : e.eval (row ++ F') = e.eval (row ++ F) := by
+  obtain ⟨G, rfl⟩ := hp; exact eval_ext he hlen
+
+/-- Columns `0 … w-1` read the row. -/
+theorem map_range_field (row X : Row) (w : Nat) (h : row.length = w) :
+    ((List.range w).map Expr.field).map (·.eval (row ++ X)) = row := by
+  subst h
+  apply List.ext_getElem (by simp)
+  intro i h1 h2
+  simp [Expr.eval, List.getD_eq_getElem?_getD, List.getElem?_append_left h2, List.getElem?_eq_getElem h2]
+
+theorem BindSt.push_ext {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F : Row → Row}
+    (hs : s.Ext cat r w F) (e : Expr) :
+    (s.push e).1.Ext cat r w (fun row => F row ++ [e.eval (row ++ F row)]) := by
+  refine ⟨?_, fun row hr => ?_⟩
+  · simp only [BindSt.push, Rel.eval, hs.1, List.map_map]
+    congr 1; funext row; simp
+  · obtain ⟨h1, h2⟩ := hs.2 row hr
+    refine ⟨h1, ?_⟩; simp [BindSt.push]; omega
+
+end Eval
 
 end Substrait

@@ -1398,4 +1398,71 @@ theorem Expr.orLift_eval (row : Row) (ps : List Expr) (hb : ∀ q ∈ ps, Expr.B
         · rw [ite_eq_right_of_eq_false _ _ (eq_false hf)]
           split <;> rfl
 
+
+/-! ## The lift reads what its operands read -/
+
+omit [Boxes.Ambient] in
+theorem Expr.foldl_and_refsLt {n : Nat} : ∀ (ps : List Expr) (acc : Expr), acc.refsLt n →
+    (∀ q ∈ ps, q.refsLt n) → (ps.foldl (.bin .and) acc).refsLt n
+  | [], _, h, _ => h
+  | q :: ps, acc, h, hq => Expr.foldl_and_refsLt ps _ ⟨h, hq q (by simp)⟩ (fun r hr => hq r (by simp [hr]))
+
+omit [Boxes.Ambient] in
+theorem Expr.foldl_or_refsLt {n : Nat} : ∀ (ps : List Expr) (acc : Expr), acc.refsLt n →
+    (∀ q ∈ ps, q.refsLt n) → (ps.foldl (.bin .or) acc).refsLt n
+  | [], _, h, _ => h
+  | q :: ps, acc, h, hq => Expr.foldl_or_refsLt ps _ ⟨h, hq q (by simp)⟩ (fun r hr => hq r (by simp [hr]))
+
+omit [Boxes.Ambient] in
+theorem Expr.conj_refsLt {n : Nat} {ps : List Expr} (h : ∀ q ∈ ps, q.refsLt n) : (Expr.conj ps).refsLt n := by
+  cases ps with
+  | nil => trivial
+  | cons p ps => exact Expr.foldl_and_refsLt ps p (h p (by simp)) (fun q hq => h q (by simp [hq]))
+
+omit [Boxes.Ambient] in
+theorem Expr.disj_refsLt {n : Nat} {ps : List Expr} (h : ∀ q ∈ ps, q.refsLt n) : (Expr.disj ps).refsLt n := by
+  cases ps with
+  | nil => trivial
+  | cons p ps => exact Expr.foldl_or_refsLt ps p (h p (by simp)) (fun q hq => h q (by simp [hq]))
+
+omit [Boxes.Ambient] in
+theorem Expr.andChain_refsLt {n : Nat} {all : Expr} (ha : all.refsLt n) :
+    ∀ {ps : List Expr}, (∀ q ∈ ps, q.refsLt n) → (Expr.andChain all ps).refsLt n
+  | [], _ => ⟨ha, trivial, trivial⟩
+  | p :: ps, h => by
+    have hp := h p (by simp)
+    exact ⟨⟨hp, hp⟩, Expr.andChain_refsLt ha (fun q hq => h q (by simp [hq])), trivial⟩
+
+omit [Boxes.Ambient] in
+theorem Expr.orChain_refsLt {n : Nat} {all : Expr} (ha : all.refsLt n) :
+    ∀ {ps : List Expr}, (∀ q ∈ ps, q.refsLt n) → (Expr.orChain all ps).refsLt n
+  | [], _ => ⟨ha, trivial, trivial⟩
+  | p :: ps, h => by
+    have hp := h p (by simp)
+    exact ⟨⟨hp, hp⟩, Expr.orChain_refsLt ha (fun q hq => h q (by simp [hq])), trivial⟩
+
+omit [Boxes.Ambient] in
+/-- **The `AND` lift reads only what its operands read.** -/
+theorem Expr.andLift_refsLt {n : Nat} {ps : List Expr} (h : ∀ q ∈ ps, q.refsLt n) :
+    (Expr.andLift ps).refsLt n := by
+  have hg : (Expr.andG ps).refsLt n := ⟨Expr.andChain_refsLt (Expr.conj_refsLt h) h, trivial⟩
+  unfold Expr.andLift; dsimp only
+  split
+  · exact Expr.conj_refsLt h
+  · split
+    · exact hg
+    · exact ⟨Expr.conj_refsLt (fun q hq => h q (List.mem_filter.mp hq).1), hg⟩
+
+omit [Boxes.Ambient] in
+/-- **The `OR` lift reads only what its operands read.** -/
+theorem Expr.orLift_refsLt {n : Nat} {ps : List Expr} (h : ∀ q ∈ ps, q.refsLt n) :
+    (Expr.orLift ps).refsLt n := by
+  have hg : (Expr.orG ps).refsLt n := ⟨Expr.orChain_refsLt (Expr.disj_refsLt h) h, trivial⟩
+  unfold Expr.orLift; dsimp only
+  split
+  · exact Expr.disj_refsLt h
+  · split
+    · exact hg
+    · exact ⟨Expr.disj_refsLt (fun q hq => h q (List.mem_filter.mp hq).1), hg⟩
+
 end Substrait

@@ -1035,6 +1035,27 @@ theorem Expr.eval_shift_cons {I : Impl} (w : Value) (e : Expr) (row : Row) :
     (e.shift 0).eval (w :: row) I = e.eval row I :=
   Expr.eval_shift_insert w e [] row
 
+theorem getD_map_eval {I : Impl} (cols : List Expr) (row : Row) (i : Nat) :
+    (cols.map (·.eval row I)).getD i .null = (cols.getD i (.lit .null)).eval row I := by
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+  cases cols[i]? <;> rfl
+
+/-- Substituting expressions is evaluating on their values. -/
+theorem Expr.eval_subst {I : Impl} (cols : List Expr) (row : Row) :
+    ∀ e : Expr, (e.subst cols).eval row I = e.eval (cols.map (·.eval row I)) I
+  | .lit _ => rfl
+  | .field i => (getD_map_eval cols row i).symm
+  | .un f a => by simp [subst, eval, Expr.eval_subst cols row a]
+  | .bin f a b => by simp [subst, eval, Expr.eval_subst cols row a, Expr.eval_subst cols row b]
+  | .ifThen c t e => by
+      simp [subst, eval, Expr.eval_subst cols row c, Expr.eval_subst cols row t,
+        Expr.eval_subst cols row e]
+  | .hof f l b => by
+      simp only [subst, eval, Expr.eval_subst cols row l]
+      congr 1; funext x
+      rw [Expr.eval_subst _ (x :: row) b]
+      simp [eval, List.map_map, Function.comp_def, Expr.eval_shift_cons]
+
 omit [Boxes.Ambient] in
 theorem Value.pick_mem {better : Value → Value → Bool} (v w : Value) :
     Value.pick better v w = v ∨ Value.pick better v w = w := by

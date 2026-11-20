@@ -1108,26 +1108,6 @@ theorem Rel.ratioPart_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → 
 
 /-! ## Contracts -/
 
-theorem getD_map_eval (cols : List Expr) (row : Row) (i : Nat) :
-    (cols.map (·.eval row)).getD i .null = (cols.getD i (.lit .null)).eval row := by
-  simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases cols[i]? <;> rfl
-
-theorem Expr.eval_subst (cols : List Expr) (row : Row) :
-    ∀ e : Expr, (e.subst cols).eval row = e.eval (cols.map (·.eval row))
-  | .lit _ => rfl
-  | .field i => (getD_map_eval cols row i).symm
-  | .un f a => by simp [subst, eval, Expr.eval_subst cols row a]
-  | .bin f a b => by simp [subst, eval, Expr.eval_subst cols row a, Expr.eval_subst cols row b]
-  | .ifThen c t e => by
-      simp [subst, eval, Expr.eval_subst cols row c, Expr.eval_subst cols row t,
-        Expr.eval_subst cols row e]
-  | .hof f l b => by
-      simp only [subst, eval, Expr.eval_subst cols row l]
-      congr 1; funext x
-      rw [Expr.eval_subst _ (x :: row) b]
-      simp [eval, List.map_map, Function.comp_def, Expr.eval_shift_cons]
-
 /-- A plan that only computes columns of one table (`Read` under projects and
 emits) as expressions over that table's columns. Preconditions are given as
 such plans: `orders.select(amount >= 0, ...)`. -/
