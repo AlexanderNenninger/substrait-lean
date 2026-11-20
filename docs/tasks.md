@@ -204,6 +204,7 @@ except VerificationError as e:
   already; the report's guarantee then holds only on data that meets them:
 
   ```python
+  # skip: a fragment: query and con are the reader's
   report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
   if report.verdict == sv.Verdict.PROVED:
       result = report.run(con)
@@ -220,6 +221,7 @@ except VerificationError as e:
   table (`e.rows`; None for `max_rows` and `rows_per`):
 
   ```python
+  # skip: a fragment: node, log and quarantine are the reader's
   try:
       node.refresh()
   except PreconditionError as e:
@@ -662,6 +664,7 @@ The `sverify` command checks, fixes and runs a pipeline's file from a
 shell, a CI job or an agent:
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify check pipelines/orders.py            # prove every transform and node in the file
 sverify check pipelines/orders.py:paid       # one node or transform
 sverify check pipelines/orders.py --full     # with each node's full report
@@ -1402,6 +1405,7 @@ The target is a file (JSON lines), `"console"`, a URL such as
 configuration (`openlineage.yml`, `OPENLINEAGE_*`).
 
 ```bash
+# skip: needs a Marquez service
 sverify refresh pipelines/orders.py:paid --lineage http://marquez:5000
 ```
 
@@ -1894,6 +1898,7 @@ print(doubled_paid.check(paid=paid_contract.schema()).verdict)
 ```
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify contract export pipelines/orders.py:paid --format odcs -o paid.odcs.yaml
 ```
 
