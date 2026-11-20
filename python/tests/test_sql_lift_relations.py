@@ -77,6 +77,8 @@ QUERIES = [
     # A star keeps the table's columns, without the rewrite's window column.
     "SELECT * FROM orders QUALIFY row_number() OVER"
     " (PARTITION BY customer ORDER BY amount, id) = 1",
+    "SELECT * FROM orders QUALIFY rank() OVER (ORDER BY amount, id) <= 2"
+    " AND row_number() OVER (ORDER BY id) = 1",
     "SELECT o.* FROM orders o QUALIFY rank() OVER (PARTITION BY customer ORDER BY amount, id) = 1",
     "TABLE customers EXCEPT ALL SELECT name, region FROM customers WHERE region = 'eu'",
     # #803: VALUES in FROM and as a CTE, typed across rows.

@@ -333,23 +333,29 @@ _QUALIFY_COLUMN = "_sverify_qualify"
 def _qualify(tree: sge.Expr) -> sge.Expr:
     """`QUALIFY` (#319) as the filter of a subquery over the window columns
     (SQLGlot's `eliminate_qualify`, the form its dialects without QUALIFY
-    print)."""
+    print). The columns it adds (`_w`, `_w_2`, …) are renamed so no table's
+    column collides, and a star of the outer select leaves them out."""
     for sel in list(tree.find_all(sge.Select)):
         if sel.args.get("qualify") is not None:
-            if any(i.name == "_w" for i in sel.find_all(sge.Identifier)):
+            if any(
+                i.name.startswith(("_w", _QUALIFY_COLUMN)) for i in sel.find_all(sge.Identifier)
+            ):
                 raise SqlUnsupported(
-                    "QUALIFY in a query that names a column `_w`", construct="QUALIFY"
+                    "QUALIFY in a query that names a column `_w…` or `_sverify_qualify…`",
+                    construct="QUALIFY",
                 )
+            own = len(sel.expressions)
             new = eliminate_qualify(sel)  # a new outer SELECT around `sel`
             if new is not sel:
-                # The window column is the rewrite's: name it so no table's
-                # column collides, and keep a star from exposing it.
+                inner = new.args["from_"].this.this
+                added = [e.alias for e in inner.expressions[own:]]
+                renamed = {a: _QUALIFY_COLUMN + a.removeprefix("_w") for a in added}
                 for i in new.find_all(sge.Identifier):
-                    if i.name == "_w":
-                        i.set("this", _QUALIFY_COLUMN)
+                    if i.name in renamed:
+                        i.set("this", renamed[i.name])
                 for star in new.args["expressions"]:
                     if isinstance(star, sge.Star):
-                        star.set("except_", [sge.column(_QUALIFY_COLUMN)])
+                        star.set("except_", [sge.column(n) for n in renamed.values()])
             if sel is tree:
                 tree = new
             elif new is not sel:
