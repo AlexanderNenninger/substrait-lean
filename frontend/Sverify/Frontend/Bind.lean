@@ -63,6 +63,15 @@ def LExpr.fillAll (w : Nat) : List LExpr → List Expr
   | x :: xs => LExpr.fill w x :: LExpr.fillAll w xs
 end
 
+/-- Does `e` read column `i`? -/
+def Expr.reads (i : Nat) : Expr → Bool
+  | .lit _ => false
+  | .field j => i == j
+  | .un _ a => a.reads i
+  | .bin _ a b => a.reads i || b.reads i
+  | .ifThen c t e => c.reads i || t.reads i || e.reads i
+  | .hof _ l b => l.reads i || b.reads (i + 1)
+
 /-- Does column `i` occur in `e` only where `e` evaluates it whenever `e` is
 evaluated: outside the branches of a `CASE` and outside a lambda's body? -/
 def Expr.eagerOnly (i : Nat) : Expr → Bool
@@ -71,15 +80,6 @@ def Expr.eagerOnly (i : Nat) : Expr → Bool
   | .bin _ a b => a.eagerOnly i && b.eagerOnly i
   | .ifThen c t e => c.eagerOnly i && !(t.reads i) && !(e.reads i)
   | .hof _ l b => l.eagerOnly i && !(b.reads (i + 1))
-where
-  /-- Does `e` read column `i`? -/
-  reads (i : Nat) : Expr → Bool
-    | .lit _ => false
-    | .field j => i == j
-    | .un _ a => reads i a
-    | .bin _ a b => reads i a || reads i b
-    | .ifThen c t e => reads i c || reads i t || reads i e
-    | .hof _ l b => reads i l || reads (i + 1) b
 
 /-- An operand with nothing to bind and no raise: a plain expression and no
 chain. -/
@@ -113,14 +113,16 @@ every row): the state with their levels, and `x` over its columns. A chain
 `x` reads only in a `CASE` branch or a lambda stays filled. -/
 def LExpr.bind (w : Nat) (g : Option Expr) (s : BindSt) : LExpr → BindSt × Expr
   | .mk body cs =>
-    let (s, cols) := LChain.bindAll w g s (cs.zipIdx.map fun (c, i) => (c, body.eagerOnly (w + i)))
+    let (s, cols) := LChain.bindAll w g s body 0 cs
     (s, body.subst ((List.range w).map .field ++ cols))
-/-- `bind` of each chain marked to bind, `fill` of the others. -/
-def LChain.bindAll (w : Nat) (g : Option Expr) (s : BindSt) : List (LChain × Bool) → BindSt × List Expr
+/-- `bind` of each chain `body` reads only eagerly, `fill` of the others; the
+first is chain `i`, at column `w + i`. -/
+def LChain.bindAll (w : Nat) (g : Option Expr) (s : BindSt) (body : Expr) (i : Nat) :
+    List LChain → BindSt × List Expr
   | [] => (s, [])
-  | (c, b) :: cs =>
-    let (s, e) := if b then LChain.bind w g s c else (s, LChain.fill w c)
-    let (s, es) := LChain.bindAll w g s cs
+  | c :: cs =>
+    let (s, e) := if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)
+    let (s, es) := LChain.bindAll w g s body (i + 1) cs
     (s, e :: es)
 /-- Bind a chain under the reach `g`: one level per operand that may raise,
 the running column holding the chain's value so far (B1, B2). -/

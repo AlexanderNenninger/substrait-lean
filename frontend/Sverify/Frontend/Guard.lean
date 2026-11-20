@@ -1235,15 +1235,15 @@ theorem Expr.andChain_eval (row : Row) (all : Expr) : ∀ ps : List Expr,
     rcases hb p (by simp) with h | ⟨b, h⟩
     · have : (Expr.notFalse p).eval row = .bool true := by
         simp [Expr.notFalse, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3]
-      rw [this, ih, if_pos rfl]
+      rw [this, ih, ite_eq_left_of_eq_true _ _ (eq_true (by simp [Value.isTrue]))]
       simp only [hex, h, reduceCtorEq, false_or]
     · cases b
       · have : (Expr.notFalse p).eval row = .bool false := by
           simp [Expr.notFalse, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3]
-        rw [this, if_neg (by simp [Value.isTrue]), if_pos (hex.mpr (.inl h))]
+        rw [this, ite_eq_right_of_eq_false _ _ (eq_false (by simp [Value.isTrue])), ite_eq_left_of_eq_true _ _ (eq_true (hex.mpr (.inl h)))]
       · have : (Expr.notFalse p).eval row = .bool true := by
           simp [Expr.notFalse, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3]
-        rw [this, ih, if_pos rfl]
+        rw [this, ih, ite_eq_left_of_eq_true _ _ (eq_true (by simp [Value.isTrue]))]
         simp only [hex, h, Value.bool.injEq, Bool.true_eq_false, false_or]
 
 /-- **The `AND` lift has the eager conjunction's value** on a row where every
@@ -1255,11 +1255,10 @@ theorem Expr.andLift_eval (row : Row) (ps : List Expr) (hb : ∀ q ∈ ps, Expr.
     simp only [Expr.andG, Expr.eval, Impl.lean]
     rw [Expr.andChain_eval row _ ps hb, hc]
     by_cases hf : ∃ q ∈ ps, q.eval row = .bool false
-    · rw [if_pos hf, if_pos hf]; rfl
-    · rw [if_neg hf, if_neg hf, hc, if_neg hf]
-      by_cases ht : ∀ q ∈ ps, q.eval row = .bool true
-      · rw [if_pos ht, if_pos ht, if_pos rfl]; rfl
-      · rw [if_neg ht, if_neg ht, if_neg (by simp [Value.isTrue])]; rfl
+    · simp only [ite_eq_left_of_eq_true _ _ (eq_true hf)]; rfl
+    · by_cases ht : ∀ q ∈ ps, q.eval row = .bool true
+      · simp only [ite_eq_right_of_eq_false _ _ (eq_false hf), ite_eq_left_of_eq_true _ _ (eq_true ht), Value.isTrue]; rfl
+      · simp only [ite_eq_right_of_eq_false _ _ (eq_false hf), ite_eq_right_of_eq_false _ _ (eq_false ht), Value.isTrue]; rfl
   unfold Expr.andLift
   dsimp only
   split
@@ -1271,15 +1270,132 @@ theorem Expr.andLift_eval (row : Row) (ps : List Expr) (hb : ∀ q ∈ ps, Expr.
       simp only [Expr.eval, Impl.lean, BinFn.apply]
       rw [hg, Expr.conj_eval_cases row _ hpl, hc]
       by_cases hf : ∃ q ∈ ps, q.eval row = .bool false
-      · rw [if_pos hf]; exact and3_false_right _
+      · rw [ite_eq_left_of_eq_true _ _ (eq_true hf)]; exact and3_false_right _
       · have hf' : ¬ ∃ q ∈ ps.filter Expr.plain, q.eval row = .bool false :=
           fun ⟨q, hq, he⟩ => hf ⟨q, (List.mem_filter.mp hq).1, he⟩
-        rw [if_neg hf, if_neg hf']
+        rw [ite_eq_right_of_eq_false _ _ (eq_false hf), ite_eq_right_of_eq_false _ _ (eq_false hf')]
         by_cases ht : ∀ q ∈ ps, q.eval row = .bool true
         · have ht' : ∀ q ∈ ps.filter Expr.plain, q.eval row = .bool true :=
             fun q hq => ht q (List.mem_filter.mp hq).1
-          rw [if_pos ht, if_pos ht']; rfl
-        · rw [if_neg ht]
+          rw [ite_eq_left_of_eq_true _ _ (eq_true ht), ite_eq_left_of_eq_true _ _ (eq_true ht')]; rfl
+        · rw [ite_eq_right_of_eq_false _ _ (eq_false ht)]
+          split <;> rfl
+
+theorem Expr.fold_or_null (row : Row) : ∀ (ps : List Expr) (v : Value),
+    (v = .null ∨ v = .bool false) → (∀ q ∈ ps, Expr.BoolVal row q) →
+    (∀ q ∈ ps, q.eval row ≠ .bool true) →
+    ps.foldl (fun v q => or3 v (q.eval row)) v = .null ∨
+      ps.foldl (fun v q => or3 v (q.eval row)) v = .bool false
+  | [], _, hv, _, _ => hv
+  | q :: ps, v, hv, hb, hnt => by
+    simp only [List.foldl_cons]
+    apply Expr.fold_or_null row ps _ _ (fun r hr => hb r (by simp [hr]))
+      (fun r hr => hnt r (by simp [hr]))
+    have hq := hnt q (by simp)
+    rcases hb q (by simp) with h | ⟨b, h⟩ <;> rcases hv with rfl | rfl
+    · left; simp [or3, h]
+    · left; simp [or3, h]
+    · cases b
+      · left; simp [or3, h]
+      · exact absurd h hq
+    · cases b
+      · right; simp [or3, h]
+      · exact absurd h hq
+
+/-- The eager disjunction's value, by cases: TRUE at a TRUE operand, FALSE
+where all are FALSE, NULL otherwise. -/
+theorem Expr.disj_eval_cases (row : Row) (ps : List Expr) (hb : ∀ q ∈ ps, Expr.BoolVal row q) :
+    (Expr.disj ps).eval row =
+      if ∃ q ∈ ps, q.eval row = .bool true then .bool true
+      else if ∀ q ∈ ps, q.eval row = .bool false then .bool false else .null := by
+  split
+  · next h => exact Expr.disj_eval_dom row ps h
+  · next h =>
+    split
+    · next hf => exact Expr.disj_eval_neut row ps hf
+    · next hf =>
+      have hnt : ∀ q ∈ ps, q.eval row ≠ .bool true := fun q hq he => h ⟨q, hq, he⟩
+      cases ps with
+      | nil => exact absurd (by simp) hf
+      | cons p ps =>
+        simp only [Expr.disj, Expr.eval_foldl_or]
+        have hp : p.eval row = .null ∨ p.eval row = .bool false := by
+          rcases hb p (by simp) with h' | ⟨b, h'⟩
+          · exact .inl h'
+          · cases b
+            · exact .inr h'
+            · exact absurd h' (hnt p (by simp))
+        rcases Expr.fold_or_null row ps _ hp (fun q hq => hb q (by simp [hq]))
+          (fun q hq => hnt q (by simp [hq])) with hn | hn
+        · exact hn
+        · exfalso; apply hf
+          obtain ⟨h1, h2⟩ := Expr.fold_or_neut_inv row ps _ hn
+          intro q hq
+          rcases List.mem_cons.mp hq with rfl | hq
+          · exact h1
+          · exact h2 q hq
+
+theorem Expr.orChain_eval (row : Row) (all : Expr) : ∀ ps : List Expr,
+    (∀ q ∈ ps, Expr.BoolVal row q) →
+    (Expr.orChain all ps).eval row =
+      if ∃ q ∈ ps, q.eval row = .bool true then .int 1
+      else if (UnFn.not.apply (all.eval row)).isTrue then .int 0 else .null
+  | [], _ => by simp only [Expr.orChain, Expr.eval]; simp; rfl
+  | p :: ps, hb => by
+    have ih := Expr.orChain_eval row all ps (fun q hq => hb q (by simp [hq]))
+    have hex : (∃ q ∈ p :: ps, q.eval row = .bool true) ↔
+        (p.eval row = .bool true ∨ ∃ q ∈ ps, q.eval row = .bool true) := by simp
+    simp only [Expr.orChain, Expr.eval]
+    rcases hb p (by simp) with h | ⟨b, h⟩
+    · have : (Expr.notTrue p).eval row = .bool true := by
+        simp [Expr.notTrue, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3]
+      rw [this, ih, ite_eq_left_of_eq_true _ _ (eq_true (by simp [Value.isTrue]))]
+      simp only [hex, h, reduceCtorEq, false_or]
+    · cases b
+      · have : (Expr.notTrue p).eval row = .bool true := by
+          simp [Expr.notTrue, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3]
+        rw [this, ih, ite_eq_left_of_eq_true _ _ (eq_true (by simp [Value.isTrue]))]
+        simp only [hex, h, Value.bool.injEq, Bool.false_eq_true, false_or]
+      · have : (Expr.notTrue p).eval row = .bool false := by
+          simp [Expr.notTrue, Expr.eval, Impl.lean, UnFn.apply, BinFn.apply, h, or3]
+        rw [this, ite_eq_right_of_eq_false _ _ (eq_false (by simp [Value.isTrue])),
+          ite_eq_left_of_eq_true _ _ (eq_true (hex.mpr (.inl h)))]
+
+/-- **The `OR` lift has the eager disjunction's value** on a row where every
+operand is TRUE, FALSE or NULL. -/
+theorem Expr.orLift_eval (row : Row) (ps : List Expr) (hb : ∀ q ∈ ps, Expr.BoolVal row q) :
+    (Expr.orLift ps).eval row = (Expr.disj ps).eval row := by
+  have hc := Expr.disj_eval_cases row ps hb
+  have hg : (Expr.orG ps).eval row = (Expr.disj ps).eval row := by
+    simp only [Expr.orG, Expr.eval, Impl.lean]
+    rw [Expr.orChain_eval row _ ps hb, hc]
+    by_cases ht : ∃ q ∈ ps, q.eval row = .bool true
+    · simp only [ite_eq_left_of_eq_true _ _ (eq_true ht)]; rfl
+    · by_cases hf : ∀ q ∈ ps, q.eval row = .bool false
+      · simp only [ite_eq_right_of_eq_false _ _ (eq_false ht), ite_eq_left_of_eq_true _ _ (eq_true hf),
+          UnFn.apply, Value.isTrue]; rfl
+      · simp only [ite_eq_right_of_eq_false _ _ (eq_false ht), ite_eq_right_of_eq_false _ _ (eq_false hf),
+          UnFn.apply, Value.isTrue]; rfl
+  unfold Expr.orLift
+  dsimp only
+  split
+  · rfl
+  · split
+    · exact hg
+    · have hpl : ∀ q ∈ ps.filter Expr.plain, Expr.BoolVal row q :=
+        fun q hq => hb q (List.mem_filter.mp hq).1
+      simp only [Expr.eval, Impl.lean, BinFn.apply]
+      rw [hg, Expr.disj_eval_cases row _ hpl, hc]
+      by_cases ht : ∃ q ∈ ps, q.eval row = .bool true
+      · rw [ite_eq_left_of_eq_true _ _ (eq_true ht)]; exact or3_true_right _
+      · have ht' : ¬ ∃ q ∈ ps.filter Expr.plain, q.eval row = .bool true :=
+          fun ⟨q, hq, he⟩ => ht ⟨q, (List.mem_filter.mp hq).1, he⟩
+        rw [ite_eq_right_of_eq_false _ _ (eq_false ht), ite_eq_right_of_eq_false _ _ (eq_false ht')]
+        by_cases hf : ∀ q ∈ ps, q.eval row = .bool false
+        · have hf' : ∀ q ∈ ps.filter Expr.plain, q.eval row = .bool false :=
+            fun q hq => hf q (List.mem_filter.mp hq).1
+          rw [ite_eq_left_of_eq_true _ _ (eq_true hf), ite_eq_left_of_eq_true _ _ (eq_true hf')]; rfl
+        · rw [ite_eq_right_of_eq_false _ _ (eq_false hf)]
           split <;> rfl
 
 end Substrait
