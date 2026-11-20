@@ -52,6 +52,7 @@ reference:
       - references
       - max_rows
       - rows_per
+      - non_overlapping
       - arrives_within
       - approx
       - within
@@ -61,6 +62,7 @@ reference:
       - types.References
       - types.MaxRows
       - types.RowsPer
+      - types.NonOverlapping
       - types.ArrivesWithin
       - types.Approx
       - types.PlannedCondition

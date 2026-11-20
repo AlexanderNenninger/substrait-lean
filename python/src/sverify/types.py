@@ -3,10 +3,10 @@
 a refresh did, and where a node stands. You get them from sverify; you don't build them.
 
 Conditions, what `sv.unique`, `sv.key`, `sv.references`, `sv.max_rows`,
-`sv.rows_per`, `sv.arrives_within` and `sv.approx` return: `Unique`, `Key`,
-`References`, `MaxRows`, `RowsPer`, `ArrivesWithin` and `Approx`, and a
-`PlannedCondition` read back from a Substrait export. `SQLStep` is what
-`sv.sql` returns.
+`sv.rows_per`, `sv.non_overlapping`, `sv.arrives_within` and `sv.approx`
+return: `Unique`, `Key`, `References`, `MaxRows`, `RowsPer`,
+`NonOverlapping`, `ArrivesWithin` and `Approx`, and a `PlannedCondition`
+read back from a Substrait export. `SQLStep` is what `sv.sql` returns.
 
 The report (`sverify.verify`, `Report`):
 
@@ -43,6 +43,7 @@ from sverify.conditions import (
     Discharged,
     Key,
     MaxRows,
+    NonOverlapping,
     PlannedCondition,
     References,
     RowsPer,
@@ -69,6 +70,7 @@ __all__ = [
     "MaxRows",
     "Needed",
     "NodeStatus",
+    "NonOverlapping",
     "Observation",
     "PlannedCondition",
     "QuarantineReport",
