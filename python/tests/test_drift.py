@@ -110,6 +110,9 @@ def test_check_against_sink_gates_on_a_weakened_contract(tmp_path, capsys):
     assert main(["check", f"{path}:stored", "--against-sink", "--json"]) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["drift"]["stored"]["weakened"]["checks"] == []
+    # Another file: a rewrite of the same length within a second would load
+    # Python's cached bytecode of the first.
+    path = tmp_path / "weaker.py"
     path.write_text(head.replace("REQ", "0"))
     assert main(["check", f"{path}:stored", "--against-sink", "--json"]) == 1
     doc = json.loads(capsys.readouterr().out)

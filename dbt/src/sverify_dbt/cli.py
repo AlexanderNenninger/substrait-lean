@@ -9,7 +9,8 @@ import sys
 from importlib.metadata import version as _version
 from pathlib import Path
 
-from sverify.errors import UnsupportedError
+from sverify._duckdb import memory_limit_error
+from sverify.errors import MemoryLimitError, UnsupportedError
 
 from sverify_dbt import formats
 from sverify_dbt.check import check
@@ -148,8 +149,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"sverify-dbt: {e}", file=sys.stderr)
         return USAGE
     except Exception as e:
-        if _limits.is_out_of_memory(e):
-            print(f"sverify-dbt: memory budget exceeded ({e})", file=sys.stderr)
+        # The project's own DuckDB connection raises DuckDB's error; sverify's
+        # runs raise MemoryLimitError.
+        oom = e if isinstance(e, MemoryLimitError) else memory_limit_error(e, "check")
+        if oom is not None:
+            print(f"sverify-dbt: {oom}", file=sys.stderr)
             return BUDGET
         print(f"sverify-dbt: error: {type(e).__name__}: {e}", file=sys.stderr)
         return ERROR
