@@ -153,22 +153,69 @@ def exprSite (p : Issue × Expr) (r : Rel) (es : List Expr) : List Site :=
   | some f => [(r, f)]
   | none => []
 
-/-- The sites of the aggregates of `r` grouped by `gs` (`n` group columns,
-the aggregate's output starting there): a `SUM` that leaves its type, summed
-in 38 digits per group, and an aggregate of finite doubles that is `±∞`. -/
-def aggSites (p : Issue × Expr) (r : Rel) (gs : List Expr) (ms : List Measure) : List Site :=
+/-- `|x|` of a double. -/
+def Expr.fabsE (x : Expr) : Expr := .ifThen (.bin .lt x (.lit (.float 0))) (.un .fneg x) x
+
+/-- `TRUE` where the double `x` is at least `t`. -/
+def Expr.atLeastE (x : Expr) (t : Float) : Expr :=
+  .un .not (.bin .lt x (.lit (.float (FloatCode.ofFloat t))))
+
+/-- **Where an aggregate of finite doubles may be `±∞`** (`Measure.makesInf`),
+failing closed. The reference's value is the exact aggregate rounded once; an
+engine's own value may stay finite where it overflows, near the largest
+double, so the check reads bounds that hold whatever order the engine sums in
+(ruling 195, G3, review of #2029):
+
+* `SUM` and `AVG`: the exact sum is within `n·u·Σ|x|` of any summation's
+  `ŝ` (`u = 2⁻⁵³`, `n` values; `n` and `Σ|x|` taken over every kept row bound
+  those of the distinct values). The check flags where `|ŝ|` or
+  `2·n·u·Σ|x|` reaches a quarter of the largest double: below both, the
+  exact sum is below half of it, so its rounding is finite. An `AVG` lies
+  within its values' range; it shares the `SUM`'s check, which refuses more.
+* `VARIANCE`, `STDDEV`, `COVAR` and `CORR` are at most `4·M²` for
+  `M = max |x|`: the check flags where `M` reaches `2⁵¹⁰`.
+
+An input that is not finite (`Measure.nonFiniteE`) is no overflow. The
+result: the columns to project below the aggregate (from column `k`), the
+measures over them, and the flag over the measures' columns (from `o`). -/
+def Measure.infCheck (m : Measure) (k o : Nat) : List Expr × List Measure × Expr :=
+  let finite (c : Nat) := Expr.un .not (.bin .eq (.field c) (.lit (.int 1)))
+  let mx (c : Nat) : Measure := { fn := .max, arg := .field c, filter := m.filter }
+  match m.fn, m.arg with
+  | .fsum, a | .avg, a =>
+    ([a.fabsE, m.nonFiniteE],
+      [{ m with fn := .fsum }, { fn := .fsum, arg := .field k, filter := m.filter },
+        { fn := .count, arg := .field k, filter := m.filter }, mx (k + 1)],
+      .bin .and (.bin .or ((Expr.field o).fabsE.atLeastE 4.49423283715579e307)
+        ((Expr.bin .fmul (.bin .fmul (.lit (.float (FloatCode.ofFloat 2.220446049250313e-16)))
+          (.un .itof (.field (o + 2)))) (.field (o + 1))).atLeastE 4.49423283715579e307))
+        (finite (o + 3)))
+  | .cov _, .bin .pair a b | .corr, .bin .pair a b =>
+    ([a.fabsE, b.fabsE, m.nonFiniteE], [mx k, mx (k + 1), mx (k + 2)],
+      .bin .and (.bin .or ((Expr.field o).atLeastE 3.3519519824856493e153)
+        ((Expr.field (o + 1)).atLeastE 3.3519519824856493e153)) (finite (o + 2)))
+  | _, a =>
+    ([a.fabsE, m.nonFiniteE], [mx k, mx (k + 1)],
+      .bin .and ((Expr.field o).atLeastE 3.3519519824856493e153) (finite (o + 1)))
+
+/-- The sites of the aggregates of `r` (`k` columns) grouped by `gs` (the
+aggregate's output after its `gs.length` group columns): a `SUM` that leaves
+its type, summed in 38 digits per group, and an aggregate of finite doubles
+that may be `±∞` (`Measure.infCheck`). -/
+def aggSites (p : Issue × Expr) (r : Rel) (k : Nat) (gs : List Expr) (ms : List Measure) :
+    List Site :=
   let n := gs.length
   ms.flatMap fun m =>
     (if m.fn = .sum ∧ p = (.sumWraps, m.arg) then
       [(Rel.aggregate r gs [m.wide], m.sumOutE (.field n))] else []) ++
     (if m.fn.infAgg ∧ p = (.infinite, m.arg) then
-      [(Rel.aggregate r gs [m, { fn := .max, arg := m.nonFiniteE, filter := m.filter }],
-        .bin .and (Expr.field n).infE (.un .not (.bin .eq (.field (n + 1)) (.lit (.int 1)))))]
+      let (cols, aggs, flag) := m.infCheck k n
+      [(Rel.aggregate (.project r cols) gs aggs, flag)]
     else [])
 
 /-- The same for a window's aggregates, per frame the plan computes (`k`
-columns before the window's). The value a measure checks is projected as a
-column below the window first, as the writers take a window's arguments. -/
+columns before the window's). The values a measure checks are projected as
+columns below the window first, as the writers take a window's arguments. -/
 def winSites (p : Issue × Expr) (r : Rel) (k : Nat) (part : List Nat) (sort : List SortKey) :
     List WinFn → List Site
   | [] => []
@@ -177,9 +224,9 @@ def winSites (p : Issue × Expr) (r : Rel) (k : Nat) (part : List Nat) (sort : L
       [(Rel.window (.project r [m.wide.arg]) part sort [.agg { m with arg := .field k } s fr],
         m.sumOutE (.field (k + 1)))] else []) ++
     (if m.fn.infAgg ∧ p = (.infinite, m.arg) then
-      [(Rel.window (.project r [m.nonFiniteE]) part sort
-          [.agg m s fr, .agg { fn := .max, arg := .field k, filter := m.filter } s fr],
-        .bin .and (Expr.field (k + 1)).infE (.un .not (.bin .eq (.field (k + 2)) (.lit (.int 1)))))]
+      -- The window's own columns follow the projected ones.
+      let (cols, aggs, flag) := m.infCheck k (k + (m.infCheck k 0).1.length)
+      [(Rel.window (.project r cols) part sort (aggs.map (.agg · s fr)), flag)]
     else []) ++ winSites p r k part sort fns
   | _ :: fns => winSites p r k part sort fns
 
@@ -204,7 +251,7 @@ def Rel.assumedSites (cat : Catalog) (p : Issue × Expr) : Bool → Rel → List
   | u, .aggregate r gs ms =>
     r.assumedSites cat p u ++
       exprSite p (if u then r.loose else r) (gs ++ ms.flatMap Measure.exprs) ++
-      aggSites p r gs ms
+      aggSites p r (r.arity cat) gs ms
 
 /-- A site as one row: `1` where its condition holds on some row, else `0`
 (`MAX` of nothing is NULL: no row, no issue). -/

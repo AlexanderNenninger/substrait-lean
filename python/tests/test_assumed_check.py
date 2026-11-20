@@ -31,13 +31,21 @@ from sverify.engine import connect, put_table, written_plan
 from sverify.errors import PreconditionError
 
 EXACT = [sv.equivalent(floats="exact")]
+FINITE = {"t": [_.f >= -1.5e308, _.f <= 1.5e308]}
+
+
+def _verify(shape: str) -> sv.Report:
+    requires = FINITE if shape.split("-")[0] in ("fsum", "variance") else None
+    return sv.verify(SHAPES[shape](), requires=requires, ensures=EXACT)
+
 
 T = ibis.table({"a": "int64", "x": "int64", "f": "float64"}, name="t")
 E = ibis.table({"a": "int64"}, name="e")
 
-# Row 2 (a = -1) overflows: its x sums past 64 bits with row 3's, and its f
-# times 10 is +inf. Rows with a > 0 do not.
-BAD = pa.table({"a": [1, -1, -1], "x": [1, 2**62, 2**62], "f": [1.0, 1e308, 1.0]})
+# The group a = -1 overflows: its x sum leaves 64 bits, its sum of |f| and its
+# variance of f are past the largest double, and its f times 10 is ±inf. The
+# row with a > 0 does not.
+BAD = pa.table({"a": [1, -1, -1], "x": [1, 2**62, 2**62], "f": [1.0, 1e308, -1e308]})
 GOOD = pa.table({"a": [1, -1, -1], "x": [1, 2, 3], "f": [1.0, 2.0, 3.0]})
 
 
@@ -66,6 +74,11 @@ SHAPES = {
     # (d) a join to an empty input.
     "sum-empty-join": lambda: _sums().join(E, "a"),
     "product-empty-join": lambda: _product().join(E, "a"),
+    # A SUM of doubles per group, and a VARIANCE, under a filter: their checks
+    # fail closed near the largest double (`Measure.infCheck`). The inputs are
+    # finite (`FINITE`), or an infinity among them is a domain error.
+    "fsum-filter": lambda: T.group_by("a").aggregate(s=T.f.abs().sum()).filter(_.a > 0),
+    "variance-filter": lambda: T.group_by("a").aggregate(v=T.f.var()).filter(_.a > 0),
     # A window's SUM, per frame the plan computes, under a filter.
     "sum-window-filter": lambda: T.select("a", w=T.x.sum().over(group_by="a", order_by="x")).filter(
         _.a > 0
@@ -86,7 +99,7 @@ def _con(t: pa.Table):
 @pytest.mark.parametrize("engine", PROFILED)
 @pytest.mark.parametrize("shape", SHAPES)
 def test_an_assumed_issue_the_output_does_not_need_refuses_the_run(engine, shape):
-    report = sv.verify(SHAPES[shape](), ensures=EXACT)
+    report = _verify(shape)
     assert report.assumed, report.issues
     report.run(_con(GOOD), engine, optimize=False)
     with pytest.raises(PreconditionError, match="assumed"):
@@ -113,8 +126,11 @@ _REPORTS: dict[str, sv.Report] = {}
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
-# The oracle evaluates no window (`--assumed`).
-@pytest.mark.parametrize("shape", [k for k in SHAPES if "window" not in k])
+# The oracle evaluates no window (`--assumed`), and an aggregate of doubles is
+# checked failing closed (`Measure.infCheck`): those are tested one way, below.
+@pytest.mark.parametrize(
+    "shape", [k for k in SHAPES if k.split("-")[0] in ("sum", "product") and "window" not in k]
+)
 @settings(deadline=None)
 @given(rows=_ROWS)
 def test_the_run_refuses_exactly_where_the_reference_runs_into_an_assumed_issue(
@@ -122,9 +138,7 @@ def test_the_run_refuses_exactly_where_the_reference_runs_into_an_assumed_issue(
 ):
     # The oracle is the Lean evaluator (`--assumed`: `Expr.issues` on every
     # row an operator evaluates and the groups' true sums, `Rel.HasIssue`).
-    report = _REPORTS.get(shape) or _REPORTS.setdefault(
-        shape, sv.verify(SHAPES[shape](), ensures=EXACT)
-    )
+    report = _REPORTS.get(shape) or _REPORTS.setdefault(shape, _verify(shape))
     assert report.internal_plan is not None
     plan = json.loads(written_plan(report.internal_plan))
     expected = lean_assumed(json.dumps(with_tables(plan, {"t": rows, "e": []})))
@@ -136,4 +150,26 @@ def test_the_run_refuses_exactly_where_the_reference_runs_into_an_assumed_issue(
         report.run(_con(data), engine, optimize=False)
     else:
         with pytest.raises(PreconditionError, match="assumed"):
+            report.run(_con(data), engine, optimize=False)
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("shape", ["fsum-filter", "variance-filter"])
+@settings(deadline=None)
+@given(rows=_ROWS)
+def test_an_aggregate_of_doubles_refuses_wherever_the_reference_overflows(engine, shape, rows):
+    # Failing closed: the run refuses wherever the reference's value of the
+    # aggregate overflows, and may refuse near the largest double where it
+    # does not.
+    report = _REPORTS.get(shape) or _REPORTS.setdefault(shape, _verify(shape))
+    assert report.internal_plan is not None
+    plan = json.loads(written_plan(report.internal_plan))
+    expected = lean_assumed(json.dumps(with_tables(plan, {"t": rows, "e": []})))
+    data = pa.table(
+        {k: [r[i] for r in rows] for i, k in enumerate("axf")},
+        schema=pa.schema([("a", pa.int64()), ("x", pa.int64()), ("f", pa.float64())]),
+    )
+    if expected is not None:
+        # Refused: by the check, or by `FINITE` on data that breaks it.
+        with pytest.raises(PreconditionError):
             report.run(_con(data), engine, optimize=False)
