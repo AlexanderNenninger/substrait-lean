@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-15-engine-free-base-1-0-gate",
+  "date": "2026-11-15",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The engine-free base is a 1.0 gate, and main may be unsettled between the steps that reach it.",
+  "issues": [
+    1288,
+    1329,
+    1362
+  ],
+  "amends": [
+    "U-2026-11-09-engine-free-verify-only-base"
+  ],
+  "source": "github:#1288 comment 6892762825"
+}

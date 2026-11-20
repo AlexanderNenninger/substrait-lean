@@ -1,0 +1,17 @@
+{
+  "id": "F19",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "#1527 is granted a waiver: the between-members lemma waits for #900, with the lemma listed in the PR body and no doc claiming the bound first.",
+  "issues": [
+    900
+  ],
+  "prs": [
+    1527,
+    1530
+  ],
+  "source": "fable-rulings-night-1117.md, entry 19",
+  "note": "File ruling-1527-waiver-1526-summary.md."
+}

@@ -12,7 +12,6 @@ editable install builds with the checkout's current setting.
 
 `SVERIFY_PREBUILT_CHECKER=<path>` makes an editable install link that binary
 and skip lake (CI builds the checker once per run and shares it).
-`SVERIFY_PREBUILT_CHECK`, its name before 1.0, is read too.
 
 PyPI carries wheels for Linux (x86_64, aarch64) and macOS on Apple silicon. On
 any other platform `pip install sverify` falls back to the sdist, and building
@@ -71,9 +70,7 @@ class LakeBuildHook(BuildHookInterface):
             raise RuntimeError(message)
         build_data["pure_python"] = False
         build_data["tag"] = f"py3-none-{platform_tag()}"
-        prebuilt = os.environ.get("SVERIFY_PREBUILT_CHECKER") or os.environ.get(
-            "SVERIFY_PREBUILT_CHECK"
-        )
+        prebuilt = os.environ.get("SVERIFY_PREBUILT_CHECKER")
         if version == "editable" and prebuilt:
             self._link(Path(prebuilt).resolve())
             return

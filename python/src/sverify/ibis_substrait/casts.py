@@ -6,12 +6,14 @@ ibis-substrait (Apache License 2.0); `__init__.py` notes the changes.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, cast
 
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, same_type
+from sverify.ibis_substrait.temporal import wall_clock
 from sverify.plan_json import Json, Unsupported, call, cast_json, literal
 
 
@@ -25,7 +27,9 @@ def _from_varchar(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
         # A constant: Lean folds it, as it did (`DATE '1998-12-01'` in TPC-H).
         return None
     if to.is_decimal():
-        raise Unsupported(f"a cast of a string to {to} is not supported yet (#27)")
+        raise Unsupported(
+            f"a cast of a string to {to} is not supported yet (#27)", construct="CAST"
+        )
     for accepts, name, via in (
         (to.is_integer, "bigint", dt.int64),
         (to.is_float64, "double", dt.float64),
@@ -37,6 +41,17 @@ def _from_varchar(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
             j = call(f"{'try_' if try_ else ''}varchar_{name}", [x(op.arg)])
             return j if same_type(via, to) else cast_json(j, to, or_null=try_)
     return None
+
+
+def _instant_to_calendar(x: Exprs, op: Any) -> Callable[..., Json]:
+    """The cast of an instant at UTC to a date or a time is that of its UTC
+    wall clock (D69, #1725)."""
+    t = op.arg.dtype
+    return (
+        wall_clock(x)
+        if t.is_timestamp() and t.timezone and (op.to.is_date() or op.to.is_time())
+        else x
+    )
 
 
 def _cast_to(x: Exprs, op: Any, try_: bool) -> Json:
@@ -53,7 +68,7 @@ def _cast_to(x: Exprs, op: Any, try_: bool) -> Json:
     elif from_string := _from_varchar(x, op, try_, to):
         j = from_string
     else:
-        j = cast_json(x(op.arg), to, or_null=try_)
+        j = cast_json(_instant_to_calendar(x, op)(op.arg), to, or_null=try_)
     return j if narrow is None else call("date_trunc", [literal(narrow, dt.string), j])
 
 
@@ -102,7 +117,8 @@ def _typeof(x: Exprs, op: Any) -> Json:
     column: Any = op.arg
     if not isinstance(column, ops.Field):
         raise Unsupported(
-            "typeof is only supported of a column; select the expression as a column first"
+            "typeof is only supported of a column; select the expression as a column first",
+            construct="function typeof",
         )
     t = cast("dt.DataType", column.dtype)
     # A second or millisecond column is read as microseconds (D61): its type
@@ -110,7 +126,8 @@ def _typeof(x: Exprs, op: Any) -> Json:
     name = None if isinstance(t, dt.Timestamp) and t.scale in (0, 3) else duckdb_type_name(t)
     if name is None:
         raise Unsupported(
-            f"typeof of a {t} column is not supported; write the type's name as a constant"
+            f"typeof of a {t} column is not supported; write the type's name as a constant",
+            construct="function typeof",
         )
     return literal(name, dt.string)
 

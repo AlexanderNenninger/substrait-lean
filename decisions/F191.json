@@ -1,0 +1,15 @@
+{
+  "id": "F191",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "quantile_cont/median/Ibis quantile of a decimal stay refused at 1.0 by design, message names the cast to double; quantile_disc of decimals needs no decision; no width rule in core; D68 reserved.",
+  "issues": [
+    271,
+    1914,
+    1921
+  ],
+  "source": "fable-ruling-191-1921-decimal-quantile.md",
+  "note": "D68 reserved for QUANTILE_CONT of a decimal (with #271, after 1.0). DuckDB bug candidate noted for the user."
+}

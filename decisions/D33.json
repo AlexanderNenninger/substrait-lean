@@ -1,0 +1,11 @@
+{
+  "id": "D33",
+  "date": "2026-11-08",
+  "decided_by": "coordinator",
+  "scope": "reference-semantics",
+  "status": "withdrawn",
+  "summary": "Unused number: it named what is now D37 for an hour and was not reassigned.",
+  "superseded_by": [
+    "D37"
+  ]
+}

@@ -91,7 +91,7 @@ def test_the_report_names_the_strings():
         semantics="duckdb",
         requires={"t": ["s IS NULL OR s IN ('a', 'b', 'c')"]},
     )
-    assert report.facts["s"] == "one of the strings 'a', 'b' or NULL"
+    assert str(report.facts["s"]) == "one of the strings 'a', 'b' or NULL"
 
 
 # The shop project of sverify-dbt (examples/shop): its models, and the
@@ -159,7 +159,7 @@ def test_shop_sales_by_quarter_accepted_values():
         ensures=["quarter IS NULL OR quarter IN ('q1', 'q2', 'q3', 'q4')"],
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.facts["quarter"] == "one of the strings 'q1', 'q2', 'q3', 'q4'"
+    assert str(report.facts["quarter"]) == "one of the strings 'q1', 'q2', 'q3', 'q4'"
 
 
 def test_shop_sales_by_quarter_unique_region_quarter():

@@ -1,0 +1,22 @@
+{
+  "id": "F95",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D50-d3: the linear shape is the guarded column, each chain operand bound once in a projection with a reach column; no core form; d1's encoding stands as ruled in 94; design filed as issue #1719.",
+  "issues": [
+    1719
+  ],
+  "prs": [
+    1681
+  ],
+  "amends": [
+    "F94"
+  ],
+  "amended_by": [
+    "F102"
+  ],
+  "source": "fable-ruling-d50d-linear-shape.md",
+  "note": "Issue created at the user's request. No D-number; D53 stays free here. Ruling 89's gate wording stands until probes P1/P2 and d1's table; a cap that stays for join conditions goes to the user."
+}

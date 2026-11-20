@@ -1,0 +1,13 @@
+{
+  "id": "F138",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D56 (decimal +/- across scales rescales each operand to the result type and raises on overflow) is approved; approval logged as ruling 138.",
+  "issues": [
+    1484
+  ],
+  "source": "fable-coordinator-items-133-138.md",
+  "note": "Text only says 'D56's approval is logged (138)'; ruling 131 held D56 for the user, so the approval is presumed the user's. Same file assigns D57-D59 and lists coordinator items; ruling 124 (#1744) still held."
+}

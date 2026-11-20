@@ -23,8 +23,10 @@ aggregate (`LinState.Sound`).
   moments, linear too: `varState_sound`, `covState_sound` and
   `corrState_sound` finish them as `varOf`, `covOf` and `corrOf` do.
 
-The engine keeps the exact sum as a sum of mantissas per binary exponent
-(`python/src/sverify/_linear.py`), which is this integer written in pieces.
+The engine keeps each exact moment in limbs (`python/src/sverify/_exact_sum.py`,
+#1447): a piece `v` of a value at bit `p` adds `v · 2^(p mod 32)` to limb
+`p / 32`, each limb a sum over the rows like the moment itself, and the limbs
+weighted by `2^(32 j)` are this integer (`limbs_grouped`).
 -/
 
 namespace Substrait
@@ -429,6 +431,84 @@ theorem corrState_sound {m : Measure} (hf : m.fn = .corr) (hd : m.distinct = fal
     cases nonFinite (pairCodes ps) with
     | some _ => rfl
     | none => simp [coComomentNum, prodSumOf_eq, scaledSum_fst, scaledSum_snd]
+
+/-! ### The limbs the engine stores (#1447)
+
+A view keeps each of the features above, a sum over the group's rows of an
+integer per value (`exactOf`: the value in units of `2⁻¹⁰⁷⁴`; `sqOf`,
+`scaled`'s products in units of `2⁻²¹⁴⁸`), which `no_drift` adds up batch by
+batch (`featIn`). The engine holds that sum in limbs. Each value is a list of
+pieces `(p, v)`, `v` at bit `p`, which add up to its integer: that is the
+split of a double into a mantissa and a grid position, whose normal form
+the engine checks on every row and which is trusted (`docs/trusted-base.md`,
+#1873). A piece adds `v · 2^(p mod 32)` to limb `p / 32`, and the
+limbs read back as `Σ limb j · 2^(32 j)` (`limbs_grouped`) are the sum of the
+pieces, the feature's integer. Each limb is a sum over the rows itself, so
+it is linear over Z-sets as the feature is. -/
+
+/-- Limb `j` of a list of pieces: what `sverify._exact_sum` stores in the
+group state's row with `__l` naming limb `j` (its `__v`). -/
+def limb (ps : List (Nat × Int)) (j : Nat) : Int :=
+  ((ps.filter fun q => q.1 / 32 = j).map fun q => q.2 * 2 ^ (q.1 % 32)).sum
+
+omit [Boxes.Ambient] in
+theorem limbs_range_add (J : Nat) (f g : Nat → Int) :
+    ((List.range J).map fun j => f j + g j).sum
+      = ((List.range J).map f).sum + ((List.range J).map g).sum := by
+  induction J with
+  | zero => simp
+  | succ J ih => simp [List.range_succ, List.sum_append, ih]; omega
+
+omit [Boxes.Ambient] in
+theorem limbs_range_single (J a : Nat) (c : Int) :
+    ((List.range J).map fun j => if a = j then c else 0).sum = if a < J then c else 0 := by
+  induction J with
+  | zero => simp
+  | succ J ih =>
+    simp only [List.range_succ, List.map_append, List.sum_append, ih, List.map_cons,
+      List.map_nil, List.sum_cons, List.sum_nil]
+    by_cases h1 : a < J
+    · have : a ≠ J := by omega
+      simp [h1, this, show a < J + 1 by omega]
+    · by_cases h2 : a = J
+      · simp [h2]
+      · simp [h1, h2, show ¬ a < J + 1 by omega]
+
+omit [Boxes.Ambient] in
+/-- A piece `v` at bit `p` adds `v · 2^(p mod 32)` to limb `p / 32`; weighted
+by that limb's `2^(32 j)` it is `v · 2^p` again. -/
+theorem limbs_sum (ps : List (Nat × Int)) :
+    (ps.map fun q => q.2 * 2 ^ (q.1 % 32) * 2 ^ (32 * (q.1 / 32))).sum
+      = (ps.map fun q => q.2 * 2 ^ q.1).sum := by
+  congr 1
+  apply List.map_congr_left
+  intro q _
+  rw [Int.mul_assoc, ← Int.pow_add, Nat.mod_add_div]
+
+omit [Boxes.Ambient] in
+/-- **The limbs are the integer.** The stored limbs below `J`, weighted by
+`2^(32 j)`, add up to the pieces' integer, for pieces whose limbs are below
+`J` (`_exact_sum`'s limbs are below 256). -/
+theorem limbs_grouped (ps : List (Nat × Int)) (J : Nat) (h : ∀ q ∈ ps, q.1 / 32 < J) :
+    ((List.range J).map fun j => limb ps j * 2 ^ (32 * j)).sum
+      = (ps.map fun q => q.2 * 2 ^ q.1).sum := by
+  rw [← limbs_sum]
+  induction ps with
+  | nil =>
+    simp only [limb, List.filter_nil, List.map_nil, List.sum_nil, Int.zero_mul]
+    induction J <;> simp_all [List.range_succ]
+  | cons q ps ih =>
+    have hq : q.1 / 32 < J := h q (by simp)
+    have step : ∀ j, limb (q :: ps) j * 2 ^ (32 * j)
+        = (if q.1 / 32 = j then q.2 * 2 ^ (q.1 % 32) * 2 ^ (32 * (q.1 / 32)) else 0)
+          + limb ps j * 2 ^ (32 * j) := by
+      intro j
+      by_cases e : q.1 / 32 = j
+      · subst e; simp [limb, Int.add_mul]
+      · simp [limb, e]
+    simp only [step]
+    rw [limbs_range_add, limbs_range_single, ih (fun r hr => h r (by simp [hr]))]
+    simp [hq]
 
 end LinearAgg
 end Substrait

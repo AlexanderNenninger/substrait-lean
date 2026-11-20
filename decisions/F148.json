@@ -1,0 +1,24 @@
+{
+  "id": "F148",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Approves the #1444 root-move plan: Completeness goes to core, ProvedOn/Statements/IssuesAll stay in the root, OpenSums is split later (O2), and the acceptance becomes the ROOT_CHECKER/ROOT_THEOREMS/ROOT_WAITING sets in test_lean_layers.py.",
+  "issues": [
+    1444
+  ],
+  "prs": [
+    1765,
+    1795,
+    1801,
+    1805,
+    1813,
+    1825
+  ],
+  "amended_by": [
+    "F151"
+  ],
+  "source": "fable-ruling-148-1444-root-moves.md",
+  "note": "Its rule 'a module moves by its imports' is refined by ruling 151 M4 (import-free modules placed by subject); confirmed in ruling 156."
+}

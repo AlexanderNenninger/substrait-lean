@@ -1,0 +1,12 @@
+{
+  "id": "D60",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "reserved",
+  "summary": "Reserved for #1285 stage 3b (verified strings).",
+  "issues": [
+    1285
+  ],
+  "note": "Reserved in ruling 139; no text yet."
+}

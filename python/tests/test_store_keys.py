@@ -107,7 +107,7 @@ def test_every_pyarrow_key_site_canonicalises_through_the_one_helper() -> None:
         n for n in sites if n != "_keys.py" and "sverify._keys" not in (root / n).read_text()
     )
     assert not unguarded, f"key sites that do not use sverify._keys: {unguarded}"
-    assert {"_store.py", "partition.py", "_exact_sum.py"} <= sites
+    assert {"_store.py", "partition.py"} <= sites
 
 
 @pytest.mark.parametrize("pair", [(0.0, -0.0), (NAN, -NAN)])

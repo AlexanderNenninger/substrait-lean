@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-17-native-table-reads",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Table reads happen natively in each engine, never through the Python driver, and native scans #173 move into 1.0 M2.",
+  "issues": [
+    173,
+    1329,
+    1485
+  ],
+  "source": "memory:native-table-reads.md"
+}

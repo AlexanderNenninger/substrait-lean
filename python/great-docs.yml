@@ -33,12 +33,9 @@ dynamic: false
 
 # Sections in the order a data engineer looks for things: what a transform
 # promises, how its result is built, stored and kept up to date, where its
-# tables live, where it runs, how to test it, what can go wrong. The public
-# API is the top-level names plus `sverify.io`, `sverify.engines`,
-# `sverify.testing`, `sverify.errors` and `sverify.cli`;
-# everything else is internal (CHANGELOG.md, 0.2.0). `Node`'s results
-# (`Refresh`, `Status`, `Group`) live in `sverify.nodes` and are documented
-# because users hold them, not because they are imported.
+# tables live, where it runs, how to test it, what can go wrong. Each entry
+# is a public name, and each public name has an entry, as `docs/stability.md`
+# defines them (`tests/test_public_api.py` holds the two equal).
 reference:
   - title: Contracts
     desc: >
@@ -47,11 +44,45 @@ reference:
     contents:
       - transform
       - verify
+      - ContractedTransform
+      - Report
+      - Verdict
       - unique
       - key
       - references
-      - Report
-      - Report.from_substrait
+      - max_rows
+      - rows_per
+      - non_overlapping
+      - arrives_within
+      - approx
+      - within
+      - equivalent
+      - types.Unique
+      - types.Key
+      - types.References
+      - types.MaxRows
+      - types.RowsPer
+      - types.NonOverlapping
+      - types.ArrivesWithin
+      - types.Approx
+      - types.PlannedCondition
+
+  - title: What a report holds
+    desc: >
+      The types a `Report` holds: its issues and the preconditions that
+      would settle them, each postcondition and how it was established, the
+      observation, and the routes to each engine (`sverify.types`).
+    contents:
+      - types.Issue
+      - types.Needed
+      - types.CheckedCondition
+      - types.Discharged
+      - types.Counterexample
+      - types.ColumnFacts
+      - types.Observation
+      - types.Within
+      - types.Route
+      - types.DialectDifference
 
   - title: Transforms, nodes and refresh
     desc: >
@@ -62,13 +93,18 @@ reference:
     contents:
       - Node
       - sql
+      - types.SQLStep
       - group
       - io.Changes
-      - nodes.Group
-      - nodes.Refresh
-      - nodes.Status
-      - nodes.NodeStatus
-      - nodes.StageRefresh
+      - types.Group
+      - types.Refresh
+      - types.StageRefresh
+      - types.RefreshReport
+      - types.SourceRefresh
+      - types.QuarantineReport
+      - types.RetentionReport
+      - types.Status
+      - types.NodeStatus
 
   - title: Sources and sinks
     desc: >
@@ -80,9 +116,22 @@ reference:
       - io.IcebergSource
       - io.IcebergSink
       - io.StaticSource
+      - io.FlightSource
       - io.SinkWrite
       - io.Contract
       - io.Storage
+
+  - title: Credentials
+    desc: >
+      Credentials by reference: a `Secret` names where a value lives and
+      is read through the `Resolver` that `set_resolver` installs, and a
+      node lists the credentials it uses per table (`CredentialUse`;
+      `sverify.io`).
+    contents:
+      - io.Secret
+      - io.Resolver
+      - io.set_resolver
+      - io.CredentialUse
 
   - title: Your own sources and sinks
     desc: >
@@ -103,6 +152,8 @@ reference:
       - io.VersionedSource
       - io.Snapshot
       - io.SourceBatch
+      - io.Fact
+      - io.Stored
 
   - title: Engines and SQL
     desc: >
@@ -110,15 +161,20 @@ reference:
       as DuckDB, Snowflake or Spark SQL (`Node.to_sql`, `Report.to_sql`;
       `sverify.engines`). `Dialect`'s SQL-writing methods change as functions
       land, so they are left out; subclassing it is outside the 1.x promise.
+      So are `Native`'s members, while the native scans move into the engine
+      packages.
     contents:
       - connect
       - engines.run
       - engines.ENGINES
       - engines.Connection
+      - name: engines.Native
+        members: []
       - name: engines.Dialect
         members: [name, guards, finite, decimals]
       - engines.UnsupportedError
       - engines.run_sharded
+      - engines.Sharded
 
   - title: ASOF joins
     desc: Align two time series, each row with the latest earlier row of the other.
@@ -151,6 +207,7 @@ reference:
       - testing.source
       - testing.installed_engines
       - testing.FlightLog
+      - testing.LeanRaised
 
   - title: Command line
     desc: >
@@ -201,6 +258,7 @@ reference:
       - errors.UnverifiedRunError
       - errors.PreconditionError
       - errors.PostconditionError
+      - errors.ConditionError
       - errors.SchemaError
       - errors.AuditError
       - errors.RouteError
@@ -209,9 +267,11 @@ reference:
       - errors.UnsupportedError
       - errors.SqlError
       - errors.ExportError
+      - errors.MemoryLimitError
       - errors.CheckerVersionError
       - errors.EngineVersionError
       - errors.EngineSettingsError
+      - errors.SecretError
 
   - title: Warnings
     desc: What sverify warns about (`sverify.errors`).
@@ -222,6 +282,8 @@ reference:
       - errors.InferredWarning
       - errors.EngineVersionWarning
       - errors.EngineSettingsWarning
+      - errors.ProfilePendingWarning
+      - errors.ProfilePluginWarning
 
 # Agent skills for sverify users, written by hand and shipped in the wheel
 # (`sverify/skills/<name>/SKILL.md`, with their `references/`). The site

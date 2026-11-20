@@ -1,0 +1,17 @@
+{
+  "id": "F140",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "F2 item 4: the report field listing black boxes and their declared laws is `Report.black_boxes` (name to laws mapping, one law encoder); F2 does not create `Report.assumptions`, which stays #1288's to build; verdict does not read it.",
+  "issues": [
+    1288,
+    1484
+  ],
+  "amends": [
+    "F130"
+  ],
+  "source": "fable-ruling-140-trackB-f2-black-box-laws.md",
+  "note": "Explicitly amends ruling 130 item 4 and plan R5 wording."
+}

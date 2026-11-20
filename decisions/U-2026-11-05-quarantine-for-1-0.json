@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-05-quarantine-for-1-0",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Quarantine is required for 1.0 - a refused batch sets bad rows aside with the reason, lets the rest flow and alerts without stopping the pipeline.",
+  "issues": [
+    184,
+    771
+  ],
+  "source": "github:#184 comment 6659245302"
+}

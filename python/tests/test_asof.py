@@ -29,7 +29,6 @@ def pairs(left, right, by) -> int:
     return sum(right_counts[k] for k in keys(left))
 
 
-INT_SCHEMA = {"device": "int64", "ts": "int64"}
 T0 = dt.datetime(2024, 5, 1, 7, 0)
 
 

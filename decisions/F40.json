@@ -1,0 +1,13 @@
+{
+  "id": "F40",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Entry 33 holds with the corrected count; the seven black-box aggregates (ENTROPY, SEM, PRODUCT, KURTOSIS, KAHAN_SUM, MAD, SKEWNESS) get no order-free follow-up before 1.0, only a report naming them.",
+  "prs": [
+    1544
+  ],
+  "source": "fable-rulings-night-1117.md, entry 40",
+  "note": "Reaffirms F33; its urgency rested on a mislabelled count of 17."
+}

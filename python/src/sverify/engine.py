@@ -1,7 +1,7 @@
 """Substrait producers, and DuckDB or Polars as consumer.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `connect()` gives a `Connection`: named Arrow tables, the engine that runs
 plans over them (DuckDB by default), and Ibis tables bound to them
@@ -47,6 +47,7 @@ from sverify._scan import Native, Resident, Scan
 from sverify._store import instants_in_utc
 from sverify._unsupported import SverifyError
 from sverify.ibis_substrait import to_substrait_json
+from sverify.profiles import Finite
 
 Engine = str
 """An engine's name, as its plugin registers it (`sverify.profiles`):
@@ -452,13 +453,14 @@ def lift_sql_plan(
 ) -> Any:
     """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
     `schemas` it reads."""
-    from sverify.sql_lift import lift
+    from sverify.sql_lift import full_name, lift
 
     try:
-        read = {t.name.lower() for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+        # By DuckDB's resolution: `shop.main.orders` reads the input of that key.
+        read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
     except sg.errors.ParseError:
         read = set()  # the lift says why
-    return lift(sql, {n: s for n, s in schemas.items() if n.lower() in read}, semantics)
+    return lift(sql, {n: s for n, s in schemas.items() if full_name(n) in read}, semantics)
 
 
 def quote(name: str) -> str:
@@ -628,7 +630,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: Literal[False] = False,
-    finite: bool = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table: ...
@@ -641,7 +643,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool,
-    finite: bool = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident: ...
@@ -653,7 +655,7 @@ def run_plan(
     engine: Engine | Any = None,
     *,
     keep: bool = False,
-    finite: bool = True,
+    finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
@@ -678,8 +680,10 @@ def run_plan(
             Other engines ignore it. Default: False.
         finite: On DuckDB, Polars and Spark, check that no operation on finite
             doubles gives `±∞` (`Issue.infinite`), the reference's
-            precondition. Default: True; `Report.run` passes False for a
-            plan verified with `semantics="duckdb"`, which allows `±∞`.
+            precondition. Default: True; `Report.run` passes `"aggregates"` for
+            a plan verified with `semantics="duckdb"`, which allows an
+            operation's `±∞` but not an aggregate's (ruling 200 A4(2)); False
+            writes no check.
         tie_free: On Spark, the plan's windows have no ties on data that
             meets its preconditions (a proved report's `deterministic`), so
             they run with the sort keys alone (`to_sql`'s `deterministic`).
@@ -744,7 +748,7 @@ def run_plan(
 
 
 def run_guard_free(
-    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: bool = True
+    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: Finite = True
 ) -> pa.Table:
     """Run a plan whose contract report is `guard_free` on `engine` without
     its other per-row checks, on data that meets its preconditions. The
