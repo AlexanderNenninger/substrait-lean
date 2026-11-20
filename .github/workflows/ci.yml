@@ -284,8 +284,9 @@ jobs:
           else
             out models=false
           fi
-          # sverify-dbt reads sverify, and what the checker proves.
-          if grep -qE '^(dbt/|python/|SubstraitLean/|core/|analysis/|engines/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          # sverify-dbt reads sverify, and what the checker proves; the tour's
+          # dbt notebook runs there too.
+          if grep -qE '^(dbt/|notebooks/08_dbt\.py$|python/|SubstraitLean/|core/|analysis/|engines/|lakefile\.lean$|lake-manifest\.json$|lean-toolchain$|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out dbt=true
           else
             out dbt=false
@@ -605,6 +606,36 @@ jobs:
               python3 scripts/coverage_summary.py coverage.json >> "$GITHUB_STEP_SUMMARY"
           } || echo "::warning::The coverage report failed; see the log."
 
+  # A refresh's OpenLineage events against Marquez (#865): the job, its
+  # datasets, the run and the contract facet through Marquez's API. One
+  # container pair per run, so it runs outside pull requests (main, merge
+  # queue, release branches, a manual run) and, like `coverage`, `qa` does
+  # not wait for it.
+  marquez:
+    needs: [changes, checker]
+    if: needs.changes.outputs.python == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - uses: ./.github/actions/checker
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+          prune-cache: true
+          cache-suffix: pruned
+      - run: bash python/scripts/marquez.sh start | tee -a "$GITHUB_ENV"
+      - working-directory: python
+        env:
+          SVERIFY_MARQUEZ_REQUIRED: "1"
+        run: uv run --locked pytest tests/test_openlineage.py -k marquez -p no:cacheprovider
+      - if: always()
+        run: bash python/scripts/marquez.sh stop
+
   # The tests as the Wheels workflow runs them against the installed wheel:
   # from a copy outside the repository, with only the package's extras and
   # the test dependencies `python/scripts/wheel_tests.sh` lists, the fast
@@ -635,7 +666,8 @@ jobs:
 
   # sverify without DuckDB (#1288, #1485 item 16): the base install, no extra,
   # in an environment that has no `duckdb`. `verify` proves a plan and writes
-  # SQL, every module imports, and a run on DuckDB names the extra.
+  # SQL, every module imports, a run on DuckDB names the extra, and a Polars
+  # connection puts, verifies and runs (#1764).
   no-duckdb:
     needs: [changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
@@ -661,6 +693,7 @@ jobs:
           assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
           PY
           uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
+            --with-editable engines/polars --with polars --with numpy \
             --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
@@ -852,6 +885,11 @@ jobs:
           $DBT seed $SHOP
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
+      # The tour's dbt notebook (`poe notebooks` skips it: the python/
+      # environment has no dbt).
+      - env:
+          DO_NOT_TRACK: "1"  # dbt's usage tracking can stall without network
+        run: uv run --no-sync --with marimo marimo export html ../notebooks/08_dbt.py -o "$RUNNER_TEMP/08_dbt.html"
 
   # The pipeline template (templates/pipelines/, #771), as a repository of
   # its own: its tests run its workflows' steps (check, refresh twice, the

@@ -20,6 +20,7 @@ from sverify.plan_json import (
     if_then,
     in_values,
     literal,
+    logical,
 )
 from sverify.sql_lift._base import (
     DUCKDB,
@@ -263,15 +264,27 @@ def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> 
     return E(_fn(name, args, dt.boolean), dt.boolean)
 
 
+def _chain_operands(node: sge.Expression, kind: type) -> list[sge.Expression]:
+    """The operands of a chain `a AND b AND c`, in order."""
+    out = [node.expression]
+    while isinstance(node.this, kind):
+        node = node.this
+        out.append(node.expression)
+    return [node.this, *reversed(out)]
+
+
 def _logical(name: str) -> Callable[..., E]:
+    kind = sge.And if name == "and" else sge.Or
+
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
-        args = [sub(node.this), sub(node.expression)]
+        args = [sub(o) for o in _chain_operands(node, kind)]
         for a in args:
             if not (a.type.is_boolean() or a.type.is_null()):
                 raise SqlUnsupported(
                     f"{name.upper()} of a {a.type} is not supported", construct=name.upper()
                 )
-        return E(_fn(name, [lf.to(a, dt.boolean).json for a in args], dt.boolean), dt.boolean)
+        eager = lf.profile is DUCKDB
+        return E(logical(name, [lf.to(a, dt.boolean).json for a in args], eager), dt.boolean)
 
     return rule
 

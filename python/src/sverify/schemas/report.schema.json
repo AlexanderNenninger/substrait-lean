@@ -339,6 +339,10 @@
         "null"
       ]
     },
+    "run_checks": {
+      "description": "What a run checks on the data (#1863): `margin`, the margin checks of threshold filters on double sums (#929); `asof`, the pair counts of as-of joins (#1447); `asof_max_pairs`, the cap on those pairs (null: none).",
+      "type": "object"
+    },
     "black_boxes": {
       "description": "The black boxes the transformation calls, in the order of first call, each with the laws its row declares: what the proofs trust of them (substrait-check --contract's \"black_boxes\", #1484). Report.black_boxes maps each name to its laws.",
       "type": "array",
