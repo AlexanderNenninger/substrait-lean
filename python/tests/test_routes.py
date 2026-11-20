@@ -169,7 +169,10 @@ def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert routes.check_version("duckdb", "2.0.0") is None
     assert routes.check_version("outside", "1.0.0") is None
-    with pytest.warns(routes.EngineVersionWarning, match="assumes it computes what 2.1.0 does"):
+    with pytest.warns(
+        routes.EngineVersionWarning,
+        match="2.1.0 does, and an unproved run relies on 2.1.3's own errors",
+    ):
         assert routes.check_version("polars", "2.1.3")
     for v in ("2.2.0", "2.0.9", "3.0.0", "nightly"):
         with pytest.raises(

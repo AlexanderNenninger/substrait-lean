@@ -447,7 +447,8 @@ def check_version(engine: str, version: str | None = None) -> str | None:
         )
     msg = (
         f'{engine} {version} is not a version the facts of semantics="{engine}" were '
-        f"probed at ({probed}): the run assumes it computes what {prof.versions[0]} does"
+        f"probed at ({probed}): the run assumes it computes what {prof.versions[0]} does, "
+        f"and an unproved run relies on {version}'s own errors"
     )
     warnings.warn(msg, EngineVersionWarning, stacklevel=3)
     return msg

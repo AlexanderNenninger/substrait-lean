@@ -1809,7 +1809,7 @@ assumes that this version computes what the probed one does. Outside the
 range the run is refused until the probes are re-run. `unverified=True`
 runs it anyway and claims nothing.
 
-No guarantee rests on an engine raising. An input the proof excludes is
+No guarantee of a verified run rests on an engine raising. An input the proof excludes is
 excluded by a proved precondition or by a check whose verdict is a value
 the engine returns. A version that raises on fewer inputs changes no
 verified run, and one that raises on more stops a run with the engine's
