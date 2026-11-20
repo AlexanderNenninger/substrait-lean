@@ -1291,10 +1291,10 @@ def _(con, mo, sv):
 def _(mo):
     mo.md(r"""
     The reference isn't the only semantics to prove a plan under. With
-    `semantics="polars"`, Sverify proves it under Polars's own rules, the
+    `semantics="polars"`, Sverify proves it under the Polars rules, the
     ones your Polars run follows. The proof then reaches Polars directly
     (`native`). It reaches another engine only where that engine's choices
-    stay within Polars's on every option the plan reads (`transfer`), and
+    stay within those of Polars on every option the plan reads (`transfer`), and
     the translation from the reference no longer applies, since the
     reference isn't the semantics we verified under:
     """)
@@ -1361,9 +1361,10 @@ def _(lake, mo, pa, sv):
     try:
         _exact = _Sink(str(lake / "sums_exact"), reproducible=sv.equivalent())
         _readings.pipe(sums).write(_exact).refresh(engine="polars", route="auto")
-        _refusal = "(accepted)"
     except _RouteError as _e:
         _refusal = f"`{type(_e).__name__}`: {str(_e)[:230]}..."
+    else:
+        raise AssertionError("exact bits should be refused on Polars")
     _tolerant = _readings.pipe(sums).write(
         _Sink(str(lake / "sums"), reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
     )

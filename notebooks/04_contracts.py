@@ -565,7 +565,7 @@ def _(mo):
     ## Typed values
 
     Say the billing job sums prices with two decimals. A total that rounds
-    away a cent looks right and is wrong, and nobody gets paged. Every value
+    away a cent still looks right, and nobody gets paged. Every value
     Sverify models has a kind: an integer, a double, a decimal with its
     scale, a date, a timestamp. A double never passes for an integer, and a
     decimal keeps its scale through a `SUM`. A plan that mixes kinds the
@@ -578,13 +578,16 @@ def _(mo):
 
 @app.cell
 def _(ibis, mo, sv):
+    from sverify.errors import UnsupportedError
+
     _items = ibis.table({"id": "int64", "price": "decimal(10,2)", "qty": "uint8"}, name="items")
     _total = sv.verify(_items.group_by("id").agg(total=_items.price.sum()))
     try:
         sv.verify(_items.select(_items.id, _items.qty))
-        _refusal = "(accepted)"
-    except Exception as _e:
+    except UnsupportedError as _e:
         _refusal = f"`{type(_e).__name__}`: {_e}"
+    else:
+        raise AssertionError("an unsigned column should be refused")
     mo.md(
         f"The type of `total`, a `SUM` of `decimal(10, 2)`: `{_total.output['total']}`\n\n"
         f"Reading the unsigned column: {_refusal}"

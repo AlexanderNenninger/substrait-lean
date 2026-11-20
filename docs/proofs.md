@@ -61,7 +61,7 @@ contract's preconditions.
 | A well-formed plan on a well-formed catalog gives rows of its declared arity | `eval` | `Rel.eval_arity` | `Rel.lean` |
 | The checker decides well-formedness | the plan | `Rel.checkWF_iff` | `Check.lean` |
 | A well-kinded plan evaluates to its kinds | `eval` | `Rel.kinds_sound`, `Expr.kindT_sound` | `Kinds.lean` |
-| A value has the kind of its column: a double never passes for an integer or a timestamp for a date, a decimal comparison is TRUE only of equal values at one scale, and a `SUM` of decimals of one scale is a decimal of that scale (the case of a `SUM` over mixed kinds is unreachable for a plan the kind checker accepts); a `SUM` gives one value whatever the order of its rows and however a partition splits them | `eval` | `Rel.kinds_sound`, `Expr.kindT_sound`, `isTrue_eq`, `sumOf_perm`, `sum_partials` | `Kinds.lean`, `EvalFast.lean`, `Aggregate.lean`, `Decomposable.lean` |
+| A well-kinded plan's values have the kinds it states, so a double never passes for an integer and a `SUM` of decimals of one scale has that scale; a `SUM` gives one value in any order of its rows, and partial sums of decimals of a scale are decimals of that scale (the case of a `SUM` over mixed kinds is unreachable for a well-kinded plan) | `eval` | `Rel.kinds_sound`, `Expr.kindT_sound`, `sumOf_perm`, `sum_partials` | `Kinds.lean`, `Aggregate.lean`, `Decomposable.lean` |
 | The fast evaluator computes the specification | `eval` | `Rel.evalFast_eq` | `EvalFast.lean` |
 | `Rel.eval` gives a result the reference allows | `eval`, `Allowed` | `Rel.eval_allowed` | `Allowed.lean` |
 | Every row order the reference allows is one `Rel.Allowed` allows | `OrderAllowed`, `Allowed` | `Rel.orderAllowed_allowed` | `Ties.lean` |
