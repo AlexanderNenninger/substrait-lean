@@ -1,6 +1,1 @@
-{
-  "ibis_substrait/_base.py": 1,
-  "sql_lift/_base.py": 1,
-  "sql_lift/casts.py": 1,
-  "sql_lift/temporal.py": 2
-}
+{}

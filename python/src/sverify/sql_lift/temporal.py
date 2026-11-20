@@ -170,7 +170,8 @@ def _at_time_zone(lf: _Lift, node: sge.AtTimeZone, sub: Sub, scope: list[Column]
     if text is None or text.upper() not in {"UTC", "ETC/UTC", "Z"}:
         raise SqlUnsupported(
             f"AT TIME ZONE {zone.sql(DIALECT) if zone is not None else '?'}: only 'UTC' is "
-            f"read, in the same way as a timestamp with a time zone {INSTANT_NOTE}"
+            f"read, in the same way as a timestamp with a time zone {INSTANT_NOTE}",
+            construct="AT TIME ZONE",
         )
     a = sub(node.this)
     naive, instant = dt.timestamp(scale=6), dt.Timestamp(timezone="UTC", scale=6)
@@ -185,7 +186,10 @@ def _at_time_zone(lf: _Lift, node: sge.AtTimeZone, sub: Sub, scope: list[Column]
             value = value.astimezone(dt_.UTC).replace(tzinfo=None)
             return E(literal(value, naive), naive, value)
     else:
-        raise SqlUnsupported(f"AT TIME ZONE 'UTC' of a {a.type} is not supported {INSTANT_NOTE}")
+        raise SqlUnsupported(
+            f"AT TIME ZONE 'UTC' of a {a.type} is not supported {INSTANT_NOTE}",
+            construct="AT TIME ZONE",
+        )
     return E(cast_json(a.json, out), out, None if a.value is None else a.value)
 
 

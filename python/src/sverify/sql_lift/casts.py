@@ -150,7 +150,8 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         raise SqlUnsupported(
             f"{node.sql(DIALECT)} follows the session time zone in DuckDB; write "
             "x AT TIME ZONE 'UTC' to convert between a timestamp and a timestamp with a "
-            "time zone at UTC (#1725)"
+            "time zone at UTC (#1725)",
+            construct="CAST",
         )
     from_string = a.type.is_string() and not t.is_string() and (try_ or not a.constant)
     if from_string and not try_ and _in_filtered_aggregate(node):

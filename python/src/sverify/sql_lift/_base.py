@@ -2113,7 +2113,8 @@ class _Lift:
             # DuckDB brings the other side to a TIMESTAMPTZ in the session's zone (D53).
             raise SqlUnsupported(
                 f"{what} of a timestamp with a time zone and another type follows the session "
-                "time zone in DuckDB; convert with x AT TIME ZONE 'UTC' (#1725)"
+                "time zone in DuckDB; convert with x AT TIME ZONE 'UTC' (#1725)",
+                construct="TIMESTAMP WITH TIME ZONE",
             )
         if all(t.is_temporal() and not t.is_time() for t in ts):
             return dt.timestamp(scale=6)
