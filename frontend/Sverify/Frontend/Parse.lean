@@ -445,8 +445,10 @@ def floatOfScientific (m : Int) (e : Nat) : Float :=
   let f := Float.ofScientific m.natAbs true e
   if m < 0 then -f else f
 
-/-- `CAST(c AS DOUBLE)` of a constant. A string is read as DataFusion reads it,
-with no spaces around the number (DataFusion fails on those). -/
+/-- `CAST(c AS DOUBLE)` of a constant. A string is read strictly: no spaces
+around the number, the spellings of infinity and NaN, or a JSON number. These
+spellings give one value on every engine; others split them (`' 12'` is 12 on
+DuckDB and refused by Polars), so they are refused. -/
 def Const.toFloat? : Const → Option Float
   | .int i => some (Float.ofInt i)
   | .flt f => some f
@@ -467,8 +469,9 @@ def Const.toFloat? : Const → Option Float
       | _ => none
   | _ => none
 
-/-- An integer written as DataFusion's casts accept one: an optional sign
-and ASCII digits, nothing else (no spaces, no `_` separators). -/
+/-- An integer written as every engine reads one: an optional sign and ASCII
+digits, nothing else. Spaces and `_` separators split the engines (`'1_000'`
+is 1000 on DuckDB and refused by Polars), so they are refused. -/
 def parseInt? (s : String) : Option Int :=
   let (neg, ds) := match s.toList with
     | '-' :: r => (true, r)
@@ -479,8 +482,8 @@ def parseInt? (s : String) : Option Int :=
     let n : Nat := ds.foldl (fun n c => 10 * n + (c.toNat - '0'.toNat)) 0
     some (if neg then -(n : Int) else n)
 
-/-- `CAST(c AS BIGINT)` of a constant, as DataFusion casts a column
-(`FloatCode.toInt?`): doubles and decimals truncate toward zero, and NaN, ±∞
+/-- `CAST(c AS BIGINT)` of a constant, as the reference casts a column
+(`FloatCode.toInt?`), so a constant and a column holding it cast alike: doubles and decimals truncate toward zero, and NaN, ±∞
 and doubles outside 64 bits have no value. -/
 def Const.toInt? : Const → Option Int
   | .int i => some i
@@ -767,10 +770,11 @@ def intervalLit? (j : Json) : J (Option (Int × Int)) := do
     return some (m, us)
   return none
 
-/-- An interval literal with days or months. DataFusion compares a duration
-(`ts - ts`, `d - d`) with an interval as `(months, days, nanoseconds)`, so
-`d - e > INTERVAL '3 days'` is false for any `d - e`: comparisons with these
-are refused. Written in hours or seconds, it compares as a number. -/
+/-- An interval literal with days or months. A duration (`ts - ts`, `d - d`)
+is a number of microseconds, a total order, and a month has no place in it
+that every engine gives (DuckDB reads a month as 30 days; Polars has no
+duration of months): comparisons with these are refused. Written in hours or
+seconds, it compares as a number. -/
 def calendarInterval (l : Json) : J Bool := do
   let days (d : Json) : J Bool := do return (← (field? d "days").elim (pure 0) getInt) != 0
   if let some d := field? l "intervalDayToSecond" then return ← days d
@@ -1919,8 +1923,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if let some l := field? a "literal" then
           if ← calendarInterval l then
             throw s!"{baseName name} with an interval of days or months is not supported: \
-              DataFusion compares durations with it as (months, days, nanoseconds); \
-              write it in hours or seconds"
+              durations compare as microseconds; write the interval in hours or seconds"
     -- DataFusion casts a DATE argument of `date_part`/`date_trunc` to a
     -- timestamp (midnight); the model has these functions of dates.
     let argJs ← if !["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name)
@@ -2193,10 +2196,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return .un (.narrow bits) (.un (.dtrunc s₀) e)
       | .float => return .un (.dtof s₀) e
       | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
-    -- DataFusion casts a duration (`ts - ts`) compared with an interval to an
-    -- interval, which it orders as (months, days, nanoseconds); comparisons
-    -- with intervals of days or months are refused (`calendarInterval`), so
-    -- the order is the duration's.
+    -- A duration (`ts - ts`) compared with an interval compares as
+    -- microseconds; comparisons with intervals of days or months are refused
+    -- (`calendarInterval`), so the order is the duration's.
     let ty ← field c "type"
     if k == .time && ["intervalDayToSecond", "intervalCompound"].any
         fun t => (ty.getObjVal? t).toOption.isSome then return e
@@ -2898,9 +2900,10 @@ def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
 
 /-- `inp` with one more column: the value of the subquery `sq` on each row.
 
-* `(SELECT …)`: a left join on `TRUE`. DataFusion fails when the subquery
-  has several rows, so it must provably have at most one (`atMostOneRow`);
-  with none, the value is `NULL`.
+* `(SELECT …)`: a left join on `TRUE`. A scalar subquery is one value, and
+  the reference gives several rows no value; no guarantee of a verified run
+  rests on an engine raising (D70), so the subquery must provably have at
+  most one row (`atMostOneRow`). With none, the value is `NULL`.
 * `x IN (SELECT y …)`: `TRUE` if some `y = x`; otherwise `NULL` if `x` is
   `NULL` (and there are `y`s) or some `y` is, else `FALSE`. A left join with
   the distinct non-`NULL` `y`s finds the match (at most one per row), and a

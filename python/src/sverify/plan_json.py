@@ -330,8 +330,8 @@ def interval_literal(value: Any, dtype: Any) -> Json:
 def interval_json(months: int, micros: int) -> Json:
     """`months` and `micros` as one interval literal: a compound one if it
     has months (Lean reads those only added to a date or timestamp). Days are
-    written as seconds: DataFusion compares a duration with an interval as
-    `(months, days, nanoseconds)`, so only one of seconds compares as a number."""
+    written as seconds: a duration compares as microseconds, and the checker
+    refuses a comparison with an interval of days or months."""
     seconds, sub = divmod(micros, 1_000_000)
     day_to_second = {"seconds": seconds, "subseconds": str(sub), "precision": 6}
     if months:
