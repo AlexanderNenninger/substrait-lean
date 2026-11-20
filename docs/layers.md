@@ -22,7 +22,7 @@ holds the order (`LAYERS`) and fails on an import against it.
 | io | `io` | Delta, Iceberg and Flight sources and sinks |
 | nodes | `steps`, `nodes`, `sql_model`, `partition`, `asof` | Pipelines: nodes, steps, SQL steps, partitioned and as-of nodes |
 | integrations | `odcs`, `openlineage` | Data contracts (ODCS) and OpenLineage events |
-| public | `cli`, `testing`, `pytest_plugin`, `display`, `engines`, `errors`, `sverify` | The public modules and the `sverify` command |
+| public | `cli`, `testing`, `pytest_plugin`, `display`, `engines`, `errors`, `types`, `sverify` | The public modules and the `sverify` command |
 
 `sverify.contracts` re-exports the names that moved to `conditions` and
 `report`, so code that imports them from there keeps working.

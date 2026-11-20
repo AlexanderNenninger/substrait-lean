@@ -1,8 +1,8 @@
 """Object store options shared by sources and sinks, with credentials that
 are named, resolved when a table is opened, and kept out of `repr`.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public name `Storage` is re-exported by `sverify.io`.
 """
 
@@ -54,6 +54,9 @@ class Storage:
         writes: URI prefixes the credentials may write. Default: likewise.
         name: The credential's name in reports when `credentials` is not
             given, such as the CI role's. Default: "default chain".
+
+    Attributes:
+        credentials: The secret whose fields are options, or None.
 
     Examples:
         ```python

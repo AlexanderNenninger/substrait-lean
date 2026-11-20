@@ -1,7 +1,7 @@
 """DuckDB SQL to Substrait plans, through SQLGlot (#231, M1: #239).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. Users
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. Users
 reach it through `sv.sql(query, dialect="duckdb", semantics=...)`.
 
     plan = lift("SELECT region, sum(amount) AS total FROM orders GROUP BY region",

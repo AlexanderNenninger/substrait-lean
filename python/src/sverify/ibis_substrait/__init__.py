@@ -1,7 +1,7 @@
 """Ibis expressions to Substrait plans (protobuf JSON) for the Lean checker.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 Derived from ibis-substrait (Apache License 2.0; see `LICENSE` and
 `README.md` in this directory): one translation per Ibis operation, and
