@@ -445,6 +445,7 @@ def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
                 f"FROM {_shown(node)}: only the inputs' tables can be read",
                 hint="add the table to the tables, under its qualified name "
                 f"(for example '{node.sql(DIALECT)}'), as DuckDB resolves it",
+                construct="FROM",
             )
         if key is None or (not qualified and key == node.name):
             continue
@@ -1065,6 +1066,7 @@ class _Lift:
                     f"FROM {_shown(node)}: only the inputs' tables can be read",
                     hint="add the table to the tables, under its qualified name "
                     "(for example 'shop.main.orders'), as DuckDB resolves it",
+                    construct="FROM",
                 )
             found = self.schemas.get(node.name)
             if found is None:

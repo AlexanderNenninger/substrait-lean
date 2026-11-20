@@ -371,10 +371,14 @@ def _series(tree: sge.Expr) -> sge.Expr:
                 f"{name} with bounds that depend on the data is not supported",
                 hint="write constant bounds: the relation's size cannot depend on the data",
                 issue=321,
+                construct=f"function {name}",
             )
         temporal = isinstance(start, datetime)
         if temporal != isinstance(end, datetime):
-            raise SqlUnsupported(f"{name} of an integer and a date or timestamp is not supported")
+            raise SqlUnsupported(
+                f"{name} of an integer and a date or timestamp is not supported",
+                construct=f"function {name}",
+            )
         step: Any
         if step_node is None:
             if temporal:
@@ -382,6 +386,7 @@ def _series(tree: sge.Expr) -> sge.Expr:
                 raise SqlUnsupported(
                     f"{name} of dates or timestamps needs an INTERVAL step in DuckDB",
                     hint="add the step, for example INTERVAL 1 DAY",
+                    construct=f"function {name}",
                 )
             step = 1
         elif isinstance(step_node, sge.Interval):
@@ -392,18 +397,22 @@ def _series(tree: sge.Expr) -> sge.Expr:
             ):
                 raise SqlUnsupported(
                     f"{name} with the step {step_node.sql(DIALECT)} is not supported",
-                    hint="a step of whole weeks, days, hours, minutes or seconds",
+                    hint="use a step of whole weeks, days, hours, minutes or seconds",
                     issue=321,
+                    construct=f"function {name}",
                 )
             step = _STEP_UNITS[unit.name.upper()] * int(count.name)
         else:
             step = _constant(step_node)
             if not isinstance(step, int) or temporal:
                 raise SqlUnsupported(
-                    f"{name} with the step {step_node.sql(DIALECT)} is not supported"
+                    f"{name} with the step {step_node.sql(DIALECT)} is not supported",
+                    construct=f"function {name}",
                 )
         if not step:
-            raise SqlUnsupported(f"{name} with a step of 0 raises in DuckDB")
+            raise SqlUnsupported(
+                f"{name} with a step of 0 raises in DuckDB", construct=f"function {name}"
+            )
         values: list[Any] = []
         at: Any = start
         forward = _ascending(step)
@@ -416,9 +425,14 @@ def _series(tree: sge.Expr) -> sge.Expr:
                 raise SqlUnsupported(
                     f"{name} lists more than {_SERIES_ROWS} rows, which is not supported",
                     issue=321,
+                    construct=f"function {name}",
                 )
         if not values:
-            raise SqlUnsupported(f"{name} lists no rows, which is not supported yet", issue=321)
+            raise SqlUnsupported(
+                f"{name} lists no rows, which is not supported yet",
+                issue=321,
+                construct=f"function {name}",
+            )
         if temporal:
             cells = [
                 sge.Cast(
