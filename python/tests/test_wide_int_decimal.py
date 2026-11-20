@@ -90,3 +90,32 @@ def test_scale_zero_decimals_behave_alike_at_18_19_and_38_digits(name):
         rows = _rows(report.run(con, "duckdb")) if report.verdict != sv.Verdict.UNPROVED else None
         got[p] = (report.verdict, rows)
     assert got[19] == got[18] and got[38] == got[18], got
+
+
+@pytest.mark.parametrize(("p", "inferred"), [(18, True), (19, False), (38, False)])
+def test_a_round_trip_through_the_decimal_proves(p, inferred):
+    """W6, ruling 179: truncating a decimal back to an integer keeps its
+    operand's bound, so `CAST(CAST(i AS DECIMAL(p, 0)) AS BIGINT)` proves. At
+    18 digits a `BIGINT` needs a bound to fit the decimal at all, which is
+    inferred; at 19 and 38 none is."""
+    report = sv.verify(T.select(x=T.i.cast(f"decimal({p}, 0)").cast("int64")), on_inferred="warn")
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+    assert bool(report._inferred) == inferred, report._inferred
+
+
+def test_the_bound_is_the_operands():
+    """The control: a product of two `BIGINT`s at 38 digits may leave 64 bits,
+    so its cast back to `BIGINT` is not proved."""
+    report = sv.verify(T.select(x=(T.i.cast(WIDE) * T.j).cast("int64")), on_inferred="warn")
+    assert report.verdict == sv.Verdict.UNPROVED
+    assert [i.kind for i in report.errors] == ["cast out of range"]
+
+
+def test_a_scaled_decimal_of_a_bounded_integer_casts_back():
+    """A `DECIMAL(20, 2)` of an integer in [-1000, 1000] truncates back into a
+    `BIGINT`."""
+    from ibis import _
+
+    q = T.select(x=T.i.cast("decimal(20, 2)").cast("int64"))
+    report = sv.verify(q, requires={"t": [_.i.between(-1000, 1000)]}, on_inferred="warn")
+    assert report.verdict == sv.Verdict.PROVED, str(report)
