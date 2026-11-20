@@ -140,7 +140,7 @@ on 2026-11-07.
 | ASOF joins other than ASOF [LEFT] JOIN, or without ON | `asof_join` | Rewrite as named |
 | `NotIncrementalError` | Refresh | A node in a `Pipeline` (`.pipe`), which recomputes and diffs it |
 | "conditions on derived inputs were not proved", foreign keys in views, checked preconditions on views | Refresh | The `ensures` of the transform that builds the view; foreign keys [#869]; derived inputs: [#1051] |
-| "batches are not checked against rows_per yet" | Refresh | None named; lifted by [#219] |
+| "batches are not checked against rows_per or non_overlapping yet" | Refresh | None named; lifted by [#219] |
 | `SchemaError` | Refresh | Build the pipeline again |
 | `AuditError` | Refresh | Check the source's change feed or batches, then report it (the issue tracker's new-issue link) |
 | A fused `on_unproved="check"` node; `refresh()` under `sverify check` | Refresh | `.write(sink)` first; `if __name__ == "__main__":` |
