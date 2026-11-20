@@ -488,6 +488,8 @@ def test_read_lists_what_it_cannot_read_with_reasons():
         "a relationship sverify does not read",
         "a minimum sverify cannot read for boolean",
         "a relationship on the object",
+        # From `mustBeLessOrEqualTo: 2.5`: a cap that is no integer. The text
+        # is wrong for it (#1893); a fractional cap could read as floor(n).
         "a lower bound on the row count",
         "a key over columns the object lacks",
         "metric 'nullValues' on a whole object",
@@ -540,7 +542,7 @@ def test_export_maps_every_column_type():
     assert prop(doc, "dec")["physicalType"] == "DECIMAL(10, 2)"
 
 
-def test_export_writes_row_rates_references_and_unwritable_conditions():
+def test_export_writes_row_rates_references_and_keys():
     @sv.transform(
         requires={"orders": REQUIRES},
         ensures=[
@@ -561,6 +563,7 @@ def test_export_writes_row_rates_references_and_unwritable_conditions():
         "HAVING COUNT(*) > 5)"
     )
     assert prop(doc, "customer")["relationships"] == [{"type": "foreignKey", "to": "customers.id"}]
+    assert prop(doc, "id")["primaryKey"] and prop(doc, "id")["required"]
     # The rate reads back as the same condition.
     back = odcs.read(doc, strict=True).conditions()
     assert any(isinstance(c, RowsPer) and c.cols == ("customer",) and c.n == 5 for c in back)
