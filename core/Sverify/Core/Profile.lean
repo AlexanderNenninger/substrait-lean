@@ -89,6 +89,14 @@ def Outcome.val : Outcome → Value
   | .ok w => w
   | .error _ => .null
 
+omit [Boxes.Ambient] in
+theorem Outcome.bind_error {o : Outcome} {g : Value → Outcome} (h : o.err?.isSome) :
+    Outcome.err? (o >>= g) |>.isSome := by
+  cases o <;> simp_all [Outcome.err?] <;> rfl
+
+omit [Boxes.Ambient] in
+theorem Outcome.ok_bind {x : Value} {g : Value → Outcome} : (Except.ok x >>= g : Outcome) = g x := rfl
+
 /-- A higher-order function with a lambda that may raise: the lambda runs on
 every element, and the first error raises. -/
 def HoFn.applyP (f : HoFn) (v : Value) (p : Value → Outcome) : Outcome :=
@@ -130,6 +138,24 @@ omit [Boxes.Ambient] in
 theorem Expr.evalP_shift_cons {p : Profile} (w : Value) (e : Expr) (row : Row) :
     (e.shift 0).evalP p (w :: row) = e.evalP p row :=
   Expr.evalP_shift_insert w e [] row
+
+omit [Boxes.Ambient] in
+/-- Substituting expressions that evaluate to `vs` is evaluating on `vs`. -/
+theorem Expr.evalP_subst {p : Profile} {row : Row} {σ : List Expr} {vs : List Value}
+    (hσ : ∀ i, (σ.getD i (.lit .null)).evalP p row = .ok (vs.getD i .null)) :
+    ∀ t : Expr, (t.subst σ).evalP p row = t.evalP p vs
+  | .lit _ => rfl
+  | .field i => hσ i
+  | .un f a => by simp only [subst, evalP, evalP_subst hσ a]
+  | .bin f a b => by simp only [subst, evalP, evalP_subst hσ a, evalP_subst hσ b]
+  | .ifThen c t e => by simp only [subst, evalP, evalP_subst hσ c, evalP_subst hσ t, evalP_subst hσ e]
+  | .hof f l b => by
+    simp only [subst, evalP, evalP_subst hσ l]
+    congr 1; funext v; congr 1; funext x
+    refine evalP_subst (row := x :: row) (vs := x :: vs) (fun i => ?_) b
+    cases i with
+    | zero => rfl
+    | succ i => simp only [List.getD_cons_succ, getD_map_shift, Expr.evalP_shift_cons, hσ]
 
 /-! ## The reference is a profile -/
 

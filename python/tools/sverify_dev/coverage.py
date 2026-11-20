@@ -65,6 +65,7 @@ from sverify.engine import run_checker, written_plan
 from sverify.ibis_substrait import Unsupported, to_substrait_json
 from sverify_dev.coverage_cases import (
     APPROXIMATE,
+    APPROXIMATE_SPARK,
     CASES,
     DUCKDB_ORACLE,
     NO_DUCKDB_SQL,
@@ -82,6 +83,7 @@ __all__ = [
     "TABLES",
     "UNORDERED_LISTS",
     "APPROXIMATE",
+    "APPROXIMATE_SPARK",
     "DUCKDB_ORACLE",
     "Case",
     "L",

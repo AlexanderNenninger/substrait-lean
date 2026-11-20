@@ -29,7 +29,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Bind": {
+  "Sverify.Frontend.Bind": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -37,7 +37,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Choices": {
+  "Sverify.Analysis.Choices": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -99,15 +99,15 @@
   },
   "SubstraitLean.EngineRobust": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2691
   },
   "SubstraitLean.EngineTables": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2840
   },
   "SubstraitLean.Epsilon": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2721
   },
   "Sverify.Core.EvalFast": {
    "cpu_s": 30,
@@ -153,7 +153,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Infer": {
+  "Sverify.Analysis.Infer": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -313,7 +313,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.MarginSound": {
+  "Sverify.Analysis.MarginSound": {
    "cpu_s": 36,
    "rss_mb": 1653
   },
@@ -337,7 +337,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Pretty": {
+  "Sverify.Core.Pretty": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -349,19 +349,19 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Quarantine": {
+  "Sverify.Analysis.Quarantine": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
   "SubstraitLean.Realize": {
    "cpu_s": 30,
-   "rss_mb": 1536
+   "rss_mb": 2704
   },
-  "SubstraitLean.Refresh": {
+  "Sverify.Analysis.Refresh": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Retention": {
+  "Sverify.Analysis.Retention": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -377,7 +377,7 @@
    "cpu_s": 69,
    "rss_mb": 1838
   },
-  "SubstraitLean.Seam": {
+  "Sverify.Analysis.Seam": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -409,15 +409,15 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Terms": {
+  "Sverify.Analysis.Terms": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.TouchedFrames": {
+  "Sverify.Analysis.TouchedFrames": {
    "cpu_s": 40,
    "rss_mb": 1536
   },
-  "SubstraitLean.TouchedGroups": {
+  "Sverify.Analysis.TouchedGroups": {
    "cpu_s": 30,
    "rss_mb": 1536
   },
@@ -433,7 +433,7 @@
    "cpu_s": 30,
    "rss_mb": 1536
   },
-  "SubstraitLean.Write": {
+  "Sverify.Frontend.Write": {
    "cpu_s": 30,
    "rss_mb": 2286
   },

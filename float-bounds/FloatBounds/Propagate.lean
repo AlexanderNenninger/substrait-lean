@@ -207,6 +207,23 @@ theorem StdModel.rule_div_recip {a a' b εa ma lb : ℝ} (hlb : 0 < lb) (hb : lb
         have := abs_add_le (M.fl (a' * M.fl (1 / b)) - a' / b) (a' / b - a / b); linarith
     _ ≤ _ := by nlinarith
 
+
+/-- The reciprocal bound is at least the exact quotient's, term by term: `(1 + u)² ≥ 1 + u`,
+`3u + u² ≥ 2u` and `u (1 + u)(ma + εa) + 2u ≥ 2u`. So `rule_div_recip`'s bound also covers
+a division Polars computes exactly (a frame shorter than its threads), and the checker states
+it for every divisor without a column reference. -/
+theorem rule_div_le_recip {εa ma lb : ℝ} (hεa : 0 ≤ εa) (hma : 0 ≤ ma) (hlb : 0 < lb) :
+    εa / lb * (1 + u) + 2 * u * (ma / lb + tiny)
+      ≤ εa / lb * (1 + u) ^ 2 + (3 * u + u ^ 2) * (ma / lb)
+        + (u * (1 + u) * (ma + εa) + 2 * u) * tiny := by
+  have hu := u_pos
+  have ht := tiny_pos
+  have h1 : 0 ≤ εa / lb := by positivity
+  have h2 : 0 ≤ ma / lb := by positivity
+  have h3 : 0 ≤ u * (1 + u) * (ma + εa) * tiny := by positivity
+  nlinarith [mul_nonneg h1 (mul_nonneg hu.le hu.le), mul_nonneg h2 hu.le, mul_nonneg h1 hu.le,
+    mul_nonneg h2 (mul_nonneg hu.le hu.le)]
+
 /-- `|exp x − exp y| ≤ exp M · |x − y|` for `x, y ≤ M`. -/
 theorem abs_exp_sub_exp_le {x y M : ℝ} (hx : x ≤ M) (hy : y ≤ M) :
     |Real.exp x - Real.exp y| ≤ Real.exp M * |x - y| := by

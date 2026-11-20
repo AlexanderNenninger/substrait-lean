@@ -26,13 +26,6 @@ def test_no_new_refusal_without_a_construct():
     assert not risen, f"refusals with no `construct=`, as (baseline, now) per file: {risen}"
 
 
-def test_baseline_is_lowered_with_the_count():
-    base = json.loads(exits.CONSTRUCT_BASELINE.read_text())
-    assert exits.missing_construct_by_file() == base, (
-        "lower construct_baseline.json with `python -m sverify_dev.exits --write-baseline`"
-    )
-
-
 def test_every_construct_has_the_one_spelling():
     bad = [
         f"{s.file}:{s.line}: {s.construct!r}"

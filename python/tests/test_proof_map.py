@@ -125,6 +125,28 @@ def _theorems() -> set[str]:
     return names
 
 
+def _rows(section: str) -> list[list[str]]:
+    """The body rows of the tables in `section`, split as the tables are written."""
+    return [
+        row.split(" | ")
+        for row in _section(section).splitlines()
+        if row.startswith("| ") and not row.startswith(("| Guarantee", "| Module"))
+    ]
+
+
+def test_every_guarantee_has_four_cells():
+    """A row with more or fewer cells joins two guarantees or loses one, and
+    `test_named_theorems_exist` would skip its theorems (ruling 151)."""
+    bad = [" | ".join(r)[:80] for r in _rows("The guarantees and their theorems") if len(r) != 4]
+    assert not bad, bad
+
+
+def test_every_module_row_has_a_job():
+    rows = _rows("The modules")
+    bad = [r[0] for r in rows if r[0].startswith("| `") and (len(r) < 2 or not r[1].strip(" |"))]
+    assert not bad, bad
+
+
 def test_named_theorems_exist():
     table = _section("The guarantees and their theorems")
     known = _theorems()

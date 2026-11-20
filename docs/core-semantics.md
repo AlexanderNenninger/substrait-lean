@@ -298,7 +298,9 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
 | core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |
 | core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
-| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `power` | `rounding`, `on_domain_error`, `pow_one_inf` (`power`), `zero_sign` (`atan2` of `-0.0`) |
+| core | `fp.pow` | `power` on doubles | `rounding`, `on_domain_error`, `pow_one_inf`, `zero_sign` |
+| core | `fp.atan2` | `atan2` | `rounding`, `on_domain_error`, `zero_sign` (`atan2` of `-0.0`) |
+| core | `fp.elem` | `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan` | `rounding`, `on_domain_error`, `zero_sign` |
 | core | `fp.log` | `ln`, `log10`, `log2`, `logb` | `rounding`, `on_domain_error`, `on_log_zero` |
 | core | `fp.round` | `round` | `rounding`, `round_zero_sign`, `float_to_int` (where `round` returns a `BIGINT`) |
 | core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`), `float_to_int` (where they return a `BIGINT`) |
@@ -462,6 +464,7 @@ The Python side has the same three tables, as frozen dataclasses next to
 wave 3's function table (`python/src/sverify/_functions.py`):
 
 ```python
+# skip: a sketch of the tables' shape; the real definitions are in the source
 @dataclass(frozen=True)
 class Option:
     id: str

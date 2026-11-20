@@ -1,4 +1,4 @@
-import SubstraitLean.TouchedGroups
+import Sverify.Analysis.TouchedGroups
 
 /-!
 # Touched frames: a window row depends only on the rows in its frame
