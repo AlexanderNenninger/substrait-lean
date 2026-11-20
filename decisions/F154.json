@@ -1,0 +1,23 @@
+{
+  "id": "F154",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Track B's F3 is approved: plans with no double transfer to the reference via Rel.transfer_of_noDouble under transferB on t.refAt floatOnlyOptions; one mayDouble/hasDouble family in core; no extras hypothesis; raisesOn in #1834 accepted.",
+  "prs": [
+    1805,
+    1829,
+    1834
+  ],
+  "amends": [
+    "F136",
+    "F153"
+  ],
+  "amended_by": [
+    "F169",
+    "F171"
+  ],
+  "source": "fable-ruling-154-trackB-f3-nodouble.md",
+  "note": "K1 'amends ruling 136, condition 3' (four options to six). D1 withdraws the name Kind.hasDouble of ruling 153. K5 side lemma withdrawn by 169; condition 1 corrected by 171. No D-number."
+}

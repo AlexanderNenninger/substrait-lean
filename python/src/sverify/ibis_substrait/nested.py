@@ -56,12 +56,14 @@ class _Body(Exprs):
             if op != self.param:
                 raise Unsupported(
                     "a lambda body that reads an outer lambda's parameter is not supported "
-                    "yet (#327)"
+                    "yet (#327)",
+                    construct="LAMBDA",
                 )
             return PARAM
         if isinstance(op, ops.Field):
             raise Unsupported(
-                "a lambda body that reads the table's columns is not supported yet (#327)"
+                "a lambda body that reads the table's columns is not supported yet (#327)",
+                construct="LAMBDA",
             )
         return super().translate(op)
 
@@ -78,7 +80,10 @@ def _higher_order(name: str) -> Callable[[Exprs, Any], Json]:
 
     def rule(x: Exprs, op: Any) -> Json:
         if op.index is not None:
-            raise Unsupported("lambdas that take the element's index are not supported yet (#327)")
+            raise Unsupported(
+                "lambdas that take the element's index are not supported yet (#327)",
+                construct="LAMBDA",
+            )
         body = _Body(op.param)(op.body)
         return call(name, [x(op.arg), lambda_json(op.arg.dtype.value_type, body)])
 
@@ -91,7 +96,8 @@ def _array_contains(x: Exprs, op: Any) -> Json:
     # lambda is closed, so the value is a constant.
     if not isinstance(op.other, ops.Literal):
         raise Unsupported(
-            "contains needs a constant value (a lambda reading a column is not supported yet)"
+            "contains needs a constant value (a lambda reading a column is not supported yet)",
+            construct="function contains",
         )
     elem = op.arg.dtype.value_type
     t = _common(elem, op.other.dtype)
@@ -110,7 +116,7 @@ def _array_index(x: Exprs, op: Any) -> Json:
     # Ibis's `a[i]` is zero-based, negative from the end and NULL out of
     # range, as Substrait's `ListElement` is; its offset is a constant.
     if not isinstance(op.index, ops.Literal) or op.index.value is None:
-        raise Unsupported("a list element needs a constant index")
+        raise Unsupported("a list element needs a constant index", construct="LIST INDEX")
     return reference({"listElement": {"offset": int(op.index.value)}}, x(op.arg))
 
 
@@ -118,11 +124,13 @@ def _table_unnest(op: Any) -> Json:
     # No standard Substrait relation: an `ExtensionSingleRel` with our own
     # detail (`docs/nested-values.md`). The column keeps its place.
     if op.offset is not None:
-        raise ProducerUnsupported("unnest(offset=) is not supported")
+        raise ProducerUnsupported("unnest(offset=) is not supported", construct="function unnest")
     if op.keep_empty:
-        raise ProducerUnsupported("unnest(keep_empty=True) is not supported")
+        raise ProducerUnsupported(
+            "unnest(keep_empty=True) is not supported", construct="function unnest"
+        )
     if op.column_name != op.column.name or not isinstance(op.column, ops.Field):
-        raise Unsupported("unnest must unnest a column in place")
+        raise Unsupported("unnest must unnest a column in place", construct="function unnest")
     col = list(op.parent.schema.names).index(op.column.name)
     detail = {"@type": "type.googleapis.com/sverify.Unnest", "column": col}
     return {"extensionSingle": {"input": rel(op.parent), "detail": detail}}

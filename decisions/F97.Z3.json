@@ -1,0 +1,16 @@
+{
+  "id": "F97.Z3",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "Z3: the instant/naive mix stays refused on every path into the parser; Kind.comparable/subK changes reported first.",
+  "issues": [
+    1725
+  ],
+  "superseded_by": [
+    "F99"
+  ],
+  "source": "fable-ruling-utc-timestamps.md",
+  "note": "F99: 'Conditions Z3a to Z3h replace Z3 of ruling 97'."
+}

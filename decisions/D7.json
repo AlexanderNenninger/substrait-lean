@@ -1,0 +1,11 @@
+{
+  "id": "D7",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Translators are proved once, entry by entry; single plans are checked only for translations sverify does not own.",
+  "prs": [
+    562
+  ]
+}

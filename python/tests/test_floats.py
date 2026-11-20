@@ -48,14 +48,14 @@ def test_float_and_timestamp_contracts():
     assert [c.proved for c in report.ensures] == [True] * 5 + [False]
     # A timestamp lies in the reference's 0001 to 9999 by its type (D32), so
     # `w0.ts + 60 s` needs no inferred bound.
-    assert report.facts["t0"] == "any timestamp"
+    assert str(report.facts["t0"]) == "any timestamp"
 
 
 def test_float_ranges_are_exact_at_the_boundary():
     pos = s1.filter(s1.value > 0.5).select("value")
     report = sv.verify(pos, ensures=[_.value >= 0.5, _.value > 0.5, _.value > 0.6])
     assert [c.proved for c in report.ensures] == [True, True, False]
-    assert report.facts["value"] == "a double > 0.5"
+    assert str(report.facts["value"]) == "a double > 0.5"
 
 
 def test_nan_is_largest():
@@ -119,7 +119,7 @@ def test_integer_constants_compared_with_doubles():
     # `bpm >= 30` reaches the plan with an integer 30; it means the double 30.0.
     report = sv.verify(in_session(hr, sessions), ensures=[_.bpm >= 30, _.bpm > 29.5, _.bpm > 31])
     assert [c.proved for c in report.ensures] == [True, True, False]
-    assert report.facts["bpm"] == "a double ≥ 30.0 and ≤ 230.0"
+    assert str(report.facts["bpm"]) == "a double ≥ 30.0 and ≤ 230.0"
 
 
 def test_column_comparisons_imply_not_null():
@@ -179,4 +179,4 @@ def test_negating_a_non_positive_double_gives_a_non_negative_one():
     t = s1.filter(s1.value <= 0).select(y=-s1.value)
     report = sv.verify(t, ensures=[_.y >= 0])
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.facts["y"] == "a double ≥ 0.0"
+    assert str(report.facts["y"]) == "a double ≥ 0.0"

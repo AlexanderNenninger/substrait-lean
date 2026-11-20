@@ -27,10 +27,11 @@ is named in the report (`run_gate`) and `r` runs:
   projections, emits and fetches, and only its input is rewritten
   (`Rel.belowOrder`): an exact refinement (`Rel.RefinesBag.orderBy` and
   `Rel.Refines.filter` and the others, `Rel.belowOrder_refines`).
-* `issues`: the issues of the request with `s` as its root are among `r`'s,
-  and `s` has none, or every rule applied keeps its issues (`Rule.keepsIssues`).
-  An issue names an expression, not the rows it sees: a rule that evaluates
-  it on more rows can raise where `r` returns.
+* `issues`: neither `r` nor `s` has an issue. An issue names an
+  expression, not the rows it sees: a rule that evaluates it on more rows can
+  raise where `r` returns, and a rule that drops it (a join no column of which
+  is used) returns where `r` raises. `Same` equates the reference's `Rel.eval`,
+  which says nothing of where a plan raises (#2006).
 * `guard_free`: where `r` runs without its row checks (`guardFreeIn`), so does
   `s`.
 * `near`: `r`'s verdict does not rest on doubles within a bound: the
@@ -175,12 +176,12 @@ private def nearAll (r : Rel) : Bool :=
 -- comparison transfer at every built-in engine.
 #guard nearAll (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .field 0 }])
 #guard nearAll (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 1))))
--- An integer `MAX` does not, at any of them: `MIN` and `MAX` read
--- `list_null_order`, whose scope is every call (`optionScope`), and each
--- engine's table leaves the reference there.
+-- An integer `MAX` transfers at DuckDB only: `MIN` and `MAX` read `list_null_order`, whose
+-- scope is every call (`optionScope`, until it narrows to list arguments, ruling 171), and
+-- Polars's and Spark's tables leave the reference's `GREATEST` there.
 #guard (builtinEngines.filter fun e =>
     !transferB (.aggregate (.read "t") [] [{ fn := .max, arg := .field 0 }])
-      Profile.reference.table (e.table.refAt floatOnlyOptions)).length == 3
+      Profile.reference.table (e.table.refAt floatOnlyOptions)).map (·.name) == ["polars", "spark"]
 -- Ruling 169: an integer `BIT_AND` has no double but is not `closedB`
 -- (`AggFn.orderFree` leaves `.bit _` out), so the `near` gate keeps it as written.
 #guard
@@ -470,7 +471,7 @@ def gateOf (K : KnowledgeEnv) (r s part : Rel) (log : List Rule) : Option RunGat
   let is := R'.issuesIn K
   ([(log.isEmpty, RunGate.noRewrite),
     (!part.detPlan R.cat K.cols K.facts K.keys, .rows),
-    (!(is.all (R.issuesIn K).contains && (is.isEmpty || log.all Rule.keepsIssues)), .issues),
+    (!((R.issuesIn K).isEmpty && is.isEmpty), .issues),
     (R.guardFreeIn K && !R'.guardFreeIn K, .guardFree),
     (R.nearRoute r s, .near),
     (R'.closedIn != R.closedIn, .closed),
@@ -514,11 +515,10 @@ def runPlanJson : List (String × Json) :=
 end Request
 
 /-- The gate's table, for `substrait-check --rules`: each rule's name, whether
-it is on by default, and whether it keeps its issues and `Rel.Small`. -/
+it is on by default, and whether it keeps `Rel.Small`. -/
 def rulesJson : Json :=
   Json.arr (Rule.all.map fun r => Json.mkObj [("name", r.name),
-    ("on", Lean.toJson r.onByDefault), ("keeps_issues", Lean.toJson r.keepsIssues),
-    ("keeps_small", Lean.toJson r.keepsSmall)]).toArray
+    ("on", Lean.toJson r.onByDefault), ("keeps_small", Lean.toJson r.keepsSmall)]).toArray
 
 /-! ## Soundness -/
 
@@ -540,9 +540,9 @@ theorem check_run_plan_sound {input : Json} {R : Request} {rep : Report}
       (T.root.Small data → s.Small data) ∧
       (s.reads.all T.root.reads.contains = true) ∧
       (s.functions.all T.root.functions.contains = true) ∧
-      ((R.withRoot s).issuesIn R.kenv).all (R.issuesIn R.kenv).contains = true ∧
+      (R.issuesIn R.kenv = [] ∧ (R.withRoot s).issuesIn R.kenv = []) ∧
       (R.guardFreeIn R.kenv = true → (R.withRoot s).guardFreeIn R.kenv = true) := by
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf := check_transform_wf hR hc hD hT
   unfold Request.runPlanIn at hs
   rw [hT] at hs
@@ -615,8 +615,7 @@ theorem check_run_plan_sound {input : Json} {R : Request} {rep : Report}
   refine ⟨href.1, href.2, hsmall, ?_, ?_, ?_, fun h => ?_⟩
   · simpa [List.all_eq_true] using hreads
   · simpa [List.all_eq_true] using hfns
-  · revert his
-    cases ((R.withRoot s').issuesIn R.kenv).all (R.issuesIn R.kenv).contains <;> simp
+  · simpa [List.isEmpty_iff] using his
   · revert hgf; cases (R.withRoot s').guardFreeIn R.kenv <;> simp [h]
 
 
@@ -630,47 +629,50 @@ theorem Request.issuesIn_sound (R : Request) {data : Catalog} (hD : DataMeets R 
     (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
     (hsm : T.root.Small data) :
     ∀ p, T.root.HasIssue data false p →
-      p ∈ R.issuesIn R.kenv ∨ (p.1 = .infinite ∧ R.underReference = false) := by
+      p ∈ R.issuesIn R.kenv ∨ (p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs) := by
   intro p hp
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hw)
   have hin := Rel.issuesCapped_sound hD.wf hK.cols hK.facts (hK.windows hD.wf) hK.keys hD.caps hP
     hwf hsm p hp
   rw [Rel.issuesCapped_congr hD.arity] at hin
   simp only [Request.issuesIn, hT, hw, ↓reduceIte, List.mem_filter, List.mem_eraseDups,
     List.mem_append, KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity]
-  by_cases hinf : p.1 = .infinite ∧ R.underReference = false
+  by_cases hinf : p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs
   · exact .inr hinf
   · refine .inl ⟨.inl (by simpa [KnowledgeEnv.windows] using hin), ?_⟩
     obtain ⟨i, e⟩ := p
     simp only at hinf ⊢
     cases hr : R.underReference
-    · simp only [hr, and_true] at hinf
-      simp [hinf]
+    · by_cases hi : i = .infinite
+      · subst hi
+        by_cases he : e ∈ T.root.aggArgs
+        · simp [he]
+        · exact absurd ⟨rfl, hr, he⟩ hinf
+      · simp [hi]
     · simp
 
 /-- The data meets the request with another root: the root is no part of
 what `DataMeets` asks. -/
 theorem DataMeets.withRoot {R : Request} {data : Catalog} (hD : DataMeets R data) (s : Rel) :
     DataMeets (R.withRoot s) data :=
-  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.caps⟩
+  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.ranges, hD.caps⟩
 
 /-- **DuckDB's side condition for the plan to run, from the report**: under
-the reference, where the report lists no issues and the transformation is
-guard-free, DuckDB's lowered plan to run raises on nothing, on data that meets
-the request, its foreign keys, its bounds per key and the size hypothesis. The
-gate gives the plan to run no issues (`issues`), guard-freedom (`guard_free`)
-and the size hypothesis (`Rel.optimize_small`). -/
+the reference, where the transformation is guard-free, DuckDB's lowered plan
+to run raises on nothing, on data that meets the request, its foreign keys,
+its bounds per key and the size hypothesis. The gate gives the plan to run no
+issues (`issues`, which also asks the transformation to have none),
+guard-freedom (`guard_free`) and the size hypothesis (`Rel.optimize_small`). -/
 theorem run_plan_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
     (hFK : R.foreignKeysOf.Hold data) {s : Rel} (hs : R.runPlanIn R.kenv = .ok s)
     (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
-    (hsm : T.root.Small data) (href : R.underReference = true) (hi : rep.issues = [])
+    (hsm : T.root.Small data) (href : R.underReference = true)
     (hg : rep.guardFree = true) : (Engine.duckdb {} rfl).NoRaiseSide data s := by
   obtain ⟨-, -, hss, -, -, his, hgf⟩ := check_run_plan_sound hR hc hD hT hFK hs
   have hok := Request.check_ok (check_parse hR hc)
-  rw [hok.issues] at hi
   rw [hok.guardFree] at hg
   have hg' := hgf hg
   have hT' : (R.withRoot s).transform = some { T with root := s } := by
@@ -681,10 +683,8 @@ theorem run_plan_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
   cases hl
   obtain ⟨p, hp⟩ := Rel.hasIssue_of_raises false hloose
     (Lowering.lowerRel_raises Lowering.duckdb_total hr)
-  rcases (R.withRoot s).issuesIn_sound (hD.withRoot s) hT' hw hP (hss hsm) p hp with h | ⟨-, h⟩
-  · rw [hi] at his
-    simp only [List.all_eq_true, List.contains_iff_mem, List.not_mem_nil] at his
-    exact absurd (his p h) (by simp)
+  rcases (R.withRoot s).issuesIn_sound (hD.withRoot s) hT' hw hP (hss hsm) p hp with h | ⟨-, h, -⟩
+  · exact absurd (show p ∈ (R.withRoot s).issuesIn R.kenv from h) (by rw [his.2]; simp)
   · exact absurd href (by rw [show (R.withRoot s).underReference = R.underReference from rfl] at h
                           simp [h])
 

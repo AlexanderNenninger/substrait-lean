@@ -1,8 +1,8 @@
 """Piping, below the layers that build nodes: `Pipeable`, the `pipe` of
 sources, and `bind`, how a step takes its inputs (#730).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 It sits below the sources (`sverify.incremental`, `sverify.io`), which
 inherit `Pipeable`; `pipe` builds its node through `sverify._hooks.nodes`.

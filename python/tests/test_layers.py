@@ -71,7 +71,10 @@ LAYERS: list[tuple[str, list[str]]] = [
     ("io", ["io"]),
     ("nodes", ["steps", "nodes", "sql_model", "partition", "asof"]),
     ("integrations", ["odcs", "openlineage"]),
-    ("public", ["cli", "testing", "pytest_plugin", "display", "engines", "errors", "sverify"]),
+    (
+        "public",
+        ["cli", "testing", "pytest_plugin", "display", "engines", "errors", "types", "sverify"],
+    ),
 ]
 
 

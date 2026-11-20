@@ -32,6 +32,12 @@ When asked for a pipeline or a change to one:
      weaken `ensures=` if the promise was wrong.
    - `unsupported` (exit 3): a construct sverify can't prove; rewrite it
      with the constructs the `sverify` skill lists.
+   - `overflow` that `--fix` answers with "No preconditions to add": no
+     bound on a source column rules it out. Two cases. A cast stands between
+     the column and the operation (`value.cast("int64") * c`): bound the
+     value before the cast, or drop the cast. The operation reads another
+     node's output: state the bound in that transform's `ensures=`, where
+     it is proved, and its consumers' `requires=` read it from there.
    Repeat until it exits 0.
 5. Add a recorded sample of the source to `tests/fixtures/` and run
    `pytest` (it runs the workflows' steps offline, `EUROSTAT_FIXTURES`

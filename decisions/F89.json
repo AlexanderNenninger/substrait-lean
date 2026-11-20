@@ -1,0 +1,20 @@
+{
+  "id": "F89",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D50 lift capped at the top N nesting levels (N=3 or 2 by measurement) as an interim; D50-d removes the cap and is a 1.0 gate; Spark coverage accepted with checks C5-C6; unproved range/pattern guards accepted, D50-e (range guards) before 1.0.",
+  "prs": [
+    1681
+  ],
+  "amends": [
+    "D50",
+    "F76"
+  ],
+  "amended_by": [
+    "F94"
+  ],
+  "source": "fable-ruling-1681-depth-spark-unproved.md",
+  "note": "D50's text states the cap. Candidate B for D50-d would need a D-number (notes D53 is free); not assigned here. User may overrule to merge uncapped (on notice list)."
+}

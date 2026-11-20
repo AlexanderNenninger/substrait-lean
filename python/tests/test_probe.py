@@ -58,7 +58,7 @@ def test_double_division_is_ieee_but_for_nan():
 @pytest.mark.slow
 @pytest.mark.skipif(
     not (slt.REPLAY_DIR / "probes.json").is_file(),
-    reason="characterization/ of the repository is not here",
+    reason="the repository's replay is not here",
 )
 def test_probes_json_is_current():
     """`probes.json` is what the harness finds now (rerun
@@ -84,7 +84,7 @@ def test_probes_json_is_current():
 
 @pytest.mark.skipif(
     not (slt.REPLAY_DIR / "probes.json").is_file(),
-    reason="characterization/ of the repository is not here",
+    reason="the repository's replay is not here",
 )
 def test_observations_are_current():
     """The observations in `probes.json` (DuckDB queries the facts cite) are

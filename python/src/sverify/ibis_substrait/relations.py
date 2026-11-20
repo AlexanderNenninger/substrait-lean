@@ -56,7 +56,9 @@ def _exists_subquery(x: Exprs, op: Any) -> Json:
 def _in_subquery(x: Exprs, op: Any) -> Json:
     (column,) = op.rel.schema.types
     if not same_type(op.needle.dtype, column):
-        raise ProducerUnsupported(f"IN of {op.needle.dtype} in a subquery of {column}")
+        raise ProducerUnsupported(
+            f"IN of {op.needle.dtype} in a subquery of {column}", construct="IN"
+        )
     return {"subquery": {"inPredicate": {"needles": [x(op.needle)], "haystack": rel(op.rel)}}}
 
 
@@ -232,7 +234,10 @@ def _limit(op: Any) -> Json:
     # Ibis writes any other LIMIT as a subquery over the table (one row per
     # row, NULL when it is empty), which DataFusion refuses to run.
     if not isinstance(op.offset, int) or not (op.n is None or isinstance(op.n, int)):
-        raise Unsupported("LIMIT and OFFSET must be integers (Ibis writes a subquery otherwise)")
+        raise Unsupported(
+            "LIMIT and OFFSET must be integers (Ibis writes a subquery otherwise)",
+            construct="LIMIT",
+        )
     body: Json = {"input": rel(op.parent), "offsetExpr": literal(op.offset, dt.int64)}
     if op.n is not None:
         body["countExpr"] = literal(op.n, dt.int64)
@@ -283,7 +288,7 @@ def _join_chain(op: Any) -> Json:
             width += len(link.table.schema)
             continue
         if link.how not in _JOIN_TYPES:
-            raise ProducerUnsupported(f"{link.how} joins are not supported")
+            raise ProducerUnsupported(f"{link.how} joins are not supported", construct="JOIN")
         x = Exprs({**offsets, link.table: width})
         conds = [x(p) for p in link.predicates] or [literal(True, dt.boolean)]
         current = {
@@ -434,7 +439,9 @@ def _splice(plan: Json, views: Mapping[str, Any]) -> Json:
     def walk_view(read: Json, view: Any) -> Json:
         common = read.get("common", {})
         if set(common) - {"direct", "emit"}:
-            raise ProducerUnsupported(f"a read of a view with {sorted(common)} is not supported")
+            raise ProducerUnsupported(
+                f"a read of a view with {sorted(common)} is not supported", construct="VIEW"
+            )
         out = rel(view)
         if "filter" in read:
             out = {"filter": {"input": out, "condition": walk(read["filter"])}}
@@ -478,7 +485,10 @@ def _sql_model(op: Any) -> Json:
 
 def _sql_string_view(op: Any) -> Json:
     if not isinstance(op.parent, ops.AliasedRelation):
-        raise Unsupported("SQL over a table needs an alias to refer to it: use t.alias(name).sql")
+        raise Unsupported(
+            "SQL over a table needs an alias to refer to it: use t.alias(name).sql",
+            construct="function sql",
+        )
     parent = op.parent
     tables = {**_physical_tables(parent), parent.name: parent.schema}
     return _splice(_lift(op.query, tables).plan, {parent.name: parent.parent})

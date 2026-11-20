@@ -1,0 +1,20 @@
+{
+  "id": "F126",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "`construct` is the keyword-form category on both `UnsupportedError` and `DialectDifference`; `sql` holds the as-written text (always set on `DialectDifference`); `key` stays the Profile field; one helper names a node's category.",
+  "issues": [
+    700,
+    1744
+  ],
+  "prs": [
+    1785
+  ],
+  "amends": [
+    "F115"
+  ],
+  "source": "fable-ruling-126-construct-spelling.md",
+  "note": "Follows ruling 115. No D-number (unreleased report data)."
+}

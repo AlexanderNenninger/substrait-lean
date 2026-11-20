@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-08-snowflake-after-1-0",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "More Snowflake probing, recording and fuzzing is for after 1.0 (\"Let's not worry about Snowflake too much\").",
+  "issues": [
+    63,
+    849,
+    850,
+    851
+  ],
+  "source": "github:#851 comment 6717752965"
+}

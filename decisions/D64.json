@@ -1,0 +1,12 @@
+{
+  "id": "D64",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "reserved",
+  "summary": "Reserved for unnest with offset=, dropped for now.",
+  "prs": [
+    1951
+  ],
+  "note": "Reserved in ruling 181."
+}

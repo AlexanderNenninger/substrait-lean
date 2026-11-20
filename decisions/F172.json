@@ -1,0 +1,13 @@
+{
+  "id": "F172",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Approves #1879 (the F3 no-double transfer) on reading once the lean job is green and doc edits R1 (changelog title names the three engines) and R2 (trusted-base kinds assumption) are in; F1 closes the gate's link later.",
+  "prs": [
+    1879
+  ],
+  "source": "fable-ruling-154-trackB-f3-nodouble.md",
+  "note": "Log entry 172, inside the ruling 154 file. R1 and R2 met at b029a776. No D-number."
+}

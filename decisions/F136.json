@@ -1,0 +1,20 @@
+{
+  "id": "F136",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "The optimizer's near gate may narrow to plans where a double can occur, if the check covers every expression, runs on s and r, names the open `FloatOpenSafeP` obligation and per-engine theorems; else it stays as in 129.",
+  "issues": [
+    1787
+  ],
+  "amends": [
+    "F129"
+  ],
+  "amended_by": [
+    "F150",
+    "F154"
+  ],
+  "source": "fable-ruling-136-near-gate.md",
+  "note": "Explicitly 'amends ruling 129' (G2.5)."
+}

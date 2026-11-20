@@ -1,0 +1,16 @@
+{
+  "id": "F49.A3",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "withdrawn",
+  "summary": "check_margins treats a margin site over open choices (unordered FETCH, tied window) as it treats an unpinned table read.",
+  "issues": [
+    1608
+  ],
+  "superseded_by": [
+    "F54"
+  ],
+  "source": "fable-ruling-1608-sql-ordinals.md",
+  "note": "Withdrawn 2026-11-18 (night log entry 54) by the #1632 ruling: a warning is not enough where check and run pick ties separately."
+}

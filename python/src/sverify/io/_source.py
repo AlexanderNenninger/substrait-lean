@@ -1,8 +1,8 @@
 """Sources you write yourself: one `read(since)` method that returns the
 new rows and a cursor, as in data-warehousing-with-polars.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Source`, `Batch`, `from_query`, `from_frame`, `from_files`)
 are re-exported by `sverify.io`.
 
@@ -135,19 +135,23 @@ class Source(Pipeable, ABC):
       against the last, so the change is exact and nothing is assumed.
     - `kind="changes"` batches are rows added and removed, trusted as read.
 
-    The source keeps the table as of its latest version in memory, since
-    joins and keys need it, and has no metadata: preconditions on it are
-    checked on the rows. Versions count reads, and a sink records the
-    version of each source next to its cursor. A restarted job reads the
-    whole table again, unless the source implements `restore`: then it
-    starts from the table as of the cursor its sink recorded, and the first
-    refresh reads only what is new since (`read(cursor)`). A source that
-    cannot restore has its sink record a digest of its contents: a restarted
-    job whose first read has the recorded digest resumes there, and writes
-    nothing. Otherwise its stored nodes are recomputed and written
-    again in full, with versions above the ones their sink recorded, so the
-    sink still writes exactly once; a sink that holds other contents at a
-    version this process also reached is written over.
+    The source keeps the whole table (all columns) as of its latest version
+    in memory, in the Python process. It needs it for `snapshot`, to diff
+    `kind="snapshot"` batches and to digest what a restarted job reads; the
+    views' joins and keys read the pipeline's own copy in the engine's
+    store. That table is state sverify holds, of the size of the input, and
+    the 1.0 size bar of #1329 does not cover it. It has no metadata:
+    preconditions on it are checked on the rows. Versions count reads, and a
+    sink records the version of each source next to its cursor. A restarted
+    job reads the whole table again, unless the source implements `restore`:
+    then it starts from the table as of the cursor its sink recorded, and
+    the first refresh reads only what is new since (`read(cursor)`). A
+    source that cannot restore has its sink record a digest of its contents:
+    a restarted job whose first read has the recorded digest resumes there,
+    and writes nothing. Otherwise its stored nodes are recomputed and
+    written again in full, with versions above the ones their sink recorded,
+    so the sink still writes exactly once; a sink that holds other contents
+    at a version this process also reached is written over.
 
     Args:
         name: The table's name in the plans that read it.
@@ -166,6 +170,9 @@ class Source(Pipeable, ABC):
     Attributes:
         name: The table's name in the plans that read it.
         assumes: What the batches rest on, or None.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
 
     Examples:
         A source reading new rows from a list, by an increasing id:

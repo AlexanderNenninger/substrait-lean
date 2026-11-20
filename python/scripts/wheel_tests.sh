@@ -56,10 +56,15 @@ done
 export PYTHONPATH="$work/python/tools"
 cd "$work/python"
 
+# DuckDB at the version `uv.lock` locks: the engine facts are probed at one
+# version, and an install without the lock would take the newest.
+duckdb=$(awk '$0 == "name = \"duckdb\"" { getline; gsub(/[^0-9.]/, "", $3); print $3; exit }' "$here/uv.lock")
+[ -n "$duckdb" ] || { echo "wheel_tests.sh: no duckdb in uv.lock" >&2; exit 2; }
+
 # The test dependencies the installed package doesn't bring. Add one here
 # when a test needs it, or skip the test with `pytest.importorskip`.
 uv run --isolated --no-project ${python[@]+"${python[@]}"} "${install[@]}" \
-  --with pytest --with pytest-xdist --with hypothesis --with pyyaml --with mpmath \
+  --with "duckdb==$duckdb" --with pytest --with pytest-xdist --with hypothesis --with pyyaml --with mpmath \
   --with "pyiceberg[sql-sqlite]" \
   pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
   --rootdir "$work/python" \

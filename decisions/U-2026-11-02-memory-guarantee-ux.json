@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-02-memory-guarantee-ux",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Bounding row counts and memory is a goal; the user-facing promise is \"this pipeline won't run out of memory\", with sharding and further budget tightening as means.",
+  "issues": [
+    219,
+    294
+  ],
+  "source": "github:#219 comment 6577205544",
+  "note": "Decided with the user; #294 (bounded state for time windows) marked high value by the user the same day."
+}

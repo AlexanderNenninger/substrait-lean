@@ -36,6 +36,7 @@ READMES = [
     ROOT / "docs" / "build-performance.md",
     ROOT / "templates" / "pipelines" / "README.md",
     ROOT / "templates" / "pipelines" / "docs" / "for-enterprise.md",
+    *sorted((ROOT / "docs" / "theorems").glob("*.md")),
 ]
 # Pages whose Python blocks are not examples of the public API.
 EXEMPT = {

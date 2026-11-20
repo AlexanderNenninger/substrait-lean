@@ -44,7 +44,19 @@ A generated module's entries are proved only with `check_generated` on.
 
 [`scripts/lean-budget.json`](../scripts/lean-budget.json) holds a ceiling per
 module, 1.5 times its measured CPU time and peak RSS, at least 30 s and
-1.5 GB, and a default for modules it doesn't list. CI's `lean` job builds
+1.5 GB, and a default for modules it doesn't list. The measurements are the
+slowest of several runners, since CI's CPUs differ: the same module's CPU time
+varies by up to 2.5 times between them (AMD Genoa, Intel Sapphire Rapids and
+AMD Milan on AWS and GitHub,
+[#1865](https://github.com/AlexanderNenninger/substrait-lean/issues/1865)). No
+fixed benchmark scales with that, so the CPU ceilings are loose by design: a
+module rebuilt unchanged never warns, and a regression shows when it is large,
+about 1.5 times on the slowest runners and more on the fast ones. RSS doesn't
+depend on the runner. The
+[Lean budget workflow](../.github/workflows/lean-budget.yml), run by hand,
+builds every module cold on GitHub's runners and on AWS for `write-budget`.
+
+CI's `lean` job builds
 through the timing sysroot and runs `check` on the modules it rebuilt: the
 others came from the cache, unchanged with everything they import. A module
 over its ceiling is a warning on the job, naming the module, its time or
@@ -53,8 +65,30 @@ RSS and its ceiling, and a table in the job's summary, beside the report; the
 
 A module over its ceiling gets cheaper in the same PR where that is cheap.
 Otherwise the PR body says why it costs more, and its line in the budget may
-go up. After a PR that makes modules cheaper,
-`write-budget` from the CI artifact lowers the ceilings.
+go up. After a PR that makes modules cheaper, a run of the Lean budget
+workflow and `write-budget` over its artifacts lower the ceilings.
+
+CPU time on CI depends on the runner. The `lean` job runs on GitHub's
+`ubuntu-latest` and on self-hosted AWS spot instances of several types, and
+the same module's CPU time differs between them by a factor of about two. The
+`lean-timings` artifacts of 34 runs that rebuilt DuckDB's generated modules,
+from 2026-11-09 to 2026-11-19, with the modules unchanged since 2026-11-11:
+
+| module | runs | min CPU s | median | max | max/min |
+|---|---:|---:|---:|---:|---:|
+| `Sverify.DuckDB.LoweringOn.Arith` | 34 | 241 | 328 | 558 | 2.32 |
+| `Sverify.DuckDB.Lift.Duckdb.Arith` | 34 | 188 | 262 | 418 | 2.22 |
+| `Sverify.DuckDB.Lift.Duckdb.Compare` | 34 | 112 | 162 | 248 | 2.21 |
+| `Sverify.DuckDB.LoweringOn.Guards` | 34 | 124 | 146 | 236 | 1.90 |
+| `Sverify.DuckDB.LoweringOn.Integers` | 34 | 57 | 82 | 124 | 2.18 |
+| `Sverify.DuckDB.LoweringOn.Math` | 34 | 43 | 60 | 103 | 2.40 |
+
+The spread has no trend over those ten days: the highest values come on
+2026-11-11 as on 2026-11-19. A warning on one of these modules, with the
+module and its imports unchanged, is the runner; the ceilings came from the
+faster runners. Comparing a module's CPU time with another module's on the
+same run would take the runner out
+([#1865](https://github.com/AlexanderNenninger/substrait-lean/issues/1865)).
 
 ## The checker's speed
 
