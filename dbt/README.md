@@ -90,7 +90,7 @@ dbt build --exclude selector:sverify_proved
 `sverify-dbt suggest` prints the tests that would let sverify prove more,
 as a dbt properties file to merge into the project's YAML: what each model
 needs, and the tests on its inputs under which an unproved test would hold,
-each with its reason as a comment (`--output FILE` writes it). Merge them
+each with its reason as a comment (`--output FILE` writes it). Where a NULL comes through an expression of the model, such as `cast(ordered_at as date)`, it also tries `not_null` on the columns of the inputs that no test covers, and names the ones the proof needs. Merge them
 by hand, and tighten a bound where your data allows:
 [`examples/shop/PROOF-STATUS.md`](examples/shop/PROOF-STATUS.md) shows one.
 

@@ -288,7 +288,63 @@ class _Checker:
         if report is None:
             return res
         self._read(report, m, res, ensures)
+        self._blame_nulls(res, inputs, tables, requires, ensures)
         return res
+
+    def _blame_nulls(
+        self, res: ModelResult, inputs: list[Relation], tables: dict, requires: dict, ensures: list
+    ) -> None:
+        """For each test unproved because a row may fail it or a NULL may reach it, find the
+        `not_null` tests on the inputs under which it holds: sverify suggests
+        none for a NULL that comes through an expression. Tries every input
+        column no test covers at once, then drops each that the proof does not
+        need (`would_hold`)."""
+        candidates = [
+            (r, c)
+            for r in inputs
+            for c in tables[self.names[r.unique_id]]
+            if c not in self._not_null(r)
+        ]
+        for tr, cs in ensures:
+            if (
+                tr.status != "not proved"
+                or tr.would_hold
+                or tr.blocker not in ("may_be_false", "may_be_null")
+            ):
+                continue
+            held = self._holds_with(res, tables, requires, cs, candidates)
+            for pair in list(held or []):
+                rest = [x for x in held or [] if x != pair]
+                if rest and self._holds_with(res, tables, requires, cs, rest):
+                    held = rest
+            for r, c in held or []:
+                tr.would_hold.setdefault(r.ref, []).append((c, "not_null"))
+
+    def _holds_with(
+        self, res: ModelResult, tables: dict, requires: dict, cs: list, extra: list
+    ) -> list | None:
+        """`extra` (input, column) pairs when the conditions `cs` are proved
+        with `IS NOT NULL` on each of them added to `requires`, else None."""
+        if not extra:
+            return None
+        req = {t: list(v) for t, v in requires.items()}
+        for r, c in extra:
+            req[self.names[r.unique_id]].append(f"{mapping.ident(c)} IS NOT NULL")
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                report = sv.verify(
+                    res.sql,  # type: ignore[arg-type]
+                    tables=tables,
+                    requires=req,
+                    ensures=cs,
+                    semantics="duckdb",
+                    on_inferred="error",
+                    counterexamples=0,
+                )
+        except ValueError:
+            return None
+        return extra if all(c.portable for c in report.ensures) and not report.needs else None
 
     def _ensures(self, m: Relation, res: ModelResult) -> list[tuple[Any, list]]:
         """The conditions to prove, each with its test or constraint result."""
@@ -429,6 +485,7 @@ class _Checker:
                 c = bad[0]
                 tr.status = "not proved"
                 tr.why = _why(c)
+                tr.blocker = c.reason
                 tr.counterexample = str(c.counterexample) if c.counterexample else None
                 tr.would_hold = {
                     _user_table(t, self): [mapping.as_dbt_test(_sql(x)) for x in xs]
