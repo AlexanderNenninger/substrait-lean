@@ -74,8 +74,9 @@ Before every push, run the cheap checks from `python/`: `poe fmt` (ruff's fixes
 and formatting, also of the notebooks), then `poe lint` and `poe typecheck`
 (pyrefly). They take seconds and catch what CI's `static` job would fail on.
 Call them as `.venv/bin/poe …` (or `.venv/bin/ruff`, `.venv/bin/pyrefly`):
-`uv run` may rebuild the package, and its build hook runs a full `lake build`
-that races any build already running. A worktree without a venv can use
+a plain `uv run` may rebuild the package, and its build hook runs a full
+`lake build` that races any build already running. poe runs its own tasks with
+`uv run --no-sync` (`[tool.poe]` in `python/pyproject.toml`), which never rebuilds. A worktree without a venv can use
 another worktree's tools. A push that changes Lean also builds with
 `lake build --wfail` first.
 
