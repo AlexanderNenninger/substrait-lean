@@ -406,7 +406,9 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run, and no run raises."""
+    """Every postcondition holds on every result the reference allows for the
+    transformation, and no run raises (`verdict_proved_sound`). On an engine
+    they hold by its evidence line."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
