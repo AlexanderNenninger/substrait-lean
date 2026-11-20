@@ -106,9 +106,13 @@ CODES: dict[str, str] = {
         "`--timeout` or `SVERIFY_TIMEOUT` (0 turns it off)."
     ),
     "memory": (
-        "DuckDB ran out of its `--memory-limit` (`SVERIFY_MEMORY_LIMIT`) while it ran a "
-        "query, after spilling what it could to disk. Nothing was written to a sink. Raise "
-        "the limit, or refresh in smaller batches."
+        "A step ran out of the memory allowed it (`sverify.errors.MemoryLimitError`), "
+        "and the run stopped like a timeout. Two limits, each with its own setting: "
+        "DuckDB's `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, past which it spills to disk "
+        "first) while a run or refresh moves data, after which nothing was written to a "
+        "sink; and the checker's cap (`SVERIFY_CHECKER_MEMORY_MB`, 4096 by default) "
+        "during a proof. The message names which. Raise that limit, or refresh in "
+        "smaller batches. The limit does not reach Polars."
     ),
     "refused": (
         "The node is proved, but no route takes its proof to the engine, or its sink "
@@ -129,6 +133,19 @@ CODES: dict[str, str] = {
         'Name them instead: `Storage(credentials="lake")`, `Secret("env:NAME")`, '
         "or leave them to the store's default chain."
     ),
+    "contract_weakened": (
+        "With `--against-sink`: a promise of the contract a stored node's sink last "
+        "committed (a NOT NULL column, a CHECK constraint, a unique key) that the node, as "
+        "the file now defines it, does not prove. Consumers of the sink rely on it. A CHECK "
+        "whose text changed is kept when sverify proves the old text from the new contract. "
+        "Restore the guarantee in the transform's `ensures`, or accept the change knowingly "
+        "and let the next refresh record the new contract."
+    ),
+    "plan_changed": (
+        "With `--against-sink`: the stored node's plan, or its profile, differs from the "
+        "one its sink last committed, so the next refresh recomputes the node rather than "
+        "resuming its state. A note: the contract may be unchanged."
+    ),
     "usage": "The command line is wrong: a flag, a missing file, or a node the file lacks.",
     "error": "The file raised an error of its own while sverify imported it: see the message.",
 }
@@ -138,6 +155,7 @@ CODES: dict[str, str] = {
 LEVELS: dict[str, str] = {
     "lenses": "note",
     "unchecked": "warning",
+    "plan_changed": "note",
     "sum_overflow": "warning",
     "scope": "warning",
     "inline_credentials": "warning",

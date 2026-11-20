@@ -1866,13 +1866,16 @@ def _prove_once(
             )
         checked[-1].condition = c
     seen = _user_text.columns(transform_plan)
+    # Every plan a shown expression's literals can come from: a text two
+    # literals share (the transform's 3.0000001, a condition's 3.0) is dropped.
+    doubles = _user_text.plan_doubles([transform_plan, req_plans, ens_plans])
     temporal = {
         c for sch in [*schemas.values(), result] for c, t in sch.items() if t.is_timestamp()
     }
 
     def shown(e: str, measure: bool = False) -> str | None:
         n = _user_text.named(e, transform_plan, measure, seen)
-        return None if n is None else _user_text.pretty(n, dialect, temporal)
+        return None if n is None else _user_text.pretty(n, dialect, temporal, doubles)
 
     def show(e: str) -> str:
         return shown(e) or e

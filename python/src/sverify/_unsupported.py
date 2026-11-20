@@ -101,6 +101,26 @@ class ConditionError(UnsupportedError):
         )
 
 
+class MemoryLimitError(SverifyError, MemoryError):
+    """A step ran out of the memory sverify or the engine allows it (#783):
+    the checker past its cap during a proof, or DuckDB past its
+    `memory_limit` during a run or a refresh. A refresh that raises it
+    commits nothing. The engine's own exception is the `__cause__`.
+    A `MemoryError`."""
+
+    code = "memory_limit"
+
+    def __init__(self, message: str, *, stage: str, limit: str, setting: str):
+        super().__init__(message)
+        self.stage = stage
+        """Where it ran out: `"proof"`, `"run"` or `"refresh"`."""
+        self.limit = limit
+        """The limit in force, as text (`"2.0 GiB"`, `"4096 MB"`)."""
+        self.setting = setting
+        """The setting that raises the limit: `SVERIFY_MEMORY_LIMIT` (the data's
+        engine) or `SVERIFY_CHECKER_MEMORY_MB` (the checker)."""
+
+
 class SverifyWarning(UserWarning):
     """The base of every warning sverify issues. In a CI job,
     `warnings.filterwarnings("error", category=SverifyWarning)` (or pytest's

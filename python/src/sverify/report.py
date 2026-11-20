@@ -27,7 +27,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _hooks
+from sverify import _decimals, _deprecated, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -1327,35 +1327,40 @@ class Report:
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
-        if (
-            check_requires
-            and kind == "translated"
-            and self.semantics == "reference"
-            and self._guard_free
-            and theorem is not None
-        ):
-            out = self._with_plan(
-                plan,
-                run_engine,
-                lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
-                recheck,
-            )
-        else:
-            out = self._with_plan(
-                plan,
-                run_engine,
-                lambda plan: run_plan(
-                    con,
+        try:
+            if (
+                check_requires
+                and kind == "translated"
+                and self.semantics == "reference"
+                and self._guard_free
+                and theorem is not None
+            ):
+                out = self._with_plan(
                     plan,
-                    engine,
-                    finite=finite,
-                    asof=self._native_asof(plan, run_engine),
-                    # A proved report's exact level justifies Spark's windows
-                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                    tie_free=self._exact and kind != "unverified",
-                ),
-                recheck,
-            )
+                    run_engine,
+                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                    recheck,
+                )
+            else:
+                out = self._with_plan(
+                    plan,
+                    run_engine,
+                    lambda plan: run_plan(
+                        con,
+                        plan,
+                        engine,
+                        finite=finite,
+                        asof=self._native_asof(plan, run_engine),
+                        # A proved report's exact level justifies Spark's windows
+                        # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                        tie_free=self._exact and kind != "unverified",
+                    ),
+                    recheck,
+                )
+        except Exception as e:
+            if (oom := _duckdb.memory_limit_error(e, "run")) is not None:
+                raise oom from e
+            raise
         out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
@@ -1856,7 +1861,8 @@ class Report:
     @property
     def _summary(self) -> str:
         """The report's first line, by the verdict: "proved"; "proved with
-        checks: " and the assumptions that run time checks ("2 assumptions");
+        checks: " and how many each run checks on the data ("2 run-time
+        checks", the lines `while it runs:` lists, #1997);
         or "NOT proved: " and what is missing, counted ("1 of 2
         postconditions not proved, 1 possible runtime error")."""
         match self.verdict:
@@ -1864,7 +1870,7 @@ class Report:
                 return "proved"
             case Verdict.PROVED_WITH_CHECKS:
                 k = len(self.assumed)
-                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+                return f"proved with checks: {k} run-time check{'' if k == 1 else 's'}"
             case _:
                 return f"NOT proved: {', '.join(self._counts())}"
 

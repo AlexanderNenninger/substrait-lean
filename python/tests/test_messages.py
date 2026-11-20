@@ -103,6 +103,50 @@ def test_aggregates_over_one_column_are_named_together() -> None:
     assert "assumes: mean(temp_c) or std(temp_c) stays finite on finite inputs" in report.details()
 
 
+def test_a_large_double_constant_reads_as_python_writes_it() -> None:
+    """#885 finding 1d: `1e302` reads as `1e+302`, not its 303 digits."""
+    t = ibis.table({"value": "float64"}, name="s")
+    text = sv.verify(t.select(scaled=t.value * 1e302)).details()
+    assert "value * 1e+302 stays finite on finite inputs" in text
+    assert "000000000" not in text
+    # #1997: every double constant, not only the long ones.
+    text = sv.verify(t.select(scaled=t.value * 3 + 1)).details()
+    assert "value * 3.0 + 1.0 stays finite" in text and ".000000" not in text
+    # The plan's literals read exactly, also where `%f` rounds them.
+    text = sv.verify(t.select(scaled=t.value * 1e-7 + 0.1234567)).details()
+    assert "value * 1e-07 + 0.1234567 stays finite" in text
+    text = sv.verify(t.select(scaled=t.value * 3.0000001)).details()
+    assert "value * 3.0000001 stays finite" in text
+    # Two literals that `%f` prints alike stay as Lean rounded them: `3.0`
+    # would read as exact.
+    text = sv.verify(t.select(scaled=t.value * 3.0000001 + 3.0)).details()
+    assert "value * 3.000000 + 3.000000 stays finite" in text
+    # A condition's literal counts too: the transform's 3.0000001 beside a
+    # precondition's 3.0 claims neither's text, so no expression reads as the
+    # other's value.
+    text = sv.verify(
+        t.select(scaled=t.value * 3.0000001), requires={"s": [_.value <= 3.0]}
+    ).details()
+    assert "assumes: value * 3.000000 stays finite" in text
+    from sverify._user_text import plan_doubles, pretty
+
+    lit = {"literal": {"fp64": 3.0000001}}
+    assert plan_doubles([lit, [{"literal": {"fp64": 3.0}}]]) == {}
+    assert plan_doubles([lit, {"literal": {"i64": "3"}}]) == {}
+    assert plan_doubles([lit]) == {"3.000000": "3.0000001"}
+
+    # Without the plan's literal, `.000000` proves integral only from 2^33 on.
+    assert pretty("(y *. 3.000000d)") == "y * 3.000000"
+    assert pretty("(y *. 8589934592.000000d)") == "y * 8589934592.0"
+    # A decimal literal keeps its digits, which are its scale.
+    assert (
+        pretty(
+            "(x < 0.000000) or (y *. 2.000000d)", doubles={"0.000000": "1e-07", "2.000000": "2.0"}
+        )
+        == "(x < 0.000000) or (y * 2.0)"
+    )
+
+
 def test_a_decimal_cast_reads_as_the_cast() -> None:
     report = sv.verify(
         "SELECT order_id, amount::DECIMAL(10,2) AS amt FROM orders", tables={"orders": ORDERS}
