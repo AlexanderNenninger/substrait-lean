@@ -363,9 +363,12 @@ in place of the plan as written only where its rule is on and every check of
 `Request.runPlanIn` passes (`SubstraitLean/RunPlan.lean`, #1787): the
 request is under the reference, the rewrite refines the plan (up to the
 order of rows for a `multiset` observation, exactly under an `ORDER BY`
-otherwise), adds no issue, stays guard-free, reads no option and calls no
-function the plan does not, and no double occurs where the observation
-compares doubles within a bound. The report names the check that kept the
+otherwise), neither plan has an issue, the rewrite stays guard-free, reads
+no option and calls no function the plan does not, and no double occurs where
+the observation compares doubles within a bound. `Same` equates the
+reference's results and says nothing of where a plan raises, so a rule that
+drops a part of the plan that may raise, such as an unused join input with an
+`assumed` overflow, keeps the plan as written (#2006). The report names the check that kept the
 plan as written (`run_gate`), and `check_run_plan_sound` proves the rest.
 `Report.run` takes the rewrite on the translated and transfer routes
 (`routes.RUNS_REWRITE`), where it checked the preconditions on its data

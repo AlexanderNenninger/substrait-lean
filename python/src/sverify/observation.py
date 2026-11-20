@@ -531,6 +531,8 @@ def _component(dtype: Any) -> str | None:
         return "strings"
     if dtype.is_decimal():
         return "decimals"
+    if dtype.is_array() or dtype.is_struct() or dtype.is_map():
+        return "elements"
     return None
 
 
@@ -576,7 +578,7 @@ def dependencies(
         why_open = (open_columns or {}).get(n)
         if why_open is not None and why_open not in out:
             out.append(why_open)
-    ignored = set(observation.ignored()) - {"rows", "zeros", "errors", "elements"}
+    ignored = set(observation.ignored()) - {"rows", "zeros", "errors"}
     for comp in (_component(columns[n]) for n in names):
         if comp is None or comp not in ignored or comp in out:
             continue
