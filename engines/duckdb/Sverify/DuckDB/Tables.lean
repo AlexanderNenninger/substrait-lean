@@ -184,8 +184,8 @@ def Profile.duckdb.obs : ObsTable := [
     precondition := "(COUNT(x) − 1)·10^scale < 2^52 for the decimal fraction's scale, checked on the data (the written plan raises past it)",
     note := "`LINEAR` states DuckDB's own `quantile_cont`, which leaves the model's neighbours at a whole exact position its double misses and where the lower neighbour is first; the written plan takes `quantile_disc` at a whole exact position and bounds the first lower neighbour by the second smallest value (python/tests/test_duckdb_quantile_900.py)." }).tracking 900)]
 
-/-- No decimal row is proved: `Profile.duckdb` states decimals as the printer
-writes them, not DuckDB's own functions (ruling 185, #241). -/
+-- No decimal row is proved: `Profile.duckdb` states decimals as the printer
+-- writes them, not DuckDB's own functions (ruling 185, #241).
 #guard Profile.duckdb.obs.all fun (g, _, r) =>
   !(g.any (·.startsWith "dec.")) || match r.evidence with | .proved _ _ => false | _ => true
 
