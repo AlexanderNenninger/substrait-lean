@@ -51,14 +51,22 @@ class SqlUnsupported(Unsupported):
     one-to-one in a transform, and the `issue` that tracks the construct
     where an open one does."""
 
-    def __init__(self, message: str, hint: str | None = None, issue: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        issue: int | None = None,
+        *,
+        construct: str | None = None,
+        sql: str | None = None,
+    ):
         if hint:
             message = f"{message}; {hint}"
         elif "#" not in message and "Ibis" not in message:
             where = f" ({_ISSUES}/{issue})" if issue else ""
             tracked = f"tracked in #{issue}{where}; until then, " if issue else ""
             message = f"{message}; {tracked}write this step in Ibis"
-        super().__init__(message)
+        super().__init__(message, construct=construct, sql=sql)
 
 
 class ProducerUnsupported(Unsupported):
@@ -67,12 +75,12 @@ class ProducerUnsupported(Unsupported):
     what the user can do: rewrite the expression with a supported operation
     or a supported column type."""
 
-    def __init__(self, message: str, hint: str | None = None):
+    def __init__(self, message: str, hint: str | None = None, *, construct: str | None = None):
         if hint:
             message = f"{message}; {hint}"
         elif "#" not in message:
             message = f"{message}; rewrite it with a supported operation or column type"
-        super().__init__(message)
+        super().__init__(message, construct=construct)
 
 
 # --------------------------------------------------------------------------
