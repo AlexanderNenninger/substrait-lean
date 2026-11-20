@@ -112,10 +112,13 @@ def test_a_large_double_constant_reads_as_python_writes_it() -> None:
     # #1997: every double constant, not only the long ones.
     text = sv.verify(t.select(scaled=t.value * 3 + 1)).details()
     assert "value * 3.0 + 1.0 stays finite" in text and ".000000" not in text
+    # A fraction stays as Lean rounded it: `0.0` would read as exact.
+    text = sv.verify(t.select(scaled=t.value * 1e-7 + 0.1234567)).details()
+    assert "value * 0.000000 + 0.123457 stays finite" in text
     # A decimal literal keeps its digits, which are its scale.
     from sverify._user_text import pretty
 
-    assert pretty("(x < 0.000000) or (y *. 1.500000d)") == "(x < 0.000000) or (y * 1.5)"
+    assert pretty("(x < 0.000000) or (y *. 2.000000d)") == "(x < 0.000000) or (y * 2.0)"
 
 
 def test_a_decimal_cast_reads_as_the_cast() -> None:

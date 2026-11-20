@@ -149,11 +149,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"sverify-dbt: {e}", file=sys.stderr)
         return USAGE
     except Exception as e:
-        # The project's own DuckDB connection raises DuckDB's error; sverify's
-        # runs raise MemoryLimitError.
-        oom = e if isinstance(e, MemoryLimitError) else memory_limit_error(e, "check")
-        if oom is not None:
-            print(f"sverify-dbt: {oom}", file=sys.stderr)
+        # sverify raises MemoryLimitError; the project's own DuckDB connection,
+        # which describes the project's models, raises DuckDB's error.
+        if isinstance(e, MemoryLimitError):
+            print(f"sverify-dbt: {e}", file=sys.stderr)
+            return BUDGET
+        if memory_limit_error(e, "run") is not None:
+            print(
+                f"sverify-dbt: DuckDB ran out of memory describing the project's models "
+                f"({e}): raise SVERIFY_MEMORY_LIMIT or --memory-limit (such as 4GB)",
+                file=sys.stderr,
+            )
             return BUDGET
         print(f"sverify-dbt: error: {type(e).__name__}: {e}", file=sys.stderr)
         return ERROR

@@ -573,6 +573,7 @@ def drift(committed: Contract, node: Any) -> Drift:
     proof of it as a postcondition of the node. No promise is kept without
     its text in the fresh record or a proof."""
     from sverify.contracts import verify, view_contract
+    from sverify.errors import MemoryLimitError
 
     expr = node._query()._expr
     vc = view_contract(expr)
@@ -584,6 +585,8 @@ def drift(committed: Contract, node: Any) -> Drift:
             continue
         try:
             got = verify(expr, requires=vc.requires, ensures=[text], semantics=vc.profile)
+        except MemoryLimitError:
+            raise  # a budget, which the CLI reports as one (exit 4)
         except Exception as e:  # noqa: BLE001 - unreadable now: weakened, with why
             why[text] = f"not proved: sverify cannot read it against the node ({e})"
             continue

@@ -462,6 +462,25 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     done = subprocess.run(argv, capture_output=True, text=True, env=env)
     assert done.returncode == 0, done.stdout + done.stderr
     assert sink.exists()
+    # A breach after an earlier commit leaves that commit as it was (M7).
+    from deltalake import DeltaTable
+
+    from sverify.io import DeltaSink
+
+    version, contract = DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract()
+    assert contract is not None
+    # A new version of the source, in another file (Python caches the first's
+    # bytecode), so the refresh computes again.
+    newer = tmp_path / "newer.py"
+    newer.write_text(path.read_text().replace('name="orders",', 'name="orders", version=2,'))
+    again = [sys.executable, "-m", "sverify.cli", "refresh", f"{newer}:stored", "--json"]
+    done = subprocess.run(
+        [*again, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
+    )
+    assert done.returncode == 4, done.stdout + done.stderr
+    assert json.loads(done.stdout)["error"]["code"] == "memory"
+    after = (DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract())
+    assert after == (version, contract)
 
 
 def test_a_dbt_project_needs_sverify_dbt(tmp_path, capsys, monkeypatch):

@@ -423,17 +423,18 @@ def _drop_implicit_casts(s: str) -> str:
 
 
 #: A double as Lean prints it (`%f`, six decimals, and a `d`): `3.000000d`,
-#: or `1e302` as its 303 digits (#885, #1997). Python's `repr` is the
-#: shortest text that reads back as the same double. A decimal literal has
-#: no `d`, and its digits are its scale.
+#: or `1e302` as its 303 digits (#885, #1997). A decimal literal has no
+#: `d`, and its digits are its scale.
 _LEAN_DOUBLE = re.compile(r"(?<![\w.])(\d+\.\d+)d\b")
 
 
 def _short_double(m: re.Match[str]) -> str:
-    """A double literal as `repr` writes it, where Lean's text is the
-    double's own `%f` text."""
-    x = float(m[1])
-    return repr(x) if f"{x:f}" == m[1] else m[1]
+    """An integral double literal as Python's `repr` writes it: `3.0`,
+    `1e+302`. Any other stays as Lean wrote it: `%f` rounded it to six
+    decimals, so `0.000000` may be `1e-07`, and a shorter text would read
+    as exact."""
+    whole, frac = m[1].split(".")
+    return repr(float(whole)) if whole != "0" and not frac.strip("0") else m[1]
 
 
 def pretty(
