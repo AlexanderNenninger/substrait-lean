@@ -62,7 +62,7 @@ def test_sink_record_reads(version: str) -> None:
     text = (FORMATS / version / "sink" / "contract.json").read_text()
     c = Contract.from_json(text)
     _valid(json.loads(c.to_json()), "sink-contract.schema.json")
-    assert c.format == CONTRACT_FORMAT == 2
+    assert c.format == CONTRACT_FORMAT == 3
     assert c.node == "doubled" and c.sources == {"orders": 2} and c.epoch == 2
     assert "id" in c.not_null and c.unique == [["id"]]
 
@@ -165,6 +165,38 @@ def test_newer_record_refused() -> None:
     with pytest.raises(ValueError, match="upgrade sverify"):
         Contract.from_json(json.dumps({**data, "format": CONTRACT_FORMAT + 1}))
     assert Contract.from_json(json.dumps({**data, "added_in_1_9": [1]})) == Contract.from_json(text)
+
+
+def test_reference_reads_only_in_the_formats_before_1_0() -> None:
+    """A report, manifest or sink record of a format before 1.0's says
+    `"reference"` for `"portable"`, and reads as `"portable"`; one of 1.0's
+    format that says `"reference"` was written by no release, and is
+    refused (#2081: 1.0 keeps no synonym)."""
+    from sverify.substrait_export import FORMAT, _manifest
+
+    record = json.loads((FORMATS / "0.8.0" / "sink" / "contract.json").read_text())
+    old = {**record, "format": 2, "profile": "reference"}
+    assert Contract.from_json(json.dumps(old)).profile == "portable"
+    with pytest.raises(ValueError, match="'reference' is called 'portable' since 1.0"):
+        Contract.from_json(json.dumps({**old, "format": CONTRACT_FORMAT}))
+
+    assert _manifest({"format": FORMAT - 1, "semantics": "reference"})["semantics"] == "portable"
+    with pytest.raises(ValueError, match="no release wrote"):
+        _manifest({"format": FORMAT, "semantics": "reference"})
+
+    v3 = json.loads((FORMATS / "main-05c1e667" / "report" / "ran.json").read_text())
+    assert v3["format"] == 3 and v3["semantics"] == "reference"
+    report = sv.Report.from_json(v3)
+    assert report.semantics == "portable"
+    assert {r.profile for r in report.routes.values()} == {"portable"}
+    now = json.loads(report.to_json())
+    with pytest.raises(ValueError, match="no release wrote"):
+        sv.Report.from_json({**now, "semantics": "reference"})
+    route = next(iter(now["routes"]))
+    with pytest.raises(ValueError, match="the report's route says"):
+        sv.Report.from_json(
+            {**now, "routes": {route: {**now["routes"][route], "semantics": "reference"}}}
+        )
 
 
 # -- the Substrait contract metadata (#735) --------------------------------------

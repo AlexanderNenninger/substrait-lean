@@ -185,8 +185,11 @@ def _semantics(dialect: str, semantics: str) -> Semantics:
     if dialect != "duckdb":
         raise ValueError(f"sverify.sql: dialect must be 'duckdb', not {dialect!r}")
     if semantics not in ("duckdb", "portable"):
+        from sverify.report_json import RENAMED
+
         raise ValueError(
             f"sverify.sql: semantics must be 'duckdb' or 'portable', not {semantics!r}"
+            + (f" ({RENAMED})" if semantics == "reference" else "")
         )
     return cast(Semantics, semantics)
 

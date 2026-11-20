@@ -13,7 +13,7 @@ Jobs and tools read these formats that sverify writes:
 
 | Format | Where it lives | Version | Schema |
 |---|---|---|---|
-| The sink's contract record | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` 2 in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
+| The sink's contract record | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` 3 in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
 | The Substrait contract metadata | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` 3 in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
 | The report's JSON | `Report.to_json()`, read back by `Report.from_json()` | `format` 4 in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
 | The command line's JSON | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` 1 in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
@@ -28,8 +28,8 @@ Within 1.x each format follows these rules:
   reads what a newer one wrote, and sees what it knows of it.
 - Every 1.x release reads what every earlier 1.x release wrote, and the
   records of the releases before 1.0 that the fixtures hold, from 0.4.0 on.
-- Each format keeps the version the table gives throughout 1.x: 2 for
-  the sink's contract record, which 1.0 renamed; 3 for the Substrait
+- Each format keeps the version the table gives throughout 1.x: 3 for
+  the sink's contract record, which 1.0 renamed twice; 3 for the Substrait
   metadata, which 1.0 renamed twice; 4 for the report's JSON, which 1.0
   renamed, gave a verdict, and then gave its lenses and facts their 1.0
   shape; and 1 for the command line's JSON, the quarantine record and the refresh
@@ -54,9 +54,10 @@ earlier formats:
   `not_null` listing the columns proved never NULL, and a postcondition's
   `needs` as their tables and labels; format 4 writes `facts` as objects
   (text, nullability, bounds) and `needs` as whole `needed` objects.
-- a report, a manifest or a sink's record written before 1.0 says
-  `"reference"` for the semantics 1.0 calls `"portable"` (`semantics`, a
-  route's `semantics`, the record's `profile`); a reader maps it.
+- a report of format 2 or 3, a manifest of format 1 or 2 and a sink's
+  record of format 1 or 2 say `"reference"` for the semantics 1.0 calls
+  `"portable"` (`semantics`, a route's `semantics`, the record's
+  `profile`); a reader maps it, and refuses `"reference"` in 1.0's formats.
 
 The OpenLineage facet `sverify_contract` follows the same name: its format
 2 says `lenses` where format 1 said `equivalence`.

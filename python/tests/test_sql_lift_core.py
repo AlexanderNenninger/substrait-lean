@@ -292,11 +292,14 @@ def test_sql_checks_dialect_and_semantics():
         sv.sql("SELECT a FROM t", dialect="postgres", t=t)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.sql("SELECT a FROM t", dialect="duckdb", semantics="spark", t=t)  # type: ignore[call-overload]
+    # 1.0 keeps no synonym (#2081): the refusal names the new name.
+    with pytest.raises(ValueError, match="'reference' is called 'portable' since 1.0"):
+        sv.sql("SELECT a FROM t", semantics="reference", t=t)  # type: ignore[call-overload]
     with pytest.raises(UnsupportedError, match="unknown function"):
         sv.sql("SELECT my_udf(a) FROM t", dialect="duckdb", t=t)
 
 
-def test_sql_uses_the_reference_semantics_by_default():
+def test_sql_uses_the_portable_semantics_by_default():
     # #411: DuckDB's semantics is an explicit opt-in.
     t = ibis.table({"a": "int64"}, name="t")
     op: Any = sv.sql("SELECT a FROM t", t=t).op()
@@ -316,6 +319,8 @@ def test_verify_states_and_takes_its_semantics():
     assert not any("zero" in str(i) for i in duck.issues)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.verify(sql, tables={"t": t}, semantics="sparkk")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="'reference' is called 'portable' since 1.0"):
+        sv.verify(sql, tables={"t": t}, semantics="reference")
     # Spark's profile reads Ibis transformations; SQL is DuckDB's.
     with pytest.raises(ValueError, match="semantics='spark' checks Ibis transformations"):
         sv.verify(sql, tables={"t": t}, semantics="spark")

@@ -42,10 +42,23 @@ OLDEST = 2
 Json = dict[str, Any]
 
 
-def _portable(semantics: str) -> str:
-    """A report's `semantics` as 1.0 names it: `"portable"`, which a report
-    written before 1.0 calls `"reference"`."""
-    return "portable" if semantics == "reference" else semantics
+#: What a refusal of `semantics="reference"` adds: the name 1.0 gave it.
+RENAMED = "'reference' is called 'portable' since 1.0"
+
+
+def _portable(semantics: str, before_1_0: bool, what: str) -> str:
+    """`semantics` as 1.0 names it. A file of a format before 1.0's
+    (`before_1_0`) says `"reference"` for `"portable"`; one of 1.0's format
+    that says it was not written by a release, and is refused.
+
+    Raises:
+        ValueError: `what`, of 1.0's format, says `"reference"`.
+    """
+    if semantics != "reference":
+        return semantics
+    if before_1_0:
+        return "portable"
+    raise ValueError(f'{what} says semantics "reference", which no release wrote: {RENAMED}')
 
 
 def _sverify_version() -> str:
@@ -417,7 +430,7 @@ def route_json(r: Route) -> Json:
     }
 
 
-def route(d: Mapping[str, Any]) -> Route:
+def route(d: Mapping[str, Any], fmt: int = FORMAT) -> Route:
     from sverify.routes import Route
 
     def eq(key: str) -> Observation | None:
@@ -427,7 +440,7 @@ def route(d: Mapping[str, Any]) -> Route:
     return Route(
         d["engine"],
         d["kind"],
-        _portable(d["semantics"]),
+        _portable(d["semantics"], fmt < 4, "the report's route"),
         d["reason"],
         deterministic=d.get("deterministic", True),
         warnings=tuple(d.get("warnings", ())),
@@ -568,7 +581,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _run_gate=d.get("run_gate"),
         dialect_differences=tuple(DialectDifference(**x) for x in d.get("dialect_differences", [])),
         rows=d.get("rows"),
-        semantics=_portable(d.get("semantics", "portable")),
+        semantics=_portable(d.get("semantics", "portable"), fmt < 4, "the report's JSON"),
         engine_version=d.get("engine_version"),
         # A report written before the name `lenses` calls them `equivalence`.
         lenses=lenses(lens) if (lens := d.get("lenses", d.get("equivalence"))) else _plan_bound(),
@@ -582,7 +595,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _asof_checks=list((d.get("run_checks") or {}).get("asof") or []),
         _asof_max_pairs=(d.get("run_checks") or {}).get("asof_max_pairs"),
         black_boxes=black_boxes_from_json(d.get("black_boxes")),
-        routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
+        routes={e: route(r, fmt) for e, r in (d.get("routes") or {}).items()},
         _transfer=d.get("transfer"),
         output=output,
         _dialect=d.get("dialect", "ibis"),

@@ -247,10 +247,13 @@ def semantics_names() -> tuple[str, ...]:
 
 def _checked_semantics(semantics: str) -> Semantics:
     if semantics not in semantics_names():
+        from sverify.report_json import RENAMED
+
         named = ", ".join(map(repr, semantics_names()))
+        renamed = f" ({RENAMED})" if semantics == "reference" else ""
         raise ValueError(
             f"semantics must be one of {named} (each installed engine profile, "
-            f"sverify.profiles), not {semantics!r}"
+            f"sverify.profiles), not {semantics!r}{renamed}"
         )
     return semantics
 
