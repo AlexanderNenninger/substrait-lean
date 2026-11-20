@@ -1,15 +1,15 @@
 import Sverify.Core.Kinds
-import SubstraitLean.Refresh
+import Sverify.Analysis.Refresh
 import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Profile
 import Sverify.Core.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
-import SubstraitLean.Terms
+import Sverify.Analysis.Terms
 import Sverify.Analysis.Contracts
-import SubstraitLean.Retention
-import SubstraitLean.TouchedGroups
-import SubstraitLean.TouchedFrames
+import Sverify.Analysis.Retention
+import Sverify.Analysis.TouchedGroups
+import Sverify.Analysis.TouchedFrames
 import SubstraitLean.IncrementalAgg
 import SubstraitLean.IncrementalFloat
 import SubstraitLean.IncrementalMinMax
@@ -419,6 +419,8 @@ end Substrait.Examples
 #print axioms Substrait.Engine.contract_sound
 #print axioms Substrait.Engine.contract_sound_runs
 #print axioms Substrait.Engine.contract_sound_runs_near
+#print axioms Substrait.Rel.transfer_of_noDouble
+#print axioms Substrait.Rel.floatOpenSafeP_of_noDouble
 #print axioms Substrait.Engine.example_contract
 #print axioms Substrait.Engine.duckdb_contract_example
 #print axioms Substrait.Engine.polars_contract_example

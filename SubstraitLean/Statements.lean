@@ -168,7 +168,7 @@ theorem verified_holds_run_plan_duckdb {input : Json} {R : Request} {rep : Repor
 (`check_deterministic_sound`). -/
 theorem checked_deterministic {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) (hd : rep.deterministic = true) {data : Catalog}
-    (hD : DataMeets R data) : ∀ {out : Relation}, T.root.OrderAllowed data out →
+    (hD : DataMeets R data) : ∀ {out : Relation}, T.root.Allowed data out →
       out.Perm (T.root.eval data) :=
   check_deterministic_sound h.parsed h.checked hD h.transform hd
 

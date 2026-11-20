@@ -342,9 +342,59 @@ def underProfile (es : List EngineProfile) (j : Json) (report : Json) (proved : 
   return (unprove "keys" (unprove "ensures" report) |>.setObjVal! "transfer"
     (Json.mkObj [("from", "reference"), ("ok", false), ("failures", Json.arr rows.toArray)]), false)
 
+/-- A black box's laws, as `--black-boxes` and the report print them. -/
+def lawsJson (ls : List BlackBox.Law) : Lean.Json :=
+  Lean.Json.arr (ls.map fun
+    | .nonNull => Lean.Json.arr #["non_null"]
+    | .atLeast k => Lean.Json.arr #["at_least", Lean.toJson k]
+    | .atMost k => Lean.Json.arr #["at_most", Lean.toJson k]).toArray
+
+/-- The calls of a plan's window measures, which `Rel.ctors` and
+`Rel.aggFns` leave out. -/
+def _root_.Substrait.Rel.windowCtors : Rel → List Functions.Ctor
+  | .read _ | .values _ _ => []
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
+  | .unnest r _ | .aggregate r _ _ => r.windowCtors
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => a.windowCtors ++ b.windowCtors
+  | .window r _ _ fns => r.windowCtors ++ (WinFn.aggs fns).flatMap fun m => .agg m.fn :: m.ctors
+
+/-- The black boxes a plan calls, by name, once each. -/
+def _root_.Substrait.Rel.blackBoxNames (r : Rel) : List String :=
+  ((r.ctors ++ r.aggFns.map Functions.Ctor.agg ++ r.windowCtors).filterMap fun
+    | .un (.bbox n) | .bin (.bbox2 n) | .agg (.bbox n) => some n
+    | _ => none).eraseDups
+
+/-- The black boxes `r` calls with the laws their rows declare, the one
+source of what each proof may assume of them (#1484): `[{"name", "laws"}]`,
+the laws as in `blackBoxJson`. -/
+def blackBoxesOf (r : Rel) : Lean.Json :=
+  let lawsOf (n : String) : List BlackBox.Law :=
+    match Boxes.Ambient.boxes.scalar? n, Boxes.Ambient.boxes.aggregate? n with
+    | some f, _ => f.laws
+    | none, some f => f.laws
+    | none, none => []
+  Lean.Json.arr (r.blackBoxNames.map fun (n : String) => Lean.Json.mkObj
+    [("name", Lean.Json.str n), ("laws", lawsJson (lawsOf n))]).toArray
+
+/-- A black box whose function breaks its declared law: `non_null`, and it
+gives NULL. The model keeps the sample there and the compiled checker panics
+(`BlackBox.Scalar.call`), so `runOn` refuses the rows (#1484). Internal, for
+`--law-break-selftest`. -/
+def lawBreakRow : BlackBox.Scalar where
+  name := "law_break_selftest"
+  args := [.str]
+  result := .int
+  laws := [.nonNull]
+  sample := .int 0
+  eval _ := .null
+
 /-- One request of `--serve`: the mode flag (empty for the default check)
 and the input text. -/
 def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UInt32 := do
+  -- Internal: a law-breaking black box on the input, which must be refused.
+  if flag == "--law-break-selftest" then
+    IO.println (repr (lawBreakRow.call [.str input]))
+    return 0
   if flag == "--contract" then
     match Lean.Json.parse input with
     | .error e => IO.eprintln s!"error: {e}"; return 1
@@ -366,6 +416,8 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
         let robust := (EngineRobust.robust es j).toOption.getD (Lean.Json.arr #[])
         -- The margin checks of threshold filters on double sums (#929).
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
+        -- The pair counts of its as-of joins (#1447).
+        let asofs := (Epsilon.asofChecksJson j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
         let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
         -- The plan an engine runs, or the gate that keeps the plan as
@@ -378,6 +430,11 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
             |>.setObjVal! "margin_checks" margins
+            |>.setObjVal! "asof_checks" asofs
+            -- The black boxes the transformation calls, with their laws (#1484).
+            |>.setObjVal! "black_boxes" (match ContractCheck.parse j with
+              | .ok R => (R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[])
+              | .error _ => Lean.Json.arr #[])
         match underProfile es j (engines.foldl (fun r (k, v) => r.setObjVal! k v) base)
             report.allProved with
         | .error e => IO.eprintln s!"error: {e}"; return 1
@@ -475,11 +532,7 @@ def blackBoxJson : Lean.Json :=
     | .int => "int" | .double => "double" | .str => "str" | .bool => "bool" | .date => "date"
     | .timestamp => "timestamp"
     | .atom => "atom" | .doubles => "doubles" | .ints => "ints" | .strs => "strs" | .any => "any"
-  let law : BlackBox.Law → Lean.Json
-    | .nonNull => Lean.Json.arr #["non_null"]
-    | .atLeast k => Lean.Json.arr #["at_least", Lean.toJson k]
-    | .atMost k => Lean.Json.arr #["at_most", Lean.toJson k]
-  let laws (ls : List BlackBox.Law) := Lean.Json.arr (ls.map law).toArray
+  let laws := lawsJson
   Lean.Json.arr ((Boxes.Ambient.boxes.scalars.map fun f => obj [
       ("name", f.name), ("kind", "scalar"), ("anchor", Lean.toJson (Write.bbAnchor f.name)),
       ("args", Lean.Json.arr (f.args.map ty).toArray), ("result", ty f.result),

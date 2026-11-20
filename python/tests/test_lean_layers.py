@@ -130,10 +130,12 @@ def _closure(start: str) -> set[str]:
 
 
 def test_the_verdict_imports_no_engine():
-    """The checker's verdict (`ContractCheck`, `check_proved_sound`) depends on
-    no engine package's module (#1484, S1): it is about the reference alone."""
+    """The checker's verdict (`ContractCheck`, `check_proved_sound`) and the
+    theorems about it (`IssuesAll`, ruling 148) depend on no engine package's
+    module (#1484, S1): they are about the reference alone."""
     engines = tuple(LAYERS[layer][1] for layer in LAYERS if layer.startswith("engines/"))
-    closure = _closure("SubstraitLean.ContractCheck")
+    closure = _closure("SubstraitLean.ContractCheck") | _closure("SubstraitLean.IssuesAll")
+    assert "SubstraitLean.IssuesAll" in closure
     assert "Sverify.Core.Rel" in closure  # the walk found the layers' files
     bad = sorted(m for m in closure if m.split(".")[:2] in [e.split(".") for e in engines])
     assert not bad, bad
@@ -180,21 +182,7 @@ ROOT_WAITING = {
     "IncrementalFloat": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalMinMax": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalSemi": "imports IncrementalAgg (#1795); then analysis",
-    "MarginSound": "#1805's OpenSums imports it; then analysis",
     "OpenSums": "ruling 148 O2: general part to engines-common, example to Polars",
-    "Pretty": "#1765 edits it; then core",
-    "Infer": "#1765 edits it; then analysis",
-    "Write": "#1813 and #1765 edit it; then frontend",
-    "Bind": "#1444's engines-common move",
-    "Choices": "#1444's analysis move",
-    "ChoicesSound": "#1444's analysis move",
-    "Quarantine": "#1444's analysis move",
-    "Retention": "#1444's analysis move",
-    "TouchedGroups": "#1444's analysis move",
-    "TouchedFrames": "#1444's analysis move",
-    "Seam": "#1444's analysis move",
-    "Terms": "#1444's analysis move",
-    "Refresh": "#1444's core move",
 }
 
 

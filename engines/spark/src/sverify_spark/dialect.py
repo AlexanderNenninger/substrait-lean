@@ -80,6 +80,7 @@ from sverify.sql.core import (
     Dialect,
     GuardIssue,
     Kind,
+    Lst,
     Unsupported,
     _timestamp_text,
 )
@@ -132,6 +133,10 @@ class SparkDialect(Dialect):
     def type_name(self, kind: Kind) -> str:
         if isinstance(kind, Dec):
             return super().type_name(kind)
+        if isinstance(kind, Lst):
+            if kind.elem is None:
+                raise Unsupported("a list whose elements' type is not known")
+            return f"ARRAY<{self.type_name(kind.elem)}>"
         if kind == "instant":
             raise self.to_duckdb(
                 "Spark has no map for a timestamp with a time zone yet", ISSUE_1725
@@ -147,6 +152,33 @@ class SparkDialect(Dialect):
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS STRING))"
         fail = self.cast(f"raise_error({text})", kind)
         return f"(CASE WHEN {dep} IS NULL THEN {self.null(kind)} ELSE {fail} END)"
+
+    # Lists (#94)
+
+    def unnest_from(self, source: str, lst: str, alias: str) -> str:
+        # `posexplode` counts from 0 and gives no row for a NULL or empty list.
+        e, i = self.quote("e"), self.quote("i")
+        return (
+            f"{source}, LATERAL (SELECT col AS {e}, CAST(pos + 1 AS BIGINT) AS {i} "
+            f"FROM (SELECT posexplode({lst}))) AS {alias}"
+        )
+
+    def list_lit(self, items: list[str], kind: Lst) -> str:
+        return self.cast(f"array({', '.join(items)})", kind)
+
+    def list_element(self, x: str, offset: int) -> str:
+        # `try_element_at` counts from 1 and from the end (-1 the last), and gives NULL out
+        # of range where `element_at` raises (spark-list-index).
+        return f"try_element_at({x}, {offset + 1 if offset >= 0 else offset})"
+
+    def cardinality(self, x: str) -> str:
+        return f"cardinality({x})"
+
+    def collect(self, v: str, order: Sequence[str]) -> str:
+        if order:
+            raise self.refused("array_agg")
+        # `collect_list` skips NULLs and gives `[]` for no values, where the model gives NULL.
+        return f"(CASE WHEN COUNT({v}) = 0 THEN NULL ELSE collect_list({v}) END)"
 
     # Literals
 
@@ -191,12 +223,6 @@ class SparkDialect(Dialect):
         # Half away from zero on the shortest decimal of the double, which is
         # the double's own rounding (a halfway double prints as one).
         return f"ROUND({x})"
-
-    def float_logb(self, x: str, b: str) -> str:
-        raise self.to_duckdb(
-            "Spark's LN is Java's StrictMath, not the C libm the Lean model uses "
-            "(spark-elem-rounding)"
-        )
 
     def float_pow(self, a: str, b: str) -> str:
         raise self.to_duckdb(

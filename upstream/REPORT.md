@@ -2,7 +2,7 @@
 
 <!-- Generated from `bugs/*.json` by `python -m sverify_dev.bugs --write`. -->
 
-Sverify's upstream ledger holds 93 entries ([README](README.md)). 34 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
+Sverify's upstream ledger holds 94 entries ([README](README.md)). 34 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
 
 ## To report
 
@@ -66,8 +66,8 @@ An open upstream issue covers these; the case is worth a comment there.
 | Ibis | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
 | delta-rs | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 3 |
 | DataFusion | 5 | 5 | 6 | 3 | 5 | 0 | 1 | 25 |
-| Substrait | 3 | 0 | 0 | 0 | 0 | 14 | 0 | 17 |
-| total | 34 | 11 | 15 | 5 | 10 | 14 | 4 | 93 |
+| Substrait | 3 | 0 | 0 | 0 | 0 | 15 | 0 | 18 |
+| total | 34 | 11 | 15 | 5 | 10 | 15 | 4 | 94 |
 
 The classes:
 
@@ -85,4 +85,4 @@ fixed: [DD-1](bugs/DD-1.json), [DD-7](bugs/DD-7.json), [SG-1](bugs/SG-1.json), [
 
 not-a-bug: [DD-2](bugs/DD-2.json), [PL-3](bugs/PL-3.json), [PL-4](bugs/PL-4.json), [PL-13](bugs/PL-13.json), [SG-2](bugs/SG-2.json), [DF-5](bugs/DF-5.json), [DF-7](bugs/DF-7.json), [DF-23](bugs/DF-23.json), [DF-24](bugs/DF-24.json), [DF-25](bugs/DF-25.json).
 
-spec-gap: [ST-1](bugs/ST-1.json), [ST-2](bugs/ST-2.json), [ST-3](bugs/ST-3.json), [ST-4](bugs/ST-4.json), [ST-5](bugs/ST-5.json), [ST-6](bugs/ST-6.json), [ST-7](bugs/ST-7.json), [ST-8](bugs/ST-8.json), [ST-9](bugs/ST-9.json), [ST-10](bugs/ST-10.json), [ST-11](bugs/ST-11.json), [ST-12](bugs/ST-12.json), [ST-16](bugs/ST-16.json), [ST-17](bugs/ST-17.json).
+spec-gap: [ST-1](bugs/ST-1.json), [ST-2](bugs/ST-2.json), [ST-3](bugs/ST-3.json), [ST-4](bugs/ST-4.json), [ST-5](bugs/ST-5.json), [ST-6](bugs/ST-6.json), [ST-7](bugs/ST-7.json), [ST-8](bugs/ST-8.json), [ST-9](bugs/ST-9.json), [ST-10](bugs/ST-10.json), [ST-11](bugs/ST-11.json), [ST-12](bugs/ST-12.json), [ST-16](bugs/ST-16.json), [ST-17](bugs/ST-17.json), [ST-18](bugs/ST-18.json).

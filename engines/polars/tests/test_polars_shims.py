@@ -10,6 +10,7 @@ evaluates it, oracle style.
 
 import json
 import math
+import random
 
 import ibis
 import polars as pl
@@ -651,6 +652,22 @@ def test_double_division_is_within_two_ulps(n):
     for (g, q, r), (h, q2, r2) in zip(polars, lean, strict=True):
         assert g == h and math.isclose(q, q2, abs_tol=1e-6)
         assert math.isclose(r, r2, abs_tol=1e-6)
+
+
+def test_a_constant_expression_divisor_is_the_reciprocal_too():
+    """H2 of ruling 157: Polars takes the reciprocal kernel for any length-1 divisor, a
+    constant expression included, so the plan's bound for it is the reciprocal's. Many rows,
+    since a frame shorter than the thread count divides exactly."""
+    rng = random.Random(7)
+    xs = [rng.uniform(-1e6, 1e6) for _ in range(20_000)]
+    lf = pl.LazyFrame({"x": xs}).select(
+        q=polars_engine.fdiv(pl.col("x"), pl.lit(7.0) * pl.lit(7.0))
+    )
+    qs = polars_engine.collect(lf)["q"].to_list()
+    assert sum(q != x / 49.0 for q, x in zip(qs, xs, strict=True)) > 0
+    assert all(
+        abs(q - x / 49.0) <= 3 * 2.0**-53 * abs(x / 49.0) for q, x in zip(qs, xs, strict=True)
+    )
 
 
 def test_a_subnormal_divisor_is_refused():
