@@ -813,7 +813,8 @@ class CheckedCondition:
     (`reason` is `"needs"`, under `verify(on_inferred="error")`), or those
     the checker suggests (`_.x * 2 <= 100` holds with `_.x <= 50`). The set
     is sufficient, not claimed minimal: where the proof used inferred
-    bounds it lists every one of them. Never assumed: adding them is the
+    preconditions it lists every inferred bound of the report, not only
+    those this condition's proof used. Never assumed: adding them is the
     author's choice (`Report.suggested_requires` adds the inferred ones)."""
     ignores: tuple[str, ...] = ()
     """The components of the observation (`sv.equivalent`) the condition
@@ -877,7 +878,7 @@ class CheckedCondition:
         is proved and independent of the observation (`portable`). `why`
         says the same in words.
 
-        * `"equivalence"`: proved, but it depends on what the equivalence
+        * `"lenses"`: proved, but it depends on what the lenses
           (`sv.equivalent`) ignores.
         * `"needs"`: proved only with the preconditions sverify inferred,
           which `requires` does not state (`needs` lists them).
@@ -892,7 +893,7 @@ class CheckedCondition:
         * `"unknown"`: Lean knows nothing that decides it.
         """
         if self.proved:
-            return "equivalence" if self.ignores else None
+            return "lenses" if self.ignores else None
         if self.value == "not shown to be a key":
             return "not_a_key"
         if self.ties or self.value.startswith("undetermined"):

@@ -1721,7 +1721,7 @@ means = sv.verify(
 )
 duckdb_result = means.run(readings, "duckdb", route="auto")
 polars_result = means.run(readings, "polars", route="auto")
-means.equivalence.equal(duckdb_result, polars_result)  # True
+means.lenses.equal(duckdb_result, polars_result)  # True
 ```
 
 Polars sums doubles in its own order, so its mean is within the plan's
@@ -1734,12 +1734,12 @@ Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
 list elements are multisets, one zero and one NaN are read, doubles are within
 the plan's bound and other values are exact: the default observation
 ([the table](core-semantics.md#the-default-observation)), which
-`report.equivalence` prints with its bound,
+`report.lenses` prints with its bound,
 `equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
 leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
 tolerance, and `floats="exact"` asks for the same bits. `verify` checks
 either against the plan's bound on each engine; where
-no engine meets it, the plan is not proved, and the report's `observes:`
+no engine meets it, the plan is not proved, and the report's `lenses:`
 line gives the plan's bound, the reason per engine and a tolerance that
 would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 

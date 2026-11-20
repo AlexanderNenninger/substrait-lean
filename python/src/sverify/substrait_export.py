@@ -1269,7 +1269,7 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
             from sverify.observation import from_json
 
             q = from_json(r["q"])
-            missed = q.coarser_than(report.equivalence)
+            missed = q.coarser_than(report.lenses)
             if not missed:
                 h.up_to.append({"group": g, "option": o, "equivalence": r["q"]})
                 continue
@@ -1280,7 +1280,7 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                 continue
             observed = (
                 f"{where}: a Substrait consumer agrees with the reference only up to {q}, "
-                f"and the postconditions observe its {', '.join(missed)} ({report.equivalence}); "
+                f"and the postconditions observe its {', '.join(missed)} ({report.lenses}); "
                 f"state {', '.join(missed)} in sv.equivalent(...)"
             )
         if shims == "annotate":
@@ -1579,7 +1579,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
             entry.kind = "row"
             entry.plan.CopyFrom(_plan_message(_condition(next(ens_plans), checked.label)))
         c.ensures.append(entry)
-    observation = report.equivalence
+    observation = report.lenses
     manifest: Json = {
         "format": FORMAT,
         "sverify": _sverify_version(),
@@ -1832,7 +1832,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
             f["name"]: column_facts(f.get("abstract") or {}, None, f["value"]) for f in out["facts"]
         },
         internal_plan=json.dumps(imp.plan),
-        equivalence=observation,
+        lenses=observation,
         _params=list(m.get("params") or []),
     )
     report._conditions = conditions
@@ -1998,7 +1998,7 @@ def _plan_bound_met(report: Any) -> dict[str, float] | None:
     from sverify.observation import Within
     from sverify.routes import _bounds
 
-    floats = report.equivalence.floats
+    floats = report.lenses.floats
     if not isinstance(floats, Within) or not report._epsilon:
         return None
     met: dict[str, float] = {}

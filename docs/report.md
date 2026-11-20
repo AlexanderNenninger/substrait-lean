@@ -54,7 +54,7 @@ instead.
   `report.rows` (a bound on the output's rows from the inputs' row caps).
 - The semantics. `report.semantics` is the profile the proof is under
   ([Verifying: the two paths](verifying.md)).
-- The observation. `report.equivalence` is what the result's consumer
+- The lenses. `report.lenses` is what the result's consumer
   observes: rows as a multiset and doubles within the plan's bound unless
   `ensures` states otherwise with `sv.equivalent(...)`, and it prints the
   bound (`equivalent(elements='multiset', floats=plan, ≤ 1.1e-10, zeros='canon')`). Every component's default is

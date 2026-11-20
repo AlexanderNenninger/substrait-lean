@@ -1562,7 +1562,7 @@ def _(ibis, sv):
 def _(mo):
     mo.md(r"""
     The hint names the exit, `sv.approx`, which states the claim up to that
-    rounding. With it the claim is proved, and the report's `observes:` line
+    rounding. With it the claim is proved, and the report's `lenses:` line
     says which results count as the same: the doubles within the plan's
     bound (`floats="plan"`, the default of `sv.equivalent`):
     """)
@@ -1571,7 +1571,7 @@ def _(mo):
 
 @app.cell
 def _(approx_claim):
-    print(approx_claim.equivalence)
+    print(approx_claim.lenses)
     return
 
 

@@ -20,7 +20,7 @@
     "proved": {"description": "Whether the checker proved every postcondition.", "type": "boolean"},
     "verdict": {"description": "The report's verdict, for display.", "type": "string"},
     "semantics": {"description": "The semantics the plan was verified under.", "type": "string"},
-    "equivalence": {"description": "What the postconditions observe, as sv.equivalent prints it.", "type": "string"},
+    "lenses": {"description": "What the postconditions observe (Report.lenses), as sv.equivalent prints it.", "type": "string"},
     "requires": {
       "description": "The preconditions, by input table, as labels.",
       "type": "object",

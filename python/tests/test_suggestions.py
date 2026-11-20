@@ -133,3 +133,16 @@ def test_proved_means_proved_from_the_stated_preconditions(sql, ensures):
     r = sv.verify(sql, tables=S, requires=requires, ensures=ensures)
     alone = sv.verify(sql, tables=S, requires=requires, ensures=ensures, on_inferred="off")
     assert [c.proved for c in r.ensures] == [c.proved for c in alone.ensures]
+
+
+def test_a_postcondition_proved_through_a_siblings_inferred_not_null_is_not_proved():
+    """Reviewer 2 on #701: the second postcondition holds only through the
+    `IS NOT NULL` inferred for the first; it reads unproved too."""
+    t = ibis.table({"id": "int64", "x": "int64"}, name="t")
+    expr = t.select(t.id, d=t.x)
+    r = sv.verify(expr, ensures=[_.d.notnull() | (_.d < 0), _.d.notnull()])
+    alone = sv.verify(expr, ensures=[_.d.notnull() | (_.d < 0), _.d.notnull()], on_inferred="off")
+    assert [c.proved for c in r.ensures] == [c.proved for c in alone.ensures]
+    first, second = r.ensures
+    assert (first.reason, second.reason) == ("needs", "needs")
+    assert [n.code for n in second.needs] == ["_.x.notnull()"]

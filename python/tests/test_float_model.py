@@ -51,9 +51,9 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     assert isinstance(bound, Within) and bound.abs and bound.abs > 0
     stated = verify(con, [sv.equivalent(floats=sv.within(abs=bound.abs))])
 
-    assert absent.equivalence == plan.equivalence == PLAN_BOUND
-    assert absent.equivalence.bound == plan.equivalence.bound == bound
-    assert f"floats=plan, ≤ {bound.abs:.1e}" in str(absent.equivalence)
+    assert absent.lenses == plan.lenses == PLAN_BOUND
+    assert absent.lenses.bound == plan.lenses.bound == bound
+    assert f"floats=plan, ≤ {bound.abs:.1e}" in str(absent.lenses)
     assert f"floats=plan, ≤ {bound.abs:.1e}" in absent.details()
     assert (
         absent.verdict == sv.Verdict.PROVED
@@ -67,8 +67,8 @@ def test_absent_plan_and_the_bound_are_one_observation(con) -> None:
     runs = []
     for report in (absent, plan, stated):
         a, b = report.run(con, "duckdb"), report.run(con, "polars")
-        assert report.equivalence.equal(a, b)
-        runs.append({e: (r.cls, r.equivalence) for e, r in report.routes.items()})
+        assert report.lenses.equal(a, b)
+        runs.append({e: (r.cls, r.lenses) for e, r in report.routes.items()})
     assert runs[0] == runs[1] == runs[2]
     assert {cls for cls, _ in runs[0].values()} == {"observed"}
 
@@ -128,7 +128,7 @@ def test_a_tolerance_below_the_bound_is_refused_at_verify(con, tol) -> None:
     assert report.verdict == sv.Verdict.UNPROVED
     assert report._floats_on and all(report._floats_on.values())
     text = report.details()
-    assert f"observes: equivalent(floats={tol}); the plan's bound on its doubles is " in text
+    assert f"lenses: equivalent(floats={tol}); the plan's bound on its doubles is " in text
     assert "NOT met: no engine meets the tolerance" in text
     assert "or looser in ensures" in text
     with pytest.raises(RouteError, match="no engine meets the observation's tolerance"):
@@ -166,7 +166,7 @@ def test_an_unsorted_plan_is_observed_as_a_multiset(con) -> None:
     report = verify(con, [])
     report.run(con, "polars")
     route = report.routes["polars"]
-    assert route.equivalence is not None and route.equivalence.rows == "multiset"
+    assert route.lenses is not None and route.lenses.rows == "multiset"
     assert "rows='sequence'" not in str(route)
 
 

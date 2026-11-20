@@ -39,7 +39,7 @@ def _round_trip(report: Report) -> dict:
     back = Report.from_json(text)
     assert back.verdict == report.verdict
     assert json.loads(back.to_json()) == doc
-    assert str(back.equivalence) == str(report.equivalence)
+    assert str(back.lenses) == str(report.lenses)
     return doc
 
 
@@ -48,7 +48,7 @@ def test_proved() -> None:
         orders.select("id", d=_.total * 2), requires=BOUNDED, ensures=[_.d >= 0, sv.unique("id")]
     )
     doc = _round_trip(report)
-    assert doc["format"] == report_json.FORMAT == 3
+    assert doc["format"] == report_json.FORMAT == 4
     assert doc["proved"] and doc["verdict"] == "proved"
     assert [
         (c["properties"]["label"], c["ruleId"], c["level"], c["kind"]) for c in doc["ensures"]
@@ -56,7 +56,7 @@ def test_proved() -> None:
         ("(_.d >= 0)", "proved", "none", "pass"),
         ("unique(id)", "proved", "none", "pass"),
     ]
-    assert doc["equivalence"]["text"] and "observation" not in doc
+    assert doc["lenses"]["text"] and "observation" not in doc and "equivalence" not in doc
     assert doc["facts"]["d"]
     assert doc["output"] == {c: str(t) for c, t in report.output.items()}
     assert doc["not_null"] == [c for c, t in report.output.items() if not t.nullable]
@@ -128,13 +128,13 @@ def test_tolerance_observation() -> None:
         ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
     )
     doc = _round_trip(report)
-    assert doc["equivalence"]["components"]["floats"] == {"abs": 1e-6, "rel": None, "ulps": None}
+    assert doc["lenses"]["components"]["floats"] == {"abs": 1e-6, "rel": None, "ulps": None}
 
 
 def test_newer_format_refused_and_unknown_keys_ignored() -> None:
     doc = json.loads(sv.verify(orders.select("id"), requires=BOUNDED).to_json())
     with pytest.raises(ValueError, match="upgrade sverify"):
-        Report.from_json({**doc, "format": 4})
+        Report.from_json({**doc, "format": report_json.FORMAT + 1})
     later = {**doc, "added_in_1_9": True}
     later["ensures"] = [
         {**c, "new_field": 1, "properties": {**c["properties"], "new": 2}} for c in doc["ensures"]

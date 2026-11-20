@@ -30,10 +30,13 @@ if TYPE_CHECKING:
 #: The version of the report's JSON format (`format` in the document).
 #: Format 1 was on main between #788 and the 1.0 renames, in no release:
 #: `from_json` refuses it.
-FORMAT = 3
+FORMAT = 4
 #: The oldest format `from_json` reads. Format 3 gave `verdict` the `Verdict`'s
 #: value and moved the first line of `str(report)` to `summary`; a report of
-#: format 2 has no `summary`, and its `verdict` is that line.
+#: format 2 has no `summary`, and its `verdict` is that line. Format 4 named
+#: `equivalence` `lenses` (in a route too), made each of `facts` an object
+#: (text, nullable, bounds) and each of a postcondition's `needs` a whole
+#: `needed` object; formats 2 and 3 are still read.
 OLDEST = 2
 
 Json = dict[str, Any]
@@ -399,7 +402,7 @@ def route_json(r: Route) -> Json:
         "warnings": list(r.warnings),
         "shims": list(r.shims),
         "failures": [dict(f) for f in r.failures],
-        "equivalence": None if r.equivalence is None else equivalence_json(r.equivalence),
+        "lenses": None if r.lenses is None else equivalence_json(r.lenses),
         "bound_proved": r.bound_proved,
         "reproducible": None if r.reproducible is None else equivalence_json(r.reproducible),
         "rerun_evidence": r.rerun_evidence,
@@ -434,7 +437,7 @@ def route(d: Mapping[str, Any]) -> Route:
         reproducible=eq("reproducible"),
         rerun_evidence=d.get("rerun_evidence"),
         fallbacks=tuple(d.get("fallbacks", ())),
-        equivalence=eq("equivalence"),
+        lenses=eq("lenses") if "lenses" in d else eq("equivalence"),
         bound_proved=d.get("bound_proved"),
         suggested=suggested(d.get("needs")),
     )
@@ -458,7 +461,7 @@ def to_json(report: Report) -> Json:
         "engine_version": report.engine_version,
         "dialect": report._dialect,
         "on_inferred": report._on_inferred,
-        "equivalence": equivalence_json(report.equivalence),
+        "lenses": equivalence_json(report.lenses),
         "deterministic": report.deterministic,
         "deterministic_exact": report._exact,
         "class_places": [dataclasses.asdict(t) for t in report._class_places],
@@ -553,7 +556,10 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         rows=d.get("rows"),
         semantics=d.get("semantics", "reference"),
         engine_version=d.get("engine_version"),
-        equivalence=equivalence(d["equivalence"]) if d.get("equivalence") else _plan_bound(),
+        # A report written before the name `lenses` calls them `equivalence`.
+        lenses=equivalence(lens)
+        if (lens := d.get("lenses", d.get("equivalence")))
+        else _plan_bound(),
         _floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
         _engines=d.get("engines"),
         _sorted=d.get("sorted"),

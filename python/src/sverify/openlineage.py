@@ -380,7 +380,7 @@ def contract_facet(
         "proved": report._proved,
         "verdict": report.verdict,
         "semantics": report.semantics,
-        "equivalence": str(report.equivalence),
+        "lenses": str(report.lenses),
         "requires": {t: list(labs) for t, labs in report.requires.items()},
         "ensures": ensures,
         "not_null": proved_not_null(report),

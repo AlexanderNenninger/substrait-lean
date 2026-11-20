@@ -20,10 +20,11 @@
   ],
   "properties": {
     "format": {
-      "description": "The version of this format. Format 3 gave verdict the Verdict's value and added summary; format 2 is still read.",
+      "description": "The version of this format. Format 3 gave verdict the Verdict's value and added summary; format 4 named equivalence lenses and made facts and a postcondition's needs objects; formats 2 and 3 are still read.",
       "enum": [
         2,
-        3
+        3,
+        4
       ]
     },
     "sverify": {
@@ -77,7 +78,8 @@
         "off"
       ]
     },
-    "equivalence": {
+    "lenses": {
+      "description": "What the result's consumer observes (Report.lenses); a report written before the name lenses calls it equivalence.",
       "$ref": "#/$defs/equivalence"
     },
     "deterministic": {
@@ -409,7 +411,7 @@
             "ruleId": {
               "examples": [
                 "proved",
-                "equivalence",
+                "lenses",
                 "needs",
                 "not_a_key",
                 "ties",
@@ -771,7 +773,7 @@
           "description": "The semantics the proof the run relies on is under.",
           "type": "string"
         },
-        "equivalence": {
+        "lenses": {
           "oneOf": [
             {
               "$ref": "#/$defs/equivalence"

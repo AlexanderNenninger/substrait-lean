@@ -302,11 +302,57 @@ def test_report_reads(version: str, case: str) -> None:
     assert set(report.routes) == set(doc["routes"])
     now = json.loads(report.to_json())
     _valid(now, "report.schema.json")
+    if doc["format"] < 4:
+        assert {c: f["text"] for c, f in now["facts"].items()} == doc["facts"]
+        now = _needs_by_label(now)
+    doc = _as_format_4(doc)
     assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
     skip = {"sverify", "format", "verdict", "summary"}
     assert {k: v for k, v in now.items() if k in doc and k not in skip} == {
         k: v for k, v in doc.items() if k not in skip
     }
+
+
+def _as_format_4(doc: dict) -> dict:
+    """A report of format 2 or 3 as format 4 writes the same report: its
+    `equivalence` named `lenses`, in a route too; each of `facts` an object
+    (its text, and the nullability `not_null` gave; the bounds were not
+    written); each of a postcondition's `needs` the whole `needed` object
+    (only its table and label were written: `_needs_by_label` compares
+    those)."""
+    if doc["format"] >= 4:
+        return doc
+    out = {("lenses" if k == "equivalence" else k): v for k, v in doc.items()}
+    out["routes"] = {
+        e: {("lenses" if k == "equivalence" else k): v for k, v in r.items()}
+        for e, r in doc.get("routes", {}).items()
+    }
+    out.pop("facts", None)
+    # The columns `not_null` lists read back not nullable (#704).
+    out["output"] = {
+        c: f"!{t}" if c in doc.get("not_null", ()) and not t.startswith("!") else t
+        for c, t in doc.get("output", {}).items()
+    }
+    return out
+
+
+def _needs_by_label(doc: dict) -> dict:
+    """`doc` with each postcondition's `needs` cut to the table and label
+    that format 3 wrote."""
+    ensures = [
+        {
+            **e,
+            "properties": {
+                **e["properties"],
+                "needs": [
+                    {"table": n["table"], "label": n["label"]}
+                    for n in e["properties"].get("needs", [])
+                ],
+            },
+        }
+        for e in doc.get("ensures", [])
+    ]
+    return {**doc, "ensures": ensures}
 
 
 def test_report_only_gains_keys() -> None:
@@ -325,7 +371,9 @@ def test_report_only_gains_keys() -> None:
     _valid(now, "report.schema.json")
     for version, case in REPORTS:
         if case == "proved":
-            old = json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+            old = _as_format_4(
+                json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+            )
             assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
             for c_old, c_now in zip(old["ensures"], now["ensures"], strict=True):
                 assert set(c_old) <= set(c_now)

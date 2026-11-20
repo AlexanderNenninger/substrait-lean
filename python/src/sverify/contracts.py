@@ -981,7 +981,7 @@ def infer_bounds(
     transformations) are suggested for those tables' `ensures`.
 
     An observation in `ensures` (`sv.equivalent`) is no condition to prove:
-    it goes to `Report.equivalence`, and each other postcondition that
+    it goes to `Report.lenses`, and each other postcondition that
     depends on what it ignores says so (`CheckedCondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
@@ -1004,8 +1004,8 @@ def infer_bounds(
     out._stated = observed is not None
     from sverify import routes as _routes
 
-    if out.equivalence.floats == "plan":
-        out.equivalence = replace(out.equivalence, bound=_routes.plan_bound(out._epsilon))
+    if out.lenses.floats == "plan":
+        out.lenses = replace(out.lenses, bound=_routes.plan_bound(out._epsilon))
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
@@ -1090,14 +1090,15 @@ def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[
 
 def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
     """`c` not proved where its proof used inferred preconditions (#701),
-    with those it used as its `needs`: the bounds, and the `IS NOT NULL`s
-    inferred for this postcondition."""
+    with those it may have used as its `needs`: the bounds, and the `IS NOT
+    NULL`s inferred for this postcondition; every inferred one where those
+    are none (its proof used a NOT NULL inferred for another postcondition)."""
     if not c._inferred_used:
         return c
     used = tuple(
         n for n in needs if n.issue is None or n.issue.kind != NULL_KIND or n.issue.expr == c.label
     )
-    return replace(c, proved=False, needs=used) if used else c
+    return replace(c, proved=False, needs=used or tuple(needs))
 
 
 def _checked_on_inferred(v: str) -> OnInferred:
@@ -1153,7 +1154,7 @@ def _observed(
         )
         for cond, c in zip(ensures, report.ensures, strict=True)
     ]
-    return replace(report, ensures=checked, equivalence=observed)
+    return replace(report, ensures=checked, lenses=observed)
 
 
 def _open_columns(expr: ir.Table) -> dict[str, str]:

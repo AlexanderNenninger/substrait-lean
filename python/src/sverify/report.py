@@ -107,7 +107,7 @@ Transform = ir.Table | str
 
 
 UnprovedReason = Literal[
-    "equivalence",
+    "lenses",
     "needs",
     "not_a_key",
     "ties",
@@ -562,7 +562,7 @@ class Report:
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
     `params` bound and the SQL lifted with `semantics`. `run` runs it."""
-    equivalence: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
+    lenses: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
     """What the result's consumer observes (`sv.equivalent` in `ensures`).
     When `ensures` names none: rows and list elements as multisets, one zero
     and one NaN (`zeros="canon"`), doubles within the plan's bound
@@ -884,7 +884,7 @@ class Report:
             d,
             deterministic=self._exact,
             finite=finite,
-            rows="sequence" if self.equivalence.rows == "sequence" else "multiset",
+            rows="sequence" if self.lenses.rows == "sequence" else "multiset",
         )
 
     def _plan_to_run(self, kind: str | None, *, checked: bool, engine: str) -> str:
@@ -1566,15 +1566,15 @@ class Report:
         return lines
 
     def _observes_lines(self) -> list[str]:
-        """The `observes:` line: the observation, the plan's bound beside a
+        """The `lenses:` line: the lenses, the plan's bound beside a
         stated tolerance, and which engines' doubles meet it."""
         from sverify import routes as _routes
 
-        obs = self.equivalence
+        obs = self.lenses
         bound = _routes.plan_bound(self._epsilon)
         if obs == _observation.PLAN_BOUND and bound is None:
             return []
-        line = f"observes: {obs}"
+        line = f"lenses: {obs}"
         if obs.floats != "plan" and bound is not None:
             line += f"; the plan's bound on its doubles is {_observation._bound_text(bound)}"
         if not self._floats_on:

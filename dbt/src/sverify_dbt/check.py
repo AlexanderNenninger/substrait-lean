@@ -628,7 +628,7 @@ def _refusal(e: BaseException) -> str:
 
 
 _WHY = {
-    "equivalence": "proved only for some row orders DuckDB may pick",
+    "lenses": "proved only for some row orders DuckDB may pick",
     "not_a_key": "the tests upstream do not make it a key",
     "ties": "rows may tie in an ORDER BY, so DuckDB picks which rows it keeps",
     "always_false": "every row fails it",
