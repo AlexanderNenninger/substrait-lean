@@ -41,7 +41,8 @@ The steps between an engine's model and its actual run are listed in
 `docs/trusted-base.md` ("An engine's run of a proved plan").
 
 The verdict depends on no engine module only at test strength, and no test
-checks it on main yet (#1484 S1a). V2 adds the verdict theorems to this file.
+checks it on main yet (#1484 S1a). `verdict_proved_sound` states what
+`Verdict.PROVED` reads (#2010).
 `Report.output` (Ibis's dtypes, `contracts.py`) is tested, not proved: the
 checker reports no output types.
 -/
@@ -100,6 +101,26 @@ theorem verified_holds {input : Json} {R : Request} {rep : Report} {T : Plan} {k
     ∀ out, T.root.OrderAllowed data out → p.HoldsOn out :=
   fun _ ho => check_proved_sound h.parsed h.checked hD h.transform h.post h.proved
     ⟨_, ⟨_, ho, rfl⟩, rfl⟩
+
+/-- Every column of every postcondition is proved: the report's half of
+`Verdict.PROVED` (`python/src/sverify/report.py`). -/
+def Report.AllProved (rep : Report) : Prop := ∀ k, ∀ e ∈ rep.ensures.getD k [], e.2.1 = true
+
+/-- **`Verdict.PROVED`: every postcondition holds on every result the reference
+allows** (#2010). Checked, every postcondition proved and the report closed
+(no open measure, so every result is one of an order's: `Rel.allowed_orderAllowed`),
+on any data that meets the request. On an engine the statement is its
+evidence line: `verified_holds_duckdb`, `verified_holds_polars`,
+`verified_holds_spark`. -/
+theorem verdict_proved_sound {input : Json} {R : Request} {rep : Report} {T : Plan}
+    (h : Checked input R rep T) (hp : rep.AllProved) (hclosed : rep.closed = true)
+    {data : Catalog} (hD : DataMeets R data) :
+    ∀ out, T.root.Allowed data out → ∀ k p, R.posts[k]? = some p → p.HoldsOn out := by
+  intro out hout k p hk
+  rw [check_closed h.parsed h.checked] at hclosed
+  simp only [Request.closedIn, h.transform, Option.any_some] at hclosed
+  exact verified_holds { toChecked := h, post := hk, proved := hp k } hD out
+    (Rel.allowed_orderAllowed hclosed hout)
 
 /-- **A verified postcondition holds on DuckDB's model** (default route:
 verified under the reference, lowered by `Lowering.duckdb`, default
