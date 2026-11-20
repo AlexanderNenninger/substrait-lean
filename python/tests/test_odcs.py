@@ -316,6 +316,38 @@ def test_read_maps_rules_to_conditions():
     )
 
 
+@pytest.mark.parametrize(
+    ("bound", "cap"),
+    [
+        ({"mustBeLessOrEqualTo": 2.5}, 2),
+        ({"mustBeLessOrEqualTo": 3.0}, 3),
+        ({"mustBeLessThan": 2.5}, 2),
+        ({"mustBeLessThan": 3}, 2),
+        ({"mustBeBetween": [0, 2.5]}, 2),
+    ],
+)
+def test_read_rounds_a_fractional_row_cap_down(bound, cap):
+    # Row counts are whole numbers, so a cap of 2.5 rows is a cap of 2.
+    doc = textwrap.dedent(
+        """
+        apiVersion: v3.2.0
+        kind: DataContract
+        id: caps
+        version: 1.0.0
+        status: active
+        schema:
+          - name: t
+            properties:
+              - name: a
+                logicalType: integer
+        """
+    )
+    doc = yaml.safe_load(doc)
+    doc["schema"][0]["quality"] = [{"metric": "rowCount", **bound}]
+    c = odcs.read(doc, strict=True)
+    assert [x.n for x in c.conditions() if isinstance(x, MaxRows)] == [cap]
+
+
 def test_read_strict_raises_on_unread_rules():
     with pytest.raises(ValueError, match="6 ODCS rule"):
         odcs.read(DOC, strict=True)
