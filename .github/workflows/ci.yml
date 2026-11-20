@@ -980,17 +980,35 @@ jobs:
           uv run --no-sync ruff check .
           uv run --no-sync ruff format --check .
           uv run --no-sync pyrefly check
+      # The sample project's packages once: the tests' copies of it take
+      # them (tests/conftest.py), and the steps below too.
+      - run: uv run --no-sync dbt --no-use-colors deps --project-dir examples/shop --profiles-dir examples/shop
       - run: uv run --no-sync pytest -q
       - env:
           DBT: uv run --no-sync dbt --no-use-colors
           SHOP: --project-dir examples/shop --profiles-dir examples/shop
         run: |
-          $DBT deps $SHOP
           $DBT compile $SHOP
           uv run --no-sync sverify-dbt check examples/shop --selectors
           $DBT seed $SHOP
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
+      # dbt packages' integration projects (#859): built with dbt on DuckDB
+      # and checked with sverify-dbt, against the ledgers in dbt/replay/.
+      # A gate: it reports a change as a warning and never fails the job.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/dbt-replay
+          key: dbt-replay-${{ hashFiles('dbt/src/sverify_dbt/replay.py') }}
+      - name: dbt packages' integration projects (#859)
+        env:
+          DO_NOT_TRACK: "1"
+        run: |
+          if ! uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1; then
+            echo "::warning title=dbt replay gate::outcomes differ from dbt/replay/; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/replay.txt"
+          { echo "### dbt packages' integration projects (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       # The tour's dbt notebook (`poe notebooks` skips it: the python/
       # environment has no dbt).
       - env:
