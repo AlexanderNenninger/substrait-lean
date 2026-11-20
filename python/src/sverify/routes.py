@@ -1339,9 +1339,10 @@ def choose(
             "ties stay open: the engine picks their order, every proof holds for any "
             "pick, and a rerun may pick another"
         )
-    if report.observation.rows == "sequence" and not report._sorted:
+    if report.observation.rows == "sequence" and not report._sequence_determined:
         return refuse(
-            "the postcondition observes the rows as a sequence, and the plan's result is not sorted"
+            "the postcondition observes the rows as a sequence, and the plan does not fix their "
+            "order: its result is not sorted on a key of its input"
         )
     try:
         _support.check(plan, e)
@@ -1370,8 +1371,8 @@ def choose(
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)
         gives = got.observation
-        if gives is not None and gives.rows == "sequence" and not report._sorted:
-            # The reference leaves the order of an unsorted result open.
+        if gives is not None and gives.rows == "sequence" and not report._sequence_determined:
+            # The reference leaves open the order of an unsorted result and of tied sort keys.
             gives = replace(gives, rows="multiset")
         return Route(
             e,

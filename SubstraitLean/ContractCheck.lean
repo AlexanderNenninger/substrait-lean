@@ -308,6 +308,11 @@ structure Report where
   and operators that read a value picked from a class (`classHere`). Empty
   exactly when `classDetermined` (`Request.classDeterminedIn_eq`). -/
   classPlaces : List (Nat × String × String) := []
+  /-- Is the transformation determined as a sequence of rows
+  (`Rel.seqTotal`): `deterministic`, and its sort has no ties, so every allowed
+  result is `Rel.eval`'s in `Rel.eval`'s order
+  (`check_sequence_determined_sound`)? -/
+  sequenceDetermined : Bool := false
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
   within 64 bits is left out. -/
@@ -436,6 +441,7 @@ def Report.json (r : Report) : Json :=
       [("relation", Lean.toJson i), ("op", Lean.toJson op), ("kind", Lean.toJson kind),
         ("what", Lean.toJson what)]).toArray),
     ("class_determined", Lean.toJson r.classDetermined),
+    ("sequence_determined", Lean.toJson r.sequenceDetermined),
     ("class_places", Json.arr (r.classPlaces.map fun (i, op, what) => Json.mkObj
       [("relation", Lean.toJson i), ("op", Lean.toJson op), ("what", Lean.toJson what)]).toArray),
     ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
@@ -1239,6 +1245,14 @@ def Request.classDeterminedIn (R : Request) (K : KnowledgeEnv) : Bool := match R
   | some T => T.root.checkWF R.cat && T.root.detClass R.cat K.cols K.facts K.keys
   | none => false
 
+/-- Is the transformation without choices but the order of its rows, and does
+its sort leave none about that order (`Rel.seqTotal`) under the description `K`
+of the inputs: the report's `sequence_determined`
+(`check_sequence_determined_sound`). -/
+def Request.sequenceDeterminedIn (R : Request) (K : KnowledgeEnv) : Bool := match R.transform with
+  | some T => R.deterministicIn K && T.root.seqTotal R.cat K.cols K.facts K.keys
+  | none => false
+
 /-- Where the transformation is open at the class level (`classPlaces`): the
 report's `class_places`. -/
 def Request.classPlacesIn (R : Request) (K : KnowledgeEnv) : List (Nat × String × String) :=
@@ -1420,7 +1434,8 @@ def Request.check (R : Request) : Except String Report :=
       let classPlaces := R.classPlacesIn K
       let classDetermined := R.transform.isSome && classPlaces.isEmpty
       let (optimized, rewrites) := R.optimizedJson K
-      let rep := { rep with classPlaces, classDetermined }
+      let sequenceDetermined := R.sequenceDeterminedIn K
+      let rep := { rep with classPlaces, classDetermined, sequenceDetermined }
       .ok { rep with ensures, tiePlaces, deterministic, keys, issues, guardFree, optimized, rewrites }
 
 /-- Check a `--contract` request. -/
@@ -1458,6 +1473,7 @@ structure Request.CheckOk (R : Request) (rep : Report) : Prop where
   closed : rep.closed = R.closedIn
   classDetermined : rep.classDetermined = R.classDeterminedIn R.kenv
   classPlaces : rep.classPlaces = R.classPlacesIn R.kenv
+  sequenceDetermined : rep.sequenceDetermined = R.sequenceDeterminedIn R.kenv
   keys : rep.keys = R.keysIn R.kenv
   issues : rep.issues = R.issuesIn R.kenv
   guardFree : rep.guardFree = R.guardFreeIn R.kenv
@@ -1478,7 +1494,7 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
       · cases hc
         rw [Request.postEnvs_eq]
         exact ⟨by simpa using hwf, by simpa using htw, R.zip_results R.ensures,
-          (R.deterministicIn_eq _).symm, rfl, rfl, (R.classDeterminedIn_eq _).symm, rfl, rfl, rfl,
+          (R.deterministicIn_eq _).symm, rfl, rfl, (R.classDeterminedIn_eq _).symm, rfl, rfl, rfl, rfl,
           rfl, rfl⟩
 
 theorem check_parse {input : Json} {R : Request} {rep : Report}
@@ -1729,6 +1745,47 @@ theorem check_classDetermined {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
     rep.classDetermined = R.classDeterminedIn R.kenv :=
   (Request.check_ok (check_parse hR hc)).classDetermined
+
+/-- The report's `sequence_determined` is `Request.sequenceDeterminedIn`'s. -/
+theorem check_sequenceDetermined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.sequenceDetermined = R.sequenceDeterminedIn R.kenv :=
+  (Request.check_ok (check_parse hR hc)).sequenceDetermined
+
+/-- **The checker's `sequence_determined` is a theorem.** When `check` reports
+the transformation determined as a sequence, every result the reference allows
+for it is `Rel.eval`'s, row by row, for any data that meets the request
+(`DataMeets`): through `Rel.detPlan`, `Rel.seqTotal` and `Rel.allowed_eq_eval`.
+The sort's columns contain a key of its input, so no two rows tie. -/
+theorem check_sequence_determined_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hseq : rep.sequenceDetermined = true) :
+    ∀ {out : Relation}, T.root.Allowed data out → out = T.root.eval data := by
+  intro out ho
+  rw [check_sequenceDetermined hR hc] at hseq
+  simp only [Request.sequenceDeterminedIn, hT, Bool.and_eq_true] at hseq
+  obtain ⟨hdet, hs⟩ := hseq
+  simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hdet.1)
+  have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
+    rw [Rel.detPlan_congr hD.arity]
+    exact hdet.2
+  have hs' : T.root.seqTotal data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
+    rw [Rel.seqTotal_congr hD.arity]
+    exact hs
+  exact Knowledge.allowed_eq_eval hD.wf hK hwf hd hs' ho
+
+/-- **A sequence-determined report means one result as a sequence**: the
+instance of `Rel.DeterminedUpTo` at the identity observation, in every context
+(`Relation.Equiv_exact`). -/
+theorem check_sequence_determined_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hseq : rep.sequenceDetermined = true) (ctx : ObsCtx) :
+    T.root.DeterminedUpTo Obs.exact ctx data :=
+  fun _ h => Relation.Equiv_exact.2 (check_sequence_determined_sound hR hc hD hT hseq h)
 
 /-- The report's `class_places` are `Request.classPlacesIn`'s. -/
 theorem check_classPlaces {input : Json} {R : Request} {rep : Report}
