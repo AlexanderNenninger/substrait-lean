@@ -629,6 +629,8 @@ jobs:
           cache-suffix: pruned
       - run: bash python/scripts/marquez.sh start | tee -a "$GITHUB_ENV"
       - working-directory: python
+        env:
+          SVERIFY_MARQUEZ_REQUIRED: "1"
         run: uv run --locked pytest tests/test_openlineage.py -k marquez -p no:cacheprovider
       - if: always()
         run: bash python/scripts/marquez.sh stop
