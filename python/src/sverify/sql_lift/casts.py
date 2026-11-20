@@ -133,6 +133,15 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         raise SqlUnsupported(
             f"CAST to the fixed-size array {node.to.sql(DIALECT)} is not supported"
         )
+    if isinstance(t, dt.Timestamp) and t.scale in (0, 3):
+        # DuckDB's cast to TIMESTAMP_S or TIMESTAMP_MS truncates toward zero
+        # (`duckdb-ts-narrow-toward-zero`); the model's narrowing floors (D61).
+        raise SqlUnsupported(
+            f"CAST to {node.to.sql(DIALECT)} truncates toward zero in DuckDB; "
+            "write date_trunc to the unit instead",
+            issue=323,
+            construct="CAST",
+        )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
     # DuckDB casts to and from a timestamp with a time zone in the session's zone (D53).

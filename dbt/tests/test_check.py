@@ -639,3 +639,43 @@ def test_a_sverify_of_another_version_stops_the_import(monkeypatch: pytest.Monke
         importlib.reload(sverify_dbt)
     monkeypatch.undo()
     importlib.reload(sverify_dbt)
+
+
+def test_suggest_names_the_source_test_for_a_null_that_comes_through_an_expression(
+    make_project,
+) -> None:
+    """`fct.not_null(order_day)` fails on `ordered_at = NULL`; sverify itself
+    suggests nothing, so sverify-dbt tries `not_null` on the inputs (#1994)."""
+    root = make_project(
+        {
+            "models/_sources.yml": """\
+            version: 2
+            sources:
+              - name: raw
+                schema: main
+                tables:
+                  - name: orders
+                    columns:
+                      - {name: id, data_type: bigint, data_tests: [not_null]}
+                      - {name: ordered_at, data_type: timestamp}
+                      - {name: note, data_type: varchar}
+        """,
+            "models/fct.sql": (
+                "select id, cast(ordered_at as date) as order_day, note\n"
+                "from {{ source('raw', 'orders') }}\n"
+            ),
+            "models/_models.yml": """\
+            version: 2
+            models:
+              - name: fct
+                columns:
+                  - name: order_day
+                    data_tests: [not_null]
+        """,
+        }
+    )
+    res = sverify_dbt.check(root, counterexamples=0)
+    assert statuses(res["fct"]) == {"not_null(order_day)": "not proved"}
+    [s] = res.suggestions()
+    assert (s.relation.name, s.column, s.test) == ("orders", "ordered_at", "not_null")
+    assert "fct: proves not_null(order_day)" in s.because

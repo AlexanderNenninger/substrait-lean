@@ -48,6 +48,9 @@ def Profile.spark.table : ProfileTable where
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
+    -- Left open until the scope narrows to list arguments (ruling 171): a refused row for the
+    -- facts' LEAST (spark-list-order, polars-list-order) would refuse every MIN and MAX, integer ones too.
+    (none, "list_null_order", .loose ["NULL", "GREATEST", "LEAST"]),
     -- Partials per task, merged in the order the tasks finish.
     (none, "sum_order", .oneOf ["ANY"]),
     -- A whole partition at once, a growing frame by a running sum, any other

@@ -4,12 +4,11 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#241)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: cmp's nan_equality (#241)",
-          "row tested: cmp's nan_order (#241)",
-          "row tested: cmp's zero_sign (#241)",
+          "row tested: agg.fsum's empty_group_aggregates (#1985)",
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "row tested: cmp's nan_equality (#1985)",
+          "row tested: cmp's nan_order (#1985)",
+          "row tested: cmp's zero_sign (#1985)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "observed",
@@ -27,7 +26,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -50,8 +49,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -65,7 +63,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -108,9 +106,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#241)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's empty_group_aggregates (#1985)",
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -125,7 +122,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -144,8 +141,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -160,7 +156,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -178,8 +174,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -193,7 +188,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -210,9 +205,8 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "tolerance bound not proved (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "tolerance bound not proved (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -223,7 +217,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -251,7 +245,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -268,7 +262,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.isum's overflow (#241)"
+          "row tested: agg.isum's overflow (#1985)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -282,7 +276,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -296,7 +290,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.isum's overflow (#241)"
+          "row tested: agg.isum's overflow (#1985)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -310,7 +304,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -324,7 +318,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.isum's overflow (#241)"
+          "row tested: agg.isum's overflow (#1985)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -338,7 +332,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "shim",
@@ -352,8 +346,9 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order (#241)",
-          "row tested: agg.order's zero_sign (#241)"
+          "row tested: agg.order's list_null_order (#1484)",
+          "row tested: agg.order's nan_order (#1985)",
+          "row tested: agg.order's zero_sign (#1985)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -367,7 +362,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -385,8 +380,9 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order (#241)",
-          "row tested: agg.order's zero_sign (#241)"
+          "row tested: agg.order's list_null_order (#1484)",
+          "row tested: agg.order's nan_order (#1985)",
+          "row tested: agg.order's zero_sign (#1985)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -400,7 +396,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -418,11 +414,12 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's nan_order (#241)",
-          "row tested: agg.order's zero_sign (#241)",
-          "row tested: cmp's nan_equality (#241)",
-          "row tested: cmp's nan_order (#241)",
-          "row tested: cmp's zero_sign (#241)"
+          "row tested: agg.order's list_null_order (#1484)",
+          "row tested: agg.order's nan_order (#1985)",
+          "row tested: agg.order's zero_sign (#1985)",
+          "row tested: cmp's nan_equality (#1985)",
+          "row tested: cmp's nan_order (#1985)",
+          "row tested: cmp's zero_sign (#1985)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -438,7 +435,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -517,7 +514,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -532,11 +529,10 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: cmp's nan_equality (#241)",
-          "row tested: cmp's nan_order (#241)",
-          "row tested: cmp's zero_sign (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "row tested: cmp's nan_equality (#1985)",
+          "row tested: cmp's nan_order (#1985)",
+          "row tested: cmp's zero_sign (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -553,7 +549,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -574,8 +570,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -590,7 +585,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -615,7 +610,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -630,11 +625,10 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: cmp's nan_equality (#241)",
-          "row tested: cmp's nan_order (#241)",
-          "row tested: cmp's zero_sign (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "row tested: cmp's nan_equality (#1985)",
+          "row tested: cmp's nan_order (#1985)",
+          "row tested: cmp's zero_sign (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -650,7 +644,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -670,11 +664,10 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: cmp's nan_equality (#241)",
-          "row tested: cmp's nan_order (#241)",
-          "row tested: cmp's zero_sign (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "row tested: cmp's nan_equality (#1985)",
+          "row tested: cmp's nan_order (#1985)",
+          "row tested: cmp's zero_sign (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -689,7 +682,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -709,11 +702,10 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: cmp's nan_equality (#241)",
-          "row tested: cmp's nan_order (#241)",
-          "row tested: cmp's zero_sign (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "row tested: cmp's nan_equality (#1985)",
+          "row tested: cmp's nan_order (#1985)",
+          "row tested: cmp's zero_sign (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -730,7 +722,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -750,8 +742,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.quant's nan_creation (#241)",
-          "row tested: agg.quant's nan_order (#241)",
+          "row tested: agg.quant's nan_order (#1985)",
           "row tested: agg.quant's quantile_interp (#900)"
         ],
         "class": "shim",
@@ -803,10 +794,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#241)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: rel.sort's null_order (#241)",
+          "row tested: agg.fsum's empty_group_aggregates (#1985)",
+          "row tested: agg.fsum's float_overflow (#1985)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "observed",
@@ -823,7 +812,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -850,7 +839,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -864,10 +853,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: int.arith's overflow (#241)",
-          "row tested: rel.sort's null_order (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -881,7 +867,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -896,12 +882,10 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: fp.arith's float_overflow (#241)",
-          "row tested: fp.arith's nan_creation (#241)",
-          "row tested: fp.arith's rounding (#241)",
-          "row tested: fp.arith's zero_sign (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "row tested: fp.arith's float_overflow (#1985)",
+          "row tested: fp.arith's rounding (#1985)",
+          "row tested: fp.arith's zero_sign (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -917,7 +901,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -937,10 +921,8 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#241)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: rel.sort's null_order (#241)",
+          "row tested: agg.fsum's empty_group_aggregates (#1985)",
+          "row tested: agg.fsum's float_overflow (#1985)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "observed",
@@ -957,7 +939,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -977,8 +959,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's nan_creation (#241)",
-          "row tested: agg.var's rounding (#241)"
+          "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -995,7 +976,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1014,8 +995,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's nan_creation (#241)",
-          "row tested: agg.var's rounding (#241)"
+          "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1031,7 +1011,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1082,7 +1062,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1096,8 +1076,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1108,7 +1087,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -1123,8 +1102,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1138,7 +1116,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1181,8 +1159,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1197,7 +1174,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1215,8 +1192,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1230,7 +1206,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1248,8 +1224,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1263,7 +1238,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1324,8 +1299,7 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1336,7 +1310,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "class": "observed",
@@ -1351,11 +1325,10 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#241)",
-          "row tested: agg.fsum's nan_creation (#241)",
-          "row tested: cmp's nan_equality (#241)",
-          "row tested: cmp's nan_order (#241)",
-          "row tested: cmp's zero_sign (#241)"
+          "row tested: agg.fsum's float_overflow (#1985)",
+          "row tested: cmp's nan_equality (#1985)",
+          "row tested: cmp's nan_order (#1985)",
+          "row tested: cmp's zero_sign (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1372,7 +1345,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [
@@ -1400,7 +1373,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1422,7 +1395,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "outcome": "refused",
@@ -1437,8 +1410,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's nan_creation (#241)",
-          "row tested: agg.var's rounding (#241)"
+          "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1455,7 +1427,7 @@
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified under semantics=\"snowflake\"; no translation from the reference to snowflake; no transfer from semantics=\"reference\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='reference' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
         "causes": [

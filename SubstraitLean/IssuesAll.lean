@@ -184,20 +184,17 @@ theorem Rel.join_length_le_of_keyed_all (hcat : cat.WF)
     (hkey : Rel.keyedJoin cat A F K a b on = true) {out : Relation}
     (h : (Rel.join a b ty on).OrderAllowed cat out) :
     ∃ x, a.OrderAllowed cat x ∧ out.length ≤ x.length := by
-  obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hkey
   cases ty with
   | inner =>
     obtain ⟨x, y, hx, hy, hp⟩ := h
-    have hkB := Rel.keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy
     refine ⟨x, hx, ?_⟩
     rw [hp.length_eq]
     refine Nat.le_trans ?_ (Nat.le_of_eq (Nat.mul_one _))
     simp only [crossRows, List.filter_flatMap]
     exact length_flatMap_le fun r hr =>
-      _root_.Substrait.partners_le_one (Rel.orderAllowed_arity hcat hwf.1 hx r hr) hkB hd
+      Rel.keyedJoin_partners_all hcat hA hF hK hwf.2.1 hkey hy (Rel.orderAllowed_arity hcat hwf.1 hx r hr)
   | left =>
     obtain ⟨x, y, hx, hy, hp⟩ := h
-    have hkB := Rel.keys_sound_all hcat hA hF hK hwf.2.1 kb hkb hy
     refine ⟨x, hx, ?_⟩
     rw [hp.length_eq]
     refine Nat.le_trans ?_ (Nat.le_of_eq (Nat.mul_one _))
@@ -206,7 +203,8 @@ theorem Rel.join_length_le_of_keyed_all (hcat : cat.WF)
     simp only []
     split
     · simp
-    · exact _root_.Substrait.partners_le_one (Rel.orderAllowed_arity hcat hwf.1 hx r hr) hkB hd
+    · exact Rel.keyedJoin_partners_all hcat hA hF hK hwf.2.1 hkey hy
+        (Rel.orderAllowed_arity hcat hwf.1 hx r hr)
 
 /-- **Capping joins keeps every order.** -/
 theorem Rel.orderAllowed_capJoins (hcat : cat.WF)
@@ -491,7 +489,6 @@ theorem Rel.perKey_sound_all (hcat : cat.WF)
       simp only [List.mem_filter, List.mem_append, List.mem_map, List.all_eq_true,
         decide_eq_true_eq] at h
       obtain ⟨hmem, hlt⟩ := h
-      obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.1 hkey
       have side : ∀ {x y : Relation}, a.OrderAllowed cat x → b.OrderAllowed cat y →
           RowsPer kn.1 kn.2 x ∧ ∀ r ∈ x,
             (((y.map (r ++ ·)).filter fun row => (on.eval row).isTrue).length ≤ 1 ∧
@@ -501,8 +498,8 @@ theorem Rel.perKey_sound_all (hcat : cat.WF)
           · rcases hmem with hm | ⟨k, hk, rfl⟩
             · exact perKey_sound_all hcat hA hF hK hP hw.1 kn hm hx
             · exact RowsPer.of_keyOn (Rel.keys_sound_all hcat hA hF hK hw.1 k hk hx)
-          · exact _root_.Substrait.partners_le_one (orderAllowed_arity hcat hw.1 hx r hr)
-              (Rel.keys_sound_all hcat hA hF hK hw.2.1 kb hkb hy) hd
+          · exact Rel.keyedJoin_partners_all hcat hA hF hK hw.2.1 hkey hy
+              (orderAllowed_arity hcat hw.1 hx r hr)
           · obtain ⟨z, _, rfl⟩ := List.mem_map.1 (List.mem_filter.1 hrow).1
             exact ⟨z, rfl⟩
       cases ty with
@@ -675,7 +672,7 @@ theorem check_issues_sound_all {input : Json} {R : Request} {rep : Report}
       p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) := by
   intro p hp
   have hok := Request.check_ok (check_parse hR hc)
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf := check_transform_wf hR hc hD hT
   have hin := Rel.issuesCapped_sound_all hD.wf hK.cols hK.facts (hK.windows hD.wf) hK.keys hD.caps
     hP hwf hsm p hp
