@@ -1769,8 +1769,9 @@ class Pipeline:
             table = self.con.get(t)
             if t in self.inputs or not isinstance(table, pa.Table):
                 continue
-            schema = pa.schema([*self.con.schema(t), pa.field(WEIGHT, pa.int64())])
-            state = store.kept(weighted(table, 1).cast(schema))
+            table = arrow_of(table)  # instants in UTC, as the store reads them
+            schema = pa.schema([*table.schema, pa.field(WEIGHT, pa.int64())])
+            state = store.kept(weighted(table, 1))
             self.inputs[t] = (state, Merger(self.con, schema, store))
             put_table(self.con, t, store.expanded(state))
 
@@ -2179,7 +2180,9 @@ class Pipeline:
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
             schema = self.con.schema(t)
-            evolved = SchemaChange.of(schema, batch.schema or schema)
+            evolved = SchemaChange.of(
+                instants_schema(schema), instants_schema(batch.schema or schema)
+            )
             note = schema_note = ""
             if evolved:
                 try:
