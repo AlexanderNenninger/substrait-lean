@@ -270,6 +270,8 @@ end Substrait.Examples
 #print axioms Substrait.Time.monthIndex_spec
 #print axioms Substrait.Time.trunc_mono
 #print axioms Substrait.Rel.keys_sound
+#print axioms Substrait.Rel.ranges_sound_all
+#print axioms Substrait.partners_le_one_range
 #print axioms Substrait.Rel.join_length_le_of_keyed
 #print axioms Substrait.IoT.window_complete
 #print axioms Substrait.window_tiebreak
