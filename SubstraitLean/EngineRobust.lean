@@ -106,11 +106,11 @@ theorem engineVal_mem {a : AVal} {t : Nat} {sign : Bool} {r v : Int} (hr : a.Mem
       obtain ⟨hlo, hhi⟩ := hs rfl b hb
       exact Bound.mem_meet (widen_mem hm hv) (signHull_mem hlo hhi)
 
-/-- `t` units of `2⁻¹⁰⁷⁴` at least the double `f ≥ 0`: its own scaled value,
-which is exact, as a reported `ε` is a double rounded up. -/
-def scaledOf (f : Float) : Option Nat :=
-  if f.isNaN || f.isInf || f < 0 then none
-  else some ((FloatCode.scaled (FloatCode.ofFloat f)).toNat + 1)
+/-- `t` units of `2⁻¹⁰⁷⁴` at least the reported `ε ≥ 0`, read exactly from
+its JSON number: `⌈ε · 2¹⁰⁷⁴⌉`. -/
+def scaledOf (n : Lean.JsonNumber) : Nat :=
+  let q := ExactBound.ofJsonNumber n * ((2 ^ 1074 : Nat) : Rat)
+  q.ceil.toNat
 
 /-- The `sum_order` behaviours whose sums keep the sign of values of one sign
 (`FloatBounds.StdModel.TreeSum.sign`): every order the engines' rows name
@@ -154,10 +154,9 @@ def robust (es : List EngineProfile) (input : Json) : Except String Json := do
     | none => []
   let E := (names.zip env).map fun (n, a) =>
     match ((eps.getObjVal? n).toOption.bind (·.getObjVal? "abs" |>.toOption)).bind
-        (fun j => (j.getNum?.toOption).map (·.toFloat)) with
-    | some f => match scaledOf f with
-      | some t => engineVal t (!covs.contains n) a
-      | none => { a with int := a.int.map fun _ => Bound.top }
+        (fun j => j.getNum?.toOption) with
+    | some f => if f.mantissa < 0 then { a with int := a.int.map fun _ => Bound.top }
+      else engineVal (scaledOf f) (!covs.contains n) a
     | none => a
   -- Each postcondition's columns as expressions over the transformation's
   -- output (`Post.plan`).
