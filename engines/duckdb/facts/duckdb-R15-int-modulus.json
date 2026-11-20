@@ -161,11 +161,15 @@
       "method": "docs",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "% 'Modulo (remainder)'; zero divisor raises; silent on the sign and on MIN % -1"}
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html",
+          "note": "% 'Modulo (remainder)'; zero divisor raises; silent on the sign and on MIN % -1"
+        }
       ]
     }
   ],
   "issues": [
     242
-  ]
+  ],
+  "superseded_by": "duckdb-int-modulus-min-neg-one"
 }

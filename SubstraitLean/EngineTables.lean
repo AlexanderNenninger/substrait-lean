@@ -80,7 +80,7 @@ def tablesJson (es : List EngineProfile) : Json :=
         ("core", Json.mkObj [("engine", Json.null)]),
         ("substrait", Json.mkObj [("engine", Json.null), ("yaml", toJson Profile.substrait.table.version)])] ++
       es.map fun e => (e.name, Json.mkObj [
-        ("engine", toJson e.name), ("versions", toJson [e.table.version]),
+        ("engine", toJson e.name), ("versions", toJson (e.table.version :: e.table.alsoProbed)),
         ("executes", toJson e.executes),
         ("missing", Json.arr <| (e.table.missing.map fun (f, ids) =>
           Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))

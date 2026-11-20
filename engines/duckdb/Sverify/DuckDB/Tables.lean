@@ -35,6 +35,9 @@ namespace Substrait
 def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
   name := "duckdb"
   version := "2.0.0"
+  -- 2.0.1 (#2045): `MIN % -1` returns 0 natively and `list_contains([], NULL)` gives FALSE, a
+  -- value the lowering guards (`duckdb-list-contains-null`); a constant `WHEN` no longer folds.
+  alsoProbed := ["2.0.1"]
   choices := [
     (none, "overflow", .asked ["ERROR"] ["ERROR"]),
     (none, "on_division_by_zero", .oneOf [if s.errorOnDivZero then "ERROR" else "NULL"]),
