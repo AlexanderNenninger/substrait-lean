@@ -1,7 +1,7 @@
 """Polars as a Substrait consumer, for the plans Lean writes.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `to_lazy` translates a Substrait JSON plan into a Polars `LazyFrame`. It reads
 the form `substrait-check` writes (`Write.writePlan`: `--write` and the delta
@@ -1560,7 +1560,7 @@ class Exprs:
                 bad = (x == 0.0) & (y == 0.0)
                 return self.domain(bad, pl.arctan2(x, y), pl.Float64, name, a, b)
             # `ln x / ln b` (`logb?`), with the arguments made safe where it fails.
-            bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
+            bad = x.is_not_null() & y.is_not_null() & ((x <= 0.0) | (y <= 0.0) | (y == 1.0))
             sx = pl.when(bad).then(2.0).otherwise(x)
             sy = pl.when(bad).then(2.0).otherwise(y)
             # `logb?` divides once, exactly: Polars's `log` with a column base

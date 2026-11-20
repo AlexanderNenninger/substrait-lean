@@ -1,0 +1,11 @@
+{
+  "id": "D29",
+  "date": "2026-11-07",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Value has a constructor per kind (int, float, date, ts, tod, dec, ...).",
+  "issues": [
+    923
+  ]
+}

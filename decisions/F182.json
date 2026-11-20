@@ -1,0 +1,16 @@
+{
+  "id": "F182",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1935 re-review at fb996b63: R1-R6 of ruling 180 applied; signed and ready for a merge batch.",
+  "issues": [
+    1935
+  ],
+  "prs": [
+    1935
+  ],
+  "source": "fable-ruling-182-1935-rereview.md",
+  "note": "Closes ruling 180's open question on the types.Route docs page."
+}

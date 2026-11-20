@@ -64,6 +64,7 @@ def verdict(
         _unchecked=out.get("unchecked"),
         _optimized=out.get("optimized"),
         _rewrites=out.get("rewrites", []),
+        _assumed_check=_assumed_check(out.get("assumed_check"), out["issues"]),
         _run_plan=out.get("run_plan"),
         _run_gate=out.get("run_gate"),
         _run_unchecked=out.get("run_unchecked"),
@@ -96,3 +97,14 @@ def split_assumed(report: Report) -> Report:
     report.assumed = [i for i in report.issues if i.assumed]
     report.issues = [i for i in report.issues if not i.assumed]
     return report
+
+
+def _assumed_check(
+    check: Mapping[str, Any] | None, raw: Sequence[Mapping[str, Any]]
+) -> tuple[dict, list[tuple[str, str]]] | None:
+    """The checker's `assumed_check`: its plan, and for each column the issue
+    it checks, by kind and expression (the checker gives its index in `raw`,
+    `out["issues"]`)."""
+    if not check:
+        return None
+    return check["plan"], [(raw[j]["kind"], raw[j]["expr"]) for j in check["issues"]]

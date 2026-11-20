@@ -220,7 +220,6 @@ PINNED = (
         "runner",
         "rows",
         "local",
-        "checks_assumed",
         "session",
         "modules",
         "read_settings",

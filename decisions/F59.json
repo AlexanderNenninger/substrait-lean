@@ -1,0 +1,20 @@
+{
+  "id": "F59",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "CAST(DOUBLE AS BIGINT) under semantics='duckdb': lift casts of round/floor/ceil arguments now (step 0); the bare cast needs a half-even round in the core via a dated amendment to D42's rounding row, then the lift; B declined.",
+  "issues": [
+    271,
+    1608
+  ],
+  "amends": [
+    "D42"
+  ],
+  "amended_by": [
+    "F106"
+  ],
+  "source": "fable-ruling-1608-cast-double-bigint.md",
+  "note": "#1608 item 9. Signs a dated amendment (2026-11-18) to D42's rounding row adding TIE_TO_EVEN as an asked value, default unchanged; D49's mark does not apply. Narrower integers and decimals stay refused."
+}

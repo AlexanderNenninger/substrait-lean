@@ -1222,7 +1222,14 @@ class Known:
 #: here that no ledger needs.
 KNOWN: tuple[Known, ...] = (
     # DuckDB widens an integer SUM to HUGEINT; the reference raises past i64.
-    Known("duckdb-R6", ("aggregate/aggregates/test_sum.test", "sql_export/aggregate_results.test")),
+    Known(
+        "duckdb-R6",
+        (
+            "aggregate/aggregates/test_sum.test",
+            "aggregate/sparse_clustered_aggregation.test",
+            "sql_export/aggregate_results.test",
+        ),
+    ),
     # `AND` runs in order in DuckDB's filter; in the reference both operands
     # run, and the written plan's cast raises.
     Known("duckdb-exec-short-circuit", ("cast/signed_cast_repro.test",)),

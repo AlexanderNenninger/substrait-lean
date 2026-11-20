@@ -1,0 +1,13 @@
+{
+  "id": "F117",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Measure.openB is obsolete after D25 and its open-sum machinery is unreachable; delete it (openB, aggCtx, near_eval, floatOpenSafe_aggregate and the postAllowed branch) in a small Lean PR separate from #1749.",
+  "prs": [
+    1749
+  ],
+  "source": "fable-ruling-openb-after-d25.md",
+  "note": "No D-number; behaviour unchanged."
+}

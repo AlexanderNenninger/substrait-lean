@@ -1,0 +1,17 @@
+{
+  "id": "D30",
+  "date": "2026-11-07",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "VAR, STDDEV, COVAR and CORR of doubles are rounded once from the exact moments.",
+  "issues": [
+    918
+  ],
+  "prs": [
+    918
+  ],
+  "supersedes": [
+    "U-2026-11-03-reference-generic-properties"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-03-no-avg-clamp",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "AVG of doubles gets no clamp.",
+  "source": "memory:reference-generic-algorithms.md"
+}

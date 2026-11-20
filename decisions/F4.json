@@ -1,0 +1,14 @@
+{
+  "id": "F4",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Report.output may take its types early from the written plan's declared output, one path for every kind, with no decimal-only branch and no new verdict-JSON field; otherwise the rows are strict xfails naming S7.",
+  "issues": [
+    1497,
+    1484
+  ],
+  "source": "fable-rulings-night-1117.md, entry 4",
+  "note": "Logged out of order near line 2742. Step 3: the new decimal quotient matches the model on negative sums and the rounding boundary."
+}

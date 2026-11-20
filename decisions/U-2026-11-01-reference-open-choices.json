@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-01-reference-open-choices",
+  "date": "2026-11-01",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Reference choices where Substrait is open - modulus TRUNCATE, casts to integer truncate, substring negative start wraps from the end, one zero, lexicographic list order, avg of integers follows the plan's output type.",
+  "issues": [
+    209
+  ],
+  "source": "github:#209 comment 6556433866",
+  "note": "Recorded as 'Decided' without naming the user. Later rulings changed some rows (e.g. decimal-to-int cast rounding in the open PR #1959, ruling 106); not checked item by item here."
+}

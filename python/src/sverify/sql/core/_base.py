@@ -1100,8 +1100,8 @@ class Dialect:
             f'{engine} tables have no row order, so rows="sequence" cannot follow the Lean '
             "model's list order for FETCH and windows over a named table; write "
             'rows="multiset" (ties and the rows of a LIMIT are open, as the reference allows), '
-            "or run a report whose windows have no ties (deterministic=True), which writes "
-            "them with the sort keys alone"
+            "or order by a key that is unique too and verify again: once `report.deterministic` "
+            "is True, `report.to_sql(dialect)` writes the windows with the sort keys alone"
         )
 
     def subquery(self, select: str, alias: str) -> str:
@@ -5384,6 +5384,9 @@ class _Writer:
                     f"(NOT {d.float_lt(zero, x)} OR NOT {d.float_lt(zero, base)} "
                     f"OR {d.float_eq(base, d.float_lit(1.0))})"
                 )
+                # `Expr.issues` reads a call with both arguments present: a NULL in either
+                # makes the result NULL before the domain is looked at (#1990).
+                bad = d.case_when(d.or3(d.is_null(x), d.is_null(base)), d.bool_lit(False), bad)
                 return self.domain(x, bad, d.float_logb(x, base))
             case Bin(op="bit", left=a, right=b, param=name):
                 sa, sb = (self.int_operand(e, ref, cols, name) for e in (a, b))
