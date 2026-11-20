@@ -167,7 +167,7 @@ def test_relationships() -> None:
 def test_unmapped() -> None:
     assert "no mapping" in (
         mapping.test_conditions(
-            t("dbt_utils.at_least_one"), side="ensures", table_of=lambda _: None
+            t("dbt_utils.unknown_test"), side="ensures", table_of=lambda _: None
         ).reason
         or ""
     )
