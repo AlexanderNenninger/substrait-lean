@@ -5671,14 +5671,19 @@ class _Writer:
     def date_trunc(self, unit: str, ts: str) -> str:
         """`Time.trunc`. To a week or longer it raises outside the reference's
         timestamps (`Issue.overflow`, D32). To a day or less it wraps below
-        -2⁶³ µs, which no engine's timestamps reach."""
+        -2⁶³ µs, which no engine's timestamps reach. Truncation keeps the order
+        and leaves the reference's first instant, a Monday's midnight that
+        starts its month, quarter and year, as it is: the result is below it
+        just where `ts` is, so the check reads `ts` alone (#1608 item 10). This
+        holds for the units the model has, which stop at a year; a decade or a
+        century would break it (DuckDB's decade of year 1 is year 0)."""
         d = self.d
         t = d.date_trunc(unit, ts)
         if unit not in ("week", "month", "quarter", "year") or not d.guards:
             return t
         lo, hi = d.timestamp_lit(TS_MIN), d.timestamp_lit(TS_MAX)
         fail = d.raise_(f"date_trunc to a {unit} {OUTSIDE_TS}", ts, "time", "overflow")
-        return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
+        return d.case_when(f"({ts} > {hi} OR {ts} < {lo})", fail, t)
 
     def ts_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
         """`r`, raising where the timestamp `ts` is outside the reference's
@@ -5709,16 +5714,32 @@ class _Writer:
         out = [pieces.get(t, d.str_lit("%" if t == "%%" else t)) for t in tokens]
         return "(" + " || ".join(out or [d.str_lit("")]) + ")"
 
-    def date_range(self, x: str, f: Callable[[str], str], lo: int, hi: int, what: str) -> str:
+    def date_range(
+        self,
+        x: str,
+        f: Callable[[str], str],
+        lo: int,
+        hi: int,
+        what: str,
+        *,
+        decided: tuple[int, int] | None = None,
+    ) -> str:
         """`rangeIssue`: the DATE `f(x)`, raising unless `x` and it are within
         `[lo, hi]` days. `f` sees only dates in range, so the engine's own range
-        errors cannot come first."""
+        errors cannot come first. `decided` is the range of `x` for which both
+        are in range, where the caller knows it (#1608 item 10): then one
+        comparison of `x` checks both, and the result is not computed twice."""
         d = self.d
         if not d.guards:
             return f(x)
+        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
+        if decided is not None:
+            a, b = d.int_lit(decided[0]), d.int_lit(decided[1])
+            r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {a} AND {b} THEN {x} END)")
+            # NULL (so not raising) where `x` is NULL.
+            return d.case_when(f"({d.date_days(x)} NOT BETWEEN {a} AND {b})", fail, r)
         lo_, hi_ = d.int_lit(lo), d.int_lit(hi)
         r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {lo_} AND {hi_} THEN {x} END)")
-        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
         # NULL (so not raising) where `x` or the result is NULL.
         bad = (
             f"({d.date_days(x)} NOT BETWEEN {lo_} AND {hi_} "
