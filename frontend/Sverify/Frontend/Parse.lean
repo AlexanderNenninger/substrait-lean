@@ -4,7 +4,7 @@ import Sverify.Core.Functions
 import Sverify.Core.Options
 import Sverify.Core.Kinds
 import Sverify.Frontend.Guard
-import Sverify.Frontend.Bind
+import Sverify.Frontend.GuardedColumns
 
 /-!
 # Parsing Substrait JSON plans
