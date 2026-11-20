@@ -204,6 +204,7 @@ except VerificationError as e:
   already; the report's guarantee then holds only on data that meets them:
 
   ```python
+  # skip: a fragment: query and con are the reader's
   report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
   if report.verdict == sv.Verdict.PROVED:
       result = report.run(con)
@@ -220,6 +221,7 @@ except VerificationError as e:
   table (`e.rows`; None for `max_rows` and `rows_per`):
 
   ```python
+  # skip: a fragment: node, log and quarantine are the reader's
   try:
       node.refresh()
   except PreconditionError as e:
@@ -504,7 +506,7 @@ print(report.details())
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
 # semantics: reference
-# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #241)
+# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #1985)
 # evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
 # evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)
 # known about the output:
@@ -663,6 +665,7 @@ The `sverify` command checks, fixes and runs a pipeline's file from a
 shell, a CI job or an agent:
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify check pipelines/orders.py            # prove every transform and node in the file
 sverify check pipelines/orders.py:paid       # one node or transform
 sverify check pipelines/orders.py --full     # with each node's full report
@@ -1403,6 +1406,7 @@ The target is a file (JSON lines), `"console"`, a URL such as
 configuration (`openlineage.yml`, `OPENLINEAGE_*`).
 
 ```bash
+# skip: needs a Marquez service
 sverify refresh pipelines/orders.py:paid --lineage http://marquez:5000
 ```
 
@@ -1476,10 +1480,13 @@ print(upstream.verified, doubled_paid.check(paid=upstream.schema).verdict)
 # True proved
 ```
 
-To try it with Marquez, `python/scripts/marquez.sh start` runs Marquez
-0.51.1 and its Postgres in containers, with the API on port 5000;
-`test_marquez_round_trip` runs against it when
-`SVERIFY_MARQUEZ_URL` is set. DataHub takes OpenLineage events at
+The tests validate every emitted event and facet against OpenLineage's
+published JSON schemas and check a refresh's events against Marquez: the job,
+its input and output datasets, the completed run and the contract facet.
+`python/scripts/marquez.sh start` runs Marquez 0.51.1 and its Postgres in
+containers, with the API on port 5000, and
+`SVERIFY_MARQUEZ_URL=http://localhost:5000 pytest tests/test_openlineage.py -k marquez`
+runs the check; CI runs it on main and in the merge queue. DataHub takes OpenLineage events at
 `/openapi/openlineage/api/v1/lineage` on its GMS, so its target is the
 GMS's URL with that prefix, such as
 `Lineage("http://datahub-gms:8080/openapi/openlineage", api_key=token)` with a
@@ -1744,7 +1751,7 @@ line gives the plan's bound, the reason per engine and a tolerance that
 would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
 `sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
-`timestamps="ms"`, `strings="nfc"`, `decimals="value"` and
+`timestamps="ms"`, `strings="nfc"` (or `"casefold"`, `"ascii"`), `decimals="value"` and
 `errors="kind"`; `Observation.refines` orders observations component by
 component. A postcondition that reads what the observation ignores, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
@@ -1815,6 +1822,20 @@ the export handles it in one of these ways:
 A refusal raises `sverify.errors.ExportError`, which names the reason and
 the gap. So does an unproved report, a plan proved under an engine's
 profile, and a function outside Substrait's YAMLs.
+
+Sverify validates the plans it exports with Substrait's own validator,
+[`substrait-validator`](https://github.com/substrait-io/substrait-validator),
+built at the commit the gate pins (it implements Substrait 0.88.1; no
+release reads 0.106). Every coverage case and catalogue query is exported
+in the `"apply"` and `"annotate"` modes, and CI's `evidence` job compares the
+validator's verdicts with the ledger
+[`substrait_validator.json`](../python/tests/substrait_validator.json),
+[`sverify_dev.substrait_validator`](../python/tools/sverify_dev/substrait_validator.py).
+On 2026-11-20: 332 exports valid, 10 with a recorded finding (time and
+timestamp literals the validator does not implement yet,
+[ST-19](../upstream/bugs/ST-19.json), and a decimal precision,
+[#1904](https://github.com/AlexanderNenninger/substrait-lean/issues/1904)),
+190 refused with their reason, 146 not proved.
 
 `node.to_substrait()` and `transform.to_substrait()` export the report of
 a node and of a transform's last call.
@@ -1895,6 +1916,7 @@ print(doubled_paid.check(paid=paid_contract.schema()).verdict)
 ```
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify contract export pipelines/orders.py:paid --format odcs -o paid.odcs.yaml
 ```
 

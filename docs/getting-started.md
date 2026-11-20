@@ -16,6 +16,7 @@ against the comment under it.
 ## Install
 
 ```bash
+# skip: installs software on the reader's machine
 pip install sverify                 # or: uv add sverify
 pip install 'sverify[duckdb,polars,delta]' # the steps below use DuckDB, Polars and Delta Lake
 ```
@@ -438,7 +439,9 @@ the profile takes from Polars.
 any conforming consumer of Substrait 0.106: each call names its YAML's URN,
 its compound name and its output type, and each option the proof depends on
 is pinned at the reference's behaviour. The contract travels with it, and
-`sv.Report.from_substrait` proves it again:
+`sv.Report.from_substrait` proves it again. No theorem says the written plan
+is the proved one; that proof again, from the plan as written, is the check
+([what is trusted](trusted-base.md); the gap is tracked in [#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)):
 
 ```python
 from sverify.errors import ExportError

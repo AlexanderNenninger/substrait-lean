@@ -344,9 +344,7 @@ class _Checker:
 
         while True:
             try:
-                return go(
-                    requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
-                )
+                return go(requires, _checked(ensures))
             except ConditionError as e:  # drop the conditions it names, prove the rest (#699)
                 if not self._drop(e, res, requires, ensures):
                     res.refuse(_refusal(e))
@@ -373,7 +371,7 @@ class _Checker:
             except ValueError as e:
                 tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
         try:
-            return go(requires, [c for tr, cs in ensures if tr.status != "not checked" for c in cs])
+            return go(requires, _checked(ensures))
         except ValueError:
             res.refuse(_refusal(first))
             return None
@@ -604,6 +602,11 @@ def _rewrite(sql: str, inputs: dict[str, str], own: str | None = None) -> str:
 
 def _q(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
+
+
+def _checked(ensures: list) -> list:
+    """The conditions of the tests still to check, in order."""
+    return [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
 
 
 def _first_line(e: BaseException) -> str:
