@@ -301,7 +301,7 @@ def literal(lit: dict) -> tuple[Any, DType]:
         case "str":
             return v, pl.String
         case "float":
-            return v + 0.0, pl.Float64  # the one zero
+            return v, pl.Float64  # raw, -0.0 too (D31)
         case "decimal":
             m, p, s = v
             return Decimal(m).scaleb(-s), decimal_type(p, s)

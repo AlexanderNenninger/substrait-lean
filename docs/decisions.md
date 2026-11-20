@@ -1975,3 +1975,39 @@ Recomputes sinks: no
 Why: D14 refused only another major, and a patch release changed a native value
 (`list_contains([], NULL)` at DuckDB 2.0.1, [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045)). An unprobed patch
 warns and an unprobed minor is refused.
+
+### D61. Timestamp precisions
+
+Decided 2026-11-19 (theory advisor, ruling 142; #323).
+
+The reference's timestamps count microseconds (`Kind.time`, `Kind.timeTz`) or
+nanoseconds (`Kind.timeNs`, `Kind.timeTzNs`). Seconds and milliseconds are
+encodings of a source or a sink: a scan reads them as microseconds, exactly. A
+cast to a coarser precision floors on the timeline: to seconds or milliseconds
+it is `date_trunc` to that unit, and its result is a microsecond timestamp; from
+nanoseconds it is the floor of the count divided by 1000. A cast from
+microseconds to nanoseconds multiplies by 1000 and raises `overflow` when the
+result leaves 64 bits. Calendar functions take microsecond timestamps. A
+microsecond and a nanosecond timestamp meet only through a written cast.
+
+Where it stands: the second and millisecond reads, the narrowing cast and the
+refusals are built (#323, PR a). The nanosecond kinds and the two casts are
+the next step (PR b); until then a plan column of a precision other than
+microseconds is refused when the plan is read (#2004), since reading it as a
+count of microseconds would compare raw counts of different units.
+
+Recomputes sinks: no
+
+Why: a `timestamp[ms]` value and the microsecond timestamp of the same instant
+are equal on every engine, so they are one value of the reference, and nothing
+in the model rests on a column being a multiple of 1000. The engines floor
+differently below 1970 (DuckDB's narrowing casts truncate toward zero, Polars
+floors), so the reference picks the floor, which is `date_trunc`
+([duckdb-ts-narrow-toward-zero](../engines/duckdb/facts/duckdb-ts-narrow-toward-zero.json),
+[polars-ts-narrow-floor](../engines/polars/facts/polars-ts-narrow-floor.json),
+[polars-ts-units-compare-coarse](../engines/polars/facts/polars-ts-units-compare-coarse.json),
+[polars-ts-widen-wraps](../engines/polars/facts/polars-ts-widen-wraps.json),
+[duckdb-ts-us-to-ns-range](../engines/duckdb/facts/duckdb-ts-us-to-ns-range.json),
+[polars-ts-us-to-ns-range](../engines/polars/facts/polars-ts-us-to-ns-range.json)).
+Nanoseconds get kinds of their own so that every `.time` pattern keeps meaning
+microseconds, and a function that does not name the new kinds refuses them.

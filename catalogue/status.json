@@ -1188,11 +1188,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": true,
-   "inferred": [
-    "store_sales: (_.ss_ext_sales_price >= 0.01)"
-   ]
+   "proved": true,
+   "guard_free": true
   },
   "verified_sql": {
    "duckdb": "yes"
@@ -1264,11 +1261,8 @@
    "snowflake": "refused: snowflake does not compute decimals as the reference does yet (#27)"
   },
   "contract": {
-   "proved": false,
-   "guard_free": false,
-   "may_fail": [
-    "division by zero: (DECIMAL_TO_DOUBLE_2(DECIMAL_37_2(($5 * 100))) /. DECIMAL_TO_DOUBLE_2($6))"
-   ]
+   "proved": true,
+   "guard_free": false
   },
   "verified_sql": {
    "duckdb": "yes"

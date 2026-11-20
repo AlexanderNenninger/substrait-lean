@@ -417,6 +417,40 @@ def test_timestamp_plus_column_interval_at_the_edge():
             both(ts, n)
 
 
+@pytest.mark.parametrize("unit", ["W", "D", "h", "m", "s"])
+def test_an_integer_cast_to_an_interval_is_its_count(unit):
+    """An integer cast to an interval is the integer's count of the unit (#1926,
+    Ibis's own `test_interval_add_cast_column`): the plan of
+    `n.as_interval(unit)`, whose multiplication is checked."""
+    expected = to_substrait(T.select(x=T.ts + T.n.as_interval(unit)))
+    assert to_substrait(T.select(x=T.ts + T.n.cast(f"interval('{unit}')"))) == expected
+
+
+def test_a_date_plus_a_cast_count_of_days():
+    """A NULL count gives NULL and a negative one goes back (ruling 186 T4). A
+    count may leave the dates, so the report shows the overflow (T3)."""
+    expr = T.select(
+        x=T.ts.date() + T.n.cast("interval('D')"), y=T.ts.date() - T.n.cast("interval('D')")
+    )
+    report = sv.verify(expr)
+    assert [i.kind for i in report.issues] == ["overflow", "overflow"]
+    con = sv.connect()
+    data = pa.table(
+        {"ts": pa.array([datetime(2020, 1, 1, 5)] * 3, pa.timestamp("us")), "n": [10, -10, None]}
+    )
+    con.put("t", data)
+    for engine in ["duckdb", "polars"]:
+        got = report.run(con, engine, unverified=True)
+        assert got.column("x").to_pylist() == [date(2020, 1, 11), date(2019, 12, 22), None]
+        assert got.column("y").to_pylist() == [date(2019, 12, 22), date(2020, 1, 11), None]
+
+
+@pytest.mark.parametrize("unit", ["M", "Y", "ms"])
+def test_a_cast_count_of_months_or_milliseconds_is_refused(unit):
+    with pytest.raises(Unsupported, match="interval"):
+        to_substrait(T.select(x=T.ts + T.n.cast(f"interval('{unit}')")))
+
+
 def test_years_and_truncations_grow_with_the_timestamp():
     report = sv.verify(
         T.filter(T.ts >= datetime(2024, 1, 1), T.ts < datetime(2025, 1, 1)).select(
