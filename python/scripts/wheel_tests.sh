@@ -61,10 +61,19 @@ cd "$work/python"
 duckdb=$(awk '$0 == "name = \"duckdb\"" { getline; gsub(/[^0-9.]/, "", $3); print $3; exit }' "$here/uv.lock")
 [ -n "$duckdb" ] || { echo "wheel_tests.sh: no duckdb in uv.lock" >&2; exit 2; }
 
+# The engine release canary (#2053) tests one engine release unpinned from the lock:
+# WHEEL_TESTS_ENGINE is its requirement (`duckdb==2.0.2`, `polars==2.1.1`), which replaces
+# DuckDB's pin or adds the engine's.
+pins=(--with "duckdb==$duckdb")
+if [ -n "${WHEEL_TESTS_ENGINE:-}" ]; then
+  case "$WHEEL_TESTS_ENGINE" in duckdb==*) pins=() ;; esac
+  pins+=(--with "$WHEEL_TESTS_ENGINE")
+fi
+
 # The test dependencies the installed package doesn't bring. Add one here
 # when a test needs it, or skip the test with `pytest.importorskip`.
 uv run --isolated --no-project ${python[@]+"${python[@]}"} "${install[@]}" \
-  --with "duckdb==$duckdb" --with pytest --with pytest-xdist --with hypothesis --with pyyaml --with mpmath \
+  "${pins[@]}" --with pytest --with pytest-xdist --with hypothesis --with pyyaml --with mpmath \
   --with "pyiceberg[sql-sqlite]" \
   pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
   --rootdir "$work/python" \

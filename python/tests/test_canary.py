@@ -132,3 +132,18 @@ def test_a_clean_run_names_the_one_line_change() -> None:
 def test_a_failing_suite_is_a_bug_too() -> None:
     text = canary.body("polars", "2.1.1", {"probed": ["2.1.0"], "suite": {"exit": 1}})
     assert "failing step(s): suite" in text
+
+
+@needs_repo
+def test_collect_gathers_the_steps_of_the_heavy_job(tmp_path) -> None:
+    drift = tmp_path / "drift.json"
+    drift.write_text(
+        json.dumps([{"row": {"construct": "x"}, "class": "error-side", "old": "error", "new": "1"}])
+    )
+    log = tmp_path / "suite.log"
+    log.write_text("\n".join(f"line {i}" for i in range(50)))
+    out = canary.collect("duckdb", "9.9.9", [drift], (1, log), (0, None))
+    assert out["drift"][0]["class"] == "error-side"
+    assert out["suite"]["exit"] == 1 and out["suite"]["summary"].endswith("line 49")
+    assert out["outside"] == {"exit": 0, "summary": ""}
+    assert out["ledger"] == []

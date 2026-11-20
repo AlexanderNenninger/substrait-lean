@@ -6,6 +6,7 @@ no part of `qa` (K4), and it files nothing upstream (K6).
 
     python -m sverify_dev.canary poll [--engine E --version V]
     python -m sverify_dev.canary drift --engine E --old FILE --new FILE
+    python -m sverify_dev.canary collect --engine E --version V --drift FILE... [--suite-exit N ...]
     python -m sverify_dev.canary report --engine E --version V --results FILE [--post]
 
 `poll` (K1) compares each engine's latest PyPI release with the versions its
@@ -281,6 +282,35 @@ def post(engine: str, version: str, text: str) -> None:
         subprocess.run(["gh", "issue", "edit", str(n), "--body", text], check=True)
 
 
+def _tail(path: Path | None, lines: int = 20) -> str:
+    if path is None or not path.is_file():
+        return ""
+    return "\n".join(path.read_text(errors="replace").splitlines()[-lines:])
+
+
+def collect(  # noqa: PLR0913 - one argument per step of the heavy job
+    engine: str,
+    version: str,
+    drifts: Iterable[Path],
+    suite: tuple[int | None, Path | None],
+    outside: tuple[int | None, Path | None],
+    run_url: str = "",
+    root: Path = REPO,
+) -> Json:
+    """The heavy job's results, as `body` reads them."""
+    found: list[Json] = []
+    for f in drifts:
+        found += json.loads(f.read_text())
+    return {
+        "probed": probed(engine, root),
+        "run_url": run_url,
+        "ledger": ledger(engine, version, root),
+        "drift": found,
+        "suite": {"exit": suite[0], "summary": _tail(suite[1])},
+        "outside": {"exit": outside[0], "summary": _tail(outside[1])},
+    }
+
+
 # --- command line -------------------------------------------------------------------------
 
 
@@ -299,6 +329,15 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--engine", required=True, choices=sorted(ENGINES))
     d.add_argument("--old", type=Path, required=True)
     d.add_argument("--new", type=Path, required=True)
+    c = sub.add_parser("collect", help="the heavy job's results, as one JSON file")
+    c.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    c.add_argument("--version", required=True)
+    c.add_argument("--drift", type=Path, action="append", default=[])
+    c.add_argument("--suite-exit", type=int)
+    c.add_argument("--suite-log", type=Path)
+    c.add_argument("--outside-exit", type=int)
+    c.add_argument("--outside-log", type=Path)
+    c.add_argument("--run-url", default="")
     r = sub.add_parser("report", help="the issue of one engine version")
     r.add_argument("--engine", required=True, choices=sorted(ENGINES))
     r.add_argument("--version", required=True)
@@ -318,6 +357,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "drift":
         found = drift(json.loads(args.old.read_text()), json.loads(args.new.read_text()))
         print(json.dumps(found, indent=1))
+    elif args.cmd == "collect":
+        out = collect(
+            args.engine, args.version, args.drift, (args.suite_exit, args.suite_log),
+            (args.outside_exit, args.outside_log), args.run_url,
+        )  # fmt: skip
+        print(json.dumps(out, indent=1))
     else:
         results = json.loads(args.results.read_text())
         text = body(args.engine, args.version, results)
