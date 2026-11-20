@@ -12,7 +12,6 @@ condition by `Rel.floatOpenSafeP_aggregate`, and only D16's trusted claim
 the sum it allows is the correctly rounded one up to its zero's sign
 (`SumOrder.int_exact`). -/
 
-
 namespace Substrait
 
 section Example
