@@ -414,6 +414,7 @@ def to_json(report: Report) -> Json:
         # routes as it did.
         "engines": report._engines,
         "sorted": report._sorted,
+        "sequence_determined": report._sequence_determined,
         "checker": {"generated_proofs": report._generated_proofs},
         "depends": report._depends,
         "black_boxes": black_boxes_json(report.black_boxes),
@@ -477,6 +478,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
         _engines=d.get("engines"),
         _sorted=d.get("sorted"),
+        _sequence_determined=d.get("sequence_determined", False),
         _generated_proofs=(d.get("checker") or {}).get("generated_proofs"),
         _depends=d.get("depends"),
         black_boxes=black_boxes_from_json(d.get("black_boxes")),
