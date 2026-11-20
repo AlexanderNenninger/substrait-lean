@@ -1,0 +1,47 @@
+{
+  "id": "spark-limb-split",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Comparisons with and products by power-of-two literals split a double exactly",
+  "verdict": "native: the split of `_exact_sum._split` is `frexp`'s on every double tested",
+  "area": "doubles",
+  "constructs": [
+    "*",
+    "<",
+    ">=",
+    "CAST AS BIGINT"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": true
+  },
+  "description": [
+    "The exact limbs of a maintained double aggregate (#1447) split each finite double `x` into a grid position `p` and an integer mantissa `m` with `x = m · 2^(p - 1074)`. Substrait has no `frexp`, and Spark's lowering refuses `POWER` (`Math.pow`, within 1 ulp), so the split scales `|x|` into `[1, 2)` with comparisons and products by power-of-two literals: a value below `2^-50` goes up by `2^537 · 2^537`, one below 1 by `2^52`, into `[1, 2^1024)`; then eleven steps compare `a` with `2^(2^b)` (b from 10 to 0; `a · 0.5` with `2^1023` for b = 10) and scale it by `2^-(2^b)` where it is at or above. A subnormal's mantissa is its scaled value, the others' `a · 2^52`, cast to `BIGINT`.",
+    "On Spark 4.3.0 the plan's result equals `frexp`'s for every `2^k` (k from -1074 to 1023) and its predecessor `2^k - ulp`, 5e-324, the largest subnormal, the smallest normal, the largest double, 2,000 random values across the exponent range, all with both signs: the comparisons and products are exact and Catalyst folds none of the paired literals into an infinity. Zero, NaN and the infinities give mantissa 0.",
+    "The plan's row check (an integer mantissa below `2^53`, at least `2^52` for a normal value) checks the normal form only; the give-back rests on this fact (ruling 174, S2)."
+  ],
+  "reference": "D25/D30's exact moments (`LinearAgg.no_drift`); `docs/trusted-base.md` lists the split as trusted, with this fact and `test_the_split_is_frexp` as its evidence.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session claude/exact-limb-state (#1873, ruling 174)",
+      "evidence": [
+        {
+          "test": "python/tests/test_exact_sum.py::test_the_split_is_frexp[spark]"
+        },
+        {
+          "test": "python/tests/test_exact_sum.py::test_limbs_are_the_exact_moments"
+        }
+      ],
+      "notes": "Run locally: pyspark 4.3.0, Java 21.0.13, macOS arm64, `local[2]`, the session of `sverify_spark.engine.session` (ANSI on). The same test passes on DuckDB and Polars. An earlier run of the split on 48,280 values (20,000 random) gave no mismatch on the three engines."
+    }
+  ],
+  "issues": [
+    1447
+  ],
+  "prs": [
+    1873
+  ]
+}

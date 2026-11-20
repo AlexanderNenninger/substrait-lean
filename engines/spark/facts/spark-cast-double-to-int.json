@@ -140,6 +140,21 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "sverify_dev.probe_spark (session claude/exact-limb-state, #1873, ruling 174)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "probe": "limb-double-integer-to-bigint"
+        }
+      ],
+      "notes": [
+        "A double holding an integer below `2^53` (`±(2^53 - 1)`, `2^52 + 1`, 1, `-0.0`, `2^21 - 1`) casts to that `BIGINT` exactly, with ANSI on and off: the exact limbs' mantissa cast (#1447).",
+        "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with `--only`, ANSI on and off, on the folded and the codegen path. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC; probes.json's header records the earlier homelab run."
+      ]
     }
   ],
   "issues": [

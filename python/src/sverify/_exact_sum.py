@@ -21,13 +21,18 @@ up rows per group and code is the engine's `SUM`, so the state is linear over
 Z-sets as the moments are: inserts add, deletes subtract, and the limbs are a
 function of the group's current rows, `Σ v · 2^(32 j)` the moment itself.
 
-Substrait has no `frexp`, so the split finds the exponent by binary steps,
-each a comparison and a product with a power of two, exact on every engine;
-it needs no `POWER` or `LOG2`, which Spark's lowering refuses. Each row checks its split (an integer
-mantissa below `2⁵³` that gives back the value) and counts a failure in the
-`BROKEN` slot, which raises at the finish. A limb holds at most `HEADROOM`
-pieces' worth before `DECIMAL(38,0)` could overflow, so the finish raises for
-a group with more values (E1, E2 of ruling 167).
+Substrait has no `frexp`, so the split scales `|x|` into `[1, 2)` by binary
+steps, each a comparison with and a product by a power-of-two literal; it
+needs no `POWER` or `LOG2`, which Spark's lowering refuses. That the steps
+give back the value is taken of the engine: such comparisons and products are
+exact in IEEE arithmetic, and `test_the_split_is_frexp` checks every literal
+and step on DuckDB, Polars and Spark. Each row checks only the result's
+normal form, an integer mantissa below `2⁵³` and, for a normal value, at
+least `2⁵²`; a row that fails counts in the `BROKEN` slot, which raises at the
+finish. A limb holds at most `HEADROOM` pieces' worth before `DECIMAL(38,0)`
+could overflow, so the finish raises for a group with more values, and for a
+NULL limb, an overflow an engine let through (E1 and E2 of ruling 167, E2 as
+ruling 174 amends it).
 
 It is trusted glue (`docs/proofs.md`): the engine computes the limbs with
 the checked plans, and this module reads them back for the touched groups
@@ -184,37 +189,46 @@ def _split(t: ir.Table, c: str) -> ir.Table:
     # LOG2, which some engines compute only within an ulp. `e` counts the
     # steps, so `|f| = a · 2^e`. Each step reads the one before as columns: a
     # guard of the written plan repeats its operands, so nesting grows it.
-    a, e = f"{c}_a", f"{c}_e"
+    a, e, s = f"{c}_a", f"{c}_e", f"{c}_s"
     t = t.mutate(**{a: ibis.ifelse(f == 0, 1.0, f.abs())})
-    # `e` starts as a 64-bit column: the written plan types an integer literal
-    # by its value, so a literal 0 would start it at 8 bits.
-    t = t.mutate(**{e: (t[a] * 0.0).cast("int64")})
-    for b in range(9, -1, -1):
-        big = t[a] >= 2.0 ** (2**b)
-        step = ibis.literal(2**b, "int64")
-        t = t.mutate(
-            **{
-                a: ibis.ifelse(big, t[a] * 2.0 ** -(2**b), t[a]),
-                e: t[e] + ibis.ifelse(big, step, zero),
-            }
-        )
-    for b in range(10, -1, -1):
-        small = t[a] < 2.0 ** (1 - 2**b)
-        # `2^1024` is past the largest double: two factors of `2^512`.
-        up = t[a] * 2.0**512 * 2.0**512 if b == 10 else t[a] * 2.0 ** (2**b)
-        t = t.mutate(**{a: ibis.ifelse(small, up, t[a]), e: t[e] - ibis.ifelse(small, 2**b, 0)})
-    # The mantissa: `a · 2⁵²` signed for a normal value; for a subnormal, the
-    # value times `2¹⁰⁷⁴` in two factors (its exponent is clamped to -1022).
-    sub = t[e] < -1022
+    # A value below 1 first goes up into `[1, 2¹⁰²⁴)`: by `2¹⁰⁷⁴` (two
+    # factors of `2⁵³⁷`) below `2⁻⁵⁰`, by `2⁵²` below 1. Then every step
+    # scales down, and a subnormal's scaled value is its mantissa. Each
+    # operand is gated, not only the product: an engine may compute both
+    # branches, and a large value times `2¹⁰⁷⁴` overflows. `e` starts as a
+    # 64-bit column: the written plan types an integer literal by its value.
+    tiny, small = t[a] < 2.0**-50, t[a] < 1.0
+    up_tiny: Any = ibis.ifelse(tiny, t[a], 0.0)
+    up_small: Any = ibis.ifelse(small, t[a], 0.0)
     t = t.mutate(
         **{
-            f"{c}_s": ibis.ifelse(sub, f, 0.0),
-            f"{c}_n": ibis.ifelse(f < 0, -t[a], ibis.ifelse(f == 0, 0.0, t[a])),
+            s: ibis.cases(
+                (tiny, up_tiny * 2.0**537 * 2.0**537),
+                (small, up_small * 2.0**52),
+                else_=t[a],
+            ),
+            e: (t[a] * 0.0).cast("int64")
+            - ibis.cases(
+                (tiny, ibis.literal(1074, "int64")),
+                (small, ibis.literal(52, "int64")),
+                else_=zero,
+            ),
         }
     )
+    t = t.mutate(**{a: t[s]})
+    for b in range(10, -1, -1):
+        # `2¹⁰²⁴` is past the largest double: halve `a` and compare with `2¹⁰²³`.
+        big = t[a] * 0.5 >= 2.0**1023 if b == 10 else t[a] >= 2.0 ** (2**b)
+        down = t[a] * 2.0**-512 * 2.0**-512 if b == 10 else t[a] * 2.0 ** -(2**b)
+        step = ibis.literal(2**b, "int64")
+        t = t.mutate(**{a: ibis.ifelse(big, down, t[a]), e: t[e] + ibis.ifelse(big, step, zero)})
+    # The mantissa: `a · 2⁵²` signed for a normal value; for a subnormal, the
+    # scaled value above (its exponent is clamped to -1022).
+    sub = t[e] < -1022
+    t = t.mutate(**{f"{c}_n": ibis.ifelse(sub, t[s], t[a] * 2.0**52)})
     t = t.mutate(
         **{
-            f"{c}_d": ibis.ifelse(sub, t[f"{c}_s"] * 2.0**537 * 2.0**537, t[f"{c}_n"] * 2.0**52),
+            f"{c}_d": ibis.ifelse(f < 0, -t[f"{c}_n"], ibis.ifelse(f == 0, 0.0, t[f"{c}_n"])),
             e: ibis.greatest(t[e], -1022),
         }
     )
@@ -511,6 +525,8 @@ def attach(state: pa.Table, keys: Sequence[str], exact: Sequence[Exact], check: 
             i, rest = divmod(code, _SLOTS * _LIMBS)
             slot, limb = divmod(rest, _LIMBS)
             if i in by_index:
+                if r[VALUE] is None:  # an engine `SUM` that overflowed to NULL
+                    raise ValueError(f"a limb of measure {i} is NULL: its sum overflowed (#1447)")
                 slots[(i, slot)] = slots.get((i, slot), 0) + (int(r[VALUE]) << (_BITS * limb))
     if cur is not None:
         flush()

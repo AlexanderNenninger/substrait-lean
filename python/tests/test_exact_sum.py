@@ -131,6 +131,45 @@ def _limbs(engine: str, kind: str, ks, xs, ys, ws, key_type: str = "int64") -> d
 ENGINES = ["duckdb", "polars", pytest.param("spark", marks=pytest.mark.backend("spark"))]
 
 
+def _frexp(x: float) -> tuple[int, int]:
+    """The grid position and signed integer mantissa of a finite double:
+    `x = m · 2^(p - 1074)`, with `2⁵²` ≤ `|m|` < `2⁵³` for a normal `x`."""
+    e = max(math.frexp(x)[1] - 1, -1022)
+    return e + 1022, int(Fraction(x) * 2 ** (52 - e))
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_the_split_is_frexp(engine):
+    """The engine's split of a double into mantissa and grid position is
+    `frexp`'s: every `2^k` and `2^k - ulp` (so every literal and every step of
+    the split), the subnormals' edges, the largest double, both signs, and
+    random values across the range (S2, S4 of ruling 174)."""
+    from sverify.engine import connect, put_table, run_plan, written_plan
+
+    rng = random.Random(174)
+    xs = [2.0**k for k in range(-1074, 1024)]
+    xs += [math.nextafter(2.0**k, 0.0) for k in range(-1073, 1024)] + [
+        math.nextafter(math.inf, 0.0)
+    ]
+    xs += [5e-324, math.nextafter(2.0**-1022, 0.0), 2.0**-1022]
+    xs += [math.ldexp(rng.uniform(0.5, 1), rng.randint(-1074, 1024)) for _ in range(2000)]
+    xs = [x for x in xs if x != 0 and math.isfinite(x)]
+    xs += [-x for x in xs] + [0.0, -0.0, math.nan, math.inf, -math.inf]
+    t = ibis.table({"i": "int64", "x": "float64"}, name="rows")
+    split = _exact_sum._split(t, "x").select("i", "x_p", "x_m", "x_bad")
+    plan = written_plan(plan_json(None, split))  # pyrefly: ignore[bad-argument-type]
+    con = connect("duckdb" if engine == "spark" else engine)  # Spark reads DuckDB's tables
+    put_table(con, "rows", pa.table({"i": list(range(len(xs))), "x": xs}))
+    got = {
+        r["i"]: (r["x_p"], r["x_m"], r["x_bad"]) for r in run_plan(con, plan, engine).to_pylist()
+    }
+    want = [
+        (*_frexp(x), 0) if x != 0 and math.isfinite(x) else (got[i][0], 0, 0)
+        for i, x in enumerate(xs)
+    ]
+    assert [got[i] for i in range(len(xs))] == want
+
+
 @pytest.mark.parametrize("engine", ENGINES)
 @pytest.mark.parametrize("kind", ["fsum", "var", "cov", "corr"])
 def test_limbs_are_the_exact_moments(engine, kind):
@@ -172,7 +211,7 @@ def test_limbs_are_the_row_by_row_moments(kind, rows):
     assert _limbs("duckdb", kind, ks, xs, ys, ws, "float64") == want
 
 
-def _state(n: int, slots: dict[tuple[int, int], int]) -> pa.Table:
+def _state(n: int, slots: dict[tuple[int, int], int | None]) -> pa.Table:
     """A state of one group: its own row with `n` values and a limb row per
     (slot, limb)."""
     code, value = _exact_sum.CODE, _exact_sum.VALUE
@@ -186,7 +225,7 @@ def _state(n: int, slots: dict[tuple[int, int], int]) -> pa.Table:
                 "__n0": 0,
                 "__s0": None,
                 code: slot * 256 + limb,
-                value: Decimal(v),
+                value: None if v is None else Decimal(v),
             }
         )
     schema = pa.schema(
@@ -197,8 +236,9 @@ def _state(n: int, slots: dict[tuple[int, int], int]) -> pa.Table:
 
 
 def test_attach_finishes_from_limbs_and_guards_them():
-    """The finish reads a group's limbs; past the limbs' headroom (E1) or
-    with a failed split (E2) it raises."""
+    """The finish reads a group's limbs; past the limbs' headroom (E1), with
+    a failed split (E2) or a NULL limb (an overflow an engine let through,
+    S5 of ruling 174) it raises."""
     e = [_exact_sum.Exact(0, "fsum")]
     got = _exact_sum.attach(
         _state(2, {(_exact_sum.X, 1073 // 32): 3 * 2 ** (1073 % 32)}), ["k0"], e, check=True
@@ -210,6 +250,8 @@ def test_attach_finishes_from_limbs_and_guards_them():
         _exact_sum.attach(_state(_exact_sum.HEADROOM, {}), ["k0"], e, check=False)
     with pytest.raises(ValueError, match="split into limbs failed"):
         _exact_sum.attach(_state(1, {(_exact_sum.BROKEN, 0): 1}), ["k0"], e, check=False)
+    with pytest.raises(ValueError, match="limb of measure 0 is NULL"):
+        _exact_sum.attach(_state(1, {(_exact_sum.X, 3): None}), ["k0"], e, check=False)
 
 
 def test_finish_rounds_once():
@@ -374,6 +416,31 @@ def test_a_maintained_double_sum_is_exact(seed, engine):
     assert rows(node) == []
     groups = node._stage.view.groups
     assert groups is not None and groups.num_rows == 0
+
+
+@pytest.mark.backend("spark")
+def test_a_refresh_on_spark_without_ansi_is_refused():
+    """A refresh meets the settings check before any plan runs
+    (`sverify.routes.choose`, `check_settings`). Without ANSI, Spark's
+    `DECIMAL(38,0)` `SUM` gives NULL on overflow (`spark-decimal-arith`),
+    so a limb's sum would fail silently: the refresh is refused (S5 of
+    ruling 174)."""
+    from sverify.routes import EngineSettingsError
+    from sverify_spark import engine
+
+    spark = engine.session()
+    src = StaticSource(table([(0, 1.5)]), name="t")
+    node = src.pipe(sums)
+    node.refresh(engine="spark")
+    src.apply(Changes(inserts=table([(0, 2.5)]), deletes=table([])))
+    spark.conf.set("spark.sql.ansi.enabled", "false")
+    try:
+        with pytest.raises(EngineSettingsError, match="spark.sql.ansi.enabled"):
+            node.refresh(engine="spark")
+    finally:
+        spark.conf.set("spark.sql.ansi.enabled", "true")
+    node.refresh(engine="spark")
+    assert rows(node)[0][1] == 4.0
 
 
 def test_no_drift_where_a_running_sum_drifts():
