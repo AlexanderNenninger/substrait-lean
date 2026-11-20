@@ -1,8 +1,8 @@
 """Nodes: contracted transforms composed over sources, stored with `.write`
 and kept up to date with `refresh`.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Node`, `group`) are re-exported by `sverify`.
 
     orders = DeltaSource("s3://lake/orders")
@@ -944,6 +944,8 @@ class StageRefresh:
     this run, by field (`engine`, `engine_version`, `sverify`, `package`), as
     `[recorded, now]`. A changed engine or engine version is also in `started`."""
     write: SinkWrite | None = None
+    """What the node's sink committed in this refresh, or None without a
+    sink."""
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
     established on the full tables (later batches: `report.preconditions`)."""

@@ -8,6 +8,8 @@ import inspect
 
 import pytest
 
+from _repo import ROOT, needs_repo
+
 PUBLIC = [
     "sverify",
     "sverify.io",
@@ -67,6 +69,50 @@ def test_the_top_level_is_small():
         "verify",
         "within",
     ]
+
+
+HELD = {"nodes.Group", "nodes.Refresh", "nodes.Status", "nodes.NodeStatus", "nodes.StageRefresh"}
+"""Documented because users hold them (`Node.refresh()`, `status()`,
+`sv.group`), and in no `__all__`."""
+
+UNLISTED = {"engines.create_table", "engines.table_rows"}
+"""In an `__all__` and out of the reference: deprecated."""
+
+
+def _reference() -> list[dict]:
+    yaml = pytest.importorskip("yaml")
+    return yaml.safe_load((ROOT / "python" / "great-docs.yml").read_text())["reference"]
+
+
+def _entries(reference: list[dict]) -> list[str | dict]:
+    return [c for section in reference for c in section["contents"]]
+
+
+@needs_repo
+def test_the_reference_lists_the_public_api():
+    """The reference's table of contents (`great-docs.yml`) and the
+    `__all__`s name the same objects (`docs/stability.md`)."""
+    toc = {c if isinstance(c, str) else c["name"] for c in _entries(_reference())}
+    public = set()
+    for name in PUBLIC:
+        prefix = "" if name == "sverify" else name.removeprefix("sverify.") + "."
+        public |= {prefix + n for n in importlib.import_module(name).__all__}
+    assert toc - public == HELD, "in the reference, in no __all__"
+    assert public - toc == UNLISTED, "in an __all__, not in the reference"
+
+
+@needs_repo
+def test_the_reference_lists_members_that_exist():
+    """A `members:` list names attributes of its class, so a rename fails
+    here, not in the docs build."""
+    for entry in _entries(_reference()):
+        if isinstance(entry, dict) and "members" in entry:
+            module, _, name = entry["name"].rpartition(".")
+            cls = getattr(
+                importlib.import_module(f"sverify.{module}" if module else "sverify"), name
+            )
+            names = set(dir(cls)).union(*(vars(k).get("__annotations__", {}) for k in cls.__mro__))
+            assert set(entry["members"]) <= names, entry["name"]
 
 
 def test_verdict_has_no_truth_value():

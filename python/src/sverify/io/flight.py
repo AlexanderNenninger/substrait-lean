@@ -243,6 +243,9 @@ class FlightLog(fl.FlightServerBase):
 
     Attributes:
         port: The port it listens on.
+        keep: The batches each table keeps, or None for all of them.
+        seq: The number of the last batch stored, over every table.
+        tables: Each table's schema and its numbered batches, oldest first.
     """
 
     def __init__(self, location: str = "grpc://127.0.0.1:0", *, keep: int | None = None, **kwargs):
@@ -264,6 +267,8 @@ class FlightLog(fl.FlightServerBase):
         return batches[0][0] if batches else self.seq + 1
 
     def do_put(self, context, descriptor, reader, writer):
+        """Append each batch a client puts to the table its descriptor
+        names, numbered in `seq`, and answer each with its number."""
         if descriptor.descriptor_type != fl.DescriptorType.PATH or len(descriptor.path) != 1:
             raise fl.FlightServerError("the descriptor is a path of one table name")
         name = descriptor.path[0].decode()
@@ -284,6 +289,8 @@ class FlightLog(fl.FlightServerBase):
             writer.write(_meta(seq))
 
     def do_get(self, context, ticket):
+        """Stream the batches a ticket asks for: those of its `table`
+        numbered above `after` and up to `until`."""
         try:
             req = json.loads(ticket.ticket)
             name, after, until = req["table"], req.get("after"), req.get("until")

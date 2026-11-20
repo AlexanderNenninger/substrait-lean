@@ -3,8 +3,8 @@
 condition reads (`label`, `resolve`), and what a check established
 (`CheckedCondition`, `Discharged`, `PreconditionError`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 

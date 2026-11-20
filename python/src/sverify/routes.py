@@ -204,7 +204,11 @@ class EngineSettingsError(SverifyError, RuntimeError):
 
 
 class RouteError(SverifyError, ValueError):
-    """No route takes the plan to the engine; `route` says why."""
+    """No route takes the plan to the engine; `route` says why.
+
+    Attributes:
+        route: The refused route, with its `reason`.
+    """
 
     code = "route_refused"
 

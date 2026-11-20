@@ -500,6 +500,11 @@ class Lineage:
 
     `OPENLINEAGE_DISABLED=true` turns every target off. A target that fails
     warns (`LineageWarning`) and the refresh goes on.
+
+    Attributes:
+        target: Where events go, as given.
+        namespace: The jobs' namespace.
+        disabled: Whether `OPENLINEAGE_DISABLED` turned every target off.
     """
 
     def __init__(

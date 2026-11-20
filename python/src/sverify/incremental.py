@@ -1,7 +1,7 @@
 """Incrementally maintained views on the refresh's engine, with delta plans from Lean.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 The verified part is the delta plan: `substrait-check --delta` compiles the
 view's Substrait plan with `Rel.delta` and applies the weight-column encoding
@@ -696,6 +696,9 @@ class StaticSource(Pipeable):
         version: Their version.
         digest: sha256 of their schema and bag of rows.
         name: The table's name in the plans that read it.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
     """
 
     def __init__(

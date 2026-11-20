@@ -1,8 +1,8 @@
 """Secrets by name (#775): a `Secret` names where a credential lives, and a
 `Resolver` looks it up when a source, sink or catalog needs it.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names `Secret`, `Resolver` and `set_resolver` are re-exported by
 `sverify.io`, and `SecretError` by `sverify.errors`.
 
