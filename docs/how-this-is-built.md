@@ -33,12 +33,13 @@ check.
   lists what it does not check: the project's one axiom, the `opaque` and
   `implemented_by` constants, what tests cover and what nothing covers. A
   test fails when a new one appears without a row there.
-- The engine facts. Each fact an engine profile states has a probe you can
-  run against that engine, and [`sverify_dev.facts`](../python/tools/sverify_dev) checks the
-  facts against their probes.
+- The engine facts. Each fact records its evidence (a probe, a fuzz run, an
+  engine test or the source) with the engine's version, and
+  [`sverify_dev.facts`](../python/tools/sverify_dev) checks the documents and which rows of the
+  engine tables they settle (`tests/test_facts.py`).
 - The goldens. The checker's answers to contract requests and the plans it
   writes are pinned in [`tests/`](../tests), and CI runs them on every pull
-  request.
+  request that can change them.
 - The upstream ledger. Each entry in [upstream/](../upstream/REPORT.md)
   names the version it reproduces on and carries the repro.
 
