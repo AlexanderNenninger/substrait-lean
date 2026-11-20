@@ -1750,7 +1750,7 @@ line gives the plan's bound, the reason per engine and a tolerance that
 would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
 `sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
-`timestamps="ms"`, `strings="nfc"`, `decimals="value"` and
+`timestamps="ms"`, `strings="nfc"` (or `"casefold"`, `"ascii"`), `decimals="value"` and
 `errors="kind"`; `Observation.refines` orders observations component by
 component. A postcondition that reads what the observation ignores, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
