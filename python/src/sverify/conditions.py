@@ -3,8 +3,8 @@
 condition reads (`label`, `resolve`), and what a check established
 (`CheckedCondition`, `Discharged`, `PreconditionError`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 
@@ -33,7 +33,7 @@ from sverify.observation import Observation
 if TYPE_CHECKING:
     import pyarrow as pa
 
-    from sverify.report import Condition, UnprovedReason
+    from sverify.report import Condition, Needed, UnprovedReason
 
 
 def q(name: str) -> str:
@@ -932,10 +932,16 @@ class CheckedCondition:
     """For an unproved condition with `on_unproved="check"`: it is checked
     on the output data instead, on a bound result when it is built, or on a
     node at every refresh before its sink commits."""
-    suggested: dict[str, list[Condition]] = field(default_factory=dict)
-    """For an unproved condition: preconditions on the inputs, per table,
-    under which the checker proves it (`_.x * 2 <= 100` holds with `_.x <= 50`).
-    Never assumed: adding them is the author's choice."""
+    needs: tuple[Needed, ...] = ()
+    """For an unproved condition, the preconditions on the inputs that
+    `requires` does not state and under which the checker proves it, one
+    `Needed` each: those its proof used where sverify inferred them
+    (`reason` is `"needs"`, under `verify(on_inferred="error")`), or those
+    the checker suggests (`_.x * 2 <= 100` holds with `_.x <= 50`). The set
+    is sufficient, not claimed minimal: where the proof used inferred
+    preconditions it lists every inferred bound of the report, not only
+    those this condition's proof used. Never assumed: adding them is the
+    author's choice (`Report.suggested_requires` adds the inferred ones)."""
     ignores: tuple[str, ...] = ()
     """The components of the observation (`sv.equivalent`) the condition
     depends on but the observation ignores (D12, #444): the proof under the
@@ -980,6 +986,9 @@ class CheckedCondition:
     """The condition as it was given in `ensures` (a SQL string, an Ibis
     expression, `unique(...)`, …), to pair the result with it; None for a
     report not built by `verify` or a transform."""
+    _inferred_used: bool = field(default=False, repr=False, compare=False)
+    """Proved only with the preconditions sverify inferred: the stated ones
+    alone do not prove it (`verify` sets `needs` from it, #701)."""
     detail: str | None = None
     """Why it is not proved, in the user's terms, where the report found
     more than the checker's value says (`_key_reasons`, `_null_reasons`,
@@ -995,8 +1004,10 @@ class CheckedCondition:
         is proved and independent of the observation (`portable`). `why`
         says the same in words.
 
-        * `"observation"`: proved, but it depends on what the observation
+        * `"lenses"`: proved, but it depends on what the lenses
           (`sv.equivalent`) ignores.
+        * `"needs"`: proved only with the preconditions sverify inferred,
+          which `requires` does not state (`needs` lists them).
         * `"not_a_key"`: a `unique` the preconditions do not make a key.
         * `"ties"`: rows may tie in an ORDER BY, so the result is not
           determined.
@@ -1008,11 +1019,13 @@ class CheckedCondition:
         * `"unknown"`: Lean knows nothing that decides it.
         """
         if self.proved:
-            return "observation" if self.ignores else None
+            return "lenses" if self.ignores else None
         if self.value == "not shown to be a key":
             return "not_a_key"
         if self.ties or self.value.startswith("undetermined"):
             return "ties"
+        if self.value == "TRUE" and self.needs:
+            return "needs"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if parts == {"FALSE"}:
             return "always_false"
@@ -1040,6 +1053,9 @@ class CheckedCondition:
             return "the preconditions do not make it a key"
         if self.ties:
             return "it holds where no rows tie in a window's ORDER BY, and rows may tie there"
+        if self.reason == "needs":
+            used = ", ".join(f"`{n.code}`" for n in self.needs)
+            return f"it is proved only with {used}, which requires does not state"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if "TRUE" not in parts and parts == {"FALSE"}:
             return "it is FALSE on every row"
@@ -1121,6 +1137,7 @@ class PlannedCondition:
     (`Report.check_inputs`)."""
 
     text: str
+    """The condition's label, as the export wrote it."""
     plan: str
     """The plan, as protobuf JSON in Lean's form."""
 
@@ -1238,8 +1255,12 @@ class Discharged:
     `SCHEMA`, proved from facts of one metadata source, or `ON_DATA`."""
 
     table: str
+    """The table the precondition is on."""
     condition: str
+    """The precondition, as SQL."""
     source: str
+    """How it was established: `"schema"`, the metadata source (such as
+    "file stats @v3"), or `"checked on data"`."""
     inferred: bool = False
     """The condition is a bound inferred to rule out overflow (#244)."""
 

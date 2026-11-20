@@ -1,0 +1,15 @@
+{
+  "id": "F137",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D58: timestamp delta counts unit boundaries crossed (floor index difference); D59: strict string-to-timestamp parsing with a fixed directive set that raises a domain error on mismatch. Facts first; week, nanosecond, calendar units refused for now.",
+  "issues": [
+    60,
+    347,
+    1798
+  ],
+  "source": "fable-ruling-137-ts-delta-strptime.md",
+  "note": "Assigns D58 and D59; next free D60. Reported to the user. Snowflake details in the private evidence."
+}

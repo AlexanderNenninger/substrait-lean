@@ -164,6 +164,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"sverify-dbt: error: {type(e).__name__}: {e}", file=sys.stderr)
         return ERROR
     print(_render(result, args.format))
+    if args.fail_on != "never":
+        for m in result.refused_contracts:
+            print(
+                f"sverify-dbt: {m.name} has an enforced contract that was not checked: "
+                f"the model was refused ({m.refused})",
+                file=sys.stderr,
+            )
     if args.selectors:
         path = result.write_selectors(Path(args.project) / args.selectors)
         n = len({t.name for t in result.skippable})
@@ -177,12 +184,13 @@ def main(argv: list[str] | None = None) -> int:
 
 def _exit_code(result: CheckResult, fail_on: str) -> int:
     """1 where something is not proved (`--fail-on`), else 3 where a model is
-    refused and `--fail-on refused` asks, else 0. A refused model's tests and
-    constraints are not checked, and its reason is the refusal, not a failed
-    gate (#891, 1.3)."""
+    refused and `--fail-on refused` asks, else 0. A refused model's tests are
+    not checked, and its reason is the refusal; but a refused model with an
+    enforced contract fails the contract gate, since its contract is unchecked
+    (#1995)."""
     if fail_on == "never":
         return 0
-    failed = bool(result.contract_errors or result.unproved_constraints)
+    failed = bool(result.contract_errors or result.unproved_constraints or result.refused_contracts)
     if fail_on in ("unproved", "refused"):
         failed = failed or any(
             m.by_status("not proved") or (not m.refused and m.by_status("not checked"))

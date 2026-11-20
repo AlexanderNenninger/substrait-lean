@@ -1030,13 +1030,13 @@ out.
 ### The default observation
 
 Where `ensures` names no observation, a result's consumer observes
-`PLAN_BOUND` (`sverify.observation`, `Report.observation`): the rows of a
+`PLAN_BOUND` (`sverify.observation`, `Report.lenses`): the rows of a
 bag, doubles within the plan's bound and everything else exactly. Each
 component, with its default and the reason (#1285):
 
 | Component | Default | Why |
 |---|---|---|
-| `rows` | `multiset` | SQL gives no order without an `ORDER BY`, so the order of rows is never observed. An `ORDER BY` in the plan does not raise the level: `sequence` is the contract's own request. |
+| `rows` | `multiset` | SQL gives no order without an `ORDER BY`, so the order of rows is never observed. An `ORDER BY` in the plan does not raise the level: `sequence` is the contract's own request, and the checker proves it only for a result sorted on columns that contain a key of the sort's input (`sequence_determined`, `check_sequence_determined_sound`); a sort on a non-key leaves its ties open, and a run that needs the sequence refuses it. |
 | `elements` | `multiset` | The order of a list's elements is never observed, as the order of rows is not: SQL gives none without an `ORDER BY`. It counts with `elements="sequence"`, and an `ORDER BY` inside the aggregate is what makes it determined there; it does not raise the level ([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)). An unordered `collect` is then no tie place once the checker reads it. An unordered `string_agg` is one at every level, since its value is a string. |
 | `floats` | `plan` | Doubles are equal within the bound the checker computes for the plan (`Report.epsilon`, [float-bounds](float-bounds.md)), since engines sum in their own order. A column with no bound is exact. |
 | `zeros` | `canon` | `-0.0` equals `0.0` and every NaN equals every other, as the doubles' bound already reads them ([D48](decisions.md#d48-a-result-is-determined-up-to-the-classes-its-observation-reads)); `zeros="exact"` observes the signs. |

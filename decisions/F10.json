@@ -1,0 +1,16 @@
+{
+  "id": "F10",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A2: the reference fixes the comparison for every kind on main, so neither option is taken; the six failing tests keep their expectations and fail for missing conditions 1 and 2 of entry 9.",
+  "issues": [
+    1484
+  ],
+  "amends": [
+    "F9"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 10",
+  "note": "File ruling-a2-determinism-flag.md section 6. Corrects entry 9's condition 4: QUANTILE_CONT of doubles (and, unchecked, MODE ordered by a double) are real open flips. No D-number."
+}

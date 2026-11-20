@@ -1,8 +1,8 @@
 """Nodes: contracted transforms composed over sources, stored with `.write`
 and kept up to date with `refresh`.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Node`, `group`) are re-exported by `sverify`.
 
     orders = DeltaSource("s3://lake/orders")
@@ -38,7 +38,7 @@ import logging
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal
 
 import ibis
 import ibis.expr.types as ir
@@ -61,40 +61,12 @@ if TYPE_CHECKING:
     import polars
 
     from sverify.contracts import ContractedTransform, Report
-    from sverify.io._common import Contract, SinkWrite
+    from sverify.io._common import SinkWrite
+    from sverify.io._sink import Sink
     from sverify.routes import Route, RouteKind
 
 #: One INFO line per node and per commit of a refresh, for a job's task log.
 _log = logging.getLogger("sverify")
-
-
-class Sink(Protocol):
-    """What `Node.write` needs of a sink (`sverify.io.DeltaSink`, `IcebergSink`).
-
-    `sverify.io.Sink` implements it, and a sink of your own subclasses that;
-    the methods it asks for are private, called by `refresh`.
-
-    Attributes:
-        name: The stored table's name in the plans that read it (the sink's
-            `name=`, by default the last part of its URI or identifier).
-    """
-
-    name: str
-    location: str
-
-    def _attach(self, view: IncrementalView, stored: Stored | None = None) -> None: ...
-
-    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None: ...
-
-    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None: ...
-
-    def _commit(self) -> SinkWrite: ...
-
-    def _stored(self) -> Stored | None: ...
-
-    def _source(self) -> Source: ...
-
-    def contract(self, version: int | None = None) -> Contract | None: ...
 
 
 class Node:
@@ -290,7 +262,7 @@ class Node:
             self.internal_plan,
             d,
             deterministic=report._exact,
-            rows="sequence" if report.observation.rows == "sequence" else "multiset",
+            rows="sequence" if report.lenses.rows == "sequence" else "multiset",
         )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
@@ -967,6 +939,8 @@ class StageRefresh:
     this run, by field (`engine`, `engine_version`, `sverify`, `package`), as
     `[recorded, now]`. A changed engine or engine version is also in `started`."""
     write: SinkWrite | None = None
+    """What the node's sink committed in this refresh, or None without a
+    sink."""
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
     established on the full tables (later batches: `report.preconditions`)."""
@@ -1062,7 +1036,7 @@ class StageRefresh:
             parts.append("requires proved from metadata")
         parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
         parts += [f"{n} row(s) in touched frames recomputed" for n in self.report.framed.values()]
-        parts += ["recomputed and diffed" for _ in self.report.diffed]
+        parts += [f"recomputed and diffed ({why})" for why in self.report.diffed.values()]
         if self.quarantined:
             parts.append(f"{self.quarantined} row(s) quarantined")
         if self.report.postconditions:
@@ -1314,6 +1288,11 @@ class NodeStatus:
     framed: bool = False
     """The node recomputes window rows near the change, by their frames
     (touched frames)."""
+    mode: str | None = None
+    """How a batch changes the node: "delta rules", "state per group",
+    "touched groups", "touched frames" or "recompute and diff"; None if it
+    has not been refreshed in this process. `recomputed` or `touched` say
+    why where it is not "delta rules" or "state per group"."""
 
     def __str__(self) -> str:
         if self.versions is None:
@@ -1322,6 +1301,8 @@ class NodeStatus:
             text = f"{self.node}: " + ", ".join(f"{t}@v{n}" for t, n in self.versions.items())
         if self.stored:
             text += f"; stored in {self.stored}"
+        if self.mode:
+            text += f"; mode: {self.mode}"
         if self.recomputed:
             text += f"; recomputed ({self.recomputed})"
         if self.touched and self.framed:
@@ -1502,6 +1483,7 @@ class Group:
                     None if stage is None else _recomputed(stage.view),
                     None if stage is None or stage.view.touched is None else stage.view.fallback,
                     stage is not None and stage.view.strategy == "touched frames",
+                    None if stage is None else stage.view.strategy,
                 )
             )
         return out
@@ -1566,8 +1548,7 @@ def _recomputed(view: IncrementalView) -> str | None:
     """Why a view is recomputed and diffed on every batch, or None."""
     if not view.recomputed:
         return None
-    off = f"; no touched groups: {view.touched_off}" if view.touched_off else ""
-    return f"{view.fallback}{off}"
+    return view.cause
 
 
 def _continue_versions(node: _Stored) -> None:

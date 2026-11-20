@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-18-python-312-floor",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "sverify stays on Python 3.12 and later with no 3.11 support.",
+  "issues": [
+    1485
+  ],
+  "source": "memory:python-312-floor.md"
+}

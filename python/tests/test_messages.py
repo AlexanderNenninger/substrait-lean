@@ -112,13 +112,27 @@ def test_a_large_double_constant_reads_as_python_writes_it() -> None:
     # #1997: every double constant, not only the long ones.
     text = sv.verify(t.select(scaled=t.value * 3 + 1)).details()
     assert "value * 3.0 + 1.0 stays finite" in text and ".000000" not in text
-    # A fraction stays as Lean rounded it: `0.0` would read as exact.
+    # The plan's literals read exactly, also where `%f` rounds them.
     text = sv.verify(t.select(scaled=t.value * 1e-7 + 0.1234567)).details()
-    assert "value * 0.000000 + 0.123457 stays finite" in text
-    # A decimal literal keeps its digits, which are its scale.
+    assert "value * 1e-07 + 0.1234567 stays finite" in text
+    text = sv.verify(t.select(scaled=t.value * 3.0000001)).details()
+    assert "value * 3.0000001 stays finite" in text
+    # Two literals that `%f` prints alike stay as Lean rounded them: `3.0`
+    # would read as exact.
+    text = sv.verify(t.select(scaled=t.value * 3.0000001 + 3.0)).details()
+    assert "value * 3.000000 + 3.000000 stays finite" in text
     from sverify._user_text import pretty
 
-    assert pretty("(x < 0.000000) or (y *. 2.000000d)") == "(x < 0.000000) or (y * 2.0)"
+    # Without the plan's literal, `.000000` proves integral only from 2^33 on.
+    assert pretty("(y *. 3.000000d)") == "y * 3.000000"
+    assert pretty("(y *. 8589934592.000000d)") == "y * 8589934592.0"
+    # A decimal literal keeps its digits, which are its scale.
+    assert (
+        pretty(
+            "(x < 0.000000) or (y *. 2.000000d)", doubles={"0.000000": "1e-07", "2.000000": "2.0"}
+        )
+        == "(x < 0.000000) or (y * 2.0)"
+    )
 
 
 def test_a_decimal_cast_reads_as_the_cast() -> None:

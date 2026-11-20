@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-08-canon-at-read",
+  "date": "2026-11-08",
+  "decided_by": "coordinator",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "Rel.eval's read applies canon to doubles under ONE_ZERO and ONE_NAN.",
+  "superseded_by": [
+    "U-2026-11-08-canon-at-identity-boundaries"
+  ],
+  "source": "memory:canon-identity-boundaries.md",
+  "note": "Option 2a for D31, found unsound (atan2 of -0.0)."
+}

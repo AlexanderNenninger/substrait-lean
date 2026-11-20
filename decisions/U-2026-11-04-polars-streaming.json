@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-04-polars-streaming",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "sverify targets Polars's streaming engine, with facts probed under streaming and a forced in-memory engine refused.",
+  "issues": [
+    605
+  ],
+  "source": "memory:polars-streaming-engine.md",
+  "note": "Reverses an in-memory pin proposed in #605."
+}

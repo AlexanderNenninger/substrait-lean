@@ -1,0 +1,20 @@
+{
+  "id": "F112",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "K5 fix accepted: Expr.constIssues reads a lambda's body, shipped as its own soundness PR ahead of D53 step 2; Ibis mixes of instants and naive timestamps stay refused, raised in the producer's _common helper.",
+  "issues": [
+    1484,
+    1725
+  ],
+  "amends": [
+    "F100"
+  ],
+  "amended_by": [
+    "F119"
+  ],
+  "source": "fable-ruling-k5-ibis-mix.md",
+  "note": "Closes K5 of ruling 100. Restores REFUSED rows step 2 removed. Reading Ibis mixes as UTC later would be a D53 amendment for the user. Ruling 119 (#1765 Ibis mix and U2) is a later related ruling, not read here."
+}

@@ -57,6 +57,8 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
+    -- A NULL element sorts above every value, in `<` and in MIN and MAX (duckdb-R11).
+    (none, "list_null_order", .oneOf ["GREATEST"]),
     -- Sequential at one thread; partials merged in finishing order at more, or
     -- spilled; a constant vector as one `fl(k · x)` (#633).
     (none, "sum_order", .oneOf ["ANY", "SCALED_CONSTANT"]),
@@ -126,6 +128,11 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["duckdb-signbit"]).tracking 1985),
   (none, "nan_order", (ObsRow.native ["duckdb-arg-min-nulls"]).tracking 1985),
   (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).tracking 1985),
+  -- `<` of lists is NULL where a NULL element decides it, which DuckDB gives as FALSE or TRUE:
+  -- the written `list_lt` finds the first distinct position (`Dialect.list_lt`). MIN and MAX
+  -- of lists order a NULL element greatest, as the reference does at `agg.order`.
+  (none, "list_null_order", (ObsRow.shimmed "list_lt" ["duckdb-R11"]).tracking 1484),
+  (some "agg.order", "list_null_order", (ObsRow.native ["duckdb-R11"]).tracking 1484),
   -- Partials merged in finishing order are trees the reference allows, but a
   -- constant vector's `fl(k · x)` is not known to be one (#633): within #85's
   -- bound of the reference's correctly rounded sum (`StdModel.epsilon_sum_cr`).
@@ -195,7 +202,7 @@ def Profile.duckdb.obs : ObsTable := [
 def Profile.duckdb.shimCosts : List (String × ShimCost) :=
   [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
    ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression),
-   ("null_order", .argument)]
+   ("null_order", .argument), ("list_lt", .expression)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/

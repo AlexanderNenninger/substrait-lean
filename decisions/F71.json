@@ -1,0 +1,20 @@
+{
+  "id": "F71",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "12d answered: DuckDB's profile integer mean (one double division) stands, and targeted probe pairs and a facts PR for duckdb-avg-int.json close the fact.",
+  "issues": [
+    1608
+  ],
+  "amends": [
+    "F67",
+    "F67.12d"
+  ],
+  "amended_by": [
+    "F74"
+  ],
+  "source": "fable-ruling-1608-12d-probe.md",
+  "note": "File titled 'Ruling 71'. Its sentence that 12d no longer gates semantics='duckdb' on Linux is withdrawn by ruling 74. No D-number."
+}

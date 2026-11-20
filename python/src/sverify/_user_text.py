@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import math
 import re
 from collections.abc import Collection, Mapping, Sequence
 from datetime import date, datetime, timedelta
@@ -428,26 +429,72 @@ def _drop_implicit_casts(s: str) -> str:
 _LEAN_DOUBLE = re.compile(r"(?<![\w.])(\d+\.\d+)d\b")
 
 
-def _short_double(m: re.Match[str]) -> str:
-    """An integral double literal as Python's `repr` writes it: `3.0`,
-    `1e+302`. Any other stays as Lean wrote it: `%f` rounded it to six
-    decimals, so `0.000000` may be `1e-07`, and a shorter text would read
+#: From 2^33 on a double's spacing is at least 2^-19 > 1e-6, so a fraction
+#: would show in `%f`'s six decimals: `.000000` there means integral.
+_SIX_DECIMALS_EXACT = 2.0**33
+
+
+def _number(v: Any) -> float | None:
+    """A literal's value as a double; None where it is not a finite number.
+    An `i64` is a string in the plan's JSON."""
+    try:
+        f = float(v) if isinstance(v, (int, float, str)) else None
+    except ValueError:
+        return None
+    return f if f is not None and math.isfinite(f) else None
+
+
+def plan_doubles(plan: Mapping[str, Any] | None) -> dict[str, str]:
+    """The plan's numeric literals by the text Lean prints for them as
+    doubles (`%f`, the sign apart, as `_LEAN_DOUBLE` reads it), each as
+    Python's `repr` writes it: `{"3.000000": "3.0"}`. An integer counts as
+    the double it is cast to (`value * 3`). A text that two different
+    literals print as is left out: it doesn't say which it is."""
+    found: dict[str, set[float]] = {}
+
+    def walk(x: Any) -> None:
+        if isinstance(x, dict):
+            for k in ("fp64", "i8", "i16", "i32", "i64"):
+                if (v := _number(x.get(k))) is not None:
+                    found.setdefault(f"{abs(v):.6f}", set()).add(abs(v))
+            for y in x.values():
+                walk(y)
+        elif isinstance(x, list):
+            for y in x:
+                walk(y)
+
+    walk(plan)
+    return {k: repr(next(iter(v))) for k, v in found.items() if len(v) == 1}
+
+
+def _short_double(m: re.Match[str], doubles: Mapping[str, str]) -> str:
+    """A double literal as Python's `repr` writes it (`3.0`, `1e+302`) where
+    its value is known: a literal of the plan that Lean's text is the `%f`
+    of (`plan_doubles`), or an integral one from 2^33 on, where `%f` shows any
+    fraction. Any other stays as Lean wrote it: `%f` rounded it to six
+    decimals, so `3.000000` may be `3.0000001`, and a shorter text would read
     as exact."""
+    if (exact := doubles.get(m[1])) is not None:
+        return exact
     whole, frac = m[1].split(".")
-    return repr(float(whole)) if whole != "0" and not frac.strip("0") else m[1]
+    if not frac.strip("0") and float(whole) >= _SIX_DECIMALS_EXACT:
+        return repr(float(whole))
+    return m[1]
 
 
 def pretty(
     out: str,
     dialect: Dialect = "ibis",
     temporal: Collection[str] = (),
+    doubles: Mapping[str, str] | None = None,
 ) -> str:
     """A named expression (`named`) with the user's operators and casts:
     `/` of integers as Ibis's `//`, `DECIMAL_10_2(TO_DECIMAL_2(x))` as the
     cast the user wrote, a timestamp plus microseconds as an interval
-    (`temporal` names the timestamp columns), no implicit casts."""
+    (`temporal` names the timestamp columns), no implicit casts. `doubles`
+    gives the plan's double literals exactly (`plan_doubles`)."""
     out = _drop_implicit_casts(out)
-    out = _LEAN_DOUBLE.sub(_short_double, out)
+    out = _LEAN_DOUBLE.sub(lambda m: _short_double(m, doubles or {}), out)
     out = re.sub(r"(\d)d\b", r"\1", out)
     # A cast to a decimal: `DECIMAL_p_s(TO_DECIMAL_s(x))` (a double's), or
     # `DECIMAL_p_s(x)`, `TO_DECIMAL_s(x)` alone (the precision is the plan's).
@@ -524,7 +571,7 @@ def user_expr(
     """`expr` (Lean's notation) with column names and the user's operators;
     None where the plan does not say which columns it reads."""
     out = named(expr, plan, measure)
-    return None if out is None else pretty(out, dialect, temporal)
+    return None if out is None else pretty(out, dialect, temporal, plan_doubles(plan))
 
 
 # -- one issue per expression the user wrote -----------------------------------

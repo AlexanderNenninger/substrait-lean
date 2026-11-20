@@ -297,7 +297,7 @@ jobs:
           m=$(matrix "$backends")
           echo "matrix: $m"
           out "matrix=$m"
-          if grep -qE '^(float-bounds/|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
+          if grep -qE '^(float-bounds/|core/Sverify/Core/Float(Exact|Format)?\.lean$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
              <<< "$files"; then
             out floats=true
           else
@@ -380,7 +380,7 @@ jobs:
       - uses: ./.github/actions/setup-lean
       # The build budget (docs/build-performance.md): the builds below run
       # `lean` through a sysroot that records each module's CPU time and peak
-      # RSS, and `check` fails on a module over its ceiling.
+      # RSS, and `check` warns on a module over its ceiling.
       - run: python3 scripts/lean_timings.py sysroot "$RUNNER_TEMP/lean-sysroot"
       # The layer guards (#1189, #1162): each package builds on the layers
       # below it alone. The core imports no analysis and no engine, the
@@ -391,52 +391,31 @@ jobs:
       # each package's .lake.
       - run: lake build --wfail
         working-directory: core
-        env:
+        env: &lean-timings
           LAKE_OVERRIDE_LEAN: "true"
           LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
           LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
       - run: lake build --wfail
         working-directory: analysis
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: frontend
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/polars
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/spark
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/duckdb
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       - run: lake build --wfail
         working-directory: engines/substrait
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       # The core, the analysis and engines-common are parametric in the
       # black-box catalogue: they declare no `Boxes.Ambient` instance. Only an
       # engine package does, as a `scoped instance` (#1189).
@@ -458,10 +437,7 @@ jobs:
       # `poe prove` runs, for every default target), before `uv run`'s
       # editable install builds substrait-check.
       - run: lake -R -Kcheck_generated=true build --wfail
-        env:
-          LAKE_OVERRIDE_LEAN: "true"
-          LEAN_SYSROOT: ${{ runner.temp }}/lean-sysroot
-          LEAN_TIMINGS: ${{ runner.temp }}/lean-timings.jsonl
+        env: *lean-timings
       # Only the modules this run rebuilt are measured: the others restored
       # from the cache, unchanged with all they import.
       - name: Build budget
@@ -853,7 +829,10 @@ jobs:
   # writes, so the job builds it at the commit `sverify_dev.substrait_validator`
   # pins (Rust, protoc 28.3 as its own CI uses), caches the wheel by that
   # commit, and runs it in a venv of its own: its protobuf bindings
-  # (Substrait 0.88.1) cannot share a process with sverify's.
+  # (Substrait 0.88.1) cannot share a process with sverify's. The wheel
+  # lives in the workspace: actions/cache stores a path outside it relative
+  # to the workspace, so `~` saved on one runner kind was restored elsewhere on
+  # another (GitHub's /home/runner, the AWS runners' /opt/actions-runner).
   evidence:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true'
@@ -886,12 +865,19 @@ jobs:
             ARM64) echo "protoc_arch=aarch_64" >> "$GITHUB_OUTPUT" ;;
             *) echo "protoc_arch=x86_64" >> "$GITHUB_OUTPUT" ;;
           esac
-      - id: wheel
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/substrait-validator-wheel
-          key: substrait-validator-${{ steps.validator.outputs.commit }}-rust${{ steps.validator.outputs.rust }}-maturin${{ steps.validator.outputs.maturin }}-protoc${{ steps.validator.outputs.protoc }}-${{ runner.os }}-${{ runner.arch }}
-      - if: steps.wheel.outputs.cache-hit != 'true'
+          path: substrait-validator-wheel
+          key: substrait-validator-${{ steps.validator.outputs.commit }}-rust${{ steps.validator.outputs.rust }}-maturin${{ steps.validator.outputs.maturin }}-protoc${{ steps.validator.outputs.protoc }}-${{ runner.environment }}-${{ runner.os }}-${{ runner.arch }}
+      # A hit says only that the key matched: build whenever no wheel came.
+      - id: wheel
+        run: |
+          if compgen -G 'substrait-validator-wheel/*.whl' > /dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.wheel.outputs.found != 'true'
         env:
           COMMIT: ${{ steps.validator.outputs.commit }}
           RUSTUP_TOOLCHAIN: ${{ steps.validator.outputs.rust }}
@@ -913,10 +899,10 @@ jobs:
           curl -sSLo "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-$PROTOC_ARCH.zip"
           unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
           PROTOC="$RUNNER_TEMP/protoc/bin/protoc" PROTOC_INCLUDE="$RUNNER_TEMP/protoc/include" \
-            uvx "maturin==$MATURIN" build --release -m py/Cargo.toml -i python3.12 -o ~/substrait-validator-wheel
+            uvx "maturin==$MATURIN" build --release -m py/Cargo.toml -i python3.12 -o "$GITHUB_WORKSPACE/substrait-validator-wheel"
       - run: |
           uv venv -q -p 3.12 "$RUNNER_TEMP/validator"
-          uv pip install -q -p "$RUNNER_TEMP/validator/bin/python" ~/substrait-validator-wheel/*.whl
+          uv pip install -q -p "$RUNNER_TEMP/validator/bin/python" substrait-validator-wheel/*.whl
           echo "SUBSTRAIT_VALIDATOR_PYTHON=$RUNNER_TEMP/validator/bin/python" >> "$GITHUB_ENV"
       - working-directory: python
         run: uv sync --locked
@@ -937,7 +923,7 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/sverify/ibis-replay
-          key: ibis-replay-${{ steps.ibis.outputs.key }}
+          key: ibis-replay-${{ steps.ibis.outputs.key }}-${{ runner.environment }}
       - name: Ibis's backend tests (#860)
         working-directory: python
         run: |

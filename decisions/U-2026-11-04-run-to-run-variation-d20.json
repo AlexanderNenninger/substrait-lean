@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-04-run-to-run-variation-d20",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "unclear",
+  "summary": "Each engine row gets a run-to-run variation field next to its class's q (D20).",
+  "issues": [
+    444
+  ],
+  "prs": [
+    612
+  ],
+  "source": "github:#612 body",
+  "note": "PR #612 closed unmerged; #444's closing comment lists run-to-run variation (#612, #613, D20) as done, so it likely landed through another PR."
+}

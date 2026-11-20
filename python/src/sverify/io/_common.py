@@ -1,8 +1,8 @@
 """What Delta and Iceberg have in common: file statistics as facts,
 contracts as SQL, and the record a sink stores with each commit.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 """
 
 from __future__ import annotations
@@ -368,7 +368,7 @@ class Contract:
             from.
         not_null: Columns the node proves NOT NULL: stated in `ensures`
             (`_.col.notnull()`), or shown never NULL by its proved report
-            (`Report.not_null`).
+            (not nullable in `Report.output`).
         unique: Column sets the node proves unique.
         cursors: The cursor of every source that can restore its table from
             one (`Source.restore`), at its version in `sources`.

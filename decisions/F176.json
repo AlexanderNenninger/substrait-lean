@@ -1,0 +1,20 @@
+{
+  "id": "F176",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A1 for Arrow-fed sources takes (b): one store-copy path for every source, Source docstring corrected, measurement with a minimal table-free source; io.Source's held table counts as held by sverify. (a) recorded for later. Clamp case closed.",
+  "issues": [
+    322,
+    1329
+  ],
+  "amends": [
+    "F173"
+  ],
+  "amended_by": [
+    "U-2026-11-20-io-source-gate"
+  ],
+  "source": "fable-ruling-176-1329-arrow-sources.md",
+  "note": "Corrects ruling 173's sentence on the user's input for io.Source. Holds for the user whether #1329's 1.0 gate covers io.Source's held table (recommends no). Ruling 105 and D54 stand."
+}

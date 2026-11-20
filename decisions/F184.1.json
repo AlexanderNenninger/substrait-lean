@@ -1,0 +1,18 @@
+{
+  "id": "F184.1",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "superseded",
+  "summary": "Report.observation goes; equivalence is the provisional surviving name on Report and Route, reason code becomes 'equivalence', no written format changes; final name held for the user.",
+  "issues": [
+    1285,
+    1288
+  ],
+  "superseded_by": [
+    "F192",
+    "U-2026-11-20-report-lenses"
+  ],
+  "source": "fable-ruling-184-api5-report-members.md",
+  "note": "User chose Report.lenses (ruling 192: 'that item is superseded'; 'it changes no written format' no longer holds)."
+}

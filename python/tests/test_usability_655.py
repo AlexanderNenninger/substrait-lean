@@ -246,8 +246,8 @@ def test_a_route_names_its_class_and_observation(tmp_path) -> None:
     node = mean(orders)
     route = node.refresh(engine="polars")["mean"].route
     assert route is not None and route.cls == "observed"
-    assert route.observation is not None
-    assert isinstance(route.observation.floats, sv.observation.Within)
+    assert route.lenses is not None
+    assert isinstance(route.lenses.floats, sv.observation.Within)
     assert route.bound_proved in (True, False)
     assert str(route).startswith("observed: doubles within abs=")
 

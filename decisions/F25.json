@@ -1,0 +1,13 @@
+{
+  "id": "F25",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The user's second wording settles D45: the reference leaves open which member of the zero or NaN class QUANTILE_DISC returns; Fable excludes a representative neither in the group nor canonical, as D31 does.",
+  "amends": [
+    "F24"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 25",
+  "note": "User's words relayed by the reviewer: 'D45 yes, leave the exact return value unspecified'."
+}

@@ -71,11 +71,13 @@ release on PyPI.
 | [engines.md](engines.md) | The engines, how to choose one, and what to install | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers | Design |
 | [proved-theorems.md](proved-theorems.md) | The theorems behind each guarantee, by their Lean names: contracts, composition, runtime errors, incremental views, table formats | |
+| [theorems/README.md](theorems/README.md) | One page per top-level theorem: what it says, what it assumes, the Lean statement line by line, an example | |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
 | [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
+| [how-this-is-built.md](how-this-is-built.md) | Who writes and checks the project, what to check without trusting anyone, how to disagree | |
 | [comparison.md](comparison.md) | Sverify beside dbt tests, Great Expectations, Soda and data contracts, by bug class | Design |
 | [prior-work.md](prior-work.md) | The work sverify builds on, and related tools | Design |
 
@@ -85,6 +87,7 @@ release on PyPI.
 |---|---|
 | [core-semantics.md](core-semantics.md) | The design of the loose core: how profiles state their constraints, the value domain, translations and their soundness |
 | [decisions.md](decisions.md) | The decision log: each choice of the reference, the core and the profiles, with when and why |
+| [ledger.md](ledger.md) | Every project decision in one list, by scope, with who decided and what is in force, generated from [`decisions/`](../decisions/) |
 | [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per Lean module |
 | [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area, with where each stands |
 | [layers.md](layers.md) | The layers of the Python package |
@@ -106,6 +109,7 @@ release on PyPI.
 | Profiles, for users | [core-and-profiles.md](core-and-profiles.md) |
 | Profile tables, translations, soundness | [core-semantics.md](core-semantics.md) |
 | Why each choice was made | [decisions.md](decisions.md) |
+| What is decided, by whom, and what replaced it | [ledger.md](ledger.md) |
 | What is proved | [proofs.md](proofs.md), [proved-theorems.md](proved-theorems.md) |
 | What is trusted | [trusted-base.md](trusted-base.md) |
 | The Lean build's time and memory, and its budget | [build-performance.md](build-performance.md) |

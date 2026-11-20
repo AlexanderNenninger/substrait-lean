@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-08-no-python-in-engine-paths",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Engine execution paths use native operations only, with no Python functions, and an approximate observable covers what cannot be exact.",
+  "issues": [
+    1270,
+    1447
+  ],
+  "source": "memory:no-python-in-engine-paths.md",
+  "note": "Fable's three-branch rule (exact, bounded, refused; #1270) applies it."
+}

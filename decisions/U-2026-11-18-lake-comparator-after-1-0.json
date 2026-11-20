@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-18-lake-comparator-after-1-0",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "A `lake check`/`lake comparator` gate for sverify is filed as an epic placed after 1.0; no trial is assigned.",
+  "issues": [
+    1686
+  ],
+  "source": "fable-note-lake-comparator.md",
+  "note": "Fable's note decides nothing; the user placed the epic after 1.0 ('more pressing issues for 1.0')."
+}
