@@ -1305,9 +1305,6 @@ class Exprs:
         t = v.dtype
         if kind == "decimal":
             p, s = arg
-            if s == 0 and p >= 19 and t in (pl.Int64, pl.Null):
-                # `Parse.wideIntDecimal`: an integer, kept as one.
-                return Val(v.expr.cast(pl.Int64), pl.Int64, v.issues)
             if t == pl.Float64:
                 return self.double_to_decimal(v, p, s)
             if t == pl.Null:
