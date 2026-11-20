@@ -384,3 +384,27 @@ def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:
     assert "`x * COUNT(y) > SUM(y)`" in text
     assert "compares the exact mean, not the rounded one" in text
     assert "its product must fit BIGINT" in text
+
+
+def test_a_failed_transfer_check_is_not_kept(monkeypatch) -> None:
+    """The checker's transfer answer is kept per process, a failure is not:
+    a timeout once does not stick (#862)."""
+    import subprocess
+
+    from sverify import routes
+
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired("substrait-check", 60)
+        return subprocess.CompletedProcess(args, 0, stdout='{"ok": true}')
+
+    routes._answer.cache_clear()
+    monkeypatch.setattr(subprocess, "run", run)
+    assert routes._transfer("checker", "{}") is None
+    assert routes._transfer("checker", "{}") == '{"ok": true}'
+    assert routes._transfer("checker", "{}") == '{"ok": true}'
+    assert len(calls) == 2
+    routes._answer.cache_clear()

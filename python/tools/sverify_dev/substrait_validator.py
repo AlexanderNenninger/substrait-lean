@@ -37,7 +37,8 @@ validator at `COMMIT` (the `substrait-validator` job).
 `python -m sverify_dev.substrait_validator` prints the totals and the
 findings; `--write` rewrites the ledger (`python/tests/substrait_validator.json`),
 keeping each finding's record; `--check` fails on a finding the ledger does
-not list, a ledger finding with no record, and a ledger that is stale.
+not list, a finding with no record and a plan that validated and no longer
+does; other changes (main's cases and catalogue move on) only print.
 Gates report and never block: CI turns the failure into a warning.
 """
 
@@ -238,26 +239,31 @@ def _sverify_substrait() -> str:
     return ".".join(map(str, SUBSTRAIT_VERSION))
 
 
-def problems(fresh: dict[str, Any], stored: dict[str, Any]) -> list[str]:
-    """Why the stored ledger does not match a fresh run, and findings with
-    no record."""
-    out = []
+def problems(fresh: dict[str, Any], stored: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """How a fresh run differs from the stored ledger: what fails the gate
+    (a finding the ledger does not list, one with no record, a plan that
+    validated and no longer does), and what only drifted (main's coverage
+    cases and catalogue move on: plans added, refusals changed, findings
+    gone), which the ledger takes when it is next written."""
+    fails, notes = [], []
+    known = stored.get("findings", {})
     for f, e in fresh["findings"].items():
-        if f not in stored.get("findings", {}):
-            out.append(f"new finding: {f} ({e['plans']} plan(s))")
+        if f not in known:
+            fails.append(f"new finding: {f} ({e['plans']} plan(s))")
         elif not e["record"]:
-            out.append(f"finding without a record (ST-n or an issue): {f}")
-    for f in stored.get("findings", {}):
-        if f not in fresh["findings"]:
-            out.append(f"finding gone (improvement: rewrite the ledger): {f}")
-    if fresh["results"] != stored.get("results"):
-        changed = [
-            k
-            for k in fresh["results"].keys() | stored.get("results", {}).keys()
-            if fresh["results"].get(k) != stored.get("results", {}).get(k)
-        ]
-        out.append(f"{len(changed)} plan outcome(s) changed, e.g. {sorted(changed)[:5]}")
-    return out
+            fails.append(f"finding without a record (ST-n or an issue): {f}")
+    notes += [f"finding gone: {f}" for f in known if f not in fresh["findings"]]
+    old = stored.get("results", {})
+    for key in sorted(fresh["results"].keys() | old.keys()):
+        was = old.get(key, {}).get("outcome")
+        now = fresh["results"].get(key, {}).get("outcome")
+        if was == now:
+            continue
+        if was == "agree" and now == "disagree":
+            fails.append(f"{key}: validated, now {now}")
+        else:
+            notes.append(f"{key}: {was} -> {now}")
+    return fails, notes
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -274,9 +280,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.write:
         LEDGER.write_text(json.dumps(fresh, indent=2, ensure_ascii=False) + "\n")
     if args.check:
-        stored = json.loads(LEDGER.read_text())
-        if found := problems(fresh, stored):
-            print("\n".join(found), file=sys.stderr)
+        fails, notes = problems(fresh, json.loads(LEDGER.read_text()))
+        if notes:
+            print(f"{len(notes)} change(s) the ledger takes when rewritten:")
+            print("\n".join(f"  {n}" for n in notes[:20]))
+        if fails:
+            print("\n".join(fails), file=sys.stderr)
             return 1
     return 0
 

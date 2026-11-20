@@ -835,30 +835,49 @@ jobs:
           cache-dependency-glob: python/uv.lock
           prune-cache: true
           cache-suffix: pruned
+      # The validator's build, pinned: its commit, the Rust toolchain, maturin
+      # and protoc (28.3, as its own CI uses), all in the wheel's cache key.
       - id: validator
+        env:
+          ARCH: ${{ runner.arch }}
         run: |
           commit=$(sed -n 's/^COMMIT = "\([0-9a-f]*\)"$/\1/p' python/tools/sverify_dev/substrait_validator.py)
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "rust=1.96.1" >> "$GITHUB_OUTPUT"
+          echo "maturin=1.16.0" >> "$GITHUB_OUTPUT"
+          echo "protoc=28.3" >> "$GITHUB_OUTPUT"
+          case "$ARCH" in
+            ARM64) echo "protoc_arch=aarch_64" >> "$GITHUB_OUTPUT" ;;
+            *) echo "protoc_arch=x86_64" >> "$GITHUB_OUTPUT" ;;
+          esac
       - id: wheel
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/substrait-validator-wheel
-          key: substrait-validator-${{ steps.validator.outputs.commit }}-${{ runner.os }}-${{ runner.arch }}
+          key: substrait-validator-${{ steps.validator.outputs.commit }}-rust${{ steps.validator.outputs.rust }}-maturin${{ steps.validator.outputs.maturin }}-protoc${{ steps.validator.outputs.protoc }}-${{ runner.os }}-${{ runner.arch }}
       - if: steps.wheel.outputs.cache-hit != 'true'
         env:
           COMMIT: ${{ steps.validator.outputs.commit }}
+          RUSTUP_TOOLCHAIN: ${{ steps.validator.outputs.rust }}
+          PROTOC_VERSION: ${{ steps.validator.outputs.protoc }}
+          PROTOC_ARCH: ${{ steps.validator.outputs.protoc_arch }}
+          MATURIN: ${{ steps.validator.outputs.maturin }}
         run: |
           set -euo pipefail
-          command -v cargo || { curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; }
+          if command -v rustup; then
+            rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          else
+            curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUSTUP_TOOLCHAIN"
+          fi
           export PATH="$HOME/.cargo/bin:$PATH"
           src=$RUNNER_TEMP/substrait-validator
           git init -q "$src" && cd "$src"
           git fetch -q --depth 1 https://github.com/substrait-io/substrait-validator.git "$COMMIT"
           git checkout -q FETCH_HEAD && git submodule update -q --init --depth 1
-          curl -sSLo "$RUNNER_TEMP/protoc.zip" https://github.com/protocolbuffers/protobuf/releases/download/v28.3/protoc-28.3-linux-x86_64.zip
+          curl -sSLo "$RUNNER_TEMP/protoc.zip" "https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOC_VERSION/protoc-$PROTOC_VERSION-linux-$PROTOC_ARCH.zip"
           unzip -q "$RUNNER_TEMP/protoc.zip" -d "$RUNNER_TEMP/protoc"
           PROTOC="$RUNNER_TEMP/protoc/bin/protoc" PROTOC_INCLUDE="$RUNNER_TEMP/protoc/include" \
-            uvx maturin build --release -m py/Cargo.toml -i python3.12 -o ~/substrait-validator-wheel
+            uvx "maturin==$MATURIN" build --release -m py/Cargo.toml -i python3.12 -o ~/substrait-validator-wheel
       - run: |
           uv venv -q -p 3.12 "$RUNNER_TEMP/validator"
           uv pip install -q -p "$RUNNER_TEMP/validator/bin/python" ~/substrait-validator-wheel/*.whl
