@@ -269,6 +269,7 @@ TIES_OPEN = {
     "rolling sum (range)",
     "rolling sum (interval)",
     "sum over group",
+    "window over expressions",
     "running mean",
     "rolling mean (rows)",
     "rolling mean (interval)",
