@@ -80,7 +80,7 @@ def test_the_where_of_each_plan_is_named(monkeypatch: pytest.MonkeyPatch) -> Non
 
     def stub(schemas, query, semantics):
         text, _ = real(schemas, query, semantics)
-        return text, (difference("corr_degenerate", "corr(x, y)"),)
+        return text, (difference("corr_degenerate", "function corr", "corr(x, y)"),)
 
     monkeypatch.setattr(contracts, "plan_and_differences", stub)
     r = sv.verify(
@@ -150,6 +150,16 @@ def test_the_docs_name_each_key() -> None:
     section = text.split("## DuckDB SQL under the reference", 1)[1].split("\n## ", 1)[0]
     for key in _dialect.TABLE:
         assert f"`{key}`" in section, key
+
+
+def test_a_difference_has_the_refusal_category_and_the_sql_as_written() -> None:
+    """#700, ruling 126: `construct` is the category `UnsupportedError.construct` uses;
+    `sql` is the text, and what `str` prints."""
+    r = sv.verify("SELECT corr(x, y) AS c FROM t", tables={"t": {"x": "DOUBLE", "y": "DOUBLE"}})
+    (d,) = r.dialect_differences
+    assert d.construct == "function corr"
+    assert d.sql == "CORR(t.x, t.y)"
+    assert str(d).startswith("CORR(t.x, t.y) in the query")
 
 
 @pytest.mark.parametrize("semantics", ["reference", "duckdb"])
