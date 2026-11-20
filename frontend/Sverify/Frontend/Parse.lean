@@ -71,7 +71,23 @@ def isValuesKey (t : String) : Bool := t.startsWith "$values "
 its expressions, where they say more than `Expr.kind`: the model has a
 timestamp, a double's `0.0` and a typed `NULL` as plain values (#96). Its
 `baseSchema` has one type per expression, `{}` where `Expr.kind` holds. -/
-def projectKey (es : List Expr) : String := s!"$project {reprStr es}"
+def projectKey (es : List Expr) : String :=
+  s!"$project {es.length}:" ++ String.join (es.map exprKey)
+where
+  /-- An expression as a string, as `valueKey` writes a value: a tag, a
+  function by its `reprStr` with its length first, and the operands' keys.
+  `reprStr` of the expression printed every double's code in decimal and
+  pretty-printed the tree, and the writer and the parser look a projection
+  up at every node above it: most of a nested double expression's check
+  (#1952). -/
+  exprKey : Expr → String
+    | .lit v => "l" ++ valueKey v
+    | .field i => s!"c{i};"
+    | .un f a => "u" ++ fnKey (reprStr f) ++ exprKey a
+    | .bin f a b => "b" ++ fnKey (reprStr f) ++ exprKey a ++ exprKey b
+    | .ifThen c t e => "i" ++ exprKey c ++ exprKey t ++ exprKey e
+    | .hof f l b => "h" ++ fnKey (reprStr f) ++ exprKey l ++ exprKey b
+  fnKey (s : String) : String := s!"{s.length}:{s}"
 
 /-- An entry of `Tables` that is not a named table. -/
 def isInternalKey (t : String) : Bool := t.startsWith "$"
