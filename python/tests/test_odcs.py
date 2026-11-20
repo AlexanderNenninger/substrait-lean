@@ -489,7 +489,7 @@ def test_read_lists_what_it_cannot_read_with_reasons():
         "a minimum sverify cannot read for boolean",
         "a relationship on the object",
         # From `mustBeLessOrEqualTo: 2.5`: a cap that is no integer. The text
-        # is wrong for it (#1893); a fractional cap could read as floor(n).
+        # is wrong for it (#1892); a fractional cap could read as floor(n).
         "a lower bound on the row count",
         "a key over columns the object lacks",
         "metric 'nullValues' on a whole object",
