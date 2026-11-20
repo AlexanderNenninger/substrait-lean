@@ -201,7 +201,18 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
         _option("on_division_by_zero", lf.profile.on_division_by_zero),
         _option("division_type", "TRUNCATE"),
     ]
-    return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
+    x, y = lf.to(a, t).json, lf.to(b, t).json
+    mod = _fn("modulus", [x, y], t, opts)
+    if lf.profile.min_mod_neg_one == "ERROR":
+        # DuckDB raises at `MIN % -1` (`duckdb-R15-int-modulus`), where the
+        # reference's remainder, 0, fits: an in-plan raise, so a bound on
+        # either operand discharges it (D54, #2058).
+        low = -(1 << (8 * t.nbytes - 1))
+        hit = logical("and", [_fn("equal", [y, literal(-1, t)], dt.boolean),
+                              _fn("equal", [x, literal(low, t)], dt.boolean)])  # fmt: skip
+        msg = literal("integer overflow: MIN % -1", dt.string)
+        mod = if_then([(hit, _fn("sverify_raise", [hit, msg], t))], mod)
+    return E(mod, t)
 
 
 def _has_struct(t: Any) -> bool:

@@ -89,6 +89,9 @@ class Profile:
             declared width: `"ERROR"` (DuckDB, and #185's reference default).
         on_division_by_zero: `//` and `%` by zero: `"ERROR"` (DuckDB with
             `error_on_division_by_zero`, its default, and the reference).
+        min_mod_neg_one: `MIN % -1` of integers: `"ERROR"` (DuckDB raises,
+            `duckdb-R15-int-modulus`) or `"ZERO"` (reference: the remainder,
+            0, fits).
         float_division_by_zero: `/` by zero, which divides doubles:
             `"ERROR"` (reference). DuckDB's `/` is the generated lift's.
         float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
@@ -114,6 +117,7 @@ class Profile:
     avg_integer: str = "fp64"
     overflow: str = "ERROR"
     on_division_by_zero: str = "ERROR"
+    min_mod_neg_one: str = "ZERO"
     float_division_by_zero: str = "ERROR"
     float_to_int: str = "TRUNCATE"
     decimal_to_int: str = "TRUNCATE"
@@ -124,6 +128,7 @@ class Profile:
 
 DUCKDB = Profile(
     "duckdb",
+    min_mod_neg_one="ERROR",
     float_to_int="TIE_TO_EVEN",
     decimal_to_int="TIE_AWAY_FROM_ZERO",
     domain_error="NAN",

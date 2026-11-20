@@ -83,6 +83,7 @@ def test_the_profiles_differ_only_in_what_functions_do():
     fields = DUCKDB.__dataclass_fields__
     assert {f for f in fields if getattr(DUCKDB, f) != getattr(REFERENCE, f)} == {
         "name",
+        "min_mod_neg_one",
         "float_to_int",
         "decimal_to_int",
         "domain_error",
@@ -556,3 +557,27 @@ def test_a_folded_constant_is_not_a_literal():
     schema = {"t": ibis.schema({"v": "int8"})}
     assert lift("SELECT v + (50 + 50) AS x FROM t", schema).schema["x"] == dt.int32
     assert lift("SELECT v + CAST(100 AS INTEGER) AS x FROM t", schema).schema["x"] == dt.int32
+
+
+def test_a_lens_remainder_lists_min_mod_neg_one():
+    """DuckDB raises at `MIN % -1`, where the reference's 0 fits (#2058): under
+    `semantics="duckdb"` the issue is listed, and a bound on either operand
+    discharges it; under the reference there is none."""
+    t = ibis.table({"a": "int64", "b": "int64"}, name="t")
+
+    def verify(semantics, requires):
+        return sv.verify(
+            "SELECT a % b AS m FROM t",
+            tables={"t": t},
+            semantics=semantics,
+            requires={"t": [requires]},
+            on_inferred="off",
+            counterexamples=0,
+        )
+
+    unbounded = verify("duckdb", "b <> 0")
+    assert unbounded.verdict != sv.Verdict.PROVED
+    assert any("MIN % -1" in str(i) for i in unbounded.issues)
+    for bound in ("b > 0", "b <> 0 AND a > -9223372036854775807"):
+        assert verify("duckdb", bound).verdict == sv.Verdict.PROVED
+    assert verify("reference", "b <> 0").verdict == sv.Verdict.PROVED

@@ -408,9 +408,13 @@ def test_runtime_errors_raise(sql, a, b):
 
 
 def test_remainder_by_minus_one_is_zero():
-    """`MIN % -1` is 0 in Lean; DuckDB's `%` raises there, so it is special-cased."""
+    """`MIN % -1` is 0 in the reference; DuckDB's `%` raises there, so it is
+    written out. Under DuckDB's semantics the plan raises as DuckDB does (#2058)."""
     r = ints(a=[-(2**63), 5, None], b=[-1, -1, -1])
-    assert check_three_ways("SELECT a % b AS m FROM r", {"r": r}) == [(0,), (0,), (None,)]
+    sql = "SELECT a % b AS m FROM r"
+    assert check_three_ways(sql, {"r": r}, "reference") == [(0,), (0,), (None,)]
+    with pytest.raises(duckdb.Error):
+        duckdb_rows(plan_of(sql, {"r": r}), {"r": r})
 
 
 def test_integer_powers_are_exact():
