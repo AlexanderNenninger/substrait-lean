@@ -1372,7 +1372,23 @@ theorem LChain.bind_raise (cat : Catalog) (r : Rel) (w : Nat) :
           (¬ Reach RI g (row ++ F row) → ¬ L row) ∧
           (Reach RI g (row ++ F row) → ((c.fill w).Raises row ↔ L row))
   | .mk isAnd ops, g, s, F, hs, hg, hops => by
-    sorry
+    obtain ⟨L, hR, hL⟩ := LChain.bindOps_raise cat r w isAnd ops g s F none hs hg (by simp) hops
+    refine ⟨L, hR, fun F' _ row hr hb => ?_⟩
+    obtain ⟨h1, h2⟩ := hL row hr hb (by simp)
+    refine ⟨h1, fun hreach => ?_⟩
+    rw [h2 hreach, Option.map_none, raiseFrom_iff w isAnd row ops none trivial (by simp) hb]
+    have hbv : ∀ q ∈ LExpr.fillAll w ops, firstError (q.issues row) = none → Expr.BoolVal row q := by
+      intro q hq hn
+      have hnr : ¬ q.Raises row := by simp [Expr.Raises, hn]
+      have := LExpr.boolsAll_boolVal w row ops hb q hq
+      unfold Expr.BoolValI at this; rw [Expr.evalI_ref_of_not_raises hnr] at this; exact this
+    cases isAnd
+    · simp only [LChain.fill, Expr.Raises]
+      rw [Expr.orLift_raises_iff row _ hbv]
+      simp [goesOn]
+    · simp only [LChain.fill, Expr.Raises]
+      rw [Expr.andLift_raises_iff row _ hbv]
+      simp [goesOn]
 theorem LChain.bindOps_raise (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
     ∀ (ops : List LExpr) (g : Option Expr) (s : BindSt) (F : Row → Row) (acc : Option Expr),
       s.Ext RI cat r w F → (∀ c ∈ g, c.refsLt s.width ∧ c.plain = true) →
