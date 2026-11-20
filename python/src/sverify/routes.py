@@ -119,7 +119,7 @@ class EngineProfile:
     engine: str
     versions: tuple[str, ...]
     """The engine versions the profile's facts were probed at
-    (`characterization/<engine>/facts/`)."""
+    (`engines/<engine>/facts/`)."""
 
 
 def shim_text(name: str) -> str:
@@ -192,7 +192,7 @@ class EngineVersionWarning(SverifyWarning):
 class EngineVersionError(SverifyError, RuntimeError):
     """The engine's version is outside its profile's range, the minor
     releases its facts were probed at (D70): install a version in the range,
-    re-run the probes (`characterization/<engine>/`) first, or run with
+    re-run the probes (`engines/<engine>/facts/`) first, or run with
     `unverified=True`."""
 
     code = "engine_version"
@@ -291,7 +291,7 @@ class Route:
     tolerance."""
     facts: tuple[str, ...] = ()
     """The engine facts behind the choices the class rests on
-    (`characterization/<engine>/facts/`)."""
+    (`engines/<engine>/facts/`)."""
     theorems: tuple[str, ...] = ()
     """The Lean theorems that prove those choices, where they are proved."""
     version: str | None = None
@@ -393,7 +393,8 @@ def evidence_text(x: Route | Realized, engine: str) -> str:
 
 def _release(v: str) -> tuple[int, int, int] | None:
     """A version's (major, minor, patch): `(2, 0, 1)` for "2.0.1", "v2.0.1"
-    or "py-2.0.1rc1"; None where it has no major and minor."""
+    or "py-2.0.1rc1"; None where it has no major and minor. A pre-release
+    reads as its release, so "2.0.0rc1" is in range and warns as unprobed."""
     m = re.match(r"(?:py-|v)?(\d+)\.(\d+)(?:\.(\d+))?", v)
     return None if m is None else (int(m[1]), int(m[2]), int(m[3] or 0))
 
@@ -402,7 +403,10 @@ def _version_range(versions: Sequence[str]) -> tuple[str, str] | None:
     """The range of engine versions a profile probed at `versions` covers
     (D70): the minor releases that hold a probed version, from the lowest
     probed patch up, as the bounds `(">=", "<")` of the engine package's
-    dependency, `("2.0.0", "2.1")` for `("2.0.0",)`. None without versions."""
+    dependency, `("2.0.0", "2.1")` for `("2.0.0",)`. None without versions.
+    The bounds are exact for probes in one minor, as D70 fixes each engine
+    at 1.0 (`test_the_package_bound_is_the_profiles_range` holds it): with
+    probes at 2.0.0 and 2.2.0 they would span 2.1, which `_in_range` refuses."""
     found = sorted(r for v in versions if (r := _release(v)) is not None)
     if not found:
         return None
@@ -449,7 +453,7 @@ def check_version(engine: str, version: str | None = None) -> str | None:
             f"whose facts were probed at {probed}: install a version of {engine} in "
             f">={floor},<{ceiling}, "
             f"or run(..., unverified=True) to run it anyway; running {version} verified "
-            f"needs its facts probed again (characterization/{engine}/)"
+            f"needs its facts probed again (engines/{engine}/facts/)"
         )
     msg = (
         f'{engine} {version} is not a version the facts of semantics="{engine}" were '

@@ -238,7 +238,10 @@ def test_the_package_bound_is_the_profiles_range(package: str) -> None:
     ]
     found = {str(Requirement(r).specifier) for r in reqs if Requirement(r).name == dist}
     engine = "duckdb" if package == "dbt" else package
-    floor, ceiling = routes._version_range(routes.profiles()[engine].versions) or ("", "")
+    versions = routes.profiles()[engine].versions
+    # One probed minor (D70 at 1.0): only then is the range one bound.
+    assert len({r[:2] for v in versions if (r := routes._release(v))}) == 1
+    floor, ceiling = routes._version_range(versions) or ("", "")
     assert found == {f"<{ceiling},>={floor}"}, path
 
 
