@@ -1044,6 +1044,7 @@ def test_quantile_refusals_say_what(agg, message):
 
 def test_group_concat_with_a_constant_expression_as_separator():
     """`sep=ibis.literal(":") + ":"` folds to `"::"` (#1914)."""
-    expr = Q.group_by("k").aggregate(c=Q.s.group_concat(ibis.literal(":") + ":", where=Q.i > 0))
+    sep = ibis.literal(":") + ":"  # pyrefly: ignore
+    expr = Q.group_by("k").aggregate(c=Q.s.group_concat(sep, where=Q.i > 0))
     plan = json.loads(to_substrait_json(expr))
     assert '"string": "::"' in json.dumps(plan)
