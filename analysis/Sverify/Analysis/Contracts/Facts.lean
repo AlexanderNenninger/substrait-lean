@@ -1533,20 +1533,27 @@ proves `x >= 0 OR x IS NULL` for a column `x` that may be NULL. -/
 def orSplitNull (ap bq : AVal) : AVal :=
   (orSplit ap bq).join (if ap.null then bq.orNull else AVal.bot)
 
+/-- `Expr.absD` of `.bin f a b`, from the left operand's value `aa`, the right
+operand's value `ab` (asked for only off the `OR` paths) and `bAt`, the right
+operand's value in another environment under more assumptions. `Expr.absD`
+and `Expr.mayIssuesA` (`Safety.lean`) both take it. `aa` is an argument, so
+it is computed once: an `OR` chain (`x IN (...)`) nests its left operand, and
+evaluating it once per use multiplied the work at every level (#1877). -/
+def Expr.absBin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn) (a b : Expr)
+    (aa : AVal) (ab : Unit → AVal) (bAt : List AVal → Assumptions → AVal) : AVal :=
+  narrowAll ks (.bin f a b) <|
+    if f = .or ∧ aa.nonBool = false then
+      orSplit aa (bAt (useFacts fs ((Expr.un .not a).refine env)) (a.cstrs false ++ ks))
+    else if f = .or ∧ aa.int.isNone = true ∧ aa.str = false ∧ aa.nested = false then
+      orSplitNull aa (bAt (useFacts fs ((a.refineNeg env).map AVal.prune)) (a.cstrs false ++ ks))
+    else sharpen fs f a b aa (ab ()) (f.abs aa (ab ()))
+
 def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr → AVal
   | .lit v => AVal.ofValue v
   | .field i => narrowAll ks (.field i) (env.getD i AVal.top)
   | .un f a => narrowAll ks (.un f a) (f.abs (a.absD env fs ks))
-  | .bin f a b => narrowAll ks (.bin f a b) <|
-      if f = .or ∧ (a.absD env fs ks).nonBool = false then
-        orSplit (a.absD env fs ks)
-          (b.absD (useFacts fs ((Expr.un .not a).refine env)) fs (a.cstrs false ++ ks))
-      else if f = .or ∧ (a.absD env fs ks).int.isNone = true ∧ (a.absD env fs ks).str = false ∧
-          (a.absD env fs ks).nested = false then
-        orSplitNull (a.absD env fs ks)
-          (b.absD (useFacts fs ((a.refineNeg env).map AVal.prune)) fs (a.cstrs false ++ ks))
-      else sharpen fs f a b (a.absD env fs ks) (b.absD env fs ks)
-        (f.abs (a.absD env fs ks) (b.absD env fs ks))
+  | .bin f a b => Expr.absBin env fs ks f a b (a.absD env fs ks) (fun _ => b.absD env fs ks)
+      (fun env' ks' => b.absD env' fs ks')
   -- Each branch is evaluated knowing whether `c` is TRUE.
   | .ifThen c t e => narrowAll ks (.ifThen c t e) <|
       let ac := c.absD env fs ks
@@ -1911,7 +1918,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
   | .field i => narrowAll_sound hks (h i)
   | .un f a => narrowAll_sound hks (UnFn.abs_sound f (Expr.absD_sound h hfs hks a))
   | .bin f a b => by
-      simp only [absD]
+      simp only [absD, absBin]
       refine narrowAll_sound hks ?_
       simp only [eval]
       split
