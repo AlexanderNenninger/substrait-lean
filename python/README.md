@@ -2,6 +2,9 @@
 
 > Sverify is a working prototype. Its Lean proofs, its checker and its Python
 > code still need a human audit before anyone relies on their results.
+>
+> [How this project is built](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-this-is-built.md)
+> says who writes it and what you can check yourself.
 
 Sverify proves a data pipeline's contracts in Lean before it runs, keeps the
 result up to date from Delta and Iceberg changes, and runs the checked plan on
