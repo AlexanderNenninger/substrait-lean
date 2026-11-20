@@ -10,3 +10,12 @@ rev = "v4.35.0"
 
 [[lean_lib]]
 name = "FloatBounds"
+
+# The bridge (#1196): imports the core's codes and the reals' standard model,
+# and proves the link between them that the core otherwise trusts.
+[[require]]
+name = "sverify-core"
+path = "../core"
+
+[[lean_lib]]
+name = "FloatBridge"
