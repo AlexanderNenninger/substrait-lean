@@ -522,46 +522,45 @@ def schemaBits (schema : Json) : List Nat :=
   | none => []
 
 /-- The width of an integer expression over columns of widths `cols` (64 for
-anything else). An integer literal is as wide as its declared type (#1934, #1968): 64
-bits, or a `narrow` mark's (`declaredNarrow`). As an operand (`operand`) a
-literal does not widen the arithmetic around it, since the parser reads its type
-where it is an argument (`argBits`); a value (a column, a `CASE` branch) has no
-such context. A `NULL` widens nothing. -/
-def _root_.Substrait.Expr.bitsAt (operand : Bool) (cols : List Nat) : Expr → Nat
+anything else). A literal does not widen (the parser looks at its type where
+it is an argument). -/
+def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
   | .field i => cols.getD i 64
-  | .lit .null => 8
-  | .lit _ => if operand then 8 else 64
+  | .lit _ => 8
   | .un (.wrap n) _ | .un (.narrow n) _ | .un (.narrowOrNull n) _ => n
-  | .un .neg a => a.bitsAt operand cols
+  | .un .neg a => a.bits cols
   | .bin .add a b | .bin .sub a b | .bin .mul a b | .bin .idiv a b | .bin .imod a b =>
-    max (a.bitsAt true cols) (b.bitsAt true cols)
-  | .ifThen _ t e => max (t.bitsAt false cols) (e.bitsAt false cols)
+    max (a.bits cols) (b.bits cols)
+  | .ifThen _ t e => max (t.bits cols) (e.bits cols)
   | _ => 64
 
-/-- The width of an operand. -/
-def _root_.Substrait.Expr.bits (cols : List Nat) (e : Expr) : Nat := e.bitsAt true cols
+/-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
+model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
+it from widening the arithmetic around it, and a column has none (#1934). A
+narrower declared type is a `narrow` mark (`declaredNarrow`). -/
+def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
+  | .lit _ => 64
+  | e => e.bits cols
 
-/-- The width of a column computed by `e`. -/
-def _root_.Substrait.Expr.colBits (cols : List Nat) (e : Expr) : Nat := e.bitsAt false cols
-
-def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
+def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables)
+    (proj : List Nat → List Expr → List Nat := fun bs es => es.map (eb bs)) : Rel → List Nat
   | .read t => match tables.lookup t with
     | some (_, s) => schemaBits s
     | none => []
   | .values n rows => match tables.lookup (valuesKey n rows) with
     | some (_, s) => schemaBits s
     | none => List.replicate n 64
-  | .filter r _ | .fetch r _ _ => r.bitsBy eb tables
+  | .filter r _ | .fetch r _ _ => r.bitsBy eb tables proj
   | .project r es =>
-      let bs := r.bitsBy eb tables
-      bs ++ es.map (eb bs)
+      let bs := r.bitsBy eb tables proj
+      bs ++ proj bs es
   | .emit r m =>
-      let bs := r.bitsBy eb tables
+      let bs := r.bitsBy eb tables proj
       m.map (bs.getD · 64)
-  | .cross a b | .join a b _ _ => a.bitsBy eb tables ++ b.bitsBy eb tables
-  | .unionAll a _ => a.bitsBy eb tables
+  | .cross a b | .join a b _ _ => a.bitsBy eb tables proj ++ b.bitsBy eb tables proj
+  | .unionAll a _ => a.bitsBy eb tables proj
   | .window r _ _ fns =>
-      let bs := r.bitsBy eb tables
+      let bs := r.bitsBy eb tables proj
       bs ++ fns.map fun
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           bs.getD c 64
@@ -569,18 +568,37 @@ def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Table
           | .min | .max => eb bs m.arg
           | _ => 64
         | _ => 64
-  | .semi a _ _ _ => a.bitsBy eb tables
-  | .orderBy r _ | .distinct r => r.bitsBy eb tables
+  | .semi a _ _ _ => a.bitsBy eb tables proj
+  | .orderBy r _ | .distinct r => r.bitsBy eb tables proj
   -- A list element's width is not tracked.
-  | .unnest r c => (r.bitsBy eb tables).set c 64
+  | .unnest r c => (r.bitsBy eb tables proj).set c 64
   | .aggregate r gs ms =>
-      let bs := r.bitsBy eb tables
+      let bs := r.bitsBy eb tables proj
       gs.map (eb bs) ++ ms.map fun m => match m.fn with
         | .min | .max => eb bs m.arg
         | _ => 64
 
+/-- The entry in `Tables` of the integer widths a projection's source plan
+declares where `Expr.colBits` cannot see them (a `CASE` of literals, #1968):
+one type per expression, `{}` where `colBits` holds (`recordDeclaredKinds`). -/
+def projectBitsKey (es : List Expr) : String := s!"$projectBits {reprStr es}"
+
+/-- The widths of a projection's columns: the declared one where the source
+plan recorded one, `colBits` elsewhere. A plan without such an entry never
+prints its expressions (as `declaredProjectKinds`). -/
+def declaredProjectBits (tables : Tables) (bs : List Nat) (es : List Expr) : List Nat :=
+  let declared : List Json :=
+    if tables.any (·.1.startsWith "$projectBits ") then
+      match tables.lookup (projectBitsKey es) with
+      | some (_, s) => ((s.getObjValAs? Json "struct").toOption.bind
+          (·.getObjValAs? (Array Json) "types" |>.toOption)).map Array.toList |>.getD []
+      | none => []
+    else []
+  es.zipIdx.map fun (e, i) => ((declared[i]?).bind intTagBits?).getD (e.colBits bs)
+
 /-- The width of each column of a relation's rows as the parser tracks it. -/
-def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.colBits tables
+def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat :=
+  r.bitsBy Expr.colBits tables (declaredProjectBits tables)
 
 /-- An expression's width in the plan the writer writes: a column keeps its declared width,
 every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
@@ -2093,13 +2111,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       return call
   | ("ifThen", t) =>
     -- A `CASE` without `ELSE` is `ELSE NULL`.
-    -- A branch's integer constant keeps its declared width (#1968).
-    let branch (j : Json) : J Expr := do return declaredNarrow j (← parseExpr fns cols bits j)
     let els ← match field? t "else" with
-      | some e => branch e
+      | some e => parseExpr fns cols bits e
       | none => pure (.lit .null)
     let clauses ← (← arrD t "ifs").mapM fun clause => do
-      return (← parseExpr fns cols bits (← field clause "if"), ← branch (← field clause "then"))
+      return (← parseExpr fns cols bits (← field clause "if"), ← parseExpr fns cols bits (← field clause "then"))
     match clauses with
     | [] => return els
     | (c, x) :: rest =>
@@ -2906,6 +2922,44 @@ def kindSchemaType : Kind → Json
 #guard [Kind.float, .time, .date, .tod, .str, .bool, .int].all fun k =>
   typeKind (kindSchemaType k) == k
 
+/-- The integer width the source plan declares for an expression where
+`Expr.colBits` cannot see it: a literal's tag, a cast's target, and for a
+`CASE` the widest of its branches' (a `NULL` branch says nothing); `none` where
+a branch is anything else (#1968). -/
+partial def declaredIntBits? (j : Json) : Option Nat :=
+  if let some l := field? j "literal" then
+    if (field? l "null").isSome then some 0 else intTagBits? l
+  else if let some c := field? j "cast" then intTagBits? ((field? c "type").getD .null)
+  else if let some i := field? j "ifThen" then do
+    let ifs := (((field? i "ifs").bind (·.getArr? |>.toOption)).getD #[]).toList
+    let bs ← (ifs.filterMap (field? · "then") ++ (field? i "else").toList).mapM declaredIntBits?
+    let n := bs.foldl max 0
+    if n == 0 then none else some n
+  else none
+
+/-- Record the integer widths a projection's source plan declares where
+`Expr.colBits` gives another (`projectBitsKey`): a `CASE` of `BIGINT` literals
+is 64 bits, where its literals alone say nothing. Projections with the same
+expressions share an entry; where their widths differ, `colBits` holds. -/
+def recordDeclaredBits (bits : List Nat) (ejs : List Json) (es : List Expr) : P Unit := do
+  let key := projectBitsKey es
+  let prev := (← get).lookup key
+  let ds : List (Option Nat) := (ejs.zip es).map fun (j, e) =>
+    (declaredIntBits? j).filter (· != e.colBits bits)
+  if prev.isNone && ds.all (·.isNone) then return
+  let ds := match prev with
+    | some (_, s) =>
+      let pk : List Json := ((s.getObjValAs? Json "struct").toOption.bind
+        (·.getObjValAs? (Array Json) "types" |>.toOption)).map Array.toList |>.getD []
+      ds.zipIdx.map fun ((d : Option Nat), (i : Nat)) =>
+        if (pk[i]?).bind intTagBits? == d then d else none
+    | none => ds
+  let ty : Option Nat → Json
+    | some n => Json.mkObj [(intTagFor n, Json.mkObj [])]
+    | none => Json.mkObj []
+  modify ((key, es.length, Json.mkObj [("struct", Json.mkObj [
+    ("types", Json.arr (ds.map ty).toArray)])]) :: ·)
+
 /-- Record the kinds a projection's source plan declares (`projectKey`)
 where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
 or typed `NULL` (#96). Projections with the same expressions share an entry;
@@ -2988,6 +3042,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         -- A project that appends nothing is the identity (used to carry `emit`).
         if es.isEmpty then pure inp else
           recordDeclaredKinds fns cols ejs es
+          recordDeclaredBits bits ejs es
           pure (.project inp es)
     | "cross" => pure (.cross (← input "left") (← input "right"))
     | "join" =>

@@ -54,6 +54,27 @@ def test_a_case_of_literals_keeps_their_declared_width(engine):
     assert run(report, engine) == [10_000, 0]
 
 
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_case_of_literals_keeps_their_declared_width(engine):
+    """A `CASE` of int64 literals is an int64 column: `e * e` cannot overflow (#1968)."""
+    q = T.mutate(e=ibis.cases((T.x > 0, lit(100, "int64")), else_=lit(0, "int64")))
+    report = sv.verify(q.select(e=q.e * q.e))
+    assert report.issues == [], report.issues
+    assert run(report, engine) == [10_000, 0]
+
+
+@pytest.mark.parametrize("ty", ["TINYINT", "SMALLINT"])
+def test_a_case_of_narrow_literals_keeps_its_narrow_width(ty):
+    """A `CASE` of `TINYINT` constants stays 8 bits: `e * e` past 127 is an
+    overflow, as DuckDB raises it."""
+    big = {"TINYINT": 100, "SMALLINT": 1000}[ty]
+    sql = (
+        f"SELECT e * e AS y FROM (SELECT CASE WHEN x > 0 THEN CAST({big} AS {ty}) "
+        f"ELSE CAST(0 AS {ty}) END AS e FROM t)"
+    )
+    assert "overflow" in [i.kind for i in sv.verify(sql, tables={"t": {"x": "float64"}}).issues]
+
+
 @pytest.mark.parametrize(
     ("ty", "big", "small"),
     [("TINYINT", 100, 10), ("SMALLINT", 1000, 100), ("INTEGER", 100000, 1000)],
@@ -72,3 +93,14 @@ def test_a_narrow_literal_column_keeps_its_narrow_width(ty, big, small):
     tables = {"t": {"x": "float64"}}
     assert "overflow" in [i.kind for i in sv.verify(sql(big), tables=tables).issues]
     assert sv.verify(sql(small), tables=tables).issues == []
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_int64_literal_column_passes_32_bits(engine):
+    """`2**31 - 1` as an int64 column, then `+ 1`: a 32-bit reading would
+    report an overflow, and a 32-bit run would raise."""
+    q = T.mutate(e=lit(2**31 - 1, "int64"))
+    q = q.select(e=q.e + lit(1, "int64"))
+    report = sv.verify(q)
+    assert report.issues == [], report.issues
+    assert run(report, engine) == [2**31, 2**31]
