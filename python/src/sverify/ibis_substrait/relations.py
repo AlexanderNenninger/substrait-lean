@@ -213,8 +213,7 @@ def _count_distinct_rows(op: Any, x: Exprs) -> Json:
         )
     if cd.where is not None and op.groups:
         raise Unsupported(
-            "nunique(where=) of rows under group_by is not supported; "
-            "filter the table first",
+            "nunique(where=) of rows under group_by is not supported; filter the table first",
             construct="function nunique",
         )
     input = rel(op.parent)
