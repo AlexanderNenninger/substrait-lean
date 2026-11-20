@@ -113,12 +113,6 @@ def Rule.onByDefault : Rule → Bool
   -- #80): ruling 150. Reachable through the request's `"rules"`.
   | .leftNullRejecting | .leftForeignKey | .groupByDetermined | .aggregateBelowJoin => false
 
-/-- Does every issue the rewrite has on data meeting the preconditions arise
-in the plan as written too? True only with a proved lemma; until then the
-plan to run is the rewrite only where it has no issue at all (ruling 129). -/
-def Rule.keepsIssues : Rule → Bool
-  | _ => false
-
 /-- Does the rewrite keep `Rel.Small` of the plan as written
 (`Rel.rule_small`, `SubstraitLean/RunPlan.lean`)? Every rule but eager
 aggregation, which aggregates the join's left input, whose rows the join's do
