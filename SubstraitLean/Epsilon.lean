@@ -2,7 +2,7 @@ import SubstraitLean.ShardCheck
 import SubstraitLean.EngineTables
 import Sverify.Core.MarginCheck
 import Sverify.Analysis.AsofSite
-import SubstraitLean.ExactBound
+import Sverify.Core.ExactBound
 
 /-!
 # The float tolerance of a plan's outputs (#444, #85)

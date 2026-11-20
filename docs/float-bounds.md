@@ -356,7 +356,7 @@ manual states and the probes measured (0.502 ulp on macOS,
 `rule_exp` bounds `exp a`, `a ≤ ha`, by
 `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + tiny)`. The other elementary
 functions stay tested. The checker evaluates the formulas exactly, in
-rationals (`SubstraitLean/ExactBound.lean`, [#660](https://github.com/AlexanderNenninger/substrait-lean/issues/660)):
+rationals (`core/Sverify/Core/ExactBound.lean`, [#660](https://github.com/AlexanderNenninger/substrait-lean/issues/660)):
 square roots are rounded outward (`sqrtUp_sq`, `sqrtDown_sq`), `exp` is
 bounded above by `(1 - x/2⁶⁰)^(-2⁶⁰)` for `x ≥ 0` and `1 / (1 + |x|/2⁶⁰)^(2⁶⁰)`
 below 0, and a bound is written as a decimal at least `ε · (1 + 2⁻⁵⁰) + 2⁻¹⁰⁷⁴`

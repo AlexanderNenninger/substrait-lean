@@ -153,6 +153,7 @@ declares no instance. An engine's theorems name the instance: DuckDB's is
 | `Float.lean` | Doubles and timestamps as integer codes |
 | `Value.lean` | Nullable values, rows and bag-semantics relations |
 | `FloatMoments.lean` | Exact dyadic moments (`n Σx² − (Σx)²` and the co-moment) and correctly rounded square roots of rationals, for #918 |
+| `ExactBound.lean` | Exact arithmetic for the reported bounds (#660): square roots rounded outward, an upper bound on `exp`, and a bound written as JSON rounded up |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `FloatArith.lean` | `+ − × ÷` of doubles as the exact result rounded once (D31), IEEE 754's signed zeros and NaN, and their bounds (`add_scaled` …) |
 | `BlackBox.lean` | The black-box mechanism: a row's types, NULL handling, raising and laws, the black-box catalogue `Boxes` with its well-formedness, and `Boxes.Ambient`, the catalogue in scope; no rows |
@@ -400,7 +401,6 @@ build as the guard.
 | `LipschitzL1.lean` | The `M₁` fold (#929): budgets summed over matched rows, through filters, projections, unions, crosses and joins |
 | `EngineTables.lean` | `builtinEntries`, the engines with their soundness proofs, `builtinEngines`, their tables, and the dependency and transfer reports over them |
 | `Obligations.lean` | The realizability table: how each engine discharges each option; a raise of the reference is an issue (`Rel.hasIssue_of_raises`) |
-| `ExactBound.lean` | Exact arithmetic for the reported bounds (#660): square roots rounded outward, an upper bound on `exp`, and a bound written as JSON rounded up |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
 | `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |
 | `Realize.lean` | Each engine's verdict on a plan for `--contract` (`"engines"`): its class over the options the proof depends on, the evidence and its theorems and facts, the shims, the transfer check per profile (`transferB`), and #568's threshold rule (#1166) |
