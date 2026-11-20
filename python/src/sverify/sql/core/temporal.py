@@ -167,6 +167,7 @@ def expr(
                 f"date_trunc to a {unit}",
                 # A truncation keeps a date in range: it is at most the date,
                 # and 0001-01-01 is a Monday and starts its month, quarter and year.
+                # The units stop at a year; a decade or a century would break this.
                 decided=(DAY_MIN, DAY_MAX),
             )
         case Un(op="add_months", arg=a, digits=months, param=k):

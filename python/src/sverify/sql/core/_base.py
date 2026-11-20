@@ -5325,7 +5325,9 @@ class _Writer:
         -2⁶³ µs, which no engine's timestamps reach. Truncation keeps the order
         and leaves the reference's first instant, a Monday's midnight that
         starts its month, quarter and year, as it is: the result is below it
-        just where `ts` is, so the check reads `ts` alone (#1608 item 10)."""
+        just where `ts` is, so the check reads `ts` alone (#1608 item 10). This
+        holds for the units the model has, which stop at a year; a decade or a
+        century would break it (DuckDB's decade of year 1 is year 0)."""
         d = self.d
         t = d.date_trunc(unit, ts)
         if unit not in ("week", "month", "quarter", "year") or not d.guards:
