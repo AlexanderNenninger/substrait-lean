@@ -238,7 +238,9 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     `ROW_NUMBER` per left row, latest first, and the first kept. Right rows
     that tie on `r.t` leave the match to the engine: the plan is not
     deterministic, and a run that must be reproducible (`reproducible=`)
-    refuses it as it does for `ROW_NUMBER`."""
+    refuses it as it does for `ROW_NUMBER`. That DuckDB's operator returns a
+    row this shape allows is the fact `duckdb-asof-join`, which the writer's
+    native ASOF JOIN rests on too (#1447)."""
     side, kind = (join.side or "").upper(), (join.kind or "").upper()
     if kind or side not in ("", "LEFT"):
         raise Unsupported(f"ASOF {side} {kind} JOIN is not supported; only ASOF [LEFT] JOIN")

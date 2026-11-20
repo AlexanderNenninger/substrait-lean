@@ -143,10 +143,12 @@ def _type_json(dtype: Any) -> Json:
                 f"timestamps with the time zone {dtype.timezone} are not supported yet "
                 f"{INSTANT_NOTE}; only UTC is read, as an instant"
             )
-        if dtype.scale not in (None, 6):
+        # Seconds and milliseconds are encodings of the source: the read widens
+        # them to microseconds, exactly (D61).
+        if dtype.scale not in (None, 0, 3, 6):
             raise Unsupported(
-                "only microsecond timestamps are supported (#323); cast the column to "
-                "microseconds before sverify reads the table"
+                "only second, millisecond and microsecond timestamps are supported (#323); "
+                "cast the column to microseconds before sverify reads the table"
             )
         if dtype.timezone is not None:
             return {"precisionTimestampTz": {"precision": 6, **NULLABLE}}

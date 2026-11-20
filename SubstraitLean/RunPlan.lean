@@ -542,7 +542,7 @@ theorem check_run_plan_sound {input : Json} {R : Request} {rep : Report}
       (s.functions.all T.root.functions.contains = true) ∧
       ((R.withRoot s).issuesIn R.kenv).all (R.issuesIn R.kenv).contains = true ∧
       (R.guardFreeIn R.kenv = true → (R.withRoot s).guardFreeIn R.kenv = true) := by
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf := check_transform_wf hR hc hD hT
   unfold Request.runPlanIn at hs
   rw [hT] at hs
@@ -632,7 +632,7 @@ theorem Request.issuesIn_sound (R : Request) {data : Catalog} (hD : DataMeets R 
     ∀ p, T.root.HasIssue data false p →
       p ∈ R.issuesIn R.kenv ∨ (p.1 = .infinite ∧ R.underReference = false) := by
   intro p hp
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hw)
   have hin := Rel.issuesCapped_sound hD.wf hK.cols hK.facts (hK.windows hD.wf) hK.keys hD.caps hP
     hwf hsm p hp
@@ -653,7 +653,7 @@ theorem Request.issuesIn_sound (R : Request) {data : Catalog} (hD : DataMeets R 
 what `DataMeets` asks. -/
 theorem DataMeets.withRoot {R : Request} {data : Catalog} (hD : DataMeets R data) (s : Rel) :
     DataMeets (R.withRoot s) data :=
-  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.caps⟩
+  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.ranges, hD.caps⟩
 
 /-- **DuckDB's side condition for the plan to run, from the report**: under
 the reference, where the report lists no issues and the transformation is

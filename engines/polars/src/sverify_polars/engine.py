@@ -1292,7 +1292,13 @@ class Exprs:
             return Val(v.expr.dt.replace_time_zone(None), US, v.issues)
         if "precisionTimestamp" in target and v.dtype in (pl.Int64, pl.Null):
             # `UnFn.asTime`: microseconds since 1970-01-01.
-            return Val(v.expr.cast(pl.Int64).cast(US), US, v.issues)
+            # In the reference's timestamps only (D32, #1947).
+            us = v.expr.cast(pl.Int64)
+            bad = (us < TS_MIN) | (us > TS_MAX)
+            safe = pl.when(bad).then(None).otherwise(us).cast(US)
+            return Val(
+                safe, US, (*v.issues, issue(bad, Overflow, f"CAST to TIMESTAMP {OUTSIDE_TS}"))
+            )
         if "date" in target and v.dtype == US:
             # `UnFn.toDate`: days since 1970-01-01, rounding down.
             days = v.expr.dt.epoch("us") // US_PER_DAY
@@ -3016,12 +3022,17 @@ class Translator:
             return kept.sort(_LEFT, maintain_order=True).select(left_cols), dtypes[:n]
         cols = [col(i) for i in range(len(dtypes))]
         if how == "left":
-            unmatched = left.join(matches.select(_LEFT), on=_LEFT, how="anti").with_columns(
-                [pl.lit(None, dtypes[i]).alias(col(i)) for i in range(n, len(dtypes))]
-                + [pl.lit(None, pl.UInt32).alias(_RIGHT)]
-            )
-            matches = pl.concat(
-                [matches.select(_LEFT, _RIGHT, *cols), unmatched.select(_LEFT, _RIGHT, *cols)]
+            # One read of the matches: a left join of the rows to them on the row index,
+            # NULLs for the right columns of a row without one. Reading them twice (an
+            # anti join, then a union) makes Polars cache them and fuse the filter into a
+            # nested-loop join below the `guard`, which then never sees a pair the
+            # condition rejects (#1857).
+            right_cols = [col(i) for i in range(n, len(dtypes))]
+            matches = left.join(
+                matches.select(_LEFT, _RIGHT, *right_cols),
+                on=_LEFT,
+                how="left",
+                maintain_order="left_right",
             )
         ordered_rows = matches.sort([_LEFT, _RIGHT], nulls_last=True, maintain_order=True)
         return ordered_rows.select(cols), dtypes

@@ -1,0 +1,690 @@
+{
+  "ibis": "12.0.0",
+  "source": "https://github.com/ibis-project/ibis/tree/12.0.0/ibis/backends/tests/test_aggregation.py",
+  "license": "Apache-2.0",
+  "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
+  "module": "test_aggregation",
+  "summary": {
+    "agree": 69,
+    "disagree": 0,
+    "refused": 75,
+    "unproved": 13,
+    "skipped": 10
+  },
+  "results": {
+    "test_agg_name_in_output_column[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_agg_sort[duckdb]": {
+      "outcome": "skipped",
+      "reason": "executes nothing"
+    },
+    "test_aggregate[duckdb-argmax]": {
+      "outcome": "agree"
+    },
+    "test_aggregate[duckdb-argmin]": {
+      "outcome": "agree"
+    },
+    "test_aggregate[duckdb-complex_sum]": {
+      "outcome": "unproved",
+      "reason": "domain error: double_col + N"
+    },
+    "test_aggregate[duckdb-max]": {
+      "outcome": "agree"
+    },
+    "test_aggregate[duckdb-mean]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_aggregate[duckdb-mean_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_aggregate[duckdb-min]": {
+      "outcome": "agree"
+    },
+    "test_aggregate[duckdb-mode]": {
+      "outcome": "refused",
+      "construct": "Unsupported: mode() of an expression is not supported; select it as a column first",
+      "issue": 1909
+    },
+    "test_aggregate[duckdb-timestamp_max]": {
+      "outcome": "agree"
+    },
+    "test_aggregate_grouped[duckdb-argmax]": {
+      "outcome": "agree"
+    },
+    "test_aggregate_grouped[duckdb-argmin]": {
+      "outcome": "agree"
+    },
+    "test_aggregate_grouped[duckdb-complex_sum]": {
+      "outcome": "unproved",
+      "reason": "domain error: double_col + N"
+    },
+    "test_aggregate_grouped[duckdb-max]": {
+      "outcome": "agree"
+    },
+    "test_aggregate_grouped[duckdb-mean]": {
+      "outcome": "agree"
+    },
+    "test_aggregate_grouped[duckdb-mean_udf]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_aggregate_grouped[duckdb-min]": {
+      "outcome": "agree"
+    },
+    "test_aggregate_grouped[duckdb-mode]": {
+      "outcome": "refused",
+      "construct": "Unsupported: mode() of an expression is not supported; select it as a column first",
+      "issue": 1909
+    },
+    "test_aggregate_grouped[duckdb-timestamp_max]": {
+      "outcome": "agree"
+    },
+    "test_aggregate_list_like[duckdb-list]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_aggregate_list_like[duckdb-ndarray]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_aggregate_mixed_udf[duckdb]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_approx_median[duckdb]": {
+      "outcome": "refused",
+      "construct": "Unsupported: ApproxMedian is not supported: its value is each engine's own estimate; use median() or quantile() for the exact value",
+      "design": "an approximation is each engine's own estimate; median() and quantile() are exact"
+    },
+    "test_approx_quantile[duckdb-False-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: ApproxQuantile is not supported: its value is each engine's own estimate; use median() or quantile() for the exact value",
+      "design": "an approximation is each engine's own estimate; median() and quantile() are exact"
+    },
+    "test_approx_quantile[duckdb-False-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: ApproxQuantile is not supported: its value is each engine's own estimate; use median() or quantile() for the exact value",
+      "design": "an approximation is each engine's own estimate; median() and quantile() are exact"
+    },
+    "test_approx_quantile[duckdb-True-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: quantile() of several fractions is not supported; take one at a time",
+      "issue": 1910
+    },
+    "test_approx_quantile[duckdb-True-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: quantile() of several fractions is not supported; take one at a time",
+      "issue": 1910
+    },
+    "test_arbitrary[duckdb-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_arbitrary[duckdb-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-non-null-filtered-argmax]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-non-null-filtered-argmin]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-non-null-unfiltered-argmax]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-non-null-unfiltered-argmin]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-null-filtered-argmax]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-null-filtered-argmin]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-null-unfiltered-argmax]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_argmin_argmax[duckdb-null-unfiltered-argmin]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_binds_are_cast[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_collect[duckdb-False-False-False-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-False-False-False-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-False-False-True-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-False-False-True-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-False-True-False-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-False-True-False-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-False-True-True-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-False-True-True-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-False-False-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-False-False-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-False-True-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-False-True-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-True-False-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-True-False-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-True-True-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_collect[duckdb-True-True-True-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_corr_cov[duckdb-cond-corr_pop]": {
+      "outcome": "agree"
+    },
+    "test_corr_cov[duckdb-cond-corr_pop_bool]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
+      "issue": 1911
+    },
+    "test_corr_cov[duckdb-cond-corr_samp]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_corr_cov[duckdb-cond-covar_pop]": {
+      "outcome": "agree"
+    },
+    "test_corr_cov[duckdb-cond-covar_pop_bool]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
+      "issue": 1911
+    },
+    "test_corr_cov[duckdb-cond-covar_samp]": {
+      "outcome": "agree"
+    },
+    "test_corr_cov[duckdb-no_cond-corr_pop]": {
+      "outcome": "agree"
+    },
+    "test_corr_cov[duckdb-no_cond-corr_pop_bool]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
+      "issue": 1911
+    },
+    "test_corr_cov[duckdb-no_cond-corr_samp]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_corr_cov[duckdb-no_cond-covar_pop]": {
+      "outcome": "agree"
+    },
+    "test_corr_cov[duckdb-no_cond-covar_pop_bool]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
+      "issue": 1911
+    },
+    "test_corr_cov[duckdb-no_cond-covar_samp]": {
+      "outcome": "agree"
+    },
+    "test_count_distinct_star[duckdb-cond]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: aggregate CountDistinctStar is not supported; rewrite it with a supported operation or column type",
+      "issue": 1912
+    },
+    "test_count_distinct_star[duckdb-no_cond]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: aggregate CountDistinctStar is not supported; rewrite it with a supported operation or column type",
+      "issue": 1912
+    },
+    "test_date_quantile[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_empty_sum[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_filter[duckdb]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-False-False-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-False-False-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-False-True-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-False-True-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-True-False-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-True-False-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-True-True-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last[duckdb-True-True-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-exclude-null-filtered-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-exclude-null-filtered-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-exclude-null-not-filtered-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-exclude-null-not-filtered-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-include-null-filtered-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-include-null-filtered-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-include-null-not-filtered-first]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered[duckdb-include-null-not-filtered-last]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_first_last_ordered_in_mutate[duckdb-first_asc]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: first/last with where or order_by is not supported; rewrite it with a supported operation or column type",
+      "issue": 1913
+    },
+    "test_first_last_ordered_in_mutate[duckdb-first_desc]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: first/last with where or order_by is not supported; rewrite it with a supported operation or column type",
+      "issue": 1913
+    },
+    "test_first_last_ordered_in_mutate[duckdb-last_asc]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: first/last with where or order_by is not supported; rewrite it with a supported operation or column type",
+      "issue": 1913
+    },
+    "test_first_last_ordered_in_mutate[duckdb-last_desc]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: first/last with where or order_by is not supported; rewrite it with a supported operation or column type",
+      "issue": 1913
+    },
+    "test_group_by_expr[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_group_by_scalar[duckdb-null]": {
+      "outcome": "agree"
+    },
+    "test_group_by_scalar[duckdb-string]": {
+      "outcome": "agree"
+    },
+    "test_group_concat[duckdb-is_in-const]": {
+      "outcome": "agree"
+    },
+    "test_group_concat[duckdb-is_in-expr]": {
+      "outcome": "refused",
+      "construct": "Unsupported: group_concat needs a constant separator",
+      "issue": 1914
+    },
+    "test_group_concat[duckdb-no_cond-const]": {
+      "outcome": "agree"
+    },
+    "test_group_concat[duckdb-no_cond-expr]": {
+      "outcome": "refused",
+      "construct": "Unsupported: group_concat needs a constant separator",
+      "issue": 1914
+    },
+    "test_group_concat[duckdb-not_in-const]": {
+      "outcome": "agree"
+    },
+    "test_group_concat[duckdb-not_in-expr]": {
+      "outcome": "refused",
+      "construct": "Unsupported: group_concat needs a constant separator",
+      "issue": 1914
+    },
+    "test_group_concat_ordered[duckdb-False]": {
+      "outcome": "agree"
+    },
+    "test_group_concat_ordered[duckdb-True]": {
+      "outcome": "agree"
+    },
+    "test_group_concat_over_window[duckdb]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported window function: string_agg. Lean's model does not cover it yet: rewrite the step, or",
+      "issue": 1915
+    },
+    "test_grouped_case[duckdb]": {
+      "outcome": "agree"
+    },
+    "test_median[duckdb]": {
+      "outcome": "unproved",
+      "reason": "domain error: double_col"
+    },
+    "test_quantile[duckdb-is_in-multi-quantile]": {
+      "outcome": "refused",
+      "construct": "Unsupported: quantile() of several fractions is not supported; take one at a time",
+      "issue": 1910
+    },
+    "test_quantile[duckdb-is_in-quantile]": {
+      "outcome": "unproved",
+      "reason": "domain error: double_col"
+    },
+    "test_quantile[duckdb-no_cond-multi-quantile]": {
+      "outcome": "refused",
+      "construct": "Unsupported: quantile() of several fractions is not supported; take one at a time",
+      "issue": 1910
+    },
+    "test_quantile[duckdb-no_cond-quantile]": {
+      "outcome": "unproved",
+      "reason": "domain error: double_col"
+    },
+    "test_reduction_ops[duckdb-is_in-all]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-all_negate]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-any]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-any_negate]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-approx_nunique]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_reduction_ops[duckdb-is_in-argmax]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-argmin]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-bit_and]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-bit_or]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-bit_xor]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-bool_sum]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.int. Lean's model does not cover it y",
+      "issue": 1911
+    },
+    "test_reduction_ops[duckdb-is_in-count]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-count_star]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-kurtosis_samp]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: aggregate Kurtosis is not supported; rewrite it with a supported operation or column type",
+      "issue": 326
+    },
+    "test_reduction_ops[duckdb-is_in-max]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-mean]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-min]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-mode]": {
+      "outcome": "refused",
+      "construct": "Unsupported: mode() of an expression is not supported; select it as a column first",
+      "issue": 1909
+    },
+    "test_reduction_ops[duckdb-is_in-notall]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-notany]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-nunique]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-std]": {
+      "outcome": "unproved",
+      "reason": "domain error: std(double_col)"
+    },
+    "test_reduction_ops[duckdb-is_in-std_pop]": {
+      "outcome": "unproved",
+      "reason": "domain error: std(double_col)"
+    },
+    "test_reduction_ops[duckdb-is_in-sum]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-is_in-var]": {
+      "outcome": "unproved",
+      "reason": "domain error: var(double_col)"
+    },
+    "test_reduction_ops[duckdb-is_in-var_pop]": {
+      "outcome": "unproved",
+      "reason": "domain error: var(double_col)"
+    },
+    "test_reduction_ops[duckdb-no_cond-all]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-all_negate]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-any]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-any_negate]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-approx_nunique]": {
+      "outcome": "skipped",
+      "reason": "fails or is xfailed on DuckDB in Ibis's own run"
+    },
+    "test_reduction_ops[duckdb-no_cond-argmax]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-argmin]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-bit_and]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-bit_or]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-bit_xor]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-bool_sum]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.int. Lean's model does not cover it y",
+      "issue": 1911
+    },
+    "test_reduction_ops[duckdb-no_cond-count]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-count_star]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-kurtosis_samp]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: aggregate Kurtosis is not supported; rewrite it with a supported operation or column type",
+      "issue": 326
+    },
+    "test_reduction_ops[duckdb-no_cond-max]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-mean]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-min]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-mode]": {
+      "outcome": "refused",
+      "construct": "Unsupported: mode() of an expression is not supported; select it as a column first",
+      "issue": 1909
+    },
+    "test_reduction_ops[duckdb-no_cond-notall]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-notany]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-nunique]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-std]": {
+      "outcome": "unproved",
+      "reason": "domain error: std(double_col)"
+    },
+    "test_reduction_ops[duckdb-no_cond-std_pop]": {
+      "outcome": "unproved",
+      "reason": "domain error: std(double_col)"
+    },
+    "test_reduction_ops[duckdb-no_cond-sum]": {
+      "outcome": "agree"
+    },
+    "test_reduction_ops[duckdb-no_cond-var]": {
+      "outcome": "unproved",
+      "reason": "domain error: var(double_col)"
+    },
+    "test_reduction_ops[duckdb-no_cond-var_pop]": {
+      "outcome": "unproved",
+      "reason": "domain error: var(double_col)"
+    },
+    "test_string_quantile[duckdb-median]": {
+      "outcome": "agree"
+    },
+    "test_string_quantile[duckdb-quantile]": {
+      "outcome": "agree"
+    },
+    "test_topk_filter_op[duckdb-string_col_filter_top3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
+      "issue": 1908
+    },
+    "test_topk_op[duckdb]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: Alias is not supported yet (see #60, ",
+      "issue": 60
+    },
+    "test_value_counts_on_expr[duckdb]": {
+      "outcome": "agree"
+    }
+  }
+}

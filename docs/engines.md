@@ -31,6 +31,7 @@ written SQL; the `all` extra installs every engine in it
 ## Installing
 
 ```bash
+# skip: installs software on the reader's machine
 pip install sverify                    # verify, contracts, DuckDB and Snowflake SQL (no engine runs plans)
 pip install 'sverify[duckdb]'          # and DuckDB: runs plans, holds tables, incremental maintenance
 pip install 'sverify[polars]'          # and Polars
