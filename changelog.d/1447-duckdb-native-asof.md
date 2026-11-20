@@ -1,0 +1,3 @@
+### DuckDB runs `asof_join` as its ASOF JOIN
+
+On DuckDB, `sverify.asof_join` without a `tolerance`, over integer, date, timestamp or string columns, runs as `ASOF [LEFT] JOIN` ([#1447](https://github.com/AlexanderNenninger/substrait-lean/issues/1447), [`duckdb-asof-join`](engines/duckdb/facts/duckdb-asof-join.json)). It compares no pairs of rows, so the `max_pairs` cap does not apply there; the other engines and a join with a `tolerance` keep the range join and the cap. At a tie on the right DuckDB's pick may differ from the range join's: both are allowed, and the report already says `deterministic` is false for such a plan. The SQL `Report.to_sql` writes for an as-of plan on DuckDB changes.

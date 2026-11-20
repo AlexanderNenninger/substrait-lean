@@ -1258,7 +1258,7 @@ class Report:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
             self._check_schema(con, target)
-        self.check_asof_pairs(con, engine)
+        self.check_asof_pairs(con, engine, skip=self._native_asof(plan, run_engine))
         if kind != "unverified":
             self.check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)
@@ -1312,6 +1312,7 @@ class Report:
                         plan,
                         engine,
                         finite=finite,
+                        asof=self._native_asof(plan, run_engine),
                         # A proved report's exact level justifies Spark's windows
                         # without a row-order tiebreak (`to_sql`'s `deterministic`).
                         tie_free=self._exact and kind != "unverified",
@@ -1345,10 +1346,30 @@ class Report:
         schema = pa.schema(fields, metadata=out.schema.metadata)
         return out if schema.equals(out.schema) else out.cast(schema)
 
-    def check_asof_pairs(self, con: Connection, engine: Any) -> None:
+    def _native_asof(self, plan: str, engine: str) -> list[dict[str, Any]]:
+        """The as-of join sites (`_asof_checks`) `engine` writes as its own
+        ASOF JOIN when it runs `plan` (#1447, ruling 162): `plan` is the plan as
+        written, which the sites describe, and the engine's writer takes the
+        site (`sverify.sql.native_asof_sites`)."""
+        from sverify import profiles
+        from sverify.sql.core import native_asof_sites
+
+        plugin = profiles.find(engine)
+        if not self._asof_checks or plugin is None or plugin.dialect is None:
+            return []
+        assert self.internal_plan is not None
+        if plan != written_plan(self.internal_plan):
+            return []
+        return native_asof_sites(plan, plugin.dialect(), self._asof_checks)
+
+    def check_asof_pairs(
+        self, con: Connection, engine: Any, skip: Sequence[dict[str, Any]] = ()
+    ) -> None:
         """Count, on `engine`, the pairs each as-of join of the plan compares
         (`_asof_checks`), over the tables of `con` the plan reads too, and
         refuse the run where a count is over the cap (`_asof_max_pairs`).
+        The sites in `skip` are the ones the engine runs as its own ASOF JOIN,
+        which does not compare the pairs.
 
         Raises:
             UnsupportedError: An as-of join compares more pairs than the cap.
@@ -1359,6 +1380,8 @@ class Report:
         if cap is None:
             return
         for chk in self._asof_checks:
+            if any(chk is k for k in skip):
+                continue
             res = run_plan(con, written_plan(json.dumps(chk["plan"])), engine)
             n = int(res.column(0)[0].as_py() or 0)
             if n > cap:
