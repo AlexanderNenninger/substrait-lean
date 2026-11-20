@@ -537,7 +537,7 @@ def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
 /-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
 model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
 it from widening the arithmetic around it, and a column has none (#1934). A
-narrower declared type is a `narrow` mark (`declaredNarrow`). -/
+narrower declared type is recorded per projection (`recordDeclaredBits`). -/
 def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
   | .lit _ => 64
   | e => e.bits cols
@@ -643,16 +643,6 @@ def argBits (cols : List Nat) (j : Json) (e : Expr) : Nat :=
     | some ty => if (narrowIntBits? ty).isSome
         then intBits ty else if e.readsField then e.bits cols else 64
     | none => if e.readsField then e.bits cols else 64
-
-/-- A projected integer constant `e`, written as `j`, at its declared width
-(`argBits`: a literal's tag, or the target of a cast the parser folded,
-`CAST(5 AS INTEGER)`). Narrower than 64 bits, the column keeps that width
-through a `narrow` mark, which changes no value: the parser has checked that
-the constant fits. -/
-def declaredNarrow (j : Json) (e : Expr) : Expr :=
-  match e with
-  | .lit (.int _) => let n := argBits [] j e; if n < 64 then .un (.narrow n) e else e
-  | e => e
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
@@ -2938,8 +2928,9 @@ partial def declaredIntBits? (j : Json) : Option Nat :=
   else none
 
 /-- Record the integer widths a projection's source plan declares where
-`Expr.colBits` gives another (`projectBitsKey`): a `CASE` of `BIGINT` literals
-is 64 bits, where its literals alone say nothing. Projections with the same
+`Expr.colBits` gives another (`projectBitsKey`): a `TINYINT` constant is 8
+bits and a `CASE` of `BIGINT` literals 64, where the literals alone say
+nothing (#1934, #1968). Projections with the same
 expressions share an entry; where their widths differ, `colBits` holds. -/
 def recordDeclaredBits (bits : List Nat) (ejs : List Json) (es : List Expr) : P Unit := do
   let key := projectBitsKey es
@@ -3034,11 +3025,11 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         parseWindowProject fns inp cols bits ejs
       else if k != 0 then
         let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
-        let es := (ejs.zip es).map fun (j, e) => declaredNarrow j e
+        recordDeclaredBits (lifted.bits (← get)) ejs es
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else
-        let es ← ejs.mapM fun e => do return declaredNarrow e (← parseExpr fns cols bits e)
+        let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
         if es.isEmpty then pure inp else
           recordDeclaredKinds fns cols ejs es
