@@ -291,7 +291,10 @@ def _timestamp_delta(x: Exprs, op: Any) -> Json:
     divided by the unit."""
     unit = op.part.value
     if unit not in _DELTA_MICROS:
-        raise Unsupported(f"delta in {unit}s is not supported; use days or a shorter unit")
+        raise Unsupported(
+            f"delta in {unit}s is not supported; use days or a shorter unit",
+            construct="function delta",
+        )
     us = _DELTA_MICROS[unit]
     origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": "0"}}}
 

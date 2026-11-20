@@ -43,7 +43,7 @@ def _scalar_subquery(lf: _Lift, node: sge.Subquery, sub: Sub, scope: list[Column
     # groups, LIMIT 1); no row is NULL.
     rel, cols = lf.nested(node.this, scope)
     if len(cols) != 1:
-        raise Unsupported("a scalar subquery must return one column")
+        raise Unsupported("a scalar subquery must return one column", construct="SCALAR SUBQUERY")
     return E({"subquery": {"scalar": {"input": rel}}}, cols[0].type.copy(nullable=True))
 
 
@@ -72,11 +72,17 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     alias names them."""
     rows = [list(r.expressions) if isinstance(r, sge.Tuple) else [r] for r in node.expressions]
     if not rows or len({len(r) for r in rows}) != 1:
-        raise Unsupported(f"{_shown(node)}: every row of VALUES needs the same number of values")
+        raise Unsupported(
+            f"{_shown(node)}: every row of VALUES needs the same number of values",
+            construct="VALUES",
+        )
     cells = [[lf.expr(c, [], Bound()) for c in r] for r in rows]
     for c in (c for r in cells for c in r):
         if not c.constant:
-            raise SqlUnsupported(f"{_shown(node)}: VALUES of computed values is not supported yet")
+            raise SqlUnsupported(
+                f"{_shown(node)}: VALUES of computed values is not supported yet",
+                construct="VALUES",
+            )
     width = len(rows[0])
     types = []
     for i in range(width):
@@ -91,7 +97,8 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     given = [c.name for c in alias.columns] if alias is not None else []
     if len(given) > width:
         raise Unsupported(
-            f"{_shown(node)} names {len(given)} columns of {width}; name at most {width}"
+            f"{_shown(node)} names {len(given)} columns of {width}; name at most {width}",
+            construct="VALUES",
         )
     names = [_normalized(n) for n in given] + [f"col{i}" for i in range(len(given), width)]
     out = [[literal(lf.to(c, t).value, t) for c, t in zip(r, types, strict=True)] for r in cells]
@@ -130,16 +137,20 @@ def _unpivot(tree: sge.Expr) -> sge.Expr:
         p = pivots[0]
         values, fields = p.expressions, p.args.get("fields") or []
         if len(values) != 1 or len(fields) != 1 or not isinstance(fields[0], sge.In):
-            raise SqlUnsupported("UNPIVOT of several value columns is not supported yet")
+            raise SqlUnsupported(
+                "UNPIVOT of several value columns is not supported yet", construct="UNPIVOT"
+            )
         if any(p.args.get(k) for k in ("group", "columns", "default_on_null")):
-            raise SqlUnsupported(f"{_shown(p)} is not supported yet")
+            raise SqlUnsupported(f"{_shown(p)} is not supported yet", construct="UNPIVOT")
         value, name = values[0].name, fields[0].this.name
         cols: list[tuple[sge.Expression, str]] = []
         for c in fields[0].expressions:
             label = c.args.get("alias") if isinstance(c, sge.PivotAlias) else None
             col = c.this if isinstance(c, sge.PivotAlias) else c
             if not isinstance(col, sge.Column):
-                raise Unsupported(f"UNPIVOT of {_shown(col)} is not supported; only columns")
+                raise Unsupported(
+                    f"UNPIVOT of {_shown(col)} is not supported; only columns", construct="UNPIVOT"
+                )
             text = label.name if isinstance(label, sge.Expression) else col.name
             cols.append((col, text))
         src = n.copy()
@@ -213,11 +224,12 @@ def _unnest_columns(tree: sge.Expr) -> sge.Expr:
         ):
             raise Unsupported(
                 "UNNEST of lists written out, next to GROUP BY, ORDER BY, LIMIT or DISTINCT, "
-                "is not supported yet; unpivot in a subquery"
+                "is not supported yet; unpivot in a subquery",
+                construct="UNNEST",
             )
         (size,) = sizes
         if size == 0:
-            raise SqlUnsupported("UNNEST of an empty list is not supported")
+            raise SqlUnsupported("UNNEST of an empty list is not supported", construct="UNNEST")
         branches = []
         for i in range(size):
             b = n.copy()
@@ -246,10 +258,15 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     native ASOF JOIN rests on too (#1447)."""
     side, kind = (join.side or "").upper(), (join.kind or "").upper()
     if kind or side not in ("", "LEFT"):
-        raise Unsupported(f"ASOF {side} {kind} JOIN is not supported; only ASOF [LEFT] JOIN")
+        raise Unsupported(
+            f"ASOF {side} {kind} JOIN is not supported; only ASOF [LEFT] JOIN",
+            construct="ASOF JOIN",
+        )
     on = join.args.get("on")
     if on is None or join.args.get("using"):
-        raise Unsupported("ASOF JOIN needs an ON condition (USING is not supported yet)")
+        raise Unsupported(
+            "ASOF JOIN needs an ON condition (USING is not supported yet)", construct="ASOF JOIN"
+        )
     right, cols = lf.source(join.this)
     n, m = len(scope), len(cols)
     left_names = {(c.table, c.name) for c in scope}
@@ -267,11 +284,16 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     conjuncts = list(on.flatten()) if isinstance(on, sge.And) else [on]
     ineqs = [c for c in conjuncts if isinstance(c, sge.GTE | sge.GT | sge.LTE | sge.LT)]
     if len(ineqs) != 1:
-        raise Unsupported("ASOF JOIN needs exactly one of >=, >, <= and < in its ON")
+        raise Unsupported(
+            "ASOF JOIN needs exactly one of >=, >, <= and < in its ON", construct="ASOF JOIN"
+        )
     ineq = ineqs[0]
     lhs, rhs = is_right(ineq.this), is_right(ineq.expression)
     if {lhs, rhs} != {True, False}:
-        raise Unsupported(f"ASOF JOIN: {_shown(ineq)} must compare a left and a right expression")
+        raise Unsupported(
+            f"ASOF JOIN: {_shown(ineq)} must compare a left and a right expression",
+            construct="ASOF JOIN",
+        )
     # Is the right side's time at or before the left's (keep the latest)?
     right_below = isinstance(ineq, sge.GTE | sge.GT) == (rhs is True)
     right_time = ineq.expression if rhs else ineq.this

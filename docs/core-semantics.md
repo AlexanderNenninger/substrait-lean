@@ -1030,7 +1030,7 @@ out.
 ### The default observation
 
 Where `ensures` names no observation, a result's consumer observes
-`PLAN_BOUND` (`sverify.observation`, `Report.observation`): the rows of a
+`PLAN_BOUND` (`sverify.observation`, `Report.lenses`): the rows of a
 bag, doubles within the plan's bound and everything else exactly. Each
 component, with its default and the reason (#1285):
 

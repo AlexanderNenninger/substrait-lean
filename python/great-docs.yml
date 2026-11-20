@@ -78,6 +78,7 @@ reference:
       - types.CheckedCondition
       - types.Discharged
       - types.Counterexample
+      - types.ColumnFacts
       - types.Observation
       - types.Within
       - types.Route

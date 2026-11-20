@@ -368,7 +368,7 @@ class Contract:
             from.
         not_null: Columns the node proves NOT NULL: stated in `ensures`
             (`_.col.notnull()`), or shown never NULL by its proved report
-            (`Report.not_null`).
+            (not nullable in `Report.output`).
         unique: Column sets the node proves unique.
         cursors: The cursor of every source that can restore its table from
             one (`Source.restore`), at its version in `sources`.
