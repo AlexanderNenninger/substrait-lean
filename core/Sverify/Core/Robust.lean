@@ -27,33 +27,6 @@ reals is proved in `float-bounds` (#899). -/
 namespace Substrait
 variable [Boxes.Ambient]
 
-/-! ## The columns an expression reads -/
-
--- `Expr.cols`, the columns an expression reads, is `core/Sverify/Core/Expr.lean`'s.
-
-/-- An expression's value depends only on the columns it reads. -/
-theorem Expr.eval_congr_cols {r r' : Row} :
-    ∀ e : Expr, (∀ i ∈ e.cols, r.getD i .null = r'.getD i .null) → e.eval r = e.eval r'
-  | .lit _, _ => rfl
-  | .field i, h => h i (List.mem_singleton_self i)
-  | .un _ a, h => by simp only [Expr.eval, Expr.eval_congr_cols a h]
-  | .bin _ a b, h => by
-    simp only [Expr.cols, List.mem_append] at h
-    simp only [Expr.eval, Expr.eval_congr_cols a fun i hi => h i (.inl hi),
-      Expr.eval_congr_cols b fun i hi => h i (.inr hi)]
-  | .ifThen c t e, h => by
-    simp only [Expr.cols, List.mem_append] at h
-    simp only [Expr.eval, Expr.eval_congr_cols c fun i hi => h i (.inl (.inl hi)),
-      Expr.eval_congr_cols t fun i hi => h i (.inl (.inr hi)), Expr.eval_congr_cols e fun i hi => h i (.inr hi)]
-  | .hof _ l b, h => by
-    simp only [Expr.cols, List.mem_append, List.mem_filterMap] at h
-    simp only [Expr.eval, Expr.eval_congr_cols l fun i hi => h i (.inl hi)]
-    congr 1; funext x
-    refine Expr.eval_congr_cols b fun i hi => ?_
-    cases i with
-    | zero => rfl
-    | succ i => exact h i (.inr ⟨i + 1, hi, by simp⟩)
-
 /-! ## Columns observed exactly -/
 
 /-- The components `q` ignores in column `col`: the order of a list's
