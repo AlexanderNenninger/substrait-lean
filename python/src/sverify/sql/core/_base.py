@@ -2515,7 +2515,7 @@ class _Parser:
                         raise Unsupported("date_bin needs a constant interval of days or less")
                     if origin is None or origin.tag != "int":
                         raise Unsupported("date_bin needs a constant origin")
-                    if lean_expr_kind(parsed[1], cols.lean) != "time":
+                    if _arg_kind(cols.lean, arg_js[1], parsed[1]) != "time":
                         raise Unsupported("date_bin is only supported on timestamps")
                     return Un("bucket", parsed[1], digits=iv[1], origin=origin.value)
                 if name in ("strftime", "to_char", "date_format"):
@@ -3644,7 +3644,9 @@ def _arg_kind(cols: list[LeanKind], j: Any, e: Expr) -> LeanKind:
         k = _lean_type_kind(_field(c, "type"))
         if k in ("date", "time"):
             return k
-    return "other"
+        return "other"
+    # A constant computed from literals has the kind of its operation.
+    return "other" if isinstance(e, Lit) else lean_expr_kind(e, cols)
 
 
 #: Each area module (`strings`, `temporal`, `nested`) registers its `mkCall`

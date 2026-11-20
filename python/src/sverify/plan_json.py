@@ -483,6 +483,42 @@ def days_json(date: Json, n: Json) -> Json:
     return call("add", [date, call("multiply", [n, interval_json(0, 86_400_000_000)])])
 
 
+def month_length(y: Json, m: Json) -> Json:
+    """The days of month `m` (1 to 12) of year `y`: 30 or 31 alternating, with
+    the turn at August (`(m + m / 8) % 2`), and February's 28 or 29."""
+
+    def divides(k: int) -> Json:
+        return call("equal", [call("modulus", [y, _i64(k)]), _i64(0)])
+
+    leap = call("or", [call("and", [divides(4), call("not", [divides(100)])]), divides(400)])
+    feb = chain("add", [_i64(28), if_then([(leap, _i64(1))], _i64(0))])
+    long = chain("add", [_i64(30), call("modulus", [chain("add", [m, call("divide", [m, _i64(8)])]),
+                                                    _i64(2)])])  # fmt: skip
+    return if_then([(call("equal", [m, _i64(2)]), feb)], long)
+
+
+def add_months_json(x: Json, n: Json, timestamp: bool) -> Json:
+    """`x + n months` of a date or `timestamp` (#1925), `n` an integer: the
+    month `n` after, and the day cut to its length (`2024-01-31 + 1 month` is
+    `2024-02-29`); a timestamp keeps its time of day. A year outside 1 to 9999
+    raises, as `make_date_json` does."""
+    day = cast_json(x, dt.date) if timestamp else x
+
+    def part(name: str) -> Json:
+        return call("date_part", [literal(name, dt.string), day])
+
+    months = chain("add", [call("multiply", [part("year"), _i64(12)]),
+                           call("subtract", [part("month"), _i64(1)]), n])  # fmt: skip
+    # The floor of `months / 12`, and `months % 12`, for a negative count too.
+    rest = call("modulus", [call("add", [call("modulus", [months, _i64(12)]), _i64(12)]), _i64(12)])
+    year = call("divide", [call("subtract", [months, rest]), _i64(12)])
+    month = call("add", [rest, _i64(1)])
+    moved = make_date_json(year, month, call("least", [part("day"), month_length(year, month)]))
+    if not timestamp:
+        return moved
+    return days_json(x, call("date_diff", [moved, day]))
+
+
 def make_date_json(y: Json, m: Json, d: Json) -> Json:
     """`make_date(y, m, d)` of integers: the date by H. Hinnant's
     `days_from_civil`, NULL if an argument is. It raises for a month or day
@@ -521,19 +557,32 @@ def make_date_json(y: Json, m: Json, d: Json) -> Json:
     fail = call("sverify_raise", [m, literal("make_date of a date outside the calendar "
                                               "or the years 1 to 9999", dt.string)])  # fmt: skip
 
-    # The month's length: 30 or 31 alternating, with the turn at August
-    # (`(m + m / 8) % 2`), and February's 28 or 29.
-    def divides(k: int) -> Json:
-        return call("equal", [call("modulus", [yc, _i64(k)]), _i64(0)])
-
-    leap = call("or", [call("and", [divides(4), call("not", [divides(100)])]), divides(400)])
-    feb = add(_i64(28), if_then([(leap, _i64(1))], _i64(0)))
-    long = add(_i64(30), call("modulus", [add(mc, div(mc, 8)), _i64(2)]))
-    length = if_then([(call("equal", [mc, _i64(2)]), feb)], long)
+    length = month_length(yc, mc)
     valid = chain("and", [within(y, 1, 9999), within(m, 1, 12), call("gte", [d, _i64(1)]),
                           call("lte", [d, length])])  # fmt: skip
     null = literal(None, dt.date)
     return if_then([(call("is_null", [a]), null) for a in (y, m, d)] + [(valid, date)], fail)
+
+
+def make_timestamp_json(y: Json, m: Json, d: Json, h: Json, mi: Json, sec: Json) -> Json:
+    """`make_timestamp(y, m, d, h, mi, s)` of integers (#1928): the date at
+    midnight plus `h` hours, `mi` minutes and `s` seconds, NULL if an argument
+    is. DuckDB accepts `h` from 0 to 24, `mi` from 0 to 59 and `s` from 0 to
+    60, in all at most a day, and raises otherwise (probed, DuckDB 2.0.0); the
+    date is `make_date_json`'s."""
+
+    def within(a: Json, lo: int, hi: int) -> Json:
+        return call("and", [call("gte", [a, _i64(lo)]), call("lte", [a, _i64(hi)])])
+
+    secs = chain("add", [call("multiply", [h, _i64(3600)]), call("multiply", [mi, _i64(60)]), sec])
+    valid = chain("and", [within(h, 0, 24), within(mi, 0, 59), within(sec, 0, 60),
+                          call("lte", [secs, _i64(86_400)])])  # fmt: skip
+    ts = call("add", [cast_json(make_date_json(y, m, d), dt.timestamp),
+                      call("multiply", [secs, interval_json(0, 1_000_000)])])  # fmt: skip
+    fail = call("sverify_raise", [h, literal("make_timestamp of a time out of range", dt.string)])
+    null = literal(None, dt.timestamp)
+    nulls = [(call("is_null", [a]), null) for a in (h, mi, sec)]
+    return if_then([*nulls, (valid, ts)], fail)
 
 
 # --------------------------------------------------------------------------

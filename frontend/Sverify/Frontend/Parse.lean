@@ -1254,7 +1254,11 @@ def argKind (cols : List Kind) (j : Json) (e : Expr) : Kind :=
     | .time => .time
     | .timeTz => .timeTz
     | _ => .other
-  | none, none => .other
+  -- A constant computed from literals (`DATE '2024-12-30' + 3 days`) has the
+  -- kind of its operation; only a literal's own kind is lost (`litKind`).
+  | none, none => match e with
+    | .lit _ => .other
+    | _ => e.kind cols
 
 /-- `x ± interval` where `x` is a DATE, or a timestamp and the interval has
 months. `none` for other calls, which `mkCall` reads. -/
