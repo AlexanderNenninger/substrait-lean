@@ -2457,6 +2457,8 @@ def checks_of(guards: Guards) -> frozenset[str]:
     if guards is False:
         return NO_GUARDS
     names = frozenset(guards)
+    if InfiniteResult.issue in names:  # an aggregate's overflow is one of them
+        names |= {InfiniteAggregate.issue}
     unknown = names - ALL_GUARDS
     if unknown:
         raise ValueError(f"unknown issues to guard: {sorted(unknown)}")
