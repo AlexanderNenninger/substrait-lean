@@ -158,7 +158,7 @@ def window(x: Exprs, op: Any) -> Json:
         if m["measure"].get("sorts"):
             raise ProducerUnsupported(
                 "window aggregates with their own order_by are not supported",
-                construct="function " + type(func).__name__.lower(),
+                construct=op_construct(func),
             )
         if "filter" in m or m["measure"]["invocation"] != "AGGREGATION_INVOCATION_ALL":
             raise ProducerUnsupported(
