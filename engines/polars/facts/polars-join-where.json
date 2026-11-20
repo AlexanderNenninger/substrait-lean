@@ -1,0 +1,41 @@
+{
+  "id": "polars-join-where",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`join_where`: the rows of a cross join and a filter, and slower than them on the streaming engine",
+  "verdict": "the pairs a cross join and a filter keep; one or two inequalities run as a streaming range join, an equality with an inequality as a hash join with a fused predicate; keyless, slower and larger than cross join plus filter",
+  "area": "relations",
+  "constructs": [
+    "LazyFrame.join_where",
+    "join"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "`left.join_where(right, *predicates)` keeps the pairs of rows for which every predicate is true: the rows of `left.join(right, how=\"cross\")` filtered by the predicates. A NULL operand never matches (its comparison is NULL, not true). On doubles Polars compares as everywhere else: NaN is above every number and equal to itself (polars-nan-order, polars-nan-equality), and the probes compare canonical keys, so `-0.0` and `0.0` do not arise.",
+    "Physical plan under the streaming engine (`show_graph(engine=\"streaming\", plan_stage=\"physical\")`): one inequality, and two inequalities, run as a `range-join` node, which streams; an equality with an inequality runs as an `equi-join` with the inequality as a fused predicate; `join(how=\"cross\")` is a `cross-join` node. None is an in-memory fallback (polars-exec-streaming-fallback).",
+    "Measured 2026-11-19, Polars 2.1.0, streaming engine, on homelab (AMD Ryzen 5 3600X, 12 threads, Linux), through sverify's Polars translation, the rows equal in each case: one inequality over 2.5·10⁷ pairs, cross join plus filter 0.38 s and 1,028 MB peak, `join_where` 0.62 s and 1,217 MB; over 10⁸ pairs 1.26 s and 3,689 MB against 3.55 s and 4,420 MB; a band of two inequalities over 10⁸ pairs 0.49 s and 404 MB against 0.58 s and 589 MB; an equality with an inequality 0.03 s either way (the hash join's path). The streaming cross join filters as it goes, so it does not hold the pairs.",
+    "sverify's Polars translation keeps a cross join and a filter for a join without an equality key because of these numbers (#1447, rulings 162, 164 and 170)."
+  ],
+  "reference": "`Rel.join` keeps the pairs whose condition is TRUE (`isTrue_and3`); `join_where` keeps the same pairs.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "cleanup session, #1447 item 6 (Polars 2.1.0; rows on macOS arm64, timings on homelab)",
+      "evidence": [
+        {
+          "sql": "l = pl.LazyFrame({'a': [1.0, 2.0, None, nan, 5.0, 2.0], 'k': [1, 1, None, 2, 2, 1]}).with_row_index('_l'); r = pl.LazyFrame({'b': [1.5, None, nan, 4.0, 2.0], 'c': [0.0, 1.0, 2.0, 9.0, None], 'kr': [1, 1, 2, 2, None]}).with_row_index('_r'); for each of (a > b), (a > b, a <= c + 3), (k == kr, a >= b): l.join_where(r, *preds).collect(engine='streaming') against l.join(r, how='cross').filter(*preds).collect(), both sorted by _l, _r; and show_graph(engine='streaming', plan_stage='physical')",
+          "observed": "equal rows in all three (8, 3 and 5 rows); physical nodes range-join, range-join and equi-join; join(how='cross') is a cross-join node"
+        },
+        {
+          "note": "Hypothesis, 1,000 cases on branch claude/polars-join-where (unmerged): the translation through join_where against its cross join and filter on NULL, NaN, both zeros, infinities, duplicates and empty sides, for inner, left, semi and anti joins; equal rows in every case"
+        }
+      ],
+      "notes": "Timings by a homelab-run --exclusive benchmark of the translation on two random tables of 5,000 and 10,000 rows, one process per case for the peak RSS."
+    }
+  ]
+}

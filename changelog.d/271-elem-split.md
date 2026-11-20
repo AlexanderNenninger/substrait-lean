@@ -1,0 +1,3 @@
+### `exp`, `sqrt` and the trigonometric functions route to Spark
+
+`pow_one_inf` belongs to `power` alone (D40), but sat on the group of every elementary function, so Spark's refusal of it refused `sqrt`, `exp`, `sin` and the rest. The group `fp.elem` is split into `fp.pow` (`power`), `fp.atan2` (`atan2`) and `fp.elem` (the unary functions) (ruling 163). `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos` and `atan` of doubles now route to Spark with the bounds of [#1818](https://github.com/AlexanderNenninger/substrait-lean/pull/1818); `power` and `atan2` stay refused there, each naming its own group. Reports for plans with a unary function no longer list `pow_one_inf` among their options, on any engine. No reference value or allowed set changes.

@@ -326,7 +326,7 @@ every sink.
 `semantics="duckdb"` checks a plan under what DuckDB does, from its
 [characterization](https://alexandernenninger.github.io/substrait-lean/ledgers/duckdb-facts.html). A route to Polars then takes the proof
 across only where Polars's choices are within DuckDB's on every option the
-plan reads (the checker's transfer check, `Rel.transfer_of_transferB`), and
+plan reads (the checker's transfer check, proved in [proved-theorems.md](proved-theorems.md)), and
 names the options and facts where they are not. A comparison reads `zero_sign`,
 where DuckDB gives one zero and Polars IEEE's two, so a filter on a double
 fails the transfer check. A re-check under Polars's profile would take it, and
@@ -360,8 +360,7 @@ except RouteError as e:
 
 The transfer check fails on the comparison's zero and the division's options. A
 re-check would prove the plan again under Polars's profile, which the checker
-cannot do yet
-([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)), so the
+cannot do yet, so the
 refusal names the reference as the way: it runs on Polars with the shim of
 example 4. [engine-profiles.md](engine-profiles.md) describes the
 profiles, and `substrait-check --dependencies` lists a plan's options with
@@ -401,12 +400,10 @@ one, which Substrait could close with an option, are on the
 ## 9. Polars's profile, still pending
 
 Polars floors integer `//` and `%`, so `-7 % 2` is `1` there. A plan checked
-under Polars's own profile (`Profile.polars_imod` in
-[Polars/Profile.lean](../engines/polars/Sverify/Polars/Profile.lean)) would
+under Polars's own profile (the
+[engine profiles](engine-profiles.md) page describes it) would
 prove a postcondition that holds only of the floored remainder. The checker
-does not report under that profile yet
-([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271),
-[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)), so
+does not report under that profile yet, so
 `semantics="polars"` gives the reference's report with a
 `ProfilePendingWarning`. The plan still states `division_type: FLOOR`, which
 the core reads as the floored remainder, so the proof holds, and the plan runs
@@ -528,12 +525,12 @@ exactly what is proved and what each result rests on.
 1. A transform's Ibis expression, or its SQL, becomes a Substrait plan:
    Ibis through a producer sverify ships, SQL through sverify's own lift.
 2. `substrait-check`, the checker written in Lean, reads the plan into its
-   model of what a plan means (`Rel.eval`, under the reference semantics)
+   model of what a plan means (the reference semantics)
    and proves the contract, the absence of runtime errors and the plan's
    bound on doubles, or says why it can't. The theorems behind each claim
-   are checked by Lean's kernel.
+   are checked by Lean's kernel and listed in [proved-theorems.md](proved-theorems.md).
 3. For a refresh, the checker derives a delta plan, proved equal to a full
-   recompute (`Rel.delta_correct`), which runs on the inserts and deletes
+   recompute, which runs on the inserts and deletes
    alone.
 4. For each engine, sverify writes the checked plan with every choice
    spelled out and a proved shim where the engine differs from the
@@ -545,9 +542,9 @@ what a plan means, row by row.
 
 ## Where next
 
-* The [tour](../README.md#the-tour): six notebooks, three complete jobs and
-  three guides, to contracts, to pipelines and engines, and to running in
-  production.
+* The [tour](../README.md#the-tour): eight notebooks, three complete jobs and
+  five guides, to contracts, to pipelines and engines, to running in
+  production, to the engines one by one and to dbt.
 * [How to](tasks.md): one section per task, from the command line
   to credentials, OpenLineage and ODCS.
 * The [API reference](https://alexandernenninger.github.io/substrait-lean/reference/):

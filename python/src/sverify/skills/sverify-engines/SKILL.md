@@ -105,9 +105,9 @@ print(numbered(orders).to_sql("snowflake")[:6])  # ties are open: the report is 
 left row with the latest right row at or before it, at most `tolerance`
 earlier, built from a range join and `ROW_NUMBER` that Lean checks like any
 plan. The join compares each left row with every right row of its `by` group, so its cost is
-quadratic: `asof_join` refuses more than `max_pairs` (default 10⁸) of those pairs, counted when both
-tables are held by a `sverify.connect()` connection, and names its exits (more `by` columns, fewer
-rows, a larger cap). Without a key on `(by, on)` on the right side, two right rows may tie
+quadratic: a run refuses more than `max_pairs` (default 10⁸) of those pairs, counted on the
+engine before the run whatever the tables are (Arrow, files or an engine's own), and names its
+exits (more `by` columns, fewer rows, a larger cap). Without a key on `(by, on)` on the right side, two right rows may tie
 for "latest": the guarantees hold for either pick, and the result is not
 deterministic. With keys on both sides it is:
 

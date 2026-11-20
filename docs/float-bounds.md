@@ -196,6 +196,7 @@ sequential sum. They cost a few integer operations per measure.
 A metrics rollup states its contract this way:
 
 ```python
+# skip: a fragment: the decorated function follows
 @sv.transform(
     requires={"metrics": [_.cpu >= 0, _.cpu <= 100, _.cpu.notnull(), sv.max_rows(10_000_000)]},
     ensures=[_.cpu_avg >= 0, _.cpu_avg <= 100],

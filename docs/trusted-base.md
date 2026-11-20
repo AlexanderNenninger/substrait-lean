@@ -58,7 +58,9 @@ the project's one axiom (the trusted table below).
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which nothing discharges yet where `transferB` fails (#929) | `Sound.lean` | propext, Classical.choice, Quot.sound |
+| `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`, and `Rel.floatOpenSafeP_of_noDouble` for a closed plan without doubles; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
+| `Rel.transfer_of_noDouble` | A result a table allows for a plan without doubles, the reference allows, where the table with the reference's choices at the options only doubles read (`floatOnlyOptions`) transfers (`transferB`) | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
+| `Rel.floatOpenSafeP_of_noDouble` | … and such a plan without open measures is `Rel.FloatOpenSafeP` over the table | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
@@ -79,6 +81,7 @@ What a test checks and no proof does.
 | The engine facts each engine profile states | Their probes (`engines/duckdb/replay/probes.json`, `engines/polars/probes/` and `engines/spark/probes/`), checked by `sverify_dev.facts` and the engine jobs |
 | Native `Float` arithmetic agrees with the exact definition, the exact result rounded once | `python/tests/test_float_model.py` and the `float-bounds/` project's `NativeLink` |
 | DuckDB's black-box catalogue (`sverify.black_box`, `Boxes.duckdb` in `engines/duckdb/Sverify/DuckDB/Boxes.lean`), and its evaluators against DuckDB's values (`evaluated`) | `python/tests/test_black_box.py` against `substrait-check --black-boxes`, and the samples' `#guard` |
+| DuckDB's black boxes keep their declared laws where the function does not raise (`Boxes.Lawful`; under it the model's value is the function's, `Boxes.Lawful.call`). Where one did not, the model's value is the row's sample, the checker panics and refuses the rows (`BlackBox.Scalar.call`, `runOn`), and D16's claim (`Engine.Runs`) fails for that call (#1484) | `python/tests/test_black_box.py`: the laws on random data, and `test_a_law_break_is_refused` through the compiled checker |
 | The writers' SQL and the Polars translation compute what the lowered plan states | Golden, round-trip and differential tests ([the translations](engine-profiles.md#the-translations-today)) |
 | A report survives its JSON: `Report.from_json(report.to_json())` | `python/tests/test_formats.py` |
 
@@ -91,7 +94,7 @@ place, and what retires it.
 |---|---|---|---|---|
 | axiom | `FloatCode.exp_fin` | `analysis/Sverify/Analysis/Safety.lean` | `exp` of a double whose canonical code is finite and at most 709 is finite (`-0.0` included: `exp(-0.0) = 1`): the platform's `libm`, within one ulp | Proved for native doubles as `NativeLink.core_exp` in `float-bounds/`, once the core links it |
 | opaque, `implemented_by` | `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256` | `core/Sverify/Core/Text.lean` | The string functions the checker evaluates by compiled code (`ilikeAscii`, `Digest.md5`, …); no proof looks inside them | A model of each in Lean, or a row of the black-box table |
-| opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `engines/duckdb/Sverify/DuckDB/Boxes.lean` | The functions of DuckDB's black-box catalogue (`evalScalar`, …), outside the model; the core holds none (#1189). A proof uses only a row's laws, which hold by the clamp and `Boxes.duckdb_wf` | A model of a row in Lean, where one exists |
+| opaque, `implemented_by` | `rawScalar`, `rawAgg`, `rawAggRaises`, `rawRaises` | `engines/duckdb/Sverify/DuckDB/Boxes.lean` | The functions of DuckDB's black-box catalogue (`evalScalar`, …), outside the model; the core holds none (#1189). A proof uses only a row's laws, which hold by the clamp and `Boxes.duckdb_wf`; where the clamp applies the compiled checker panics and refuses the rows | A model of a row in Lean, where one exists |
 | structure | `DoubleStats.Correct` | `SubstraitLean/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
 | opaque | `intToDouble` | `core/Sverify/Core/Float.lean` | A conversion given with the property the proofs use; the proofs see only the property | |
 | opaque | `decToDouble`, `doubleToDecimal` | `core/Sverify/Core/Conversions.lean` | The same, for decimals and doubles | |
@@ -104,7 +107,7 @@ place, and what retires it.
 | CLI glue | `"class_basis": "computed"`, `"sorted_basis": "computed"` | `SubstraitLean/Realize.lean` | The class and the sort per engine are computed from the rows; no theorem connects them to the engine's refinement | A theorem that does |
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `core/Sverify/Core/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
-| Python glue | `Observation.reads_members`, `routes.reproducibility` | `python/src/sverify/observation.py`, `python/src/sverify/routes.py` | The step from an observation to a level of determinism (D48): an observation that reads one zero and one NaN (`zeros="canon"`, `floats="plan"` or a tolerance) is met by `Report.deterministic`, the class level (`check_class_determined_sound`); one that reads the members asks for the exact level (`check_deterministic_sound`) | A bridge from `Row.canon` to `Relation.Equiv` for `zeros = .canon` (`core/Sverify/Core/ObsEquiv.lean`) |
+| Python glue | `Observation.reads_members`, `routes.reproducibility` | `python/src/sverify/observation.py`, `python/src/sverify/routes.py` | The step from an observation to a level of determinism (D48): an observation that reads one zero and one NaN (`zeros="canon"`, `floats="plan"` or a tolerance) is met by `Report.deterministic`, the class level (`check_class_determined_sound`, and `check_class_determined_determined` for `Rel.DeterminedUpTo` at `Obs.classes`); one that reads the members asks for the exact level (`check_deterministic_sound`, `check_deterministic_determined`). The bridge from `Row.canon` to `Relation.Equiv` is proved (`Relation.Equiv_classes_of_canon_perm`); what stays trusted is that the kinds the Python side passes read every column that may hold a double as a double (`Relation.DoublesKinded`) | `Rel.kinds_sound` (`core/Sverify/Core/Kinds.lean`) gives a result's kinds; the lemma that they meet `DoublesKinded`, and `data.HasKinds` beside `DataMeets`, are P1c (#1285) |
 | Python glue | `Report.check_inputs`, `Report._unchecked_requires` | `python/src/sverify/report.py` | On Polars (and Spark) a guard-free plan runs without its per-row guards, which rests on `check_inputs` deciding `Rel.polars_sound`'s `hpre` on the data: each `requires` is checked on the run's engine, a report read back with `Report.from_substrait` carries its preconditions as plans (`PlannedCondition`), and a run refuses a report with a precondition it holds no check for | A theorem that ties the checks to `hpre` |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
 | engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `engines/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
@@ -255,10 +258,27 @@ place, and what retires it.
      integer overflow on Polars. There `Engine.contract_sound_runs_near` takes
      `Rel.FloatOpenSafeP` over the engine's table instead: every result the
      table allows is, up to the plan's observation, one of the reference's
-     orders. Nothing discharges that hypothesis yet where `transferB` fails;
-     for a double `SUM` and `AVG` it is the tolerance bound
-     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929),
-     so the open-float form holds of no engine's run by proof today.
+     orders. For an aggregate at the root, `Rel.floatOpenSafeP_aggregate`
+     discharges it from `Rel.SumsNear` (each double `SUM` and `AVG` the table
+     allows is near the correctly rounded one over the groups it reads), and
+     `Engine.polars_sum_example` applies the theorem to a double `SUM` on
+     Polars with only `Engine.Runs` open. For a `SUM`, the checker's own
+     tolerance covers D35's bound where `SumTolCovers` holds
+     (`Measure.sumNear_of_tol`); for an `AVG`, `Rel.SumsNear` stays a
+     hypothesis until track A's follow-up (rulings 135 (b) and 146). Other shapes (a double `SUM` read by
+     a filter, a join or a key) are the tolerance bound
+     [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
+     For a plan in which no double occurs (`Rel.mayDouble`) and no measure
+     is open (`Rel.closedB`), `Rel.floatOpenSafeP_of_noDouble` discharges it
+     where the table, with the reference's choices at the options only
+     doubles read (`floatOnlyOptions`), transfers (`transferB`); the run
+     plan's `near` gate checks both at each built-in engine (ruling 154).
+     The rows are taken to have the request's kinds (`Catalog.HasKinds`),
+     which the gate reads as `Request.tableKinds` and does not check of the
+     data, and a plugin's table stays open. It stays open for plans with a double, and for plans without one that read
+     an option where the table leaves the reference outside that list (an
+     integer `MIN`, `MAX` or `AVG` at every built-in engine, through
+     `list_null_order` and `avg_int_result`).
 
   An engine that raises commits nothing: a runtime obligation of the sink,
   beside `Engine.Runs`. Raising only where the reference may is a separate claim
@@ -293,7 +313,9 @@ place, and what retires it.
   `Regex.lean` and `Digest.lean`, and `Text.lean`'s six:
   `ilike`, `regexMatch`, `regexExtract`, `regexReplace`, `md5`, `sha256`) are
   read by no proof;
-  the proofs use only each black box's declared laws. The search evaluators
+  the proofs use only each black box's declared laws, which hold of the
+  model by the clamp (`Scalar.call` keeps the sample where a law breaks) and
+  of DuckDB by the tests; the checker refuses rows where the clamp applies. The search evaluators
   (`implemented_by` in `LoweringSearch.lean`, `DuckDB/LiftSearch.lean` and
   `Obligations.lean`) read profiles, functions and hints while a generator
   or a table check elaborates; no theorem reads them.

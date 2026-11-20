@@ -1,4 +1,4 @@
-import SubstraitLean.TouchedGroups
+import Sverify.Analysis.TouchedGroups
 import SubstraitLean.TableFormat
 import Sverify.Core.Kinds
 import Sverify.Core.Allowed

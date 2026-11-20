@@ -221,4 +221,10 @@ def scopedOptions : List String :=
           | none => false
         reports == reads
 
+-- `pow_one_inf` is `power`'s alone (D40): it sits on the group of `power` and on no other, and
+-- `atan2`, whose `zero_sign` is not the unary functions', has a group of its own (ruling 163).
+#guard (Functions.groups.filter fun (_, os) => os.contains "pow_one_inf").map (·.1) == ["fp.pow"]
+#guard (Functions.all.filter (·.group == "fp.pow")).map (·.name) == ["power"]
+#guard (Functions.all.filter (·.group == "fp.atan2")).map (·.name) == ["atan2"]
+
 end Substrait

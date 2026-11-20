@@ -703,7 +703,7 @@ def _(mo):
     another row shares its key: both rows of a repeated `id` go, so the rule
     needs no order between them. Every precondition holds on the rows that
     stay (`Catalog.kept_sound` in
-    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Quarantine.lean)),
+    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/analysis/Sverify/Analysis/Quarantine.lean)),
     so `paid`'s proof holds as before. We feed a Delta table an order with a
     negative amount and one with an id that exists already:
     """)
@@ -1784,7 +1784,7 @@ def _(mo):
     their guarantees in every state while only each batch is checked. You
     can refresh a node on DuckDB, Polars or Spark, hand a plan
     to Snowflake as SQL, and tell where an engine could depart from the
-    model. The last chapter, [Running it in production](?file=06_running_in_production.py),
+    model. The next chapter, [Running it in production](?file=06_running_in_production.py),
     covers the work around a proved pipeline: checking its file in CI,
     testing it, its credentials, its lineage and a bound on its state.
     """)
