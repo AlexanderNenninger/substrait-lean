@@ -50,9 +50,6 @@
       ]
     }
   ],
-  "supersedes": [
-    "duckdb-R15-int-modulus"
-  ],
   "issues": [
     2045
   ]

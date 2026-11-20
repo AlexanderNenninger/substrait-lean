@@ -166,10 +166,21 @@
           "note": "% 'Modulo (remainder)'; zero divisor raises; silent on the sign and on MIN % -1"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045, `sverify_dev.probe` at duckdb 2.0.1",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT % BIGINT"
+        }
+      ],
+      "notes": "Re-probed at 2.0.1 for BIGINT: every row agrees with 2.0.0 except `MIN % -1`, which returns 0 (`duckdb-int-modulus-min-neg-one`). The `min_mod_neg_one` row of this fact holds at 2.0.0; the narrower widths were not probed again."
     }
   ],
   "issues": [
     242
-  ],
-  "superseded_by": "duckdb-int-modulus-min-neg-one"
+  ]
 }
