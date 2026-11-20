@@ -161,6 +161,9 @@ def UnFn.issue : UnFn → Value → Option Issue
     else wrapIf (Time.trunc u ts)
   | .dayTrunc u, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.truncDay u d)
   | .addMonths m false, .date d => rangeIssue Time.dayMin Time.dayMax d (Time.addMonths m d)
+  -- An integer count of microseconds is a timestamp of the reference only inside
+  -- 0001 to 9999 (D32, #1947): seconds and milliseconds reach it multiplied.
+  | .asTime, .int n => rangeIssue Time.tsMin Time.tsMax n n
   -- The reference's dates (#807).
   | .dateTime, .date d => rangeIssue Time.dayMin Time.dayMax d d
   -- The calendar on the reference's timestamps (D32).

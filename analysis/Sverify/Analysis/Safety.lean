@@ -203,6 +203,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .dayTrunc _, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .dateTime, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
+  | .asTime, aa, _ => rangeMay Time.tsMin Time.tsMax aa aa
   | .addMonths _ true, aa, ar => rangeMay Time.tsMin Time.tsMax aa ar
   | .timeOfDay, aa, _ | .strftime _, aa, _ | .datePart _, aa, _ => rangeMay Time.tsMin Time.tsMax aa aa
   | .dayPart _, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
@@ -1142,7 +1143,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
   case dayTrunc.date u d | bucket.ts k o d =>
     have hr' := hr; simp only [UnFn.apply] at hr'
     exact rangeIssue_sound ha hr' hk
-  case timeOfDay.ts ts | timeOfDay.tod ts | dateTime.date ts | strftime.ts fmt ts |
+  case timeOfDay.ts ts | timeOfDay.tod ts | asTime.int ts | dateTime.date ts | strftime.ts fmt ts |
       datePart.ts p ts | dayPart.date p ts =>
     exact rangeIssue_sound ha ha hk
   case addMonths.date m t x | addMonths.ts m t x =>
