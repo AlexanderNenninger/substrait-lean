@@ -173,7 +173,7 @@ def test_bounded_round_gives_bounded_integers():
         ensures=[_.x >= 0, _.x <= 100],
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.facts["x"] == "an integer in [0, 100]"
+    assert str(report.facts["x"]) == "an integer in [0, 100]"
 
 
 def test_contracts_fail_on_possible_errors():
@@ -221,7 +221,7 @@ def test_duckdb_fails_only_where_reported(i, rows):
     error) or an engine would wrap around (a warning)."""
     expr = PIPELINES[i]
     report = sv.verify(expr, on_inferred="off")
-    reported = report.errors + report.warnings
+    reported = report.issues
     table = pa.table(
         {
             "qty": pa.array([q for q, _ in rows], pa.int64()),

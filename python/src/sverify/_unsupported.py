@@ -71,7 +71,9 @@ class UnsupportedError(SverifyError, ValueError):
         name as the user writes it) and otherwise the SQL keywords in upper case
         (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`); None where the refusal names none."""
         self.sql = sql
-        """The SQL fragment the SQL lift refused; None for the Ibis producer."""
+        """The SQL fragment the SQL lift refused, as the lift writes it (shortened): the
+        innermost node being read, or the node a whole-query check found. None for the Ibis
+        producer, and for a refusal about the query as a whole (its syntax, a clause)."""
 
 
 Unsupported = UnsupportedError

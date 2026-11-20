@@ -377,7 +377,12 @@ class _Checker:
             res.tests.append(tr)
             got = mapping.test_conditions(t, side="ensures", table_of=lambda _: None)
             missing = [c for c in got.columns if c not in cols]
-            if missing:
+            if got.schema:
+                bad = got.schema(list(res.duckdb_types))
+                tr.status, tr.why = ("proved", None) if bad is None else ("not proved", bad)
+                if bad is None:
+                    self.proved.add(t.unique_id)
+            elif missing:
                 tr.skip(f"the model has no column {', '.join(missing)}")
             elif not got.conditions:
                 tr.skip(got.reason or "no condition")
@@ -495,22 +500,28 @@ class _Checker:
             if any(r.condition is not c for r, c in zip(checked, cs, strict=True)):
                 tr.skip("sverify reported on another condition")
                 continue
+            # A test is not proved while the model needs source tests: the
+            # model may fail first. One whose proof used an inferred bound
+            # says so (#701).
             bad = [c for c in checked if not c.portable]
-            if not bad and needed:
+            if not bad and not needed:
+                tr.status = "proved"
+            elif not bad:
+                tr.status = "not proved"
+                tr.why = "it holds, but the model may fail without the source tests under 'needs'"
+            elif bad[0].reason == "needs":
                 tr.status = "not proved"
                 tr.why = "proved only with the source tests listed under 'needs'"
-            elif not bad:
-                tr.status = "proved"
             else:
                 c = bad[0]
                 tr.status = "not proved"
                 tr.why = _why(c)
                 tr.blocker = c.reason
                 tr.counterexample = str(c.counterexample) if c.counterexample else None
-                tr.would_hold = {
-                    _user_table(t, self): [mapping.as_dbt_test(_sql(x)) for x in xs]
-                    for t, xs in (c.suggested or {}).items()
-                }
+                tr.would_hold = {}
+                for n in c.needs:
+                    tests = tr.would_hold.setdefault(_user_table(n.table, self), [])
+                    tests.append(mapping.as_dbt_test(n.sql))
             if tr.status == "proved" and tr.test:
                 self.proved.add(tr.test)
         if m.materialized == "incremental":
@@ -709,7 +720,7 @@ def _refusal(e: BaseException) -> str:
 
 
 _WHY = {
-    "observation": "proved only for some row orders DuckDB may pick",
+    "lenses": "proved only for some row orders DuckDB may pick",
     "not_a_key": "the tests upstream do not make it a key",
     "ties": "rows may tie in an ORDER BY, so DuckDB picks which rows it keeps",
     "always_false": "every row fails it",
@@ -733,11 +744,6 @@ def _named(c: Any) -> str:
 
 def _label(c: Any) -> str:
     return c if isinstance(c, str) else c.label
-
-
-def _sql(c: Any) -> str:
-    """A suggested condition as SQL, as far as it can be."""
-    return str(c) if isinstance(c, str) else getattr(c, "label", str(c))
 
 
 def _user_table(name: str, checker: _Checker) -> str:
