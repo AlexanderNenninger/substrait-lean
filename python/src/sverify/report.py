@@ -58,6 +58,7 @@ from sverify.conditions import (
     Inferred,
     Key,
     MaxRows,
+    NonOverlapping,
     PlannedCondition,
     PreconditionError,
     References,
@@ -97,6 +98,7 @@ Condition = (
     | ArrivesWithin
     | MaxRows
     | RowsPer
+    | NonOverlapping
     | Observation
     | PlannedCondition
     | Callable[[ir.Table], ir.BooleanValue]
