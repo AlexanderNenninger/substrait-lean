@@ -133,24 +133,17 @@ def test_a_key_on_the_mean_alone_is_refused():
     assert "DISTINCT" in exprs and any(e.startswith("the key") for e in exprs), exprs
 
 
-@pytest.mark.parametrize(
-    ("post", "verdict"),
-    [
-        # At the edge of the mean's range: DuckDB's mean may lie a band below 0
-        # (ruling 104, C-contract).
-        ("m >= 0", "unproved"),
-        # A band's width away from the edge: it holds over the band.
-        ("m >= -1", "proved"),
-    ],
-)
-def test_a_postcondition_on_the_mean_holds_over_the_band(post, verdict):
+def test_a_postcondition_at_the_edge_of_the_mean_is_refused():
+    """DuckDB's mean may lie a band below 0 (ruling 104, C-contract). The robust
+    check widens the column's abstract value by the band and reads no fact, so a
+    postcondition a band's width away is refused as well: sound, and loose."""
     report = sv.verify(
         GROUPED,
         tables=T,
         requires=REQUIRES,
-        ensures=[post],
+        ensures=["m >= 0"],
         semantics="duckdb",
         on_inferred="warn",
     )
-    assert report.verdict == verdict, [str(e) for e in report.errors]
-    assert (verdict == "unproved") == any(i.kind == KIND for i in report.errors)
+    assert refused(report)
+    assert any(i.expr.startswith("the postcondition") for i in report.errors if i.kind == KIND)
