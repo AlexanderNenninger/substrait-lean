@@ -276,7 +276,7 @@ features = ["filter", "inner_join", "multi_join", "group_by", "sum", "window_ove
 pitfalls = ["division_by_zero: the ratio divides by the average, guarded by CASE WHEN avg <> 0 (see eager_evaluation)", "eager_evaluation: DataFusion may evaluate the division before the guard"]
 ibis = '''
 j = (
-    store_sales.join(item, store_sales.ss_item_sk == item.i_item_sk)
+    item.join(store_sales, store_sales.ss_item_sk == item.i_item_sk)
     .join(date_dim, store_sales.ss_sold_date_sk == date_dim.d_date_sk)
     .join(store, store_sales.ss_store_sk == store.s_store_sk)
     .filter(
@@ -305,17 +305,16 @@ q = (
     .limit(100)
 )
 '''
-# The caps are upper bounds above the specification's approximate row counts at scale
-# factor 100,000 (#470). `store_sales` is the left side of each join: the row cap follows a
-# join only through a key of its right side (`Rows.lean`), so the monthly sums stay bounded
-# and `sum_sales * 10000 - avg_monthly_sales` fits its decimal type. Prices start at 0.01, so
-# the average is positive and the division by it cannot divide by zero.
+# Not proved: `sum_sales - avg_monthly_sales` may overflow its decimal type and the ratio
+# may divide by zero, though the monthly sums and their average are each bounded and
+# positive under these preconditions (#2015). The division under `avg_monthly_sales != 0`
+# is not seen as guarded.
 requires = '''
 {
-    'store_sales': [_.ss_sales_price.between(0.01, 300), sv.max_rows(10**12)],
-    'item': [sv.unique('i_item_sk'), sv.max_rows(10**7)],
-    'date_dim': [sv.unique('d_date_sk'), sv.max_rows(10**5)],
-    'store': [sv.unique('s_store_sk'), sv.max_rows(10**4)],
+    'store_sales': [_.ss_sales_price.between(0, 300)],
+    'item': [sv.unique('i_item_sk')],
+    'date_dim': [sv.unique('d_date_sk')],
+    'store': [sv.unique('s_store_sk')],
 }
 '''
 ensures = '''
