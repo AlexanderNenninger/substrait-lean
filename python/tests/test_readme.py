@@ -30,7 +30,6 @@ READMES = [
     ROOT / "docs" / "float-bounds.md",
     ROOT / "docs" / "report.md",
     ROOT / "dbt" / "README.md",
-    *sorted((ROOT / "docs" / "theorems").glob("*.md")),
 ]
 # Pages whose Python blocks are not examples of the public API.
 EXEMPT = {

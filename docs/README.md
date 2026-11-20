@@ -71,13 +71,11 @@ release on PyPI.
 | [engines.md](engines.md) | The engines, how to choose one, and what to install | Design |
 | [how-it-works.md](how-it-works.md) | The checker, incremental views, the producers | Design |
 | [proved-theorems.md](proved-theorems.md) | The theorems behind each guarantee, by their Lean names: contracts, composition, runtime errors, incremental views, table formats | |
-| [theorems/README.md](theorems/README.md) | One page per top-level theorem: what it says, what it assumes, the Lean statement line by line, an example | |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
 | [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
-| [how-this-is-built.md](how-this-is-built.md) | Who writes and checks the project, what to check without trusting anyone, how to disagree | |
 | [comparison.md](comparison.md) | Sverify beside dbt tests, Great Expectations, Soda and data contracts, by bug class | Design |
 | [prior-work.md](prior-work.md) | The work sverify builds on, and related tools | Design |
 

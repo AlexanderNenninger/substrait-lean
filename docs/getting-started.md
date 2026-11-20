@@ -440,7 +440,7 @@ its compound name and its output type, and each option the proof depends on
 is pinned at the reference's behaviour. The contract travels with it, and
 `sv.Report.from_substrait` proves it again. No theorem says the written plan
 is the proved one; that proof again, from the plan as written, is the check
-([what is trusted](trusted-base.md)):
+([what is trusted](trusted-base.md); the gap is tracked in [#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)):
 
 ```python
 from sverify.errors import ExportError

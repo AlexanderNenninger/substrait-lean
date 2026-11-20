@@ -8,9 +8,6 @@ Sverify's guarantees are theorems of the Lean project in
 guarantee rests on, what each of them assumes, and the one job of every
 module. [How it works](how-it-works.md) explains the checks in prose.
 
-The theorems of the contract family have a page each, with an example you
-can run: [theorem cards](theorems/README.md).
-
 The top-level statements, over named predicates a reviewer can read without
 the checker's internals, are in one file:
 [`Statements.lean`](../SubstraitLean/Statements.lean).
@@ -32,8 +29,8 @@ contract's preconditions.
 
 | Guarantee | Layer | Theorem | Module |
 |---|---|---|---|
-| A proved postcondition is TRUE on every output row | `eval` | [`contract_sound`](theorems/contract_sound.md) | `Contracts/Sound.lean` |
-| … in every row order the reference allows | `OrderAllowed` | [`contract_sound_all`](theorems/contract_sound_all.md) | `Contracts/Sound.lean` |
+| A proved postcondition is TRUE on every output row | `eval` | `contract_sound` | `Contracts/Sound.lean` |
+| … in every row order the reference allows | `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
 | What `substrait-check --contract` reports proved holds on the data's every allowed order: the checker's verdict is `contract_sound_all`'s on the postcondition's conditions projected over the request's transformation, which `parse` builds itself, for any data with the request's tables that meets its schemas, preconditions, keys and row caps (#1088, #1484) | `OrderAllowed` | `check_proved_sound` | `ContractCheck.lean` |
 | When `substrait-check --contract` reports a postcondition proved and the transformation `closed` (no open measure: no `VAR_*`, `STDDEV_*`, `COVAR_*`, `CORR` or `QUANTILE_CONT`; open ties are allowed), it holds on the rows each engine's model computes for the translated plan (#1484, A6), on any data that meets the request: DuckDB's (default settings, verified under the reference and lowered by `Lowering.duckdb`) on a report without issues under the reference that is `guard_free`, Polars's and Spark's on a `guard_free` one, each side condition taken from the report | `Allowed` | `check_proved_on`, `check_proved_on_duckdb`, `check_proved_on_polars`, `check_proved_on_spark`, `check_noRaise_duckdb`, `check_guardFreeSide` | `ProvedOn.lean` |
 | When `substrait-check --contract` reports the transformation `deterministic`, every result the reference allows for it is `Rel.eval`'s up to the order of its rows, for any data that meets the request (`DataMeets`, #1484) | `Allowed` | `check_deterministic_sound`, `check_deterministic_determined` (determined up to the exact level, any context) | `ContractCheck.lean` |

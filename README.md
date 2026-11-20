@@ -9,7 +9,7 @@ agreement against a model of each engine's scalar functions, from the
 checker's own report (`check_proved_on`): for a plan without open measures
 (`closed`), on DuckDB a guard-free report without issues under the reference,
 on Polars and Spark a guard-free one. That the models match the engines
-rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). [How this project is built](docs/how-this-is-built.md) says who writes it and what you can check yourself. This README is for people working on the
+rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). This README is for people working on the
 project. Users start at [python/README.md](python/README.md), which is also
 sverify's PyPI page.
 
