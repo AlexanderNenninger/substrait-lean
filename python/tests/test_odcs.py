@@ -459,6 +459,35 @@ READ_MORE = {
 }
 
 
+def test_read_missing_values_with_values():
+    doc = {
+        "apiVersion": "v3.1.0",
+        "kind": "DataContract",
+        "id": "x",
+        "version": "1",
+        "schema": [
+            {
+                "name": "t",
+                "properties": [
+                    {
+                        "name": "n",
+                        "logicalType": "integer",
+                        "quality": [
+                            {
+                                "metric": "missingValues",
+                                "arguments": {"missingValues": [0, -1, None]},
+                                "mustBe": 0,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    (cond,) = odcs.read(doc, strict=True).tables["t"]
+    assert label(cond) == 'NOT "n" IS NULL AND NOT "n" IN (0, -1)'
+
+
 def test_read_lists_what_it_cannot_read_with_reasons():
     with pytest.warns(odcs.UnreadRuleWarning):
         c = odcs.read(READ_MORE)
