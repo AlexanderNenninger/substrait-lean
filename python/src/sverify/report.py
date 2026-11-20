@@ -2231,8 +2231,8 @@ class ColumnFacts:
     lower: Any = None
     """A bound every non-NULL value is at least (`col IS NULL OR col >=
     lower` holds), in the column's Python type (`int`, `Decimal`, `float`,
-    `date`, `datetime`, `timedelta`); None where the checker proves none.
-    A double column gets a finite bound only."""
+    `date`, `datetime`, `timedelta`); None where the checker proves none
+    the type does not. A double column gets a finite bound only."""
     upper: Any = None
     """A bound every non-NULL value is at most, as `lower`."""
     _text: str = field(default="", repr=False, compare=False)
@@ -2249,8 +2249,10 @@ def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any) -> Any:
     if (dec := abstract.get("decimal")) is not None:
         return _decimals.scaled(k, -dec["scale"])
     if dtype.is_floating():
+        # A code between two doubles (even, but not 0) is a strict bound,
+        # which `col >= lower` does not state; such a bound is left out.
         x = decode_double(k)
-        return x if math.isfinite(x) else None
+        return x if (k == 0 or k % 2 == 1) and math.isfinite(x) else None
     if dtype.is_timestamp():
         try:
             return datetime(1970, 1, 1) + timedelta(microseconds=k)
@@ -2263,7 +2265,11 @@ def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any) -> Any:
             return None
     if dtype.is_interval():
         return timedelta(microseconds=k)
-    return k if dtype.is_integer() else None
+    if not dtype.is_integer():
+        return None
+    # A bound at or past the type's own limits says nothing the type does not.
+    lo, hi = dtype.bounds
+    return k if lo < k < hi else None
 
 
 def column_facts(abstract: Mapping[str, Any], dtype: Any, text: str) -> ColumnFacts:

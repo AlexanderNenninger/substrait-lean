@@ -49,8 +49,10 @@ def test_facts_rest_on_the_stated_preconditions_under_error():
     alone = sv.verify(sql, tables=S, requires=req, on_inferred="off")
     assert r.facts == alone.facts
     assert r.output == alone.output
+    # Without the bound, `arr` reaches past BIGINT's range: no upper bound.
+    assert r.facts["arr"].upper is None
     assumed = sv.verify(sql, tables=S, requires=req, on_inferred="ignore")
-    assert assumed.facts["arr"].upper < r.facts["arr"].upper
+    assert assumed.facts["arr"].upper is not None
 
 
 def _as_ensures(c: str, f: ColumnFacts) -> list:
@@ -89,6 +91,10 @@ def test_each_fact_is_a_postcondition_that_proves():
                 failed.append((case.label, c, repr(e)))
         if not ensures:
             continue
-        again = sv.verify(expr, ensures=ensures, counterexamples=0)
+        try:
+            again = sv.verify(expr, ensures=ensures, counterexamples=0)
+        except Exception as e:  # noqa: BLE001 - reported with the case
+            failed.append((case.label, "ensures", repr(e)))
+            continue
         failed += [(case.label, e.label, e.why) for e in again.ensures if not e.proved]
     assert not failed, failed
