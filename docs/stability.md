@@ -182,10 +182,10 @@ A minor release may break the public API only when the break is:
 - given a migration note in that entry: what to write instead, with an
   example.
 
-A renamed or removed name keeps working for one minor release with a
-`DeprecationWarning`, and goes
-in the next. A release with breaking changes lists them first in its section
-of [the changelog](../CHANGELOG.md).
+A renamed or removed name is gone in that release: sverify keeps no deprecated
+alias. The old form raises, and the changelog entry names the replacement. A
+release with breaking changes lists them first in its section of
+[the changelog](../CHANGELOG.md).
 
 ## Engines
 

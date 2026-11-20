@@ -1,6 +1,7 @@
 """A UTC-zoned timestamp is an instant (D53, #1725): read, compared, ordered, grouped and
 aggregated as the Lean kind `timeTz`, and written back as an instant; every conversion,
-calendar function, other zone and literal is refused naming the issue."""
+interval arithmetic, other zone and literal is refused naming the issue; the calendar functions
+of an instant at UTC are those of its UTC wall clock (D69, `test_instant_calendar.py`)."""
 
 import datetime as dt
 import json
@@ -205,18 +206,12 @@ REFUSED = {
     "COALESCE of an instant and a naive column": lambda t: t.select(x=ibis.coalesce(t.ts, t.naive)),
     "an instant plus an interval": lambda t: t.select(x=t.ts + ibis.interval(hours=1)),
     "the difference of two instants": lambda t: t.select(x=t.ts - t.ts2),
-    "date_trunc of an instant": lambda t: t.select(x=t.ts.truncate("D")),
-    "extract from an instant": lambda t: t.select(x=t.ts.year()),
-    "an instant cast to a date": lambda t: t.select(x=t.ts.cast("date")),
     "an instant cast to a string": lambda t: t.select(x=t.ts.cast("string")),
     "least of an instant": lambda t: t.select(x=ibis.least(t.ts, t.ts2)),
     "lag of an instant": lambda t: t.select(x=t.ts.lag().over(ibis.window(order_by=t.id))),
     "a CASE with a NULL branch": lambda t: t.select(x=ibis.cases((t.ts < t.ts2, t.ts))),
     "NULLIF of instants": lambda t: t.select(x=t.ts.nullif(t.ts2)),
     "SUM, AVG and FIRST of an instant": lambda t: t.aggregate(x=t.ts.first()),
-    "date_trunc over COALESCE of instants, one level up": lambda t: t.select(
-        c=ibis.coalesce(t.ts, t.ts2)
-    ).select(x=_.c.truncate("D")),
 }
 
 

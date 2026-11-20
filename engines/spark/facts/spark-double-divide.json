@@ -102,7 +102,7 @@
     "`a / b` on doubles is IEEE except at a zero divisor: `1.0 / 0.0`, `0.0 / 0.0`, `1.0 / -0.0`, `NaN / 0.0` and `inf / 0.0` raise `DIVIDE_BY_ZERO` under ANSI and are NULL without it; never ±inf or NaN. `FLOAT` the same. `try_divide` gives NULL in both modes.",
     "Otherwise IEEE: `inf / inf` is NaN, `1e308 / 1e-308` +inf, the quotient rounded once."
   ],
-  "reference": "`divide` with `on_division_by_zero: ERROR` when omitted; `IEEE`, `NULL`, `LIMIT` when asked. `±inf / ±inf` is a domain issue (#257); a finite quotient past the largest double raises (#575). Spark under ANSI gives `ERROR` natively; without ANSI, `NULL`. `IEEE` needs the `CASE` that `sverify_spark.dialect` writes.",
+  "reference": "`divide` with `on_division_by_zero: ERROR` when omitted; `IEEE`, `NULL`, `LIMIT` when asked. `±inf / ±inf` is a domain issue (#257); a finite quotient past the largest double raises (#575). Spark under ANSI gives `ERROR` natively; without ANSI, `NULL`. `IEEE` is written as Spark's `/`, which raises at a zero divisor of either sign, as `sparkBin .fdivIeee` states; the `CASE` written before returned the opposite infinity at a `-0.0` divisor (ruling 161).",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [

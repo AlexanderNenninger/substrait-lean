@@ -282,15 +282,56 @@ def test_sum_of_both_infinities_is_no_domain_error_under_duckdbs_semantics():
         assert [i for i in ref.issues if "domain error" in str(i)], (fn, ref)
 
 
-def test_sum_of_an_expression_is_proved_under_duckdbs_semantics():
-    """The guarded sum's argument is the expression itself (`SUM(f + 1.0)`), not only a column."""
+def test_sum_of_an_expression_keeps_its_overflow_check_under_duckdbs_semantics():
+    """The guarded sum's argument is the expression itself (`SUM(f + 1.0)`), not only a column.
+    An unbounded column no longer gives `PROVED` with no issues: DuckDB's running
+    sum overflows where the exact sum, which the model gives, does not (ruling
+    200 A4(2)); the check is assumed, and the run makes it."""
     import ibis
 
     import sverify as sv
 
     t = ibis.table({"f": "float64"}, name="f")
     report = sv.verify(sv.sql("SELECT sum(f + 1.0) AS v FROM f", f=t, semantics="duckdb"))
-    assert report.verdict == Verdict.PROVED and not report.issues, report
+    assert report.verdict == Verdict.PROVED_WITH_CHECKS, report
+
+
+@pytest.mark.parametrize(
+    ("fn", "values"),
+    [("avg", [1e308, 1e308]), ("sum", [1e308, 1e308, -1e308])],
+)
+def test_a_double_sum_that_overflows_is_refused_under_duckdbs_semantics(fn, values):
+    """DuckDB's `avg(1e308, 1e308)` is `inf` where the model gives `1e308`: the run
+    refuses the batch instead of returning DuckDB's value (ruling 200 A4(2), R3)."""
+    import ibis
+
+    import sverify as sv
+    from sverify import connect
+    from sverify.conditions import PreconditionError
+
+    t = ibis.table({"f": "float64"}, name="f")
+    report = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="duckdb"))
+    con = connect()
+    con.create("f", t.schema(), [(v,) for v in values])
+    with pytest.raises(PreconditionError, match="overflows"):
+        report.run(con)
+
+
+@pytest.mark.parametrize("fn", ["sum", "avg"])
+def test_a_double_sum_checks_for_a_nan_total_with_no_nan_input(fn):
+    """Finite inputs whose partial sums overflow in both directions give NaN: no
+    input is infinite, so the `±∞` test passes. The written SQL tests the total for
+    NaN where no input is NaN (ruling 200 A4(3))."""
+    import ibis
+
+    import sverify as sv
+    from sverify.sql import to_sql
+
+    t = ibis.table({"f": "float64"}, name="f")
+    plan = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="portable"))
+    assert plan.internal_plan is not None
+    written = to_sql(plan.internal_plan, "duckdb")
+    assert "isnan" in written.lower() and "overflow to infinity" in written, written
 
 
 def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measures_for_duckdb():

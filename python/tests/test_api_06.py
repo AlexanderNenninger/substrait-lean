@@ -79,8 +79,8 @@ def test_an_assumed_sum_says_it_is_checked_at_run_time() -> None:
     assert "(inferred;" not in text
     # The first line says the proof holds under checks (#1484).
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
-    assert text.splitlines()[0].startswith("proved with checks: 1 assumption")
-    assert "**proved with checks: 1 assumption**" in report._repr_markdown_()
+    assert text.splitlines()[0].startswith("proved with checks: 1 run-time check")
+    assert "**proved with checks: 1 run-time check**" in report._repr_markdown_()
 
 
 def test_an_assumed_double_sum_names_the_sum() -> None:

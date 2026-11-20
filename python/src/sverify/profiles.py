@@ -50,6 +50,9 @@ from typing import Any, Literal
 
 from sverify._unsupported import SverifyWarning
 
+Finite = Literal[True, False, "aggregates"]
+"""Which overflows to ±∞ a run checks: all, none, or only an aggregate's."""
+
 __all__ = ["ProfilePlugin", "Setting", "plugins"]
 
 #: A plan runner: `runner(con, plan_json, session, keep=, finite=, tie_free=)`.
@@ -162,8 +165,10 @@ class ProfilePlugin:
     """Runs a plan in Lean's written form over Arrow tables by name:
     `run_tables(plan_json, tables, *, guard_free=False, finite=True)`.
     `guard_free=True` leaves out the per-row checks a `guard_free` contract
-    report discharged, keeping the assumed issues' checks; `finite=False`
-    leaves out the check of an overflow to ±∞. None: no run over
+    report discharged, keeping the assumed issues' checks. `finite` is a
+    `Finite`: True checks every overflow to ±∞, False none, and
+    "aggregates" only a `SUM`'s or `AVG`'s (the lens of `semantics="duckdb"`,
+    where an operation's ±∞ is the engine's value). None: no run over
     tables (`sverify.partition.run_sharded`, guard-free runs)."""
     guard_free_theorem: str = ""
     """The theorem that covers `run_tables(..., guard_free=True)`, as the
