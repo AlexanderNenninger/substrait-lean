@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-only-1-0-issues",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Work picks up ready issues only in the 1.0 milestones.",
+  "source": "memory:road-to-1-0.md"
+}

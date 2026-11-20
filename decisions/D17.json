@@ -1,0 +1,12 @@
+{
+  "id": "D17",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "On 0.x the reference changes where the design needs it, in a minor bump with a changelog fragment; from 1.0 a change is an opening or a narrowing, handled differently.",
+  "prs": [
+    562
+  ],
+  "note": "Amended 2026-11-18 by the maintainer: two kinds of change from 1.0."
+}

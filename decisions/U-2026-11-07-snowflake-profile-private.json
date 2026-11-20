@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-07-snowflake-profile-private",
+  "date": "2026-11-07",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The Snowflake profile is private, and public sverify gets only engine-agnostic hooks for out-of-tree profiles.",
+  "issues": [
+    851
+  ],
+  "source": "memory:snowflake-evidence-private.md"
+}

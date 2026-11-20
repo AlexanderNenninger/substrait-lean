@@ -1,0 +1,16 @@
+{
+  "id": "F-1631-regexp-match-read",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Blocker for #1631: regexp_match's row gets its constructor and the #guard checks the transfer's actual read of non_ascii_text instead of naming functions by hand; test a bare regexp_match projection is unproved under semantics='substrait'.",
+  "prs": [
+    1631
+  ],
+  "amends": [
+    "F-1631-str-ascii-group"
+  ],
+  "source": "fable-ruling-1631-regexp-match-read.md",
+  "note": "Enforces condition 2 of the str.ascii ruling; if the constructor ripples into generated modules, stop and ask."
+}

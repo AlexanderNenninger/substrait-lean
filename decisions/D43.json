@@ -1,0 +1,12 @@
+{
+  "id": "D43",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Text the engines map differently (ILIKE, reverse, regex classes, ...) is an issue, nonAscii.",
+  "amended_by": [
+    "D51",
+    "F-1631-str-ascii-group"
+  ]
+}

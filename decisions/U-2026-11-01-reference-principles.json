@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-01-reference-principles",
+  "date": "2026-11-01",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference is Substrait's semantics with each function's options, the least surprising choice where Substrait is open, fixed declared widths, emulable on every backend, errors as may-raise so rewrites are refinements.",
+  "issues": [
+    185
+  ],
+  "amended_by": [
+    "U-2026-11-03-principle-3-reasonable-effort"
+  ],
+  "source": "github:#185 comment 6556126222",
+  "note": "Recorded as 'Principles for the reference model (decided)' without naming the user; the 2026-11-03 comment treats them as the user's."
+}

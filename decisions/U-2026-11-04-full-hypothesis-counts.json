@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-04-full-hypothesis-counts",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "CI keeps the full Hypothesis example counts.",
+  "source": "memory:ci-policy.md",
+  "note": "Exact date not recorded; ci-policy.md spans 2026-11-04 to 2026-11-18."
+}

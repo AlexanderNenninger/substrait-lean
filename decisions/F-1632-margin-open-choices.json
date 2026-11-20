@@ -1,0 +1,22 @@
+{
+  "id": "F-1632-margin-open-choices",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "A margin check above a FETCH or tied window, where check and run are separate statements without the row ordinal (rows='multiset' engines), refuses by default and warns under on_inferred='warn'; no engine-name branch in report.py.",
+  "issues": [
+    1608
+  ],
+  "prs": [
+    1632
+  ],
+  "supersedes": [
+    "F-1608-sql-ordinals.A3"
+  ],
+  "amends": [
+    "F-1608-sql-ordinals"
+  ],
+  "source": "fable-ruling-1632-margin-open-choices.md",
+  "note": "Withdraws the last clause of A3 of the ordinals ruling (night log entry 49). One-evaluation design recorded for plan section 38."
+}

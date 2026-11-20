@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-16-disclaimer-replaced-with-evidence",
+  "date": "2026-11-16",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "By 1.0 the prototype disclaimer is replaced by a scoped statement backed by evidence, and kept until that evidence gate is met.",
+  "issues": [
+    1090,
+    1485,
+    1487
+  ],
+  "amends": [
+    "U-2026-11-16-readme-prototype-disclaimer"
+  ],
+  "source": "memory:readme-disclaimer-1-0.md"
+}

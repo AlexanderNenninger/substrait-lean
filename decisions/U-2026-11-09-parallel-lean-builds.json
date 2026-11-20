@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-09-parallel-lean-builds",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "More than one Lean build may run at a time on the laptop and homelab, within the slots and the load limits.",
+  "prs": [
+    1314
+  ],
+  "source": "memory:drivers.md"
+}

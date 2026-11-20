@@ -1,0 +1,16 @@
+{
+  "id": "F-1642-d48-python",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1642 (D48 parts 3-4): plan-level refusal at a class pick accepted (with text fixes noting DuckDB's stable-pick row); _resolve unchanged. New D48 step 5 (engine stable pick) and step 6 (refinement order reads the class predicate).",
+  "issues": [
+    900
+  ],
+  "prs": [
+    1642
+  ],
+  "source": "fable-ruling-1642-d48-python.md",
+  "note": "Night log entry 58. Corrects two bullets of Fable's own D48 section 2.3 (second bullet: predicate applies before _resolve; fourth bullet replaced by the plan-level refusal). Cross-stage class-pick finding has no ruling yet."
+}

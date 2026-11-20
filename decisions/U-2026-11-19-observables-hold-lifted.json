@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-19-observables-hold-lifted",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The hold is lifted: the observables design #1285 is assigned, so determinism and row-order exposure proceed through it.",
+  "issues": [
+    1285
+  ],
+  "supersedes": [
+    "U-2026-11-09-determinism-exposure-hold"
+  ],
+  "source": "memory:determinism-as-certificate.md"
+}

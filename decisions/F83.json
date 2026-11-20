@@ -1,0 +1,16 @@
+{
+  "id": "F83",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "unclear",
+  "summary": "Ruling 80's point 5: #1690 gets no pyspark version refusal.",
+  "prs": [
+    1690
+  ],
+  "amends": [
+    "F80"
+  ],
+  "source": "fable-undelivered-1118.md",
+  "note": "No file; the text is in entry 83 of the rulings log, which was not read. Only the one-line index summary is known."
+}

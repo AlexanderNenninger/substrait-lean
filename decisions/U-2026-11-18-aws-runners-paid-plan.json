@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-18-aws-runners-paid-plan",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The AWS runners move to the Paid plan with strict budget controls: a $100 monthly cap, a $15 daily budget and a scale-up deny at 80 %, and caps or pool sizes change only with the user.",
+  "supersedes": [
+    "U-2026-11-18-aws-runners-free-plan"
+  ],
+  "source": "memory:aws-runner-free-plan.md",
+  "note": "PR pool max 24, fuzz pool max 4."
+}

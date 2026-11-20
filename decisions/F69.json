@@ -1,0 +1,19 @@
+{
+  "id": "F69",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A refusal's exit must be a query the user can get proved; step 12e gives COUNT an upper bound from the row cap in Measure.abs. No D-number.",
+  "issues": [
+    1608
+  ],
+  "prs": [
+    1664
+  ],
+  "amended_by": [
+    "F70"
+  ],
+  "source": "fable-ruling-1664-exact-exit.md",
+  "note": "The hold on #1664's label (F69.HOLD) is withdrawn by ruling 70; the principle stays as a release gate."
+}

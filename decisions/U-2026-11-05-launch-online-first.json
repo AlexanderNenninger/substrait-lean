@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-05-launch-online-first",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The launch is online first, with no outside release candidate or talks yet.",
+  "source": "memory:product-vision.md"
+}

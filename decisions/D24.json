@@ -1,0 +1,15 @@
+{
+  "id": "D24",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference leaves tie_order and tie_pick open, and determinism is a proved property.",
+  "prs": [
+    562
+  ],
+  "amended_by": [
+    "F-c2-determinism-d48"
+  ],
+  "note": "Amended 2026-11-18 by the theory advisor: two earlier refusals go."
+}

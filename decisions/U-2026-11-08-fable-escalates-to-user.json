@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-fable-escalates-to-user",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Fable, not the coordinator, takes changes to the reference's promises and irreversible or outward-facing actions to the user.",
+  "source": "memory:fable-theory-advisor.md"
+}

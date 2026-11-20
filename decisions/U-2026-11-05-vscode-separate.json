@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-05-vscode-separate",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The VS Code extension stays in its own private repository as an after-1.0 item.",
+  "source": "memory:satellite-repos.md"
+}

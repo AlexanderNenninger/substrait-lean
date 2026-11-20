@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-02-optimizations-deferred",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "superseded",
+  "summary": "No optimization work starts until every currently planned functional feature has landed; bug fixes found along the way are not deferred.",
+  "issues": [
+    246,
+    247,
+    248,
+    249
+  ],
+  "superseded_by": [
+    "U-2026-11-04-bugs-optimizations-coverage"
+  ],
+  "source": "github:#246 body",
+  "note": "Replaced by the work order bugs, then optimizations, then coverage (2026-11-04), and by the standing optimizer session (2026-11-19)."
+}

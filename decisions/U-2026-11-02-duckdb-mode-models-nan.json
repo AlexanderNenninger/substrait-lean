@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-02-duckdb-mode-models-nan",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Under semantics=\"duckdb\" NaN and infinity are modelled as DuckDB computes them, never refused, and verify decides per contract.",
+  "issues": [
+    268
+  ],
+  "prs": [
+    296,
+    309
+  ],
+  "source": "memory:duckdb-mode-models-nan.md",
+  "note": "The reference itself never creates a NaN (D37)."
+}

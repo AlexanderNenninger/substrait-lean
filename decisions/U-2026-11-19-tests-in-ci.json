@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-19-tests-in-ci",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Tests run in CI after a push, and homelab is only for benchmarks, regens, long checker runs and check_generated builds.",
+  "prs": [
+    1737
+  ],
+  "source": "memory:tests-in-ci-not-homelab.md"
+}

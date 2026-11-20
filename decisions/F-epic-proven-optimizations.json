@@ -1,0 +1,20 @@
+{
+  "id": "F-epic-proven-optimizations",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Proved optimizations epic: proved rewrites (setup 1) are the default and cover 1.0; checked rewrites (setup 2) only for global search, reusing #958's normal form; refinement is the statement; writers gain no decisions; per-rule measured-gain gate; ordered work list.",
+  "issues": [
+    82,
+    83,
+    824,
+    929,
+    958,
+    1485,
+    1719,
+    1787
+  ],
+  "source": "fable-epic-proven-optimizations.md",
+  "note": "Written at the user's request. Epic number not stated in the file; later rulings (127, 129) call it #1787. Three decisions left open (optimized plan default at 1.0, #824 wording, #958 refinement statements)."
+}

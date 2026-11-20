@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-19-optimizer-always-running",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "A standing optimizer session works on proved optimizations continuously and never blocks other work.",
+  "issues": [
+    1787
+  ],
+  "source": "memory:optimizer-always-running.md"
+}

@@ -1,0 +1,22 @@
+{
+  "id": "F63",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "sverify_decimal_div is no longer refused: where the declared type does not follow from the operands it reads as the checked decimal (Safety reports overflow); where it follows it stays dkind.",
+  "issues": [
+    1497
+  ],
+  "supersedes": [
+    "F-1497-decimal-div-statement.refusal"
+  ],
+  "amends": [
+    "F-1497-decimal-div-statement"
+  ],
+  "amended_by": [
+    "F73"
+  ],
+  "source": "fable-ruling-1497-state-quotient.md",
+  "note": "Log entry 63. Ruling 73 corrects its claim that an issue is reported wherever the engine can raise 'for every plan' (the finish plan is not contract-checked); the rest stands. No D-number."
+}

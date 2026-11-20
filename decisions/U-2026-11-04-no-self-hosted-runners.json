@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-04-no-self-hosted-runners",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "superseded",
+  "summary": "CI uses no self-hosted runners.",
+  "superseded_by": [
+    "U-2026-11-18-self-hosted-runners-allowed"
+  ],
+  "source": "memory:ci-policy.md",
+  "note": "Date of the original ban unknown; 2026-11-04 is the earliest date ci-policy.md covers."
+}

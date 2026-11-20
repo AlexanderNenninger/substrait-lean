@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-fable-signs-off-d-numbers",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Fable's approval suffices for D-numbers unless the user says otherwise, starting with D35.",
+  "source": "memory:reference-generic-algorithms.md"
+}

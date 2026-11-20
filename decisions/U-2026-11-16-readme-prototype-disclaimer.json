@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-16-readme-prototype-disclaimer",
+  "date": "2026-11-16",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Every README on PyPI says the project is a working prototype that needs a human audit.",
+  "prs": [
+    1323
+  ],
+  "amended_by": [
+    "U-2026-11-16-disclaimer-replaced-with-evidence"
+  ],
+  "source": "memory:readme-disclaimer-1-0.md",
+  "note": "Standing rule from before 2026-11-16; its own date is not recorded."
+}

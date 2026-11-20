@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-05-template-runtime-1-0",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "For 1.0 a template repository is the pipeline runtime, and a hosted runtime comes after 1.0.",
+  "issues": [
+    771
+  ],
+  "source": "memory:product-vision.md"
+}

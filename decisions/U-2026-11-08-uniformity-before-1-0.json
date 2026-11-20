@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-08-uniformity-before-1-0",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "#925, #918, #271 and #185 stay before 1.0 with code uniformity a 1.0 goal, #248 stays after 1.0, and #1270 is in M2.",
+  "issues": [
+    185,
+    248,
+    271,
+    918,
+    925,
+    1270
+  ],
+  "source": "memory:road-to-1-0.md"
+}

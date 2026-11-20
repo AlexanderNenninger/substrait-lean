@@ -1,0 +1,20 @@
+{
+  "id": "F67",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1608 item 12 (a) and (b) go ahead with corrections (exact form qty*COUNT(qty) > SUM(qty), no lift rewrite); correlated [NOT] EXISTS lifts as semi/anti join under nine conditions; correlated IN/NOT IN may follow.",
+  "issues": [
+    345,
+    813,
+    929,
+    1608
+  ],
+  "amended_by": [
+    "F71",
+    "F82"
+  ],
+  "source": "fable-ruling-1608-items-11-12.md",
+  "note": "File titled 'Ruling 67'. Its 12d finding (x86-64 Linux double rounding) is withdrawn for the shipped wheel by ruling 71. 12b and 12c are follow-ups. No D-number."
+}

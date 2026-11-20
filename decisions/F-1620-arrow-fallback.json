@@ -1,0 +1,16 @@
+{
+  "id": "F-1620-arrow-fallback",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1620 accepted for a local engine: where DuckDB cannot load httpfs/aws, a Delta table reads through Arrow as on main; sverify runs no INSTALL. Adds step N11 (report names each table's read route) before 1.0.",
+  "issues": [
+    173
+  ],
+  "prs": [
+    1620
+  ],
+  "source": "fable-ruling-1620-arrow-fallback.md",
+  "note": "Withdraws the refusal sentence of section 3.1 of the native-scans design (#173); section 10 item 3 stays the user's open choice."
+}

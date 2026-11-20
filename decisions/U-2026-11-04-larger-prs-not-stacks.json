@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-04-larger-prs-not-stacks",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Items touching the same files go to one session as one larger PR rather than a stack, and only disjoint files run in parallel.",
+  "source": "memory:ci-policy.md"
+}

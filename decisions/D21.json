@@ -1,0 +1,14 @@
+{
+  "id": "D21",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Sverify tightens the reference (raise plus a rarely binding precondition) where that costs little, over engine shims.",
+  "prs": [
+    562
+  ],
+  "amended_by": [
+    "D47"
+  ]
+}

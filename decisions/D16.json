@@ -1,0 +1,15 @@
+{
+  "id": "D16",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "An engine runs a plan correctly when it returns a result the reference allows or raises only where the reference may; resource errors are excluded.",
+  "issues": [
+    900
+  ],
+  "prs": [
+    562
+  ],
+  "note": "Amended 2026-11-08 (Engine.contract_sound, #900) and 2026-11-17 (Engine.NoRaiseSide)."
+}

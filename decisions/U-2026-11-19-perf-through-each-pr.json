@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-19-perf-through-each-pr",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Performance comes through each PR's own improvement rather than dedicated performance sessions.",
+  "source": "memory:road-to-1-0.md",
+  "note": "Date of the ruling not recorded; file date used."
+}

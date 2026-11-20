@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-05-ontology-needs-design",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The ontology layer #772 needs another design discussion with the user before any implementation.",
+  "issues": [
+    772,
+    779,
+    791,
+    792
+  ],
+  "source": "memory:product-vision.md"
+}

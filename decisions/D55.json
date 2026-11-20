@@ -1,0 +1,18 @@
+{
+  "id": "D55",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "fp.round accepts TIE_TO_EVEN at zero digits, so SQL CAST of a double to BIGINT lifts as a cast of the rounded value; the default is unchanged.",
+  "issues": [
+    322
+  ],
+  "prs": [
+    1959
+  ],
+  "amends": [
+    "D42"
+  ],
+  "note": "Signed in ruling 106 (fable-ruling-322-rounding-cast.md); its section is not yet in decisions.md (#1959)."
+}

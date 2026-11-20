@@ -1,0 +1,18 @@
+{
+  "id": "F106",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "SQL CAST of a double to BIGINT lifts as ftoi(froundEven x); D55 assigned (fp.round accepts TIE_TO_EVEN at zero digits, default unchanged); decimals lift as rescale then cast; all tier-1 writers write froundEven; #322 does not gate 1.0.",
+  "issues": [
+    322,
+    1608
+  ],
+  "amends": [
+    "D42",
+    "F-1608-cast-double-bigint"
+  ],
+  "source": "fable-ruling-322-rounding-cast.md",
+  "note": "Ruling 106. D55 'replaces the dated amendment to D42 of my 2026-11-18 ruling'; D42's rounding row gets a pointer to D55. Follows ruling 105 with the user's (b). Snowflake writer refuses froundEven; details in the private evidence."
+}

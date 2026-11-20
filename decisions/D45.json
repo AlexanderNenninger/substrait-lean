@@ -1,0 +1,19 @@
+{
+  "id": "D45",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "QUANTILE_DISC picks a member of a class, as MIN and MAX do; window frames join.",
+  "issues": [
+    1512
+  ],
+  "prs": [
+    1550,
+    1575
+  ],
+  "amended_by": [
+    "F-c2-determinism-d48"
+  ],
+  "note": "Window amendment of 2026-11-17 from the theory advisor; the decision text says the user's approval was pending on its pull request."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-09-perf-checks-report-only",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The Lean budget and checker-speed checks only report and never block important work; a PR over budget explains it and a follow-up fixes it.",
+  "amends": [
+    "U-2026-11-09-fast-builds-priority"
+  ],
+  "source": "memory:build-performance-priority.md"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "D66",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "reserved",
+  "summary": "Reserved for struct casts, refused by design at 1.0 (ruling 186).",
+  "issues": [
+    1918,
+    1919
+  ],
+  "prs": [
+    1978
+  ],
+  "note": "Reserved in ruling 186."
+}

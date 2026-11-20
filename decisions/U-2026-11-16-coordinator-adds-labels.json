@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-16-coordinator-adds-labels",
+  "date": "2026-11-16",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The coordinator may add the reviewed label after a reviewer's approval, so the auto-queue merges the PR once qa is green.",
+  "source": "memory:sonnet-worker-pool.md"
+}

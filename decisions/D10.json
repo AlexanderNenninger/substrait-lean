@@ -1,0 +1,15 @@
+{
+  "id": "D10",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Whether a result is determined up to row order is reported by default and required by consumers that state it (incremental refreshes, idempotent sinks).",
+  "prs": [
+    562
+  ],
+  "amended_by": [
+    "D48",
+    "F-c2-determinism-d48"
+  ]
+}

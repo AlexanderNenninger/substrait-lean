@@ -1,0 +1,14 @@
+{
+  "id": "D20",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Each output has two observations, q_post for correctness and q_det for determinism, checked independently.",
+  "prs": [
+    562
+  ],
+  "amended_by": [
+    "F-c2-determinism-d48"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-18-small-slowdowns-acceptable",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Small stated performance slowdowns are acceptable, but run and build times must not balloon, so trends across PRs are watched and fixed.",
+  "source": "memory:build-performance-priority.md"
+}

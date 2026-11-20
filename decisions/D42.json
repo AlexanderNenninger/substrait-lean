@@ -1,0 +1,16 @@
+{
+  "id": "D42",
+  "date": "2026-11-15",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Records the reference's value of every option no earlier decision states; changes no behaviour.",
+  "issues": [
+    1446
+  ],
+  "amended_by": [
+    "D55",
+    "F-1608-cast-double-bigint",
+    "F106"
+  ]
+}

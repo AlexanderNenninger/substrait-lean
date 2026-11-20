@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-19-pypi-publisher-per-engine",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "PyPI trusted publishing for the engine packages uses one environment per engine.",
+  "source": "memory:road-to-1-0.md",
+  "note": "Date of the ruling not recorded; file date used."
+}

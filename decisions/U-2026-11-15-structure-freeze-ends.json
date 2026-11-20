@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-15-structure-freeze-ends",
+  "date": "2026-11-15",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The structure-first feature freeze ends with #1189's completion.",
+  "issues": [
+    1189,
+    1285
+  ],
+  "amends": [
+    "U-2026-11-08-engine-package-structure-first"
+  ],
+  "source": "github:#1189 comment 6890848755"
+}

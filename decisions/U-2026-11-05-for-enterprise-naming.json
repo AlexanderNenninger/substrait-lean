@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-05-for-enterprise-naming",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The deploy path on an organisation's own infrastructure is called for enterprise, and the GitHub-only path is everything in your repository.",
+  "issues": [
+    771,
+    787
+  ],
+  "source": "memory:product-vision.md"
+}

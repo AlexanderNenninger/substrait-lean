@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-02-coordinator-merges-green",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The coordinator merges green PRs on its own judgement and asks the user only for releases, tags, repo settings and reversals of the user's decisions.",
+  "source": "memory:merge-authority.md"
+}

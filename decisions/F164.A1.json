@@ -1,0 +1,20 @@
+{
+  "id": "F164.A1",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The Polars join_where swap is dropped after homelab measurements showed the old path faster and smaller; leftovers are a polars-join-where fact and the D19 note without join_where. #1857 (Polars left join returns where a conjunct raises) is a bug.",
+  "issues": [
+    1447,
+    1857
+  ],
+  "supersedes": [
+    "F162.P"
+  ],
+  "amends": [
+    "F164"
+  ],
+  "source": "fable-ruling-164-join-condition-errors.md",
+  "note": "Amendment of 2026-11-19, log entry 170, appended to the ruling 164 file."
+}

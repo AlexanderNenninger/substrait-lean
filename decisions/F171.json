@@ -1,0 +1,17 @@
+{
+  "id": "F171",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Corrects ruling 154's condition 1 (MAX and AVG fail htr at all three engines; refusal stands) and rules that list_null_order's scope may be pinned to list arguments in a later PR (L1 to L6), adding a row to D34's table.",
+  "supersedes": [
+    "F154.C1"
+  ],
+  "amends": [
+    "D34",
+    "F154"
+  ],
+  "source": "fable-ruling-154-trackB-f3-nodouble.md",
+  "note": "Log entry 171, inside the ruling 154 file. No D-number; D34's scope table gains 'list_null_order | an argument is a list, or holds one' with a dated note (a pinning D34 allows, not a change to D34's rule)."
+}

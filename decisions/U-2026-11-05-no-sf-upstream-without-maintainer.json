@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-05-no-sf-upstream-without-maintainer",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Snowflake bugs are not filed upstream without the maintainer.",
+  "source": "memory:snowflake-evidence-private.md"
+}

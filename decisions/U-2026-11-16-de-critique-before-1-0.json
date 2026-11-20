@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-16-de-critique-before-1-0",
+  "date": "2026-11-16",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The data-engineering critique #1485 also goes in before 1.0, in milestone M5.",
+  "issues": [
+    347,
+    441,
+    814,
+    866,
+    1485
+  ],
+  "source": "memory:fm-critique-before-1-0.md",
+  "note": "#866, #814, #347 moved to M4 and #441 to M2."
+}

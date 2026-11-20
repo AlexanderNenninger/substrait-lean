@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-05-iot-on-hold",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "IoT work is on hold and possibly separate from sverify.",
+  "issues": [
+    781,
+    782
+  ],
+  "source": "memory:product-vision.md"
+}

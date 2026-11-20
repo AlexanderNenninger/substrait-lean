@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-18-aws-runners-free-plan",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "superseded",
+  "summary": "The AWS spot runner infrastructure starts on the Free plan.",
+  "superseded_by": [
+    "U-2026-11-18-aws-runners-paid-plan"
+  ],
+  "source": "memory:aws-runner-free-plan.md",
+  "note": "Replaced later the same day."
+}

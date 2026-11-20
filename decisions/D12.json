@@ -1,0 +1,11 @@
+{
+  "id": "D12",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The user states the observation q; other ensures are checked on q's canonical representative or rejected.",
+  "prs": [
+    562
+  ]
+}

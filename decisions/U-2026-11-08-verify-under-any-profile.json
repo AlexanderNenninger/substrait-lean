@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-08-verify-under-any-profile",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "verify runs under any profile, reference to engine with shims or engine to engine natively with semantics=X, and _PROFILE_REQUESTS stays.",
+  "issues": [
+    1189
+  ],
+  "source": "memory:verify-two-paths.md",
+  "note": "Rejects a #1189 comment saying the reference is the only verify semantics."
+}

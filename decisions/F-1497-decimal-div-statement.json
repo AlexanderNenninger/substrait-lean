@@ -1,0 +1,16 @@
+{
+  "id": "F-1497-decimal-div-statement",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "sverify_decimal_div's declared type is checked by a post-pass over the parsed plan with a kinds branch and a SUM/COUNT shape branch, one inequality p >= P + k with no min 38.",
+  "issues": [
+    1497
+  ],
+  "amended_by": [
+    "F63"
+  ],
+  "source": "fable-ruling-1497-decimal-div-statement.md",
+  "note": "Follow-up of 'ruling 1523 item 4'. Its 'Else the refusal' line is replaced by ruling 63; predicate, branches and post-pass stand. No D-number."
+}

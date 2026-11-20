@@ -1,0 +1,17 @@
+{
+  "id": "F167",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Note 167: conditions E1-E8 for the exact integer-limb state (overflow guard, checked mantissa split, limb lemma under `no_drift`, trust-base update, bounded finish, property test, engine rollout, bit-exact native finish); `no_drift` keeps its statement.",
+  "issues": [
+    1329,
+    1447
+  ],
+  "amended_by": [
+    "F174"
+  ],
+  "source": "fable-note-167-exact-limb-state.md",
+  "note": "No D-number. Amended 2026-11-20 by ruling 174: E7 now has DuckDB, Polars and Spark run limbs (Snowflake keeps today's path); E2's check is a normal-form check tested against frexp."
+}

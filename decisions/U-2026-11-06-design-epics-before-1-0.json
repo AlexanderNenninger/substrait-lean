@@ -1,0 +1,21 @@
+{
+  "id": "U-2026-11-06-design-epics-before-1-0",
+  "date": "2026-11-06",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "All core design epics and design issues #928 to #933 come before 1.0, quality before speed.",
+  "issues": [
+    906,
+    907,
+    919,
+    926,
+    928,
+    929,
+    930,
+    931,
+    932,
+    933
+  ],
+  "source": "memory:road-to-1-0.md"
+}

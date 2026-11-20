@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-18-self-hosted-runners-allowed",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Ephemeral AWS spot self-hosted runners are allowed for CI, while homelab stays a driver-run box and not a runner.",
+  "prs": [
+    1737
+  ],
+  "supersedes": [
+    "U-2026-11-04-no-self-hosted-runners"
+  ],
+  "source": "memory:ci-policy.md"
+}

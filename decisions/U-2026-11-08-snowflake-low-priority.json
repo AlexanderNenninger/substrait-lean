@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-snowflake-low-priority",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Snowflake is low priority, with no push to record or fuzz it.",
+  "source": "memory:road-to-1-0.md"
+}

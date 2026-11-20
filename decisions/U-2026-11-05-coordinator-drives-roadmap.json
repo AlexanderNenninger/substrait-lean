@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-05-coordinator-drives-roadmap",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The coordinator drives the 1.0 roadmap independently and batches questions for the user.",
+  "issues": [
+    757
+  ],
+  "source": "memory:road-to-1-0.md"
+}

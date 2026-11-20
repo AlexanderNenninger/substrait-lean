@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-09-standard-drivers",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Expensive runs go through standardised drivers that hold capacity slots rather than hand-written wait loops.",
+  "source": "memory:drivers.md"
+}

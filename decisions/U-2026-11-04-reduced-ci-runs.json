@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-04-reduced-ci-runs",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "CI runs reduced job sets on pull requests according to what a change can affect, as CLAUDE.md records.",
+  "source": "memory:ci-policy.md"
+}

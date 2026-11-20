@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-coordinator-owns-scheduling",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Scheduling, ordering, queueing and re-plans are the coordinator's own call, with Fable consulted before the user.",
+  "source": "memory:fable-theory-advisor.md"
+}

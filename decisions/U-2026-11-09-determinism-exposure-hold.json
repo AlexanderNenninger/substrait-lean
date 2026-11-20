@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-09-determinism-exposure-hold",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "superseded",
+  "summary": "Exposing determinism and row order waits for a proper observables system.",
+  "issues": [
+    1285
+  ],
+  "superseded_by": [
+    "U-2026-11-19-observables-hold-lifted"
+  ],
+  "source": "memory:determinism-as-certificate.md"
+}

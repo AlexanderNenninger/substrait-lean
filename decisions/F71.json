@@ -1,0 +1,22 @@
+{
+  "id": "F71",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "12d answered: DuckDB's profile integer mean (one double division) stands and no longer gates semantics='duckdb' on Linux; targeted probe pairs and a facts PR for duckdb-avg-int.json close the fact.",
+  "issues": [
+    1608
+  ],
+  "supersedes": [
+    "F67.12d"
+  ],
+  "amends": [
+    "F67"
+  ],
+  "amended_by": [
+    "F74"
+  ],
+  "source": "fable-ruling-1608-12d-probe.md",
+  "note": "File titled 'Ruling 71'. Withdraws ruling 67's remark that 'no error below 2^53' is false, for the shipped wheel; the threshold refusal stays. No D-number."
+}

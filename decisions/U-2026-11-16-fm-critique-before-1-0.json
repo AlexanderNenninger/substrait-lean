@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-16-fm-critique-before-1-0",
+  "date": "2026-11-16",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The formal-methods critique #1484 is fixed or explicitly rescoped before 1.0.",
+  "issues": [
+    1484
+  ],
+  "source": "memory:fm-critique-before-1-0.md"
+}

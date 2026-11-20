@@ -1,0 +1,13 @@
+{
+  "id": "F-173-n7-sinks-order",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#173: N6 (stores) comes before N7 (sinks), and N7 builds on the engine's real handles; Arrow-backed writers (A) and a DuckDB-only sink protocol (C) declined. Parquet-writer facts may start now.",
+  "issues": [
+    173,
+    1329
+  ],
+  "source": "fable-ruling-173-n7-sinks-order.md"
+}

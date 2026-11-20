@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-batch-size-one-line",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The batch merger takes one queue line holding every PR that is or soon will be green, rather than one line per arrival.",
+  "source": "memory:ci-policy.md"
+}

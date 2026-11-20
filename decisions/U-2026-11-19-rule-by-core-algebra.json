@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-19-rule-by-core-algebra",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Rulings are judged against the core's algebraic structure, naming which structure a proposal changes and checking its laws hold.",
+  "source": "memory:core-algebra.md"
+}

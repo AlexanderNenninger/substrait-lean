@@ -1,0 +1,14 @@
+{
+  "id": "F-a5-statements",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A5 (#1484 finding 4): Rel.FloatOpenSafeP is the open-float hypothesis (not Engine.RefWithin); contract_sound_near is the core step; Engine.Runs loses tested; docs must say nothing discharges the hypothesis yet.",
+  "issues": [
+    929,
+    1484
+  ],
+  "source": "fable-ruling-a5-statements.md",
+  "note": "Corrects the track-A plan's 'through Engine.RefWithin'. No D-number; notes a possible shared lemma with D48."
+}

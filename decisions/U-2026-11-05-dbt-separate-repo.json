@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-05-dbt-separate-repo",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "superseded",
+  "summary": "sverify-dbt moves to a separate private repository.",
+  "superseded_by": [
+    "U-2026-11-05-dbt-back-in-repo"
+  ],
+  "source": "memory:satellite-repos.md",
+  "note": "Split made the morning of 2026-11-05."
+}

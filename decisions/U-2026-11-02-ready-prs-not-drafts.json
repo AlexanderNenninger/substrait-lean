@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-02-ready-prs-not-drafts",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Sessions open PRs ready for review rather than as drafts, unless the work is unfinished.",
+  "source": "memory:merge-authority.md"
+}

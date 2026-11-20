@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-05-releases-dont-gate-merges",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Releases do not gate merges: breaking changes land when ready and a pending release folds in what main gains.",
+  "source": "memory:releases-suggestion.md"
+}

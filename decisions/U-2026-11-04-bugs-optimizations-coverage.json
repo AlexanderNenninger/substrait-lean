@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-04-bugs-optimizations-coverage",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "With no task assigned, work picks bugs, then optimizations, then coverage, on non-overlapping files.",
+  "issues": [
+    60,
+    246
+  ],
+  "supersedes": [
+    "U-2026-11-02-optimizations-deferred"
+  ],
+  "source": "memory:work-priority-order.md"
+}

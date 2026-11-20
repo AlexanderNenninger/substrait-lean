@@ -1,0 +1,19 @@
+{
+  "id": "F162.P",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "withdrawn",
+  "summary": "The Polars keyless join may swap cross join plus filter for join_where under P1-P7 (fact first, only pure range residuals, measured on homelab).",
+  "issues": [
+    1447
+  ],
+  "superseded_by": [
+    "F164.A1"
+  ],
+  "amended_by": [
+    "F164"
+  ],
+  "source": "fable-ruling-162-1447-asof-join.md",
+  "note": "P2 amended by ruling 164 (mixed residuals split); then the whole swap dropped by ruling 164's amendment (log entry 170) after P6's measurements showed the old path faster."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-15-autonomous-worker-pool",
+  "date": "2026-11-15",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "The coordinator continues without the user, with Sonnet workers implementing and Fable advising on architecture.",
+  "source": "memory:sonnet-worker-pool.md"
+}

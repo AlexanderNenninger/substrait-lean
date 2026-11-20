@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-05-snowflake-evidence-private",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Snowflake evidence stays in a private repository, and public sverify gets only its own Snowflake SQL writer fixes.",
+  "source": "memory:snowflake-evidence-private.md"
+}

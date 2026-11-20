@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-09-fast-builds-priority",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Build optimizations are a standing priority because they set development velocity.",
+  "amended_by": [
+    "U-2026-11-09-perf-checks-report-only"
+  ],
+  "source": "memory:build-performance-priority.md"
+}

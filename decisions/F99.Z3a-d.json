@@ -1,0 +1,16 @@
+{
+  "id": "F99.Z3a-d",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "Z3a-Z3d: an instant literal has no kind and is accepted only as a direct comparison or IN operand read by argKind; elsewhere refused.",
+  "issues": [
+    1725
+  ],
+  "superseded_by": [
+    "F101"
+  ],
+  "source": "fable-ruling-utc-timestamps-survey.md",
+  "note": "F101: 'Step 2 replaces Z3a to Z3d'; 'Z3a to Z3d of ruling 99 are not built' (the instant literal gets kind .timeTz via the conversion function)."
+}

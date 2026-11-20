@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-02-no-main-updates-before-merge",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "PRs are not updated with main before merging, only when they conflict or fail CI.",
+  "source": "memory:merge-authority.md",
+  "note": "Date taken from the memory's header; the quote is undated."
+}

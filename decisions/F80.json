@@ -1,0 +1,20 @@
+{
+  "id": "F80",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D51 Lean/Python pre-build statements accepted: Text.upper/lower as definitions over the generated table; issue caseDiffers and option case_mapping; facts renamed upperAgreed/lowerAgreed with one per-column kinds list; ILIKE stays under D43's ASCII raise until fold facts exist.",
+  "issues": [
+    1631
+  ],
+  "amends": [
+    "D51",
+    "F62"
+  ],
+  "amended_by": [
+    "F83"
+  ],
+  "source": "fable-ruling-d51-prebuild.md",
+  "note": "D51's text gains a third sentence (ILIKE stays under D43 until its fold facts exist). Preferred reading of C3: pyspark 4.0.1/4.1.1 outside Spark's narrowed guard. Entry 83 (index only) says no pyspark version refusal in #1690."
+}

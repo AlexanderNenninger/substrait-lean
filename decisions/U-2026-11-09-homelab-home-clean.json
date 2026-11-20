@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-09-homelab-home-clean",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Homelab scratch goes in a run directory or a per-session results folder and is removed when the task ends.",
+  "source": "memory:drivers.md"
+}

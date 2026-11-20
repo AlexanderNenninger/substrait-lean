@@ -1,0 +1,16 @@
+{
+  "id": "F146",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "AVG leaves #1805, which states the corollary for a double SUM only; SumNear for AVG stays a named hypothesis; an unconditional AVG lemma (B1, B2) goes with track A's ruling 135 (b) follow-up.",
+  "prs": [
+    1805
+  ],
+  "amends": [
+    "F135"
+  ],
+  "source": "fable-ruling-146-f3-avg-deferred.md",
+  "note": "'Amends ruling 135's condition 3.' No D-number. Also a non-ruling note on ruling 132 (b) (#1818's 2^20 guard stands)."
+}

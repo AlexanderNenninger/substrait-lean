@@ -1,0 +1,13 @@
+{
+  "id": "D65",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "reserved",
+  "summary": "Reserved in ruling 186, beside D66 (binary values, struct casts and float32 constants).",
+  "issues": [
+    1918,
+    1919
+  ],
+  "note": "Reserved in ruling 186; the ruling says which subject it takes."
+}

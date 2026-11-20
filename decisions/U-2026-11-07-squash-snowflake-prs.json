@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-07-squash-snowflake-prs",
+  "date": "2026-11-07",
+  "decided_by": "coordinator",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Snowflake PRs are checked for private details before they queue, and squash-merged.",
+  "source": "memory:snowflake-evidence-private.md"
+}

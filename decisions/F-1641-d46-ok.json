@@ -1,0 +1,17 @@
+{
+  "id": "F-1641-d46-ok",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Post-merge review: #1641's D46 part stands as merged with all five changes in; nothing reverts. #1643 (D46 B) still merges only after step A2.",
+  "issues": [
+    1643
+  ],
+  "prs": [
+    1641,
+    1646
+  ],
+  "source": "fable-ruling-1641-d46-ok.md",
+  "note": "Notes that batch #1646 merged #1641 before the D-part's OK."
+}
