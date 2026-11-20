@@ -40,7 +40,7 @@ The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | Public, proved: `to_sql(…, guards=False)`, for a plan whose report's internal `_guard_free` holds |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination, implied filters, outer to inner joins, join elimination, GROUP BY through FDs, eager aggregation |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `analysis/Sverify/Analysis/Semantic.lean`: DISTINCT elimination, implied filters, outer to inner joins, join elimination, GROUP BY through FDs, eager aggregation |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | Public, proved, including split keys: `sverify.engines.run_sharded` |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | Proved, [section 4](#4-partition-and-file-pruning) |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | Not started ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/82)) |
@@ -297,7 +297,7 @@ hold:
   for `fn(DISTINCT x)` when `x` alone is a key (`COUNT(DISTINCT id)` becomes
   `COUNT(id)`).
 
-Wiring. `Rel.optimize` (`SubstraitLean/Semantic.lean`) applies the
+Wiring. `Rel.optimize` (`analysis/Sverify/Analysis/Semantic.lean`) applies the
 rewrites bottom-up, deciding each from the analyses of the already rewritten
 inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
 is well-formed, has the same arity and gives the same list of rows (not just
@@ -414,7 +414,7 @@ through the request's `"rules"`.
 (`stats_table`, `stats_bounds`). A source with a condition,
 `DeltaSource(uri, where=...)` or `IcebergSource(catalog, name, where=...)`,
 reads the rows on which it is TRUE and skips the data files whose statistics
-rule it out. `SubstraitLean/Pruning.lean` proves the criterion:
+rule it out. `analysis/Sverify/Analysis/Pruning.lean` proves the criterion:
 
 * Shard the source by data file. A skipped file's shard holds no row on
   which the condition is TRUE, so dropping it leaves a sharding of the same
@@ -456,7 +456,7 @@ A view can also imply a predicate on a base table that the query does not
 state, and engines do not derive one. With `o.ts >= c.since` in a join of
 orders and customers, and `since >= DATE '2026-01-01'` among the
 customers' preconditions, only orders from 2026 on can reach the result.
-`Rel.need` (`SubstraitLean/Implied.lean`) finds such predicates. It pushes
+`Rel.need` (`analysis/Sverify/Analysis/Implied.lean`) finds such predicates. It pushes
 a demand down the plan through filters, emits, projections, unions and
 inner joins. At a join, it refines the join condition and the demand on
 the other input's abstract values (`Rel.aeval`), carrying bounds across
@@ -491,12 +491,12 @@ over Z-sets (`Rel.incremental_sound` in
 [`analysis/Sverify/Analysis/Incremental.lean`](../analysis/Sverify/Analysis/Incremental.lean)).
 Further delta rules cover operators that are not linear: `COUNT` and
 integer `SUM` per group, and `DISTINCT`
-([`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+([`analysis/Sverify/Analysis/IncrementalAgg.lean`](../analysis/Sverify/Analysis/IncrementalAgg.lean),
 [`sverify._linear`](../python/src/sverify/_linear.py)),
 exact `SUM` and `AVG`, `MIN` and `MAX` per group
-([`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)),
+([`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)),
 and semi and anti joins
-([`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean),
+([`analysis/Sverify/Analysis/IncrementalSemi.lean`](../analysis/Sverify/Analysis/IncrementalSemi.lean),
 [`sverify._semi`](../python/src/sverify/_semi.py)).
 
 `COUNT` and `SUM` per group are linear over Z-sets: each is a sum of a
@@ -537,7 +537,7 @@ each changed row's value times its weight to it, and the view's value is
 the exact sum rounded once, `floatSumCR`. Lean proves that after any
 sequence of batches the state finishes to the aggregate of the current rows
 (`LinearAgg.fsum_no_drift` in
-[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)):
+[`analysis/Sverify/Analysis/IncrementalFloat.lean`](../analysis/Sverify/Analysis/IncrementalFloat.lean)):
 a delete cancels its insert exactly. Over 1,000 batches of the prototype
 (`python -m sverify_dev.ivm_float_sum`), a running double sum was off in
 17,226 of 18,432 group results, the worst by 9.4·10¹⁴ ulps. The engine keeps the integer itself, in limbs: a finite double is

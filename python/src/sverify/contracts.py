@@ -27,7 +27,7 @@ Contracted transformations compose. When the result of one feeds another, the
 downstream precondition is *proved* from the upstream contract instead of
 checked on the data, and the downstream postconditions are proved assuming
 only what the upstream one guarantees (`Triple.compose` in
-`SubstraitLean/Compose.lean`):
+`analysis/Sverify/Analysis/Compose.lean`):
 
     @sv.transform(
         requires={"orders": [_.amount >= 0, _.amount < 1_000_000_000, sv.unique("id")]},

@@ -17,7 +17,7 @@ A view of a contracted transformation (`sverify.transform`, possibly
 composed) keeps its proved postconditions in every state: the preconditions
 on the base tables are checked once in full, and then only on each batch
 (row conditions on the inserted rows, `unique` keys against the kept keys;
-`Spec.update`, `Triple.maintained` in `SubstraitLean/Compose.lean`).
+`Spec.update`, `Triple.maintained` in `analysis/Sverify/Analysis/Compose.lean`).
 Postconditions a transform checks on its output instead of proving them
 (`on_unproved="check"`) are checked on the view's full state once, and then
 on the rows each batch inserts into it, before anything is replaced
@@ -40,7 +40,7 @@ Sources come from a table format (`sverify.io`): `Pipeline.source` loads a
 snapshot and records its version, and a refresh applies the format's change
 feed from the recorded version to the latest, advancing the version in the
 same commit. The feed is trusted to turn the old snapshot into the new one
-(`ChangeFeed`, `Rel.cdf_sound` in `SubstraitLean/TableFormat.lean`), and
+(`ChangeFeed`, `Rel.cdf_sound` in `analysis/Sverify/Analysis/TableFormat.lean`), and
 every `RefreshReport` says so; where the feed is unavailable, the new
 snapshot is diffed against the view's state instead and the views reading it
 are recomputed (`ChangeFeed.of_diff`). A source whose schema changed is read

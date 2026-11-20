@@ -1,4 +1,4 @@
-import SubstraitLean.Compose
+import Sverify.Analysis.Compose
 
 /-!
 # Table formats: change feeds and file statistics

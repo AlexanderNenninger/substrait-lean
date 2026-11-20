@@ -948,21 +948,21 @@ A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
 over an input with delta rules, is maintained from a count and a sum per
 group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
-[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[`analysis/Sverify/Analysis/IncrementalAgg.lean`](../analysis/Sverify/Analysis/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
 `DECIMAL` `SUM` and `AVG` keep the same state, `SUM`, `AVG`, `VAR`,
 `STDDEV`, `COVAR` and `CORR` of doubles an exact one, rounded once, with no
 drift
 (`LinearAgg.fsum_no_drift` in
-[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
+[`analysis/Sverify/Analysis/IncrementalFloat.lean`](../analysis/Sverify/Analysis/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
 groups it deletes from are recomputed from the new input
 (`ExtremeAgg.extreme_maintained` in
-[`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)).
+[`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)).
 A node that ends in a semi or anti join on equal keys keeps a count of
 matches per key and reads the left input only for the keys whose count
 leaves or returns to 0 (`SemiDelta.semi_maintained` in
-[`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean)).
+[`analysis/Sverify/Analysis/IncrementalSemi.lean`](../analysis/Sverify/Analysis/IncrementalSemi.lean)).
 A node without delta rules (left join, other aggregates, window, `LIMIT`) is
 recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
