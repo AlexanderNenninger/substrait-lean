@@ -45,6 +45,17 @@ def test_explicit_route_is_taken_or_refused(con) -> None:
         routes.choose(report, "duckdb", "sideways")  # type: ignore[arg-type]
 
 
+def test_explicit_route_refusal_names_its_exit(con) -> None:
+    """A refused explicit route says how to reach the engine (#1046)."""
+    duck = sv.verify(
+        "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
+    )
+    r = routes.choose(duck, "polars", "translated")
+    assert r.refused and "verify with semantics='reference' to run on polars" in r.reason
+    r = routes.choose(duck, "duckdb", "transfer")
+    assert r.refused and 'route="auto" tries every route' in r.reason
+
+
 def test_run_chooses_a_route_by_default(con) -> None:
     duck = sv.verify(
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"

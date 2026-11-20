@@ -531,6 +531,44 @@ def _(mo):
     taken from a condition holds on every row that passes it, and every
     operator above keeps it.
 
+    ## Typed values
+
+    Say the billing job sums prices with two decimals. A total that rounds
+    away a cent looks right and is wrong, and nobody gets paged. Every value
+    Sverify models has a kind: an integer, a double, a decimal with its
+    scale, a date, a timestamp. A double never passes for an integer, and a
+    decimal keeps its scale through a `SUM`. A plan that mixes kinds the
+    checker can't type is refused before it runs. A column it can't read at
+    all is refused when we state the contract, and the refusal names the
+    cast that gets past it:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, mo, sv):
+    _items = ibis.table({"id": "int64", "price": "decimal(10,2)", "qty": "uint8"}, name="items")
+    _total = sv.verify(_items.group_by("id").agg(total=_items.price.sum()))
+    try:
+        sv.verify(_items.select(_items.id, _items.qty))
+        _refusal = "(accepted)"
+    except Exception as _e:
+        _refusal = f"`{type(_e).__name__}`: {_e}"
+    mo.md(
+        f"The type of `total`, a `SUM` of `decimal(10, 2)`: `{_total.output['total']}`\n\n"
+        f"Reading the unsigned column: {_refusal}"
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The sum keeps the scale of two, and its width grows to hold it. The proof
+    behind the kinds is `Rel.kinds_sound`: a well-kinded plan evaluates to
+    values of the kinds it states
+    ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proofs.md)).
+
     ## Runtime errors
 
     Say you are on call this week. At 3 a.m. a pipeline that was correct

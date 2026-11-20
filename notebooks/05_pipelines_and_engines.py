@@ -1290,6 +1290,46 @@ def _(con, mo, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    The reference isn't the only semantics to prove a plan under. With
+    `semantics="polars"`, Sverify proves it under Polars's own rules, the
+    ones your Polars run follows. The proof then reaches Polars directly
+    (`native`). It reaches another engine only where that engine's choices
+    stay within Polars's on every option the plan reads (`transfer`), and
+    the translation from the reference no longer applies, since the
+    reference isn't the semantics we verified under:
+    """)
+    return
+
+
+@app.cell
+def _(con, mo, sv):
+    from sverify.errors import RouteError
+
+    _t, _u = con.table("t"), con.table("u")
+    _own = sv.verify(_t.join(_u, _t.k == _u.k).select(_t.k, _t.qty, _u.label), semantics="polars")
+    _own.run(con, "polars", route="auto")
+    try:
+        _own.run(con, "duckdb", route="translated")
+        _refusal = "(taken)"
+    except RouteError as _e:
+        _refusal = f"`{type(_e).__name__}`: {_e}"
+    mo.md(f"Route on Polars: {_own.routes['polars']}\n\nAn explicit route on DuckDB: {_refusal}")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    An explicit `route=` is taken or refused, never replaced by another, and
+    the refusal says how to reach the engine: verify under the reference, or
+    leave the choice to `route="auto"`.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     A stored node also needs a rerun to reproduce its result, since its sink
     commits each epoch once. The sink states what that means: exact bits
     (`reproducible=sv.equivalent()`), or doubles within a tolerance,
