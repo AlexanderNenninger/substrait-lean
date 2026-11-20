@@ -1,0 +1,11 @@
+{
+  "id": "D8",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Where a key's direction is UNSPECIFIED, the reference puts NULLs last in both directions.",
+  "prs": [
+    562
+  ]
+}

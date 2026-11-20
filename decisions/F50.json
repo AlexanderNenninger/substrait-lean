@@ -1,0 +1,22 @@
+{
+  "id": "F50",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A6 (PR #1623): check_proved_on and its three engine corollaries accepted; closed stays the float-safety field and underReference stays on the DuckDB corollary; five text conditions.",
+  "issues": [
+    918,
+    929,
+    1484,
+    1598
+  ],
+  "prs": [
+    1623
+  ],
+  "amended_by": [
+    "F51"
+  ],
+  "source": "fable-ruling-a6-statements.md",
+  "note": "Its follow-up 'A7 adds a Lean example that instantiates each corollary on a golden' is amended by the A7 ruling (no kernel example; #guard plus pointers)."
+}

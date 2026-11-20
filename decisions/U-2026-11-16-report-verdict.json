@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-16-report-verdict",
+  "date": "2026-11-16",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Report.verdict replaces Report.proved with no alias, taking the values proved, proved_with_checks or unproved, and bool(verdict) raises.",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1526
+  ],
+  "source": "memory:api-decisions-1-0.md",
+  "note": "Values set by Fable; black-box laws listed in Report.black_boxes per F140; a refuted value is held back."
+}

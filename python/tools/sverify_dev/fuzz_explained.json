@@ -1,0 +1,4 @@
+{
+ "comment": "Rules that explain the nightly fuzz run's mismatches (#747, fuzz_nightly.py). Each matches signatures [kind, shape, class]: `kind` exactly, `shape` as a regular expression searched in the literal-blanked SQL (or the test's node), `class` exactly when given. It names one explanation: `issue` (an open issue number), `fact` (an id in engines/<engine>/facts/) or `upstream` (an id in upstream/bugs/). The first matching rule wins.",
+ "rules": []
+}

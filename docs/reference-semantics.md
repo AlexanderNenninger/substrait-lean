@@ -281,7 +281,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 |---|---|---|
 | Logic | Three-valued (Kleene): `AND`, `OR`, `NOT`, comparisons. | ✓ |
 | Constants that raise | A constant subexpression that raises (`1 // 0 = 1`, in any branch of a `CASE`, in a `WHERE`) raises for the whole plan, on any data, an empty table included: DuckDB evaluates a `CASE`'s constant conditions when it plans the query (DD-7). No precondition rules one out; the report names the constant (`Issue.constant`). | ✓ (`Rel.constIssues`) |
-| Errors under `AND`, `OR` | Eager: an error in either operand may raise, whatever the other operand's value, as DuckDB and Polars evaluate both. `x <> 0 AND 10 // x > 1` may divide by zero; `(CASE WHEN x <> 0 THEN 10 // x END) > 1` does not. A boolean `CASE` is evaluated whole, as `AND`/`OR` (`Parse.eagerly`); another `CASE` evaluates only the branch it takes. The report flags an error inside an `AND` or `OR` and suggests the `CASE`. | ✓ (`Expr.issues` of `.bin`; the hint: `Issue.under_and_or`) |
+| Errors under `AND`, `OR` | The core is eager (D19), and the SQL and Ibis frontends lift `p AND q` so an operation in `q` runs only where `p` is not FALSE (`OR`: not TRUE), D50. `x <> 0 AND 10 // x > 1` is proved, for the top three levels of a nest (interim, D50). `semantics="duckdb"` keeps the eager reading. | ✓ (`Expr.andLift`, `Expr.andG_false`) |
 | `WHERE`, `ON`, `HAVING`-style conditions | Keep a row only when the condition `IS TRUE` (`Value.isTrue`). | ✓ |
 | Functions | Propagate NULL, unless Substrait says otherwise (`COALESCE`, `IS NULL`, `CASE`, `any_match`…). | ✓ |
 | Equality for grouping | `GROUP BY`, `DISTINCT`, `UNION`, `EXCEPT`, `INTERSECT`, a window's `PARTITION BY`, `IS NOT DISTINCT FROM` and list equality treat NULLs as equal (`[1, NULL] = [1, NULL]` is TRUE). In a predicate (`WHERE`, a join's `ON`, `IN`, a `CASE` condition) a NULL never matches. A key (`sv.unique`) uses the first: two rows with NULL in a key column collide, which is stricter than SQL's `UNIQUE`. | ✓ |
@@ -369,9 +369,9 @@ construct or lists it:
   and truncates in the reference (R9), so the lift refuses it until #322. The
   hint names `CAST(round(x) AS BIGINT)`, `floor` and `ceil`, which mean the same
   on both.
-- `decimal_to_int`: the cast of a decimal rounds half away from zero on DuckDB;
-  the lift refuses it until #322, and names no spelling: the model has no
-  rounding cast of a decimal yet.
+- A cast of a decimal to an integer rounds half away from zero on DuckDB. The
+  lift reads it, under both semantics, as the rescale to scale 0 (which rounds
+  half away from zero) and the exact cast (#322).
 - `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
   is NULL here and NaN on DuckDB. `Report.dialect_differences` lists it.
 

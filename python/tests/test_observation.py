@@ -6,6 +6,7 @@ import json
 import math
 import subprocess
 import sys
+import unicodedata
 from datetime import datetime
 from typing import Any
 
@@ -19,7 +20,15 @@ from ibis import _
 import sverify as sv
 from _repo import ROOT, needs_repo
 from sverify.engine import checker_path
-from sverify.observation import _COMPONENTS, EXACT, PLAN_BOUND, Observation, Within
+from sverify.observation import (
+    _COMPONENTS,
+    _STRINGS,
+    EXACT,
+    PLAN_BOUND,
+    Observation,
+    Within,
+    string_key,
+)
 
 T = ibis.table({"k": "int64", "x": "float64", "s": "string", "ts": "timestamp"}, name="t")
 
@@ -97,6 +106,39 @@ def test_the_order_agrees_with_lean() -> None:
                 coarse: dict[str, Any] = {component: b}
                 mine = Observation(**fine).refines(Observation(**coarse))
                 assert mine == ((a, b) in le), (component, a, b)
+
+
+def test_the_string_levels_are_leans() -> None:
+    """Lean's `StringObs` constructors, in Lean's order, are `_STRINGS`."""
+    out = subprocess.run(
+        [str(checker_path()), "--options"], capture_output=True, text=True, check=True
+    )
+    assert tuple(json.loads(out.stdout)["levels"]["strings"]["levels"]) == _STRINGS
+
+
+@given(st.text())
+def test_each_string_level_is_a_function_of_the_one_before(s: str) -> None:
+    """Equal at `nfc` is equal at `casefold` is equal at `ascii`: a key is a
+    function of the previous level's key (`str_mono`), so the levels are
+    equivalences that refine one another."""
+    t = unicodedata.normalize("NFD", s)
+    assert string_key("casefold", s) == string_key("casefold", string_key("nfc", s))
+    assert string_key("ascii", s) == string_key("ascii", string_key("casefold", s))
+    assert string_key("ascii", s) == string_key("ascii", t)
+    assert all(ord(c) < 0x80 for c in string_key("ascii", s))
+
+
+def test_the_ascii_level_hides_what_it_says() -> None:
+    """`docs/core-semantics.md`'s examples: a case or width variant is one string,
+    a code point without an ASCII decomposition disappears."""
+    a = pa.table({"s": ["Straße", "Søren", "日本", "ﬃ"]})
+    b = pa.table({"s": ["STRASSE", "sren", "", "FFI"]})
+    assert not sv.equivalent(strings="casefold").equal(a, b)
+    assert sv.equivalent(strings="ascii").equal(a, b)
+    assert not sv.equivalent(strings="nfc").equal(a, b)
+    assert sv.equivalent(strings="ascii").refines(sv.equivalent(strings="ascii"))
+    assert sv.equivalent(strings="casefold").refines(sv.equivalent(strings="ascii"))
+    assert not sv.equivalent(strings="ascii").refines(sv.equivalent(strings="casefold"))
 
 
 def _python_levels(component: str) -> tuple[str, ...]:
@@ -284,3 +326,42 @@ def test_the_docs_state_the_default_observation() -> None:
         and len(cells := [c.strip() for c in line.strip("|").split("|")]) > 2
     }
     assert rows == {name: str(getattr(PLAN_BOUND, name)) for name, _ in _COMPONENTS}
+
+
+def test_a_lens_on_element_order_keeps_a_condition_on_a_list_column_dependent():
+    """`ensures list_position(pair, a) = 1` changes between results equal up
+    to `elements="multiset"`, so a condition reading a list column depends on
+    the order of its elements; one reading a scalar does not (#2005)."""
+    from sverify.observation import PLAN_BOUND, dependencies
+
+    cols = {"pair": ibis.dtype("array<int64>"), "a": ibis.dtype("int64")}
+    assert dependencies(PLAN_BOUND, object(), cols, ["pair", "a"]) == ["elements"]
+    assert dependencies(PLAN_BOUND, object(), cols, ["a"]) == []
+    assert dependencies(Observation(), object(), cols, ["pair"]) == []
+
+
+#: Scalars whose engines' `UPPER` or `LOWER` values differ in `strings="ascii"`'s key
+#: (a raise in 3b, #1285). None today: the level hides every difference D51 records.
+_ASCII_KEY_EXCEPTIONS: dict[str, set[str]] = {"upper": set(), "lower": set()}
+
+
+@needs_repo
+def test_the_ascii_level_hides_every_case_mapping_difference() -> None:
+    """D51's probed tables: for each scalar the engines map differently, and for
+    `UPPER` and `LOWER`, every engine's value has the same `ascii` key, but for
+    the committed exceptions (`_ASCII_KEY_EXCEPTIONS`)."""
+    import sys
+
+    sys.path.insert(0, str(ROOT / "python" / "tools"))
+    from sverify_dev.case_mapping import SIGMA, tables
+
+    recorded = json.loads((ROOT / "characterization" / "case-differences.json").read_text())
+    probed = tables(recorded["engines"])
+    for d in ("upper", "lower"):
+        scalars = {int(h, 16) for h in recorded[d]["differ"]} | ({SIGMA} if d == "lower" else set())
+        odd = set()
+        for c in scalars:
+            values = {t[d].get(f"{c:04X}", chr(c)) for t in probed.values()}
+            if len({string_key("ascii", v) for v in values}) > 1:
+                odd.add(f"{c:04X}")
+        assert odd == _ASCII_KEY_EXCEPTIONS[d], (d, sorted(odd))

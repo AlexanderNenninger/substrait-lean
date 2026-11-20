@@ -99,6 +99,17 @@ def test_a_reference_raise_that_verify_flags_is_not_a_finding():
     assert fuzz._findings((q, {"t": [], "u": [(1, "a")]})) == []
 
 
+def test_a_tlp_predicate_that_raises_is_not_a_finding():
+    # The partition `WHERE (k // k) = 1` raises on k = 0 where the whole query
+    # doesn't: no partition to compare, and no harness error (the first
+    # nightly run's four `core:harness` signatures).
+    base = "SELECT * FROM u AS q"
+    q = Query(
+        "SELECT TRUE AS c0 FROM u AS q", {"c0": fuzz.BOOL}, base=base, tlp_pred="(k // k) = 1"
+    )
+    assert fuzz._findings((q, {"t": [], "u": [(0, "a")]})) == []
+
+
 T_ROW = (1, 2, 0.5, "a", True, None)
 
 

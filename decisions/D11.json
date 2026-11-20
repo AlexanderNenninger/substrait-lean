@@ -1,0 +1,14 @@
+{
+  "id": "D11",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Each output's postcondition names the equivalence its consumer expects (multiset or sequence; floats within ε, exact or a stated tolerance).",
+  "issues": [
+    689
+  ],
+  "prs": [
+    562
+  ]
+}

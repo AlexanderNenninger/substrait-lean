@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-01-int-overflow-sum-at-runtime",
+  "date": "2026-11-01",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "Integer row arithmetic raises when the result leaves the declared width; integer SUM overflow is reported as may-fail and checked while the job runs, not a proof failure.",
+  "issues": [
+    202
+  ],
+  "superseded_by": [
+    "U-2026-11-03-sum-overflow-row-bounds"
+  ],
+  "source": "github:#202 comment 6566631036",
+  "note": "Unnamed 'Decided (2026-11-01)'. The SUM half later became an inferred precondition checked on data or discharged by row bounds (#219, #580, #665); row arithmetic part stands. The Isthmus normalization part was withdrawn (#202 comment 6570531287)."
+}

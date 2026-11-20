@@ -27,33 +27,6 @@ reals is proved in `float-bounds` (#899). -/
 namespace Substrait
 variable [Boxes.Ambient]
 
-/-! ## The columns an expression reads -/
-
--- `Expr.cols`, the columns an expression reads, is `core/Sverify/Core/Expr.lean`'s.
-
-/-- An expression's value depends only on the columns it reads. -/
-theorem Expr.eval_congr_cols {r r' : Row} :
-    ∀ e : Expr, (∀ i ∈ e.cols, r.getD i .null = r'.getD i .null) → e.eval r = e.eval r'
-  | .lit _, _ => rfl
-  | .field i, h => h i (List.mem_singleton_self i)
-  | .un _ a, h => by simp only [Expr.eval, Expr.eval_congr_cols a h]
-  | .bin _ a b, h => by
-    simp only [Expr.cols, List.mem_append] at h
-    simp only [Expr.eval, Expr.eval_congr_cols a fun i hi => h i (.inl hi),
-      Expr.eval_congr_cols b fun i hi => h i (.inr hi)]
-  | .ifThen c t e, h => by
-    simp only [Expr.cols, List.mem_append] at h
-    simp only [Expr.eval, Expr.eval_congr_cols c fun i hi => h i (.inl (.inl hi)),
-      Expr.eval_congr_cols t fun i hi => h i (.inl (.inr hi)), Expr.eval_congr_cols e fun i hi => h i (.inr hi)]
-  | .hof _ l b, h => by
-    simp only [Expr.cols, List.mem_append, List.mem_filterMap] at h
-    simp only [Expr.eval, Expr.eval_congr_cols l fun i hi => h i (.inl hi)]
-    congr 1; funext x
-    refine Expr.eval_congr_cols b fun i hi => ?_
-    cases i with
-    | zero => rfl
-    | succ i => exact h i (.inr ⟨i + 1, hi, by simp⟩)
-
 /-! ## Columns observed exactly -/
 
 /-- The components `q` ignores in column `col`: the order of a list's
@@ -433,6 +406,109 @@ theorem Expr.robust_of_depends {q : Obs} {ctx : ObsCtx} {e : Expr}
   rw [Expr.ignores_eq_filter, List.filter_eq_nil_iff]
   simpa [List.all_eq_true] using h
 
+/-- Is the expression a bare column? -/
+def Expr.isField : Expr → Bool
+  | .field _ => true
+  | _ => false
+
+/-- The columns `e` reads other than as the argument of `cardinality`: a
+`cardinality(c)` of a column sees only its length. -/
+def Expr.listCols : Expr → List Nat
+  | .lit _ => []
+  | .field i => [i]
+  | .un f a => if f = .cardinality ∧ a.isField = true then []
+      else a.listCols
+  | .bin _ a b => a.listCols ++ b.listCols
+  | .ifThen c t e => c.listCols ++ t.listCols ++ e.listCols
+  | .hof _ l b => l.listCols ++ b.listCols.filterMap fun i => if i = 0 then none else some (i - 1)
+
+/-- `Expr.depends`, but a column read only through `cardinality` does not
+depend on `"elements"` (`Expr.eval_congr_card`). -/
+def Expr.dependsC (ctx : ObsCtx) (e : Expr) : List String :=
+  e.cols.flatMap fun c => (ctx.colDepends c).filter fun s => s != "elements" || e.listCols.contains c
+
+/-- **An expression sees a column read only through `cardinality` by its
+length**: rows that agree on the other columns it reads, and on the
+cardinality of every column, give it one value. -/
+theorem Expr.eval_congr_card {r r' : Row} :
+    ∀ e : Expr, (∀ i ∈ e.listCols, r.getD i .null = r'.getD i .null) →
+      (∀ i, (Expr.un .cardinality (.field i)).eval r = (Expr.un .cardinality (.field i)).eval r') →
+      e.eval r = e.eval r'
+  | .lit _, _, _ => rfl
+  | .field i, h, _ => h i (by simp [Expr.listCols])
+  | .un f a, h, hc => by
+    by_cases hg : f = .cardinality ∧ a.isField = true
+    · obtain ⟨rfl, ha⟩ := hg
+      cases a <;> simp only [Expr.isField] at ha <;> try exact absurd ha (by decide)
+      rename_i i
+      exact hc i
+    · simp only [Expr.listCols, hg, ite_false] at h
+      simp only [Expr.eval, Expr.eval_congr_card a h hc]
+  | .bin _ a b, h, hc => by
+    simp only [Expr.listCols, List.mem_append] at h
+    simp only [Expr.eval, Expr.eval_congr_card a (fun i hi => h i (.inl hi)) hc,
+      Expr.eval_congr_card b (fun i hi => h i (.inr hi)) hc]
+  | .ifThen c t e, h, hc => by
+    simp only [Expr.listCols, List.mem_append] at h
+    simp only [Expr.eval, Expr.eval_congr_card c (fun i hi => h i (.inl (.inl hi))) hc,
+      Expr.eval_congr_card t (fun i hi => h i (.inl (.inr hi))) hc,
+      Expr.eval_congr_card e (fun i hi => h i (.inr hi)) hc]
+  | .hof _ l b, h, hc => by
+    simp only [Expr.listCols, List.mem_append, List.mem_filterMap] at h
+    simp only [Expr.eval, Expr.eval_congr_card l (fun i hi => h i (.inl hi)) hc]
+    congr 1; funext x
+    refine Expr.eval_congr_card b (fun i hi => ?_) (fun i => ?_)
+    · cases i with
+      | zero => rfl
+      | succ i => exact h i (.inr ⟨i + 1, hi, by simp⟩)
+    · cases i with
+      | zero => rfl
+      | succ i => simpa [Expr.eval] using hc i
+
+omit [Boxes.Ambient] in
+theorem Expr.listCols_subset : ∀ e : Expr, ∀ i ∈ e.listCols, i ∈ e.cols
+  | .lit _, i, h => by simp [Expr.listCols] at h
+  | .field i, j, h => by simpa [Expr.listCols, Expr.cols] using h
+  | .un f a, i, h => by
+    unfold Expr.listCols at h
+    split at h
+    · simp at h
+    · simpa [Expr.cols] using Expr.listCols_subset a i h
+  | .bin _ a b, i, h => by
+    simp only [Expr.listCols, List.mem_append] at h
+    simp only [Expr.cols, List.mem_append]
+    exact h.imp (Expr.listCols_subset a i) (Expr.listCols_subset b i)
+  | .ifThen c t e, i, h => by
+    simp only [Expr.listCols, List.mem_append] at h
+    simp only [Expr.cols, List.mem_append]
+    rcases h with (h | h) | h
+    · exact .inl (.inl (Expr.listCols_subset c i h))
+    · exact .inl (.inr (Expr.listCols_subset t i h))
+    · exact .inr (Expr.listCols_subset e i h)
+  | .hof _ l b, i, h => by
+    simp only [Expr.listCols, List.mem_append, List.mem_filterMap] at h
+    simp only [Expr.cols, List.mem_append, List.mem_filterMap]
+    rcases h with h | ⟨j, hj, hij⟩
+    · exact .inl (Expr.listCols_subset l i h)
+    · exact .inr ⟨j, Expr.listCols_subset b j hj, hij⟩
+
+theorem Value.Equiv.card_eq {q : Obs} {ctx : ObsCtx} {col : Nat} {a b : Value}
+    (e : Value.Equiv q ctx col a b) : UnFn.apply .cardinality a = UnFn.apply .cardinality b := by
+  have len : ∀ {as bs : List Value}, Value.EquivList q ctx col as bs → as.length = bs.length := by
+    intro as
+    induction as with
+    | nil => intro bs h; cases bs <;> simp_all [Value.EquivList]
+    | cons a as ih =>
+      intro bs h; cases bs with
+      | nil => simp [Value.EquivList] at h
+      | cons b bs => exact congrArg (· + 1) (ih h.2)
+  cases a <;> cases b <;> simp_all [Value.Equiv, UnFn.apply]
+  rename_i as bs
+  cases hq : q.elements <;> simp only [hq] at e
+  · rw [len e]
+  · obtain ⟨cs, h1, h2⟩ := e
+    rw [len h1, h2.length_eq]
+
 /-! ## Rows of reference codes: one zero (#1071)
 
 The reference has one zero and one NaN (`zero_sign` `ONE_ZERO`), and Sverify
@@ -452,14 +528,16 @@ def Row.DoubleCodes (ctx : ObsCtx) (r : Row) : Prop :=
 observation does not coarsen, but for zeros, is robust on rows of
 reference codes. -/
 theorem Expr.robust_of_depends_canon {q : Obs} {ctx : ObsCtx} {e : Expr}
-    (h : (e.depends ctx).all (fun c => c == "zeros" || !q.coarsens c) = true) {r r' : Row}
+    (h : (e.dependsC ctx).all (fun c => c == "zeros" || !q.coarsens c) = true) {r r' : Row}
     (hr : Row.DoubleCodes ctx r) (hr' : Row.DoubleCodes ctx r') (he : Row.Equiv q ctx r r')
     (ht : (e.eval r).isTrue = true) : (e.eval r').isTrue = true := by
-  have hcol : ∀ i ∈ e.cols, r.getD i .null = r'.getD i .null := by
-    intro i hi
+  have hcol : ∀ i ∈ e.listCols, r.getD i .null = r'.getD i .null := by
+    intro i hi'
+    have hi := Expr.listCols_subset e i hi'
     have hd : ∀ c ∈ ctx.colDepends i, c = "zeros" ∨ q.coarsens c = false := by
       intro c hc
-      have := List.all_eq_true.1 h c (List.mem_flatMap.2 ⟨i, hi, hc⟩)
+      have := List.all_eq_true.1 h c
+        (List.mem_flatMap.2 ⟨i, hi, List.mem_filter.2 ⟨hc, by simp [hi']⟩⟩)
       simpa using this
     have hv := he.getD i
     have hel : q.elements = .sequence := by
@@ -499,7 +577,11 @@ theorem Expr.robust_of_depends_canon {q : Obs} {ctx : ObsCtx} {e : Expr}
       have hx : ctx.exactCol q i = true := by
         simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens]
       exact Value.Equiv.eq_of_exactCol hx _ _ hv
-  rw [← Expr.eval_congr_cols e hcol]; exact ht
+  have hcard : ∀ i, (Expr.un .cardinality (.field i)).eval r =
+      (Expr.un .cardinality (.field i)).eval r' := fun i => by
+    have := Value.Equiv.card_eq (he.getD i)
+    simpa [Expr.eval] using this
+  rw [← Expr.eval_congr_card e hcol hcard]; exact ht
 
 /-! ## Examples -/
 

@@ -1,0 +1,13 @@
+{
+  "id": "F78",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Fable agrees with the coordinator's QA-run condition on #1631, with one line to confirm in the log: each 'The checker said:' in the 14 failures is the refusal its test expects.",
+  "prs": [
+    1631
+  ],
+  "source": "fable-undelivered-1118.md",
+  "note": "No ruling file; full text in log entry 78; a related note is fable-note-lake-comparator.md."
+}

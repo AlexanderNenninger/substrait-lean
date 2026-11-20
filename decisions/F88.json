@@ -1,0 +1,22 @@
+{
+  "id": "F88",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "N14 builds now without first splitting hash table from scan/sink buffers; its acceptance replaces ruling 87's list: consolidation peak held at most 10% above #1660's refresh (947 MB at 2M, 2314 MB at 8M), plus lines for insert-only refreshes, deletes and the refresh-read loop.",
+  "issues": [
+    1329
+  ],
+  "prs": [
+    1660
+  ],
+  "supersedes": [
+    "F87.N14ACC"
+  ],
+  "amends": [
+    "F87"
+  ],
+  "source": "fable-ruling-n14-acceptance.md",
+  "note": "Replaces ruling 87's acceptance list (712/1813 MB gate). Line 3 judged further in F93. Whole-state merge peak on Polars is a follow-up off the 1.0 list."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-19-scd2-into-1-0",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "SCD2 (#814) moves into 1.0.",
+  "issues": [
+    814,
+    1485
+  ],
+  "amends": [
+    "U-2026-11-05-scd-as-transforms"
+  ],
+  "source": "github:#814 comment 7005533319"
+}

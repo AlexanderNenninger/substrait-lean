@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-08-back-in-1-0",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The abstract domain by kind (#925), the statistics work (#918) and generated Polars and Spark lowerings (#271) move back into 1.0.",
+  "issues": [
+    271,
+    918,
+    925
+  ],
+  "source": "github:#925 comment 6717897616; #918 comment 6717897800; #271 comment 6717897962"
+}

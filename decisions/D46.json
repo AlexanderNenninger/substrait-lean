@@ -1,0 +1,8 @@
+{
+  "id": "D46",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "An integer column's values lie in its declared width; a source value outside fails the read."
+}

@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-09-lens-defaults",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Default lenses are floats within epsilon, rows as a multiset with order opt-in, zeros and NaN canon, strings exact and errors exact.",
+  "issues": [
+    1285
+  ],
+  "amended_by": [
+    "U-2026-11-19-default-observation"
+  ],
+  "source": "memory:api-decisions-1-0.md"
+}

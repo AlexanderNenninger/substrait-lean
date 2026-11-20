@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-18-class-pick-determined",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A place that only picks a member of such a class counts as determined when the required observation cannot tell members apart.",
+  "source": "memory:equivalence-class-values.md",
+  "note": "Approves Fable's C2."
+}

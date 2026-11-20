@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-05-polars-evaluable-profile",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Polars gets a full evaluable profile with native runs under semantics=\"polars\".",
+  "source": "memory:api-decisions-0-5.md",
+  "note": "Decided 2026-11-04/05; the memory gives no single day."
+}

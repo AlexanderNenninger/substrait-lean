@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-17-equivalence-class-values",
+  "date": "2026-11-17",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Values that compare equal on every engine form one class, which member is returned does not matter, and opening such a pin is pre-approved for Fable.",
+  "prs": [
+    1575
+  ],
+  "source": "memory:equivalence-class-values.md",
+  "note": "Approved with D45 for windows."
+}

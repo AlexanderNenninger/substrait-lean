@@ -1,7 +1,7 @@
 """Delta Lake tables (delta-rs) as change sources and sinks.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 A `DeltaSource` hands the nodes reading it Arrow tables: the snapshot at a version,
 and the change between two versions from the Change Data Feed, where
@@ -398,6 +398,9 @@ class DeltaSource(_TableSource):
         uri: The table's location.
         name: The table's name in the plans that read it.
         where: The SQL condition, or None.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
 
     Examples:
         A node over a Delta table, updated from its Change Data Feed:

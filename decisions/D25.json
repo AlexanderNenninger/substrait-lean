@@ -1,0 +1,15 @@
+{
+  "id": "D25",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Double SUM, AVG and the statistical aggregates are the correctly rounded value of the exact sum or moments.",
+  "issues": [
+    1017
+  ],
+  "prs": [
+    562
+  ],
+  "note": "Amended 2026-11-07 (#1017, closed plans) and 2026-11-19 (no double SUM or AVG is an open measure)."
+}

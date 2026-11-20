@@ -1,0 +1,19 @@
+{
+  "id": "F30",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D43's option is non_ascii_text with values ERROR and COMPUTE (UNICODE rejected); nonAscii is an error with an inferred precondition the Lean checker emits, under conditions C1-C9.",
+  "issues": [
+    1506
+  ],
+  "amends": [
+    "F5"
+  ],
+  "amended_by": [
+    "F52"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 30",
+  "note": "File ruling-1506-d43-statement.md. C4 (the groups carrying the option) is amended by entry 52 (F-1631-str-ascii-group). No new D-number."
+}

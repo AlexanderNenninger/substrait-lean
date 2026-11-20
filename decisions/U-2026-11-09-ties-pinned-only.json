@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-09-ties-pinned-only",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Only the deterministic profile or reproducible= pins tie order; otherwise the engine picks and a rerun may pick another.",
+  "source": "fable-ruling-1608-sql-ordinals.md",
+  "note": "Recorded as 'the user's decision of 2026-11-09' in the #1608 ordinals ruling."
+}

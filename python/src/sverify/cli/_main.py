@@ -265,7 +265,8 @@ class Check:
         if fmt == "github":
             return _formats.github(self.file, self.findings(), error)
         if fmt == "sarif":
-            return _formats.sarif(self.file, _version(), self.findings(), error)
+            fixes = {f.transform: f.edits for f in place(Path(self.file), self.checked).fixes}
+            return _formats.sarif(self.file, _version(), self.findings(), error, fixes)
         return self.text(full)
 
 
