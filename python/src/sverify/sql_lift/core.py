@@ -210,7 +210,8 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
         # either operand discharges it (D54, #2058).
         low = -(1 << (8 * t.nbytes - 1))
         hit = logical("and", [_fn("equal", [y, literal(-1, t)], dt.boolean),
-                              _fn("equal", [x, literal(low, t)], dt.boolean)])  # fmt: skip
+                              _fn("equal", [x, literal(low, t)], dt.boolean)],
+                      eager=True)  # fmt: skip
         msg = literal("integer overflow: MIN % -1", dt.string)
         mod = if_then([(hit, _fn("sverify_raise", [hit, msg], t))], mod)
     return E(mod, t)
