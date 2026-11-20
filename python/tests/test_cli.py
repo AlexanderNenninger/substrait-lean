@@ -567,7 +567,7 @@ def test_github_annotations(tmp_path, capsys):
     assert line.startswith(
         f"::error file={path},line={line_no},title=sverify may_be_false%3A paid::"
     )
-    assert "ensures (_.amount > 20)" in line and "%0Acounterexample: " in line
+    assert "::amount > 20: it may be FALSE" in line and "%0Acounterexample: " in line
 
 
 def test_sarif(tmp_path, capsys):

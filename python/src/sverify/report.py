@@ -1828,7 +1828,8 @@ class Report:
     @property
     def _summary(self) -> str:
         """The report's first line, by the verdict: "proved"; "proved with
-        checks: " and the assumptions that run time checks ("2 assumptions");
+        checks: " and how many each run checks on the data ("2 run-time
+        checks", the lines `while it runs:` lists, #1997);
         or "NOT proved: " and what is missing, counted ("1 of 2
         postconditions not proved, 1 possible runtime error")."""
         match self.verdict:
@@ -1836,7 +1837,7 @@ class Report:
                 return "proved"
             case Verdict.PROVED_WITH_CHECKS:
                 k = len(self.assumed)
-                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+                return f"proved with checks: {k} run-time check{'' if k == 1 else 's'}"
             case _:
                 return f"NOT proved: {', '.join(self._counts())}"
 

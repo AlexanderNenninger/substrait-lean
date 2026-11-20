@@ -109,6 +109,9 @@ def test_a_large_double_constant_reads_as_python_writes_it() -> None:
     text = sv.verify(t.select(scaled=t.value * 1e302)).details()
     assert "value * 1e+302 stays finite on finite inputs" in text
     assert "000000000" not in text
+    # #1997: every double constant, not only the long ones.
+    text = sv.verify(t.select(scaled=t.value * 3 + 1)).details()
+    assert "value * 3.0 + 1.0 stays finite" in text and ".000000" not in text
 
 
 def test_a_decimal_cast_reads_as_the_cast() -> None:

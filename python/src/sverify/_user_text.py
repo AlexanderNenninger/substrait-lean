@@ -422,17 +422,18 @@ def _drop_implicit_casts(s: str) -> str:
     return s
 
 
-#: A double as Lean prints it (`%f`), with more digits than a double holds:
-#: `1e302` is 303 digits and `.000000` (#885). Python's `repr` is the
-#: shortest text that reads back as the same double.
-_LONG_DOUBLE = re.compile(r"(?<![\w.])\d{18,}\.0{6}(?![\w.])")
+#: A double as Lean prints it (`%f`, six decimals): `3.000000`, or `1e302` as
+#: its 303 digits (#885, #1997). Python's `repr` is the shortest text that
+#: reads back as the same double.
+_LEAN_DOUBLE = re.compile(r"(?<![\w.])\d+\.\d{6}(?![\w.])")
 
 
 def _short_double(m: re.Match[str]) -> str:
-    """A long literal as `repr` writes its double, where its digits are
-    exactly a double's value; other text (a wide decimal) as it is."""
+    """A literal as `repr` writes its double, where the text is the double's
+    own `%f` text (a decimal literal of other digits, such as a wide one,
+    stays as written)."""
     x = float(m[0])
-    return repr(x) if int(x) == int(m[0].split(".")[0]) else m[0]
+    return repr(x) if f"{x:f}" == m[0] else m[0]
 
 
 def pretty(
@@ -446,7 +447,7 @@ def pretty(
     (`temporal` names the timestamp columns), no implicit casts."""
     out = _drop_implicit_casts(out)
     out = re.sub(r"(\d)d\b", r"\1", out)
-    out = _LONG_DOUBLE.sub(_short_double, out)
+    out = _LEAN_DOUBLE.sub(_short_double, out)
     # A cast to a decimal: `DECIMAL_p_s(TO_DECIMAL_s(x))` (a double's), or
     # `DECIMAL_p_s(x)`, `TO_DECIMAL_s(x)` alone (the precision is the plan's).
     out = re.sub(

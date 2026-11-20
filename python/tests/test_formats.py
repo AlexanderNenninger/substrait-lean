@@ -296,6 +296,8 @@ def test_report_reads(version: str, case: str) -> None:
         # Written before the first line said "proved with checks" (#1484).
         stored = f"proved with checks: {len(report.assumed)} assumption"
         stored += "" if len(report.assumed) == 1 else "s"
+    # The first line is prose: "assumption" became "run-time check" (#1997).
+    stored = re.sub(r"(\d+) assumption(s?)$", r"\1 run-time check\2", stored)
     assert report._summary == stored
     assert [c.label for c in report.ensures] == [c["properties"]["label"] for c in doc["ensures"]]
     assert [n.code for n in report.needs] == [n["code"] for n in doc["needs"]]

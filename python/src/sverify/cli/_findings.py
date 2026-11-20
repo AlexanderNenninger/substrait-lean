@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sverify._user_text import plain
 from sverify.cli import _explain
 
 if TYPE_CHECKING:
@@ -45,7 +46,7 @@ def of(c: Checked) -> list[dict[str, Any]]:
         extra: dict[str, Any] = {"condition": cond.label}
         if cond.counterexample is not None:
             extra["counterexample"] = str(cond.counterexample)
-        out.append(_finding(c, code, f"ensures {cond.label}: {cond.why}", **extra))
+        out.append(_finding(c, code, f"{plain(cond.label)}: {cond.why}", **extra))
     for n in r.needs:
         text = f"needs {n.code} on {n.table}"
         if n.issue is not None:
