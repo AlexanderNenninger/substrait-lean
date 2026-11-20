@@ -58,7 +58,7 @@ amended.
 - [F85](#f85) (2026-11-19): The 12d-4 source mark is a core identity `.un (.approx k)` in the plan, no side channel; lowerings erase it; `exprEps` reads its band. Assigns D52; `Around` is an obligation for marked integer quotients. Amended by [F197](#f197).
 - [F84](#f84) (2026-11-19): #1693's first-range bound of avgBigint_near as ulpDiv of the quotient is accepted as written; the set (Around) is exact, 12b-2 rests on it, and 12d-4 reads the bound in Epsilon's own unit.
 - [U-2026-11-19-rounding-cast-refusal](#u-2026-11-19-rounding-cast-refusal) (2026-11-19): User's (b): under the reference the SQL lift refuses CAST of a double or decimal to an integer, with hints, until #322 (D54). Amended by [F109](#f109).
-- [D61](#d61) (2026-11-19): Timestamps count microseconds or nanoseconds; second and millisecond columns are read as microseconds, narrowing casts floor, and µs to ns raises overflow outside 64 bits.
+- [D61](decisions.md#d61-timestamp-precisions) (2026-11-19): Timestamps count microseconds or nanoseconds; second and millisecond columns are read as microseconds, narrowing casts floor, and µs to ns raises overflow outside 64 bits.
 - [D59](decisions.md#d59-string-to-timestamp-is-strict-and-raises-on-a-mismatch) (2026-11-19): String-to-timestamp parsing is strict, with a fixed directive set, and raises a domain error on a mismatch.
 - [D58](decisions.md#d58-a-timestamps-delta-counts-the-unit-boundaries-crossed) (2026-11-19): A timestamp's delta counts the unit boundaries crossed.
 - [D57](#d57) (2026-11-19): The reference's double abs is IEEE: it clears the sign, so abs(-0.0) is +0.0.
