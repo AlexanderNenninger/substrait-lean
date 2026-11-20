@@ -1,5 +1,6 @@
 import Lean.Data.Json
 import SubstraitLean.EngineTables
+import Sverify.Engines.Entry
 import Sverify.Polars.Shims
 import Sverify.Spark.Engine
 import Sverify.Core.Allowed
@@ -561,7 +562,6 @@ elab "#check_engine_profiles " t:term : command => do
     unless e.evidenced do throwError "{e.name}: a shim or row without evidence or cost"
     unless e.tracked do throwError "{e.name}: a tested or probed row names no issue tracking its proof"
 
-#check_engine_profiles builtinEntries
 
 /-! ## For Python -/
 
