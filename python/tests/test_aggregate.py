@@ -1042,20 +1042,20 @@ def test_quantile_refusals_say_what(agg, message):
         to_substrait_json(Q.group_by("k").aggregate(v=agg))
 
 
-D = ibis.table({"k": "int64", "d": "decimal(10, 2)"}, name="t")
+DEC = ibis.table({"k": "int64", "d": "decimal(10, 2)"}, name="t")
 
 
 def test_quantile_of_a_decimal_is_refused_with_the_way_out():
     """No engine gives one value for it (#1921): the message names the cast."""
-    for agg in (D.d.median(), D.d.quantile(0.5)):
+    for agg in (DEC.d.median(), DEC.d.quantile(0.5)):
         with pytest.raises(Exception, match=r"cast the column to float64 first"):
-            to_substrait_json(D.group_by("k").aggregate(q=agg))
+            to_substrait_json(DEC.group_by("k").aggregate(q=agg))
 
 
 def test_quantile_of_a_decimal_cast_to_float64_verifies_and_runs():
     from decimal import Decimal
 
-    expr = D.group_by("k").aggregate(q=D.d.cast("float64").quantile(0.5))
+    expr = DEC.group_by("k").aggregate(q=DEC.d.cast("float64").quantile(0.5))
     report = sv.verify(
         expr,
         requires={"t": [_.d >= 0, _.d <= 10]},
@@ -1063,6 +1063,6 @@ def test_quantile_of_a_decimal_cast_to_float64_verifies_and_runs():
     )
     assert report.verdict == sv.Verdict.PROVED, report.details()
     con = connect()
-    con.create("t", D.schema(), [(1, Decimal("1.25")), (1, Decimal("2.50")), (1, Decimal("4.75"))])
+    con.create("t", DEC.schema(), [(1, Decimal("1.25")), (1, Decimal("2.50")), (1, Decimal("4.75"))])
     got = run_plan(con, written_plan(to_substrait_json(expr)), "duckdb").to_pylist()
     assert got == [{"k": 1, "q": 2.5}]
