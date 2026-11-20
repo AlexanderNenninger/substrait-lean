@@ -1536,9 +1536,10 @@ def orSplitNull (ap bq : AVal) : AVal :=
 /-- `Expr.absD` of `.bin f a b`, from the left operand's value `aa`, the right
 operand's value `ab` (asked for only off the `OR` paths) and `bAt`, the right
 operand's value in another environment under more assumptions. `Expr.absD`
-and `Expr.mayIssuesA` (`Safety.lean`) both take it. `aa` is an argument, so
-it is computed once: an `OR` chain (`x IN (...)`) nests its left operand, and
-evaluating it once per use multiplied the work at every level (#1877). -/
+and `Expr.mayIssuesA` (`Safety.lean`) both take it. Each operand's value is
+computed once: an `OR` chain (`x IN (...)`) nests its left operand, a chain of
+`AND`s or sums may nest its right one, and evaluating an operand once per use
+multiplied the work at every level (#1877). -/
 def Expr.absBin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn) (a b : Expr)
     (aa : AVal) (ab : Unit → AVal) (bAt : List AVal → Assumptions → AVal) : AVal :=
   narrowAll ks (.bin f a b) <|
@@ -1546,7 +1547,9 @@ def Expr.absBin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn
       orSplit aa (bAt (useFacts fs ((Expr.un .not a).refine env)) (a.cstrs false ++ ks))
     else if f = .or ∧ aa.int.isNone = true ∧ aa.str = false ∧ aa.nested = false then
       orSplitNull aa (bAt (useFacts fs ((a.refineNeg env).map AVal.prune)) (a.cstrs false ++ ks))
-    else sharpen fs f a b aa (ab ()) (f.abs aa (ab ()))
+    else
+      let vb := ab ()
+      sharpen fs f a b aa vb (f.abs aa vb)
 
 def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr → AVal
   | .lit v => AVal.ofValue v
