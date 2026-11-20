@@ -291,3 +291,11 @@ def test_a_margin_site_over_a_limit_is_refused_where_the_runner_leaves_ties_open
     r._on_inferred = "warn"
     with pytest.warns(InferredWarning, match="may miss groups"):
         assert r.check_margins(con, None, "spark") == 0
+
+
+def test_a_report_read_back_from_json_keeps_its_run_time_checks(having):
+    """#1863: `to_json` writes what a run checks on the data and `from_json`
+    reads it back, so the report prints the same `checks at run time` lines."""
+    back = sv.Report.from_json(having.to_json())
+    assert back._margin_checks == having._margin_checks != []
+    assert str(back) == str(having)

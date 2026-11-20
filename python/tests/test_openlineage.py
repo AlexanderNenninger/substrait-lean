@@ -10,6 +10,7 @@ import os
 import textwrap
 import time
 import urllib.error
+import urllib.request
 import uuid
 import warnings
 from pathlib import Path
@@ -402,14 +403,21 @@ def test_cli_refresh_lineage(tmp_path):
 MARQUEZ = os.environ.get("SVERIFY_MARQUEZ_URL")
 
 
+def _marquez_get(path: str):
+    assert MARQUEZ is not None
+    with urllib.request.urlopen(MARQUEZ.rstrip("/") + path, timeout=10) as resp:  # noqa: S310
+        return json.loads(resp.read())
+
+
 @pytest.mark.skipif(
-    not MARQUEZ,
+    not MARQUEZ and not os.environ.get("SVERIFY_MARQUEZ_REQUIRED"),
     reason="needs a Marquez server: SVERIFY_MARQUEZ_URL (scripts/marquez.sh starts one)",
 )
 def test_marquez_round_trip(tmp_path):
     """A refresh posts its events to Marquez, and a downstream job reads the
     dataset back from Marquez's API, with a verified contract."""
-    assert MARQUEZ is not None
+    # CI's `marquez` job sets SVERIFY_MARQUEZ_REQUIRED: a missing server fails.
+    assert MARQUEZ, "SVERIFY_MARQUEZ_URL is not set"
     namespace = f"sverify-test-{uuid.uuid4().hex[:8]}"
     sink = DeltaSink(str(tmp_path / "paid"))
     with warnings.catch_warnings():
@@ -430,3 +438,20 @@ def test_marquez_round_trip(tmp_path):
     assert [f["name"] for f in up.fields] == ["id", "cust", "amount"]
     assert up.producer["job"] == f"{namespace}/paid"
     assert up.verified and "amount > 10" in up.requires
+
+    # The lineage graph Marquez shows: the job, its input and output datasets,
+    # and the run that completed.
+    job = None
+    for _attempt in range(50):
+        try:
+            job = _marquez_get(f"/api/v1/namespaces/{namespace}/jobs/paid")
+        except urllib.error.HTTPError:
+            job = None
+        if job and job.get("outputs") and (job.get("latestRun") or {}).get("state") == "COMPLETED":
+            break
+        time.sleep(0.2)
+    assert job is not None
+    assert [d["name"] for d in job["outputs"]] == [name]
+    assert [d["name"] for d in job["inputs"]] == [ol.dataset_id(orders())[1]]
+    assert job["latestRun"]["state"] == "COMPLETED"
+    assert job["latestRun"]["id"] == up.producer["run"]

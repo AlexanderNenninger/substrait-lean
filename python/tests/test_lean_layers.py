@@ -182,7 +182,6 @@ ROOT_WAITING = {
     "IncrementalFloat": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalMinMax": "imports IncrementalAgg (#1795); then analysis",
     "IncrementalSemi": "imports IncrementalAgg (#1795); then analysis",
-    "OpenSums": "ruling 148 O2: general part to engines-common, example to Polars",
 }
 
 
