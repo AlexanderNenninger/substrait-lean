@@ -167,7 +167,7 @@ notes = "Ibis has no ROLLUP, so this is DataFusion SQL."
 # TPC-DS data does not meet (it allows a price of 0).
 requires = '''
 {
-    'store_sales': ['ss_ext_sales_price BETWEEN 0 AND 30000'],
+    'store_sales': ['ss_ext_sales_price BETWEEN 0.01 AND 30000'],
     'date_dim': [sv.unique('d_date_sk')],
     'item': [sv.unique('i_item_sk')],
     'store': [sv.unique('s_store_sk')],
@@ -312,7 +312,7 @@ q = (
 # guarded.
 requires = '''
 {
-    'store_sales': [_.ss_sales_price.between(0, 300)],
+    'store_sales': [_.ss_sales_price.between(0.01, 300), sv.max_rows(10**12)],
     'item': [sv.unique('i_item_sk')],
     'date_dim': [sv.unique('d_date_sk')],
     'store': [sv.unique('s_store_sk')],
@@ -353,7 +353,7 @@ q = rev.mutate(
 # may be 0 (TPC-DS allows a price of 0), so the ratio may divide by zero.
 requires = '''
 {
-    'store_sales': [_.ss_ext_sales_price.between(0, 30000), sv.max_rows(10**12)],
+    'store_sales': [_.ss_ext_sales_price.between(0.01, 30000), sv.max_rows(10**12)],
     'item': [sv.unique('i_item_sk'), sv.max_rows(10**7)],
     'date_dim': [sv.unique('d_date_sk'), sv.max_rows(10**5)],
 }
