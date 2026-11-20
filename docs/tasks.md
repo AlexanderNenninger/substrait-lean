@@ -505,7 +505,7 @@ print(report.details())
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
 # semantics: reference
-# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #241)
+# evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #1985)
 # evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
 # evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)
 # known about the output:
@@ -526,6 +526,45 @@ print(report.details())
 * A cap also bounds the magnitude of an integer or decimal `SUM`: at most
   `n` values in `[lo, hi]` add up to within `[min(0, n·lo), max(0, n·hi)]`,
   so arithmetic on the sum can be proved to fit.
+
+### Non-overlapping ranges
+
+A point-in-time join to a type-2 dimension keeps the fact table's key only if
+the dimension's validity ranges do not overlap. `sv.non_overlapping("valid_from",
+"valid_to", by="customer_id")` in `requires` states that: every row has a start,
+the end is NULL (an open end, at most one per customer) or not before it, and two
+rows of a customer end where or before the other begins. The data check is one
+query over the ranges ordered by start; its count is the rows that break it.
+
+```python
+facts = ibis.table({"order_id": "!int64", "customer_id": "!int64", "ts": "!int64"}, name="facts")
+versions = ibis.table(
+    {"customer_id": "!int64", "valid_from": "!int64", "valid_to": "int64", "city": "string"},
+    name="versions",
+)
+during = (
+    (facts.customer_id == versions.customer_id)
+    & (versions.valid_from <= facts.ts)
+    & (versions.valid_to.isnull() | (facts.ts < versions.valid_to))
+)
+city_of = facts.left_join(versions, during).select(facts.order_id, versions.city)
+report = sv.verify(
+    city_of,
+    requires={
+        "facts": [sv.unique("order_id")],
+        "versions": [sv.non_overlapping("valid_from", "valid_to", by="customer_id")],
+    },
+    ensures=[sv.unique("order_id")],
+)
+assert report.verdict == sv.Verdict.PROVED
+```
+
+Lean gives each order at most one version when the join condition equates the
+`by` columns, tests `valid_from <= x` and `x < valid_to` (or `valid_to IS NULL OR
+x < valid_to`) for one expression `x` of the order's columns; the join keeps the
+orders' keys (`Rel.keys`). A closed end (`x <= valid_to`) matches two versions at a
+boundary and has no rule. `dbt_utils.mutually_exclusive_ranges` is the same test
+in dbt.
 
 ### Rows per key
 
@@ -1841,6 +1880,20 @@ the export handles it in one of these ways:
 A refusal raises `sverify.errors.ExportError`, which names the reason and
 the gap. So does an unproved report, a plan proved under an engine's
 profile, and a function outside Substrait's YAMLs.
+
+Sverify validates the plans it exports with Substrait's own validator,
+[`substrait-validator`](https://github.com/substrait-io/substrait-validator),
+built at the commit the gate pins (it implements Substrait 0.88.1; no
+release reads 0.106). Every coverage case and catalogue query is exported
+in the `"apply"` and `"annotate"` modes, and CI's `evidence` job compares the
+validator's verdicts with the ledger
+[`substrait_validator.json`](../python/tests/substrait_validator.json),
+[`sverify_dev.substrait_validator`](../python/tools/sverify_dev/substrait_validator.py).
+On 2026-11-20: 332 exports valid, 10 with a recorded finding (time and
+timestamp literals the validator does not implement yet,
+[ST-19](../upstream/bugs/ST-19.json), and a decimal precision,
+[#1904](https://github.com/AlexanderNenninger/substrait-lean/issues/1904)),
+190 refused with their reason, 146 not proved.
 
 `node.to_substrait()` and `transform.to_substrait()` export the report of
 a node and of a transform's last call.

@@ -1,0 +1,32 @@
+{
+  "id": "ST-19",
+  "project": "substrait",
+  "kind": "bug",
+  "version": "substrait-validator main@157c13913ac2 (Substrait 0.88.1)",
+  "status": "duplicate",
+  "status_note": "substrait-io/substrait-validator#608 (open) asks to implement the precision temporal types; the validator reports their literals as not implemented, at error level.",
+  "title": "substrait-validator rejects precision_time and precision_timestamp literals as unimplemented",
+  "summary": "`substrait-validator` reports a `precision_time` or `precision_timestamp` literal with an error, `not yet implemented: PrecisionTimestamp literals are not yet implemented` (code 0001), so a plan with a time or timestamp constant is never valid to it. The types themselves get a warning only. Substrait has used the precision temporal types since the plain `time` and `timestamp` were deprecated, so every plan with a timestamp constant meets it.",
+  "repro": "Export a plan that compares a timestamp column with a constant (the coverage case `time/compare with literal`: `t.filter(t.ts > ibis.timestamp(\"2024-01-01 00:00:00\"))`) and validate it: `python -m sverify_dev.substrait_validator --only \"compare with literal\"`.",
+  "handling": "Recorded in `python/tests/substrait_validator.json`: the plans with such literals are `disagree` with this record, and the gate (`sverify_dev.substrait_validator --check`) passes on them.",
+  "found_by": "sverify_dev.substrait_validator, the validation of every plan to_substrait exports (#862)",
+  "upstream": [
+    "https://github.com/substrait-io/substrait-validator/issues/608"
+  ],
+  "issues": [
+    862
+  ],
+  "files": [
+    "python/tools/sverify_dev/substrait_validator.py",
+    "python/tests/substrait_validator.json"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-20",
+      "against": {
+        "substrait-validator": "main@157c13913ac2"
+      },
+      "note": "rs/src/parse/expressions/literals.rs still reports both literals as not implemented; #608 open"
+    }
+  ]
+}
