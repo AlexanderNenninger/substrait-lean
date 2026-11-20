@@ -359,7 +359,12 @@ class DuckDBDialect(Dialect):
         return f"len({x})"
 
     def list_fn(self, name: str, args: list[str]) -> str:
-        # DuckDB's own, as the model states them (#810, #812).
+        # DuckDB's own, as the model states them (#810, #812). `list_contains` of a NULL
+        # needle is NULL in the model and at 2.0.0, but FALSE for an empty list at 2.0.1
+        # (`duckdb-list-contains-null`): the native call sees non-NULL needles only.
+        if name == "list_contains":
+            lst, x = args
+            return f"(CASE WHEN {x} IS NULL THEN NULL ELSE list_contains({lst}, {x}) END)"
         return f"{name}({', '.join(args)})"
 
     def pair(self, a: str, b: str) -> str:
