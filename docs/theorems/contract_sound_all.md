@@ -30,10 +30,9 @@ theorem contract_sound_all {cat : Catalog} (hcat : cat.WF)
       ∀ row ∈ out, ∀ v ∈ row, v = .bool true
 ```
 
-The hypotheses are [`contract_sound`](contract_sound.md)'s, with one
-difference in `hT`: `T.SoundAll` says the analysis's window keys are sound
-on every order, not only on the order the reference computes. The
-conclusion changes from `Q.eval cat` to any `out` with
+The hypotheses are [`contract_sound`](contract_sound.md)'s, `hT` included:
+`T.SoundAll` says the analysis's window keys are sound on every order the
+reference allows. Only the conclusion changes: it is about any `out` with
 `Q.OrderAllowed cat out`: every result that differs from the reference's
 only in how it breaks ties, takes the rows of a `FETCH`, or orders the rows
 of `FIRST`, `STRING_AGG` or a window. `contract_sound` follows from this
@@ -54,8 +53,8 @@ theorem, since the reference's own result is one of them
   have open ties: the rows can differ, and each of them meets the promise.
   `report.deterministic` says whether the rows are determined, and
   `Rel.window_deterministic` proves it where the keys close the ties.
-- Doubles added in another order, which change the values, not the order of
-  rows: [`contract_sound_allowed`](contract_sound_allowed.md).
+- Doubles added in another order, which change the values themselves:
+  [`contract_sound_allowed`](contract_sound_allowed.md).
 
 ## Its side conditions
 

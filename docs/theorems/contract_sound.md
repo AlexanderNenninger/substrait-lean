@@ -41,7 +41,7 @@ theorem contract_sound {cat : Catalog} (hcat : cat.WF)
 - `T`, `hT`: what the analysis assumes about the order of tied window rows
   (the keys that close the ties).
 - `hproved`: the checker's own computation. It evaluates `Q` over
-  descriptions of values instead of values (`aeval`), starting from the
+  descriptions of values (`aeval`), starting from the
   schemas refined by the preconditions and the facts they imply, and finds
   that every output column is certainly TRUE. The computation is a Boolean
   function, so `hproved` is checked by running it.
