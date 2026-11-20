@@ -2801,7 +2801,7 @@ def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
   let cat : Catalog := fun t => match tables.lookup t with
     | some (n, _) => ⟨n, []⟩
     | none => ⟨0, []⟩
-  (r.keys cat (fun _ => []) (fun _ => []) ⟨fun _ => []⟩).contains []
+  (r.keys cat (fun _ => []) (fun _ => []) { keys := fun _ => [] }).contains []
 
 /-- `inp` with one more column: the value of the subquery `sq` on each row.
 
