@@ -37,5 +37,6 @@ CASES: list[Case] = [
 
 REFUSED: dict[str, dict[str, str]] = {
     "unnest column": NO_LISTS_SNOWFLAKE,
+    "unnest keep_empty": NO_LISTS_SNOWFLAKE,
     "list literal": NO_LISTS_SNOWFLAKE,
 }
