@@ -1,0 +1,48 @@
+{
+  "id": "duckdb-default-collation-matching",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`default_collation = 'nocase'` reaches `LIKE`, `contains`, `starts_with` and `strpos` at 2.0.1",
+  "verdict": "under `default_collation = 'nocase'`, `LIKE`, `contains`, `starts_with` and `strpos` ignore case at 2.0.1 and match bytes at 2.0.0; `ends_with`, `prefix` and `replace` stay case-sensitive at both",
+  "area": "strings",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "LIKE",
+    "contains",
+    "starts_with",
+    "strpos"
+  ],
+  "settings": {
+    "default_collation": [
+      "nocase"
+    ]
+  },
+  "description": [
+    "The probes `default-collation-nocase` and `default-collation-nocase-literals` (`engines/duckdb/replay/probes.json`): after `SET default_collation = 'nocase'`, `'Hello' LIKE 'h%'` is false at 2.0.0 and true at 2.0.1, `contains('Hello', 'ELL')` false and true, `starts_with('Hello', 'he')` false and true, `strpos('Hello', 'EL')` 0 and 2. `=`, `ILIKE`, `ends_with`, `prefix` and `replace` are as before, and the sort probe is unchanged.",
+    "The change is value-side on a setting the profile does not model: sverify's SQL writes no collation and assumes the default, byte order (`duckdb-exec-settings`, duckdb-F4), and `duckdb-string-match-case`'s rows are stated under the default `BINARY` collation, where nothing moved. A user who sets `default_collation` runs outside the profile at either version."
+  ],
+  "reference": "The reference compares and matches bytes (`case_sensitivity = CASE_SENSITIVE`).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045 (found by `sverify_dev.canary drift`, #2053), duckdb 2.0.0 and 2.0.1 Python packages",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "default-collation-nocase"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "default-collation-nocase-literals"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2045
+  ]
+}

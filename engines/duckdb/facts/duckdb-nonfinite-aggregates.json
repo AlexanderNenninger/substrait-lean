@@ -202,6 +202,18 @@
           "note": "DuckDB 2.0.0 (duckdb Python 2.0.0): `quantile_cont(x, p)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] it is -inf at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: -inf, 1, +inf at 0.25, 0.5, 0.75; of [1, +inf]: +inf. The interpolation `lo·(1 − w) + hi·w` makes a NaN only where both neighbours are infinite and opposite."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045, `sverify_dev.probe` at duckdb 2.0.1",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "sum-avg-infinities"
+        }
+      ],
+      "notes": "At 2.0.1 `fsum` and `favg` of an infinity with finite values give the infinity, not NaN (`duckdb-fsum-infinity`); every other claim of this fact was not probed again."
     }
   ],
   "issues": [

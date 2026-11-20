@@ -177,7 +177,7 @@
           "probe": "BIGINT % BIGINT"
         }
       ],
-      "notes": "Re-probed at 2.0.1 for BIGINT: every row agrees with 2.0.0 except `MIN % -1`, which returns 0 (`duckdb-int-modulus-min-neg-one`). The `min_mod_neg_one` row of this fact holds at 2.0.0; the narrower widths were not probed again."
+      "notes": "Re-probed at 2.0.1: every row of BIGINT agrees with 2.0.0 except `MIN % -1`, which returns 0 at every width (`duckdb-int-modulus-min-neg-one`). The `min_mod_neg_one` row of this fact holds at 2.0.0."
     }
   ],
   "issues": [

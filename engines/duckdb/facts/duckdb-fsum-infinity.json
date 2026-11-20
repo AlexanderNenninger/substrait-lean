@@ -1,0 +1,48 @@
+{
+  "id": "duckdb-fsum-infinity",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`fsum` and `favg` of an infinity and finite values: NaN at 2.0.0, the infinity at 2.0.1",
+  "verdict": "`fsum` and `favg` of one kind of infinity with finite values give that infinity at 2.0.1, grouped and over a window; at 2.0.0 they gave NaN once a finite value followed the infinity; both infinities still give NaN",
+  "area": "doubles",
+  "options": [
+    "nan_creation"
+  ],
+  "rows": [
+    {
+      "group": "agg.fsum",
+      "option": "nan_creation",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "fsum",
+    "favg"
+  ],
+  "settings": {},
+  "description": [
+    "The observation `sum-avg-infinities` (`engines/duckdb/replay/probes.json`) over a table of 9 rows: `fsum` and `favg` of a group of `+inf` and `1.0` give NaN at 2.0.0 and `inf` at 2.0.1; of `-inf` and `1.0`, NaN and `-inf`; the window frames `w1` to `w7` the same. `sum` and `avg` are unchanged (the infinity at both versions), `+inf` with `-inf` still gives NaN at every function, and finite groups are unchanged.",
+    "The change is value-side (D70) and narrows the row: `duckdb-nonfinite-aggregates` recorded a NaN where IEEE gives none (Kahan's error term `inf - inf`), which `nan_creation`'s DuckDB choice allows; 2.0.1 gives the infinity, which is the correctly rounded sum the reference gives. Both values are inside the row's allowed set, so the profile stays a sound bound at both versions; a verified plan that reads an `fsum` of an infinity gets the reference's value at 2.0.1 and may get NaN at 2.0.0."
+  ],
+  "reference": "`AggFn.fsum` gives the correctly rounded sum: an infinity and finite values sum to the infinity.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045 (found by `sverify_dev.canary drift`, #2053), duckdb 2.0.0 and 2.0.1 Python packages",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "sum-avg-infinities"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2045
+  ]
+}
