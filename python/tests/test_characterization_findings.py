@@ -77,6 +77,132 @@ def test_dd7_constant_case_when_raises_while_planning_before_2_0_1():
         assert _duck(cast, "CREATE TABLE t AS SELECT 1 x") == [(1,)]
 
 
+# What the `nan_creation` row reads of `duckdb-nonfinite-aggregates`, at every probed version
+# (2.0.0 and 2.0.1, #2045): a NaN or an infinity in a group, as the text DuckDB prints.
+NONFINITE: dict[str, dict[str, str]] = {
+    "inf,1": {
+        "sum(x)": "inf",
+        "avg(x)": "inf",
+        "var_pop(x)": "nan",
+        "var_samp(x)": "nan",
+        "stddev_pop(x)": "nan",
+        "stddev_samp(x)": "nan",
+        "covar_pop(x,y)": "nan",
+        "covar_samp(x,y)": "nan",
+        "corr(x,y)": "nan",
+        "quantile_cont(x,0.5)": "inf",
+        "median(x)": "inf",
+    },
+    "-inf,1": {
+        "sum(x)": "-inf",
+        "avg(x)": "-inf",
+        "var_pop(x)": "nan",
+        "var_samp(x)": "nan",
+        "stddev_pop(x)": "nan",
+        "stddev_samp(x)": "nan",
+        "covar_pop(x,y)": "nan",
+        "covar_samp(x,y)": "nan",
+        "corr(x,y)": "nan",
+        "quantile_cont(x,0.5)": "-inf",
+        "median(x)": "-inf",
+    },
+    "inf,-inf": {
+        "sum(x)": "nan",
+        "avg(x)": "nan",
+        "var_pop(x)": "nan",
+        "var_samp(x)": "nan",
+        "stddev_pop(x)": "nan",
+        "stddev_samp(x)": "nan",
+        "covar_pop(x,y)": "nan",
+        "covar_samp(x,y)": "nan",
+        "corr(x,y)": "nan",
+        "quantile_cont(x,0.5)": "nan",
+        "median(x)": "nan",
+    },
+    "inf,inf": {
+        "sum(x)": "inf",
+        "avg(x)": "inf",
+        "var_pop(x)": "nan",
+        "var_samp(x)": "nan",
+        "stddev_pop(x)": "nan",
+        "stddev_samp(x)": "nan",
+        "covar_pop(x,y)": "nan",
+        "covar_samp(x,y)": "nan",
+        "corr(x,y)": "nan",
+        "quantile_cont(x,0.5)": "inf",
+        "median(x)": "inf",
+    },
+    "nan,1": {
+        "sum(x)": "nan",
+        "avg(x)": "nan",
+        "var_pop(x)": "nan",
+        "var_samp(x)": "nan",
+        "stddev_pop(x)": "nan",
+        "stddev_samp(x)": "nan",
+        "covar_pop(x,y)": "nan",
+        "covar_samp(x,y)": "nan",
+        "corr(x,y)": "nan",
+        "quantile_cont(x,0.5)": "nan",
+        "median(x)": "nan",
+    },
+    "inf": {
+        "sum(x)": "inf",
+        "avg(x)": "inf",
+        "var_pop(x)": "0.0",
+        "var_samp(x)": "None",
+        "stddev_pop(x)": "0.0",
+        "stddev_samp(x)": "None",
+        "covar_pop(x,y)": "nan",
+        "covar_samp(x,y)": "None",
+        "corr(x,y)": "nan",
+        "quantile_cont(x,0.5)": "inf",
+        "median(x)": "inf",
+    },
+    "1,2": {
+        "sum(x)": "3.0",
+        "avg(x)": "1.5",
+        "var_pop(x)": "0.25",
+        "var_samp(x)": "0.5",
+        "stddev_pop(x)": "0.5",
+        "stddev_samp(x)": "0.7071067811865476",
+        "covar_pop(x,y)": "0.25",
+        "covar_samp(x,y)": "0.5",
+        "corr(x,y)": "1.0",
+        "quantile_cont(x,0.5)": "1.5",
+        "median(x)": "1.5",
+    },
+    "inf,-inf,1": {
+        "sum(x)": "nan",
+        "avg(x)": "nan",
+        "var_pop(x)": "nan",
+        "var_samp(x)": "nan",
+        "stddev_pop(x)": "nan",
+        "stddev_samp(x)": "nan",
+        "covar_pop(x,y)": "nan",
+        "covar_samp(x,y)": "nan",
+        "corr(x,y)": "nan",
+        "quantile_cont(x,0.5)": "1.0",
+        "median(x)": "1.0",
+    },
+}
+
+
+@duckdb_only
+@pytest.mark.parametrize("group", sorted(NONFINITE))
+def test_nonfinite_aggregates_give_nan_or_the_infinity_without_error(group: str):
+    """duckdb-nonfinite-aggregates: the moments, `corr` and the quantiles of a group with an
+    infinity or a NaN, and `sum` and `avg`, are the same at 2.0.0 and 2.0.1."""
+    for fn, want in NONFINITE[group].items():
+        quoted = ", ".join(
+            f"('{v}'::DOUBLE, '{v}'::DOUBLE)"
+            if not v.replace(".", "").isdigit()
+            else f"({v}::DOUBLE, {v}::DOUBLE)"
+            for v in group.split(",")
+        )
+        (got,) = _duck(f"SELECT {fn} FROM (VALUES {quoted}) t(x, y)")[0]
+        assert str(got) == want, (group, fn)
+
+
 @duckdb_only
 def test_case_else_is_lazy_at_run_time():
     """duckdb-exec-short-circuit: at run time `CASE` evaluates only the branch

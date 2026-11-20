@@ -206,14 +206,17 @@
     {
       "checked_at": "2026-11-20",
       "method": "probe",
-      "checked_by": "session for #2045, `sverify_dev.probe` at duckdb 2.0.1",
+      "checked_by": "session for #2045, duckdb 2.0.0 and 2.0.1 Python packages",
       "evidence": [
         {
-          "file": "engines/duckdb/replay/probes.json",
-          "probe": "sum-avg-infinities"
+          "sql": "SELECT sum(x), avg(x), var_pop(x), var_samp(x), stddev_pop(x), stddev_samp(x), covar_pop(x,y), covar_samp(x,y), corr(x,y), regr_slope(y,x), quantile_cont(x,0.5), median(x), quantile_disc(x,0.5), min(x), max(x) FROM (VALUES …)",
+          "observed": "8 groups ({inf,1}, {-inf,1}, {inf,-inf}, {inf,inf}, {nan,1}, {inf}, {1,2}, {inf,-inf,1}), 25 functions: every result is the same at 2.0.0 and 2.0.1 except `fsum` and `favg` (`duckdb-fsum-infinity`)"
+        },
+        {
+          "test": "python/tests/test_characterization_findings.py::test_nonfinite_aggregates_give_nan_or_the_infinity_without_error"
         }
       ],
-      "notes": "At 2.0.1 `fsum` and `favg` of an infinity with finite values give the infinity, not NaN (`duckdb-fsum-infinity`); every other claim of this fact was not probed again."
+      "notes": "The claims the `nan_creation` row reads (`Tables.lean`): the moments, `corr`, `covar_*`, the quantiles and `median` give NaN or the infinity without an error, and `sum` and `avg` give the infinity of one kind and NaN for both. They hold at 2.0.0 and 2.0.1; `fsum` and `favg`, which the fact also described, changed and are `duckdb-fsum-infinity`."
     }
   ],
   "issues": [
