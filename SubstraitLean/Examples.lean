@@ -404,6 +404,7 @@ end Substrait.Examples
 #print axioms Substrait.transferB_of_reads_sub
 #print axioms Substrait.ContractCheck.run_plan_noRaise_duckdb
 #print axioms Substrait.ContractCheck.Request.issuesIn_sound
+#print axioms Substrait.ContractCheck.verdict_proved_sound
 #print axioms Substrait.ContractCheck.verified_holds_run_plan
 #print axioms Substrait.ContractCheck.verified_holds_run_plan_duckdb
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
