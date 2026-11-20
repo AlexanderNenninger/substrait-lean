@@ -445,7 +445,7 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |
 | `Welford.lean`, `WelfordRel.lean` | Welford's update and Chan's merge, absolute and relative |
 | `MergeRel.lean`, `CovRel.lean` | Chan's merge and the covariance, relative to the spread |
-| `Chan.lean`, `ChanCorr.lean` | DuckDB's `VAR_*`, `STDDEV_*` and `CORR` meet `StatProps` |
+| `Chan.lean`, `ChanCorr.lean` | DuckDB's `VAR_*`, `STDDEV_*` and `CORR` meet `StatProps`; an engine's `VAR_*`, `STDDEV_*` and `COVAR_*` are within `statEps` of the reference's (`epsilon_var_cr`, `epsilon_stddev_cr`, `epsilon_cov_cr`) |
 | `CoreStats.lean`, `CoreKappa.lean` | The statistical properties of `StatProps.lean`, proved over the reals; trusted facts before D30 |
 
 ## Generated modules
