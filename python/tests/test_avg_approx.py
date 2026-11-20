@@ -61,6 +61,10 @@ def test_the_issue_1735_threshold_is_refused():
         "SELECT m, COUNT(*) AS n FROM (SELECT k, AVG(x) AS m FROM t GROUP BY k) GROUP BY m",
         "SELECT AVG(x) < 4299183.18 AS flag FROM t",
         "SELECT k, AVG(x) AS m FROM t GROUP BY k ORDER BY m",
+        # Over-refused, soundly (ruling 108): the lifted mean's abstract range is the
+        # sum's over the count's (about +-1e13), not the values' [0, 1e7], so the band
+        # straddles 2e7. The `ratioSharpen` follow-up for `fdiv(itof s, itof c)` proves it.
+        "SELECT k FROM t GROUP BY k HAVING AVG(x) < 20000000",
     ],
 )
 def test_a_decision_on_the_mean_without_one_outcome_over_the_band_is_refused(sql):
@@ -71,8 +75,10 @@ def test_a_decision_on_the_mean_without_one_outcome_over_the_band_is_refused(sql
 @pytest.mark.parametrize(
     "sql",
     [
-        # The band lies wholly on one side of the threshold: one outcome.
-        "SELECT k FROM t GROUP BY k HAVING AVG(x) < 20000000",
+        # The threshold lies beyond the lifted quotient's abstract range: the sum is in
+        # [0, 1e13] and the count in [1, 1e6], so the quotient is in [0, 1e13], and the
+        # band does not reach 2e13: one outcome.
+        "SELECT k FROM t GROUP BY k HAVING AVG(x) < 20000000000000",
         # No decision reads the mean.
         "SELECT k, SUM(x) AS s, COUNT(x) AS n FROM t GROUP BY k",
     ],
@@ -94,3 +100,57 @@ def test_the_reference_lift_has_no_mark():
     """The reference's mean is the engines' common one (12b-1): no band, no refusal."""
     report = sv.verify(EDGE, tables=T, requires=REQUIRES, semantics="reference", on_inferred="warn")
     assert not any(i.kind == KIND for i in report.errors)
+
+
+#: A key needs a column the mean does not taint (ruling 108, C-key).
+GROUPED = "SELECT k, AVG(x) AS m FROM t GROUP BY k"
+
+
+@pytest.mark.parametrize("cols", [["k"], ["k", "m"]])
+def test_a_key_with_an_untainted_subset_stays_proved(cols):
+    report = sv.verify(
+        GROUPED,
+        tables=T,
+        requires=REQUIRES,
+        ensures=[sv.unique(*cols)],
+        semantics="duckdb",
+        on_inferred="warn",
+    )
+    assert report.verdict == "proved", [str(e) for e in report.errors]
+
+
+def test_a_key_on_the_mean_alone_is_refused():
+    report = sv.verify(
+        f"SELECT DISTINCT m FROM ({GROUPED})",
+        tables=T,
+        requires=REQUIRES,
+        ensures=[sv.unique("m")],
+        semantics="duckdb",
+        on_inferred="warn",
+    )
+    assert refused(report)
+    exprs = [i.expr for i in report.errors if i.kind == KIND]
+    assert "DISTINCT" in exprs and any(e.startswith("the key") for e in exprs), exprs
+
+
+@pytest.mark.parametrize(
+    ("post", "verdict"),
+    [
+        # At the edge of the mean's range: DuckDB's mean may lie a band below 0
+        # (ruling 104, C-contract).
+        ("m >= 0", "unproved"),
+        # A band's width away from the edge: it holds over the band.
+        ("m >= -1", "proved"),
+    ],
+)
+def test_a_postcondition_on_the_mean_holds_over_the_band(post, verdict):
+    report = sv.verify(
+        GROUPED,
+        tables=T,
+        requires=REQUIRES,
+        ensures=[post],
+        semantics="duckdb",
+        on_inferred="warn",
+    )
+    assert report.verdict == verdict, [str(e) for e in report.errors]
+    assert (verdict == "unproved") == any(i.kind == KIND for i in report.errors)
