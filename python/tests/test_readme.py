@@ -34,34 +34,46 @@ READMES = [
     ROOT / "docs" / "engines.md",
     ROOT / "docs" / "coverage-targets.md",
     ROOT / "docs" / "build-performance.md",
+    ROOT / "templates" / "pipelines" / "README.md",
+    ROOT / "templates" / "pipelines" / "docs" / "for-enterprise.md",
 ]
 # Pages whose Python blocks are not examples of the public API.
 EXEMPT = {
-    "CLAUDE.md": "instructions for the agents that work on the repository, with commands for its machines",
+    "CLAUDE.md": "instructions for the agents that work on the repository",
     "CHANGELOG.md": "the release notes quote old versions of the API",
     "dbt/API-NOTES.md": "notes on the API for contributors: fragments with their own setup",
 }
-FENCE = r"^```python\n(# skip: ([^\n]+)\n)?(.*?)^```"
-BASH = r"^```bash\n(# skip: ([^\n]+)\n)?(.*?)^```"
+
+
+def _blocks(lang: str, text: str) -> list[tuple[str | None, str]]:
+    """The fenced blocks of a language: (skip reason or None, dedented body).
+    A fence may be indented, in a list item; its closing fence has the same indent."""
+    out = []
+    for m in re.finditer(rf"^( *)```{lang}\n(.*?)^\1```", text, re.S | re.M):
+        indent, body = m.group(1), m.group(2)
+        body = "".join(line.removeprefix(indent) for line in body.splitlines(keepends=True))
+        reason = re.match(r"# skip: ([^\n]+)\n", body)
+        out.append((reason.group(1) if reason else None, body[reason.end() :] if reason else body))
+    return out
 
 
 def python_blocks(text: str) -> list[str]:
     """The ```python blocks that run, in order: those with no skip reason."""
-    return [body for _, reason, body in re.findall(FENCE, text, re.S | re.M) if not reason]
+    return [body for reason, body in _blocks("python", text) if not reason]
 
 
 def skipped_blocks(text: str) -> list[str]:
     """The reasons of the ```python blocks that carry one."""
-    return [reason for _, reason, _ in re.findall(FENCE, text, re.S | re.M) if reason]
+    return [reason for reason, _ in _blocks("python", text) if reason]
 
 
 def bash_blocks(text: str) -> list[str]:
     """The ```bash blocks that run: those with no skip reason."""
-    return [body for _, reason, body in re.findall(BASH, text, re.S | re.M) if not reason]
+    return [body for reason, body in _blocks("bash", text) if not reason]
 
 
 def skipped_bash(text: str) -> list[str]:
-    return [reason for _, reason, _ in re.findall(BASH, text, re.S | re.M) if reason]
+    return [reason for reason, _ in _blocks("bash", text) if reason]
 
 
 def run_bash(path: Path, text: str) -> None:
@@ -71,7 +83,7 @@ def run_bash(path: Path, text: str) -> None:
     from sverify.cli import main
 
     for k, block in enumerate(bash_blocks(text)):
-        for line in block.splitlines():
+        for line in block.replace("\\\n", " ").splitlines():
             argv = shlex.split(line, comments=True)
             if not argv:
                 continue
@@ -148,7 +160,7 @@ def test_every_page_is_listed():
         for p in pages
         if (rel := p.relative_to(ROOT).as_posix()) not in listed
         and "templates/pipelines/.claude" not in rel
-        and re.search(r"^```(python|bash)", p.read_text(), re.M)
+        and re.search(r"^ *```(python|bash)", p.read_text(), re.M)
     )
     assert not missing, f"pages with a Python or bash block that no test runs: {missing}"
 

@@ -204,6 +204,7 @@ except VerificationError as e:
   already; the report's guarantee then holds only on data that meets them:
 
   ```python
+  # skip: a fragment: query and con are the reader's
   report = sv.verify(query, tables={"t": con.table("t")}, ensures=[sv.unique("host")])
   if report.verdict == sv.Verdict.PROVED:
       result = report.run(con)
@@ -220,6 +221,7 @@ except VerificationError as e:
   table (`e.rows`; None for `max_rows` and `rows_per`):
 
   ```python
+  # skip: a fragment: node, log and quarantine are the reader's
   try:
       node.refresh()
   except PreconditionError as e:

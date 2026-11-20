@@ -103,6 +103,7 @@ internet, and GitHub stores no MinIO key.
    to its subject:
 
    ```bash
+   # skip: configures the reader's OpenBao server
    bao auth enable jwt
    bao write auth/jwt/config \
      oidc_discovery_url=https://token.actions.githubusercontent.com \
