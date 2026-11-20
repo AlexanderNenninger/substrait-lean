@@ -178,6 +178,8 @@ or give other values, than the plan Sverify verified. Checked for the engine
 the request's `"profile"` names, or for every engine. -/
 def sourceIssues (es : List EngineProfile) (input : Json) : Except String (List Json) := do
   let some ⟨_, plan, cat, A, F, _, root, T⟩ ← Epsilon.inputs? input | return []
+  -- No mark, no tainted value: nothing to check (every request comes here).
+  unless Epsilon.Rel.hasMark root do return []
   let deps := Epsilon.Rel.markDeps cat root
   let prof := (input.getObjValAs? String "profile").toOption
   let engines := match prof with
@@ -193,8 +195,10 @@ def sourceIssues (es : List EngineProfile) (input : Json) : Except String (List 
   -- C-out: an output column that reads a marked value and has no bound.
   let names := if plan.names.length == deps.length then plan.names
     else (List.range deps.length).map (s!"#{·}")
+  -- Each engine's column bounds, computed once: one pass over the plan per engine.
+  let bounds := engines.map fun e => Epsilon.colEps es e cat A F T root
   let cols := ((names.zip deps).zipIdx.filterMap fun ((n, d), i) =>
-    if d && engines.any (fun e => ((Epsilon.colEps es e cat A F T root).bind (·.getD i none)).isNone)
+    if d && bounds.any (fun b => (b.bind (·.getD i none)).isNone)
     then some s!"the column {n}" else none)
   -- C-contract: a postcondition that reads a marked column and does not hold over the band.
   let rob ← robust es input

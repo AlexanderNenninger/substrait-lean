@@ -90,7 +90,7 @@ def test_a_decision_the_band_does_not_straddle_stays_proved(sql):
 
 def test_the_plain_mean_is_proved_with_its_band_in_the_report():
     report = verified("SELECT k, AVG(x) AS m FROM t GROUP BY k")
-    assert report.verdict == "proved"
+    assert report.verdict == "proved", ([str(e) for e in report.errors], report.unproved)
     band = report._epsilon["m"]["bounds"]["abs"]
     # Sound and loose: the band is over the quotient's range (+-1e13), 17 * 2^-53 of it.
     assert band["proved"] and 0 < band["value"] < 1e-1

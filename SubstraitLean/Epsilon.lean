@@ -646,7 +646,35 @@ def Expr.markDep (d : List Bool) : Expr → Bool
   | .un _ a => Expr.markDep d a
   | .bin _ a b => Expr.markDep d a || Expr.markDep d b
   | .ifThen c t e => Expr.markDep d c || Expr.markDep d t || Expr.markDep d e
-  | .hof _ l body => Expr.markDep d l || Expr.markDep (true :: d) body || d.any id
+  -- The body runs on `x :: row`: the element is as tainted as the list, an
+  -- outer column as itself.
+  | .hof _ l body => Expr.markDep d l || Expr.markDep (Expr.markDep d l :: d) body
+
+/-- Does `e` contain a mark? -/
+def Expr.hasMark : Expr → Bool
+  | .lit _ | .field _ => false
+  | .un (.approx _) _ => true
+  | .un _ a => Expr.hasMark a
+  | .bin _ a b => Expr.hasMark a || Expr.hasMark b
+  | .ifThen c t e => Expr.hasMark c || Expr.hasMark t || Expr.hasMark e
+  | .hof _ l body => Expr.hasMark l || Expr.hasMark body
+
+/-- Does a measure's argument or filter contain a mark? -/
+def Measure.hasMark (m : Measure) : Bool := Expr.hasMark m.arg || m.filter.any Expr.hasMark
+
+/-- Does any expression of the plan contain a mark? Without one no column,
+row decision or postcondition is tainted, and `sourceIssues` stops early. -/
+def Rel.hasMark : Rel → Bool
+  | .read _ | .values _ _ => false
+  | .filter r c => Rel.hasMark r || Expr.hasMark c
+  | .project r es => Rel.hasMark r || es.any Expr.hasMark
+  | .emit r _ | .orderBy r _ | .fetch r _ _ | .distinct r | .unnest r _ => Rel.hasMark r
+  | .aggregate r gs ms => Rel.hasMark r || gs.any Expr.hasMark || ms.any Measure.hasMark
+  | .window r _ _ fns => Rel.hasMark r || fns.any fun
+    | .agg m _ _ => Measure.hasMark m
+    | _ => false
+  | .cross a b | .unionAll a b => Rel.hasMark a || Rel.hasMark b
+  | .join a b _ on | .semi a b _ on => Rel.hasMark a || Rel.hasMark b || Expr.hasMark on
 
 /-- Which columns of `r` depend on a mark (M1, M2): every constructor has a
 rule, and an operator whose columns this does not trace taints them all. -/

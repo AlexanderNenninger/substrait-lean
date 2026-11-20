@@ -1664,6 +1664,9 @@ decision that reads a marked value has one outcome over the band and every
 output column that reads one has a bound in the report, and keys. Elsewhere the report
 carries an error issue (`source_threshold`, `EngineRobust.sourceIssues`).
 
+Recomputes sinks: no. The reference's values do not move, and a mark only
+narrows what is proved.
+
 ### D53. A timestamp with the time zone UTC is an instant
 
 Decided 2026-11-19 (theory advisor).
