@@ -5,8 +5,8 @@ import Sverify.Frontend.Guard
 
 `Expr.andLift` writes a chain as a `CASE` nest, and a chain inside an operand
 of another chain is copied with every guard that reads it: nested `k` deep,
-an operand is written `2ᵏ` or `3ᵏ` times. The parser caps the lift at a
-depth (`LIFT_LEVELS`) for that reason.
+an operand is written `2ᵏ` or `3ᵏ` times. The parser lifts only the top
+`Parse.liftLevels` levels with the chain for that reason.
 
 Relations bind. `Rel.project` appends a column, and `ifThen` evaluates only
 the branch it takes, so a chain is bound in projections below the operator

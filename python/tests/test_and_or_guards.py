@@ -1,6 +1,8 @@
 """`AND` and `OR` read as guards (D50): in `p AND q` the raising operations of
 `q` run only where `p` is not FALSE, in `p OR q` only where `p` is not TRUE."""
 
+import time
+
 import ibis
 import pyarrow as pa
 import pytest
@@ -77,13 +79,44 @@ def _nest(wrappers: int):
     return t.filter(e)
 
 
-def test_the_lift_guards_the_top_levels_of_a_nest_and_no_more():
-    """D50 interim cap (`LIFT_LEVELS`): a guard at the deepest lifted level is proved,
-    one level further down is read eagerly and its division needs a precondition."""
-    from sverify.plan_json import LIFT_LEVELS
+#: The levels of a nest the parser lifts with the chain (`Parse.liftLevels`); deeper,
+#: a filter's chains are bound in levels below it (D50-d).
+LIFT_LEVELS = 3
 
+
+def test_the_lift_guards_the_top_levels_of_a_nest_and_binds_the_rest():
+    """A guard at the deepest lifted level is proved. One level further down the
+    filter's chains are bound (D50-d); until the analysis reads a guarded column
+    (D50-d3c) the division there needs a precondition."""
     inner = sv.verify(_nest(LIFT_LEVELS - 1), on_inferred="off")
     assert inner.verdict == sv.Verdict.PROVED, str(inner)
     outer = sv.verify(_nest(LIFT_LEVELS), on_inferred="off")
     assert outer.verdict != sv.Verdict.PROVED
     assert [e.kind for e in outer.errors] == ["division by zero"]
+
+
+@pytest.mark.parametrize("wrappers", [4, 5, 8])
+def test_a_deep_nest_is_bound_and_checks_in_time_linear_in_depth(wrappers):
+    """Beyond the cap a filter's chains are bound in levels below it (D50-d), each
+    operand written once: depth 8 checks as a depth 4 nest did before (5,171 s
+    with the chain, #1681), and the plan grows with the operands, not with 2^depth."""
+    start = time.perf_counter()
+    report = sv.verify(_nest(wrappers), on_inferred="off")
+    assert time.perf_counter() - start < 60
+    # Until the analysis reads a guarded column (D50-d3c) the division needs a precondition.
+    assert [e.kind for e in report.errors] == ["division by zero"]
+
+
+def test_a_bound_filter_runs_as_the_lifted_one():
+    """The bound plan keeps the rows the lift keeps (`Rel.bindFilter_eval`), on DuckDB."""
+    con = sv.connect()
+    rows = pa.table({"x": [0, 1, 2, 5, 20], "z": [0, 1, 0, 1, 0]})
+    con.put("t", rows)
+    t = con.table("t")
+    e = (t.x != 0) & ((10 // t.x) > 1)
+    for i in range(5):
+        e = ((t.z > 0) | e) if i % 2 == 0 else ((t.z > 0) & e)
+    report = sv.verify(t.filter(e), ensures=[], on_inferred="off")
+    got = sorted(report.run(con, unverified=True).to_pylist(), key=lambda r: (r["x"], r["z"]))
+    want = sorted(t.filter(e).to_pyarrow().to_pylist(), key=lambda r: (r["x"], r["z"]))
+    assert got == want
