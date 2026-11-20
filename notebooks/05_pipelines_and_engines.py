@@ -1293,10 +1293,10 @@ def _(mo):
     The reference isn't the only semantics to prove a plan under. With
     `semantics="polars"`, Sverify proves it under the Polars rules, the
     ones your Polars run follows. The proof then reaches Polars directly
-    (`native`). It reaches another engine only where that engine's choices
-    stay within those of Polars on every option the plan reads (`transfer`), and
-    the translation from the reference no longer applies, since the
-    reference isn't the semantics we verified under:
+    (`native`). It reaches another engine only by a route that carries it
+    there, such as `transfer`, where that engine's choices stay within those
+    of Polars on every option the plan reads. A native run on DuckDB is
+    refused, since DuckDB's rules aren't the ones we verified under:
     """)
     return
 
@@ -1309,11 +1309,11 @@ def _(con, mo, sv):
     _own = sv.verify(_t.join(_u, _t.k == _u.k).select(_t.k, _t.qty, _u.label), semantics="polars")
     _own.run(con, "polars", route="auto")
     try:
-        _own.run(con, "duckdb", route="translated")
+        _own.run(con, "duckdb", route="native")
     except RouteError as _e:
         _refusal = f"`{type(_e).__name__}`: {_e}"
     else:
-        raise AssertionError("the translation from the reference should not apply")
+        raise AssertionError("a native run needs the proof under the engine's own rules")
     mo.md(f"Route on Polars: {_own.routes['polars']}\n\nAn explicit route on DuckDB: {_refusal}")
     return (RouteError,)
 
@@ -1322,8 +1322,8 @@ def _(con, mo, sv):
 def _(mo):
     mo.md(r"""
     An explicit `route=` is taken or refused, never replaced by another, and
-    the refusal says how to reach the engine: verify under the reference, or
-    leave the choice to `route="auto"`.
+    the refusal names the semantics it needs and what to do, here the
+    `route="auto"` that tries every route.
     """)
     return
 
