@@ -100,6 +100,7 @@ contract's preconditions.
 | An engine's double `SUM` of integers with `Σ \|xᵢ\| ≤ 2⁵³` is the exact sum under every `sum_order`, and its `AVG` the reference's (D35, amended 2026-11-19), so a measure of converted integers with `N · max M 1 ≤ 2⁵²` has no tolerance | `AllowedP` | `SumOrder.int_exact`, `AvgOrder.int_exact`, `FloatSums.int_exact`, `floatSum_int` | `MarginSound.lean` |
 | The margin check of a threshold filter on a double `SUM` or `AVG` (#929), in the core's doubles: a group's row `marginCount` does not flag passes the check, and a group passing it on one sum or mean `AllowedP` allows has every allowed sum or mean, and the reference's, strictly on one side of `t` | `AllowedP` | `margin_row`, `check_sum`, `check_avg`, `margin_sum`, `margin_avg` | `MarginSound.lean` |
 | A delta plan computes the change of the view | `zeval` | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
+| A view over a store whose table holds only the columns the view reads (`Rel.readsOnly`, decided), consolidated, gives every row its weight, and the delta rule holds over that store (#1329, ruling 116 A2) | `zeval` | `Rel.zeval_prune`, `Rel.incremental_sound_prune` | `Incremental.lean` |
 | `Rel.eval` is weighted evaluation over `Nat`: every unordered arm (filter, project, emit, cross, joins, union, sort, `DISTINCT`, semi and anti joins, unnest) at once, with the ordered and aggregate nodes read through the seam | `eval` | `Rel.eval_eq_evalK` | `WSet.lean` |
 | The delta plan computes the change of the view for any weights; over a semiring, weight-1 rows give `Rel.eval`; changing the weights by a map that keeps `*` and `1` commutes with evaluation | `zeval`, `eval` | `Rel.incrementalK_sound`, `Rel.delta_evalK_eq`, `Rel.evalK_lift`, `Rel.evalK_mapW` | `WSet.lean` |
 | The weight-column encoding runs Z-set plans on a bag engine | `zeval` | `Rel.weighted_eval` | `Weighted.lean` |
@@ -215,7 +216,7 @@ as the guard. Engines-common and the modules below import it as
 | Module | Job |
 |---|---|
 | `WSet.lean` | Relations with weights in any `K`, `Rel.evalK`, delta rules and delta plans over `K` |
-| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output |
+| `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output; evaluation sees only weights (`Rel.zeval_weight_congr`); the columns a plan reads (`Rel.colsOf`) and the store pruned to them (`Rel.zeval_prune`) |
 | `Weighted.lean` | Z-set plans as bag plans with a weight column |
 | `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
 | `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
