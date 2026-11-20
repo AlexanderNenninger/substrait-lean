@@ -21,12 +21,15 @@ import json
 import resource
 import sys
 import tempfile
+import threading
+import time
 
 import numpy as np
 import pyarrow as pa
 from deltalake import write_deltalake
 
 import sverify as sv
+from sverify._store import store_for
 from sverify.incremental import Snapshot, SourceBatch
 from sverify.io import Batch, DeltaSource, Source, StaticSource
 
@@ -116,7 +119,59 @@ def peak_mb() -> float:
     return peak / (2**20 if sys.platform == "darwin" else 2**10)
 
 
-def main(engine: str, kind: str, n: int) -> dict:
+def rss_mb() -> float:
+    with open("/proc/self/statm") as f:
+        return int(f.read().split()[1]) * 4096 / 2**20
+
+
+class Sampler:
+    """The high-water resident memory of the process since `reset`, sampled
+    from a thread (Linux)."""
+
+    def __init__(self) -> None:
+        self.high = 0.0
+        self.on = True
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self) -> None:
+        while self.on:
+            self.high = max(self.high, rss_mb())
+            time.sleep(0.002)
+
+
+def profiled(owner: object, name: str, label: str, sampler: Sampler, out: list) -> None:
+    """Wrap `owner.name` so that each call records what it adds to the
+    process's resident memory above its start, and its wall time."""
+    inner = getattr(owner, name)
+
+    def call(*args, **kwargs):
+        start, t0 = rss_mb(), time.perf_counter()
+        sampler.high = start
+        try:
+            return inner(*args, **kwargs)
+        finally:
+            out.append((label, sampler.high - start, time.perf_counter() - t0))
+
+    setattr(owner, name, call)
+
+
+def profile_calls(engine: str, out: list, sampler: Sampler) -> None:
+    from sverify import _state, incremental
+
+    profiled(_state.Merger, "__call__", "Merger.__call__", sampler, out)
+    profiled(incremental, "put_table", "put_table", sampler, out)
+    profiled(incremental, "matching", "matching", sampler, out)
+    profiled(incremental, "arrow_of", "arrow_of", sampler, out)
+    view = incremental.IncrementalView
+    for m in ("_merge", "_delta", "_linear_change", "_touched_change", "_semi_change", "_diff"):
+        profiled(view, m, f"IncrementalView.{m}", sampler, out)
+    profiled(incremental.DuckDBStore, "apply", "DuckDBStore.apply", sampler, out)
+    for store in {type(store_for(engine))}:
+        for m in ("expanded", "kept", "has_negative", "merge", "negated"):
+            profiled(store, m, f"{store.__name__}.{m}", sampler, out)
+
+
+def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
     path = ""
     if kind == "delta":
         path = tempfile.mkdtemp() + "/t"
@@ -140,8 +195,19 @@ def main(engine: str, kind: str, n: int) -> dict:
     elif kind == "static":
         assert isinstance(src, StaticSource)
         src.apply(sv.io.Changes(inserts=rows(n, n + CHANGE)))
+    calls: list = []
+    sampler = Sampler() if profile else None
+    if sampler is not None:
+        profile_calls(engine, calls, sampler)
+        sampler.high = rss_mb()
+        base = rss_mb()
     node.refresh(engine=engine)
     gc.collect()
+    if sampler is not None:
+        for label, added, secs in calls:
+            if added > 5:
+                print(f"PROFILE {engine} {kind} {label} +{added:.0f} MB {secs:.2f}s")
+        print(f"PROFILE {engine} {kind} refresh total high +{sampler.high - base:.0f} MB")
     pipe = node._stage.pipe
     held = pipe.con.get("t")
     out = {
@@ -160,4 +226,4 @@ def main(engine: str, kind: str, n: int) -> dict:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+    main(sys.argv[1], sys.argv[2], int(sys.argv[3]), "profile" in sys.argv[4:])
