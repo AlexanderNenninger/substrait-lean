@@ -1,0 +1,14 @@
+{
+  "id": "F13",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Status report: no ruling needed; #1531 implements entry 3's R3 shape with no verdict change.",
+  "prs": [
+    1529,
+    1531
+  ],
+  "source": "fable-rulings-night-1117.md, entry 13",
+  "note": "Records that the A2 ruling (entries 9 and 10) was still undelivered."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "F193",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D69 signed: Ibis calendar functions of a UTC instant mean that function of its UTC wall clock; the Ibis producer writes the conversion, the parser keeps refusing; SQL lift, arithmetic, other zones stay refused.",
+  "issues": [
+    1725
+  ],
+  "amends": [
+    "D53"
+  ],
+  "source": "fable-ruling-193-1725-utc-instant-calendar.md",
+  "note": "D53's sentence gains a pointer '(opened for the Ibis frontend at UTC by D69)'. D69 chosen since D62 is taken."
+}

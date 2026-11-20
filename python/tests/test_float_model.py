@@ -206,9 +206,10 @@ def test_a_window_over_a_key_has_a_class() -> None:
         assert route.kind == "translated"
         assert route.cls in routes.CLASSES
         # The window's sort keys are options the plan meets (#1032): the
-        # evidence is that of the engine's row for their NULL placement.
+        # evidence is that of the engine's row for their NULL placement,
+        # `Shim.null_order` on both.
         assert route.cls == "exact"
-        assert route.evidence == ("tested" if engine == "duckdb" else "proved")
+        assert route.evidence == "proved"
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])

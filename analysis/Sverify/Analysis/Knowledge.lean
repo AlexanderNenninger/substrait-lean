@@ -40,12 +40,15 @@ structure Knowledge where
   keys : List (List Nat)
   /-- At most this many rows. -/
   rows : Option Nat := none
+  /-- Non-overlapping ranges (#814). -/
+  ranges : List RangeCond := []
 
 variable [Boxes.Ambient]
 /-- The rows fit the knowledge. -/
 def Knowledge.Mem (k : Knowledge) (rows : Relation) : Prop :=
   (∀ row ∈ rows, EnvMem k.cols row) ∧ (∀ row ∈ rows, FactsHold k.facts row) ∧
-    (∀ key ∈ k.keys, KeyOn key rows) ∧ ∀ n, k.rows = some n → rows.length ≤ n
+    (∀ key ∈ k.keys, KeyOn key rows) ∧ (∀ n, k.rows = some n → rows.length ≤ n) ∧
+    ∀ c ∈ k.ranges, RangeOn c rows
 
 /-- The input tables' knowledge, as the checker receives it. -/
 abbrev KnowledgeEnv := String → Knowledge
@@ -58,7 +61,7 @@ def Sound (K : KnowledgeEnv) (cat : Catalog) : Prop := ∀ t, (K t).Mem (cat t).
 abbrev cols (K : KnowledgeEnv) (t : String) : List AVal := (K t).cols
 abbrev facts (K : KnowledgeEnv) (t : String) : List Fact := (K t).facts
 /-- The tables' keys, as the analyses take them. -/
-abbrev keys (K : KnowledgeEnv) : TableCond := ⟨fun t => (K t).keys⟩
+abbrev keys (K : KnowledgeEnv) : TableCond := ⟨fun t => (K t).keys, fun t => (K t).ranges⟩
 
 /-- Which windows have a key of their input among their partition and sort
 columns: derived from the keys, so no longer an oracle the caller supplies. -/
@@ -74,7 +77,7 @@ theorem Sound.facts (h : K.Sound cat) : ∀ t, ∀ row ∈ (cat t).rows, FactsHo
   fun t => (h t).2.1
 
 theorem Sound.keys (h : K.Sound cat) : K.keys.Hold cat :=
-  fun t => (h t).2.2.1
+  ⟨fun t => (h t).2.2.1, fun t => (h t).2.2.2.2⟩
 
 theorem Sound.windows (hcat : cat.WF) (h : K.Sound cat) : (K.windows cat).SoundAll cat :=
   Rel.keyedWindows_soundAll hcat h.cols h.facts h.keys
@@ -82,19 +85,23 @@ theorem Sound.windows (hcat : cat.WF) (h : K.Sound cat) : (K.windows cat).SoundA
 /-- The knowledge `substrait-check --contract` starts from: each table's
 schema refined by its preconditions, the facts they state, and its keys. -/
 def ofSpec (S : String → List AVal) (pre : String → List Expr)
-    (keys : String → List (List Nat)) : KnowledgeEnv :=
-  fun t => ⟨tableEnv (S t) (pre t), (pre t).flatMap Expr.factsOf, keys t, none⟩
+    (keys : String → List (List Nat)) (ranges : String → List RangeCond := fun _ => []) :
+    KnowledgeEnv :=
+  fun t => ⟨tableEnv (S t) (pre t), (pre t).flatMap Expr.factsOf, keys t, none, ranges t⟩
 
 theorem ofSpec_sound {S : String → List AVal} {pre : String → List Expr}
     {keys : String → List (List Nat)}
     (hS : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (S t) row)
     (hpre : ∀ t, ∀ row ∈ (cat t).rows, ∀ e ∈ pre t, (e.eval row).isTrue = true)
-    (hkeys : ∀ t, ∀ k ∈ keys t, KeyOn k (cat t).rows) : (ofSpec S pre keys).Sound cat :=
+    {ranges : String → List RangeCond}
+    (hkeys : ∀ t, ∀ k ∈ keys t, KeyOn k (cat t).rows)
+    (hranges : ∀ t, ∀ c ∈ ranges t, RangeOn c (cat t).rows) :
+    (ofSpec S pre keys ranges).Sound cat :=
   fun t => ⟨fun row h => tableEnv_sound (hS t row h) (hpre t row h),
     fun row h f hf => by
       obtain ⟨e, he, hf⟩ := List.mem_flatMap.mp hf
       exact Expr.factsOf_sound e (hpre t row h e he) f hf,
-    hkeys t, fun _ h => by simp [ofSpec] at h⟩
+    hkeys t, fun _ h => by simp [ofSpec] at h, hranges t⟩
 
 end KnowledgeEnv
 
@@ -102,7 +109,7 @@ end KnowledgeEnv
 `Rel.aeval`'s: whether the plan is small enough to bound float sums. -/
 def Rel.analyse (cat : Catalog) (K : KnowledgeEnv) (sz : Bool := false) (r : Rel) : Knowledge :=
   ⟨r.aeval cat K.cols K.facts (K.windows cat) sz, r.facts cat K.facts (K.windows cat),
-    r.keys cat K.cols K.facts K.keys, r.maxRows⟩
+    r.keys cat K.cols K.facts K.keys, r.maxRows, r.ranges cat K.keys⟩
 
 /-- **The analysis is sound under every tie order** (D24). -/
 theorem Rel.analyse_sound_all {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
@@ -111,7 +118,8 @@ theorem Rel.analyse_sound_all {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
   ⟨Rel.aeval_sound_all hcat hK.cols hK.facts (hK.windows hcat) hwf ho,
     Rel.facts_sound_all hcat hK.facts (hK.windows hcat) hwf ho,
     fun k hk => Rel.keys_sound_all hcat hK.cols hK.facts hK.keys hwf k hk ho,
-    fun _ hn => Rel.maxRows_sound_all hn ho⟩
+    fun _ hn => Rel.maxRows_sound_all hn ho,
+    fun c hc => Rel.ranges_sound_all hcat hK.keys hwf c hc ho⟩
 
 /-- **The analysis is sound** for `Rel.eval`, also with float sums bounded
 on small plans. -/
@@ -120,7 +128,8 @@ theorem Rel.analyse_sound {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     (r.analyse cat K sz).Mem (r.eval cat) :=
   ⟨Rel.aeval_sound hcat hK.cols hK.facts (hK.windows hcat) hwf hs,
     Rel.facts_sound hcat hK.facts (hK.windows hcat) hwf,
-    Rel.keys_sound hcat hK.cols hK.facts hK.keys hwf, fun _ hn => Rel.maxRows_sound hn⟩
+    Rel.keys_sound hcat hK.cols hK.facts hK.keys hwf, fun _ hn => Rel.maxRows_sound hn,
+    fun c hc => Rel.ranges_sound_all hcat hK.keys hwf c hc (r.eval_orderAllowed cat)⟩
 
 namespace Knowledge
 
@@ -182,6 +191,13 @@ theorem allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK
     {r : Rel} (hwf : r.WF cat) (hd : r.detPlan cat K.cols K.facts K.keys = true)
     {out : Relation} (h : r.Allowed cat out) : out.Perm (r.eval cat) :=
   Rel.allowed_perm_eval hcat hK.cols hK.facts hK.keys hwf hd h
+
+/-- `Rel.allowed_eq_eval` on one hypothesis. -/
+theorem allowed_eq_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat)
+    {r : Rel} (hwf : r.WF cat) (hd : r.detPlan cat K.cols K.facts K.keys = true)
+    (hs : r.seqTotal cat K.cols K.facts K.keys = true)
+    {out : Relation} (h : r.Allowed cat out) : out = r.eval cat :=
+  Rel.allowed_eq_eval hcat hK.cols hK.facts hK.keys hwf hd hs h
 
 /-- `Rel.allowed_canon_perm_eval` on one hypothesis (D48). -/
 theorem allowed_canon_perm_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}

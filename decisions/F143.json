@@ -1,0 +1,15 @@
+{
+  "id": "F143",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Approves the #1443 registry plan with five changes: keep the name EngineProfile for now (rename to ProfileRows later), side is a field recorded as sideName and printed, EngineEntry.rows, out-of-tree engines state an entry at their next pin bump.",
+  "issues": [
+    881,
+    900,
+    1443
+  ],
+  "source": "fable-ruling-143-1443-registry.md",
+  "note": "Carries the stability.md paragraph ruled in entry 141 (#881 item 2.5). Out-of-tree (private) engine package adapts at its next pin bump; requests turn to pending."
+}

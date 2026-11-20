@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AlexanderNenninger/substrait-lean/decisions/decision.schema.json",
+  "title": "Decision",
+  "description": "One project decision: a D-numbered decision of the reference (docs/decisions.md), a numbered ruling of the theory advisor, or a ruling of the maintainer. Stored as decisions/<id>.json. `python -m sverify_dev.decisions` checks every file against this schema and checks that the links between entries resolve and agree both ways.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "date", "decided_by", "scope", "status", "summary"],
+  "properties": {
+    "id": {
+      "description": "D<n> for a decision of docs/decisions.md; F<n> for the theory advisor's ruling n, F<n>.<part> for a part of it whose status differs, F-<slug> for a ruling note with no number; U-<date>-<slug> for a maintainer's ruling. The file is named <id>.json.",
+      "type": "string",
+      "pattern": "^(D[0-9]+|F[0-9]+(\\.[A-Za-z0-9-]+)?|F-[a-z0-9-]+(\\.[A-Za-z0-9-]+)?|U-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+)$"
+    },
+    "date": {"description": "The day it was decided.", "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "decided_by": {
+      "description": "user: the maintainer, also where the theory advisor proposed and the maintainer approved; fable: the theory advisor, whose rulings are final; coordinator: the coordinating session's own working rule.",
+      "enum": ["user", "fable", "coordinator"]
+    },
+    "scope": {
+      "description": "reference-semantics: what the core, the reference and the profiles compute; api: the public Python API, the command line and the report; engines: an engine's profile, facts, lowering and shims; architecture: modules, layers and proof structure; process: CI, review and workflow; release: versions and what gates a release.",
+      "enum": ["reference-semantics", "api", "engines", "architecture", "process", "release"]
+    },
+    "status": {
+      "description": "in-force (as amended, where amended_by is set); superseded: replaced in whole; withdrawn: taken back, or a number left unused; reserved: a D-number held with no decision yet; unclear: the record does not settle whether it holds, with the reason in note.",
+      "enum": ["in-force", "superseded", "withdrawn", "reserved", "unclear"]
+    },
+    "summary": {"description": "What was decided, in one sentence.", "type": "string", "minLength": 1},
+    "issues": {"description": "Issues of this repository.", "type": "array", "items": {"type": "integer"}, "uniqueItems": true},
+    "prs": {"description": "Pull requests of this repository.", "type": "array", "items": {"type": "integer"}, "uniqueItems": true},
+    "supersedes": {"description": "Entries this one replaces in whole or withdraws.", "$ref": "#/$defs/ids"},
+    "superseded_by": {"description": "The entries that replace or withdraw this one: the reverse of supersedes.", "$ref": "#/$defs/ids"},
+    "amends": {"description": "Entries this one changes in part; they stay in force as amended.", "$ref": "#/$defs/ids"},
+    "amended_by": {"description": "The reverse of amends.", "$ref": "#/$defs/ids"},
+    "source": {"description": "Where the text is: a ruling file in the coordinator's notes folder, `memory:<file>` for the maintainer's rulings recorded by the coordinator, `github:#<n>` for an issue comment, or docs/decisions.md.", "type": "string"},
+    "note": {"description": "Why an entry is unclear, which part was withdrawn or amended, or where a D-number's text is.", "type": "string"}
+  },
+  "$defs": {
+    "ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

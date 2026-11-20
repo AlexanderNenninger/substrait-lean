@@ -1,0 +1,23 @@
+{
+  "id": "U-2026-11-20-report-lenses",
+  "date": "2026-11-20",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The user chose `Report.lenses` as the one name for a report's lens settings (over observation and equivalence).",
+  "issues": [
+    1288,
+    1961
+  ],
+  "prs": [
+    1961
+  ],
+  "supersedes": [
+    "F184.1"
+  ],
+  "amends": [
+    "U-2026-11-05-observation-naming"
+  ],
+  "source": "fable-ruling-192-report-lenses-formats.md",
+  "note": "Recorded in ruling 192, quoting the user's 'Report.lenses'."
+}

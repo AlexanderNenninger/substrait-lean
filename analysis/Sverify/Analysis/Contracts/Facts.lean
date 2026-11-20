@@ -270,6 +270,35 @@ def orNullFacts (fs : List Fact) : Expr → List Fact
   | .un .isNull (.field i) => fs.filter (·.mentions i)
   | _ => []
 
+/-- What a comparison being TRUE or NULL says of a column: `x <> c` makes `x`
+not `c`, and `c < x` with `0 ≤ c` makes an integer `x` not `0`. A fact constrains
+only non-NULL numbers, so these hold when the comparison is NULL too. -/
+def zeroFact : Expr → List Fact
+  | .un .not (.bin .eq (.field i) (.lit w)) =>
+    (match w.numOf? with
+      | some (k, c) => [.ne i k c]
+      | none => [])
+  | .bin .lt (.lit (.int c)) (.field i) => if 0 ≤ c then [.ne i .int 0] else []
+  | _ => []
+
+/-- `x` of `x IS NULL`. -/
+def Expr.isNullOf? : Expr → Option Expr
+  | .un .isNull x => some x
+  | _ => none
+
+omit [Boxes.Ambient] in
+theorem Expr.isNullOf?_some {p x : Expr} (h : p.isNullOf? = some x) : p = .un .isNull x := by
+  cases p with
+  | un f y => cases f <;> simp_all [Expr.isNullOf?]
+  | _ => simp [Expr.isNullOf?] at h
+
+/-- The guard `p IS NOT FALSE` of an `AND` (`Expr.notFalse`, D50) is
+`p IS NULL OR p`: what `p` says of a column holds where it is NULL too. -/
+def nullNeFacts (p q : Expr) : List Fact :=
+  match p.isNullOf? with
+  | some x => if x = q then zeroFact x else if .un .not x = q then zeroFact q else []
+  | none => []
+
 /-- `t < a OR b < t` with `a ≤ b` numbers of one kind: `t` is not in
 `[a, b]`, so not `0` when `0` is in it, and not `a`. -/
 def orGapFacts : Expr → Expr → List Fact
@@ -308,7 +337,7 @@ def Expr.factsCore : Expr → List Fact
       let fp := p.factsCore
       let fq := q.factsCore
       fp.filter (fq.contains ·) ++ orNullFacts fp q ++ orNullFacts fq p ++
-        orGapFacts p q ++ orGapFacts q p
+        orGapFacts p q ++ orGapFacts q p ++ nullNeFacts p q
   | _ => []
 termination_by e => sizeOf e
 
@@ -462,6 +491,71 @@ theorem orGapFacts_sound {p q : Expr} {row : Row}
     · simp at hf
   · simp at hf
 
+theorem zeroFact_sound {x : Expr} {row : Row}
+    (h : x.eval row = .null ∨ (x.eval row).isTrue = true) : FactsHold (zeroFact x) row := by
+  unfold zeroFact
+  split
+  · rename_i i w
+    cases hnum : w.numOf? with
+    | none => intro f hf; simp at hf
+    | some kc =>
+      obtain ⟨k, c⟩ := kc
+      intro f hf
+      simp only [List.mem_singleton] at hf; subst hf
+      intro y hy heq
+      have hw := Value.numOf?_some hnum
+      have hn : UnFn.apply .not (BinFn.apply .eq (row.getD i .null) w) = .bool false := by
+        rw [hy, hw, BinFn.eq_vals]; simp [UnFn.apply, heq]
+      have hX : (Expr.un .not (.bin .eq (.field i) (.lit w))).eval row = .bool false := hn
+      rcases h with h | h <;> rw [hX] at h <;> simp [Value.isTrue] at h
+  · rename_i c i
+    split
+    · rename_i hc
+      intro f hf
+      simp only [List.mem_singleton] at hf; subst hf
+      intro y hy heq
+      have hy0 : y = 0 := by simpa [NumKind.norm] using heq
+      subst hy0
+      have hX : (Expr.bin .lt (.lit (.int c)) (.field i)).eval row = .bool false := by
+        show BinFn.apply .lt (.int c) (row.getD i .null) = _
+        rw [hy]; simp [NumKind.val, BinFn.apply, Value.numPair, hc]
+      rcases h with h | h <;> rw [hX] at h <;> simp [Value.isTrue] at h
+    · intro f hf; simp at hf
+  · intro f hf; simp at hf
+
+theorem nullNeFacts_sound {p q : Expr} {row : Row}
+    (hpq : (p.eval row).isTrue = true ∨ (q.eval row).isTrue = true) :
+    FactsHold (nullNeFacts p q) row := by
+  unfold nullNeFacts
+  cases hx : p.isNullOf? with
+  | none => intro f hf; simp at hf
+  | some x =>
+    have hp := Expr.isNullOf?_some hx
+    subst hp
+    simp only []
+    split
+    · rename_i hxq
+      refine zeroFact_sound ?_
+      rcases hpq with h | h
+      · left
+        have h2 : (UnFn.apply .isNull (x.eval row)).isTrue = true := h
+        generalize x.eval row = v at h2 ⊢
+        cases v <;> simp [UnFn.apply, Value.isTrue] at h2 ⊢
+      · right
+        rw [hxq]; exact h
+    · split
+      · rename_i _ hnq
+        refine zeroFact_sound ?_
+        rcases hpq with h | h
+        · left
+          have h2 : (UnFn.apply .isNull (x.eval row)).isTrue = true := h
+          rw [← hnq]
+          show UnFn.apply .not (x.eval row) = .null
+          generalize x.eval row = v at h2 ⊢
+          cases v <;> simp [UnFn.apply, Value.isTrue] at h2 ⊢
+        · right; rw [← hnq]; rw [← hnq] at h; exact h
+      · intro f hf; simp at hf
+
 theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = true) :
     FactsHold e.factsCore row := by
   fun_induction Expr.factsCore e
@@ -521,7 +615,7 @@ theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = 
       simpa [eval, BinFn.apply, isTrue_or3] using ht
     intro f hf
     simp only [List.mem_append, List.mem_filter] at hf
-    rcases hf with (((⟨hfp, hfq⟩ | hf) | hf) | hf) | hf
+    rcases hf with ((((⟨hfp, hfq⟩ | hf) | hf) | hf) | hf) | hf
     · rcases hpq with hp | hq
       · exact ihp hp f hfp
       · exact ihq hq f (List.contains_iff_mem.mp hfq)
@@ -529,6 +623,7 @@ theorem Expr.factsCore_sound {row : Row} (e : Expr) (ht : (e.eval row).isTrue = 
     · exact orNullFacts_sound ihq hpq.symm hf
     · exact orGapFacts_sound hpq hf
     · exact orGapFacts_sound hpq.symm hf
+    · exact nullNeFacts_sound hpq f hf
   case case10 => intro f hf; simp at hf
 
 /-- The conjuncts of a condition. -/
@@ -1533,20 +1628,30 @@ proves `x >= 0 OR x IS NULL` for a column `x` that may be NULL. -/
 def orSplitNull (ap bq : AVal) : AVal :=
   (orSplit ap bq).join (if ap.null then bq.orNull else AVal.bot)
 
+/-- `Expr.absD` of `.bin f a b`, from the left operand's value `aa`, the right
+operand's value `ab` (asked for only off the `OR` paths) and `bAt`, the right
+operand's value in another environment under more assumptions. `Expr.absD`
+and `Expr.mayIssuesA` (`Safety.lean`) both take it. Each operand's value is
+computed once: an `OR` chain (`x IN (...)`) nests its left operand, a chain of
+`AND`s or sums may nest its right one, and evaluating an operand once per use
+multiplied the work at every level (#1877). -/
+def Expr.absBin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn) (a b : Expr)
+    (aa : AVal) (ab : Unit → AVal) (bAt : List AVal → Assumptions → AVal) : AVal :=
+  narrowAll ks (.bin f a b) <|
+    if f = .or ∧ aa.nonBool = false then
+      orSplit aa (bAt (useFacts fs ((Expr.un .not a).refine env)) (a.cstrs false ++ ks))
+    else if f = .or ∧ aa.int.isNone = true ∧ aa.str = false ∧ aa.nested = false then
+      orSplitNull aa (bAt (useFacts fs ((a.refineNeg env).map AVal.prune)) (a.cstrs false ++ ks))
+    else
+      let vb := ab ()
+      sharpen fs f a b aa vb (f.abs aa vb)
+
 def Expr.absD (env : List AVal) (fs : List Fact) (ks : Assumptions := []) : Expr → AVal
   | .lit v => AVal.ofValue v
   | .field i => narrowAll ks (.field i) (env.getD i AVal.top)
   | .un f a => narrowAll ks (.un f a) (f.abs (a.absD env fs ks))
-  | .bin f a b => narrowAll ks (.bin f a b) <|
-      if f = .or ∧ (a.absD env fs ks).nonBool = false then
-        orSplit (a.absD env fs ks)
-          (b.absD (useFacts fs ((Expr.un .not a).refine env)) fs (a.cstrs false ++ ks))
-      else if f = .or ∧ (a.absD env fs ks).int.isNone = true ∧ (a.absD env fs ks).str = false ∧
-          (a.absD env fs ks).nested = false then
-        orSplitNull (a.absD env fs ks)
-          (b.absD (useFacts fs ((a.refineNeg env).map AVal.prune)) fs (a.cstrs false ++ ks))
-      else sharpen fs f a b (a.absD env fs ks) (b.absD env fs ks)
-        (f.abs (a.absD env fs ks) (b.absD env fs ks))
+  | .bin f a b => Expr.absBin env fs ks f a b (a.absD env fs ks) (fun _ => b.absD env fs ks)
+      (fun env' ks' => b.absD env' fs ks')
   -- Each branch is evaluated knowing whether `c` is TRUE.
   | .ifThen c t e => narrowAll ks (.ifThen c t e) <|
       let ac := c.absD env fs ks
@@ -1911,7 +2016,7 @@ theorem Expr.absD_sound {env : List AVal} {fs : List Fact} {ks : Assumptions} {r
   | .field i => narrowAll_sound hks (h i)
   | .un f a => narrowAll_sound hks (UnFn.abs_sound f (Expr.absD_sound h hfs hks a))
   | .bin f a b => by
-      simp only [absD]
+      simp only [absD, absBin]
       refine narrowAll_sound hks ?_
       simp only [eval]
       split

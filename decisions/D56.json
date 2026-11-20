@@ -1,0 +1,15 @@
+{
+  "id": "D56",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Decimal + and − check each operand at the result's scale.",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1864
+  ],
+  "note": "Theory advisor ruling 131, on the user's direction on #1484."
+}

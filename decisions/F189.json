@@ -1,0 +1,13 @@
+{
+  "id": "F189",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Contract drift ships as `sverify check --against-sink`: a committed promise is weakened when the fresh node does not prove it (text match as fast path, checker otherwise); codes contract_weakened (error) and plan_changed (note); JSON key drift.",
+  "issues": [
+    769
+  ],
+  "source": "fable-ruling-189-769-contract-drift.md",
+  "note": "No D-number. Refresh warning/strict=True and 'preconditions added' left open."
+}

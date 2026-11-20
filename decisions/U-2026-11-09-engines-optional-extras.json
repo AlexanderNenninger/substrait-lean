@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-09-engines-optional-extras",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Every engine, DuckDB included, is an optional extra, so base sverify is engine-free and verifies plans without running them.",
+  "issues": [
+    1189,
+    1288
+  ],
+  "source": "memory:api-decisions-1-0.md",
+  "note": "Running a pipeline or IO needs an engine extra, a documented 1.0 break."
+}

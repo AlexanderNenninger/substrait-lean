@@ -1,0 +1,13 @@
+{
+  "id": "F183",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D50-d work order accepted: d3b+d3d now on the three-copy chain, then d1 and d3c, then d3e, under conditions O1-O4; d1 stays in the plan.",
+  "issues": [
+    1735
+  ],
+  "source": "fable-ruling-183-d50d-order.md",
+  "note": "No D-number; D50-d stays a dated amendment of D50, written with d3e. Cites rulings 95, 102."
+}

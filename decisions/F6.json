@@ -1,0 +1,17 @@
+{
+  "id": "F6",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1475's follow-up is staged as two PRs: this one widens LINEAR_DIFF to the double position, the restated LINEAR follows; DuckDB's row is shimmed quantile_guard on a base holding #1502 with a stated precondition.",
+  "issues": [
+    900
+  ],
+  "prs": [
+    1475,
+    1502
+  ],
+  "source": "fable-rulings-night-1117.md, entry 6",
+  "note": "File ruling-1475-followup-staging.md. Spark shares LINEAR_DIFF. No D-number."
+}

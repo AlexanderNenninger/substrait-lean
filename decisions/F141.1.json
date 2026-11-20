@@ -1,0 +1,18 @@
+{
+  "id": "F141.1",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "superseded",
+  "summary": "#918 Part B: the 2026-11-09 revision stands; maintained double sums move later to a compensated engine-native state within the reported ε as default, exact state becomes the lens-selected option; #1329 item 8 reworded, after 1.0.",
+  "issues": [
+    918,
+    1329
+  ],
+  "superseded_by": [
+    "F167",
+    "U-2026-11-19-exact-limb-state"
+  ],
+  "source": "fable-ruling-141-audit-918-881.md",
+  "note": "Note 167: 'The first bullet of my ruling 141 (a compensated state as the later default) is superseded' by the user's 2026-11-19 ruling; its reason (D25 says nothing about state storage) stands."
+}

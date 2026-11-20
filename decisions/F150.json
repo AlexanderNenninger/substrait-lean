@@ -1,0 +1,19 @@
+{
+  "id": "F150",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Seven optimizer rules go on by default after #1829 (filterImplied, filterRuledOut, distinctKey, groupByKey, distinctAggKey, joinForeignKeyUnused, leftKeyUnused); rewrites run by default only where the run checked the preconditions (C1 to C5).",
+  "issues": [
+    1787
+  ],
+  "prs": [
+    1829
+  ],
+  "amends": [
+    "F136"
+  ],
+  "source": "fable-ruling-150-1787-default-rules.md",
+  "note": "'Ruling 136 said only DuckDB's existed; that line of 136 is superseded.' Builds on ruling 129. API keyword (optimize) held for the user. No D-number."
+}

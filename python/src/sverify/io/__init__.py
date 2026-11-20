@@ -40,7 +40,8 @@ Your own sources and sinks:
   a small server that keeps one.
 * A table format with metadata and a change feed implements the full
   `VersionedSource` protocol: `Snapshot` and `SourceBatch` are what it
-  returns.
+  returns, with what the table's metadata says of its rows as `Fact`s, and
+  `stored` gives a sink's record of a node's state (`Stored`).
 """
 
 from __future__ import annotations
@@ -48,7 +49,15 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING, Any
 
-from sverify.incremental import Changes, Snapshot, SourceBatch, StaticSource, VersionedSource
+from sverify.contracts import Fact
+from sverify.incremental import (
+    Changes,
+    Snapshot,
+    SourceBatch,
+    StaticSource,
+    Stored,
+    VersionedSource,
+)
 from sverify.io._common import Contract, SinkWrite
 from sverify.io._credentials import CredentialUse
 from sverify.io._secrets import Resolver, Secret, set_resolver
@@ -94,6 +103,7 @@ __all__ = [
     "CredentialUse",
     "DeltaSink",
     "DeltaSource",
+    "Fact",
     "FlightSource",
     "IcebergSink",
     "IcebergSource",
@@ -107,6 +117,7 @@ __all__ = [
     "SourceBatch",
     "StaticSource",
     "Storage",
+    "Stored",
     "VersionedSource",
     "from_files",
     "from_frame",

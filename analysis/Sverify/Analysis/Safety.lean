@@ -203,6 +203,7 @@ def UnFn.mayIssue : UnFn → AVal → AVal → List Issue
   | .dayTrunc _, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .addMonths _ false, aa, ar => rangeMay Time.dayMin Time.dayMax aa ar
   | .dateTime, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
+  | .asTime, aa, _ => rangeMay Time.tsMin Time.tsMax aa aa
   | .addMonths _ true, aa, ar => rangeMay Time.tsMin Time.tsMax aa ar
   | .timeOfDay, aa, _ | .strftime _, aa, _ | .datePart _, aa, _ => rangeMay Time.tsMin Time.tsMax aa aa
   | .dayPart _, aa, _ => rangeMay Time.dayMin Time.dayMax aa aa
@@ -773,7 +774,7 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
     let tk := withAlts (c.cstrAlts true) ks ors
     let ek := withAlts (c.cstrAlts false) ks ors
     c.mayIssues env fs ks ors ++
-      (if ac.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if ac.tt then t.mayIssues (c.refine env) (fs ++ c.factsOf) tk.1 tk.2 else []) ++
       (if ac.nonBool || ac.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else [])
   -- The body on any element, with the row in scope (D28).
   | .hof _ l b => l.mayIssues env fs ks ors ++ b.mayIssues (AVal.top :: env) [] []
@@ -788,22 +789,6 @@ recursion. Only what the recursion cannot give is evaluated again: the right
 operand of `OR` under the left one's refinement, and the branches of a `CASE`
 or a lambda's body, which `Expr.absD` evaluates under other environments. The
 `@[csimp]` lemma makes compiled code run it; the proofs keep `Expr.mayIssues`. -/
-
-/-- `Expr.absD` of `.bin f a b` from its operands' values `aa` and `ab`
-(`Expr.absD_bin`). -/
-def Expr.absBin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn) (a b : Expr)
-    (aa ab : AVal) : AVal :=
-  narrowAll ks (.bin f a b) <|
-    if f = .or ∧ aa.nonBool = false then
-      orSplit aa (b.absD (useFacts fs ((Expr.un .not a).refine env)) fs (a.cstrs false ++ ks))
-    else if f = .or ∧ aa.int.isNone = true ∧ aa.str = false ∧ aa.nested = false then
-      orSplitNull aa (b.absD (useFacts fs ((a.refineNeg env).map AVal.prune)) fs (a.cstrs false ++ ks))
-    else sharpen fs f a b aa ab (f.abs aa ab)
-
-theorem Expr.absD_bin (env : List AVal) (fs : List Fact) (ks : Assumptions) (f : BinFn)
-    (a b : Expr) :
-    (Expr.bin f a b).absD env fs ks = Expr.absBin env fs ks f a b (a.absD env fs ks) (b.absD env fs ks) :=
-  rfl
 
 /-- `Expr.nonZero` given `x`'s abstract value `ax` (`Expr.nonZero_eq_nonZeroA`). -/
 def Expr.nonZeroA (env : List AVal) (fs : List Fact) (ks : Assumptions) (k : NumKind) (x : Expr)
@@ -837,7 +822,7 @@ def Expr.mayIssuesA (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors :
   | .bin f a b =>
     let ra := a.mayIssuesA env fs ks ors
     let rb := b.mayIssuesA env fs ks ors
-    let ar := Expr.absBin env fs ks f a b ra.2 rb.2
+    let ar := Expr.absBin env fs ks f a b ra.2 (fun _ => rb.2) (fun env' ks' => b.absD env' fs ks')
     (ra.1 ++ rb.1 ++
       (f.mayIssueX ra.2 rb.2 ar (b.nonZeroA env fs ks f.divKind rb.2) a.strBytes?
         (Expr.nanExcluded env fs ks ors f a b) ++ f.mayInf ra.2 rb.2).map (·, .bin f a b), ar)
@@ -846,7 +831,7 @@ def Expr.mayIssuesA (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors :
     let tk := withAlts (c.cstrAlts true) ks ors
     let ek := withAlts (c.cstrAlts false) ks ors
     (rc.1 ++
-      (if rc.2.tt then t.mayIssues (c.refine env) fs tk.1 tk.2 else []) ++
+      (if rc.2.tt then t.mayIssues (c.refine env) (fs ++ c.factsOf) tk.1 tk.2 else []) ++
       (if rc.2.nonBool || rc.2.ff then e.mayIssues (c.refineNeg env) fs ek.1 ek.2 else []),
       (Expr.ifThen c t e).absD env fs ks)
   | .hof f l b =>
@@ -860,7 +845,7 @@ theorem Expr.mayIssuesA_eq (env : List AVal) (fs : List Fact) (ks : Assumptions)
     simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors a, Expr.mayIssues, Expr.absD]
   | .bin f a b => by
     simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors a,
-      Expr.mayIssuesA_eq env fs ks ors b, Expr.mayIssues, Expr.nonZero_eq_nonZeroA, Expr.absD_bin]
+      Expr.mayIssuesA_eq env fs ks ors b, Expr.mayIssues, Expr.nonZero_eq_nonZeroA, Expr.absD]
   | .ifThen c t e => by
     simp only [Expr.mayIssuesA, Expr.mayIssuesA_eq env fs ks ors c, Expr.mayIssues]
   | .hof f l b => by
@@ -1158,7 +1143,7 @@ theorem UnFn.mayIssue_sound (f : UnFn) {aa ar : AVal} {v : Value} {k : Issue}
   case dayTrunc.date u d | bucket.ts k o d =>
     have hr' := hr; simp only [UnFn.apply] at hr'
     exact rangeIssue_sound ha hr' hk
-  case timeOfDay.ts ts | timeOfDay.tod ts | dateTime.date ts | strftime.ts fmt ts |
+  case timeOfDay.ts ts | timeOfDay.tod ts | asTime.int ts | dateTime.date ts | strftime.ts fmt ts |
       datePart.ts p ts | dayPart.date p ts =>
     exact rangeIssue_sound ha ha hk
   case addMonths.date m t x | addMonths.ts m t x =>
@@ -1541,7 +1526,8 @@ theorem Expr.mayIssuesC_sound {env : List AVal} {fs : List Fact} {ks : Assumptio
         have htt : (c.absD env fs ks).tt = true := hc
         simp only [htt, ite_true]
         have hw := withAlts_sound (Expr.cstrAlts_sound hct) hks hors
-        exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct) hfs hw.1 hw.2 t p hp
+        exact Expr.mayIssuesC_sound (Expr.refine_sound env c h hct)
+          (FactsHold.append hfs (Expr.factsOf_sound c hct)) hw.1 hw.2 t p hp
       · simp only [hct, ite_false, Bool.false_eq_true] at hp
         right
         have hf : (c.eval row).isTrue = false := by simpa using hct

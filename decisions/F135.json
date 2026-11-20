@@ -1,0 +1,19 @@
+{
+  "id": "F135",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "F3's corollary takes a decidable side condition `SumTolCovers n bs` (the exact inequality, not a threshold); track A later fixes the checker's subnormal sum ε term and then the condition is dropped; a fresh ε is ruled out.",
+  "issues": [
+    1484
+  ],
+  "amends": [
+    "F130"
+  ],
+  "amended_by": [
+    "F146"
+  ],
+  "source": "fable-ruling-135-f3-tolerance.md",
+  "note": "Ruling 130 condition 3 stands. D35 text not amended."
+}

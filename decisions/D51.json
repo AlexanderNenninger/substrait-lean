@@ -1,0 +1,15 @@
+{
+  "id": "D51",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "UPPER and LOWER map a character as all tier-1 engines do and raise where they differ.",
+  "amends": [
+    "D43"
+  ],
+  "amended_by": [
+    "F62",
+    "F80"
+  ]
+}

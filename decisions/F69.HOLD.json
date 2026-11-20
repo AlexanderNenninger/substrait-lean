@@ -1,0 +1,19 @@
+{
+  "id": "F69.HOLD",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "withdrawn",
+  "summary": "#1664's label stays held until step 12e is on main and its test proves the exit.",
+  "issues": [
+    1608
+  ],
+  "prs": [
+    1664
+  ],
+  "superseded_by": [
+    "F70"
+  ],
+  "source": "fable-ruling-1664-exact-exit.md",
+  "note": "Withdrawn by ruling 70 the same day."
+}

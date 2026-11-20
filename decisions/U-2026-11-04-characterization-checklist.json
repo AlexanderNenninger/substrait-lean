@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-04-characterization-checklist",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The characterization checklist (areas, facts' options, coverage) defines what an engine characterization records.",
+  "prs": [
+    571
+  ],
+  "source": "github:#571 body"
+}

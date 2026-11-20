@@ -3,8 +3,8 @@ relations that sverify's producers write (the Ibis producer,
 `sverify.ibis_substrait`, and the SQL lift, `sverify.sql_lift`), with the
 functions and encodings `frontend/Sverify/Frontend/Parse.lean` reads.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 Moved here from `sverify.ibis_substrait` (derived from ibis-substrait, Apache
 License 2.0; see `ibis_substrait/LICENSE`), so that both producers write
@@ -51,14 +51,22 @@ class SqlUnsupported(Unsupported):
     one-to-one in a transform, and the `issue` that tracks the construct
     where an open one does."""
 
-    def __init__(self, message: str, hint: str | None = None, issue: int | None = None):
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        issue: int | None = None,
+        *,
+        construct: str | None = None,
+        sql: str | None = None,
+    ):
         if hint:
             message = f"{message}; {hint}"
         elif "#" not in message and "Ibis" not in message:
             where = f" ({_ISSUES}/{issue})" if issue else ""
             tracked = f"tracked in #{issue}{where}; until then, " if issue else ""
             message = f"{message}; {tracked}write this step in Ibis"
-        super().__init__(message)
+        super().__init__(message, construct=construct, sql=sql)
 
 
 class ProducerUnsupported(Unsupported):
@@ -67,12 +75,12 @@ class ProducerUnsupported(Unsupported):
     what the user can do: rewrite the expression with a supported operation
     or a supported column type."""
 
-    def __init__(self, message: str, hint: str | None = None):
+    def __init__(self, message: str, hint: str | None = None, *, construct: str | None = None):
         if hint:
             message = f"{message}; {hint}"
         elif "#" not in message:
             message = f"{message}; rewrite it with a supported operation or column type"
-        super().__init__(message)
+        super().__init__(message, construct=construct)
 
 
 # --------------------------------------------------------------------------
@@ -135,10 +143,12 @@ def _type_json(dtype: Any) -> Json:
                 f"timestamps with the time zone {dtype.timezone} are not supported yet "
                 f"{INSTANT_NOTE}; only UTC is read, as an instant"
             )
-        if dtype.scale not in (None, 6):
+        # Seconds and milliseconds are encodings of the source: the read widens
+        # them to microseconds, exactly (D61).
+        if dtype.scale not in (None, 0, 3, 6):
             raise Unsupported(
-                "only microsecond timestamps are supported (#323); cast the column to "
-                "microseconds before sverify reads the table"
+                "only second, millisecond and microsecond timestamps are supported (#323); "
+                "cast the column to microseconds before sverify reads the table"
             )
         if dtype.timezone is not None:
             return {"precisionTimestampTz": {"precision": 6, **NULLABLE}}
@@ -560,6 +570,79 @@ def select(input: Json, width: int, exprs: list[Json]) -> Json:
         return project_rel(input, width, exprs)
     fields = [c for c in cols if c is not None]
     return input if fields == list(range(width)) else emit_rel(input, fields)
+
+
+#: The functions of a `plain` expression (`Expr.plain`, `Guard.lean`): they
+#: raise on no row, so they guard the operands after them.
+_PLAIN_FUNCTIONS = frozenset(
+    {
+        "equal", "not_equal", "lt", "lte", "gt", "gte", "is_null", "is_not_null", "not", "and",
+        "or",
+    }
+)  # fmt: skip
+
+
+def is_plain(e: Json) -> bool:
+    """Is `e` built from columns and literals by `=`, `<`, `IS NULL`, `NOT`, `AND`
+    and `OR` (and their spellings), a literal's cast or `IN` over such? Such an
+    expression raises on no row, apart from a constant's cast, which D21 gives to
+    the whole plan in the eager and in the lifted reading alike. A chain called plain
+    is written eager (D19); this table decides only which chains pay for the lift
+    (`Expr.plain` in `Guard.lean` is the narrower, proved one)."""
+    if "literal" in e or "selection" in e:
+        return True
+    if (c := e.get("cast")) is not None:  # a constant's cast raises on every row or on none
+        return "literal" in c["input"]
+    if (ol := e.get("singularOrList")) is not None:  # `x IN (…)` parses to `=` and `OR`
+        return is_plain(ol["value"]) and all(is_plain(o) for o in ol.get("options", []))
+    fn = e.get("scalarFunction")
+    if fn is None:
+        return False
+    names = {a: n for n, a in _COMPILER.get().functions.items()}
+    if names.get(fn["functionReference"]) not in _PLAIN_FUNCTIONS:
+        return False
+    return all(is_plain(a["value"]) for a in fn["arguments"])
+
+
+#: How many levels of nested `AND` and `OR` the lift guards (D50, interim): a connective
+#: below this many enclosing lifted ones is written eager. Step D50-d removes the cap.
+LIFT_LEVELS = 3
+
+
+def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
+    """`AND` or `OR` (`name`) of `operands`, in order (D50). Where every operand
+    is plain, or the plan is read as DuckDB reads it (`eager`), the eager connective
+    (`chain`); otherwise `sverify_and` or `sverify_or`, which the checker reads as
+    a guard: each operand runs only where the earlier ones do not decide the
+    result (`Expr.andG`, `Guard.lean`). Only the top `LIFT_LEVELS` levels of a nest
+    are lifted."""
+    if eager or len(operands) == 1 or semantics() == "duckdb" or all(is_plain(o) for o in operands):
+        return chain(name, operands)
+    names = {a: n for n, a in _COMPILER.get().functions.items()}
+    spliced: list[Json] = []
+    for o in operands:
+        fn = o.get("scalarFunction")
+        if fn is not None and names.get(fn["functionReference"]) == f"sverify_{name}":
+            spliced += [a["value"] for a in fn["arguments"]]  # a guard chain inside is one chain
+        else:
+            spliced.append(o)
+    return _cap_lift(call(f"sverify_{name}", spliced), names, 0)
+
+
+def _cap_lift(e: Any, names: dict[int, str], level: int) -> Any:
+    """`e` with every `sverify_and` and `sverify_or` at `LIFT_LEVELS` or more lifted
+    ones above it written as the eager `and` and `or`."""
+    if isinstance(e, list):
+        return [_cap_lift(x, names, level) for x in e]
+    if not isinstance(e, dict):
+        return e
+    fn = e.get("scalarFunction")
+    n = names.get(fn["functionReference"]) if fn is not None else None
+    if fn is not None and n in ("sverify_and", "sverify_or"):
+        below = level + 1
+        args = [_cap_lift(a["value"], names, below) for a in fn["arguments"]]
+        return chain(n.removeprefix("sverify_"), args) if level >= LIFT_LEVELS else call(n, args)
+    return {k: _cap_lift(v, names, level) for k, v in e.items()}
 
 
 def chain(name: str, args: list[Json]) -> Json:

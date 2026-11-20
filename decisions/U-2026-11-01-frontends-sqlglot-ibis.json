@@ -1,0 +1,23 @@
+{
+  "id": "U-2026-11-01-frontends-sqlglot-ibis",
+  "date": "2026-11-01",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Sverify's frontends are SQLGlot and Ibis, each with sverify's own Substrait producer; Isthmus and DataFusion's SQL planner are removed as frontends.",
+  "issues": [
+    202,
+    209,
+    211,
+    225,
+    231
+  ],
+  "amends": [
+    "U-2026-11-01-audit-pare-down"
+  ],
+  "amended_by": [
+    "U-2026-11-05-datafusion-not-reference"
+  ],
+  "source": "github:#211 body; #231 comment 6569950524; #211 comment 6569949538",
+  "note": "Replaces the Isthmus-as-jar plan (#225) and the Isthmus normalization notes on #202/#209. Supersedes only the Isthmus step of the audit plan. DataFusion's 'Tier 2 backend' part was later superseded (see U-2026-11-05-datafusion-not-reference)."
+}
