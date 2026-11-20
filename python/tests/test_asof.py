@@ -3,9 +3,9 @@ semantics agree with DataFusion and DuckDB, and the ASOF guarantees are proved."
 
 import datetime as dt
 import json
+from collections import Counter
 
 import ibis
-import pyarrow.compute as pc
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -22,9 +22,11 @@ def pairs(left, right, by) -> int:
     Arrow tables: the rule `AsofSite.pairs` states for the engine's run."""
     if not by:
         return left.num_rows * right.num_rows
-    count = lambda t: t.group_by(list(by)).aggregate([([], "count_all")])  # noqa: E731
-    both = count(left).join(count(right), list(by), right_suffix="_right")
-    return pc.sum(pc.multiply(both["count_all"], both["count_all_right"])).as_py() or 0
+    keys = lambda t: [  # noqa: E731
+        k for k in zip(*(t[c].to_pylist() for c in by), strict=True) if None not in k
+    ]
+    right_counts = Counter(keys(right))
+    return sum(right_counts[k] for k in keys(left))
 
 
 INT_SCHEMA = {"device": "int64", "ts": "int64"}
