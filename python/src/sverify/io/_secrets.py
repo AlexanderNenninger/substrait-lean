@@ -1,8 +1,8 @@
 """Secrets by name (#775): a `Secret` names where a credential lives, and a
 `Resolver` looks it up when a source, sink or catalog needs it.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names `Secret`, `Resolver` and `set_resolver` are re-exported by
 `sverify.io`, and `SecretError` by `sverify.errors`.
 
@@ -511,7 +511,9 @@ class Resolver:
         if default not in _SCHEMES and default not in (backends or {}):
             raise ValueError(f"default: no backend {default!r}; there are {sorted(_SCHEMES)}")
         self.default = default
+        """The scheme that reads bare names not in `names`."""
         self.cache_seconds = cache_seconds
+        """How long remote answers are kept, in seconds."""
         self._names: dict[str, str] = {}
         self._scopes: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
         for name, entry in (names or {}).items():

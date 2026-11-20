@@ -1,7 +1,7 @@
 """Substrait producers, and DuckDB or Polars as consumer.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `connect()` gives a `Connection`: named Arrow tables, the engine that runs
 plans over them (DuckDB by default), and Ibis tables bound to them

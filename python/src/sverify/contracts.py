@@ -1,7 +1,7 @@
 """Pre- and postconditions for transformations, with postconditions proved in Lean.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
     from ibis import _
     import sverify as sv
@@ -2493,7 +2493,9 @@ class Fact:
     (`contract_sound` on the table itself), never by name."""
 
     condition: str
+    """The condition, as SQL."""
     source: str
+    """Where it comes from, such as "Delta constraint" or "file stats @v3"."""
     rows: int | None = None
     """For a row-count fact, at most this many rows; its `condition` is then
     `TRUE` (the record counts of a table format's files)."""
@@ -2908,14 +2910,20 @@ class ContractedTransform:
         """What a refresh does with a batch of a source that breaks this
         transform's preconditions; None: the source's setting."""
         self.on_inferred = _checked_on_inferred(on_inferred)
+        """What an inferred precondition does (`transform(on_inferred=)`)."""
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.semantics = _checked_semantics(semantics)
+        """The profile the contract is proved under (`transform(semantics=)`)."""
         self.check_engine = check_engine
+        """The engine the preconditions are checked on, or None for the
+        run's (`transform(check_engine=)`)."""
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
+        """The wrapped function's signature."""
         self.requires: dict[str, Sequence[Condition]] = requires_by_input(
             requires, list(self.signature.parameters), "parameter", TypeError
         )
+        """The preconditions, by parameter name."""
         self.report: Report | None = None
         """The `Report` of the proof of the postconditions in the last call,
         or None before the first call: the report of this transform, as a

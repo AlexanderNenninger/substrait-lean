@@ -1,7 +1,7 @@
 """Iceberg tables (pyiceberg) as change sources and sinks.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 Versions are snapshot sequence numbers. An `IcebergSource` reads the
 change between two versions from the data files the snapshots in between
@@ -367,6 +367,9 @@ class IcebergSource(_TableSource):
         where: The SQL condition, or None.
         name: The table's name in the plans that read it.
         skipped: The data files the last snapshot did not read.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
     """
 
     def __init__(
