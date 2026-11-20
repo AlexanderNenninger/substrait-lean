@@ -138,7 +138,11 @@ def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
 variable [Boxes.Ambient]
 /-- **DuckDB's profile**, as a diff against the reference (`duckBin`,
 `duckUn`): what DuckDB 2.0 computes under the settings `s`, as probed
-(`sverify_dev.probe`). Functions not probed are taken to be the reference's. -/
+(`sverify_dev.probe`). Functions not probed are taken to be the reference's.
+On decimals it states the SQL the printer writes (a cast to the plan's type
+around each operation, `TRUNC` before a cast to an integer, the exact cast to a
+double), not DuckDB's own decimal functions: those compensations are tested,
+and the decimal rows of `Profile.duckdb.obs` stay tracking #241 (ruling 185). -/
 def Profile.duckdb (s : DuckDBSettings) : Profile where
   un f v := match v with
     | .float x => (duckUn s f x).getD (Profile.reference.un f v)

@@ -9,6 +9,9 @@ DuckDB's choices and observation rows, from its facts
 The rows cover the prototype slice: integer `+ - × /` and `%`, `SUM` and
 `AVG` of integers and doubles, double arithmetic, and an `ORDER BY`'s NULL
 order, clustering and ties, with what these need (zeros, NaNs, rounding).
+Decimal rows state the SQL the printer writes, which `Profile.duckdb` models,
+so they are tested and never proved until DuckDB's own decimal functions are
+in the profile (#241).
 Every other option is left as the core has it (`loose` over its behaviours):
 not characterized, so anything.
 
@@ -78,17 +81,31 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     uncharacterized prototypeSlice
 
 def Profile.duckdb.obs : ObsTable := [
-  (none, "overflow", (ObsRow.native ["duckdb-R1", "duckdb-R15-int-arith"]).tracking 241),
+  -- A default row covers every group that takes its option: `proved` where the
+  -- listed facts support the model at each of them; a group they do not cover
+  -- has a row of its own (ruling 185).
+  (none, "overflow", (ObsRow.native ["duckdb-R1", "duckdb-R15-int-arith", "duckdb-R1-min",
+    "duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
+  -- Integer powers are written as checked products, and decimals as the
+  -- printer writes them (`Profile.duckdb` states that SQL, not DuckDB's own
+  -- functions): tested, not proved.
+  (some "int.pow", "overflow", (ObsRow.native ["duckdb-int-pow"]).tracking 241),
+  (some "dec.arith", "overflow", (ObsRow.native ["duckdb-decimal-arith"]).tracking 241),
   -- `SUM(BIGINT)` is a `HUGEINT`; the written plan casts it back, which raises
   -- where the reference does: a type, not a value, so no shim.
   (some "agg.isum", "overflow", (ObsRow.native ["duckdb-R6"]).tracking 241),
-  (none, "on_division_by_zero", (ObsRow.native ["duckdb-R2"]).tracking 241),
-  (some "fp.div", "on_division_by_zero", (ObsRow.native ["duckdb-R5"]).tracking 241),
-  (none, "on_domain_error", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 241),
+  (none, "on_division_by_zero", (ObsRow.native ["duckdb-R2", "duckdb-R15-int-divide", "duckdb-R3",
+    "duckdb-R4", "duckdb-R15-double-modulus"]).proved "Lowering.duckdb_exact"),
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["duckdb-R5", "duckdb-R15-double-arith"]).proved
+    "Lowering.duckdb_exact"),
+  (none, "on_domain_error", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-int-div-domain",
+    "duckdb-R15-math-domain", "duckdb-R15-atan2"]).proved "Lowering.duckdb_exact"),
+  (some "int.pow", "on_domain_error", (ObsRow.native ["duckdb-int-pow"]).tracking 241),
   (none, "division_type", (ObsRow.native ["duckdb-R3"]).tracking 241),
   (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 241),
-  (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-nonfinite-aggregates"]).tracking 241),
+  (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-R15-double-modulus",
+    "duckdb-nonfinite-aggregates"]).proved "Rel.duckdb_shim_sound"),
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions, as the reference has them. A group's MIN, MAX and QUANTILE_DISC
   -- return a member of the class (D31, D45); quantiles print canonical too.
@@ -121,7 +138,8 @@ def Profile.duckdb.obs : ObsTable := [
     "Each addition rounds to nearest, ties to even (duckdb-float-ieee); the sum is sequential runs merged in any tree, with a constant run as one fl(k · x) (duckdb-sum-double), and AVG divides it once by the count (duckdb-avg-double): StdModel.TreeSum (its const case) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest."),
   (none, "avg_int_result", (ObsRow.native ["duckdb-R6"]).tracking 241),
   (none, "empty_group_aggregates", (ObsRow.native ["duckdb-sum-double", "duckdb-avg-int"]).tracking 241),
-  (none, "null_order", (ObsRow.native ["duckdb-F2"]).tracking 241),
+  -- The printer writes every key's placement (`NULLS FIRST`/`LAST`).
+  (none, "null_order", (ObsRow.shimmed "null_order" ["duckdb-F2"]).proved "Shim.null_order"),
   -- The written `ORDER BY` is the model's sort, which `SortAllowed` allows for
   -- a clustered key (`Rel.duckdb_refines`; `test_realizability.py` runs it).
   (none, "clustered", (ObsRow.shimmed "ORDER BY the keys" []).proved "Rel.duckdb_refines"),
@@ -166,10 +184,16 @@ def Profile.duckdb.obs : ObsTable := [
     precondition := "(COUNT(x) − 1)·10^scale < 2^52 for the decimal fraction's scale, checked on the data (the written plan raises past it)",
     note := "`LINEAR` states DuckDB's own `quantile_cont`, which leaves the model's neighbours at a whole exact position its double misses and where the lower neighbour is first; the written plan takes `quantile_disc` at a whole exact position and bounds the first lower neighbour by the second smallest value (python/tests/test_duckdb_quantile_900.py)." }).tracking 900)]
 
+/-- No decimal row is proved: `Profile.duckdb` states decimals as the printer
+writes them, not DuckDB's own functions (ruling 185, #241). -/
+#guard Profile.duckdb.obs.all fun (g, _, r) =>
+  !(g.any (·.startsWith "dec.")) || match r.evidence with | .proved _ _ => false | _ => true
+
 /-- What each shim DuckDB's rows name costs at run time. -/
 def Profile.duckdb.shimCosts : List (String × ShimCost) :=
   [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
-   ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression)]
+   ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression),
+   ("null_order", .argument)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/
