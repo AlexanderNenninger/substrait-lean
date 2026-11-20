@@ -140,6 +140,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             f"CAST to {node.to.sql(DIALECT)} truncates toward zero in DuckDB; "
             "write date_trunc to the unit instead",
             issue=323,
+            construct="CAST",
         )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
