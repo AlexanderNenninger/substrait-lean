@@ -1362,7 +1362,118 @@ theorem LChain.bindAll_raise (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
     refine ⟨fun _ => False, by simp [LChain.bindAll], fun F' _ row _ _ => ⟨fun _ h => h, fun _ => ?_⟩⟩
     simp
   | i, c :: cs, g, s, F, hs, hg, ⟨hc, hcs⟩ => by
-    sorry
+    have hRL := Profile.reference_logic
+    have hcRefs := LChain.fill_refsLt w c hc
+    by_cases hcond : (body.reads (w + i) && body.eagerOnly (w + i)) = true
+    · -- The chain is bound.
+      have hb : LChain.bindAll w g s body i (c :: cs) =
+          ((LChain.bindAll w g (LChain.bind w g s c).1 body (i + 1) cs).1,
+            (LChain.bind w g s c).2 :: (LChain.bindAll w g (LChain.bind w g s c).1 body (i + 1) cs).2) := by
+        simp only [LChain.bindAll, hcond, ↓reduceIte]
+      rw [hb]
+      obtain ⟨Lc, hRc, hLc⟩ := LChain.bind_raise cat r w c g s F hs hg hc
+      obtain ⟨F₁, hG₁, hr₁, hv₁⟩ := LChain.bind_spec hRL cat r w c g s F hs (fun e h => (hg e h).1) hc
+      have hg₁ : ∀ e ∈ g, e.refsLt (LChain.bind w g s c).1.width ∧ e.plain = true :=
+        fun e h => ⟨Expr.refsLt_mono _ hG₁.2.2 (hg e h).1, (hg e h).2⟩
+      obtain ⟨Lr, hRr, hLr⟩ := LChain.bindAll_raise cat r w body (i + 1) cs g _ F₁ hG₁.1 hg₁ hcs
+      obtain ⟨F₂, hG₂, -, -, -⟩ := LChain.bindAll_spec hRL cat r w body (i + 1) cs g _ F₁ hG₁.1
+        (fun e h => (hg₁ e h).1) hcs
+      have hplain : (LChain.bind w g s c).2.plain = true := by
+        match c with
+        | .mk isAnd ops => exact LChain.bindOps_plain w isAnd g ops s none (by simp)
+      refine ⟨fun row => Lc row ∨ Lr row, ?_, fun F' hF' row hr ⟨hbc, hbcs⟩ => ?_⟩
+      · rw [hRr, hRc]
+        constructor
+        · rintro ((h | ⟨row, hr, h⟩) | ⟨row, hr, h⟩)
+          · exact .inl h
+          · exact .inr ⟨row, hr, .inl h⟩
+          · exact .inr ⟨row, hr, .inr h⟩
+        · rintro (h | ⟨row, hr, h | h⟩)
+          · exact .inl (.inl h)
+          · exact .inl (.inr ⟨row, hr, h⟩)
+          · exact .inr ⟨row, hr, h⟩
+      · have hl := hs.2.1 row hr
+        have hl₁ := hG₁.1.2.1 row hr
+        have hF₂ : F₂ row = F' row := BindSt.Ext.unique hG₂.1 hF' row hr
+        have hpre : F₁ row <+: F' row := hF₂ ▸ hG₂.2.1 row
+        have hreach₁ : Reach RI g (row ++ F₁ row) ↔ Reach RI g (row ++ F row) :=
+          reach_prefix (fun e h => (hg e h).1) (by omega) (hG₁.2.1 row)
+        obtain ⟨hc1, hc2⟩ := hLc F₁ hG₁.1 row hr hbc
+        obtain ⟨hr1, hr2⟩ := hLr F' hF' row hr hbcs
+        refine ⟨fun hn h => h.elim (hc1 hn) (hr1 (fun h' => hn (hreach₁.mp h'))), fun hreach => ?_⟩
+        obtain ⟨hrIff, hrEnt⟩ := hr2 (hreach₁.mpr hreach)
+        simp only [Bool.and_eq_true] at hcond
+        refine ⟨?_, ?_⟩
+        · show Lc row ∨ Lr row ↔ _
+          rw [hrIff, ← hc2 hreach]
+          constructor
+          · rintro (h | ⟨j, c', hcj, hrd, heg, hrs⟩)
+            · exact ⟨0, c, rfl, by simpa using hcond.1, by simpa using hcond.2, h⟩
+            · exact ⟨j + 1, c', by simpa using hcj, by rw [show i + (j + 1) = i + 1 + j by omega]; exact hrd,
+                by rw [show i + (j + 1) = i + 1 + j by omega]; exact heg, hrs⟩
+          · rintro ⟨j, c', hcj, hrd, heg, hrs⟩
+            cases j with
+            | zero => simp at hcj; subst hcj; exact .inl hrs
+            | succ j =>
+              exact .inr ⟨j, c', by simpa using hcj, by rw [show i + 1 + j = i + (j + 1) by omega]; exact hrd,
+                by rw [show i + 1 + j = i + (j + 1) by omega]; exact heg, hrs⟩
+        · intro j c' hcj
+          cases j with
+          | zero =>
+            simp only [List.getElem?_cons_zero, Option.some.injEq] at hcj; subst hcj
+            by_cases hrs : (c.fill w).Raises row
+            · exact .inr ⟨by simpa using hcond.1, by simpa using hcond.2, hrs⟩
+            · left
+              simp only [entryP, List.getD_cons_zero]
+              rw [Expr.evalP_plain hplain]
+              have hfe : (c.fill w).evalP RP row = .ok ((c.fill w).eval row) := by
+                rw [Expr.evalP_reference]; unfold Expr.refOutcome
+                have : firstError ((c.fill w).issues row) = none := by
+                  simp only [Expr.Raises, Option.isSome_iff_ne_none, ne_eq, Decidable.not_not] at hrs; exact hrs
+                rw [this]
+              rw [hfe, ← Expr.evalI_plain hplain, eval_prefix hr₁ (by omega) hpre,
+                hv₁ row hr hreach hbc, Expr.evalI_ref_of_not_raises hrs]
+          | succ j =>
+            have := hrEnt j c' (by simpa using hcj)
+            simp only [entryP, List.getD_cons_succ]
+            rw [show i + (j + 1) = i + 1 + j by omega]
+            exact this
+    · -- The chain stays filled.
+      have hb : LChain.bindAll w g s body i (c :: cs) =
+          ((LChain.bindAll w g s body (i + 1) cs).1,
+            LChain.fill w c :: (LChain.bindAll w g s body (i + 1) cs).2) := by
+        simp only [LChain.bindAll, hcond, Bool.false_eq_true, ↓reduceIte]
+      rw [hb]
+      obtain ⟨Lr, hRr, hLr⟩ := LChain.bindAll_raise cat r w body (i + 1) cs g s F hs hg hcs
+      refine ⟨Lr, hRr, fun F' hF' row hr ⟨_, hbcs⟩ => ?_⟩
+      obtain ⟨hr1, hr2⟩ := hLr F' hF' row hr hbcs
+      refine ⟨hr1, fun hreach => ?_⟩
+      obtain ⟨hrIff, hrEnt⟩ := hr2 hreach
+      simp only [Bool.and_eq_true, not_and] at hcond
+      refine ⟨?_, ?_⟩
+      · rw [hrIff]
+        constructor
+        · rintro ⟨j, c', hcj, hrd, heg, hrs⟩
+          exact ⟨j + 1, c', by simpa using hcj, by rw [show i + (j + 1) = i + 1 + j by omega]; exact hrd,
+            by rw [show i + (j + 1) = i + 1 + j by omega]; exact heg, hrs⟩
+        · rintro ⟨j, c', hcj, hrd, heg, hrs⟩
+          cases j with
+          | zero => exact absurd (by simpa using heg) (hcond (by simpa using hrd))
+          | succ j =>
+            exact ⟨j, c', by simpa using hcj, by rw [show i + 1 + j = i + (j + 1) by omega]; exact hrd,
+              by rw [show i + 1 + j = i + (j + 1) by omega]; exact heg, hrs⟩
+      · intro j c' hcj
+        cases j with
+        | zero =>
+          simp only [List.getElem?_cons_zero, Option.some.injEq] at hcj; subst hcj
+          left
+          simp only [entryP, List.getD_cons_zero]
+          exact Expr.evalP_append _ (F' row) hcRefs (hs.2.1 row hr).1
+        | succ j =>
+          have := hrEnt j c' (by simpa using hcj)
+          simp only [entryP, List.getD_cons_succ]
+          rw [show i + (j + 1) = i + 1 + j by omega]
+          exact this
 theorem LChain.bind_raise (cat : Catalog) (r : Rel) (w : Nat) :
     ∀ (c : LChain) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext RI cat r w F →
       (∀ c ∈ g, c.refsLt s.width ∧ c.plain = true) → c.Scoped w →
