@@ -2905,9 +2905,9 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
 
 The frontends write `AND` and `OR` as `sverify_and` and `sverify_or` at every
 depth. The parser lifts the top `liftLevels` levels of a nest with the chain
-(`Expr.andLift`). Deeper, a filter's condition is bound (`Rel.bindFilter`,
-whose plan has the lift's rows and raises, `Rel.bindFilter_eval` and
-`Rel.bindFilter_raises`), and anywhere else the connectives below the cap are
+(`Expr.andLift`). Deeper, a filter's condition is bound (`Rel.guardedFilter`,
+whose plan has the lift's rows and raises, `Rel.guardedFilter_eval` and
+`Rel.guardedFilter_raises`), and anywhere else the connectives below the cap are
 read eagerly, as before D50-d (`capChains`). -/
 
 /-- How many levels of nested `AND` and `OR` the chain lifts (ruling 183, O2). -/
@@ -3042,7 +3042,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       -- Beyond the cap, the chains are bound below the filter (D50-d).
       let cond ← field r "condition"
       if bindsCondition fns cond then
-        pure (Rel.bindFilter inp cols.length (← toLExpr fns cols bits cond))
+        pure (Rel.guardedFilter inp cols.length (← toLExpr fns cols bits cond))
       else do
         -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter,
         -- with other subqueries lifted into columns that an emit drops after.
@@ -3078,7 +3078,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else if bindsProject fns ejs then
         -- Beyond the cap, the chains are bound below the projection (D50-d).
-        pure (Rel.bindProject inp cols.length (← ejs.mapM fun e => do return (← toLExpr fns cols bits e)))
+        pure (Rel.guardedProject inp cols.length (← ejs.mapM fun e => do return (← toLExpr fns cols bits e)))
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).

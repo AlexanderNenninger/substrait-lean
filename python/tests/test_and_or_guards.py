@@ -108,7 +108,7 @@ def test_a_deep_nest_is_bound_and_checks_in_time_linear_in_depth(wrappers):
 
 
 def test_a_bound_filter_runs_as_the_lifted_one():
-    """The bound plan keeps the rows the lift keeps (`Rel.bindFilter_eval`), on DuckDB."""
+    """The bound plan keeps the rows the lift keeps (`Rel.guardedFilter_eval`), on DuckDB."""
     con = sv.connect()
     rows = pa.table({"x": [0, 1, 2, 5, 20], "z": [0, 1, 0, 1, 0]})
     con.put("t", rows)
@@ -124,7 +124,7 @@ def test_a_bound_filter_runs_as_the_lifted_one():
 
 def test_a_deep_nest_in_a_projection_is_bound_and_runs_as_the_lifted_one():
     """A projected `AND`/`OR` nest deeper than the cap is bound below the projection
-    (`Rel.bindProject_eval`): it checks in time and DuckDB computes the lifted values."""
+    (`Rel.guardedProject_eval`): it checks in time and DuckDB computes the lifted values."""
     con = sv.connect()
     rows = pa.table({"x": [0, 1, 2, 5, 20], "z": [0, 1, 0, 1, 0]})
     con.put("t", rows)

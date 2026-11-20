@@ -135,6 +135,24 @@ theorem Expr.evalP_shift_insert {p : Profile} (w : Value) :
     simpa using Expr.evalP_shift_insert w b (x :: xa) rest
 
 omit [Boxes.Ambient] in
+/-- An expression reading below the row's width has the same outcome on a longer row. -/
+theorem Expr.evalP_append {p : Profile} {e : Expr} {n : Nat} {row : Row} (extra : Row)
+    (he : e.refsLt n) (hlen : row.length = n) :
+    e.evalP p (row ++ extra) = e.evalP p row := by
+  induction e generalizing n row with
+  | lit => rfl
+  | field i =>
+    simp only [refsLt] at he
+    simp [evalP, List.getD, List.getElem?_append_left (hlen ▸ he)]
+  | un f a ih => simp [evalP, ih he hlen]
+  | bin f a b iha ihb => simp [evalP, iha he.1 hlen, ihb he.2 hlen]
+  | ifThen c t e ihc iht ihe => simp [evalP, ihc he.1 hlen, iht he.2.1 hlen, ihe he.2.2 hlen]
+  | hof f l b ihl ihb =>
+    simp only [evalP, ihl he.1 hlen]
+    congr 1; funext v; congr 1; funext x
+    exact ihb (row := x :: row) he.2 (by simp [hlen])
+
+omit [Boxes.Ambient] in
 theorem Expr.evalP_shift_cons {p : Profile} (w : Value) (e : Expr) (row : Row) :
     (e.shift 0).evalP p (w :: row) = e.evalP p row :=
   Expr.evalP_shift_insert w e [] row

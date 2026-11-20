@@ -25,7 +25,7 @@ is linear in the size of the condition at any depth.
 
 `LExpr` is a condition as the parser reads it: an expression whose chains
 are kept apart (`body` reads chain `i` at column `w + i`). `LExpr.fill` writes
-every chain with `andLift`/`orLift`, the plan D50 defines; `Rel.bindFilter`
+every chain with `andLift`/`orLift`, the plan D50 defines; `Rel.guardedFilter`
 binds them. A chain whose column sits in a `CASE` branch or a lambda body of
 its expression stays filled (CASE branches bind in step D50-d3d).
 -/
@@ -157,7 +157,7 @@ end
 
 /-- A filter on `x`, its chains bound below it and their columns dropped
 above it. -/
-def Rel.bindFilter (r : Rel) (w : Nat) (x : LExpr) : Rel :=
+def Rel.guardedFilter (r : Rel) (w : Nat) (x : LExpr) : Rel :=
   let (s, c) := x.bind w none ⟨r, w⟩
   .emit (.filter s.rel c) (List.range w)
 
@@ -171,7 +171,7 @@ def LExpr.bindList (w : Nat) (s : BindSt) : List LExpr → BindSt × List Expr
 
 /-- A projection of `xs`, their chains bound below it and their levels dropped
 above it. -/
-def Rel.bindProject (r : Rel) (w : Nat) (xs : List LExpr) : Rel :=
+def Rel.guardedProject (r : Rel) (w : Nat) (xs : List LExpr) : Rel :=
   let p := LExpr.bindList w ⟨r, w⟩ xs
   .emit (.project p.1.rel p.2) (List.range w ++ (List.range xs.length).map (p.1.width + ·))
 
@@ -179,7 +179,7 @@ def Rel.bindProject (r : Rel) (w : Nat) (xs : List LExpr) : Rel :=
 /-! ## T1: the bound plan's rows (ruling 102, T1a to T1c)
 
 Under the reference, a filter on the bound condition keeps the rows the
-filter on D50's lift keeps: `Rel.bindFilter_eval`. The invariant: after each
+filter on D50's lift keeps: `Rel.guardedFilter_eval`. The invariant: after each
 level, the plan's rows are the input's rows, each extended by the levels'
 columns, and wherever its reach holds, a chain's running column holds the
 eager conjunction (disjunction) of the operands so far, which is the lift's
@@ -783,14 +783,14 @@ theorem map_range_getD_append (row X : Row) (w : Nat) (h : row.length = w) :
 /-- **T1, rows**: the filter on the bound condition keeps the rows the filter on
 D50's lift keeps, in the same order, where every chain's operands are TRUE,
 FALSE or NULL. -/
-theorem Rel.bindFilter_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
+theorem Rel.guardedFilter_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
     (hw : ∀ row ∈ r.eval cat I, row.length = w) (hx : x.Scoped w)
     (hb : ∀ row ∈ r.eval cat I, x.Bools I w row) :
-    (r.bindFilter w x).eval cat I = (r.filter (x.fill w)).eval cat I := by
+    (r.guardedFilter w x).eval cat I = (r.filter (x.fill w)).eval cat I := by
   have hs : BindSt.Ext I cat r w ⟨r, w⟩ (fun _ => []) :=
     ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
   obtain ⟨F', hG, _, hv⟩ := LExpr.bind_spec hI cat r w x none ⟨r, w⟩ (fun _ => []) hs (by simp) hx
-  simp only [Rel.bindFilter, Rel.eval, hG.1.1, List.filter_map, List.map_map]
+  simp only [Rel.guardedFilter, Rel.eval, hG.1.1, List.filter_map, List.map_map]
   have hf : List.filter ((fun row => (Expr.eval row (LExpr.bind w none ⟨r, w⟩ x).2 I).isTrue) ∘
       fun row => row ++ F' row) (r.eval cat I) =
       List.filter (fun row => ((x.fill w).eval row I).isTrue) (r.eval cat I) :=
@@ -834,14 +834,14 @@ theorem LExpr.bindList_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) :
 
 /-- **T1 for a projection, rows**: the bound projection has the rows of the
 projection of the lifts. -/
-theorem Rel.bindProject_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (xs : List LExpr)
+theorem Rel.guardedProject_eval (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (xs : List LExpr)
     (hw : ∀ row ∈ r.eval cat I, row.length = w) (hx : LExpr.ScopedAll w xs)
     (hb : ∀ row ∈ r.eval cat I, LExpr.BoolsAll I w row xs) :
-    (r.bindProject w xs).eval cat I = (r.project (LExpr.fillAll w xs)).eval cat I := by
+    (r.guardedProject w xs).eval cat I = (r.project (LExpr.fillAll w xs)).eval cat I := by
   have hs : BindSt.Ext I cat r w ⟨r, w⟩ (fun _ => []) :=
     ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
   obtain ⟨F', hG, _, hv⟩ := LExpr.bindList_spec hI cat r w xs ⟨r, w⟩ (fun _ => []) hs hx
-  simp only [Rel.bindProject, Rel.eval, hG.1.1, List.map_map]
+  simp only [Rel.guardedProject, Rel.eval, hG.1.1, List.map_map]
   apply List.map_congr_left
   intro row hr
   have hl := hG.1.2.1 row hr
@@ -865,7 +865,7 @@ end Eval
 /-! ## T1: the bound plan's raises (T1a, T1b)
 
 Under the reference, the bound filter raises exactly where the filter on
-D50's lift does: `Rel.bindFilter_raises`. A level raises only where its reach
+D50's lift does: `Rel.guardedFilter_raises`. A level raises only where its reach
 holds and its operand raises; the guards and running values are plain
 (`Expr.plain`) and raise nowhere. -/
 
@@ -984,26 +984,6 @@ theorem Expr.evalP_subst_congr {p : Profile} :
       cases hx : (l.subst σ).evalP p row with
       | error k => rfl
       | ok v => simp [hx, Outcome.err?] at hl
-
-omit [Boxes.Ambient] in
-/-- An expression reading below the row's width has the same outcome on a
-longer row. -/
-theorem Expr.evalP_append {p : Profile} : ∀ (e : Expr) {n : Nat} {row : Row} (extra : Row),
-    e.refsLt n → row.length = n → e.evalP p (row ++ extra) = e.evalP p row
-  | .lit _, _, _, _, _, _ => rfl
-  | .field i, _, row, extra, he, hlen => by
-    simp only [Expr.evalP, Expr.refsLt] at he ⊢
-    simp [List.getD, List.getElem?_append_left (hlen ▸ he)]
-  | .un f a, _, _, extra, he, hlen => by simp only [Expr.evalP, Expr.evalP_append a extra he hlen]
-  | .bin f a b, _, _, extra, he, hlen => by
-    simp only [Expr.evalP, Expr.evalP_append a extra he.1 hlen, Expr.evalP_append b extra he.2 hlen]
-  | .ifThen c t e, _, _, extra, he, hlen => by
-    simp only [Expr.evalP, Expr.evalP_append c extra he.1 hlen, Expr.evalP_append t extra he.2.1 hlen,
-      Expr.evalP_append e extra he.2.2 hlen]
-  | .hof f l b, _, row, extra, he, hlen => by
-    simp only [Expr.evalP, Expr.evalP_append l extra he.1 hlen]
-    congr 1; funext v; congr 1; funext x
-    exact Expr.evalP_append b (row := x :: row) extra he.2 (by simp [hlen])
 
 /-- Under the reference, raising is having an error issue. -/
 theorem Expr.raisesOn_reference (row : Row) (e : Expr) :
@@ -1560,7 +1540,7 @@ theorem LChain.bindAll_raise (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
           simp only [List.getElem?_cons_zero, Option.some.injEq] at hcj; subst hcj
           left
           simp only [entryP, List.getD_cons_zero]
-          exact Expr.evalP_append _ (F' row) hcRefs (hs.2.1 row hr).1
+          exact Expr.evalP_append (F' row) hcRefs (hs.2.1 row hr).1
         | succ j =>
           have := hrEnt j c' (by simpa using hcj)
           simp only [entryP, List.getD_cons_succ]
@@ -1776,16 +1756,16 @@ end
 /-- **T1, raises**: under the reference, the filter on the bound condition
 raises exactly where the filter on D50's lift raises, where every chain's
 operands are TRUE, FALSE or NULL. -/
-theorem Rel.bindFilter_raises (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
+theorem Rel.guardedFilter_raises (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
     (hw : ∀ row ∈ r.eval cat RI, row.length = w) (hx : x.Scoped w)
     (hb : ∀ row ∈ r.eval cat RI, x.Bools RI w row) :
-    (r.bindFilter w x).Raises RP cat ↔ (r.filter (x.fill w)).Raises RP cat := by
+    (r.guardedFilter w x).Raises RP cat ↔ (r.filter (x.fill w)).Raises RP cat := by
   have hs : BindSt.Ext RI cat r w ⟨r, w⟩ (fun _ => []) :=
     ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
   obtain ⟨L, hR, hL⟩ := LExpr.bind_raise cat r w x none ⟨r, w⟩ (fun _ => []) hs (by simp) hx
   obtain ⟨F', hG, -, -⟩ := LExpr.bind_spec Profile.reference_logic cat r w x none ⟨r, w⟩ (fun _ => []) hs
     (by simp) hx
-  simp only [Rel.bindFilter, Rel.Raises, hR, hG.1.1, List.mem_map]
+  simp only [Rel.guardedFilter, Rel.Raises, hR, hG.1.1, List.mem_map]
   have hrow : ∀ row ∈ r.eval cat RI, ((x.fill w).RaisesOn RP row ↔
       L row ∨ (x.bind w none ⟨r, w⟩).2.RaisesOn RP (row ++ F' row)) := by
     intro row hr
@@ -1809,7 +1789,7 @@ theorem raises_prefix {e : Expr} {row F F' : Row} {n : Nat} (he : e.refsLt n)
   rw [← Expr.raisesOn_reference, ← Expr.raisesOn_reference]
   obtain ⟨G, rfl⟩ := hp
   simp only [Expr.RaisesOn, ← List.append_assoc]
-  rw [Expr.evalP_append e G he (by simp [hlen])]
+  rw [Expr.evalP_append G he (by simp [hlen])]
 
 /-- `bind_raise` for a list of expressions bound in turn. -/
 theorem LExpr.bindList_raise (cat : Catalog) (r : Rel) (w : Nat) :
@@ -1859,10 +1839,10 @@ theorem LExpr.bindList_raise (cat : Catalog) (r : Rel) (w : Nat) :
 
 /-- **T1 for a projection, raises**: under the reference the bound projection
 raises exactly where the projection of the lifts raises. -/
-theorem Rel.bindProject_raises (cat : Catalog) (r : Rel) (w : Nat) (xs : List LExpr)
+theorem Rel.guardedProject_raises (cat : Catalog) (r : Rel) (w : Nat) (xs : List LExpr)
     (hw : ∀ row ∈ r.eval cat RI, row.length = w) (hx : LExpr.ScopedAll w xs)
     (hb : ∀ row ∈ r.eval cat RI, LExpr.BoolsAll RI w row xs) :
-    (r.bindProject w xs).Raises RP cat ↔ (r.project (LExpr.fillAll w xs)).Raises RP cat := by
+    (r.guardedProject w xs).Raises RP cat ↔ (r.project (LExpr.fillAll w xs)).Raises RP cat := by
   have hs : BindSt.Ext RI cat r w ⟨r, w⟩ (fun _ => []) :=
     ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
   obtain ⟨L, hR, hL⟩ := LExpr.bindList_raise cat r w xs ⟨r, w⟩ (fun _ => []) hs hx
@@ -1876,7 +1856,7 @@ theorem Rel.bindProject_raises (cat : Catalog) (r : Rel) (w : Nat) (xs : List LE
       exact ⟨x, hx, h⟩
     · rintro ⟨x, hx, h⟩
       exact ⟨_, LExpr.fill_mem_fillAll hx, h⟩
-  simp only [Rel.bindProject, Rel.Raises, hR, hG.1.1, List.mem_map]
+  simp only [Rel.guardedProject, Rel.Raises, hR, hG.1.1, List.mem_map]
   constructor
   · rintro ((h | ⟨row, hr, h⟩) | ⟨_, ⟨row, hr, rfl⟩, e, he, h⟩)
     · exact .inl h
