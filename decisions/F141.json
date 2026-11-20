@@ -1,0 +1,23 @@
+{
+  "id": "F141",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Audit: CORR's variance-floor bound is after 1.0 (no 1.0 issue); #881 item 2.5 reworded so stability.md puts the plugin interface outside the 1.x promise; drop needs-design from #1807 and #1808, #1810 after rewording (Snowflake details private).",
+  "issues": [
+    597,
+    881,
+    918,
+    1189,
+    1443,
+    1807,
+    1808,
+    1810
+  ],
+  "amended_by": [
+    "U-2026-11-19-exact-limb-state"
+  ],
+  "source": "fable-ruling-141-audit-918-881.md",
+  "note": "Part 1 (incremental double state) split into F141.1, which is superseded. CORR after-1.0 issue held for the user."
+}

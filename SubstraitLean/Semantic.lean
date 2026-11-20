@@ -113,12 +113,6 @@ def Rule.onByDefault : Rule → Bool
   -- #80): ruling 150. Reachable through the request's `"rules"`.
   | .leftNullRejecting | .leftForeignKey | .groupByDetermined | .aggregateBelowJoin => false
 
-/-- Does every issue the rewrite has on data meeting the preconditions arise
-in the plan as written too? True only with a proved lemma; until then the
-plan to run is the rewrite only where it has no issue at all (ruling 129). -/
-def Rule.keepsIssues : Rule → Bool
-  | _ => false
-
 /-- Does the rewrite keep `Rel.Small` of the plan as written
 (`Rel.rule_small`, `SubstraitLean/RunPlan.lean`)? Every rule but eager
 aggregation, which aggregates the join's left input, whose rows the join's do
@@ -812,17 +806,6 @@ theorem flatMap_single {A : Relation} {G : Row → Relation}
   · obtain ⟨w, hw⟩ := h x hx
     exact ⟨w, by simp [hw]⟩
 
-omit [Boxes.Ambient] in
-/-- Rows that agree on the sort columns sort alike. -/
-theorem sortLe_congr {ks : List SortKey} {x x' y y' : Row}
-    (hx : ∀ k ∈ ks, x'.getD k.col .null = x.getD k.col .null)
-    (hy : ∀ k ∈ ks, y'.getD k.col .null = y.getD k.col .null) : sortLe ks x' y' = sortLe ks x y := by
-  induction ks with
-  | nil => rfl
-  | cons k ks ih =>
-    simp only [List.mem_cons, forall_eq_or_imp] at hx hy
-    simp only [sortLe, lexLe, SortKey.le, hx.1, hy.1, ih hx.2 hy.2]
-
 theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
     (h : ∀ x ∈ grp, ∀ e ∈ m.exprs, e.eval (g x) = e.eval x) : m.eval (grp.map g) = m.eval grp := by
   have hin : ∀ l : Relation, (∀ x ∈ l, x ∈ grp) → m.inputs (l.map g) = m.inputs l := by
@@ -1088,7 +1071,7 @@ include hcat hA hF hK hR
 
 omit hA hF hR in
 theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD fd.1 fd.2 (r.eval cat)
-  | .read t, _ => keyFds_sound (hK t)
+  | .read t, _ => keyFds_sound (hK.keys t)
   | .aggregate _ gs ms, _ => keyFds_sound fun k hk => by
       simp only [List.mem_singleton] at hk; subst hk; exact aggregateEval_key gs ms _
   | .values _ _, _ | .unionAll _ _, _ | .unnest _ _, _ => fun _ h => by simp [fds] at h

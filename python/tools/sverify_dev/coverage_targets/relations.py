@@ -100,7 +100,7 @@ TARGETS = [
         "range() and generate_series() with constant bounds",
         "in",
         "catalogue dbt-generate-date-spine; dbt_utils.date_spine; gap filling (#749); replay 965",
-        False,
+        True,
         sql="SELECT CAST(x AS DATE) AS day FROM UNNEST(generate_series("
         "TIMESTAMP '2024-01-01', TIMESTAMP '2024-01-31', INTERVAL '1 day')) AS g(x)",
         issue=321,

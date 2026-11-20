@@ -1,0 +1,16 @@
+{
+  "id": "F160",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "A ruling on Snowflake's private profile; details in the private evidence.",
+  "issues": [
+    852
+  ],
+  "amended_by": [
+    "F161"
+  ],
+  "source": "fable-ruling-160-snowflake-zero-sign-remedy.md",
+  "note": "Section 4 withdrawn by ruling 161. No D-number."
+}

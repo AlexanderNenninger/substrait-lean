@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-15-polars-pending-until-271",
+  "date": "2026-11-15",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "A semantics=\"polars\" request is reported as pending until the generated Polars lowering (#271) lands.",
+  "issues": [
+    271,
+    1442
+  ],
+  "source": "github:#1442 body; #271 comment 6892762203"
+}

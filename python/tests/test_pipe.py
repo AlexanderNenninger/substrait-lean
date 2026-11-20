@@ -197,8 +197,6 @@ def test_sql_step_with_a_wrong_as_names_both():
         orders.pipe(sv.sql(JOIN, name="customers"), customers=customers)
     with pytest.raises(TypeError, match=r"name='nope' is not a table the query reads"):
         sv.sql(JOIN, name="nope")
-    with pytest.warns(DeprecationWarning, match=r"sql\(as_=\.\.\.\) is deprecated"):
-        assert sv.sql(JOIN, as_="orders").as_ == "orders"  # type: ignore[call-overload]
 
 
 def test_sql_step_tables_with_no_input():

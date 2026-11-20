@@ -1,0 +1,25 @@
+{
+  "id": "U-2026-11-03-reference-generic-properties",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "superseded",
+  "summary": "The reference profile is the smallest common denominator, a generic algorithm described by properties.",
+  "issues": [
+    85
+  ],
+  "prs": [
+    455
+  ],
+  "supersedes": [
+    "U-2026-11-02-stat-agg-native"
+  ],
+  "superseded_by": [
+    "D30"
+  ],
+  "amended_by": [
+    "U-2026-11-19-exact-limb-state"
+  ],
+  "source": "memory:reference-generic-algorithms.md",
+  "note": "Still describes the engine side (StatProps)."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-19-auditability-standing",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Auditability is a standing concern: a bridge lemma, one read-only verdict function in Python, and a trusted-base page with a test.",
+  "issues": [
+    1088
+  ],
+  "source": "memory:road-to-1-0.md",
+  "note": "Date of the ruling not recorded; file date used."
+}

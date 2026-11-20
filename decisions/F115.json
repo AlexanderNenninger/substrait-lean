@@ -1,0 +1,19 @@
+{
+  "id": "F115",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Named-exits API: ConditionError(UnsupportedError) with errors mapping; UnsupportedError.construct and .sql; Report.facts becomes dict of ColumnFacts and Report.not_null is removed; CheckedCondition.needs last. Order #699, #700, #704, #701.",
+  "issues": [
+    699,
+    700,
+    701,
+    704
+  ],
+  "amended_by": [
+    "F126"
+  ],
+  "source": "fable-ruling-named-exits-api.md",
+  "note": "Ruling 126 amends the construct spelling ('construct is the keyword form on both classes, DialectDifference gains sql')."
+}

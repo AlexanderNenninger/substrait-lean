@@ -1,0 +1,8 @@
+{
+  "id": "D39",
+  "date": "2026-11-09",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "on_division_by_zero gains IEEE: x / 0.0 is IEEE 754's quotient on the raw codes."
+}

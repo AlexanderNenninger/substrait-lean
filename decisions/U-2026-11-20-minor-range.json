@@ -1,0 +1,18 @@
+{
+  "id": "U-2026-11-20-minor-range",
+  "date": "2026-11-20",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The user chose the minor range (not exact patch pins) for engine versions; under ruling 199 a probe-run record per engine version, facts keep engine_version.",
+  "issues": [
+    2051,
+    2052
+  ],
+  "amends": [
+    "F199",
+    "U-2026-11-20-engine-versions"
+  ],
+  "source": "fable-outbox-1119.md",
+  "note": "Outbox item 58: 'No open question: the user chose the minor range.' Read as answering item 57's open question; ruling 199's file was not read here."
+}

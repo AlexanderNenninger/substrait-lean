@@ -1,0 +1,15 @@
+{
+  "id": "F128",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "#1774 accepted as meeting ruling 107 (F1-F4); non-blocking follow-up: tests over open choices check membership (row count, sort keys) and `TIES_OPEN` is derived from the plan.",
+  "issues": [
+    1774
+  ],
+  "prs": [
+    1774
+  ],
+  "source": "fable-ruling-128-1774-accepted.md"
+}

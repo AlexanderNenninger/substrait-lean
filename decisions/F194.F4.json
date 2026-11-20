@@ -1,0 +1,17 @@
+{
+  "id": "F194.F4",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "superseded",
+  "summary": "Closure is one step only, adding X only when no key is already a subset.",
+  "issues": [
+    1992,
+    1993
+  ],
+  "superseded_by": [
+    "F196"
+  ],
+  "source": "fable-ruling-194-1992-1993-functional-dependencies.md",
+  "note": "Ruling 196 P2 'replaces F4': main's full fdClosure is used; 'the one-step limit of F4 is withdrawn'."
+}

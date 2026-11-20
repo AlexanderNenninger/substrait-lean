@@ -1,0 +1,18 @@
+{
+  "id": "F159",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#900's Python step is approved in direction: refinement and plan bound move into Realize.lean, the checker emits the final class with coded problems, Python keeps wording; acceptance is a site count of zero, one PR in two commits, C1 to C6.",
+  "issues": [
+    900,
+    1166
+  ],
+  "prs": [
+    1795,
+    1834
+  ],
+  "source": "fable-ruling-159-900-routes-reads-checker.md",
+  "note": "Retires #900's 743-line routes.py target. No D-number."
+}

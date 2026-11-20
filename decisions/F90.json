@@ -1,0 +1,16 @@
+{
+  "id": "F90",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Report.output takes decimal types from the checker: the contract JSON gains outputKinds from Write.relKinds (no new theorem), so a decimal SUM of decimal(10,2) reports DECIMAL(20,2); conditions K1 to K8.",
+  "issues": [
+    1484
+  ],
+  "amended_by": [
+    "F114"
+  ],
+  "source": "fable-ruling-1484-report-output-kinds.md",
+  "note": "File is titled 'Ruling 90' though dated 2026-11-19 beside rulings 142+; numbering possibly a separate sequence. Affects sverify-dbt (dbt/API-NOTES.md)."
+}

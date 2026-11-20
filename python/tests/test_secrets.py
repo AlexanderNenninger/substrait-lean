@@ -222,21 +222,26 @@ def test_each_node_lists_its_credentials(tmp_path, monkeypatch):
     def big(t):
         return t.filter(t.x > 10)
 
-    a = src.pipe(big).write(DeltaSink(f"{tmp_path}/marts/a", storage_options=lake))
+    @sv.transform(requires={"t": [_.x >= 0, _.x < 100]}, on_violation="quarantine")
+    def big_or_aside(t):
+        return t.filter(t.x > 10)
+
+    a = src.pipe(big_or_aside).write(DeltaSink(f"{tmp_path}/marts/a", storage_options=lake))
     b = a.pipe(big).write(DeltaSink(f"{tmp_path}/other/b", storage_options=lake))
     uses = b.credentials()
     got = [(u.table, u.credential, u.access, u.in_scope) for u in uses]
+    # `a` may set rows of `api` aside; `b` never does (a's contract proves its
+    # preconditions), so its quarantine table is not listed (#1997).
     assert got == [
         ("api", "sv-api", "read", None),
         ("a", "ci-role", "write", True),
         ("a_quarantine", "ci-role", "write", True),
         ("a", "ci-role", "read", True),
         ("b", "ci-role", "write", False),
-        ("b_quarantine", "ci-role", "write", False),
     ]
     assert uses[0] == CredentialUse("api", "sv-api", "read")
     r = b.refresh()
-    assert [u.access for u in r["b"].credentials] == ["read", "write", "write"]
+    assert [u.access for u in r["b"].credentials] == ["read", "write"]
     doc = json.loads(r.to_json())
     assert doc["nodes"][1]["credentials"][1]["in_scope"] is False
     jsonschema = pytest.importorskip("jsonschema")

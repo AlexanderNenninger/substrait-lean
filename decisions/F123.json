@@ -1,0 +1,16 @@
+{
+  "id": "F123",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The #1773 deviation from ruling 121 is accepted; after merge, check that the Arrow cast is safe=True.",
+  "prs": [
+    1773
+  ],
+  "amends": [
+    "F121"
+  ],
+  "source": "fable-undelivered-1118.md",
+  "note": "Log only, no file. Ruling 121 asked for (a); worker 5 did (b)."
+}

@@ -1,0 +1,17 @@
+{
+  "id": "F100",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Constant-only guarded operands on Polars (P1 of #1719): no guard and no column tie; D21 already refuses every plan with a raising constant subexpression; P1 restated (K1), binder copies operands whole (K2), Polars fact extended (K3), checks K4 and K5.",
+  "issues": [
+    1484,
+    1719
+  ],
+  "amended_by": [
+    "F112"
+  ],
+  "source": "fable-ruling-d50d-constant-operands.md",
+  "note": "No D-number; applies D21. K6: D21 gets a dated line naming the Polars fact. K5 (lambda body) closed by F112."
+}

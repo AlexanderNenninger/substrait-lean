@@ -1,0 +1,20 @@
+{
+  "id": "F108",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "12d-4: keys reading tainted columns are a `source_threshold` site (rule C-key); the S2(c) control is restated and `ratioSharpen` for marked quotients is a follow-up with a decidable side condition. D52 gains 'and keys'.",
+  "issues": [
+    1608
+  ],
+  "supersedes": [
+    "F104.S2c"
+  ],
+  "amends": [
+    "D52",
+    "F104"
+  ],
+  "source": "fable-ruling-12d4-keys-ratio.md",
+  "note": "Explicitly 'amends ruling 104 in two places'."
+}

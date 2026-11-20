@@ -222,9 +222,8 @@ def test_a_bearer_token(monkeypatch):
         )
         assert src.latest() == 0
         assert "s3cret" not in repr(src)
-        with pytest.warns(DeprecationWarning, match="secret="):
-            old = FlightSource(location(s), "samples", schema=SAMPLES, token="s3cret")
-        assert old.latest() == 0
+        with pytest.raises(TypeError):
+            FlightSource(location(s), "samples", schema=SAMPLES, token="s3cret")  # type: ignore[call-arg]
     finally:
         s.shutdown()
 

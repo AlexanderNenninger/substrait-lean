@@ -45,7 +45,7 @@ from sverify._scan import Resident, _q
 from sverify._store import State, Store
 from sverify._unsupported import RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
-from sverify.profiles import ProfilePlugin, Setting
+from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_duckdb.declared import refuse_base_table
 
 if TYPE_CHECKING:
@@ -155,7 +155,14 @@ SETTINGS: tuple[Setting, ...] = (
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
+    con: Any,
+    plan_json: str,
+    session: Any,
+    *,
+    keep: bool,
+    finite: Finite,
+    tie_free: bool,
+    asof: Sequence[dict] = (),
 ) -> Any:
     from sverify.engine import read_tables
     from sverify_duckdb import engine as duckdb_engine
@@ -163,12 +170,12 @@ def _run(
     # DuckDB reads `Scan` and `Resident` tables where they are.
     tables = {t: con.get(t) for t in read_tables(json.loads(plan_json))}
     if keep:
-        return duckdb_engine.run(plan_json, tables, keep=True, finite=finite)
-    return duckdb_engine.run(plan_json, tables, finite=finite)
+        return duckdb_engine.run(plan_json, tables, keep=True, finite=finite, asof=asof)
+    return duckdb_engine.run(plan_json, tables, finite=finite, asof=asof)
 
 
 def _run_tables(
-    plan_json: str, tables: Any, *, guard_free: bool = False, finite: bool = True
+    plan_json: str, tables: Any, *, guard_free: bool = False, finite: Finite = True
 ) -> Any:
     from sverify_duckdb import engine as duckdb_engine
 
@@ -384,7 +391,6 @@ PLUGIN = ProfilePlugin(
     # The package writes DuckDB SQL without DuckDB; running plans needs it
     # (`pip install sverify[duckdb]`).
     local=find_spec("duckdb") is not None,
-    checks_assumed=True,
     read_settings=_read_settings,
     dialect=_dialect,
     run_tables=_run_tables,

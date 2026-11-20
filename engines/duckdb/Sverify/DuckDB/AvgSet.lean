@@ -592,6 +592,116 @@ theorem DuckAgg.avgBigint_near {vs : List Value} (hv : ∀ v ∈ vs, DuckType.bi
       rw [heq]
       omega
 
+/-- The arithmetic of `avgBigint_nearRel`: a member `n · D` within `16 · 2⁻⁵³`
+of `Q = |V|`, the plan's `A = |p|` within `8 · 2⁻⁵³` of it (`E`), so `D` is
+within `17 · 2⁻⁵³` of `A`. -/
+theorem nearRel_arith {n D A E Q : Nat} (hn : 0 < n) (h1 : 2 ^ 53 * (n * D) ≤ 16 * Q)
+    (h2 : 2 ^ 53 * E ≤ 8 * Q) (h3 : Q ≤ n * A + E) : 2 ^ 53 * D ≤ DuckAgg.nearRel * A := by
+  have h4 : 16 * Q ≤ 17 * (n * A) := by omega
+  have : n * (2 ^ 53 * D) ≤ n * (17 * A) := by
+    rw [Nat.mul_left_comm, Nat.mul_left_comm n 17]; omega
+  exact Nat.le_of_mul_le_mul_left this hn
+
+/-- **The mark's band**: every value DuckDB may give for `avg(BIGINT)` is
+within `nearRel · 2⁻⁵³` of the plan's value, relative to the plan's value:
+the bound `Epsilon.exprEps` reads off `.un (.approx DuckAgg.nearRel)` (D52). -/
+theorem DuckAgg.avgBigint_nearRel {vs : List Value} (hv : ∀ v ∈ vs, DuckType.bigint.Has v)
+    (h64 : ∀ v ∈ vs, ∀ i, v = .int i → i.natAbs ≤ 2 ^ 63) (hn : vs.length < 2 ^ 64) {r : Value}
+    (hr : DuckAgg.Allowed .duckdb .avgBigint vs r) :
+    (DuckAgg.eval .duckdb .avgBigint vs = .null ∧ r = .null) ∨
+      ∃ a b, DuckAgg.eval .duckdb .avgBigint vs = .float a ∧ r = .float b ∧
+        2 ^ 53 * (scaled b - scaled a).natAbs ≤ DuckAgg.nearRel * (scaled a).natAbs := by
+  have hN := DuckAgg.avgBigint_near hv h64 hn hr
+  have hm := DuckAgg.eval_allowed .duckdb .avgBigint hv h64 hn
+  have hxs := bigint_filter hv h64
+  have hlen : (vs.filter (· != .null)).length < 2 ^ 64 :=
+    Nat.lt_of_le_of_lt (List.length_filter_le _ _) hn
+  simp only [DuckAgg.Allowed, DuckAgg.Near, DuckAgg.eval] at hr hm hN ⊢
+  generalize vs.filter (· != .null) = xs at hxs hlen hr hm hN ⊢
+  cases xs with
+  | nil => exact Or.inl ⟨rfl, hr⟩
+  | cons x xs =>
+    right
+    obtain ⟨a, b, ha, hb, hnear⟩ := hN
+    cases ha
+    refine ⟨_, b, rfl, hb, ?_⟩
+    obtain ⟨c, hc, hmc⟩ := hm
+    cases hc
+    obtain ⟨cb, hcb, hrb⟩ := hr
+    rw [hb] at hcb; cases hcb
+    have hn0 : 0 < (x :: xs).length := by simp
+    generalize hS : intSum (x :: xs) = S at *
+    generalize hL : (x :: xs).length = n at *
+    have hU : 2 ^ 1074 = unitK := rfl
+    have hV : (S * unitK).natAbs = S.natAbs * unitK := by rw [Int.natAbs_mul, Int.natAbs_natCast]
+    generalize hA : fdiv (ofInt S) (ofInt n) = a at *
+    -- `Q ≤ n · |p| + |n p − V|`.
+    have h3 : (S * unitK).natAbs ≤ n * (scaled a).natAbs + ((n : Int) * scaled a - S * unitK).natAbs := by
+      have := Int.natAbs_add_le ((n : Int) * scaled a) (-((n : Int) * scaled a - S * unitK))
+      rw [Int.natAbs_neg, Int.natAbs_mul, Int.natAbs_natCast,
+        show (n : Int) * scaled a + -((n : Int) * scaled a - S * unitK) = S * unitK by omega] at this
+      exact this
+    split at hnear
+    · rename_i h
+      simp only [h, and_self, ite_true] at hmc hrb
+      by_cases hs0 : S = 0
+      · -- A zero sum: both are `+0.0`.
+        subst hs0
+        have h0 : ∀ m, m = aroundLo (0 * (unitK : Int)).natAbs n ∨ m = aroundHi (0 * (unitK : Int)).natAbs n →
+            m = 0 := by
+          rintro m (rfl | rfl) <;> simp [aroundLo, aroundHi]
+        have hz : ∀ c, Around (0 * (unitK : Int)) n c → scaled c = 0 := by
+          intro c hc
+          rcases hc with rfl | rfl <;> simp [signedMag, aroundLo, aroundHi, posCode, scaled]
+        rw [hz _ hrb, hz _ hmc]; simp
+      have hQ : unitK ≤ (S * unitK).natAbs := by rw [hV]; exact Nat.le_mul_of_pos_left _ (by omega)
+      have hU1 : 2 ^ 1074 ≤ unitK := Nat.le_of_eq hU
+      -- The grid at the quotient is above the subnormals.
+      have hg : 0 < gridExp (S * unitK).natAbs n := by
+        apply Classical.byContradiction; intro hg0
+        have hlt := lt_of_gridExp (S * unitK).natAbs n
+        rw [show gridExp (S * unitK).natAbs n = 0 by omega] at hlt
+        have : 2 ^ 1010 ≤ (S * unitK).natAbs / n := by
+          apply (Nat.le_div_iff_mul_le hn0).mpr
+          have : 2 ^ 1010 * n ≤ 2 ^ 1010 * 2 ^ 64 := Nat.mul_le_mul_left _ (by omega)
+          rw [← Nat.pow_add] at this; omega
+        have : 2 ^ 53 < 2 ^ 1010 := Nat.pow_lt_pow_right (by omega) (by omega)
+        omega
+      have hge := le_of_gridExp hg
+      generalize hG : gridExp (S * unitK).natAbs n = g at hge hg
+      have hP : 2 ^ (g + 52) = 2 ^ g * 2 ^ 52 := Nat.pow_add _ _ _
+      have hnq : n * ((S * unitK).natAbs / n) ≤ (S * unitK).natAbs := Nat.mul_div_le _ _
+      have hnP : n * 2 ^ (g + 52) ≤ n * ((S * unitK).natAbs / n) := Nat.mul_le_mul_left _ hge
+      -- The plan's value rounds the quotient once: within half a grid step.
+      have hfin : IsFin (ofExactDiv (S * unitK) n) := ofExactDiv_fin hn0 (by
+        rw [hV]
+        have : S.natAbs * unitK ≤ 2 ^ 127 * 2 ^ 1074 := by
+          rw [← hU]; exact Nat.mul_le_mul_right _ (by omega)
+        rw [← Nat.pow_add] at this
+        have : 2 ^ (127 + 1074) ≤ 1 * 2 ^ 2097 := by
+          rw [Nat.one_mul]; exact Nat.pow_le_pow_right (by omega) (by omega)
+        have := Nat.mul_le_mul_right (2 ^ 2097) hn0
+        omega)
+      rw [← hA, fdiv_exact_eq h.1 hn0 h.2] at h3 hnear ⊢
+      have hw := ofExactDiv_within hn0 hfin
+      unfold ulpDiv at hw hnear
+      rw [hG] at hw hnear
+      rw [hP] at hnP
+      have hD := Nat.mul_le_mul_left n hnear
+      have e : 2 ^ 52 * (n * 2 ^ g) = n * (2 ^ g * 2 ^ 52) := by
+        rw [Nat.mul_comm (2 ^ g) (2 ^ 52), Nat.mul_left_comm]
+      have hgrid : 2 ^ 52 * (n * 2 ^ g) ≤ (S * unitK).natAbs := by omega
+      generalize (scaled b - scaled (ofExactDiv (S * unitK) n)).natAbs = D at hD ⊢
+      generalize n * 2 ^ g = NP at hD hw hgrid
+      have h1 := Nat.mul_le_mul_left (2 ^ 53) hD
+      exact nearRel_arith hn0 (Nat.le_trans h1 (show 2 ^ 53 * NP ≤ 16 * (S * unitK).natAbs by omega))
+        (by omega) h3
+    · rename_i h
+      simp only [h, ite_false] at hmc
+      obtain ⟨-, h2⟩ := hmc
+      rw [Int.natAbs_mul, Int.natAbs_natCast] at hnear
+      exact nearRel_arith hn0 hnear h2 h3
+
 /-- Every lifted aggregate under DuckDB's semantics: the model's value, which
 the plan gives (`AggEntry.agree`), is one DuckDB may give, and every value
 DuckDB may give is near it (`DuckAgg.Near`). The generated entries need no

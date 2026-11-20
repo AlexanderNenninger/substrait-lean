@@ -3,6 +3,7 @@ semantics agree with DataFusion and DuckDB, and the ASOF guarantees are proved."
 
 import datetime as dt
 import json
+from collections import Counter
 
 import ibis
 import pytest
@@ -14,7 +15,20 @@ import sverify as sv
 from sverify.engine import connect, substrait_json
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_rows
 
-INT_SCHEMA = {"device": "int64", "ts": "int64"}
+
+def pairs(left, right, by) -> int:
+    """The pairs of rows an as-of join compares: each left row with every right
+    row of its `by` group (rows with a NULL `by` value never match), counted on
+    Arrow tables: the rule `AsofSite.pairs` states for the engine's run."""
+    if not by:
+        return left.num_rows * right.num_rows
+    keys = lambda t: [  # noqa: E731
+        k for k in zip(*(t[c].to_pylist() for c in by), strict=True) if None not in k
+    ]
+    right_counts = Counter(keys(right))
+    return sum(right_counts[k] for k in keys(left))
+
+
 T0 = dt.datetime(2024, 5, 1, 7, 0)
 
 
@@ -166,8 +180,6 @@ def _bound(rows_left: int, rows_right: int, groups: int):
 def test_the_pairs_the_join_compares_are_per_by_group():
     import pyarrow as pa
 
-    from sverify.asof import pairs
-
     left = pa.table({"d": [1, 1, 2, None], "t": [0, 1, 2, 3]})
     right = pa.table({"d": [1, 2, 2, 3, None], "t": [0, 1, 2, 3, 4]})
     assert pairs(left, right, []) == 4 * 5
@@ -199,8 +211,6 @@ def test_the_checkers_count_is_the_arrow_rule(left, right, by):
     counts on Arrow tables: one rule (ruling 162 A7)."""
     import pyarrow as pa
 
-    from sverify.asof import pairs
-
     con = connect()
     ts = {
         n: pa.table(
@@ -223,8 +233,17 @@ def test_the_run_is_refused_above_the_cap_with_its_exits_named():
     con, left, right = _bound(1000, 1000, 1)
     report = sv.verify(sv.asof_join(left, right, on="ts", by="device", max_pairs=100_000))
     with pytest.raises(UnsupportedError, match=r"1,000,000 pairs.*`by`.*`max_pairs`") as e:
-        report.run(con, "duckdb")
+        report.run(con, "polars")
     assert "quadratic" in str(e.value)
+    # DuckDB writes the join as its ASOF JOIN, which compares no pairs: no cap.
+    assert report.run(con, "duckdb").num_rows == 1000
+    # With a tolerance it keeps the range join, and the cap.
+    tol = sv.verify(
+        sv.asof_join(left, right, on="ts", by="device", tolerance=5, max_pairs=100_000),
+        on_inferred="ignore",
+    )
+    with pytest.raises(UnsupportedError, match=r"1,000,000 pairs"):
+        tol.run(con, "duckdb")
     # More `by` groups: fewer pairs, under the cap; and no cap at all.
     con, left, right = _bound(1000, 1000, 20)
     sv.verify(sv.asof_join(left, right, on="ts", by="device", max_pairs=100_000)).run(con, "duckdb")
@@ -248,8 +267,12 @@ def test_the_cap_holds_on_tables_read_from_files(tmp_path, engine):
         f = tmp_path / f"{name}.parquet"
         pq.write_table(pa.table({"device": [0] * 1000, "ts": list(range(1000))}, schema=schema), f)
         con.put(name, Scan((str(f),), schema))
+    # A tolerance keeps DuckDB on the range join; Polars has no native as-of join.
     report = sv.verify(
-        sv.asof_join(con.table("l"), con.table("r"), on="ts", by="device", max_pairs=100_000)
+        sv.asof_join(
+            con.table("l"), con.table("r"), on="ts", by="device", tolerance=5, max_pairs=100_000
+        ),
+        on_inferred="ignore",
     )
     with pytest.raises(UnsupportedError, match=r"1,000,000 pairs"):
         report.run(con, engine)
@@ -313,14 +336,225 @@ def test_the_lifts_asof_join_is_an_as_of_site_too(sql):
     """The checker reads DuckDB's `ASOF JOIN`, as the lift writes it, as an
     as-of join (`Rel.asofSite`, ruling 162 A2); its count is the Arrow rule's.
     A SQL query states no `max_pairs`, so its run has no cap yet."""
-    from sverify.asof import pairs
-
     con, _, _ = _bound(30, 40, 3)
     schema = ibis.schema({"device": "int64", "ts": "int64"})
     report = sv.verify(sql, tables={"l": schema, "r": schema})
     by = ["device"] if "device =" in sql else []
     assert _pairs_on_run(con, report) == [pairs(con.get("l"), con.get("r"), by)]
     assert report._asof_max_pairs is None
+
+
+NATIVE_KINDS = {
+    "int": ("int64", lambda i: i),
+    "date": ("date", lambda i: dt.date(2024, 1, 1) + dt.timedelta(days=i)),
+    "timestamp": ("timestamp", lambda i: dt.datetime(2024, 1, 1) + dt.timedelta(hours=i)),
+    "string": ("string", lambda i: f"t{i:02d}"),
+}
+
+
+def _asof_tables(con, kind, left, right):
+    """`l(k, t, id)` and `r(k, t, v)` with `t` of the kind; rows are `(k, t, id)`
+    and `(k, t, v)` with `t` an int or None."""
+    ty, f = NATIVE_KINDS[kind]
+    conv = lambda rows: [(k, None if t is None else f(t), x) for k, t, x in rows]  # noqa: E731
+    con.create("l", ibis.schema({"k": "int64", "t": ty, "id": "int64"}), conv(left))
+    con.create("r", ibis.schema({"k": "int64", "t": ty, "v": "int64"}), conv(right))
+    return con.table("l"), con.table("r"), f
+
+
+def _enc(v):
+    """A value as Lean reads it: a date is its day, a timestamp its microseconds."""
+    if isinstance(v, dt.datetime):
+        return (v - dt.datetime(1970, 1, 1)) // dt.timedelta(microseconds=1)
+    if isinstance(v, dt.date):
+        return (v - dt.date(1970, 1, 1)).days
+    return v
+
+
+def _lean_allowed(expr, kind, left, right):
+    """The rows `Rel.eval` allows for each left row: its output over each choice
+    among the tied latest right rows (variant `j` keeps the `j`-th row of every
+    group of right rows that share `(k, t)`), by left id."""
+    from sverify.ibis_substrait import to_substrait_json
+
+    f = NATIVE_KINDS[kind][1]
+    plan = json.loads(to_substrait_json(expr))
+    groups: dict = {}
+    for r in right:
+        groups.setdefault((r[0], r[1]), []).append(r)
+    allowed: dict[int, set] = {}
+    for j in range(max([len(g) for g in groups.values()], default=1)):
+        kept = [g[j % len(g)] for g in groups.values()]
+        enc = lambda rows: [(k, _enc(None if t is None else f(t)), x) for k, t, x in rows]  # noqa: E731
+        rows = inline_tables(plan, {"l": enc(left), "r": enc(kept)})
+        for out in lean_rows(json.dumps(rows)):
+            allowed.setdefault(out[2], set()).add(out)
+    return allowed
+
+
+@pytest.mark.parametrize("kind", NATIVE_KINDS)
+@pytest.mark.parametrize("how", ["left", "inner"])
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(
+    left=st.lists(
+        st.tuples(st.one_of(st.none(), st.integers(0, 2)), st.one_of(st.none(), st.integers(0, 6))),
+        max_size=8,
+    ),
+    right=st.lists(
+        st.tuples(st.one_of(st.none(), st.integers(0, 2)), st.one_of(st.none(), st.integers(0, 6))),
+        max_size=8,
+    ),
+)
+def test_duckdbs_asof_join_gives_a_row_the_plan_allows(kind, how, left, right):
+    """DuckDB runs the as-of join as its ASOF JOIN (ruling 162, #1447 item 6):
+    each left row, equal ones included, keeps one latest right row whole; NULL
+    keys and NULL times never match. The rows are `Rel.eval`'s: equal where
+    `(by, on)` is unique on the right, and one of the rows its choices among
+    tied right rows give (A5, A6)."""
+    left = [(k, t, i) for i, (k, t) in enumerate(left)]
+    right = [(k, t, 100 + i) for i, (k, t) in enumerate(right)]
+    con = connect()
+    lt, rt, _ = _asof_tables(con, kind, left, right)
+    expr = sv.asof_join(lt, rt, on="t", by="k", how=how, max_pairs=0)
+    report = sv.verify(expr)
+    # `max_pairs=0` refuses any count: the run is native, or it raises.
+    assert [c["form"] for c in report._asof_checks] == ["builder"]
+    out = [tuple(_enc(v) for v in r.values()) for r in report.run(con, "duckdb").to_pylist()]
+    allowed = _lean_allowed(expr, kind, left, right)
+    assert sorted(r[2] for r in out) == sorted(allowed)
+    for row in out:
+        assert row in allowed[row[2]], row
+
+
+def test_the_native_sql_is_an_asof_join_where_the_site_is_plain():
+    """A plain site is written as `ASOF [LEFT] JOIN`; a tolerance, a double
+    time (A3: NaN and the zeros are not probed) and a plan rewritten to run
+    keep the range join."""
+    from sverify.engine import written_plan
+    from sverify.sql import to_sql
+
+    def sql(j):
+        report = sv.verify(j, on_inferred="ignore")
+        assert report.internal_plan is not None
+        plan = json.loads(written_plan(report.internal_plan))
+        return to_sql(plan, "duckdb", asof=report._asof_checks)
+
+    con = connect()
+    lt, rt, _ = _asof_tables(con, "int", [(1, 5, 1)], [(1, 4, 100)])
+    assert "ASOF LEFT JOIN" in sql(sv.asof_join(lt, rt, on="t", by="k"))
+    assert "ASOF JOIN" in sql(sv.asof_join(lt, rt, on="t", by="k", how="inner"))
+    assert "ASOF" not in sql(sv.asof_join(lt, rt, on="t", by="k", tolerance=2))
+    con.create("fl", ibis.schema({"k": "int64", "t": "float64"}), [(1, 5.0)])
+    con.create("fr", ibis.schema({"k": "int64", "t": "float64"}), [(1, 4.0)])
+    assert "ASOF" not in sql(sv.asof_join(con.table("fl"), con.table("fr"), on="t", by="k"))
+
+
+@pytest.mark.parametrize("how", ["left", "inner"])
+def test_the_lift_of_the_native_sql_is_the_same_site(how):
+    """Round trip (A6): the lift reads the ASOF JOIN the writer emits as an
+    as-of site of the same keys, `on` columns and join type."""
+    from sverify.engine import written_plan
+    from sverify.sql import to_sql
+
+    con = connect()
+    lt, rt, _ = _asof_tables(con, "int", [(1, 5, 1)], [(1, 4, 100)])
+    report = sv.verify(sv.asof_join(lt, rt, on="t", by="k", how=how))
+    assert report.internal_plan is not None
+    sql = to_sql(
+        json.loads(written_plan(report.internal_plan)),
+        "duckdb",
+        asof=report._asof_checks,
+        rows="multiset",
+    )
+    assert "ASOF" in sql
+    schema = {"k": "int64", "t": "int64"}
+    lifted = sv.verify(
+        sql,
+        tables={
+            "l": ibis.schema({**schema, "id": "int64"}),
+            "r": ibis.schema({**schema, "v": "int64"}),
+        },
+    )
+    (a,), (b,) = report._asof_checks, lifted._asof_checks
+    assert (b["form"], a["form"]) == ("lift", "builder")
+    assert {x: a[x] for x in ("keys", "lon", "ron", "outer")} == {
+        x: b[x] for x in ("keys", "lon", "ron", "outer")
+    }
+
+
+def test_the_native_join_runs_over_files_with_no_count(tmp_path):
+    """Verdict 2 of ruling 162: a join over a Parquet scan had no bound. On DuckDB
+    it is an ASOF JOIN now, which compares no pairs, so a small `max_pairs`
+    neither counts nor refuses."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from sverify._scan import Scan
+
+    con = connect()
+    schema = pa.schema([("device", pa.int64()), ("ts", pa.int64())])
+    for name in ("l", "r"):
+        f = tmp_path / f"{name}.parquet"
+        pq.write_table(pa.table({"device": [0] * 1000, "ts": list(range(1000))}, schema=schema), f)
+        con.put(name, Scan((str(f),), schema))
+    report = sv.verify(
+        sv.asof_join(con.table("l"), con.table("r"), on="ts", by="device", max_pairs=100)
+    )
+    assert report.run(con, "duckdb").num_rows == 1000
+
+
+def _ranked_asof(left, right, keep):
+    """`asof_join`'s plan with its last filter replaced: `keep(rank)` over the
+    rank (0 for the latest right row), so `rank <= 1` keeps two matches."""
+    from sverify.asof import RANK, ROW
+
+    left = left.mutate(**{ROW: ibis.row_number().over(order_by=[left["k"], left["t"]])})
+    joined = left.join(right, [left["k"] == right["k"], right["t"] <= left["t"]], how="left")
+    latest = ibis.window(group_by=[joined[ROW]], order_by=ibis.desc(joined["t_right"]))
+    ranked = joined.mutate(**{RANK: ibis.row_number().over(latest)})
+    return ranked.filter(keep(ranked[RANK])).drop(ROW, RANK, "k_right")
+
+
+def _agree_with_the_range_join(expr, con):
+    report = sv.verify(expr, on_inferred="ignore")
+    native = report.run(con, "duckdb").to_pylist()
+    other = report.run(con, "polars").to_pylist()
+    assert canonical([tuple(r.values()) for r in native]) == canonical(
+        [tuple(r.values()) for r in other]
+    )
+    return native
+
+
+@pytest.mark.parametrize(
+    "above",
+    [
+        lambda j: j.filter(j.v > 100),
+        lambda j: j.filter(j.v.isnull()),
+        lambda j: j.mutate(w=j.v + 1).filter(j.id > 1),
+    ],
+    ids=["filter v", "filter null", "mutate and filter"],
+)
+def test_a_filter_above_an_asof_join_is_not_dropped(above):
+    """A filter on the join's output stays: the site is the join, and what the
+    plan does above it is not the native join's to drop."""
+    con = connect()
+    lt, rt, _ = _asof_tables(
+        con, "int", [(1, 5, 1), (1, 9, 2), (2, 7, 3)], [(1, 4, 100), (1, 8, 101), (2, 6, 102)]
+    )
+    _agree_with_the_range_join(above(sv.asof_join(lt, rt, on="t", by="k")), con)
+
+
+def test_a_ranking_that_keeps_more_than_the_latest_row_is_not_native():
+    """`rank <= 1` keeps the two latest right rows per left row: no ASOF JOIN
+    returns that, so the plan keeps the range join."""
+    con = connect()
+    lt, rt, _ = _asof_tables(
+        con, "int", [(1, 9, 1), (1, 5, 2)], [(1, 4, 100), (1, 8, 101), (1, 7, 102)]
+    )
+    out = _agree_with_the_range_join(_ranked_asof(lt, rt, lambda r: r <= 1), con)
+    assert len(out) == 3
 
 
 def test_a_report_read_back_keeps_the_as_of_checks_and_the_cap():
@@ -336,5 +570,6 @@ def test_a_report_read_back_keeps_the_as_of_checks_and_the_cap():
     assert back._asof_max_pairs == 100_000
     again = sv.Report.from_substrait(report.to_substrait())
     assert again._asof_max_pairs == 100_000
+    # DuckDB writes the join natively and takes no count; Polars counts.
     with pytest.raises(UnsupportedError, match=r"1,000,000 pairs"):
-        again.run(con, "duckdb")
+        again.run(con, "polars")

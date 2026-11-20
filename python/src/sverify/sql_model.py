@@ -1,8 +1,8 @@
 """SQL models: a transform's body written in SQL, `sv.sql(query, **tables)`,
 and SQL as a step of `Node.pipe`, `sv.sql(query)`.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public name (`sql`) is re-exported by `sverify`.
 
     @sv.transform(requires={"orders": ["amount_cents >= 0"]}, ensures=["revenue_cents >= 0"])
@@ -104,8 +104,7 @@ def sql(
         query: The SQL query.
         name: For a step: the table the chained node is, checked against
             the one table the keyword inputs of `pipe` leave over, as a
-            source's `name` is the table it is. Default None. (`as_=`, its
-            name before 1.0, warns for one release.)
+            source's `name` is the table it is. Default None.
         dialect: The query's SQL dialect: `"duckdb"`, the default and so
             far the only one.
         semantics: `"reference"` (the default) or `"duckdb"`.
@@ -142,15 +141,6 @@ def sql(
     from sverify.nodes import Node, is_source
     from sverify.sql import Unsupported
 
-    if "as_" in tables:
-        import warnings
-
-        warnings.warn(
-            "sql(as_=...) is deprecated; write sql(query, name=...)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        name = tables.pop("as_")  # type: ignore[assignment]
     semantics = _semantics(dialect, semantics)
     if not tables:
         return SQLStep(query, name, dialect, semantics)

@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-09-determinism-result-attribute",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Determinism and row order are attributes of the result computed per observable, not parameters of verify or of the profile.",
+  "issues": [
+    1285
+  ],
+  "source": "memory:determinism-as-certificate.md"
+}

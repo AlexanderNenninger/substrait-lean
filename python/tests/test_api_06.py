@@ -79,8 +79,8 @@ def test_an_assumed_sum_says_it_is_checked_at_run_time() -> None:
     assert "(inferred;" not in text
     # The first line says the proof holds under checks (#1484).
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
-    assert text.splitlines()[0].startswith("proved with checks: 1 assumption")
-    assert "**proved with checks: 1 assumption**" in report._repr_markdown_()
+    assert text.splitlines()[0].startswith("proved with checks: 1 run-time check")
+    assert "**proved with checks: 1 run-time check**" in report._repr_markdown_()
 
 
 def test_an_assumed_double_sum_names_the_sum() -> None:
@@ -220,8 +220,8 @@ def test_needed_text_is_a_field() -> None:
 
 def test_equivalence_is_the_observation() -> None:
     report = _quiet(sv.verify, T.select("k"), ensures=[sv.equivalent(rows="sequence")])
-    assert report.equivalence is report.observation
-    assert report.equivalence.rows == "sequence"
+    assert not hasattr(report, "observation") and not hasattr(report, "equivalence")
+    assert report.lenses.rows == "sequence"
 
 
 def test_inferred_warn_still_warns() -> None:

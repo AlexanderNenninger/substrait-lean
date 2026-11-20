@@ -1,0 +1,16 @@
+{
+  "id": "F16",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Entry 7 stands for #1520: keeping key= with unique(*key) required is declined, as is the three-node pattern; #1520 no longer waits.",
+  "issues": [
+    1517
+  ],
+  "prs": [
+    1520
+  ],
+  "source": "fable-rulings-night-1117.md, entry 16",
+  "note": "File ruling-1520-design-point.md. Reaffirms F7; no change."
+}

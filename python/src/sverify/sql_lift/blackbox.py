@@ -102,7 +102,8 @@ def _unwrap(name: str, arg: sge.Expression) -> sge.Expression:
     if "encode({0})" in black_box.SCALARS[name].duckdb:
         if not isinstance(arg, sge.Encode):
             raise SqlUnsupported(
-                f"{name} of a BLOB is not supported: write {name}(encode(s)) of a string s"
+                f"{name} of a BLOB is not supported: write {name}(encode(s)) of a string s",
+                construct=f"function {name}",
             )
         return arg.this
     return arg
@@ -133,13 +134,17 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
             return n
         name = n.name.lower()
         if name in REFUSED:
-            raise SqlUnsupported(REFUSED[name])
+            raise SqlUnsupported(REFUSED[name], construct=f"function {name}")
         name = ALIASES.get(name, name)
         if name in black_box.SCALARS:
             return BlackBoxCall(this=name, expressions=list(n.expressions))
         if name in black_box.AGGREGATES:
             if len(n.expressions) != 1:
-                raise SqlUnsupported(f"{name} takes one argument", hint="call it with one argument")
+                raise SqlUnsupported(
+                    f"{name} takes one argument",
+                    hint="call it with one argument",
+                    construct=f"function {name}",
+                )
             return BlackBoxAgg(this=n.expressions[0], fname=sge.Literal.string(name))
         return n
 
@@ -151,16 +156,21 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
     args = list(node.expressions)
     if len(args) != len(row.args):
         raise Unsupported(
-            f"{row.name} takes {len(row.args)} argument(s); call it with exactly that many"
+            f"{row.name} takes {len(row.args)} argument(s); call it with exactly that many",
+            construct=f"function {row.name}",
         )
     js = []
     for a, ty in zip(args, row.args, strict=True):
         e = sub(_unwrap(row.name, a))
         if not _accepts(ty, e.type):
-            raise SqlUnsupported(f"{row.name} of a {e.type} is not supported")
+            raise SqlUnsupported(
+                f"{row.name} of a {e.type} is not supported", construct=f"function {row.name}"
+            )
         if row.name == "bit_count" and not e.type.is_int64():
             # DuckDB counts the bits of the argument's own width.
-            raise Unsupported(f"bit_count of a {e.type}: cast it to BIGINT (#326)")
+            raise Unsupported(
+                f"bit_count of a {e.type}: cast it to BIGINT (#326)", construct="function bit_count"
+            )
         js.append(lf.to(e, _TYPES[ty]).json if ty in _CONVERTED else e.json)
     out = _TYPES[row.result]
     return E(_fn(row.name, js, out), out)
@@ -171,7 +181,7 @@ def _aggregate(lf: _Lift, node: sge.Expression, a: E) -> tuple[str, Any]:
     row = black_box.AGGREGATES[name]
     # An integer becomes a double (`Parse.lean`), as DuckDB converts it.
     if not (_accepts(row.args[0], a.type) or (row.args[0] == "double" and a.type.is_integer())):
-        raise SqlUnsupported(f"{name} of a {a.type} is not supported")
+        raise SqlUnsupported(f"{name} of a {a.type} is not supported", construct=f"function {name}")
     return name, _TYPES[row.result]
 
 

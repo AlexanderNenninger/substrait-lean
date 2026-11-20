@@ -4,7 +4,7 @@
 Internal: not part of sverify's public API.
 
 A profile's facts were probed under the engine's default settings
-(`characterization/<engine>/facts/`, each fact's `settings`). A session
+(`engines/<engine>/facts/`, each fact's `settings`). A session
 that changes one of them changes what the engine computes, so a routed run
 reads the settings the plan will run under and compares them with the
 profile's: a setting a choice-table row depends on refuses the run, one
