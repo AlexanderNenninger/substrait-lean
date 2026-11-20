@@ -2,6 +2,7 @@ import Sverify.Core.Kinds
 import Sverify.Analysis.Refresh
 import Sverify.DuckDB.Boxes
 import Sverify.DuckDB.Profile
+import Sverify.DuckDB.AvgSet
 import Sverify.Core.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
