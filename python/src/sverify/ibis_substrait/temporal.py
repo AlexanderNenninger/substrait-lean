@@ -19,6 +19,7 @@ from sverify.plan_json import (
     Json,
     ProducerUnsupported,
     Unsupported,
+    add_months_json,
     between,
     call,
     cast_json,
@@ -26,7 +27,6 @@ from sverify.plan_json import (
     interval_json,
     interval_parts,
     literal,
-    add_months_json,
     make_date_json,
     make_timestamp_json,
 )
@@ -221,8 +221,8 @@ def _constants(*args: Any) -> list[int] | None:
 
 def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[Exprs, Any], Json]:
     """`DateFromYMD` and friends: of constants, a literal; a bad date is an
-    error, as in DataFusion. A date or timestamp of columns is `make_date_json` or `make_timestamp_json`; the others
-    of columns are refused."""
+    error, as in DataFusion. A date or timestamp of columns is `make_date_json` or
+    `make_timestamp_json`; the others of columns are refused."""
 
     def rule(x: Exprs, op: Any) -> Json:
         values = _constants(*op.args)
