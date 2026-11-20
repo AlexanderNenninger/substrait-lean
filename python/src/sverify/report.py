@@ -657,6 +657,11 @@ class Report:
     not say. A checker without them proves with `sorry` in their place."""
     _sorted: bool | None = field(default=None, repr=False, compare=False)
     """Whether the plan's result comes out of a sort, as the checker reads it."""
+    _sequence_determined: bool = field(default=False, repr=False, compare=False)
+    """Every result the reference allows is its result row by row
+    (`check_sequence_determined_sound`): `_exact`, and the result comes out of
+    a sort whose columns contain a key of its input, so no rows tie. What a
+    `rows="sequence"` observation needs."""
     _conditions: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
     _dialect: Literal["ibis", "sql"] = field(default="ibis", repr=False, compare=False)
     """The language of the transformation: the report names functions and
@@ -2090,6 +2095,7 @@ _REPORT_PRIVATE = [
     "run_gates",
     "asof_checks",
     "asof_max_pairs",
+    "sequence_determined",
 ]
 
 _REPORT_INTERNAL = [

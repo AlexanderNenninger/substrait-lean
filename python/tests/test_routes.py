@@ -131,18 +131,23 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     assert strict.refused and "rerun must give the same result" in strict.reason
 
 
-def test_sequence_needs_a_sorted_result(con) -> None:
+def test_sequence_needs_a_total_sort(con) -> None:
+    """`rows="sequence"` needs a result the plan orders without ties: sorted
+    on columns that contain a key of its input (`check_sequence_determined_sound`).
+    A result sorted on a non-key keeps its ties open."""
     t = con.table("t")
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
     assert "not sorted" in routes.choose(unsorted, "duckdb").reason
-    ordered = sv.verify(
-        t.select("k", "i").order_by([ibis.asc("k", nulls_first=True), "i"]),
-        requires=req,
-        ensures=[seq],
-    )
-    assert routes.choose(ordered, "duckdb").kind == "translated"
+    order = [ibis.asc("k", nulls_first=True), "i"]
+    tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
+    assert not tied._sequence_determined
+    assert "not sorted on a key" in routes.choose(tied, "duckdb").reason
+    keyed = {"t": [*req["t"], sv.unique("k", "i")]}
+    total = sv.verify(t.select("k", "i").order_by(order), requires=keyed, ensures=[seq])
+    assert total._sequence_determined
+    assert routes.choose(total, "duckdb").kind == "translated"
 
 
 def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:

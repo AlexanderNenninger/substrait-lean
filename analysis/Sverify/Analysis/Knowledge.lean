@@ -192,6 +192,13 @@ theorem allowed_perm_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK
     {out : Relation} (h : r.Allowed cat out) : out.Perm (r.eval cat) :=
   Rel.allowed_perm_eval hcat hK.cols hK.facts hK.keys hwf hd h
 
+/-- `Rel.allowed_eq_eval` on one hypothesis. -/
+theorem allowed_eq_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat)
+    {r : Rel} (hwf : r.WF cat) (hd : r.detPlan cat K.cols K.facts K.keys = true)
+    (hs : r.seqTotal cat K.cols K.facts K.keys = true)
+    {out : Relation} (h : r.Allowed cat out) : out = r.eval cat :=
+  Rel.allowed_eq_eval hcat hK.cols hK.facts hK.keys hwf hd hs h
+
 /-- `Rel.allowed_canon_perm_eval` on one hypothesis (D48). -/
 theorem allowed_canon_perm_eval {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
     (hK : K.Sound cat) {r : Rel} (hwf : r.WF cat) (hd : r.detClass cat K.cols K.facts K.keys = true)
