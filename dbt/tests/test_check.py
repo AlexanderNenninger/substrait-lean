@@ -471,6 +471,8 @@ def test_needs_become_suggested_source_tests(make_project, capsys) -> None:
     ]
     assert "mrr * 12" in (m.needed[0].because or "")
     assert statuses(m) == {"not_null(arr)": "not proved"}
+    # `arr` is never NULL by the source's own test; the model may still overflow (#701).
+    assert (m.tests[0].why or "").startswith("it holds, but the model may fail")
     assert "on source('raw', 'subs'), column mrr: dbt_utils.accepted_range" in str(res)
     [a, b] = res.suggestions()
     assert (a.relation.name, a.column) == ("subs", "mrr")

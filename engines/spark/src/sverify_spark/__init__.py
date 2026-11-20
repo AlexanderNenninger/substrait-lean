@@ -35,7 +35,7 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
     )
 
 from sverify._unsupported import ISSUE_271, RANGE_GUARD
-from sverify.profiles import ProfilePlugin, Setting
+from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_spark.store import SparkStore
 
 #: The settings Spark's profile assumes.
@@ -116,7 +116,7 @@ DEFAULTS: Mapping[str, str] = {
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
+    con: Any, plan_json: str, session: Any, *, keep: bool, finite: Finite, tie_free: bool
 ) -> Any:
     from sverify.engine import _rename_tables, read_tables
     from sverify_spark import engine as spark_engine

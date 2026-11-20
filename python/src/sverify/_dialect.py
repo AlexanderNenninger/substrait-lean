@@ -24,6 +24,9 @@ class DialectDifference:
     key: str
     """The `Profile` field the lift read: `float_to_int` or `corr_degenerate`."""
     construct: str
+    """The construct's category, as `UnsupportedError.construct` spells it:
+    `function corr`, `CAST`."""
+    sql: str
     """The construct as written."""
     where: str
     """`"the query"`, or the SQL condition the construct is in."""
@@ -38,7 +41,7 @@ class DialectDifference:
 
     def __str__(self) -> str:
         out = (
-            f"{self.construct} in {self.where}: {self.here} here, "
+            f"{self.sql} in {self.where}: {self.here} here, "
             f"{self.dialect} on DuckDB ({self.example})"
         )
         return f"{out}; {self.spellings}" if self.spellings else out
@@ -66,6 +69,6 @@ TABLE: dict[str, dict[str, str]] = {
 }
 
 
-def difference(key: str, construct: str, where: str = "the query") -> DialectDifference:
-    """The entry for `key`, at `construct`."""
-    return DialectDifference(key, construct, where, **TABLE[key])
+def difference(key: str, construct: str, sql: str, where: str = "the query") -> DialectDifference:
+    """The entry for `key`, at the construct `construct` that the SQL `sql` writes."""
+    return DialectDifference(key, construct, sql, where, **TABLE[key])

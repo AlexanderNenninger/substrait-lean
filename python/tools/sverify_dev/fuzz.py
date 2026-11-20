@@ -65,7 +65,6 @@ from sverify.testing import EPOCH, duckdb_sql, inline_tables, lean_values
 from sverify_polars import engine as polars_engine
 
 INT, DOUBLE, STRING, BOOL, TS = "int", "double", "string", "bool", "ts"
-SQL_TYPES = {INT: "BIGINT", DOUBLE: "DOUBLE", STRING: "VARCHAR", BOOL: "BOOLEAN", TS: "TIMESTAMP"}
 IBIS_TYPES = {INT: "int64", DOUBLE: "float64", STRING: "string", BOOL: "boolean", TS: "timestamp"}
 
 TABLES: dict[str, dict[str, str]] = {

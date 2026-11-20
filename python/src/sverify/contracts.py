@@ -75,7 +75,7 @@ import warnings
 import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, get_args
 
 import ibis
@@ -157,9 +157,12 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     OVERFLOW_HINT,
     PARAMS_NOTE,
     RUNTIME_CHECK,
+    SOURCE_THRESHOLD,
+    SOURCE_THRESHOLD_HINT,
     SUM_ASSUMED,
     TIES_HINT,
     TRUNC_HINT,
+    ColumnFacts,
     Condition,
     InferredWarning,
     Issue,
@@ -174,6 +177,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     UnverifiedRunError,
     VerificationError,
     _assumption,
+    _by_table,
     _cause,
     _labels_by_table,
     _needed,
@@ -185,8 +189,10 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     _truncates,
     _unparen,
     _would_hold,
+    column_facts,
     condition_query,
     error_text,
+    proved_not_null,
     render_fact,
     tie_places,
     violating_rows,
@@ -845,7 +851,6 @@ def verify(
             operation that may overflow to ±inf, is an error too, which the
             other values check on the data while the job runs
             (`Report.assumed`); each `Issue.hint` suggests a bound.
-            `"silent"` is a deprecated spelling of `"ignore"`.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -883,7 +888,7 @@ def verify(
             requires={"orders": [_.amount >= 0]},
             ensures=[_.total >= 1],
         )
-        report.facts["total"]  # 'an integer ≥ 1'
+        str(report.facts["total"])  # 'an integer ≥ 1'
         ```
     """
     transform = query
@@ -981,7 +986,7 @@ def infer_bounds(
     transformations) are suggested for those tables' `ensures`.
 
     An observation in `ensures` (`sv.equivalent`) is no condition to prove:
-    it goes to `Report.observation`, and each other postcondition that
+    it goes to `Report.lenses`, and each other postcondition that
     depends on what it ignores says so (`CheckedCondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
@@ -1004,11 +1009,20 @@ def infer_bounds(
     out._stated = observed is not None
     from sverify import routes as _routes
 
-    if out.observation.floats == "plan":
-        out.observation = replace(out.observation, bound=_routes.plan_bound(out._epsilon))
+    if out.lenses.floats == "plan":
+        out.lenses = replace(out.lenses, bound=_routes.plan_bound(out._epsilon))
     else:
         out._floats_on = _routes.floats_on(out)
     out._on_inferred = _checked_on_inferred(on_inferred)
+    if out._on_inferred == "error" and any(c._inferred_used for c in out.ensures):
+        out.ensures = [_needing(c, out.needs) for c in out.ensures]
+    if out._on_inferred == "error" and out.needs and out._stated_facts is not None:
+        # No fact rests on a bound the caller did not state (ruling 184, F1).
+        out.facts = dict(out._stated_facts)
+        out.output = {
+            c: t.copy(nullable=True) if c in out.facts and out.facts[c].nullable else t
+            for c, t in out.output.items()
+        }
     if out._asof_checks and not isinstance(transform, str):
         from sverify._asof_cap import max_pairs_of
 
@@ -1070,14 +1084,29 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[str, Any]:
+    """The output's types, not nullable where `facts` proves a column never
+    NULL: one value for both (ruling 184, F2)."""
+    return {
+        c: t.copy(nullable=False) if c in facts and not facts[c].nullable else t
+        for c, t in dtypes.items()
+    }
+
+
+def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
+    """`c` not proved where its proof used inferred preconditions (#701),
+    with those it may have used as its `needs`: the bounds, and the `IS NOT
+    NULL`s inferred for this postcondition; every inferred one where those
+    are none (its proof used a NOT NULL inferred for another postcondition)."""
+    if not c._inferred_used:
+        return c
+    used = tuple(
+        n for n in needs if n.issue is None or n.issue.kind != NULL_KIND or n.issue.expr == c.label
+    )
+    return replace(c, proved=False, needs=used or tuple(needs))
+
+
 def _checked_on_inferred(v: str) -> OnInferred:
-    if v == "silent":
-        warnings.warn(
-            'on_inferred="silent" is deprecated; write on_inferred="ignore"',
-            DeprecationWarning,
-            stacklevel=4,
-        )
-        return "ignore"
     if v not in ("error", "warn", "ignore", "off"):
         raise ValueError(f"on_inferred must be 'error', 'warn', 'ignore' or 'off', not {v!r}")
     return v  # type: ignore[return-value]
@@ -1119,7 +1148,7 @@ def _observed(
             approx=isinstance(cond, Approx),
             nullable=None
             if r is None or any(c not in report.facts for c in r)
-            else tuple(c for c in r if "NULL" in report.facts[c]),
+            else tuple(c for c in r if report.facts[c].nullable),
             ignores=c.checker_ignores
             if c.checker_ignores is not None
             else tuple(
@@ -1130,7 +1159,7 @@ def _observed(
         )
         for cond, c in zip(ensures, report.ensures, strict=True)
     ]
-    return replace(report, ensures=checked, observation=observed)
+    return replace(report, ensures=checked, lenses=observed)
 
 
 def _open_columns(expr: ir.Table) -> dict[str, str]:
@@ -1218,6 +1247,10 @@ def _infer_bounds(
         return finish(report, schemas, requires)
     # Counterexamples only for the final proof.
     report, raw, schemas = once(requires, 0)
+    # What the stated preconditions alone prove (#701): the postconditions
+    # and the columns' facts.
+    stated = [c.proved for c in report.ensures]
+    stated_facts = report.facts
     extra = {
         t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
     }
@@ -1244,6 +1277,11 @@ def _infer_bounds(
     widened = {t: list(cs) for t, cs in requires.items()}
     _merge(widened, report._inferred)
     report = finish(report, schemas, widened)
+    report.ensures = [
+        replace(c, _inferred_used=True) if c.proved and not alone else c
+        for c, alone in zip(report.ensures, stated, strict=True)
+    ]
+    report._stated_facts = stated_facts
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
     # runs: the row caps (#219) and the bounds do not rule them out.
@@ -1450,7 +1488,7 @@ def _null_reasons(
             ensured.append(c)
             continue
         cols = c.nullable if c.nullable is not None else _reads(cond, report.output) or ()
-        for col in [x for x in cols if "NULL" in report.facts.get(x, "NULL")]:
+        for col in [x for x in cols if x not in report.facts or report.facts[x].nullable]:
             if isinstance(cond, str) and isinstance(transform, str):
                 relaxed: Condition = f"({cond}) OR {col} IS NULL"
                 code = relaxed
@@ -1476,15 +1514,21 @@ def _confirm_suggestions(report: Report, requires, once) -> Report:
     """`report` with only the suggestions a proof confirms: each unproved
     postcondition's suggested preconditions are added to `requires` (and to
     what was inferred), and kept if the postcondition is then proved."""
+    # The postconditions each suggestion set proves: postconditions that
+    # share a suggestion share its proof.
+    proved_with: dict[tuple[str, ...], set[str]] = {}
     ensures = []
     for c in report.ensures:
-        if c.suggested:
-            widened = {t: list(cs) for t, cs in requires.items()}
-            _merge(widened, report._inferred)
-            _merge(widened, c.suggested)
-            again = once(widened, 0)[0]
-            if not any(e.label == c.label and e.proved for e in again.ensures):
-                c = replace(c, suggested={})
+        if c.needs:
+            key = tuple(sorted(f"{n.table}.{n.label}" for n in c.needs))
+            if key not in proved_with:
+                widened = {t: list(cs) for t, cs in requires.items()}
+                _merge(widened, report._inferred)
+                _merge(widened, _by_table(c.needs))
+                again = once(widened, 0)[0]
+                proved_with[key] = {e.label for e in again.ensures if e.proved}
+            if c.label not in proved_with[key]:
+                c = replace(c, needs=())
         ensures.append(c)
     return replace(report, ensures=ensures)
 
@@ -1747,9 +1791,10 @@ def _prove_once(
     )
     dtypes = _checker_decimals(dict(result.items()), out.get("outputKinds"))
 
-    def describe(f: dict) -> str:
+    def describe(f: dict) -> ColumnFacts:
         dtype = dtypes.get(f["name"])
-        return (render_fact(f["abstract"], dtype) if dtype is not None else None) or f["value"]
+        text = (render_fact(f["abstract"], dtype) if dtype is not None else None) or f["value"]
+        return column_facts(f["abstract"], dtype, text)
 
     assumable: Container[str] = schemas if inputs is None else inputs
     rows = iter(out["ensures"])
@@ -1780,6 +1825,9 @@ def _prove_once(
         cols = next(key_iter)
         return ok, None if ok else find(cols)
 
+    from sverify import _user_text
+
+    dialect: _user_text.Dialect = "sql" if isinstance(transform, str) else "ibis"
     checked = []
     for c in ensures:
         if isinstance(c, TableCondition):
@@ -1795,7 +1843,11 @@ def _prove_once(
             # `Rel.eval`'s one order, rarely shows; breaking the ties with
             # a key proves it (#691).
             cex = None if e["proved"] or ties else find(p)
-            suggested = _suggested(e.get("suggest"), schemas, assumable)
+            needs = tuple(
+                _needed(t, x, dialect, text=f"{label(x)} on {t} would prove {e['name']}")
+                for t, cs in _suggested(e.get("suggest"), schemas, assumable).items()
+                for x in cs
+            )
             depends = e.get("depends")
             checked.append(
                 CheckedCondition(
@@ -1803,7 +1855,7 @@ def _prove_once(
                     e["proved"],
                     e["value"],
                     cex,
-                    suggested=suggested,
+                    needs=needs,
                     ties=ties,
                     depends=None if depends is None else tuple(depends),
                     allowed=bool(e.get("allowed")),
@@ -1813,23 +1865,24 @@ def _prove_once(
                 )
             )
         checked[-1].condition = c
-    from sverify import _user_text
-
-    dialect: _user_text.Dialect = "sql" if isinstance(transform, str) else "ibis"
     seen = _user_text.columns(transform_plan)
+    # Every plan a shown expression's literals can come from: a text two
+    # literals share (the transform's 3.0000001, a condition's 3.0) is dropped.
+    doubles = _user_text.plan_doubles([transform_plan, req_plans, ens_plans])
     temporal = {
         c for sch in [*schemas.values(), result] for c, t in sch.items() if t.is_timestamp()
     }
 
     def shown(e: str, measure: bool = False) -> str | None:
         n = _user_text.named(e, transform_plan, measure, seen)
-        return None if n is None else _user_text.pretty(n, dialect, temporal)
+        return None if n is None else _user_text.pretty(n, dialect, temporal, doubles)
 
     def show(e: str) -> str:
         return shown(e) or e
 
     # The plan as the report keeps it, written once (#1088).
     plan_text = json.dumps(transform_plan)
+    facts = {f["name"]: describe(f) for f in out["facts"]}
     report = verdict(
         out,
         request=contract,
@@ -1837,12 +1890,7 @@ def _prove_once(
         _dialect=dialect,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
-        facts={f["name"]: describe(f) for f in out["facts"]},
-        not_null=[
-            f["name"]
-            for f in out["facts"]
-            if f["name"] in dtypes and f.get("abstract", {}).get("null") is False
-        ],
+        facts=facts,
         issues=_issues(
             out["issues"],
             # Ibis's `//` and `%` floor, and the producer writes them in the
@@ -1860,7 +1908,7 @@ def _prove_once(
         _bounds=_int_bounds(out["facts"], dtypes),
         _implied=_implied_sql(out.get("implied", []), schemas),
         internal_plan=plan_text,
-        output=dtypes,
+        output=_typed(dtypes, facts),
         _postconditions=list(ensures),
         inputs=dict(schemas),
     )
@@ -1923,9 +1971,18 @@ def _guess_bounds(
             q = f'"{col}"' if not col.isidentifier() else col
             if dtype.is_timestamp() or dtype.is_date():
                 ctor, sql = ("datetime", "TIMESTAMP") if dtype.is_timestamp() else ("date", "DATE")
-                lo, hi = (datetime, datetime) if ctor == "datetime" else (date, date)
+                instant = dtype.is_timestamp() and bool(getattr(dtype, "timezone", None))
+                if instant and dialect != "ibis":
+                    continue  # TIMESTAMPTZ '…' follows the session zone in SQL (D53)
+                # An instant is bounded by instants (D69, #1725): a naive bound is refused.
+                zone = UTC if instant else None
+                lo, hi = (
+                    (datetime(1900, 1, 1, tzinfo=zone), datetime(2200, 1, 1, tzinfo=zone))
+                    if ctor == "datetime"
+                    else (date(1900, 1, 1), date(2200, 1, 1))
+                )
                 conds: list[Condition] = (
-                    [getattr(ibis._, col) >= lo(1900, 1, 1), getattr(ibis._, col) < hi(2200, 1, 1)]
+                    [getattr(ibis._, col) >= lo, getattr(ibis._, col) < hi]
                     if dialect == "ibis"
                     else [f"{q} >= {sql} '1900-01-01'", f"{q} < {sql} '2200-01-01'"]
                 )
@@ -2011,6 +2068,8 @@ def _issues(
         bound = _merged_bound([i["bound"] for i in members])
         if constant:
             text = CONSTANT_HINT
+        elif kind == SOURCE_THRESHOLD:
+            text = SOURCE_THRESHOLD_HINT
         elif any(i["error"] for i in members):
             text = hint(bound)
         else:
@@ -2799,7 +2858,7 @@ class ViewContract:
     """Postconditions that were not proved, which the view checks on every
     state (`on_unproved="check"`)."""
     not_null: list[str] = field(default_factory=list)
-    """The columns the proved report shows never NULL (`Report.not_null`):
+    """The columns the proved report shows never NULL (`Report.output`):
     they hold in every state, as `guarantees` do."""
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
@@ -2843,7 +2902,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.guarantees) if prov else [],
         prov,
         list(prov.checked) if prov else [],
-        list(prov.report.not_null) if prov and prov.report._proved else [],
+        proved_not_null(prov.report) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
         profile=prov.report.semantics if prov else "reference",
         deterministic=bool(prov and prov.report.deterministic),
@@ -3409,8 +3468,7 @@ def transform(
             the same without the warning. `"off"`: nothing is inferred or
             assumed, so an integer `SUM` that may leave 64 bits is an error
             too, which the other values check on the data while the job
-            runs (`Report.assumed`). `"silent"` is a deprecated spelling of
-            `"ignore"`.
+            runs (`Report.assumed`).
         on_violation: What a refresh does with a batch of a source that
             breaks one of these preconditions, inferred ones included:
             `"error"` raises `PreconditionError`; `"quarantine"`
@@ -3462,7 +3520,7 @@ def transform(
 
         big = orders.pipe(doubled)  # a Node, proved here (as doubled(orders))
         doubled.report.verdict  # Verdict.PROVED
-        doubled.report.facts["doubled"]  # 'an integer ≥ 22'
+        str(doubled.report.facts["doubled"])  # 'an integer ≥ 22'
         big.refresh()
         big.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]
         ```

@@ -29,7 +29,9 @@ def _strings(lf: _Lift, es: list[E], what: str) -> list[Json]:
     """Arguments that must be strings (a NULL is a string NULL)."""
     for e in es:
         if not (e.type.is_string() or e.type.is_null()):
-            raise SqlUnsupported(f"{what} of a {e.type} is not supported yet")
+            raise SqlUnsupported(
+                f"{what} of a {e.type} is not supported yet", construct=f"function {what}"
+            )
     return [lf.to(e, dt.string).json for e in es]
 
 
@@ -50,14 +52,15 @@ def _string_fn(f: _functions.Fn) -> Callable[..., E]:
 
 def _reverse(lf: _Lift, node: sge.Reverse, sub: Sub, scope: list[Column]) -> E:
     raise SqlUnsupported(
-        "reverse is not supported yet: DuckDB reverses grapheme clusters, the model code points"
+        "reverse is not supported yet: DuckDB reverses grapheme clusters, the model code points",
+        construct="function reverse",
     )
 
 
 def _length(lf: _Lift, node: sge.Length, sub: Sub, scope: list[Column]) -> E:
     # Characters (code points), a BIGINT; `strlen` (bytes) is another node.
     if node.args.get("binary"):
-        raise SqlUnsupported("the length of a BLOB is not supported")
+        raise SqlUnsupported("the length of a BLOB is not supported", construct="function length")
     x = sub(node.this)
     if x.type.is_array():
         # DuckDB's `len(l)` of a list (#812): `UnFn.cardinality`.
@@ -71,7 +74,7 @@ def _trim(lf: _Lift, node: sge.Trim, sub: Sub, scope: list[Column]) -> E:
     position = (node.args.get("position") or "BOTH").upper()
     name = {"BOTH": "btrim", "LEADING": "ltrim", "TRAILING": "rtrim"}.get(position)
     if name is None or node.args.get("collation"):
-        raise SqlUnsupported(f"{_shown(node)} is not supported yet")
+        raise SqlUnsupported(f"{_shown(node)} is not supported yet", construct="function trim")
     chars = node.args.get("expression")
     s_, c = _strings(
         lf, [sub(node.this), sub(chars) if chars is not None else _const_str(" ")], name
@@ -94,12 +97,18 @@ def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) ->
             continue
         e = sub(a)
         if not (e.type.is_integer() or e.type.is_null()):
-            raise SqlUnsupported(f"substring with a {e.type} position is not supported")
+            raise SqlUnsupported(
+                f"substring with a {e.type} position is not supported",
+                construct="function substring",
+            )
         if a is length and e.constant and e.value is not None and e.value < 0:
-            raise SqlUnsupported("substring with a negative length is not supported yet")
+            raise SqlUnsupported(
+                "substring with a negative length is not supported yet",
+                construct="function substring",
+            )
         args.append(lf.to(e, dt.int64).json)
     if start is None:
-        raise Unsupported("substring needs a start")
+        raise Unsupported("substring needs a start", construct="function substring")
     opt = _option("negative_start", "WRAP_FROM_END")
     return E(_fn("substring", args, dt.string, [opt]), dt.string)
 
@@ -107,7 +116,7 @@ def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) ->
 def _strpos(lf: _Lift, node: sge.StrPosition, sub: Sub, scope: list[Column]) -> E:
     # 1-based, 0 if absent; `strpos(s, '')` is 1.
     if node.args.get("position") is not None or node.args.get("occurrence") is not None:
-        raise SqlUnsupported(f"{_shown(node)} is not supported yet")
+        raise SqlUnsupported(f"{_shown(node)} is not supported yet", construct="function strpos")
     args = _strings(lf, [sub(node.this), sub(node.args["substr"])], "strpos")
     return E(_fn("strpos", args, dt.int64), dt.int64)
 
@@ -125,10 +134,15 @@ def _like(name: str) -> Callable[..., E]:
         # a pattern must be a constant without one.
         p = sub(node.expression)
         if not p.constant:
-            raise SqlUnsupported(f"{name.upper()} with a pattern that is not a constant", issue=319)
+            raise SqlUnsupported(
+                f"{name.upper()} with a pattern that is not a constant",
+                issue=319,
+                construct=name.upper(),
+            )
         if isinstance(p.value, str) and "\\" in p.value:
             raise SqlUnsupported(
-                f"{name.upper()} with a backslash in the pattern is not supported yet"
+                f"{name.upper()} with a backslash in the pattern is not supported yet",
+                construct=name.upper(),
             )
         args = _strings(lf, [sub(node.this), p], name)
         return E(_fn(name, args, dt.boolean), dt.boolean)
@@ -163,7 +177,9 @@ def _concat(lf: _Lift, node: sge.Concat, sub: Sub, scope: list[Column]) -> E:
 def _replace(lf: _Lift, node: sge.Replace, sub: Sub, scope: list[Column]) -> E:
     pattern, replacement = sub(node.expression), sub(node.args["replacement"])
     if not (pattern.constant and replacement.constant):
-        raise Unsupported("replace needs a constant pattern and replacement")
+        raise Unsupported(
+            "replace needs a constant pattern and replacement", construct="function replace"
+        )
     args = _strings(lf, [sub(node.this), pattern, replacement], "replace")
     if pattern.value == "":
         # An empty pattern matches nowhere (D44, duckdb-replace-empty-pattern):
@@ -175,7 +191,7 @@ def _replace(lf: _Lift, node: sge.Replace, sub: Sub, scope: list[Column]) -> E:
 def _repeat(lf: _Lift, node: sge.Repeat, sub: Sub, scope: list[Column]) -> E:
     n = sub(node.args["times"])
     if not (n.type.is_integer() or n.type.is_null()):
-        raise SqlUnsupported(f"repeat by a {n.type} is not supported")
+        raise SqlUnsupported(f"repeat by a {n.type} is not supported", construct="function repeat")
     (s_,) = _strings(lf, [sub(node.this)], "repeat")
     return E(_fn("repeat", [s_, lf.to(n, dt.int64).json], dt.string), dt.string)
 
@@ -184,7 +200,7 @@ def _left(lf: _Lift, node: sge.Left, sub: Sub, scope: list[Column]) -> E:
     # The first `n` characters; a negative `n` is not supported.
     n = sub(node.expression)
     if not (n.constant and isinstance(n.value, int) and n.value >= 0):
-        raise Unsupported("left needs a constant count of 0 or more")
+        raise Unsupported("left needs a constant count of 0 or more", construct="function left")
     (s_,) = _strings(lf, [sub(node.this)], "left")
     args = [s_, literal(1, dt.int64), literal(n.value, dt.int64)]
     return E(_fn("substring", args, dt.string), dt.string)
@@ -203,7 +219,9 @@ def _sha2(lf: _Lift, node: sge.SHA2, sub: Sub, scope: list[Column]) -> E:
     # DuckDB's `sha256(s)`, which SQLGlot reads as `SHA2(s, 256)`.
     n = node.args.get("length")
     if not (isinstance(n, sge.Literal) and n.this == "256"):
-        raise SqlUnsupported("SHA2 of a length other than 256 is not supported")
+        raise SqlUnsupported(
+            "SHA2 of a length other than 256 is not supported", construct="function sha2"
+        )
     (s_,) = _strings(lf, [sub(node.this)], "sha256")
     return E(_fn("sha256", [s_], dt.string), dt.string)
 
@@ -214,9 +232,15 @@ def _sha2(lf: _Lift, node: sge.SHA2, sub: Sub, scope: list[Column]) -> E:
 def _const(e: E, what: str, kind: type) -> Any:
     """The value of a constant argument of type `kind` (None for NULL)."""
     if not e.constant or not (e.value is None or isinstance(e.value, kind)):
-        raise Unsupported(f"{what} needs a constant {kind.__name__}")
+        raise Unsupported(
+            f"{what} needs a constant {kind.__name__}",
+            construct=f"function {what.partition(chr(39))[0]}",
+        )
     if isinstance(e.value, bool):
-        raise Unsupported(f"{what} needs a constant {kind.__name__}")
+        raise Unsupported(
+            f"{what} needs a constant {kind.__name__}",
+            construct=f"function {what.partition(chr(39))[0]}",
+        )
     return e.value
 
 
@@ -224,9 +248,12 @@ def _pattern(lf: _Lift, node: sge.Expression, sub: Sub, what: str) -> tuple[Json
     """The string and the constant pattern of a regular expression function."""
     p = sub(node.expression)
     if not (p.constant and isinstance(p.value, str)):
-        raise Unsupported(f"{what} needs a constant pattern")
+        raise Unsupported(f"{what} needs a constant pattern", construct=f"function {what}")
     if not simple_regex(p.value):
-        raise SqlUnsupported(f"the regular expression {p.value!r} is outside the supported subset")
+        raise SqlUnsupported(
+            f"the regular expression {p.value!r} is outside the supported subset",
+            construct=f"function {what}",
+        )
     (s_,) = _strings(lf, [sub(node.this)], what)
     return s_, p.value
 
@@ -242,7 +269,9 @@ def _regexp_like(full: bool) -> Callable[..., E]:
 
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         if node.args.get("flag") is not None or node.args.get("options") is not None:
-            raise SqlUnsupported(f"{what} with options is not supported yet")
+            raise SqlUnsupported(
+                f"{what} with options is not supported yet", construct=f"function {what}"
+            )
         s_, p = _pattern(lf, node, sub, what)
         if full:
             # RE2's `$` is the end of the text, without the `m` flag.
@@ -259,15 +288,21 @@ def _regexp_like(full: bool) -> Callable[..., E]:
 def _regexp_extract(lf: _Lift, node: sge.RegexpExtract, sub: Sub, scope: list[Column]) -> E:
     # Group `g` of the first match, `''` without one (or past the groups).
     if node.args.get("position") is not None or node.args.get("occurrence") is not None:
-        raise SqlUnsupported(f"{_shown(node)} is not supported yet")
+        raise SqlUnsupported(
+            f"{_shown(node)} is not supported yet", construct="function regexp_extract"
+        )
     if node.args.get("parameters") is not None:
-        raise SqlUnsupported("regexp_extract with options is not supported yet")
+        raise SqlUnsupported(
+            "regexp_extract with options is not supported yet", construct="function regexp_extract"
+        )
     s_, p = _pattern(lf, node, sub, "regexp_extract")
     group = node.args.get("group")
     g = 0 if group is None else _const(sub(group), "regexp_extract's group", int)
     if g is None or g < 0 or g > 9:
         # DuckDB raises past group 9 ("Group index must be between 0 and 9").
-        raise Unsupported("regexp_extract needs a group number from 0 to 9")
+        raise Unsupported(
+            "regexp_extract needs a group number from 0 to 9", construct="function regexp_extract"
+        )
     args = [s_, literal(p, dt.string), literal(g, dt.int64)]
     return E(call("regexp_extract", args), dt.string)
 
@@ -276,15 +311,22 @@ def _regexp_replace(lf: _Lift, node: sge.RegexpReplace, sub: Sub, scope: list[Co
     # The first match, or every match with the flag `'g'`.
     for k in ("position", "occurrence"):
         if node.args.get(k) is not None:
-            raise SqlUnsupported(f"{_shown(node)} is not supported yet")
+            raise SqlUnsupported(
+                f"{_shown(node)} is not supported yet", construct="function regexp_replace"
+            )
     flags = node.args.get("modifiers")
     flag = None if flags is None else _const(sub(flags), "regexp_replace's options", str)
     if flag not in (None, "g"):
-        raise Unsupported(f"regexp_replace with the options {flag!r} is not supported (only 'g')")
+        raise Unsupported(
+            f"regexp_replace with the options {flag!r} is not supported (only 'g')",
+            construct="function regexp_replace",
+        )
     s_, p = _pattern(lf, node, sub, "regexp_replace")
     r = sub(node.args["replacement"])
     if not (r.constant and isinstance(r.value, str)):
-        raise Unsupported("regexp_replace needs a constant replacement")
+        raise Unsupported(
+            "regexp_replace needs a constant replacement", construct="function regexp_replace"
+        )
     args = [s_, literal(p, dt.string), literal(r.value, dt.string)]
     if flag == "g":
         args.append(literal("g", dt.string))
@@ -317,7 +359,7 @@ def _pad(lf: _Lift, node: sge.Pad, sub: Sub, scope: list[Column]) -> E:
     what = "lpad" if left else "rpad"
     fill = node.args.get("fill_pattern")
     if fill is None:
-        raise Unsupported(f"{what} needs a fill")
+        raise Unsupported(f"{what} needs a fill", construct=f"function {what}")
     n = _const(sub(node.expression), what, int)
     p = _const(sub(fill), f"{what}'s fill", str)
     (s_,) = _strings(lf, [sub(node.this)], what)
@@ -328,7 +370,8 @@ def _pad(lf: _Lift, node: sge.Pad, sub: Sub, scope: list[Column]) -> E:
                          literal("", dt.string)), dt.string)  # fmt: skip
     if p == "":
         raise SqlUnsupported(
-            f"{what} with an empty fill: DuckDB raises where the string is shorter"
+            f"{what} with an empty fill: DuckDB raises where the string is shorter",
+            construct=f"function {what}",
         )
     size = call("character_length", [s_])
     cut = call("substring", [s_, literal(1, dt.int64), literal(n, dt.int64)])
@@ -347,7 +390,7 @@ def _concat_ws(lf: _Lift, node: sge.ConcatWs, sub: Sub, scope: list[Column]) -> 
     NULL `a`; the first `sep` is dropped."""
     sep, *rest = _strings(lf, [sub(a) for a in node.expressions], "concat_ws")
     if not rest:
-        raise Unsupported("concat_ws needs a value to join")
+        raise Unsupported("concat_ws needs a value to join", construct="function concat_ws")
     empty = literal("", dt.string)
     parts = [call("coalesce", [call("str_concat", [sep, a]), empty]) for a in rest]
     start = call("add", [call("character_length", [sep]), literal(1, dt.int64)])

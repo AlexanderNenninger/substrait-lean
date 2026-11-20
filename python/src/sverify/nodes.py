@@ -44,7 +44,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify import _engines, _hooks, _quarantine, _stages
+from sverify import _duckdb, _engines, _hooks, _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -262,7 +262,7 @@ class Node:
             self.internal_plan,
             d,
             deterministic=report._exact,
-            rows="sequence" if report.observation.rows == "sequence" else "multiset",
+            rows="sequence" if report.lenses.rows == "sequence" else "multiset",
         )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
@@ -603,9 +603,32 @@ class Node:
                 out += credential_uses(leaf.sink, "read")
         if isinstance(self, _Stored):
             out += credential_uses(self.sink, "write")
-            if self.quarantine_table is not None:
+            if self.quarantine_table is not None and self._may_quarantine():
                 out += credential_uses(self.quarantine_table, "write")
         return out
+
+    def _may_quarantine(self) -> bool:
+        """Whether a precondition of this node's stage sets rows aside
+        (`on_violation="quarantine"`, the transform's or its source's), so
+        that a refresh may write the quarantine table (#1997); True where the
+        contract cannot be read."""
+        from sverify.contracts import view_contract
+
+        sources = {
+            leaf.name: getattr(leaf.source, "on_violation", None)
+            for leaf in self._leaves()
+            if isinstance(leaf, _Source)
+        }
+        try:
+            vc = view_contract(self._query()._expr)
+        except Exception:  # noqa: BLE001 - listed, as a refresh may write it
+            return True
+        for t, conds in vc.requires.items():
+            for c in conds:
+                stated = vc.policies.get(t, {}).get(label(c), {None})
+                if _quarantine.resolve(stated, sources.get(t)) == "quarantine":
+                    return True
+        return False
 
     def credentials(self) -> list[CredentialUse]:
         """The credentials a refresh of this node uses, by name, never a
@@ -986,12 +1009,15 @@ class StageRefresh:
         return out
 
     def summary(self) -> str:
-        """One line, for the log of a job that refreshes often:
-        "paid: changes from orders v3→v4 (change feed), requires checked on
-        2 row(s), merge v5: +2 −0". With something `notable`, the full entry
-        (`str()`) instead."""
-        if self.notable or self.report is None:
-            return str(self)
+        """One line, for the log of a job that refreshes often, in one format
+        for every refresh (#1997): "paid: changes from orders v3→v4 (change
+        feed), requires checked on 2 row(s), merge v5: +2 −0", and for a
+        first refresh "paid: computed, requires checked on data, created v1:
+        +2 −0". What is `notable` comes first, in short; `str()` is the
+        full entry."""
+        if self.report is None:
+            return self._first_summary()
+        notes = [n for n in self.notable if n != self.started]
         sources = self.report.sources
         spans = ", ".join(s.span().replace("@", " ") for s in sources)
         if all(s.mode == "unchanged" for s in sources):
@@ -1023,6 +1049,31 @@ class StageRefresh:
         ]
         if (w := self.write) is not None:
             parts.append(_write_text(w))
+        return f"{self.heading}: " + ", ".join([*notes, *parts])
+
+    def _first_summary(self) -> str:
+        """`summary` of a refresh that built the node's state: how it started,
+        how its preconditions were established, what it quarantined or held,
+        and what it wrote."""
+        parts = [self.started or "computed"]
+        if self.held is not None:
+            parts.append(f"held: {self.held}")
+        pre = self.preconditions
+        meta = sum(not p.source.startswith(ON_DATA) for p in pre)
+        if meta < len(pre):
+            parts.append(
+                "requires checked on data" + (f" ({meta} proved from metadata)" if meta else "")
+            )
+        elif pre:
+            parts.append("requires proved from metadata")
+        if self.quarantined:
+            parts.append(f"{self.quarantined} row(s) quarantined")
+        if self.postconditions:
+            parts.append(f"{len(self.postconditions)} ensures checked on data")
+        if (w := self.write) is not None:
+            parts.append(_write_text(w))
+            if w.mode == "overwrite":
+                parts.append("the sink overwrote its table")
         return f"{self.heading}: " + ", ".join(parts)
 
     def to_dict(self, *, examples: bool = False) -> dict[str, Any]:
@@ -1111,9 +1162,10 @@ class Refresh:
         return any(s.notable for s in self.nodes)
 
     def summary(self) -> str:
-        """One line per node (`StageRefresh.summary`), upstream first; a node
-        whose refresh did something notable (its first refresh, a recompute,
-        a schema change, an overwrite) gets its full entry.
+        """One line per node (`StageRefresh.summary`), upstream first, in one
+        format whatever the refresh did; what is notable (its first refresh,
+        a recompute, a schema change, an overwrite) leads the node's line.
+        `str()` gives each node's full entry.
 
         Returns:
             The summary, such as "paid: changes from orders v3→v4 (change
@@ -1406,6 +1458,8 @@ class Group:
         except BaseException as e:
             if runs is not None:
                 runs.fail(e)
+            if (oom := _duckdb.memory_limit_error(e, "refresh")) is not None:
+                raise oom from e
             raise
 
     def status(self) -> Status:

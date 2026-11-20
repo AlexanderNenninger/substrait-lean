@@ -513,7 +513,6 @@ def run_sharded(
     reproducible: Observation | None = None,
     max_workers: int | None = None,
     tolerance: Literal[False] = False,
-    float_order: FloatOrder | None = None,
 ) -> pa.Table: ...
 
 
@@ -529,7 +528,6 @@ def run_sharded(
     reproducible: Observation | None = None,
     max_workers: int | None = None,
     tolerance: Literal[True],
-    float_order: FloatOrder | None = None,
 ) -> Sharded: ...
 
 
@@ -544,7 +542,6 @@ def run_sharded(
     reproducible: Observation | None = None,
     max_workers: int | None = None,
     tolerance: bool = False,
-    float_order: FloatOrder | None = None,
 ) -> pa.Table | Sharded:
     """The plan's result on all the data, computed shard by shard on Polars.
     This is `sverify.engines.run_sharded`.
@@ -584,7 +581,6 @@ def run_sharded(
         tolerance: Return a `Sharded`: the result, with the tolerance τ of
             each split double per row (see the module docstring). Default:
             False.
-        float_order: Deprecated: `"any"` is `reproducible=sv.equivalent(floats="plan")`.
 
     Returns:
         The plan's result, as an Arrow table, or with `tolerance=True` a
@@ -607,7 +603,7 @@ def run_sharded(
     run_tables = plugin.run_tables if plugin is not None else None
     if run_tables is None:
         raise ImportError(f"run_sharded runs on {SHARD_ENGINE}: install sverify[{SHARD_ENGINE}]")
-    floats = _floats(reproducible, float_order)
+    floats = "exact" if reproducible is None else reproducible.floats
 
     if not shards:
         raise ValueError("run_sharded needs at least one shard")
@@ -642,24 +638,6 @@ def run_sharded(
     if isinstance(floats, Within):
         _check_within(out, floats)
     return out if tolerance else result
-
-
-def _floats(reproducible: Observation | None, float_order: FloatOrder | None) -> Any:
-    """The doubles `run_sharded` must match: `"exact"`, `"plan"` or a
-    `Within`, from `reproducible` or the deprecated `float_order`."""
-    if float_order is not None:
-        import warnings
-
-        if reproducible is not None:
-            raise TypeError("run_sharded takes reproducible= or float_order=, not both")
-        warnings.warn(
-            "run_sharded(float_order=...) is deprecated; write "
-            "reproducible=sv.equivalent(floats='plan') for 'any'",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return "exact" if float_order == "exact" else "plan"
-    return "exact" if reproducible is None else reproducible.floats
 
 
 def _check_within(sharded: Sharded, w: Within) -> None:

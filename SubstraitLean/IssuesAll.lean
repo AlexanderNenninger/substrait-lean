@@ -661,7 +661,7 @@ per key (`rows_per`), and whose windows and aggregates read fewer rows than
 the size hypothesis allows on every order (`Rel.SmallAll`), each issue of the
 transformation on any order the reference allows, on the views of its join
 inputs included (`Rel.HasIssueAll`), is in the report, but an overflow to
-`±∞` under a profile other than the reference, where it is the engine's
+`±∞` of a scalar operation under a profile other than the reference, where it is the engine's
 value. -/
 theorem check_issues_sound_all {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
@@ -669,7 +669,7 @@ theorem check_issues_sound_all {input : Json} {R : Request} {rep : Report}
     (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
     (hsm : T.root.SmallAll data) :
     ∀ p, T.root.HasIssueAll data false p →
-      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) := by
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs) := by
   intro p hp
   have hok := Request.check_ok (check_parse hR hc)
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
@@ -682,14 +682,18 @@ theorem check_issues_sound_all {input : Json} {R : Request} {rep : Report}
   rw [hok.issues]
   simp only [Request.issuesIn, hT, htw, ↓reduceIte, List.mem_filter, List.mem_eraseDups,
     List.mem_append, KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity]
-  by_cases hinf : p.1 = .infinite ∧ R.underReference = false
+  by_cases hinf : p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs
   · exact .inr hinf
   · refine .inl ⟨.inl (by simpa [KnowledgeEnv.windows] using hin), ?_⟩
     obtain ⟨i, e⟩ := p
     simp only at hinf ⊢
     cases hr : R.underReference
-    · simp only [hr, and_true] at hinf
-      simp [hinf]
+    · by_cases hi : i = .infinite
+      · subst hi
+        by_cases he : e ∈ T.root.aggArgs
+        · simp [he]
+        · exact absurd ⟨rfl, hr, he⟩ hinf
+      · simp [hi]
     · simp
 
 end Substrait.ContractCheck
