@@ -113,7 +113,8 @@ def doubleMag (env : List AVal) (e : Expr) : Option Rat := do
   let b ← a.int
   let lo ← b.lo
   let hi ← b.hi
-  guard (decide (FloatCode.IsFin lo) && decide (FloatCode.IsFin hi))
+  -- Finite codes only (`FloatCode.IsFin`): an infinite end has no magnitude.
+  guard (FloatCode.negInf < lo && lo < FloatCode.posInf && FloatCode.negInf < hi && hi < FloatCode.posInf)
   let x := max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs
   guard (x ≤ 2 ^ (398 + 1074))
   return unscale x
