@@ -353,3 +353,15 @@ def test_the_ascii_level_hides_every_case_mapping_difference() -> None:
             if len({string_key("ascii", v) for v in values}) > 1:
                 odd.add(f"{c:04X}")
         assert odd == _ASCII_KEY_EXCEPTIONS[d], (d, sorted(odd))
+
+
+def test_a_lens_on_element_order_keeps_a_condition_on_a_list_column_dependent():
+    """`ensures list_position(pair, a) = 1` changes between results equal up
+    to `elements="multiset"`, so a condition reading a list column depends on
+    the order of its elements; one reading a scalar does not (#2005)."""
+    from sverify.observation import PLAN_BOUND, dependencies
+
+    cols = {"pair": ibis.dtype("array<int64>"), "a": ibis.dtype("int64")}
+    assert dependencies(PLAN_BOUND, object(), cols, ["pair", "a"]) == ["elements"]
+    assert dependencies(PLAN_BOUND, object(), cols, ["a"]) == []
+    assert dependencies(Observation(), object(), cols, ["pair"]) == []
