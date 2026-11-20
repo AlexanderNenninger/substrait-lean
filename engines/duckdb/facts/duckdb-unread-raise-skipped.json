@@ -3,6 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "An expression the result does not need is not evaluated, and its error does not raise",
+  "verdict": "deviation: an error in an expression the result does not need does not raise; checked by a plan of its own",
   "area": "execution",
   "layer": "semantics",
   "settings": {},
