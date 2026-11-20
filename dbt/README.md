@@ -109,7 +109,7 @@ The other options of `check`:
 | `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
 | `--json` | Print the result as JSON (`--format json`) |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |
-| `--fail-on` | Exit 1 on a contract mismatch or an unproved constraint (`contract`, the default); `unproved`: also on any unproved test; `refused`: all of that, and exit 3 when a model was refused (sverify cannot read it); `never` |
+| `--fail-on` | Exit 1 on a contract mismatch, an unproved constraint, or a refused model with an enforced contract, whose contract sverify could not check (`contract`, the default; stderr names the refusal); `unproved`: also on any unproved test; `refused`: all of that, and exit 3 when a model was refused (sverify cannot read it); `never` |
 | `--target-path` | The target directory, if not `target` |
 
 Exit codes, as in `sverify check`: 0 holds, 1 something is not proved, 2 usage (no manifest, an unknown model, another adapter), 3 a model is refused under `--fail-on refused` or the check is unsupported, 4 past `--timeout` or `--memory-limit`, 6 an error (the checker is missing, an I/O failure) with its message on stderr.
