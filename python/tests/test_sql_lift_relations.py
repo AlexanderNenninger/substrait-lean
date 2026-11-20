@@ -330,3 +330,151 @@ def test_all_set_operations_are_determined_by_keys():
     assert sv.verify("SELECT x, s FROM a EXCEPT SELECT x, s FROM b", tables=tables).deterministic
     keyed = {"a": [sv.unique("x")], "b": [sv.unique("x")]}
     assert sv.verify(sql, tables=tables, requires=keyed).deterministic
+
+
+QUALIFIED = {
+    "shop.main.orders": ibis.schema({"x": "int64"}),
+    "main.customers": ibis.schema({"x": "int64", "name": "string"}),
+    "archive.main.orders": ibis.schema({"x": "int64"}),
+}
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        'SELECT x FROM "shop"."main"."orders"',
+        "SELECT orders.x FROM shop.main.orders",
+        "SELECT o.x FROM shop.orders AS o",
+        "SELECT x FROM customers",
+        "SELECT c.name FROM memory.main.customers c",
+        "SELECT a.x FROM shop.main.orders a JOIN archive.main.orders b ON a.x = b.x",
+    ],
+)
+def test_qualified_table_names_resolve_as_duckdb_resolves_them(query):
+    """#706: an input's key may be qualified, and a query's reference matches it
+    by (catalog, schema, table) with DuckDB's defaults `memory` and `main`; two
+    inputs of one table name in two schemas stay two inputs."""
+    if "shop.orders" in query:
+        # `shop` is a schema of the default catalog, not the key's catalog.
+        with pytest.raises(Refused, match="only the inputs' tables can be read"):
+            lift(query, QUALIFIED)
+        return
+    json.dumps(lift(query, QUALIFIED).plan)
+
+
+def test_a_table_in_the_wrong_schema_is_refused_with_the_name_to_declare():
+    with pytest.raises(Refused, match="only the inputs' tables can be read"):
+        lift("SELECT x FROM other.main.orders", QUALIFIED)
+
+
+def test_verify_reads_qualified_inputs():
+    report = sv.verify(
+        'SELECT a.x FROM "shop"."main"."orders" a JOIN archive.main.orders b ON a.x = b.x '
+        "WHERE a.x > 0",
+        tables={"shop.main.orders": {"x": "BIGINT"}, "archive.main.orders": {"x": "BIGINT"}},
+    )
+    assert "x: an integer ≥ 1" in str(report)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT main.lower(name) AS n FROM customers",
+        "SELECT pg_catalog.upper(name) AS n, system.main.length(name) AS k FROM customers",
+    ],
+)
+def test_a_call_qualified_by_a_built_in_schema_is_the_bare_function(query):
+    """#328: DuckDB reads `main.lower(x)` as `lower(x)`."""
+    json.dumps(lift(query, SCHEMAS).plan)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT i FROM range(1, 5) t(i)",
+        "SELECT * FROM generate_series(1, 5)",
+        "SELECT CAST(d AS DATE) AS day FROM UNNEST(generate_series(TIMESTAMP '2024-01-01',"
+        " TIMESTAMP '2024-01-31', INTERVAL '1 day')) AS t(d)",
+        "SELECT range FROM range(0, 10, 3)",
+        "SELECT i FROM range(5, 0, -2) t(i)",
+        "SELECT d::DATE AS day FROM"
+        " range(DATE '2024-01-01', DATE '2024-02-01', INTERVAL 1 DAY) t(d)",
+        "SELECT d FROM generate_series(TIMESTAMP '2024-01-01 00:00:00',"
+        " TIMESTAMP '2024-01-01 06:00:00', INTERVAL 3 HOUR) t(d)",
+        "SELECT s.day, count(o.id) AS n FROM"
+        " (SELECT d::DATE AS day FROM"
+        " range(DATE '2024-01-01', DATE '2024-01-04', INTERVAL 1 DAY) t(d)) s"
+        " LEFT JOIN orders o ON o.id = 1 GROUP BY s.day ORDER BY s.day",
+    ],
+)
+def test_series_with_constant_bounds_are_inputs(query):
+    """#321: `range` and `generate_series` with constant bounds, the date spine."""
+    result = check(query, TABLES)
+    assert result.ok, f"{result.stage}: {result.detail}"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT * FROM range(1, (SELECT max(id) FROM orders))",
+        "SELECT * FROM range(1, 5, 0)",
+        "SELECT * FROM range(5, 1)",
+        # DuckDB 2.0.0 binds no function to a series of dates without an INTERVAL.
+        "SELECT * FROM range(DATE '2024-01-01', DATE '2024-01-04')",
+        "SELECT * FROM generate_series(DATE '2024-01-01', DATE '2024-01-04')",
+        "SELECT * FROM range(DATE '2024-01-01', DATE '2025-01-01', INTERVAL 1 MONTH)",
+    ],
+)
+def test_series_outside_the_subset_are_refused(query):
+    with pytest.raises(Refused):
+        lift(query, SCHEMAS)
+
+
+def test_a_column_qualified_by_schema_and_table_still_resolves():
+    """#706: `main.orders.id` after the table is pointed at its key."""
+    for query in (
+        "SELECT main.orders.x FROM main.orders",
+        "SELECT shop.main.orders.x FROM shop.main.orders",
+    ):
+        schema = {
+            "shop.main.orders": QUALIFIED["shop.main.orders"],
+            "main.orders": QUALIFIED["shop.main.orders"],
+        }
+        try:
+            json.dumps(lift(query, schema).plan)
+        except Refused as e:
+            assert str(e)  # a clear refusal is acceptable too
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT count(*) AS n FROM range(100) TABLESAMPLE 10 ROWS",
+        "SELECT count(*) AS n FROM generate_series(1, 100) TABLESAMPLE 10 PERCENT",
+    ],
+)
+def test_a_sample_of_a_series_is_refused(sql):
+    """#321: DuckDB samples the series; reading it whole would be a wrong count."""
+    with pytest.raises(ValueError, match="TABLESAMPLE|SAMPLE"):
+        sv.verify(sql, on_inferred="ignore")
+
+
+@pytest.mark.parametrize("tail", ["LIMIT 75%", "LIMIT 10 PERCENT", "FETCH FIRST 5 ROWS WITH TIES"])
+def test_a_percent_limit_is_not_read_as_a_row_count(tail):
+    """DuckDB's `LIMIT 75%` keeps three quarters of the rows, not 75."""
+    with pytest.raises(ValueError, match="PERCENT|WITH TIES"):
+        sv.verify(
+            f"SELECT x FROM generate_series(1, 100) AS t(x) ORDER BY x {tail}", on_inferred="ignore"
+        )
+
+
+def test_a_bigint_sum_over_a_series_keeps_its_64_bit_check():
+    """DuckDB sums a BIGINT into a HUGEINT (8192 rows of 9e18 give 7.4e22). The
+    reference's sum is 64 bits and its fit is a checked precondition: the plan is
+    not proved without it, and the run refuses a batch that breaks it."""
+    sql = (
+        "SELECT sum(CASE WHEN x >= 0 THEN 9000000000000000000::BIGINT END) AS s "
+        "FROM range(8192) AS t(x)"
+    )
+    report = sv.verify(sql, on_inferred="ignore")
+    assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS

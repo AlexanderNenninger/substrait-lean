@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-15-reference-pages-lean-names",
+  "date": "2026-11-15",
+  "decided_by": "user",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Lean names stay only on reference pages (trusted-base.md, reference-semantics.md); other user pages name no Lean lemma, D-number or issue number.",
+  "issues": [
+    754,
+    1448
+  ],
+  "prs": [
+    1471
+  ],
+  "amended_by": [
+    "U-2026-11-16-four-more-reference-pages"
+  ],
+  "source": "github:#754 comment 6892765035"
+}

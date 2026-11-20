@@ -1,0 +1,20 @@
+{
+  "id": "F164",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A join may evaluate a raising conjunct only on pairs that pass the other conjuncts: such pairs are in no allowed result, so by D16 the engine may return there; the split of a mixed residual is admitted. No D-number; a dated note goes under D19.",
+  "issues": [
+    1447
+  ],
+  "amends": [
+    "F162",
+    "F162.P"
+  ],
+  "amended_by": [
+    "F170"
+  ],
+  "source": "fable-ruling-164-join-condition-errors.md",
+  "note": "Addendum to ruling 162; amends its P2 (cross join plus filter for 'any other residual'). J1-J5 and J7 lapse with the swap's withdrawal (F164.A1); the principle stands with no user."
+}

@@ -1,0 +1,22 @@
+{
+  "id": "F101",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D53 ships in two steps: step 1 instant column values (naive literals vs instant columns refused, functions refused by default); step 2 a core conversion function at UTC (like widen) with instant literals built from it and a lowering regen.",
+  "issues": [
+    1725
+  ],
+  "supersedes": [
+    "F97.Z4",
+    "F99.Z3a-d"
+  ],
+  "amends": [
+    "D53",
+    "F97",
+    "F99"
+  ],
+  "source": "fable-ruling-utc-timestamps-staging.md",
+  "note": "D53's last sentence corrected: 'The conversion is a function of the core that returns its argument; nothing else in Rel.eval and Rel.Allowed changes.' No new D-number."
+}

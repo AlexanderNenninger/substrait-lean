@@ -94,9 +94,6 @@ class Profile:
         float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
             (DuckDB rounds, `CAST(2.5 AS INT)` is 2) or `"TRUNCATE"`
             (reference, #209 R9).
-        decimal_to_int: A cast of a decimal to an integer:
-            `"TIE_AWAY_FROM_ZERO"` (DuckDB, `CAST(2.5 AS INT)` is 3) or
-            `"TRUNCATE"` (reference, R9).
         domain_error: Elementary functions and `power` outside their domain
             (`sqrt(-1)`, `power(-8, 1/3)`): `"NAN"` (DuckDB) or `"ERROR"`
             (reference, #257).
@@ -116,7 +113,6 @@ class Profile:
     on_division_by_zero: str = "ERROR"
     float_division_by_zero: str = "ERROR"
     float_to_int: str = "TRUNCATE"
-    decimal_to_int: str = "TRUNCATE"
     domain_error: str = "ERROR"
     log_zero: str = "ERROR"
     corr_degenerate: str = "NULL"
@@ -125,7 +121,6 @@ class Profile:
 DUCKDB = Profile(
     "duckdb",
     float_to_int="TIE_TO_EVEN",
-    decimal_to_int="TIE_AWAY_FROM_ZERO",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
@@ -454,6 +449,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             "runs it, or write the step in Ibis",
             construct="SQL SYNTAX",
         ) from e
+    tree = tree.transform(_builtin_schema, copy=False)
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
     for node in tree.find_all(*_NONDETERMINISTIC):
@@ -478,6 +474,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
                 construct=f"function {f.name.lower()}",
                 sql=_shown(f),
             )
+    _resolve_tables(tree, schemas)
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
     _check_export_state(tree)
@@ -508,6 +505,70 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__), construct=_keywords(tree))
     return tree
+
+
+def _builtin_schema(n: sge.Expr) -> sge.Expr:
+    """A call qualified by its built-in schema (`main.lower(x)`,
+    `pg_catalog.lower(x)`, `system.main.lower(x)`) read as the bare function
+    (#328). SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
+    anonymous one, so the call is parsed again without its qualifier."""
+    if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
+        schema = n.this
+        if isinstance(schema, sge.Dot):
+            schema = schema.expression
+        if isinstance(schema, sge.Identifier) and schema.name.lower() in ("main", "pg_catalog"):
+            return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
+    return n
+
+
+def full_name(table: sge.Table | str) -> tuple[str, str, str]:
+    """A table's (catalog, schema, name) as DuckDB resolves it: the defaults
+    are `memory` and `main`, and the names are normalized."""
+    if isinstance(table, str):
+        table = sge.to_table(table, dialect=DIALECT)
+    parts = (table.catalog or "memory", table.db or "main", table.name)
+    c, d, n = (_normalized(p) for p in parts)
+    return c, d, n
+
+
+def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
+    """Point each table the query reads at the input it names, as DuckDB
+    resolves names (#706): `shop.main.orders`, `main.orders` and `orders` are
+    one table where the inputs' keys say so, and the same table name in two
+    schemas stays two inputs. The table keeps its name as its alias, so the
+    query's own column references still resolve."""
+    by_full: dict[tuple[str, str, str], str] = {}
+    for key in schemas:
+        full = full_name(key)
+        if full in by_full:
+            raise Unsupported(
+                f"the inputs {by_full[full]!r} and {key!r} are the same table in DuckDB "
+                f"({'.'.join(full)}); declare it once",
+                construct="FROM",
+            )
+        by_full[full] = key
+    ctes = {_normalized(c.alias) for c in tree.find_all(sge.CTE)}
+    for node in tree.find_all(sge.Table):
+        if not isinstance(node.this, sge.Identifier):
+            continue
+        qualified = bool(node.args.get("db") or node.args.get("catalog"))
+        if not qualified and _normalized(node.name) in ctes:
+            continue
+        key = by_full.get(full_name(node))
+        if key is None and qualified:
+            raise SqlUnsupported(
+                f"FROM {_shown(node)}: only the inputs' tables can be read",
+                hint="add the table to the tables, under its qualified name "
+                f"(for example '{node.sql(DIALECT)}'), as DuckDB resolves it",
+                construct="FROM",
+            )
+        if key is None or (not qualified and key == node.name):
+            continue
+        alias = node.args.get("alias") or sge.TableAlias(this=sge.to_identifier(node.name))
+        node.set("catalog", None)
+        node.set("db", None)
+        node.set("this", sge.to_identifier(key, quoted=True))
+        node.set("alias", alias)
 
 
 def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
@@ -1124,6 +1185,13 @@ class _Lift:
         if offset is not None:
             body["offsetExpr"] = literal(_count(offset.expression, "OFFSET"), dt.int64)
         if limit is not None:
+            opts = limit.args.get("limit_options")
+            if opts and (opts.args.get("percent") or opts.args.get("with_ties")):
+                raise SqlUnsupported(
+                    "LIMIT with PERCENT or WITH TIES is not supported yet",
+                    hint="write a row count: LIMIT n",
+                    construct="LIMIT",
+                )
             body["countExpr"] = literal(_count(limit.expression, "LIMIT"), dt.int64)
         return {"fetch": body}
 
@@ -1191,8 +1259,11 @@ class _Lift:
                 or node.args.get("catalog")
                 or not isinstance(node.this, sge.Identifier)
             ):
-                raise Unsupported(
-                    f"FROM {_shown(node)}: only the inputs' tables can be read", construct="FROM"
+                raise SqlUnsupported(
+                    f"FROM {_shown(node)}: only the inputs' tables can be read",
+                    hint="add the table to the tables, under its qualified name "
+                    "(for example 'shop.main.orders'), as DuckDB resolves it",
+                    construct="FROM",
                 )
             found = self.schemas.get(node.name)
             if found is None:

@@ -1,0 +1,21 @@
+{
+  "id": "U-2026-11-20-io-source-gate",
+  "date": "2026-11-20",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "On ruling 176's held question, the user chose (b) at 1.0 for the #1329 gate's scope; (a), covering io.Source's held table, is #1945 after 1.0.",
+  "issues": [
+    1329,
+    1945
+  ],
+  "prs": [
+    1998
+  ],
+  "amends": [
+    "F176",
+    "U-2026-11-09-incremental-store-gate"
+  ],
+  "source": "fable-undelivered-1118.md",
+  "note": "Also in fable-outbox-1119.md: 'Ruling 176's question for the user is answered ((b) at 1.0; (a) is #1945, After 1.0)'."
+}

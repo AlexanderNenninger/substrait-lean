@@ -1,0 +1,13 @@
+{
+  "id": "F155",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "#1805 at b1509914 meets rulings 146 A1, 135 and 130 and is fine for the label; a follow-up gives one Nat-valued scaled tolerance definition per measure shared by measureEps and OpenSums.",
+  "prs": [
+    1805
+  ],
+  "source": "fable-ruling-155-1805-label.md",
+  "note": "The re-read ruling 146 A2 asked for. No D-number."
+}

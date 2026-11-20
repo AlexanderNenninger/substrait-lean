@@ -1,0 +1,19 @@
+{
+  "id": "F98",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Spark FETCH and windows over a named table: neither refusal option A nor --ties mode B; to_sql's rows default follows the dialect plugin's ProfilePlugin.rows (multiset for Spark); rows='sequence' on Spark stays refused where it needs an ordinal.",
+  "issues": [
+    1484
+  ],
+  "prs": [
+    1608
+  ],
+  "amended_by": [
+    "F107"
+  ],
+  "source": "fable-ruling-spark-ties-bare-plans.md",
+  "note": "No D-number. Ruling 107 reviews PR #1743 against it (rework); ruling 128 accepts #1774."
+}

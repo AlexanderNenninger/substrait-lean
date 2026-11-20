@@ -1,0 +1,22 @@
+{
+  "id": "F99",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D53 survey: (a) and (c) accepted; the parser is the gate for instant/naive mixes, Kind.comparable and Kind.subK unchanged; conditions Z3a-Z3h (literal gate via argKind, IN, functions refused by default, CASE and set operations keep the kind) replace Z3.",
+  "issues": [
+    1725
+  ],
+  "supersedes": [
+    "F97.Z3"
+  ],
+  "amends": [
+    "F97"
+  ],
+  "amended_by": [
+    "F101"
+  ],
+  "source": "fable-ruling-utc-timestamps-survey.md",
+  "note": "F101 says ruling 99 was never delivered; the 1118 index says it was sent. F101 applies Z3e-Z3h and the refusing half of Z3b/Z3c to step 1 and replaces Z3a-Z3d in step 2."
+}

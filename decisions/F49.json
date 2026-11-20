@@ -1,0 +1,16 @@
+{
+  "id": "F49",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The SQL writer drops the rowid ordinal outside rows='sequence' (proposal A under conditions A1-A4: one arrangement per window node, ORDER BY reaching LIMIT, one SQL choice per open choice); B accepted with order_matters derived from the root's chain. No D-number.",
+  "issues": [
+    1608
+  ],
+  "amended_by": [
+    "F54"
+  ],
+  "source": "fable-ruling-1608-sql-ordinals.md",
+  "note": "Night log entry 49. Last clause of A3 withdrawn by F-1632-margin-open-choices (see F-1608-sql-ordinals.A3)."
+}

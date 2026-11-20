@@ -1,0 +1,16 @@
+{
+  "id": "F46",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "D50: entry 45's shape is withdrawn for a linear CASE chain (sverify_and/sverify_or); plain conjunctions stay byte-identical and each tier-1 engine needs a laziness probe, else the lifted plan is refused.",
+  "supersedes": [
+    "F45"
+  ],
+  "amended_by": [
+    "F47"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 46",
+  "note": "The chain itself is replaced by entry 47's nested THEN shape; conditions 1 and 2 and the three gates stand."
+}

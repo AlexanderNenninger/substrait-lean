@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-02-params-bind-at-verify",
+  "date": "2026-11-02",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "verify(params=...) binds ibis.param values at verification time (option A).",
+  "issues": [
+    58
+  ],
+  "prs": [
+    353
+  ],
+  "source": "github:#353 body"
+}

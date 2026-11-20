@@ -1,0 +1,12 @@
+{
+  "id": "U-2026-11-03-median-quantile-duckdb-first",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Median and quantiles come after 0.4.0, DuckDB first.",
+  "issues": [
+    53
+  ],
+  "source": "github:#53 comment 6610713022"
+}

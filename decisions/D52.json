@@ -1,0 +1,20 @@
+{
+  "id": "D52",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "An integer quotient's source mark is a core identity in the plan whose band the error bound reads; lowerings erase it.",
+  "issues": [
+    1608
+  ],
+  "prs": [
+    2003
+  ],
+  "amended_by": [
+    "F104",
+    "F108",
+    "F92"
+  ],
+  "note": "Signed in ruling 85 (fable-ruling-12d4-mark.md); its section is in open #2003."
+}

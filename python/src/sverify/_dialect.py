@@ -22,8 +22,7 @@ class DialectDifference:
     """A construct of the SQL text whose reference reading differs from DuckDB's."""
 
     key: str
-    """The `Profile` field the lift read: `float_to_int`, `decimal_to_int` or
-    `corr_degenerate`."""
+    """The `Profile` field the lift read: `float_to_int` or `corr_degenerate`."""
     construct: str
     """The construct's category, as `UnsupportedError.construct` spells it:
     `function corr`, `CAST`."""
@@ -56,7 +55,6 @@ REFUSED: dict[str, str] = {
         "write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
         "which mean the same on both"
     ),
-    "decimal_to_int": "see #322: the model has no rounding cast of a decimal yet",
 }
 
 #: Each `Profile` field the lift lists: how the two readings differ, with an

@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-05-drop-junit",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "sverify check --format junit is dropped before 1.x freezes the command.",
+  "issues": [
+    793
+  ],
+  "prs": [
+    871
+  ],
+  "source": "github:#871 body",
+  "note": "Removes the JUnit half of #793's user-requested output formats."
+}

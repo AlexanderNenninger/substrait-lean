@@ -1,0 +1,20 @@
+{
+  "id": "F57",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1641's D46 range check is right; five changes before review (runs also with check_requires=False, resident tables, every baseSchema, unsigned tests, D46 states what holds at merge). D46 (B) gated on step A2; date64 leaves widens.",
+  "issues": [
+    1540,
+    1643
+  ],
+  "prs": [
+    1641
+  ],
+  "amended_by": [
+    "F65"
+  ],
+  "source": "fable-ruling-1641-d46-run-check.md",
+  "note": "A2's item 'the pipeline's bound inputs' later dropped by ruling 65. D46 text clarified, not changed."
+}
