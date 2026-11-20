@@ -70,6 +70,8 @@ class Site:
     cls: str
     message: str
     hint: str = ""
+    construct: str | None = None
+    """The text of the `construct=` argument (`{}` for a formatted part); None if not given."""
 
     @property
     def tier(self) -> str:
@@ -103,6 +105,19 @@ def _text(node: ast.AST, consts: dict[str, str]) -> str:
         and node.func.attr == "format"
     ):
         return _text(node.func.value, consts)
+    return "{}"
+
+
+def _construct_text(node: ast.AST) -> str:
+    """A `construct=` argument as text: its literal parts, `{}` for each computed part."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            str(v.value) if isinstance(v, ast.Constant) else "{}"
+            for v in node.values
+            if isinstance(v, ast.Constant | ast.FormattedValue)
+        )
     return "{}"
 
 
@@ -157,7 +172,10 @@ def _sites(root: Path) -> tuple[Site, ...]:
                 continue  # forwards a message another site built (`raise RouteError(refused)`)
             if _wraps_caught(n.exc.args[0] if n.exc.args else None) and not hint:
                 continue  # a prefix on the caught error (`f"condition {c!r}: {e}"`)
-            out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint))
+            construct = next(
+                (_construct_text(k.value) for k in n.exc.keywords if k.arg == "construct"), None
+            )
+            out.append(Site(str(p.relative_to(root)), n.lineno, name, msg.strip(), hint, construct))
     return tuple(out)
 
 
@@ -185,6 +203,26 @@ def unnamed_by_file(found: list[Site] | None = None) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+#: Where a refusal names its construct as data (#700): the SQL lift and the Ibis producer.
+CONSTRUCT_DIRS = ("sql_lift/", "ibis_substrait/")
+CONSTRUCT_BASELINE = BASELINE.with_name("construct_baseline.json")
+#: One spelling of a construct: `function md5` or SQL keywords in upper case.
+CONSTRUCT_FORM = re.compile(
+    r"function (\{\}|[a-z][a-z0-9_]*)|(\{\}|[A-Z][A-Z0-9]*)( (\{\}|[A-Z][A-Z0-9]*))*"
+)
+
+
+def construct_sites(found: list[Site] | None = None) -> list[Site]:
+    """The refusals of the lift and the producer."""
+    return [s for s in (found or sites()) if s.file.startswith(CONSTRUCT_DIRS)]
+
+
+def missing_construct_by_file(found: list[Site] | None = None) -> dict[str, int]:
+    """The count of lift and producer refusals that set no `construct`, per file."""
+    counts = collections.Counter(s.file for s in construct_sites(found) if s.construct is None)
+    return dict(sorted(counts.items()))
+
+
 def main() -> None:
     found = sites()
     mods: dict[str, collections.Counter[str]] = collections.defaultdict(collections.Counter)
@@ -201,6 +239,7 @@ def main() -> None:
             if s.tier == "unnamed":
                 print(f"{s.file}:{s.line} {s.cls}: {s.message}")
     if "--write-baseline" in sys.argv:
+        CONSTRUCT_BASELINE.write_text(json.dumps(missing_construct_by_file(found), indent=2) + "\n")
         BASELINE.write_text(json.dumps(unnamed_by_file(found), indent=2) + "\n")
 
 
