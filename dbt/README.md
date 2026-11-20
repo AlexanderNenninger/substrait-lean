@@ -196,6 +196,28 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   proved tests are listed as proved for the full refresh, and `dbt build`
   still runs them.
 
+## Evidence
+
+`python -m sverify_dbt.replay` builds the integration projects of
+dbt-utils 1.4.1 and dbt-expectations 0.10.10 with dbt on DuckDB, checks them
+with sverify-dbt and records every test beside dbt's own result, in
+[`replay/`](replay/) (#859). No test sverify-dbt proves fails in dbt's run.
+
+| Source | Proved | Not proved | Not checked | Refused | Inputs |
+|---|---|---|---|---|---|
+| dbt-utils 1.4.1 | 1 | 8 | 48 | 19 | 37 |
+| dbt-expectations 0.10.10 | 0 | 0 | 42 | 115 | 0 |
+
+These projects test macros more than they model data: most of their tests
+compare two relations or match patterns, which sverify-dbt does not map yet
+([#1936](https://github.com/AlexanderNenninger/substrait-lean/issues/1936),
+[#1937](https://github.com/AlexanderNenninger/substrait-lean/issues/1937)),
+and most of dbt-expectations' models read a float32 column
+([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908))
+or `random()`. Every refusal and test not checked names its issue or the
+reason it is by design ([`replay/constructs.json`](replay/constructs.json)).
+CI's `dbt` job replays them and warns when an outcome changes.
+
 ## Development
 
 ```bash

@@ -1,0 +1,795 @@
+{
+  "source": "dbt-utils",
+  "repo": "https://github.com/dbt-labs/dbt-utils",
+  "tag": "1.4.1",
+  "project": "integration_tests",
+  "license": "Apache-2.0",
+  "summary": {
+    "proved": 1,
+    "not proved": 8,
+    "not checked": 48,
+    "refused": 19,
+    "input": 37
+  },
+  "unsound": 0,
+  "results": {
+    "accepted_values_test_get_column_values_count_a__1.f87b77fddc": {
+      "test": "accepted_values(count_a)",
+      "model": "test_get_column_values",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "accepted_values_test_get_column_values_count_b__1.7ce43c76de": {
+      "test": "accepted_values(count_b)",
+      "model": "test_get_column_values",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "accepted_values_test_get_column_values_count_c__1.5d1b48e142": {
+      "test": "accepted_values(count_c)",
+      "model": "test_get_column_values",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "accepted_values_test_get_column_values_count_d__1.76f30d147a": {
+      "test": "accepted_values(count_d)",
+      "model": "test_get_column_values",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "accepted_values_test_get_column_values_count_e__1.3afa682b0c": {
+      "test": "accepted_values(count_e)",
+      "model": "test_get_column_values",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "accepted_values_test_get_column_values_count_f__1.1d2f5d9e6b": {
+      "test": "accepted_values(count_f)",
+      "model": "test_get_column_values",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "accepted_values_test_get_column_values_count_g__5.42f43a2984": {
+      "test": "accepted_values(count_g)",
+      "model": "test_get_column_values",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "assert_equal_test_generate_surrogate_key_actual_all_columns_list__expected_all_columns.2cff0f618a": {
+      "test": "assert_equal",
+      "model": "test_generate_surrogate_key",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_generate_surrogate_key_actual_column_1_only__expected_column_1_only.92dc5a1121": {
+      "test": "assert_equal",
+      "model": "test_generate_surrogate_key",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_date_actual__date_expected.0d411a632b": {
+      "test": "assert_equal",
+      "model": "test_get_single_value",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_default_date_actual__date_expected.a6820f2675": {
+      "test": "assert_equal",
+      "model": "test_get_single_value_default",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_default_float_actual__float_expected.b9eb860d23": {
+      "test": "assert_equal",
+      "model": "test_get_single_value_default",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_default_int_actual__int_expected.d789c7b162": {
+      "test": "assert_equal",
+      "model": "test_get_single_value_default",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_default_string_actual__string_expected.0248840626": {
+      "test": "assert_equal",
+      "model": "test_get_single_value_default",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_float_actual__float_expected.4f708ad147": {
+      "test": "assert_equal",
+      "model": "test_get_single_value",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_int_actual__int_expected.ae6696f913": {
+      "test": "assert_equal",
+      "model": "test_get_single_value",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_get_single_value_string_actual__string_expected.c8b3a857f3": {
+      "test": "assert_equal",
+      "model": "test_get_single_value",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_haversine_distance_km_actual__expected.4a2837337e": {
+      "test": "assert_equal",
+      "model": "test_haversine_distance_km",
+      "outcome": "refused",
+      "construct": "sverify cannot read RADIANS((data.lat_2 - data.lat_1) / N) yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 1938
+    },
+    "assert_equal_test_haversine_distance_mi_actual__expected.577f11040d": {
+      "test": "assert_equal",
+      "model": "test_haversine_distance_mi",
+      "outcome": "refused",
+      "construct": "sverify cannot read RADIANS((data.lat_2 - data.lat_1) / N) yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 1938
+    },
+    "assert_equal_test_safe_add_actual__expected.165d6f1efd": {
+      "test": "assert_equal",
+      "model": "test_safe_add",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_safe_divide_actual__expected.b0a326bd12": {
+      "test": "assert_equal",
+      "model": "test_safe_divide",
+      "outcome": "refused",
+      "construct": "sverify cannot read UNION with with_ yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 1939
+    },
+    "assert_equal_test_safe_subtract_actual__expected.77bd266001": {
+      "test": "assert_equal",
+      "model": "test_safe_subtract",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_star_quote_identifiers_actual__expected.1a40c973a4": {
+      "test": "assert_equal",
+      "model": "test_star_quote_identifiers",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_star_unquote_aliases_actual__expected.2f61cb057f": {
+      "test": "assert_equal",
+      "model": "test_star_unquote_aliases",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "assert_equal_test_url_host_actual__expected.8467cd81db": {
+      "test": "assert_equal",
+      "model": "test_url_host",
+      "outcome": "refused",
+      "construct": "sverify cannot read STR_SPLIT(REPLACE(REPLACE(REPLACE(data.original_url, 'and... yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 1940
+    },
+    "assert_equal_test_url_path_actual__expected.8d91d8bf8d": {
+      "test": "assert_equal",
+      "model": "test_url_path",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: right needs a constant int",
+      "dbt": "pass",
+      "issue": 1942
+    },
+    "assert_equal_test_urls_actual__expected.9cfc18d36f": {
+      "test": "assert_equal",
+      "model": "test_urls",
+      "outcome": "refused",
+      "construct": "sverify cannot read UNION with with_ yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 1939
+    },
+    "assert_equal_test_width_bucket_actual__expected.5781abe245": {
+      "test": "assert_equal",
+      "model": "test_width_bucket",
+      "outcome": "refused",
+      "construct": "sverify cannot read % of decimal(N, N) and decimal(N, N) yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 1941
+    },
+    "assert_get_query_results_as_dict_objects_equal": {
+      "test": "singular test",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "assert_pretty_output_msg_is_string": {
+      "test": "singular test",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "assert_pretty_time_is_string": {
+      "test": "singular test",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "dbt_utils_accepted_range_data_test_accepted_range_id__False__11_1___2.ce5aac49d1": {
+      "test": "dbt_utils.accepted_range(id)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_accepted_range_data_test_accepted_range_id__True__0.a8369ec7f6": {
+      "test": "dbt_utils.accepted_range(id)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_accepted_range_data_test_accepted_range_id__True__11___1.403a35a09e": {
+      "test": "dbt_utils.accepted_range(id)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_at_least_one_data_test_at_least_one_field.e5ed49a4c2": {
+      "test": "dbt_utils.at_least_one(field)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_at_least_one_data_test_at_least_one_value__field.cadfe76893": {
+      "test": "dbt_utils.at_least_one(value)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_at_least_one_test_get_relations_by_prefix_and_union_user_id.8ddc00a4b5": {
+      "test": "dbt_utils.at_least_one(user_id)",
+      "model": "test_get_relations_by_prefix_and_union",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "dbt_utils_cardinality_equality_data_cardinality_equality_a_same_name__different_name__ref_data_cardinality_equality_b_.fa200eb8b8": {
+      "test": "dbt_utils.cardinality_equality(same_name)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_cardinality_equality_data_cardinality_equality_a_same_name__same_name__ref_data_cardinality_equality_b_.5c0513685a": {
+      "test": "dbt_utils.cardinality_equality(same_name)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_cardinality_equality_data_people_is_active__is_active__ref_data_people_.5ba705fe23": {
+      "test": "dbt_utils.cardinality_equality(is_active)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equal_rowcount_test_equal_rowcount_ref_test_equal_rowcount_.c6aa77bbf0": {
+      "test": "dbt_utils.equal_rowcount",
+      "model": "test_equal_rowcount",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equal_rowcount; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equal_rowcount_test_equal_rowcount_ref_test_equal_rowcount___field.62c78a1511": {
+      "test": "dbt_utils.equal_rowcount",
+      "model": "test_equal_rowcount",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equal_rowcount; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_data_test_equality_a_col_a__col_b__ref_data_test_equality_b_.979b442f01": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_data_test_equality_a_ref_data_test_equality_a_.3c655a3f83": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_data_test_equality_a_ref_data_test_equality_b_.67c9d2b27a": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_data_test_equality_a_ref_data_test_equality_b___col_c.4a8a6741ba": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_data_test_equality_floats_a_ref_data_test_equality_floats_b___4.d75c59bfdd": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_data_test_equality_floats_a_ref_data_test_equality_floats_b___8.951adb8669": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "dbt_utils_equality_data_test_equality_floats_columns_a_id__float_number__ref_data_test_equality_floats_columns_b___4.a05501d561": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_data_test_equality_floats_columns_a_ref_data_test_equality_floats_columns_b___4.b950dba6ed": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_data_test_equality_floats_columns_a_ref_data_test_equality_floats_columns_b___to_ignore__4.bbd9088293": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_equality_equality_less_columns_ref_data_test_equality_a___col_c.b803d227f8": {
+      "test": "dbt_utils.equality",
+      "model": "equality_less_columns",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_date_spine_ref_data_date_spine_.47dec42629": {
+      "test": "dbt_utils.equality",
+      "model": "test_date_spine",
+      "outcome": "refused",
+      "construct": "DuckDB cannot plan the compiled SQL: Binder Error: Could not choose a best candidate function for the function call …. In order to select one, please add explic",
+      "dbt": "skipped",
+      "design": "DuckDB itself refuses the compiled SQL"
+    },
+    "dbt_utils_equality_test_deduplicate_ref_data_deduplicate_expected_.8d8bddfd8c": {
+      "test": "dbt_utils.equality",
+      "model": "test_deduplicate",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_equal_column_subset_first_name__last_name__email__ref_data_people_.3f31c2f0d2": {
+      "test": "dbt_utils.equality",
+      "model": "test_equal_column_subset",
+      "outcome": "not checked",
+      "why": "dbt runs no test on an ephemeral model",
+      "dbt": "pass",
+      "design": "dbt does not run the test"
+    },
+    "dbt_utils_equality_test_generate_series_ref_data_generate_series_.f0af5f02d1": {
+      "test": "dbt_utils.equality",
+      "model": "test_generate_series",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_get_column_values_where_ref_data_get_column_values_where_expected_.f3b69fffd7": {
+      "test": "dbt_utils.equality",
+      "model": "test_get_column_values_where",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_get_filtered_columns_in_relation_ref_data_filtered_columns_in_relation_expected_.d469bf7522": {
+      "test": "dbt_utils.equality",
+      "model": "test_get_filtered_columns_in_relation",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_get_relations_by_pattern_ref_data_union_events_expected_.11c7165a94": {
+      "test": "dbt_utils.equality",
+      "model": "test_get_relations_by_pattern",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "dbt_utils_equality_test_pivot_apostrophe_ref_data_pivot_expected_apostrophe_.065ff489b4": {
+      "test": "dbt_utils.equality",
+      "model": "test_pivot_apostrophe",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_pivot_ref_data_pivot_expected_.8c49a9377c": {
+      "test": "dbt_utils.equality",
+      "model": "test_pivot",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_star_aggregate_ref_data_star_aggregate_expected_.c5fbc9020c": {
+      "test": "dbt_utils.equality",
+      "model": "test_star_aggregate",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_star_prefix_suffix_ref_data_star_prefix_suffix_expected_.18182f3f4a": {
+      "test": "dbt_utils.equality",
+      "model": "test_star_prefix_suffix",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_star_ref_data_star_expected_.b45cbb2e87": {
+      "test": "dbt_utils.equality",
+      "model": "test_star",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_star_uppercase_ref_data_star_expected_.b172eeab68": {
+      "test": "dbt_utils.equality",
+      "model": "test_star_uppercase",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_union_exclude_lowercase_ref_data_union_exclude_expected_.66e9da5f74": {
+      "test": "dbt_utils.equality",
+      "model": "test_union_exclude_lowercase",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_union_exclude_uppercase_ref_data_union_exclude_expected_.16dda11e18": {
+      "test": "dbt_utils.equality",
+      "model": "test_union_exclude_uppercase",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_union_ref_data_union_expected_.e05c57a725": {
+      "test": "dbt_utils.equality",
+      "model": "test_union",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_unpivot_bool_ref_data_unpivot_bool_expected_.552f6376ee": {
+      "test": "dbt_utils.equality",
+      "model": "test_unpivot_bool",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.str. Lean's model does not cov",
+      "dbt": "pass",
+      "issue": 1911
+    },
+    "dbt_utils_equality_test_unpivot_original_api_ref_data_unpivot_original_api_expected_.ded9a98c93": {
+      "test": "dbt_utils.equality",
+      "outcome": "input",
+      "dbt": "not run"
+    },
+    "dbt_utils_equality_test_unpivot_quote_ref_data_unpivot_quote_expected_.82a0b43091": {
+      "test": "dbt_utils.equality",
+      "model": "test_unpivot_quote",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_equality_test_unpivot_ref_data_unpivot_expected_.9a4250a2fa": {
+      "test": "dbt_utils.equality",
+      "model": "test_unpivot",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_expression_is_true_data_test_expression_is_true_col_a_0_5.694c46146b": {
+      "test": "dbt_utils.expression_is_true(col_a = 0.5)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_expression_is_true_data_test_expression_is_true_col_a___col_b_1.50337bcddb": {
+      "test": "dbt_utils.expression_is_true(col_a + col_b = 1)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_expression_is_true_data_test_expression_is_true_col_a_col_b_1.22adb67cd6": {
+      "test": "dbt_utils.expression_is_true(col_a + col_b = 1)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_expression_is_true_data_test_expression_is_true_col_b___0_5.27a51167b5": {
+      "test": "dbt_utils.expression_is_true(col_b = 0.5)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_expression_is_true_test_union_where_id___1.606bd1b56e": {
+      "test": "dbt_utils.expression_is_true(id = 1)",
+      "model": "test_union_where",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "dbt_utils_fewer_rows_than_test_fewer_rows_than_ref_data_test_fewer_rows_than_table_2_.7654703ed3": {
+      "test": "dbt_utils.fewer_rows_than",
+      "model": "test_fewer_rows_than",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.fewer_rows_than; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_fewer_rows_than_test_fewer_rows_than_ref_data_test_fewer_rows_than_table_2___col_a.a5d483941d": {
+      "test": "dbt_utils.fewer_rows_than",
+      "model": "test_fewer_rows_than",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.fewer_rows_than; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_mutually_exclusive_ranges_data_test_mutually_exclusive_ranges_no_gaps_not_allowed__lower_bound__upper_bound.8a608eab5f": {
+      "test": "dbt_utils.mutually_exclusive_ranges",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_mutually_exclusive_ranges_data_test_mutually_exclusive_ranges_with_gaps_allowed__valid_from__subscription_id__coalesce_valid_to_2099_01_01_.ab846dc366": {
+      "test": "dbt_utils.mutually_exclusive_ranges",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_mutually_exclusive_ranges_data_test_mutually_exclusive_ranges_with_gaps_required__valid_from__subscription_id__coalesce_valid_to_2099_01_01_.ef57bd9eb8": {
+      "test": "dbt_utils.mutually_exclusive_ranges",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_mutually_exclusive_ranges_data_test_mutually_exclusive_ranges_with_gaps_zero_length_valid_from__subscription_id__valid_to__True.8a68b83afa": {
+      "test": "dbt_utils.mutually_exclusive_ranges",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_not_accepted_values_data_test_not_accepted_values_city__Madrid__Berlin.640de65c6f": {
+      "test": "dbt_utils.not_accepted_values(city)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_not_constant_data_test_not_constant_field.af0845826c": {
+      "test": "dbt_utils.not_constant(field)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_not_constant_data_test_not_constant_field__col_a.0f307bfec8": {
+      "test": "dbt_utils.not_constant(field)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_not_constant_test_union_where_favorite_number.21b4d129d7": {
+      "test": "dbt_utils.not_constant(favorite_number)",
+      "model": "test_union_where",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.not_constant; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_utils_not_empty_string_test_not_empty_string_failing_string_trim_whitespace_true.e90d102696": {
+      "test": "dbt_utils.not_empty_string(string_trim_whitespace_true)",
+      "model": "test_not_empty_string_failing",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_utils_not_empty_string_test_not_empty_string_passing_string_trim_whitespace_false__False.a41c0bc021": {
+      "test": "dbt_utils.not_empty_string(string_trim_whitespace_false)",
+      "model": "test_not_empty_string_passing",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_utils_not_empty_string_test_not_empty_string_passing_string_trim_whitespace_true.59d932f47c": {
+      "test": "dbt_utils.not_empty_string(string_trim_whitespace_true)",
+      "model": "test_not_empty_string_passing",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_utils.not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_utils_not_null_proportion_data_not_null_proportion_0_5__0_5__point_5.f98f7ac847": {
+      "test": "dbt_utils.not_null_proportion(point_5)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_not_null_proportion_data_not_null_proportion_0_9__point_9.fbf753ca47": {
+      "test": "dbt_utils.not_null_proportion(point_9)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_not_null_proportion_data_not_null_proportion_0__point_5__point_9.fafa01e6d4": {
+      "test": "dbt_utils.not_null_proportion(point_5)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_recency_recency_time_excluded_day__created_at__False__1.d689746fe0": {
+      "test": "dbt_utils.recency",
+      "model": "recency_time_excluded",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: NOW() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "the time differs on every run, so no proof covers the model"
+    },
+    "dbt_utils_recency_recency_time_excluded_day__created_at__True__1.28bded1efb": {
+      "test": "dbt_utils.recency",
+      "model": "recency_time_excluded",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: NOW() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "the time differs on every run, so no proof covers the model"
+    },
+    "dbt_utils_recency_recency_time_included_day__created_at__1.ba5325bbe9": {
+      "test": "dbt_utils.recency",
+      "model": "recency_time_included",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: NOW() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "the time differs on every run, so no proof covers the model"
+    },
+    "dbt_utils_recency_recency_time_included_day__created_at__col1__1.55dfc39b7b": {
+      "test": "dbt_utils.recency",
+      "model": "recency_time_included",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: NOW() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "the time differs on every run, so no proof covers the model"
+    },
+    "dbt_utils_recency_recency_time_included_day__created_at__col1__col2__1.823cc5292f": {
+      "test": "dbt_utils.recency",
+      "model": "recency_time_included",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: NOW() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "the time differs on every run, so no proof covers the model"
+    },
+    "dbt_utils_relationships_where_data_test_relationships_where_table_2_id__id__id_4__ref_data_test_relationships_where_table_1_.8c200acee6": {
+      "test": "dbt_utils.relationships_where(id)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_sequential_values_data_test_sequential_timestamps_my_timestamp__hour__1.9c2de3c02e": {
+      "test": "dbt_utils.sequential_values(my_timestamp)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_sequential_values_data_test_sequential_values_my_even_sequence__2.d8c100bf92": {
+      "test": "dbt_utils.sequential_values(my_even_sequence)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_sequential_values_data_test_sequential_values_my_even_sequence__col_a__2.7bd1025e02": {
+      "test": "dbt_utils.sequential_values(my_even_sequence)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "dbt_utils_unique_combination_of_columns_data_unique_combination_of_columns_month__product.4bdcdcc417": {
+      "test": "dbt_utils.unique_combination_of_columns(month, product)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "expect_table_columns_to_match_set_test_union_no_source_column_id__name__favorite_color__favorite_number.078611f042": {
+      "test": "expect_table_columns_to_match_set",
+      "model": "test_union_no_source_column",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_table_columns_to_match_set; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "not_empty_string_test_nullcheck_table_field_1.a51d259bb5": {
+      "test": "not_empty_string(field_1)",
+      "model": "test_nullcheck_table",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "not_empty_string_test_nullcheck_table_field_2.2eaba41ebc": {
+      "test": "not_empty_string(field_2)",
+      "model": "test_nullcheck_table",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "not_empty_string_test_nullcheck_table_field_3.f26a4ed21c": {
+      "test": "not_empty_string(field_3)",
+      "model": "test_nullcheck_table",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "not_null_test_get_relations_by_prefix_and_union_event.02af59bb21": {
+      "test": "not_null(event)",
+      "model": "test_get_relations_by_prefix_and_union",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "not_null_test_get_relations_by_prefix_and_union_user_id.19dbb582c0": {
+      "test": "not_null(user_id)",
+      "model": "test_get_relations_by_prefix_and_union",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "not_null_test_star_no_columns_canary_column.33ef608c55": {
+      "test": "not_null(canary_column)",
+      "model": "test_star_no_columns",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "test_get_single_value_multiple_rows": {
+      "test": "singular test",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "test_slugify": {
+      "test": "singular test",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "unique_test_get_relations_by_prefix_and_union_user_id.4acc530120": {
+      "test": "unique(user_id)",
+      "model": "test_get_relations_by_prefix_and_union",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    }
+  }
+}

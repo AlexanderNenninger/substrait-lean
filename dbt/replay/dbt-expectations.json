@@ -1,0 +1,1273 @@
+{
+  "source": "dbt-expectations",
+  "repo": "https://github.com/metaplane/dbt-expectations",
+  "tag": "0.10.10",
+  "project": "integration_tests",
+  "license": "Apache-2.0",
+  "summary": {
+    "proved": 0,
+    "not proved": 0,
+    "not checked": 42,
+    "refused": 115,
+    "input": 0
+  },
+  "unsound": 0,
+  "results": {
+    "dbt_expectations_equal_expression_data_test_ref_data_test___sum_col_numeric_a___idx.b487d295fb": {
+      "test": "dbt_expectations.equal_expression(sum(col_numeric_a))",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_equal_expression_data_test_sum_col_numeric_a_5___ref_data_test___sum_col_numeric_a___idx__0_5.ce68b2893f": {
+      "test": "dbt_expectations.equal_expression(sum(col_numeric_a))",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_equal_expression_data_test_sum_col_numeric_b___ref_data_test___sum_col_numeric_a_.674a29f4ac": {
+      "test": "dbt_expectations.equal_expression(sum(col_numeric_a))",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_distinct_count_to_be_greater_than_timeseries_data_extended_row_value__cast_date_day_as_date_dbt_date_yesterday___1.5204f98659": {
+      "test": "dbt_expectations.expect_column_distinct_count_to_be_greater_than(row_value)",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_distinct_count_to_be_less_than_data_test_col_string_a__4.50777d9df5": {
+      "test": "dbt_expectations.expect_column_distinct_count_to_be_less_than(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_distinct_count_to_be_less_than_timeseries_data_extended_row_value__cast_date_day_as_date_dbt_date_yesterday___11.f4905d3898": {
+      "test": "dbt_expectations.expect_column_distinct_count_to_be_less_than(row_value)",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_distinct_count_to_equal_other_table_timeseries_data_date_day.79cb16c1eb": {
+      "test": "dbt_expectations.expect_column_distinct_count_to_equal_other_table(date_day)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_distinct_count_to_equal_other_table_timeseries_data_date_day__date_day__ref_timeseries_data_extended_.668a389f21": {
+      "test": "dbt_expectations.expect_column_distinct_count_to_equal_other_table(date_day)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_distinct_count_to_equal_other_table_timeseries_data_date_day__ref_timeseries_data_extended_.6fd6f4ea6b": {
+      "test": "dbt_expectations.expect_column_distinct_count_to_equal_other_table(date_day)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_distinct_count_to_equal_timeseries_data_extended_row_value__cast_date_day_as_date_dbt_date_yesterday___10.498f331596": {
+      "test": "dbt_expectations.expect_column_distinct_count_to_equal(row_value)",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_distinct_values_to_be_in_set_data_test_col_string_a__True__a__b__c__d.ba496b564d": {
+      "test": "dbt_expectations.expect_column_distinct_values_to_be_in_set(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_distinct_values_to_contain_set_data_test_col_string_a__a__b.c69bd98f06": {
+      "test": "dbt_expectations.expect_column_distinct_values_to_contain_set(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_distinct_values_to_equal_set_data_test_col_string_a__a__b__c__c.4e3fafdb58": {
+      "test": "dbt_expectations.expect_column_distinct_values_to_equal_set(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_max_to_be_between_data_test_col_numeric_a__1__1.da51d2d9cb": {
+      "test": "dbt_expectations.expect_column_max_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_mean_to_be_between_data_test_col_numeric_a__1_5__0.885aa2d309": {
+      "test": "dbt_expectations.expect_column_mean_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_min_to_be_between_data_test_col_numeric_a__0__0.0b9263ab44": {
+      "test": "dbt_expectations.expect_column_min_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_most_common_value_to_be_in_set_data_test_col_numeric_a__False__1__0_5.2ac70aa0de": {
+      "test": "dbt_expectations.expect_column_most_common_value_to_be_in_set(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_pair_values_A_to_be_greater_than_B_data_test_col_numeric_a_10__col_numeric_a.95a5cc1fac": {
+      "test": "dbt_expectations.expect_column_pair_values_A_to_be_greater_than_B",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_pair_values_A_to_be_greater_than_B_data_test_col_numeric_a__col_numeric_a__True.996ee156f4": {
+      "test": "dbt_expectations.expect_column_pair_values_A_to_be_greater_than_B",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_pair_values_to_be_equal_data_test_col_numeric_a__col_numeric_a.6237de7ec0": {
+      "test": "dbt_expectations.expect_column_pair_values_to_be_equal",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_pair_values_to_be_in_set_data_test_col_numeric_a__col_numeric_b___0_1____1_0____0_5_0_5____0_5_0_5_.fcd2f00790": {
+      "test": "dbt_expectations.expect_column_pair_values_to_be_in_set",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_proportion_of_unique_values_to_be_between_data_test_col_numeric_a__0_75__0.50b672f9f5": {
+      "test": "dbt_expectations.expect_column_proportion_of_unique_values_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_stdev_to_be_between_data_test_col_numeric_a__0__True.0828889e83": {
+      "test": "dbt_expectations.expect_column_stdev_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_stdev_to_be_between_data_test_col_numeric_a__2__0.6aea0941f3": {
+      "test": "dbt_expectations.expect_column_stdev_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_sum_to_be_between_data_test_col_numeric_a__3__1.768d8a3df1": {
+      "test": "dbt_expectations.expect_column_sum_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_to_exist_data_test_1__idx.fe00acd806": {
+      "test": "dbt_expectations.expect_column_to_exist(idx)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_to_exist_data_test_3__col_numeric_a.707ebd64f9": {
+      "test": "dbt_expectations.expect_column_to_exist(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_to_exist_data_test_col_numeric_a.05ed4c08ef": {
+      "test": "dbt_expectations.expect_column_to_exist(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_unique_value_count_to_be_between_data_test_col_numeric_a__3__3.29365f2765": {
+      "test": "dbt_expectations.expect_column_unique_value_count_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_value_lengths_to_be_between_data_test_col_string_b__1.11ec77adb3": {
+      "test": "dbt_expectations.expect_column_value_lengths_to_be_between(col_string_b)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_value_lengths_to_be_between_data_test_col_string_b__4.c9921ddc5a": {
+      "test": "dbt_expectations.expect_column_value_lengths_to_be_between(col_string_b)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_value_lengths_to_be_between_data_test_col_string_b__4__1.7124d69fa8": {
+      "test": "dbt_expectations.expect_column_value_lengths_to_be_between(col_string_b)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_value_lengths_to_equal_data_test_col_string_a__1.914eeb47db": {
+      "test": "dbt_expectations.expect_column_value_lengths_to_equal(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_between_data_test_col_numeric_a__0.38e10ae5de": {
+      "test": "dbt_expectations.expect_column_values_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_between_data_test_col_numeric_a__1__0.dd0c29c89d": {
+      "test": "dbt_expectations.expect_column_values_to_be_between(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_decreasing_data_test_idx_multiplied_by_minus_2__idx__2.cc04bfe251": {
+      "test": "dbt_expectations.expect_column_values_to_be_decreasing(idx_multiplied_by_minus_2)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_decreasing_window_function_test_rolling_sum_decreasing__idx__date_col__True.1c67e8ae47": {
+      "test": "dbt_expectations.expect_column_values_to_be_decreasing(rolling_sum_decreasing)",
+      "model": "window_function_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_in_set_data_test_col_string_a__True__a__b__c.0d9c524932": {
+      "test": "dbt_expectations.expect_column_values_to_be_in_set(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_in_type_list_timeseries_data_date_datetime__date___dbt_expectations_type_datetime_.a431470019": {
+      "test": "dbt_expectations.expect_column_values_to_be_in_type_list(date_datetime)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_in_type_list_timeseries_data_date_day__date___dbt_expectations_type_timestamp_.79af0ea1f3": {
+      "test": "dbt_expectations.expect_column_values_to_be_in_type_list(date_day)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_in_type_list_timeseries_data_date_timestamp__date___dbt_expectations_type_timestamp_.4fc8b3eb42": {
+      "test": "dbt_expectations.expect_column_values_to_be_in_type_list(date_timestamp)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_in_type_list_timeseries_data_extended_date_day__date___dbt_expectations_type_datetime_.64544aba59": {
+      "test": "dbt_expectations.expect_column_values_to_be_in_type_list(date_day)",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_in_type_list_timeseries_hourly_data_extended_date_hour___dbt_expectations_type_datetime_.e2af5fe244": {
+      "test": "dbt_expectations.expect_column_values_to_be_in_type_list(date_hour)",
+      "model": "timeseries_hourly_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_increasing_data_test_col_numeric_a__col_numeric_a__False.275c036446": {
+      "test": "dbt_expectations.expect_column_values_to_be_increasing(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_increasing_data_test_idx__idx.f1baf74a63": {
+      "test": "dbt_expectations.expect_column_values_to_be_increasing(idx)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_increasing_data_test_idx_multiplied_by_2__idx__2.233c904af6": {
+      "test": "dbt_expectations.expect_column_values_to_be_increasing(idx_multiplied_by_2)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_increasing_timeseries_data_date_day__date_day.b349b0a845": {
+      "test": "dbt_expectations.expect_column_values_to_be_increasing(date_day)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_increasing_window_function_test_rolling_sum_increasing__idx__date_col__True.996e133dc9": {
+      "test": "dbt_expectations.expect_column_values_to_be_increasing(rolling_sum_increasing)",
+      "model": "window_function_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_null_data_test_col_null.0be3aa326a": {
+      "test": "dbt_expectations.expect_column_values_to_be_null(col_null)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_of_type_timeseries_data_extended_date_day___dbt_expectations_type_datetime_.3377fc291f": {
+      "test": "dbt_expectations.expect_column_values_to_be_of_type(date_day)",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_of_type_timeseries_hourly_data_extended_date_hour___dbt_expectations_type_datetime_.fa9ac6d2a4": {
+      "test": "dbt_expectations.expect_column_values_to_be_of_type(date_hour)",
+      "model": "timeseries_hourly_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_unique_data_test_idx.1fedbd4c8c": {
+      "test": "dbt_expectations.expect_column_values_to_be_unique(idx)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_data_extended_row_value_log__cast_date_day_as_dbt_expectations_type_datetime___6__False.91749cfd51": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_moving_stdevs(row_value_log)",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_data_grouped_row_value__date_day__group_id__6__True.17e9f1d345": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_moving_stdevs(row_value)",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "warn",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_data_row_value__date_day__6__False__True.c9497af54d": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_moving_stdevs(row_value)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_data_row_value__date_day__6__True.86019a24d0": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_moving_stdevs(row_value)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_moving_stdevs_timeseries_hourly_data_extended_row_value_log__cast_date_hour_as_dbt_expectations_type_datetime___hour__6__False__12__48.c200505cc1": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_moving_stdevs(row_value_log)",
+      "model": "timeseries_hourly_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_stdevs_timeseries_data_grouped_row_value__6.e3e7f89b53": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_stdevs(row_value)",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_stdevs_timeseries_data_grouped_row_value__group_id__1.dfc27a67b7": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_stdevs(row_value)",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "fail",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_stdevs_timeseries_data_grouped_row_value__group_id__6.da57b4267f": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_stdevs(row_value)",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_stdevs_timeseries_data_row_value__6.be239e407d": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_stdevs(row_value)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_be_within_n_stdevs_timeseries_data_row_value__date_day__6.9ddcf3af3d": {
+      "test": "dbt_expectations.expect_column_values_to_be_within_n_stdevs(row_value)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_column_values_to_have_consistent_casing_data_test_col_string_a.97aaa47da3": {
+      "test": "dbt_expectations.expect_column_values_to_have_consistent_casing(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_have_consistent_casing_data_test_col_string_a__True.dbf8671a4f": {
+      "test": "dbt_expectations.expect_column_values_to_have_consistent_casing(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_match_like_pattern_data_text_email_address___.418306fca0": {
+      "test": "dbt_expectations.expect_column_values_to_match_like_pattern(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_like_pattern; dbt still runs it; write it as dbt_utils.expression_is_true to have ",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_like_pattern_data_text_email_address___.68d9ba4c6f": {
+      "test": "dbt_expectations.expect_column_values_to_match_like_pattern(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_like_pattern; dbt still runs it; write it as dbt_utils.expression_is_true to have ",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_like_pattern_list_data_text_email_address______.d7494ff111": {
+      "test": "dbt_expectations.expect_column_values_to_match_like_pattern_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_like_pattern_list; dbt still runs it; write it as dbt_utils.expression_is_true to ",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_like_pattern_list_data_text_email_address________all.29026d2e78": {
+      "test": "dbt_expectations.expect_column_values_to_match_like_pattern_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_like_pattern_list; dbt still runs it; write it as dbt_utils.expression_is_true to ",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_email_address___.77c66b57c2": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_email_address___.a5843143fb": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_email_address__c___A_Z_.0c4e9abbc4": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_email_address__i___A_Z_.1e1b855a2c": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_postal_code_5_3__True___d_5_d_3_.119d58affd": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(postal_code_5_3)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_postal_code_5_3__True___d_5_d_9_.1670b81fba": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(postal_code_5_3)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_postal_code_5__True___d_55_.fbc192463f": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_data_text_postal_code_5__True___d_5_.3607321629": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_list_data_text_email_address______.4a5817f3cb": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to have sv",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_list_data_text_email_address______.cf139f0062": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to have sv",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_list_data_text_email_address__c___A_G____H_Z_.bc6f34e029": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to have sv",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_list_data_text_email_address__i___A_G____H_Z_.fe6569deaf": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to have sv",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_list_data_text_postal_code_5__True___d_5_.789d2e2687": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex_list(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to have sv",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_list_data_text_postal_code_5__True___d_5____.efdc1c311a": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex_list(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to have sv",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_match_regex_list_data_text_postal_code_5__True__all___d_5____.6b97a34941": {
+      "test": "dbt_expectations.expect_column_values_to_match_regex_list(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to have sv",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_be_in_set_data_test_col_string_a__True__2__3.bba7663cef": {
+      "test": "dbt_expectations.expect_column_values_to_not_be_in_set(col_string_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_not_be_in_set_data_test_col_string_b__True__a__c.430e7a2045": {
+      "test": "dbt_expectations.expect_column_values_to_not_be_in_set(col_string_b)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_not_be_null_data_test_col_numeric_a.1c5c036a67": {
+      "test": "dbt_expectations.expect_column_values_to_not_be_null(col_numeric_a)",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_column_values_to_not_match_like_pattern_data_text_email_address___.a535fb4823": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_like_pattern(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_like_pattern; dbt still runs it; write it as dbt_utils.expression_is_true to h",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_like_pattern_data_text_email_address___.f4ec123a75": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_like_pattern(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_like_pattern; dbt still runs it; write it as dbt_utils.expression_is_true to h",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_like_pattern_list_data_text_email_address______.22136d26c7": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_like_pattern_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_like_pattern_list; dbt still runs it; write it as dbt_utils.expression_is_true",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_like_pattern_list_data_text_email_address________all.c59ffa1957": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_like_pattern_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_like_pattern_list; dbt still runs it; write it as dbt_utils.expression_is_true",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_data_text_email_address___.34144e0a78": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sve",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_data_text_email_address___.ebe7762c32": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sve",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_data_text_email_address___A_Z_.c2b77c2a36": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sve",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_data_text_email_address___a_z_.4b63f77197": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sve",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_data_text_postal_code_5__True___.08ed586381": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sve",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_data_text_postal_code_5__True___d_5_.40cdfd2e73": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex; dbt still runs it; write it as dbt_utils.expression_is_true to have sve",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_email_address___A_G____H_Z_.243d175b43": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_email_address______.4fdf4a17ec": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_email_address______.a0264bfb10": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_email_address__all______.10df4bdd82": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_email_address__all______.1498b7b772": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_email_address__i___A_Z____0_9_.7b1bf699a8": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_email_address__i__all___A_Z____0_9_.8e437a1f34": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(email_address)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_postal_code_5__True___.8b98c304b7": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_postal_code_5__True___d_5____.ec426d8f9f": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_column_values_to_not_match_regex_list_data_text_postal_code_5__True__all___d_5____.c848dd3173": {
+      "test": "dbt_expectations.expect_column_values_to_not_match_regex_list(postal_code_5)",
+      "model": "data_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_column_values_to_not_match_regex_list; dbt still runs it; write it as dbt_utils.expression_is_true to hav",
+      "dbt": "pass",
+      "issue": 1936
+    },
+    "dbt_expectations_expect_compound_columns_to_be_unique_data_test_col_null__col_null_2__all_values_are_missing.8580ce9745": {
+      "test": "dbt_expectations.expect_compound_columns_to_be_unique",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_compound_columns_to_be_unique_data_test_date_col__col_null__all_values_are_missing.36987b03a6": {
+      "test": "dbt_expectations.expect_compound_columns_to_be_unique",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_compound_columns_to_be_unique_data_test_date_col__col_null__any_value_is_missing.3a23ae9467": {
+      "test": "dbt_expectations.expect_compound_columns_to_be_unique",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_compound_columns_to_be_unique_data_test_date_col__col_string_b.3dce756aff": {
+      "test": "dbt_expectations.expect_compound_columns_to_be_unique",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_compound_columns_to_be_unique_data_test_date_col__col_string_b__2_2.e60b79519e": {
+      "test": "dbt_expectations.expect_compound_columns_to_be_unique",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_compound_columns_to_be_unique_data_test_date_col__col_string_b__all_values_are_missing.ed28427919": {
+      "test": "dbt_expectations.expect_compound_columns_to_be_unique",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_compound_columns_to_be_unique_data_test_date_col__col_string_b__any_value_is_missing.6809061372": {
+      "test": "dbt_expectations.expect_compound_columns_to_be_unique",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_grouped_row_values_to_have_recent_data_timeseries_data_grouped_day__1__date_timestamp.06ec03245b": {
+      "test": "dbt_expectations.expect_grouped_row_values_to_have_recent_data",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_grouped_row_values_to_have_recent_data_timeseries_data_grouped_day__date_day__1__date_timestamp.62aec069b7": {
+      "test": "dbt_expectations.expect_grouped_row_values_to_have_recent_data",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_grouped_row_values_to_have_recent_data_timeseries_data_grouped_day__group_id__1__date_timestamp.f5d9c9d22c": {
+      "test": "dbt_expectations.expect_grouped_row_values_to_have_recent_data",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_grouped_row_values_to_have_recent_data_timeseries_data_grouped_day__group_id__1__group_id_4__date_timestamp.23553c9f5b": {
+      "test": "dbt_expectations.expect_grouped_row_values_to_have_recent_data",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_multicolumn_sum_to_equal_data_test_col_numeric_a__col_numeric_b__4.491d71e071": {
+      "test": "dbt_expectations.expect_multicolumn_sum_to_equal",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_multicolumn_sum_to_equal_data_test_col_numeric_a__col_numeric_b__col_numeric_a_plus_b.57f5616fb2": {
+      "test": "dbt_expectations.expect_multicolumn_sum_to_equal",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_multicolumn_sum_to_equal_data_test_col_numeric_a__col_numeric_b__idx__col_numeric_a_plus_b.ffb54d2659": {
+      "test": "dbt_expectations.expect_multicolumn_sum_to_equal",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_row_values_to_have_data_for_every_n_datepart_timeseries_data_date_day__day.910ac3a171": {
+      "test": "dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_data_for_every_n_datepart_timeseries_data_date_day__day___modules_datetime_date_today_modules_datetime_timedelta_2____modules_datetime_date_today_modules_datetime_timedelta_365_.8fb9b2b260": {
+      "test": "dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_data_for_every_n_datepart_timeseries_data_date_day__day__not_date_day_cast_2021_10_19_as_date_.b0fc37f5ec": {
+      "test": "dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_data_for_every_n_datepart_timeseries_data_extended_date_day__day.fef2d1f342": {
+      "test": "dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_data_for_every_n_datepart_timeseries_data_extended_date_day__day__7.e436a78560": {
+      "test": "dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_data_for_every_n_datepart_timeseries_hourly_data_extended_date_hour__hour.5afac62404": {
+      "test": "dbt_expectations.expect_row_values_to_have_data_for_every_n_datepart",
+      "model": "timeseries_hourly_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_recent_data_timeseries_data_date_datetime__day__1.29c33143be": {
+      "test": "dbt_expectations.expect_row_values_to_have_recent_data(date_datetime)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_recent_data_timeseries_data_date_day__day__1.9222375acc": {
+      "test": "dbt_expectations.expect_row_values_to_have_recent_data(date_day)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_recent_data_timeseries_data_date_timestamp__day__1.300ccbdad1": {
+      "test": "dbt_expectations.expect_row_values_to_have_recent_data(date_timestamp)",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_recent_data_timeseries_data_extended_date_day__day__1.918ff17d7d": {
+      "test": "dbt_expectations.expect_row_values_to_have_recent_data(date_day)",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_row_values_to_have_recent_data_timeseries_hourly_data_extended_date_hour__hour__24.a182297cd8": {
+      "test": "dbt_expectations.expect_row_values_to_have_recent_data(date_hour)",
+      "model": "timeseries_hourly_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_select_column_values_to_be_unique_within_record_data_test_col_string_a__col_string_b__any_value_is_missing.4673d37284": {
+      "test": "dbt_expectations.expect_select_column_values_to_be_unique_within_record",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_aggregation_to_equal_other_table_data_test_sum_col_numeric_a_99___ref_data_test___sum_col_numeric_a___idx__0_95.3707e91bd2": {
+      "test": "dbt_expectations.expect_table_aggregation_to_equal_other_table(sum(col_numeric_a))",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_aggregation_to_equal_other_table_timeseries_data_extended_count___ref_timeseries_data___count_distinct_date_day_.aeece4e5bd": {
+      "test": "dbt_expectations.expect_table_aggregation_to_equal_other_table(count(distinct date_day))",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_table_column_count_to_be_between_data_test_1.81327d9e76": {
+      "test": "dbt_expectations.expect_table_column_count_to_be_between",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_column_count_to_be_between_data_test_11.9b078fc7dd": {
+      "test": "dbt_expectations.expect_table_column_count_to_be_between",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_column_count_to_be_between_data_test_11__1.d7ba084796": {
+      "test": "dbt_expectations.expect_table_column_count_to_be_between",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_column_count_to_equal_data_test_11.ae42600ae3": {
+      "test": "dbt_expectations.expect_table_column_count_to_equal",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_column_count_to_equal_other_table_data_test_ref_data_test_.47d89a52cb": {
+      "test": "dbt_expectations.expect_table_column_count_to_equal_other_table",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_columns_to_contain_set_data_test_col_numeric_b__col_string_a.428ef19067": {
+      "test": "dbt_expectations.expect_table_columns_to_contain_set",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_columns_to_match_ordered_list_data_test_idx__date_col__col_numeric_a__col_numeric_b__col_string_a__col_string_b__col_null__col_null_2__col_numeric_a_plus_b__idx_multiplied_by_2__idx_multiplied_by_minus_2.f93d9cdcbf": {
+      "test": "dbt_expectations.expect_table_columns_to_match_ordered_list",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_columns_to_match_ordered_list_timeseries_data_date_day__date_datetime__date_timestamp__row_value__row_value_log.fea981f1fa": {
+      "test": "dbt_expectations.expect_table_columns_to_match_ordered_list",
+      "model": "timeseries_data",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_table_columns_to_match_ordered_list_timeseries_data_extended_date_day__row_value__row_value_log.c4fbe0bb2c": {
+      "test": "dbt_expectations.expect_table_columns_to_match_ordered_list",
+      "model": "timeseries_data_extended",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_table_columns_to_match_set_data_test_idx__date_col__col_numeric_a__col_numeric_b__col_string_a__col_string_b__col_null__col_null_2__col_numeric_a_plus_b__idx_multiplied_by_2__idx_multiplied_by_minus_2.b08575ccfd": {
+      "test": "dbt_expectations.expect_table_columns_to_match_set",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_columns_to_not_contain_set_data_test_col_numeric_c__col_string_d.d79c96d480": {
+      "test": "dbt_expectations.expect_table_columns_to_not_contain_set",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_row_count_to_be_between_data_test_1.2707fd03e7": {
+      "test": "dbt_expectations.expect_table_row_count_to_be_between",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_row_count_to_be_between_data_test_4.740d584f1d": {
+      "test": "dbt_expectations.expect_table_row_count_to_be_between",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_row_count_to_be_between_data_test_4__1.68b3ca52d7": {
+      "test": "dbt_expectations.expect_table_row_count_to_be_between",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_row_count_to_be_between_timeseries_data_grouped_10.d82948f3e6": {
+      "test": "dbt_expectations.expect_table_row_count_to_be_between",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_table_row_count_to_be_between_timeseries_data_grouped_date_day__10.28ef2972b1": {
+      "test": "dbt_expectations.expect_table_row_count_to_be_between",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_table_row_count_to_be_between_timeseries_data_grouped_group_id__10000__True.1370954d9b": {
+      "test": "dbt_expectations.expect_table_row_count_to_be_between",
+      "model": "timeseries_data_grouped",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: RANDOM() gives another value on every run, so no proof covers its result; pass the value in as a column or a constant",
+      "dbt": "pass",
+      "design": "a random value differs on every run, so no proof covers the model"
+    },
+    "dbt_expectations_expect_table_row_count_to_equal_data_test_4.0893914b47": {
+      "test": "dbt_expectations.expect_table_row_count_to_equal",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_row_count_to_equal_other_table_data_test_ref_data_test___1_1__1_1.bb1a037ebc": {
+      "test": "dbt_expectations.expect_table_row_count_to_equal_other_table",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    },
+    "dbt_expectations_expect_table_row_count_to_equal_other_table_times_factor_data_test_factored_ref_data_test___2.297ec8375e": {
+      "test": "dbt_expectations.expect_table_row_count_to_equal_other_table_times_factor",
+      "model": "data_test_factored",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_table_row_count_to_equal_other_table_times_factor; dbt still runs it; write it as dbt_utils.expression_is",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_expectations_expect_table_row_count_to_equal_other_table_times_factor_data_test_factored_ref_data_test___2__date_col.b5fb48a127": {
+      "test": "dbt_expectations.expect_table_row_count_to_equal_other_table_times_factor",
+      "model": "data_test_factored",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_table_row_count_to_equal_other_table_times_factor; dbt still runs it; write it as dbt_utils.expression_is",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_expectations_expect_table_row_count_to_equal_other_table_times_factor_data_test_factored_ref_data_test___2__date_col__idx.5fc903e9f6": {
+      "test": "dbt_expectations.expect_table_row_count_to_equal_other_table_times_factor",
+      "model": "data_test_factored",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for dbt_expectations.expect_table_row_count_to_equal_other_table_times_factor; dbt still runs it; write it as dbt_utils.expression_is",
+      "dbt": "pass",
+      "issue": 1937
+    },
+    "dbt_expectations_expression_is_true_data_test__col_numeric_a_col_numeric_b_1_.72e60a34af": {
+      "test": "dbt_expectations.expression_is_true((col_numeric_a + col_numeric_b = 1))",
+      "model": "data_test",
+      "outcome": "refused",
+      "construct": "sverify cannot read float32 yet (use float64)",
+      "dbt": "pass",
+      "issue": 1908
+    }
+  }
+}
