@@ -43,14 +43,14 @@ def pinned() -> list[str]:
     return found
 
 
-def report_and_tables():
-    """A small proved plan, and a connection holding its table."""
+def report_and_tables(engine: str | None = None):
+    """A small proved plan, and a connection (on `engine`) holding its table."""
     import ibis
     import pyarrow as pa
 
     import sverify as sv
 
-    con = sv.connect()
+    con = sv.connect(engine)
     con.put("t", pa.table({"a": [1, 5, 7]}))
     t = ibis.table({"a": "int64"}, name="t")
     report = sv.verify(
@@ -67,19 +67,20 @@ def rows(table) -> list[int]:
     return sorted(r["a"] for r in table.to_pylist())
 
 
-def check(engines: set[str], absent: tuple[str, ...] = ()) -> None:
+def check(engines: set[str], absent: tuple[str, ...] = (), local: str = "duckdb") -> None:
     """The engines sverify finds include `engines`; none of `absent` is
-    installed; a run on each of `engines` gives DuckDB's rows."""
+    installed; a run on each of `engines` gives the rows of `local`, the
+    engine of the connection."""
     from sverify import profiles
 
     found = set(profiles.plugins())
     assert engines <= found, f"engines found: {sorted(found)}, expected {sorted(engines)}"
     missing = [m for m in absent if importlib.util.find_spec(m) is not None]
     assert not missing, f"installed, though this install should not have them: {missing}"
-    report, con = report_and_tables()
-    expected = rows(report.run(con, engine="duckdb"))
+    report, con = report_and_tables(local)
+    expected = rows(report.run(con, engine=local))
     assert expected == [5, 7], expected
-    for e in sorted(engines - {"duckdb"}):
+    for e in sorted(engines - {local}):
         got = rows(report.run(con, engine=e))
         assert got == expected, f"{e} gives {got}, DuckDB {expected}"
     print(f"engines {sorted(found)}; ran on {sorted(engines)}; pinned {pinned()}")
@@ -140,7 +141,8 @@ def main() -> None:
     elif which == "duckdb":
         check({"duckdb"}, absent=("polars", "pyspark", "sverify_polars", "sverify_spark"))
     elif which == "polars":
-        check({"duckdb", "polars"}, absent=("pyspark",))
+        # Polars alone: its connection holds Arrow tables and DuckDB is not installed.
+        check({"polars"}, absent=("pyspark", "duckdb"), local="polars")
     elif which == "spark":
         check({"duckdb", "spark"}, absent=("polars",))
     elif which == "spark-light":

@@ -3,8 +3,8 @@
 condition reads (`label`, `resolve`), and what a check established
 (`CheckedCondition`, `Discharged`, `PreconditionError`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 
@@ -604,6 +604,132 @@ def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
 
 
 @dataclass(frozen=True)
+class NonOverlapping(TableCondition):
+    """The ranges `[lo, hi)` do not overlap per combination of `by` (see
+    `non_overlapping`).
+
+    Attributes:
+        lo: The column the range starts at.
+        hi: The column the range ends before.
+        by: The columns the ranges are kept apart by.
+    """
+
+    lo: str
+    hi: str
+    by: tuple[str, ...] = ()
+
+    entry: ClassVar[str | None] = "ranges"
+
+    @property
+    def label(self) -> str:
+        by = f", by=[{', '.join(self.by)}]" if self.by else ""
+        return f"non_overlapping({self.lo}, {self.hi}{by})"
+
+    def violations(self, table: ir.Table) -> int:
+        """How many rows break it: one query over the ranges ordered by start,
+        NULLs last, in each group (`by`, NULLs equal). A row is flagged when its
+        start is NULL, its end is before its start, or it has a next row and its
+        end is NULL or after that row's start. Zero flagged rows is exactly the
+        condition: sorted so, each end is at or before the next start, and each
+        start is at or before its end."""
+        lo, hi = table[self.lo], table[self.hi]
+        w = ibis.window(
+            group_by=[table[c] for c in self.by],
+            order_by=[lo.asc(nulls_first=False), hi.asc(nulls_first=False)],
+        )
+        next_lo = lo.lead().over(w)
+        flagged = lo.isnull() | (hi < lo) | (next_lo.notnull() & (hi.isnull() | (hi > next_lo)))
+        return _count(table.filter(flagged).count())
+
+    def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
+        def before(a: dict, b: dict) -> bool:
+            return a[self.hi] is not None and b[self.lo] is not None and a[self.hi] <= b[self.lo]
+
+        groups: dict[object, list[dict]] = {}
+        for r in rows:
+            groups.setdefault(key(tuple(r[c] for c in self.by)), []).append(r)
+        bad: list[dict] = []
+        for group in groups.values():
+            for i, a in enumerate(group):
+                broken = a[self.lo] is None or (a[self.hi] is not None and a[self.hi] < a[self.lo])
+                broken = broken or any(
+                    not (before(a, b) or before(b, a)) for j, b in enumerate(group) if j != i
+                )
+                if broken:
+                    bad.append(a)
+        return bad
+
+    def check_types(self, t: str, schema: Any) -> None:
+        """Refuse a range whose columns `<` does not order as numbers: doubles
+        (NaN, two zeros) and strings (collation) have no rule in v1."""
+        from sverify._unsupported import UnsupportedError
+
+        for c in (self.lo, self.hi):
+            dtype = schema[c] if c in schema.names else None
+            if dtype is not None and not (
+                dtype.is_integer()
+                or dtype.is_decimal()
+                or dtype.is_date()
+                or dtype.is_timestamp()
+                or dtype.is_time()
+            ):
+                raise UnsupportedError(
+                    f"{self.label} on {t}: column {c!r} is {dtype}; the ranges' columns must be "
+                    "integers, decimals, dates, timestamps or times (cast the column in the "
+                    "source query)"
+                )
+
+    def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
+        cols = names(t)
+        missing = [c for c in (self.lo, self.hi, *self.by) if c not in cols]
+        if missing:
+            raise ValueError(f"non_overlapping() names unknown columns: {missing}")
+        return {
+            "by": _positions(self.by, cols),
+            "lo": list(cols).index(self.lo),
+            "hi": list(cols).index(self.hi),
+        }
+
+    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+        return CheckedCondition(self.label, False, "ranges are checked on inputs only")
+
+
+def non_overlapping(lo: str, hi: str, *, by: str | Sequence[str] = ()) -> NonOverlapping:
+    """The validity ranges `[lo, hi)` of a table do not overlap per combination
+    of `by`, as in a type-2 dimension: `non_overlapping("valid_from", "valid_to",
+    by="customer_id")`. This is what `dbt_utils.mutually_exclusive_ranges` tests.
+
+    Every row has a `lo`; `hi` is NULL (an open end, at most one per `by`) or at
+    least `lo`; and two rows with the same `by` values (NULLs equal) have ranges
+    that end where or before the other begins. In `requires` it is checked on
+    the data (one query over the ranges ordered by start; the count is the rows
+    that break it). Lean uses it where a join on `by` and `lo <= x < hi` (or
+    `hi IS NULL OR x < hi`) gives each left row at most one partner: the left
+    side's keys stay keys of the join (`Rel.keys`, `rangedKeys`), so
+    `unique(order_id)` of a point-in-time join proves from `unique(order_id)`
+    of the facts. The columns are integers, dates, timestamps, times or
+    decimals; ends written `x <= hi` get no rule.
+
+    Args:
+        lo: The name of the column the range starts at.
+        hi: The name of the column the range ends before (NULL: no end).
+        by: The name or names of the columns the ranges are kept apart by.
+
+    Returns:
+        A `NonOverlapping` condition, for `requires`.
+
+    Raises:
+        ValueError: A column is not a name.
+    """
+    cols = (by,) if isinstance(by, str) else tuple(by)
+    if not all(isinstance(c, str) for c in (lo, hi, *cols)):
+        raise ValueError(
+            "non_overlapping takes column names, non_overlapping('from', 'to', by='k')"
+        )
+    return NonOverlapping(lo, hi, cols)
+
+
+@dataclass(frozen=True)
 class RelationRows:
     """What the checker bounds a relation of the transformation's plan by (see
     `Report.relations`)."""
@@ -995,6 +1121,7 @@ class PlannedCondition:
     (`Report.check_inputs`)."""
 
     text: str
+    """The condition's label, as the export wrote it."""
     plan: str
     """The plan, as protobuf JSON in Lean's form."""
 
@@ -1112,8 +1239,12 @@ class Discharged:
     `SCHEMA`, proved from facts of one metadata source, or `ON_DATA`."""
 
     table: str
+    """The table the precondition is on."""
     condition: str
+    """The precondition, as SQL."""
     source: str
+    """How it was established: `"schema"`, the metadata source (such as
+    "file stats @v3"), or `"checked on data"`."""
     inferred: bool = False
     """The condition is a bound inferred to rule out overflow (#244)."""
 

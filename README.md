@@ -9,7 +9,7 @@ agreement against a model of each engine's scalar functions, from the
 checker's own report (`check_proved_on`): for a plan without open measures
 (`closed`), on DuckDB a guard-free report without issues under the reference,
 on Polars and Spark a guard-free one. That the models match the engines
-rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). This README is for people working on the
+rests on tests ([what is proved](docs/proved-theorems.md), [what is trusted](docs/trusted-base.md)). [How this project is built](docs/how-this-is-built.md) says who writes it and what you can check yourself. This README is for people working on the
 project. Users start at [python/README.md](python/README.md), which is also
 sverify's PyPI page.
 
@@ -82,7 +82,7 @@ SQL string ─► SQLGlot lift ────────────────�
 | `templates/` | A template repository for pipelines ([templates/pipelines/README.md](templates/pipelines/README.md)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
-| `upstream/` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream: one JSON document per bug ([the bugs](upstream/bugs/)) |
+| `upstream/` | Bugs found in SQLGlot, engines, Ibis and Substrait tooling, to file upstream: one JSON document per bug ([the bugs](upstream/bugs/)), and [a report](upstream/REPORT.md) of what is filed, fixed and still to report, with the counts per project |
 | `changelog.d/` | One fragment per user-visible change; the release folds them into `CHANGELOG.md` |
 
 ## Documents
@@ -196,20 +196,24 @@ To work on the project or run the tour from a clone, you need [uv](https://docs.
 rustup is to Rust, or uv to Python), and Java 17 or 21 for the Spark tests:
 
 ```bash
+# skip: installs software on the reader's machine
 brew install uv          # or: curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 ```bash
+# skip: installs software on the reader's machine
 brew install openjdk@21  # or: sudo apt install openjdk-21-jre-headless
 ```
 
 Homebrew's JDK is not on the `PATH`; point `JAVA_HOME` at it (in `~/.zshrc`):
 
 ```bash
+# skip: sets the reader's JAVA_HOME
 export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home
 ```
 
 Without a JVM the Spark tests are skipped and everything else runs.
 ```bash
+# skip: installs software on the reader's machine
 curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh
 ```
 
@@ -217,12 +221,15 @@ Open a new terminal so `lake` (Lean's build tool) is on your PATH, then run, fro
 the project root:
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 lake build                       # checks every proof and builds the substrait-check CLI
 ```
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd python && uv sync             # sverify with every extra, and the dev tools (pytest, hypothesis, …)
 ```
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 uv run pytest                    # all pass; the Spark tests skip without a JVM
 ```
 
@@ -236,6 +243,7 @@ different binary, set `SVERIFY_CHECKER` to its path.
 Tasks are defined with [poe](https://poethepoet.natn.io) in `python/pyproject.toml`:
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 cd python && uv run poe qa       # everything below, in order; stops at the first failure
 ```
 
@@ -263,9 +271,11 @@ The eight notebooks in [`notebooks/`](notebooks) form a guided tour, starting at
 links between notebooks work:
 
 ```bash
+# skip: opens an editor server
 uvx marimo edit --sandbox notebooks              # from the project root
 ```
 ```bash
+# skip: opens a server
 uvx marimo run --sandbox --include-code notebooks   # read-only apps
 ```
 
@@ -313,6 +323,7 @@ elan; the build hook runs `lake build` there.
 To run your own scripts with the package available, from the project root:
 
 ```bash
+# skip: runs the reader's pipeline
 uv run --project python python my_pipeline.py
 ```
 

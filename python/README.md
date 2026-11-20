@@ -2,6 +2,9 @@
 
 > Sverify is a working prototype. Its Lean proofs, its checker and its Python
 > code still need a human audit before anyone relies on their results.
+>
+> [How this project is built](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-this-is-built.md)
+> says who writes it and what you can check yourself.
 
 Sverify proves a data pipeline's contracts in Lean before it runs, keeps the
 result up to date from Delta and Iceberg changes, and runs the checked plan on
@@ -92,6 +95,7 @@ except VerificationError as e:
 ## Install
 
 ```bash
+# skip: installs software on the reader's machine
 pip install sverify                # or: uv add sverify; verifies, runs nothing
 pip install 'sverify[duckdb]'      # and runs plans on DuckDB, the default engine
 pip install 'sverify[all]'         # with every engine in the 1.x promise and both table formats
@@ -122,6 +126,7 @@ outside sverify's model (the other codes are in
 report for GitHub's code scanning.
 
 ```bash
+# skip: runs on pipelines/orders.py, the reader's file
 sverify check pipelines/orders.py
 ```
 
@@ -158,18 +163,19 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   and Iceberg metadata, and a batch that breaks one is refused before
   anything runs. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#runtime-errors) list what is ruled out.
 * A route takes the proof to the engine. `route="auto"` runs the plan on
-  DuckDB, Polars or Spark natively, through the reference's proved translation, or
-  by a check that the engine's choices are within the proof's, and names
+  DuckDB, Polars or Spark natively, through the reference's translation (proved against the model of
+  the engine), or by a check that the engine's choices are within the proof's, and names
   the plan's class there: exact, equal under an observation the
   postcondition states (a float tolerance is one), or exact or observed
-  after a proved shim. Where no route
+  after a shim proved against that model. Where no route
   applies, the plan is refused with the reason
   ([routes and classes](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)). DuckDB,
   Polars and Spark are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
 * Postconditions say what the result's consumer observes. By default,
-  doubles within the plan's proved bound (`floats="plan"`, which the report
-  prints); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
+  doubles within the plan's bound (`floats="plan"`, which the report
+  prints; the bound holds for the model of each engine's functions, and
+  [what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/trusted-base.md) says how far the models are tested); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
   which `verify` checks against that bound, and also rows as a sequence or
   a multiset, one zero. A sink states what a
   rerun must reproduce (`reproducible=`), and a refresh whose engine can't
@@ -216,6 +222,7 @@ Each night, when `main` has changed, the
 `<next minor>.dev<commits>+g<sha>`, so they sort after the latest release. They are not on PyPI:
 
 ```bash
+# skip: installs software on the reader's machine
 uv add "sverify>=0.8.0.dev0" --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 pip install --pre sverify --find-links https://github.com/AlexanderNenninger/substrait-lean/releases/expanded_assets/nightly
 ```
@@ -233,6 +240,7 @@ one build for that long. `--find-links` sees every build on the page and picks
 the newest. Copy a URL from the release page:
 
 ```bash
+# skip: installs software on the reader's machine
 pip install "sverify @ https://github.com/AlexanderNenninger/substrait-lean/releases/download/nightly/sverify-<version>-py3-none-<platform>.whl"
 ```
 
@@ -389,6 +397,7 @@ the Ibis coverage table in its README, and
 ## Development
 
 ```bash
+# skip: builds or tests the repository, which needs elan and takes minutes
 git clone https://github.com/AlexanderNenninger/substrait-lean
 cd substrait-lean/python
 uv sync                          # builds substrait-check with lake (needs elan) and links it in

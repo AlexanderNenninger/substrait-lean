@@ -136,6 +136,105 @@ def test_table_tests_without_a_condition_name_the_test(kind: str) -> None:
     assert got.conditions == [] and kind in (got.reason or "")
 
 
+@pytest.mark.parametrize(
+    ("test", "expected"),
+    [
+        (
+            t("dbt_expectations.expect_column_values_to_match_regex", regex="^a.*"),
+            "c IS NULL OR (regexp_matches(c, '^a.*'))",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_values_to_not_match_regex_list",
+                regex_list=["a", "b"],
+            ),
+            "c IS NULL OR (NOT (regexp_matches(c, 'a') AND regexp_matches(c, 'b')))",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_values_to_not_match_like_pattern_list",
+                like_pattern_list=["a%", "b%"],
+                match_on="all",
+            ),
+            "c IS NULL OR (NOT (c LIKE 'a%' OR c LIKE 'b%'))",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_value_lengths_to_be_between",
+                min_value=2,
+                max_value=4,
+                strictly=True,
+            ),
+            "c IS NULL OR (length(c) > 2 AND length(c) < 4)",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_values_to_match_like_pattern_list",
+                like_pattern_list=["a%", "%z"],
+                match_on="all",
+            ),
+            "c IS NULL OR (c LIKE 'a%' AND c LIKE '%z')",
+        ),
+        (
+            t("dbt_expectations.expect_column_values_to_not_match_like_pattern", like_pattern="x_"),
+            "c IS NULL OR (NOT (c LIKE 'x_'))",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_value_lengths_to_be_between",
+                min_value=2,
+                max_value=4,
+            ),
+            "c IS NULL OR (length(c) >= 2 AND length(c) <= 4)",
+        ),
+        (
+            t("dbt_expectations.expect_column_value_lengths_to_equal", value=3),
+            "c IS NULL OR (length(c) = 3)",
+        ),
+        (t("dbt_utils.not_accepted_values", values=["a"]), "c IS NULL OR (c NOT IN ('a'))"),
+        (t("dbt_utils.not_empty_string"), "c IS NULL OR (trim(c) <> '')"),
+        (
+            t(
+                "dbt_expectations.expect_column_pair_values_A_to_be_greater_than_B",
+                None,
+                column_A="a",
+                column_B="b",
+                or_equal=True,
+            ),
+            "coalesce((a >= b), TRUE)",
+        ),
+        (
+            t(
+                "dbt_expectations.expect_column_pair_values_to_be_equal",
+                None,
+                column_A="a",
+                column_B="b",
+            ),
+            "coalesce((a = b), TRUE)",
+        ),
+    ],
+)
+def test_string_and_pair_conditions(test: Test, expected: str) -> None:
+    assert conds(test) == [expected]
+
+
+@pytest.mark.parametrize(
+    "test",
+    [
+        t("dbt_expectations.expect_column_values_to_match_regex", regex="a", flags="i"),
+        t(
+            "dbt_expectations.expect_column_values_to_match_regex_list",
+            regex_list=["a"],
+            match_on="x",
+        ),
+        t("dbt_expectations.expect_column_values_to_match_regex_list", regex_list=[]),
+    ],
+)
+def test_string_refusals(test: Test) -> None:
+    got = mapping.test_conditions(test, side="ensures", table_of=lambda _: None)
+    assert got.conditions == [] and got.reason
+
+
 def test_where_config_filters_the_rows() -> None:
     test = t("not_null")
     test.where = "status = 'live'"
@@ -253,3 +352,26 @@ def test_needs_as_dbt_tests() -> None:
     assert mapping.dbt_test("q", "<>", "0", '"q" IS NULL OR "q" <> 0') == (
         'dbt_utils.expression_is_true: {arguments: {expression: "\\"q\\" IS NULL OR \\"q\\" <> 0"}}'
     )
+
+
+@pytest.mark.parametrize(
+    "cond",
+    [
+        "c IS NULL OR (regexp_matches(c, '^a'))",
+        "c IS NULL OR (c LIKE 'a%' OR c LIKE 'b%')",
+        "c IS NULL OR (length(c) >= 2 AND length(c) <= 4)",
+        "c IS NULL OR (trim(c) <> '')",
+        "c IS NULL OR (NOT (c LIKE 'x'))",
+    ],
+)
+def test_sverify_proves_a_test_it_is_given(cond: str) -> None:
+    """The conditions are in the lift's subset: the same test upstream proves them."""
+    report = sv.verify(
+        "select c from t",
+        tables={"t": {"c": "VARCHAR"}},
+        semantics="duckdb",
+        requires={"t": [cond]},
+        ensures=[cond],
+        on_inferred="error",
+    )
+    assert report.ensures[0].proved

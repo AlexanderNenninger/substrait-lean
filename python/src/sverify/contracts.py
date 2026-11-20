@@ -1,7 +1,7 @@
 """Pre- and postconditions for transformations, with postconditions proved in Lean.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
     from ibis import _
     import sverify as sv
@@ -107,6 +107,7 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     Inferred,
     Key,
     MaxRows,
+    NonOverlapping,
     PreconditionError,
     References,
     RelationRows,
@@ -822,7 +823,9 @@ def verify(
             `"polars"` checks an Ibis transformation under Polars's
             profile, `"spark"` under Spark's, which evaluates as the
             reference does: its plan runs natively on that engine
-            (`sverify.routes`, the route `"native"`).
+            (`sverify.routes`, the route `"native"`). The proof holds for
+            the model of the engine's functions; that the model matches
+            the engine rests on tests (`docs/trusted-base.md`).
             `"substrait"` checks an Ibis transformation under Substrait's
             own semantics (`Profile.substrait`): the proof under the
             reference holds there where Substrait allows nothing more at
@@ -1155,6 +1158,8 @@ def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
     """The output columns `cond` reads; None where that is not known."""
     if isinstance(cond, Unique | RowsPer):
         return list(cond.cols)
+    if isinstance(cond, NonOverlapping):
+        return [cond.lo, cond.hi, *cond.by]
     if isinstance(cond, References | ArrivesWithin):
         return [cond.col]
     if isinstance(cond, MaxRows):
@@ -1615,6 +1620,10 @@ def _prove_once(
         return not isinstance(c, TableCondition) and not (isinstance(c, Inferred) and c.fact)
 
     req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
+    for t, cs in requires.items():
+        for c in cs:
+            if isinstance(c, NonOverlapping) and t in schemas:
+                c.check_types(t, schemas[t])
 
     unreadable: dict[str, _Unsupported] = {}
 
@@ -1671,6 +1680,7 @@ def _prove_once(
     foreign_keys = entries("references")
     caps = {t: min(ns) for t, ns in entries("max_rows").items() if ns}
     per_key = {t: ps for t, ps in entries("rows_per").items() if ps}
+    ranges = {t: rs for t, rs in entries("ranges").items() if rs}
     contract = {
         "requires": req_plans,
         "ensures": ens_plans,
@@ -1680,6 +1690,7 @@ def _prove_once(
         "references": foreign_keys,
         "max_rows": caps,
         "rows_per": per_key,
+        "ranges": ranges,
         "text": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 
@@ -2484,7 +2495,9 @@ class Fact:
     (`contract_sound` on the table itself), never by name."""
 
     condition: str
+    """The condition, as SQL."""
     source: str
+    """Where it comes from, such as "Delta constraint" or "file stats @v3"."""
     rows: int | None = None
     """For a row-count fact, at most this many rows; its `condition` is then
     `TRUE` (the record counts of a table format's files)."""
@@ -2503,13 +2516,13 @@ _facts: dict[tuple[int, str], tuple[weakref.ref[Any], list[Fact]]] = {}
 
 def register_facts(con: Connection, name: str, facts: Sequence[Fact] | None) -> None:
     """Record (or with None, forget) what metadata says about table `name`."""
-    key = (id(con._ibis), name)
+    key = (id(con._source), name)
     if facts is None:
         _facts.pop(key, None)
     else:
         for k in [k for k, (ref, _) in _facts.items() if ref() is None]:
             del _facts[k]
-        _facts[key] = (weakref.ref(con._ibis), list(facts))
+        _facts[key] = (weakref.ref(con._source), list(facts))
 
 
 def table_facts(table: ir.Table) -> list[Fact] | None:
@@ -2795,8 +2808,9 @@ class ViewContract:
     """The profile the transformation was verified under (`Report.semantics`)."""
     deterministic: bool = False
     """The report proves the result determined up to row order and the members of
-    a class (`Report.deterministic`): two engines hold the same rows of it. False
-    where no single report speaks for the view."""
+    a class (`Report.deterministic`): the model of each engine holds the same
+    rows of it (that it matches the engine rests on tests,
+    `docs/trusted-base.md`). False where no single report speaks for the view."""
 
 
 def view_contract(expr: ir.Table) -> ViewContract:
@@ -2816,9 +2830,12 @@ def view_contract(expr: ir.Table) -> ViewContract:
             f"not proved ({'; '.join(unproved)}); state them in the `ensures` of the "
             "transformation that produces those inputs, so they are proved"
         )
-    if per_key := [label(c) for cs in requires.values() for c in cs if isinstance(c, RowsPer)]:
+    if per_key := [
+        label(c) for cs in requires.values() for c in cs if isinstance(c, RowsPer | NonOverlapping)
+    ]:
         raise ValueError(
-            "cannot maintain incrementally: batches are not checked against rows_per yet "
+            "cannot maintain incrementally: batches are not checked against rows_per or "
+            "non_overlapping yet "
             f"(#219): {', '.join(per_key)}"
         )
     return ViewContract(
@@ -2896,14 +2913,20 @@ class ContractedTransform:
         """What a refresh does with a batch of a source that breaks this
         transform's preconditions; None: the source's setting."""
         self.on_inferred = _checked_on_inferred(on_inferred)
+        """What an inferred precondition does (`transform(on_inferred=)`)."""
         self.on_unproved, self.check_requires = on_unproved, check_requires
         self.semantics = _checked_semantics(semantics)
+        """The profile the contract is proved under (`transform(semantics=)`)."""
         self.check_engine = check_engine
+        """The engine the preconditions are checked on, or None for the
+        run's (`transform(check_engine=)`)."""
         self.name: str = fn.__name__
         self.signature = inspect.signature(fn)
+        """The wrapped function's signature."""
         self.requires: dict[str, Sequence[Condition]] = requires_by_input(
             requires, list(self.signature.parameters), "parameter", TypeError
         )
+        """The preconditions, by parameter name."""
         self.report: Report | None = None
         """The `Report` of the proof of the postconditions in the last call,
         or None before the first call: the report of this transform, as a
