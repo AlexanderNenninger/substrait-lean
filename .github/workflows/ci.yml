@@ -862,14 +862,11 @@ jobs:
             ARM64) echo "protoc_arch=aarch_64" >> "$GITHUB_OUTPUT" ;;
             *) echo "protoc_arch=x86_64" >> "$GITHUB_OUTPUT" ;;
           esac
-      # The key names the runner's environment: the cache stores `~` relative
-      # to the workspace, and GitHub's runners and the AWS pool have different
-      # homes, so one's archive restores outside the other's `~`.
       - id: wheel
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/substrait-validator-wheel
-          key: substrait-validator-${{ steps.validator.outputs.commit }}-rust${{ steps.validator.outputs.rust }}-maturin${{ steps.validator.outputs.maturin }}-protoc${{ steps.validator.outputs.protoc }}-${{ runner.os }}-${{ runner.arch }}-${{ runner.environment }}
+          key: substrait-validator-${{ steps.validator.outputs.commit }}-rust${{ steps.validator.outputs.rust }}-maturin${{ steps.validator.outputs.maturin }}-protoc${{ steps.validator.outputs.protoc }}-${{ runner.os }}-${{ runner.arch }}
       - if: steps.wheel.outputs.cache-hit != 'true'
         env:
           COMMIT: ${{ steps.validator.outputs.commit }}
