@@ -85,14 +85,13 @@ LIFT_LEVELS = 3
 
 
 def test_the_lift_guards_the_top_levels_of_a_nest_and_binds_the_rest():
-    """A guard at the deepest lifted level is proved. One level further down the
-    filter's chains are bound (D50-d); until the analysis reads a guarded column
-    (D50-d3c) the division there needs a precondition."""
+    """A guard at the deepest lifted level is proved, and one level further down,
+    where the filter's chains are bound (D50-d), it is proved too: the guard stands
+    in the level's `CASE` condition, which the analysis refines."""
     inner = sv.verify(_nest(LIFT_LEVELS - 1), on_inferred="off")
     assert inner.verdict == sv.Verdict.PROVED, str(inner)
     outer = sv.verify(_nest(LIFT_LEVELS), on_inferred="off")
-    assert outer.verdict != sv.Verdict.PROVED
-    assert [e.kind for e in outer.errors] == ["division by zero"]
+    assert outer.verdict == sv.Verdict.PROVED, str(outer)
 
 
 @pytest.mark.parametrize("wrappers", [4, 5, 8])
@@ -103,8 +102,7 @@ def test_a_deep_nest_is_bound_and_checks_in_time_linear_in_depth(wrappers):
     start = time.perf_counter()
     report = sv.verify(_nest(wrappers), on_inferred="off")
     assert time.perf_counter() - start < 60
-    # Until the analysis reads a guarded column (D50-d3c) the division needs a precondition.
-    assert [e.kind for e in report.errors] == ["division by zero"]
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 def test_a_bound_filter_runs_as_the_lifted_one():
