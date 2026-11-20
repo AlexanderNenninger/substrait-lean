@@ -125,13 +125,13 @@ def LExpr.bind (w : Nat) (g : Option Expr) (s : BindSt) : LExpr → BindSt × Ex
   | .mk body cs =>
     let p := LChain.bindAll w g s body 0 cs
     (p.1, body.subst ((List.range w).map .field ++ p.2))
-/-- `bind` of each chain `body` reads only eagerly, `fill` of the others; the
+/-- `bind` of each chain `body` reads, and reads only eagerly; `fill` of the others; the
 first is chain `i`, at column `w + i`. -/
 def LChain.bindAll (w : Nat) (g : Option Expr) (s : BindSt) (body : Expr) (i : Nat) :
     List LChain → BindSt × List Expr
   | [] => (s, [])
   | c :: cs =>
-    let p := if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)
+    let p := if (body.reads (w + i) && body.eagerOnly (w + i)) then LChain.bind w g s c else (s, LChain.fill w c)
     let q := LChain.bindAll w g p.1 body (i + 1) cs
     (q.1, p.2 :: q.2)
 /-- Bind a chain under the reach `g`: one level per operand that may raise,
@@ -570,18 +570,18 @@ theorem LChain.bindAll_spec (hI : I.Logic) (cat : Catalog) (r : Rel) (w : Nat) (
   | i, c :: cs, g, s, F, hs, hg, ⟨hc, hcs⟩ => by
     -- The chain itself: bound, or filled in place.
     have hp : ∃ F₁, Grows I cat r w s
-          (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).1 F F₁ ∧
-        (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).2.refsLt
-          (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).1.width ∧
+          (if (body.reads (w + i) && body.eagerOnly (w + i)) then LChain.bind w g s c else (s, LChain.fill w c)).1 F F₁ ∧
+        (if (body.reads (w + i) && body.eagerOnly (w + i)) then LChain.bind w g s c else (s, LChain.fill w c)).2.refsLt
+          (if (body.reads (w + i) && body.eagerOnly (w + i)) then LChain.bind w g s c else (s, LChain.fill w c)).1.width ∧
         ∀ row ∈ r.eval cat I, Reach I g (row ++ F row) → LChain.Bools I w row c →
-          (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)).2.eval
+          (if (body.reads (w + i) && body.eagerOnly (w + i)) then LChain.bind w g s c else (s, LChain.fill w c)).2.eval
             (row ++ F₁ row) I = (LChain.fill w c).eval row I := by
       split
       · exact LChain.bind_spec hI cat r w c g s F hs hg hc
       · refine ⟨F, Grows.refl hs, Expr.refsLt_mono _ hs.2.2 (LChain.fill_refsLt w c hc), ?_⟩
         intro row hr _ _
         exact Expr.eval_append (F row) (LChain.fill_refsLt w c hc) (hs.2.1 row hr).1
-    generalize hP : (if body.eagerOnly (w + i) then LChain.bind w g s c else (s, LChain.fill w c)) = P at hp
+    generalize hP : (if (body.reads (w + i) && body.eagerOnly (w + i)) then LChain.bind w g s c else (s, LChain.fill w c)) = P at hp
     obtain ⟨F₁, hG₁, hr₁, hv₁⟩ := hp
     have hg₁ : ∀ c ∈ g, c.refsLt P.1.width := fun c hc => Expr.refsLt_mono _ hG₁.2.2 (hg c hc)
     obtain ⟨F₂, hG₂, hrs₂, hlen₂, hv₂⟩ := LChain.bindAll_spec hI cat r w body (i + 1) cs g P.1 F₁ hG₁.1 hg₁ hcs
