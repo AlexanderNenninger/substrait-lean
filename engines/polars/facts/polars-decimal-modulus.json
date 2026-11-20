@@ -15,7 +15,8 @@
   ],
   "settings": {
     "engine": [
-      "in-memory"
+      "in-memory",
+      "streaming"
     ]
   },
   "description": [
@@ -78,6 +79,33 @@
         {
           "sql": "12345.678901 (28,6) % 7.5 (28,6)",
           "observed": "Decimal(38, 6): 0.678901"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "manual-repro",
+      "checked_by": "lift-dates session (polars 2.1.0, collect(engine='streaming'))",
+      "evidence": [
+        {
+          "sql": "-7.50 % 2.0 (10,2)%(5,1); 7.50 % -2.0",
+          "observed": "Decimal(38, 2): 0.50; -0.50"
+        },
+        {
+          "sql": "7.50 % 0.0",
+          "observed": "ComputeError: division by zero Decimal"
+        },
+        {
+          "sql": "NULL % 2.0",
+          "observed": "None"
+        },
+        {
+          "sql": "99999999999999999999999999999999999999 (38,0) % 7.0000000001 (38,10)",
+          "observed": "Decimal(38, 10): 1.6880508122"
+        },
+        {
+          "sql": "1234567.123 (10,3) % 3.7 (3,1)",
+          "observed": "Decimal(38, 3): 2.923"
         }
       ]
     }

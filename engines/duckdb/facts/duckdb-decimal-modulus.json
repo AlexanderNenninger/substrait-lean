@@ -16,7 +16,7 @@
   "settings": {},
   "description": [
     "`a % b` of two decimals is exact and takes the dividend's sign: `7.50 % 2.0` is 1.50, `-7.50 % 2.0` and `-7.50 % -2.0` are -1.50, `7.50 % -2.0` is 1.50 (the truncated remainder, `division_type` TRUNCATE).",
-    "The result type is the operands' common decimal type, `DECIMAL(max(p₁−s₁, p₂−s₂) + max(s₁, s₂), max(s₁, s₂))`: `DECIMAL(10,2) % DECIMAL(5,1)` is `DECIMAL(10,2)`, `DECIMAL(10,3) % DECIMAL(3,1)` is `DECIMAL(10,3)`, `DECIMAL(28,6) % DECIMAL(28,6)` is `DECIMAL(28,6)`, and `DECIMAL(10,1) % INTEGER` is `DECIMAL(11,1)`. Where those digits exceed 38 the result is a `DOUBLE` (`DECIMAL(38,36) % DECIMAL(38,0)` gives 1.1234567890123457), so the operand check of D56 does not apply: DuckDB neither raises nor stays exact there.",
+    "The result type is the operands' common decimal type, `DECIMAL(max(p₁−s₁, p₂−s₂) + max(s₁, s₂), max(s₁, s₂))`: `DECIMAL(10,2) % DECIMAL(5,1)` is `DECIMAL(10,2)`, `DECIMAL(10,3) % DECIMAL(3,1)` is `DECIMAL(10,3)`, `DECIMAL(28,6) % DECIMAL(28,6)` is `DECIMAL(28,6)`, and `DECIMAL(10,1) % INTEGER` is `DECIMAL(11,1)`. Where that sum exceeds 38 the result is a `DOUBLE` (exactly: `DECIMAL(37,9) % DECIMAL(10,10)` is `DECIMAL(38,10)`, `DECIMAL(38,9) % DECIMAL(10,10)` a `DOUBLE`) (`DECIMAL(38,36) % DECIMAL(38,0)` gives 1.1234567890123457), so the operand check of D56 does not apply: DuckDB neither raises nor stays exact there.",
     "A zero divisor raises `Division by zero in expression` unless `error_on_division_by_zero` is off; a NULL operand gives NULL."
   ],
   "reference": "D62 (ruling 181): `a % b` on decimals is the truncated remainder of the two values at scale max(s₁, s₂): it takes the dividend's sign, its type is DECIMAL(min(p₁−s₁, p₂−s₂) + max(s₁, s₂), max(s₁, s₂)), a NULL operand gives NULL, and a zero divisor raises (`Issue.divByZero`, as `imod`). The reference's type is narrower than DuckDB's (`DECIMAL(10,2) % DECIMAL(5,1)` is DECIMAL(6,2)); the value is the same, and the translation casts to the plan's type.",
@@ -63,6 +63,14 @@
         {
           "sql": "select typeof(a%b), a%b from (select 7.5::decimal(10,1) a, 2::integer b)",
           "observed": "('DECIMAL(11,1)', Decimal('1.5'))"
+        },
+        {
+          "sql": "select typeof(x%y), x%y from (select 1::decimal(37,9) x, 0.5::decimal(10,10) y)",
+          "observed": "('DECIMAL(38,10)', Decimal('0E-10'))  -- max(p₁−s₁, p₂−s₂) + max(s₁, s₂) = 38"
+        },
+        {
+          "sql": "select typeof(x%y), x%y from (select 1::decimal(38,9) x, 0.5::decimal(10,10) y)",
+          "observed": "('DOUBLE', 0.0)  -- the same bound is 39"
         }
       ]
     }
