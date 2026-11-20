@@ -1557,7 +1557,7 @@ class Exprs:
                 bad = (x == 0.0) & (y == 0.0)
                 return self.domain(bad, pl.arctan2(x, y), pl.Float64, name, a, b)
             # `ln x / ln b` (`logb?`), with the arguments made safe where it fails.
-            bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
+            bad = x.is_not_null() & y.is_not_null() & ((x <= 0.0) | (y <= 0.0) | (y == 1.0))
             sx = pl.when(bad).then(2.0).otherwise(x)
             sy = pl.when(bad).then(2.0).otherwise(y)
             # `logb?` divides once, exactly: Polars's `log` with a column base
