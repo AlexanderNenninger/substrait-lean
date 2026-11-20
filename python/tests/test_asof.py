@@ -556,3 +556,21 @@ def test_a_ranking_that_keeps_more_than_the_latest_row_is_not_native():
     )
     out = _agree_with_the_range_join(_ranked_asof(lt, rt, lambda r: r <= 1), con)
     assert len(out) == 3
+
+
+def test_a_report_read_back_keeps_the_as_of_checks_and_the_cap():
+    """#1863: JSON keeps the pair counts and the cap; an exported plan, read
+    back by `from_substrait`, keeps the cap, so its run is refused above it."""
+    from sverify.errors import UnsupportedError
+
+    con, left, right = _bound(1000, 1000, 1)
+    report = sv.verify(sv.asof_join(left, right, on="ts", by="device", max_pairs=100_000))
+    assert report._asof_checks and report._asof_max_pairs == 100_000
+    back = sv.Report.from_json(report.to_json())
+    assert back._asof_checks == report._asof_checks
+    assert back._asof_max_pairs == 100_000
+    again = sv.Report.from_substrait(report.to_substrait())
+    assert again._asof_max_pairs == 100_000
+    # DuckDB writes the join natively and takes no count; Polars counts.
+    with pytest.raises(UnsupportedError, match=r"1,000,000 pairs"):
+        again.run(con, "polars")

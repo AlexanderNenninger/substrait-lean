@@ -39,6 +39,7 @@ from sverify.plan_json import (
     if_then,
     in_values,
     literal,
+    logical,
     semantics,
     type_json,
 )
@@ -57,6 +58,20 @@ def _field(x: Exprs, op: Any) -> Json:
 
 def _literal(x: Exprs, op: Any) -> Json:
     return literal(op.value, op.dtype)
+
+
+def _logical(name: str, kind: type) -> Callable[[Exprs, Any], Json]:
+    """`AND` or `OR`: a chain `a & b & c` is one call, whose operands the
+    checker evaluates in order (`plan_json.logical`)."""
+
+    def go(x: Exprs, op: Any) -> Json:
+        operands = [op.right]
+        while isinstance(op.left, kind):
+            op = op.left
+            operands.append(op.right)
+        return logical(name, [x(o) for o in [op.left, *reversed(operands)]])
+
+    return go
 
 
 def _arith(name: str) -> Callable[[Exprs, Any], Json]:
@@ -323,8 +338,8 @@ register(
         ops.Greater: _compare("gt"),
         ops.GreaterEqual: _compare("gte"),
         ops.IdenticalTo: _compare("is_not_distinct_from"),
-        ops.And: lambda x, op: call("and", [x(op.left), x(op.right)]),
-        ops.Or: lambda x, op: call("or", [x(op.left), x(op.right)]),
+        ops.And: _logical("and", ops.And),
+        ops.Or: _logical("or", ops.Or),
         ops.Not: _unary("not"),
         ops.IsNull: _unary("is_null"),
         ops.NotNull: _unary("is_not_null"),
