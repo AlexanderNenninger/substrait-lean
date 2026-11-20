@@ -34,8 +34,9 @@ is named in the report (`run_gate`) and `r` runs:
   which says nothing of where a plan raises (#2006).
 * `guard_free`: where `r` runs without its row checks (`guardFreeIn`), so does
   `s`.
-* `near`: `r`'s verdict does not rest on doubles within a bound: the
-  observation's `floats_plan` or an `approx` postcondition, unless `r` and `s`
+* `near`: `r`'s verdict does not rest on doubles within a bound: an
+  observation that coarsens `floats` (the plan's bound or a stated tolerance,
+  #2105) or an `approx` postcondition, unless `r` and `s`
   have no double and transfer to the reference at each built-in engine
   (`Request.nearRoute`, `Rel.floatOpenSafeP_of_noDouble`). A
   refinement at the reference says nothing at an engine's table (ruling 127).
@@ -436,8 +437,8 @@ def nearProved (x : Rel) : Bool :=
     builtinEngines.all fun e => transferB x Profile.reference.table (e.table.refAt floatOnlyOptions)
 
 /-- Does the verdict on `r` rest on doubles within a bound: the observation
-compares doubles within the plan's bound (`floats_plan`) or a postcondition is
-`approx`, and `r` or its rewrite `s` is not a plan `nearProved` covers?
+coarsens `floats` (`floats="plan"` or a stated tolerance, `sv.within`, #2105)
+or a postcondition is `approx`, and `r` or its rewrite `s` is not a plan `nearProved` covers?
 
 The gate passes `r` and `s` where `Rel.floatOpenSafeP_of_noDouble` discharges
 the obligation (`hsafeE` of `Engine.contract_sound_runs_near`) at every
@@ -448,7 +449,7 @@ engine's table leaves the reference outside `floatOnlyOptions` (an integer
 `MIN`, `MAX` or `AVG` at every built-in engine), which the gate keeps as written. -/
 def nearRoute (r s : Rel) : Bool :=
   let obs := (R.input.getObjVal? "observation").toOption
-  ((obs.bind (·.getObjValAs? Bool "floats_plan" |>.toOption)).getD false ||
+  (((obs.bind (·.getObjValAs? (Array String) "coarsens" |>.toOption)).getD #[]).contains "floats" ||
     ((obs.bind (·.getObjValAs? (Array Bool) "approx" |>.toOption)).getD #[]).any id) &&
     !(R.nearProved r && R.nearProved s)
 
