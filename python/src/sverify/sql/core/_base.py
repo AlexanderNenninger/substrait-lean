@@ -4080,13 +4080,20 @@ ORD = "o"
 
 def _window_calls(sql: str) -> list[str]:
     """The window aggregate calls in `sql`, `F(…) OVER (…)`, outermost first.
-    Parentheses inside string literals do not count."""
+    Parentheses inside string literals (`'…'`) and quoted identifiers
+    (`"…"`, backquoted in Spark) do not count; a quote of the other kind inside
+    one of them is a character (a column named `it's`), and a doubled quote
+    escapes itself."""
     quoted = [False] * len(sql)
-    q = False
+    q: str | None = None
     for i, ch in enumerate(sql):
-        if ch == "'":
-            q = not q
-        quoted[i] = q
+        if q is None:
+            if ch in "'\"`":
+                q = ch
+        elif ch == q:
+            # A doubled quote stays inside: it closes here and opens again next.
+            q = None
+        quoted[i] = q is not None or ch in "'\"`"
 
     def match(i: int, step: int, open_: str, close: str) -> int:
         depth = 0
@@ -4923,7 +4930,7 @@ class _Writer:
         d = self.d
         own = re.compile(rf"\b{re.escape(a)}\.")
         binds: list[tuple[str, str]] = []
-        outer: dict[int, str] = {}
+        found: dict[int, tuple[str, str, dict[str, str]]] = {}
         for j in range(m, len(items) - (1 if ordered else 0)):
             expr, _, alias = items[j].rpartition(" AS ")
             calls = {c for c in _window_calls(expr) if expr.count(c) > 1}
@@ -4936,22 +4943,27 @@ class _Writer:
                     name = d.quote(f"w{len(binds)}")
                     binds.append((name, c))
                 names[c] = name
-            rewritten = expr
+            rest = expr
             for c in sorted(calls, key=len, reverse=True):
-                rewritten = rewritten.replace(c, f"{{b}}.{names[c]}")
-            if own.search(rewritten):
+                rest = rest.replace(c, "")
+            if own.search(rest):
                 # It reads an input column outside a window aggregate: unchanged.
                 continue
-            outer[j] = f"{rewritten} AS {alias}"
-        if not outer:
+            found[j] = (expr, alias, names)
+        if not found:
             return self.select(items, src)
         b = self.alias()
+        outer: dict[int, str] = {}
+        for j, (expr, alias, names) in found.items():
+            for c in sorted(names, key=len, reverse=True):
+                expr = expr.replace(c, f"{b}.{names[c]}")
+            outer[j] = f"{expr} AS {alias}"
         inner = [it for j, it in enumerate(items) if j not in outer]
         inner += [f"{c} AS {name}" for name, c in binds if any(name in o for o in outer.values())]
         top = []
         for j, it in enumerate(items):
             col = it.rpartition(" AS ")[2]
-            top.append(outer[j].replace("{b}", b) if j in outer else f"{b}.{col} AS {col}")
+            top.append(outer.get(j, f"{b}.{col} AS {col}"))
         return self.select(top, d.subquery(self.select(inner, src), b))
 
     def framed(
