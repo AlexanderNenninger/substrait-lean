@@ -26,3 +26,4 @@ public import FloatBounds.Arith
 public import FloatBounds.Propagate
 public import FloatBounds.Chan
 public import FloatBounds.ChanCorr
+public import FloatBounds.CorrTwoPass
