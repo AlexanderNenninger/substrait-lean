@@ -429,3 +429,6 @@ end Substrait.Examples
 #print axioms Substrait.Engine.spark_contract_example
 #print axioms Substrait.Refresh.no_corruption
 #print axioms Substrait.Refresh.record_describes_table
+#print axioms Substrait.UnFn.apply_approx
+#print axioms Substrait.DuckAgg.avgBigint_nearRel
+#print axioms Substrait.Lift.duckdb_marked
