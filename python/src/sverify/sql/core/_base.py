@@ -12,7 +12,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+if TYPE_CHECKING:
+    from sverify.profiles import Finite
 
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
@@ -163,11 +166,14 @@ class Dialect:
     (`to_sql(..., guards=False)`) the SQL is only right for plans whose
     contract report is `guard_free` (`Rel.guardFree_sound` in
     `analysis/Sverify/Analysis/Guards.lean`). Integer `SUM` keeps its check."""
-    finite: bool = True
+    finite: Finite = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
-    precondition. Off (`to_sql(..., finite=False)`) for a plan verified under
-    an engine's semantics that allows `±∞` (`verify(semantics="duckdb")`)."""
+    precondition. `"aggregates"` (`to_sql(..., finite="aggregates")`) for a plan
+    verified under an engine's semantics (`verify(semantics="duckdb")`): an
+    operation's `±∞` is the engine's value there, but an aggregate's running sum
+    overflows where the model's exact one does not (ruling 200 A4(2)), so
+    only the aggregates keep the check. `False` writes none."""
 
     def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
         """A refusal of this dialect for `reason`, where DuckDB's writer
@@ -3895,6 +3901,10 @@ def _call(name: str, args: list[Expr]) -> Expr:
             return Un("not", Bin("lt", a, b))
         case "normalized_interval", [a]:
             return a
+        case "sverify_approx", [a, Lit()]:
+            # `UnFn.approx k` (D52): a source mark for the checker, the identity
+            # for an engine, which computes the plan's value inside the band.
+            return a
         case (("is_nan" | "isnan"), [a]):
             return Bin("eq", a, Lit(math.nan, "float"))
         case (("and" | "or"), [a, *rest]):
@@ -4041,21 +4051,21 @@ def _div_by_zero(
     mode: str, double: bool, div: Callable[[Expr, Expr], Expr], a: Expr, b: Expr
 ) -> Expr:
     """`Parse.divByZero`: `div a b` under `on_division_by_zero` = `mode`; other
-    than `ERROR`, a `CASE` on the divisor around the division. `IEEE` and
-    `LIMIT` are only for dividing doubles (`Parse.optionAccepts`)."""
+    than `ERROR`, a `CASE` on the divisor around the division. `LIMIT` is only
+    for dividing doubles (`Parse.optionAccepts`). `IEEE` division of doubles is
+    `BinFn.fdivIeee` (D39), written before this is reached, so `IEEE` here is
+    a `%` or an integer division, which it does not apply to."""
     q = div(a, b)
     if mode == "ERROR":
         return q
     fdiv = isinstance(q, Bin) and q.op == "fdiv"
-    if mode not in ("IEEE", "LIMIT", "NULL") or (not fdiv and mode != "NULL"):
+    if mode not in ("LIMIT", "NULL") or (not fdiv and mode != "NULL"):
         raise WriterUnsupported(f"on_division_by_zero = {mode} is not supported")
     lit = (lambda x: Lit(x, "float")) if double else (lambda x: Lit(x, "int"))
     nan, null = Lit(math.nan, "float"), Lit(None, "float" if double else "int")
     is_nan = Bin("eq", a, nan)
-    if mode == "IEEE":
-        by_zero: Expr = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
-                           If(Bin("lt", lit(0.0), a), Lit(math.inf, "float"), nan)))  # fmt: skip
-    elif mode == "LIMIT":
+    by_zero: Expr
+    if mode == "LIMIT":
         by_zero = If(is_nan, nan, If(Bin("lt", a, lit(0.0)), Lit(-math.inf, "float"),
                                      Lit(math.inf, "float")))  # fmt: skip
     else:
@@ -4316,6 +4326,55 @@ def unchecked_slots(r: Rel, marks: dict) -> dict[int, frozenset[int]]:
 
 
 ORD = "o"
+
+
+def _window_calls(sql: str) -> list[str]:
+    """The window aggregate calls in `sql`, `F(…) OVER (…)`, outermost first.
+    Parentheses inside string literals (`'…'`) and quoted identifiers
+    (`"…"`, backquoted in Spark) do not count; a quote of the other kind inside
+    one of them is a character (a column named `it's`), and a doubled quote
+    escapes itself."""
+    quoted = [False] * len(sql)
+    q: str | None = None
+    for i, ch in enumerate(sql):
+        if q is None:
+            if ch in "'\"`":
+                q = ch
+        elif ch == q:
+            # A doubled quote stays inside: it closes here and opens again next.
+            q = None
+        quoted[i] = q is not None or ch in "'\"`"
+
+    def match(i: int, step: int, open_: str, close: str) -> int:
+        depth = 0
+        while 0 <= i < len(sql):
+            if not quoted[i]:
+                if sql[i] == open_:
+                    depth += 1
+                elif sql[i] == close:
+                    depth -= 1
+                    if depth == 0:
+                        return i
+            i += step
+        return -1
+
+    out: list[str] = []
+    i = 0
+    while (k := sql.find(" OVER (", i)) != -1:
+        i = k + 1
+        if k == 0 or sql[k - 1] != ")" or quoted[k]:
+            continue
+        start = match(k - 1, -1, ")", "(")
+        end = match(k + len(" OVER "), 1, "(", ")")
+        if start <= 0 or end < 0:
+            continue
+        name = start
+        while name > 0 and (sql[name - 1].isalnum() or sql[name - 1] == "_"):
+            name -= 1
+        if name < start:
+            out.append(sql[name : end + 1])
+            i = end + 1
+    return out
 
 
 @dataclass
@@ -4934,7 +4993,10 @@ class _Writer:
                 # Finite values whose sum overflows (#575), kept without guards.
                 top_abs = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')})"
                 total = self.agg_finite(
-                    total, f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}", f"MIN({v})"
+                    total,
+                    f"NOT {d.float_eq(top_abs, d.float_lit(math.inf))}",
+                    f"MIN({v})",
+                    self.no_nan(v),
                 )
                 if not d.guards:
                     return total
@@ -5141,7 +5203,53 @@ class _Writer:
             items.append(f"{d.row_number(self.order_by(keys))} AS {d.quote(ORD)}")
         # Written last, so a refusal in an expression comes before the input's.
         src = inner or self.child(i, self.stable and not copies)
-        return self.select(items, d.subquery(src, a))
+        return self.bound_windows(items, m, a, d.subquery(src, a), ordered)
+
+    def bound_windows(self, items: list[str], m: int, a: str, src: str, ordered: bool) -> str:
+        """The window layer `items` over `src` (alias `a`, `m` input columns).
+        A function whose guard repeats a window aggregate (an integer `SUM`'s
+        overflow check reads it four times) gets each such aggregate once, as
+        a column of this layer, and its guard in a layer above (#1608 item 5).
+        Every engine computes a window function on every row before the
+        expressions around it, so the bound column is what the repeats were."""
+        d = self.d
+        own = re.compile(rf"\b{re.escape(a)}\.")
+        binds: list[tuple[str, str]] = []
+        found: dict[int, tuple[str, str, dict[str, str]]] = {}
+        for j in range(m, len(items) - (1 if ordered else 0)):
+            expr, _, alias = items[j].rpartition(" AS ")
+            calls = {c for c in _window_calls(expr) if expr.count(c) > 1}
+            if not calls:
+                continue
+            names = {}
+            for c in calls:
+                name = next((n for n, t in binds if t == c), None)
+                if name is None:
+                    name = d.quote(f"w{len(binds)}")
+                    binds.append((name, c))
+                names[c] = name
+            rest = expr
+            for c in sorted(calls, key=len, reverse=True):
+                rest = rest.replace(c, "")
+            if own.search(rest):
+                # It reads an input column outside a window aggregate: unchanged.
+                continue
+            found[j] = (expr, alias, names)
+        if not found:
+            return self.select(items, src)
+        b = self.alias()
+        outer: dict[int, str] = {}
+        for j, (expr, alias, names) in found.items():
+            for c in sorted(names, key=len, reverse=True):
+                expr = expr.replace(c, f"{b}.{names[c]}")
+            outer[j] = f"{expr} AS {alias}"
+        inner = [it for j, it in enumerate(items) if j not in outer]
+        inner += [f"{c} AS {name}" for name, c in binds if any(name in o for o in outer.values())]
+        top = []
+        for j, it in enumerate(items):
+            col = it.rpartition(" AS ")[2]
+            top.append(outer.get(j, f"{b}.{col} AS {col}"))
+        return self.select(top, d.subquery(self.select(inner, src), b))
 
     def framed(
         self,
@@ -5217,7 +5325,11 @@ class _Writer:
                 total = d.case_when(f"COUNT({v}) {w} = {d.int_lit(0)}", d.null("float"), total)
                 # Finite values whose sum overflows (#575), kept without guards.
                 top = f"MAX({d.case_when(d.is_nan(v), d.null('float'), f'ABS({v})')}) {w}"
-                return self.agg_finite(total, f"NOT {d.float_eq(top, d.float_lit(math.inf))}")
+                return self.agg_finite(
+                    total,
+                    f"NOT {d.float_eq(top, d.float_lit(math.inf))}",
+                    nan_free=self.no_nan(v, w),
+                )
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
         f = "MIN" if m.fn == "min" else "MAX"
@@ -5597,14 +5709,19 @@ class _Writer:
     def date_trunc(self, unit: str, ts: str) -> str:
         """`Time.trunc`. To a week or longer it raises outside the reference's
         timestamps (`Issue.overflow`, D32). To a day or less it wraps below
-        -2⁶³ µs, which no engine's timestamps reach."""
+        -2⁶³ µs, which no engine's timestamps reach. Truncation keeps the order
+        and leaves the reference's first instant, a Monday's midnight that
+        starts its month, quarter and year, as it is: the result is below it
+        just where `ts` is, so the check reads `ts` alone (#1608 item 10). This
+        holds for the units the model has, which stop at a year; a decade or a
+        century would break it (DuckDB's decade of year 1 is year 0)."""
         d = self.d
         t = d.date_trunc(unit, ts)
         if unit not in ("week", "month", "quarter", "year") or not d.guards:
             return t
         lo, hi = d.timestamp_lit(TS_MIN), d.timestamp_lit(TS_MAX)
         fail = d.raise_(f"date_trunc to a {unit} {OUTSIDE_TS}", ts, "time", "overflow")
-        return d.case_when(f"({ts} > {hi} OR {t} < {lo})", fail, t)
+        return d.case_when(f"({ts} > {hi} OR {ts} < {lo})", fail, t)
 
     def ts_only(self, ts: str, r: str, what: str, kind: Kind) -> str:
         """`r`, raising where the timestamp `ts` is outside the reference's
@@ -5635,16 +5752,32 @@ class _Writer:
         out = [pieces.get(t, d.str_lit("%" if t == "%%" else t)) for t in tokens]
         return "(" + " || ".join(out or [d.str_lit("")]) + ")"
 
-    def date_range(self, x: str, f: Callable[[str], str], lo: int, hi: int, what: str) -> str:
+    def date_range(
+        self,
+        x: str,
+        f: Callable[[str], str],
+        lo: int,
+        hi: int,
+        what: str,
+        *,
+        decided: tuple[int, int] | None = None,
+    ) -> str:
         """`rangeIssue`: the DATE `f(x)`, raising unless `x` and it are within
         `[lo, hi]` days. `f` sees only dates in range, so the engine's own range
-        errors cannot come first."""
+        errors cannot come first. `decided` is the range of `x` for which both
+        are in range, where the caller knows it (#1608 item 10): then one
+        comparison of `x` checks both, and the result is not computed twice."""
         d = self.d
         if not d.guards:
             return f(x)
+        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
+        if decided is not None:
+            a, b = d.int_lit(decided[0]), d.int_lit(decided[1])
+            r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {a} AND {b} THEN {x} END)")
+            # NULL (so not raising) where `x` is NULL.
+            return d.case_when(f"({d.date_days(x)} NOT BETWEEN {a} AND {b})", fail, r)
         lo_, hi_ = d.int_lit(lo), d.int_lit(hi)
         r = f(f"(CASE WHEN {d.date_days(x)} BETWEEN {lo_} AND {hi_} THEN {x} END)")
-        fail = d.raise_(f"{what} {OUTSIDE_DATES}", x, "date", "overflow")
         # NULL (so not raising) where `x` or the result is NULL.
         bad = (
             f"({d.date_days(x)} NOT BETWEEN {lo_} AND {hi_} "
@@ -5749,14 +5882,34 @@ class _Writer:
             )
         return d.bool_lit(False)
 
-    def agg_finite(self, value: str, finite: str | None = None, dep: str | None = None) -> str:
+    def no_nan(self, v: str, over: str = "") -> str:
+        """No value of `v` is NaN (in the frame `over`, for a window)."""
+        d = self.d
+        flag = d.case_when(d.is_nan(v), d.int_lit(1), d.int_lit(0))
+        return f"MAX({flag}){' ' + over if over else ''} = {d.int_lit(0)}"
+
+    def agg_finite(
+        self,
+        value: str,
+        finite: str | None = None,
+        dep: str | None = None,
+        nan_free: str | None = None,
+    ) -> str:
         """An aggregate's `value`, raising where it is `±∞` though its values
         are finite (`finite`, if the caller has not ruled them out:
-        `Measure.makesInf`, #575)."""
+        `Measure.makesInf`, #575). A sum whose partial sums overflow in
+        both directions is NaN, which the inputs do not explain: with
+        `nan_free`, the condition that no input is NaN, a NaN `value` raises
+        too (ruling 200 A4(3))."""
         d = self.d
         if not d.finite:
             return value
-        cond = d.is_inf(value) if finite is None else f"({finite} AND {d.is_inf(value)})"
+        bad = d.is_inf(value)
+        if nan_free is not None:
+            bad = f"({bad} OR {d.is_nan(value)})"
+        cond = bad if finite is None else f"({finite} AND {bad})"
+        if nan_free is not None:
+            cond = f"({nan_free} AND {cond})"
         return d.case_when(
             cond, d.raise_("overflow to infinity", dep or value, "float", "infinite"), value
         )
@@ -5768,7 +5921,7 @@ class _Writer:
         assumption that a double operation does not overflow. Kept without
         guards, as a `SUM`'s check is (`Rel.guardFree_sound`)."""
         d = self.d
-        if not d.finite:
+        if d.finite is not True:
             return sql
         fin = "".join(f"NOT {d.is_inf(x)} AND NOT {d.is_nan(x)} AND " for x in args)
         sql = self.bind(sql)
@@ -5925,7 +6078,7 @@ def to_sql(
     deterministic: bool = False,
     guards: bool = True,
     unchecked: dict | None = None,
-    finite: bool = True,
+    finite: Finite = True,
     rows: Literal["sequence", "multiset"] | None = None,
     asof: Sequence[dict] = (),
 ) -> str:
@@ -6030,8 +6183,8 @@ def to_sql(
         rows = found.rows if found is not None else "sequence"
     if not guards:
         dialect = replace(dialect, guards=False)
-    if not finite:
-        dialect = replace(dialect, finite=False)
+    if finite is not True:
+        dialect = replace(dialect, finite=finite)
     _support.check(plan, dialect.name, Unsupported)
     p = parse_plan(plan, asof if dialect.native_asof else ())
     n = arity(p.root)

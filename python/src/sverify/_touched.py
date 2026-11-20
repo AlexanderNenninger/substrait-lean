@@ -113,6 +113,7 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
     """How to maintain the view `name` of `query` by touched groups, or why
     it cannot be."""
     from sverify.engine import NotIncrementalError, delta_plans, plan_json, written_plan
+    from sverify.ibis_substrait.prune import narrowed
 
     if isinstance(query, str):
         return SQL
@@ -123,7 +124,7 @@ def plan(name: str, query: ir.Table | str) -> Touched | str:
     if missing := [g for g in by if g not in names]:
         key = "group" if what == "aggregate" else "partition"
         return f"the view does not output the {key} key {missing[0]} unchanged"
-    parent = node.parent.to_expr()  # type: ignore[attr-defined]
+    parent = narrowed(node.parent.to_expr())  # type: ignore[attr-defined]
     try:
         deltas = delta_plans(plan_json(None, parent))  # type: ignore[arg-type]
     except NotIncrementalError as e:

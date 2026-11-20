@@ -57,8 +57,25 @@ def _truncate(x: Exprs, op: Any) -> Json:
 # added to a date or timestamp; days added to a date may be a column's count.
 
 
+#: The units an integer cast to an interval may have (ruling 186 T1).
+_CAST_UNITS = frozenset({"W", "D", "h", "m", "s"})
+
+
+def _from_integer(op: Any) -> Any:
+    """`op`, with a cast of an integer to an interval of weeks, days, hours,
+    minutes or seconds read as the `IntervalFromInteger` it means
+    (`i.cast("interval('D')")`, #1926). Months and years stay refused."""
+    match op:
+        case ops.Cast(arg=arg, to=dt.Interval(unit=unit)) if (
+            arg.dtype.is_integer() and unit.short in _CAST_UNITS
+        ):
+            return ops.IntervalFromInteger(arg, unit=unit)
+    return op
+
+
 def _const_interval(op: Any) -> tuple[int, int] | None:
     """An interval expression of constants, as months and microseconds."""
+    op = _from_integer(op)
     match op:
         case ops.Literal(value=v, dtype=t) if v is not None:
             return interval_parts(v, t)
@@ -85,6 +102,7 @@ def _interval(x: Exprs, op: Any) -> Json:
     c = _const_interval(op)
     if c is not None:
         return interval_json(*c)
+    op = _from_integer(op)
     if isinstance(op, ops.IntervalFromInteger):
         months, micros = interval_parts(1, dt.Interval(unit=op.unit))
         if months:
@@ -361,51 +379,79 @@ def _between_time(x: Exprs, op: Any) -> Json:
     return between(t, lo, hi)
 
 
-register(
-    {
-        ops.ExtractYear: _date_part("year"),
-        ops.ExtractQuarter: _date_part("quarter"),
-        ops.ExtractMonth: _date_part("month"),
-        ops.ExtractDay: _date_part("day"),
-        ops.ExtractDayOfYear: _date_part("doy"),
-        ops.ExtractHour: _date_part("hour"),
-        ops.ExtractMinute: _date_part("minute"),
-        ops.ExtractSecond: _date_part("second"),
-        ops.Date: _date,
-        ops.TimestampTruncate: _truncate,
-        ops.TimestampAdd: _temporal_add("add"),
-        ops.TimestampSub: _temporal_add("subtract"),
-        ops.TimestampDiff: lambda x, op: call("subtract", [x(op.left), x(op.right)]),
-        ops.DateAdd: _temporal_add("add"),
-        ops.DateSub: _temporal_add("subtract"),
-        ops.DateDiff: _date_diff,
-        ops.DateDelta: _date_delta,
-        ops.DateTruncate: _date_truncate,
-        ops.DayOfWeekIndex: _day_of_week_index,
-        ops.DayOfWeekName: _day_of_week_name,
-        ops.ExtractIsoYear: _iso_year,
-        ops.ExtractEpochSeconds: _epoch_seconds,
-        ops.ExtractMillisecond: _sub_second(1000),
-        ops.ExtractMicrosecond: _sub_second(1),
-        ops.IntervalFromInteger: _interval_value,
-        ops.IntervalAdd: _interval_value,
-        ops.IntervalSubtract: _interval_value,
-        ops.IntervalMultiply: _interval_value,
-        ops.DateFromYMD: _from_parts(dt_.date, dt.date, "DateFromYMD"),
-        ops.TimestampFromYMDHMS: _from_parts(dt_.datetime, dt.timestamp, "TimestampFromYMDHMS"),
-        ops.TimeFromHMS: _from_parts(dt_.time, dt.time, "TimeFromHMS"),
-        ops.TimestampFromUNIX: _from_unix,
-        ops.Strftime: _strftime,
-        ops.Time: lambda x, op: cast_json(x(op.arg), dt.time),
-        ops.BetweenTime: _between_time,
-        ops.TimeAdd: _time_add("add"),
-        ops.TimeSub: _time_add("subtract"),
-        ops.TimeTruncate: _time_truncate,
-        ops.TimestampBucket: _bucket,
-        ops.TimestampDelta: _timestamp_delta,
-        ops.ExtractWeekOfYear: _date_part("week"),
-    }
-)
+def wall_clock(x: Exprs) -> Callable[..., Json]:
+    """`x`, reading an instant at UTC as its UTC wall clock (D69, #1725): the
+    cast to a naive timestamp, written once per argument, so a rule that
+    reads its argument several times sees one kind."""
+
+    def on(e: Any, *rest: Any) -> Json:
+        j = x(e, *rest)
+        t = e.dtype
+        return cast_json(j, dt.timestamp) if t.is_timestamp() and t.timezone else j
+
+    return on
+
+
+def _wall_clock(rule: Callable[[Any, Any], Json]) -> Callable[[Exprs, Any], Json]:
+    return lambda x, op: rule(wall_clock(x), op)
+
+
+#: The operations whose result is not an instant (D69): a date, a time, a part,
+#: a string, or a naive timestamp. Arithmetic and differences of instants stay
+#: refused.
+_ON_WALL_CLOCK = (
+    ops.ExtractYear, ops.ExtractQuarter, ops.ExtractMonth, ops.ExtractDay, ops.ExtractDayOfYear,
+    ops.ExtractHour, ops.ExtractMinute, ops.ExtractSecond, ops.ExtractWeekOfYear,
+    ops.ExtractMillisecond, ops.ExtractMicrosecond, ops.ExtractIsoYear,
+    ops.ExtractEpochSeconds, ops.DayOfWeekIndex, ops.DayOfWeekName, ops.Date, ops.Time,
+    ops.TimestampTruncate, ops.TimestampBucket, ops.Strftime, ops.BetweenTime,
+)  # fmt: skip
+
+_TEMPORAL: dict[Any, Callable[[Exprs, Any], Json]] = {
+    ops.ExtractYear: _date_part("year"),
+    ops.ExtractQuarter: _date_part("quarter"),
+    ops.ExtractMonth: _date_part("month"),
+    ops.ExtractDay: _date_part("day"),
+    ops.ExtractDayOfYear: _date_part("doy"),
+    ops.ExtractHour: _date_part("hour"),
+    ops.ExtractMinute: _date_part("minute"),
+    ops.ExtractSecond: _date_part("second"),
+    ops.Date: _date,
+    ops.TimestampTruncate: _truncate,
+    ops.TimestampAdd: _temporal_add("add"),
+    ops.TimestampSub: _temporal_add("subtract"),
+    ops.TimestampDiff: lambda x, op: call("subtract", [x(op.left), x(op.right)]),
+    ops.DateAdd: _temporal_add("add"),
+    ops.DateSub: _temporal_add("subtract"),
+    ops.DateDiff: _date_diff,
+    ops.DateDelta: _date_delta,
+    ops.DateTruncate: _date_truncate,
+    ops.DayOfWeekIndex: _day_of_week_index,
+    ops.DayOfWeekName: _day_of_week_name,
+    ops.ExtractIsoYear: _iso_year,
+    ops.ExtractEpochSeconds: _epoch_seconds,
+    ops.ExtractMillisecond: _sub_second(1000),
+    ops.ExtractMicrosecond: _sub_second(1),
+    ops.IntervalFromInteger: _interval_value,
+    ops.IntervalAdd: _interval_value,
+    ops.IntervalSubtract: _interval_value,
+    ops.IntervalMultiply: _interval_value,
+    ops.DateFromYMD: _from_parts(dt_.date, dt.date, "DateFromYMD"),
+    ops.TimestampFromYMDHMS: _from_parts(dt_.datetime, dt.timestamp, "TimestampFromYMDHMS"),
+    ops.TimeFromHMS: _from_parts(dt_.time, dt.time, "TimeFromHMS"),
+    ops.TimestampFromUNIX: _from_unix,
+    ops.Strftime: _strftime,
+    ops.Time: lambda x, op: cast_json(x(op.arg), dt.time),
+    ops.BetweenTime: _between_time,
+    ops.TimeAdd: _time_add("add"),
+    ops.TimeSub: _time_add("subtract"),
+    ops.TimeTruncate: _time_truncate,
+    ops.TimestampBucket: _bucket,
+    ops.TimestampDelta: _timestamp_delta,
+    ops.ExtractWeekOfYear: _date_part("week"),
+}
+
+register({k: _wall_clock(v) if k in _ON_WALL_CLOCK else v for k, v in _TEMPORAL.items()})
 
 
 register_refusals(

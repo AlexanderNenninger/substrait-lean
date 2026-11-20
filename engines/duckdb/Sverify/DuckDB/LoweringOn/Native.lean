@@ -651,6 +651,19 @@ abbrev Substrait.duckdbOn.flatten : Substrait.UnEntry (Substrait.Profile.duckdb 
   Substrait.UnEntry.native Substrait.UnFn.flatten
   (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.flatten_native)
 
+theorem Substrait.duckdbOn.approx_native : ∀ (k : Nat) (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      (Substrait.UnFn.approx k) x =
+    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.approx k) x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.approx : (k : Nat) →
+  Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (Substrait.UnFn.approx k) :=
+  fun k =>
+  Substrait.UnEntry.native (Substrait.UnFn.approx k)
+    (Substrait.Lowering.un_agree_of_eq (Substrait.duckdbOn.approx_native k))
+
 theorem Substrait.duckdbOn.add_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       Substrait.BinFn.add x y =

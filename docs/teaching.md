@@ -125,7 +125,7 @@ on 2026-11-07.
 | "Snowflake SQL is written only for plans verified under the reference" | SQL for an engine | `semantics="reference"` |
 | Polars decimals, categorical strings, type mismatches, refused functions | Engines | `engine="duckdb"`, which every Polars refusal names |
 | "unsigned integers are not supported yet", zoned timestamps | Typed values | A cast to a signed integer or to UTC; lifted by [#350] and [#323] |
-| float32, "use float64"; nanosecond times, "cast them to microseconds" | Typed values | As named |
+| "add of FLOAT (fp32) values is not modelled"; nanosecond times, "cast them to microseconds" | Typed values | As named: cast float32 to float64 before the arithmetic ([#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417)) |
 | `UnsupportedError`, "substrait-check --contract refuses the plan: ..." | Typed values, frontends | Lean's message, then a rewrite or the open coverage issues |
 | "cannot parse the SQL as DuckDB's", "only SELECT queries are" | SQL in sverify | Check that DuckDB runs it, or write the step in Ibis; write it as a SELECT |
 | An alias clash (SG-1), `~` (SG-10), `t.*` with USING (SG-5) | SQL in sverify | Rename, `regexp_matches`, list the columns |

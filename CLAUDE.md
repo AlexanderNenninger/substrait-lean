@@ -74,8 +74,9 @@ Before every push, run the cheap checks from `python/`: `poe fmt` (ruff's fixes
 and formatting, also of the notebooks), then `poe lint` and `poe typecheck`
 (pyrefly). They take seconds and catch what CI's `static` job would fail on.
 Call them as `.venv/bin/poe …` (or `.venv/bin/ruff`, `.venv/bin/pyrefly`):
-`uv run` may rebuild the package, and its build hook runs a full `lake build`
-that races any build already running. A worktree without a venv can use
+a plain `uv run` may rebuild the package, and its build hook runs a full
+`lake build` that races any build already running. poe runs its own tasks with
+`uv run --no-sync` (`[tool.poe]` in `python/pyproject.toml`), which never rebuilds. A worktree without a venv can use
 another worktree's tools. A push that changes Lean also builds with
 `lake build --wfail` first.
 
@@ -309,8 +310,9 @@ Snowflake's facts are private (the `engine-fact` skill says where).
 Task recipes live in `.claude/skills/` and load when needed: `add-function`
 (functions and coverage cases; older comments call it CLAUDE.md's "Adding
 functions"), `engine-fact` (formerly "Engine facts"), `upstream-bug`,
-`upstream-report`, `prove-lean`, `chaos-run`, `query-semantics` and
-`release-sverify`.
+`upstream-report`, `prove-lean`, `chaos-run`, `query-semantics`,
+`release-sverify` and `create-pull-request` (branch, checks, `Fixes #N`, the
+review and mergeq).
 
 ## sverify-dbt
 

@@ -1008,3 +1008,58 @@ def test_a_repeated_date_operation_is_computed_once():
     sql = to_sql(plan, DUCKDB)
     assert len(sql) < 2000 and '"b0"' in sql, len(sql)
     agree(plan, *lean_and_duckdb(plan, {"t": days}))
+
+
+# D52: `sverify_approx(a, k)` is a source mark for the checker. An engine computes the
+# plan's value, so every writer erases it and the written SQL is the unmarked plan's.
+def marked(plan: dict, k: int = 16) -> dict:
+    """`plan` with each projected expression wrapped in `sverify_approx(e, k)`."""
+    plan = copy.deepcopy(plan)
+    plan["extensions"].append(
+        {"extensionFunction": {"functionAnchor": 126, "name": "sverify_approx"}}
+    )
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "project" in node:
+                node["project"]["expressions"] = [
+                    {
+                        "scalarFunction": {
+                            "functionReference": 126,
+                            "outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+                            "arguments": [
+                                {"value": e},
+                                {"value": {"literal": {"i64": str(k)}}},
+                            ],
+                        }
+                    }
+                    for e in node["project"]["expressions"]
+                ]
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan["relations"])
+    return plan
+
+
+@pytest.mark.parametrize("dialect", [DUCKDB, SNOWFLAKE])
+def test_the_approx_mark_is_erased_from_the_written_sql(dialect):
+    tables = {"r": pa.table({"x": pa.array([1.5, None, -2.0], pa.float64())})}
+    plan = json.loads(plan_of("SELECT x AS y, x + 1.0 AS z FROM r", tables))
+    assert to_sql(marked(plan), dialect) == to_sql(plan, dialect)
+    assert "approx" not in to_sql(marked(plan), dialect).lower()
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars", "spark"])
+def test_an_engine_runs_the_approx_marked_plan_as_the_unmarked_one(engine):
+    pytest.importorskip({"duckdb": "duckdb", "polars": "polars", "spark": "pyspark"}[engine])
+    tables = {"r": pa.table({"x": pa.array([1.5, None, -2.0], pa.float64())})}
+    plan = json.loads(plan_of("SELECT x AS y, x + 1.0 AS z FROM r", tables))
+    con = connect()
+    for name, t in tables.items():
+        put_table(con, name, t)
+    got = run_plan(con, json.dumps(marked(plan)), engine)
+    assert got.to_pylist() == run_plan(con, json.dumps(plan), engine).to_pylist()

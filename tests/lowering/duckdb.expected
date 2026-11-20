@@ -70,6 +70,7 @@ error_on_division_by_zero=on	UnFn.fit .saturate .i64	CASE WHEN 92233720368547758
 error_on_division_by_zero=on	UnFn.isNum	native
 error_on_division_by_zero=on	UnFn.bbox	native
 error_on_division_by_zero=on	UnFn.flatten	native
+error_on_division_by_zero=on	UnFn.approx	native
 error_on_division_by_zero=on	BinFn.add	native
 error_on_division_by_zero=on	BinFn.sub	native
 error_on_division_by_zero=on	BinFn.mul	native

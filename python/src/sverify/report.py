@@ -27,7 +27,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _hooks
+from sverify import _decimals, _deprecated, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -49,6 +49,7 @@ from sverify.observation import Observation, _deterministic_arg
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
+    from sverify.profiles import Finite
     from sverify.routes import Route, RouteKind
 from sverify.conditions import (
     DATA_CHECK,
@@ -78,6 +79,13 @@ default), DuckDB's, whose SQL also means what DuckDB computes, or an
 installed engine's profile (`ProfilePlugin.profile`): Polars's or Spark's,
 or Substrait's own, as its extension YAMLs state it.
 `sverify.contracts.semantics_names` lists them."""
+
+
+def _finite(strict: bool) -> Finite:
+    """A run's `finite`: every overflow to ±∞ where the reference's precondition
+    applies (`strict`), else only an aggregate's, whose engine sum overflows
+    where the exact one does not (#2057)."""
+    return True if strict else "aggregates"
 
 
 def _transfer_failure(f: Mapping[str, Any]) -> str:
@@ -260,6 +268,20 @@ INFINITE_HINT = (
 )
 
 
+#: The kind of a decision on an `AVG` of integers that DuckDB may take the other way
+#: (#1735, D52): the query's own `avg` is within a band of the value verified.
+SOURCE_THRESHOLD = "source_threshold"
+
+#: What a report says of such a decision (ruling 104): the construct, the consequence
+#: and the ways out. 12b-2 restores the comparisons of the mean with integers.
+SOURCE_THRESHOLD_HINT = (
+    "DuckDB's AVG of integers returns a double within a band of the value sverify verified, "
+    "so on DuckDB this query may keep other rows than the verified plan, or the column has "
+    "no bound. Keep the mean away from the threshold with a precondition, or compare exact "
+    "columns: SUM(y) > c * COUNT(y) for an integer c"
+)
+
+
 #: What a report says of a constant that raises (#609, D21).
 CONSTANT_HINT = (
     "this operation reads no column and raises: DuckDB evaluates it when it "
@@ -317,9 +339,10 @@ class Issue:
     """"division by zero", "overflow" (an integer result that does not fit its
     declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
     "domain error", "SUM overflow" (a `SUM` leaving its type: 64 bits for
-    integers, the result's precision for decimals), or "overflow to infinity"
+    integers, the result's precision for decimals), "overflow to infinity"
     (an operation on finite doubles, or their `SUM` or `AVG`, giving
-    `±∞`)."""
+    `±∞`), or "source_threshold" (a decision on DuckDB's `AVG` of integers,
+    which DuckDB may take the other way, #1735)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
@@ -398,8 +421,10 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run of the model, and no run raises. That
-    the model matches an engine rests on tests (`docs/trusted-base.md`)."""
+    """Every postcondition holds on every result the reference allows for the
+    transformation, and no run raises (`verdict_proved_sound`). On an engine
+    they hold by its evidence line: that the model matches the engine rests on
+    tests (`docs/trusted-base.md`)."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
@@ -951,7 +976,7 @@ class Report:
                 recheck(written)
             return f(written)
 
-    def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
+    def _sql_route(self, dialect: Any) -> tuple[Any, Finite]:
         """The dialect `dialect` names, and whether its SQL checks the
         reference's `±∞` precondition, for this report's plan; refused as
         `run` refuses it."""
@@ -987,7 +1012,7 @@ class Report:
             if not routes.verified(self):
                 raise UnverifiedRunError(self, chosen)
             raise routes.RouteError(chosen)
-        return d, self.semantics == "reference" or chosen.kind == "translated"
+        return d, _finite(self.semantics == "reference" or chosen.kind == "translated")
 
     def check_inputs(
         self,
@@ -1281,10 +1306,12 @@ class Report:
             and (chosen is not None or streaming == "require")
         ):
             self._streaming(con, chosen, streaming, plugin.engine, fallbacks, plan)
-        # The check of an overflow to ±∞ is the reference's precondition
-        # (#575): it is written for a plan verified under the reference, and
-        # for one that reaches the engine through the reference's route.
-        finite = self.semantics == "reference" or kind == "translated"
+        # The check of an operation's overflow to ±∞ is the reference's
+        # precondition (#575): it is written for a plan verified under the
+        # reference, and for one that reaches the engine through the
+        # reference's route. An aggregate's keeps it on every route: the
+        # engine's running sum overflows where the exact one does not.
+        finite = _finite(self.semantics == "reference" or kind == "translated")
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
         # translation, a guard-free plan runs without its per-row checks on an
@@ -1300,35 +1327,40 @@ class Report:
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
-        if (
-            check_requires
-            and kind == "translated"
-            and self.semantics == "reference"
-            and self._guard_free
-            and theorem is not None
-        ):
-            out = self._with_plan(
-                plan,
-                run_engine,
-                lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
-                recheck,
-            )
-        else:
-            out = self._with_plan(
-                plan,
-                run_engine,
-                lambda plan: run_plan(
-                    con,
+        try:
+            if (
+                check_requires
+                and kind == "translated"
+                and self.semantics == "reference"
+                and self._guard_free
+                and theorem is not None
+            ):
+                out = self._with_plan(
                     plan,
-                    engine,
-                    finite=finite,
-                    asof=self._native_asof(plan, run_engine),
-                    # A proved report's exact level justifies Spark's windows
-                    # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                    tie_free=self._exact and kind != "unverified",
-                ),
-                recheck,
-            )
+                    run_engine,
+                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                    recheck,
+                )
+            else:
+                out = self._with_plan(
+                    plan,
+                    run_engine,
+                    lambda plan: run_plan(
+                        con,
+                        plan,
+                        engine,
+                        finite=finite,
+                        asof=self._native_asof(plan, run_engine),
+                        # A proved report's exact level justifies Spark's windows
+                        # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                        tie_free=self._exact and kind != "unverified",
+                    ),
+                    recheck,
+                )
+        except Exception as e:
+            if (oom := _duckdb.memory_limit_error(e, "run")) is not None:
+                raise oom from e
+            raise
         out = self._declared_widths(out)
         if kind == "unverified":
             meta = {**(out.schema.metadata or {}), b"sverify.verified": b"false"}
@@ -1336,15 +1368,20 @@ class Report:
         return out
 
     def _declared_widths(self, out: pa.Table) -> pa.Table:
-        """`out` with each integer column at the width `output` states: a
-        passed-through narrow column Polars widened to int64 goes back to its
+        """`out` with each integer or float column at the width `output` states:
+        a passed-through narrow column Polars widened to int64 goes back to its
         declared width (a native cast, exact: the values came from that width,
-        ruling 121)."""
+        ruling 121). A float32 column is the same (#1908): the checker refuses
+        arithmetic on float32, so a float32 result holds float32 values, and a
+        double the plan widened from one stays a double."""
         want = dict(self.output)
         fields = []
         for f in out.schema:
             ty = want.get(f.name)
-            if ty is not None and ty.is_integer() and pa.types.is_integer(f.type):
+            if ty is not None and (
+                (ty.is_integer() and pa.types.is_integer(f.type))
+                or (ty.is_floating() and pa.types.is_floating(f.type))
+            ):
                 f = f.with_type(ty.to_pyarrow())
             fields.append(f)
         schema = pa.schema(fields, metadata=out.schema.metadata)
@@ -1824,7 +1861,8 @@ class Report:
     @property
     def _summary(self) -> str:
         """The report's first line, by the verdict: "proved"; "proved with
-        checks: " and the assumptions that run time checks ("2 assumptions");
+        checks: " and how many each run checks on the data ("2 run-time
+        checks", the lines `while it runs:` lists, #1997);
         or "NOT proved: " and what is missing, counted ("1 of 2
         postconditions not proved, 1 possible runtime error")."""
         match self.verdict:
@@ -1832,7 +1870,7 @@ class Report:
                 return "proved"
             case Verdict.PROVED_WITH_CHECKS:
                 k = len(self.assumed)
-                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+                return f"proved with checks: {k} run-time check{'' if k == 1 else 's'}"
             case _:
                 return f"NOT proved: {', '.join(self._counts())}"
 
@@ -2554,13 +2592,17 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
         if isinstance(table, str):
             return query.format(f"({table})")
         from sverify.ibis_substrait import SQLModel, Unsupported, sql_model_schema
+        from sverify.ibis_substrait.prune import prune_unmentioned
 
         query = query.format('"t"')
+        # The SQL model hides `table` from the producer's pruning: its unread
+        # columns of types sverify does not read go first (#1958).
+        inner: Any = prune_unmentioned(table).op()
         try:
-            schema = sql_model_schema(query, {"t": table.schema()}, semantics)
+            schema = sql_model_schema(query, {"t": inner.schema}, semantics)
         except Unsupported as e:
             raise Unsupported(f"condition {cond!r}: {e}") from e
-        return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
+        return SQLModel(query, (inner,), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
     if isinstance(table, ir.Join):

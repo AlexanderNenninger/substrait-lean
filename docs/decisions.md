@@ -1640,6 +1640,37 @@ approved (2026-11-18); the plain operands are found by `Expr.plain`.
 Recomputes sinks: no. The reference's values do not change: a plan that raises on no row
 computes what it did, and a lifted guard only removes a raise.
 
+### D52. A source mark carries a construct's band
+
+Decided 2026-11-19 (#1608 12d-4, ruling 85): approved by the theory advisor.
+
+`UnFn.approx k` is the identity in `Rel.eval` under every profile. It records
+that the source a plan was lifted from computes this value with a construct
+of its own, and that the construct's value lies within `k · 2⁻⁵³`, relatively,
+of the plan's. `Rel.Allowed` and the options do not change, and no profile
+reads the mark. The checker's tolerance analysis reads it (`Epsilon.exprEps`):
+over an exact argument, the band over the argument's range. The reference's
+values do not move. Substrait carries it as sverify's own function
+`sverify_approx(x, k)` with `k` a literal; every engine's lowering erases it,
+so the written SQL is unchanged.
+
+The first construct is DuckDB's `avg` of integers under `semantics="duckdb"`,
+a set of doubles around the plan's value (`DuckAgg.Allowed`, `duckdb-avg-int`).
+The lift marks that entry's finish with `DuckAgg.nearRel`, the band
+`DuckAgg.avgBigint_nearRel` proves (`DuckAgg.mark`).
+
+Why the core: a tier-1 engine's SQL returns one of several doubles where the
+lifted plan can state one. The mark is what lets the checker bound the
+others. It names no engine.
+
+2026-11-19 (ruling 104): a plan that carries a mark is proved only where every
+decision that reads a marked value has one outcome over the band and every
+output column that reads one has a bound in the report, and keys. Elsewhere the report
+carries an error issue (`source_threshold`, `EngineRobust.sourceIssues`).
+
+Recomputes sinks: no. The reference's values do not move, and a mark only
+narrows what is proved.
+
 ### D53. A timestamp with the time zone UTC is an instant
 
 Decided 2026-11-19 (theory advisor).
@@ -1975,3 +2006,39 @@ Recomputes sinks: no
 Why: D14 refused only another major, and a patch release changed a native value
 (`list_contains([], NULL)` at DuckDB 2.0.1, [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045)). An unprobed patch
 warns and an unprobed minor is refused.
+
+### D61. Timestamp precisions
+
+Decided 2026-11-19 (theory advisor, ruling 142; #323).
+
+The reference's timestamps count microseconds (`Kind.time`, `Kind.timeTz`) or
+nanoseconds (`Kind.timeNs`, `Kind.timeTzNs`). Seconds and milliseconds are
+encodings of a source or a sink: a scan reads them as microseconds, exactly. A
+cast to a coarser precision floors on the timeline: to seconds or milliseconds
+it is `date_trunc` to that unit, and its result is a microsecond timestamp; from
+nanoseconds it is the floor of the count divided by 1000. A cast from
+microseconds to nanoseconds multiplies by 1000 and raises `overflow` when the
+result leaves 64 bits. Calendar functions take microsecond timestamps. A
+microsecond and a nanosecond timestamp meet only through a written cast.
+
+Where it stands: the second and millisecond reads, the narrowing cast and the
+refusals are built (#323, PR a). The nanosecond kinds and the two casts are
+the next step (PR b); until then a plan column of a precision other than
+microseconds is refused when the plan is read (#2004), since reading it as a
+count of microseconds would compare raw counts of different units.
+
+Recomputes sinks: no
+
+Why: a `timestamp[ms]` value and the microsecond timestamp of the same instant
+are equal on every engine, so they are one value of the reference, and nothing
+in the model rests on a column being a multiple of 1000. The engines floor
+differently below 1970 (DuckDB's narrowing casts truncate toward zero, Polars
+floors), so the reference picks the floor, which is `date_trunc`
+([duckdb-ts-narrow-toward-zero](../engines/duckdb/facts/duckdb-ts-narrow-toward-zero.json),
+[polars-ts-narrow-floor](../engines/polars/facts/polars-ts-narrow-floor.json),
+[polars-ts-units-compare-coarse](../engines/polars/facts/polars-ts-units-compare-coarse.json),
+[polars-ts-widen-wraps](../engines/polars/facts/polars-ts-widen-wraps.json),
+[duckdb-ts-us-to-ns-range](../engines/duckdb/facts/duckdb-ts-us-to-ns-range.json),
+[polars-ts-us-to-ns-range](../engines/polars/facts/polars-ts-us-to-ns-range.json)).
+Nanoseconds get kinds of their own so that every `.time` pattern keeps meaning
+microseconds, and a function that does not name the new kinds refuses them.

@@ -115,7 +115,7 @@ class EngineProfile:
     engine: str
     versions: tuple[str, ...]
     """The engine versions the profile's facts were probed at
-    (`characterization/<engine>/facts/`)."""
+    (`engines/<engine>/facts/`)."""
 
 
 def shim_text(name: str) -> str:
@@ -185,7 +185,7 @@ class EngineVersionWarning(SverifyWarning):
 
 class EngineVersionError(SverifyError, RuntimeError):
     """The engine's major version differs from the one its profile's facts
-    were probed at: re-run the probes (`characterization/<engine>/`) first."""
+    were probed at: re-run the probes (`engines/<engine>/`) first."""
 
     code = "engine_version"
 
@@ -283,7 +283,7 @@ class Route:
     tolerance."""
     facts: tuple[str, ...] = ()
     """The engine facts behind the choices the class rests on
-    (`characterization/<engine>/facts/`)."""
+    (`engines/<engine>/facts/`)."""
     theorems: tuple[str, ...] = ()
     """The Lean theorems that prove those choices, where they are proved."""
     version: str | None = None
@@ -396,7 +396,7 @@ def check_version(engine: str, version: str | None = None) -> str | None:
             f"{engine} {version} is another major version than the facts of "
             f'semantics="{engine}", probed at {probed}: install a '
             f"{_major(prof.versions[0])}.x release of {engine}; "
-            f"running {version} needs its facts probed again (characterization/{engine}/)"
+            f"running {version} needs its facts probed again (engines/{engine}/facts/)"
         )
     msg = (
         f'{engine} {version} is not a version the facts of semantics="{engine}" were '
