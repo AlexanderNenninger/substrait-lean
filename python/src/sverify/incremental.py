@@ -87,6 +87,7 @@ from sverify._weighted import (
     inserted_count,
     matching,
     missing,
+    negated,
     negative,
     positive,
     rows_of,
@@ -2206,8 +2207,8 @@ class Pipeline:
                 if audit and hasattr(src, "_reread"):
                     # A source that reads its table itself may have missed
                     # rows its batches assume away: read it again in full.
-                    current = _as_arrow(self.con.get(t))
-                    _audit_source(t, current, src._reread(start), start, start)
+                    reread = src._reread(start)
+                    _audit_source(t, self._diff(t, reread), start, start)
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
             schema = self.con.schema(t)
@@ -2263,7 +2264,7 @@ class Pipeline:
                     reason = f"{batch.fallback}; " if batch.fallback else ""
                     detail = f"{reason}the files of v{start} are gone; Δ = snapshot v{batch.end}"
                 else:
-                    ch = snapshot_diff(self._with_quarantined(t, current), new)
+                    ch = self._diff(t, new)
                     if native is not None:
                         whole[t] = native.scan
                     detail = f"{batch.fallback}; Δ = snapshot v{batch.end} − state"
@@ -2277,13 +2278,12 @@ class Pipeline:
                         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
                     whole[t] = native.scan
             if audit and batch.changes is not None and not gone:
-                got = _apply_change(self._with_quarantined(t, current), ch, t)
                 # A source that reads its table itself reads it again in full.
                 reread = getattr(src, "_reread", None)
                 want = reread(batch.end) if reread else src.snapshot(batch.end).table
                 if evolved:
                     want = _conform(want, schema)
-                _audit_source(t, got, want, start, batch.end)
+                _audit_source(t, self._diff(t, want, applying=ch), start, batch.end)
             counts = inserted_count(ch), deleted_count(ch)
             if self._quarantining(t):
                 moves = self._split_batch(t, ch, batch.end)
@@ -2380,6 +2380,32 @@ class Pipeline:
             diffed=pending.diffed,
             quarantine=[_quarantine.report(t, m) for t, m in moved.items()],
         )
+
+    def _diff(self, t: str, new: pa.Table, applying: pa.Table | None = None) -> pa.Table:
+        """The change turning the rows of source `t` (with `applying`, a change,
+        added) into `new`, as a weighted table. A sealed source's rows are in the
+        store: the store's merge adds `new` to their negation on the engine, and
+        only the change comes back (#1329, C3 and C4); one held as files, or set
+        aside by a quarantine, is read as Arrow."""
+        if t not in self.inputs:
+            current = self._with_quarantined(t, self.con.get(t))
+            if applying is not None:
+                current = _apply_change(current, applying, t)
+            return snapshot_diff(current, new)
+        state, merge = self.inputs[t]
+        store = self._views[0].store
+        if applying is not None:
+            state = merge(state, store.kept(applying.cast(merge.schema)), keep=True)
+        q = self.quarantined.get(t)
+        aside = q is not None and bool(q.entries)
+        diff = merge(
+            store.kept(weighted(arrow_of(new), 1).cast(merge.schema)),
+            store.negated(state),
+            keep=aside,
+        )
+        if aside:
+            diff = merge(diff, store.kept(negated(q.weighted()).cast(merge.schema)))
+        return diff
 
     def _with_quarantined(self, t: str, current: pa.Table | Native) -> pa.Table:
         """The source's rows as the pipeline holds them: the base table's,
@@ -2702,10 +2728,10 @@ class _Commit:
     """The new rows of each sealed source, in the store (`Pipeline.seal`)."""
 
 
-def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:
-    """Raise unless `got` (the state after the change) has the rows of
-    `want` (the source's snapshot at `end`)."""
-    if snapshot_diff(got, want).num_rows:
+def _audit_source(t: str, difference: pa.Table, start: int, end: int) -> None:
+    """Raise unless `difference` (the change from the state after the change to
+    the source's snapshot at `end`) is empty."""
+    if difference.num_rows:
         if start == end:
             raise AuditError(
                 f"{t}@v{start} differs from the table read again in full: its batches missed "
