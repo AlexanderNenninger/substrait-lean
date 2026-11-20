@@ -41,7 +41,7 @@ import SubstraitLean.Statements
 import SubstraitLean.Engine
 import SubstraitLean.ContractCheck
 import SubstraitLean.ProvedOn
-import SubstraitLean.OpenSums
+import Sverify.Polars.OpenSums
 import SubstraitLean.Statements
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatMoments
