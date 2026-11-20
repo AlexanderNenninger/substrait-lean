@@ -113,6 +113,15 @@ def intMeanExact (env : List AVal) (m : Measure) (rows : Option Nat) : Bool :=
     | _ => false
   | _, _ => false
 
+/-- An integer `SUM` that cannot overflow: at most `rows` rows (a proved row
+bound), each of magnitude at most the argument's range, within 64 bits. Every
+engine then computes the exact sum, the same range check `intMeanExact`
+counts for a double sum of integers. -/
+def intSumExact (env : List AVal) (m : Measure) (rows : Option Nat) : Bool :=
+  match (m.arg.absD env []).int, rows with
+  | some ⟨some lo, some hi⟩, some n => n * max lo.natAbs hi.natAbs ≤ 2 ^ 63 - 1
+  | _, _ => false
+
 /-- The bound for a double measure over rows described by `env`, at most
 `rows` of them: absolute, and relative where the values have one sign, with
 whether the relative bound is one `epsilon_avg_rel` covers (an `AVG`'s
@@ -628,6 +637,7 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
           return (order + (if m.fn = .avg then ea else Float.ofNat n * ea),
             ea == 0.0 && pa && pf && (intMeanExact env m r.maxRows || ordersProved es))
         | .count => return (0.0, pf)
+        | .sum => if ea == 0.0 then return (0.0, pa && pf && intSumExact env m r.maxRows) else none
         | .min | .max => return (ea, pa && pf)
         -- D30: an engine's statistic is within the plan's bound of the
         -- reference's exact moments rounded once.
