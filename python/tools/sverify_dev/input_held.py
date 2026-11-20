@@ -147,10 +147,12 @@ def profiled(owner: object, name: str, label: str, sampler: Sampler, out: list) 
     def call(*args, **kwargs):
         start, t0 = rss_mb(), time.perf_counter()
         sampler.high = start
+        who = ">".join(sys._getframe(i).f_code.co_name for i in (1, 2, 3))
+        rows = [getattr(a, "num_rows", None) for a in args if hasattr(a, "num_rows")]
         try:
             return inner(*args, **kwargs)
         finally:
-            out.append((label, sampler.high - start, time.perf_counter() - t0))
+            out.append((f"{label} rows={rows} from {who}", sampler.high - start, time.perf_counter() - t0))
 
     setattr(owner, name, call)
 
