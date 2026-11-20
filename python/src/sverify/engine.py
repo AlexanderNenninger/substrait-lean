@@ -304,11 +304,13 @@ class Connection:
         """
         self.drop(name)
         if isinstance(table, Native):
+            _refuse_coarse_timestamps(table.schema)
             if isinstance(table, Scan):
                 table = replace(table, schema=plain_schema(table.schema))
         else:
             _check_times(table.schema)
             _check_calendar(table)
+            table = _widen_timestamps(table)
         if isinstance(table, Native) and self._duck is None:
             if _importable("duckdb"):
                 self._ibis  # noqa: B018 - the rows are checked over a DuckDB view
@@ -818,6 +820,36 @@ def _calendar_error(column: str, what: str, count: int, example: str) -> Excepti
         f"{column} holds {what} outside 0001–9999 ({count}, e.g. {example}); the reference's "
         "calendar covers 0001–9999. Filter them, or read the column as text."
     )
+
+
+def _refuse_coarse_timestamps(schema: pa.Schema) -> None:
+    """Refuse a table DuckDB reads where it is with a second or millisecond
+    timestamp column: only an Arrow table is widened to microseconds at the
+    read (`_widen_timestamps`), and an engine that meets the two units in one
+    comparison or join truncates the finer side (`polars-ts-units-compare-coarse`).
+    The scan's projection will widen them (#323)."""
+    from sverify.plan_json import Unsupported
+
+    for f in schema:
+        if pa.types.is_timestamp(f.type) and f.type.unit in ("s", "ms"):
+            raise Unsupported(
+                f"{f.name} is a timestamp in {'seconds' if f.type.unit == 's' else 'milliseconds'} "
+                "in a table the engine reads where it is; sverify reads these as microseconds "
+                "only from an Arrow table so far (#323): cast the column to microseconds"
+            )
+
+
+def _widen_timestamps(table: pa.Table) -> pa.Table:
+    """Read the second and millisecond timestamp columns as microseconds (D61):
+    exact, since `_check_calendar` holds every value in 0001–9999. No engine
+    then sees two units in one operation."""
+    fields = [
+        pa.field(f.name, pa.timestamp("us", tz=f.type.tz), f.nullable, f.metadata)
+        if pa.types.is_timestamp(f.type) and f.type.unit in ("s", "ms")
+        else f
+        for f in table.schema
+    ]
+    return table.cast(pa.schema(fields)) if fields != list(table.schema) else table
 
 
 def _check_calendar(table: pa.Table) -> None:

@@ -316,6 +316,38 @@ def test_read_maps_rules_to_conditions():
     )
 
 
+@pytest.mark.parametrize(
+    ("bound", "cap"),
+    [
+        ({"mustBeLessOrEqualTo": 2.5}, 2),
+        ({"mustBeLessOrEqualTo": 3.0}, 3),
+        ({"mustBeLessThan": 2.5}, 2),
+        ({"mustBeLessThan": 3}, 2),
+        ({"mustBeBetween": [0, 2.5]}, 2),
+    ],
+)
+def test_read_rounds_a_fractional_row_cap_down(bound, cap):
+    # Row counts are whole numbers, so a cap of 2.5 rows is a cap of 2.
+    doc = textwrap.dedent(
+        """
+        apiVersion: v3.2.0
+        kind: DataContract
+        id: caps
+        version: 1.0.0
+        status: active
+        schema:
+          - name: t
+            properties:
+              - name: a
+                logicalType: integer
+        """
+    )
+    doc = yaml.safe_load(doc)
+    doc["schema"][0]["quality"] = [{"metric": "rowCount", **bound}]
+    c = odcs.read(doc, strict=True)
+    assert [x.n for x in c.conditions() if isinstance(x, MaxRows)] == [cap]
+
+
 def test_read_strict_raises_on_unread_rules():
     with pytest.raises(ValueError, match="6 ODCS rule"):
         odcs.read(DOC, strict=True)
@@ -499,9 +531,10 @@ def test_read_lists_what_it_cannot_read_with_reasons():
     assert 'LENGTH("code") >= 1' in labels and 'LENGTH("code") <= 3' in labels
     assert '("n" > 0) OR "n" IS NULL' in labels and '("n" <= 9) OR "n" IS NULL' in labels
     assert '("d" <= CAST(\'2030-01-01\' AS DATE)) OR "d" IS NULL' in labels
-    # A row cap from `mustBeLessThan` (n - 1) and from a range starting at 0.
+    # A row cap from `mustBeLessThan` (n - 1), from a range starting at 0 and
+    # from a fractional `mustBeLessOrEqualTo: 2.5`, which floors to 2 (#1892).
     caps = sorted(x.n for x in c.tables["t"] if isinstance(x, MaxRows))
-    assert caps == [10, 20]
+    assert caps == [2, 10, 20]
     assert any(isinstance(x, Unique) and x.cols == ("code", "n") for x in c.tables["t"])
     assert not any(isinstance(x, References) for x in c.tables["t"])
     assert 'NOT "n" IS NULL' in labels  # missingValues: [null]
@@ -517,9 +550,6 @@ def test_read_lists_what_it_cannot_read_with_reasons():
         "a relationship sverify does not read",
         "a minimum sverify cannot read for boolean",
         "a relationship on the object",
-        # From `mustBeLessOrEqualTo: 2.5`: a cap that is no integer. The text
-        # is wrong for it (#1892); a fractional cap could read as floor(n).
-        "a lower bound on the row count",
         "a key over columns the object lacks",
         "metric 'nullValues' on a whole object",
         "reads columns the object lacks",
