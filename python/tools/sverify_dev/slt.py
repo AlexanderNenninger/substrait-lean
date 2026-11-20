@@ -920,15 +920,12 @@ class Replay:
             # L2 compares the reference's value with DuckDB's own on the same
             # text; the plan written back for DuckDB has the reference's
             # meaning, which is not what it is compared with.
-            # A `verify` issue is a static "may raise" check, which the
-            # evaluator does not model for every raise (`sin('inf')`, the
-            # domain error on NaN, is `verify`'s only). It need not concern
-            # the rows that differ, so such a query agrees as `static`: counted
-            # apart in the ledger (`agree_static`), to be read one by one.
-            if lean_ok:
+            # A `verify` issue is a static "may raise" check, which need not
+            # concern the rows that differ. Such a query agrees, with the
+            # issue as its reason ("verify: ..."), and is counted apart in the
+            # ledger (`agree_static`), to be read one by one.
+            if lean_ok or found:
                 res.cls = "agree"
-            elif found:
-                res.cls, res.engine = "agree", "static: verify issue"
             else:
                 res.cls, res.side = "disagree", "lean"
             return res
@@ -1285,7 +1282,11 @@ def write_ledger(
     # Agreements where the written plan was refused: Lean's rows matched
     # DuckDB's (oracle A), but no engine ran the plan back (oracle C).
     oracle_a = _oracle_a_only(results)
-    static = sum(1 for r in results if str(r.get("engine") or "").startswith("static:"))
+    static = sum(
+        1
+        for r in results
+        if r["cls"] == "agree" and str(r.get("reason") or "").startswith("verify:")
+    )
     head = {
         **{
             "duckdb": version,
