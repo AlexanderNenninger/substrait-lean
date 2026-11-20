@@ -115,7 +115,8 @@ evidence line: `verified_holds_duckdb`, `verified_holds_polars`,
 theorem verdict_proved_sound {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) (hp : rep.AllProved) (hclosed : rep.closed = true)
     {data : Catalog} (hD : DataMeets R data) :
-    ∀ out, T.root.Allowed data out → ∀ k p, R.posts[k]? = some p → p.HoldsOn out := by
+    ∀ out, T.root.Allowed data out →
+      ∀ (k : Nat) (p : Post), R.posts[k]? = some p → p.HoldsOn out := by
   intro out hout k p hk
   rw [check_closed h.parsed h.checked] at hclosed
   simp only [Request.closedIn, h.transform, Option.any_some] at hclosed
