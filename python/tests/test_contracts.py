@@ -29,10 +29,10 @@ def test_postconditions_are_proved():
     report = doubled.report
     assert report is not None
     assert report.verdict == sv.Verdict.PROVED
-    assert report.facts["doubled"] == "an integer ≥ 22"
+    assert str(report.facts["doubled"]) == "an integer ≥ 22"
     assert "(_.amount < 4611686018427387904)" in report.requires["orders"]  # stated (#655)
     assert report._inferred == {}
-    assert report.facts["id"] == "any integer"  # never NULL, by the precondition
+    assert str(report.facts["id"]) == "any integer"  # never NULL, by the precondition
 
 
 def test_unprovable_postcondition_is_refused():
@@ -43,7 +43,7 @@ def test_unprovable_postcondition_is_refused():
     with pytest.raises(VerificationError) as e:
         plus_one(orders)
     assert e.value.report.unproved[0].value == "TRUE or FALSE"
-    assert e.value.report.facts["total"] == "an integer ≥ 1"
+    assert str(e.value.report.facts["total"]) == "an integer ≥ 1"
 
 
 def test_null_propagates_unless_ruled_out():
@@ -83,7 +83,7 @@ def test_inner_join_keeps_facts_left_join_does_not():
     assert sv.verify(inner, requires=pre, ensures=[_.city.notnull()]).verdict == sv.Verdict.PROVED
     report = sv.verify(left, requires=pre, ensures=[_.city.notnull()])
     assert report.verdict == sv.Verdict.UNPROVED
-    assert "NULL" in report.facts["city"]
+    assert "NULL" in str(report.facts["city"])
 
 
 def test_sql_transform_and_conditions():
@@ -462,4 +462,4 @@ def test_a_bound_on_abs_bounds_the_value():
                 t.mutate(s=agg.over(w)), requires={"t": [cond, _.x.notnull()]}, ensures=[]
             )
             assert not report.issues
-            assert report.facts["x"] == shown
+            assert str(report.facts["x"]) == shown

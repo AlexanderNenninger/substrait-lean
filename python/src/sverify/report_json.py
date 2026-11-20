@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from collections.abc import Collection, Mapping
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -23,7 +24,7 @@ from sverify._meta import VERSION
 if TYPE_CHECKING:
     from sverify.conditions import CheckedCondition
     from sverify.observation import Observation
-    from sverify.report import Issue, Needed, Report
+    from sverify.report import ColumnFacts, Issue, Needed, Report
     from sverify.routes import Route
 
 #: The version of the report's JSON format (`format` in the document).
@@ -65,6 +66,56 @@ def _value(v: Any) -> Any:
 
 
 # -- the parts ------------------------------------------------------------------
+
+
+def facts_json(f: ColumnFacts) -> Json:
+    """A column's facts: their text, and the data (`ColumnFacts`), bounds as
+    `_value` writes values."""
+    return {
+        "text": str(f),
+        "nullable": f.nullable,
+        "lower": _value(f.lower),
+        "upper": _value(f.upper),
+    }
+
+
+_INTERVAL = re.compile(r"(?:(-?\d+) days?, )?(-?\d+):(\d\d):(\d\d(?:\.\d+)?)")
+
+
+def _bound(v: Any, dtype: Any) -> Any:
+    """A bound `facts_json` wrote, as a value of the column's type."""
+    if v is None or isinstance(dtype, str) or dtype is None:
+        return v
+    if dtype.is_decimal():
+        return Decimal(v)
+    if dtype.is_floating():
+        return float(v)
+    if dtype.is_timestamp():
+        return datetime.fromisoformat(v)
+    if dtype.is_date():
+        return date.fromisoformat(v)
+    if dtype.is_interval() and (m := _INTERVAL.fullmatch(v)):
+        days, h, mi, sec = m.groups()
+        return timedelta(days=int(days or 0), hours=int(h), minutes=int(mi), seconds=float(sec))
+    return v
+
+
+def _facts(
+    d: Mapping[str, Any], output: Mapping[str, Any], not_null: Collection[str]
+) -> dict[str, ColumnFacts]:
+    """The facts `facts_json` wrote; a report written before #704 has their
+    text alone, and its `not_null` list."""
+    from sverify.report import ColumnFacts
+
+    out = {}
+    for c, f in d.items():
+        if isinstance(f, str):
+            out[c] = ColumnFacts(c not in not_null, None, None, f)
+            continue
+        t = output.get(c)
+        lo, hi = _bound(f.get("lower"), t), _bound(f.get("upper"), t)
+        out[c] = ColumnFacts(bool(f.get("nullable", True)), lo, hi, f.get("text", ""))
+    return out
 
 
 def equivalence_json(obs: Observation) -> Json:
@@ -122,10 +173,33 @@ def suggested_json(suggested: Mapping[str, Any]) -> list[Json]:
 
 
 def _needs(needs: Any) -> tuple[Needed, ...]:
-    """The `Needed` of a list of `needed` objects, as SQL."""
-    from sverify.report import _needed
+    """The `Needed` of a list of `needed` objects, as `needed_json` writes
+    them; one with only its table and label (written before #1288 API-5) as
+    SQL. Its condition is its SQL."""
+    from sverify.report import Needed, _needed
 
-    return tuple(_needed(t, lab, "sql") for t, labs in suggested(needs).items() for lab in labs)
+    out = []
+    for n in needs or ():
+        if n.get("table") is None:
+            continue
+        if "sql" not in n:
+            out.append(_needed(n["table"], n["label"], "sql"))
+            continue
+        i = n.get("issue")
+        out.append(
+            Needed(
+                n["table"],
+                n.get("column"),
+                n.get("op"),
+                n.get("value"),
+                n["sql"],
+                n["label"],
+                n.get("code") or n["label"],
+                None if i is None else issue(i),
+                condition=n["sql"],
+            )
+        )
+    return tuple(out)
 
 
 def suggested(needs: Any) -> dict[str, list[Any]]:
@@ -240,8 +314,6 @@ def issue(d: Mapping[str, Any], assumed: bool = False) -> Issue:
 def checked_json(c: CheckedCondition) -> Json:
     """A postcondition, as a finding: `pass` where it is proved, `fail`
     where it is not. Its rule is `reason`, or `proved`."""
-    from sverify.report import _labels_by_table
-
     cx = c.counterexample
     proved_level = "note" if c.reason else "none"
     level = proved_level if c.proved else "warning" if c.checked else "error"
@@ -259,7 +331,7 @@ def checked_json(c: CheckedCondition) -> Json:
             "reads": None if c.reads is None else list(c.reads),
             "nullable": None if c.nullable is None else list(c.nullable),
             "approx": c.approx,
-            "needs": suggested_json(_labels_by_table(c.needs)),
+            "needs": [needed_json(n) for n in c.needs],
             "counterexample": None
             if cx is None
             else {
@@ -404,7 +476,7 @@ def to_json(report: Report) -> Json:
         "issues": [issue_json(i) for i in report.issues],
         "assumed": [assumed_json(i) for i in report.assumed],
         "needs": [needed_json(n) for n in report.needs],
-        "facts": dict(report.facts),
+        "facts": {c: facts_json(f) for c, f in report.facts.items()},
         "not_null": proved_not_null(report),
         "output": {k: str(v) for k, v in report.output.items()},
         "routes": {e: route_json(r) for e, r in report.routes.items()},
@@ -459,10 +531,11 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
     }
     issues = [issue(i) for i in d.get("issues", [])]
     ties = d.get("ties") or {}
+    output = _output(d.get("output") or {}, d.get("not_null") or ())
     return Report(
         requires={t: list(labs) for t, labs in (d.get("requires") or {}).items()},
         ensures=[checked(c) for c in d.get("ensures", [])],
-        facts=dict(d.get("facts") or {}),
+        facts=_facts(d.get("facts") or {}, output, d.get("not_null") or ()),
         deterministic=d.get("deterministic", True),
         # A report written before D48 has one level, the exact one.
         _exact=d.get("deterministic_exact", d.get("deterministic", True)),
@@ -490,7 +563,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         black_boxes=black_boxes_from_json(d.get("black_boxes")),
         routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
         _transfer=d.get("transfer"),
-        output=_output(d.get("output") or {}, d.get("not_null") or ()),
+        output=output,
         _dialect=d.get("dialect", "ibis"),
         ties=suggested(ties.get("needs")),
         # 0.6 wrote "silent" for what is now "ignore".

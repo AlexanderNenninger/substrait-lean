@@ -1617,7 +1617,7 @@ def _(display, dt, end, ibis, mo, start, sv):
         )
     )
     display.table(
-        list(_report.facts.items()), ["column", "what Lean knows"]
+        [(c, str(f)) for c, f in _report.facts.items()], ["column", "what Lean knows"]
     ) if _lo < _hi else mo.md("*Pick an end after the start.*")
     return (events,)
 

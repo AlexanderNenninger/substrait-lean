@@ -63,7 +63,8 @@ big.refresh()
 assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
 report = big_orders.report
 assert report.verdict == sv.Verdict.PROVED
-print(report.facts["doubled"])  # what Lean established about the column
+print(report.facts["doubled"])  # what Lean established about the column, in words
+report.facts["doubled"].lower  # the same as data: nullable, lower, upper
 ```
 
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL

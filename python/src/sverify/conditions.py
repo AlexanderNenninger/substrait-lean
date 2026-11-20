@@ -811,9 +811,10 @@ class CheckedCondition:
     `requires` does not state and under which the checker proves it, one
     `Needed` each: those its proof used where sverify inferred them
     (`reason` is `"needs"`, under `verify(on_inferred="error")`), or those
-    the checker suggests (`_.x * 2 <= 100` holds with `_.x <= 50`). Never
-    assumed: adding them is the author's choice (`Report.suggested_requires`
-    adds the inferred ones)."""
+    the checker suggests (`_.x * 2 <= 100` holds with `_.x <= 50`). The set
+    is sufficient, not claimed minimal: where the proof used inferred
+    bounds it lists every one of them. Never assumed: adding them is the
+    author's choice (`Report.suggested_requires` adds the inferred ones)."""
     ignores: tuple[str, ...] = ()
     """The components of the observation (`sv.equivalent`) the condition
     depends on but the observation ignores (D12, #444): the proof under the

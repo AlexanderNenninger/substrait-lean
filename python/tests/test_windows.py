@@ -103,8 +103,8 @@ def test_window_postconditions_are_proved():
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.deterministic
-    assert report.facts["rn"] == "an integer ≥ 0"
-    assert report.facts["prev"] == "a double > 0.0 or NULL"
+    assert str(report.facts["rn"]) == "an integer ≥ 0"
+    assert str(report.facts["prev"]) == "a double > 0.0 or NULL"
 
 
 def test_lag_is_null_on_the_first_row():
@@ -158,7 +158,7 @@ def test_strict_order_under_a_key():
     report = gaps.report
     assert report is not None and report.verdict == sv.Verdict.PROVED, str(report)
     assert (
-        report.facts["gap"]
+        str(report.facts["gap"])
         == "an interval in [0:00:00.000001, 2932896 days, 23:59:59.999999] or NULL"
     )
 

@@ -252,7 +252,7 @@ def test_rollup_contract_is_proved():
         on_inferred="ignore",  # the truncated ts's bound
     )
     assert report.verdict == sv.Verdict.PROVED, report.details()
-    assert report.facts["mx"] == "an integer in [0, 1000]"
+    assert str(report.facts["mx"]) == "an integer in [0, 1000]"
     # The reference rounds the exact mean once (D25), so it stays within the
     # inputs' bound (#1160). Its relation to the group's own max is not tracked.
     report = sv.verify(
@@ -403,9 +403,9 @@ def test_aggregate_postconditions_are_proved():
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, report.details()
     # Nothing bounds a group's rows (#219): the SUM is assumed to fit.
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
-    assert report.facts["n"] == "an integer ≥ 1"
+    assert str(report.facts["n"]) == "an integer ≥ 1"
     # `amount >= 0` rules out NULL, so each group has a maximum (#372).
-    assert report.facts["top"] == "an integer ≥ 0"
+    assert str(report.facts["top"]) == "an integer ≥ 0"
 
 
 def test_sum_has_no_upper_bound():
@@ -551,9 +551,9 @@ def test_variance_meaning():
         for g, e in zip(got, expected, strict=True):
             assert all(near(x, y) for x, y in zip(g, e, strict=True)), (engine, g, e)
     report = sv.verify(var_expr())
-    assert all(report.facts[c] == "a double ≥ 0.0 or NULL" for c in ("vs", "vp", "ss", "sp")), (
-        report.facts
-    )
+    assert all(
+        str(report.facts[c]) == "a double ≥ 0.0 or NULL" for c in ("vs", "vp", "ss", "sp")
+    ), report.facts
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])

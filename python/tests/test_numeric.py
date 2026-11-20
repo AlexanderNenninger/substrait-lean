@@ -173,7 +173,7 @@ def test_bounded_round_gives_bounded_integers():
         ensures=[_.x >= 0, _.x <= 100],
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert report.facts["x"] == "an integer in [0, 100]"
+    assert str(report.facts["x"]) == "an integer in [0, 100]"
 
 
 def test_contracts_fail_on_possible_errors():

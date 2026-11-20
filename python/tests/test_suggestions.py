@@ -116,3 +116,20 @@ def test_postconditions_sharing_a_suggestion_share_its_proof(monkeypatch):
     assert [[n.label for n in c.needs] for c in report.ensures] == [["(_.x < 51)"]] * 2
     # The proof, its counterexamples, and one confirmation for both suggestions.
     assert len(calls) == 3
+
+
+@pytest.mark.parametrize(
+    ("sql", "ensures"),
+    [
+        ("select mrr * 12 as arr, n from s", ["arr >= 0", "arr < 9000000000000000000", "n >= 0"]),
+        ("select n / mrr as r, mrr + n as t from s", ["r is not null", "t >= 0", "t < 10"]),
+        ("select sum(mrr) as m, count(*) as c from s", ["m >= 0", "c >= 1"]),
+    ],
+)
+def test_proved_means_proved_from_the_stated_preconditions(sql, ensures):
+    """Ruling 184 N2, #701's law: under `on_inferred="error"` a condition is
+    proved exactly when the stated `requires` alone prove it."""
+    requires = {"s": ["mrr >= 0", "n >= 0"]}
+    r = sv.verify(sql, tables=S, requires=requires, ensures=ensures)
+    alone = sv.verify(sql, tables=S, requires=requires, ensures=ensures, on_inferred="off")
+    assert [c.proved for c in r.ensures] == [c.proved for c in alone.ensures]

@@ -159,6 +159,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     SUM_ASSUMED,
     TIES_HINT,
     TRUNC_HINT,
+    ColumnFacts,
     Condition,
     InferredWarning,
     Issue,
@@ -185,6 +186,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     _truncates,
     _unparen,
     _would_hold,
+    column_facts,
     condition_query,
     error_text,
     proved_not_null,
@@ -844,7 +846,6 @@ def verify(
             operation that may overflow to ±inf, is an error too, which the
             other values check on the data while the job runs
             (`Report.assumed`); each `Issue.hint` suggests a bound.
-            `"silent"` is a deprecated spelling of `"ignore"`.
 
     Returns:
         A `Report` with the status of each postcondition, the possible
@@ -882,7 +883,7 @@ def verify(
             requires={"orders": [_.amount >= 0]},
             ensures=[_.total >= 1],
         )
-        report.facts["total"]  # 'an integer ≥ 1'
+        str(report.facts["total"])  # 'an integer ≥ 1'
         ```
     """
     transform = query
@@ -1010,6 +1011,13 @@ def infer_bounds(
     out._on_inferred = _checked_on_inferred(on_inferred)
     if out._on_inferred == "error" and any(c._inferred_used for c in out.ensures):
         out.ensures = [_needing(c, out.needs) for c in out.ensures]
+    if out._on_inferred == "error" and out.needs and out._stated_facts is not None:
+        # No fact rests on a bound the caller did not state (ruling 184, F1).
+        out.facts = dict(out._stated_facts)
+        out.output = {
+            c: t.copy(nullable=True) if c in out.facts and out.facts[c].nullable else t
+            for c, t in out.output.items()
+        }
     if out._asof_checks and not isinstance(transform, str):
         from sverify._asof_cap import max_pairs_of
 
@@ -1071,6 +1079,15 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[str, Any]:
+    """The output's types, not nullable where `facts` proves a column never
+    NULL: one value for both (ruling 184, F2)."""
+    return {
+        c: t.copy(nullable=False) if c in facts and not facts[c].nullable else t
+        for c, t in dtypes.items()
+    }
+
+
 def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
     """`c` not proved where its proof used inferred preconditions (#701),
     with those it used as its `needs`: the bounds, and the `IS NOT NULL`s
@@ -1084,13 +1101,6 @@ def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
 
 
 def _checked_on_inferred(v: str) -> OnInferred:
-    if v == "silent":
-        warnings.warn(
-            'on_inferred="silent" is deprecated; write on_inferred="ignore"',
-            DeprecationWarning,
-            stacklevel=4,
-        )
-        return "ignore"
     if v not in ("error", "warn", "ignore", "off"):
         raise ValueError(f"on_inferred must be 'error', 'warn', 'ignore' or 'off', not {v!r}")
     return v  # type: ignore[return-value]
@@ -1132,7 +1142,7 @@ def _observed(
             approx=isinstance(cond, Approx),
             nullable=None
             if r is None or any(c not in report.facts for c in r)
-            else tuple(c for c in r if "NULL" in report.facts[c]),
+            else tuple(c for c in r if report.facts[c].nullable),
             ignores=c.checker_ignores
             if c.checker_ignores is not None
             else tuple(
@@ -1229,8 +1239,10 @@ def _infer_bounds(
         return finish(report, schemas, requires)
     # Counterexamples only for the final proof.
     report, raw, schemas = once(requires, 0)
-    # What the stated preconditions alone prove (#701).
+    # What the stated preconditions alone prove (#701): the postconditions
+    # and the columns' facts.
     stated = [c.proved for c in report.ensures]
+    stated_facts = report.facts
     extra = {
         t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
     }
@@ -1261,6 +1273,7 @@ def _infer_bounds(
         replace(c, _inferred_used=True) if c.proved and not alone else c
         for c, alone in zip(report.ensures, stated, strict=True)
     ]
+    report._stated_facts = stated_facts
     # A SUM that may overflow is assumed to fit, and an operation on finite
     # doubles to stay finite (#575), both checked on the data while the job
     # runs: the row caps (#219) and the bounds do not rule them out.
@@ -1467,7 +1480,7 @@ def _null_reasons(
             ensured.append(c)
             continue
         cols = c.nullable if c.nullable is not None else _reads(cond, report.output) or ()
-        for col in [x for x in cols if "NULL" in report.facts.get(x, "NULL")]:
+        for col in [x for x in cols if x not in report.facts or report.facts[x].nullable]:
             if isinstance(cond, str) and isinstance(transform, str):
                 relaxed: Condition = f"({cond}) OR {col} IS NULL"
                 code = relaxed
@@ -1764,9 +1777,10 @@ def _prove_once(
     )
     dtypes = _checker_decimals(dict(result.items()), out.get("outputKinds"))
 
-    def describe(f: dict) -> str:
+    def describe(f: dict) -> ColumnFacts:
         dtype = dtypes.get(f["name"])
-        return (render_fact(f["abstract"], dtype) if dtype is not None else None) or f["value"]
+        text = (render_fact(f["abstract"], dtype) if dtype is not None else None) or f["value"]
+        return column_facts(f["abstract"], dtype, text)
 
     assumable: Container[str] = schemas if inputs is None else inputs
     rows = iter(out["ensures"])
@@ -1851,7 +1865,7 @@ def _prove_once(
 
     # The plan as the report keeps it, written once (#1088).
     plan_text = json.dumps(transform_plan)
-    never_null = {f["name"] for f in out["facts"] if f.get("abstract", {}).get("null") is False}
+    facts = {f["name"]: describe(f) for f in out["facts"]}
     report = verdict(
         out,
         request=contract,
@@ -1859,7 +1873,7 @@ def _prove_once(
         _dialect=dialect,
         requires={t: [label(c) for c in cs] for t, cs in requires.items()},
         ensures=checked,
-        facts={f["name"]: describe(f) for f in out["facts"]},
+        facts=facts,
         issues=_issues(
             out["issues"],
             # Ibis's `//` and `%` floor, and the producer writes them in the
@@ -1877,7 +1891,7 @@ def _prove_once(
         _bounds=_int_bounds(out["facts"], dtypes),
         _implied=_implied_sql(out.get("implied", []), schemas),
         internal_plan=plan_text,
-        output={c: t.copy(nullable=False) if c in never_null else t for c, t in dtypes.items()},
+        output=_typed(dtypes, facts),
         _postconditions=list(ensures),
         inputs=dict(schemas),
     )
@@ -3414,8 +3428,7 @@ def transform(
             the same without the warning. `"off"`: nothing is inferred or
             assumed, so an integer `SUM` that may leave 64 bits is an error
             too, which the other values check on the data while the job
-            runs (`Report.assumed`). `"silent"` is a deprecated spelling of
-            `"ignore"`.
+            runs (`Report.assumed`).
         on_violation: What a refresh does with a batch of a source that
             breaks one of these preconditions, inferred ones included:
             `"error"` raises `PreconditionError`; `"quarantine"`
@@ -3467,7 +3480,7 @@ def transform(
 
         big = orders.pipe(doubled)  # a Node, proved here (as doubled(orders))
         doubled.report.verdict  # Verdict.PROVED
-        doubled.report.facts["doubled"]  # 'an integer ≥ 22'
+        str(doubled.report.facts["doubled"])  # 'an integer ≥ 22'
         big.refresh()
         big.to_arrow().to_pylist()  # [{'id': 1, 'doubled': 60}]
         ```

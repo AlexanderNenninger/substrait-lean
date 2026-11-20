@@ -196,10 +196,31 @@
       }
     },
     "facts": {
-      "description": "What the checker established about each output column, in words.",
+      "description": "What the checker established about each output column (Report.facts): in words, whether it may be NULL, and inclusive bounds on its non-NULL values, written as counterexample values are. A report written before #704 has the words alone.",
       "type": "object",
       "additionalProperties": {
-        "type": "string"
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "nullable"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "nullable": {
+                "type": "boolean"
+              },
+              "lower": {},
+              "upper": {}
+            }
+          }
+        ]
       }
     },
     "not_null": {
@@ -451,7 +472,7 @@
                   "type": "boolean"
                 },
                 "needs": {
-                  "description": "Preconditions under which it would hold.",
+                  "description": "For an unproved condition, preconditions requires does not state under which it is proved (CheckedCondition.needs): those its proof used where sverify inferred them (reason needs), or those the checker suggests. A sufficient set, not claimed minimal.",
                   "type": "array",
                   "items": {
                     "$ref": "#/$defs/needed"

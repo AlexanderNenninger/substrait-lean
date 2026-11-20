@@ -306,11 +306,11 @@ def test_report_shows_decimals_at_their_scale():
     li = ibis.table({"p": "decimal(15,2)", "d": "decimal(15,2)"}, name="lineitem")
     sql = "SELECT sum(p * d) AS revenue FROM lineitem WHERE p >= 900 AND d >= 0.05"
     report = sv.verify(sv.sql(sql, dialect="duckdb", lineitem=li), on_inferred="off")
-    assert report.facts["revenue"] == "a decimal(28, 4) ≥ 45.0000 or NULL"
+    assert str(report.facts["revenue"]) == "a decimal(28, 4) ≥ 45.0000 or NULL"
     assert "revenue: a decimal(28, 4) ≥ 45.0000 or NULL" in str(report)
     t = ibis.table({"a": "decimal(10,2)"}, name="t")
     # Ibis types `a + a` at `a`'s precision; the model's exact sum needs one more.
-    assert sv.verify(t.select(b=t.a + t.a)).facts["b"] == (
+    assert str(sv.verify(t.select(b=t.a + t.a)).facts["b"]) == (
         "a decimal(11, 2) in [-199999999.98, 199999999.98] or NULL"
     )
 

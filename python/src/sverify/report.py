@@ -362,16 +362,6 @@ class Issue:
     that may give `±∞`."""
 
     @property
-    def suggested(self) -> dict[str, tuple[str, ...]]:
-        """Deprecated: `needs`. Its labels per input table."""
-        warnings.warn(
-            "Issue.suggested is deprecated; read Issue.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return _labels_by_table(self.needs)
-
-    @property
     def what(self) -> str:
         """The column, or else the expression, a report names the issue by."""
         return self.column or self.shown or self.expr
@@ -431,8 +421,12 @@ class Report:
     """Each postcondition, in the order given: its label, whether it was
     proved, what the checker established about it, and a counterexample if one was
     found."""
-    facts: dict[str, str] = field(default_factory=dict)
-    """What the checker established about each output column."""
+    facts: dict[str, ColumnFacts] = field(default_factory=dict)
+    """What the checker established about each output column, as data
+    (`ColumnFacts`: whether it may be NULL, and bounds on its values) and in
+    words (`str(report.facts["c"])`). Under `on_inferred="error"`, where the
+    proof needs a precondition `requires` does not state, they rest on the
+    stated preconditions alone (#701)."""
     deterministic: bool = True
     """True when every result the reference allows is one up to row order
     and up to the member of each class of doubles (`-0.0` and `0.0`; every
@@ -679,6 +673,9 @@ class Report:
     covers."""
     # What an inferred precondition does (`verify(on_inferred=...)`): an error
     # unless the caller says otherwise (D23).
+    _stated_facts: dict[str, ColumnFacts] | None = field(default=None, repr=False, compare=False)
+    """`facts` under the stated preconditions alone, before sverify inferred
+    any (#701); None where it inferred none."""
     _on_inferred: OnInferred = field(default="error", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
@@ -2228,6 +2225,64 @@ _EPOCH_DAY = date(1970, 1, 1)
 
 
 _MICROSECOND = timedelta(microseconds=1)
+
+
+@dataclass(frozen=True)
+class ColumnFacts:
+    """What the checker proved about one output column (`Report.facts`), as
+    data. `str()` gives it in words: "an integer ≥ 1"."""
+
+    nullable: bool
+    """Whether the column may be NULL; False where the checker proves it
+    never NULL, as `Report.output` types it."""
+    lower: Any = None
+    """A bound every non-NULL value is at least (`col IS NULL OR col >=
+    lower` holds), in the column's Python type (`int`, `Decimal`, `float`,
+    `date`, `datetime`, `timedelta`); None where the checker proves none.
+    A double column gets a finite bound only."""
+    upper: Any = None
+    """A bound every non-NULL value is at most, as `lower`."""
+    _text: str = field(default="", repr=False, compare=False)
+
+    def __str__(self) -> str:
+        return self._text
+
+
+def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any) -> Any:
+    """The checker's integer code `k` of a bound as a value of `dtype`
+    (`render_fact` reads the same codes); None where it has none."""
+    if k is None or dtype is None:
+        return None
+    if (dec := abstract.get("decimal")) is not None:
+        return _decimals.scaled(k, -dec["scale"])
+    if dtype.is_floating():
+        x = decode_double(k)
+        return x if math.isfinite(x) else None
+    if dtype.is_timestamp():
+        try:
+            return datetime(1970, 1, 1) + timedelta(microseconds=k)
+        except OverflowError:
+            return None
+    if dtype.is_date():
+        try:
+            return _EPOCH_DAY + timedelta(days=k)
+        except OverflowError:
+            return None
+    if dtype.is_interval():
+        return timedelta(microseconds=k)
+    return k if dtype.is_integer() else None
+
+
+def column_facts(abstract: Mapping[str, Any], dtype: Any, text: str) -> ColumnFacts:
+    """A column's `ColumnFacts` from the checker's abstract value of it."""
+    rng = abstract.get("int") or {}
+    lo, hi = (None if rng.get(e) is None else int(rng[e]) for e in ("lo", "hi"))
+    return ColumnFacts(
+        abstract.get("null") is not False,
+        _bound_value(lo, abstract, dtype),
+        _bound_value(hi, abstract, dtype),
+        text,
+    )
 
 
 def render_fact(abstract: dict, dtype: Any) -> str | None:

@@ -1756,7 +1756,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     from sverify.conditions import CheckedCondition, PlannedCondition
     from sverify.engine import run_checker
     from sverify.observation import Observation
-    from sverify.report import Issue
+    from sverify.report import Issue, column_facts
 
     imp = read(data)
     m = imp.manifest
@@ -1828,7 +1828,9 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         semantics=m.get("semantics", "reference"),
         requires=requires,
         ensures=checked,
-        facts={f["name"]: f["value"] for f in out["facts"]},
+        facts={
+            f["name"]: column_facts(f.get("abstract") or {}, None, f["value"]) for f in out["facts"]
+        },
         internal_plan=json.dumps(imp.plan),
         observation=observation,
         _params=list(m.get("params") or []),
