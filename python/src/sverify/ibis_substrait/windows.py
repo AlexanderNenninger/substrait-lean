@@ -38,6 +38,20 @@ def _window_functions(values: Iterable[Any]) -> list[Any]:
     return found
 
 
+def _ordered_pick(func: Any) -> bool:
+    """`first(order_by=)` / `last(order_by=)` as a window function: the value
+    of the first (last) non-NULL row of the partition in the aggregate's own
+    order (#1913). With `where=` Ibis itself has no window form."""
+    return isinstance(func, ops.First | ops.Last) and bool(func.order_by)
+
+
+def window_inputs(w: Any) -> list[Any]:
+    """The expressions of the window `w` that the Lean parser reads as
+    columns: the partitions and the sort keys. The producer projects those
+    that are not columns first (#1930)."""
+    return [*w.group_by, *(o.arg for o in w.order_by)]
+
+
 _US_PER_DAY = 86_400_000_000
 
 
@@ -105,9 +119,36 @@ _RANKS = {
 }
 
 
+def _ordered_first_last(x: Exprs, op: Any) -> Json:
+    """`FIRST_VALUE(x) OVER (… ORDER BY o ROWS BETWEEN UNBOUNDED PRECEDING AND
+    UNBOUNDED FOLLOWING)`, as Ibis writes it: a NULL first value stays NULL,
+    whatever `include_null` says (as for the unordered form below)."""
+    func = op.func
+    name = "first_value" if isinstance(func, ops.First) else "last_value"
+    # Ibis copies the aggregate's order into the window's.
+    if op.order_by and tuple(op.order_by) != tuple(func.order_by):
+        raise ProducerUnsupported(
+            "first/last(order_by=) in a window with another order is not supported",
+            construct="function " + name.removesuffix("_value"),
+        )
+    return {
+        "windowFunction": {
+            "functionReference": _anchor(name),
+            "partitions": [x(g) for g in op.group_by],
+            "sorts": [_sort_key(x, k) for k in func.order_by],
+            "arguments": [{"value": x(func.arg)}],
+            "lowerBound": {"unbounded": {}},
+            "upperBound": {"unbounded": {}},
+            "boundsType": "BOUNDS_TYPE_ROWS",
+        }
+    }
+
+
 def window(x: Exprs, op: Any) -> Json:
     func = op.func
     args: list[Json] = []
+    if _ordered_pick(func) and func.where is None:
+        return _ordered_first_last(x, op)
     if isinstance(func, ops.RowNumber):
         name = "row_number"
     elif type(func) in _RANKS:
@@ -126,13 +167,16 @@ def window(x: Exprs, op: Any) -> Json:
         if func.default is not None:
             args.append(x(func.default, func.dtype))
     elif isinstance(func, ops.First | ops.Last | ops.NthValue):
+        if getattr(func, "where", None) is not None:
+            raise ProducerUnsupported(
+                "first/last with where= in a window is not supported",
+                construct="function " + type(func).__name__.lower(),
+            )
         if not isinstance(func.arg, ops.Field):
             raise Unsupported("first/last/nth of an expression is not supported; use a column")
         if isinstance(func, ops.First | ops.Last):
             # Ibis's DataFusion SQL is a plain FIRST_VALUE/LAST_VALUE whatever
             # `include_null` says.
-            if func.where is not None or func.order_by:
-                raise ProducerUnsupported("first/last with where or order_by is not supported")
             name = "first_value" if isinstance(func, ops.First) else "last_value"
             args = [x(func.arg)]
         else:

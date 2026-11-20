@@ -1086,9 +1086,14 @@ def test_quantile_of_several_fractions_agrees_with_duckdb(rows):
     con.create("t", Q.schema(), rows)
     got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
     assert len(lean) == len(got)
-    lean_by_k = {k: [decode_double(v) if isinstance(v, int) else v for v in qs] for k, qs in lean}
+    lean_by_k = {
+        k: None if qs is None else [decode_double(v) if isinstance(v, int) else v for v in qs]
+        for k, qs in lean
+    }
     for r in got:
-        assert lean_by_k[r["k"]] == pytest.approx(r["q"])
+        assert (lean_by_k[r["k"]] is None) == (r["q"] is None)
+        if r["q"] is not None:
+            assert lean_by_k[r["k"]] == pytest.approx(r["q"])
 
 
 @pytest.mark.parametrize("where", [False, True])
@@ -1115,3 +1120,15 @@ def test_count_distinct_of_rows_agrees_with_duckdb(where, rows):
     assert [tuple([v]) if not isinstance(v, tuple) else v for v in lean] == got
     expect = duckdb_sql(con, ibis.to_sql(expr, dialect="duckdb")).to_pylist()
     assert got == [tuple(r.values()) for r in expect]
+
+
+def test_arbitrary_is_one_of_the_groups_values():
+    """`arbitrary()` is `first()` without an order (#1920): a non-NULL value
+    of the group, which a contract can bound but does not determine."""
+    expr = Q.group_by("k").aggregate(a=Q.i.arbitrary(where=Q.s == "a"))
+    report = sv.verify(
+        expr,
+        requires={"t": [_.i >= 0, _.i <= 10]},
+        ensures=[_.a.isnull() | ((_.a >= 0) & (_.a <= 10))],
+    )
+    assert report.verdict == sv.Verdict.PROVED, report.details()

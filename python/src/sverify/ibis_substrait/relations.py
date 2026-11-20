@@ -20,7 +20,12 @@ from ibis.expr.schema import Schema
 from sverify._plan_read import function_names
 from sverify.ibis_substrait._base import Exprs, _sort_key, register, register_rels, rel, same_type
 from sverify.ibis_substrait.aggregates import measure, split_multi_quantiles
-from sverify.ibis_substrait.windows import _row_number_from_zero, _window_functions, window
+from sverify.ibis_substrait.windows import (
+    _row_number_from_zero,
+    _window_functions,
+    window,
+    window_inputs,
+)
 from sverify.plan_json import (
     Json,
     ProducerUnsupported,
@@ -178,9 +183,7 @@ def _project(op: Any) -> Json:
     # reads them only as whole expressions), then the values over them. A
     # partition or sort key that is an expression is projected before them (#1930).
     width = len(op.parent.schema)
-    staged = _staged(
-        op.parent, [k for w in wins for k in (*w.group_by, *(o.arg for o in w.order_by))]
-    )
+    staged = _staged(op.parent, [k for w in wins for k in window_inputs(w)])
     x = Exprs({op.parent: 0}, staged)
     windowed = {
         "project": {

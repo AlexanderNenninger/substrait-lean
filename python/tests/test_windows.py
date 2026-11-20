@@ -453,3 +453,44 @@ def test_a_windowed_min_of_doubles_picks_a_member_of_a_class():
     assert "keeps any member of a class of doubles" in doubles._tie_places[0].what
     ints = sv.verify(t.select(t.s, t.t, lo=t.n.min().over(w)), requires=keyed)
     assert ints.deterministic
+
+
+FL = ibis.table({"a": "int64", "val": "int64", "ob": "int64"}, name="fl")
+
+
+@pytest.mark.parametrize(
+    "pick",
+    [
+        lambda c: c.first(order_by="ob"),
+        lambda c: c.last(order_by="ob"),
+        lambda c: c.first(order_by=ibis._.ob.desc()),
+        lambda c: c.last(order_by=ibis._.ob.desc()),
+    ],
+    ids=["first_asc", "last_asc", "first_desc", "last_desc"],
+)
+@settings(max_examples=25, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(-1, 2),
+            st.one_of(st.none(), st.integers(0, 5)),
+            st.integers(0, 12),
+        ),
+        max_size=8,
+        unique_by=lambda r: r[2],
+    )
+)
+def test_ordered_first_last_in_mutate_match_duckdb(pick, rows):
+    """`first(order_by=)` and `last(order_by=)` over the whole table (#1913): Lean,
+    Ibis's own SQL and the plan Lean writes agree (the order keys are unique)."""
+    expr = FL.mutate(new=pick(FL.val))
+    con = connect()
+    con.create("fl", FL.schema(), rows)
+    expected = duckdb_ibis(con, expr).to_pylist()
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"fl": rows})))
+    assert canonical(lean) == canonical([tuple(r.values()) for r in expected])
+    got = run_plan(con, written_plan(json.dumps(plan)), "duckdb").to_pylist()
+    assert canonical([tuple(r.values()) for r in got]) == canonical(
+        [tuple(r.values()) for r in expected]
+    )

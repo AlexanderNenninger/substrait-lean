@@ -66,7 +66,7 @@ def measure(x: Exprs, op: Any) -> Json:
         args = [x(op.left, dt.float64), x(op.right, dt.float64)]
     elif isinstance(op, ops.ArrayCollect):
         return collect(x, op)
-    elif isinstance(op, ops.First | ops.Last):
+    elif isinstance(op, ops.First | ops.Last | ops.Arbitrary):
         return first_last(x, op)
     elif isinstance(op, ops.GroupConcat):
         return group_concat(x, op)
@@ -167,14 +167,15 @@ def group_concat(x: Exprs, op: Any) -> Json:
 def first_last(x: Exprs, op: Any) -> Json:
     """`FIRST(x ORDER BY …)` / `LAST(…)` of the non-NULL values (#55). Without
     `order_by` it is any row's value (Ibis's `distinct(on=)`): verified, but
-    reported as the engine's choice unless the group is a key."""
-    name = "first" if isinstance(op, ops.First) else "last"
-    if op.include_null:
+    reported as the engine's choice unless the group is a key. `arbitrary()`
+    is that choice, a non-NULL value of the group (#1920)."""
+    name = "last" if isinstance(op, ops.Last) else "first"
+    if not isinstance(op, ops.Arbitrary) and op.include_null:
         raise ProducerUnsupported(
             f"{name}(include_null=True) is not supported", construct=f"function {name}"
         )
     sorts = []
-    for k in op.order_by:
+    for k in () if isinstance(op, ops.Arbitrary) else op.order_by:
         key = _sort_key(x, k)
         if "selection" not in key["expr"]:
             raise Unsupported(
@@ -251,7 +252,9 @@ def split_multi_quantiles(metric: Any) -> Any:
         if not (isinstance(qs, ops.Literal) and isinstance(qs.value, tuple | list)):
             raise Unsupported("quantile() needs constant fractions", construct="function quantile")
         one = [ops.Quantile(m.arg, ops.Literal(q, qs.dtype.value_type), m.where) for q in qs.value]
-        swap[m] = ops.Array(tuple(one))
+        # DuckDB's list is NULL, not a list of NULLs, for a group with no value.
+        empty = ops.Equals(ops.Count(m.arg, m.where), ops.Literal(0, dt.int64))
+        swap[m] = ops.IfElse(empty, ops.Literal(None, m.dtype), ops.Array(tuple(one)))
     return metric.replace(swap) if swap else metric
 
 

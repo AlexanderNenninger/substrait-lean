@@ -133,6 +133,7 @@ CASES: list[Case] = [
         V,
         lambda: t.group_by("name").aggregate(m=(t.qty + 1).mode()),
     ),
+    case("aggregation", "arbitrary", V, lambda: t.group_by("name").aggregate(a=t.qty.arbitrary())),
     case("aggregation", "nunique of rows", V, lambda: t.aggregate(n=t.nunique(where=t.qty > 1))),
     case(
         "aggregation",
@@ -153,6 +154,7 @@ REFUSED: dict[str, dict[str, str]] = {
     "cov, corr": DUCKDB_ONLY,
     "first, last ordered": DUCKDB_ONLY,
     "distinct(on=)": DUCKDB_ONLY,
+    "arbitrary": DUCKDB_ONLY,
     "group_concat ordered": DUCKDB_ONLY,
     "group_concat": DUCKDB_ONLY,
     "median, quantile": DUCKDB_ONLY,
@@ -182,6 +184,7 @@ NO_DUCKDB_SQL = {
     "first, last ordered": "ties in ORDER BY are the engine's",
     # Without an order, Ibis's own FIRST takes any row's value.
     "distinct(on=)": "FIRST without ORDER BY is any row's value",
+    "arbitrary": "FIRST without ORDER BY is any row's value",
     "group_concat ordered": "ties in ORDER BY are the engine's",
     "group_concat": "without ORDER BY the order is the engine's",
     # Ibis writes MODE(x), whose ties DuckDB breaks in its own order; the
