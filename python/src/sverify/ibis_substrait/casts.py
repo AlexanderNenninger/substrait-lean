@@ -46,7 +46,7 @@ def _from_seconds(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
     since the epoch (`pd.to_datetime(unit="s")` in its tests, DuckDB's
     `to_timestamp`), where Substrait's cast reads microseconds. So it is
     `as_timestamp("s")` (#860). None for the other casts."""
-    if not (op.arg.dtype.is_integer() and to.is_timestamp()):
+    if not (op.arg.dtype.is_integer() and isinstance(to, dt.Timestamp)):
         return None
     if try_ or to.timezone is not None or to.scale not in (None, 6):
         raise Unsupported(
