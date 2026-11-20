@@ -197,7 +197,7 @@ by a route that the checker justifies against it
 |---|---|---|---|---|---|
 | DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Engine.duckdb_sound`, under `Engine.NoRaiseSide` | yes |
 | Polars, streaming | `engine="polars"` | | `"polars"` | `Engine.polars_sound`, under `Engine.GuardFreeSide` | yes |
-| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound`, under `Engine.GuardFreeSide` | yes |
+| Spark 4.3 | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound`, under `Engine.GuardFreeSide` | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
 `sverify.engines.ENGINES` names the engines in the promise that run plans
