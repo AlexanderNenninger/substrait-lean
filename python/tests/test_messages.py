@@ -103,6 +103,14 @@ def test_aggregates_over_one_column_are_named_together() -> None:
     assert "assumes: mean(temp_c) or std(temp_c) stays finite on finite inputs" in report.details()
 
 
+def test_a_large_double_constant_reads_as_python_writes_it() -> None:
+    """#885 finding 1d: `1e302` reads as `1e+302`, not its 303 digits."""
+    t = ibis.table({"value": "float64"}, name="s")
+    text = sv.verify(t.select(scaled=t.value * 1e302)).details()
+    assert "value * 1e+302 stays finite on finite inputs" in text
+    assert "000000000" not in text
+
+
 def test_a_decimal_cast_reads_as_the_cast() -> None:
     report = sv.verify(
         "SELECT order_id, amount::DECIMAL(10,2) AS amt FROM orders", tables={"orders": ORDERS}
