@@ -1,0 +1,1 @@
+The engine tables state what each engine does at `list_null_order`: DuckDB orders a NULL element greatest (its `<` of lists is shimmed to the reference's NULL, its MIN and MAX agree), Spark and Polars order it least and refuse lists at `<`, MIN and MAX. The option's "not characterized" lines in the realizability table are gone. Ruling 171.
