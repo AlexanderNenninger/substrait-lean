@@ -1,8 +1,8 @@
 """Sources you write yourself: one `read(since)` method that returns the
 new rows and a cursor, as in data-warehousing-with-polars.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Source`, `Batch`, `from_query`, `from_frame`, `from_files`)
 are re-exported by `sverify.io`.
 
@@ -166,6 +166,9 @@ class Source(Pipeable, ABC):
     Attributes:
         name: The table's name in the plans that read it.
         assumes: What the batches rest on, or None.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
 
     Examples:
         A source reading new rows from a list, by an increasing id:
