@@ -10,3 +10,10 @@ DuckDB's ranges for the time) are read.
 
 An empty or NULL list gives one row with a NULL element (#1917), as DuckDB,
 Polars and Spark's `explode_outer` do. `unnest(offset=)` stays refused.
+
+### SQL lift: GROUP BY ALL, QUALIFY and strftime
+
+`GROUP BY ALL` groups by the select items without an aggregate, `QUALIFY`
+filters a window column, and `strftime(ts, fmt)` with a constant format of
+`%Y %m %d %H %M %S %j %%` is read (#1991, #319). `current_date` and `now()`
+stay refused, naming the function; pass the date in as a column or a constant.

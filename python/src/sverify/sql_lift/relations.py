@@ -6,6 +6,7 @@ from __future__ import annotations
 import ibis
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
+from sqlglot.transforms import eliminate_qualify
 
 from sverify.plan_json import (
     Json,
@@ -302,4 +303,38 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
 
 SOURCES[sge.Values] = _values
 JOIN_METHODS["ASOF"] = _asof
-PARSE_REWRITES.extend([_values_names, _unpivot, _unnest_columns])
+
+
+def _group_all(tree: sge.Expr) -> sge.Expr:
+    """`GROUP BY ALL` (#1991): DuckDB groups by the select items that hold no
+    aggregate; none left is one group for the whole input. A select item with
+    a window function is refused: DuckDB's reading of it is not probed."""
+    for sel in list(tree.find_all(sge.Select)):
+        group = sel.args.get("group")
+        if group is None or not group.args.get("all"):
+            continue
+        keys: list[sge.Expression] = []
+        for item in sel.expressions:
+            if item.find(sge.Window):
+                raise SqlUnsupported("GROUP BY ALL with a window function in the SELECT")
+            if not item.find(sge.AggFunc):
+                keys.append(item.unalias().copy())
+        sel.set("group", sge.Group(expressions=keys) if keys else None)
+    return tree
+
+
+def _qualify(tree: sge.Expr) -> sge.Expr:
+    """`QUALIFY` (#319) as the filter of a subquery over the window columns
+    (SQLGlot's `eliminate_qualify`, the form its dialects without QUALIFY
+    print)."""
+    for sel in list(tree.find_all(sge.Select)):
+        if sel.args.get("qualify") is not None:
+            new = eliminate_qualify(sel)  # a new outer SELECT around `sel`
+            if sel is tree:
+                tree = new
+            elif new is not sel:
+                sel.replace(new)
+    return tree
+
+
+PARSE_REWRITES.extend([_group_all, _qualify, _values_names, _unpivot, _unnest_columns])
