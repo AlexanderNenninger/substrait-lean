@@ -785,6 +785,7 @@ variable [Boxes.Ambient]
 abbrev entryP (p : Profile) (σ : List Expr) (i : Nat) (row : Row) : Outcome :=
   (σ.getD i (.lit .null)).evalP p row
 
+omit [Boxes.Ambient] in
 /-- Substituting entries with the same outcome gives the same outcome; and
 where an entry `t` reads eagerly raises, so does `t` with it substituted:
 where the outcomes differ, it is because such an entry raises. -/
@@ -878,9 +879,9 @@ theorem Expr.evalP_subst_congr {p : Profile} :
         | zero => rfl
         | succ i =>
           have h1 := heq i hj
-          simp only [entryP, List.getD_cons_succ, List.getD_eq_getElem?_getD, List.getElem?_map] at h1 ⊢
+          simp only [entryP, List.getD_eq_getElem?_getD] at h1 ⊢
           cases hσ : σ[i]? <;> cases hσ' : σ'[i]? <;>
-            simp_all [Expr.evalP_shift_cons, Expr.shift, Expr.evalP]
+            simp_all [Expr.evalP_shift_cons, Expr.evalP]
       rcases Expr.evalP_subst_congr b (x :: row) (x :: row') _ _ (fun j hj => .inl (hent j hj)) with
         k | ⟨_, j, hj, hr⟩
       · exact k
@@ -892,6 +893,164 @@ theorem Expr.evalP_subst_congr {p : Profile} :
       cases hx : (l.subst σ).evalP p row with
       | error k => rfl
       | ok v => simp [hx, Outcome.err?] at hl
+
+omit [Boxes.Ambient] in
+/-- An expression reading below the row's width has the same outcome on a
+longer row. -/
+theorem Expr.evalP_append {p : Profile} : ∀ (e : Expr) {n : Nat} {row : Row} (extra : Row),
+    e.refsLt n → row.length = n → e.evalP p (row ++ extra) = e.evalP p row
+  | .lit _, _, _, _, _, _ => rfl
+  | .field i, _, row, extra, he, hlen => by
+    simp only [Expr.evalP, Expr.refsLt] at he ⊢
+    simp [List.getD, List.getElem?_append_left (hlen ▸ he)]
+  | .un f a, _, _, extra, he, hlen => by simp only [Expr.evalP, Expr.evalP_append a extra he hlen]
+  | .bin f a b, _, _, extra, he, hlen => by
+    simp only [Expr.evalP, Expr.evalP_append a extra he.1 hlen, Expr.evalP_append b extra he.2 hlen]
+  | .ifThen c t e, _, _, extra, he, hlen => by
+    simp only [Expr.evalP, Expr.evalP_append c extra he.1 hlen, Expr.evalP_append t extra he.2.1 hlen,
+      Expr.evalP_append e extra he.2.2 hlen]
+  | .hof f l b, _, row, extra, he, hlen => by
+    simp only [Expr.evalP, Expr.evalP_append l extra he.1 hlen]
+    congr 1; funext v; congr 1; funext x
+    exact Expr.evalP_append b (row := x :: row) extra he.2 (by simp [hlen])
+
+/-- Under the reference, raising is having an error issue. -/
+theorem Expr.raisesOn_reference (row : Row) (e : Expr) :
+    e.RaisesOn Profile.reference row ↔ e.Raises row := by
+  simp only [Expr.RaisesOn, Expr.evalP_reference, Expr.refOutcome_err, Expr.Raises]
+
+/-- A plain expression's outcome under the reference: its value. -/
+theorem Expr.evalP_plain {row : Row} {e : Expr} (h : e.plain = true) :
+    e.evalP Profile.reference row = .ok (e.eval row) := by
+  rw [Expr.evalP_reference]; unfold Expr.refOutcome; rw [Expr.issues_plain row e h]; rfl
+
+/-- A plain expression's value under the reference's functions is its value. -/
+theorem Expr.evalI_plain {row : Row} {e : Expr} (h : e.plain = true) :
+    e.eval row Profile.reference.impl = e.eval row :=
+  Expr.evalI_of_evalP (Expr.evalP_plain h)
+
+/-- A projection raises where its input does, or one of its expressions on one
+of its input's rows. -/
+theorem Rel.raises_project {p : Profile} {cat : Catalog} {R : Rel} {e : Expr} :
+    (Rel.project R [e]).Raises p cat ↔ R.Raises p cat ∨ ∃ row ∈ R.eval cat p.impl, e.RaisesOn p row := by
+  simp [Rel.Raises]
+
+/-- Two extensions of the same state agree on the input's rows. -/
+theorem BindSt.Ext.unique {I : Impl} {cat : Catalog} {r : Rel} {w : Nat} {s : BindSt} {F G : Row → Row}
+    (hF : s.Ext I cat r w F) (hG : s.Ext I cat r w G) : ∀ row ∈ r.eval cat I, F row = G row := by
+  intro row hr
+  have := List.map_inj_left.mp (hF.1.symm.trans hG.1) row hr
+  simpa using this
+
+/-- Where `e` does not raise, its value under the reference's functions is its value. -/
+theorem Expr.evalI_ref_of_not_raises {row : Row} {e : Expr} (h : ¬ e.Raises row) :
+    e.eval row Profile.reference.impl = e.eval row := by
+  apply Expr.evalI_of_evalP
+  rw [Expr.evalP_reference]; unfold Expr.refOutcome
+  have : firstError (e.issues row) = none := by
+    simp only [Expr.Raises, Option.isSome_iff_ne_none, ne_eq, Decidable.not_not] at h; exact h
+  rw [this]
+
+/-- The running value lets the next operand run: not FALSE for `AND`, not TRUE
+for `OR`; the first operand always runs. -/
+def accGoes (isAnd : Bool) : Option Value → Prop
+  | none => True
+  | some a => a ≠ .bool !isAnd
+
+/-- The running value after the next operand's value `v`. -/
+def stepAcc (isAnd : Bool) (acc : Option Value) (v : Value) : Value :=
+  match acc with | none => v | some a => comb isAnd a v
+
+/-- Some operand of `ops` runs and raises: it raises under the reference, and
+the running value before it (the operands' values under the reference's
+functions, folded onto `acc`) lets it run. -/
+def raiseFrom (w : Nat) (isAnd : Bool) (row : Row) : Option Value → List LExpr → Prop
+  | _, [] => False
+  | acc, x :: xs => (accGoes isAnd acc ∧ (x.fill w).Raises row) ∨
+      raiseFrom w isAnd row (some (stepAcc isAnd acc ((x.fill w).eval row Profile.reference.impl))) xs
+
+/-- An operand that goes on, for `AND` (`Expr.Go`) or `OR` (`Expr.GoOr`). -/
+def goesOn (isAnd : Bool) (row : Row) (q : Expr) : Prop :=
+  if isAnd then Expr.Go row q else Expr.GoOr row q
+
+theorem raiseFrom_dead (w : Nat) (isAnd : Bool) (row : Row) :
+    ∀ ops, ¬ raiseFrom w isAnd row (some (.bool !isAnd)) ops
+  | [] => id
+  | x :: xs => by
+    simp only [raiseFrom, accGoes, ne_eq, not_true_eq_false, false_and, false_or, stepAcc,
+      comb_decides]
+    exact raiseFrom_dead w isAnd row xs
+
+omit [Boxes.Ambient] in
+theorem stepAcc_goes {isAnd : Bool} {acc : Option Value} {v : Value} (ha : accGoes isAnd acc)
+    (hab : ∀ a ∈ acc, a.IsBool) (hv : v.IsBool) (hvd : v ≠ .bool !isAnd) :
+    stepAcc isAnd acc v ≠ .bool !isAnd ∧ (stepAcc isAnd acc v).IsBool := by
+  cases acc with
+  | none => exact ⟨hvd, hv⟩
+  | some a =>
+    have haa := hab a rfl
+    simp only [accGoes] at ha
+    simp only [stepAcc]
+    refine ⟨?_, comb_boolVal isAnd a v⟩
+    rcases haa with rfl | ⟨b, rfl⟩ <;> rcases hv with rfl | ⟨c, rfl⟩ <;>
+      cases isAnd <;> (try cases b) <;> (try cases c) <;> simp_all [comb, and3, or3]
+
+/-- **`raiseFrom` is the lifts' raise** (`Expr.andLift_raises_iff`,
+`Expr.orLift_raises_iff`): an operand raises after operands that go on. -/
+theorem raiseFrom_iff (w : Nat) (isAnd : Bool) (row : Row) : ∀ (ops : List LExpr) (acc : Option Value),
+    accGoes isAnd acc → (∀ a ∈ acc, a.IsBool) → LExpr.BoolsAll Profile.reference.impl w row ops →
+    (raiseFrom w isAnd row acc ops ↔ ∃ pre p post, LExpr.fillAll w ops = pre ++ p :: post ∧
+      (∀ q ∈ pre, goesOn isAnd row q) ∧ p.Raises row)
+  | [], _, _, _, _ => by
+    simp only [raiseFrom, LExpr.fillAll, false_iff, not_exists, not_and]
+    intro pre p post h; simp at h
+  | x :: xs, acc, ha, hab, ⟨⟨hbx, _⟩, hbxs⟩ => by
+    simp only [raiseFrom, LExpr.fillAll]
+    by_cases hx : (x.fill w).Raises row
+    · simp only [ha, hx, and_self, true_or, true_iff]
+      exact ⟨[], _, _, rfl, by simp, hx⟩
+    · simp only [hx, and_false, false_or]
+      have hval := Expr.evalI_ref_of_not_raises hx
+      have hbv : (LExpr.fill w x).eval row |>.IsBool := by
+        rw [← hval]; exact hbx
+      -- `fill x` goes on exactly where its value is not the one that decides.
+      have hgo : goesOn isAnd row (x.fill w) ↔ (x.fill w).eval row ≠ .bool !isAnd := by
+        have hnr : firstError ((x.fill w).issues row) = none := by
+          simp only [Expr.Raises, Option.isSome_iff_ne_none, ne_eq, Decidable.not_not] at hx; exact hx
+        have hbv' : Expr.BoolVal row (x.fill w) := hbv
+        cases isAnd
+        · simp only [goesOn, Expr.GoOr, Bool.false_eq_true, ↓reduceIte, Bool.not_false]
+          exact ⟨fun h => h.2.1, fun h => ⟨hnr, h, hbv'⟩⟩
+        · simp only [goesOn, Expr.Go, ↓reduceIte, Bool.not_true]
+          exact ⟨fun h => h.2.1, fun h => ⟨hnr, h, hbv'⟩⟩
+      have hcons : (∃ pre p post, LExpr.fill w x :: LExpr.fillAll w xs = pre ++ p :: post ∧
+            (∀ q ∈ pre, goesOn isAnd row q) ∧ p.Raises row) ↔
+          goesOn isAnd row (x.fill w) ∧ ∃ pre p post, LExpr.fillAll w xs = pre ++ p :: post ∧
+            (∀ q ∈ pre, goesOn isAnd row q) ∧ p.Raises row := by
+        constructor
+        · rintro ⟨pre, p, post, h, hpre, hp⟩
+          cases pre with
+          | nil => simp at h; exact absurd (h.1 ▸ hp) hx
+          | cons q pre =>
+            simp only [List.cons_append, List.cons.injEq] at h
+            obtain ⟨rfl, h⟩ := h
+            exact ⟨hpre _ (by simp), pre, p, post, h, fun q hq => hpre q (by simp [hq]), hp⟩
+        · rintro ⟨hg, pre, p, post, h, hpre, hp⟩
+          exact ⟨x.fill w :: pre, p, post, by simp [h], fun q hq => by
+            rcases List.mem_cons.mp hq with rfl | hq
+            · exact hg
+            · exact hpre q hq, hp⟩
+      rw [hcons, hgo, ← hval]
+      by_cases hd : (x.fill w).eval row Profile.reference.impl = .bool !isAnd
+      · simp only [hd, ne_eq, not_true_eq_false, false_and, iff_false]
+        have : stepAcc isAnd acc (.bool !isAnd) = .bool !isAnd := by
+          cases acc with
+          | none => rfl
+          | some a => cases isAnd <;> simp [stepAcc, comb, and3_false_right, or3_true_right]
+        rw [this]; exact raiseFrom_dead w isAnd row xs
+      · obtain ⟨hg', hb'⟩ := stepAcc_goes ha hab (hval ▸ hbv) hd
+        simp only [hd, ne_eq, not_false_eq_true, true_and]
+        exact raiseFrom_iff w isAnd row xs _ hg' (by simpa using hb') hbxs
 
 end Raises
 
