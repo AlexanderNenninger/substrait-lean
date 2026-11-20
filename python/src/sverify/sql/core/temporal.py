@@ -165,6 +165,9 @@ def expr(
                 DAY_MIN,
                 DAY_MAX,
                 f"date_trunc to a {unit}",
+                # A truncation keeps a date in range: it is at most the date,
+                # and 0001-01-01 is a Monday and starts its month, quarter and year.
+                decided=(DAY_MIN, DAY_MAX),
             )
         case Un(op="add_months", arg=a, digits=months, param=k):
             kind: Kind = "time" if k == "time" else "date"
@@ -197,8 +200,14 @@ def expr(
             c, k = _const_days(a), b.value if isinstance(b, Lit) else None
             if c is not None and isinstance(k, int) and _in_dates(c, c + k):
                 return d.date_add_days(x, n)
+            # A constant `k` keeps `x + k` in range for `x` in a shifted range.
+            within = (
+                (max(DAY_MIN, DAY_MIN - k), min(DAY_MAX, DAY_MAX - k))
+                if isinstance(k, int)
+                else None
+            )
             return self.date_range(
-                x, lambda y: d.date_add_days(y, n), DAY_MIN, DAY_MAX, "date + days"
+                x, lambda y: d.date_add_days(y, n), DAY_MIN, DAY_MAX, "date + days", decided=within
             )
         case Bin(op="date_diff", left=a, right=b):
             x = self.operand(a, "date", ref, cols, "date_diff")

@@ -517,6 +517,37 @@ def test_dates_outside_the_range_fail(x, d):
         run_plan(con, written, "duckdb")
 
 
+@pytest.mark.parametrize("k", [-7, -1, 1, 7, 10**6])
+@pytest.mark.parametrize("d", [DAY_MIN, DAY_MIN + 6, DAY_MAX - 6, DAY_MAX])
+def test_a_constant_day_shift_raises_exactly_where_it_leaves_the_dates(k, d):
+    """`date + k` for a constant `k` checks one range of the date (#1608 item 10):
+    DuckDB raises just where `d + k` leaves the reference's dates, and gives
+    `d + k` elsewhere."""
+    con = connect()
+    put_table(con, "r", pa.table({"d": pa.array([d], pa.int32()).cast(pa.date32())}))
+    written = written_plan(to_substrait_json(R_DATES.select(x=R_DATES.d + ibis.interval(days=k))))
+    if DAY_MIN <= d + k <= DAY_MAX:
+        got = run_plan(con, written, "duckdb").column("x").cast(pa.int32()).to_pylist()
+        assert got == [d + k]
+    else:
+        with pytest.raises(duckdb.Error, match="sverify"):
+            run_plan(con, written, "duckdb")
+
+
+@pytest.mark.parametrize("unit", ["W", "M", "Q", "Y"])
+def test_date_trunc_keeps_the_first_and_last_dates(unit):
+    """A truncation keeps a date of the reference's range in it, so its check
+    reads the date alone (#1608 item 10): the first and last dates truncate on
+    DuckDB without raising. (A date outside the range never reaches it: the
+    read refuses one, D32.)"""
+    con = connect()
+    written = written_plan(to_substrait_json(R_DATES.select(x=R_DATES.d.truncate(unit))))
+    days = pa.array([DAY_MIN, DAY_MAX], pa.int32()).cast(pa.date32())
+    put_table(con, "r", pa.table({"d": days}))
+    got = run_plan(con, written, "duckdb").column("x").cast(pa.int32()).to_pylist()
+    assert got[0] == DAY_MIN and DAY_MIN <= got[1] <= DAY_MAX
+
+
 D = ibis.table({"d": "date", "ts": "timestamp", "n": "int64"}, name="t")
 
 
