@@ -411,6 +411,8 @@ def test_the_reference_replay_agrees_where_the_reference_raises(tmp_path, monkey
     )
     results, _ = slt.replay_file(path, "area/ref.test")
     assert [r.cls for r in results] == ["agree", "disagree"], [(r.cls, r.reason) for r in results]
+    # `sin('inf')` is the evaluator's own raise (`LeanRaised`), not a static issue.
+    assert results[0].reason.startswith("reference raises"), results[0].reason
 
 
 def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
