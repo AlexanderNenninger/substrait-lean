@@ -25,7 +25,7 @@ reference's relational evaluator (`trusted-base.md`), the run is the model
 `CORR`, `QUANTILE_CONT`) needs `Rel.FloatOpenSafeP`, which nothing
 discharges for them yet (#929). For a double `SUM` or `AVG`, `Engine.contract_sound_runs_near`
 with `Rel.floatOpenSafeP_aggregate` covers an aggregate at the root
-(`SubstraitLean/OpenSums.lean`), and `Rel.floatOpenSafeP_of_noDouble` a closed
+(`engines/Sverify/Engines/OpenSums.lean`), and `Rel.floatOpenSafeP_of_noDouble` a closed
 plan without doubles (`engines/Sverify/Engines/NoDouble.lean`).
 -/
 
