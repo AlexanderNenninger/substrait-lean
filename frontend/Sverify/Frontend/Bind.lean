@@ -1052,6 +1052,345 @@ theorem raiseFrom_iff (w : Nat) (isAnd : Bool) (row : Row) : ∀ (ops : List LEx
         simp only [hd, ne_eq, not_false_eq_true, true_and]
         exact raiseFrom_iff w isAnd row xs _ hg' (by simpa using hb') hbxs
 
+omit [Boxes.Ambient] in
+theorem LChain.bindAll_length (w : Nat) (g : Option Expr) :
+    ∀ (s : BindSt) (body : Expr) (i : Nat) (cs : List LChain),
+      (LChain.bindAll w g s body i cs).2.length = cs.length
+  | _, _, _, [] => rfl
+  | s, body, i, _ :: cs => by
+    simp only [LChain.bindAll, List.length_cons, LChain.bindAll_length w g _ body (i + 1) cs]
+
+omit [Boxes.Ambient] in
+theorem LChain.fillAll_getElem? (w : Nat) : ∀ (cs : List LChain) (j : Nat) (c : LChain),
+    cs[j]? = some c → (LChain.fillAll w cs)[j]? = some (c.fill w)
+  | [], _, _, h => by simp at h
+  | d :: cs, 0, c, h => by simp at h; subst h; rfl
+  | _ :: cs, j + 1, c, h => by
+    simp only [List.getElem?_cons_succ] at h
+    simp only [LChain.fillAll, List.getElem?_cons_succ]
+    exact LChain.fillAll_getElem? w cs j c h
+
+/-- An eagerly read entry that raises makes the substituted expression raise. -/
+theorem Expr.evalP_subst_eager {p : Profile} :
+    ∀ (t : Expr) (row : Row) (σ : List Expr) (i : Nat), t.reads i → t.eagerOnly i →
+      (entryP p σ i row).err?.isSome → ((t.subst σ).evalP p row).err?.isSome
+  | .lit _, _, _, _, h, _, _ => by simp [Expr.reads] at h
+  | .field j, row, σ, i, h, _, he => by
+    simp only [Expr.reads, beq_iff_eq] at h; subst h; exact he
+  | .un f a, row, σ, i, h, hg, he => by
+    have := Expr.evalP_subst_eager a row σ i h hg he
+    simp only [Expr.subst, Expr.evalP]
+    cases ha : (a.subst σ).evalP p row with
+    | error k => rfl
+    | ok v => simp [ha, Outcome.err?] at this
+  | .bin f a b, row, σ, i, h, hg, he => by
+    simp only [Expr.eagerOnly, Bool.and_eq_true] at hg
+    simp only [Expr.subst, Expr.evalP]
+    cases ha : (a.subst σ).evalP p row with
+    | error k => rfl
+    | ok v =>
+      simp only [bind, Except.bind]
+      have hr : b.reads i := by
+        simp only [Expr.reads, Bool.or_eq_true] at h
+        rcases h with h | h
+        · have := Expr.evalP_subst_eager a row σ i h hg.1 he
+          simp [ha, Outcome.err?] at this
+        · exact h
+      have := Expr.evalP_subst_eager b row σ i hr hg.2 he
+      cases hb : (b.subst σ).evalP p row with
+      | error k => rfl
+      | ok y => simp [hb, Outcome.err?] at this
+  | .ifThen c t e, row, σ, i, h, hg, he => by
+    simp only [Expr.eagerOnly, Bool.and_eq_true, Bool.not_eq_true'] at hg
+    have hc : c.reads i := by
+      simp only [Expr.reads, Bool.or_eq_true] at h
+      rcases h with (h | h) | h
+      · exact h
+      · simp [hg.1.2] at h
+      · simp [hg.2] at h
+    have := Expr.evalP_subst_eager c row σ i hc hg.1.1 he
+    simp only [Expr.subst, Expr.evalP]
+    cases hx : (c.subst σ).evalP p row with
+    | error k => rfl
+    | ok v => simp [hx, Outcome.err?] at this
+  | .hof f l b, row, σ, i, h, hg, he => by
+    simp only [Expr.eagerOnly, Bool.and_eq_true, Bool.not_eq_true'] at hg
+    have hl : l.reads i := by
+      simp only [Expr.reads, Bool.or_eq_true] at h
+      rcases h with h | h
+      · exact h
+      · simp [hg.2] at h
+    have := Expr.evalP_subst_eager l row σ i hl hg.1 he
+    simp only [Expr.subst, Expr.evalP]
+    cases hx : (l.subst σ).evalP p row with
+    | error k => rfl
+    | ok v => simp [hx, Outcome.err?] at this
+
+omit [Boxes.Ambient] in
+theorem Expr.plain_subst {σ : List Expr} (hσ : ∀ i, (σ.getD i (.lit .null)).plain = true) :
+    ∀ e : Expr, e.plain = true → (e.subst σ).plain = true
+  | .lit _, _ => rfl
+  | .field i, _ => hσ i
+  | .un f a, h => by
+    have ha := Expr.plain_subst hσ a
+    cases f <;> simp_all [Expr.plain, Expr.subst]
+  | .bin f a b, h => by
+    have ha := Expr.plain_subst hσ a
+    have hb := Expr.plain_subst hσ b
+    cases f <;> simp_all [Expr.plain, Expr.subst]
+  | .ifThen _ _ _, h | .hof _ _ _, h => by simp [Expr.plain] at h
+
+omit [Boxes.Ambient] in
+theorem LExpr.fill_plain {w : Nat} {x : LExpr} (h : x.plain = true) : (x.fill w).plain = true := by
+  match x, h with
+  | .mk body [], h =>
+    simp only [LExpr.plain] at h
+    simp only [LExpr.fill, LChain.fillAll, List.append_nil]
+    apply Expr.plain_subst _ body h
+    intro i
+    simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
+    by_cases hi : i < w
+    · simp [List.getElem?_range hi, Expr.plain]
+    · rw [List.getElem?_eq_none (by simp; omega)]; rfl
+
+omit [Boxes.Ambient] in
+theorem joinOp_plain {isAnd : Bool} {acc : Option Expr} {e : Expr} (ha : ∀ a ∈ acc, a.plain = true)
+    (he : e.plain = true) : (joinOp isAnd acc e).plain = true := by
+  cases acc with
+  | none => exact he
+  | some a => cases isAnd <;> simp [joinOp, Expr.plain, ha a rfl, he]
+
+omit [Boxes.Ambient] in
+theorem reachOf_plain {isAnd : Bool} {g acc : Option Expr} (hg : ∀ c ∈ g, c.plain = true)
+    (ha : ∀ a ∈ acc, a.plain = true) : ∀ c ∈ reachOf isAnd g acc, c.plain = true := by
+  intro c hc
+  cases acc with
+  | none => exact hg c hc
+  | some a =>
+    simp only [reachOf, Option.mem_def, Option.some.injEq] at hc; subst hc
+    have hn : (if isAnd then a.notFalse else a.notTrue).plain = true := by
+      cases isAnd <;> simp [Expr.notFalse, Expr.notTrue, Expr.plain, ha a rfl]
+    cases g with
+    | none => exact hn
+    | some g => simp [guardAnd, Expr.plain, hg g rfl, hn]
+
+omit [Boxes.Ambient] in
+/-- A chain's running value is plain: it raises nowhere. -/
+theorem LChain.bindOps_plain (w : Nat) (isAnd : Bool) (g : Option Expr) :
+    ∀ (ops : List LExpr) (s : BindSt) (acc : Option Expr), (∀ a ∈ acc, a.plain = true) →
+      (LChain.bindOps w isAnd g s acc ops).2.plain = true
+  | [], _, acc, ha => by
+    cases acc with
+    | none => rfl
+    | some a => exact ha a rfl
+  | x :: xs, s, acc, ha => by
+    simp only [LChain.bindOps]
+    split
+    · next hx => exact LChain.bindOps_plain w isAnd g xs s _ (fun a h => by
+        simp only [Option.mem_def, Option.some.injEq] at h; subst h; exact joinOp_plain ha (LExpr.fill_plain hx))
+    · exact LChain.bindOps_plain w isAnd g xs _ _ (fun a h => by
+        simp only [Option.mem_def, Option.some.injEq] at h; subst h; rfl)
+
+/-- A level raises exactly where its reach holds and its operand raises. -/
+theorem level_raises (isAnd : Bool) {acc reach : Option Expr} (ha : ∀ a ∈ acc, a.plain = true)
+    (hr : ∀ c ∈ reach, c.plain = true) (u : Expr) (row : Row) :
+    (joinOp isAnd acc (guardCase reach u)).Raises row ↔
+      Reach Profile.reference.impl reach row ∧ u.Raises row := by
+  have hg : (guardCase reach u).Raises row ↔ Reach Profile.reference.impl reach row ∧ u.Raises row := by
+    cases reach with
+    | none => simp [guardCase, Reach]
+    | some c =>
+      have hc := hr c rfl
+      simp only [guardCase, Expr.Raises, Expr.issues, Expr.issues_plain row c hc, List.nil_append, Reach,
+        Option.mem_def, Option.some.injEq, forall_eq', Expr.evalI_plain hc]
+      split <;> simp_all [firstError]
+  cases acc with
+  | none => exact hg
+  | some a =>
+    have hap := ha a rfl
+    rw [← hg]
+    cases isAnd <;>
+      simp [joinOp, Expr.Raises, Expr.issues, Expr.issues_plain row a hap,
+        BinFn.issueAll_and, BinFn.issueAll_or]
+
+/-- A level's value: the running value joined with the operand's, where the
+operand runs; where it does not, the running value already decides. -/
+theorem level_eval {I : Impl} (hI : I.Logic) (isAnd : Bool) {g acc : Option Expr} {u : Expr} {row : Row}
+    {v : Value} (hg : Reach I g row) (hba : ∀ a ∈ acc, Expr.BoolValI I row a)
+    (hu : Reach I (reachOf isAnd g acc) row → u.eval row I = v) :
+    (joinOp isAnd acc (guardCase (reachOf isAnd g acc) u)).eval row I =
+      stepAcc isAnd (acc.map (·.eval row I)) v := by
+  rw [joinOp_eval hI]
+  cases acc with
+  | none =>
+    simp only [reachOf] at hu ⊢
+    rw [guardCase_eval_reach hg, hu hg]; rfl
+  | some a =>
+    simp only [Option.map_some, stepAcc]
+    by_cases hR : Reach I (reachOf isAnd g (some a)) row
+    · rw [guardCase_eval_reach hR, hu hR]
+    · rw [guardCase_eval_not hR]
+      have hdec : a.eval row I = .bool !isAnd := by
+        have := (not_congr (reachOf_iff hI (isAnd := isAnd) (hba a rfl) hg)).mp hR
+        exact Classical.not_not.mp this
+      rw [hdec, comb_decides, comb_decides]
+
+omit [Boxes.Ambient] in
+theorem entry_fields {p : Profile} {w i : Nat} (es : List Expr) (R : Row) (hi : i < w) :
+    entryP p ((List.range w).map Expr.field ++ es) i R = .ok (R.getD i .null) := by
+  have : i < ((List.range w).map Expr.field).length := by simp [hi]
+  simp only [entryP, List.getD_eq_getElem?_getD, List.getElem?_append_left this, List.getElem?_map,
+    List.getElem?_range hi, Option.map_some, Option.getD_some, Expr.evalP]
+
+omit [Boxes.Ambient] in
+theorem entry_chains {p : Profile} {w : Nat} (es : List Expr) (R : Row) (j : Nat) :
+    entryP p ((List.range w).map Expr.field ++ es) (w + j) R = entryP p es j R := by
+  simp only [entryP, List.getD_eq_getElem?_getD]
+  rw [List.getElem?_append_right (by simp)]
+  simp
+
+section RaiseInv
+local notation "RP" => Profile.reference
+local notation "RI" => Profile.reference.impl
+
+mutual
+/-- **The binder's raises**: the levels added for `x` raise (`L`) exactly where,
+under its reach, `x`'s lift raises and the bound expression does not account
+for it. -/
+theorem LExpr.bind_raise (cat : Catalog) (r : Rel) (w : Nat) :
+    ∀ (x : LExpr) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext RI cat r w F →
+      (∀ c ∈ g, c.refsLt s.width ∧ c.plain = true) → x.Scoped w →
+      ∃ L : Row → Prop,
+        ((x.bind w g s).1.rel.Raises RP cat ↔ s.rel.Raises RP cat ∨ ∃ row ∈ r.eval cat RI, L row) ∧
+        ∀ F', (x.bind w g s).1.Ext RI cat r w F' → ∀ row ∈ r.eval cat RI, x.Bools RI w row →
+          (¬ Reach RI g (row ++ F row) → ¬ L row) ∧
+          (Reach RI g (row ++ F row) →
+            ((x.fill w).Raises row ↔ L row ∨ (x.bind w g s).2.Raises (row ++ F' row)))
+  | .mk body cs, g, s, F, hs, hg, ⟨hbody, hcs⟩ => by
+    obtain ⟨L, hR, hL⟩ := LChain.bindAll_raise cat r w body 0 cs g s F hs hg hcs
+    refine ⟨L, hR, fun F' hF' row hr hb => ?_⟩
+    obtain ⟨hL1, hL2⟩ := hL F' hF' row hr hb
+    refine ⟨hL1, fun hreach => ?_⟩
+    obtain ⟨hLiff, hent⟩ := hL2 hreach
+    have hrow := (hs.2.1 row hr).1
+    have hrow' : (row ++ F' row).length ≥ w := by simp [hrow]
+    -- The entries: the row's columns, then each chain's.
+    have hlen := LChain.bindAll_length w g s body 0 cs
+    have hfl := LChain.fillAll_length w cs
+    -- The row's columns: the same on the row and on its extension.
+    have hfield : ∀ i < w, ∀ es es' : List Expr,
+        entryP RP ((List.range w).map Expr.field ++ es) i row =
+          entryP RP ((List.range w).map Expr.field ++ es') i (row ++ F' row) := by
+      intro i hi es es'
+      rw [entry_fields es row hi, entry_fields es' _ hi]
+      simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (show i < row.length by omega)]
+    -- A chain's column: the lift's outcome, unless the chain is bound and raises.
+    have hchain : ∀ j, (∀ c, cs[j]? = some c →
+          entryP RP (LChain.bindAll w g s body 0 cs).2 j (row ++ F' row) = (c.fill w).evalP RP row ∨
+          (body.reads (w + j) = true ∧ body.eagerOnly (w + j) = true ∧ (c.fill w).Raises row)) := by
+      intro j c hcj
+      simpa using hent j c hcj
+    have hσ : ∀ i, body.reads i →
+        entryP RP ((List.range w).map Expr.field ++ LChain.fillAll w cs) i row =
+          entryP RP ((List.range w).map Expr.field ++ (LChain.bindAll w g s body 0 cs).2) i (row ++ F' row) ∨
+        (body.eagerOnly i ∧ (entryP RP ((List.range w).map Expr.field ++ LChain.fillAll w cs) i row).err?.isSome) := by
+      intro i hi
+      by_cases hiw : i < w
+      · exact .inl (hfield i hiw _ _)
+      · obtain ⟨j, rfl⟩ : ∃ j, i = w + j := ⟨i - w, by omega⟩
+        rw [entry_chains, entry_chains]
+        by_cases hc : j < cs.length
+        · obtain ⟨c, hcj⟩ : ∃ c, cs[j]? = some c := ⟨cs[j], List.getElem?_eq_getElem hc⟩
+          have hfj : entryP RP (LChain.fillAll w cs) j row = (c.fill w).evalP RP row := by
+            simp [entryP, List.getD_eq_getElem?_getD, LChain.fillAll_getElem? w cs j c hcj]
+          rw [hfj]
+          rcases hchain j c hcj with he | ⟨_, heg, hrs⟩
+          · exact .inl he.symm
+          · exact .inr ⟨heg, (Expr.raisesOn_reference row _).mpr hrs⟩
+        · left
+          simp only [entryP, List.getD_eq_getElem?_getD]
+          rw [List.getElem?_eq_none (by omega), List.getElem?_eq_none (by omega)]; rfl
+    simp only [LExpr.fill, LExpr.bind]
+    rw [← Expr.raisesOn_reference, ← Expr.raisesOn_reference]
+    rcases Expr.evalP_subst_congr body row (row ++ F' row) _ _ hσ with heq | ⟨hraise, i, hi, hne⟩
+    · simp only [Expr.RaisesOn, heq]
+      constructor
+      · exact fun h => .inr h
+      · rintro (hl | h)
+        · obtain ⟨j, c, hcj, hrd, heg, hrs⟩ := hLiff.mp hl
+          simp only [Nat.zero_add] at hrd heg
+          have := Expr.evalP_subst_eager body row ((List.range w).map Expr.field ++ LChain.fillAll w cs)
+            (w + j) hrd heg (by
+              rw [entry_chains]
+              simp only [entryP, List.getD_eq_getElem?_getD, LChain.fillAll_getElem? w cs j c hcj,
+                Option.getD_some]
+              exact (Expr.raisesOn_reference row _).mpr hrs)
+          rw [heq] at this; exact this
+        · exact h
+    · -- The outcomes differ at an entry: a bound chain that raises.
+      refine ⟨fun _ => .inl ?_, fun _ => hraise⟩
+      by_cases hiw : i < w
+      · exact absurd (hfield i hiw _ _) hne
+      · obtain ⟨j, rfl⟩ : ∃ j, i = w + j := ⟨i - w, by omega⟩
+        rw [entry_chains, entry_chains] at hne
+        have hc : j < cs.length := Classical.byContradiction fun hc => by
+          apply hne
+          simp only [entryP, List.getD_eq_getElem?_getD]
+          rw [List.getElem?_eq_none (by omega), List.getElem?_eq_none (by omega)]; rfl
+        obtain ⟨c, hcj⟩ : ∃ c, cs[j]? = some c := ⟨cs[j], List.getElem?_eq_getElem hc⟩
+        have hfj : entryP RP (LChain.fillAll w cs) j row = (c.fill w).evalP RP row := by
+          simp [entryP, List.getD_eq_getElem?_getD, LChain.fillAll_getElem? w cs j c hcj]
+        rcases hchain j c hcj with he | ⟨hrd, heg, hrs⟩
+        · exact absurd (hfj.trans he.symm) hne
+        · exact hLiff.mpr ⟨j, c, hcj, by simpa using hrd, by simpa using heg, hrs⟩
+theorem LChain.bindAll_raise (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
+    ∀ (i : Nat) (cs : List LChain) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext RI cat r w F →
+      (∀ c ∈ g, c.refsLt s.width ∧ c.plain = true) → LChain.ScopedAll w cs →
+      ∃ L : Row → Prop,
+        ((LChain.bindAll w g s body i cs).1.rel.Raises RP cat ↔
+          s.rel.Raises RP cat ∨ ∃ row ∈ r.eval cat RI, L row) ∧
+        ∀ F', (LChain.bindAll w g s body i cs).1.Ext RI cat r w F' → ∀ row ∈ r.eval cat RI,
+          LChain.BoolsAll RI w row cs →
+          (¬ Reach RI g (row ++ F row) → ¬ L row) ∧
+          (Reach RI g (row ++ F row) →
+            (L row ↔ ∃ j c, cs[j]? = some c ∧ body.reads (w + (i + j)) = true ∧
+              body.eagerOnly (w + (i + j)) = true ∧ (c.fill w).Raises row) ∧
+            ∀ j c, cs[j]? = some c →
+              entryP RP (LChain.bindAll w g s body i cs).2 j (row ++ F' row) = (c.fill w).evalP RP row ∨
+              (body.reads (w + (i + j)) = true ∧ body.eagerOnly (w + (i + j)) = true ∧ (c.fill w).Raises row))
+  | _, [], g, s, F, hs, _, _ => by
+    refine ⟨fun _ => False, by simp [LChain.bindAll], fun F' _ row _ _ => ⟨fun _ h => h, fun _ => ?_⟩⟩
+    simp
+  | i, c :: cs, g, s, F, hs, hg, ⟨hc, hcs⟩ => by
+    sorry
+theorem LChain.bind_raise (cat : Catalog) (r : Rel) (w : Nat) :
+    ∀ (c : LChain) (g : Option Expr) (s : BindSt) (F : Row → Row), s.Ext RI cat r w F →
+      (∀ c ∈ g, c.refsLt s.width ∧ c.plain = true) → c.Scoped w →
+      ∃ L : Row → Prop,
+        ((LChain.bind w g s c).1.rel.Raises RP cat ↔ s.rel.Raises RP cat ∨ ∃ row ∈ r.eval cat RI, L row) ∧
+        ∀ F', (LChain.bind w g s c).1.Ext RI cat r w F' → ∀ row ∈ r.eval cat RI, LChain.Bools RI w row c →
+          (¬ Reach RI g (row ++ F row) → ¬ L row) ∧
+          (Reach RI g (row ++ F row) → ((c.fill w).Raises row ↔ L row))
+  | .mk isAnd ops, g, s, F, hs, hg, hops => by
+    sorry
+theorem LChain.bindOps_raise (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) :
+    ∀ (ops : List LExpr) (g : Option Expr) (s : BindSt) (F : Row → Row) (acc : Option Expr),
+      s.Ext RI cat r w F → (∀ c ∈ g, c.refsLt s.width ∧ c.plain = true) →
+      (∀ a ∈ acc, a.refsLt s.width ∧ a.plain = true) → LExpr.ScopedAll w ops →
+      ∃ L : Row → Prop,
+        ((LChain.bindOps w isAnd g s acc ops).1.rel.Raises RP cat ↔
+          s.rel.Raises RP cat ∨ ∃ row ∈ r.eval cat RI, L row) ∧
+        ∀ row ∈ r.eval cat RI, LExpr.BoolsAll RI w row ops →
+          (∀ a ∈ acc, Expr.BoolValI RI (row ++ F row) a) →
+          (¬ Reach RI g (row ++ F row) → ¬ L row) ∧
+          (Reach RI g (row ++ F row) →
+            (L row ↔ raiseFrom w isAnd row (acc.map (·.eval (row ++ F row) RI)) ops))
+  | ops, g, s, F, acc, hs, hg, ha, hops => by
+    sorry
+end
+
+end RaiseInv
+
 end Raises
 
 end Substrait
