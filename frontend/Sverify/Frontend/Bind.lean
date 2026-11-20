@@ -1070,6 +1070,7 @@ theorem LChain.fillAll_getElem? (w : Nat) : ∀ (cs : List LChain) (j : Nat) (c 
     simp only [LChain.fillAll, List.getElem?_cons_succ]
     exact LChain.fillAll_getElem? w cs j c h
 
+omit [Boxes.Ambient] in
 /-- An eagerly read entry that raises makes the substituted expression raise. -/
 theorem Expr.evalP_subst_eager {p : Profile} :
     ∀ (t : Expr) (row : Row) (σ : List Expr) (i : Nat), t.reads i → t.eagerOnly i →
@@ -1388,7 +1389,7 @@ theorem LChain.bindAll_raise (cat : Catalog) (r : Rel) (w : Nat) (body : Expr) :
           · exact .inl h
           · exact .inr ⟨row, hr, .inl h⟩
           · exact .inr ⟨row, hr, .inr h⟩
-        · rintro (h | ⟨row, hr, h | h⟩)
+        · rintro (h | ⟨row, hr, (h | h)⟩)
           · exact .inl (.inl h)
           · exact .inl (.inr ⟨row, hr, h⟩)
           · exact .inr ⟨row, hr, h⟩
@@ -1512,9 +1513,203 @@ theorem LChain.bindOps_raise (cat : Catalog) (r : Rel) (w : Nat) (isAnd : Bool) 
           (¬ Reach RI g (row ++ F row) → ¬ L row) ∧
           (Reach RI g (row ++ F row) →
             (L row ↔ raiseFrom w isAnd row (acc.map (·.eval (row ++ F row) RI)) ops))
-  | ops, g, s, F, acc, hs, hg, ha, hops => by
-    sorry
+  | [], g, s, F, acc, hs, _, _, _ => by
+    refine ⟨fun _ => False, by simp [LChain.bindOps], fun row _ _ _ => ⟨fun _ h => h, fun _ => ?_⟩⟩
+    simp [raiseFrom]
+  | x :: xs, g, s, F, acc, hs, hg, ha, ⟨hx, hxs⟩ => by
+    have hRL := Profile.reference_logic
+    by_cases hpl : x.plain
+    · have hb : LChain.bindOps w isAnd g s acc (x :: xs) =
+          LChain.bindOps w isAnd g s (some (joinOp isAnd acc (LExpr.fill w x))) xs := by
+        simp [LChain.bindOps, hpl]
+      rw [hb]
+      have hfx := Expr.refsLt_mono _ hs.2.2 (LExpr.fill_refsLt w x hx)
+      obtain ⟨L, hR, hL⟩ := LChain.bindOps_raise cat r w isAnd xs g s F
+        (some (joinOp isAnd acc (LExpr.fill w x))) hs hg (fun a h => by
+          simp only [Option.mem_def, Option.some.injEq] at h; subst h
+          exact ⟨joinOp_refsLt (fun a h => (ha a h).1) hfx,
+            joinOp_plain (fun a h => (ha a h).2) (LExpr.fill_plain hpl)⟩) hxs
+      refine ⟨L, hR, fun row hr ⟨⟨hbx, _⟩, hbxs⟩ hba => ?_⟩
+      have hl := hs.2.1 row hr
+      have hxe : (LExpr.fill w x).eval (row ++ F row) RI = (LExpr.fill w x).eval row RI :=
+        Expr.eval_append (F row) (LExpr.fill_refsLt w x hx) hl.1
+      have hba' : ∀ a ∈ some (joinOp isAnd acc (LExpr.fill w x)), Expr.BoolValI RI (row ++ F row) a := by
+        intro a h; simp only [Option.mem_def, Option.some.injEq] at h; subst h
+        rw [Expr.BoolValI, joinOp_eval hRL]
+        cases acc with
+        | none => show Expr.BoolValI _ _ _; unfold Expr.BoolValI; rw [hxe]; exact hbx
+        | some a => exact comb_boolVal _ _ _
+      obtain ⟨h1, h2⟩ := hL row hr hbxs hba'
+      refine ⟨h1, fun hreach => (h2 hreach).trans ?_⟩
+      have hnr : ¬ (x.fill w).Raises row := by
+        simp only [Expr.Raises, Expr.issues_plain row _ (LExpr.fill_plain hpl), firstError]
+        decide
+      simp only [raiseFrom, hnr, and_false, false_or, Option.map_some, joinOp_eval hRL, hxe]
+      cases acc <;> rfl
+    · have hb : LChain.bindOps w isAnd g s acc (x :: xs) =
+          LChain.bindOps w isAnd g ((LExpr.bind w (reachOf isAnd g acc) s x).1.push
+            (joinOp isAnd acc (guardCase (reachOf isAnd g acc) (LExpr.bind w (reachOf isAnd g acc) s x).2))).1
+            (some (.field ((LExpr.bind w (reachOf isAnd g acc) s x).1.push
+            (joinOp isAnd acc (guardCase (reachOf isAnd g acc) (LExpr.bind w (reachOf isAnd g acc) s x).2))).2)) xs := by
+        simp [LChain.bindOps, hpl]
+      rw [hb]
+      have hreachOk : ∀ c ∈ reachOf isAnd g acc, c.refsLt s.width ∧ c.plain = true := fun c hc =>
+        ⟨reachOf_refsLt (fun c h => (hg c h).1) (fun a h => (ha a h).1) c hc,
+          reachOf_plain (fun c h => (hg c h).2) (fun a h => (ha a h).2) c hc⟩
+      obtain ⟨Lx, hRx, hLx⟩ := LExpr.bind_raise cat r w x (reachOf isAnd g acc) s F hs hreachOk hx
+      obtain ⟨F₁, hG₁, hr₁, hv₁⟩ := LExpr.bind_spec hRL cat r w x (reachOf isAnd g acc) s F hs
+        (fun c h => (hreachOk c h).1) hx
+      generalize hP : LExpr.bind w (reachOf isAnd g acc) s x = P at hRx hLx hG₁ hr₁ hv₁
+      have hG₂ := BindSt.push_grows hG₁.1 (joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2))
+      generalize hQ : P.1.push (joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2)) = Q at hG₂
+      have hQ2 : Q.2 = P.1.width := by rw [← hQ]; rfl
+      have hQw : Q.1.width = P.1.width + 1 := by rw [← hQ]; rfl
+      have hQr : Q.1.rel = .project P.1.rel [joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2)] := by
+        rw [← hQ]; rfl
+      obtain ⟨Lr, hRr, hLr⟩ := LChain.bindOps_raise cat r w isAnd xs g Q.1 _ (some (.field Q.2)) hG₂.1
+        (fun c hc => ⟨Expr.refsLt_mono _ (Nat.le_trans hG₁.2.2 hG₂.2.2) (hg c hc).1, (hg c hc).2⟩)
+        (fun a h => by
+          simp only [Option.mem_def, Option.some.injEq] at h; subst h
+          exact ⟨show Q.2 < Q.1.width by omega, rfl⟩) hxs
+      let lev : Row → Prop := fun row =>
+        (joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2)).Raises (row ++ F₁ row)
+      refine ⟨fun row => Lx row ∨ lev row ∨ Lr row, ?_, ?_⟩
+      · rw [hRr, hQr, Rel.raises_project, hRx, hG₁.1.1]
+        simp only [List.mem_map, Expr.raisesOn_reference]
+        constructor
+        · rintro (((h | ⟨row, hr, h⟩) | ⟨_, ⟨row, hr, rfl⟩, h⟩) | ⟨row, hr, h⟩)
+          · exact .inl h
+          · exact .inr ⟨row, hr, .inl h⟩
+          · exact .inr ⟨row, hr, .inr (.inl h)⟩
+          · exact .inr ⟨row, hr, .inr (.inr h)⟩
+        · rintro (h | ⟨row, hr, (h | h | h)⟩)
+          · exact .inl (.inl (.inl h))
+          · exact .inl (.inl (.inr ⟨row, hr, h⟩))
+          · exact .inl (.inr ⟨_, ⟨row, hr, rfl⟩, h⟩)
+          · exact .inr ⟨row, hr, h⟩
+      · intro row hr ⟨⟨hbx, hbx'⟩, hbxs⟩ hba
+        have hl := hs.2.1 row hr
+        have hl₁ := hG₁.1.2.1 row hr
+        have hpre₁ := hG₁.2.1 row
+        have hreach₁ : ∀ e : Option Expr, (∀ c ∈ e, c.refsLt s.width) →
+            (Reach RI e (row ++ F₁ row) ↔ Reach RI e (row ++ F row)) :=
+          fun e he => reach_prefix he (by omega) hpre₁
+        have hacc₁ : ∀ a ∈ acc, a.eval (row ++ F₁ row) RI = a.eval (row ++ F row) RI :=
+          fun a h => eval_prefix (ha a h).1 (by omega) hpre₁
+        have hba₁ : ∀ a ∈ acc, Expr.BoolValI RI (row ++ F₁ row) a := by
+          intro a h; unfold Expr.BoolValI; rw [hacc₁ a h]; exact hba a h
+        have hRg : ∀ {e : Option Expr} {R : Row}, Reach RI (reachOf isAnd e acc) R → Reach RI e R := by
+          intro e R h
+          cases acc with
+          | none => exact h
+          | some a =>
+            simp only [reachOf, Reach, Option.mem_def, Option.some.injEq, forall_eq'] at h
+            exact ((guardAnd_isTrue hRL e _ R).mp h).1
+        have hRreach := fun c h => (hreachOk c h).1
+        have hlev : ∀ R, (joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2)).Raises R ↔
+            Reach RI (reachOf isAnd g acc) R ∧ P.2.Raises R :=
+          level_raises isAnd (fun a h => (ha a h).2) (fun c h => (hreachOk c h).2) P.2
+        -- The column the level appends, at the row's extension.
+        let vlev := (joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2)).eval (row ++ F₁ row) RI
+        have hidx : (row ++ F₁ row).length = Q.2 := by rw [hQ2, List.length_append]; omega
+        have hfield : (Expr.field Q.2).eval (row ++ (F₁ row ++ [vlev])) RI = vlev := by
+          simp only [Expr.eval, ← List.append_assoc]
+          exact getD_append_single _ _ _ hidx
+        have hpre₂ : F₁ row <+: F₁ row ++ [vlev] := List.prefix_append _ _
+        obtain ⟨hLx1, hLx2⟩ := hLx F₁ hG₁.1 row hr hbx'
+        refine ⟨fun hn h => ?_, fun hreach => ?_⟩
+        · have hnR : ¬ Reach RI (reachOf isAnd g acc) (row ++ F row) := fun h' => hn (hRg h')
+          rcases h with h | h | h
+          · exact hLx1 hnR h
+          · exact hnR ((hreach₁ _ hRreach).mp ((hlev _).mp h).1)
+          · obtain ⟨hr1, _⟩ := hLr row hr hbxs (by
+              intro a h'; simp only [Option.mem_def, Option.some.injEq] at h'; subst h'
+              unfold Expr.BoolValI; rw [hfield]
+              show Expr.BoolValI RI _ _
+              unfold Expr.BoolValI; rw [joinOp_eval hRL]
+              cases acc with
+              | none =>
+                by_cases hR : Reach RI g (row ++ F₁ row)
+                · simp only [reachOf]; rw [guardCase_eval_reach hR]
+                  exact absurd ((reach_prefix (fun c h => (hg c h).1) (by omega) hpre₁).mp hR) hn
+                · simp only [reachOf]; rw [guardCase_eval_not hR]; exact .inl rfl
+              | some a => exact comb_boolVal _ _ _)
+            exact hr1 (fun h' => hn ((reach_prefix (fun c h => (hg c h).1) (by omega)
+              (hpre₁.trans hpre₂)).mp h')) h
+        · have hreachF₁ : Reach RI g (row ++ F₁ row) :=
+            (reach_prefix (fun c h => (hg c h).1) (by omega) hpre₁).mpr hreach
+          have hvlev : vlev = stepAcc isAnd (acc.map (·.eval (row ++ F row) RI)) ((LExpr.fill w x).eval row RI) := by
+            have := level_eval hRL isAnd (g := g) (acc := acc) (u := P.2) (row := row ++ F₁ row)
+              (v := (LExpr.fill w x).eval row RI) hreachF₁ hba₁
+              (fun hR => hv₁ row hr ((hreach₁ _ hRreach).mp hR) hbx')
+            show (joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2)).eval (row ++ F₁ row) RI = _
+            rw [this]
+            cases acc with
+            | none => rfl
+            | some a => simp only [Option.map_some, hacc₁ a rfl]
+          have hbv : vlev = .null ∨ ∃ b, vlev = .bool b := by
+            rw [hvlev]
+            cases acc with
+            | none =>
+              have := hbx; unfold Expr.BoolValI at this; exact this
+            | some a => exact comb_boolVal _ _ _
+          obtain ⟨_, hr2⟩ := hLr row hr hbxs (by
+            intro a h'; simp only [Option.mem_def, Option.some.injEq] at h'; subst h'
+            unfold Expr.BoolValI; rw [hfield]; exact hbv)
+          have hreach₂ : Reach RI g (row ++ (F₁ row ++ [vlev])) :=
+            (reach_prefix (fun c h => (hg c h).1) (by omega) (hpre₁.trans hpre₂)).mpr hreach
+          have hLrIff : Lr row ↔ raiseFrom w isAnd row
+              (some (stepAcc isAnd (acc.map (·.eval (row ++ F row) RI)) ((LExpr.fill w x).eval row RI))) xs := by
+            rw [hr2 hreach₂, Option.map_some, hfield, hvlev]
+          show Lx row ∨ lev row ∨ Lr row ↔ _
+          simp only [raiseFrom]
+          rw [hLrIff, ← or_assoc]
+          refine or_congr ?_ Iff.rfl
+          -- The operand runs where the running value lets it.
+          have hgo : Reach RI (reachOf isAnd g acc) (row ++ F row) ↔
+              accGoes isAnd (acc.map (·.eval (row ++ F row) RI)) := by
+            cases acc with
+            | none => simp only [reachOf, accGoes, Option.map_none, iff_true]; exact hreach
+            | some a => simpa [accGoes] using reachOf_iff hRL (isAnd := isAnd) (hba a rfl) hreach
+          rw [← hgo]
+          by_cases hR : Reach RI (reachOf isAnd g acc) (row ++ F row)
+          · rw [(hLx2 hR)]
+            simp only [hR, true_and, show lev row = (joinOp isAnd acc (guardCase (reachOf isAnd g acc) P.2)).Raises
+              (row ++ F₁ row) from rfl, hlev, (hreach₁ _ hRreach).mpr hR, true_and]
+          · simp only [hR, false_and, iff_false, not_or]
+            exact ⟨hLx1 hR, fun h => hR ((hreach₁ _ hRreach).mp ((hlev _).mp h).1)⟩
+
 end
+
+
+/-- **T1, raises**: under the reference, the filter on the bound condition
+raises exactly where the filter on D50's lift raises, where every chain's
+operands are TRUE, FALSE or NULL. -/
+theorem Rel.bindFilter_raises (cat : Catalog) (r : Rel) (w : Nat) (x : LExpr)
+    (hw : ∀ row ∈ r.eval cat RI, row.length = w) (hx : x.Scoped w)
+    (hb : ∀ row ∈ r.eval cat RI, x.Bools RI w row) :
+    (r.bindFilter w x).Raises RP cat ↔ (r.filter (x.fill w)).Raises RP cat := by
+  have hs : BindSt.Ext RI cat r w ⟨r, w⟩ (fun _ => []) :=
+    ⟨by simp, fun row hr => ⟨hw row hr, by simp⟩, Nat.le_refl w⟩
+  obtain ⟨L, hR, hL⟩ := LExpr.bind_raise cat r w x none ⟨r, w⟩ (fun _ => []) hs (by simp) hx
+  obtain ⟨F', hG, -, -⟩ := LExpr.bind_spec Profile.reference_logic cat r w x none ⟨r, w⟩ (fun _ => []) hs
+    (by simp) hx
+  simp only [Rel.bindFilter, Rel.Raises, hR, hG.1.1, List.mem_map]
+  have hrow : ∀ row ∈ r.eval cat RI, ((x.fill w).RaisesOn RP row ↔
+      L row ∨ (x.bind w none ⟨r, w⟩).2.RaisesOn RP (row ++ F' row)) := by
+    intro row hr
+    rw [Expr.raisesOn_reference, Expr.raisesOn_reference]
+    exact ((hL F' hG.1 row hr (hb row hr)).2 (by simp [Reach]))
+  constructor
+  · rintro ((h | ⟨row, hr, h⟩) | ⟨_, ⟨row, hr, rfl⟩, h⟩)
+    · exact .inl h
+    · exact .inr ⟨row, hr, (hrow row hr).mpr (.inl h)⟩
+    · exact .inr ⟨row, hr, (hrow row hr).mpr (.inr h)⟩
+  · rintro (h | ⟨row, hr, h⟩)
+    · exact .inl (.inl h)
+    · rcases (hrow row hr).mp h with h | h
+      · exact .inl (.inr ⟨row, hr, h⟩)
+      · exact .inr ⟨_, ⟨row, hr, rfl⟩, h⟩
 
 end RaiseInv
 
