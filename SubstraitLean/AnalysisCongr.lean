@@ -55,6 +55,14 @@ theorem Rel.aeval_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String →
       cases ty <;> simp only [aeval, ratioPart, (aeval_congr h A F T sz a).1,
         (aeval_congr h A F T sz b).1, and_self]
 
+omit [Boxes.Ambient] in
+theorem Rel.ranges_congr (h : ∀ t, (c t).arity = (cat t).arity) (K : TableCond) :
+    ∀ r : Rel, r.ranges c K = r.ranges cat K
+  | .read _ | .values _ _ | .cross _ _ | .join _ _ _ _ | .fetch _ _ _ | .unionAll _ _
+  | .window _ _ _ _ | .semi _ _ _ _ | .distinct _ | .aggregate _ _ _ | .unnest _ _ => rfl
+  | .filter r _ | .orderBy r _ | .emit r _ => by simp only [Rel.ranges, ranges_congr h K r]
+  | .project r _ => by simp only [Rel.ranges, ranges_congr h K r, arity_congr h r]
+
 theorem Rel.keys_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) :
     ∀ r : Rel, r.keys c A F K = r.keys cat A F K
@@ -65,7 +73,8 @@ theorem Rel.keys_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → 
   | .project r _ => by
       simp only [keys, keys_congr h A F K r, arity_congr h r, (aeval_congr h A F .none false r).1]
   | .cross a b | .join a b _ _ => by
-      simp only [keys, keys_congr h A F K a, keys_congr h A F K b, arity_congr h a]
+      simp only [keys, keys_congr h A F K a, keys_congr h A F K b, arity_congr h a,
+        ranges_congr h K b]
   | .unionAll a b => by
       simp only [keys, keys_congr h A F K a, keys_congr h A F K b,
         (aeval_congr h A F .none false a).1, (aeval_congr h A F .none false b).1]
@@ -157,7 +166,7 @@ alone too. -/
 theorem Rel.keyedJoin_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) (a b : Rel) (on : Expr) :
     Rel.keyedJoin c A F K a b on = Rel.keyedJoin cat A F K a b on := by
-  simp only [keyedJoin, keys_congr h A F K b, arity_congr h a]
+  simp only [keyedJoin, keys_congr h A F K b, ranges_congr h K b, arity_congr h a]
 
 theorem Rel.perKey_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
     (F : String → List Fact) (K : TableCond) (P : String → List (List Nat × Nat)) :

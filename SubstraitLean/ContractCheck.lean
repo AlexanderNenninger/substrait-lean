@@ -28,6 +28,8 @@ Input (JSON):
       -- selects from anything other than the transformation (`postOf`)
   "transform": <plan>,         -- the transformation, which the postconditions are over
   "keys": {"<table>": [[<col>, ...], ...]},   -- input keys (by column position)
+  "ranges": {"<table>": [{"by": [<col>, ...], "lo": <col>, "hi": <col>}, ...]},
+      -- non-overlapping ranges (`sv.non_overlapping`, #814, `RangeOn`)
   "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
   "references": {"<table>": [[<col>, "<table>", <col>], ...]},
       -- input foreign keys: every non-NULL value of the column occurs in the
@@ -476,6 +478,12 @@ def Report.allProved (r : Report) : Bool :=
 def natLists (j : Json) : List (List Nat) :=
   ((j.getArr?).toOption.getD #[]).toList.map fun k =>
     ((k.getArr?).toOption.getD #[]).toList.filterMap fun c => (c.getNat?).toOption
+
+/-- The range conditions of a table's entry of `"ranges"`. -/
+def rangeConds (j : Json) : List RangeCond :=
+  ((j.getArr?).toOption.getD #[]).toList.filterMap fun r => do
+    pure ⟨(← (r.getObjValAs? (Array Nat) "by").toOption).toList,
+      ← (r.getObjValAs? Nat "lo").toOption, ← (r.getObjValAs? Nat "hi").toOption⟩
 
 def foreignKeys (j : Json) : ForeignKeys := fun t =>
   (((j.getObjVal? t).toOption.bind (·.getArr?.toOption)).getD #[]).toList.filterMap fun fk =>
@@ -935,6 +943,10 @@ def keysOf (t : String) : List (List Nat) :=
   natLists (((R.input.getObjVal? "keys").toOption.bind (·.getObjVal? t |>.toOption)).getD
     (.arr #[]))
 
+def rangesOf (t : String) : List RangeCond :=
+  rangeConds (((R.input.getObjVal? "ranges").toOption.bind (·.getObjVal? t |>.toOption)).getD
+    (.arr #[]))
+
 def caps : String → Option Nat := rowCaps ((R.input.getObjVal? "max_rows").toOption.getD (.obj {}))
 
 /-- `knows` as a description of the inputs, `know` for a table it lacks. -/
@@ -944,7 +956,8 @@ def caps : String → Option Nat := rowCaps ((R.input.getObjVal? "max_rows").toO
 
 /-- A table's knowledge: its schema, preconditions and keys. -/
 def know (t : String) : Knowledge :=
-  ⟨tableEnv (R.schemas t) (R.preOf t), (R.preOf t).flatMap Expr.factsOf, R.keysOf t, none⟩
+  ⟨tableEnv (R.schemas t) (R.preOf t), (R.preOf t).flatMap Expr.factsOf, R.keysOf t, none,
+    R.rangesOf t⟩
 
 /-- Every table's knowledge, as data. -/
 def knowsTable : List (String × Knowledge) :=
@@ -1572,7 +1585,7 @@ omit [Boxes.Ambient] in
 /-- The description of the inputs `check` computes once per table is
 `KnowledgeEnv.ofSpec`'s. -/
 theorem Request.kenv_eq (R : Request) :
-    R.kenv = KnowledgeEnv.ofSpec R.schemas R.preOf R.keysOf := by
+    R.kenv = KnowledgeEnv.ofSpec R.schemas R.preOf R.keysOf R.rangesOf := by
   funext t
   simp only [Request.kenv, memoKnowledge, Request.knowsTable, Request.know, KnowledgeEnv.ofSpec,
     lookup_map_self]
@@ -1609,6 +1622,7 @@ structure DataMeets (R : Request) (data : Catalog) : Prop where
   schemas : ∀ t, ∀ row ∈ (data t).rows, EnvMem (R.schemas t) row
   pre : ∀ t, ∀ row ∈ (data t).rows, ∀ e ∈ R.preOf t, (e.eval row).isTrue = true
   keys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows
+  ranges : ∀ t, ∀ c ∈ R.rangesOf t, RangeOn c (data t).rows
   caps : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n
 
 /-- **The checker's verdict is the contract theorem** (#1088). When `check`
@@ -1648,7 +1662,7 @@ theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
   have hall : (R.ensureEnv q).all AVal.certainlyTrue = true := by
     rw [check_ensures hR hc, List.getD_eq_getElem?_getD, List.getElem?_map, hq] at hproved
     exact Request.resultsOf_all q _ hproved
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hQ : (q.root.capReads R.caps).WF data :=
     Rel.wf_congr hD.arity (Rel.checkWF_iff.mp (check_wf hR hc q (List.mem_of_getElem? hq)))
   have henv : R.ensureEnv q = ((q.root.capReads R.caps).analyse data R.kenv).cols := by
@@ -1726,7 +1740,7 @@ theorem check_deterministic_sound {input : Json} {R : Request} {rep : Report}
   intro out ho
   rw [check_deterministic hR hc] at hdet
   simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hdet.1)
   have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detPlan_congr hD.arity]
@@ -1811,7 +1825,7 @@ theorem check_class_determined_sound {input : Json} {R : Request} {rep : Report}
   intro out ho
   rw [check_classDetermined hR hc] at hdet
   simp only [Request.classDeterminedIn, hT, Bool.and_eq_true] at hdet
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hdet.1)
   have hd : T.root.detClass data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
     rw [Rel.detClass_congr hD.arity]
@@ -1861,7 +1875,7 @@ theorem check_keys_sound {input : Json} {R : Request} {rep : Report}
   simp only [Request.keysIn, hT, List.mem_map, Prod.mk.injEq] at hk
   obtain ⟨k0, -, rfl, hany⟩ := hk
   obtain ⟨k', hk', hsub⟩ := List.any_eq_true.mp hany
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   rw [← Rel.keys_congr hD.arity] at hk'
   exact (Rel.keys_sound_all hD.wf hK.cols hK.facts hK.keys (check_transform_wf hR hc hD hT) k' hk'
     ho).superset (by simpa [List.all_eq_true] using hsub)
@@ -1881,7 +1895,7 @@ theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
       p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) := by
   intro p hp
   have hok := Request.check_ok (check_parse hR hc)
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hwf := check_transform_wf hR hc hD hT
   have hin := Rel.issuesCapped_sound hD.wf hK.cols hK.facts (hK.windows hD.wf) hK.keys hD.caps hP
     hwf hsm p hp
@@ -1913,7 +1927,7 @@ theorem check_guard_free_sound {input : Json} {R : Request} {rep : Report}
   rw [(Request.check_ok (check_parse hR hc)).guardFree] at hg
   simp only [Request.guardFreeIn, hT, Bool.and_eq_true] at hg
   obtain ⟨⟨⟨-, hloose⟩, hm⟩, -⟩ := hg
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   rw [KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity, ← Rel.mayIssues_congr hD.arity] at hm
   exact Rel.guardFree_sound hD.wf hK.cols hK.facts (hK.windows hD.wf) (check_transform_wf hR hc hD hT)
     hsm hloose hm hI
@@ -1928,7 +1942,7 @@ theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
     (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List Rule}
     (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
   rw [← Rel.optimize_congr hD.arity] at hq
   have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hFK

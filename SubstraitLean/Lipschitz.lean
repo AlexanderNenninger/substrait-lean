@@ -481,7 +481,7 @@ A table `t` of three columns whose third, a double, is within 8 codes. -/
 private def exCat : Catalog := fun _ => ⟨3, []⟩
 private def exT : String → Tol := fun _ c => if c = 2 then some 8 else none
 private def exCols (r : Rel) : Option (List (Option Nat)) :=
-  (r.tol exCat (fun _ => ⟨[], [], [], none⟩) exT).map fun t => (List.range 4).map t
+  (r.tol exCat (fun _ => ⟨[], [], [], none, []⟩) exT).map fun t => (List.range 4).map t
 
 -- Pass-through and emit carry the tolerance; an exact filter keeps it.
 #guard letI := Boxes.Ambient.none; exCols (.emit (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 5)))) [2, 0]) ==
@@ -504,7 +504,7 @@ private def exCols (r : Rel) : Option (List (Option Nat)) :=
 /-- The table's knowledge: at most 1000 rows, the double in `[-10⁶, 10⁶]`. -/
 private def exK : KnowledgeEnv := fun _ =>
   ⟨[AVal.top, AVal.top, AVal.num false ⟨some (FloatCode.ofFloat (-1.0e6)), some (FloatCode.ofFloat 1.0e6)⟩ .float],
-    [], [], some 1000⟩
+    [], [], some 1000, []⟩
 /-- Which of the first four output columns are tolerated, under `exK`. -/
 private def exSum (r : Rel) : Option (List Bool) :=
   (r.tol exCat exK exT).map fun t => (List.range 4).map fun c => (t c).isSome
@@ -535,7 +535,7 @@ private def exSum (r : Rel) : Option (List Bool) :=
 private def exK2 : KnowledgeEnv := fun _ =>
   ⟨[AVal.num false ⟨some (FloatCode.ofFloat 1.0), some (FloatCode.ofFloat 100.0)⟩ .float, AVal.top,
     AVal.num false ⟨some (FloatCode.ofFloat (-1.0e6)), some (FloatCode.ofFloat 1.0e6)⟩ .float],
-    [], [], some 1000⟩
+    [], [], some 1000, []⟩
 private def exSum2 (r : Rel) : Option (List Bool) :=
   (r.tol exCat exK2 exT).map fun t => (List.range 4).map fun c => (t c).isSome
 
