@@ -46,9 +46,38 @@ def github(file: str, findings: list[dict[str, Any]], error: dict | None) -> str
     return "\n".join(lines)
 
 
-def sarif(file: str, version: str, findings: list[dict[str, Any]], error: dict | None) -> str:
+def _fix(file: str, edits: list[tuple[int, int, str]]) -> dict[str, Any]:
+    """A SARIF fix: the edits, as byte ranges of `file`, that state a
+    transform's needed preconditions in its `requires=` (`check --fix`)."""
+    return {
+        "description": {"text": "state the needed preconditions in requires="},
+        "artifactChanges": [
+            {
+                "artifactLocation": {"uri": file},
+                "replacements": [
+                    {
+                        "deletedRegion": {"byteOffset": start, "byteLength": end - start},
+                        "insertedContent": {"text": text},
+                    }
+                    for start, end, text in sorted(edits)
+                ],
+            }
+        ],
+    }
+
+
+def sarif(
+    file: str,
+    version: str,
+    findings: list[dict[str, Any]],
+    error: dict | None,
+    fixes: dict[str, list[tuple[int, int, str]]] | None = None,
+) -> str:
     """A SARIF 2.1.0 log with one run: sverify's rules (its codes, with
-    `explain`'s text) and one result per finding."""
+    `explain`'s text) and one result per finding. `fixes` are the edits that
+    place each transform's needed preconditions, by transform: the first
+    `needs` result of the transform carries them as a SARIF fix."""
+    fixes = dict(fixes or {})
     results = list(findings)
     if error is not None:
         results.append(
@@ -86,6 +115,8 @@ def sarif(file: str, version: str, findings: list[dict[str, Any]], error: dict |
         }
         if props:
             result["properties"] = props
+        if r["code"] == "needs" and (edits := fixes.pop(r.get("item"), None)):
+            result["fixes"] = [_fix(file, edits)]
         out.append(result)
     log = {
         "$schema": SARIF_SCHEMA,
