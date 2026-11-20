@@ -456,6 +456,7 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     assert done.returncode == 4, done.stderr
     doc = json.loads(done.stdout)
     assert doc["error"]["code"] == "memory"
+    assert doc["error"]["type"] == "MemoryLimitError"
     assert not sink.exists()
     env["SVERIFY_MEMORY_LIMIT"] = "2GB"
     done = subprocess.run(argv, capture_output=True, text=True, env=env)

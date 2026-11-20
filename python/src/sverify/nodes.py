@@ -44,7 +44,7 @@ import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify import _engines, _hooks, _quarantine, _stages
+from sverify import _duckdb, _engines, _hooks, _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -1425,6 +1425,8 @@ class Group:
         except BaseException as e:
             if runs is not None:
                 runs.fail(e)
+            if (oom := _duckdb.memory_limit_error(e, "refresh")) is not None:
+                raise oom from e
             raise
 
     def status(self) -> Status:

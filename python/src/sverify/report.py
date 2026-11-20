@@ -26,7 +26,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _hooks
+from sverify import _decimals, _deprecated, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -1325,6 +1325,8 @@ class Report:
             # did not run first, refuse the batch as that run would have.
             if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
                 raise refusal from e
+            if (oom := _duckdb.memory_limit_error(e, "run")) is not None:
+                raise oom from e
             raise
         out = self._declared_widths(out)
         if kind == "unverified":

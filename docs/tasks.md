@@ -747,9 +747,19 @@ data that otherwise stay out of CI artifacts and issues.
 proof, planning and checking. A refresh moving data has no time limit:
 `--memory-limit` (or `SVERIFY_MEMORY_LIMIT`, such as `2GB`) bounds it
 instead, as DuckDB's `memory_limit`, past which DuckDB spills to a
-temporary directory (`SVERIFY_TEMP_DIRECTORY`). Past either budget the
-call stops with code 4 before any sink commits, and reports what was
-proved before it ([test_cli.py](../python/tests/test_cli.py)).
+temporary directory (`SVERIFY_TEMP_DIRECTORY`), and as Spark's driver
+memory. Sverify sets no default of its own: unset, each engine keeps its
+own, DuckDB 80 % of the machine's memory
+([DuckDB's configuration](https://duckdb.org/docs/stable/configuration/overview)) and
+Spark's driver 1 GB ([Spark's configuration](https://spark.apache.org/docs/latest/configuration.html)).
+The limit does not reach Polars, which has no memory cap to set; with
+`--engine polars` the command says so. A proof has its own cap,
+`SVERIFY_CHECKER_MEMORY_MB` (below), since its memory does not grow with
+the data. Past any of these budgets the call raises
+`sverify.errors.MemoryLimitError` (its `.stage`, `.limit` and `.setting`
+say which), a refresh commits nothing, and the command stops with code 4
+and reports what was proved before it
+([test_memory_limits.py](../python/tests/test_memory_limits.py)).
 `sverify.cli.discover(path)` does what `check` does from Python.
 
 ### Environment variables
@@ -760,10 +770,10 @@ given wins over the variable, and the variable over the default.
 | Variable | Flag | Python | Default | Sets |
 |---|---|---|---|---|
 | `SVERIFY_CHECKER` | | | the bundled checker | the path to a `substrait-check` binary, such as your own `lake build` |
-| `SVERIFY_CHECKER_MEMORY_MB` | | | 4096 | the memory, in MB, one checker request may take before the checker is stopped and the request raises `CheckerMemoryError` (Linux and macOS); 0 turns the cap off |
+| `SVERIFY_CHECKER_MEMORY_MB` | | | 4096 | the memory, in MB, one checker request may take before the checker is stopped and the request raises `sverify.errors.MemoryLimitError` (Linux and macOS); 0 turns the cap off |
 | `SVERIFY_COUNTEREXAMPLES` | | `verify(counterexamples=)` | 200 | how many inputs are tried per unproved postcondition; 0 skips the search |
 | `SVERIFY_TIMEOUT` | `--timeout` | | 30 | seconds for proof, planning and checking; 0 turns it off |
-| `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | none | DuckDB's `memory_limit`, such as `2GB` |
+| `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | each engine's own | DuckDB's `memory_limit` and Spark's driver memory, such as `2GB`; not Polars |
 | `SVERIFY_TEMP_DIRECTORY` | | | a directory under the system's temporary one | DuckDB's `temp_directory`, where it spills past the memory limit |
 | `SVERIFY_STATE_LOCATION` | | | a directory under the system's temporary one | where Polars and Spark write an incremental view's state as Parquet parts: a directory, or a URI (`s3://bucket/state`) that the driver and every executor read and write |
 | `SVERIFY_CACHE` | | | on | `off`, `0`, `false` or `no` turns the proof cache off ([Checking without running](#checking-without-running)) |

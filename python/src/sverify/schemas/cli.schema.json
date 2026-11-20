@@ -83,7 +83,7 @@
     },
     "outcome": {"description": "refresh: \"ok\", \"quarantined\" or \"held\".", "type": "string"},
     "alert": {"description": "refresh: Refresh.alert(), what needs attention when rows were quarantined or a node held; null otherwise. It shows rows only with --examples.", "type": ["string", "null"]},
-    "memory_limit": {"description": "refresh: the --memory-limit given, if any.", "type": ["string", "null"]},
+    "memory_limit": {"description": "refresh: the --memory-limit given, if any: DuckDB's memory_limit and Spark's driver memory; it does not reach Polars.", "type": ["string", "null"]},
     "code": {"description": "explain: the code, in snake case.", "type": "string"},
     "level": {"description": "explain: the code's level.", "enum": ["error", "warning", "note"]},
     "text": {"description": "explain: what the code means and how to fix it.", "type": "string"}

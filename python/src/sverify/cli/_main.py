@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import difflib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -30,7 +31,6 @@ from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._limits import (
     Budget,
     BudgetExceeded,
-    is_out_of_memory,
     memory_limit_from,
     timeout_from,
 )
@@ -94,6 +94,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
     try:
         from sverify.errors import (
             AuditError,
+            MemoryLimitError,
             PostconditionError,
             PreconditionError,
             UnsupportedError,
@@ -104,7 +105,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
 
     if isinstance(e, BudgetExceeded):
         return BUDGET, "memory" if e.what == "memory" else "timeout"
-    if is_out_of_memory(e):
+    if isinstance(e, MemoryLimitError):
         return BUDGET, "memory"
     if isinstance(e, UsageError | FileNotFoundError):
         return USAGE, "usage"
@@ -441,6 +442,12 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     d = Discovery(path)
     budget.on_hard_stop = _on_hard_stop(args, d, target, budget)
     result: dict[str, Any] = {"file": str(path), "target": target, "nodes": [], "error": None}
+    if args.engine == "polars" and os.environ.get("SVERIFY_MEMORY_LIMIT", "").strip():
+        # Polars has no memory cap sverify can set (#783): say so once.
+        print(
+            "note: the memory limit bounds DuckDB and Spark's driver; it does not reach Polars",
+            file=sys.stderr,
+        )
     try:
         with planned(budget.disarm), budget.armed():
             load(path, d)
@@ -542,8 +549,9 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--memory-limit",
         default=None,
-        help="DuckDB's memory limit, such as 2GB, past which it spills to disk "
-        "(default: $SVERIFY_MEMORY_LIMIT, else DuckDB's own)",
+        help="the data engine's memory limit, such as 2GB: DuckDB's, past which it spills "
+        "to disk, and Spark's driver memory; it does not reach Polars "
+        "(default: $SVERIFY_MEMORY_LIMIT, else each engine's own)",
     )
     p = _Parser(
         prog="sverify",

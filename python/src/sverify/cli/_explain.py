@@ -106,9 +106,13 @@ CODES: dict[str, str] = {
         "`--timeout` or `SVERIFY_TIMEOUT` (0 turns it off)."
     ),
     "memory": (
-        "DuckDB ran out of its `--memory-limit` (`SVERIFY_MEMORY_LIMIT`) while it ran a "
-        "query, after spilling what it could to disk. Nothing was written to a sink. Raise "
-        "the limit, or refresh in smaller batches."
+        "A step ran out of the memory allowed it (`sverify.errors.MemoryLimitError`), "
+        "and the run stopped like a timeout. Two limits, each with its own setting: "
+        "DuckDB's `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, past which it spills to disk "
+        "first) while a run or refresh moves data, after which nothing was written to a "
+        "sink; and the checker's cap (`SVERIFY_CHECKER_MEMORY_MB`, 4096 by default) "
+        "during a proof. The message names which. Raise that limit, or refresh in "
+        "smaller batches. The limit does not reach Polars."
     ),
     "refused": (
         "The node is proved, but no route takes its proof to the engine, or its sink "
