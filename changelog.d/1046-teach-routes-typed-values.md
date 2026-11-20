@@ -1,0 +1,3 @@
+### Routes, profiles and typed values in the tour
+
+An explicit `route=` that does not apply now names how to reach the engine: verify under `semantics="reference"`, or pass `route="auto"` ([#1046](https://github.com/AlexanderNenninger/substrait-lean/issues/1046)). The tour shows `semantics="polars"` and the refusal ([chapter 5](notebooks/05_pipelines_and_engines.py)) and a decimal's scale and an unsigned column's refusal ([chapter 4](notebooks/04_contracts.py), [#1050](https://github.com/AlexanderNenninger/substrait-lean/issues/1050)). `docs/proofs.md` names the theorem each route and class rests on.
