@@ -1,6 +1,7 @@
 import SubstraitLean.ShardCheck
 import SubstraitLean.EngineTables
 import Sverify.Core.MarginCheck
+import Sverify.Analysis.AsofSite
 
 /-!
 # The float tolerance of a plan's outputs (#444, #85)
@@ -710,7 +711,7 @@ def inputs? (input : Json) : Except String (Option Inputs) := do
     | none => (preOf t).flatMap Expr.factsOf
   let caps := rowCaps ((input.getObjVal? "max_rows").toOption.getD (.obj {}))
   let root := plan.root.capReads caps
-  let T := Rel.keyedWindows cat A F ⟨fun _ => []⟩
+  let T := Rel.keyedWindows cat A F { keys := fun _ => [] }
   return some ⟨tj, plan, cat, A, F, caps, root, T⟩
 
 /-- `"epsilon_by_engine"` of a `--contract` request: per engine and double
@@ -813,6 +814,54 @@ def marginChecksJson (es : List EngineProfile) (input : Json) : Except String Js
           "bound per group from its count and Σ|x|)"))),
       ("conditions", toJson marginConditions),
       ("engines", Json.mkObj engines)]
+
+/-- A path of child indices over `Rel` nodes (`Rel.asofSitesAt`) as a path in
+the JSON `Write.writeRel` writes, from `relations[0].root.input`: the key of
+each step (`input`, `left`, `right`, or `inputs` and an index), and none for
+an `EMIT`, which `Write` puts on its input's `RelCommon`, nor for the
+projection of an `EMIT` of a projection of an aggregate with decimal `AVG`s,
+which `Write` writes as one aggregate node. -/
+def _root_.Substrait.Rel.jsonPath : Rel → List Nat → List Json
+  | _, [] => []
+  | .emit p@(.project (.aggregate r gs ms) qs) m, 0 :: ps =>
+    -- `Write` writes the three as one aggregate node where they hold decimal `AVG`s.
+    match Write.decimalAvgsOf gs.length ms qs m, ps with
+    | some _, 0 :: 0 :: ps' => "input" :: r.jsonPath ps'
+    | some _, _ => []
+    | none, _ => p.jsonPath ps
+  | .emit r _, 0 :: ps => r.jsonPath ps
+  | .filter r _, 0 :: ps | .project r _, 0 :: ps | .fetch r _ _, 0 :: ps
+  | .orderBy r _, 0 :: ps | .distinct r, 0 :: ps | .aggregate r _ _, 0 :: ps
+  | .unnest r _, 0 :: ps | .window r .., 0 :: ps => "input" :: r.jsonPath ps
+  | .join a _ _ _, 0 :: ps | .cross a _, 0 :: ps | .semi a _ _ _, 0 :: ps => "left" :: a.jsonPath ps
+  | .join _ b _ _, 1 :: ps | .cross _ b, 1 :: ps | .semi _ b _ _, 1 :: ps =>
+    "right" :: b.jsonPath ps
+  | .unionAll a _, 0 :: ps => "inputs" :: toJson 0 :: a.jsonPath ps
+  | .unionAll _ b, 1 :: ps => "inputs" :: toJson 1 :: b.jsonPath ps
+  | _, _ => []
+
+/-- `"asof_checks"` of a `--contract` request (#1447, ruling 162 A2 and A7):
+per as-of join of the plan (`Rel.asofSites`), the count of the pairs its
+range join compares (`AsofSite.pairs`), as a plan of its own, and where and
+what the site is for a writer: the path to its node (child indices from the
+root, 0 for an input or a join's left side, 1 for the right; `json_path` the
+same in the written JSON, `Rel.jsonPath`), its shape
+(`AsofForm`), the keys as (left column, right column) pairs, `lon` and
+`ron` (the left columns are the join's left input's, the right ones the
+right input's own), whether it is a LEFT join and whether it has more
+conjuncts (a tolerance). `Report.run` evaluates the count on the engine
+before the plan and refuses the run above the cap `asof_join` states,
+whatever the rows come from. -/
+def asofChecksJson (input : Json) : Except String Json := do
+  let some ⟨_, plan, cat, _, _, _, _, _⟩ ← inputs? input | return Json.arr #[]
+  let schemaOf := Write.planSchemas plan
+  return Json.arr <| (plan.root.asofSites cat).toArray.map fun (path, s) =>
+    Json.mkObj [("plan", Write.writePlan schemaOf plan.catalog s.pairs ["pairs"]),
+      ("path", toJson path), ("json_path", Json.arr (plan.root.jsonPath path).toArray),
+      ("form", toJson s.form.name),
+      ("keys", toJson (s.keys.map fun (l, r) => [l, r])), ("lon", toJson s.lon),
+      ("ron", toJson s.ron), ("outer", toJson (s.type == .left)),
+      ("tolerance", toJson !s.rest.isEmpty)]
 
 /-- Where an output column comes from, as far as window aggregates of doubles
 go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that
@@ -1130,7 +1179,7 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
   let preOf (t : String) : List Expr := (pre.filter (·.1 == t)).flatMap (·.2)
   let A := fun t => tableEnv (schemas t) (preOf t)
   let F := fun t => (preOf t).flatMap Expr.factsOf
-  let T := Rel.keyedWindows cat A F ⟨fun _ => []⟩
+  let T := Rel.keyedWindows cat A F { keys := fun _ => [] }
   let aggs := aggNodes plan.root
   let keys := doubleKeys (Write.planSchemas plan) cat plan.root
   let empty := aggs.any fun (r, gs, ms) => ms.any fun m =>

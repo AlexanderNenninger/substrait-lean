@@ -20,7 +20,37 @@
       ]
     },
     {
+      "group": "fp.pow",
+      "option": "on_domain_error",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.atan2",
+      "option": "on_domain_error",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
       "group": "fp.elem",
+      "option": "on_domain_error",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.pow",
+      "option": "on_domain_error",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.atan2",
       "option": "on_domain_error",
       "types": [
         "fp32"
@@ -58,14 +88,21 @@
       "evidence": "probe"
     },
     {
-      "group": "fp.elem",
+      "group": "fp.pow",
       "option": "pow_one_inf",
       "types": [
         "fp64"
       ]
     },
     {
-      "group": "fp.elem",
+      "group": "fp.atan2",
+      "option": "zero_sign",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.pow",
       "option": "zero_sign",
       "types": [
         "fp64"

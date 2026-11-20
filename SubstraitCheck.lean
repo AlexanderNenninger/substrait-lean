@@ -416,6 +416,8 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
         let robust := (EngineRobust.robust es j).toOption.getD (Lean.Json.arr #[])
         -- The margin checks of threshold filters on double sums (#929).
         let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
+        -- The pair counts of its as-of joins (#1447).
+        let asofs := (Epsilon.asofChecksJson j).toOption.getD (Lean.Json.arr #[])
         -- Per engine, the plan's class, evidence and what refuses it (#1166).
         let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
         -- The plan an engine runs, or the gate that keeps the plan as
@@ -428,6 +430,7 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
             |>.setObjVal! "margin_checks" margins
+            |>.setObjVal! "asof_checks" asofs
             -- The black boxes the transformation calls, with their laws (#1484).
             |>.setObjVal! "black_boxes" (match ContractCheck.parse j with
               | .ok R => (R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[])

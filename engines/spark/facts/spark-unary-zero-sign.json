@@ -1,0 +1,70 @@
+{
+  "id": "spark-unary-zero-sign",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "`sqrt`, `sin`, `tan`, `asin` and `atan` of `-0.0` are `-0.0`",
+  "verdict": "the unary elementary functions keep the sign of a zero argument, as IEEE and the reference do; only `atan2` reads a zero's sign differently (spark-zero-sign)",
+  "area": "doubles",
+  "options": [
+    "zero_sign"
+  ],
+  "rows": [
+    {
+      "group": "fp.elem",
+      "option": "zero_sign",
+      "types": [
+        "fp64"
+      ],
+      "evidence": "probe"
+    },
+    {
+      "group": "fp.elem",
+      "option": "zero_sign",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "probe"
+    }
+  ],
+  "constructs": [
+    "sqrt",
+    "sin",
+    "tan",
+    "asin",
+    "atan"
+  ],
+  "settings": {
+    "spark.sql.ansi.enabled": [
+      true
+    ]
+  },
+  "description": [
+    "`sqrt(-0.0)`, `sin(-0.0)`, `tan(-0.0)`, `asin(-0.0)` and `atan(-0.0)` are `-0.0`, and the same functions of `0.0` are `0.0`; `cos(-0.0)` and `exp(-0.0)` are `1.0`. The reference gives the same zeros. So the unary functions need no shim at `zero_sign`: the one function of the former group `fp.elem` whose zero Spark reads differently is `atan2`, which has its own group, `fp.atan2` (ruling 163)."
+  ],
+  "reference": "The reference's `Float.sqrt`, `sin`, … of `-0.0` keep the sign (the platform's libm); Spark's `StrictMath` and `java.lang.Math` return the argument's zero. Nothing contradicts the profile.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "issues": [
+    271
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "Spark math session (#271, ruling 163), Spark 4.3.0 local[2] on macOS arm64",
+      "evidence": [
+        {
+          "sql": "SELECT k, sqrt(x), sin(x), tan(x), asin(x), atan(x), cos(x), exp(x) FROM t, where t holds (0, -0.0) and (1, 0.0) as DOUBLE",
+          "observed": "k = 0: -0.0, -0.0, -0.0, -0.0, -0.0, 1.0, 1.0; k = 1: 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0 (the sign of each result read with copysign)"
+        },
+        {
+          "sql": "SELECT sqrt(-CAST(0 AS FLOAT)), sin(-CAST(0 AS FLOAT)), tan(-CAST(0 AS FLOAT)), asin(-CAST(0 AS FLOAT)), atan(-CAST(0 AS FLOAT)), typeof(sqrt(-CAST(0 AS FLOAT)))",
+          "observed": "-0.0 for each of the five, and the type is double: a FLOAT argument is promoted"
+        }
+      ],
+      "notes": [
+        "Java's functions return the argument for these (`Math.sin(-0.0)` is `-0.0`, JLS and the Math javadoc: if the argument is a zero, the result is a zero with the same sign). Linux is not probed."
+      ]
+    }
+  ]
+}

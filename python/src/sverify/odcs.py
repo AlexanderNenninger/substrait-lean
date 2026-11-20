@@ -745,7 +745,10 @@ class _Reader:
             e = sg.exp.not_(_ident(column).is_(sg.exp.null()))
             if values:
                 e = sg.exp.and_(
-                    e, sg.exp.not_(sg.exp.In(this=_ident(column), expressions=map(_lit, values)))
+                    e,
+                    sg.exp.not_(
+                        sg.exp.In(this=_ident(column), expressions=[_lit(v) for v in values])
+                    ),
                 )
             self.out.append(e.sql(_DIALECT))
         elif metric == "invalidValues" and "validValues" in args and "pattern" not in args:

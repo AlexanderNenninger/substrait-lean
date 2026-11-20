@@ -17,7 +17,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import warnings
-from collections.abc import Iterable, Iterator, Mapping, MutableMapping
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -29,7 +29,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import sqlglot as sg
 
-from sverify import _duckdb, _engines, _stages
+from sverify import _engines, _stages
 from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
     _CHECKER,
     _REBUILD,
@@ -62,7 +62,52 @@ ENGINES: tuple[Engine, ...] = _engines.LOCAL
 def _ibis_backend() -> Any:
     """An Ibis DuckDB backend on a cursor of its own to the process's
     database (`sverify._duckdb`), where the tables DuckDB holds live too."""
+    from sverify import _duckdb
+
     return ibis.duckdb.from_connection(_duckdb.cursor())
+
+
+class _NoBackend:
+    """The Ibis backend of a bound table on a connection whose engine does not
+    hold its tables in Ibis's DuckDB backend: a table needs a source to be
+    bound, and this one exists without DuckDB. Where DuckDB is installed, a
+    member Ibis asks of it is the DuckDB backend's, made on first need
+    (`Connection._ibis`), as the pipelines' state tables and a user's own
+    Ibis query over the connection's tables need. Without DuckDB each such
+    member refuses, naming the engine to run on (`Report.run`)."""
+
+    def __init__(self, con: Connection, engine: Engine):
+        self._sverify_connection = con
+        self._engine = engine
+
+    @property
+    def name(self) -> str:
+        return "duckdb" if _importable("duckdb") else self._engine
+
+    def __getattr__(self, attr: str) -> Any:
+        if attr.startswith("__") or attr in ("_sverify_connection", "_engine"):
+            raise AttributeError(attr)
+        if _importable("duckdb"):
+            return getattr(self._sverify_connection._ibis, attr)
+        return _Refusal(self._engine)
+
+
+class _Refusal:
+    """What a member of `_NoBackend` is without DuckDB: calling it, or reading
+    a member of it (`compiler.to_sqlglot`), raises the refusal."""
+
+    def __init__(self, engine: Engine):
+        self._engine = engine
+
+    def __call__(self, *_args: Any, **_kwargs: Any) -> Any:
+        raise NotImplementedError(
+            f"an Ibis expression on a {self._engine} connection is not executed through Ibis "
+            f"without DuckDB: run the plan with `Report.run(con, {self._engine!r})`, or "
+            f"install sverify[duckdb]"
+        )
+
+    def __getattr__(self, attr: str) -> Any:
+        return self()
 
 
 class _Arrow(MutableMapping[str, pa.Table]):
@@ -149,9 +194,13 @@ class Connection:
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
         self._arrow: MutableMapping[str, pa.Table] = _Arrow(self)
-        self._ibis: Any = _ibis_backend()
+        # The backend a bound table reads through: DuckDB's on a DuckDB
+        # connection, a stub that runs nothing on the others. The Ibis DuckDB
+        # backend of those is made on first need (`_ibis`).
+        self._duck: Any = None
+        self._source: Any = self._ibis if plugin.default else _NoBackend(self, self.engine)
         # A bound table keeps its backend alive, and the backend its connection.
-        self._ibis._sverify_connection = self
+        self._source._sverify_connection = self
 
     def table(self, name: str) -> ir.Table:
         """Table `name` as an Ibis table bound to the connection. Its schema is
@@ -168,7 +217,7 @@ class Connection:
             KeyError: The connection has no table `name`.
         """
         schema = ibis.Schema.from_pyarrow(self.schema(name))
-        return ops.DatabaseTable(name, schema=schema, source=self._ibis).to_expr()
+        return ops.DatabaseTable(name, schema=schema, source=self._source).to_expr()
 
     @property
     def arrow(self) -> MutableMapping[str, pa.Table]:
@@ -190,6 +239,19 @@ class Connection:
             stacklevel=2,
         )
         return self._ibis
+
+    @property
+    def _ibis(self) -> Any:
+        """The Ibis DuckDB backend, made on first need with the tables the
+        connection holds. A DuckDB connection asks for it at once; the others
+        only when something executes DuckDB SQL over their tables."""
+        if self._duck is None:
+            duck = _ibis_backend()
+            duck._sverify_connection = self
+            for name, table in self._tables.items():
+                self._attach(duck, name, table)
+            self._duck = duck
+        return self._duck
 
     def create(
         self, name: str, schema: ibis.Schema | pa.Schema, rows: Iterable[tuple] = ()
@@ -231,8 +293,8 @@ class Connection:
 
     def put(self, name: str, table: pa.Table | Native) -> None:
         """Add or replace table `name`, as it is: no copy. The engines read
-        `-0.0` as `0.0` and every NaN as one, as the model has them. The
-        table is registered with the Ibis backend.
+        `-0.0` as `0.0` and every NaN as one, as the model has them. A DuckDB
+        connection registers the table with its Ibis backend.
 
         Args:
             name: The table's name.
@@ -244,20 +306,33 @@ class Connection:
         if isinstance(table, Native):
             if isinstance(table, Scan):
                 table = replace(table, schema=plain_schema(table.schema))
-            self._tables[name] = table
+        else:
+            _check_times(table.schema)
+            _check_calendar(table)
+        if isinstance(table, Native) and self._duck is None:
+            if _importable("duckdb"):
+                self._ibis  # noqa: B018 - the rows are checked over a DuckDB view
+            else:
+                _check_calendar_view(None, name, table)
+        self._tables[name] = table
+        if self._duck is not None:
+            try:
+                self._attach(self._duck, name, table)
+            except BaseException:
+                self.drop(name)
+                raise
+
+    def _attach(self, duck: Any, name: str, table: pa.Table | Native) -> None:
+        """Make table `name` visible to the Ibis DuckDB backend `duck`:
+        registered if it is Arrow, viewed where it is if it is a `Native`."""
+        db = duck.con
+        if isinstance(table, Native):
             # A scan whose files were removed is held, but cannot be read.
             if table.readable():
-                self._views[name] = table.attach(self._ibis.con, name)
-                try:
-                    _check_calendar_view(self._ibis.con, name, table)
-                except BaseException:
-                    self.drop(name)
-                    raise
-            return
-        _check_times(table.schema)
-        _check_calendar(table)
-        self._tables[name] = table
-        self._ibis.con.register(name, table)
+                self._views[name] = table.attach(db, name)
+                _check_calendar_view(db, name, table)
+        else:
+            db.register(name, table)
 
     def drop(self, name: str) -> None:
         """Remove table `name`; nothing happens if there is none."""
@@ -265,8 +340,8 @@ class Connection:
             return
         if (drop := self._views.pop(name, None)) is not None:
             drop()
-        elif isinstance(table, pa.Table):
-            self._ibis.con.unregister(name)
+        elif isinstance(table, pa.Table) and self._duck is not None:
+            self._duck.con.unregister(name)
 
 
 def _importable(module: str) -> bool:
@@ -553,6 +628,7 @@ def run_plan(
     keep: Literal[False] = False,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table: ...
 
 
@@ -565,6 +641,7 @@ def run_plan(
     keep: bool,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table | Resident: ...
 
 
@@ -576,6 +653,7 @@ def run_plan(
     keep: bool = False,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. `"spark"` runs it
@@ -605,6 +683,10 @@ def run_plan(
             they run with the sort keys alone (`to_sql`'s `deterministic`).
             Default: False; `Report.run` and a stored node's refresh pass
             the report's fact.
+        asof: The plan's as-of join sites, as the checker reports them
+            (`asof_checks`): on DuckDB, the plan's as-of joins run as its
+            ASOF JOIN where the writer can (`to_sql`'s `asof`). Other
+            engines are not given any. Default: none.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -652,7 +734,10 @@ def run_plan(
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
-    out = plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
+    extra = {"asof": asof} if asof else {}
+    out = plugin.runner(
+        con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
+    )
     return instants_in_utc(out) if isinstance(out, pa.Table) else out
 
 
@@ -788,7 +873,10 @@ def _parquet_in_calendar(files: tuple[str, ...], columns: list[str]) -> bool:
 def _check_calendar_view(db: Any, name: str, table: Native) -> None:
     """`_check_calendar` for a table DuckDB reads where it is: discharged by
     the files' Parquet statistics where they cover every column (Delta and
-    Iceberg write them), else one range predicate per column over the view."""
+    Iceberg write them), else one range predicate per column over the view.
+    With no `db` (a connection on another engine, which has no view), the
+    statistics must discharge it, or the table is refused until a DuckDB
+    connection reads it."""
     from sverify._scan import _q
 
     columns = [(f.name, r) for f in table.schema if (r := _calendar_range(f.type)) is not None]
@@ -796,6 +884,13 @@ def _check_calendar_view(db: Any, name: str, table: Native) -> None:
         return
     if isinstance(table, Scan) and _parquet_in_calendar(table.files, [c for c, _ in columns]):
         return
+    if db is None:
+        raise SverifyError(
+            f"table {name!r} has date or timestamp columns that the files' statistics do not "
+            "show to lie within 0001-01-01 to 9999-12-31 (D32), and only a DuckDB connection "
+            "checks the rows: put it on a DuckDB connection, or rewrite the files with "
+            "Parquet statistics"
+        )
     for column, (_, _, _, what) in columns:
         if what == "dates":
             lo, hi = "DATE '0001-01-01'", "DATE '9999-12-31'"

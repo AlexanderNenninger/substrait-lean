@@ -283,6 +283,10 @@ plan, against the `q` the postcondition names. The finest valid `q` is the
 
 ### D19. `AND` and `OR` raise eagerly
 
+Amended by [D50](#d50-the-frontends-lift-and-and-or-so-a-guard-protects-the-next-operand):
+the core stays eager, and the frontends lift an `AND` or `OR` over a raising
+operand so a guard protects it.
+
 An error in either operand of `AND` or `OR` may raise, whatever the other
 operand's value (#604). `p AND q` is not a guard for `q`: in
 `x <> 0 AND 10 // x > 1`, the division may run on the rows where `x = 0`.
@@ -331,6 +335,12 @@ takes (`Rel.constIssues` in `analysis/Sverify/Analysis/Safety.lean`): stricter t
 DuckDB, which leaves a constant `ELSE` or `WHERE` alone, and constants that
 raise are rare in real queries. No precondition rules one out; the report
 names the constant.
+
+Note (2026-11-19, theory advisor): D19 states the reference's raise set. An
+engine may evaluate a conjunct on fewer pairs: a pair that another conjunct
+makes not TRUE is in no allowed result (`isTrue_and3`), so by D16 the engine
+may return there. Polars's hash-join keys do, and DuckDB's joins do. No
+reference value, allowed set or raise set changes.
 
 
 ### D20. Two observations per output
@@ -1177,6 +1187,12 @@ refuses double `power`, so no portable plan meets it there. The scope is
 Why: an option states both engines' values, where a raise would take `1` from
 the plans that DuckDB and Polars compute alike.
 
+Note (2026-11-19, theory advisor, ruling 163): `pow_one_inf` is `power`'s alone, so
+`power` of doubles is the group `fp.pow` and `atan2` the group `fp.atan2`, where both were
+in `fp.elem`; the unary functions stay there, without `pow_one_inf`. Routes class by
+(group, option), so every unary function had inherited Spark's refusal of an option it
+never reads. No reference value or allowed set changes.
+
 Also decided: `float_to_int`'s scope reaches `floor`, `ceil` and one-argument
 `round` (`fp.floor`, `fp.round`), where an engine returns a `BIGINT` (Spark: NaN
 is `0`; `±∞` and values past 64 bits overflow,
@@ -1549,6 +1565,76 @@ Why: the reference belongs to no engine, and these rows said "as DuckDB
 computes it" with no decision and no second engine's facts. The mark states
 what is known, and the rule for new functions (Lean and DuckDB first) keeps
 producing such rows.
+
+### D50. The frontends lift `AND` and `OR` so a guard protects the next operand
+
+Decided 2026-11-18, approved by the user.
+
+`WHERE qty <> 0 AND total / qty > 1` reads as a guard, and SQL users write
+it so. The SQL and Ibis frontends lift `p AND q` so that a raising operation in
+`q` runs only where `p` is not FALSE, and `OR` likewise where `p` is not TRUE.
+The core stays eager (D19), and `semantics="duckdb"` keeps DuckDB's eager
+reading, where DuckDB raises.
+
+The lift is the call `sverify_and` (`sverify_or`) over the operands, which the
+parser reads as nested `CASE` (`Expr.andLift`, `Frontend/Guard.lean`):
+`T_k = CASE WHEN p_k IS NOT FALSE THEN T_{k+1} ELSE 0`, ending in
+`CASE WHEN p_1 AND … AND p_n THEN 1 ELSE NULL`, and the conjunction is
+`T_1 = 1`. Its size is linear in the operands, and each operand is written
+three times: twice in `p IS NOT FALSE` (`p IS NULL OR p`) and once in the
+closing conjunction; a plain operand a fourth time, outside the chain. A lift
+inside an operand is written three times a level. Operands that cannot raise
+(`Expr.plain`, a syntactic check with no use of the analysis) stay outside; an
+`AND` of plain operands stays the eager `AND`, and its plan does not change.
+
+Proved (`Frontend/Guard.lean`, with the `OR` duals): on every row where the
+eager `AND` returns, the lift returns the same (`Expr.andLift_refines`); where
+an operand is FALSE and the operands before it do not raise, the lift is FALSE
+whatever follows (`Expr.andLift_false`); an error in a reached operand still
+surfaces (`Expr.andLift_error`); and the lift is TRUE, FALSE or NULL, so it can
+be an operand (`Expr.andLift_boolVal`). The `andG` lemmas are the chain's case
+lemmas. A constant subexpression that raises is outside the guard (D21,
+`Rel.constIssues`): `x <> 0 AND 1 // 0 = 1` raises for the whole plan under the
+lift as under the eager reading. The analysis refines the `THEN` branch by its condition and reads
+`p IS NULL OR p` as a fact on a column (`x <> c`, `0 <= c < x`).
+
+An engine runs the lifted plan on a recorded fact that its `CASE` evaluates the
+taken branch alone; an engine or a shape without such a fact refuses it. The facts:
+`duckdb-exec-short-circuit` (DuckDB runs it), `spark-exec-evaluation-order`
+(Spark runs it, also with a subexpression twice in a branch) and
+`polars-exec-when-eager` (Polars runs it, collected with common-subexpression
+elimination off, `polars-exec-cse-hoist`). Snowflake follows its private facts.
+Polars's masking excludes a branch under `group_by().agg` and `over()`; an
+aggregate's `FILTER` and a window's argument are tested in
+`tests/test_and_or_engines.py`.
+
+Interim limits, until step D50-d (a gate for 1.0):
+
+- Only the top three levels of a nest of `AND` and `OR` are lifted
+  (`LIFT_LEVELS`, `plan_json.py`; a connective's level is one more than the lifted
+  ones enclosing it). Below that the connective is the eager `AND` or `OR`: a
+  guard there does not protect the next operand, so the guarded operation is
+  reported as an inferred precondition, as before D50. The cap exists because a
+  lift nested in a lift multiplies the size: with a guarded leaf, depth 3 of
+  alternating connectives measured 29 times the eager plan's characters, and
+  depth 4 took 5,171 s in the checker. Since the lift has the eager value
+  wherever the eager reading returns (`Expr.andLift_refines`), a plan proved
+  under the cap stays proved when D50-d lifts the lower levels.
+- The analysis proves zero and null guards (`x <> c`, `0 <= c < x`). A range
+  guard before a cast (`x BETWEEN a AND b AND CAST(x AS BIGINT) > 1`) and a
+  pattern guard before a string cast run correctly on the engines, but are
+  reported as inferred preconditions; step D50-e (before 1.0) adds a
+  refinement through `p IS NOT FALSE` for the range guard. A pattern guard stays
+  unproved.
+
+Why: the eager reading made the commonest guard in SQL unprovable, and the
+engines that short-circuit give the value the user meant.
+
+The lift is the chain `Expr.andLift`, in place of the `Expr.guardBy` shape first
+approved (2026-11-18); the plain operands are found by `Expr.plain`.
+
+Recomputes sinks: no. The reference's values do not change: a plan that raises on no row
+computes what it did, and a lifted guard only removes a raise.
 
 ### D53. A timestamp with the time zone UTC is an instant
 

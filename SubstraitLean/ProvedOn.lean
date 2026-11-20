@@ -23,9 +23,10 @@ What stays outside: the model is the engine's scalar functions over the
 reference's relational evaluator (`trusted-base.md`), the run is the model
 (`Engine.Runs`), and an open float measure (`VAR_*`, `STDDEV_*`, `COVAR_*`,
 `CORR`, `QUANTILE_CONT`) needs `Rel.FloatOpenSafeP`, which nothing
-discharges yet (#929). For a double `SUM` or `AVG`, `Engine.contract_sound_runs_near`
+discharges for them yet (#929). For a double `SUM` or `AVG`, `Engine.contract_sound_runs_near`
 with `Rel.floatOpenSafeP_aggregate` covers an aggregate at the root
-(`SubstraitLean/OpenSums.lean`).
+(`engines/Sverify/Engines/OpenSums.lean`), and `Rel.floatOpenSafeP_of_noDouble` a closed
+plan without doubles (`engines/Sverify/Engines/NoDouble.lean`).
 -/
 
 namespace Substrait.ContractCheck
@@ -108,7 +109,7 @@ theorem check_guardFreeSide {input : Json} {R : Request} {rep : Report}
   rw [(Request.check_ok (check_parse hR hc)).guardFree] at hg
   simp only [Request.guardFreeIn, hT, Bool.and_eq_true] at hg
   obtain ⟨⟨⟨-, hloose⟩, hm⟩, -⟩ := hg
-  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   rw [KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity, ← Rel.mayIssues_congr hD.arity] at hm
   exact ⟨R.kenv.cols, R.kenv.facts, R.kenv.windows data,
     ⟨hD.wf, hK.cols, hK.facts, hK.windows hD.wf, hsm⟩,
