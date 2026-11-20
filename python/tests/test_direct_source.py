@@ -7,6 +7,7 @@ import gc
 import weakref
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 import sverify as sv
@@ -25,7 +26,7 @@ class Direct:
     @staticmethod
     def make(lo: int, hi: int) -> pa.Table:
         ids = pa.array(range(lo, hi + 1), pa.int64())
-        return pa.table({"id": ids, "amt": pa.compute.multiply(ids, 10)})
+        return pa.table({"id": ids, "amt": pc.multiply(ids, 10)})
 
     def schema(self) -> pa.Schema:
         return self.make(1, 0).schema

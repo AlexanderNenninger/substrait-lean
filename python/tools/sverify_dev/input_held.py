@@ -117,10 +117,11 @@ def peak_mb() -> float:
 
 
 def main(engine: str, kind: str, n: int) -> dict:
+    path = ""
     if kind == "delta":
         path = tempfile.mkdtemp() + "/t"
         write_deltalake(path, rows(0, n), configuration={"delta.enableChangeDataFeed": "true"})
-        src: object = DeltaSource(path)
+        src = DeltaSource(path)
     elif kind == "direct":
         src = Direct(n)
     elif kind == "append":
@@ -134,8 +135,10 @@ def main(engine: str, kind: str, n: int) -> dict:
     if kind == "delta":
         write_deltalake(path, rows(n, n + CHANGE), mode="append")
     elif kind == "direct":
+        assert isinstance(src, Direct)
         src.v = 1
     elif kind == "static":
+        assert isinstance(src, StaticSource)
         src.apply(sv.io.Changes(inserts=rows(n, n + CHANGE)))
     node.refresh(engine=engine)
     gc.collect()

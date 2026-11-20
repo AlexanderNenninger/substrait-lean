@@ -2403,7 +2403,7 @@ class Pipeline:
             store.negated(state),
             keep=aside,
         )
-        if aside:
+        if q is not None and aside:
             diff = merge(diff, store.kept(negated(q.weighted()).cast(merge.schema)))
         return diff
 
