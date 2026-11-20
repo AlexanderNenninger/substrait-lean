@@ -266,7 +266,7 @@
         "type": "object",
         "required": ["key", "construct", "where", "here", "dialect", "example", "spellings"],
         "properties": {
-          "key": {"enum": ["corr_degenerate"]},
+          "key": {"enum": ["corr_degenerate", "list_contains_null_needle"]},
           "construct": {"type": "string"},
           "where": {"type": "string"},
           "here": {"type": "string"},

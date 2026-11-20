@@ -1709,6 +1709,7 @@ preconditions guard it. In three the reference gives another value:
 | `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
 | `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | refuses, with a hint |
 | `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
+| `list_contains_null_needle` | NULL | FALSE (2.0.1) | `list_contains(l, x)` with `x` NULL and `l` empty | lists it |
 
 R9 stays the reference's rule: the model's cast of a double or decimal truncates,
 and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
@@ -1720,6 +1721,13 @@ leaves a fraction); the hint for a decimal points at #322 and names none. `corr`
 readings differ only on one pair or a constant side (ST-3), and refusing it
 would refuse every `corr`. `Report.dialect_differences` shows it with the
 construct, where it is, both readings, an example and the spellings.
+
+Since 2026-11-20 (#2045, ruling 198) `list_contains` is a second listed
+exception: DuckDB 2.0.1 gives FALSE for `list_contains([], NULL)` where 2.0.0
+and the reference give NULL, and only for the empty list (`duckdb-list-contains-null`).
+A verified plan runs the reference's NULL at both versions, because the DuckDB writer
+guards the needle; SQL run natively on 2.0.1 gives FALSE, so the report lists the
+construct unless its needle is a literal.
 
 L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
 `Profile.reference`, and the verdict gains no value: the list says what the

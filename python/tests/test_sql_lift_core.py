@@ -86,6 +86,7 @@ def test_the_profiles_differ_only_in_what_functions_do():
         "domain_error",
         "log_zero",
         "corr_degenerate",
+        "list_contains_null_needle",
     }
 
 

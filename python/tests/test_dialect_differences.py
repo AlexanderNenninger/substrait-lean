@@ -103,6 +103,37 @@ def test_the_corr_construct_is_listed() -> None:
     assert _found("SELECT corr(x, y) AS c FROM t") == ["corr_degenerate"]
 
 
+LISTS = {"t": ibis.schema({"l": "array<int64>", "x": "int64"})}
+
+
+def _found_lists(sql: str, semantics: str = "reference") -> list[str]:
+    return [d.key for d in lift(sql, LISTS, semantics).differences]
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT list_contains(l, x) AS c FROM t", "SELECT list_has(l, NULL) AS c FROM t"]
+)
+def test_a_list_contains_with_a_needle_that_may_be_null_is_listed(sql: str) -> None:
+    assert _found_lists(sql) == ["list_contains_null_needle"]
+    assert _found_lists(sql, "duckdb") == []
+
+
+def test_a_literal_needle_is_not_listed() -> None:
+    assert _found_lists("SELECT list_contains(l, 5) AS c FROM t") == []
+
+
+def test_the_report_lists_a_list_contains() -> None:
+    r = sv.verify(
+        "SELECT list_contains(l, x) AS c FROM t",
+        tables={"t": {"l": "BIGINT[]", "x": "BIGINT"}},
+        counterexamples=0,
+    )
+    (d,) = r.dialect_differences
+    assert (d.key, d.where) == ("list_contains_null_needle", "the query")
+    assert "FALSE" in d.dialect and "NULL" in d.here
+    assert Report.from_json(r.to_json()).dialect_differences == r.dialect_differences
+
+
 def test_a_construct_is_listed_once() -> None:
     assert _found("SELECT corr(x, y) AS a, corr(x, y) AS b FROM t") == ["corr_degenerate"]
 

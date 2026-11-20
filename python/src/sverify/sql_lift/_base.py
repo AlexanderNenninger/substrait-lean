@@ -105,6 +105,9 @@ class Profile:
         corr_degenerate: `CORR` of one pair or of a side whose values are
             all equal: `"NAN"` (DuckDB, `duckdb-corr`) or `"NULL"`
             (reference, `corrOf`). Of no pairs it is NULL in both.
+        list_contains_null_needle: `list_contains(l, x)` of a NULL `x` and the
+            empty list: `"FALSE"` (DuckDB 2.0.1, `duckdb-list-contains-null`) or
+            `"NULL"` (reference, and DuckDB 2.0.0). Every other list gives NULL.
     """
 
     name: str
@@ -120,6 +123,7 @@ class Profile:
     domain_error: str = "ERROR"
     log_zero: str = "ERROR"
     corr_degenerate: str = "NULL"
+    list_contains_null_needle: str = "NULL"
 
 
 DUCKDB = Profile(
@@ -129,6 +133,7 @@ DUCKDB = Profile(
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
+    list_contains_null_needle="FALSE",
 )
 REFERENCE = Profile("reference")
 PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}

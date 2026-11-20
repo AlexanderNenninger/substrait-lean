@@ -3,8 +3,8 @@
 `sv.verify(sql)` reads the text as DuckDB's and the functions as the
 reference's. The reference gives a value DuckDB does not in the fields of
 `Profile` below. The lift refuses the casts (`REFUSED`, with a hint) and the
-report lists `corr` (`Report.dialect_differences`). The raises of the reference (`domain_error`,
-`log_zero`) are not here: a raise is visible and the inferred preconditions
+report lists `corr` and `list_contains` (`Report.dialect_differences`). The raises of the
+reference (`domain_error`, `log_zero`) are not here: a raise is visible and the inferred preconditions
 name its inputs.
 
 One table, keyed by the `Profile` field. `tests/test_dialect_differences.py`
@@ -22,8 +22,8 @@ class DialectDifference:
     """A construct of the SQL text whose reference reading differs from DuckDB's."""
 
     key: str
-    """The `Profile` field the lift read: `float_to_int`, `decimal_to_int` or
-    `corr_degenerate`."""
+    """The `Profile` field the lift read: `float_to_int`, `decimal_to_int`,
+    `corr_degenerate` or `list_contains_null_needle`."""
     construct: str
     """The construct as written."""
     where: str
@@ -64,6 +64,12 @@ TABLE: dict[str, dict[str, str]] = {
         "dialect": "NaN",
         "example": "corr over one pair, or a side whose values are all equal",
         "spellings": "",
+    },
+    "list_contains_null_needle": {
+        "here": "NULL",
+        "dialect": "FALSE (2.0.1; NULL at 2.0.0)",
+        "example": "list_contains([], NULL), the empty list and a needle that is NULL",
+        "spellings": "a needle that is not NULL, or list_contains(l, x) with x tested for NULL",
     },
 }
 
