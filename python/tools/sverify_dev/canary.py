@@ -5,6 +5,7 @@ API. `.github/workflows/engine-canary.yml` runs it; it is no required check and
 no part of `qa` (K4), and it files nothing upstream (K6).
 
     python -m sverify_dev.canary poll [--engine E --version V]
+    python -m sverify_dev.canary files|commands --engine E
     python -m sverify_dev.canary drift --engine E --old FILE --new FILE
     python -m sverify_dev.canary collect --engine E --version V --drift FILE... [--suite-exit N ...]
     python -m sverify_dev.canary report --engine E --version V --results FILE [--post]
@@ -49,11 +50,21 @@ ENGINES: dict[str, dict[str, str]] = {
     "spark": {"package": "pyspark", "tables": "engines/spark/Sverify/Spark/Tables.lean"},
 }
 
-#: The probes of each engine the heavy job compares with their recording.
+#: The probe files of each engine the heavy job compares with their recording, and the commands
+#: (module and arguments) that regenerate them, in order.
 PROBES: dict[str, list[str]] = {
     "duckdb": ["engines/duckdb/replay/probes.json"],
     "polars": ["engines/polars/probes/probes.json", "engines/polars/probes/probes-streaming.json"],
     "spark": ["engines/spark/probes/probes.json"],
+}
+PROBE_COMMANDS: dict[str, list[list[str]]] = {
+    "duckdb": [["sverify_dev.probe", "--write"]],
+    # `--diff --write` is the streaming engine against the in-memory one, without Lean.
+    "polars": [
+        ["sverify_dev.probe_polars", "--write"],
+        ["sverify_dev.probe_polars", "--diff", "--write"],
+    ],
+    "spark": [["sverify_dev.probe_spark", "--write"]],
 }
 
 Json = dict[str, Any]
@@ -124,19 +135,52 @@ def issue_number(engine: str, version: str) -> int | None:
 #: The fields that name a probe: a row of the probe file is the same row when they agree.
 IDENTITY = ("settings", "construct", "function", "option", "sql", "setup", "name", "probe", "id")
 #: The fields whose change is a drift; the examples of a probe say why, and are not compared.
-VALUES = ("matching", "observed", "verdict", "result", "outcome")
+VALUES = (
+    "matching", "observed", "verdict", "result", "outcome",
+    "differ", "in-memory", "streaming", "examples",
+)  # fmt: skip
 
 
 def _is_error(outcome: Any) -> bool:
     return isinstance(outcome, str) and outcome.lstrip().lower().startswith("error")
 
 
+def _raises(value: Any) -> bool:
+    """Does the recorded value say the engine raises? An outcome that starts with `error`, or a
+    `matching` list that names `ERROR` (an option row whose engine raises)."""
+    if isinstance(value, list):
+        return "ERROR" in value
+    return _is_error(value)
+
+
 def classify(old: Any, new: Any) -> str:
     """`error-side` where a raise became a value or a value a raise (D70: no guarantee rests on
     an engine raising); `value-side` where one value became another."""
-    if _is_error(old) != _is_error(new):
-        return "error-side"
-    return "value-side"
+    return "error-side" if _raises(old) != _raises(new) else "value-side"
+
+
+def _outcomes(row: Json | None) -> set[tuple[str, str]]:
+    """The engine outcomes a probe row's examples record, over its candidates: `(row, outcome)`."""
+    if row is None:
+        return set()
+    found = set()
+    for cand in (row.get("candidates") or {}).values():
+        for ex in cand.get("examples", []):
+            found |= {
+                (str(ex.get("row")), str(v)) for k, v in ex.items() if k not in ("row", "lean")
+            }
+    return found
+
+
+def _classify_row(f: str, old: Json, new: Json) -> str:
+    """The class of a changed field of a probe row. A `matching` list that moves without `ERROR`
+    changing sides is error-side too when every example outcome that differs is a raise: the
+    probe row of `MIN % -1` moves from no match to `NULL` where DuckDB stopped raising."""
+    cls = classify(old.get(f), new.get(f))
+    if cls == "error-side" or f != "matching":
+        return cls
+    moved = _outcomes(old) ^ _outcomes(new)
+    return "error-side" if moved and all(_is_error(o) for _, o in moved) else cls
 
 
 def _rows(doc: Any) -> dict[str, Json]:
@@ -166,11 +210,26 @@ def drift(old: Any, new: Any) -> list[Json]:
             )
             continue
         for f in VALUES:
-            if p.get(f) != r.get(f):
-                cls = classify(p.get(f), r.get(f)) if f == "observed" else "value-side"
-                found.append(
-                    {"row": what, "field": f, "old": p.get(f), "new": r.get(f), "class": cls}
-                )
+            a, b = p.get(f), r.get(f)
+            if a == b:
+                continue
+            if isinstance(a, dict) and isinstance(b, dict):
+                # Spark records an outcome per setting (`ansi=true`, `ansi=false`).
+                for k in sorted(a.keys() | b.keys()):
+                    if a.get(k) != b.get(k):
+                        cls = classify(a.get(k), b.get(k))
+                        found.append(
+                            {
+                                "row": what,
+                                "field": f"{f}[{k}]",
+                                "old": a.get(k),
+                                "new": b.get(k),
+                                "class": cls,
+                            }
+                        )
+                continue
+            cls = _classify_row(f, p, r) if f != "observed" else classify(a, b)
+            found.append({"row": what, "field": f, "old": a, "new": b, "class": cls})
     for ident in before.keys() - after.keys():
         gone = "a row the probe no longer has"
         found.append(
@@ -226,6 +285,11 @@ def body(engine: str, version: str, results: Json) -> str:
         "No bug of the ledger names this release."
     ]
     lines += ["", "## Fact probes", ""]
+    if results.get("probes", {}).get("exit") not in (0, None):
+        lines += [
+            f"The probe step failed (exit {results['probes']['exit']}): no drift was compared.",
+            "",
+        ]
     if drifts:
         lines += ["| row | field | recorded | now | class |", "|---|---|---|---|---|"]
         lines += [
@@ -240,7 +304,8 @@ def body(engine: str, version: str, results: Json) -> str:
         lines += ["", f"## {name}", "", f"exit {r.get('exit', 'not run')}"]
         if r.get("summary"):
             lines += ["", "```", r["summary"], "```"]
-    failed = [s for s in ("suite", "outside") if results.get(s, {}).get("exit") not in (0, None)]
+    steps = ("probes", "suite", "outside")
+    failed = [s for s in steps if results.get(s, {}).get("exit") not in (0, None)]
     lines += ["", "## Verdict", ""]
     if value or failed:
         lines += [
@@ -292,6 +357,7 @@ def collect(  # noqa: PLR0913 - one argument per step of the heavy job
     engine: str,
     version: str,
     drifts: Iterable[Path],
+    probe_exit: int | None,
     suite: tuple[int | None, Path | None],
     outside: tuple[int | None, Path | None],
     run_url: str = "",
@@ -306,12 +372,18 @@ def collect(  # noqa: PLR0913 - one argument per step of the heavy job
         "run_url": run_url,
         "ledger": ledger(engine, version, root),
         "drift": found,
+        "probes": {"exit": probe_exit},
         "suite": {"exit": suite[0], "summary": _tail(suite[1])},
         "outside": {"exit": outside[0], "summary": _tail(outside[1])},
     }
 
 
 # --- command line -------------------------------------------------------------------------
+
+
+def _code(text: str) -> int | None:
+    """An exit code from a step output: empty when the step never ran."""
+    return int(text) if text.strip() else None
 
 
 def _matrix(include: Iterable[dict[str, str]]) -> str:
@@ -329,13 +401,18 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--engine", required=True, choices=sorted(ENGINES))
     d.add_argument("--old", type=Path, required=True)
     d.add_argument("--new", type=Path, required=True)
+    f = sub.add_parser("files", help="the probe files of an engine, one per line")
+    f.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    m = sub.add_parser("commands", help="the commands that regenerate them, one per line")
+    m.add_argument("--engine", required=True, choices=sorted(ENGINES))
     c = sub.add_parser("collect", help="the heavy job's results, as one JSON file")
     c.add_argument("--engine", required=True, choices=sorted(ENGINES))
     c.add_argument("--version", required=True)
     c.add_argument("--drift", type=Path, action="append", default=[])
-    c.add_argument("--suite-exit", type=int)
+    c.add_argument("--probe-exit", type=_code)
+    c.add_argument("--suite-exit", type=_code)
     c.add_argument("--suite-log", type=Path)
-    c.add_argument("--outside-exit", type=int)
+    c.add_argument("--outside-exit", type=_code)
     c.add_argument("--outside-log", type=Path)
     c.add_argument("--run-url", default="")
     r = sub.add_parser("report", help="the issue of one engine version")
@@ -354,14 +431,19 @@ def main(argv: list[str] | None = None) -> int:
             if not args.no_issues:
                 todo = [t for t in todo if issue_number(t["engine"], t["version"]) is None]
         print(_matrix(todo))
+    elif args.cmd == "files":
+        print("\n".join(PROBES[args.engine]))
+    elif args.cmd == "commands":
+        print("\n".join(" ".join(c) for c in PROBE_COMMANDS[args.engine]))
     elif args.cmd == "drift":
         found = drift(json.loads(args.old.read_text()), json.loads(args.new.read_text()))
         print(json.dumps(found, indent=1))
     elif args.cmd == "collect":
+        suite = (args.suite_exit, args.suite_log)
+        outside = (args.outside_exit, args.outside_log)
         out = collect(
-            args.engine, args.version, args.drift, (args.suite_exit, args.suite_log),
-            (args.outside_exit, args.outside_log), args.run_url,
-        )  # fmt: skip
+            args.engine, args.version, args.drift, args.probe_exit, suite, outside, args.run_url
+        )
         print(json.dumps(out, indent=1))
     else:
         results = json.loads(args.results.read_text())

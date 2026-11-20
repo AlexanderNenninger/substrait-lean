@@ -75,7 +75,69 @@ def test_drift_names_each_changed_row_and_its_class() -> None:
     old = _doc(a={"observed": "error E: boom"}, b={"matching": ["ERROR"]}, c={"observed": "1"})
     new = _doc(a={"observed": "1"}, b={"matching": ["NULL"]}, c={"observed": "1"})
     found = {d["row"]["construct"]: d["class"] for d in canary.drift(old, new)}
-    assert found == {"a": "error-side", "b": "value-side"}
+    # A raise that goes is error-side in an observation and in an option row's `matching`.
+    assert found == {"a": "error-side", "b": "error-side"}
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "cls"),
+    [
+        (["ERROR"], ["NULL"], "error-side"),
+        ([], ["ERROR"], "error-side"),
+        (["ERROR"], ["ERROR", "NULL"], "value-side"),
+        (["SILENT"], ["ERROR"], "error-side"),
+        (["SILENT"], ["WRAP"], "value-side"),
+    ],
+)
+def test_a_matching_change_is_error_side_when_error_is_in_exactly_one(
+    old: list[str], new: list[str], cls: str
+) -> None:
+    (d,) = canary.drift(_doc(r={"matching": old}), _doc(r={"matching": new}))
+    assert d["class"] == cls
+
+
+def test_a_matching_that_moves_because_the_raise_went_is_error_side() -> None:
+    """`MIN % -1` at 2.0.1: no candidate matched (DuckDB raised where the model gives 0), and now
+    `NULL` does; the only example that disappears is the raise."""
+    ex = {"row": "[-9223372036854775808, -1]", "duckdb": "error Out of Range Error", "lean": "ok 0"}
+    old = _doc(r={"matching": [], "candidates": {"NULL": {"differ": 1, "examples": [ex]}}})
+    new = _doc(r={"matching": ["NULL"], "candidates": {"NULL": {"differ": 0, "examples": []}}})
+    (d,) = canary.drift(old, new)
+    assert d["class"] == "error-side"
+    other = {"row": "[0, 0]", "duckdb": "ok 1", "lean": "ok 0"}
+    old = _doc(r={"matching": [], "candidates": {"NULL": {"differ": 1, "examples": [other]}}})
+    (d,) = canary.drift(old, new)
+    assert d["class"] == "value-side"
+
+
+def test_a_spark_row_is_compared_per_setting() -> None:
+    """Spark records an outcome per setting: a raise under ANSI is one drift, error-side."""
+    old = _doc(t={"observed": {"ansi=true": "(-128, tinyint)", "ansi=false": "(-128, tinyint)"}})
+    new = _doc(
+        t={
+            "observed": {
+                "ansi=true": "error BINARY_ARITHMETIC_OVERFLOW: 127S + 1S",
+                "ansi=false": "(-128, tinyint)",
+            }
+        }
+    )
+    (d,) = canary.drift(old, new)
+    assert (d["field"], d["class"]) == ("observed[ansi=true]", "error-side")
+    new = _doc(t={"observed": {"ansi=true": "(-128, tinyint)", "ansi=false": "(0, tinyint)"}})
+    (d,) = canary.drift(old, new)
+    assert (d["field"], d["class"]) == ("observed[ansi=false]", "value-side")
+
+
+def test_the_streaming_rows_are_compared() -> None:
+    """`probes-streaming.json` rows carry `differ`, `in-memory` and `streaming`."""
+    row = {"construct": "Int8 + Int8", "function": "add", "rows": 121}
+    old = {"probes": [{**row, "differ": 0, "examples": []}]}
+    new = {
+        "probes": [
+            {**row, "differ": 2, "examples": [{"row": "[1]", "in-memory": "1", "streaming": "2"}]}
+        ]
+    }
+    assert {d["field"] for d in canary.drift(old, new)} == {"differ", "examples"}
 
 
 def test_drift_sees_a_row_that_appears_or_vanishes() -> None:
@@ -86,11 +148,22 @@ def test_drift_sees_a_row_that_appears_or_vanishes() -> None:
 
 
 @needs_repo
-def test_the_recorded_probes_do_not_drift_from_themselves() -> None:
-    for engine, files in canary.PROBES.items():
-        for f in files:
-            doc = json.loads((canary.REPO / f).read_text())
-            assert canary.drift(doc, doc) == [], (engine, f)
+@pytest.mark.parametrize("file", [f for files in canary.PROBES.values() for f in files])
+def test_each_recorded_probe_row_has_its_own_identity(file: str) -> None:
+    """Two rows that share an identity would hide each other's drift."""
+    doc = json.loads((canary.REPO / file).read_text())
+    assert len(canary._rows(doc)) == len(doc["probes"])
+
+
+@needs_repo
+@pytest.mark.parametrize("name", sorted(canary.ENGINES))
+def test_each_engine_has_the_commands_that_write_its_probe_files(name: str) -> None:
+    written = {c[0] for c in canary.PROBE_COMMANDS[name]}
+    assert written and all(
+        (canary.REPO / "python" / "tools" / (m.replace(".", "/") + ".py")).is_file()
+        for m in written
+    )
+    assert len(canary.PROBE_COMMANDS[name]) == len(canary.PROBES[name])
 
 
 def test_the_ledger_lists_the_bugs_a_release_fixes(tmp_path) -> None:
@@ -142,8 +215,14 @@ def test_collect_gathers_the_steps_of_the_heavy_job(tmp_path) -> None:
     )
     log = tmp_path / "suite.log"
     log.write_text("\n".join(f"line {i}" for i in range(50)))
-    out = canary.collect("duckdb", "9.9.9", [drift], (1, log), (0, None))
+    out = canary.collect("duckdb", "9.9.9", [drift], 0, (1, log), (0, None))
     assert out["drift"][0]["class"] == "error-side"
     assert out["suite"]["exit"] == 1 and out["suite"]["summary"].endswith("line 49")
     assert out["outside"] == {"exit": 0, "summary": ""}
-    assert out["ledger"] == []
+    assert out["ledger"] == [] and out["probes"] == {"exit": 0}
+
+
+def test_a_failed_probe_step_is_in_the_issue() -> None:
+    results = {"probed": ["2.0.0"], "probes": {"exit": 1}, "suite": {"exit": 0}}
+    text = canary.body("duckdb", "2.1.0", results)
+    assert "probe step failed" in text and "failing step(s): probes" in text

@@ -52,7 +52,7 @@ jobs:
           ENGINE: ${{ inputs.engine }}
           VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "$ENGINE" ] && [ -n "$VERSION" ]; then
+          if [ -n "$ENGINE" ] || [ -n "$VERSION" ]; then
             m=$(python3 -m sverify_dev.canary poll --engine "$ENGINE" --version "$VERSION")
           else
             m=$(python3 -m sverify_dev.canary poll)
@@ -110,21 +110,25 @@ jobs:
       # K2, step one: the ledger's entries that name this release (in `collect` below).
       # Step two: every probe, compared with its recording.
       - name: Probe the facts
+        id: probes
+        continue-on-error: true
         run: |
+          set +e
+          shopt -s nullglob
           mkdir -p "$RUNNER_TEMP/old" drift
-          case "$ENGINE" in
-            duckdb) probe=sverify_dev.probe ;;
-            polars) probe=sverify_dev.probe_polars ;;
-            spark) probe=sverify_dev.probe_spark ;;
-          esac
-          for f in $(python3 -c 'from sverify_dev.canary import PROBES; import os; print(*PROBES[os.environ["ENGINE"]])'); do
-            cp "$f" "$RUNNER_TEMP/old/$(basename "$f")"
-          done
-          python/.venv/bin/python -m "$probe" --write
-          for f in $(python3 -c 'from sverify_dev.canary import PROBES; import os; print(*PROBES[os.environ["ENGINE"]])'); do
-            python3 -m sverify_dev.canary drift --engine "$ENGINE" \
-              --old "$RUNNER_TEMP/old/$(basename "$f")" --new "$f" > "drift/$(basename "$f")"
-          done
+          files=$(python3 -m sverify_dev.canary files --engine "$ENGINE")
+          for f in $files; do cp "$f" "$RUNNER_TEMP/old/$(basename "$f")"; done
+          code=0
+          while read -r cmd; do
+            PYTHONPATH=python/tools python/.venv/bin/python -m $cmd || code=1
+          done < <(python3 -m sverify_dev.canary commands --engine "$ENGINE")
+          if [ "$code" = 0 ]; then
+            for f in $files; do
+              python3 -m sverify_dev.canary drift --engine "$ENGINE" \
+                --old "$RUNNER_TEMP/old/$(basename "$f")" --new "$f" > "drift/$(basename "$f")" || code=1
+            done
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
       # Step three: the engine's suite with the full Hypothesis counts, then the
       # `outside-repo` fast set, on this release. Their exit codes go to the issue.
       - name: The engine's suite
@@ -142,10 +146,15 @@ jobs:
           WHEEL_TESTS_ENGINE="$PKG==$VERSION" bash python/scripts/wheel_tests.sh --editable python --fast -n 4 \
             --dist worksteal 2>&1 | tee outside.log
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      # Whatever happened before, the issue is filed: a release that breaks a probe is the
+      # likeliest finding, and without an issue the next poll would run it again.
       - name: File or update the issue
+        if: always()
         run: |
+          shopt -s nullglob
           drifts=$(for f in drift/*; do printf -- '--drift %s ' "$f"; done)
           python3 -m sverify_dev.canary collect --engine "$ENGINE" --version "$VERSION" $drifts \
+            --probe-exit "${{ steps.probes.outputs.code }}" \
             --suite-exit "${{ steps.suite.outputs.code }}" --suite-log suite.log \
             --outside-exit "${{ steps.outside.outputs.code }}" --outside-log outside.log \
             --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > results.json
