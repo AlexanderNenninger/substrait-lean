@@ -17,7 +17,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import warnings
-from collections.abc import Iterable, Iterator, Mapping, MutableMapping
+from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, overload
@@ -630,6 +630,7 @@ def run_plan(
     keep: Literal[False] = False,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table: ...
 
 
@@ -642,6 +643,7 @@ def run_plan(
     keep: bool,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table | Resident: ...
 
 
@@ -653,6 +655,7 @@ def run_plan(
     keep: bool = False,
     finite: bool = True,
     tie_free: bool = False,
+    asof: Sequence[dict] = (),
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. `"spark"` runs it
@@ -682,6 +685,10 @@ def run_plan(
             they run with the sort keys alone (`to_sql`'s `deterministic`).
             Default: False; `Report.run` and a stored node's refresh pass
             the report's fact.
+        asof: The plan's as-of join sites, as the checker reports them
+            (`asof_checks`): on DuckDB, the plan's as-of joins run as its
+            ASOF JOIN where the writer can (`to_sql`'s `asof`). Other
+            engines are not given any. Default: none.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -729,7 +736,10 @@ def run_plan(
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
-    out = plugin.runner(con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free)
+    extra = {"asof": asof} if asof else {}
+    out = plugin.runner(
+        con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
+    )
     return instants_in_utc(out) if isinstance(out, pa.Table) else out
 
 
