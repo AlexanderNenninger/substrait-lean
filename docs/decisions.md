@@ -1795,12 +1795,12 @@ boundary differently.
 ### D55. A SQL cast of a double to an integer rounds half to even, as a composition
 
 Decided 2026-11-19 (theory advisor, ruling 106; [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322)).
-It replaces the dated amendment to D42's `rounding` row of 2026-11-18.
 
 - `fp.round` accepts `rounding: TIE_TO_EVEN` at zero digits: IEEE 754's
   roundToIntegralTiesToEven on the magnitude (`onMag evenMag evenMag`,
   `core/Sverify/Core/Rounding.lean`). The default stays `TIE_AWAY_FROM_ZERO`, so no plan
-  accepted before changes its result.
+  accepted before changes its result. `round(x, d)` with `d ≠ 0` and `TIE_TO_EVEN`
+  stays refused.
 - The zero sign follows `round_zero_sign`. `-0.0` and `0.0` are one class, and the cast
   reads one zero (D31).
 - NaN and `±∞` pass through the `round` and raise at the cast.
@@ -1809,15 +1809,19 @@ It replaces the dated amendment to D42's `rounding` row of 2026-11-18.
 - A SQL cast of a double to `BIGINT` means `ftoi (froundEven x)`, in Substrait
   `cast(round(x, rounding: TIE_TO_EVEN))`, and of a decimal the rescale to scale 0 then
   the cast, under D54. The reference's own `cast` and Ibis are unchanged (R9, truncation).
+  Narrower integer targets stay refused until their probe.
 - The value comes from IEEE 754 and Substrait's own option name, from no engine's facts,
   so D49's mark does not apply.
 
-Implemented by [#1959](https://github.com/AlexanderNenninger/substrait-lean/pull/1959).
+The decimal part is in [#1959](https://github.com/AlexanderNenninger/substrait-lean/pull/1959). The double part is tracked in
+[#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322); until it closes the lift refuses a cast of a double to an integer
+([D54](#d54-the-lift-refines-the-dialect)'s table).
 
 Recomputes sinks: no
 
-Why: a cast that means DuckDB's value is a round followed by a cast, and stating it as a
-composition adds one option value and no new cast.
+Why: after the `round` the cast's argument is integral, and every value of
+`float_to_int` gives the same integer on an integral double. So the pair means one thing
+under every profile, and the cast carries no rounding attribute.
 
 ### D59. String to timestamp is strict and raises on a mismatch
 
@@ -1840,29 +1844,35 @@ Decided 2026-11-19 (theory advisor, ruling 137).
 A lowering runs the native parser alone only where facts show the engine accepts
 exactly this language for the format. Otherwise the writer guards with a native
 regular-expression match of the reference's language before the parse, and turns an
-engine's NULL into the raise. The reference's raise set grows by this one entry. The
+engine's NULL into the raise. A lenient `try_strptime` is not that guard: it accepts
+strings the reference rejects. The reference's raise set grows by this one entry. The
 refusals (other directives, non-literal formats) are lifted later without a new
 decision when facts allow.
 
+Tracked in [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347).
+
 Recomputes sinks: no
 
-Why: the engines' parsers differ on width, whitespace and trailing text, and a strict
-language with one guardable raise is a value every engine reaches natively or behind a
-cheap native guard.
+Why: a strict language with one guardable raise is small enough for each engine's fact
+to settle whether its native parser accepts exactly it, and a native regular-expression
+guard covers an engine whose parser accepts more.
 
 ### D62. `%` of decimals is the truncated remainder at the common scale
 
-Decided 2026-11-20 (theory advisor, ruling 181; [#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941)).
+Decided 2026-11-20 (theory advisor, rulings 181 and 188; [#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941)).
 
 `a % b` on decimals is the truncated remainder of the two values at scale
 `max(s₁, s₂)`: it takes the dividend's sign, its type is
 `DECIMAL(min(p₁ − s₁, p₂ − s₂) + max(s₁, s₂), max(s₁, s₂))`, a NULL operand gives
 NULL, and a zero divisor raises (`Issue.divByZero`, as integer `%`). The core computes
 on the unscaled integers at one common scale, as for `+`, `-` and `*`; the function has
-a group of its own, `dec.mod`. An operand upscaled past 38 digits follows D56's check
-where every tier-1 engine's fact shows D56's behaviour, and is refused otherwise.
+a group of its own, `dec.mod`. Decimal `%` is refused
+where `max(p₁ − s₁, p₂ − s₂) + max(s₁, s₂) > 38`: an operand would need more than 38
+digits at the common scale. The refusal reads the types, and a cast of an operand to a
+narrower type guards it. D56's operand check does not apply.
 
-Implemented by [#1951](https://github.com/AlexanderNenninger/substrait-lean/pull/1951).
+The engines' facts are in [#1951](https://github.com/AlexanderNenninger/substrait-lean/pull/1951). The function is tracked in
+[#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941); until it closes every profile refuses decimal `%`.
 
 Recomputes sinks: no
 
@@ -1881,10 +1891,13 @@ argument to any function, measure or window function, a branch of `if_then` or
 and the set operations that compare rows. `IS NULL` and `IS NOT NULL` are admitted. A
 column whose type contains an unmodelled type is opaque as a whole. There is no
 literal and no cast. Each lowering writes a plain column reference, and the report gives
-the column's declared type and nullability and nothing else. `Rel.eval` and
+the column's declared type and nullability and nothing else. The reference
+evaluator refuses an opaque column. An engine carries a type only where its fact shows
+the value unchanged through project, filter, join, sort, union all and limit; otherwise
+its route refuses the column. `Rel.eval` and
 `Rel.Allowed` do not change.
 
-Implementation tracked in [#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958).
+Tracked in [#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958); until it closes a table with such a column is refused.
 
 Recomputes sinks: no
 
@@ -1912,6 +1925,8 @@ spellings that follow DuckDB's session zone stay refused (D53, D54). Facts:
 [duckdb-time-zones](../engines/duckdb/facts/duckdb-time-zones.json). Spark and
 Snowflake refuse the conversion and name the issue.
 
+Tracked in [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725).
+
 Recomputes sinks: no. A refusal is lifted; no accepted plan changes its meaning.
 
 Why: in Ibis the zone is in the column's type, so the plan can state it; in DuckDB SQL
@@ -1923,6 +1938,8 @@ meaning, proved once.
 
 Decided 2026-11-20 (theory advisor, ruling 198 and its addendum, on [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045);
 ruling 200 states the third paragraph's first sentence). Amends D14.
+The maintainer chose the minor range and one probed minor per engine at 1.0
+(2026-11-20): DuckDB 2.0.x, Polars 2.1.x, Spark 4.3.x.
 
 An engine profile states the versions its facts were probed at and one range around
 them: the minor releases that hold a probed version, from the lowest probed patch up.
@@ -1935,7 +1952,8 @@ stands, and the engine step assumes that this version computes what the probed o
 does. Outside the range the run is refused until the probes are re-run.
 `unverified=True` runs it anyway and claims nothing.
 
-No guarantee of a verified run rests on an engine raising. An input the proof excludes
+No guarantee of a verified run rests on an engine raising. A verified run is one whose
+verdict is `PROVED` or `PROVED_WITH_CHECKS`. An input the proof excludes
 is excluded by a proved precondition or by a check whose verdict is a value the engine
 returns. A version that raises on fewer inputs changes no verified run, and one that
 raises on more stops a run with the engine's error.
@@ -1951,6 +1969,5 @@ The guard and the bounds are tracked in [#2052](https://github.com/AlexanderNenn
 Recomputes sinks: no
 
 Why: D14 refused only another major, and a patch release changed a native value
-(`list_contains([], NULL)` at DuckDB 2.0.1). An unprobed patch warns and an unprobed
-minor is refused. No guarantee rests on an engine raising, so a version that raises on
-fewer inputs changes no verified run.
+(`list_contains([], NULL)` at DuckDB 2.0.1, [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045)). An unprobed patch
+warns and an unprobed minor is refused.
