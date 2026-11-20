@@ -207,6 +207,8 @@ pythonpath = ["tests"]
 source = ["sverify", "sverify_dev", "sverify_polars", "sverify_spark", "sverify_duckdb"]
 branch = true
 patch = ["subprocess"]
+# Paths relative to the repository, so the shards' data files combine (CI's `coverage` job).
+relative_files = true
 
 [tool.coverage.report]
 skip_empty = true
@@ -353,6 +355,8 @@ shell = """
 marimo check --strict [0-9]*.py ../catalogue/backend_semantics.py || exit 1
 out=$(mktemp -d)
 for nb in [0-9]*.py ../catalogue/backend_semantics.py; do
+  # A notebook that needs sverify-dbt runs in the `dbt` job (this environment has no dbt).
+  if grep -q '"sverify-dbt"' "$nb"; then continue; fi
   echo "running $nb"
   marimo export html "$nb" -o "$out/$(basename "${nb%.py}").html" > /dev/null || exit 1
 done

@@ -27,17 +27,45 @@ namespace Substrait
 
 /-! ## The engines -/
 
-/-- The tables of this repository's engines, as the reports read them,
-DuckDB under its default settings. `builtinEntries_rows`
-(`SubstraitLean/Engine.lean`) proves they are the registry's
-(`builtinEntries.map (·.rows)`). -/
-def builtinEngines : List EngineProfile := [
+/-- DuckDB's tables under its default settings, as the reports read them. -/
+def duckdbRows : EngineProfile :=
   { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
-    shims := Profile.duckdb.shimCosts },
+    shims := Profile.duckdb.shimCosts,
+    -- `log(b, x)` is two libm calls and a division: the reference's own formula is 2.5 ulp
+    -- from exact, DuckDB's 2 (`duckdb-ulp-libm`).
+    elemUlps := [("logb", 2.0 + 2.5)] }
+
+/-- Polars' tables, as the reports read them. -/
+def polarsRows : EngineProfile :=
   { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
-    shims := Profile.polars.shimCosts, executes := "streaming" },
+    shims := Profile.polars.shimCosts, executes := "streaming",
+    -- `ln x / ln b`: within 2.1 ulp for `log10` and `log2` of the exact `ln x / ln b`
+    -- (`polars-ulp-libm`), plus the reference's 2; `log(b, x)` is the reference's formula twice.
+    elemUlps := [("log10", 2.1 + 2.0), ("log2", 2.1 + 2.0), ("logb", 2.5 + 2.5)] }
+
+/-- Spark's tables, as the reports read them. -/
+def sparkRows : EngineProfile :=
   { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
-    shims := Profile.spark.shimCosts, executes := "batch" }]
+    shims := Profile.spark.shimCosts, executes := "batch",
+    -- Java's functions, not the reference's `libm` (`spark-ulp-libm`, ruling 132):
+    -- S + R for `fp64`, `sin`, `cos` and `tan` guarded to `|x| ≤ 2²⁰` (`Epsilon.trigArgMax`).
+    sameLibm := false,
+    elemUlps := [("ln", 1.0 + 1.0), ("log10", 1.0 + 2.0), ("log2", 2.5 + 2.5), ("logb", 3.0 + 2.5),
+      ("sin", 1.0 + 1.0), ("cos", 1.0 + 1.0), ("tan", 1.0 + 3.0),
+      ("asin", 1.0 + 1.0), ("acos", 1.0 + 1.0), ("atan", 1.0 + 1.0)] }
+
+/-- The tables of this repository's engines, as the reports read them. Each
+engine's rows are written once here; the registry (`builtinEntries`,
+`SubstraitLean/Engine.lean`) takes its shims and bounds from them, and
+`builtinEntries_rows` proves the tables are its own. -/
+def builtinEngines : List EngineProfile := [duckdbRows, polarsRows, sparkRows]
+
+/-- Every elementary function has a bound on every engine: `sqrt` is correctly rounded and `exp`
+has `rule_exp` (one ulp on each side), so each other one has an `elemUlps` entry on an engine
+whose doubles are not the reference's (`Epsilon.opExtra` gives a function without one no bound). -/
+example : builtinEngines.all fun e => e.sameLibm ||
+    FMath.all.all fun f => f == .sqrt || f == .exp || (e.elemUlps.lookup f.name).isSome := by
+  decide +kernel
 
 variable [Boxes.Ambient]
 example : builtinEngines.all (·.rowsWf) := by decide +kernel

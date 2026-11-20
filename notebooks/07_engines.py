@@ -130,7 +130,7 @@ def _(SPARK, con, display, mo, rollup):
 @app.cell(hide_code=True)
 def _(mo, results):
     mo.md(f"""
-    All {len(results)} agree, and the plan didn't change between them. What differs
+    {"Both" if len(results) == 2 else "All three"} agree, and the plan didn't change between them. What differs
     is how each engine reaches the proof:
     """)
     return
@@ -276,7 +276,9 @@ def _(mo):
 
     You can now prove a query once and run it on DuckDB, Polars or Spark,
     hand the same plan to a warehouse as SQL, and read a refusal as
-    directions. That is the end of the tour. The
+    directions. The last chapter,
+    [Your dbt project](?file=08_dbt.py), proves the tests of a dbt project
+    before its models run. The
     [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
     covers every feature in more detail.
     """)
@@ -286,7 +288,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 6. [Running it in production](?file=06_running_in_production.py)
+    ← 6. [Running it in production](?file=06_running_in_production.py) · 8. [Your dbt project](?file=08_dbt.py) →
     """)
     return
 

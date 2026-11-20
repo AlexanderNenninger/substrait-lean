@@ -12,7 +12,11 @@
   ],
   "rows": [
     {"group": "fp.elem", "option": "rounding", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.pow", "option": "rounding", "types": ["fp32"], "evidence": "source"},
+    {"group": "fp.atan2", "option": "rounding", "types": ["fp32"], "evidence": "source"},
     {"group": "fp.elem", "option": "on_domain_error", "types": ["fp32"]},
+    {"group": "fp.pow", "option": "on_domain_error", "types": ["fp32"]},
+    {"group": "fp.atan2", "option": "on_domain_error", "types": ["fp32"]},
     {"group": "fp.log", "option": "rounding", "types": ["fp32", "fp64"], "evidence": "source"},
     {"group": "fp.log", "option": "on_domain_error", "types": ["fp32"]},
     {"group": "fp.log", "option": "on_log_zero", "types": ["fp32"]},

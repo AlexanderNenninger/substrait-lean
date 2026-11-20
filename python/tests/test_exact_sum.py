@@ -15,6 +15,8 @@ from fractions import Fraction
 import ibis
 import pyarrow as pa
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from ibis import _ as col
 
 import sverify as sv
@@ -61,24 +63,18 @@ def _scaled(v: float) -> int:
     return int(Fraction(v) * _exact_sum.SCALE)
 
 
-@pytest.mark.parametrize("kind", ["fsum", "var", "cov", "corr"])
-def test_fold_is_exact(kind):
-    rng = random.Random(918)
-    xs = [value(rng) for _ in range(3000)]
-    ys = [value(rng) for _ in xs]
-    ws = [rng.choice([1, 1, -1, 2, 300, -1000, 2**40]) for _ in xs]
-    ks = [rng.choice([0, 1, None]) for _ in xs]
-    pair = kind in ("cov", "corr")
-    cols = [pa.array(xs, pa.float64())] + ([pa.array(ys, pa.float64())] if pair else [])
-    got = _exact_sum.fold(kind, pa.table({"k0": ks}), cols, pa.array(ws))
+def _fold_row_by_row(kind, ks, xs, ys, ws) -> dict:
+    """The moments, one row at a time in Python: the definition the fold
+    computes natively."""
     terms = _exact_sum.TERMS[kind]
+    pair = kind in ("cov", "corr")
     want: dict = {}
     for k, x, y, w in zip(ks, xs, ys, ws, strict=True):
         got_vs = [x, y] if pair else [x]
         vs = [v for v in got_vs if v is not None]
         if len(vs) < len(got_vs):
             continue
-        acc = want.setdefault((k,), [0] * _exact_sum.width(kind))
+        acc = want.setdefault(_exact_sum.key_of([k]), [0] * _exact_sum.width(kind))
         sv_ = {"x": _scaled(vs[0]), "y": _scaled(vs[-1])}
         for j, t in enumerate(terms):
             acc[j] += w * math.prod(sv_[c] for c in t)
@@ -87,7 +83,48 @@ def test_fold_is_exact(kind):
                 acc[len(terms)] += w
             elif math.isinf(v):
                 acc[len(terms) + (1 if v > 0 else 2)] += w
-    assert got == want
+    return want
+
+
+def _fold(kind, ks, xs, ys, ws, key_type=None) -> dict:
+    pair = kind in ("cov", "corr")
+    cols = [pa.array(xs, pa.float64())] + ([pa.array(ys, pa.float64())] if pair else [])
+    keys = pa.table({"k0": pa.array(ks, key_type)})
+    return _exact_sum.fold(kind, keys, cols, pa.array(ws, pa.int64()))
+
+
+@pytest.mark.parametrize("kind", ["fsum", "var", "cov", "corr"])
+def test_fold_is_exact(kind):
+    rng = random.Random(918)
+    xs = [value(rng) for _ in range(3000)]
+    ys = [value(rng) for _ in xs]
+    ws = [rng.choice([1, 1, -1, 2, 300, -1000, 2**40]) for _ in xs]
+    ks = [rng.choice([0, 1, None]) for _ in xs]
+    assert _fold(kind, ks, xs, ys, ws) == _fold_row_by_row(kind, ks, xs, ys, ws)
+
+
+doubles = st.one_of(st.none(), st.sampled_from(SPECIAL), st.floats(allow_nan=True))
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    kind=st.sampled_from(["fsum", "favg", "var", "cov", "corr"]),
+    rows=st.lists(
+        st.tuples(
+            st.sampled_from([0.0, -0.0, 1.5, math.nan, None]),
+            doubles,
+            doubles,
+            st.one_of(st.integers(-3, 3), st.integers(-(2**62), 2**62)),
+        ),
+        max_size=40,
+    ),
+)
+def test_fold_is_the_row_by_row_sum(kind, rows):
+    """Arrow's grouped sums give the moments a row-by-row fold gives: float
+    keys (NaN, `-0.0`), NaN and infinities, and weights up to `2⁶²`."""
+    ks, xs, ys, ws = (list(c) for c in zip(*rows, strict=True)) if rows else ([], [], [], [])
+    got = _fold(kind, ks, xs, ys, ws, pa.float64())
+    assert got == _fold_row_by_row(kind, ks, xs, ys, ws)
 
 
 def test_finish_rounds_once():

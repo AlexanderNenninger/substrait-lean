@@ -1,0 +1,49 @@
+{
+  "id": "duckdb-ts-narrow-toward-zero",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "Narrowing a timestamp cast truncates toward zero",
+  "verdict": "toward zero below 1970, where the reference floors",
+  "area": "temporal",
+  "options": [
+    "timestamp_precision"
+  ],
+  "constructs": [
+    "CAST",
+    "TIMESTAMP_NS",
+    "TIMESTAMP_MS",
+    "TIMESTAMP_S"
+  ],
+  "description": [
+    "A cast of `TIMESTAMP_NS` to `TIMESTAMP`, or of `TIMESTAMP` to `TIMESTAMP_MS` or `TIMESTAMP_S`, divides the count and truncates toward zero. Below 1970-01-01 the result is the later instant: 1969-12-31 23:59:59.999999999 becomes 1970-01-01 00:00:00.",
+    "`date_trunc` floors on the timeline."
+  ],
+  "reference": "D61: a cast to a coarser precision floors on the timeline (`date_trunc`); from nanoseconds it is the floor of the count divided by 1000.",
+  "status": "deviation",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "worker 5, #323 (D61), 2026-11-19",
+      "evidence": [
+        {
+          "sql": "select ('1969-12-31 23:59:59.999999999'::TIMESTAMP_NS)::TIMESTAMP",
+          "observed": "1970-01-01 00:00:00"
+        },
+        {
+          "sql": "select ('1969-12-31 23:59:59.999999'::TIMESTAMP)::TIMESTAMP_MS",
+          "observed": "1970-01-01 00:00:00"
+        },
+        {
+          "sql": "select ('1969-12-31 23:59:59.999999'::TIMESTAMP)::TIMESTAMP_S",
+          "observed": "1970-01-01 00:00:00"
+        }
+      ],
+      "notes": "DuckDB 2.0.0 (Python), macOS arm64."
+    }
+  ],
+  "issues": [
+    323
+  ]
+}

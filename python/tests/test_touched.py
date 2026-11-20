@@ -1,4 +1,4 @@
-"""Touched-group recompute (`sverify._touched`, `SubstraitLean/TouchedGroups.lean`):
+"""Touched-group recompute (`sverify._touched`, `analysis/Sverify/Analysis/TouchedGroups.lean`):
 an aggregate without delta rules recomputes only the groups a batch touches,
 and its state equals a full recompute."""
 

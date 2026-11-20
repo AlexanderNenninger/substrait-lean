@@ -1,0 +1,39 @@
+{
+  "id": "polars-ts-us-to-ns-range",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Widening a timestamp to nanoseconds raises outside 64 bits",
+  "verdict": "raises, as the reference",
+  "area": "temporal",
+  "options": [
+    "timestamp_precision"
+  ],
+  "constructs": [
+    "CAST",
+    "TIMESTAMP_NS",
+    "Datetime"
+  ],
+  "description": [
+    "A cast from microseconds to nanoseconds multiplies by 1000 and raises (`InvalidOperationError`) when the count leaves 64 bits: counts -9223372036854775 and 9223372036854775 give -9223372036854775000 and 9223372036854775000, one past either end raises. The streaming engine agrees."
+  ],
+  "reference": "D61: a cast from microseconds to nanoseconds raises `overflow` when the result leaves 64 bits.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-19",
+      "method": "probe",
+      "checked_by": "worker 5, #323 (D61), 2026-11-19",
+      "evidence": [
+        {
+          "sql": "us count 9223372036854775 / 9223372036854776, -9223372036854775 / -9223372036854776 cast to nanoseconds",
+          "observed": "ok, ERR InvalidOperationError, ok, ERR InvalidOperationError"
+        }
+      ],
+      "notes": "Probed at both ends and one past each."
+    }
+  ],
+  "issues": [
+    323
+  ]
+}

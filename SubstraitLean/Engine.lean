@@ -27,14 +27,18 @@ that its run is sound (`Engine.duckdb_sound`, `Engine.polars_sound`,
 `Engine.spark_sound`), DuckDB under its default settings. The checker is
 built over them (`checkerMain`). -/
 def builtinEntries : List EngineEntry := [
-  { (engine_entry% Engine.duckdb_sound) with shims := Profile.duckdb.shimCosts },
+  { (engine_entry% Engine.duckdb_sound) with
+    shims := duckdbRows.shims, elemUlps := duckdbRows.elemUlps },
   { (engine_entry% Engine.polars_sound) with
-    shims := Profile.polars.shimCosts, executes := "streaming" },
+    shims := polarsRows.shims, executes := polarsRows.executes,
+    elemUlps := polarsRows.elemUlps },
   { (engine_entry% Engine.spark_sound) with
-    shims := Profile.spark.shimCosts, executes := "batch" }]
+    shims := sparkRows.shims, executes := sparkRows.executes,
+    sameLibm := sparkRows.sameLibm, elemUlps := sparkRows.elemUlps }]
 
 /-- The reports' tables (`builtinEngines`, `SubstraitLean/EngineTables.lean`)
-are the registry's: written once per engine there, and checked here. -/
+are the registry's: each engine's table and observation rows come from its
+`Engine` value here and from its profile there, and they agree. -/
 theorem builtinEntries_rows : builtinEntries.map (·.rows) = builtinEngines := rfl
 
 #check_engine_profiles builtinEntries

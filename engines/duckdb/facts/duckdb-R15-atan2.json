@@ -9,7 +9,7 @@
     "on_domain_error"
   ],
   "rows": [
-    {"group": "fp.elem", "option": "on_domain_error", "types": ["fp64"]}
+    {"group": "fp.atan2", "option": "on_domain_error", "types": ["fp64"]}
   ],
   "constructs": [
     "atan2"
