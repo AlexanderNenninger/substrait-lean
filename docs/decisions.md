@@ -1707,8 +1707,12 @@ preconditions guard it. In three the reference gives another value:
 | `Profile` field | reference | DuckDB | where | the lift |
 |---|---|---|---|---|
 | `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
-| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | refuses, with a hint |
+| `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | reads it as DuckDB's (since #322, below) |
 | `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
+
+Amended 2026-11-20 (ruling 106 §2c, #322): the lift reads `CAST(decimal AS integer)` as the
+reference's own rescale to scale 0, which rounds half away from zero, and the exact cast.
+The field `decimal_to_int` left `Profile`: the two semantics read the cast alike.
 
 R9 stays the reference's rule: the model's cast of a double or decimal truncates,
 and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
