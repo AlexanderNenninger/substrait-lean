@@ -142,7 +142,7 @@ variable [Boxes.Ambient]
 On decimals it states the SQL the printer writes (a cast to the plan's type
 around each operation, `TRUNC` before a cast to an integer, the exact cast to a
 double), not DuckDB's own decimal functions: those compensations are tested,
-and the decimal rows of `Profile.duckdb.obs` stay tracking #241 (ruling 185). -/
+and the decimal rows of `Profile.duckdb.obs` stay tracking #1985 (ruling 185). -/
 def Profile.duckdb (s : DuckDBSettings) : Profile where
   un f v := match v with
     | .float x => (duckUn s f x).getD (Profile.reference.un f v)
