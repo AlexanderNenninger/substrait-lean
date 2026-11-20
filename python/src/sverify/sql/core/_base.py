@@ -2368,7 +2368,16 @@ def _list_lit(lit: Any) -> Lit:
                 raise WriterUnsupported("a list element that is not a constant")
         vals.append(e.value)
         ks.append(e.kind)
-    return Lit(tuple(vals), Lst(next((k for k in ks if k is not None), None)))
+    elem = next((k for k in ks if k is not None), None)
+    if elem is None:
+        # A list of NULLs is of the type its NULLs are written with (`[NULL]` of
+        # `unnest(keep_empty=True)`, #1917), though a lone NULL says nothing.
+        elem = next(
+            (_type_kinds(n)[1] for j in _arr(_req(lit, "list"), "values")
+             if (n := _field(j, "null")) is not None),
+            None,
+        )  # fmt: skip
+    return Lit(tuple(vals), Lst(elem))
 
 
 def _lit(c: Const) -> Expr:
@@ -2631,7 +2640,7 @@ class _Parser:
                         raise Unsupported("date_bin needs a constant interval of days or less")
                     if origin is None or origin.tag != "int":
                         raise Unsupported("date_bin needs a constant origin")
-                    if lean_expr_kind(parsed[1], cols.lean) != "time":
+                    if _arg_kind(cols.lean, arg_js[1], parsed[1]) != "time":
                         raise Unsupported("date_bin is only supported on timestamps")
                     return Un("bucket", parsed[1], digits=iv[1], origin=origin.value)
                 if name in ("strftime", "to_char", "date_format"):
@@ -3810,7 +3819,9 @@ def _arg_kind(cols: list[LeanKind], j: Any, e: Expr) -> LeanKind:
         k = _lean_type_kind(_field(c, "type"))
         if k in ("date", "time"):
             return k
-    return "other"
+        return "other"
+    # A constant computed from literals has the kind of its operation.
+    return "other" if isinstance(e, Lit) else lean_expr_kind(e, cols)
 
 
 #: Each area module (`strings`, `temporal`, `nested`) registers its `mkCall`
@@ -4501,7 +4512,17 @@ class _Writer:
         d = self.d
         n = arity(r)
         if n == 0:
-            raise WriterUnsupported("relations without columns have no SQL form")
+            if not isinstance(r, Values):
+                raise WriterUnsupported("relations without columns have no SQL form")
+            # The rows of a table without columns (`SELECT 1 + 1`, #1916): a
+            # column nothing reads gives each its place.
+            cols = [d.quote("_")] + ([d.quote(ORD)] if ordered else [])
+            rows = [
+                [d.int_lit(0)] + ([d.int_lit(i)] if ordered else []) for i in range(len(r.rows))
+            ]
+            if not rows:
+                return f"SELECT {', '.join(d.null('int') + ' AS ' + c for c in cols)} WHERE FALSE"
+            return self.select([f"{self.ref('v', c)} AS {c}" for c in cols], d.values(rows, cols))
         if not self.seq:
             ordered = ordered and chain_orders(r)
         if (site := self.native.get(id(r))) is not None:

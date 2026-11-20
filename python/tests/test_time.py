@@ -816,8 +816,8 @@ def test_unsupported_formats_are_refused():
 def test_constructors_of_constants():
     """`ibis.date(2024, 2, 29)` and friends are constants; a bad date is
     refused. A date of columns is computed
-    (#809, `tests/test_sql_lift_temporal.py`); a timestamp of columns is
-    refused."""
+    (#809, `tests/test_sql_lift_temporal.py`), and so is a timestamp of
+    integer columns."""
     expr = D.select(
         a=ibis.date(2024, 2, 29), b=ibis.timestamp(2024, 1, 2, 3, 4, 5), c=ibis.time(9, 30, 0)
     )
@@ -828,8 +828,7 @@ def test_constructors_of_constants():
     # up to 3.13, "day 30 must be in range 1..29 …" from 3.14.
     with pytest.raises(Unsupported, match=r"DateFromYMD of \[2024, 2, 30\]: day "):
         to_substrait(D.select(a=ibis.date(2024, 2, 30)))
-    with pytest.raises(Unsupported, match="of columns"):
-        to_substrait(D.select(a=ibis.timestamp(D.n, 1, 1, 0, 0, 0)))
+    to_substrait(D.select(a=ibis.timestamp(D.n, 1, 1, 0, 0, 0)))
 
 
 # --------------------------------------------------------------------------
