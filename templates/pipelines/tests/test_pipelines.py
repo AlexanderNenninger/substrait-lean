@@ -61,6 +61,18 @@ def test_check_proves_every_pipeline(env, tmp_path):
     assert "no two rows share (geo, unit, na_item, time)" in comment
 
 
+def test_check_exports_each_node_as_a_plan_that_proves_again(env, tmp_path):
+    done = lake("check", "--plans", str(tmp_path / "plans"), env=env)
+    assert done.returncode == 0, done.stdout + done.stderr
+    names = sorted(p.name for p in (tmp_path / "plans").iterdir())
+    assert names == [
+        "gdp.gdp_table.substrait.json",
+        "gdp.trade_openness_table.substrait.json",
+    ]
+    for p in (tmp_path / "plans").iterdir():
+        assert json.loads(p.read_text())["relations"]
+
+
 def test_refresh_then_catalog(env, tmp_path):
     # The check first, in the same process, as the workflows run it.
     done = lake(
