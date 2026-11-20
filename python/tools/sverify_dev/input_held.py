@@ -163,7 +163,7 @@ def profile_calls(engine: str, out: list, sampler: Sampler) -> None:
     profiled(incremental, "matching", "matching", sampler, out)
     profiled(incremental, "arrow_of", "arrow_of", sampler, out)
     view = incremental.IncrementalView
-    for m in ("_merge", "_delta", "_linear_change", "_touched_change", "_semi_change", "_diff"):
+    for m in ("_delta", "_linear_change", "_touched_change", "_semi_change", "_diff"):
         profiled(view, m, f"IncrementalView.{m}", sampler, out)
     profiled(incremental.DuckDBStore, "apply", "DuckDBStore.apply", sampler, out)
     for store in {type(store_for(engine))}:
