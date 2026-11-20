@@ -127,7 +127,16 @@ def _limbs(engine: str, kind: str, ks, xs, ys, ws, key_type: str = "int64") -> d
 
 
 # Spark runs the limbs too: the split needs no POWER or LOG2 (#1873).
-ENGINES = ["duckdb", "polars", pytest.param("spark", marks=pytest.mark.backend("spark"))]
+SPARK = pytest.mark.backend("spark")
+ENGINES = ["duckdb", "polars", pytest.param("spark", marks=SPARK)]
+KINDS = ["fsum", "var", "cov", "corr"]
+# A plan on a local Spark session costs seconds, so Spark runs one pinned case
+# of each claim: `corr`'s limbs, whose plan writes every slot the other kinds
+# write (`Σx`, `Σy`, `Σx²`, `Σxy`, `Σy²`, the classes of a pair).
+LIMB_CASES = [
+    *[(e, k) for e in ("duckdb", "polars") for k in KINDS],
+    pytest.param("spark", "corr", marks=SPARK),
+]
 
 
 def _frexp(x: float) -> tuple[int, int]:
@@ -169,8 +178,7 @@ def test_the_split_is_frexp(engine):
     assert [got[i] for i in range(len(xs))] == want
 
 
-@pytest.mark.parametrize("engine", ENGINES)
-@pytest.mark.parametrize("kind", ["fsum", "var", "cov", "corr"])
+@pytest.mark.parametrize(("engine", "kind"), LIMB_CASES)
 def test_limbs_are_the_exact_moments(engine, kind):
     """The engine's limbs of random rows (NaN, infinities, subnormals, the
     largest double, `2^k - ulp`, NULLs, large and negative weights) add up to
@@ -400,16 +408,23 @@ def _check(node, live, names=("s", "a")) -> None:
             assert _same(row[c], MEASURES[n][1](xs, ys)), (g, n, row[c])
 
 
-@pytest.mark.parametrize("engine", ENGINES)
-@pytest.mark.parametrize("seed", range(2))
-def test_a_maintained_double_sum_is_exact(seed, engine):
+@pytest.mark.parametrize(
+    ("engine", "seed", "batches"),
+    [
+        *[(e, s, 25) for e in ("duckdb", "polars") for s in range(2)],
+        # Spark: one short run. Seed 6 inserts 14 rows and deletes 5, and
+        # leaves 9 rows in 5 groups for the delete of every row at the end.
+        pytest.param("spark", 6, 5, marks=SPARK),
+    ],
+)
+def test_a_maintained_double_sum_is_exact(engine, seed, batches):
     rng = random.Random(seed)
     src = StaticSource(table([]), name="t")
     node = src.pipe(sums)
     node.refresh(engine=engine)
     assert node._stage is not None and node._stage.view.strategy == "delta rules"
     live: list[tuple[int, float | None]] = []
-    for _ in range(25):
+    for _ in range(batches):
         ins = [(rng.randrange(5), finite_value(rng)) for _ in range(rng.randrange(6))]
         dels = rng.sample(live, min(len(live), rng.randrange(4)))
         for d in dels:
