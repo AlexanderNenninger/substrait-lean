@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-core-superset-reference-subset",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The core is the abstract superset of behaviours and the reference profile picks a subset every engine has natively or reaches with a cheap writer shim.",
+  "source": "memory:engine-behaviour-in-profiles.md"
+}

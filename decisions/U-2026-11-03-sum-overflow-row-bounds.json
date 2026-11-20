@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-03-sum-overflow-row-bounds",
+  "date": "2026-11-03",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Row-count bounds get priority; integer SUM overflow becomes an inferred precondition checked on data, which row bounds can discharge statically.",
+  "issues": [
+    219
+  ],
+  "supersedes": [
+    "U-2026-11-01-int-overflow-sum-at-runtime"
+  ],
+  "source": "github:#219 comment 6605688419",
+  "note": "Supersedes only the SUM-overflow half of the 2026-11-01 decision."
+}

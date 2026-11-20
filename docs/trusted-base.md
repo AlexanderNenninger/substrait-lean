@@ -63,6 +63,7 @@ the project's one axiom (the trusted table below).
 | `Rel.floatOpenSafeP_of_noDouble` | … and such a plan without open measures is `Rel.FloatOpenSafeP` over the table | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.eval_sharded` | A linear plan runs shard by shard | `Partition.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.incremental_sound` | A delta plan computes the change of the view | `Incremental.lean` | propext, Classical.choice, Quot.sound |
+| `Rel.zeval_prune` | … and over a store pruned to the columns the view reads, every row keeps its weight | `Incremental.lean` | propext, Classical.choice, Quot.sound |
 | `Refresh.no_corruption` | A sink's refreshes never apply a change to a table it was not computed from | `Refresh.lean` | propext, Quot.sound |
 <!-- axioms:end -->
 
@@ -183,11 +184,24 @@ place, and what retires it.
   sequence of batches (`LinearAgg.fsum_no_drift`), and the same of the
   moments of `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` (`LinearAgg.no_drift`,
   `varState_sound`, `covState_sound`, `corrState_sound`); finishing them
-  ports Lean's `sqrtMag` (`sqrt_mag`). Holding that integer in
-  Python, adding up each batch's contributions to it (the engine gives each
-  changed row's value and weight with the checked `contrib` plan) and
-  rounding it once with CPython's `int / int` (correctly rounded, ties to
-  even) are trusted. `tests/test_exact_sum.py` checks the finish against the
+  ports Lean's `sqrtMag` (`sqrt_mag`). The engine holds that integer in
+  limbs, rows of the group state that its `SUM` adds up per group with the
+  checked plans (#1447). Trusted are: that a value's split into a mantissa
+  and a grid position gives back the value, since its binary steps are
+  comparisons with and products by power-of-two literals, exact in IEEE
+  arithmetic (each row checks only the result's normal form, an integer
+  mantissa below `2⁵³` and at least `2⁵²` for a normal value, and the finish
+  refuses a row that fails; `test_the_split_is_frexp` compares the split with
+  `frexp` at every power of two and its predecessor on DuckDB, Polars and
+  Spark); that the limbs, read back for the touched groups, are the integer
+  (`Σ v · 2^(32 j)`, which holds while a group has fewer than `2⁴¹` values,
+  where the finish raises; a limb's `SUM` past 38 digits raises on DuckDB,
+  on Polars' streaming engine and on Spark under ANSI, which a refresh there
+  requires, and the finish refuses a NULL limb); and rounding it once with
+  CPython's `int / int` (correctly rounded, ties to even).
+  `tests/test_exact_sum.py` checks the limbs against the exact moments on
+  DuckDB, Polars and Spark, the largest double, subnormals and `2^k - ulp`
+  among the values, and the finish against the
   checker's `floatSumCR`, `floatAvgCR`, `varOf`, `covOf` and `corrOf`, NaN,
   `±∞`, `-0.0` and subnormals among the values.
 - Where an engine evaluates an expression. Lean proves which rows an

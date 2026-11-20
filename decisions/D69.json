@@ -1,0 +1,15 @@
+{
+  "id": "D69",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Ibis calendar functions of a UTC instant mean that function of its UTC wall clock.",
+  "issues": [
+    1725
+  ],
+  "amends": [
+    "D53"
+  ],
+  "note": "Signed in ruling 193; its section is in #2063; tracked in #1725."
+}

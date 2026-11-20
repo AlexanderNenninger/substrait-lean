@@ -1,0 +1,21 @@
+{
+  "id": "F200",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "D70 audit adjudicated: under a lens, double aggregate measures keep the infinite issue and checks run by value; agg_finite also catches mixed overflow; the lens's % gets min_mod_neg_one; no verified-run guarantee rests on an engine raising.",
+  "issues": [
+    1484,
+    2018,
+    2052,
+    2053,
+    2054
+  ],
+  "amends": [
+    "D70",
+    "F195"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 200",
+  "note": "File ruling-200-d70-audit-findings.md. R1-R2 lapse if R3's strict xfail passes today. A7's U1 is a clarification of D70's third paragraph by its author, appended to ruling 198. Answers the round-3 #1484 finding on unproved runs (U4). No D-number."
+}

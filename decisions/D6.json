@@ -1,0 +1,12 @@
+{
+  "id": "D6",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A sort key's UNSPECIFIED direction leaves the NULL order open in the core, and CLUSTERED is an order relation of its own.",
+  "prs": [
+    562
+  ],
+  "note": "Amended 2026-11-07 when step 1c landed: the parser reads both."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-06-smt-certificates-proved",
+  "date": "2026-11-06",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "SMT certificates count as proved with their axioms listed, and conservation is proved or checked.",
+  "source": "memory:road-to-1-0.md"
+}
