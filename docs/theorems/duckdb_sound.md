@@ -4,8 +4,9 @@ A plan Sverify has proved returns the reference's rows when it runs on DuckDB as
 
 Lean: `Substrait.Rel.duckdb_sound`, in
 [`engines/duckdb/Sverify/DuckDB/Profile.lean`](../../engines/duckdb/Sverify/DuckDB/Profile.lean).
-Layer: `eval`, the reference's result for the plan. Axioms: not yet listed;
-`#print axioms Substrait.Rel.duckdb_sound` is the check ([trusted-base.md](../trusted-base.md)).
+Layer: `eval`, the reference's result for the plan. Axioms: `propext`, `Classical.choice`, `Quot.sound` and
+`Substrait.FloatCode.exp_fin`, the float fact [float-bounds.md](../float-bounds.md)
+lists as trusted ([trusted-base.md](../trusted-base.md)).
 
 ## What it says
 
@@ -42,7 +43,7 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
 - `hsmall`: the size hypothesis (`Rel.Small`): a window reads fewer than
   2⁶² rows and an aggregate fewer than 2⁶³. An engine's memory guarantees it.
 - `hs`: the plan keeps all rows where it must: no left join's right side
-  loses a filter (`Rel.looseSub`).
+  loses a filter and no `UNNEST` sits below the guards (`Rel.looseSub`).
 - `hm`: the checker's list of issues the plan may raise (`Rel.mayIssues`)
   holds nothing but issues assumed on the data, which the run checks first.
 - `s`, `hieee`: DuckDB's settings, and the assumption that its operations on doubles are IEEE's, which is the default.
@@ -69,8 +70,10 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
 ## Its side conditions
 
 `hcat` is a fact about the data, which the run's schema check covers.
-`hwf`, `hsmall`, `hs` and `hm` are the checker's own computations on the
-plan. `hA` and `hF` are the contract's schemas and preconditions, checked on the
+`hwf`, `hs` and `hm` are the checker's own computations on the plan.
+`hsmall` is about the data, the row counts of what windows and aggregates
+read, and it is trusted: an engine's memory guarantees it
+([trusted-base.md](../trusted-base.md)). `hA` and `hF` are the contract's schemas and preconditions, checked on the
 data on each run; `hT` follows from the key analysis
 ([`Rel.keys_sound`](keys_sound.md)) and the table conditions the run checks.
 
