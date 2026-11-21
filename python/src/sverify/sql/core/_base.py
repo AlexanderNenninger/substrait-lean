@@ -2195,7 +2195,12 @@ def _cast_const(ty: dict, c: Const) -> Const:
         case "str":
             if c.tag == "str":
                 return c
-            raise WriterUnsupported("casts to strings are not supported")
+            # `true`/`false` and `YYYY-MM-DD`, as Lean folds them (#346).
+            if c.tag == "bool":
+                return Const("str", "true" if c.value else "false")
+            if c.tag == "int" and c.kind == "date":
+                return Const("str", _date_text(c.value))
+            raise WriterUnsupported("casts of this value to strings are not supported")
         # An instant literal: the microseconds of a timestamp literal, read at UTC (D53).
         case "instant":
             if c.tag == "int":
