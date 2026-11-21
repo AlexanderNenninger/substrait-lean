@@ -88,8 +88,9 @@ theorem Rel.duckdb_marks (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
     (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    {u : Bool} {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true) :
-    r.evalG (Profile.duckdbWritten s).impl cat (r.marks cat A F T u) = r.eval cat :=
+    {caps : String → Option Nat} {u : Bool} {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat)
+    (hs : r.looseSub = true) :
+    r.evalG (Profile.duckdbWritten s).impl cat (r.marks cat A F T caps u) = r.eval cat :=
   Rel.evalG_marks hcat hA hF hT (Profile.duckdbWritten_faithful s hieee) hwf hsmall hs
 
 /-- **DuckDB runs the plan the checker writes with its marks unchecked**
@@ -102,10 +103,10 @@ theorem Rel.duckdb_marks_written (s : DuckDBSettings) (hieee : s.ieeeOps = true)
     (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    {u : Bool} {r : Rel} (hr : r.WF cat) (hwf : (r.bindArgs cat).WF cat)
+    {caps : String → Option Nat} {u : Bool} {r : Rel} (hr : r.WF cat) (hwf : (r.bindArgs cat).WF cat)
     (hsmall : (r.bindArgs cat).Small cat) (hs : (r.bindArgs cat).looseSub = true) :
     (r.bindArgs cat).evalG (Profile.duckdbWritten s).impl cat
-      ((r.bindArgs cat).marks cat A F T u) = r.eval cat := by
+      ((r.bindArgs cat).marks cat A F T caps u) = r.eval cat := by
   rw [Rel.duckdb_marks s hieee hcat hA hF hT hwf hsmall hs, Rel.eval_bindArgs hcat hr]
 
 /-- `Rel.duckdb_sound` on one hypothesis. -/
