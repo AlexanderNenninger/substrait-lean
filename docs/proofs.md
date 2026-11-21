@@ -458,6 +458,7 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `Moments.lean` | Exact moments and the scale of the variance bounds |
 | `Variance.lean` | Variance, covariance and correlation bounds for any algorithm |
 | `FloatBridge/Codes.lean` | The bridge to the core (#1196): the core's rounding (`FloatCode.ofExact` after the nearest multiple of `2⁻¹⁰⁷⁴`) is a `StdModel` (`FloatBridge.model`), and on multiples of `2⁻¹⁰⁷⁴` it is `ofExact` (`model_fl_grid`) |
+| `FloatBridge/Sums.lean` | The core's summation orders over the bridge (#1196): a `FloatSums` sum of finite doubles is finite and a `StdModel.TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's `SumBound` (`FloatSums.sumBound`) |
 | `Textbook.lean` | The textbook one-pass algorithm |
 | `TwoPass.lean`, `TwoPassRel.lean` | Lean's two-pass algorithm, absolute and relative to the variance |
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |
