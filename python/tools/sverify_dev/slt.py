@@ -1299,7 +1299,9 @@ def write_ledger(
     head: dict | None = None,
 ) -> Path:
     """`<out>/<area>.json`: one result per line, sorted by file and line.
-    `head` adds to (or replaces) the keys before the results."""
+    `head` adds to (or replaces) the keys before the results. A ledger's `"duckdb"` is the
+    version of its area's run; `"refreshed"` (file to version) marks the entries of single files
+    replayed at another version after it, and a whole-area run writes none (#2045)."""
     out.mkdir(parents=True, exist_ok=True)
     results = sorted(results, key=lambda r: (r["file"], r["line"]))
     counts = Counter(r["cls"] for r in results)

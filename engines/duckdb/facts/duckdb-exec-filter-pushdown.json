@@ -189,7 +189,7 @@
       "evidence": [
         {
           "file": "engines/duckdb/replay/optimizer.json",
-          "probe": "optimizer/secure_view_pushdown.test:154"
+          "note": "optimizer/secure_view_pushdown.test:154"
         }
       ],
       "notes": "At 2.0.1 `SELECT sec.s FROM secrets sec JOIN allowed a ON (sec.id = a.id) WHERE sec.s::INT = 42` raises in DuckDB itself, as its test says, and the written plan runs it to `[[42]]`: the engine evaluates the cast of the written SQL after the join. An error-side change (D70): `verify` reports a domain error for the cast of a string at both versions, so no guarantee rests on the raise."
