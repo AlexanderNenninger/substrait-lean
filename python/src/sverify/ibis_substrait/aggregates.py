@@ -15,7 +15,14 @@ import ibis.expr.operations as ops
 from sverify._unsupported import QUANTILE_OF_DECIMAL
 from sverify.ibis_substrait._base import Exprs, _sort_key
 from sverify.ibis_substrait._constructs import op_construct
-from sverify.plan_json import Json, ProducerUnsupported, Unsupported, call, decimal_literal
+from sverify.plan_json import (
+    Json,
+    ProducerUnsupported,
+    Unsupported,
+    call,
+    decimal_literal,
+    literal,
+)
 from sverify.plan_json import anchor as _anchor
 
 
@@ -131,12 +138,23 @@ def collect(x: Exprs, op: Any) -> Json:
     return {"measure": agg, "filter": keep}
 
 
+def _const_string(op: Any) -> str | None:
+    """The string a constant expression of literals and `+` stands for."""
+    if isinstance(op, ops.Literal):
+        return op.value if isinstance(op.value, str) else None
+    if isinstance(op, ops.StringConcat):
+        parts = [_const_string(a) for a in op.arg]
+        return None if None in parts else "".join(parts)  # type: ignore[arg-type]
+    return None
+
+
 def group_concat(x: Exprs, op: Any) -> Json:
     """`STRING_AGG(x, sep ORDER BY …)` of the non-NULL strings (#55), as Ibis's
     `LISTAGG`. Without `order_by` the order is the engine's: contracts see
     only some string (`Measure.abs`), and `verify` reports the result as not
     deterministic (`Rel.windowsTotal`)."""
-    if not isinstance(op.sep, ops.Literal):
+    sep = _const_string(op.sep)
+    if sep is None:
         raise Unsupported(
             "group_concat needs a constant separator", construct="function group_concat"
         )
@@ -155,7 +173,7 @@ def group_concat(x: Exprs, op: Any) -> Json:
         sorts.append(key)
     agg: Json = {
         "functionReference": _anchor("string_agg"),
-        "arguments": [{"value": x(op.arg)}, {"value": x(op.sep)}],
+        "arguments": [{"value": x(op.arg)}, {"value": literal(sep, dt.string)}],
         "sorts": sorts,
         "invocation": "AGGREGATION_INVOCATION_ALL",
     }

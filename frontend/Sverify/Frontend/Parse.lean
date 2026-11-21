@@ -2557,7 +2557,7 @@ def parseFrame (cols : List Kind) (sort : List SortKey) (w : Json) : J Frame := 
     ← parseBound false (field? w "upperBound")⟩
   if range && ([fr.lo.offset, fr.hi.offset].any fun o => o.any (· != 0)) then
     let [k] := sort | throw "RANGE frames with offsets need exactly one sort key"
-    if ![Kind.int, .time, .date].contains (cols.getD k.col .other) then
+    if ![Kind.int, .time, .timeTz, .date].contains (cols.getD k.col .other) then
       throw "RANGE frames with offsets need an integer, timestamp or date sort key"
   return fr
 
@@ -2635,7 +2635,8 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- `first`/`last` over a frame take its first (last) non-NULL value in
       -- the window's order (the frame's rows are in it, and the measure has
       -- no sort of its own): `FIRST_VALUE(x IGNORE NULLS)` (#811).
-      if !["count", "sum", "avg", "min", "max", "variance", "std_dev", "first", "last"].contains n
+      if !["count", "sum", "avg", "min", "max", "variance", "std_dev", "first", "last",
+        "string_agg"].contains n
       then
         throw s!"unsupported window function: {n}"
       -- The window's own sort keys order the frame, not the aggregate.
