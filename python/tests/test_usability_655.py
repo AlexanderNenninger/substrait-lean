@@ -62,7 +62,7 @@ def test_on_unproved_warn_refreshes_unverified(tmp_path) -> None:
     with pytest.warns(
         UnverifiedRunWarning,
         match=r"refreshing sums on duckdb unverified \(on_unproved='warn'\): not verified: "
-        r"ensures \(_.big > 100\) is not proved",
+        r"ensures big > 100 is not proved",
     ):
         out = node.refresh()
     assert out["sums"].route is not None and out["sums"].route.kind == "unverified"

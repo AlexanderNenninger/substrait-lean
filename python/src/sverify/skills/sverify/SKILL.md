@@ -20,7 +20,7 @@ that happened to be there.
 ## Install
 
 ```bash
-pip install sverify                       # core: DuckDB, contracts, views
+pip install 'sverify[duckdb]'             # DuckDB runs plans; contracts, views
 pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
 ```
 
