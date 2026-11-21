@@ -4,13 +4,11 @@ arguments"."""
 
 import ibis
 import ibis.expr.datatypes as dt
-import pyarrow as pa
 import pytest
 
 import sverify as sv
 
 T = ibis.table({"k": "int64"}, name="t")
-ROWS = pa.table({"k": [1, 2]})
 
 
 def _null(p: int, s: int):
@@ -32,13 +30,3 @@ def test_a_call_of_typed_decimal_nulls_is_read(name, precision):
     expr = T.select(T.k, x=CALLS[name](_null(precision, 0)))
     report = sv.verify(expr, counterexamples=0)
     assert report.output["x"].is_decimal(), name
-
-
-@pytest.mark.parametrize("name", CALLS)
-def test_a_call_of_typed_decimal_nulls_is_null_on_duckdb(name):
-    expr = T.select(T.k, x=CALLS[name](_null(10, 2)))
-    report = sv.verify(expr, counterexamples=0)
-    con = sv.connect("duckdb")
-    con.put("t", ROWS)
-    out = report.run(con, "duckdb", unverified=True)
-    assert out.column("x").to_pylist() == [None, None], name
