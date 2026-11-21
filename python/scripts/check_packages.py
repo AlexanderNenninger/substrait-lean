@@ -174,11 +174,10 @@ def _testing(tmp: str) -> None:
         return t
 
     node = StaticSource(pa.table({"a": [1]}), name="t").pipe(kept)
-    strategy = cases(node, max_rows=3)
-    # Drawing runs the preconditions on an engine, which the extra leaves to
-    # the user (`sverify[testing,duckdb]`); alone, a draw names the extra.
+    # `cases` checks the preconditions on an engine, which the extra leaves to
+    # the user (`sverify[testing,duckdb]`); alone, it names the engine's extra.
     try:
-        strategy.example()
+        cases(node, max_rows=3).example()
     except ValueError as e:
         assert "sverify[duckdb]" in str(e), e
     else:
