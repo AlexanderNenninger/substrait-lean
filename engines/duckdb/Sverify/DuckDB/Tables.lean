@@ -100,11 +100,11 @@ def Profile.duckdb.obs : ObsTable := [
     "duckdb-R4", "duckdb-R15-double-modulus"]).proved "Lowering.duckdb_exact"),
   (some "fp.div", "on_division_by_zero", (ObsRow.native ["duckdb-R5", "duckdb-R15-double-arith"]).proved
     "Lowering.duckdb_exact"),
+  -- `fp.log` reads this row: `duckdb-R15-math-domain` probes `log(b, x)` too, the
+  -- quotient `ln x / ln b` the writer guards (#1985).
   (none, "on_domain_error", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-int-div-domain",
     "duckdb-R15-math-domain", "duckdb-R15-atan2"]).proved "Lowering.duckdb_exact"),
   (some "int.pow", "on_domain_error", (ObsRow.native ["duckdb-int-pow"]).tracking 1985),
-  -- `log(b, x)` (`flogb`) lowers natively, and no fact probes its domain yet.
-  (some "fp.log", "on_domain_error", (ObsRow.native ["duckdb-R15-math-domain"]).tracking 1985),
   (none, "division_type", (ObsRow.native ["duckdb-R3"]).tracking 1985),
   (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 1985),
