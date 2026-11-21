@@ -558,6 +558,23 @@ def _date_diff(lf: _Lift, node: sge.DateDiff, sub: Sub, scope: list[Column]) -> 
     raise SqlUnsupported(f"datediff in {name} is not supported yet", construct="function datediff")
 
 
+def _strftime(lf: _Lift, node: sge.TimeToStr, sub: Sub, scope: list[Column]) -> E:
+    """`strftime(ts, fmt)` for a constant format (#1991): the directives of
+    `Time.parseFormat`; the checker refuses any other. A date is its midnight."""
+    fmt = node.args.get("format")
+    if not (isinstance(fmt, sge.Literal) and fmt.is_string):
+        raise Unsupported("strftime needs a constant format", construct="function strftime")
+    # `%F` and `%T` are the model's (chrono's), but DuckDB rejects them.
+    if bad := [d for d in re.findall(r"%(.?)", fmt.this) if d not in "YmdHMSj%" or not d]:
+        raise Unsupported(
+            f"strftime format '{fmt.this}': %{bad[0]} is not supported; "
+            "only %Y %m %d %H %M %S %j and %% are",
+            construct="function strftime",
+        )
+    a = lf.to(_when(sub(node.this)), _TS)
+    return E(_fn("strftime", [a.json, literal(fmt.this, dt.string)], dt.string), dt.string)
+
+
 def _to_unix(lf: _Lift, node: sge.TimeToUnix, sub: Sub, scope: list[Column]) -> E:
     return _epoch(lf, sub(node.this))
 
@@ -575,6 +592,7 @@ register(
         sge.Anonymous: _anonymous,
         sge.DateDiff: _date_diff,
         sge.TimeToUnix: _to_unix,
+        sge.TimeToStr: _strftime,
         sge.DayOfWeekIso: _isodow_rule,
         sge.Dayname: _named("dow", _DAY_NAMES, 0),
         sge.Monthname: _named("month", _MONTH_NAMES, 1),

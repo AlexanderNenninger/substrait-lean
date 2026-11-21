@@ -21,6 +21,10 @@ DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 #: leaves its integer key's type. An engine whose dialect raises writes it
 #: (`ProfilePlugin.guards`).
 RANGE_GUARD = "Overflow in a RANGE frame bound"
+#: The message of the integer `%` guard under `semantics="duckdb"` (#2058): DuckDB
+#: raises at `MIN % -1`, where the reference's remainder, 0, fits. DuckDB,
+#: Spark and Polars run it (`ProfilePlugin.guards`).
+MIN_MOD_GUARD = "integer overflow: MIN % -1"
 
 
 #: The exit of a refusal of data that breaks a stated condition.
