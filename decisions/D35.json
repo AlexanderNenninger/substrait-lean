@@ -10,7 +10,8 @@
     1608
   ],
   "amended_by": [
-    "F86"
+    "F86",
+    "F242"
   ],
-  "note": "Sign-off delegated to the theory advisor by the maintainer. Amended 2026-11-19 (#1608 12b-1): exactness on small integers."
+  "note": "Sign-off delegated to the theory advisor by the maintainer. Amended 2026-11-19 (#1608 12b-1): exactness on small integers. Amended 2026-11-21 (ruling 242): the bound also holds of the canonical codes."
 }

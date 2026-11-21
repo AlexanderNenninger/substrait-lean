@@ -141,6 +141,37 @@ so such products go guard-free; a half-open range still gives ⊤. The
 elimination was also all or nothing per plan; `Rel.evalG_marks` now decides
 per expression.
 
+### A double `SUM` no summation order overflows
+
+DuckDB writes a double `SUM` or `AVG` in two stages (ruling 212): the engine
+sum per group, then the reference's checks against `±∞` for the groups whose
+sum is not finite. Where no summation order can overflow, the second stage
+never runs, and a checked run writes the plain sum (#1787 item 4, rulings 238
+and 242). `Rel.marks` marks measure `i` of an aggregate (slot `i + 1`) where
+`Measure.finiteAnyOrder` holds:
+
+* the argument's values are doubles in a finite interval `[lo, hi]`;
+* the aggregate's input has at most `n ≤ 2³²` rows, from a `max_rows`
+  precondition (`Rel.capReads`) or the plan's shape (`Rel.maxRows`);
+* `2 · (n · M + n · 2⁻¹⁰²²)` stays within the largest double, `M` the larger
+  of `|lo|` and `|hi|`, and `4` in place of `2` for a mean.
+
+Then every sum and mean any `sum_order` behaviour allows, DuckDB's `ANY` and
+`SCALED_CONSTANT` among them, has a finite canonical code
+(`Rel.marks_measure_finite`, from `SumOrder.near` and `AvgOrder.near`). The
+reference's own bound (`crBound`, which `Measure.mayInf` reads) has no margin
+for an order that rounds at every step, so the mark reads this one. A `-0.0`
+among the values is covered by D35's canonical clause. The marked measure is
+written as stage 1 writes it, `SUM(x)`, or `SUM(x)` over `COUNT(x)` for a mean,
+`NULL` for an empty group.
+
+`python/tests/test_finite_any_order.py` checks that a capped, bounded `SUM`
+and `AVG` lose both stages and give the rows of the checked run, groups of
+`-0.0` included, and that a contract whose reference bound passes but whose
+margin does not keeps both stages.
+
+BENCH_FINITE
+
 ## 2. Sharded evaluation
 
 Setting. The sharded tables `S` are split over shards `cs`, and every

@@ -1058,6 +1058,14 @@ computes (finite, in `[sumLo, sumHi]`), which cuts `nan_creation`,
 `float_overflow` and the NaN cases of a comparison downstream (D34), and the
 margin check's theorem over its plan reads the same set.
 
+Amended 2026-11-21 (#1787, ruling 242): the bound also holds of the canonical
+codes. `SumBound` is `SumBoundRaw` of the codes as they are and of the
+canonical codes (`-0.0` read as `+0.0`). IEEE 754 addition treats the two
+zeros alike but for the sign of a zero result, so an engine's sum of a group
+is, up to `canon`, a sum in the same order of its canonical values. A group
+holding `-0.0` meets the second clause's premise where it fails the first's.
+No axiom is added, and the reference does not change.
+
 Amended 2026-11-19 (#1608 12b-1): in `SumOrder`, the behaviours with no
 shape (`SCALED_CONSTANT`, `COMPENSATED`) are the bound and exactness on small
 integers: where every double of `vs` is an integer and `Σ |vᵢ| ≤ 2⁵³`

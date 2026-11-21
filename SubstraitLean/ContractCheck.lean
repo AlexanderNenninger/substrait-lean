@@ -1439,7 +1439,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
       if p.root.checkWF cat then
         let w := p.writtenRoot
         if w.checkWF cat && w.looseSub && (w == p.root || w == p.root.bindArgs cat) then
-          w.marksJson (w.marks cat A F T false)
+          w.marksJson (w.marks cat A F T caps false)
         else .null
       else .null
     | none => .null

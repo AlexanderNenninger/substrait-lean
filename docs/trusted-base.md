@@ -358,8 +358,10 @@ Sverify's words claim no more than these theorems give
   Beside `Engine.Runs`, the bound on
   [summation orders](float-bounds.md): the engines' summation algorithms meet
   `SumBound` (a double `SUM` within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact
-  sum), which `Rel.AllowedP` takes for every non-`EXACT` `sum_order`. It is
-  justified by `float-bounds`' `StdModel.Summed.near`, `epsilon_sum_cr` and
+  sum), which `Rel.AllowedP` takes for every non-`EXACT` `sum_order`, of the
+  codes as they are and of the canonical codes (`-0.0` read as `+0.0`; D35,
+  amended 2026-11-21: IEEE 754 addition treats the two zeros alike but for
+  the sign of a zero result). It is justified by `float-bounds`' `StdModel.Summed.near`, `epsilon_sum_cr` and
   `Rnd.kahan_near` on the engines' facts; a link from `float-bounds` to the
   core's codes, [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), retires it.
 - Black boxes are DuckDB's functions: each black box means the function

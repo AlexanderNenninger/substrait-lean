@@ -8,7 +8,7 @@ import json
 import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
@@ -4506,11 +4506,10 @@ class _Writer:
         return f"SELECT {', '.join(items)} FROM {from_}" + (f" {rest}" if rest else "")
 
     @contextmanager
-    def slot(self, r: Rel, i: int) -> Iterator[None]:
-        """Write slot `i` of node `r` without its checks if it is unchecked:
-        its guards and its check against `±∞`, which never fire on data
-        that meets the preconditions (`Expr.issues_nil_of_safe`)."""
-        if i not in self.unchecked.get(id(r), ()) or not (self.d.guards or self.d.finite):
+    def without_checks(self, on: bool = True) -> Iterator[None]:
+        """Write without the run-time checks while `on`: the guards and the
+        check against `±∞`."""
+        if not on or not (self.d.guards or self.d.finite):
             yield
             return
         d = self.d
@@ -4519,6 +4518,12 @@ class _Writer:
             yield
         finally:
             self.d = d
+
+    def slot(self, r: Rel, i: int) -> AbstractContextManager[None]:
+        """Write slot `i` of node `r` without its checks if it is unchecked:
+        its guards and its check against `±∞`, which never fire on data
+        that meets the preconditions (`Expr.issues_nil_of_safe`)."""
+        return self.without_checks(i in self.unchecked.get(id(r), ()))
 
     def passthrough(
         self, alias: str, n: int, ordered: bool, keys: Sequence[Kind | None] | None = None
@@ -4796,7 +4801,10 @@ class _Writer:
             case Distinct(input=i):
                 return self.distinct(i, ordered)
             case Aggregate(input=i, groups=gs, measures=ms):
-                return self.aggregate(i, gs, ms, ordered, 0 in self.unchecked.get(id(r), ()))
+                slots = self.unchecked.get(id(r), frozenset())
+                # Slot `k + 1`: measure `k` runs without its check against `±∞`.
+                marked = frozenset(k - 1 for k in slots if k > 0)
+                return self.aggregate(i, gs, ms, ordered, 0 in slots, marked)
         raise WriterUnsupported(
             f"unsupported relation {type(r).__name__}",
             hint=MALFORMED_PLAN,
@@ -4809,6 +4817,7 @@ class _Writer:
         measures: Sequence[Measure],
         ordered: bool,
         unchecked: bool = False,
+        marked: frozenset[int] = frozenset(),
     ) -> str:
         """`aggregateEval`. Three steps: the grouping expressions and each
         measure's argument (NULL on rows its filter drops) on every input row;
@@ -4816,7 +4825,9 @@ class _Writer:
         value in its group; then `GROUP BY` the groups, as `Value`s. Groups
         come in order of their first row. `unchecked`: write the grouping
         expressions and the measures' arguments and filters without checks
-        (the measures themselves keep theirs)."""
+        (the measures themselves keep theirs). `marked`: the measures written
+        without their own checks, a double `SUM` or `AVG` no summation order
+        overflows (`Rel.marks_measure_finite`, ruling 238)."""
         d = self.d
         ks = kinds(i)
         m = len(ks)
@@ -4921,8 +4932,8 @@ class _Writer:
             level = self.select(items, d.subquery(level, b))
             b = self.alias()
             keys = [col(c) for c in g_cols]
-        if not needs and not firsts and self.two_stage(i, g_kinds, measures):
-            return self.two_stage_aggregate(level, g_cols, m_cols, t_cols, measures, ks)
+        if not needs and not firsts and self.two_stage(i, g_kinds, measures, marked):
+            return self.two_stage_aggregate(level, g_cols, m_cols, t_cols, measures, ks, marked)
         out = [
             f"{d.zero_rep(col(c), 'keys') if g_kinds[i] == 'float' else col(c)} AS {self.c(i)}"
             for i, c in enumerate(g_cols)
@@ -4947,7 +4958,8 @@ class _Writer:
                     sql = d.pick(ms.fn, v, order)
             else:
                 shifted = col(t_cols[k]) if k in t_cols else None
-                sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b), shifted)
+                with self.without_checks(k in marked):
+                    sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b), shifted)
             out.append(f"{sql} AS {self.c(len(groups) + k)}")
         if ordered:
             out.append(f"COALESCE(MIN({self.ordinal(b)}), {d.int_lit(0)}) AS {d.quote(ORD)}")
@@ -4955,18 +4967,22 @@ class _Writer:
         return self.select(out, d.subquery(level, b), rest)
 
     def two_stage(
-        self, i: Rel, g_kinds: Sequence[Kind | None], measures: Sequence[Measure]
+        self,
+        i: Rel,
+        g_kinds: Sequence[Kind | None],
+        measures: Sequence[Measure],
+        marked: frozenset[int] = frozenset(),
     ) -> bool:
         """Whether `aggregate` writes its double `SUM`s and `AVG`s in two
         stages (ruling 212): the dialect asks for it (`two_stage_sums`), a
-        measure is one whose checks the one-stage form writes (C4), the keys
-        compare NULL-safely as the engine groups them (C3), and both reads
-        of the input give the same rows (C2)."""
+        measure is one whose checks the one-stage form writes (C4) and that
+        is not `marked`, the keys compare NULL-safely as the engine groups
+        them (C3), and both reads of the input give the same rows (C2)."""
         d = self.d
         return (
             d.two_stage_sums
             and bool(d.guards or d.finite)
-            and any(ms.fn in ("fsum", "avg") for ms in measures)
+            and any(ms.fn in ("fsum", "avg") and k not in marked for k, ms in enumerate(measures))
             # Measures `measure` writes alone: no pick, sort or DISTINCT.
             and not any(ms.distinct or ms.sort or ms.fn in _PICKS for ms in measures)
             and all(k in _TWO_STAGE_KEYS or isinstance(k, Dec) for k in g_kinds)
@@ -4981,6 +4997,7 @@ class _Writer:
         t_cols: dict[int, str],
         measures: Sequence[Measure],
         ks: list[Kind | None],
+        marked: frozenset[int] = frozenset(),
     ) -> str:
         """`aggregate`'s groups in two stages (ruling 212, #1608 item 7). The
         first computes every measure, a double `SUM` or `AVG` as its engine
@@ -4994,7 +5011,8 @@ class _Writer:
         d = self.d
         src, one, two = self.alias(), self.alias(), self.alias()
         a, b = self.alias(), self.alias()
-        sums = [k for k, ms in enumerate(measures) if ms.fn in ("fsum", "avg")]
+        # A `marked` sum needs no second stage: it is written as stage 1's sum.
+        sums = [k for k, ms in enumerate(measures) if ms.fn in ("fsum", "avg") and k not in marked]
 
         def nd(x: str, y: str) -> str:
             return d.not_distinct(x, y) or f"({x} IS NOT DISTINCT FROM {y})"
@@ -5012,7 +5030,8 @@ class _Writer:
                 items.append(f"COUNT({v}) AS {d.quote(f'n{k}')}")
             else:
                 shifted = at(a, t_cols[k]) if k in t_cols else None
-                sql = self.measure(ms, v, expr_kind(ms.arg, ks), "", shifted)
+                with self.without_checks(k in marked):
+                    sql = self.measure(ms, v, expr_kind(ms.arg, ks), "", shifted)
                 items.append(f"{sql} AS {d.quote(f'x{k}')}")
         keys = [at(a, c) for c in g_cols]
         stage1 = self.select(items, f"{src} AS {a}", f"GROUP BY {', '.join(keys)}" if keys else "")

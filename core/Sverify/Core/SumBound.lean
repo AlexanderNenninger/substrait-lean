@@ -88,7 +88,7 @@ theorem SumOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo h
     have : cs.length * rangeMag lo hi ≤ N * rangeMag lo hi := Nat.mul_le_mul_right _ hN
     have : cs.length * 2 ^ 52 ≤ N * 2 ^ 52 := Nat.mul_le_mul_right _ hN
     rw [Nat.mul_add]; omega
-  obtain ⟨hfin, hineq⟩ := h.1
+  obtain ⟨hfin, hineq⟩ := h.1.1
     (fun x hx => by
       obtain ⟨y, hy, e⟩ := List.mem_map.1 hx
       injection e with e; subst e; exact (hr _ hy).1)

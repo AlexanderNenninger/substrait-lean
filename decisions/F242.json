@@ -1,0 +1,16 @@
+{
+  "id": "F242",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "D35's summation bound also holds of the canonical input codes, as a second conjunct of SumBound; item 4's marks rest on IsFin (canon c).",
+  "issues": [
+    1787
+  ],
+  "amends": [
+    "F238",
+    "D35"
+  ],
+  "source": "fable-ruling-242-1787-item4-negative-zero.md"
+}
