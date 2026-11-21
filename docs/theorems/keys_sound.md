@@ -35,14 +35,17 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
   is well formed.
 - `A`, `hA`: what the checker knows of the values of each table's columns,
   as a set per column (whether it may be NULL, an integer interval, which
-  booleans, a set of strings), from the schema and the stated ranges, and the
+  booleans, a set of strings, lists and structs), from the schema and the
+  stated ranges, such as a range or a column that is never NULL, and the
   assumption that every row of the data lies in those sets.
-- `F`, `hF`: the facts that follow from the preconditions (a range, a
-  column that is never NULL), and the assumption that every row satisfies
-  them.
-- `K`, `hK`: the table conditions you stated, such as `sv.unique("id")` or
-  `sv.non_overlapping`, and the assumption that the data meets them. This is the key the
-  derivation starts from.
+- `F`, `hF`: the facts between columns or about a whole row that follow from
+  the preconditions: the difference of two columns lies in a bound, a column
+  is never equal to a constant, the `SUM` and `COUNT` of a decimal `AVG`, and
+  a precondition kept whole. The assumption is that every row satisfies them.
+- `K`, `hK`: the table conditions you stated: keys (`sv.unique("id")`,
+  `sv.key`) and non-overlapping ranges (`sv.non_overlapping`), and the
+  assumption that the data meets both. The keys are what the derivation
+  starts from, and the ranges are what keep a key through an as-of join.
 - `r`, `hwf`: the plan, and the assumption that it is well formed.
 - The conclusion: every key `k` in the list `r.keys` the checker derives is
   a key of the plan's result, `KeyOn k (r.eval cat)`: no two rows have the
@@ -53,9 +56,11 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
 - An output with two rows that share an `id`, in a plan proved to keep
   `unique(id)`.
 - A join that repeats a left row, in a plan whose key was kept through the
-  join: Sverify keeps it only where each left row has at most one partner,
-  because the join condition fixes a key of the right side or
-  `sv.non_overlapping` keeps the ranges apart.
+  join: Sverify keeps it only where its analysis shows that each left row has
+  at most one partner. The join condition fixes a key of the right side, or
+  puts each left row in at most one of a key's non-overlapping ranges
+  (`sv.non_overlapping`), or functional dependencies carry the key through an
+  as-of join.
 
 ## What it does not cover
 
@@ -70,9 +75,10 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
 
 ## Its side conditions
 
-`hcat` and `hwf` are decided by the checker's well-formedness check.
-`hA`, `hF` and `hK` are the contract's schemas, preconditions and table
-conditions, checked on the data on each run. The conclusion is what the
+`hwf` is decided by the checker's well-formedness check of the plan. `hcat`
+is a fact about the data, that every row has its table's arity, and the run's
+schema check covers it. `hA`, `hF` and `hK` are the contract's schemas,
+preconditions and table conditions, checked on the data on each run. The conclusion is what the
 report says when it lists a key under "The output guarantees".
 
 ## Example
