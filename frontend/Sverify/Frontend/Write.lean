@@ -473,6 +473,8 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- Decimals (#27): see above. The operands of `+`, `-` and comparisons
   -- are written without their `upscale`.
   | .un (.decimal p s) (.lit (.int m)) => decimalLit p s m
+  -- A typed decimal `NULL` (#2026): `Parse` gives it its declared kind.
+  | .un (.decimal p s) (.lit .null) => writeLit (.dec p s) .null
   -- `abs(a)`: `Parse.decimalCall` makes it `CASE WHEN a < 0 THEN 0 - a ELSE a END`.
   | .un (.decimal p s) (.ifThen (.bin .lt a (.lit z)) (.bin .dsub (.lit z') a') a'') =>
     let wa := writeExpr cols (wkind cols a) a
