@@ -731,7 +731,10 @@ class _Typer:
         changes no value. Other differences stay a refusal."""
         n = len(outs[0])
         if any(len(o) != n for o in outs):
-            raise ExportError("the inputs of a set relation differ in their column count")
+            raise ExportError(
+                "the inputs of a set relation differ in their column count",
+                hint=_MALFORMED,
+            )
         target = []
         for j in range(n):
             cs = [o[j] for o in outs]
