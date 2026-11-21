@@ -24,7 +24,7 @@ pip install sverify                       # core: DuckDB, contracts, views
 pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
 ```
 
-DuckDB (the default), Polars (streaming) and Spark 4.x run plans, each with a
+DuckDB (the default), Polars (streaming) and Spark 4.3 run plans, each with a
 proved profile (`semantics="duckdb"`, `"polars"`, `"spark"`). The SQL
 dialects (DuckDB, Spark, Snowflake) need no extra.
 

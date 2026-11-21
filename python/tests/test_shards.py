@@ -39,5 +39,7 @@ def test_oracle_shards_ignore_a_table_for_another_split(tmp_path, monkeypatch):
 def test_the_committed_tables_split_the_way_ci_does():
     tests = json.loads((shard_durations.TESTS).read_text())
     files = json.loads((shard_durations.ORACLE).read_text())
+    spark = json.loads((shard_durations.SPARK).read_text())
     assert tests["n"] == 3 and set(tests["shard"].values()) == {1, 2, 3}
+    assert spark["n"] == 2 and set(spark["shard"].values()) == {1, 2}
     assert files["n"] == 2 and set(files["shard"].values()) == {1, 2}
