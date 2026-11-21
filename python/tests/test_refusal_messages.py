@@ -9,11 +9,13 @@ from pathlib import Path
 
 import pytest
 
+from _repo import needs_repo
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "python" / "src" / "sverify"
 
 # The installed wheel's tests run from a copy of `tests`, without the sources.
-pytestmark = pytest.mark.skipif(not SRC.is_dir(), reason="the repository is not here")
+pytestmark = needs_repo
 
 #: The frontends and the writers shared by every engine.
 PYTHON = [
@@ -67,19 +69,44 @@ def test_no_lean_parser_refusal_cites_datafusion():
 _FIX = re.compile(
     r"\b(use|write|pass|rewrite|cast|instead|take|select|replace|set|add|drop|remove|spell|give"
     r"|change|move|put|try|call|apply|provide|specify|choose|wrap|compute|alias|rename|declare"
-    r"|list|filter|unpivot|split|keep|match|read|check|install|build)\b|see #|\(#\d+|Ibis",
+    r"|list|filter|unpivot|split|keep|match|read|check|install|build|run|fix)\b"
+    r"|see #|\(#\d+|Ibis|engine=",
     re.I,
 )
 
-FRONTENDS = [
+#: The frontends and the SQL writer, whose refusals reach the user.
+REFUSERS = [
     *sorted((SRC / "ibis_substrait").glob("*.py")),
     *sorted((SRC / "sql_lift").glob("*.py")),
+    *sorted((SRC / "sql" / "core").glob("*.py")),
 ]
 
 
-@pytest.mark.parametrize("path", FRONTENDS, ids=lambda p: p.relative_to(ROOT).as_posix())
-def test_a_frontend_refusal_says_what_to_do_instead(path):
-    """A frontend raises `ProducerUnsupported` or `SqlUnsupported`, which end
-    with a fix, or a plain `Unsupported` whose own text names one (#176)."""
-    bad = [(n, t) for n, t in _refusals(path) if t and not _FIX.search(t)]
+def _without_a_fix(path: Path) -> list[tuple[int, str]]:
+    """The plain `raise Unsupported(...)` of `path` whose text names no fix. A
+    message that ends in a shared exit (`... + DUCKDB_ONLY`) has one."""
+    bad = []
+    for node in ast.walk(ast.parse(path.read_text())):
+        if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
+            continue
+        call = node.exc
+        if getattr(call.func, "id", None) != "Unsupported" or len(call.args) != 1:
+            continue
+        parts = list(ast.walk(call.args[0]))
+        if any(isinstance(n, ast.BinOp) and isinstance(n.right, ast.Name) for n in parts):
+            continue
+        text = "".join(
+            n.value for n in parts if isinstance(n, ast.Constant) and isinstance(n.value, str)
+        )
+        if text and not _FIX.search(text):
+            bad.append((node.lineno, text))
+    return bad
+
+
+@pytest.mark.parametrize("path", REFUSERS, ids=lambda p: p.relative_to(ROOT).as_posix())
+def test_a_refusal_says_what_to_do_instead(path):
+    """A frontend or the writer raises `ProducerUnsupported`, `SqlUnsupported` or
+    `WriterUnsupported`, which end with a fix, or a plain `Unsupported` whose
+    own text names one (#176)."""
+    bad = _without_a_fix(path)
     assert not bad, bad

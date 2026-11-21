@@ -12,6 +12,7 @@ from collections.abc import Callable
 
 from sverify import _functions, _plan_read
 from sverify.sql.core._base import (
+    CONSTANT_FIX,
     Bin,
     Expr,
     FixedKind,
@@ -72,7 +73,7 @@ def call(name: str, args: list[Expr]) -> Expr | None:
         case "substring", [_, _, _]:
             raise WriterUnsupported(
                 "substring lengths must be constants",
-                "use a literal, or write each case with ifelse",
+                CONSTANT_FIX,
             )
         case (("btrim" | "ltrim" | "rtrim"), [a, *rest]) if len(rest) <= 1:
             chars = rest[0] if rest else Lit(" ", "str")
@@ -103,7 +104,7 @@ def call(name: str, args: list[Expr]) -> Expr | None:
         case "regexp_extract", _:
             raise WriterUnsupported(
                 "regexp_extract needs a constant pattern and group",
-                "use a literal, or write each case with ifelse",
+                CONSTANT_FIX,
             )
         case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r))]:
             return Un("regex_replace", a, param=pattern, replacement=r)
@@ -112,7 +113,7 @@ def call(name: str, args: list[Expr]) -> Expr | None:
         case "regexp_replace", [_, _, _, *_]:
             raise WriterUnsupported(
                 "regexp_replace needs a constant pattern and replacement, and no flags but 'g'",
-                "use a literal, or write each case with ifelse",
+                CONSTANT_FIX,
             )
     return None
 

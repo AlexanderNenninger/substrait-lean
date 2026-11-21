@@ -108,6 +108,8 @@ class Unsupported(_Unsupported):
     """
 
 
+#: What a refusal says where a constant is needed (#176).
+CONSTANT_FIX = "use a literal, or write each case as a CASE (ifelse in Ibis)"
 RANGE_HINT = "change the constant, or the cast's type, so the value fits"
 MALFORMED_PLAN = (
     "the plan is malformed or outside what this writer reads; build it with sverify, or fix it"
@@ -2643,7 +2645,7 @@ class _Parser:
                         if pat is None or pat.tag != "str":
                             raise WriterUnsupported(
                                 "regular expressions must be constants",
-                                "use a literal, or write each case with ifelse",
+                                CONSTANT_FIX,
                             )
                         return Un("regex_match", self.expr(gargs[0], cols), param=pat.value)
                 out_kind = _lean_type_kind(_field(v, "outputType"))
@@ -2674,12 +2676,12 @@ class _Parser:
                     if iv is None or iv[0] != 0 or iv[1] <= 0:
                         raise WriterUnsupported(
                             "date_bin needs a constant interval of days or less",
-                            "use a literal, or write each case with ifelse",
+                            CONSTANT_FIX,
                         )
                     if origin is None or origin.tag != "int":
                         raise WriterUnsupported(
                             "date_bin needs a constant origin",
-                            "use a literal, or write each case with ifelse",
+                            CONSTANT_FIX,
                         )
                     if _arg_kind(cols.lean, arg_js[1], parsed[1]) != "time":
                         raise WriterUnsupported("date_bin is only supported on timestamps")
@@ -2687,7 +2689,7 @@ class _Parser:
                 if name in ("strftime", "to_char", "date_format"):
                     first = parsed[0] if parsed else Lit(None, None)
                     if lean_expr_kind(first, cols.lean) != "time":
-                        raise Unsupported(f"{name} is only supported on timestamps")
+                        raise WriterUnsupported(f"{name} is only supported on timestamps")
                 if name in ("date_part", "datepart", "date_trunc", "datetrunc"):
                     second = parsed[1] if len(parsed) > 1 else Lit(None, None)
                     k = _arg_kind(cols.lean, arg_js[1], second) if len(arg_js) > 1 else "other"
@@ -2698,7 +2700,7 @@ class _Parser:
                             return call
                         if isinstance(call, Un) and call.op == "date_trunc" and call.param in clock:
                             return replace(call, op="time_trunc")
-                        raise Unsupported(
+                        raise WriterUnsupported(
                             f"{name} of a time of day is only supported for its clock"
                         )
                     if k == "date":
@@ -2714,7 +2716,7 @@ class _Parser:
                             return replace(call, op="day_trunc")
                         return call
                     if k != "time":
-                        raise Unsupported(f"{name} is only supported on timestamps and dates")
+                        raise WriterUnsupported(f"{name} is only supported on timestamps and dates")
 
                 def keep_int(k: int) -> bool:
                     # `ROUND(x, d)`: the digits stay an integer.
@@ -2725,7 +2727,7 @@ class _Parser:
                 overflow = _option(v, "overflow", "ERROR")
                 if any(isinstance(lean_expr_kind(e, cols.lean), Dec) for e in parsed):
                     if overflow in ("SILENT", "SATURATE"):
-                        raise Unsupported(
+                        raise WriterUnsupported(
                             f"{name}: overflow {overflow} is only modelled for integers"
                         )
                     if any(
@@ -2760,7 +2762,7 @@ class _Parser:
                         hint=MALFORMED_PLAN,
                     )
                 if name in (*BITWISE, "bitwise_not", "shift_left", "shift_right") and has_float:
-                    raise Unsupported(f"{name} is only supported on integers")
+                    raise WriterUnsupported(f"{name} is only supported on integers")
                 # An integer constant next to a double, or in a double
                 # function, stands for that double.
                 if has_float or float_call:
@@ -2775,7 +2777,9 @@ class _Parser:
                         out_e = If(Un("is_null", a), Lit(None, None), out_e)
                     return out_e
                 if float_call and overflow in ("SILENT", "SATURATE"):
-                    raise Unsupported(f"{name}: overflow {overflow} is only modelled for integers")
+                    raise WriterUnsupported(
+                        f"{name}: overflow {overflow} is only modelled for integers"
+                    )
                 if float_call:
                     # Integer arguments of a double function are converted.
                     parsed = [
@@ -2817,7 +2821,7 @@ class _Parser:
                         isinstance(out_e, Un) and out_e.op == "neg"
                     )
                     if not exact or lean_expr_kind(out_e, cols.lean) != "int":
-                        raise Unsupported(
+                        raise WriterUnsupported(
                             f"{name}: overflow {overflow} is only modelled for integers"
                         )
                     bits = _int_bits(out_ty) if isinstance(out_ty, dict) else 64
@@ -2947,7 +2951,7 @@ class _Parser:
             if iv is None:
                 raise WriterUnsupported(
                     "a time of day plus an interval is only supported for constant intervals",
-                    "use a literal, or write each case with ifelse",
+                    CONSTANT_FIX,
                 )
             if iv[0] != 0:
                 raise WriterUnsupported("a time of day plus months or years is not supported")
@@ -2992,7 +2996,7 @@ class _Parser:
             case _:
                 raise WriterUnsupported(
                     "a date plus an interval is only supported for constants, or a count of days",
-                    "use a literal, or write each case with ifelse",
+                    CONSTANT_FIX,
                 )
         if sub:
             days = Lit(-days.value, "int") if isinstance(days, Lit) else Un("neg", days)
@@ -3009,7 +3013,7 @@ class _Parser:
     def column(self, j: Any, cols: _Cols, what: str) -> int:
         e = self.expr(j, cols)
         if not isinstance(e, Field):
-            raise Unsupported(f"window {what} must be columns")
+            raise WriterUnsupported(f"window {what} must be columns")
         return e.index
 
     def sort_key(self, s: dict, cols: _Cols) -> SortKey:
@@ -3049,13 +3053,15 @@ class _Parser:
                 return part, sort, WinFn("row_number")
             case "lag" | "lead":
                 if not args:
-                    raise Unsupported(f"{name} needs a column")
+                    raise WriterUnsupported(f"{name} needs a column")
                 c = self.column(args[0], cols, "function arguments")
                 offset = 1
                 if len(args) > 1:
                     k = self.const(args[1])
                     if k is None or k.tag != "int":
-                        raise Unsupported(f"{name} offsets must be integer constants")
+                        raise WriterUnsupported(
+                            f"{name} offsets must be integer constants", CONSTANT_FIX
+                        )
                     if k.value < 0:
                         raise WriterUnsupported(f"negative {name} offset")
                     offset = k.value
@@ -3063,7 +3069,7 @@ class _Parser:
                 if len(args) > 2:
                     d = self.const(args[2])
                     if d is None:
-                        raise Unsupported(f"{name} defaults must be constants")
+                        raise WriterUnsupported(f"{name} defaults must be constants", CONSTANT_FIX)
                     if d.tag == "int" and _get(cols.lean, c) == "float":
                         default = Lit(float(d.value), "float")
                     else:
@@ -3128,7 +3134,7 @@ class _Parser:
     def positive(self, args: list, i: int, name: str) -> int:
         k = self.const(args[i]) if i < len(args) else None
         if k is None or k.tag != "int" or k.value <= 0:
-            raise Unsupported(f"{name} needs a positive constant")
+            raise WriterUnsupported(f"{name} needs a positive constant", CONSTANT_FIX)
         return k.value
 
     def frame(self, w: dict, cols: _Cols, sort: tuple[SortKey, ...]) -> Frame:
@@ -3611,7 +3617,7 @@ class _Parser:
             if not (isinstance(s, Lit) and isinstance(s.value, str)):
                 raise WriterUnsupported(
                     "string_agg needs a constant separator",
-                    "use a literal, or write each case with ifelse",
+                    CONSTANT_FIX,
                 )
             sep = s.value
         elif len(args) == 2 and name in ("quantile_cont", "quantile_disc", "arg_min", "arg_max"):
@@ -3619,7 +3625,7 @@ class _Parser:
         elif not args and name == "count":
             arg = Lit(1, "int")
         elif not args:
-            raise Unsupported(f"{name} needs an argument")
+            raise WriterUnsupported(f"{name} needs an argument")
         else:
             raise WriterUnsupported(
                 f"{name} takes one argument",
@@ -3637,9 +3643,9 @@ class _Parser:
             elif c is not None and c.tag == "int" and c.value in (0, 1):
                 q = (c.value, 0)
             else:
-                raise Unsupported(f"{name} needs a constant decimal fraction")
+                raise WriterUnsupported(f"{name} needs a constant decimal fraction", CONSTANT_FIX)
             if not 0 <= q[0] <= 10 ** q[1]:
-                raise Unsupported(f"{name} needs a fraction between 0 and 1")
+                raise WriterUnsupported(f"{name} needs a fraction between 0 and 1")
         # `arg_min(x, y)` is `first(x ORDER BY y)` over the rows where `y` is
         # not NULL (#53).
         if name in ("arg_min", "arg_max"):
@@ -3650,7 +3656,7 @@ class _Parser:
                 )
             by = self.expr(args[1], cols)
             if not isinstance(by, Field):
-                raise Unsupported(f"{name} orders by a column only")
+                raise WriterUnsupported(f"{name} orders by a column only")
             if inv == "AGGREGATION_INVOCATION_DISTINCT":
                 raise WriterUnsupported(f"{name}(DISTINCT …) is not supported")
             sort = (SortKey(by.index, name == "arg_max", False),)
@@ -3797,7 +3803,7 @@ class _Parser:
                 return c.value
             if c is not None and c.tag == "null":
                 return None
-            raise Unsupported(f"FetchRel.{key}Expr must be an integer constant")
+            raise WriterUnsupported(f"FetchRel.{key}Expr must be an integer constant", CONSTANT_FIX)
         v = _field(r, key)
         return None if v is None else _int(v)
 
@@ -4604,7 +4610,7 @@ class _Writer:
         match r:
             case Read(name=name, columns=columns):
                 if len(columns) != n:
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         f"table {'.'.join(name)} needs one name per column in its baseSchema"
                     )
                 items = [f"{d.quote(col)} AS {self.c(i)}" for i, col in enumerate(columns)]
@@ -5833,7 +5839,9 @@ class _Writer:
         """`e` as a value of kind `want` (an untyped NULL is one too)."""
         k = expr_kind(e, cols)
         if k != want and not (isinstance(e, Lit) and e.value is None):
-            raise Unsupported(f"{what} needs a {want} value, not {k or 'one of unknown type'}")
+            raise WriterUnsupported(
+                f"{what} needs a {want} value, not {k or 'one of unknown type'}"
+            )
         # The guards repeat it: it is computed once.
         return self.bind(self.expr(e, ref, cols, want))
 
@@ -5978,7 +5986,9 @@ class _Writer:
                 return self.d.int_lit(e.value)
             return self.d.interval_micros(self.expr(e, ref, cols, "interval"))
         if k not in ("int", None) or (k is None and not (isinstance(e, Lit) and e.value is None)):
-            raise Unsupported(f"{what} needs an integer, not {k or 'a value of unknown type'}")
+            raise WriterUnsupported(
+                f"{what} needs an integer, not {k or 'a value of unknown type'}"
+            )
         sql = self.expr(e, ref, cols, "int")
         # Columns may be narrower than 64 bits; widen them so overflow means 64 bits.
         return sql if isinstance(e, Lit) or _is_int_arith(e) else self.d.cast(sql, "int")
@@ -6141,7 +6151,7 @@ class _Writer:
         ka, kb = expr_kind(a, cols), expr_kind(b, cols)
         sym = {"add": "+", "sub": "-", "mul": "*"}[op]
         if "float" in (ka, kb):
-            raise Unsupported(
+            raise WriterUnsupported(
                 f"integer {sym} on a double (Lean reads it as a code): needs an fp64 outputType"
             )
         temporal = {ka, kb} & {"time", "date", "interval"}
