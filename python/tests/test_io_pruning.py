@@ -1,7 +1,7 @@
 """Pruning data files by their statistics (#81): string bounds cut to
 prefixes, NaN in double bounds, and `IcebergSource(where=...)`.
 
-The criterion is proved in `SubstraitLean/Pruning.lean`; `str_may_true`
+The criterion is proved in `analysis/Sverify/Analysis/Pruning.lean`; `str_may_true`
 mirrors `StrStats.mayTrue`."""
 
 import math
@@ -34,7 +34,7 @@ def may(where: str, lo: str | None, hi: str | None) -> bool:
 
 
 def test_string_bounds_as_lean_checks_them():
-    # The `#guard`s of `SubstraitLean/Pruning.lean`.
+    # The `#guard`s of `analysis/Sverify/Analysis/Pruning.lean`.
     assert may("s >= 'apple'", None, "app")
     assert not may("s >= 'apq'", None, "app")
     assert not may("s = 'b'", "c", "d")

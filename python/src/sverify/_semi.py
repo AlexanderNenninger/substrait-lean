@@ -21,7 +21,7 @@ nothing and are not counted), and a batch
 
 Lean proves that the old output plus this change has the weights of the
 new output, for any join condition (`SemiDelta.semi_maintained` in
-`SubstraitLean/IncrementalSemi.lean`), and that for an equi-join the count
+`analysis/Sverify/Analysis/IncrementalSemi.lean`), and that for an equi-join the count
 only depends on the key (`SemiDelta.matchCount_by_key`). This module is
 trusted glue: it recognises the shape on the Ibis expression and builds the
 plans, which Lean checks as it checks any plan.
