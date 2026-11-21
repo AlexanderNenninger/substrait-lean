@@ -2,13 +2,13 @@
   "source": "https://github.com/bitol-io/open-data-contract-standard/tree/v3.2.0/docs/examples",
   "license": "Apache-2.0",
   "summary": {
-    "conditions": 153,
+    "conditions": 155,
     "examples read": 42,
     "round trip no conditions": 8,
-    "round trip not tried": 5,
+    "round trip not tried": 6,
     "round trip refused": 4,
-    "round trip same": 95,
-    "unread": 20
+    "round trip same": 94,
+    "unread": 18
   },
   "results": {
     "all/full-example.odcs.yaml": {
@@ -24,7 +24,7 @@
             {
               "column": null,
               "reason": "a composite foreign key: references() takes one column",
-              "issue": 1956
+              "issue": 2223
             },
             {
               "column": null,
@@ -763,7 +763,7 @@
             {
               "column": null,
               "reason": "a composite foreign key: references() takes one column",
-              "issue": 1956
+              "issue": 2223
             }
           ],
           "round_trip": {
@@ -918,21 +918,19 @@
             "NOT \"id\" IS NULL",
             "NOT \"customer_id\" IS NULL",
             "NOT \"customer_country\" IS NULL",
-            "NOT \"product_id\" IS NULL"
+            "NOT \"product_id\" IS NULL",
+            "references(product_id, products.id)"
           ],
           "unread": [
             {
-              "column": "product_id",
-              "reason": "a relationship sverify does not read",
-              "issue": 1956
-            },
-            {
               "column": null,
               "reason": "a composite foreign key: references() takes one column",
-              "issue": 1956
+              "issue": 2223
             }
           ],
-          "round_trip": "same"
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
         },
         "order-items": {
           "conditions": [
@@ -940,15 +938,10 @@
             "NOT \"order_id\" IS NULL",
             "NOT \"product_id\" IS NULL",
             "NOT \"quantity\" IS NULL",
-            "references(order_id, orders.id)"
+            "references(order_id, orders.id)",
+            "references(product_id, products.id)"
           ],
-          "unread": [
-            {
-              "column": null,
-              "reason": "a relationship sverify does not read",
-              "issue": 1956
-            }
-          ],
+          "unread": [],
           "round_trip": {
             "not tried": "a foreign key: the round trip reads one object"
           }
@@ -962,8 +955,8 @@
           "unread": [
             {
               "column": null,
-              "reason": "a relationship sverify does not read",
-              "issue": 1956
+              "reason": "a reference to no single column the contract defines",
+              "design": "it names nothing, or two columns, for sverify to check"
             }
           ],
           "round_trip": "no conditions"
