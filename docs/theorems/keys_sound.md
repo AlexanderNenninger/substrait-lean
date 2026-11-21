@@ -33,13 +33,15 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
 
 - `cat`, `hcat`: the data, a catalog of tables, and the assumption that it
   is well formed.
-- `A`, `hA`: what the checker knows of each table's columns (their types),
-  and the assumption that every row of the data fits.
+- `A`, `hA`: what the checker knows of the values of each table's columns,
+  as a set per column (whether it may be NULL, an integer interval, which
+  booleans, a set of strings), from the schema and the stated ranges, and the
+  assumption that every row of the data lies in those sets.
 - `F`, `hF`: the facts that follow from the preconditions (a range, a
   column that is never NULL), and the assumption that every row satisfies
   them.
-- `K`, `hK`: the table conditions you stated, such as `sv.unique("id")`,
-  and the assumption that the data meets them. This is the key the
+- `K`, `hK`: the table conditions you stated, such as `sv.unique("id")` or
+  `sv.non_overlapping`, and the assumption that the data meets them. This is the key the
   derivation starts from.
 - `r`, `hwf`: the plan, and the assumption that it is well formed.
 - The conclusion: every key `k` in the list `r.keys` the checker derives is
@@ -51,13 +53,15 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
 - An output with two rows that share an `id`, in a plan proved to keep
   `unique(id)`.
 - A join that repeats a left row, in a plan whose key was kept through the
-  join: Sverify keeps it only where the join condition fixes a key of the
-  right side.
+  join: Sverify keeps it only where each left row has at most one partner,
+  because the join condition fixes a key of the right side or
+  `sv.non_overlapping` keeps the ranges apart.
 
 ## What it does not cover
 
 - Equality of values in the sense of SQL `UNIQUE`. Here two NULLs count as
-  equal, so a key proved here is stronger than SQL's.
+  equal, and so do `-0.0` and `0.0`, so a key proved here is stronger than
+  SQL's.
 - Data that breaks a stated key. The theorem assumes `hK`; the run checks
   the key on each batch.
 - Keys Sverify does not derive. The list is sound and not complete, so a
