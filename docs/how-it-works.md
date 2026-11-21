@@ -243,7 +243,8 @@ call for, and the contract record survives each library's own maintenance.
 through `DeltaSource`. Spark's own readers are outside these tests: sverify
 pins pyspark 4.3, and on Maven Central (2026-11-21) the newest delta-spark,
 4.4.1, builds against Spark 4.2, and the newest iceberg-spark-runtime,
-1.12.0, against Spark 4.1.
+1.12.0, against Spark 4.1
+([#2140](https://github.com/AlexanderNenninger/substrait-lean/issues/2140)).
 
 #### Doubles under the reference profile
 

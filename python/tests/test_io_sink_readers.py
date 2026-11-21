@@ -10,7 +10,7 @@ extensions (`delta_scan`, `iceberg_scan`), which share no code with sverify's
 writers, and sverify's own source. The contract record survives each
 library's own maintenance, which breaks no reader. Spark's readers are
 left out: no delta-spark or iceberg-spark-runtime builds against the Spark
-sverify pins (`docs/how-it-works.md`)."""
+sverify pins (`docs/how-it-works.md`, #2140)."""
 
 from __future__ import annotations
 
