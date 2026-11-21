@@ -124,10 +124,12 @@ print(report.run(con).to_pylist())
 
 `report.run` refuses a report that did not prove (`report.verdict == sv.Verdict.PROVED` is False)
 with a `RouteError`; `report.run(con, unverified=True)` runs it anyway.
-A verified plan is proved and determined up to what its profile observes:
-every result the reference allows is the same answer up to that
-observation, so every sound engine gives it
-([Terminology](core-semantics.md#terminology)).
+A verified plan is proved (`report.verdict`) and determined up to what its
+profile observes (`report.deterministic`): every result the reference allows
+is the same answer up to that observation, so every sound engine gives it
+([Terminology](core-semantics.md#terminology)). `report.run` checks the
+verdict alone, so a proved plan that is not determined runs, and its rows may
+differ between engines where the reference leaves them open.
 
 The SQL is DuckDB's dialect, read with sverify's reference semantics
 (`semantics="duckdb"` reads it as DuckDB computes it). Where the two differ on
