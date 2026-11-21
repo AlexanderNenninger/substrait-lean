@@ -63,3 +63,11 @@ def test_main_warns_and_exits_zero(mod, tmp_path, capsys):
     captured = capsys.readouterr()
     assert "::warning::" in captured.err
     assert "Coverage of `sverify`" in captured.out
+
+
+def test_a_named_package_is_reported_alone(mod):
+    data = {"files": {**DATA["files"], "src/sverify_dbt/c.py": _file(50, 5)}}
+    text, ok = mod.summarise(data, target=90, top=3, package="sverify_dbt")
+    assert "Coverage of `sverify_dbt`" in text and "90.0 % (45 of 50 statements)" in text
+    assert ok
+    assert "sverify/a.py" not in text
