@@ -62,6 +62,7 @@ from sverify.engine import (
 )
 from sverify.sql import core as sql_core
 from sverify.testing import EPOCH, duckdb_sql, inline_tables, lean_values
+from sverify_dev.checked import checked
 from sverify_polars import engine as polars_engine
 
 INT, DOUBLE, STRING, BOOL, TS = "int", "double", "string", "bool", "ts"
@@ -450,6 +451,16 @@ class Session:
     def duckdb(self, sql: str) -> list[tuple]:
         return _arrow_rows(duckdb_sql(self.con, sql))
 
+    def written_with_data(self, plan: str) -> str:
+        """The plan as written for the engines, with the tables inlined."""
+        return json.dumps(inline_tables(json.loads(written_plan(plan)), self.tables))
+
+
+def listed_issues(sql: str) -> list[str]:
+    """What the report lists for the query: its errors and its assumptions."""
+    report = verify(sql, tables=SCHEMAS)
+    return [str(i) for i in report.issues + report.assumed]
+
 
 def check(
     query: Query,
@@ -495,6 +506,12 @@ def check(
             except REFUSALS:
                 continue
             except Exception as e:  # noqa: BLE001 - recorded
+                # The written plan's own check of a reported assumption: the
+                # report lists it and Lean finds it on this data (#2162).
+                if "sverify:" in str(e) and checked(
+                    str(e), listed_issues(query.sql), s.written_with_data(plan)
+                ):
+                    continue
                 found(f"rows:{engine}", f"{engine} raises {e!r} (Lean: {lean!r})")
                 continue
             got = _arrow_rows(out)

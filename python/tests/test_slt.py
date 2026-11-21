@@ -447,6 +447,33 @@ def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     assert json.loads(led.read_text())["agree_static"] == 1
 
 
+def test_a_tagged_raise_of_a_reported_assumption_is_checked_not_a_disagreement(tmp_path):
+    """The written plan's `SUM` guard raises where a sum leaves 64 bits and
+    DuckDB gives a HUGEINT: the report lists "SUM overflow" and the checker
+    finds it on the data, so the replay agrees with `checked:` (ruling 230,
+    #2162)."""
+    path = tmp_path / "sum.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            CREATE TABLE bigints AS SELECT 4611686018427387904 AS b FROM range(3)
+
+            query I
+            SELECT SUM(b) FROM bigints
+            ----
+            13835058055282163712
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/sum.test")
+    assert r.cls == "agree", r
+    assert (r.reason or "").startswith(slt.CHECKED + " SUM overflow"), r.reason
+    assert "sverify: integer overflow in SUM" in (r.engine or "")
+    led = slt.write_ledger("area", "2.0.0", [slt.asdict(r)], {}, tmp_path)
+    assert json.loads(led.read_text())["agree_checked"] == 1
+
+
 def test_a_time_of_24_00_is_refused(tmp_path):
     """Python's `datetime.time`, through which the rows reach Lean, has no
     `24:00:00`: it became midnight (#619)."""
