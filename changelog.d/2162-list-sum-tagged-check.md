@@ -1,0 +1,1 @@
+`list_sum` past 64 bits now raises sverify's own tagged check ("CAST to a 64-bit integer out of range") where the written SQL narrows the sum, as every written integer cast does. The report and the semantics are unchanged (#2162).
