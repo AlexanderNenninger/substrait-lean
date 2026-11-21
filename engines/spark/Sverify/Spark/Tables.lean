@@ -84,7 +84,9 @@ def Profile.spark.obs : ObsTable := [
     "Shim.sum_empty_null"),
   (some "int.div", "overflow", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
   (none, "on_division_by_zero", (ObsRow.native ["spark-int-divide", "spark-int-modulus"]).proved "Rel.spark_sound"),
-  (some "fp.div", "on_division_by_zero", (ObsRow.native ["spark-double-divide"]).tracking 271),
+  -- Plain `/` (#1846): a zero divisor of either sign raises `DIVIDE_BY_ZERO`, as
+  -- `sparkBin .fdivIeee` says.
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["spark-double-divide"]).proved "Rel.spark_sound"),
   (none, "on_domain_error", (ObsRow.native ["spark-math-domain"]).proved "Rel.spark_sound"),
   (none, "division_type", (ObsRow.native ["spark-int-modulus"]).tracking 271),
   (some "int.div", "division_type", (ObsRow.native ["spark-int-divide"]).tracking 271),
