@@ -10,8 +10,21 @@
     "string_positions"
   ],
   "rows": [
-    {"group": "str.match", "option": "case_sensitivity", "types": ["string"]},
-    {"group": "str.match", "option": "string_positions", "types": ["string"], "evidence": "engine_test"}
+    {
+      "group": "str.match",
+      "option": "case_sensitivity",
+      "types": [
+        "string"
+      ]
+    },
+    {
+      "group": "str.match",
+      "option": "string_positions",
+      "types": [
+        "string"
+      ],
+      "evidence": "engine_test"
+    }
   ],
   "constructs": [
     "LIKE",
@@ -199,6 +212,18 @@
           "note": "test_instr_utf8.test lines 21-83 and test_instr.test lines 12-74: agree"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045, `sverify_dev.probe` at duckdb 2.0.1",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "default-collation-nocase"
+        }
+      ],
+      "notes": "Under the default `BINARY` collation nothing moved at 2.0.1. Under `default_collation = 'nocase'` `LIKE`, `contains`, `starts_with` and `strpos` now ignore case (`duckdb-default-collation-matching`)."
     }
   ]
 }

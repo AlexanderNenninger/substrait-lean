@@ -24,7 +24,7 @@ from sverify.sql import Unsupported, to_sql
 from sverify.sql.core import Dec
 from sverify.testing import inline_tables, lean_values
 from sverify_spark.dialect import SPARK
-from test_decimal import TABLES, T, lean
+from test_decimal import TABLES, G, T, lean
 
 pytestmark = pytest.mark.backend("spark")
 
@@ -62,6 +62,9 @@ CASES = [
     # below 14.5, where Spark's own cast reads "0.145" and gives 0.15.
     "SELECT CAST(f AS DECIMAL(10,2)) AS r FROM t",
     "SELECT sum(a) AS s, min(a) AS lo, max(b) AS hi FROM t",
+    # An AVG of decimals: the exact quotient at scale + 4, half away from zero.
+    G.group_by("k").aggregate(v=G.x.mean(), s=G.x.sum(), n=G.x.count()).order_by("k"),
+    G.aggregate(v=G.x.mean()),
 ]
 
 
@@ -114,8 +117,8 @@ def test_refusals_name_the_construct() -> None:
         SPARK.decimal_arith("*", "a", "b", 10, Dec(38, 20), (Dec(19, 10), Dec(19, 10)))
     # At a scale of 6 or less Spark keeps every decimal place.
     assert SPARK.decimal_arith("+", "a", "b", 6, Dec(38, 6), (Dec(38, 6), Dec(38, 6)))
-    with pytest.raises(Unsupported, match="AVG of decimals"):
-        SPARK.decimal_div("a", "b", 2, Dec(14, 6))
+    with pytest.raises(Unsupported, match=r"AVG of decimals\) to DECIMAL\(38, 10\)"):
+        SPARK.decimal_div("a", "b", 6, Dec(38, 10))
     with pytest.raises(Unsupported, match=r"DECIMAL\(20, 2\) on Spark"):
         SPARK.decimal_cast("f", Dec(20, 2), "float")
 
@@ -153,7 +156,66 @@ def test_greatest_least_in_and_join_keys_reach_the_same_check() -> None:
             to_sql(written_plan(to_substrait_json(expr)), SPARK)
 
 
-def test_an_avg_of_decimals_is_refused_on_spark(con) -> None:
-    g = ibis.table({"k": "int64", "x": "decimal(10,2)"}, name="g")
-    with pytest.raises(Unsupported, match="AVG of decimals"):
-        to_sql(written_plan(to_substrait_json(g.aggregate(v=g.x.mean()))), SPARK)
+def _round_div(u: int, n: int) -> int | None:
+    """`roundDivInt?`: `u / n` rounded half away from zero, None for `n = 0`."""
+    if n == 0:
+        return None
+    q = (2 * abs(u) + abs(n)) // (2 * abs(n))
+    return q if (u < 0) == (n < 0) else -q
+
+
+#: Unscaled dividends and divisors: ties both ways, signs, the bounds of 64
+#: bits, and a remainder just below and above a half.
+UNITS = [0, 1, -1, 5, -5, 25, 15, -15, 999_999, 10**17 - 1, -(10**17) + 3, 2**62 + 1]
+DIVISORS = [1, -1, 2, -2, 3, 7, -8, 2, 0, 2**63 - 1, -(2**63), 10**18 + 1]
+
+
+@pytest.mark.parametrize(
+    ("p", "s", "k"),
+    [
+        (10, 2, Dec(14, 6)),
+        (20, 0, Dec(24, 4)),
+        (30, 8, Dec(34, 12)),
+        (18, 3, Dec(38, 6)),
+        (21, 5, Dec(37, 12)),
+        (6, 0, Dec(6, 0)),
+    ],
+)
+def test_decimal_division_is_the_exact_quotient_rounded_half_away(p: int, s: int, k: Dec) -> None:
+    """`decimal_div` on Spark is `roundDivInt?` of the unscaled values at
+    every divisor, where Spark's own `/` rounds at a scale of its own first
+    (spark-decimal-arith)."""
+    us = [u for u in UNITS if abs(u) < 10**p] + [10**p - 1, -(10**p) + 1]
+    # A quotient past `k` raises on Spark and in the reference, and would fail
+    # the whole query here.
+    fits = [(u, n, _round_div(u * 10 ** (k.s - s), n)) for u in us for n in DIVISORS]
+    pairs = [(u, n, w) for u, n, w in fits if w is None or abs(w) < 10**k.p]
+    data = pa.table(
+        {
+            "a": pa.array([D(f"{u}E-{s}") for u, _, _ in pairs], pa.decimal128(p, s)),
+            "n": pa.array([n for _, n, _ in pairs], pa.int64()),
+        }
+    )
+    from sverify_spark import engine as spark_engine
+
+    spark = session()
+    spark_engine.put_tables({"dd": data}, spark)
+    sql = f"SELECT {SPARK.decimal_div(f'CAST(a AS DECIMAL({p}, {s}))', 'n', s, k)} AS q FROM dd"
+    got = [r.q for r in spark.sql(sql).collect()]
+    for (u, n, want), g in zip(pairs, got, strict=True):
+        assert g == (None if want is None else D(f"{want}E-{k.s}")), (u, n, g, want)
+
+
+def test_a_product_after_a_wide_integer_decimal_cast_is_exact_on_spark() -> None:
+    """#1876 (ruling 177, W2): `CAST(i AS DECIMAL(38,0)) * j` above 2⁶³ is the
+    exact product at 38 digits on Spark, typed `DECIMAL(38, 0)`, where the cast
+    used to be dropped and the product run at 64 bits."""
+    from sverify_spark import engine as spark_engine
+
+    t = ibis.table({"i": "int64", "j": "int64"}, name="w")
+    q = t.select(p=t.i.cast("decimal(38, 0)") * t.j)
+    plan = written_plan(json.dumps(json.loads(to_substrait_json(q))))
+    rows = pa.table({"i": [2**40, 3], "j": [2**30, -4]})
+    out = spark_engine.run(plan, {"w": rows}, session())
+    assert pa.types.is_decimal(out.schema.field("p").type)
+    assert [int(v) for v in out.column("p").to_pylist()] == [2**70, -12]

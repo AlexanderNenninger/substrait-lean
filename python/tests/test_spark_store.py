@@ -1,5 +1,5 @@
-"""`SparkStore` does what the interim Arrow store does (#173 N6b): each store
-operation over generated weighted tables gives the same rows."""
+"""`SparkStore` does what the tests' reference store (`_arrow_store.ArrowStore`)
+does: each store operation over generated weighted tables gives the same rows."""
 
 import pyarrow as pa
 import pyarrow.compute as pc

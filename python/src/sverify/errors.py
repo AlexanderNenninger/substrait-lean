@@ -51,14 +51,19 @@ Running:
 * `ExportError` (`export_refused`): a plan has no conforming Substrait form
   that keeps its proof (`Report.to_substrait`); the message names the
   reason and the spec gap.
+* `MemoryLimitError` (`memory_limit`): a step ran out of the memory allowed
+  it: the checker past `SVERIFY_CHECKER_MEMORY_MB` during a proof, or
+  DuckDB past its `memory_limit` (`SVERIFY_MEMORY_LIMIT`) during a run or a
+  refresh, which then commits nothing. `.stage`, `.limit` and `.setting`
+  say which. A `MemoryError`.
 
 Setup:
 
 * `CheckerVersionError` (`checker_version`): the `substrait-check` binary
   is older or newer than this sverify.
 * `EngineVersionError` (`engine_version`), `EngineVersionWarning`: an
-  engine's version is not one its profile's facts were probed at (another
-  major version refuses).
+  engine's version is not one its profile's facts were probed at (D70: an
+  unprobed patch warns, a version outside the probed minors refuses).
 * `EngineSettingsError` (`engine_settings`), `EngineSettingsWarning`: an
   engine setting differs from the one its profile's facts were probed
   under.
@@ -88,7 +93,13 @@ Warnings:
 import warnings
 from typing import Any
 
-from sverify._unsupported import ConditionError, SverifyError, SverifyWarning, UnsupportedError
+from sverify._unsupported import (
+    ConditionError,
+    MemoryLimitError,
+    SverifyError,
+    SverifyWarning,
+    UnsupportedError,
+)
 from sverify.contracts import (
     CompositionError,
     InferredWarning,
@@ -148,6 +159,7 @@ __all__ = [
     "EngineVersionWarning",
     "ExportError",
     "InferredWarning",
+    "MemoryLimitError",
     "NotIncrementalError",
     "PostconditionError",
     "PreconditionError",

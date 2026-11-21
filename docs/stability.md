@@ -14,8 +14,8 @@ Jobs and tools read these formats that sverify writes:
 | Format | Where it lives | Version | Schema |
 |---|---|---|---|
 | The sink's contract record | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` 2 in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
-| The Substrait contract metadata | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` 2 in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
-| The report's JSON | `Report.to_json()`, read back by `Report.from_json()` | `format` 3 in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
+| The Substrait contract metadata | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` 3 in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
+| The report's JSON | `Report.to_json()`, read back by `Report.from_json()` | `format` 4 in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
 | The command line's JSON | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` 1 in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
 | The quarantine table | a Delta or Iceberg table next to a node's sink; each write's record in a Delta commit's `commitInfo`, or an Iceberg snapshot's summary, under the key `sverify.quarantine` | `format` 1 in the record | [`quarantine.schema.json`](../python/src/sverify/schemas/quarantine.schema.json) |
 | The refresh report's JSON | `Refresh.to_json()` | `format` 1 in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
@@ -29,23 +29,34 @@ Within 1.x each format follows these rules:
 - Every 1.x release reads what every earlier 1.x release wrote, and the
   records of the releases before 1.0 that the fixtures hold, from 0.4.0 on.
 - Each format keeps the version the table gives throughout 1.x: 2 for
-  the sink's contract record and the Substrait metadata, which 1.0 renamed,
-  3 for the report's JSON, which 1.0 renamed and then gave a verdict,
-  and 1 for the command line's JSON, the quarantine record and the refresh
+  the sink's contract record, which 1.0 renamed; 3 for the Substrait
+  metadata, which 1.0 renamed twice; 4 for the report's JSON, which 1.0
+  renamed, gave a verdict, and then gave its lenses and facts their 1.0
+  shape; and 1 for the command line's JSON, the quarantine record and the refresh
   report, which have had one shape since they were added. A reader refuses a
   format newer than it knows, with an error that says to upgrade sverify.
 - A value from a fixed set, such as the manifest's `class` or a condition's
   `kind`, may gain new values. A reader that meets one it does not know
   says so in its error.
 
-For the first three, format 1 is the shape before 1.0, and 1.0 renamed its keys so that each
-concept has one name: `semantics`, `equivalence` and `node`. A reader maps a
-sink's record or a manifest of format 1:
+For the first three, format 1 is the shape before 1.0, and 1.0 renamed their keys so that each
+concept has one name: `semantics`, `lenses` and `node`. A reader maps the
+earlier formats:
 
-- the sink's record names the node `view`, and Delta keeps it under the
-  key `sverify`; a record written before 0.5 has no `format`;
-- the manifest says `profile`, `observation` and `observation_components`
-  for `semantics`, `equivalence` and `equivalence_components`.
+- the sink's record of format 1 names the node `view`, and Delta keeps it
+  under the key `sverify`; a record written before 0.5 has no `format`;
+- the manifest of format 1 says `profile`, `observation` and
+  `observation_components`, and of format 2 `equivalence` and
+  `equivalence_components` (in an `up_to` entry too), for `semantics`,
+  `lenses` and `lenses_components`;
+- the report's JSON of formats 2 and 3 says `equivalence` (in a route too)
+  for `lenses`, writes each column's `facts` as its text alone, with
+  `not_null` listing the columns proved never NULL, and a postcondition's
+  `needs` as their tables and labels; format 4 writes `facts` as objects
+  (text, nullability, bounds) and `needs` as whole `needed` objects.
+
+The OpenLineage facet `sverify_contract` follows the same name: its format
+2 says `lenses` where format 1 said `equivalence`.
 
 The report's JSON of format 1 was in no release, and `Report.from_json`
 refuses it. Format 3 replaced `Report.proved` with `Report.verdict`: `verdict`
@@ -128,14 +139,24 @@ reference:
 
 ## The Python API
 
-The public API is what the [API reference](https://alexandernenninger.github.io/substrait-lean/)
-documents. Modules and names that start with an underscore, the maintainer
-tooling `sverify_dev`, and the printed text of a report (`str(report)`) are
-outside it; tools read the report through its attributes or its JSON.
-Two parts of `sverify.engines` are documented but outside it too, and may
-change in a minor release: the plan layer (`to_sql`, `substrait_json`,
-`written_plan`, `delta_plans`), which takes sverify's
-internal plan, and `Dialect`'s SQL-writing methods and subclasses of it.
+The public API is the names in the `__all__` of nine modules, `sverify`,
+`sverify.io`, `sverify.engines`, `sverify.types`, `sverify.testing`,
+`sverify.errors`, `sverify.cli`, `sverify.odcs` and `sverify.openlineage`,
+and the members without a leading underscore of the classes among them.
+Every type a public name returns, holds or takes is public too, so
+`sverify.types` names the types a report and a refresh hold. The
+[API reference](https://alexandernenninger.github.io/substrait-lean/)
+documents each public name, and `tests/test_public_api.py` holds the
+reference, the `__all__`s and that closure equal. Every other module is
+internal, whether or not its name starts with an underscore, and so are
+the maintainer tooling `sverify_dev` and the printed text of a report
+(`str(report)`); tools read the report through its attributes or its JSON.
+Three parts of `sverify.engines` are documented but outside the promise,
+and may change in a minor release: the plan layer (`to_sql`,
+`substrait_json`, `written_plan`, `delta_plans`), which takes sverify's
+internal plan; `Dialect`'s SQL-writing methods and subclasses of it; and
+the members of `Native`, while the native scans move into the engine
+packages.
 `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
 to a plan's SQL and Substrait.
 
@@ -147,21 +168,29 @@ may change in a minor release. A plugin checks `PLUGIN_API`, and an engine
 package pins the sverify version it was built for. Custom sources and sinks
 are the stable extension points.
 
+The checker, `substrait-check`, ships in the wheel as part of the package. Its
+flags and its JSON protocol belong to one release of sverify, and
+`CheckerVersionError` is the whole promise about a binary of another release.
+
 The engines in the promise are those [Engines](#engines) lists.
 
 A minor release may break the public API only when the break is:
 
-- loud: a call that used the old form raises, or warns with a
-  `DeprecationWarning`, and the message names the replacement;
+- loud: a call that used the old form raises, and the changelog names the
+  replacement;
 - caught by a unit test that uses the old form;
 - listed under "Breaking changes" in the changelog;
 - given a migration note in that entry: what to write instead, with an
   example.
 
-A renamed or removed name keeps working for one minor release with a
-`DeprecationWarning`, and goes
-in the next. A release with breaking changes lists them first in its section
-of [the changelog](../CHANGELOG.md).
+A renamed or removed name is gone in that release: sverify keeps no deprecated
+alias. The old form raises, and the changelog entry names the replacement. A
+release with breaking changes lists them first in its section of
+[the changelog](../CHANGELOG.md).
+
+The 1.x promise covers sverify-dbt's command line, exit codes and JSON, which
+are sverify's own ([the package's README](../dbt/README.md)). Its Python names
+are documented and outside the promise.
 
 ## Engines
 
@@ -172,13 +201,15 @@ refine the core ([core, profiles and engines](core-and-profiles.md)), and an eng
 by a route that the checker justifies against it
 ([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
 
-| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound by | In the 1.x promise |
+| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound | In the 1.x promise |
 |---|---|---|---|---|---|
-| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Engine.duckdb_sound`, under `Engine.NoRaiseSide` | yes |
-| Polars, streaming | `engine="polars"` | | `"polars"` | `Engine.polars_sound`, under `Engine.GuardFreeSide` | yes |
-| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound`, under `Engine.GuardFreeSide` | yes |
+| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | for plans proved never to raise | yes |
+| Polars, streaming | `engine="polars"` | | `"polars"` | for plans without guards | yes |
+| Spark 4.3 | `engine="spark"` | `dialect="spark"` | `"spark"` | for plans without guards | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
+The theorems are named in [engine-profiles.md](engine-profiles.md#engines). The two conditions come from the same check: a plan with no guards
+meets both.
 `sverify.engines.ENGINES` names the engines in the promise that run plans
 on a `Connection`'s tables. The engine
 versions each profile describes, the class of every option on each engine

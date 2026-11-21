@@ -1,8 +1,8 @@
 """Nodes: contracted transforms composed over sources, stored with `.write`
 and kept up to date with `refresh`.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Node`, `group`) are re-exported by `sverify`.
 
     orders = DeltaSource("s3://lake/orders")
@@ -38,13 +38,13 @@ import logging
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal
 
 import ibis
 import ibis.expr.types as ir
 import pyarrow as pa
 
-from sverify import _engines, _hooks, _quarantine, _stages
+from sverify import _duckdb, _engines, _hooks, _quarantine, _stages
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -61,40 +61,12 @@ if TYPE_CHECKING:
     import polars
 
     from sverify.contracts import ContractedTransform, Report
-    from sverify.io._common import Contract, SinkWrite
+    from sverify.io._common import SinkWrite
+    from sverify.io._sink import Sink
     from sverify.routes import Route, RouteKind
 
 #: One INFO line per node and per commit of a refresh, for a job's task log.
 _log = logging.getLogger("sverify")
-
-
-class Sink(Protocol):
-    """What `Node.write` needs of a sink (`sverify.io.DeltaSink`, `IcebergSink`).
-
-    `sverify.io.Sink` implements it, and a sink of your own subclasses that;
-    the methods it asks for are private, called by `refresh`.
-
-    Attributes:
-        name: The stored table's name in the plans that read it (the sink's
-            `name=`, by default the last part of its URI or identifier).
-    """
-
-    name: str
-    location: str
-
-    def _attach(self, view: IncrementalView, stored: Stored | None = None) -> None: ...
-
-    def _read_quarantine(self) -> tuple[pa.Table, dict[str, Any]] | None: ...
-
-    def _write_quarantine(self, rows: pa.Table, record: dict[str, Any]) -> None: ...
-
-    def _commit(self) -> SinkWrite: ...
-
-    def _stored(self) -> Stored | None: ...
-
-    def _source(self) -> Source: ...
-
-    def contract(self, version: int | None = None) -> Contract | None: ...
 
 
 class Node:
@@ -290,7 +262,7 @@ class Node:
             self.internal_plan,
             d,
             deterministic=report._exact,
-            rows="sequence" if report.observation.rows == "sequence" else "multiset",
+            rows="sequence" if report.lenses.rows == "sequence" else "multiset",
         )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
@@ -631,9 +603,32 @@ class Node:
                 out += credential_uses(leaf.sink, "read")
         if isinstance(self, _Stored):
             out += credential_uses(self.sink, "write")
-            if self.quarantine_table is not None:
+            if self.quarantine_table is not None and self._may_quarantine():
                 out += credential_uses(self.quarantine_table, "write")
         return out
+
+    def _may_quarantine(self) -> bool:
+        """Whether a precondition of this node's stage sets rows aside
+        (`on_violation="quarantine"`, the transform's or its source's), so
+        that a refresh may write the quarantine table (#1997); True where the
+        contract cannot be read."""
+        from sverify.contracts import view_contract
+
+        sources = {
+            leaf.name: getattr(leaf.source, "on_violation", None)
+            for leaf in self._leaves()
+            if isinstance(leaf, _Source)
+        }
+        try:
+            vc = view_contract(self._query()._expr)
+        except Exception:  # noqa: BLE001 - listed, as a refresh may write it
+            return True
+        for t, conds in vc.requires.items():
+            for c in conds:
+                stated = vc.policies.get(t, {}).get(label(c), {None})
+                if _quarantine.resolve(stated, sources.get(t)) == "quarantine":
+                    return True
+        return False
 
     def credentials(self) -> list[CredentialUse]:
         """The credentials a refresh of this node uses, by name, never a
@@ -873,7 +868,10 @@ class _Stage:
         while view_name in taken:
             n += 1
             view_name = f"{name}_{n}"
-        view = pipe.view(view_name, bound, resume=resume)
+        # The view runs on the node's engine from its first state, so its state
+        # is kept in that engine's store (#1881): Spark is no local engine, so
+        # `con` is DuckDB's.
+        view = pipe.view(view_name, bound, resume=resume, engine=engine)
         report = node.report
         view.tie_free = report is not None and report._proved and report._exact
         prunable = {t for t, src in pipe.sources.items() if isinstance(src, _TableSource)}
@@ -881,6 +879,7 @@ class _Stage:
             found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}
             if found:
                 return _Stage._load(node, leaves, versions, engine, resume, found, target=target)
+        pipe.seal()  # the rows of an Arrow-fed source move into the store at the first load
         stage = _Stage(pipe, view)
         stage.use(engine)
         return stage
@@ -944,6 +943,8 @@ class StageRefresh:
     this run, by field (`engine`, `engine_version`, `sverify`, `package`), as
     `[recorded, now]`. A changed engine or engine version is also in `started`."""
     write: SinkWrite | None = None
+    """What the node's sink committed in this refresh, or None without a
+    sink."""
     preconditions: list[Discharged] = field(default_factory=list)
     """On the first refresh: how each precondition on the sources was
     established on the full tables (later batches: `report.preconditions`)."""
@@ -1012,12 +1013,15 @@ class StageRefresh:
         return out
 
     def summary(self) -> str:
-        """One line, for the log of a job that refreshes often:
-        "paid: changes from orders v3→v4 (change feed), requires checked on
-        2 row(s), merge v5: +2 −0". With something `notable`, the full entry
-        (`str()`) instead."""
-        if self.notable or self.report is None:
-            return str(self)
+        """One line, for the log of a job that refreshes often, in one format
+        for every refresh (#1997): "paid: changes from orders v3→v4 (change
+        feed), requires checked on 2 row(s), merge v5: +2 −0", and for a
+        first refresh "paid: computed, requires checked on data, created v1:
+        +2 −0". What is `notable` comes first, in short; `str()` is the
+        full entry."""
+        if self.report is None:
+            return self._first_summary()
+        notes = [n for n in self.notable if n != self.started]
         sources = self.report.sources
         spans = ", ".join(s.span().replace("@", " ") for s in sources)
         if all(s.mode == "unchanged" for s in sources):
@@ -1036,7 +1040,7 @@ class StageRefresh:
             parts.append("requires proved from metadata")
         parts += [f"{n} touched group(s) recomputed" for n in self.report.touched.values()]
         parts += [f"{n} row(s) in touched frames recomputed" for n in self.report.framed.values()]
-        parts += ["recomputed and diffed" for _ in self.report.diffed]
+        parts += [f"recomputed and diffed ({why})" for why in self.report.diffed.values()]
         if self.quarantined:
             parts.append(f"{self.quarantined} row(s) quarantined")
         if self.report.postconditions:
@@ -1049,6 +1053,31 @@ class StageRefresh:
         ]
         if (w := self.write) is not None:
             parts.append(_write_text(w))
+        return f"{self.heading}: " + ", ".join([*notes, *parts])
+
+    def _first_summary(self) -> str:
+        """`summary` of a refresh that built the node's state: how it started,
+        how its preconditions were established, what it quarantined or held,
+        and what it wrote."""
+        parts = [self.started or "computed"]
+        if self.held is not None:
+            parts.append(f"held: {self.held}")
+        pre = self.preconditions
+        meta = sum(not p.source.startswith(ON_DATA) for p in pre)
+        if meta < len(pre):
+            parts.append(
+                "requires checked on data" + (f" ({meta} proved from metadata)" if meta else "")
+            )
+        elif pre:
+            parts.append("requires proved from metadata")
+        if self.quarantined:
+            parts.append(f"{self.quarantined} row(s) quarantined")
+        if self.postconditions:
+            parts.append(f"{len(self.postconditions)} ensures checked on data")
+        if (w := self.write) is not None:
+            parts.append(_write_text(w))
+            if w.mode == "overwrite":
+                parts.append("the sink overwrote its table")
         return f"{self.heading}: " + ", ".join(parts)
 
     def to_dict(self, *, examples: bool = False) -> dict[str, Any]:
@@ -1137,9 +1166,10 @@ class Refresh:
         return any(s.notable for s in self.nodes)
 
     def summary(self) -> str:
-        """One line per node (`StageRefresh.summary`), upstream first; a node
-        whose refresh did something notable (its first refresh, a recompute,
-        a schema change, an overwrite) gets its full entry.
+        """One line per node (`StageRefresh.summary`), upstream first, in one
+        format whatever the refresh did; what is notable (its first refresh,
+        a recompute, a schema change, an overwrite) leads the node's line.
+        `str()` gives each node's full entry.
 
         Returns:
             The summary, such as "paid: changes from orders v3→v4 (change
@@ -1262,6 +1292,11 @@ class NodeStatus:
     framed: bool = False
     """The node recomputes window rows near the change, by their frames
     (touched frames)."""
+    mode: str | None = None
+    """How a batch changes the node: "delta rules", "state per group",
+    "touched groups", "touched frames" or "recompute and diff"; None if it
+    has not been refreshed in this process. `recomputed` or `touched` say
+    why where it is not "delta rules" or "state per group"."""
 
     def __str__(self) -> str:
         if self.versions is None:
@@ -1270,6 +1305,8 @@ class NodeStatus:
             text = f"{self.node}: " + ", ".join(f"{t}@v{n}" for t, n in self.versions.items())
         if self.stored:
             text += f"; stored in {self.stored}"
+        if self.mode:
+            text += f"; mode: {self.mode}"
         if self.recomputed:
             text += f"; recomputed ({self.recomputed})"
         if self.touched and self.framed:
@@ -1425,6 +1462,8 @@ class Group:
         except BaseException as e:
             if runs is not None:
                 runs.fail(e)
+            if (oom := _duckdb.memory_limit_error(e, "refresh")) is not None:
+                raise oom from e
             raise
 
     def status(self) -> Status:
@@ -1448,6 +1487,7 @@ class Group:
                     None if stage is None else _recomputed(stage.view),
                     None if stage is None or stage.view.touched is None else stage.view.fallback,
                     stage is not None and stage.view.strategy == "touched frames",
+                    None if stage is None else stage.view.strategy,
                 )
             )
         return out
@@ -1512,8 +1552,7 @@ def _recomputed(view: IncrementalView) -> str | None:
     """Why a view is recomputed and diffed on every batch, or None."""
     if not view.recomputed:
         return None
-    off = f"; no touched groups: {view.touched_off}" if view.touched_off else ""
-    return f"{view.fallback}{off}"
+    return view.cause
 
 
 def _continue_versions(node: _Stored) -> None:
@@ -1565,8 +1604,9 @@ def _routes(
 ) -> dict[int, Route]:
     """Each node's route to `engine` (by `id`), checked before anything runs.
 
-    A node whose contract is not proved is refused, or, with `unverified`,
-    runs by the route `"unverified"` with a warning. What a rerun must
+    A node whose contract is not proved, or whose engine's version is outside
+    its profile's range (D70), is refused, or, with `unverified`, runs by the
+    route `"unverified"` with a warning. What a rerun must
     reproduce (D20): a stored node's sink commits each epoch once,
     so it needs the sink's `reproducible` (rows as a multiset, doubles
     within the plan's bound, by default), or `reproducible` where the
@@ -1613,7 +1653,20 @@ def _routes(
             )
             out[id(n)] = chosen
             continue
-        chosen = routes.choose(report, engine, route, reproducible=needed)
+        try:
+            chosen = routes.choose(report, engine, route, reproducible=needed)
+        except routes.EngineVersionError as err:
+            if not unverified:
+                raise
+            # A proved plan on a version outside the range (D70), as `Report.run`.
+            chosen = routes.unverified(report, engine, str(err))
+            warnings.warn(
+                f"refreshing {name} on {e} unverified: {chosen.reason}",
+                routes.UnverifiedRunWarning,
+                stacklevel=4,
+            )
+            out[id(n)] = chosen
+            continue
         if chosen.refused:
             refused = replace(chosen, reason=f"{name}: {chosen.reason}")
             if not routes.verified(report):

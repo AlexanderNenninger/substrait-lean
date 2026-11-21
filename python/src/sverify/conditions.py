@@ -3,8 +3,8 @@
 condition reads (`label`, `resolve`), and what a check established
 (`CheckedCondition`, `Discharged`, `PreconditionError`).
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 layers are in `docs/layers.md`.
 """
 
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import math
 import re
-import warnings
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -33,7 +32,7 @@ from sverify.observation import Observation
 if TYPE_CHECKING:
     import pyarrow as pa
 
-    from sverify.report import Condition, UnprovedReason
+    from sverify.report import Condition, Needed, UnprovedReason
 
 
 def q(name: str) -> str:
@@ -286,7 +285,7 @@ def references(col: str, *, to: ir.Column | tuple[str, str] | None = None) -> Re
     Only for `requires`, where it is checked on the data like `unique` (the
     referenced table must be bound to the same backend). With a key on the
     referenced column it lets `Rel.optimize` turn a left join on it into an
-    inner join (`Report.optimized`). Not supported by incremental views.
+    inner join (`Rel.optimize`; the report keeps it internally). Not supported by incremental views.
 
     Args:
         col: The referencing column of the input the condition is on.
@@ -354,15 +353,7 @@ class ArrivesWithin(TableCondition):
         return CheckedCondition(self.label, False, "lateness is checked on a source's batches")
 
 
-def arrives_within(
-    col: str,
-    within: Duration | None = None,
-    *,
-    days: float | None = None,
-    hours: float | None = None,
-    minutes: float | None = None,
-    seconds: float | None = None,
-) -> ArrivesWithin:
+def arrives_within(col: str, within: Duration) -> ArrivesWithin:
     """A bound on lateness: every row a batch inserts or deletes has `col` at
     most this far behind the largest `col` seen before the batch.
 
@@ -381,10 +372,6 @@ def arrives_within(
         col: The time column of the input, a timestamp.
         within: The lateness, a `timedelta` or an ISO 8601 duration:
             `arrives_within("ts", "PT15M")`.
-        days: Deprecated: write `within`.
-        hours: Deprecated: write `within`.
-        minutes: Deprecated: write `within`.
-        seconds: Deprecated: write `within`.
 
     Returns:
         An `ArrivesWithin` condition, for `requires`.
@@ -392,22 +379,7 @@ def arrives_within(
     Raises:
         ValueError: The lateness is negative.
     """
-    given = {"days": days, "hours": hours, "minutes": minutes, "seconds": seconds}
-    units = {k: v for k, v in given.items() if v is not None}
-    if units:
-        if within is not None:
-            raise TypeError("arrives_within takes within= or the units, not both")
-        warnings.warn(
-            "arrives_within(col, days=, hours=, minutes=, seconds=) is deprecated; write "
-            'arrives_within(col, within), a timedelta or an ISO 8601 duration ("PT15M")',
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        lateness = timedelta(**units)
-    elif within is None:
-        raise TypeError('arrives_within needs the lateness: arrives_within(col, "PT15M")')
-    else:
-        lateness = duration(within, "arrives_within's lateness")
+    lateness = duration(within, "arrives_within's lateness")
     if lateness < timedelta(0):
         raise ValueError(f"arrives_within needs a lateness of 0 or more, not {lateness}")
     return ArrivesWithin(col, lateness)
@@ -550,7 +522,7 @@ class RowsPer(TableCondition):
         return CheckedCondition(self.label, False, "rows per key are checked on inputs only")
 
 
-def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
+def rows_per(*cols: str, at_most: int | None = None) -> RowsPer:
     """A bound on the rows per key: at most `at_most` rows agree on `cols`,
     `rows_per("customer", "day", at_most=3)`.
 
@@ -566,8 +538,8 @@ def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
     of at most `at_most` rows (`Rel.groupRows_sound`). So an integer or
     decimal `SUM` of values in `[-m, m]` per group is proved to fit its type
     when `at_most · m` does, where a cap on the whole table
-    (`max_rows`) would have to bound every group at once. `Report.relations`
-    lists the bounds per relation.
+    (`max_rows`) would have to bound every group at once. The report keeps
+    the bounds per relation internally (`RelationRows`).
 
     Incremental views do not check it on batches yet, and refuse it.
 
@@ -582,25 +554,13 @@ def rows_per(*cols: str | Sequence[str], at_most: int | None = None) -> RowsPer:
         ValueError: A column is not a name, or `at_most` is missing or
             negative.
     """
-    if len(cols) in (1, 2) and not isinstance(cols[0], str):
-        # 0.x: rows_per(["a", "b"], 3) or rows_per(["a", "b"], at_most=3).
-        warnings.warn(
-            "rows_per(cols, at_most) is deprecated; write rows_per(*cols, at_most=...)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if len(cols) == 2:
-            if at_most is not None:
-                raise TypeError("rows_per got at_most twice")
-            at_most = int(cols[1])  # type: ignore[arg-type]
-        cols = tuple(cols[0])
     if not all(isinstance(c, str) for c in cols):
         raise ValueError("rows_per takes the key's column names, rows_per('a', 'b', at_most=3)")
     if at_most is None:
         raise ValueError("rows_per needs at_most=, the most rows that may share the key")
     if at_most < 0:
         raise ValueError(f"rows_per needs a bound of 0 or more, not {at_most}")
-    return RowsPer(tuple(cols), int(at_most))  # type: ignore[arg-type]
+    return RowsPer(cols, int(at_most))
 
 
 @dataclass(frozen=True)
@@ -731,8 +691,8 @@ def non_overlapping(lo: str, hi: str, *, by: str | Sequence[str] = ()) -> NonOve
 
 @dataclass(frozen=True)
 class RelationRows:
-    """What the checker bounds a relation of the transformation's plan by (see
-    `Report.relations`)."""
+    """What the checker bounds a relation of the transformation's plan by: one
+    per relation, which the report keeps internally."""
 
     op: str
     """The operator, such as "filter", "join" or "read orders"."""
@@ -932,10 +892,16 @@ class CheckedCondition:
     """For an unproved condition with `on_unproved="check"`: it is checked
     on the output data instead, on a bound result when it is built, or on a
     node at every refresh before its sink commits."""
-    suggested: dict[str, list[Condition]] = field(default_factory=dict)
-    """For an unproved condition: preconditions on the inputs, per table,
-    under which the checker proves it (`_.x * 2 <= 100` holds with `_.x <= 50`).
-    Never assumed: adding them is the author's choice."""
+    needs: tuple[Needed, ...] = ()
+    """For an unproved condition, the preconditions on the inputs that
+    `requires` does not state and under which the checker proves it, one
+    `Needed` each: those its proof used where sverify inferred them
+    (`reason` is `"needs"`, under `verify(on_inferred="error")`), or those
+    the checker suggests (`_.x * 2 <= 100` holds with `_.x <= 50`). The set
+    is sufficient, not claimed minimal: where the proof used inferred
+    preconditions it lists every inferred bound of the report, not only
+    those this condition's proof used. Never assumed: adding them is the
+    author's choice (`Report.suggested_requires` adds the inferred ones)."""
     ignores: tuple[str, ...] = ()
     """The components of the observation (`sv.equivalent`) the condition
     depends on but the observation ignores (D12, #444): the proof under the
@@ -947,8 +913,9 @@ class CheckedCondition:
     known (every column)."""
     robust: bool = field(default=False, repr=False, compare=False)
     """Proved on every value an engine's doubles may take: each double column
-    the condition reads widened by its bound (`Report.epsilon`) and, for a
-    sum, an average or a variance, kept to its sign
+    the condition reads widened by its bound (the bound the report's
+    `lenses:` line prints) and, for a sum, an average or a variance, kept to
+    its sign
     (`EngineRobust.robust`, #1045). Such a condition needs no `sv.approx`."""
     checker_ignores: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     """What the checker reports the condition ignores (#1071), the same
@@ -980,13 +947,16 @@ class CheckedCondition:
     """The condition as it was given in `ensures` (a SQL string, an Ibis
     expression, `unique(...)`, …), to pair the result with it; None for a
     report not built by `verify` or a transform."""
+    _inferred_used: bool = field(default=False, repr=False, compare=False)
+    """Proved only with the preconditions sverify inferred: the stated ones
+    alone do not prove it (`verify` sets `needs` from it, #701)."""
     detail: str | None = None
     """Why it is not proved, in the user's terms, where the report found
     more than the checker's value says (`_key_reasons`, `_null_reasons`,
     #688): `why` reads it first."""
     ties: bool = False
     """Unproved only because rows may tie: the checker proves it where every
-    window orders its rows totally (`Report.tie_places` names where they
+    window orders its rows totally (`Report.ties` names where they
     may not). The counterexample search is skipped for it (#691)."""
 
     @property
@@ -995,8 +965,10 @@ class CheckedCondition:
         is proved and independent of the observation (`portable`). `why`
         says the same in words.
 
-        * `"observation"`: proved, but it depends on what the observation
+        * `"lenses"`: proved, but it depends on what the lenses
           (`sv.equivalent`) ignores.
+        * `"needs"`: proved only with the preconditions sverify inferred,
+          which `requires` does not state (`needs` lists them).
         * `"not_a_key"`: a `unique` the preconditions do not make a key.
         * `"ties"`: rows may tie in an ORDER BY, so the result is not
           determined.
@@ -1008,11 +980,13 @@ class CheckedCondition:
         * `"unknown"`: Lean knows nothing that decides it.
         """
         if self.proved:
-            return "observation" if self.ignores else None
+            return "lenses" if self.ignores else None
         if self.value == "not shown to be a key":
             return "not_a_key"
         if self.ties or self.value.startswith("undetermined"):
             return "ties"
+        if self.value == "TRUE" and self.needs:
+            return "needs"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if parts == {"FALSE"}:
             return "always_false"
@@ -1040,6 +1014,9 @@ class CheckedCondition:
             return "the preconditions do not make it a key"
         if self.ties:
             return "it holds where no rows tie in a window's ORDER BY, and rows may tie there"
+        if self.reason == "needs":
+            used = ", ".join(f"`{n.code}`" for n in self.needs)
+            return f"it is proved only with {used}, which requires does not state"
         parts = set(self.value.replace(" or ", ", ").split(", "))
         if "TRUE" not in parts and parts == {"FALSE"}:
             return "it is FALSE on every row"
@@ -1121,6 +1098,7 @@ class PlannedCondition:
     (`Report.check_inputs`)."""
 
     text: str
+    """The condition's label, as the export wrote it."""
     plan: str
     """The plan, as protobuf JSON in Lean's form."""
 
@@ -1238,8 +1216,12 @@ class Discharged:
     `SCHEMA`, proved from facts of one metadata source, or `ON_DATA`."""
 
     table: str
+    """The table the precondition is on."""
     condition: str
+    """The precondition, as SQL."""
     source: str
+    """How it was established: `"schema"`, the metadata source (such as
+    "file stats @v3"), or `"checked on data"`."""
     inferred: bool = False
     """The condition is a bound inferred to rule out overflow (#244)."""
 

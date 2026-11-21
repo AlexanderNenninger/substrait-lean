@@ -1,8 +1,8 @@
 """Object store options shared by sources and sinks, with credentials that
 are named, resolved when a table is opened, and kept out of `repr`.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public name `Storage` is re-exported by `sverify.io`.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Union
 
+from sverify.io._aws_scope import aws_scope
 from sverify.io._secrets import Secret, as_secret, current, resolve_values
 
 Options = Union[Mapping[str, Any], Callable[[], Mapping[str, str]], "Storage", None]
@@ -54,6 +55,9 @@ class Storage:
         writes: URI prefixes the credentials may write. Default: likewise.
         name: The credential's name in reports when `credentials` is not
             given, such as the CI role's. Default: "default chain".
+
+    Attributes:
+        credentials: The secret whose fields are options, or None.
 
     Examples:
         ```python
@@ -124,15 +128,36 @@ class Storage:
     def reads(self) -> tuple[str, ...] | None:
         """The prefixes the credentials may read, if known."""
         if self._reads is None and self.credentials is not None:
-            return current().scope(self.credentials)[0] or None
+            configured = current().scope(self.credentials)[0] or None
+            if configured is not None:
+                return configured
+        if self._reads is None:
+            reported = self._reported()
+            return None if reported is None else reported[0]
         return self._reads
 
     @property
     def writes(self) -> tuple[str, ...] | None:
         """The prefixes the credentials may write, if known."""
         if self._writes is None and self.credentials is not None:
-            return current().scope(self.credentials)[1] or None
+            configured = current().scope(self.credentials)[1] or None
+            if configured is not None:
+                return configured
+        if self._writes is None:
+            reported = self._reported()
+            return None if reported is None else reported[1]
         return self._writes
+
+    def _reported(self) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+        """What the store reports of an AWS session's scope, when the options
+        hold one (`AWS_ACCESS_KEY_ID`), else None (`_aws_scope`)."""
+        if callable(self._options):
+            return None
+        try:
+            opts = self.options()
+        except Exception:  # noqa: BLE001 - an unreadable secret reports no scope
+            return None
+        return aws_scope(opts)
 
     def __repr__(self) -> str:
         parts = []

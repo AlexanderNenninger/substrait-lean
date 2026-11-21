@@ -244,7 +244,8 @@ except VerificationError as e:
   `x IN (0, 1)`, and `isin([0, 1])`, of integers that fill a range is
   read as `x BETWEEN 0 AND 1`, so a column known to lie in `[0, 1]` meets
   it.
-  `report.not_null` lists the output columns the checker shows are never NULL.
+  `report.output` types the output columns the checker shows are never NULL
+  as not nullable (`count(*)` is `!int64`).
 * Relations between columns: join and filter conditions such as
   `w1.ts = w0.ts + 60`, `a.ts = b.ts`, `t0 < t1` or `value != -9999` become
   facts about each row, so postconditions like `t1 - t0 == 60` or
@@ -562,7 +563,7 @@ assert report.verdict == sv.Verdict.PROVED
 Lean gives each order at most one version when the join condition equates the
 `by` columns, tests `valid_from <= x` and `x < valid_to` (or `valid_to IS NULL OR
 x < valid_to`) for one expression `x` of the order's columns; the join keeps the
-orders' keys (`Rel.keys`). A closed end (`x <= valid_to`) matches two versions at a
+orders' keys. A closed end (`x <= valid_to`) matches two versions at a
 boundary and has no rule. `dbt_utils.mutually_exclusive_ranges` is the same test
 in dbt.
 
@@ -618,8 +619,8 @@ print(report)
 ```
 
 Sverify proves each suggestion before showing it, by proving the
-postcondition again with it added. `Report.suggestions` has them as
-`Needed` records, per postcondition, for editors and language servers
+postcondition again with it added. Each postcondition's `needs` has them as
+`Needed` records, for editors and language servers
 ([test_suggestions.py](../python/tests/test_suggestions.py)).
 
 ### Checking without running
@@ -692,8 +693,9 @@ the profile), sverify's version and a hash of the checker binary, so a
 change to any of them proves again
 ([test_proof_cache.py](../python/tests/test_proof_cache.py)). The cache is
 in `SVERIFY_CACHE_DIR`, else `$XDG_CACHE_HOME/sverify`, else
-`~/.cache/sverify`; processes share it, and `SVERIFY_CACHE=off` turns it
-off. Within a Python process or a command, one checker process answers
+`~/.cache/sverify`; processes share it. `SVERIFY_CACHE_DIR` moves the cache
+and `SVERIFY_CACHE=off` (or `0`, `false`, `no`) turns it off; the two are
+independent, and `off` wins when both are set. Within a Python process or a command, one checker process answers
 every request. A request that a time budget or an interrupt stops ends that
 process, and the next request starts another.
 
@@ -713,7 +715,9 @@ sverify refresh pipelines/orders.py:paid     # run a node and report what change
 sverify explain may_be_false                 # what a [code] of check's output means
 ```
 
-`check` imports the file without running it. Every contracted transform
+`check` imports the file without running it, so a pull request from a fork is
+untrusted code under `pull_request_target`; use `pull_request` for it, or
+check out only the base branch. Every contracted transform
 the file applies is proved, a node's on its sources' schemas, and a proof
 that fails is reported where a call would raise, so one unproved node does
 not hide the next. A `refresh()` in the file belongs under
@@ -749,7 +753,17 @@ short in an agent's context. `check --diff` shows the preconditions the
 proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
 `check --fix` writes them and checks the file again.
 
-`--format` (or `--output-format`) chooses the output:
+`check --against-sink` compares each stored node's contract with the one
+its sink last committed, reading the record and no data. A committed
+promise the node no longer proves is a `contract_weakened` finding, and
+the check exits 1: a NOT NULL column it no longer proves, a unique key it
+widened, or a CHECK whose text is gone and whose proof from the new
+contract fails. A tightened bound, a smaller key or a reordered list of
+conditions is no drift, and a changed plan or profile is a `plan_changed`
+note ([test_drift.py](../python/tests/test_drift.py)). The preconditions a
+contract added are not compared: the sink's record does not store them.
+
+`--format` chooses the output:
 
 - `text`, the default, as above;
 - `json` (`--json` for short), one document for tools in the format of
@@ -762,7 +776,8 @@ proofs need (`Report.needs`) as a diff of the decorators' `requires=`, and
   app;
 - `sarif`: a SARIF 2.1.0 log for code scanning
   (`github/codeql-action/upload-sarif`), one rule per code, with
-  `explain`'s text.
+  `explain`'s text. A transform's first `needs` result carries a fix: the
+  edits `check --fix` makes to its `requires=`, as byte ranges of the file.
 
 The codes are snake case (`may_be_false`), as the report's `reason` and
 issue `kind` write them; `explain` reads kebab case too. The exit codes are:
@@ -772,12 +787,14 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 0 | proved, or every postcondition it does not prove is checked on the data at each refresh; a refresh committed every row |
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
-| 3 | refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`), or no route takes a proved node to the engine |
+| 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 4 | time or memory budget exceeded |
-| 5 | a refresh committed with rows quarantined, or held a node |
+| 5 | a refresh committed with rows quarantined |
 | 6 | error: the file raised, I/O, a crash |
+| 7 | refused: no route takes a proved node to the engine |
+| 8 | a refresh held a node |
 
-With 5, `refresh` prints `Refresh.alert()` after the summary, and its
+With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
 data that otherwise stay out of CI artifacts and issues.
@@ -786,9 +803,19 @@ data that otherwise stay out of CI artifacts and issues.
 proof, planning and checking. A refresh moving data has no time limit:
 `--memory-limit` (or `SVERIFY_MEMORY_LIMIT`, such as `2GB`) bounds it
 instead, as DuckDB's `memory_limit`, past which DuckDB spills to a
-temporary directory (`SVERIFY_TEMP_DIRECTORY`). Past either budget the
-call stops with code 4 before any sink commits, and reports what was
-proved before it ([test_cli.py](../python/tests/test_cli.py)).
+temporary directory (`SVERIFY_TEMP_DIRECTORY`), and as Spark's driver
+memory. Sverify sets no default of its own: unset, each engine keeps its
+own, DuckDB 80 % of the machine's memory
+([DuckDB's configuration](https://duckdb.org/docs/stable/configuration/overview)) and
+Spark's driver 1 GB ([Spark's configuration](https://spark.apache.org/docs/latest/configuration.html)).
+The limit does not reach Polars, which has no memory cap to set; with
+`--engine polars` the command says so. A proof has its own cap,
+`SVERIFY_CHECKER_MEMORY_MB` (below), since its memory does not grow with
+the data. Past any of these budgets the call raises
+`sverify.errors.MemoryLimitError` (its `.stage`, `.limit` and `.setting`
+say which), a refresh commits nothing, and the command stops with code 4
+and reports what was proved before it
+([test_memory_limits.py](../python/tests/test_memory_limits.py)).
 `sverify.cli.discover(path)` does what `check` does from Python.
 
 ### Environment variables
@@ -799,10 +826,10 @@ given wins over the variable, and the variable over the default.
 | Variable | Flag | Python | Default | Sets |
 |---|---|---|---|---|
 | `SVERIFY_CHECKER` | | | the bundled checker | the path to a `substrait-check` binary, such as your own `lake build` |
-| `SVERIFY_CHECKER_MEMORY_MB` | | | 4096 | the memory, in MB, one checker request may take before the checker is stopped and the request raises `CheckerMemoryError` (Linux and macOS); 0 turns the cap off |
+| `SVERIFY_CHECKER_MEMORY_MB` | | | 4096 | the memory, in MB, one checker request may take before the checker is stopped and the request raises `sverify.errors.MemoryLimitError` (Linux and macOS); 0 turns the cap off |
 | `SVERIFY_COUNTEREXAMPLES` | | `verify(counterexamples=)` | 200 | how many inputs are tried per unproved postcondition; 0 skips the search |
 | `SVERIFY_TIMEOUT` | `--timeout` | | 30 | seconds for proof, planning and checking; 0 turns it off |
-| `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | none | DuckDB's `memory_limit`, such as `2GB` |
+| `SVERIFY_MEMORY_LIMIT` | `--memory-limit` | | each engine's own | DuckDB's `memory_limit` and Spark's driver memory, such as `2GB`; not Polars |
 | `SVERIFY_TEMP_DIRECTORY` | | | a directory under the system's temporary one | DuckDB's `temp_directory`, where it spills past the memory limit |
 | `SVERIFY_STATE_LOCATION` | | | a directory under the system's temporary one | where Polars and Spark write an incremental view's state as Parquet parts: a directory, or a URI (`s3://bucket/state`) that the driver and every executor read and write |
 | `SVERIFY_CACHE` | | | on | `off`, `0`, `false` or `no` turns the proof cache off ([Checking without running](#checking-without-running)) |
@@ -810,9 +837,8 @@ given wins over the variable, and the variable over the default.
 | `SVERIFY_SECRETS` | | `Resolver.from_config(path)` | the nearest `pyproject.toml` | the TOML file whose `[tool.sverify.secrets]` table configures named secrets ([Credentials](#credentials)) |
 | `SVERIFY_PREBUILT_CHECKER` | | | | for contributors: an editable install links this checker and skips `lake build` |
 
-`SVERIFY_CHECK`, `SVERIFY_PREBUILT_CHECK` and `SVERIFY_SPILL_DIRECTORY`,
-their names in 0.6, are read too, the first and last with a
-`DeprecationWarning`.
+`SVERIFY_CHECK` and `SVERIFY_SPILL_DIRECTORY`, their names in 0.6, are read
+too, with a `DeprecationWarning`.
 
 ### Composing contracts
 
@@ -927,21 +953,21 @@ A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
 over an input with delta rules, is maintained from a count and a sum per
 group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
-[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[`analysis/Sverify/Analysis/IncrementalAgg.lean`](../analysis/Sverify/Analysis/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
 `DECIMAL` `SUM` and `AVG` keep the same state, `SUM`, `AVG`, `VAR`,
 `STDDEV`, `COVAR` and `CORR` of doubles an exact one, rounded once, with no
 drift
 (`LinearAgg.fsum_no_drift` in
-[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
+[`analysis/Sverify/Analysis/IncrementalFloat.lean`](../analysis/Sverify/Analysis/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
 groups it deletes from are recomputed from the new input
 (`ExtremeAgg.extreme_maintained` in
-[`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)).
+[`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)).
 A node that ends in a semi or anti join on equal keys keeps a count of
 matches per key and reads the left input only for the keys whose count
 leaves or returns to 0 (`SemiDelta.semi_maintained` in
-[`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean)).
+[`analysis/Sverify/Analysis/IncrementalSemi.lean`](../analysis/Sverify/Analysis/IncrementalSemi.lean)).
 A node without delta rules (left join, other aggregates, window, `LIMIT`) is
 recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
@@ -1204,7 +1230,7 @@ tables. A table format plays four roles:
   The proved guarantees become NOT NULL columns and CHECK constraints (Delta)
   or table properties (Iceberg). The NOT NULL columns are those `ensures`
   states (`_.id.notnull()`) and those the proved report shows are never NULL
-  (`report.not_null`).
+  (not nullable in `report.output`).
   The commit records the plan hash, the
   source versions and the contract (`sverify.io.Contract`, under the key
   `sverify.contract`, in the format of
@@ -1397,6 +1423,18 @@ reading or writing (`StageRefresh.credentials`, `"credentials"` in
 what its credential may write (`Storage(writes=[...])` or the
 configuration's `writes`), and with `[inline_credentials]` when options
 hold values or a URI holds them in its userinfo (`s3://key:secret@bucket`).
+Where nothing is declared, an AWS session in the options
+(`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, with `AWS_SESSION_TOKEN`
+for an assumed role) reports its own scope when `boto3` is installed
+(`sverify[secrets-aws]`): sverify asks STS who the session is and reads the
+`GetObject` and `PutObject` grants of that role's or user's policies, once
+per credential. A `Deny`, a condition, a `NotAction`, `NotResource` or
+a pattern that is not a prefix leaves the scope unknown, as does a session that
+cannot read its own policies. Session policies, permissions boundaries and
+bucket policies are not in the identity's policies, so the scope is what they
+grant: a session policy or boundary can narrow the session below it, and a
+bucket policy can widen it, so neither `in_scope` value is a guarantee. Other stores (GCS, Azure, a vended catalog credential) report nothing
+yet and need `reads=` and `writes=`.
 Every URI sverify records, reports, exports or sends is written without
 userinfo, query string or fragment: a sink's `location`, `started`,
 `credentials[].location`, the ODCS `physicalName` and the OpenLineage
@@ -1709,7 +1747,7 @@ the evidence, and the route where it is not `translated`:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
+| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
@@ -1766,7 +1804,7 @@ means = sv.verify(
 )
 duckdb_result = means.run(readings, "duckdb", route="auto")
 polars_result = means.run(readings, "polars", route="auto")
-means.equivalence.equal(duckdb_result, polars_result)  # True
+means.lenses.equal(duckdb_result, polars_result)  # True
 ```
 
 Polars sums doubles in its own order, so its mean is within the plan's
@@ -1779,12 +1817,12 @@ Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
 list elements are multisets, one zero and one NaN are read, doubles are within
 the plan's bound and other values are exact: the default observation
 ([the table](core-semantics.md#the-default-observation)), which
-`report.observation` prints with its bound,
+`report.lenses` prints with its bound,
 `equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
 leave out is exact. `floats=sv.within(abs=..., rel=..., ulps=...)` states a
 tolerance, and `floats="exact"` asks for the same bits. `verify` checks
 either against the plan's bound on each engine; where
-no engine meets it, the plan is not proved, and the report's `observes:`
+no engine meets it, the plan is not proved, and the report's `lenses:`
 line gives the plan's bound, the reason per engine and a tolerance that
 would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
@@ -1897,9 +1935,9 @@ Within 1.x the message and the manifest only gain fields, and
 | `format`, `sverify`, `substrait` | the manifest's format version, sverify's version, `0.106.0` |
 | `extension_urns` | the YAMLs the plan's calls come from |
 | `semantics` | the semantics the plan was proved under |
-| `class` | `exact`, `observed` (equal up to `equivalence`) or `assumed` (with annotated choices) |
+| `class` | `exact`, `observed` (equal up to `lenses`) or `assumed` (with annotated choices) |
 | `evidence` | `proved`, or `tested` where IEEE 754's default rounding stands in for an option |
-| `equivalence`, `equivalence_components` | what the postconditions tell apart (`sv.equivalent`) |
+| `lenses`, `lenses_components` | what the postconditions tell apart (`Report.lenses`, `sv.equivalent`) |
 | `pinned` | each pinned option, its values and the calls that state it |
 | `shims`, `assumptions`, `unexercised`, `up_to` | each gap and how the export handled it |
 | `deterministic`, `rows`, `params`, `output` | as in the report |
@@ -1917,11 +1955,22 @@ The [Open Data Contract Standard](https://bitol-io.github.io/open-data-contract-
 (ODCS, Bitol, Linux Foundation AI & Data) describes a dataset's contract in
 YAML: its schema, quality rules, descriptions and owners. Sverify writes a
 node's contract as ODCS and reads ODCS contracts as conditions.
-It writes ODCS v3.2.0 (`sverify.odcs.ODCS_VERSION`), and the tests validate
+It writes ODCS v3.2.0 (its `apiVersion`), and the tests validate
 every export against that release's JSON schema
 ([tests/standards/](../python/tests/standards/odcs-json-schema-v3.2.0.json),
 [test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:
 `pip install 'sverify[odcs]'`. JSON needs nothing.
+
+Sverify reads the standard's own published examples, the 42 contracts of
+ODCS v3.2.0's `docs/examples`
+([vendored](../python/tests/standards/odcs-examples-v3.2.0/SOURCE),
+[ledger](../python/tests/odcs_examples.json),
+`python -m sverify_dev.odcs_examples`). It reads 151 conditions from them,
+and 22 rules stay unread, each with its reason and the issue that would read
+it or why it does not by design. Of the 104 schema objects with conditions,
+95 export and read back to the same conditions, 4 are not tried (a foreign
+key to another object) and 5 are refused on a column type sverify does not
+read yet.
 
 ```python
 import pyarrow as pa
@@ -2056,8 +2105,13 @@ reads the settings the plan will run under and compares them:
 - Polars: an engine affinity that forces another engine than streaming
   (`pl.Config.set_engine_affinity("in-memory")`) refuses the run, since
   sverify runs Polars's streaming engine.
-- Another engine version warns (`EngineVersionWarning`), and another major
-  version is refused (`EngineVersionError`) until the probes are re-run.
+- An unprobed patch of the probed minor warns (`EngineVersionWarning`) and
+  is recorded on the route (`Route.unprobed_version`); another minor or
+  major is refused (`EngineVersionError`) until the probes are re-run, and
+  runs with `run(..., unverified=True)`
+  ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)). To
+  refuse every unprobed version, turn the warning into an error:
+  `warnings.simplefilter("error", sverify.errors.EngineVersionWarning)`.
 
 `lines.get_backend()`, the backend of a table of the connection, is its Ibis
 DuckDB backend, for SQL of your own, such as
@@ -2088,9 +2142,10 @@ and `MAX` combine in two phases; with split keys (`keys={"orders":
 key, co-partitioned joins and tie-free windows run per shard. `SUM` and
 `AVG` of doubles split where `reproducible=` accepts doubles within a
 tolerance, as a sink's `reproducible=` states it:
-`sv.equivalent(floats="plan")` accepts the proved bound, and
+`sv.equivalent(floats="plan")` accepts the bound `Shard.lean` proves over the
+reals (`sharded_near`), and
 `sv.equivalent(floats=sv.within(abs=...))` raises where a row's bound exceeds
-the tolerance. `tolerance=True` returns the proved bound per row on how far
+the tolerance. `tolerance=True` returns that bound per row on how far
 each is from the one-pass sum
 ([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg)).
 Anything else raises `NotShardable` with the reason. The checker also proves

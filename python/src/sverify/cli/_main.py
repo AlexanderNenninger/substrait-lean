@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import difflib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,8 @@ from sverify.cli import _contract, _explain, _findings, _formats
 from sverify.cli._common import (  # noqa: F401  (re-exported)
     BUDGET,
     ERROR,
+    HELD,
+    NO_ROUTE,
     NOT_PROVED,
     OK,
     QUARANTINED,
@@ -30,7 +33,6 @@ from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._limits import (
     Budget,
     BudgetExceeded,
-    is_out_of_memory,
     memory_limit_from,
     timeout_from,
 )
@@ -41,10 +43,12 @@ exit codes:
   0  proved; a refresh committed every row
   1  not proved
   2  usage error: a flag, a missing file, a node the file lacks
-  3  unsupported or refused: a construct outside sverify's model, or no route
+  3  unsupported: a construct outside sverify's model
   4  time or memory budget exceeded
-  5  a refresh committed with rows quarantined, or held a node
-  6  error: the file raised, I/O, a crash"""
+  5  a refresh committed with rows quarantined
+  6  error: the file raised, I/O, a crash
+  7  refused: no route takes the proved node to the engine
+  8  a refresh held a node"""
 STATUS = {
     OK: "proved",
     NOT_PROVED: "not_proved",
@@ -53,6 +57,8 @@ STATUS = {
     BUDGET: "budget_exceeded",
     QUARANTINED: "quarantined",
     ERROR: "error",
+    NO_ROUTE: "refused",
+    HELD: "held",
 }
 #: The version of the JSON document every command prints (`schemas/cli.schema.json`).
 FORMAT = 1
@@ -74,6 +80,7 @@ def _item(c: Checked) -> dict[str, Any]:
         "name": c.name,
         "nodes": c.nodes,
         "status": c.status,
+        "relaxations": c.relaxations,
         "summary": r._plain_contract(c.params) if r is not None else None,
         "links": c.links,
         "report": json.loads(r.to_json()) if r is not None else None,
@@ -94,6 +101,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
     try:
         from sverify.errors import (
             AuditError,
+            MemoryLimitError,
             PostconditionError,
             PreconditionError,
             UnsupportedError,
@@ -104,7 +112,7 @@ def _classify(e: BaseException) -> tuple[int, str]:
 
     if isinstance(e, BudgetExceeded):
         return BUDGET, "memory" if e.what == "memory" else "timeout"
-    if is_out_of_memory(e):
+    if isinstance(e, MemoryLimitError):
         return BUDGET, "memory"
     if isinstance(e, UsageError | FileNotFoundError):
         return USAGE, "usage"
@@ -118,13 +126,20 @@ def _classify(e: BaseException) -> tuple[int, str]:
 class Check:
     """A check of a file: what `check` prints in every format."""
 
-    def __init__(self, d: Discovery, target: str | None, budget: Budget):
+    def __init__(
+        self, d: Discovery, target: str | None, budget: Budget, require_proved: bool = False
+    ):
         self.d, self.target, self.budget = d, target, budget
+        self.require_proved = require_proved
         self.checked = d.checked if target is None else d.select(target)
         unchecked = d.unchecked if target is None else [t for t in d.unchecked if t == target]
         self.unchecked = unchecked
         self.error: dict[str, Any] | None = None
         self._uses: list[tuple[str, Any]] | None = None
+        self.drift: dict[str, Any] | None = None
+        """With `--against-sink`, per stored node, how its contract compares
+        with its sink's last committed one; None for a sink with none."""
+        self._drift_findings: list[dict[str, Any]] = []
         if d.error is not None:
             self.code, kind = _classify(d.error)
             self.error = _error(kind, d.error)
@@ -141,7 +156,11 @@ class Check:
             self.code = USAGE
         elif any(c.status == "unfinished" for c in self.checked):
             self.code = BUDGET
-        elif unchecked or any(c.status == "not_proved" for c in self.checked):
+        elif (
+            unchecked
+            or any(c.status == "not_proved" for c in self.checked)
+            or (require_proved and any(c.status == "checked" for c in self.checked))
+        ):
             self.code = NOT_PROVED
         else:
             self.code = OK
@@ -179,8 +198,36 @@ class Check:
 
     def findings(self) -> list[dict[str, Any]]:
         out = [f for c in self.checked for f in _findings.of(c)]
+        if self.require_proved:
+            out += [_findings.checked_only(c) for c in self.checked if c.status == "checked"]
         out += [_findings.unchecked(t, self.d) for t in self.unchecked]
-        return out + _findings.credentials(self.credential_uses())
+        return out + _findings.credentials(self.credential_uses()) + self._drift_findings
+
+    def compare_sinks(self) -> None:
+        """`--against-sink` (#769, ruling 189): each stored node's contract
+        against its sink's last committed one. Reads the record, no data. A
+        sink that cannot be read is an error of its own (exit 6)."""
+        from sverify.io._common import drift
+        from sverify.nodes import _Stored
+
+        self.drift = {}
+        for var, node in self.d.nodes.items():
+            if (self.target is not None and var != self.target) or not isinstance(node, _Stored):
+                continue
+            try:
+                committed = node.sink.contract()
+                got = None if committed is None else drift(committed, node)
+            except BudgetExceeded:
+                raise
+            except Exception as e:  # noqa: BLE001 - never reported as unchanged
+                self.code, self.error = ERROR, _error("error", f"{var}'s sink: {e}")
+                return
+            self.drift[var] = None if got is None else got.to_dict()
+            if got is None:
+                continue
+            self._drift_findings += _findings.drift(var, got)
+            if any(got.weakened.values()) and self.code in (OK,):
+                self.code = NOT_PROVED
 
     def document(self) -> dict[str, Any]:
         return {
@@ -192,6 +239,7 @@ class Check:
             "credentials": [{"node": v, **u.to_dict()} for v, u in self.credential_uses()],
             "error": self.error,
             "budget": {"timeout": self.budget.seconds, "elapsed": round(self.budget.elapsed, 3)},
+            **({} if self.drift is None else {"drift": self.drift}),
         }
 
     def text(self, full: bool = False) -> str:
@@ -265,7 +313,8 @@ class Check:
         if fmt == "github":
             return _formats.github(self.file, self.findings(), error)
         if fmt == "sarif":
-            return _formats.sarif(self.file, _version(), self.findings(), error)
+            fixes = {f.transform: f.edits for f in place(Path(self.file), self.checked).fixes}
+            return _formats.sarif(self.file, _version(), self.findings(), error, fixes)
         return self.text(full)
 
 
@@ -335,7 +384,7 @@ def _check_file(
     if not path.is_file():
         raise UsageError(f"{path}: no such file")
     _load(path, budget, d)
-    return d, Check(d, target, budget)
+    return d, Check(d, target, budget, getattr(args, "require_proved", False))
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -343,6 +392,9 @@ def cmd_check(args: argparse.Namespace) -> int:
     if path.is_dir() or path.name == "dbt_project.yml":
         return _dbt(args, path)
     d, check = _check_file(args, path, target)
+    if args.against_sink:
+        with check.budget.armed():
+            check.compare_sinks()
     if not (args.fix or args.diff):
         return _show(args, check)
     plan = place(path, check.checked)
@@ -423,7 +475,7 @@ def _dbt(args: argparse.Namespace, path: Path) -> int:
 
 
 def _outcome_code(outcome: str) -> int:
-    return QUARANTINED if outcome in ("quarantined", "held") else OK
+    return {"quarantined": QUARANTINED, "held": HELD}.get(outcome, OK)
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
@@ -441,6 +493,12 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     d = Discovery(path)
     budget.on_hard_stop = _on_hard_stop(args, d, target, budget)
     result: dict[str, Any] = {"file": str(path), "target": target, "nodes": [], "error": None}
+    if args.engine == "polars" and os.environ.get("SVERIFY_MEMORY_LIMIT", "").strip():
+        # Polars has no memory cap sverify can set (#783): say so once.
+        print(
+            "note: the memory limit bounds DuckDB and Spark's driver; it does not reach Polars",
+            file=sys.stderr,
+        )
     try:
         with planned(budget.disarm), budget.armed():
             load(path, d)
@@ -460,7 +518,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         if isinstance(e, RouteError):
             # Not proved, or proved with no route to the engine (refused).
             unproved = any(c.status == "not_proved" for c in d.select(target))
-            code, kind = (NOT_PROVED, "not_proved") if unproved else (UNSUPPORTED, "refused")
+            code, kind = (NOT_PROVED, "not_proved") if unproved else (NO_ROUTE, "refused")
         result["error"] = _error(kind, e)
         result["items"] = [_item(c) for c in d.select(target)]
         message = f"{kind}: {e}  [{kind}]"
@@ -523,7 +581,6 @@ def parser() -> argparse.ArgumentParser:
     common = _Parser(add_help=False)
     common.add_argument(
         "--format",
-        "--output-format",
         dest="format",
         choices=FORMATS,
         default="text",
@@ -542,8 +599,9 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument(
         "--memory-limit",
         default=None,
-        help="DuckDB's memory limit, such as 2GB, past which it spills to disk "
-        "(default: $SVERIFY_MEMORY_LIMIT, else DuckDB's own)",
+        help="the data engine's memory limit, such as 2GB: DuckDB's, past which it spills "
+        "to disk, and Spark's driver memory; it does not reach Polars "
+        "(default: $SVERIFY_MEMORY_LIMIT, else each engine's own)",
     )
     p = _Parser(
         prog="sverify",
@@ -569,7 +627,19 @@ def parser() -> argparse.ArgumentParser:
         help="write the preconditions the proofs need into requires=, then check again",
     )
     fix.add_argument("--diff", action="store_true", help="show what --fix would write")
-    c.set_defaults(run=cmd_check)
+    c.add_argument(
+        "--require-proved",
+        action="store_true",
+        help="exit 1 for a node whose postconditions are only checked on the data "
+        '(`on_unproved="check"`), as for one that is not proved',
+    )
+    c.add_argument(
+        "--against-sink",
+        action="store_true",
+        help="compare each stored node's contract with the one its sink last committed: "
+        "a committed promise the node no longer proves is contract_weakened (exit 1)",
+    )
+    c.set_defaults(run=cmd_check, against_sink=False, require_proved=False)
     r = sub.add_parser(
         "refresh",
         parents=[common],
@@ -608,8 +678,9 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the `sverify` command with `argv` (default: `sys.argv[1:]`) and
     return its exit code: 0 proved (a refresh committed every row), 1 not
-    proved, 2 usage error, 3 unsupported or refused, 4 time or memory budget
-    exceeded, 5 a refresh quarantined rows or held a node, 6 error."""
+    proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded,
+    5 a refresh quarantined rows, 6 error, 7 refused (no route to the
+    engine), 8 a refresh held a node."""
     try:
         args = parser().parse_args(argv)
     except SystemExit as e:

@@ -1,58 +1,64 @@
 import Sverify.Engines.Transfer
-import Sverify.Engines.Entry
-import Sverify.DuckDB.Engine
+import Sverify.DuckDB.Tables
 import Sverify.Substrait.Profile
-import Sverify.Spark.Engine
-import Sverify.Polars.Engine
+import Sverify.Spark.Tables
+import Sverify.Polars.Tables
 
 /-!
 # The engines' tables, together (#444, step 3a)
 
-`builtinEntries`, the engines of this repository with their soundness
-proofs, `builtinEngines`, their tables, and the reports
+`builtinEngines`, the tables of this repository's engines, and the reports
 over them: `substrait-check --options` (`tablesJson`), `--dependencies`
 (`Rel.dependenciesJson`) and `--transfer` (`transferJson`). Each engine's
 choice table and observation rows are in its package
 (`engines/duckdb/Sverify/DuckDB/Tables.lean`,
 `engines/polars/Sverify/Polars/Tables.lean`,
 `engines/spark/Sverify/Spark/Tables.lean`), with the proof that it refines
-the core, and the costs of the shims its rows name; each engine's `Engine`
-value and the proof that it is sound are in its package's `Engine.lean`. The
-rows' constructors, `EngineProfile`, `EngineEntry` and the JSON a table is
-reported in are engines-common (`engines/Sverify/Engines/Tables.lean`,
-`engines/Sverify/Engines/Entry.lean`).
+the core, and the costs of the shims its rows name. The engines' `Engine`
+values with their soundness proofs, the registry the checker is built over
+(`builtinEntries`), are in `SubstraitLean/Engine.lean`, which only the checker's
+entry points import: the reports read the tables alone, and their modules do
+not load the engines' lowerings and proofs. The rows' constructors,
+`EngineProfile` and the JSON a table is reported in are engines-common
+(`engines/Sverify/Engines/Tables.lean`).
 -/
 
 namespace Substrait
 
 /-! ## The engines -/
 
-/-- The engines of this repository, each with the proof that its run is
-sound (`Engine.duckdb_sound`, `Engine.polars_sound`, `Engine.spark_sound`),
-DuckDB under its default settings. The checker is built over them
-(`checkerMain`). -/
-def builtinEntries : List EngineEntry := [
-  { (engine_entry% Engine.duckdb_sound) with
+/-- DuckDB's tables under its default settings, as the reports read them. -/
+def duckdbRows : EngineProfile :=
+  { table := Profile.duckdb.table {}, obs := withReruns Profile.duckdb.obs,
     shims := Profile.duckdb.shimCosts,
     -- `log(b, x)` is two libm calls and a division: the reference's own formula is 2.5 ulp
     -- from exact, DuckDB's 2 (`duckdb-ulp-libm`).
-    elemUlps := [("logb", 2.0 + 2.5)] },
-  { (engine_entry% Engine.polars_sound) with
+    elemUlps := [("logb", 2.0 + 2.5)] }
+
+/-- Polars' tables, as the reports read them. -/
+def polarsRows : EngineProfile :=
+  { table := Profile.polars.table, obs := withReruns Profile.polars.obs,
     shims := Profile.polars.shimCosts, executes := "streaming",
     -- `ln x / ln b`: within 2.1 ulp for `log10` and `log2` of the exact `ln x / ln b`
     -- (`polars-ulp-libm`), plus the reference's 2; `log(b, x)` is the reference's formula twice.
-    elemUlps := [("log10", 2.1 + 2.0), ("log2", 2.1 + 2.0), ("logb", 2.5 + 2.5)] },
-  { (engine_entry% Engine.spark_sound) with
+    elemUlps := [("log10", 2.1 + 2.0), ("log2", 2.1 + 2.0), ("logb", 2.5 + 2.5)] }
+
+/-- Spark's tables, as the reports read them. -/
+def sparkRows : EngineProfile :=
+  { table := Profile.spark.table, obs := withReruns Profile.spark.obs,
     shims := Profile.spark.shimCosts, executes := "batch",
     -- Java's functions, not the reference's `libm` (`spark-ulp-libm`, ruling 132):
     -- S + R for `fp64`, `sin`, `cos` and `tan` guarded to `|x| ≤ 2²⁰` (`Epsilon.trigArgMax`).
     sameLibm := false,
     elemUlps := [("ln", 1.0 + 1.0), ("log10", 1.0 + 2.0), ("log2", 2.5 + 2.5), ("logb", 3.0 + 2.5),
       ("sin", 1.0 + 1.0), ("cos", 1.0 + 1.0), ("tan", 1.0 + 3.0),
-      ("asin", 1.0 + 1.0), ("acos", 1.0 + 1.0), ("atan", 1.0 + 1.0)] }]
+      ("asin", 1.0 + 1.0), ("acos", 1.0 + 1.0), ("atan", 1.0 + 1.0)] }
 
-/-- The tables of `builtinEntries`, as the reports read them. -/
-def builtinEngines : List EngineProfile := builtinEntries.map (·.rows)
+/-- The tables of this repository's engines, as the reports read them. Each
+engine's rows are written once here; the registry (`builtinEntries`,
+`SubstraitLean/Engine.lean`) takes its shims and bounds from them, and
+`builtinEntries_rows` proves the tables are its own. -/
+def builtinEngines : List EngineProfile := [duckdbRows, polarsRows, sparkRows]
 
 /-- Every elementary function has a bound on every engine: `sqrt` is correctly rounded and `exp`
 has `rule_exp` (one ulp on each side), so each other one has an `elemUlps` entry on an engine
@@ -80,7 +86,7 @@ def tablesJson (es : List EngineProfile) : Json :=
         ("core", Json.mkObj [("engine", Json.null)]),
         ("substrait", Json.mkObj [("engine", Json.null), ("yaml", toJson Profile.substrait.table.version)])] ++
       es.map fun e => (e.name, Json.mkObj [
-        ("engine", toJson e.name), ("versions", toJson [e.table.version]),
+        ("engine", toJson e.name), ("versions", toJson (e.table.version :: e.table.alsoProbed)),
         ("executes", toJson e.executes),
         ("missing", Json.arr <| (e.table.missing.map fun (f, ids) =>
           Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))

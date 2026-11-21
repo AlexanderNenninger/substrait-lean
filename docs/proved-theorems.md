@@ -46,7 +46,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   four strings proves `status IN ('placed', 'shipped', 'returned')`.
 * `Rel.keys_sound` ([Keys.lean](../analysis/Sverify/Analysis/Keys.lean)): derived keys hold. No two
   output rows agree on them.
-* `Rel.optimize_sound` ([Semantic.lean](../SubstraitLean/Semantic.lean)): the
+* `Rel.optimize_sound` ([Semantic.lean](../analysis/Sverify/Analysis/Semantic.lean)): the
   rewrites a contract's keys and facts allow keep a plan's rows, on data that
   meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
   goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
@@ -102,7 +102,7 @@ the JSON plumbing.
 
 ## Composition
 
-[Compose.lean](../SubstraitLean/Compose.lean) builds on `contract_sound`,
+[Compose.lean](../analysis/Sverify/Analysis/Compose.lean) builds on `contract_sound`,
 `Rel.keys_sound` and `Rel.delta_correct`, with no induction over plans:
 
 * `Triple.compose`: Hoare triples over queries compose, `{P} g {Q}` and
@@ -211,6 +211,11 @@ what refresh maintains is in [the guide](tasks.md#nodes-composing-storing-refres
 * `Rel.weighted_eval`: running the weight-column encoding (`Rel.weighted`) on an
   ordinary bag engine gives exactly the Z-set result, with each weight as a
   trailing column. Old tables get weight 1, and joins multiply weights.
+* `Rel.zeval_prune`: a stored table pruned to the columns the view reads
+  (`Rel.colsOf`, checked by `Rel.readsOnly`) and consolidated gives every row
+  of the view its weight, the plan reading the pruned table through one
+  `emit` that puts NULL in the dropped columns. `Rel.incremental_sound_prune`
+  carries the delta rule to that store (#1329).
 
 Equivalence is `List.Perm`, which never cancels `+1` against `-1`. That makes it
 stronger than Z-set equality, so the results also hold under consolidation.
@@ -219,12 +224,12 @@ plan and an inner join where both sides change.
 
 ## Table formats
 
-[TableFormat.lean](../SubstraitLean/TableFormat.lean) covers what `sverify.io`
+[TableFormat.lean](../analysis/Sverify/Analysis/TableFormat.lean) covers what `sverify.io`
 takes from Delta Lake and Iceberg, with the format's part as explicit
 hypotheses:
 
-* `Rel.zeval_weight_congr`: on the incremental fragment, Z-set evaluation only
-  depends on the tables' weights. A change feed deletes and re-inserts rows,
+* `Rel.zeval_weight_congr` (`Incremental.lean`): on the incremental fragment,
+  Z-set evaluation only depends on the tables' weights. A change feed deletes and re-inserts rows,
   so the old table plus the feed is not a permutation of the new table, only
   equal in weights.
 * `Rel.cdf_sound`: if the feed turns each old snapshot into the new one up to

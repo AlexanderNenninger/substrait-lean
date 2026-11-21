@@ -1,7 +1,7 @@
 """Polars as a Substrait consumer, for the plans Lean writes.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 `to_lazy` translates a Substrait JSON plan into a Polars `LazyFrame`. It reads
 the form `substrait-check` writes (`Write.writePlan`: `--write` and the delta
@@ -172,6 +172,15 @@ class InfiniteResult(RuntimeIssue):
     issue = "overflow to infinity"
 
 
+class InfiniteAggregate(InfiniteResult):
+    """The same for a `SUM` or `AVG` (`Measure.makesInf`): under
+    `semantics="duckdb"` (`finite="aggregates"`) the check stays while the
+    operations' own are dropped, since DuckDB's running sum can overflow where
+    the exact one does not (#2057)."""
+
+    issue = "aggregate overflow to infinity"
+
+
 class SubnormalDivisor(RuntimeIssue):
     """A double divided by a subnormal: the translation's precondition for
     Polars's division, which goes through the divisor's reciprocal (PL-3,
@@ -195,13 +204,20 @@ class VarianceNaN(RuntimeIssue):
 ALL_GUARDS = frozenset(
     {"overflow", "SUM overflow", "division by zero", "negative exponent", "cast out of range",
      "invalid regular expression", "domain error", "raised by a guard", "overflow to infinity",
+     "aggregate overflow to infinity",
      "subnormal divisor", "variance computed as NaN"}
 )  # fmt: skip
 #: `guards=False`: the checks of the preconditions a `guard_free` report
 #: assumes (`Issue.assumed`): integer `SUM`s fit, and no operation on finite
 #: doubles gives `±∞` (#575).
 NO_GUARDS = frozenset(
-    {"SUM overflow", "overflow to infinity", "subnormal divisor", "variance computed as NaN"}
+    {
+        "SUM overflow",
+        "overflow to infinity",
+        "aggregate overflow to infinity",
+        "subnormal divisor",
+        "variance computed as NaN",
+    }
 )
 
 
@@ -301,7 +317,7 @@ def literal(lit: dict) -> tuple[Any, DType]:
         case "str":
             return v, pl.String
         case "float":
-            return v + 0.0, pl.Float64  # the one zero
+            return v, pl.Float64  # raw, -0.0 too (D31)
         case "decimal":
             m, p, s = v
             return Decimal(m).scaleb(-s), decimal_type(p, s)
@@ -1047,22 +1063,19 @@ class Exprs:
                     raise Unsupported(f"overflow = {prefs}")
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
                 return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
+            if name == "sverify_raise" and len(arg_js) == 2:
+                return self.raise_guard(arg_js)
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name in _PICKS:
                 # A chain of `BinFn.greatest`/`least`, as one pick over its
                 # values: nested `when`s would each read the whole chain.
                 return self.pick(name, [self(v) for v in self.pick_leaves(name, arg_js)])
+            if name == "sverify_approx" and len(arg_js) == 2:
+                # D52: a source mark for the checker; the plan's own value runs.
+                return self(arg_js[0])
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
-            if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
-                # DataFusion's simplifier makes `power(x, 0)` a constant 1, even
-                # for a NULL `x` (as `Parse.parseExpr`).
-                v, t = literal(arg_js[1]["literal"])
-                if repr(v) in ("0", "0.0"):
-                    floats = pl.Float64 in (self(arg_js[0]).dtype, t)
-                    one, dtype = (1.0, pl.Float64) if floats else (1, pl.Int64)
-                    return Val(lit_expr(one, dtype), dtype)
             if name == "array_length" and len(arg_js) == 1:
                 return self.regex_match(arg_js[0])
             if name == "replace" and len(arg_js) == 3:
@@ -1311,9 +1324,6 @@ class Exprs:
         t = v.dtype
         if kind == "decimal":
             p, s = arg
-            if s == 0 and p >= 19 and t in (pl.Int64, pl.Null):
-                # `Parse.wideIntDecimal`: an integer, kept as one.
-                return Val(v.expr.cast(pl.Int64), pl.Int64, v.issues)
             if t == pl.Float64:
                 return self.double_to_decimal(v, p, s)
             if t == pl.Null:
@@ -1375,6 +1385,20 @@ class Exprs:
                 ),
             )
         return out
+
+    def raise_guard(self, arg_js: list[dict]) -> Val:
+        """`sverify_raise(dep, message)`: NULL, and an issue on every row where
+        the call is evaluated (`Profile.reference.un (.raise m)`); an enclosing
+        `CASE` restricts it to the rows that take its branch. Only the integer
+        `%` guard is listed (`ProfilePlugin.guards`, #2058)."""
+        dep = self(arg_js[0])
+        msg = arg_js[1].get("literal", {}).get("string", "")
+        # A NULL of no type: the `CASE` around it takes its other branch's.
+        return Val(
+            pl.lit(None),
+            pl.Null,
+            (*dep.issues, Issue(pl.lit(True), RuntimeIssue, msg)),
+        )
 
     def floor_divide(self, name: str, a: Val, b: Val) -> Val:
         """Integer `//` or `%` with `division_type` = `FLOOR`: Polars's own,
@@ -1560,7 +1584,7 @@ class Exprs:
                 bad = (x == 0.0) & (y == 0.0)
                 return self.domain(bad, pl.arctan2(x, y), pl.Float64, name, a, b)
             # `ln x / ln b` (`logb?`), with the arguments made safe where it fails.
-            bad = (x <= 0.0) | (y <= 0.0) | (y == 1.0)
+            bad = x.is_not_null() & y.is_not_null() & ((x <= 0.0) | (y <= 0.0) | (y == 1.0))
             sx = pl.when(bad).then(2.0).otherwise(x)
             sy = pl.when(bad).then(2.0).otherwise(y)
             # `logb?` divides once, exactly: Polars's `log` with a column base
@@ -2051,7 +2075,7 @@ class Measure:
                  inf: shims.agg_makes_infinite(v.sum(), v)},
                 r,
                 ((pl.col(nan), DomainError, f"{self.fn} of +inf and -inf would make a NaN"),
-                 (pl.col(inf), InfiniteResult, f"{self.fn} overflows to infinity")),
+                 (pl.col(inf), InfiniteAggregate, f"{self.fn} overflows to infinity")),
             )  # fmt: skip
         if self.fn == "count":
             return NativeAgg({name: v.count().cast(pl.Int64)}, r)
@@ -2098,7 +2122,7 @@ class Measure:
                 shims.nan_through(clamped, pl.col(nan)),
                 ((pl.col(bad), DomainError, f"{self.fn} of an infinity would make a NaN"),
                  # `agg_makes_infinite`, its two halves read after the aggregation.
-                 (pl.col(fin) & r.is_infinite(), InfiniteResult,
+                 (pl.col(fin) & r.is_infinite(), InfiniteAggregate,
                   f"{self.fn} overflows to infinity (the result, or a step of Polars's "
                   "algorithm)"),
                  # Finite values give no NaN in the reference; Polars's algorithm
@@ -2395,7 +2419,7 @@ class Windows:
             # Finite values whose sum overflows (`Measure.makesInf`, #575).
             # A frame of `+∞` and `-∞` gives NaN, as in the reference.
             odd = self.total((x.is_infinite() | x.is_nan()).fill_null(False).cast(pl.Int64), fr)
-            self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteResult,
+            self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteAggregate,
                                      f"{f.agg} overflows to infinity"))  # fmt: skip
             return pl.when(some).then(s if f.agg == "fsum" else s / n)
         if f.agg in ("fmin", "fmax"):
@@ -2444,7 +2468,9 @@ def checks_of(guards: Guards) -> frozenset[str]:
     if guards is False:
         return NO_GUARDS
     names = frozenset(guards)
-    unknown = names - ALL_GUARDS - {InfiniteResult.issue}
+    if InfiniteResult.issue in names:  # an aggregate's overflow is one of them
+        names |= {InfiniteAggregate.issue}
+    unknown = names - ALL_GUARDS
     if unknown:
         raise ValueError(f"unknown issues to guard: {sorted(unknown)}")
     return names
@@ -2551,6 +2577,10 @@ class Translator:
     def values(self, v: dict, arity: int) -> Frame:
         if "values" in v:
             raise Unsupported("the deprecated VirtualTable.values encoding is not written by Lean")
+        if arity == 0:
+            # A frame without columns has no rows in Polars, so `SELECT 1 + 1`'s
+            # one row would vanish.
+            raise Unsupported("a relation without columns (a plan that reads no table)")
         rows = []
         for row in v.get("expressions", []):
             fields = row.get("fields", [])

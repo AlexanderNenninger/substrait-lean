@@ -1,0 +1,1 @@
+sverify-dbt refuses a model that reads a table function such as `read_csv('…')`, naming it, before DuckDB plans the SQL: DuckDB opened the file or URL when it bound the function ([#891](https://github.com/AlexanderNenninger/substrait-lean/issues/891)). `range(…)` is still read.

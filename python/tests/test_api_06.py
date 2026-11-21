@@ -79,8 +79,8 @@ def test_an_assumed_sum_says_it_is_checked_at_run_time() -> None:
     assert "(inferred;" not in text
     # The first line says the proof holds under checks (#1484).
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
-    assert text.splitlines()[0].startswith("proved with checks: 1 assumption")
-    assert "**proved with checks: 1 assumption**" in report._repr_markdown_()
+    assert text.splitlines()[0].startswith("proved with checks: 1 run-time check")
+    assert "**proved with checks: 1 run-time check**" in report._repr_markdown_()
 
 
 def test_an_assumed_double_sum_names_the_sum() -> None:
@@ -209,19 +209,13 @@ def test_needed_text_is_a_field() -> None:
     n = next(n for n in report.needs if "< 2**62" in n.label)
     assert "(_.amount < 2**62) on t, inferred from `amount * 2`" in n.text
     assert not hasattr(report, "needs_lines") and not hasattr(report, "needs_text")
-    with pytest.warns(DeprecationWarning, match=r"Report.needed is deprecated"):
-        assert report.needed == {"t": [m.label for m in report.needs]}
-    with pytest.warns(DeprecationWarning, match=r"Report.needed_text is deprecated"):
-        assert report.needed_text == report._needs_lines()
-    with pytest.warns(DeprecationWarning, match=r"Report.needed_conditions is deprecated"):
-        conds = report.needed_conditions
-    assert [repr(c) for c in conds["t"]] == [repr(m.condition) for m in report.needs]
+    assert not hasattr(report, "needed") and not hasattr(report, "needed_conditions")
 
 
 def test_equivalence_is_the_observation() -> None:
     report = _quiet(sv.verify, T.select("k"), ensures=[sv.equivalent(rows="sequence")])
-    assert report.equivalence is report.observation
-    assert report.equivalence.rows == "sequence"
+    assert not hasattr(report, "observation") and not hasattr(report, "equivalence")
+    assert report.lenses.rows == "sequence"
 
 
 def test_inferred_warn_still_warns() -> None:

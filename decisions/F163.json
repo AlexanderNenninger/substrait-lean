@@ -1,0 +1,16 @@
+{
+  "id": "F163",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Split fp.elem: power goes to fp.pow (with pow_one_inf) and atan2 to fp.atan2, so unary functions no longer inherit Spark's pow_one_inf refusal; plain removal of pow_one_inf refused. No reference value or allowed set changes; no D-number.",
+  "prs": [
+    1818
+  ],
+  "amends": [
+    "D40"
+  ],
+  "source": "fable-ruling-163-pow-one-inf-groups.md",
+  "note": "Adds a dated note under D40 (no value change). Snowflake session confirms its private tables before merge. Whether unary functions read zero_sign is left open."
+}

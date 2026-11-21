@@ -1,0 +1,20 @@
+{
+  "id": "F161",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Spark's IEEE division CASE that gave the wrong infinity at a -0.0 divisor is a bug: Spark writes plain '/', and a zero divisor raises as the model states; the ruling also covers Snowflake, with details in the private evidence.",
+  "prs": [
+    1841,
+    1846
+  ],
+  "supersedes": [
+    "F160.S4"
+  ],
+  "amends": [
+    "F160"
+  ],
+  "source": "fable-ruling-161-spark-ieee-division-zero-sign.md",
+  "note": "Withdraws section 4 of ruling 160. No D-number."
+}

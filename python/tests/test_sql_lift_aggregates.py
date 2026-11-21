@@ -3,6 +3,7 @@
 
 import json
 
+import ibis
 import pytest
 
 from _sql_lift import SCHEMAS, TABLES
@@ -64,8 +65,8 @@ QUERIES = [
     "SELECT customer, qty, stddev_samp(amount) AS sd, count(*) AS n FROM orders"
     " GROUP BY ROLLUP (customer, qty)",
     # Exact quantiles, the mode and arg_min/arg_max (#53). DuckDB's median of
-    # strings and dates is the 0.5 quantile_disc, and `quantile` is
-    # `quantile_disc`.
+    # strings is the 0.5 quantile_disc, and `quantile` is `quantile_disc`; its
+    # median of a date or timestamp interpolates and is refused (#2153).
     "SELECT customer, median(amount) AS m, median(price) AS mp, quantile_cont(qty, 0.25) AS q"
     " FROM orders GROUP BY customer",
     "SELECT quantile_disc(amount, 0.5) AS d, quantile_disc(customer, 0.75) AS s,"
@@ -88,6 +89,15 @@ QUERIES = [
     " last(day ORDER BY id) AS d FROM orders GROUP BY customer",
     "SELECT list(customer ORDER BY id) FILTER (WHERE id > 1) AS l, first(qty ORDER BY id) AS f,"
     " bool_or(qty > 3) AS b FROM orders WHERE id > 10",
+    # `any_value`: a non-NULL value of the group (#319), here the only one.
+    "SELECT customer, any_value(customer) AS a, any_value(qty) FILTER (WHERE id < 0) AS n"
+    " FROM orders GROUP BY customer",
+    "SELECT any_value(id) AS a FROM orders WHERE id = 1",
+    # It skips NULLs, in the ORDER BY's order (unique ids).
+    "SELECT customer, any_value(qty ORDER BY id) AS f, any_value(qty ORDER BY id DESC) AS l"
+    " FROM orders GROUP BY customer",
+    "SELECT any_value(price ORDER BY placed) AS p, any_value(customer ORDER BY id) AS c"
+    " FROM orders",
     # A key that is the alias of a constant: `qualify` writes its position
     # (`GROUPING SETS ((1), ())`), which is the select list's first column.
     "SELECT count(k) AS c, sum(k) AS s FROM (SELECT 7 AS k FROM orders"
@@ -111,6 +121,13 @@ def test_the_reference_lift_is_checked_too(query):
     assert code == 0, err or out
 
 
+def test_median_of_a_float_is_refused_as_it_interpolates():
+    schemas = {"t": ibis.schema({"f": "float32", "g": "float64"})}
+    with pytest.raises(Refused, match="DuckDB interpolates it"):
+        lift("SELECT median(f) FROM t", schemas)
+    lift("SELECT median(g) FROM t", schemas)
+
+
 @pytest.mark.parametrize(
     ("query", "message"),
     [
@@ -129,7 +146,10 @@ def test_the_reference_lift_is_checked_too(query):
             "over a window is not supported",
         ),
         ("SELECT mode(qty) FROM orders", "breaks ties in the engine's order"),
-        ("SELECT median(cost) FROM orders", "of a DECIMAL is not supported yet"),
+        ("SELECT median(cost) FROM orders", "no engine gives one value for it"),
+        # DuckDB interpolates it (2024-01-05 12:00:00), the lower middle is another value (#2153).
+        ("SELECT median(day) FROM orders", "DuckDB interpolates it"),
+        ("SELECT median(placed) FROM orders", "DuckDB interpolates it"),
         ("SELECT quantile_cont(amount, -0.5) FROM orders", "between 0 and 1"),
         ("SELECT quantile_cont(amount, [0.25, 0.5]) FROM orders", "one number"),
         ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),
@@ -140,6 +160,10 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT bool_and(amount) FROM orders", "not supported"),
         ("SELECT list(cost ORDER BY id) FROM orders", "DECIMAL"),
         ("SELECT first(qty ORDER BY amount + 1) FROM orders", "ORDER BY a column only"),
+        ("SELECT any_value(DISTINCT id) FROM orders", "DISTINCT"),
+        ("SELECT arg_min_null(id, qty) FROM orders", r"arg_min_null\(\) is not supported yet"),
+        ("SELECT bitstring_agg(id) FROM orders", "BIT string"),
+        ("SELECT histogram_exact(id, [1, 2]) FROM orders", "MAP"),
         ("SELECT list(qty) OVER (ORDER BY id) FROM orders", "over a window"),
         # SQLGlot reads EXPORT_STATE as an alias (upstream/bugs/SG-9.json).
         ("SELECT first(qty ORDER BY id) EXPORT_STATE FROM orders", "EXPORT_STATE"),
@@ -220,7 +244,7 @@ def test_stddev_samp_of_an_integer_is_proved_as_ibiss():
     jobs = ibis.table({"workflow": "!string", "duration_s": "int64"}, name="jobs")
     query = "SELECT workflow, stddev_samp(duration_s) AS sd FROM jobs GROUP BY workflow"
     report = sv.verify(query, tables={"jobs": jobs})
-    assert report.facts["sd"] == "a double ≥ 0.0 or NULL", report
+    assert str(report.facts["sd"]) == "a double ≥ 0.0 or NULL", report
     ibis_report = sv.verify(jobs.group_by("workflow").aggregate(sd=jobs.duration_s.std()))
     assert report.facts == ibis_report.facts
     plan = lift(query, {"jobs": jobs.schema()}).plan
@@ -282,15 +306,56 @@ def test_sum_of_both_infinities_is_no_domain_error_under_duckdbs_semantics():
         assert [i for i in ref.issues if "domain error" in str(i)], (fn, ref)
 
 
-def test_sum_of_an_expression_is_proved_under_duckdbs_semantics():
-    """The guarded sum's argument is the expression itself (`SUM(f + 1.0)`), not only a column."""
+def test_sum_of_an_expression_keeps_its_overflow_check_under_duckdbs_semantics():
+    """The guarded sum's argument is the expression itself (`SUM(f + 1.0)`), not only a column.
+    An unbounded column no longer gives `PROVED` with no issues: DuckDB's running
+    sum overflows where the exact sum, which the model gives, does not (ruling
+    200 A4(2)); the check is assumed, and the run makes it."""
     import ibis
 
     import sverify as sv
 
     t = ibis.table({"f": "float64"}, name="f")
     report = sv.verify(sv.sql("SELECT sum(f + 1.0) AS v FROM f", f=t, semantics="duckdb"))
-    assert report.verdict == Verdict.PROVED and not report.issues, report
+    assert report.verdict == Verdict.PROVED_WITH_CHECKS, report
+
+
+@pytest.mark.parametrize(
+    ("fn", "values"),
+    [("avg", [1e308, 1e308]), ("sum", [1e308, 1e308, -1e308])],
+)
+def test_a_double_sum_that_overflows_is_refused_under_duckdbs_semantics(fn, values):
+    """DuckDB's `avg(1e308, 1e308)` is `inf` where the model gives `1e308`: the run
+    refuses the batch instead of returning DuckDB's value (ruling 200 A4(2), R3)."""
+    import ibis
+
+    import sverify as sv
+    from sverify import connect
+    from sverify.conditions import PreconditionError
+
+    t = ibis.table({"f": "float64"}, name="f")
+    report = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="duckdb"))
+    con = connect()
+    con.create("f", t.schema(), [(v,) for v in values])
+    with pytest.raises(PreconditionError, match="overflows"):
+        report.run(con)
+
+
+@pytest.mark.parametrize("fn", ["sum", "avg"])
+def test_a_double_sum_checks_for_a_nan_total_with_no_nan_input(fn):
+    """Finite inputs whose partial sums overflow in both directions give NaN: no
+    input is infinite, so the `±∞` test passes. The written SQL tests the total for
+    NaN where no input is NaN (ruling 200 A4(3))."""
+    import ibis
+
+    import sverify as sv
+    from sverify.sql import to_sql
+
+    t = ibis.table({"f": "float64"}, name="f")
+    plan = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="reference"))
+    assert plan.internal_plan is not None
+    written = to_sql(plan.internal_plan, "duckdb")
+    assert "isnan" in written.lower() and "overflow to infinity" in written, written
 
 
 def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measures_for_duckdb():
@@ -306,3 +371,18 @@ def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measure
     }
     assert len(aggregates[("reference", "sum(DOUBLE)")]["measures"]) == 1
     assert len(aggregates[("duckdb", "sum(DOUBLE)")]["measures"]) == 3
+
+
+def test_quantile_disc_of_a_decimal_beyond_2_pow_53_selects_exactly():
+    """`quantile_disc` of a DECIMAL whose unscaled value exceeds 2^53 is an
+    exact selection from the group (#1921)."""
+    from decimal import Decimal
+
+    import pyarrow as pa
+
+    from _pipelines import arrow_table
+
+    rows = [(Decimal("9007199254740993.01"),), (Decimal("9007199254740993.03"),), (None,)]
+    tables = {"t": arrow_table(pa.schema([pa.field("d", pa.decimal128(20, 2))]), rows)}
+    result = check("SELECT quantile_disc(d, 0.5) AS q, quantile_disc(d, 1) AS top FROM t", tables)
+    assert result.ok, f"{result.stage}: {result.detail}"

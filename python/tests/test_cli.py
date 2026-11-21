@@ -124,10 +124,10 @@ def test_the_json_document(tmp_path, capsys):
     assert doc["unchecked"] == []
     assert set(doc["budget"]) == {"timeout", "elapsed"}
     [item] = doc["items"]
-    assert set(item) == {"name", "nodes", "status", "summary", "links", "report"}
+    assert set(item) == {"name", "nodes", "status", "relaxations", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
     assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
-    assert item["report"]["format"] == 3 and item["report"]["proved"] is False
+    assert item["report"]["format"] == 4 and item["report"]["proved"] is False
 
 
 def test_one_node_of_a_file(tmp_path, capsys):
@@ -456,11 +456,31 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     assert done.returncode == 4, done.stderr
     doc = json.loads(done.stdout)
     assert doc["error"]["code"] == "memory"
+    assert doc["error"]["type"] == "MemoryLimitError"
     assert not sink.exists()
     env["SVERIFY_MEMORY_LIMIT"] = "2GB"
     done = subprocess.run(argv, capture_output=True, text=True, env=env)
     assert done.returncode == 0, done.stdout + done.stderr
     assert sink.exists()
+    # A breach after an earlier commit leaves that commit as it was (M7).
+    from deltalake import DeltaTable
+
+    from sverify.io import DeltaSink
+
+    version, contract = DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract()
+    assert contract is not None
+    # A new version of the source, in another file (Python caches the first's
+    # bytecode), so the refresh computes again.
+    newer = tmp_path / "newer.py"
+    newer.write_text(path.read_text().replace('name="orders",', 'name="orders", version=2,'))
+    again = [sys.executable, "-m", "sverify.cli", "refresh", f"{newer}:stored", "--json"]
+    done = subprocess.run(
+        [*again, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
+    )
+    assert done.returncode == 4, done.stdout + done.stderr
+    assert json.loads(done.stdout)["error"]["code"] == "memory"
+    after = (DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract())
+    assert after == (version, contract)
 
 
 def test_a_dbt_project_needs_sverify_dbt(tmp_path, capsys, monkeypatch):
@@ -566,12 +586,12 @@ def test_github_annotations(tmp_path, capsys):
     assert line.startswith(
         f"::error file={path},line={line_no},title=sverify may_be_false%3A paid::"
     )
-    assert "ensures (_.amount > 20)" in line and "%0Acounterexample: " in line
+    assert "::amount > 20: it may be FALSE" in line and "%0Acounterexample: " in line
 
 
 def test_sarif(tmp_path, capsys):
     path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
-    code, out = run(capsys, "check", str(path), "--output-format", "sarif")
+    code, out = run(capsys, "check", str(path), "--format", "sarif")
     assert code == 1
     log = json.loads(out)
     assert log["version"] == "2.1.0"
@@ -587,12 +607,25 @@ def test_sarif(tmp_path, capsys):
         loc = r["locations"][0]["physicalLocation"]
         assert loc["artifactLocation"]["uri"] == str(path) and loc["region"]["startLine"] > 0
     assert "counterexample" in results[2]["properties"]
+    # The first `needs` result carries the fix `check --fix` writes (#793).
+    [fix] = results[0]["fixes"]
+    assert "fixes" not in results[1] and "fixes" not in results[2]
+    [change] = fix["artifactChanges"]
+    assert change["artifactLocation"]["uri"] == str(path)
+    fixed = path.read_bytes()
+    for rep in sorted(change["replacements"], key=lambda r: -r["deletedRegion"]["byteOffset"]):
+        at, n = rep["deletedRegion"]["byteOffset"], rep["deletedRegion"]["byteLength"]
+        fixed = fixed[:at] + rep["insertedContent"]["text"].encode() + fixed[at + n :]
+    assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
+    assert fixed == path.read_bytes()
 
 
 def test_help_lists_the_exit_codes(capsys):
     assert main(["--help"]) == 0
     out = capsys.readouterr().out
-    assert "  5  a refresh committed with rows quarantined, or held a node" in out
+    assert "  5  a refresh committed with rows quarantined" in out
+    assert "  7  refused: no route takes the proved node to the engine" in out
+    assert "  8  a refresh held a node" in out
 
 
 QUARANTINE = """
@@ -610,7 +643,7 @@ p = orders.pipe(paid)
 
 
 @pytest.mark.parametrize(
-    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 5, "held")]
+    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 8, "held")]
 )
 def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     tmp_path, capsys, policy, code, status
@@ -660,3 +693,36 @@ def test_classifying_an_import_error_in_sverify_errors_does_not_raise(monkeypatc
 
     monkeypatch.setitem(sys.modules, "sverify.errors", None)  # `import` then raises
     assert _classify(TypeError("boom")) == (ERROR, "error")
+
+
+CHECKED = NOT_PROVED.replace(
+    "ensures=[_.amount > 20])", 'ensures=[_.amount > 20], on_unproved="check")'
+)
+
+
+def test_require_proved_fails_a_node_that_is_only_checked_on_the_data(tmp_path, capsys):
+    path = write(tmp_path, HEAD + CHECKED)
+    got, doc = run_json(capsys, "check", f"{path}:p")
+    assert got == 0 and doc["items"][0]["status"] == "checked"
+    assert doc["items"][0]["relaxations"] == ['on_unproved="check"']
+    got, doc = run_json(capsys, "check", f"{path}:p", "--require-proved")
+    assert got == 1 and doc["status"] == "not_proved"
+    assert [f["code"] for f in doc["findings"]] == ["checked_only"]
+    got, out = run(capsys, "explain", "checked_only")
+    assert got == 0 and "--require-proved" in out
+
+
+def test_a_proved_node_has_no_relaxations_and_passes_require_proved(tmp_path, capsys):
+    path = write(tmp_path, HEAD + PROVED)
+    got, doc = run_json(capsys, "check", f"{path}:p", "--require-proved")
+    assert got == 0 and doc["items"][0]["relaxations"] == []
+
+
+def test_the_relaxations_name_each_setting_that_weakens_the_gate(tmp_path, capsys):
+    body = PROVED.replace(
+        'ensures=[_.amount > 10, sv.unique("id")],',
+        'ensures=[_.amount > 10, sv.unique("id")], on_inferred="ignore", check_requires=False,',
+    )
+    path = write(tmp_path, HEAD + body)
+    _, doc = run_json(capsys, "check", f"{path}:p")
+    assert doc["items"][0]["relaxations"] == ['on_inferred="ignore"', "check_requires=False"]

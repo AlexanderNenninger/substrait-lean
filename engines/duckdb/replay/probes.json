@@ -1,5 +1,5 @@
 {
- "duckdb": "2.0.0",
+ "duckdb": "2.0.1",
  "probes": [
   {
    "settings": {
@@ -394,20 +394,16 @@
    "function": "modulus",
    "option": "on_division_by_zero",
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "ERROR"
+   ],
    "candidates": {
     "ERROR": {
-     "differ": 1,
-     "examples": [
-      {
-       "row": "[-9223372036854775808, -1]",
-       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
-       "lean": "ok 0"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     },
     "NULL": {
-     "differ": 11,
+     "differ": 10,
      "examples": [
       {
        "row": "[0, 0]",
@@ -2130,20 +2126,16 @@
    "function": "modulus",
    "option": "on_division_by_zero",
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "ERROR"
+   ],
    "candidates": {
     "ERROR": {
-     "differ": 1,
-     "examples": [
-      {
-       "row": "[-9223372036854775808, -1]",
-       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
-       "lean": "ok 0"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     },
     "NULL": {
-     "differ": 11,
+     "differ": 10,
      "examples": [
       {
        "row": "[0, 0]",
@@ -3730,10 +3722,12 @@
    "function": "modulus",
    "option": "on_division_by_zero",
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "NULL"
+   ],
    "candidates": {
     "ERROR": {
-     "differ": 11,
+     "differ": 10,
      "examples": [
       {
        "row": "[0, 0]",
@@ -3758,14 +3752,8 @@
      ]
     },
     "NULL": {
-     "differ": 1,
-     "examples": [
-      {
-       "row": "[-9223372036854775808, -1]",
-       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
-       "lean": "ok 0"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     }
    }
   },
@@ -5466,10 +5454,12 @@
    "function": "modulus",
    "option": "on_division_by_zero",
    "rows": 121,
-   "matching": [],
+   "matching": [
+    "NULL"
+   ],
    "candidates": {
     "ERROR": {
-     "differ": 11,
+     "differ": 10,
      "examples": [
       {
        "row": "[0, 0]",
@@ -5494,14 +5484,8 @@
      ]
     },
     "NULL": {
-     "differ": 1,
-     "examples": [
-      {
-       "row": "[-9223372036854775808, -1]",
-       "duckdb": "error Out of Range Error: Overflow in division of -9223372036854775808 / -1",
-       "lean": "ok 0"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     }
    }
   },
@@ -7348,7 +7332,7 @@
     "CREATE TABLE t AS SELECT 1 x"
    ],
    "sql": "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t",
-   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (1 // 0). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+   "observed": "1"
   },
   {
    "construct": "exec-case-when-folded-empty",
@@ -7357,7 +7341,7 @@
     "CREATE TABLE t (x INTEGER)"
    ],
    "sql": "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t",
-   "observed": "error InvalidInputException: Invalid Input Error: Division by zero in expression (1 // 0). Use TRY(...) to return NULL for this expression, or SET error_on_division_by_zero=false to return NULL for all divisions by zero."
+   "observed": ""
   },
   {
    "construct": "exec-case-when-folded-cast",
@@ -7366,7 +7350,7 @@
     "CREATE TABLE t AS SELECT 1 x"
    ],
    "sql": "SELECT CASE WHEN x > 0 THEN 1 WHEN 'a'::INTEGER = 1 THEN 2 END FROM t",
-   "observed": "error ConversionException: Conversion Error: Could not convert string 'a' to INT32"
+   "observed": "1"
   },
   {
    "construct": "exec-case-else-lazy",
@@ -7615,7 +7599,7 @@
     "CREATE TABLE t AS SELECT (-128)::TINYINT a, -1::TINYINT b"
    ],
    "sql": "SELECT a % b FROM t",
-   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -128 / -1"
+   "observed": "0"
   },
   {
    "construct": "int-mod-min-i16",
@@ -7624,7 +7608,7 @@
     "CREATE TABLE t AS SELECT (-32768)::SMALLINT a, -1::SMALLINT b"
    ],
    "sql": "SELECT a % b FROM t",
-   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -32768 / -1"
+   "observed": "0"
   },
   {
    "construct": "int-mod-min-i32",
@@ -7633,7 +7617,7 @@
     "CREATE TABLE t AS SELECT (-2147483648)::INTEGER a, -1::INTEGER b"
    ],
    "sql": "SELECT a % b FROM t",
-   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -2147483648 / -1"
+   "observed": "0"
   },
   {
    "construct": "int-mod-min-i64",
@@ -7642,7 +7626,7 @@
     "CREATE TABLE t AS SELECT (-9223372036854775808)::BIGINT a, -1::BIGINT b"
    ],
    "sql": "SELECT a % b FROM t",
-   "observed": "error OutOfRangeException: Out of Range Error: Overflow in division of -9223372036854775808 / -1"
+   "observed": "0"
   },
   {
    "construct": "int-pow-narrow",
@@ -7698,7 +7682,19 @@
     "CREATE TABLE t AS SELECT * FROM (VALUES (1, 'both', 'inf'::DOUBLE), (2, 'both', '-inf'::DOUBLE), (3, 'both', 1.0), (4, 'pos', 'inf'::DOUBLE), (5, 'pos', 1.0), (6, 'neg', '-inf'::DOUBLE), (7, 'neg', 1.0), (8, 'finite', 1.0), (9, 'finite', 2.0)) v(i, g, x)"
    ],
    "sql": "SELECT 'all' AS k, nan_text(sum(x)), nan_text(avg(x)), nan_text(fsum(x)), nan_text(favg(x)) FROM t UNION ALL SELECT g, nan_text(sum(x)), nan_text(avg(x)), nan_text(fsum(x)), nan_text(favg(x)) FROM t GROUP BY g UNION ALL SELECT 'w' || i, nan_text(sum(x) OVER w), nan_text(avg(x) OVER w), nan_text(fsum(x) OVER w), nan_text(favg(x) OVER w) FROM t WINDOW w AS (ORDER BY i ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) ORDER BY k",
-   "observed": "'all', 'nan', 'nan', 'nan', 'nan'; 'both', 'nan', 'nan', 'nan', 'nan'; 'finite', '3.0', '1.5', '3.0', '1.5'; 'neg', '-inf', '-inf', 'nan', 'nan'; 'pos', 'inf', 'inf', 'nan', 'nan'; 'w1', 'inf', 'inf', 'inf', 'nan'; 'w2', 'nan', 'nan', 'nan', 'nan'; 'w3', '-inf', '-inf', 'nan', 'nan'; 'w4', 'inf', 'inf', 'inf', 'nan'; 'w5', 'inf', 'inf', 'nan', 'nan'; 'w6', '-inf', '-inf', '-inf', 'nan'; 'w7', '-inf', '-inf', 'nan', 'nan'; 'w8', '2.0', '1.0', '2.0', '1.0'; 'w9', '3.0', '1.5', '3.0', '1.5'"
+   "observed": "'all', 'nan', 'nan', 'nan', 'nan'; 'both', 'nan', 'nan', 'nan', 'nan'; 'finite', '3.0', '1.5', '3.0', '1.5'; 'neg', '-inf', '-inf', '-inf', '-inf'; 'pos', 'inf', 'inf', 'inf', 'inf'; 'w1', 'inf', 'inf', 'inf', 'inf'; 'w2', 'nan', 'nan', 'nan', 'nan'; 'w3', '-inf', '-inf', '-inf', '-inf'; 'w4', 'inf', 'inf', 'inf', 'inf'; 'w5', 'inf', 'inf', 'inf', 'inf'; 'w6', '-inf', '-inf', '-inf', '-inf'; 'w7', '-inf', '-inf', '-inf', '-inf'; 'w8', '2.0', '1.0', '2.0', '1.0'; 'w9', '3.0', '1.5', '3.0', '1.5'"
+  },
+  {
+   "construct": "sum-constant-run-nonfinite",
+   "area": "aggregates",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END",
+    "ATTACH ':memory:' AS m (COMPRESS)",
+    "CREATE TABLE m.t AS SELECT g, x FROM ( SELECT 'pinf' AS g, 'inf'::DOUBLE AS x FROM range(130000) UNION ALL SELECT 'ninf', '-inf'::DOUBLE FROM range(130000) UNION ALL SELECT 'nan', 'nan'::DOUBLE FROM range(130000) UNION ALL SELECT 'pinf+finite', CASE WHEN i < 125000 THEN 'inf'::DOUBLE ELSE 1.0 END FROM range(130000) r(i) UNION ALL SELECT 'ninf+finite', CASE WHEN i < 125000 THEN '-inf'::DOUBLE ELSE 1.0 END FROM range(130000) r(i) UNION ALL SELECT 'nan+finite', CASE WHEN i < 125000 THEN 'nan'::DOUBLE ELSE 1.0 END FROM range(130000) r(i) UNION ALL SELECT 'both', CASE WHEN i < 65000 THEN 'inf'::DOUBLE ELSE '-inf'::DOUBLE END FROM range(130000) r(i)) ORDER BY g",
+    "CHECKPOINT m"
+   ],
+   "sql": "SELECT g, nan_text(sum(x)), nan_text(avg(x)), nan_text(sum('inf'::DOUBLE)), nan_text(sum('-inf'::DOUBLE)), nan_text(sum('nan'::DOUBLE)) FROM m.t GROUP BY g UNION ALL SELECT 'constant segments', (SELECT count(*) FROM pragma_storage_info('m.t') WHERE column_name = 'x' AND segment_type = 'DOUBLE' AND compression = 'Constant')::VARCHAR, NULL, NULL, NULL, NULL ORDER BY g",
+   "observed": "'both', 'nan', 'nan', 'inf', '-inf', 'nan'; 'constant segments', '3', NULL, NULL, NULL, NULL; 'nan', 'nan', 'nan', 'inf', '-inf', 'nan'; 'nan+finite', 'nan', 'nan', 'inf', '-inf', 'nan'; 'ninf', '-inf', '-inf', 'inf', '-inf', 'nan'; 'ninf+finite', '-inf', '-inf', 'inf', '-inf', 'nan'; 'pinf', 'inf', 'inf', 'inf', '-inf', 'nan'; 'pinf+finite', 'inf', 'inf', 'inf', '-inf', 'nan'"
   },
   {
    "construct": "sum-empty",
@@ -7800,7 +7796,7 @@
     "CREATE TABLE s AS SELECT 'Hello' v"
    ],
    "sql": "SELECT v = 'hello', v LIKE 'h%', v ILIKE 'h%', contains(v, 'ELL'), starts_with(v, 'he'), strpos(v, 'EL'), ends_with(v, 'LO'), prefix(v, 'he'), replace(v, 'h', 'J') FROM s",
-   "observed": "true, false, true, false, false, 0, false, false, 'Hello'"
+   "observed": "true, true, true, true, true, 2, false, false, 'Hello'"
   },
   {
    "construct": "default-collation-nocase-literals",
@@ -7809,7 +7805,7 @@
     "SET default_collation = 'nocase'"
    ],
    "sql": "SELECT 'Hello' = 'hello', 'Hello' LIKE 'h%', contains('Hello', 'ELL'), starts_with('Hello', 'he'), strpos('Hello', 'EL')",
-   "observed": "true, false, false, false, 0"
+   "observed": "true, true, true, true, 2"
   },
   {
    "construct": "default-collation-nocase-sort",

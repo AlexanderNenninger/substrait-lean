@@ -1,0 +1,16 @@
+{
+  "id": "F179",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1876's W6 round trip is fixed in the same PR: .dtrunc (and .dround if cheap) map the interval monotonically in the transfer; .decimal's transfer stays id; no D-number.",
+  "issues": [
+    1876
+  ],
+  "amends": [
+    "F177"
+  ],
+  "source": "fable-ruling-179-1876-dtrunc-transfer.md",
+  "note": "Follows ruling 177; W1-W12 of 177 stand. Rejects the session's proposed x10^s and +/-(10^p-1) meet."
+}

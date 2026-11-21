@@ -3,8 +3,8 @@
 virtual tables (`inline_tables`), and the rows the checker prints read back.
 The oracle of the tests and of the counterexample search.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 """
 
 from __future__ import annotations
@@ -46,6 +46,9 @@ def literal(v: object) -> dict:
         return {"literal": {"i64": str(v)}}
     if isinstance(v, str):
         return {"literal": {"string": v}}
+    if isinstance(v, dt.datetime) and v.tzinfo is not None:
+        micros = (v - EPOCH.replace(tzinfo=dt.UTC)) // dt.timedelta(microseconds=1)
+        return {"literal": {"precisionTimestampTz": {"precision": 6, "value": str(micros)}}}
     if isinstance(v, dt.datetime):
         micros = (v - EPOCH) // dt.timedelta(microseconds=1)
         return {"literal": {"precisionTimestamp": {"precision": 6, "value": str(micros)}}}
@@ -173,6 +176,14 @@ def _raised(plan_json: str) -> str | None:
     aggregates); None where it raises none."""
     code, out, _ = run_checker(("--raises",), plan_json)
     return (out.strip() or None) if code == 0 else None
+
+
+def lean_assumed(plan_json: str) -> str | None:
+    """The first assumed issue (`Issue.assumed`) the plan as written runs into
+    on its virtual tables, by `Expr.issues` and the groups' true sums
+    (`--assumed`, `Rel.HasIssue`); None where it runs into none. The oracle of
+    `Report._check_assumed`'s tests (#2018)."""
+    return _checked(plan_json, ("--assumed",)).strip() or None
 
 
 def lean_values(plan_json: str, rows_only: bool = False) -> list[tuple]:

@@ -103,8 +103,8 @@ def test_window_postconditions_are_proved():
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
     assert report.deterministic
-    assert report.facts["rn"] == "an integer ≥ 0"
-    assert report.facts["prev"] == "a double > 0.0 or NULL"
+    assert str(report.facts["rn"]) == "an integer ≥ 0"
+    assert str(report.facts["prev"]) == "a double > 0.0 or NULL"
 
 
 def test_lag_is_null_on_the_first_row():
@@ -158,7 +158,7 @@ def test_strict_order_under_a_key():
     report = gaps.report
     assert report is not None and report.verdict == sv.Verdict.PROVED, str(report)
     assert (
-        report.facts["gap"]
+        str(report.facts["gap"])
         == "an interval in [0:00:00.000001, 2932896 days, 23:59:59.999999] or NULL"
     )
 
@@ -449,3 +449,155 @@ def test_a_windowed_min_of_doubles_picks_a_member_of_a_class():
     assert "keeps any member of a class of doubles" in doubles._tie_places[0].what
     ints = sv.verify(t.select(t.s, t.t, lo=t.n.min().over(w)), requires=keyed)
     assert ints.deterministic
+
+
+G = ibis.table({"pk": "int64", "id": "int64", "s": "string"}, name="g")
+TZ = ibis.table({"tk": "string", "time": "timestamp('UTC')", "bid": "int64"}, name="z")
+
+
+@settings(max_examples=25, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.integers(0, 8),
+            st.one_of(st.none(), st.sampled_from(["a", "b|c", ""])),
+        ),
+        max_size=8,
+        unique_by=lambda r: r[1],
+    )
+)
+def test_group_concat_over_a_window_matches_duckdb(rows):
+    """`group_concat(sep=).over(rows=(0, None))` (#1915): the frame's strings
+    in the window's order (unique ids), NULLs skipped."""
+    expr = G.mutate(t=G.s.group_concat(sep="|").over(group_by="pk", order_by="id", rows=(0, None)))
+    con = connect()
+    con.create("g", G.schema(), rows)
+    expected = [tuple(r.values()) for r in duckdb_ibis(con, expr).to_pylist()]
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"g": rows})))
+    assert canonical(lean) == canonical(expected)
+    got = run_plan(con, written_plan(json.dumps(plan)), "duckdb").to_pylist()
+    assert canonical([tuple(r.values()) for r in got]) == canonical(expected)
+
+
+@settings(max_examples=25, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.sampled_from(["a", "b"]),
+            st.integers(0, 40),
+            st.one_of(st.none(), st.integers(-5, 5)),
+        ),
+        max_size=8,
+    )
+)
+def test_range_frame_over_a_timestamp_with_time_zone_matches_duckdb(rows):
+    """A RANGE frame with an interval offset over a `timestamptz` key (#1931)."""
+    from datetime import UTC, datetime, timedelta
+
+    rows = [(k, datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=s), b) for k, s, b in rows]
+    expr = TZ.select(
+        "tk", a=TZ.bid.sum().over(range=(-ibis.interval(seconds=10), 0), order_by=TZ.time)
+    )
+    con = connect()
+    con.create("z", TZ.schema(), rows)
+    expected = [tuple(r.values()) for r in duckdb_ibis(con, expr).to_pylist()]
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"z": rows})))
+    assert canonical(lean) == canonical(expected)
+    got = run_plan(con, written_plan(json.dumps(plan)), "duckdb").to_pylist()
+    assert canonical([tuple(r.values()) for r in got]) == canonical(expected)
+
+
+def test_a_bound_window_aggregate_reads_quoted_names_and_literals(monkeypatch):
+    """#1608 item 5 binds a window aggregate that a guard repeats by rewriting
+    the written SQL's text: a quote inside an identifier (a column named
+    `it's`) or a string literal holding `) OVER (` must not shift what is read
+    as a call. The rows are those of the unbound form (main's)."""
+    import pyarrow as pa
+
+    import sverify as sv
+    from sverify.sql.core import _base
+
+    t = ibis.table({"k": "int64", "it's": "int64", "s": "string"}, name="q")
+    w = ibis.window(group_by="k", order_by="it's", preceding=None, following=0)
+    q = t.select(
+        "k",
+        "it's",
+        r=t["it's"].sum().over(w),
+        p=t.s.lag(1, default=") OVER (").over(ibis.window(group_by="k", order_by="it's")),
+    )
+    report = sv.verify(q, requires={"q": [ibis._["it's"].between(0, 100)]})
+    assert report.verdict != sv.Verdict.UNPROVED, str(report)
+    con = sv.connect()
+    con.put("q", pa.table({"k": [1, 1, 1, 2], "it's": [1, 2, 3, 5], "s": ["a", "b", "c", "d"]}))
+
+    def rows() -> list[tuple]:
+        return sorted(tuple(r.values()) for r in report.run(con, "duckdb").to_pylist())
+
+    bound = rows()
+    assert report.to_sql("duckdb").count("SUM(") == 1
+    with monkeypatch.context() as m:
+        m.setattr(
+            _base._Writer,
+            "bound_windows",
+            lambda self, items, _m, _a, src, _o: self.select(items, src),
+        )
+        assert report.to_sql("duckdb").count("SUM(") > 1
+        assert rows() == bound
+    assert [r[2] for r in bound] == [1, 3, 6, 5]
+    assert [r[3] for r in bound] == [") OVER (", "a", "b", ") OVER ("]
+
+
+def test_window_calls_skip_quoted_text():
+    """`_window_calls` reads a quote inside an identifier as a character and
+    ignores parentheses inside string literals and identifiers."""
+    from sverify.sql.core._base import _window_calls
+
+    call = 'SUM(s."it\'s") OVER (PARTITION BY s."c1")'
+    assert _window_calls(f"CASE WHEN {call} IS NULL THEN 0 ELSE {call} END") == [call, call]
+    lag = 'LAG(s."c2", 1, \') OVER (\') OVER (ORDER BY s."c0")'
+    assert _window_calls(lag) == [lag]
+    assert _window_calls("'SUM(x) OVER (y)'") == []
+
+
+FL = ibis.table({"a": "int64", "val": "int64", "ob": "int64"}, name="fl")
+
+
+@pytest.mark.parametrize(
+    "pick",
+    [
+        lambda c: c.first(order_by="ob"),
+        lambda c: c.last(order_by="ob"),
+        lambda c: c.first(order_by=ibis._.ob.desc()),
+        lambda c: c.last(order_by=ibis._.ob.desc()),
+    ],
+    ids=["first_asc", "last_asc", "first_desc", "last_desc"],
+)
+@settings(max_examples=25, deadline=None)
+@given(
+    rows=st.lists(
+        st.tuples(
+            st.integers(-1, 2),
+            st.one_of(st.none(), st.integers(0, 5)),
+            st.integers(0, 12),
+        ),
+        max_size=8,
+        unique_by=lambda r: r[2],
+    )
+)
+def test_ordered_first_last_in_mutate_match_duckdb(pick, rows):
+    """`first(order_by=)` and `last(order_by=)` over the whole table (#1913): Lean,
+    Ibis's own SQL and the plan Lean writes agree (the order keys are unique)."""
+    expr = FL.mutate(new=pick(FL.val))
+    con = connect()
+    con.create("fl", FL.schema(), rows)
+    expected = duckdb_ibis(con, expr).to_pylist()
+    plan = to_substrait(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(json.dumps(plan)), {"fl": rows})))
+    assert canonical(lean) == canonical([tuple(r.values()) for r in expected])
+    got = run_plan(con, written_plan(json.dumps(plan)), "duckdb").to_pylist()
+    assert canonical([tuple(r.values()) for r in got]) == canonical(
+        [tuple(r.values()) for r in expected]
+    )

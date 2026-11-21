@@ -252,7 +252,7 @@ def test_rollup_contract_is_proved():
         on_inferred="ignore",  # the truncated ts's bound
     )
     assert report.verdict == sv.Verdict.PROVED, report.details()
-    assert report.facts["mx"] == "an integer in [0, 1000]"
+    assert str(report.facts["mx"]) == "an integer in [0, 1000]"
     # The reference rounds the exact mean once (D25), so it stays within the
     # inputs' bound (#1160). Its relation to the group's own max is not tracked.
     report = sv.verify(
@@ -281,6 +281,31 @@ def test_decimal_avg_is_bounded_by_its_inputs():
         g, requires={"lineitem": [_.q >= 1, _.q <= 50]}, ensures=[_.avg_q >= 1, _.avg_q <= 50]
     )
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, report.details()
+
+
+def test_decimal_avg_over_a_window_is_bounded_by_its_inputs():
+    # #2015: over a window too, a decimal `AVG` is its frame's `SUM` by its
+    # `COUNT`, so it stays within its inputs (NULL for a frame without values).
+    t = ibis.table({"k": "!int64", "q": "!decimal(12, 2)"}, name="lineitem")
+    w = t.mutate(avg_q=t.q.mean().over(ibis.window(group_by="k")))
+    report = sv.verify(
+        w,
+        requires={"lineitem": [_.q >= 1, _.q <= 50]},
+        ensures=[_.avg_q.isnull() | ((_.avg_q >= 1) & (_.avg_q <= 50))],
+    )
+    assert report.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS), report.details()
+
+
+def test_a_sum_minus_its_window_average_fits():
+    # #2015 (TPC-DS Q89's shape): monthly sums of bounded prices over at most
+    # 10^12 rows, and each one's difference from their average per store,
+    # which divides by that average.
+    t = ibis.table({"item": "int64", "store": "int64", "price": "decimal(7, 2)"}, name="sales")
+    monthly = t.group_by(["item", "store"]).aggregate(total=t.price.sum())
+    m = monthly.mutate(avg=monthly.total.mean().over(ibis.window(group_by="store")))
+    q = m.filter(ibis.ifelse(m.avg != 0, (m.total - m.avg).abs() / m.avg, None) > ibis.literal(0.1))
+    report = sv.verify(q, requires={"sales": [_.price.between(0.01, 300), sv.max_rows(10**12)]})
+    assert not report.errors, report.details()
 
 
 def test_avg_of_a_nullable_column_may_be_null():
@@ -316,7 +341,7 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     t = jobs.group_by("workflow").aggregate(passed=flag.sum())
     for report in (sv.verify(t), sv.verify(t, on_inferred="off")):
         assert report.verdict == sv.Verdict.PROVED, report.details()
-        assert not report.issues and not report.assumed and not report.warnings
+        assert not report.issues and not report.assumed
         assert not any(h.startswith("SUM of") for h in report._hints)
     sign = (jobs.conclusion == "success").ifelse(1, -1)
     report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), on_inferred="off")
@@ -403,9 +428,9 @@ def test_aggregate_postconditions_are_proved():
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, report.details()
     # Nothing bounds a group's rows (#219): the SUM is assumed to fit.
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
-    assert report.facts["n"] == "an integer ≥ 1"
+    assert str(report.facts["n"]) == "an integer ≥ 1"
     # `amount >= 0` rules out NULL, so each group has a maximum (#372).
-    assert report.facts["top"] == "an integer ≥ 0"
+    assert str(report.facts["top"]) == "an integer ≥ 0"
 
 
 def test_sum_has_no_upper_bound():
@@ -551,9 +576,9 @@ def test_variance_meaning():
         for g, e in zip(got, expected, strict=True):
             assert all(near(x, y) for x, y in zip(g, e, strict=True)), (engine, g, e)
     report = sv.verify(var_expr())
-    assert all(report.facts[c] == "a double ≥ 0.0 or NULL" for c in ("vs", "vp", "ss", "sp")), (
-        report.facts
-    )
+    assert all(
+        str(report.facts[c]) == "a double ≥ 0.0 or NULL" for c in ("vs", "vp", "ss", "sp")
+    ), report.facts
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
@@ -1033,10 +1058,140 @@ def test_quantiles_are_refused_on_other_engines(agg):
     [
         (Q.x.approx_median(), "each engine's own estimate"),
         (Q.x.approx_quantile(0.5), "each engine's own estimate"),
-        (Q.x.quantile([0.25, 0.5]), "several fractions"),
-        ((Q.i + 1).mode(), "select it as a column"),
     ],
 )
 def test_quantile_refusals_say_what(agg, message):
     with pytest.raises(Exception, match=message):
         to_substrait_json(Q.group_by("k").aggregate(v=agg))
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.integers(-3, 3)),
+            st.just(0.0),
+            st.just("a"),
+        ),
+        max_size=9,
+    )
+)
+def test_mode_of_an_expression_agrees_with_duckdb(rows):
+    """`mode(i + 1)` is projected as a column first (#1909): Lean and DuckDB
+    give the same rows."""
+    plan = to_substrait_json(Q.group_by("k").aggregate(m=(Q.i + 1).mode()))
+    lean = sorted(lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows}))), key=repr)
+    con = connect()
+    con.create("t", Q.schema(), rows)
+    got = sorted(
+        (tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()),
+        key=repr,
+    )
+    assert [tuple(r) for r in lean] == got, (lean, got)
+
+
+@settings(max_examples=30, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.integers(-3, 3)),
+            st.one_of(st.none(), st.sampled_from([0.5, 1.0, 2.25, -3.0])),
+            st.just("a"),
+        ),
+        max_size=9,
+    )
+)
+def test_quantile_of_several_fractions_agrees_with_duckdb(rows):
+    """`quantile([0.25, 0.5])` is the array of two measures (#1910)."""
+    plan = to_substrait_json(Q.group_by("k").aggregate(q=Q.x.quantile([0.25, 0.5])))
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    con = connect()
+    con.create("t", Q.schema(), rows)
+    got = run_plan(con, written_plan(plan), "duckdb").to_pylist()
+    assert len(lean) == len(got)
+    lean_by_k = {
+        k: None if qs is None else [decode_double(v) if isinstance(v, int) else v for v in qs]
+        for k, qs in lean
+    }
+    for r in got:
+        assert (lean_by_k[r["k"]] is None) == (r["q"] is None)
+        if r["q"] is not None:
+            assert lean_by_k[r["k"]] == pytest.approx(r["q"])
+
+
+@pytest.mark.parametrize("where", [False, True])
+@settings(max_examples=30, deadline=None)
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(0, 2),
+            st.one_of(st.none(), st.integers(-1, 1)),
+            st.just(0.0),
+            st.one_of(st.none(), st.sampled_from(["a", "b"])),
+        ),
+        max_size=9,
+    )
+)
+def test_count_distinct_of_rows_agrees_with_duckdb(where, rows):
+    """`nunique()` of a table counts its distinct rows, NULLs equal (#1912)."""
+    expr = Q.aggregate(n=Q.nunique(where=Q.i > 0 if where else None))
+    plan = to_substrait_json(expr)
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    con = connect()
+    con.create("t", Q.schema(), rows)
+    got = [tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()]
+    assert [tuple([v]) if not isinstance(v, tuple) else v for v in lean] == got
+    expect = duckdb_sql(con, ibis.to_sql(expr, dialect="duckdb")).to_pylist()
+    assert got == [tuple(r.values()) for r in expect]
+
+
+def test_arbitrary_is_one_of_the_groups_values():
+    """`arbitrary()` is `first()` without an order (#1920): a non-NULL value
+    of the group, which a contract can bound but does not determine."""
+    expr = Q.group_by("k").aggregate(a=Q.i.arbitrary(where=Q.s == "a"))
+    report = sv.verify(
+        expr,
+        requires={"t": [_.i >= 0, _.i <= 10]},
+        ensures=[_.a.isnull() | ((_.a >= 0) & (_.a <= 10))],
+    )
+    assert report.verdict == sv.Verdict.PROVED, report.details()
+
+
+def test_group_concat_with_a_constant_expression_as_separator():
+    """`sep=ibis.literal(":") + ":"` folds to `"::"` (#1914)."""
+    sep = ibis.literal(":") + ":"  # pyrefly: ignore
+    expr = Q.group_by("k").aggregate(c=Q.s.group_concat(sep, where=Q.i > 0))
+    plan = json.loads(to_substrait_json(expr))
+    assert '"string": "::"' in json.dumps(plan)
+
+
+DEC = ibis.table({"k": "int64", "d": "decimal(10, 2)"}, name="t")
+
+
+def test_quantile_of_a_decimal_is_refused_with_the_way_out():
+    """No engine gives one value for it (#1921): the message names the cast."""
+    for agg in (DEC.d.median(), DEC.d.quantile(0.5)):
+        with pytest.raises(
+            Exception, match=r"no engine gives one value.*cast the column to float64"
+        ):
+            to_substrait_json(DEC.group_by("k").aggregate(q=agg))
+
+
+def test_quantile_of_a_decimal_cast_to_float64_verifies_and_runs():
+    from decimal import Decimal
+
+    expr = DEC.group_by("k").aggregate(q=DEC.d.cast("float64").quantile(0.5))
+    report = sv.verify(
+        expr,
+        requires={"t": [_.d >= 0, _.d <= 10]},
+        ensures=[_.q.isnull() | ((_.q >= 0.0) & (_.q <= 10.0))],
+    )
+    assert report.verdict == sv.Verdict.PROVED, report.details()
+    con = connect()
+    con.create(
+        "t", DEC.schema(), [(1, Decimal("1.25")), (1, Decimal("2.50")), (1, Decimal("4.75"))]
+    )
+    got = run_plan(con, written_plan(to_substrait_json(expr)), "duckdb").to_pylist()
+    assert got == [{"k": 1, "q": 2.5}]

@@ -13,7 +13,7 @@ ENGINE=$(command -v podman || command -v docker)
 PORT=${MARQUEZ_PORT:-5000}
 POD=sverify-marquez
 MARQUEZ_IMAGE=docker.io/marquezproject/marquez:0.51.1
-PG_IMAGE=docker.io/library/postgres:14
+PG_IMAGE=docker.io/library/postgres:14.25
 
 case "${1:-start}" in
 start)

@@ -1,0 +1,10 @@
+{
+  "id": "F125",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Proved optimizations epic: proved rewrites (setup 1) are the default and cover 1.0; checked rewrites (setup 2) only for global search, reusing #958's normal form; refinement is the statement; writers gain no decisions; per-rule measured-gain gate; ordered work list.",
+  "source": "fable-epic-proven-optimizations.md",
+  "note": "Log entry 125. The user ruled that the coordinator posts it (2026-11-19). Written at the user's request. Epic number not stated in the file; later rulings (127, 129) call it #1787. Three decisions left open (optimized plan default at 1.0, #824 wording, #958 refinement statements)."
+}

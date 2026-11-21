@@ -1,0 +1,1 @@
+Arrow-fed sources (`StaticSource`, `sverify.io.Source`) now keep their rows in the store of the pipeline's engine, not as an Arrow table beside it (#1329): a refresh adds the change in the store, and a delete that finds no row raises "cannot delete rows from `t`: no such row" without naming the row.

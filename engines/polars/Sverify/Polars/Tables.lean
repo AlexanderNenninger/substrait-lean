@@ -44,6 +44,9 @@ def Profile.polars.table : ProfileTable where
     -- `min` and `max` skip NaN unless every value is NaN (polars-min-max-nan).
     (some "agg.order", "nan_order", .oneOf ["IGNORED"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
+    -- Left open until the scope narrows to list arguments (ruling 171): a refused row for the
+    -- facts' LEAST (spark-list-order, polars-list-order) would refuse every MIN and MAX, integer ones too.
+    (none, "list_null_order", .loose ["NULL", "GREATEST", "LEAST"]),
     -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
     -- target): pairwise, Kahan over groups.
@@ -121,19 +124,23 @@ def Profile.polars.obs : ObsTable := [
     "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, in-memory group sums Kahan's (polars-sum-float), and mean divides the f64 sum once: StdModel.Summed (a tree or Kahan's sum) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan"
     ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 900),
-  -- Schubert and Gertz's merge: no theorem yet, a fuzzed bound of
-  -- `1.03 · n·u·√(Q'S)` on the co-moment (polars-var-bound, #918).
+  -- This row now holds for `COVAR_*` and `CORR` (`agg.stat`): Polars's `CovState`
+  -- has no theorem yet, a fuzzed bound on the co-moment (polars-var-bound;
+  -- #1808, its proof #2114). `VAR_*` and `STDDEV_*` read the `agg.var` row below.
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
-    rerun := some { floats := .within "plan" } }).tracking 918),
-  -- A one-row frame's streaming `group_by` gives 0 for a NaN (polars-var-pop-one-nan),
-  -- where the reference gives NaN; the run returns NaN for a NaN among the values,
-  -- as DuckDB's SQL does (`Stat.nanGuard_varStat` proves the guard; the bound
-  -- around it is the row above's, fuzzed).
+    rerun := some { floats := .within "plan" } }).tracking 1808),
+  -- Two-pass blocks, Welford's update and Schubert and Gertz's merge in any
+  -- tree meet `StatProps`: `float-bounds` proves `VAR_*` within `varTol`
+  -- (`core_var_polars`, #1808), the fuzz (polars-var-bound) two orders of
+  -- magnitude inside it. A one-row frame's streaming `group_by` gives 0 for a
+  -- NaN (polars-var-pop-one-nan), where the reference gives NaN; the run returns
+  -- NaN for a NaN among the values, as DuckDB's SQL does (`Stat.nanGuard_varStat`).
   (some "agg.var", "stat_algo", ({ ObsRow.approxWithin "plan"
       ["polars-var-std", "polars-var-std-streaming", "polars-var-bound", "polars-var-pop-one-nan"] with
     shim := some "nan_through",
     rerun := some { floats := .within "plan" },
-    note := "Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan); the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves), within the fuzzed bound of the row for every statistic (polars-var-bound)." }).tracking 918),
+    note := "Two-pass blocks of at most 128 values (CHUNK_SIZE in crates/polars-compute/src/moment.rs at py-2.1.0, a hypothesis of the theorem), Welford's update and Schubert and Gertz's merge, over every partition of the values into blocks, every summation order and every merge tree, meet StatProps on finite values (FloatBounds.StdModel.core_var_polars, #1808; polars-var-bound fuzzes it); Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan), so the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves)." }).proved
+    "FloatBounds.StdModel.core_var_polars"),
   -- `lo + (hi - lo) · w`: with an infinite neighbour `hi - lo` is infinite and the
   -- result a NaN where `lo` is `-∞` and `+∞` where `hi - lo` overflows
   -- (polars-quantile), values the reference does not allow at `BETWEEN`;

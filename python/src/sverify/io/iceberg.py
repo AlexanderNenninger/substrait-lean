@@ -1,7 +1,7 @@
 """Iceberg tables (pyiceberg) as change sources and sinks.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 Versions are snapshot sequence numbers. An `IcebergSource` reads the
 change between two versions from the data files the snapshots in between
@@ -33,7 +33,7 @@ import uuid
 import warnings
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import pyarrow as pa
@@ -83,7 +83,7 @@ try:
 except ImportError as e:
     raise ImportError("sverify.io.iceberg needs iceberg: pip install 'sverify[iceberg]'") from e
 
-from sverify import _deprecated, _quarantine
+from sverify import _quarantine
 from sverify._duration import Duration, duration
 from sverify._scan import EqualityDelete, Scan, ScanSnapshot, local_path
 from sverify._unsupported import SverifyWarning
@@ -346,7 +346,7 @@ class IcebergSource(_TableSource):
         where: A SQL condition on the columns. The source is the rows on
             which it is TRUE; data files are skipped only where Lean proves
             from their statistics that it is TRUE on none of their rows
-            (`Rel.eval_pruned` in `SubstraitLean/Pruning.lean`). Default:
+            (`Rel.eval_pruned` in `analysis/Sverify/Analysis/Pruning.lean`). Default:
             None, every row.
         name: The table's name in the plans that read it. Default: the last
             part of `identifier`.
@@ -367,6 +367,9 @@ class IcebergSource(_TableSource):
         where: The SQL condition, or None.
         name: The table's name in the plans that read it.
         skipped: The data files the last snapshot did not read.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
     """
 
     def __init__(
@@ -471,7 +474,7 @@ class IcebergSource(_TableSource):
         v = _version(s)
         self._read_at(t, v)
         rows, files = self._rows(t, s)
-        return Snapshot(v, rows, self._facts(t, files, f"file stats @v{v}"))
+        return Snapshot(version=v, table=rows, facts=self._facts(t, files, f"file stats @v{v}"))
 
     def _native(self, version: int | None = None) -> ScanSnapshot | None:
         """The snapshot at `version` as the Parquet files DuckDB reads
@@ -1443,7 +1446,6 @@ class IcebergSink(_TableSink[Table]):
         *,
         snapshot_retention: Duration | None = None,
         min_snapshots: int | None = None,
-        expire: timedelta | None = None,
     ) -> dict[str, int]:
         """Compact the table, and with `snapshot_retention`, expire the
         snapshots older than that and delete the files only they referenced. The compaction
@@ -1465,7 +1467,6 @@ class IcebergSink(_TableSink[Table]):
                 None, no expiry.
             min_snapshots: The newest snapshots the expiry keeps. Default:
                 the sink's `min_snapshots`.
-            expire: Deprecated name of `snapshot_retention`.
 
         Returns:
             The counts of data files the compaction removed and added
@@ -1479,13 +1480,6 @@ class IcebergSink(_TableSink[Table]):
             CommitFailedException: Another writer committed to the table
                 during the compaction (pyiceberg's).
         """
-        if expire is not None:
-            warnings.warn(
-                "IcebergSink.maintain(expire=...) is deprecated; write snapshot_retention=...",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            snapshot_retention = expire
         expire = None if snapshot_retention is None else duration(snapshot_retention)
         if not self.catalog.table_exists(self.identifier):
             return {}
@@ -1594,7 +1588,13 @@ class IcebergSink(_TableSink[Table]):
             with self._transaction(t) as tx:
                 tx.set_properties({KEY: contract.to_json()})
                 _commit_rows(tx, t, data_file(_engine.rows_sql(rows, schema)), [], props)
-            return SinkWrite("created", None, contract, _engine.rows_count(rows), 0)
+            return SinkWrite(
+                mode="created",
+                version=None,
+                contract=contract,
+                inserted=_engine.rows_count(rows),
+                deleted=0,
+            )
         inserted, deleted = _engine.counts(delta)
         deletes: list[DataFile] = []
         if deleted:
@@ -1611,7 +1611,13 @@ class IcebergSink(_TableSink[Table]):
         with self._transaction(t) as tx:
             tx.set_properties({KEY: contract.to_json()})
             _commit_rows(tx, t, added, deletes, props)
-        return SinkWrite("row_level" if deleted else "append", None, contract, inserted, deleted)
+        return SinkWrite(
+            mode="row_level" if deleted else "append",
+            version=None,
+            contract=contract,
+            inserted=inserted,
+            deleted=deleted,
+        )
 
     def _write_arrow(self, table: Table, created: bool, change: SinkChange) -> SinkWrite:
         """Create or overwrite the table, or write the change as position
@@ -1651,7 +1657,6 @@ class IcebergSink(_TableSink[Table]):
                     _commit_rows(tx, t, rows, [], props)
             else:
                 _commit_rows(tx, t, rows, deletes, props)
-        return SinkWrite(mode, None, contract, rows.num_rows, deleted)
-
-
-_deprecated.add(IcebergSink, {"create_options_ignored": "_create_options_ignored"})
+        return SinkWrite(
+            mode=mode, version=None, contract=contract, inserted=rows.num_rows, deleted=deleted
+        )

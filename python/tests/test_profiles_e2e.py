@@ -23,7 +23,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify import routes
+from sverify import report_json, routes
 from sverify.errors import PreconditionError, ProfilePendingWarning, RouteError
 
 pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
@@ -61,7 +61,7 @@ def run_both(report: sv.Report, con, q: sv.observation.Observation | None = None
     """The plan's result on each engine, by the route `auto` picks; the
     results agree up to `q` (the report's observation by default)."""
     out = {e: report.run(con, e, route="auto") for e in ENGINES}
-    q = q or report.observation
+    q = q or report.lenses
     assert q.difference(out["duckdb"], out["polars"]) is None
     return out
 
@@ -299,6 +299,7 @@ def test_c1_explicit_nulls_first(con) -> None:
     t = con.table("t")
     report = sv.verify(
         t.select("k", "i").order_by([ibis.asc("k", nulls_first=True), "i"]),
+        requires={"t": [sv.unique("k", "i")]},
         ensures=[sv.equivalent(rows="sequence")],
     )
     out = run_both(report, con)
@@ -513,7 +514,7 @@ def test_f3_duckdb_null_order_stated_transfers(con) -> None:
     report = sv.verify(
         "SELECT k FROM t ORDER BY k",
         tables={"t": t},
-        ensures=[sv.equivalent(rows="sequence")],
+        ensures=[sv.equivalent(rows="ties permuted")],
         semantics="duckdb",
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
@@ -543,14 +544,22 @@ def test_g1_md5_runs_on_duckdb_and_is_refused_on_polars(con) -> None:
 
 
 def test_h1_engine_versions(con, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Another minor version of Polars warns; another major is refused (D14)."""
+    """An unprobed patch of Polars warns and is recorded on the route; another
+    minor is refused, and runs with `unverified=True` (D70)."""
     t = con.table("t")
     report = sv.verify(t.select("k"))
-    monkeypatch.setattr(routes, "installed_version", lambda e: "2.2.0" if e == "polars" else None)
-    with pytest.warns(routes.EngineVersionWarning, match="polars 2.2.0"):
+    monkeypatch.setattr(routes, "installed_version", lambda e: "2.1.9" if e == "polars" else None)
+    with pytest.warns(routes.EngineVersionWarning, match="polars 2.1.9"):
         r = routes.choose(report, "polars")
-    assert r.kind == "translated" and any("2.2.0" in w for w in r.warnings)
-    monkeypatch.setattr(routes, "installed_version", lambda e: "3.0.0" if e == "polars" else None)
-    with pytest.raises(routes.EngineVersionError, match="install a 2.x release of polars"):
+    assert r.kind == "translated" and r.unprobed_version == "2.1.9" and r.warnings == ()
+    assert "this run is on 2.1.9, unprobed" in str(r)
+    assert report_json.route(report_json.route_json(r)) == r
+    monkeypatch.setattr(routes, "installed_version", lambda e: "2.2.0" if e == "polars" else None)
+    with pytest.raises(
+        routes.EngineVersionError, match=r"install a version of polars in >=2\.1\.0,<2\.2"
+    ):
         report.run(con, "polars", route="auto")
+    with pytest.warns(routes.UnverifiedRunWarning, match="polars 2.2.0 is outside the range"):
+        report.run(con, "polars", unverified=True)
+    assert report.routes["polars"].kind == "unverified"
     assert routes.choose(report, "duckdb").kind == "translated"

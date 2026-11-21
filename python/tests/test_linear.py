@@ -1,5 +1,5 @@
 """Delta rules for COUNT, SUM and DISTINCT (`sverify._linear`,
-`SubstraitLean/IncrementalAgg.lean`, #248): the view keeps a state per group
+`analysis/Sverify/Analysis/IncrementalAgg.lean`, #248): the view keeps a state per group
 and adds each batch's change to it, and its rows equal a full recompute over
 random change streams."""
 
@@ -69,7 +69,7 @@ def test_count_and_sum_match_a_full_recompute(seed, engine):
     src = StaticSource(samples(first), name="samples")
     node = src.pipe(per_minute)
     node.refresh(engine=engine)
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     for ins, dels in batches:
         src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         out = node.refresh(engine=engine)["per_minute"]
@@ -85,7 +85,7 @@ def test_distinct_matches_a_full_recompute(seed, engine):
     src = StaticSource(samples(first), name="samples")
     node = src.pipe(keys)
     node.refresh(engine=engine)
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     for ins, dels in batches:
         src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
         node.refresh(engine=engine)
@@ -149,7 +149,7 @@ def test_a_filter_and_projection_over_the_aggregate():
     src = StaticSource(samples([("a", 1, 5), ("a", 1, 7), ("b", 1, 3)]), name="samples")
     node = src.pipe(busy)
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     for batch in [
         Changes(inserts=samples([("b", 1, 9)])),
         Changes(deletes=samples([("a", 1, 7)])),
@@ -171,7 +171,7 @@ def test_an_aggregate_over_a_join():
     teams = StaticSource(hosts, name="hosts")
     node = src.pipe(by_team, hosts=teams)
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     src.apply(Changes(inserts=samples([("a", 1, 9), ("b", 2, 1)])))
     teams.apply(Changes(inserts=pa.table({"host": ["c"], "team": ["x"]})))
     node.refresh(audit=True)
@@ -224,7 +224,7 @@ def test_retention_drops_the_retired_groups_from_the_state(seed, expire, measure
     sink = tr.Recorder()
     node = src.pipe(hourly).write(sink)
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     retired = 0
     for ins, dels in stream:
         latest = max(view(node).pipeline.latest.values())
@@ -244,7 +244,7 @@ def test_count_of_a_string_column():
     src = StaticSource(samples([("a", 1, 5), (None, 1, 3)]), name="samples")
     node = src.pipe(lambda samples: samples.group_by("minute").aggregate(n=samples.host.count()))
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     src.apply(Changes(inserts=samples([("b", 1, 1), (None, 2, 2)]), deletes=samples([("a", 1, 5)])))
     node.refresh(audit=True)
     assert rows(node) == recomputed(node, src) == [(1, 1), (2, 0)]
@@ -286,7 +286,7 @@ def test_min_and_max_match_a_full_recompute(seed, engine):
     src = StaticSource(samples(first), name="samples")
     node = src.pipe(extremes)
     node.refresh(engine=engine)
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     assert view(node).linear.regroup is not None
     for ins, dels in batches:
         src.apply(Changes(inserts=samples(ins), deletes=samples(dels)))
@@ -342,7 +342,7 @@ def test_a_filter_over_min_and_max():
     src = StaticSource(samples([("a", 1, 5), ("a", 1, 7), ("b", 1, 3)]), name="samples")
     node = src.pipe(spread)
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     for batch in [
         Changes(inserts=samples([("b", 1, 9)])),
         Changes(deletes=samples([("a", 1, 7)])),
@@ -371,7 +371,7 @@ def test_min_and_max_of_strings_and_dates():
     src = StaticSource(table([(1, "b", day), (1, "c", None)]), name="t")
     node = src.pipe(bounds)
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     for batch in [
         Changes(inserts=table([(1, "a", day - d.timedelta(1)), (2, None, None)])),
         Changes(deletes=table([(1, "a", day - d.timedelta(1))])),
@@ -415,7 +415,7 @@ def test_decimal_avg_and_sum_match_a_full_recompute(seed):
     src = StaticSource(amounts(live), name="amounts")
     node = src.pipe(decimal_means)
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     for _ in range(30):
         ins = [row() for _ in range(rng.randrange(4))]
         dels = rng.sample(live, min(len(live), rng.randrange(4)))
@@ -433,7 +433,7 @@ def test_a_decimal_avg_keeps_its_exact_type_and_rounds_half_away_from_zero():
     src = StaticSource(amounts([("a", D("-36.20")), ("a", D("-36.19"))]), name="amounts")
     node = src.pipe(lambda t: t.group_by("host").aggregate(mean=t.amount.mean()))
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     assert rows(node) == [("a", D("-36.195000"))]
     src.apply(Changes(inserts=amounts([("a", D("1.00")), ("b", None)])))
     node.refresh(audit=True)
@@ -463,7 +463,7 @@ def test_a_decimal_avg_at_the_widest_argument_finishes_and_equals_the_batch(engi
     )
     node = src.pipe(lambda t: t.group_by("host").aggregate(mean=t.amount.mean()))
     node.refresh(engine=engine)
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     assert rows(node) == recomputed(node, src)
     for batch in [
         Changes(inserts=wide([("a", big), ("b", small)])),

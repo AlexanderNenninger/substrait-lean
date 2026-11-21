@@ -1,8 +1,8 @@
 """What Delta and Iceberg have in common: file statistics as facts,
 contracts as SQL, and the record a sink stores with each commit.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import sqlglot as sg
 from sverify import _deprecated, profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
-from sverify._unsupported import SverifyError
+from sverify._unsupported import MemoryLimitError, SverifyError
 from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.plan_json import is_utc
@@ -39,7 +39,7 @@ else:
 @dataclass(frozen=True)
 class ColumnStats:
     """One file's statistics for one column; None is unknown (`ColStats` in
-    `SubstraitLean/TableFormat.lean`)."""
+    `analysis/Sverify/Analysis/TableFormat.lean`)."""
 
     lo: Any
     hi: Any
@@ -127,7 +127,7 @@ def stats_facts(
     hi_slack: timedelta = timedelta(0),
 ) -> list[Fact]:
     """Facts about every row of a table made of `files`, from the join of
-    the files' statistics (`stats_table` in `SubstraitLean/TableFormat.lean`):
+    the files' statistics (`stats_table` in `analysis/Sverify/Analysis/TableFormat.lean`):
     a column without NULLs is NOT NULL; a bounded column lies between the
     least minimum and the greatest maximum, or is NULL if some file has NULLs
     (`stats_fact`); a column of files of NULLs is NULL (`stats_all_null`).
@@ -213,7 +213,7 @@ def str_may_true(where: sg.exp.Expr, bounds: Mapping[str, tuple[Any, Any]]) -> b
     """Whether `where` may be TRUE on a row of a file whose string columns
     lie within `bounds` (column -> (minimum, maximum), either None), where
     either bound may be cut to a prefix (`StrStats.mayTrue` in
-    `SubstraitLean/Pruning.lean`, proved by `strPrune_sound`): every value
+    `analysis/Sverify/Analysis/Pruning.lean`, proved by `strPrune_sound`): every value
     is at least the minimum, and every value cut to the maximum's length is
     at most the maximum. `AND` needs both sides, `OR` and `IN` one, and a
     comparison of a string column with a string literal its bounds; anything
@@ -284,11 +284,11 @@ def prune(
 ) -> set[str]:
     """The files that may hold rows passing `where`. A file is skipped only
     if its string bounds rule `where` out (`str_may_true`, `strStats_prune`
-    in `SubstraitLean/Pruning.lean`), or if Lean proves from the facts its
+    in `analysis/Sverify/Analysis/Pruning.lean`), or if Lean proves from the facts its
     statistics give that `where` is not TRUE on any of its rows
     (`contract_sound`, `stats_prune`). Then filtering the table reads the
     same rows as filtering the other files (`prune_sound` in
-    `SubstraitLean/TableFormat.lean`), and every plan linear in the source
+    `analysis/Sverify/Analysis/TableFormat.lean`), and every plan linear in the source
     gives the same result (`Rel.eval_pruned`)."""
     table = ibis.table(ibis.Schema.from_pyarrow(schema), name="file")
     try:
@@ -355,12 +355,15 @@ def not_null_column(sql: str) -> str | None:
 CONTRACT_FORMAT = 2
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Contract:
     """What a sink records with each commit: which plan produced the data,
     from which source versions, and what it proved about every row.
 
     `DeltaSource.contract()` and `IcebergSource.contract()` read it back.
+    sverify builds it, and a sink of your own stores `to_json()` and reads it
+    back with `from_json`: user code does not construct one. Its fields are
+    keyword-only.
 
     Attributes:
         node: The stored node's name.
@@ -368,7 +371,7 @@ class Contract:
             from.
         not_null: Columns the node proves NOT NULL: stated in `ensures`
             (`_.col.notnull()`), or shown never NULL by its proved report
-            (`Report.not_null`).
+            (not nullable in `Report.output`).
         unique: Column sets the node proves unique.
         cursors: The cursor of every source that can restore its table from
             one (`Source.restore`), at its version in `sources`.
@@ -471,9 +474,11 @@ class ConcurrentWriteError(SverifyError, RuntimeError):
     code = "concurrent_write"
 
 
-@dataclass
+@dataclass(kw_only=True)
 class SinkWrite:
     """What storing a node's state did, in any sink.
+
+    Built by keyword: a sink of your own may return one from `write`.
 
     `mode` is how: `created` the table, `overwrite` it, `merge` the change
     (Delta), `append` the new rows or write the change `row_level` (Iceberg),
@@ -519,21 +524,18 @@ class SinkWrite:
         )
 
 
-def view_contract_record(view: IncrementalView) -> Contract:
-    versions = view.versions
-    bases = _base_tables(view)
-    missing = sorted(bases - set(versions))
-    if missing:
-        raise ValueError(
-            f"view {view.name} reads tables without a source ({missing}): a sink needs "
-            "source versions to write exactly once; read a table that is not in a table "
-            "format through sverify.io.StaticSource(table, name=..., version=...)"
-        )
-    schema = ibis.Schema.from_pyarrow(view.schema)
+def _promises(
+    guarantees: Sequence[Condition], proved_not_null: Sequence[str], schema: ibis.Schema
+) -> tuple[list[str], dict[str, str], list[list[str]]]:
+    """What a sink's contract record promises about every row, from a node's
+    guarantees and the columns its proved report shows never NULL: the NOT
+    NULL columns, the CHECK constraints by name, and the unique column sets.
+    The one builder of the committed record and the fresh one `drift`
+    compares it with."""
     not_null: list[str] = []
     checks: dict[str, str] = {}
     unique: list[list[str]] = []
-    for c in view.guarantees:
+    for c in guarantees:
         if isinstance(c, Unique):
             unique.append(list(c.cols))
             continue
@@ -545,8 +547,83 @@ def view_contract_record(view: IncrementalView) -> Contract:
             not_null.append(col)
         else:
             checks[f"sverify_{len(checks) + 1}"] = sql
-    names = set(view.schema.names)
-    not_null += [c for c in view.not_null if c in names and c not in not_null]
+    not_null += [c for c in proved_not_null if c in schema and c not in not_null]
+    return not_null, checks, unique
+
+
+@dataclass
+class Drift:
+    """How a stored node's contract now compares with the one its sink last
+    committed (`sverify check --against-sink`, #769): a committed promise
+    the fresh node does not prove is `weakened`; a fresh one the record
+    lacks is `added`. Each holds `not_null` columns, `checks` as SQL texts
+    and `unique` column sets."""
+
+    weakened: dict[str, list[Any]]
+    added: dict[str, list[Any]]
+    plan_changed: bool
+    profiles: tuple[str | None, str]
+    """The committed record's profile and the fresh one."""
+    why: dict[str, str] = field(default_factory=dict)
+    """For a weakened CHECK, why the fresh node does not prove it."""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"weakened": self.weakened, "added": self.added, "plan_changed": self.plan_changed}
+
+
+def drift(committed: Contract, node: Any) -> Drift:
+    """`committed` against what `node`'s sink would record now (ruling 189):
+    a NOT NULL column or a unique set by inclusion (a smaller key implies a
+    larger one); a CHECK by its SQL text, and one whose text is gone by a
+    proof of it as a postcondition of the node. No promise is kept without
+    its text in the fresh record or a proof."""
+    from sverify.contracts import verify, view_contract
+
+    expr = node._query()._expr
+    vc = view_contract(expr)
+    not_null, checks, unique = _promises(vc.guarantees, vc.not_null, expr.schema())
+    fresh = set(checks.values())
+    why: dict[str, str] = {}
+    for text in committed.checks.values():
+        if text in fresh or text in why:
+            continue
+        try:
+            got = verify(expr, requires=vc.requires, ensures=[text], semantics=vc.profile)
+        except MemoryLimitError:
+            raise  # a budget, which the CLI reports as one (exit 4)
+        except Exception as e:  # noqa: BLE001 - unreadable now: weakened, with why
+            why[text] = f"not proved: sverify cannot read it against the node ({e})"
+            continue
+        if not got.ensures or not got.ensures[0].proved:
+            reason = got.ensures[0].why if got.ensures else "no result"
+            why[text] = f"not proved: {reason}"
+    weakened = {
+        "not_null": [c for c in committed.not_null if c not in not_null],
+        "checks": list(why),
+        "unique": [u for u in committed.unique if not any(set(k) <= set(u) for k in unique)],
+    }
+    added = {
+        "not_null": [c for c in not_null if c not in committed.not_null],
+        "checks": [t for t in checks.values() if t not in committed.checks.values()],
+        "unique": [u for u in unique if u not in committed.unique],
+    }
+    plan = plan_digest(node.internal_plan, profile=vc.profile)
+    return Drift(weakened, added, plan != committed.plan, (committed.profile, vc.profile), why)
+
+
+def view_contract_record(view: IncrementalView) -> Contract:
+    versions = view.versions
+    bases = _base_tables(view)
+    missing = sorted(bases - set(versions))
+    if missing:
+        raise ValueError(
+            f"view {view.name} reads tables without a source ({missing}): a sink needs "
+            "source versions to write exactly once; read a table that is not in a table "
+            "format through sverify.io.StaticSource(table, name=..., version=...)"
+        )
+    not_null, checks, unique = _promises(
+        view.guarantees, view.not_null, ibis.Schema.from_pyarrow(view.schema)
+    )
     return Contract(
         node=view.name,
         plan=plan_digest(view.plan, profile=view.profile),
@@ -790,7 +867,7 @@ class _TableSource(Pipeable, ABC):
         """A copy that reads only the rows that also pass `implied`, a
         predicate a node's view implies on this table (#81): the view gives
         the same result on them (`Rel.need_eval` in
-        `SubstraitLean/Implied.lean`), and files whose statistics rule it
+        `analysis/Sverify/Analysis/Implied.lean`), and files whose statistics rule it
         out are skipped."""
         out = copy.copy(self)
         out.where = implied if self.where is None else f"({self.where}) AND ({implied})"

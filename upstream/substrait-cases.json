@@ -15,13 +15,13 @@
       "disagree": 0
     },
     "arithmetic": {
-      "agree": 243,
-      "refused": 83,
-      "disagree": 14
+      "agree": 219,
+      "refused": 113,
+      "disagree": 8
     },
     "arithmetic_decimal": {
-      "agree": 38,
-      "refused": 90,
+      "agree": 37,
+      "refused": 91,
       "disagree": 0
     },
     "arithmetic_unsigned": {
@@ -75,9 +75,9 @@
       "disagree": 0
     },
     "all": {
-      "agree": 646,
-      "refused": 608,
-      "disagree": 63
+      "agree": 621,
+      "refused": 639,
+      "disagree": 57
     }
   },
   "unread": [],
@@ -89,14 +89,16 @@
       "checker: count: option overflow is not supported": 5
     },
     "arithmetic": {
+      "checker: variance of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 16,
+      "checker: std_dev of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 14,
       "checker: modulus: option on_domain_error is not supported": 12,
       "checker: unsupported function shift_right_unsigned/N": 10,
-      "checker: sum: option overflow is not supported": 6,
       "checker: acosh: option on_domain_error is not supported": 5,
       "checker: atanh: option on_domain_error is not supported": 5,
       "checker: cosh: option rounding is not supported": 5,
       "checker: factorial: option overflow is not supported": 5,
       "checker: sinh: option rounding is not supported": 5,
+      "checker: sum: option overflow is not supported": 5,
       "checker: tanh: option rounding is not supported": 5,
       "checker: asinh: option rounding is not supported": 4,
       "checker: sqrt: option on_domain_error = [NAN] is not supported (the model does [ERROR])": 3,
@@ -115,23 +117,19 @@
       "checker: power of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: sin of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: std_dev: option rounding = [TRUNCATE] is not supported (the model does [TIE_TO_EVEN])": 1,
+      "checker: sum of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: tan of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: variance: option rounding = [TRUNCATE] is not supported (the model does [TIE_TO_EVEN])": 1
     },
     "arithmetic_decimal": {
       "checker: power: option complex_number_result is not supported": 20,
-      "checker: bitwise_and of DECIMAL is not supported yet (#N)": 13,
-      "checker: bitwise_or of DECIMAL is not supported yet (#N)": 13,
-      "checker: bitwise_xor of DECIMAL is not supported yet (#N)": 13,
-      "checker: sqrt of DECIMAL is not supported yet (#N)": 12,
+      "checker: bitwise_and of DECIMAL is not supported yet (#N)": 14,
+      "checker: bitwise_or of DECIMAL is not supported yet (#N)": 14,
+      "checker: bitwise_xor of DECIMAL is not supported yet (#N)": 14,
+      "checker: sqrt of DECIMAL is not supported yet (#N)": 14,
+      "checker: factorial of DECIMAL is not supported yet (#N)": 7,
       "checker: avg: option overflow is not supported": 6,
-      "checker: factorial of DECIMAL is not supported yet (#N)": 5,
-      "checker: the expected result raises (Substrait.Issue.overflow)": 2,
-      "checker: unsupported function factorial/N": 2,
-      "checker: bitwise_and: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: bitwise_or: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: bitwise_xor: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: negate: a DECIMAL result of non-decimal arguments is not supported": 1
+      "checker: the expected result raises (Substrait.Issue.overflow)": 2
     },
     "arithmetic_unsigned": {
       "harness: unsigned integers (u!u8) are not modelled": 18,
@@ -151,10 +149,10 @@
       "checker: unsupported function is_infinite/N": 6
     },
     "datetime": {
-      "checker: gte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
-      "checker: lte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
-      "checker: gt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
-      "checker: lt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
+      "checker: gte with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 7,
+      "checker: lte with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 7,
+      "checker: gt with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 5,
+      "checker: lt with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 5,
       "checker: unsupported function add_intervals/N": 4,
       "checker: a date plus an interval typed as a timestamp is not supported": 2,
       "checker: missing field 'value' in {\"enum\":\"DAY\"}": 2,
@@ -260,16 +258,6 @@
       "ref": "ST-13"
     },
     {
-      "case": "arithmetic/std_dev.test: ((-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) std_dev(SAMPLE::enum, col0::fp32) = 3.8944404::fp32?",
-      "options": {
-        "rounding": "TIE_TO_EVEN"
-      },
-      "got": "3.741657",
-      "runs": "1 of 5",
-      "kind": "case",
-      "ref": "ST-13"
-    },
-    {
       "case": "arithmetic/std_dev.test: ((-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) std_dev(SAMPLE::enum, col0::fp64) = 3.8944404818493075::fp64?",
       "options": {
         "rounding": "TIE_TO_EVEN"
@@ -285,36 +273,6 @@
         "rounding": "TIE_TO_EVEN"
       },
       "got": "35.355339",
-      "runs": "1 of 5",
-      "kind": "case",
-      "ref": "ST-13"
-    },
-    {
-      "case": "arithmetic/std_dev.test: ((0.0), (100.0), (50.0), (25.0), (75.0)) std_dev(SAMPLE::enum, col0::fp32) = 41.010193::fp32?",
-      "options": {
-        "rounding": "TIE_TO_EVEN"
-      },
-      "got": "39.528471",
-      "runs": "1 of 5",
-      "kind": "case",
-      "ref": "ST-13"
-    },
-    {
-      "case": "arithmetic/std_dev.test: ((1.1), (2.2), (3.3), (4.4), (5.5)) std_dev(SAMPLE::enum, col0::fp32) [rounding:TIE_TO_EVEN] = 1.7406897::fp32?",
-      "options": {
-        "rounding": "TIE_TO_EVEN"
-      },
-      "got": "1.739253",
-      "runs": "1 of 1",
-      "kind": "case",
-      "ref": "ST-13"
-    },
-    {
-      "case": "arithmetic/variance.test: ((-5.0), (-3.0), (-1.0), (1.0), (3.0), (5.0)) variance(SAMPLE::enum, col0::fp32) = 15.166667::fp32?",
-      "options": {
-        "rounding": "TIE_TO_EVEN"
-      },
-      "got": "14.0",
       "runs": "1 of 5",
       "kind": "case",
       "ref": "ST-13"
@@ -336,26 +294,6 @@
       },
       "got": "1250.0",
       "runs": "1 of 5",
-      "kind": "case",
-      "ref": "ST-13"
-    },
-    {
-      "case": "arithmetic/variance.test: ((0.0), (100.0), (50.0), (25.0), (75.0)) variance(SAMPLE::enum, col0::fp32) = 1681.25::fp32?",
-      "options": {
-        "rounding": "TIE_TO_EVEN"
-      },
-      "got": "1562.5",
-      "runs": "1 of 5",
-      "kind": "case",
-      "ref": "ST-13"
-    },
-    {
-      "case": "arithmetic/variance.test: ((1.1), (2.2), (3.3), (4.4), (5.5)) variance(SAMPLE::enum, col0::fp32) [rounding:TIE_TO_EVEN] = 3.03::fp32?",
-      "options": {
-        "rounding": "TIE_TO_EVEN"
-      },
-      "got": "3.025",
-      "runs": "1 of 1",
       "kind": "case",
       "ref": "ST-13"
     },

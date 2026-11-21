@@ -1,0 +1,18 @@
+{
+  "id": "F226",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Where the checker's marks do not fit the plan the writer reads, a run drops them whole and writes every check (N1 to N4): marks and plan are chosen by one decision, the fit is all or none by unchecked_slots' walk, and the catalogue plans that lose their marks are pinned by a test (a decimal AVG); to_sql(unchecked=) keeps raising. Amends F223's M2.",
+  "issues": [
+    1787
+  ],
+  "amends": [
+    "F223"
+  ],
+  "amended_by": [
+    "F228"
+  ],
+  "source": "fable-ruling-226-1787-marks-shape-mismatch.md"
+}

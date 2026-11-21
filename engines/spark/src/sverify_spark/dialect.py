@@ -13,8 +13,9 @@ result is the Lean value, checked on a local Spark session by
   integer constant is cast. `SUM` of `BIGINT` raises as soon as a partial
   sum overflows, though Lean's is the true total: it adds `DECIMAL(38,0)`
   values instead (exact) and checks the total against 64 bits.
-* **Doubles** are IEEE, but in ANSI mode `/` raises on a zero divisor, so
-  `x / 0.0` is spelled out (±inf by the sign of `x`, or NaN).
+* **Doubles** are IEEE, but in ANSI mode `/` raises on a zero divisor of
+  either sign, IEEE division (`on_division_by_zero` = `IEEE`) included: that
+  raise is what `sparkBin .fdivIeee` states (ruling 161).
   `CAST(x AS BIGINT)` truncates, raises on NaN and ±inf, but saturates at
   2⁶³: the range is checked first. `FLOOR` and `CEIL` return `BIGINT`, so
   they keep NaN, ±inf and large values as they are. `POWER` is Java's
@@ -53,7 +54,9 @@ result is the Lean value, checked on a local Spark session by
   negation of more than 34 digits is `0 - x`, exact up to scale 6 at 38
   digits, and refused past it. A double goes to a decimal as
   `round(x · 10ˢ)` in doubles, through `BIGINT`, since Spark reads a double
-  as its shortest text. Division by an integer (an `AVG`) is refused.
+  as its shortest text. Division by an integer (an `AVG`) splits the
+  quotient exactly and rounds its tail half away from zero (`decimal_div`),
+  up to 12 decimal places and 32 integer digits.
 * **Rows**: tables (Parquet, Delta, views) have no row order, so nothing
   can stand for Lean's list order, which `to_sql(..., rows="sequence")`
   asks for: `row_ordinal` is refused. Under the default `rows="multiset"`
@@ -67,8 +70,6 @@ result is the Lean value, checked on a local Spark session by
 
 from __future__ import annotations
 
-import math
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
@@ -143,11 +144,18 @@ class SparkDialect(Dialect):
                 "Spark has no map for a timestamp with a time zone yet", ISSUE_1725
             )
         if kind not in _TYPES:
-            raise self.to_duckdb(f"spark has no {kind} type (TIME needs Spark 4.1)")
+            raise self._no_time()
         return _TYPES[kind]
 
     def time_of_day_lit(self, micros: int) -> str:
-        raise self.to_duckdb("spark has no tod type (TIME needs Spark 4.1)")
+        raise self._no_time()
+
+    def _no_time(self) -> Unsupported:
+        # `tod`, the one kind `_TYPES` lacks.
+        return self.to_duckdb(
+            "a time of day (TIME) on Spark: Spark 4.3 reads TIME only with "
+            "spark.sql.timeType.enabled on and refuses it by default (spark-time-type)"
+        )
 
     def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS STRING))"
@@ -206,17 +214,6 @@ class SparkDialect(Dialect):
         return f"aggregate({reps}, {self.int_lit(1)}, (acc, e) -> acc * e)"
 
     # Doubles
-
-    def float_div(self, a: str, b: str) -> str:
-        if (c := _float_const(b)) is not None and c != 0:
-            return f"({a} / {b})"
-        nan, inf, ninf = (self.float_lit(x) for x in (math.nan, math.inf, -math.inf))
-        # The divisor is the one zero, +0.0.
-        by_zero = (
-            f"(CASE WHEN {a} IS NULL THEN {self.null('float')} "
-            f"WHEN isnan({a}) OR {a} = 0 THEN {nan} WHEN {a} > 0 THEN {inf} ELSE {ninf} END)"
-        )
-        return f"(CASE WHEN {b} = 0 THEN {by_zero} ELSE {a} / {b} END)"
 
     def whole(self, fn: str, x: str) -> str:
         """`fn` (FLOOR or CEIL, which return BIGINT) on a double. Doubles of
@@ -418,12 +415,35 @@ class SparkDialect(Dialect):
         return f"CAST({a} AS BIGINT)"
 
     def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
-        raise self.to_duckdb(
-            "decimal division (an AVG of decimals) on Spark: Spark's decimal quotient "
-            "rounds at a scale of its own first (spark-decimal-arith)",
-            "see #27",
-            "cast it to DOUBLE",
+        """`a / b`, a decimal of scale `sa` by an integer, at scale `k.s`, half
+        away from zero (`roundDivInt?`), NULL for `b = 0`. Spark's own quotient
+        rounds at a scale of its own first (spark-decimal-arith), so the
+        quotient is split exactly: `a = q·b + r` (`%` keeps `a`'s sign), the
+        whole part `q = (a - r) / b`, and the rounded tail `t = r·10ᵏ / b`
+        as integers below 10³² (`DIV` truncates, so `2R ± b` rounds half away
+        from zero). Each step's type stays within what Spark keeps exact."""
+        ks, whole = k.s, k.p - k.s
+        if ks > 12 or whole > 32 or (k.p > 37 and ks > 6):
+            raise self.to_duckdb(
+                f"decimal division (an AVG of decimals) to DECIMAL({k.p}, {ks}) on Spark: "
+                "past 12 decimal places, 32 integer digits, or 37 digits at more than 6 "
+                "places, Spark rounds a step of the exact quotient (spark-decimal-arith)",
+                "see #739",
+                "cast it to fewer digits",
+            )
+        n = self.cast(f"NULLIF({b}, 0)", Dec(20, 0))  # `-n` and `2n` past 64 bits
+        r = f"({a} % {n})"
+        q = self.cast(f"(({a} - {r}) / {n})", Dec(max(whole, 1), 0))
+        big = f"({r} * {10**ks})"
+        sign = f"CASE WHEN ({big} < 0) <> ({n} < 0) THEN -{n} ELSE {n} END"
+        tail = f"((2 * {big} + {sign}) DIV (2 * {n}))"
+        tail = self.cast(tail, Dec(ks + 1, 0))
+        frac = (
+            self.cast(f"({tail} * {self.decimal_lit(1, Dec(ks, ks))})", Dec(ks + 1, ks))
+            if ks
+            else tail
         )
+        return self.cast(f"({q} + {frac})", k)
 
     def float_lit(self, f: float) -> str:
         # Spark reads the text `-0.0` as a decimal zero (spark-zero-sign): a double
@@ -466,12 +486,6 @@ class SparkDialect(Dialect):
 
     def row_ordinal(self) -> str:
         raise self.no_row_order("Spark")
-
-
-def _float_const(sql: str) -> float | None:
-    """The value of a `float_lit` constant, or None for other SQL."""
-    m = re.fullmatch(r"CAST\('([^']*)' AS DOUBLE\)", sql)
-    return float(m.group(1)) if m else None
 
 
 SPARK: Dialect = SparkDialect("spark")

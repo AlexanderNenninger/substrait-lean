@@ -48,6 +48,9 @@ def Profile.spark.table : ProfileTable where
     (none, "nan_kind", .oneOf ["IEEE"]),
     (none, "nan_order", .oneOf ["GREATEST"]),
     (none, "nan_equality", .oneOf ["NAN_IS_NAN"]),
+    -- Left open until the scope narrows to list arguments (ruling 171): a refused row for the
+    -- facts' LEAST (spark-list-order, polars-list-order) would refuse every MIN and MAX, integer ones too.
+    (none, "list_null_order", .loose ["NULL", "GREATEST", "LEAST"]),
     -- Partials per task, merged in the order the tasks finish.
     (none, "sum_order", .oneOf ["ANY"]),
     -- A whole partition at once, a growing frame by a running sum, any other
@@ -81,7 +84,9 @@ def Profile.spark.obs : ObsTable := [
     "Shim.sum_empty_null"),
   (some "int.div", "overflow", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
   (none, "on_division_by_zero", (ObsRow.native ["spark-int-divide", "spark-int-modulus"]).proved "Rel.spark_sound"),
-  (some "fp.div", "on_division_by_zero", (ObsRow.native ["spark-double-divide"]).tracking 271),
+  -- Plain `/` (#1846): a zero divisor of either sign raises `DIVIDE_BY_ZERO`, as
+  -- `sparkBin .fdivIeee` says.
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["spark-double-divide"]).proved "Rel.spark_sound"),
   (none, "on_domain_error", (ObsRow.native ["spark-math-domain"]).proved "Rel.spark_sound"),
   (none, "division_type", (ObsRow.native ["spark-int-modulus"]).tracking 271),
   (some "int.div", "division_type", (ObsRow.native ["spark-int-divide"]).tracking 271),

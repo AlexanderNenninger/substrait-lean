@@ -2,6 +2,9 @@
 
 > Sverify is a working prototype. Its Lean proofs, its checker and its Python
 > code still need a human audit before anyone relies on their results.
+>
+> [How this project is built](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-this-is-built.md)
+> says who writes it and what you can check yourself.
 
 Sverify proves a data pipeline's contracts in Lean before it runs, keeps the
 result up to date from Delta and Iceberg changes, and runs the checked plan on
@@ -160,18 +163,22 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   and Iceberg metadata, and a batch that breaks one is refused before
   anything runs. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#runtime-errors) list what is ruled out.
 * A route takes the proof to the engine. `route="auto"` runs the plan on
-  DuckDB, Polars or Spark natively, through the reference's proved translation, or
-  by a check that the engine's choices are within the proof's, and names
+  DuckDB, Polars or Spark natively, through the reference's translation, or by a check that the engine's choices are within the proof's, and names
   the plan's class there: exact, equal under an observation the
   postcondition states (a float tolerance is one), or exact or observed
-  after a proved shim. Where no route
+  after a shim. The proofs speak of a model of each engine's scalar
+  functions. DuckDB's lowering and the shims are proved against that model;
+  the writers' SQL and the Polars translation are tested against the lowered
+  plan ([what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/trusted-base.md)). Where no route
   applies, the plan is refused with the reason
   ([routes and classes](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)). DuckDB,
   Polars and Spark are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
 * Postconditions say what the result's consumer observes. By default,
-  doubles within the plan's proved bound (`floats="plan"`, which the report
-  prints); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
+  doubles within the plan's bound (`floats="plan"`, which the report
+  prints; [`float-bounds/`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/float-bounds.md)
+  proves the bounds over the reals, and [what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/trusted-base.md) lists the
+  step from them to the report's bound and how far the models are tested); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
   which `verify` checks against that bound, and also rows as a sequence or
   a multiset, one zero. A sink states what a
   rerun must reproduce (`reproducible=`), and a refresh whose engine can't

@@ -1,8 +1,8 @@
 """Sources you write yourself: one `read(since)` method that returns the
 new rows and a cursor, as in data-warehousing-with-polars.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Source`, `Batch`, `from_query`, `from_frame`, `from_files`)
 are re-exported by `sverify.io`.
 
@@ -45,9 +45,11 @@ KEEP = 64
 latest table instead (and are recomputed)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Batch:
     """What a `Source` read: new rows and the cursor to read from next time.
+
+    Built by keyword: a source of your own returns one.
 
     Attributes:
         table: The rows, as an Arrow table, a Polars or pandas DataFrame, a
@@ -135,19 +137,23 @@ class Source(Pipeable, ABC):
       against the last, so the change is exact and nothing is assumed.
     - `kind="changes"` batches are rows added and removed, trusted as read.
 
-    The source keeps the table as of its latest version in memory, since
-    joins and keys need it, and has no metadata: preconditions on it are
-    checked on the rows. Versions count reads, and a sink records the
-    version of each source next to its cursor. A restarted job reads the
-    whole table again, unless the source implements `restore`: then it
-    starts from the table as of the cursor its sink recorded, and the first
-    refresh reads only what is new since (`read(cursor)`). A source that
-    cannot restore has its sink record a digest of its contents: a restarted
-    job whose first read has the recorded digest resumes there, and writes
-    nothing. Otherwise its stored nodes are recomputed and written
-    again in full, with versions above the ones their sink recorded, so the
-    sink still writes exactly once; a sink that holds other contents at a
-    version this process also reached is written over.
+    The source keeps the whole table (all columns) as of its latest version
+    in memory, in the Python process. It needs it for `snapshot`, to diff
+    `kind="snapshot"` batches and to digest what a restarted job reads; the
+    views' joins and keys read the pipeline's own copy in the engine's
+    store. That table is state sverify holds, of the size of the input, and
+    the 1.0 size bar of #1329 does not cover it. It has no metadata:
+    preconditions on it are checked on the rows. Versions count reads, and a
+    sink records the version of each source next to its cursor. A restarted
+    job reads the whole table again, unless the source implements `restore`:
+    then it starts from the table as of the cursor its sink recorded, and
+    the first refresh reads only what is new since (`read(cursor)`). A
+    source that cannot restore has its sink record a digest of its contents:
+    a restarted job whose first read has the recorded digest resumes there,
+    and writes nothing. Otherwise its stored nodes are recomputed and
+    written again in full, with versions above the ones their sink recorded,
+    so the sink still writes exactly once; a sink that holds other contents
+    at a version this process also reached is written over.
 
     Args:
         name: The table's name in the plans that read it.
@@ -166,6 +172,9 @@ class Source(Pipeable, ABC):
     Attributes:
         name: The table's name in the plans that read it.
         assumes: What the batches rest on, or None.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
 
     Examples:
         A source reading new rows from a list, by an increasing id:
@@ -183,7 +192,7 @@ class Source(Pipeable, ABC):
                 new = [r for r in rows if since is None or r["id"] > since]
                 if not new:
                     return None
-                return Batch(pa.Table.from_pylist(new), cursor=new[-1]["id"])
+                return Batch(table=pa.Table.from_pylist(new), cursor=new[-1]["id"])
 
 
         @sv.transform()
@@ -317,7 +326,7 @@ class Source(Pipeable, ABC):
         st = self._st()
         st.fresh = False
         if version is None or version == st.version:
-            return Snapshot(st.version, st.table, [])
+            return Snapshot(version=st.version, table=st.table, facts=[])
         if not max(st.log.floor, st.oldest) <= version < st.version:
             raise ValueError(f"{self.name} no longer keeps v{version} (latest: v{st.version})")
         # Undo the batches after `version`.
@@ -327,8 +336,12 @@ class Source(Pipeable, ABC):
             for t in (weighted(e.deletes, 1), weighted(e.inserts, -1))
         ]
         if not undo:
-            return Snapshot(version, st.table, [])
-        return Snapshot(version, _apply_change(st.table, pa.concat_tables(undo), self.name), [])
+            return Snapshot(version=version, table=st.table, facts=[])
+        return Snapshot(
+            version=version,
+            table=_apply_change(st.table, pa.concat_tables(undo), self.name),
+            facts=[],
+        )
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from version `since` to the latest, as a refresh reads
@@ -584,7 +597,9 @@ class _Query(Source):
         table = as_arrow(data)
         if not table.num_rows:
             return None
-        return Batch(table, cursor=pc.call_function("max", [table.column(self.cursor_on)]).as_py())
+        return Batch(
+            table=table, cursor=pc.call_function("max", [table.column(self.cursor_on)]).as_py()
+        )
 
     def reread(self, cursor: Any) -> Any:
         table = as_arrow(self.fn(None))
@@ -665,7 +680,7 @@ class _Frame(Source):
 
     def read(self, since: Any) -> Batch | None:
         data = self.fn()
-        return None if data is None else Batch(data, kind="snapshot")
+        return None if data is None else Batch(table=data, kind="snapshot")
 
 
 def from_frame(
@@ -746,7 +761,7 @@ class _Files(Source):
         new = [p for p in paths if p not in seen]
         if not new:
             return None
-        return Batch(self._scan(fs, new), cursor=sorted(seen | set(new)))
+        return Batch(table=self._scan(fs, new), cursor=sorted(seen | set(new)))
 
     def reread(self, cursor: Any) -> Any:
         fs, _ = self._files()

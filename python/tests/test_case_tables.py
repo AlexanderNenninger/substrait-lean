@@ -84,7 +84,8 @@ def test_the_collated_form_is_a_byte_compared_string():
     assert got["invalid_utf8_plain"] == got["invalid_utf8_collated"] == ["efbfbd"]
 
 
-#: The pyspark versions `pyspark>=4.0` covers and the conf that picks the JVM's or ICU's path.
+#: The pyspark versions D51 probed (D70 supports 4.3 alone), and the conf that
+#: picks the JVM's or ICU's path.
 PYSPARKS = ("4.0.1", "4.1.1", "4.2.0", "4.3.0")
 
 

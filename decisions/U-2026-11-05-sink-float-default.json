@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-05-sink-float-default",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Sinks accept doubles within the plan's error bound by default, and exact bits are opt-in.",
+  "source": "memory:api-decisions-0-5.md",
+  "note": "Decided 2026-11-04/05; the memory gives no single day."
+}

@@ -1,8 +1,8 @@
 """Sinks: where `Node.write` stores a node. sverify decides what to write
 and when (exactly once per state, with the contract); a sink only writes.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release. The
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release. The
 public names (`Sink`, `SinkChange`, `sink_from`) are re-exported by
 `sverify.io`.
 """
@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import pyarrow as pa
 
-from sverify import _deprecated
 from sverify._scan import Resident
 from sverify._state import arrow_of
 from sverify._unsupported import SverifyWarning
@@ -160,7 +159,7 @@ class Sink:
             (`sv.equivalent(...)`): the sink commits each epoch
             once, so a rerun has to give the same rows up to this. Default:
             rows as a multiset, doubles within the bound the checker proves
-            for the plan (`Report.epsilon`, `sv.equivalent(floats="plan")`),
+            for the plan (the bound `report.lenses` prints, `sv.equivalent(floats="plan")`),
             other values exact. A sink whose consumers need the same bits
             on a rerun states `sv.equivalent()`; one with a fixed tolerance
             states it, for example `sv.equivalent(floats=sv.within(rel=1e-12))`.
@@ -220,7 +219,7 @@ class Sink:
     reproducible: Observation = PLAN_BOUND
     _view: IncrementalView | None = None
     _written: int | None = None
-    _keeps_retired = False
+    keeps_retired: ClassVar[bool] = False
     """Whether the sink keeps the rows a view drops from its state
     (`sverify.arrives_within`): it writes each change, and the whole table
     only when `SinkChange.replace`. A view with a sink that does not retires
@@ -285,34 +284,6 @@ class Sink:
         if version is not None:
             raise ValueError(f"{type(self).__name__} keeps no history: contract(version=None)")
         return self._last
-
-    def committed(self) -> Contract | None:
-        """Deprecated: `contract()`."""
-        warnings.warn(
-            "Sink.committed() is deprecated; call sink.contract()",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.contract()
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        super().__init_subclass__(**kwargs)
-        # A sink of 0.x overrides `committed`: read it as `contract`.
-        if "committed" in cls.__dict__ and "contract" not in cls.__dict__:
-            warnings.warn(
-                f"{cls.__name__} overrides Sink.committed(), which is deprecated; "
-                "override contract(version=None) instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            legacy = cls.__dict__["committed"]
-
-            def contract(self: Sink, version: int | None = None) -> Contract | None:
-                if version is not None:
-                    raise ValueError(f"{type(self).__name__} keeps no history")
-                return legacy(self)
-
-            cls.contract = contract  # type: ignore[method-assign]
 
     def source(self) -> VersionedSource | None:
         """The stored table as a versioned source, for the nodes reading the
@@ -414,7 +385,7 @@ class Sink:
             self._written = view.serial if same else None
             self._synced = _state_key(done) if self._written is not None else None
             self._keep(view, contract, None)
-            return SinkWrite("skipped", self._version(), contract)
+            return SinkWrite(mode="skipped", version=self._version(), contract=contract)
         elif self._written is not None and done is not None and _state_key(done) != self._synced:
             # Another commit than the one this process wrote, skipped to or
             # resumed from: a change since `_written` would land on a state
@@ -436,12 +407,14 @@ class Sink:
             # The other writer committed this very state: nothing is left to
             # write, and this refresh reports what the next one would.
             self._keep(view, contract, None)
-            return SinkWrite("skipped", self._version(), contract)
+            return SinkWrite(mode="skipped", version=self._version(), contract=contract)
         self._pending = None
         if out is None:
             mode = "overwrite" if change.replace else "update"
             n_in, n_out = change.inserts.num_rows, change.deletes.num_rows
-            out = SinkWrite(mode, self._version(), contract, n_in, n_out)
+            out = SinkWrite(
+                mode=mode, version=self._version(), contract=contract, inserted=n_in, deleted=n_out
+            )
         self._written = view.serial
         self._last = contract
         self._synced = _state_key(contract)
@@ -469,10 +442,6 @@ class Sink:
 
 _UNREAD = object()
 """`_TableSink._read` before `contract` ran."""
-
-
-_deprecated.add(Sink, {"view": "_view", "keeps_retired": "_keeps_retired"})
-_deprecated.add(SinkChange, {"native": "_native"})
 
 
 class _TableSink[T](Sink, ABC):
@@ -782,7 +751,7 @@ class _Kept:
     def snapshot(self, version: int | None = None) -> Snapshot:
         if version not in (None, self.version):
             raise ValueError(f"{self.name} keeps only its latest write, v{self.version}")
-        return Snapshot(self.version, self._table(), [])
+        return Snapshot(version=self.version, table=self._table(), facts=[])
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         table = self._table()
@@ -819,7 +788,13 @@ class _FnSink(Sink):
 
     def write(self, change: SinkChange) -> SinkWrite:
         self.fn(change.table)
-        return SinkWrite("overwrite", None, change.contract, change.table.num_rows, 0)
+        return SinkWrite(
+            mode="overwrite",
+            version=None,
+            contract=change.contract,
+            inserted=change.table.num_rows,
+            deleted=0,
+        )
 
 
 def sink_from(

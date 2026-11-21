@@ -24,7 +24,7 @@ pip install sverify                       # core: DuckDB, contracts, views
 pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
 ```
 
-DuckDB (the default), Polars (streaming) and Spark 4.x run plans, each with a
+DuckDB (the default), Polars (streaming) and Spark 4.3 run plans, each with a
 proved profile (`semantics="duckdb"`, `"polars"`, `"spark"`). The SQL
 dialects (DuckDB, Spark, Snowflake) need no extra.
 
@@ -63,7 +63,8 @@ big.refresh()
 assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
 report = big_orders.report
 assert report.verdict == sv.Verdict.PROVED
-print(report.facts["doubled"])  # what Lean established about the column
+print(report.facts["doubled"])  # what Lean established about the column, in words
+report.facts["doubled"].lower  # the same as data: nullable, lower, upper
 ```
 
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL
@@ -116,7 +117,7 @@ transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"ignore"` assumes it and checks it on the data, and
 `on_inferred="off"` infers and assumes nothing. For the rest, the `hint:` lines of
 `str(report)` name the bound to add, and an unproved comparison with a constant comes with
-the precondition that proves it (`report.suggestions`). An integer `SUM` that
+the precondition that proves it (`needs` of its entry in `report.ensures`). An integer `SUM` that
 may overflow is listed in `report.assumed` and checked at run time (an error
 with `on_inferred="off"`); a row cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
 `NULLIF`/`ifelse`, or bound it in `requires`.

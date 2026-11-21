@@ -102,48 +102,67 @@ def _unwrap(name: str, arg: sge.Expression) -> sge.Expression:
     if "encode({0})" in black_box.SCALARS[name].duckdb:
         if not isinstance(arg, sge.Encode):
             raise SqlUnsupported(
-                f"{name} of a BLOB is not supported: write {name}(encode(s)) of a string s"
+                f"{name} of a BLOB is not supported: write {name}(encode(s)) of a string s",
+                construct=f"function {name}",
             )
         return arg.this
     return arg
 
 
 def _rewrite(tree: sge.Expr) -> sge.Expr:
-    """Each black box's call as its own node."""
+    """Each black box's call as its own node, also one inside another's
+    arguments: `transform` does not enter a node it replaced, so it runs again
+    until no call is left (#1940)."""
+    changed = True
 
     def node(n: sge.Expr) -> sge.Expr:
-        if isinstance(n, sge.ToBase64):
-            # SQLGlot's `to_base64(x)`, DuckDB's other name for `base64`.
-            return BlackBoxCall(this="base64", expressions=[n.this])
-        if isinstance(n, (sge.CosineDistance, sge.EuclideanDistance)):
-            # SQLGlot's `list_cosine_distance(a, b)` and `list_distance(a, b)`.
-            name = "list_cosine_distance" if isinstance(n, sge.CosineDistance) else "list_distance"
-            return BlackBoxCall(this=name, expressions=[n.this, n.expression])
-        if isinstance(n, (sge.Kurtosis, sge.Skewness)):
-            # SQLGlot's `kurtosis(x)` and `skewness(x)`.
-            name = "kurtosis" if isinstance(n, sge.Kurtosis) else "skewness"
-            return BlackBoxAgg(this=n.this, fname=sge.Literal.string(name))
-        if isinstance(n, sge.Split):
-            # SQLGlot's `string_split(s, sep)` (also `str_split`, `string_to_array`).
-            return BlackBoxCall(this="string_split", expressions=[n.this, n.expression])
-        if isinstance(n, sge.Format):
-            # SQLGlot's `format(fmt, …)`.
-            return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])
-        if type(n) is not sge.Anonymous:
-            return n
-        name = n.name.lower()
-        if name in REFUSED:
-            raise SqlUnsupported(REFUSED[name])
-        name = ALIASES.get(name, name)
-        if name in black_box.SCALARS:
-            return BlackBoxCall(this=name, expressions=list(n.expressions))
-        if name in black_box.AGGREGATES:
-            if len(n.expressions) != 1:
-                raise SqlUnsupported(f"{name} takes one argument", hint="call it with one argument")
-            return BlackBoxAgg(this=n.expressions[0], fname=sge.Literal.string(name))
-        return n
+        nonlocal changed
+        out = _call(n)
+        changed |= out is not n
+        return out
 
-    return tree.transform(node, copy=False)
+    while changed:
+        changed = False
+        tree = tree.transform(node, copy=False)
+    return tree
+
+
+def _call(n: sge.Expr) -> sge.Expr:
+    """`n` as a black box's call node, or `n`."""
+    if isinstance(n, sge.ToBase64):
+        # SQLGlot's `to_base64(x)`, DuckDB's other name for `base64`.
+        return BlackBoxCall(this="base64", expressions=[n.this])
+    if isinstance(n, (sge.CosineDistance, sge.EuclideanDistance)):
+        # SQLGlot's `list_cosine_distance(a, b)` and `list_distance(a, b)`.
+        name = "list_cosine_distance" if isinstance(n, sge.CosineDistance) else "list_distance"
+        return BlackBoxCall(this=name, expressions=[n.this, n.expression])
+    if isinstance(n, (sge.Kurtosis, sge.Skewness)):
+        # SQLGlot's `kurtosis(x)` and `skewness(x)`.
+        name = "kurtosis" if isinstance(n, sge.Kurtosis) else "skewness"
+        return BlackBoxAgg(this=n.this, fname=sge.Literal.string(name))
+    if isinstance(n, sge.Split):
+        # SQLGlot's `string_split(s, sep)` (also `str_split`, `string_to_array`).
+        return BlackBoxCall(this="string_split", expressions=[n.this, n.expression])
+    if isinstance(n, sge.Format):
+        # SQLGlot's `format(fmt, …)`.
+        return BlackBoxCall(this="format", expressions=[n.this, *n.expressions])
+    if type(n) is not sge.Anonymous:
+        return n
+    name = n.name.lower()
+    if name in REFUSED:
+        raise SqlUnsupported(REFUSED[name], construct=f"function {name}")
+    name = ALIASES.get(name, name)
+    if name in black_box.SCALARS:
+        return BlackBoxCall(this=name, expressions=list(n.expressions))
+    if name in black_box.AGGREGATES:
+        if len(n.expressions) != 1:
+            raise SqlUnsupported(
+                f"{name} takes one argument",
+                hint="call it with one argument",
+                construct=f"function {name}",
+            )
+        return BlackBoxAgg(this=n.expressions[0], fname=sge.Literal.string(name))
+    return n
 
 
 def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
@@ -151,16 +170,21 @@ def _scalar(lf: _Lift, node: BlackBoxCall, sub: Sub, scope: list[Column]) -> E:
     args = list(node.expressions)
     if len(args) != len(row.args):
         raise Unsupported(
-            f"{row.name} takes {len(row.args)} argument(s); call it with exactly that many"
+            f"{row.name} takes {len(row.args)} argument(s); call it with exactly that many",
+            construct=f"function {row.name}",
         )
     js = []
     for a, ty in zip(args, row.args, strict=True):
         e = sub(_unwrap(row.name, a))
         if not _accepts(ty, e.type):
-            raise SqlUnsupported(f"{row.name} of a {e.type} is not supported")
+            raise SqlUnsupported(
+                f"{row.name} of a {e.type} is not supported", construct=f"function {row.name}"
+            )
         if row.name == "bit_count" and not e.type.is_int64():
             # DuckDB counts the bits of the argument's own width.
-            raise Unsupported(f"bit_count of a {e.type}: cast it to BIGINT (#326)")
+            raise Unsupported(
+                f"bit_count of a {e.type}: cast it to BIGINT (#326)", construct="function bit_count"
+            )
         js.append(lf.to(e, _TYPES[ty]).json if ty in _CONVERTED else e.json)
     out = _TYPES[row.result]
     return E(_fn(row.name, js, out), out)
@@ -171,7 +195,7 @@ def _aggregate(lf: _Lift, node: sge.Expression, a: E) -> tuple[str, Any]:
     row = black_box.AGGREGATES[name]
     # An integer becomes a double (`Parse.lean`), as DuckDB converts it.
     if not (_accepts(row.args[0], a.type) or (row.args[0] == "double" and a.type.is_integer())):
-        raise SqlUnsupported(f"{name} of a {a.type} is not supported")
+        raise SqlUnsupported(f"{name} of a {a.type} is not supported", construct=f"function {name}")
     return name, _TYPES[row.result]
 
 

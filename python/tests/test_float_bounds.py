@@ -161,7 +161,7 @@ def test_rows_cite_theorems_float_bounds_has() -> None:
     cited = core[core.index("def floatBoundsTheorems") :].split("\n\n")[0]
     checked = "".join(
         (root / "float-bounds" / "FloatBounds" / f).read_text().split("run_cmd do")[1]
-        for f in ("Epsilon.lean", "ChanCorr.lean")
+        for f in ("Epsilon.lean", "ChanCorr.lean", "SchubertGertz.lean")
     )
     assert set(names.findall(cited)) == set(names.findall(checked)) != set()
 
@@ -417,10 +417,12 @@ def test_window_sums_have_the_aggregate_bound() -> None:
 
 
 def test_statistics_have_proved_bounds_but_corr() -> None:
-    """D30: an engine's `VAR` or `COVAR` is within `statEps` of the
-    reference's correctly rounded value (`epsilon_var_cr`, `epsilon_cov_cr`),
+    """D30: an engine's `VAR`, `STDDEV` or `COVAR` is within `statEps` of the
+    reference's correctly rounded value (`epsilon_var_cr`,
+    `epsilon_stddev_cr`, `epsilon_cov_cr`),
     proved on the engines whose algorithm a theorem covers (DuckDB's and
-    Spark's `core_var_chan`; Polars's is tested). `CORR` has no bound: a
+    Spark's `core_var_chan`, Polars's `VAR_*` and `STDDEV_*` by
+    `core_var_polars`; Polars's `COVAR_*` is tested). `CORR` has no bound: a
     stated tolerance on it is refused, naming #918."""
     con = sv.connect()
     con.put(
@@ -428,7 +430,9 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
     )
     t = con.table("t")
     req = {"t": [_.x.between(-1e3, 1e3), _.y.between(-1e3, 1e3), sv.max_rows(1000)]}
-    proved = sv.verify(t.group_by("k").aggregate(v=t.x.var(), c=t.x.cov(t.y)), requires=req)
+    proved = sv.verify(
+        t.group_by("k").aggregate(v=t.x.var(), s=t.x.std(), c=t.x.cov(t.y)), requires=req
+    )
     assert proved._epsilon is not None
     engines = proved._engines or {}
 
@@ -439,11 +443,12 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
             if v["profile"] and v["epsilon"][col]["bounds"]["abs"]["proved"]
         )
 
-    for col in ("v", "c"):
+    for col in ("v", "s", "c"):
         assert proved._epsilon[col]["bounds"]["abs"]["value"] > 0
-        assert proved_on(engines, col) == ["duckdb", "spark"]
-    std = sv.verify(t.group_by("k").aggregate(s=t.x.std()), requires=req)
-    assert std._epsilon is not None and proved_on(std._engines or {}, "s") == []
+    # Polars's `VAR_*` and `STDDEV_*` are proved, its `COVAR_*` not yet (#1808).
+    for col in ("v", "s"):
+        assert proved_on(engines, col) == ["duckdb", "polars", "spark"]
+    assert proved_on(engines, "c") == ["duckdb", "spark"]
     corr = sv.verify(t.group_by("k").aggregate(c=t.x.corr(t.y)), requires=req)
     assert corr._epsilon is not None and corr._epsilon["c"]["unbounded"]
     assert "#918" in corr._epsilon["c"]["why"]

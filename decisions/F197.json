@@ -1,0 +1,21 @@
+{
+  "id": "F197",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "An integer or decimal SUM that fits its type on a proved row bound is proved exact in colEps, via the single check Measure.sumFits (intSumExact removed); window sums and iavg stay unproved.",
+  "issues": [
+    1484,
+    1735,
+    2003
+  ],
+  "prs": [
+    2003
+  ],
+  "amends": [
+    "F85"
+  ],
+  "source": "fable-ruling-197-int-sum-proved.md",
+  "note": "'Amends the scope of ruling 85.' Addendum (same day) accepts the S3 deviation with T1-T3 and corrects the user notice (SUM columns are not in Report.epsilon). No D-number."
+}

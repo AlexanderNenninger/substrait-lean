@@ -1,0 +1,1717 @@
+import Sverify.Analysis.Keys
+import Sverify.Core.Check
+import Sverify.Analysis.AllowedAnalysis
+
+/-!
+# Semantic rewrites from contracts
+
+Rewrites that hold only on data meeting a contract's preconditions: the
+facts and keys that `Rel.aeval` and `Rel.keys` derive from them justify each
+one. Engines apply such rewrites only for constraints they enforce, or that
+the user asserts unchecked (`RELY`); ours are checked at ingestion or proved
+through composition (`docs/optimizations.md` §3).
+
+`Rel.optimize` rewrites bottom-up. At each node it decides from the analyses
+of the already rewritten inputs, so one rewrite can enable the next.
+
+* **`DISTINCT` on a key** (#76). If the input has a key, its rows are
+  pairwise distinct and `dedup` keeps them all (`dedup_of_nodup`).
+* **`GROUP BY` a key, without measures** (#76). Every group has one row, so
+  the aggregate is the projection of its grouping expressions.
+* **`fn(DISTINCT x)` with `x` a key** (#76). The values are distinct within
+  every group, so `DISTINCT` changes nothing: `COUNT(DISTINCT id)` is
+  `COUNT(id)`.
+
+* **Filters the contract implies** (#78). If the abstract evaluation shows
+  the condition certainly TRUE on the input (`Expr.absD`, as for a
+  postcondition), the filter keeps every row and goes. If it shows the
+  condition never TRUE, no row passes, and the plan is an empty `VALUES`.
+  This removes CHECK constraints the engine does not enforce, and re-checks
+  of an upstream guarantee in a composed pipeline.
+
+* **Left joins that are inner joins** (#77). A left join pads a left row
+  only when nothing matches it. If the condition is `l.k = r.pk`, `l.k` is
+  NOT NULL and comes from a table column with a foreign key to a column that
+  `r` keeps every value of (`Rel.origin`, `Rel.cover`), every left row has
+  a match: the fact-table-to-dimension case, which engines cannot see from
+  unenforced constraints. Under a filter that is never TRUE on a padded row
+  (one testing a right column), the padded rows go anyway, and that case
+  needs no foreign key.
+
+* **Joins that only check a key** (#75). If the condition determines a key
+  of the right side, each left row has at most one partner; a left join then
+  gives one row per left row, and so does an inner join on a NOT NULL foreign
+  key. When nothing above reads the right side's columns (an emit, a
+  projection, an aggregate), the join goes (`Rel.joinElim`).
+
+* **Eager aggregation below a join on a key** (#80). A `GROUP BY` of left
+  columns over `R ⋈ S`, where the condition determines a key of `S` and only
+  reads left columns that are grouped, aggregates `R` first and joins the
+  groups with `S`. Every left row has at most one partner, and the rows of a
+  group all have one or none, so the join only keeps or drops whole groups.
+
+`Rel.step` applies rules until none fires (at most four times), so a join
+that goes can leave a `DISTINCT` that goes next.
+
+`Rel.optimize_sound`: on every catalog meeting the preconditions, the
+rewritten plan is well-formed, has the same arity, and gives the same list of
+rows. As elsewhere (`Rel.guardFree_sound`, `Rel.shardSplit_sound`), the
+checker runs the analyses on the schema-only catalog: they read only arities.
+-/
+
+namespace Substrait
+
+/-- Values that a key's columns determine are distinct across the rows. -/
+theorem KeyOn.map_pairwise {β : Type} {k : List Nat} {rows : Relation} (h : KeyOn k rows)
+    {f : Row → β} (hf : ∀ x y, f x = f y → keyOf k x = keyOf k y) :
+    (rows.map f).Pairwise (· ≠ ·) :=
+  List.pairwise_map.mpr (h.imp fun hne heq => hne (hf _ _ heq))
+
+/-! ## The rules -/
+
+/-- The rewrites `Rel.rule` applies, one constructor each. `Rule.name` is the
+report's name for it (`rewrites`). -/
+inductive Rule where
+  | filterImplied | filterRuledOut | leftNullRejecting | leftForeignKey
+  | distinctKey | groupByKey | distinctAggKey
+  | joinForeignKeyUnused | leftKeyUnused
+  | groupByDetermined | aggregateBelowJoin
+  deriving DecidableEq, Repr
+
+/-- The report's name for a rule. -/
+def Rule.name : Rule → String
+  | .filterImplied => "filter implied by the contract"
+  | .filterRuledOut => "filter the contract rules out"
+  | .leftNullRejecting => "left join under a filter rejecting NULLs"
+  | .leftForeignKey => "left join on a foreign key"
+  | .distinctKey => "DISTINCT on a key"
+  | .groupByKey => "GROUP BY a key"
+  | .distinctAggKey => "DISTINCT aggregate of a key"
+  | .joinForeignKeyUnused => "join on a foreign key, no column used"
+  | .leftKeyUnused => "left join on a key, no column used"
+  | .groupByDetermined => "GROUP BY columns that others determine"
+  | .aggregateBelowJoin => "aggregate below a join on a key"
+
+/-- Every rule, in `Rel.rule`'s order. -/
+def Rule.all : List Rule :=
+  [.filterImplied, .filterRuledOut, .leftNullRejecting, .leftForeignKey, .distinctKey,
+    .groupByKey, .distinctAggKey, .joinForeignKeyUnused, .leftKeyUnused, .groupByDetermined,
+    .aggregateBelowJoin]
+
+/-- The rule a report names. -/
+def Rule.ofName? (n : String) : Option Rule := Rule.all.find? (·.name == n)
+
+/-- **The gate** (#1787, item 2): the rules whose rewrite the engine runs by
+default. A rule is on only with a measured gain on one engine (run time or
+written SQL) and no loss beyond the bench's spread on DuckDB, Polars and Spark;
+`docs/optimizations.md` has the numbers. The gate carries no proof weight:
+`Rel.optimize_sound` holds for every choice of rules. -/
+def Rule.onByDefault : Rule → Bool
+  | .filterImplied | .filterRuledOut | .distinctKey | .groupByKey | .distinctAggKey
+  | .joinForeignKeyUnused | .leftKeyUnused => true
+  -- No gain beyond the spread (the two left-join conversions), or slower (#79,
+  -- #80): ruling 150. Reachable through the request's `"rules"`.
+  | .leftNullRejecting | .leftForeignKey | .groupByDetermined | .aggregateBelowJoin => false
+
+/-- Does the rewrite keep `Rel.Small` of the plan as written
+(`Rel.rule_small`, `SubstraitLean/RunPlan.lean`)? Every rule but eager
+aggregation, which aggregates the join's left input, whose rows the join's do
+not bound. The plan to run uses only these rules (ruling 129, C). -/
+def Rule.keepsSmall : Rule → Bool
+  | .aggregateBelowJoin => false
+  | _ => true
+
+/-! ## The rewrites -/
+
+/-- Is `e` a column `c` that is a key by itself (`[c]`, `[c, c]` or `[]`)? -/
+def keyCol (ks : List (List Nat)) : Expr → Bool
+  | .field c => ks.any (·.all (· == c))
+  | _ => false
+
+def Measure.dropDistinct (ks : List (List Nat)) (m : Measure) : Measure :=
+  if m.distinct && !m.fn.sorts && keyCol ks m.arg then { m with distinct := false } else m
+
+/-- Do the grouping expressions include the columns of a key? -/
+def groupsKey (ks : List (List Nat)) (gs : List Expr) : Bool :=
+  ks.any (·.all fun c => gs.contains (.field c))
+
+/-! ## Foreign keys and where columns come from -/
+
+/-- Foreign keys of each table: `(c, s, p)` says every non-NULL value of
+column `c` occurs in column `p` of table `s`. -/
+abbrev ForeignKeys := String → List (Nat × String × Nat)
+
+def ForeignKeys.Hold (R : ForeignKeys) (cat : Catalog) : Prop :=
+  ∀ t, ∀ fk ∈ R t, ∀ x ∈ (cat t).rows, x.getD fk.1 .null ≠ .null →
+    ∃ y ∈ (cat fk.2.1).rows, y.getD fk.2.2 .null = x.getD fk.1 .null
+
+/-- The table column that the non-NULL values of column `i` come from. -/
+def Rel.origin (cat : Catalog) : Rel → Nat → Option (String × Nat)
+  | .read t, i => some (t, i)
+  | .values _ _, _ => none
+  | .filter r _, i | .fetch r _ _, i | .orderBy r _, i | .distinct r, i | .semi r _ _ _, i =>
+      r.origin cat i
+  | .project r es, i =>
+      if i < r.arity cat then r.origin cat i
+      else match es[i - r.arity cat]? with
+        | some (.field j) => r.origin cat j
+        | _ => none
+  | .window r _ _ _, i => if i < r.arity cat then r.origin cat i else none
+  | .emit r m, i => m[i]?.bind (r.origin cat)
+  | .cross a b, i | .join a b _ _, i =>
+      if i < a.arity cat then a.origin cat i else b.origin cat (i - a.arity cat)
+  | .unionAll a b, i => if a.origin cat i = b.origin cat i then a.origin cat i else none
+  | .aggregate r gs _, i => match gs[i]? with
+    | some (.field j) => r.origin cat j
+    | _ => none
+  | .unnest _ _, _ => none
+
+/-- A table column whose non-NULL values all occur in column `j`. -/
+def Rel.cover (cat : Catalog) : Rel → Nat → Option (String × Nat)
+  | .read t, j => some (t, j)
+  | .project r _, j => if j < r.arity cat then r.cover cat j else none
+  | .emit r m, j => m[j]?.bind (r.cover cat)
+  | .orderBy r _, j | .distinct r, j => r.cover cat j
+  | _, _ => none
+
+/-- The columns `on` equates, the left one first and the right one relative
+to the right side. -/
+def eqPair (n : Nat) : Expr → Option (Nat × Nat)
+  | .bin .eq (.field i) (.field j) =>
+    if i < n ∧ n ≤ j then some (i, j - n) else if j < n ∧ n ≤ i then some (j, i - n) else none
+  | _ => none
+
+variable [Boxes.Ambient]
+/-- Does every left row of `a ⟕ b ON on` have a match, by a foreign key? -/
+def Rel.fkMatch (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (R : ForeignKeys) (a b : Rel) (on : Expr) : Bool :=
+  match eqPair (a.arity cat) on with
+  | some (i, j) => match a.origin cat i, b.cover cat j with
+    | some (t, c), some (s, p) =>
+      (R t).contains (c, s, p) &&
+        !((a.aeval cat A F (Rel.keyedWindows cat A F K)).getD i AVal.top).null
+    | _, _ => false
+  | none => false
+
+/-- A join whose rows are its left rows, extended: the condition determines a
+key of the right side (at most one partner per left row), and for an inner
+join a foreign key gives every left row one. Returns the rewrite's name, the
+left side and the right side's arity. -/
+def Rel.joinElim (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (R : ForeignKeys) : Rel → Option (Rule × Rel × Nat)
+  | .join a b ty on =>
+    if (b.keys cat A F K).any (determines on (a.arity cat)) then
+      match ty with
+      | .left => some (.leftKeyUnused, a, b.arity cat)
+      | .inner =>
+        if Rel.fkMatch cat A F K R a b on then
+          some (.joinForeignKeyUnused, a, b.arity cat)
+        else none
+    else none
+  | _ => none
+
+/-- An abstract row of NULLs. -/
+def nullRow (n : Nat) : List AVal := List.replicate n (AVal.ofValue .null)
+
+/-- What the abstract evaluation knows about `c` on the rows of `r`. -/
+def Rel.condVal (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (r : Rel) (c : Expr) : AVal :=
+  let T := Rel.keyedWindows cat A F K
+  c.absD (r.aeval cat A F T) (r.facts cat F T)
+
+/-! ## Functional dependencies (`analysis/Sverify/Analysis/FunctionalDeps.lean`) -/
+
+def fieldsOf (es : List Expr) : List Nat := es.filterMap fun | .field j => some j | _ => none
+
+/-- Grouping positions to keep: drop a column the others determine (greedy;
+`Rel.fdAgg` checks the result). -/
+def keepCols (fds : List (List Nat × Nat)) (gs : List Expr) : List Nat :=
+  (List.range gs.length).foldl (fun keep q =>
+    let others := keep.filter (· != q)
+    match gs.getD q (.lit .null) with
+    | .field c =>
+      if (fdClosure fds (fds.length + 1) (fieldsOf (others.map (gs.getD · (.lit .null))))).contains c
+      then others else keep
+    | _ => keep) (List.range gs.length)
+
+/-- The `q`-th grouping expression. -/
+def gAt (gs : List Expr) (q : Nat) : Expr := gs.getD q (.lit .null)
+
+def determinedBy (cl : List Nat) (gs : List Expr) (q : Nat) : Bool :=
+  match gAt gs q with
+  | .field c => cl.contains c
+  | _ => false
+
+def minOf (gs : List Expr) (q : Nat) : Measure := { fn := .min, arg := gAt gs q }
+
+/-- Where the original columns are in the rewritten aggregate. -/
+def fdEmit (qs drops : List Nat) (n m : Nat) : List Nat :=
+  (List.range n).map (fun q => if qs.contains q then qs.idxOf q else qs.length + m + drops.idxOf q) ++
+    (List.range m).map (qs.length + ·)
+
+/-- `GROUP BY gs` as `GROUP BY` the kept columns, carrying the ones they
+determine through `MIN` (all values of a group agree on them). -/
+def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (r : Rel) (gs : List Expr) (ms : List Measure) :
+    Option (Rule × Rel) :=
+  let fds := inputFds (r.arity cat) (r.keys cat A F K) (r.fds cat A F K)
+  let qs := keepCols fds gs
+  let drops := (List.range gs.length).filter (!qs.contains ·)
+  let cl := fdClosure fds (fds.length + 1) (fieldsOf (qs.map (gAt gs)))
+  -- Rebuilding a dropped column by `MIN` sees raw members below a class of
+  -- keys (D31): only without doubles.
+  if !qs.isEmpty && !drops.isEmpty && drops.all (determinedBy cl gs) &&
+      gs.all (fun g => (g.abs (r.aeval cat A F .none)).noDoubles) then
+    some (.groupByDetermined,
+      .emit (.aggregate r (qs.map (gAt gs)) (ms ++ drops.map (minOf gs)))
+        (fdEmit qs drops gs.length ms.length))
+  else none
+
+/-- A join condition's columns after the left side is aggregated: grouped
+left columns move to their group position, right columns after the
+aggregate's `out` columns. -/
+def eagerCols (n : Nat) (gs : List Expr) (out k : Nat) : List Expr :=
+  (List.range n).map (fun c => match gpos gs c with
+    | some q => .field q
+    | none => .lit .null) ++ (List.range k).map fun j => .field (out + j)
+
+/-- `GROUP BY` of left columns over a join on a key of the right side, as the
+join of the left side's groups with the right side. -/
+def Rel.eagerAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (r : Rel) (gs : List Expr) (ms : List Measure) :
+    Option (Rule × Rel) :=
+  match r with
+  | .join a b .inner on =>
+    if !gs.isEmpty && gs.all (·.refsLtB (a.arity cat)) &&
+        ms.all (·.exprs.all (·.refsLtB (a.arity cat))) &&
+        (b.keys cat A F K).any (determines on (a.arity cat)) &&
+        on.allFields (fun i => decide (a.arity cat ≤ i) || (gpos gs i).isSome) &&
+        -- The condition may tell `-0.0` from `0.0`, which one group holds (D31).
+        gs.all (fun g => (g.abs (a.aeval cat A F .none)).noDoubles) then
+      some (.aggregateBelowJoin,
+        .emit (.join (.aggregate a gs ms) b .inner
+            (on.subst (eagerCols (a.arity cat) gs (gs.length + ms.length) (b.arity cat))))
+          (List.range (gs.length + ms.length)))
+    else none
+  | _ => none
+
+/-- One rewrite at the root, and its name for the report. -/
+def Rel.rule (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (R : ForeignKeys) : Rel → Option (Rule × Rel)
+  | .filter r c =>
+    let a := r.condVal cat A F K c
+    if a.certainlyTrue then some (.filterImplied, r)
+    else if !a.tt then some (.filterRuledOut, .values (r.arity cat) [])
+    else match r with
+      | .join x y .left on =>
+        let pad := x.aeval cat A F (Rel.keyedWindows cat A F K) ++ nullRow (y.arity cat)
+        if !(c.absD pad []).tt then
+          some (.leftNullRejecting, .filter (.join x y .inner on) c)
+        else none
+      | _ => none
+  | .join a b .left on =>
+    if Rel.fkMatch cat A F K R a b on then some (.leftForeignKey, .join a b .inner on)
+    else none
+  | .distinct r => if (r.keys cat A F K).isEmpty then none else some (.distinctKey, r)
+  | .aggregate r gs ms =>
+    let ks := r.keys cat A F K
+    if ms.isEmpty && !gs.isEmpty && groupsKey ks gs then
+      some (.groupByKey, .emit (.project r gs) ((List.range gs.length).map (r.arity cat + ·)))
+    else if ms.any fun m => m.distinct && keyCol ks m.arg then
+      some (.distinctAggKey, .aggregate r gs (ms.map (Measure.dropDistinct ks)))
+    else match r.joinElim cat A F K R with
+      | some (name, a, _) =>
+        if gs.all (·.refsLtB (a.arity cat)) && ms.all (·.exprs.all (·.refsLtB (a.arity cat))) then
+          some (name, .aggregate a gs ms)
+        else none
+      | none => match Rel.fdAgg cat A F K r gs ms with
+        | some x => some x
+        | none => Rel.eagerAgg cat A F K r gs ms
+  | .emit r m =>
+    match r.joinElim cat A F K R with
+    | some (name, a, _) => if m.all (· < a.arity cat) then some (name, .emit a m) else none
+    | none => match r with
+      | .project j es => match j.joinElim cat A F K R with
+        | some (name, a, k) =>
+          if es.all (·.refsLtB (a.arity cat)) && m.all (fun i => i < a.arity cat || a.arity cat + k ≤ i)
+          then some (name, .emit (.project a es) (m.map fun i => if i < a.arity cat then i else i - k))
+          else none
+        | none => none
+      | _ => none
+  | _ => none
+
+/-- Apply `rule` at the root while it fires and `use` allows it (`fuel` times at most),
+logging the rules. A rule that fires and is off leaves the node as it is: the
+rules after it in `Rel.rule`'s order are not tried there. -/
+def Rel.stepN (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) : Nat → Rel → List Rule → Rel × List Rule
+  | 0, r, log => (r, log)
+  | fuel + 1, r, log =>
+    match r.rule cat A F K R with
+    | some (name, s) => if use name then s.stepN cat A F K R use fuel (log ++ [name]) else (r, log)
+    | none => (r, log)
+
+def Rel.step (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) (r : Rel) (log : List Rule) :
+    Rel × List Rule :=
+  r.stepN cat A F K R use 4 log
+
+/-- Rewrite bottom-up with the rules `use` allows; also return the rules
+applied. -/
+def Rel.optimize (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (K : TableCond) (R : ForeignKeys) (use : Rule → Bool) : Rel → Rel × List Rule
+  | .read t => (.read t, [])
+  | .values n rows => (.values n rows, [])
+  | .filter r c => step cat A F K R use (.filter (r.optimize cat A F K R use).1 c) (r.optimize cat A F K R use).2
+  | .project r es => step cat A F K R use (.project (r.optimize cat A F K R use).1 es) (r.optimize cat A F K R use).2
+  | .emit r m => step cat A F K R use (.emit (r.optimize cat A F K R use).1 m) (r.optimize cat A F K R use).2
+  | .cross a b => step cat A F K R use (.cross (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
+  | .join a b ty on => step cat A F K R use (.join (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 ty on)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
+  | .fetch r off cnt => step cat A F K R use (.fetch (r.optimize cat A F K R use).1 off cnt) (r.optimize cat A F K R use).2
+  | .unionAll a b => step cat A F K R use (.unionAll (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
+  | .window r part sort fns =>
+      step cat A F K R use (.window (r.optimize cat A F K R use).1 part sort fns) (r.optimize cat A F K R use).2
+  | .semi a b anti on => step cat A F K R use (.semi (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 anti on)
+      ((a.optimize cat A F K R use).2 ++ (b.optimize cat A F K R use).2)
+  | .orderBy r keys => step cat A F K R use (.orderBy (r.optimize cat A F K R use).1 keys) (r.optimize cat A F K R use).2
+  | .distinct r => step cat A F K R use (.distinct (r.optimize cat A F K R use).1) (r.optimize cat A F K R use).2
+  -- Not optimized through (`UNNEST` has no rewrites yet).
+  | .unnest r c => (.unnest r c, [])
+  | .aggregate r gs ms =>
+      step cat A F K R use (.aggregate (r.optimize cat A F K R use).1 gs ms) (r.optimize cat A F K R use).2
+
+/-! ## Soundness -/
+
+/-- `s` can replace `r`: well-formed, the same arity, the same rows. -/
+structure Same (cat : Catalog) (r s : Rel) : Prop where
+  wf : s.WF cat
+  arity : s.arity cat = r.arity cat
+  eval : s.eval cat = r.eval cat
+
+theorem Same.trans {cat : Catalog} {r s t : Rel} (h : Same cat r s) (h' : Same cat s t) :
+    Same cat r t := ⟨h'.wf, h'.arity.trans h.arity, h'.eval.trans h.eval⟩
+
+theorem Measure.kept_sublist (m : Measure) (rows : Relation) : (m.kept rows).Sublist rows := by
+  unfold kept; split
+  · exact List.Sublist.refl _
+  · exact List.filter_sublist
+
+theorem Measure.eval_dropDistinct {ks : List (List Nat)} {rows : Relation}
+    (hk : ∀ k ∈ ks, KeyOn k rows) (m : Measure) : (m.dropDistinct ks).eval rows = m.eval rows := by
+  unfold dropDistinct
+  split
+  · rename_i h
+    simp only [Bool.and_eq_true] at h
+    obtain ⟨⟨hd, hfc⟩, hc⟩ := h
+    replace hfc : m.fn.sorts = false := by simpa using hfc
+    unfold keyCol at hc
+    split at hc
+    · rename_i c heq
+      obtain ⟨k, hkm, hkc⟩ := List.any_eq_true.mp hc
+      have hp := (hk k hkm).map_pairwise (f := fun row => (m.arg.eval row).canonV) fun x y he => by
+        simp only [keyOf, List.map_inj_left]
+        intro c' hc'
+        have := List.all_eq_true.mp hkc c' hc'
+        simp only [beq_iff_eq] at this
+        subst this
+        simpa [heq, Expr.eval] using he
+      -- The key column's values lie in different classes, so `DISTINCT` keeps them all.
+      have hnd : (((m.kept rows).map m.arg.eval).filter (· != .null)).Pairwise
+          fun a b => a.canonV ≠ b.canonV := by
+        have h1 := hp.sublist ((m.kept_sublist rows).map _)
+        have h2 : ((m.kept rows).map m.arg.eval).Pairwise fun a b => a.canonV ≠ b.canonV :=
+          List.pairwise_map.mpr (List.pairwise_map.mp h1)
+        exact h2.filter _
+      rw [Measure.eval_eq hfc, Measure.eval_eq (m := { m with distinct := false }) hfc]
+      simp only [inputs, hd, ↓reduceIte, distinctVals, canonReps_of_pairwise hnd]
+      rfl
+    · simp at hc
+  · rfl
+
+omit [Boxes.Ambient] in
+theorem Measure.refsLt_dropDistinct {ks : List (List Nat)} {n : Nat} {m : Measure}
+    (h : m.refsLt n) : (m.dropDistinct ks).refsLt n := by
+  unfold dropDistinct; split <;> exact h
+
+theorem aggregateEval_congr_ms {gs : List Expr} {ms ms' : List Measure} {rows : Relation}
+    (h : ∀ grp, grp.Sublist rows → ms'.map (·.eval grp) = ms.map (·.eval grp)) :
+    aggregateEval gs ms' rows = aggregateEval gs ms rows := by
+  unfold aggregateEval
+  split
+  · rw [h rows (List.Sublist.refl _)]
+  · exact List.map_congr_left fun k _ => by rw [h (groupRows gs rows k) List.filter_sublist]
+
+/-! ### Foreign keys -/
+
+/-- `Rel.origin` is right: a non-NULL value of column `i` is a value of the
+table column. -/
+def OriginOk (cat : Catalog) (r : Rel) : Prop :=
+  ∀ {i t c}, r.origin cat i = some (t, c) → ∀ x ∈ r.eval cat, x.getD i .null ≠ .null →
+    ∃ y ∈ (cat t).rows, y.getD c .null = x.getD i .null
+
+/-- `Rel.cover` is right: every non-NULL value of the table column is in
+column `j`, up to canonical codes (`DISTINCT` and `GROUP BY` keep one member
+of a class, D31). -/
+def CoverOk (cat : Catalog) (r : Rel) : Prop :=
+  ∀ {j t p}, r.cover cat j = some (t, p) → ∀ y ∈ (cat t).rows, y.getD p .null ≠ .null →
+    ∃ z ∈ r.eval cat, (z.getD j .null).canonV = (y.getD p .null).canonV
+
+omit [Boxes.Ambient] in
+theorem getD_replicate_null (k j : Nat) : (List.replicate k Value.null).getD j .null = .null := by
+  simp only [List.getD_eq_getElem?_getD, List.getElem?_replicate]
+  split <;> rfl
+
+theorem originOk_pair {cat : Catalog} {a b : Rel} {y z : Row} (hl : y.length = a.arity cat)
+    (iha : OriginOk cat a) (ihb : OriginOk cat b) {i : Nat} {t : String} {c : Nat}
+    (h : (if i < a.arity cat then a.origin cat i else b.origin cat (i - a.arity cat)) = some (t, c))
+    (hy : y ∈ a.eval cat) (hz : z ∈ b.eval cat ∨ ∃ k, z = List.replicate k .null)
+    (hn : (y ++ z).getD i .null ≠ .null) :
+    ∃ w ∈ (cat t).rows, w.getD c .null = (y ++ z).getD i .null := by
+  split at h
+  · rename_i hi
+    rw [getD_append_left' (by omega)] at hn ⊢
+    exact iha h y hy hn
+  · rename_i hi
+    obtain ⟨d, rfl⟩ : ∃ d, i = y.length + d := ⟨i - y.length, by omega⟩
+    rw [getD_append_right'] at hn ⊢
+    rw [hl, Nat.add_sub_cancel_left] at h
+    rcases hz with hz | ⟨k, rfl⟩
+    · exact ihb h z hz hn
+    · exact absurd (getD_replicate_null k d) hn
+
+theorem Rel.origin_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF cat → OriginOk cat r
+  | .read _, _ => fun h x hx _ => by
+      simp only [origin, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h; exact ⟨x, hx, rfl⟩
+  | .values _ _, _ | .unnest _ _, _ => fun h => by simp [origin] at h
+  | .filter r _, hwf => fun h x hx hn => by
+      simp only [eval, List.mem_filter] at hx
+      exact origin_sound hcat hwf.1 h x hx.1 hn
+  | .fetch r _ _, hwf => fun h x hx hn => by
+      simp only [eval] at hx
+      have hx' : x ∈ r.eval cat := by
+        split at hx
+        · exact List.mem_of_mem_drop hx
+        · exact List.mem_of_mem_drop (List.mem_of_mem_take hx)
+      exact origin_sound hcat (r := r) hwf h x hx' hn
+  | .orderBy r _, hwf => fun h x hx hn => by
+      simp only [eval, List.mem_mergeSort] at hx
+      exact origin_sound hcat hwf.1 h x hx hn
+  | .distinct r, hwf => fun h x hx hn => by
+      simp only [eval] at hx
+      replace hx := canonReps_sub hx
+      exact origin_sound hcat (r := r) hwf h x hx hn
+  | .semi r _ _ _, hwf => fun h x hx hn => by
+      simp only [eval, List.mem_filter] at hx
+      exact origin_sound hcat hwf.1 h x hx.1 hn
+  | .project r es, hwf => fun h x hx hn => by
+      rename_i i _ _
+      simp only [eval, List.mem_map] at hx
+      obtain ⟨y, hy, rfl⟩ := hx
+      have hl := eval_arity hcat hwf.1 y hy
+      simp only [origin] at h
+      split at h
+      · rename_i hi
+        rw [getD_append_left' (by omega)] at hn ⊢
+        exact origin_sound hcat hwf.1 h y hy hn
+      · rename_i hi
+        obtain ⟨d, rfl⟩ : ∃ d, i = y.length + d := ⟨i - y.length, by omega⟩
+        rw [← hl, Nat.add_sub_cancel_left] at h
+        rw [getD_append_right'] at hn ⊢
+        cases hg : es[d]? with
+        | none => simp [hg] at h
+        | some e =>
+          cases e with
+          | field j =>
+            simp only [hg] at h
+            have he : (es.map (·.eval y)).getD d .null = y.getD j .null := by
+              simp [List.getD_eq_getElem?_getD, List.getElem?_map, hg, Expr.eval]
+            rw [he] at hn ⊢
+            exact origin_sound hcat hwf.1 h y hy hn
+          | _ => simp [hg] at h
+  | .window r _ _ _, hwf => fun h x hx hn => by
+      obtain ⟨_, y, _, _, hy, rfl⟩ := mem_windowEval hx
+      have hl := eval_arity hcat hwf.1 y hy
+      simp only [origin] at h
+      split at h
+      · rw [getD_append_left' (by omega)] at hn ⊢
+        exact origin_sound hcat hwf.1 h y hy hn
+      · simp at h
+  | .emit r m, hwf => fun h x hx hn => by
+      rename_i i _ _
+      simp only [eval, List.mem_map] at hx
+      obtain ⟨y, hy, rfl⟩ := hx
+      simp only [origin] at h
+      cases hm : m[i]? with
+      | none => simp [hm] at h
+      | some j =>
+        simp only [hm, Option.bind_some] at h
+        have he : (m.map (y.getD · .null)).getD i .null = y.getD j .null := by
+          simp [List.getD_eq_getElem?_getD, List.getElem?_map, hm]
+        rw [he] at hn ⊢
+        exact origin_sound hcat hwf.1 h y hy hn
+  | .cross a b, hwf => fun h x hx hn => by
+      simp only [eval, mem_crossRows] at hx
+      obtain ⟨y, hy, z, hz, rfl⟩ := hx
+      exact originOk_pair (eval_arity hcat hwf.1 y hy) (origin_sound hcat hwf.1)
+        (origin_sound hcat hwf.2) h hy (.inl hz) hn
+  | .join a b .inner _, hwf => fun h x hx hn => by
+      simp only [eval, List.mem_filter, mem_crossRows] at hx
+      obtain ⟨⟨y, hy, z, hz, rfl⟩, _⟩ := hx
+      exact originOk_pair (eval_arity hcat hwf.1 y hy) (origin_sound hcat hwf.1)
+        (origin_sound hcat hwf.2.1) h hy (.inl hz) hn
+  | .join a b .left on, hwf => fun h x hx hn => by
+      simp only [eval, List.mem_flatMap] at hx
+      obtain ⟨y, hy, hx⟩ := hx
+      unfold leftJoinRow at hx
+      simp only [] at hx
+      split at hx
+      · simp only [List.mem_singleton] at hx
+        subst hx
+        exact originOk_pair (eval_arity hcat hwf.1 y hy) (origin_sound hcat hwf.1)
+          (origin_sound hcat hwf.2.1) h hy (.inr ⟨_, rfl⟩) hn
+      · simp only [List.mem_filter, List.mem_map] at hx
+        obtain ⟨⟨z, hz, rfl⟩, _⟩ := hx
+        exact originOk_pair (eval_arity hcat hwf.1 y hy) (origin_sound hcat hwf.1)
+          (origin_sound hcat hwf.2.1) h hy (.inl hz) hn
+  | .unionAll a b, hwf => fun h x hx hn => by
+      simp only [origin] at h
+      split at h
+      · rename_i hab
+        simp only [eval, List.mem_append] at hx
+        rcases hx with hx | hx
+        · exact origin_sound hcat hwf.1 h x hx hn
+        · exact origin_sound hcat hwf.2.1 (hab ▸ h) x hx hn
+      · simp at h
+  | .aggregate r gs ms, hwf => fun h x hx hn => by
+      rename_i i _ _
+      obtain ⟨k, grp, rfl, -, hk⟩ := mem_aggregateEval hx
+      simp only [origin] at h
+      cases hg : gs[i]? with
+      | none => simp [hg] at h
+      | some e =>
+        cases e with
+        | field j =>
+          simp only [hg] at h
+          rcases hk with ⟨rfl, rfl⟩ | ⟨y, hy, rfl⟩
+          · simp at hg
+          · have hi : i < (groupKey gs y).length := by
+              simp only [groupKey, List.length_map]
+              exact (List.getElem?_eq_some_iff.mp hg).1
+            have he : (groupKey gs y ++ ms.map (·.eval grp)).getD i .null = y.getD j .null := by
+              rw [getD_append_left' hi]
+              simp [groupKey, List.getD_eq_getElem?_getD, List.getElem?_map, hg, Expr.eval]
+            rw [he] at hn ⊢
+            exact origin_sound hcat hwf.1 h y hy hn
+        | _ => simp [hg] at h
+
+theorem Rel.cover_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF cat → CoverOk cat r
+  | .read _, _ => fun h y hy _ => by
+      simp only [cover, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h; exact ⟨y, hy, rfl⟩
+  | .project r es, hwf => fun h y hy hn => by
+      simp only [cover] at h
+      split at h
+      · rename_i hj
+        obtain ⟨z, hz, he⟩ := cover_sound hcat hwf.1 h y hy hn
+        refine ⟨_, List.mem_map.mpr ⟨z, hz, rfl⟩, ?_⟩
+        rw [getD_append_left' (by rw [eval_arity hcat hwf.1 z hz]; exact hj), he]
+      · simp at h
+  | .emit r m, hwf => fun h y hy hn => by
+      rename_i j _ _
+      simp only [cover] at h
+      cases hm : m[j]? with
+      | none => simp [hm] at h
+      | some j' =>
+        simp only [hm, Option.bind_some] at h
+        obtain ⟨z, hz, he⟩ := cover_sound hcat hwf.1 h y hy hn
+        refine ⟨_, List.mem_map.mpr ⟨z, hz, rfl⟩, ?_⟩
+        simp [List.getD_eq_getElem?_getD, List.getElem?_map, hm] at he ⊢
+        exact he
+  | .orderBy r _, hwf => fun h y hy hn => by
+      obtain ⟨z, hz, he⟩ := cover_sound hcat hwf.1 h y hy hn
+      exact ⟨z, by simpa [eval, List.mem_mergeSort] using hz, he⟩
+  | .distinct r, hwf => fun h y hy hn => by
+      obtain ⟨z, hz, he⟩ := cover_sound hcat (r := r) hwf h y hy hn
+      refine ⟨_, classRep_mem_canonReps hz, ?_⟩
+      rw [getD_canonV_of_canon (classRep_canon (c := Row.canon) _ _), he]
+  | .values _ _, _ | .filter _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .fetch _ _ _, _
+  | .unionAll _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .aggregate _ _ _, _
+  | .unnest _ _, _ => fun h => by simp [cover] at h
+
+theorem eq_self_isTrue {v : Value} (h : v ≠ .null) : (BinFn.apply .eq v v).isTrue = true := by
+  cases v <;> simp_all [BinFn.apply, Value.isTrue]
+
+/-- SQL `=` holds of values equal up to canonical codes. -/
+theorem eq_canon_isTrue {v w : Value} (h : v.canonV = w.canonV) (hn : v ≠ .null) :
+    (BinFn.apply .eq v w).isTrue = true := by
+  cases v <;> cases w <;> simp_all [BinFn.apply, Value.isTrue, Value.canonV]
+
+theorem eqPair_sound {n i j : Nat} {on : Expr} {x z : Row} (h : eqPair n on = some (i, j))
+    (hl : x.length = n) (hv : (z.getD j .null).canonV = (x.getD i .null).canonV)
+    (hn : x.getD i .null ≠ .null) :
+    (on.eval (x ++ z)).isTrue = true := by
+  unfold eqPair at h
+  split at h
+  · rename_i i' j'
+    split at h
+    · rename_i hc
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      obtain ⟨d, rfl⟩ : ∃ d, j' = x.length + d := ⟨j' - x.length, by omega⟩
+      simp only [Expr.eval, getD_append_left' (hl ▸ hc.1), getD_append_right']
+      rw [← hl, Nat.add_sub_cancel_left] at hv
+      exact eq_canon_isTrue hv.symm hn
+    · split at h
+      · rename_i _ hc
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        obtain ⟨d, rfl⟩ : ∃ d, i' = x.length + d := ⟨i' - x.length, by omega⟩
+        simp only [Expr.eval, getD_append_left' (hl ▸ hc.1), getD_append_right']
+        rw [← hl, Nat.add_sub_cancel_left] at hv
+        exact eq_canon_isTrue hv
+          fun h0 => hn (Value.canonV_eq_null.mp (hv.symm.trans (Value.canonV_eq_null.mpr h0)))
+      · simp at h
+  · simp at h
+
+/-- A left join where every left row has a match is an inner join. -/
+theorem leftJoin_eq_inner {A B : Relation} {on : Expr} {k : Nat}
+    (h : ∀ x ∈ A, ∃ z ∈ B, (on.eval (x ++ z)).isTrue = true) :
+    A.flatMap (leftJoinRow on k B) = (crossRows A B).filter fun row => (on.eval row).isTrue := by
+  induction A with
+  | nil => rfl
+  | cons x A ih =>
+    simp only [crossRows, List.flatMap_cons, List.filter_append] at ih ⊢
+    rw [ih fun y hy => h y (List.mem_cons_of_mem _ hy)]
+    congr 1
+    obtain ⟨z, hz, ht⟩ := h x (by simp)
+    have hne : ((B.map (x ++ ·)).filter fun row => (on.eval row).isTrue) ≠ [] :=
+      List.ne_nil_of_mem (List.mem_filter.mpr ⟨List.mem_map.mpr ⟨z, hz, rfl⟩, ht⟩)
+    simp [leftJoinRow, hne]
+
+/-- Under a filter that no padded row passes, a left join is an inner join. -/
+theorem filter_leftJoin {A B : Relation} {on c : Expr} {k : Nat}
+    (h : ∀ x ∈ A, (c.eval (x ++ List.replicate k .null)).isTrue = false) :
+    (A.flatMap (leftJoinRow on k B)).filter (fun row => (c.eval row).isTrue) =
+      ((crossRows A B).filter fun row => (on.eval row).isTrue).filter
+        fun row => (c.eval row).isTrue := by
+  induction A with
+  | nil => rfl
+  | cons x A ih =>
+    simp only [crossRows, List.flatMap_cons, List.filter_append] at ih ⊢
+    rw [ih fun y hy => h y (List.mem_cons_of_mem _ hy)]
+    congr 1
+    simp only [leftJoinRow]
+    split
+    · rename_i he
+      rw [List.isEmpty_iff.mp he]
+      simp [h x (by simp)]
+    · rfl
+
+omit [Boxes.Ambient] in
+theorem EnvMem.nullRow (n : Nat) : EnvMem (nullRow n) (List.replicate n .null) := by
+  intro j
+  rw [getD_replicate_null]
+  simp only [Substrait.nullRow, List.getD_eq_getElem?_getD, List.getElem?_replicate]
+  split <;> simp [AVal.ofValue, AVal.top, AVal.Mem]
+
+/-! ### Join elimination -/
+
+omit [Boxes.Ambient] in
+/-- A list whose elements are pairwise "different" under the empty relation has
+at most one element. -/
+theorem eq_nil_or_singleton {α : Type} : ∀ {l : List α}, l.Pairwise (fun _ _ => False) →
+    l = [] ∨ ∃ a, l = [a]
+  | [], _ => .inl rfl
+  | [a], _ => .inr ⟨a, rfl⟩
+  | _ :: b :: _, h => by simp at h; exact absurd rfl (h.1 b).1
+
+omit [Boxes.Ambient] in
+/-- Each left row with exactly one output row extending it. -/
+theorem flatMap_single {A : Relation} {G : Row → Relation}
+    (h : ∀ x ∈ A, ∃ w, G x = [x ++ w]) :
+    A.flatMap G = A.map (fun x => (G x).headD x) ∧
+      ∀ x ∈ A, ∃ w, (G x).headD x = x ++ w := by
+  refine ⟨?_, fun x hx => ?_⟩
+  · induction A with
+    | nil => rfl
+    | cons x A ih =>
+      obtain ⟨w, hw⟩ := h x (by simp)
+      simp only [List.flatMap_cons, List.map_cons, hw, List.headD_cons, List.singleton_append]
+      rw [ih fun y hy => h y (List.mem_cons_of_mem _ hy)]
+  · obtain ⟨w, hw⟩ := h x hx
+    exact ⟨w, by simp [hw]⟩
+
+theorem Measure.eval_map {m : Measure} {grp : Relation} {g : Row → Row}
+    (h : ∀ x ∈ grp, ∀ e ∈ m.exprs, e.eval (g x) = e.eval x) : m.eval (grp.map g) = m.eval grp := by
+  have hin : ∀ l : Relation, (∀ x ∈ l, x ∈ grp) → m.inputs (l.map g) = m.inputs l := by
+    intro l hl
+    have hk : m.kept (l.map g) = (m.kept l).map g := by
+      unfold Measure.kept
+      split
+      · rfl
+      · rename_i c hc
+        rw [List.filter_map]
+        congr 1
+        exact List.filter_congr fun x hx => by
+          simp [h x (hl x hx) c (by simp [Measure.exprs, hc])]
+    have ha : (m.kept l).map (fun x => m.arg.eval (g x)) = (m.kept l).map m.arg.eval :=
+      List.map_congr_left fun x hx =>
+        h x (hl x ((m.kept_sublist l).subset hx)) m.arg (by simp [Measure.exprs])
+    simp only [Measure.inputs, hk, List.map_map, Function.comp_def, ha]
+  -- `collect`, `pick` and `concat` sort first; `g` keeps the sort columns.
+  have hcol : ∀ x ∈ grp, ∀ k ∈ m.sort, (g x).getD k.col .null = x.getD k.col .null :=
+    fun x hx k hk => by
+      simpa [Expr.eval] using h x hx (.field k.col) (by simp [Measure.exprs]; exact .inr (.inr ⟨k, hk, rfl⟩))
+  have hs : (grp.map g).mergeSort (sortLe m.sort) = (grp.mergeSort (sortLe m.sort)).map g :=
+    (List.map_mergeSort fun a ha b hb => (sortLe_congr (hcol a ha) (hcol b hb)).symm).symm
+  unfold Measure.eval
+  split
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hs, hin _ fun x hx => List.mem_mergeSort.mp hx]
+  · rw [hin grp fun _ h => h]
+
+theorem aggregateEval_map {gs : List Expr} {ms : List Measure} {A : Relation} {g : Row → Row}
+    (hg : ∀ x ∈ A, ∀ e ∈ gs, e.eval (g x) = e.eval x)
+    (hm : ∀ x ∈ A, ∀ m ∈ ms, ∀ e ∈ m.exprs, e.eval (g x) = e.eval x) :
+    aggregateEval gs ms (A.map g) = aggregateEval gs ms A := by
+  have hkey : ∀ x ∈ A, groupKey gs (g x) = groupKey gs x := fun x hx =>
+    List.map_congr_left fun e he => hg x hx e he
+  have hrows : ∀ k, groupRows gs (A.map g) k = (groupRows gs A k).map g := fun k => by
+    unfold groupRows
+    rw [List.filter_map]
+    congr 1
+    exact List.filter_congr fun x hx => by simp [hkey x hx]
+  have hmeas : ∀ grp, (∀ x ∈ grp, x ∈ A) → ms.map (·.eval (grp.map g)) = ms.map (·.eval grp) :=
+    fun grp hsub => List.map_congr_left fun m hm' =>
+      Measure.eval_map fun x hx => hm x (hsub x hx) m hm'
+  unfold aggregateEval
+  split
+  · rw [hmeas A fun _ h => h]
+  · have hk : (A.map g).map (groupKey gs) = A.map (groupKey gs) := by
+      rw [List.map_map]; exact List.map_congr_left fun x hx => hkey x hx
+    rw [hk]
+    exact List.map_congr_left fun k _ => by
+      rw [hrows, hmeas (groupRows gs A k) fun x hx => (List.mem_filter.mp hx).1]
+
+/-! ### Functional dependencies -/
+
+/-- `MIN` of an expression constant on the group is its value. -/
+theorem Measure.eval_min_const {e : Expr} {grp : Relation} {x : Row} (hx : x ∈ grp)
+    (h : ∀ y ∈ grp, e.eval y = e.eval x) : ({ fn := .min, arg := e } : Measure).eval grp = e.eval x := by
+  simp only [Measure.eval, Measure.inputs, Measure.kept, Bool.false_eq_true, ↓reduceIte]
+  have hall : ∀ v ∈ (grp.map e.eval).filter (· != .null), v = e.eval x := fun v hv => by
+    obtain ⟨⟨y, hy, rfl⟩, _⟩ := by simpa only [List.mem_filter, List.mem_map] using hv
+    exact h y hy
+  by_cases hv : e.eval x = .null
+  · have : (grp.map e.eval).filter (· != .null) = [] :=
+      List.filter_eq_nil_iff.2 fun v hv' => by
+        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hv'
+        simp [h y hy, hv]
+    rw [this, hv]; rfl
+  · have hm : e.eval x ∈ (grp.map e.eval).filter (· != .null) :=
+      List.mem_filter.mpr ⟨List.mem_map_of_mem hx, by simpa using hv⟩
+    obtain ⟨a, as, has⟩ := List.exists_cons_of_ne_nil (List.ne_nil_of_mem hm)
+    rw [has] at hall ⊢
+    exact hall _ (pickFold_mem _ a as)
+
+/-! ### Eager aggregation -/
+
+theorem Expr.eval_congr_allFields {p : Nat → Bool} {r r' : Row}
+    (h : ∀ i, p i = true → r.getD i .null = r'.getD i .null) {e : Expr}
+    (he : e.allFields p = true) : e.eval r = e.eval r' :=
+  Expr.eval_congr (row := r') (row' := r) h he
+
+omit [Boxes.Ambient] in
+theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.refsLt m) :
+    ∀ e : Expr, (e.subst cols).refsLt m
+  | .lit _ => trivial
+  | .field i => by
+    simp only [subst, List.getD_eq_getElem?_getD]
+    cases h : cols[i]? with
+    | none => trivial
+    | some c => exact hc c (List.mem_of_getElem? h)
+  | .un _ a => Expr.refsLt_subst hc a
+  | .bin _ a b => ⟨Expr.refsLt_subst hc a, Expr.refsLt_subst hc b⟩
+  | .ifThen c t e => ⟨Expr.refsLt_subst hc c, Expr.refsLt_subst hc t, Expr.refsLt_subst hc e⟩
+  | .hof _ l b => ⟨Expr.refsLt_subst hc l, Expr.refsLt_subst (m := m + 1) (fun c hc' => by
+      simp only [List.mem_cons, List.mem_map] at hc'
+      rcases hc' with rfl | ⟨c', hc'', rfl⟩
+      · show 0 < m + 1; omega
+      · exact Expr.refsLt_shift 0 (hc c' hc'')) b⟩
+
+/-- An aggregate over the rows of its groups that pass `p`, when `p` is the
+same on a group, is the aggregate's rows that pass `P`. The keys hold no
+doubles (`hck`: `p` may tell `-0.0` from `0.0`, which one group holds, D31). -/
+theorem aggregateEval_filter {gs : List Expr} {ms : List Measure} {A : Relation}
+    {p P : Row → Bool} (hgs : gs ≠ [])
+    (hck : ∀ x ∈ A, (groupKey gs x).canon = groupKey gs x)
+    (hp : ∀ x ∈ A, ∀ y ∈ A, groupKey gs x = groupKey gs y → p x = p y)
+    (hP : ∀ x ∈ A,
+      P (groupKey gs x ++ ms.map (·.eval (groupRows gs A (groupKey gs x)))) = p x) :
+    aggregateEval gs ms (A.filter p) = (aggregateEval gs ms A).filter P := by
+  let q : Row → Bool := fun k => A.any fun x => groupKey gs x == k && p x
+  have hq : ∀ x ∈ A, p x = q (groupKey gs x) := fun x hx => by
+    cases hpx : p x
+    · symm
+      simp only [q, List.any_eq_false, Bool.and_eq_true, beq_iff_eq, not_and, Bool.not_eq_true]
+      intro y hy he; rw [hp y hy x hx he]; exact hpx
+    · symm
+      exact List.any_eq_true.mpr ⟨x, hx, by simp [hpx]⟩
+  have hgsE : gs.isEmpty = false := by simpa using hgs
+  -- Canonical keys: `DISTINCT` of the keys is `dedup`, groups are raw-keyed.
+  have hinj : ∀ (B : Relation), (∀ x ∈ B, x ∈ A) →
+      distinctRows (B.map (groupKey gs)) = dedup (B.map (groupKey gs)) := fun B hB =>
+    canonReps_of_inj fun a ha b hb he => by
+      obtain ⟨x, hx, rfl⟩ := List.mem_map.mp ha
+      obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hb
+      rw [← hck x (hB x hx), ← hck y (hB y hy), he]
+  unfold aggregateEval
+  simp only [hgsE, Bool.false_eq_true, ↓reduceIte]
+  rw [hinj _ (fun _ h => (List.mem_filter.mp h).1), hinj A (fun _ h => h)]
+  rw [dedup_filter_map _ _ (Nat.le_refl _) hq, List.filter_map]
+  have hk : ∀ k ∈ dedup (A.map (groupKey gs)), ∃ x ∈ A, k = groupKey gs x := fun k hk => by
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp (mem_dedup.mp hk); exact ⟨x, hx, rfl⟩
+  rw [List.filter_congr (p := q) (q := P ∘ fun k => k ++ ms.map (·.eval (groupRows gs A k)))
+    fun k hk' => by
+      obtain ⟨x, hx, rfl⟩ := hk k hk'
+      simp only [Function.comp_apply, hP x hx, hq x hx]]
+  refine List.map_congr_left fun k hk' => ?_
+  obtain ⟨hk₁, hk₂⟩ := List.mem_filter.mp hk'
+  obtain ⟨x, hx, rfl⟩ := hk k hk₁
+  have hgr : groupRows gs (A.filter p) (groupKey gs x) = groupRows gs A (groupKey gs x) := by
+    unfold groupRows
+    rw [List.filter_filter]
+    refine List.filter_congr fun y hy => ?_
+    by_cases he : (groupKey gs y).canon = (groupKey gs x).canon
+    · have hpx : p x = true := by simpa [Function.comp_apply, hP x hx] using hk₂
+      have he' : groupKey gs y = groupKey gs x := by rwa [hck y hy, hck x hx] at he
+      simp [he, hp y hy x hx he', hpx]
+    · simp [he]
+  rw [hgr]
+
+omit [Boxes.Ambient] in
+/-- Each left row with at most one partner. -/
+theorem flatMap_opt {A : Relation} {M : Row → Relation}
+    (h : ∀ x ∈ A, M x = [] ∨ ∃ w, M x = [x ++ w]) :
+    A.flatMap M = (A.filter fun x => !(M x).isEmpty).map (fun x => (M x).headD x) ∧
+      ∀ x ∈ A, ∃ w, (M x).headD x = x ++ w := by
+  refine ⟨?_, fun x hx => ?_⟩
+  · induction A with
+    | nil => rfl
+    | cons x A ih =>
+      rw [List.flatMap_cons, ih fun y hy => h y (List.mem_cons_of_mem _ hy)]
+      rcases h x (by simp) with hm | ⟨w, hm⟩ <;> simp [hm]
+  · rcases h x hx with hm | ⟨w, hm⟩
+    · exact ⟨[], by simp [hm]⟩
+    · exact ⟨w, by simp [hm]⟩
+
+section
+variable {cat : Catalog} (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
+  (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+  (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+  (hK : K.Hold cat) {R : ForeignKeys} (hR : R.Hold cat)
+include hcat hA hF hK hR
+
+omit hR in
+theorem Rel.fdAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : Rule}
+    (hwf : (Rel.aggregate r gs ms).WF cat) (h : r.fdAgg cat A F K gs ms = some (name, s)) :
+    Same cat (.aggregate r gs ms) s := by
+  have hfds : FDsOn (inputFds (r.arity cat) (r.keys cat A F K) (r.fds cat A F K)) (r.eval cat) :=
+    (Rel.fds_sound hcat hA hF hK hwf.1).append (keyFds_sound fun k hk => keys_sound hcat hA hF hK hwf.1 k hk)
+  unfold Rel.fdAgg at h
+  simp only at h
+  generalize inputFds (r.arity cat) (r.keys cat A F K) (r.fds cat A F K) = fds at h hfds
+  generalize keepCols fds gs = qs at h
+  generalize hD : (List.range gs.length).filter (!qs.contains ·) = drops at h
+  split at h
+  · rename_i hc
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨-, rfl⟩ := h
+    simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true]
+      at hc
+    obtain ⟨⟨⟨hqs, hdr⟩, hdet⟩, hnd⟩ := hc
+    -- The grouping values hold no doubles: canonical keys are raw keys.
+    have hval : ∀ x ∈ r.eval cat, ∀ g ∈ gs, (g.eval x).canonV = g.eval x := fun x hx g hg =>
+      AVal.canonV_of_noDoubles (hnd g hg) (Expr.abs_sound (Rel.aeval_sound (sz := false) (r := r)
+        hcat hA hF (WindowKeys.none_soundAll cat) hwf.1 (fun h => by cases h) x hx) g)
+    have hmemD : ∀ q, q ∈ drops ↔ q < gs.length ∧ q ∉ qs := fun q => by
+      rw [← hD]; simp
+    have gd_mem : ∀ q, q < gs.length → gAt gs q ∈ gs := fun q hq => by
+      simp only [gAt, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hq, Option.getD_some]
+      exact List.getElem_mem hq
+    have gd_ge : ∀ q, ¬ q < gs.length → gAt gs q = .lit .null := fun q hq => by
+      simp [gAt, List.getD_eq_getElem?_getD, List.getElem?_eq_none (by omega : gs.length ≤ q)]
+    have gd_refs : ∀ q, (gAt gs q).refsLt (r.arity cat) := fun q => by
+      by_cases hq : q < gs.length
+      · exact hwf.2.1 _ (gd_mem q hq)
+      · rw [gd_ge q hq]; trivial
+    have hgs_q : ∀ x y : Row, groupKey gs x = groupKey gs y → ∀ q, (gAt gs q).eval x = (gAt gs q).eval y :=
+      fun x y he q => by
+        by_cases hq : q < gs.length
+        · exact List.map_inj_left.mp he _ (gd_mem q hq)
+        · rw [gd_ge q hq]; rfl
+    have hcore : ∀ x : Row, groupKey (qs.map (gAt gs)) x = qs.map fun q => (gAt gs q).eval x := fun x => by
+      simp [groupKey, List.map_map, Function.comp_def]
+    have hvalq : ∀ x ∈ r.eval cat, ∀ q, ((gAt gs q).eval x).canonV = (gAt gs q).eval x := fun x hx q => by
+      by_cases hq : q < gs.length
+      · exact hval x hx _ (gd_mem q hq)
+      · rw [gd_ge q hq]; simp [Expr.eval, Value.canonV]
+    have hfixg : ∀ x ∈ r.eval cat, (groupKey gs x).canon = groupKey gs x := fun x hx => by
+      simp only [Row.canon, groupKey, List.map_map]
+      exact List.map_congr_left fun g hg => hval x hx g hg
+    have hfixq : ∀ x ∈ r.eval cat, (groupKey (qs.map (gAt gs)) x).canon = groupKey (qs.map (gAt gs)) x :=
+      fun x hx => by
+        simp only [Row.canon, hcore, List.map_map]
+        exact List.map_congr_left fun q _ => hvalq x hx q
+    -- The kept columns determine the dropped ones.
+    have hiff : ∀ x ∈ r.eval cat, ∀ y ∈ r.eval cat,
+        groupKey gs x = groupKey gs y ↔ groupKey (qs.map (gAt gs)) x = groupKey (qs.map (gAt gs)) y := fun x hx y hy => by
+      constructor
+      · intro he
+        rw [hcore, hcore]
+        exact List.map_congr_left fun q _ => hgs_q x y he q
+      · intro he
+        rw [hcore, hcore] at he
+        have hq := List.map_inj_left.mp he
+        have hf : ∀ j ∈ fieldsOf (qs.map (gAt gs)), x.getD j .null = y.getD j .null := fun j hj => by
+          simp only [fieldsOf, List.mem_filterMap] at hj
+          obtain ⟨e, he', hej⟩ := hj
+          obtain ⟨q, hq', rfl⟩ := List.mem_map.mp he'
+          have := hq q hq'
+          cases hg : gAt gs q <;> simp_all [Expr.eval]
+        have hcl := fdClosure_sound hfds hx hy (fds.length + 1) _ fun j hj => congrArg Value.canonV (hf j hj)
+        refine List.map_inj_left.mpr fun g hg => ?_
+        obtain ⟨q, hq', rfl⟩ := List.mem_iff_getElem.mp hg
+        have hgd : gAt gs q = gs[q] := by
+          simp [gAt, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hq']
+        rw [← hgd]
+        by_cases hk : q ∈ qs
+        · exact hq q hk
+        · have hd := hdet q ((hmemD q).mpr ⟨hq', hk⟩)
+          unfold determinedBy at hd
+          cases hg : gAt gs q with
+          | field c =>
+            rw [hg] at hd
+            have hcx := hvalq x hx q
+            have hcy := hvalq y hy q
+            rw [hg] at hcx hcy
+            have := hcl c (List.contains_iff_mem.mp hd)
+            simp only [Expr.eval] at hcx hcy ⊢
+            rw [← hcx, ← hcy]; exact this
+          | _ => rw [hg] at hd; simp at hd
+    obtain ⟨L, hL, hLg, hLc⟩ := dedup_parallel hiff
+    have hgsne : gs ≠ [] := by
+      obtain ⟨q, hq⟩ := List.exists_mem_of_ne_nil _ hdr
+      intro h0; have := ((hmemD q).mp hq).1; simp [h0] at this
+    have hcorene : (qs.map (gAt gs)) ≠ [] := by simpa using hqs
+    refine ⟨⟨⟨hwf.1, ?_, ?_⟩, ?_⟩, by simp [fdEmit, arity], ?_⟩
+    · intro e he
+      obtain ⟨q, _, rfl⟩ := List.mem_map.mp he
+      exact gd_refs q
+    · intro m hm
+      rcases List.mem_append.mp hm with hm | hm
+      · exact hwf.2.2 m hm
+      · obtain ⟨q, _, rfl⟩ := List.mem_map.mp hm
+        exact ⟨gd_refs q, fun c hc => by simp [minOf] at hc⟩
+    · intro i hi
+      simp only [fdEmit, List.mem_append, List.mem_map, List.mem_range] at hi
+      simp only [arity, List.length_append, List.length_map]
+      rcases hi with ⟨q, hq, rfl⟩ | ⟨j, hj, rfl⟩
+      · by_cases hk : q ∈ qs
+        · simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          have := List.idxOf_lt_length_of_mem hk; omega
+        · have hd : q ∈ drops := (hmemD q).mpr ⟨hq, hk⟩
+          simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          have := List.idxOf_lt_length_of_mem hd; omega
+      · omega
+    · have hdg : distinctRows ((r.eval cat).map (groupKey gs)) = dedup ((r.eval cat).map (groupKey gs)) :=
+        canonReps_of_inj fun a ha b hb he => by
+          obtain ⟨x, hx, rfl⟩ := List.mem_map.mp ha
+          obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hb
+          rw [← hfixg x hx, ← hfixg y hy, he]
+      have hdq : distinctRows ((r.eval cat).map (groupKey (qs.map (gAt gs)))) =
+          dedup ((r.eval cat).map (groupKey (qs.map (gAt gs)))) :=
+        canonReps_of_inj fun a ha b hb he => by
+          obtain ⟨x, hx, rfl⟩ := List.mem_map.mp ha
+          obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hb
+          rw [← hfixq x hx, ← hfixq y hy, he]
+      simp only [eval, aggregateEval, List.isEmpty_iff, hgsne, hcorene, ↓reduceIte, hdg, hdq, hLg,
+        hLc, List.map_map]
+      refine List.map_congr_left fun x hx => ?_
+      have hxr := hL x hx
+      have hG : groupRows (qs.map (gAt gs)) (r.eval cat) (groupKey (qs.map (gAt gs)) x) =
+          groupRows gs (r.eval cat) (groupKey gs x) :=
+        List.filter_congr fun y hy => by
+          rw [Bool.eq_iff_iff]; simp only [beq_iff_eq]
+          rw [hfixq y hy, hfixq x hxr, hfixg y hy, hfixg x hxr]
+          exact (hiff y hy x hxr).symm
+      simp only [Function.comp_apply, hG]
+      generalize hGdef : groupRows gs (r.eval cat) (groupKey gs x) = G
+      have hxG : x ∈ G := by rw [← hGdef]; exact List.mem_filter.mpr ⟨hxr, by simp⟩
+      have hGc : ∀ y ∈ G, ∀ q, (gAt gs q).eval y = (gAt gs q).eval x := fun y hy q => by
+        rw [← hGdef] at hy
+        obtain ⟨hyr, hyc⟩ := List.mem_filter.mp hy
+        have he : (groupKey gs y).canon = (groupKey gs x).canon := by simpa using hyc
+        rw [hfixg y hyr, hfixg x hxr] at he
+        exact hgs_q y x he q
+      have hlc : (groupKey (qs.map (gAt gs)) x).length = qs.length := by simp [groupKey]
+      have hlg : (groupKey gs x).length = gs.length := by simp [groupKey]
+      simp only [fdEmit, List.map_append]
+      congr 1
+      · conv => rhs; rw [← List.take_of_length_le (Nat.le_of_eq hlg),
+          ← map_range_getD _ _ (Nat.le_of_eq hlg.symm)]
+        simp only [List.map_map]
+        refine List.map_congr_left fun q hq => ?_
+        have hq' := List.mem_range.mp hq
+        have hgq : (groupKey gs x).getD q .null = (gAt gs q).eval x := by
+          simp [groupKey, gAt, List.getD_eq_getElem?_getD, List.getElem?_map,
+            List.getElem?_eq_getElem hq']
+        simp only [Function.comp_apply, hgq]
+        by_cases hk : q ∈ qs
+        · simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          have hi := List.idxOf_lt_length_of_mem hk
+          rw [getD_append_left' (by omega), hcore]
+          simp [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hi,
+            List.getElem_idxOf hi]
+        · have hd : q ∈ drops := (hmemD q).mpr ⟨hq', hk⟩
+          have hi := List.idxOf_lt_length_of_mem hd
+          simp only [List.contains_iff_mem, hk, ↓reduceIte]
+          rw [show qs.length + ms.length + drops.idxOf q =
+              (groupKey (qs.map (gAt gs)) x).length + ((ms.map (·.eval G)).length + drops.idxOf q) by
+                simp [hlc]; omega,
+            getD_append_right', getD_append_right']
+          simp only [List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hi,
+            List.getElem_idxOf hi, Option.map_some, Option.getD_some]
+          exact Measure.eval_min_const hxG fun y hy => hGc y hy q
+      · conv => rhs; rw [← List.take_of_length_le (l := ms.map (·.eval G)) (i := ms.length) (by simp),
+          ← map_range_getD _ _ (by simp)]
+        simp only [List.map_map]
+        refine List.map_congr_left fun j hj => ?_
+        have hj' := List.mem_range.mp hj
+        simp only [Function.comp_apply]
+        rw [← hlc, getD_append_right', getD_append_left' (by simpa using hj')]
+  · simp at h
+
+omit hR in
+/-- With the condition on a key of the right side, each left row has at most
+one partner. -/
+theorem Rel.partners_le_one {a b : Rel} {on : Expr} (ha : a.WF cat) (hb : b.WF cat)
+    (hk : (b.keys cat A F K).any (determines on (a.arity cat)) = true) :
+    ∀ x ∈ a.eval cat, ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) = [] ∨
+      ∃ z, ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) = [x ++ z] := by
+  intro x hx
+  obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.mp hk
+  have hkB := keys_sound hcat hA hF hK hb kb hkb
+  have hm := match_block (on := on) (eval_arity hcat ha x hx) hkB
+  have hnil : kb.filter (fun c => !determinedCol on (a.arity cat) c) = [] :=
+    List.filter_eq_nil_iff.2 fun c hc => by
+      unfold determines at hd
+      simp [List.all_eq_true.mp hd c hc]
+  rw [hnil] at hm
+  rcases eq_nil_or_singleton (hm.imp fun h => h rfl) with he | ⟨y, hy⟩
+  · exact .inl he
+  · have hm' : y ∈ ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) := by
+      rw [hy]; simp
+    obtain ⟨⟨z, _, rfl⟩, _⟩ := by simpa only [List.mem_filter, List.mem_map] using hm'
+    exact .inr ⟨z, hy⟩
+
+omit hR in
+theorem Rel.eagerAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : Rule}
+    (hwf : (Rel.aggregate r gs ms).WF cat) (h : r.eagerAgg cat A F K gs ms = some (name, s)) :
+    Same cat (.aggregate r gs ms) s := by
+  cases r with
+  | join a b ty on =>
+    cases ty with
+    | left => simp [eagerAgg] at h
+    | inner =>
+    simp only [eagerAgg] at h
+    split at h
+    · rename_i hc
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff, List.all_eq_true,
+        Expr.refsLtB_iff] at hc
+      obtain ⟨⟨⟨⟨⟨hgs, hgl⟩, hml⟩, hkey⟩, hrefs⟩, hnd⟩ := hc
+      have hjw : (Rel.join a b .inner on).WF cat := hwf.1
+      have hck : ∀ x ∈ a.eval cat, (groupKey gs x).canon = groupKey gs x := fun x hx => by
+        have henv := Rel.aeval_sound (sz := false) (r := a) hcat hA hF
+          (WindowKeys.none_soundAll cat) hjw.1 (fun h => by cases h) x hx
+        simp only [Row.canon, groupKey, List.map_map]
+        exact List.map_congr_left fun g hg =>
+          AVal.canonV_of_noDoubles (hnd g hg) (Expr.abs_sound henv g)
+      have ha := hjw.1
+      have hb := hjw.2.1
+      generalize hn : a.arity cat = n at *
+      generalize hkk : b.arity cat = k at *
+      generalize hout : gs.length + ms.length = out
+      have hAl : ∀ x ∈ a.eval cat, x.length = n := fun x hx => hn ▸ eval_arity hcat ha x hx
+      have hBl : ∀ z ∈ b.eval cat, z.length = k := fun z hz => hkk ▸ eval_arity hcat hb z hz
+      let M : Row → Relation := fun x =>
+        ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue)
+      let on' := on.subst (eagerCols n gs out k)
+      -- Rows that agree on the grouping columns match the same right rows.
+      have hon : ∀ x ∈ a.eval cat, ∀ y ∈ a.eval cat, groupKey gs x = groupKey gs y →
+          ∀ z, on.eval (x ++ z) = on.eval (y ++ z) := fun x hx y hy he z => by
+        refine Expr.eval_congr_allFields (fun i hi => ?_) hrefs
+        by_cases hni : n ≤ i
+        · obtain ⟨d, rfl⟩ : ∃ d, i = n + d := ⟨i - n, by omega⟩
+          have e1 := getD_append_right' (x := x) (y := z) d
+          have e2 := getD_append_right' (x := y) (y := z) d
+          rw [hAl x hx] at e1; rw [hAl y hy] at e2
+          rw [e1, e2]
+        · simp only [hni, decide_false, Bool.false_or, Option.isSome_iff_exists] at hi
+          obtain ⟨q, hq⟩ := hi
+          have hg := gpos_spec hq
+          have hq' : q < gs.length := (List.getElem?_eq_some_iff.mp hg).1
+          have := List.map_inj_left.mp he gs[q] (List.getElem_mem hq')
+          have hgq : gs[q] = .field i := (List.getElem?_eq_some_iff.mp hg).2
+          rw [hgq] at this
+          rw [getD_append_left' (by rw [hAl x hx]; omega), getD_append_left' (by rw [hAl y hy]; omega)]
+          simpa [Expr.eval] using this
+      -- The rewritten condition on a group row is the condition on its rows.
+      have hsub : ∀ x ∈ a.eval cat, ∀ v : Row, v.length = ms.length → ∀ z ∈ b.eval cat,
+          on'.eval (groupKey gs x ++ v ++ z) = on.eval (x ++ z) := fun x hx v hv z hz => by
+        simp only [on', Expr.eval_subst]
+        refine Expr.eval_congr_allFields (fun i hi => ?_) hrefs
+        rw [getD_map_eval]
+        have hgl' : (groupKey gs x).length = gs.length := by simp [groupKey]
+        have hrow : (groupKey gs x ++ v).length = out := by simp [hgl', hv, ← hout]
+        by_cases hni : n ≤ i
+        · obtain ⟨d, rfl⟩ : ∃ d, i = n + d := ⟨i - n, by omega⟩
+          have e1 := getD_append_right' (x := x) (y := z) d
+          rw [hAl x hx] at e1
+          rw [e1]
+          by_cases hd : d < k
+          · have : (eagerCols n gs out k).getD (n + d) (.lit .null) = .field (out + d) := by
+              simp [eagerCols, List.getD_eq_getElem?_getD, hd]
+            rw [this]
+            have e2 := getD_append_right' (x := groupKey gs x ++ v) (y := z) d
+            rw [hrow] at e2
+            simpa [Expr.eval] using e2
+          · have : (eagerCols n gs out k).getD (n + d) (.lit .null) = .lit .null := by
+              simp [eagerCols, List.getD_eq_getElem?_getD, List.getElem?_append_right,
+                List.getElem?_eq_none (by simp; omega : ((List.range k).map fun j => Expr.field (out + j)).length ≤ d)]
+            rw [this]
+            simp [Expr.eval, List.getD_eq_getElem?_getD, List.getElem?_eq_none (by rw [hBl z hz]; omega : z.length ≤ d)]
+        · simp only [hni, decide_false, Bool.false_or, Option.isSome_iff_exists] at hi
+          obtain ⟨q, hq⟩ := hi
+          have hg := gpos_spec hq
+          have hq' : q < gs.length := (List.getElem?_eq_some_iff.mp hg).1
+          have hgq : gs[q] = .field i := (List.getElem?_eq_some_iff.mp hg).2
+          have : (eagerCols n gs out k).getD i (.lit .null) = .field q := by
+            simp [eagerCols, List.getD_eq_getElem?_getD, List.getElem?_append_left (by simp; omega : i < ((List.range n).map _).length), hq, show i < n by omega]
+          rw [this, getD_append_left' (by rw [hAl x hx]; omega)]
+          simp only [Expr.eval]
+          rw [List.append_assoc, getD_append_left' (by rw [hgl']; exact hq')]
+          simp [groupKey, List.getD_eq_getElem?_getD, List.getElem?_map, List.getElem?_eq_getElem hq', hgq,
+            Expr.eval]
+      -- A group row has a partner when its rows do.
+      have hfilt : ∀ x ∈ a.eval cat, ∀ v : Row, v.length = ms.length →
+          ((b.eval cat).map (groupKey gs x ++ v ++ ·)).filter (fun row => (on'.eval row).isTrue) =
+            ((b.eval cat).filter fun z => (on.eval (x ++ z)).isTrue).map (groupKey gs x ++ v ++ ·) :=
+          fun x hx v hv => by
+        rw [List.filter_map]
+        congr 1
+        exact List.filter_congr fun z hz => by simp only [Function.comp_apply]; rw [hsub x hx v hv z hz]
+      have hM : ∀ x, M x = ((b.eval cat).filter fun z => (on.eval (x ++ z)).isTrue).map (x ++ ·) :=
+        fun x => by simp only [M, List.filter_map, Function.comp_def]
+      have hle := partners_le_one hcat hA hF hK ha hb (hn ▸ hkey)
+      obtain ⟨hJ, hg⟩ := flatMap_opt (A := a.eval cat) (M := M) hle
+      let p : Row → Bool := fun x => !(M x).isEmpty
+      let P : Row → Bool := fun row =>
+        !(((b.eval cat).map (row ++ ·)).filter fun r => (on'.eval r).isTrue).isEmpty
+      have hP : ∀ x ∈ a.eval cat, ∀ v : Row, v.length = ms.length → P (groupKey gs x ++ v) = p x :=
+        fun x hx v hv => by simp only [P, p, hfilt x hx v hv, hM x, List.isEmpty_map]
+      have hlen : ∀ row ∈ aggregateEval gs ms (a.eval cat), ∃ x ∈ a.eval cat, ∃ v : Row,
+          v.length = ms.length ∧ row = groupKey gs x ++ v := fun row hr => by
+        obtain ⟨kk, grp, rfl, -, hk'⟩ := mem_aggregateEval hr
+        rcases hk' with ⟨rfl, -⟩ | ⟨x, hx, rfl⟩
+        · exact absurd rfl hgs
+        · exact ⟨x, hx, _, by simp, rfl⟩
+      refine ⟨⟨⟨⟨ha, fun g hg' => hn ▸ hgl g hg', fun m hm => ?_⟩, hb, ?_⟩, ?_⟩, ?_, ?_⟩
+      · exact ⟨hn ▸ hml m hm m.arg (by simp [Measure.exprs]),
+          fun c hc => hn ▸ hml m hm c (by simp [Measure.exprs]; exact .inr (.inl hc))⟩
+      · simp only [arity, hkk, hout]
+        refine Expr.refsLt_subst (fun c hc => ?_) on
+        simp only [eagerCols, List.mem_append, List.mem_map, List.mem_range] at hc
+        rcases hc with ⟨i, _, rfl⟩ | ⟨j, hj, rfl⟩
+        · cases hq : gpos gs i with
+          | none => trivial
+          | some q =>
+            have := (List.getElem?_eq_some_iff.mp (gpos_spec hq)).1
+            show q < out + k; omega
+        · show out + j < out + k; omega
+      · intro i hi
+        simp only [arity, hkk, hout, List.mem_range] at hi ⊢; omega
+      · simp [arity, hout]
+      · -- Both sides are the groups with a partner.
+        have hJe : (Rel.join a b .inner on).eval cat = (a.eval cat).flatMap M := by
+          simp only [eval, crossRows, List.filter_flatMap]; rfl
+        have orig : aggregateEval gs ms ((Rel.join a b .inner on).eval cat) =
+            (aggregateEval gs ms (a.eval cat)).filter P := by
+          rw [hJe, hJ, aggregateEval_map (g := fun x => (M x).headD x)
+            (fun x hx e he => by
+              obtain ⟨w, hw⟩ := hg x (List.mem_filter.mp hx).1
+              rw [hw]; exact Expr.eval_append w (hn ▸ hgl e he) (hAl x (List.mem_filter.mp hx).1))
+            (fun x hx m hm e he => by
+              obtain ⟨w, hw⟩ := hg x (List.mem_filter.mp hx).1
+              rw [hw]; exact Expr.eval_append w (hn ▸ hml m hm e he) (hAl x (List.mem_filter.mp hx).1))]
+          exact aggregateEval_filter (P := P) hgs hck
+            (fun x hx y hy he => by
+              simp only [hM x, hM y, List.isEmpty_map]
+              congr 2
+              exact List.filter_congr fun z _ => by rw [hon x hx y hy he z])
+            (fun x hx => hP x hx _ (by simp))
+        have hR : ∀ row ∈ aggregateEval gs ms (a.eval cat),
+            ((b.eval cat).map (row ++ ·)).filter (fun r => (on'.eval r).isTrue) = [] ∨
+              ∃ w, ((b.eval cat).map (row ++ ·)).filter (fun r => (on'.eval r).isTrue) = [row ++ w] :=
+            fun row hr => by
+          obtain ⟨x, hx, v, hv, rfl⟩ := hlen row hr
+          rw [hfilt x hx v hv]
+          rcases hle x hx with he | ⟨z, hz⟩
+          · left
+            have he' : M x = [] := he
+            rw [hM x] at he'; simpa using he'
+          · right
+            have hz₀ : M x = [x ++ z] := hz
+            rw [hM x] at hz₀
+            obtain ⟨z', hz'⟩ : ∃ z', (b.eval cat).filter (fun z => (on.eval (x ++ z)).isTrue) = [z'] := by
+              cases hf : (b.eval cat).filter (fun z => (on.eval (x ++ z)).isTrue) with
+              | nil => rw [hf] at hz₀; simp at hz₀
+              | cons z₁ zs =>
+                rw [hf] at hz₀
+                cases zs with
+                | nil => exact ⟨z₁, rfl⟩
+                | cons => simp at hz₀
+            exact ⟨z', by rw [hz']; simp⟩
+        obtain ⟨hJ', hg'⟩ := flatMap_opt hR
+        have new : (Rel.emit (.join (.aggregate a gs ms) b .inner on') (List.range out)).eval cat =
+            (aggregateEval gs ms (a.eval cat)).filter P := by
+          simp only [eval, crossRows, List.filter_flatMap]
+          rw [hJ', List.map_map]
+          conv => rhs; rw [← List.map_id ((aggregateEval gs ms (a.eval cat)).filter P)]
+          refine List.map_congr_left fun row hrow => ?_
+          have hmem := (List.mem_filter.mp hrow).1
+          obtain ⟨w, hw⟩ := hg' row hmem
+          have hrl : row.length = out := by rw [← hout]; exact aggregateEval_length hmem
+          simp only [Function.comp_apply, hw, id]
+          show (List.range out).map (fun x => (row ++ w).getD x .null) = row
+          apply List.ext_getElem (by simp [hrl])
+          intro i h1 _
+          simp only [List.length_map, List.length_range] at h1
+          simp [List.getD_eq_getElem?_getD, List.getElem?_append_left (hrl ▸ h1 : i < row.length),
+            List.getElem?_eq_getElem (hrl ▸ h1 : i < row.length)]
+        exact new.trans orig.symm
+    · simp at h
+  | _ => simp [eagerAgg] at h
+
+theorem Rel.fkMatch_sound {a b : Rel} {on : Expr} (hm : Rel.fkMatch cat A F K R a b on = true)
+    (ha : a.WF cat) (hb : b.WF cat) :
+    ∀ x ∈ a.eval cat, ∃ z ∈ b.eval cat, (on.eval (x ++ z)).isTrue = true := by
+  intro x hx
+  unfold Rel.fkMatch at hm
+  split at hm
+  · rename_i i j hij
+    split at hm
+    · rename_i t c s p ho hc
+      simp only [Bool.and_eq_true, List.contains_iff_mem, Bool.not_eq_true'] at hm
+      obtain ⟨hfk, hnn⟩ := hm
+      have hT := keyedWindows_soundAll hcat hA hF hK
+      have hmem := aeval_sound hcat hA hF hT (sz := false) ha nofun x hx i
+      have hxn : x.getD i .null ≠ .null := fun h0 => by
+        rw [h0] at hmem
+        simp only [AVal.Mem, AVal.MemR, List.getD_eq_getElem?_getD] at hmem hnn
+        simp [hmem] at hnn
+      obtain ⟨y, hy, hyx⟩ := origin_sound hcat ha ho x hx hxn
+      obtain ⟨w, hw, hwy⟩ := hR t _ hfk y hy (by rw [hyx]; exact hxn)
+      obtain ⟨z, hz, hzw⟩ := cover_sound hcat hb hc w hw (by rw [hwy, hyx]; exact hxn)
+      exact ⟨z, hz, eqPair_sound hij (eval_arity hcat ha x hx) (by rw [hzw, hwy, hyx]) hxn⟩
+    · simp at hm
+  · simp at hm
+
+theorem Rel.joinElim_sound {r a : Rel} {name : Rule} {k : Nat} (hwf : r.WF cat)
+    (h : r.joinElim cat A F K R = some (name, a, k)) :
+    a.WF cat ∧ r.arity cat = a.arity cat + k ∧
+      ∃ g : Row → Row, r.eval cat = (a.eval cat).map g ∧ ∀ x ∈ a.eval cat, ∃ w, g x = x ++ w := by
+  cases r with
+  | join a' b ty on =>
+    simp only [joinElim] at h
+    split at h
+    · rename_i hk
+      obtain ⟨kb, hkb, hd⟩ := List.any_eq_true.mp hk
+      have hkB := keys_sound hcat hA hF hK hwf.2.1 kb hkb
+      have hle : ∀ x ∈ a'.eval cat,
+          ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) = [] ∨
+            ∃ z, ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) = [x ++ z] :=
+          fun x hx => by
+        have hb := match_block (on := on) (eval_arity hcat hwf.1 x hx) hkB
+        have hnil : kb.filter (fun c => !determinedCol on (a'.arity cat) c) = [] :=
+          List.filter_eq_nil_iff.2 fun c hc => by
+            unfold determines at hd
+            simp [List.all_eq_true.mp hd c hc]
+        rw [hnil] at hb
+        rcases eq_nil_or_singleton (hb.imp fun h => h rfl) with he | ⟨y, hy⟩
+        · exact .inl he
+        · have hm : y ∈ ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) := by
+            rw [hy]; simp
+          obtain ⟨⟨z, _, rfl⟩, _⟩ := by simpa only [List.mem_filter, List.mem_map] using hm
+          exact .inr ⟨z, hy⟩
+      cases ty with
+      | inner =>
+        simp only at h
+        split at h
+        · rename_i hm
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl, rfl⟩ := h
+          refine ⟨hwf.1, rfl, ?_⟩
+          have hall := fkMatch_sound hcat hA hF hK hR hm hwf.1 hwf.2.1
+          have hG : ∀ x ∈ a'.eval cat, ∃ w,
+              ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) = [x ++ w] :=
+              fun x hx => by
+            rcases hle x hx with he | hy
+            · obtain ⟨z, hz, ht⟩ := hall x hx
+              have hm : x ++ z ∈ ((b.eval cat).map (x ++ ·)).filter (fun row => (on.eval row).isTrue) :=
+                List.mem_filter.mpr ⟨List.mem_map.mpr ⟨z, hz, rfl⟩, ht⟩
+              rw [he] at hm; simp at hm
+            · exact hy
+          obtain ⟨he, hg⟩ := flatMap_single hG
+          refine ⟨_, ?_, hg⟩
+          simp only [eval, crossRows, List.filter_flatMap]
+          exact he
+        · simp at h
+      | left =>
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl, rfl⟩ := h
+        refine ⟨hwf.1, rfl, ?_⟩
+        have hG : ∀ x ∈ a'.eval cat, ∃ w, leftJoinRow on (b.arity cat) (b.eval cat) x = [x ++ w] :=
+          fun x hx => by
+            rcases hle x hx with he | ⟨z, hz⟩
+            · exact ⟨List.replicate (b.arity cat) .null, by simp [leftJoinRow, he]⟩
+            · exact ⟨z, by simp [leftJoinRow, hz]⟩
+        obtain ⟨he, hg⟩ := flatMap_single hG
+        exact ⟨_, he, hg⟩
+    · simp at h
+  | _ => simp [joinElim] at h
+
+theorem Rel.rule_sound {r s : Rel} {name : Rule} (hwf : r.WF cat)
+    (h : r.rule cat A F K R = some (name, s)) : Same cat r s := by
+  have keys := fun {r : Rel} (hr : r.WF cat) => keys_sound hcat hA hF hK hr
+  have cond : ∀ {r : Rel}, r.WF cat → ∀ c : Expr, ∀ row ∈ r.eval cat,
+      (r.condVal cat A F K c).Mem (c.eval row) := fun hr c row hrow =>
+    have hT := keyedWindows_soundAll hcat hA hF hK
+    Expr.absD_sound (aeval_sound hcat hA hF hT (sz := false) hr nofun row hrow) (facts_sound hcat hF hT hr row hrow)
+      (fun _ h => by simp at h) c
+  match r, hwf, h with
+  | .filter r c, hwf, h =>
+    simp only [rule] at h
+    split at h
+    · rename_i ht
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      refine ⟨hwf.1, rfl, ?_⟩
+      simp only [eval]
+      refine (List.filter_eq_self.2 fun row hrow => ?_).symm
+      simp [AVal.certainlyTrue_mem ht (cond hwf.1 c row hrow), Value.isTrue]
+    · split at h
+      · rename_i hn
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        refine ⟨by simp [WF], rfl, ?_⟩
+        simp only [eval]
+        refine (List.filter_eq_nil_iff.2 fun row hrow => ?_).symm
+        have hm := cond hwf.1 c row hrow
+        cases hv : c.eval row with
+        | bool b => cases b <;> simp_all [AVal.Mem, Value.isTrue]
+        | _ => simp [Value.isTrue]
+      · split at h
+        · rename_i x y on _ _
+          split at h
+          · rename_i hn
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            refine ⟨⟨hwf.1, hwf.2⟩, rfl, ?_⟩
+            simp only [eval]
+            refine (filter_leftJoin fun z hz => ?_).symm
+            have hT := keyedWindows_soundAll hcat hA hF hK
+            have hpad := (aeval_sound hcat hA hF hT (sz := false) hwf.1.1 nofun z hz).append (EnvMem.nullRow (y.arity cat))
+              (by rw [aeval_length hwf.1.1, eval_arity hcat hwf.1.1 z hz])
+            have hm := Expr.absD_sound hpad (fs := []) (ks := []) (fun _ h => by simp at h)
+              (fun _ h => by simp at h) c
+            cases hv : c.eval (z ++ List.replicate (y.arity cat) .null) with
+            | bool b => cases b <;> simp_all [AVal.Mem, Value.isTrue]
+            | _ => simp [Value.isTrue]
+          · simp at h
+        · simp at h
+  | .join a b .left on, hwf, h =>
+    simp only [rule] at h
+    split at h
+    · rename_i hm
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      refine ⟨hwf, rfl, ?_⟩
+      simp only [eval]
+      exact (leftJoin_eq_inner (fkMatch_sound hcat hA hF hK hR hm hwf.1 hwf.2.1)).symm
+    · simp at h
+  | .distinct r, hwf, h =>
+    simp only [rule] at h
+    split at h
+    · simp at h
+    · rename_i hne
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      obtain ⟨k, hk⟩ := List.exists_mem_of_ne_nil _ (by simpa using hne)
+      exact ⟨hwf, rfl, by
+        simp only [eval, distinctRows]
+        exact (canonReps_of_pairwise ((keys (r := r) hwf k hk).imp fun hne hc =>
+          hne (keyOf_eq_of_canon hc))).symm⟩
+  | .aggregate r gs ms, hwf, h =>
+    simp only [rule] at h
+    split at h
+    · rename_i hc
+      simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      simp only [Bool.and_eq_true, List.isEmpty_iff, Bool.not_eq_true', List.isEmpty_eq_false_iff,
+        groupsKey, List.any_eq_true, List.all_eq_true, List.contains_iff_mem] at hc
+      obtain ⟨⟨rfl, hgs⟩, k, hk, hkg⟩ := hc
+      have hlen := eval_arity hcat hwf.1
+      refine ⟨⟨⟨hwf.1, hwf.2.1⟩, by simp [arity]⟩, by simp [arity], ?_⟩
+      -- The groups are distinct, so each has one row.
+      have hp := (keys hwf.1 k hk).map_pairwise (f := fun x => (groupKey gs x).canon) fun x y he => by
+        simp only [keyOf, List.map_inj_left]
+        intro c hc
+        simp only [Row.canon, groupKey, List.map_map] at he
+        simpa [Expr.eval] using List.map_inj_left.mp he _ (hkg c hc)
+      have hp' : (((r.eval cat).map (groupKey gs))).Pairwise fun a b => a.canon ≠ b.canon :=
+        List.pairwise_map.mpr (List.pairwise_map.mp hp)
+      simp only [eval, aggregateEval, List.isEmpty_iff, hgs, ↓reduceIte, distinctRows,
+        canonReps_of_pairwise hp', List.map_map]
+      refine List.map_congr_left fun row hrow => ?_
+      have hl := hlen row hrow
+      apply List.ext_getElem (by simp [groupKey])
+      intro i h₁ h₂
+      simp only [groupKey] at h₂
+      simp [List.getD_eq_getElem?_getD, ← hl, List.getElem?_append_right, groupKey,
+        List.getElem?_eq_getElem (by simpa using h₂ : i < gs.length)]
+    · split at h
+      · simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        refine ⟨⟨hwf.1, hwf.2.1, ?_⟩, by simp [arity], ?_⟩
+        · simp only [List.mem_map]
+          rintro _ ⟨m, hm, rfl⟩
+          exact Measure.refsLt_dropDistinct (hwf.2.2 m hm)
+        · simp only [eval]
+          refine aggregateEval_congr_ms fun grp hg => ?_
+          rw [List.map_map]
+          exact List.map_congr_left fun m _ =>
+            Measure.eval_dropDistinct (fun k hk => (keys hwf.1 k hk).sublist hg) m
+      · split at h
+        · rename_i name' a k hj
+          split at h
+          · rename_i hc
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [Bool.and_eq_true, List.all_eq_true, Expr.refsLtB_iff] at hc
+            obtain ⟨hgs, hms⟩ := hc
+            obtain ⟨ha, -, g, he, hg⟩ := joinElim_sound hcat hA hF hK hR hwf.1 hj
+            refine ⟨⟨ha, hgs, fun m hm => ⟨hms m hm m.arg (by simp [Measure.exprs]),
+              fun c hc => hms m hm c (by simp [Measure.exprs]; exact .inr (.inl (by simpa using hc)))⟩⟩,
+              rfl, ?_⟩
+            have hext : ∀ x ∈ a.eval cat, ∀ e : Expr, e.refsLt (a.arity cat) →
+                e.eval (g x) = e.eval x := fun x hx e hr => by
+              obtain ⟨w, hw⟩ := hg x hx
+              rw [hw]; exact Expr.eval_append w hr (eval_arity hcat ha x hx)
+            simp only [eval, he]
+            exact (aggregateEval_map (fun x hx e he' => hext x hx e (hgs e he'))
+              (fun x hx m hm e he' => hext x hx e (hms m hm e he'))).symm
+          · simp at h
+        · split at h
+          · rename_i hf
+            simp only [Option.some.injEq] at h
+            subst h
+            exact fdAgg_sound hcat hA hF hK hwf hf
+          · exact eagerAgg_sound hcat hA hF hK hwf h
+  | .emit r m, hwf, h =>
+    simp only [rule] at h
+    split at h
+    · rename_i name' a k hj
+      split at h
+      · rename_i hm
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        obtain ⟨ha, -, g, he, hg⟩ := joinElim_sound hcat hA hF hK hR hwf.1 hj
+        have hm' : ∀ i ∈ m, i < a.arity cat := by simpa using hm
+        refine ⟨⟨ha, hm'⟩, rfl, ?_⟩
+        simp only [eval, he, List.map_map]
+        refine List.map_congr_left fun x hx => ?_
+        obtain ⟨w, hw⟩ := hg x hx
+        have hl := eval_arity hcat ha x hx
+        simp only [Function.comp_apply, hw]
+        exact List.map_congr_left fun i hi => (getD_append_left' (by rw [hl]; exact hm' i hi)).symm
+      · simp at h
+    · split at h
+      · rename_i j es _
+        split at h
+        · rename_i name' a k hj
+          split at h
+          · rename_i hc
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨-, rfl⟩ := h
+            simp only [Bool.and_eq_true, List.all_eq_true, Expr.refsLtB_iff, Bool.or_eq_true,
+              decide_eq_true_eq] at hc
+            obtain ⟨hes, hmi⟩ := hc
+            obtain ⟨ha, hn, g, he, hg⟩ := joinElim_sound hcat hA hF hK hR hwf.1.1 hj
+            refine ⟨⟨⟨ha, hes⟩, ?_⟩, by simp [arity], ?_⟩
+            · simp only [List.mem_map]
+              rintro _ ⟨i, hi, rfl⟩
+              have := hwf.2 i hi
+              simp only [arity, hn] at this
+              simp only [arity]
+              have := hmi i hi
+              split <;> omega
+            · simp only [eval, he, List.map_map]
+              refine List.map_congr_left fun x hx => ?_
+              obtain ⟨w, hw⟩ := hg x hx
+              have hl := eval_arity hcat ha x hx
+              have hwl : w.length = k := by
+                have := eval_arity hcat hwf.1.1 (g x) (by rw [he]; exact List.mem_map_of_mem hx)
+                rw [hw, hn] at this
+                simp [hl] at this
+                omega
+              have hesx : es.map (·.eval (x ++ w)) = es.map (·.eval x) :=
+                List.map_congr_left fun e he' => Expr.eval_append w (hes e he') hl
+              simp only [Function.comp_apply, hw, hesx]
+              refine List.map_congr_left fun i hi => ?_
+              rcases hmi i hi with hi' | hi'
+              · simp only [Function.comp_apply, hi', ↓reduceIte, List.append_assoc]
+                rw [getD_append_left' (by omega), getD_append_left' (by omega)]
+              · have hni : ¬ i < a.arity cat := by omega
+                simp only [Function.comp_apply, hni, ↓reduceIte, List.append_assoc]
+                obtain ⟨d, rfl⟩ : ∃ d, i = x.length + (w.length + d) := ⟨i - x.length - w.length, by omega⟩
+                rw [show x.length + (w.length + d) - k = x.length + d by omega, getD_append_right',
+                  getD_append_right', getD_append_right']
+          · simp at h
+        · simp at h
+      · simp at h
+
+theorem Rel.stepN_sound (use : Rule → Bool) :
+    ∀ (fuel : Nat) {r : Rel} {log : List Rule}, r.WF cat →
+    Same cat r (r.stepN cat A F K R use fuel log).1
+  | 0, _, _, hwf => ⟨hwf, rfl, rfl⟩
+  | fuel + 1, r, log, hwf => by
+    unfold stepN
+    split
+    · rename_i hs
+      split
+      · have h1 := rule_sound hcat hA hF hK hR hwf hs
+        exact h1.trans (stepN_sound use fuel h1.wf)
+      · exact ⟨hwf, rfl, rfl⟩
+    · exact ⟨hwf, rfl, rfl⟩
+
+theorem Rel.step_sound {use : Rule → Bool} {r : Rel} {log : List Rule} (hwf : r.WF cat) :
+    Same cat r (r.step cat A F K R use log).1 :=
+  stepN_sound hcat hA hF hK hR use 4 hwf
+
+/-- **Soundness of the rewrites**: on data meeting the preconditions, the
+rewritten plan gives the same rows, whichever rules `use` allows: the gate
+(`Rule.onByDefault`) carries no proof weight. -/
+theorem Rel.optimize_sound {use : Rule → Bool} :
+    ∀ {r : Rel}, r.WF cat → Same cat r (r.optimize cat A F K R use).1
+  | .read _, hwf | .values _ _, hwf | .unnest _ _, hwf => ⟨hwf, rfl, rfl⟩
+  | .filter r c, hwf => by
+    have ih := optimize_sound (use := use) hwf.1
+    refine Same.trans ?_ (step_sound hcat hA hF hK hR ?_)
+    · exact ⟨⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩, ih.arity, by simp [eval, ih.eval]⟩
+    · exact ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+  | .project r es, hwf => by
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.project (r.optimize cat A F K R use).1 es).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
+  | .emit r m, hwf => by
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.emit (r.optimize cat A F K R use).1 m).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    exact Same.trans ⟨hw, rfl, by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
+  | .cross a b, hwf => by
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2
+    have hw : (Rel.cross (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1).WF cat := ⟨iha.wf, ihb.wf⟩
+    exact Same.trans ⟨hw, by simp [arity, iha.arity, ihb.arity], by simp [eval, iha.eval, ihb.eval]⟩
+      (step_sound hcat hA hF hK hR hw)
+  | .join a b ty on, hwf => by
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2.1
+    have hw : (Rel.join (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 ty on).WF cat :=
+      ⟨iha.wf, ihb.wf, by rw [iha.arity, ihb.arity]; exact hwf.2.2⟩
+    refine Same.trans ⟨hw, by simp [arity, iha.arity, ihb.arity], ?_⟩ (step_sound hcat hA hF hK hR hw)
+    cases ty <;> simp [eval, iha.eval, ihb.eval, ihb.arity]
+  | .fetch r off cnt, hwf => by
+    have ih := optimize_sound (use := use) (r := r) hwf
+    have hw : (Rel.fetch (r.optimize cat A F K R use).1 off cnt).WF cat := ih.wf
+    exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
+  | .unionAll a b, hwf => by
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2.1
+    have hw : (Rel.unionAll (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1).WF cat :=
+      ⟨iha.wf, ihb.wf, by rw [iha.arity, ihb.arity]; exact hwf.2.2⟩
+    exact Same.trans ⟨hw, by simp [arity, iha.arity], by simp [eval, iha.eval, ihb.eval]⟩
+      (step_sound hcat hA hF hK hR hw)
+  | .window r part sort fns, hwf => by
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.window (r.optimize cat A F K R use).1 part sort fns).WF cat :=
+      ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
+  | .semi a b anti on, hwf => by
+    have iha := optimize_sound (use := use) hwf.1
+    have ihb := optimize_sound (use := use) hwf.2.1
+    have hw : (Rel.semi (a.optimize cat A F K R use).1 (b.optimize cat A F K R use).1 anti on).WF cat :=
+      ⟨iha.wf, ihb.wf, by rw [iha.arity, ihb.arity]; exact hwf.2.2⟩
+    exact Same.trans ⟨hw, by simp [arity, iha.arity], by simp [eval, iha.eval, ihb.eval]⟩
+      (step_sound hcat hA hF hK hR hw)
+  | .orderBy r keys, hwf => by
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.orderBy (r.optimize cat A F K R use).1 keys).WF cat := ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
+  | .distinct r, hwf => by
+    have ih := optimize_sound (use := use) (r := r) hwf
+    have hw : (Rel.distinct (r.optimize cat A F K R use).1).WF cat := ih.wf
+    exact Same.trans ⟨hw, by simp [arity, ih.arity], by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
+  | .aggregate r gs ms, hwf => by
+    have ih := optimize_sound (use := use) hwf.1
+    have hw : (Rel.aggregate (r.optimize cat A F K R use).1 gs ms).WF cat :=
+      ⟨ih.wf, by rw [ih.arity]; exact hwf.2⟩
+    exact Same.trans ⟨hw, rfl, by simp [eval, ih.eval]⟩ (step_sound hcat hA hF hK hR hw)
+
+end
+
+/-! ## Rewrites as refinements -/
+
+/-- **A rewrite that keeps the rows refines the plan** up to the order of
+rows (`Rel.RefinesBag`), when the rewritten plan leaves no choices. `Same`
+speaks of `Rel.eval` only, so this is the refinement it gives: the exact one
+(`Rel.Refines`, which keeps an `ORDER BY`'s order) needs the rewrite's
+allowed results, not only its rows. -/
+theorem Rel.refines_of_same {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {r s : Rel} (h : Same cat r s)
+    (hd : s.detPlan cat A F K = true) : s.RefinesBag cat r :=
+  Rel.refines_of_perm hcat hA hF hK h.wf hd (h.eval ▸ .refl _)
+
+/-- **`optimize` refines the plan** up to the order of rows, when the plan it
+gives leaves no choices. -/
+theorem Rel.optimize_refines {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {K : TableCond}
+    (hK : K.Hold cat) {R : ForeignKeys} (hR : R.Hold cat) {use : Rule → Bool} {r : Rel}
+    (hwf : r.WF cat) (hd : (r.optimize cat A F K R use).1.detPlan cat A F K = true) :
+    (r.optimize cat A F K R use).1.RefinesBag cat r :=
+  Rel.refines_of_same hcat hA hF hK (Rel.optimize_sound hcat hA hF hK hR hwf) hd
+
+end Substrait

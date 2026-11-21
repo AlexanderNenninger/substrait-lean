@@ -1,7 +1,7 @@
 """Delta Lake tables (delta-rs) as change sources and sinks.
 
-Internal: not part of sverify's public API, which is `sverify`, `sverify.io`,
-`sverify.engines` and `sverify.errors`; it may change in any release.
+Internal: not part of sverify's public API (`docs/stability.md`); it may
+change in any release.
 
 A `DeltaSource` hands the nodes reading it Arrow tables: the snapshot at a version,
 and the change between two versions from the Change Data Feed, where
@@ -26,7 +26,6 @@ import math
 import os
 import time
 import uuid
-import warnings
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import timedelta
 from decimal import Decimal
@@ -398,6 +397,9 @@ class DeltaSource(_TableSource):
         uri: The table's location.
         name: The table's name in the plans that read it.
         where: The SQL condition, or None.
+        on_violation: What a refresh does with a batch that breaks a
+            precondition, for transforms that set none: `"error"`,
+            `"quarantine"`, `"hold"`, or None (`"error"`).
 
     Examples:
         A node over a Delta table, updated from its Change Data Feed:
@@ -586,7 +588,7 @@ class DeltaSource(_TableSource):
         dt = self._read_at(self.table(version))
         v = dt.version()
         rows, files = self._rows(dt)
-        return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
+        return Snapshot(version=v, table=rows, facts=self._facts(dt, files, f"file stats @v{v}"))
 
     def contract(self, version: int | None = None) -> Contract | None:
         """The contract the last sverify commit up to `version` recorded.
@@ -897,7 +899,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         ```
     """
 
-    _keeps_retired = True
+    keeps_retired = True
     # Writes MERGE the change; it overwrites only on `SinkChange.replace`.
     _create_errors = (DeltaError,)
     _commit_errors = (CommitFailedError,)
@@ -1038,7 +1040,6 @@ class DeltaSink(_TableSink[DeltaTable]):
         self,
         *,
         vacuum_retention: Duration | None = None,
-        vacuum: timedelta | None = None,
     ) -> dict[str, object]:
         """Compact the table's small files, and with `vacuum_retention`,
         remove the files no version newer than that needs. The commits record the
@@ -1051,20 +1052,12 @@ class DeltaSink(_TableSink[DeltaTable]):
                 constructor's `vacuum_retention`. Nodes reading the stored
                 node from an older version read the whole table. Default:
                 None, no vacuum.
-            vacuum: Deprecated name of `vacuum_retention`.
 
         Returns:
             delta-rs's metrics of the compaction (`"optimize"`) and the
             files the vacuum removed (`"vacuumed"`); empty if the table does
             not exist.
         """
-        if vacuum is not None:
-            warnings.warn(
-                "DeltaSink.maintain(vacuum=...) is deprecated; write vacuum_retention=...",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            vacuum_retention = vacuum
         retention = None if vacuum_retention is None else duration(vacuum_retention)
         dt = self._table()
         if dt is None:
@@ -1134,7 +1127,15 @@ class DeltaSink(_TableSink[DeltaTable]):
         if done is None:
             return None
         contract = change.contract
-        return SinkWrite(mode, None, contract, *done, contract.checks)
+        inserted, deleted = done
+        return SinkWrite(
+            mode=mode,
+            version=None,
+            contract=contract,
+            inserted=inserted,
+            deleted=deleted,
+            constraints=contract.checks,
+        )
 
     def _write_arrow(self, table: DeltaTable, created: bool, change: SinkChange) -> SinkWrite:
         assert self._view is not None
@@ -1177,7 +1178,14 @@ class DeltaSink(_TableSink[DeltaTable]):
                 self._check(dt, contract, kept)
                 dt.alter.add_constraint(missing, commit_properties=commit)
             inserted, deleted = rows.num_rows, 0
-        return SinkWrite(mode, None, contract, inserted, deleted, contract.checks)
+        return SinkWrite(
+            mode=mode,
+            version=None,
+            contract=contract,
+            inserted=inserted,
+            deleted=deleted,
+            constraints=contract.checks,
+        )
 
     def _commit_files(
         self,

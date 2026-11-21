@@ -15,8 +15,8 @@ merge; [INDEX.md](INDEX.md) lists every query with its status. As of
 reference, is retired: what the reference computes is in
 [docs/reference-semantics.md](../docs/reference-semantics.md) and
 [docs/core-semantics.md](../docs/core-semantics.md), what each engine does
-is in its facts under [characterization/](../characterization/README.md),
-and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
+is in its facts under `engines/<engine>/facts/`
+([how facts are judged](../characterization/README.md)), and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
 [docs/guide.md](../docs/guide.md).
 
 How to read the tables:
@@ -44,14 +44,14 @@ How to read the tables:
 | h2o | 10 | 10 | 0 | 0 | 0 | 10 | 8 | 10 | 8 |
 | iot | 12 | 12 | 0 | 0 | 0 | 12 | 11 | 12 | 10 |
 | job | 3 | 3 | 0 | 0 | 0 | 3 | 3 | 3 | 3 |
-| modelling | 14 | 12 | 0 | 2 | 0 | 14 | 11 | 12 | 11 |
+| modelling | 14 | 13 | 0 | 1 | 0 | 14 | 12 | 13 | 12 |
 | product | 13 | 13 | 0 | 0 | 0 | 13 | 10 | 13 | 10 |
 | ssb | 4 | 4 | 0 | 0 | 0 | 4 | 4 | 4 | 4 |
 | timeseries | 15 | 14 | 0 | 1 | 0 | 15 | 14 | 14 | 14 |
 | tpcds | 8 | 8 | 0 | 0 | 0 | 8 | 8 | 8 | 0 |
 | tpch | 22 | 22 | 0 | 0 | 0 | 22 | 22 | 22 | 6 |
 | windows | 13 | 13 | 0 | 0 | 0 | 13 | 12 | 13 | 10 |
-| **all** | 139 | 136 | 0 | 3 | 0 | 137 | 125 | 136 | 88 |
+| **all** | 139 | 137 | 0 | 2 | 0 | 137 | 126 | 137 | 89 |
 
 ### Feature frequency
 
@@ -151,13 +151,12 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `generate_series` | 1 | 1 | partial | constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table |
-| `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
+| `recursive_cte` | 1 | 1 | no | not supported yet: the model has no fixpoint ([#320](https://github.com/AlexanderNenninger/substrait-lean/issues/320)) |
 | `timezone` | 1 | 1 | no |  |
 
 ### Why engines refuse verified queries
 
-Over the 136 queries that verify (some only as DOUBLE):
+Over the 137 queries that verify (some only as DOUBLE):
 
 | engine: reason | queries |
 |---|---|

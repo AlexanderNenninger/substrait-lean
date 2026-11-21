@@ -228,7 +228,7 @@ is what the probe gives.
 
 ### Windows
 
-7 of 9 in for 1.0 covered.
+8 of 9 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
@@ -237,7 +237,7 @@ is what the probe gives.
 | running and ROWS-frame aggregates | in | covered | catalogue: running_agg 11, rows_frame 4; running balance pattern |  |
 | aggregates over windows and over aggregates | in | covered | catalogue: window_over_aggregate 8, window_partition_agg 4 |  |
 | first_value, last_value | in | covered | catalogue first_last_value 2 |  |
-| QUALIFY | in | — | catalogue qualify 7 (written as subqueries); dedup pattern; replay 62 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
+| QUALIFY | in | covered | catalogue qualify 7 (written as subqueries); dedup pattern; replay 62 |  |
 | named WINDOW | in | — | replay 71 | [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) |
 | RANGE frames with an INTERVAL offset | in | covered | rolling 7 days (catalogue range_frame 1); Ibis rolling sum (interval) verifies | [#811](https://github.com/AlexanderNenninger/substrait-lean/issues/811) |
 | IGNORE NULLS | in | covered | gap filling, last observation carried forward ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749), [#765](https://github.com/AlexanderNenninger/substrait-lean/issues/765)) | [#811](https://github.com/AlexanderNenninger/substrait-lean/issues/811) |
@@ -249,7 +249,7 @@ is what the probe gives.
 | correlated scalar subqueries, ANY and ALL | decorrelating needs the count bug handled and at most one row proved per outer row ([#504](https://github.com/AlexanderNenninger/substrait-lean/issues/504)); a join with a grouped aggregate verifies today | [#813](https://github.com/AlexanderNenninger/substrait-lean/issues/813) |
 | WITH RECURSIVE | a fixpoint in the model, with termination; the shop's test on it is not provable without an acyclic hierarchy anyway | [#320](https://github.com/AlexanderNenninger/substrait-lean/issues/320) |
 | SAMPLE and POSITIONAL JOIN | random, or row order, which a table does not have |  |
-| fp32 (FLOAT) | the model computes in binary64; rounding to binary32 after each step needs a model of its own. Cast FLOAT columns to DOUBLE at the source | [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) |
+| fp32 (FLOAT) | the model computes in binary64; rounding to binary32 after each step needs a model of its own. Sverify reads FLOAT columns ([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908)); cast them to DOUBLE before arithmetic | [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) |
 | now, current_date, random, uuid | another value on every run, so no proof covers it; pass the date in as a value (dynamic parameters, [#354](https://github.com/AlexanderNenninger/substrait-lean/issues/354)) | [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
 | hash() | the engine's own hash, which changes between versions; md5 or sha256 verify |  |
 | JSON | no JSON type in the model; flatten JSON at the source into typed columns |  |

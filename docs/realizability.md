@@ -39,7 +39,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 6 | 26 | 1 | 4 | 5 | 0 | 17 | 0 |
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 9 | 25 | 1 | 4 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
 | Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 3 | 5 | 16 | 0 |
 
@@ -47,16 +47,19 @@ Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 14 | 5 | 22 | 1 | 0 | 0 | 17 |
-| Polars | 29 | 2 | 17 | 0 | 0 | 0 | 17 |
-| Spark | 17 | 17 | 14 | 0 | 0 | 0 | 16 |
+| DuckDB | 23 | 1 | 18 | 2 | 0 | 0 | 15 |
+| Polars | 30 | 1 | 17 | 0 | 0 | 0 | 17 |
+| Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
 | Engine | Shim | Cost | Options |
 |---|---|---|---|
+| DuckDB | `integer power as checked products` | expression | int.pow: `on_domain_error`, int.pow: `overflow` |
 | DuckDB | `MIN % -1 written out` | expression | `min_mod_neg_one` |
+| DuckDB | `log(b, x) domain guard` | expression | fp.log: `on_domain_error` |
 | DuckDB | `round: 0.0 for a negative value that rounds to zero` | expression | `round_zero_sign` |
+| DuckDB | `list_lt` | expression | `list_null_order` |
 | DuckDB | `nan_through` | expression | agg.var: `stat_algo` |
 | DuckDB | `quantile_guard` | expression | `quantile_interp` |
 | DuckDB | `null_order` | argument | `null_order` |
@@ -83,50 +86,50 @@ Rows per evidence level:
 
 ## DuckDB 2.0.0
 
-6 shims (1 argument, 4 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
+9 shims (1 argument, 7 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
 | every | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-R1](../engines/duckdb/facts/duckdb-R1.json), [duckdb-R15-int-arith](../engines/duckdb/facts/duckdb-R15-int-arith.json), [duckdb-R1-min](../engines/duckdb/facts/duckdb-R1-min.json), [duckdb-R15-int-modulus](../engines/duckdb/facts/duckdb-R15-int-modulus.json) |
 | int.arith | `overflow` | raise | `ERROR` | `ERROR` | native; stated `SILENT`, `SATURATE`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R1](../engines/duckdb/facts/duckdb-R1.json), [duckdb-R15-int-arith](../engines/duckdb/facts/duckdb-R15-int-arith.json), [duckdb-R1-min](../engines/duckdb/facts/duckdb-R1-min.json), [duckdb-R15-int-modulus](../engines/duckdb/facts/duckdb-R15-int-modulus.json) |
-| int.pow | `overflow` | raise | `ERROR` | `ERROR` | native | probe | tested: [duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json) |
+| int.pow | `overflow` | raise | `ERROR` | `ERROR` | shim `integer power as checked products` (expression) | probe | tested: [duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json) |
 | dec.arith | `overflow` | raise | `ERROR` | `ERROR` | native | probe | tested: [duckdb-decimal-arith](../engines/duckdb/facts/duckdb-decimal-arith.json) |
 | agg.isum | `overflow` | raise | `ERROR` | `ERROR` | native | probe | tested: [duckdb-R6](../engines/duckdb/facts/duckdb-R6.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R2](../engines/duckdb/facts/duckdb-R2.json), [duckdb-R15-int-divide](../engines/duckdb/facts/duckdb-R15-int-divide.json), [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json), [duckdb-R4](../engines/duckdb/facts/duckdb-R4.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json) |
 | fp.div | `on_division_by_zero` | raise | `ERROR` | `IEEE` | precondition: no divisor is 0; stated `NULL`, `LIMIT`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R5](../engines/duckdb/facts/duckdb-R5.json), [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json) |
-| every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
-| int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
-| int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
-| fp.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json) |
+| every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-R2](../engines/duckdb/facts/duckdb-R2.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json) |
+| int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R2](../engines/duckdb/facts/duckdb-R2.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json) |
+| int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R2](../engines/duckdb/facts/duckdb-R2.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json) |
+| fp.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R2](../engines/duckdb/facts/duckdb-R2.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R3](../engines/duckdb/facts/duckdb-R3.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json) |
 | every | `min_mod_neg_one` | choose | `ZERO` | `ERROR` | shim `MIN % -1 written out` (expression) | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-int-modulus](../engines/duckdb/facts/duckdb-R15-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [duckdb-float-ieee](../engines/duckdb/facts/duckdb-float-ieee.json), [duckdb-ieee-arith-macos-arm64](../engines/duckdb/facts/duckdb-ieee-arith-macos-arm64.json), [duckdb-ieee-arith-linux-x86-64](../engines/duckdb/facts/duckdb-ieee-arith-linux-x86-64.json) |
-| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json) |
+| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json) |
 | agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [duckdb-float-ieee](../engines/duckdb/facts/duckdb-float-ieee.json), [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../engines/duckdb/facts/duckdb-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json), [duckdb-R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json), [duckdb-R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json) |
-| int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | probe | tested: [duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json) |
-| fp.log | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | probe | tested: [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json) |
+| int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | shim `integer power as checked products` (expression) | probe | tested: [duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json) |
+| fp.log | `on_domain_error` | raise | `ERROR` | `NAN` | shim `log(b, x) domain guard` (expression) | probe | tested: [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json) |
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.duckdb_shim_sound`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json), [duckdb-nonfinite-aggregates](../engines/duckdb/facts/duckdb-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | probe | tested: [duckdb-R14](../engines/duckdb/facts/duckdb-R14.json), [duckdb-float-signs](../engines/duckdb/facts/duckdb-float-signs.json), [duckdb-minmax-zero-sign](../engines/duckdb/facts/duckdb-minmax-zero-sign.json) |
 | every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `round: 0.0 for a negative value that rounds to zero` (expression) | probe | tested: [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [duckdb-R15-round-digits](../engines/duckdb/facts/duckdb-R15-round-digits.json) |
 | every | `pow_one_inf` | choose | `ONE` | `ONE` | native | probe | tested: [duckdb-pow-one-inf](../engines/duckdb/facts/duckdb-pow-one-inf.json) |
-| every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [duckdb-nan-equality](../engines/duckdb/facts/duckdb-nan-equality.json) |
+| every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-nan-equality](../engines/duckdb/facts/duckdb-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [duckdb-arg-min-nulls](../engines/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | probe | tested: [duckdb-signbit](../engines/duckdb/facts/duckdb-signbit.json) |
-| every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | engine_test | tested: [duckdb-R13](../engines/duckdb/facts/duckdb-R13.json) |
+| every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R13](../engines/duckdb/facts/duckdb-R13.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `non_ascii_text` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
-| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | probe | tested: [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json) |
+| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
 | every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
-| every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
-| agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
+| every | `list_null_order` | choose | `NULL` | `GREATEST` | shim `list_lt` (expression) | engine_test | tested: [duckdb-R11](../engines/duckdb/facts/duckdb-R11.json) |
+| agg.order | `list_null_order` | choose | `GREATEST` | `GREATEST` | native | engine_test | tested: [duckdb-R11](../engines/duckdb/facts/duckdb-R11.json) |
 | every | `sum_order` | choose | `EXACT` | `ANY`, `SCALED_CONSTANT` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../engines/duckdb/facts/duckdb-avg-double.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_var_chan`; [duckdb-var-stddev](../engines/duckdb/facts/duckdb-var-stddev.json), [duckdb-covar](../engines/duckdb/facts/duckdb-covar.json), [duckdb-corr](../engines/duckdb/facts/duckdb-corr.json) |
 | agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | proof | proved `Stat.nanGuard_varStat`; [duckdb-var-stddev](../engines/duckdb/facts/duckdb-var-stddev.json), [duckdb-var-pop-one-value](../engines/duckdb/facts/duckdb-var-pop-one-value.json) |
@@ -145,7 +148,7 @@ Rows per evidence level:
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | probe | tested: [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-int](../engines/duckdb/facts/duckdb-avg-int.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [duckdb-null-keys](../engines/duckdb/facts/duckdb-null-keys.json) |
-| every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | probe | tested: [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json), [duckdb-R13](../engines/duckdb/facts/duckdb-R13.json) |
+| every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json), [duckdb-R13](../engines/duckdb/facts/duckdb-R13.json) |
 
 ## Polars 2.1.0
 
@@ -199,7 +202,7 @@ Rows per evidence level:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | fuzz | tested: [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
-| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | fuzz | tested: [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
+| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../engines/polars/facts/polars-avg-int.json) |
@@ -241,7 +244,7 @@ Refused on Polars, with no expression there:
 | agg.isum | `overflow` | raise | `ERROR` | `ERROR` | shim `int_sum_decimal` (expression) | proof | proved `Shim.sum_empty_null`; [spark-sum-int](../engines/spark/facts/spark-sum-int.json), [spark-exec-parallel](../engines/spark/facts/spark-exec-parallel.json) |
 | int.div | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json), [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
-| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | fuzz | tested: [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
+| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | proof | proved `Rel.spark_sound`; [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |

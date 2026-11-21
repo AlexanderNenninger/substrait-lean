@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-09-engine-free-verify-only-base",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Every engine, DuckDB included, is an optional extra; base sverify is verify-only, with store, scans, pipeline state and IO behind the engine extras.",
+  "issues": [
+    1288
+  ],
+  "amended_by": [
+    "U-2026-11-15-engine-free-base-1-0-gate"
+  ],
+  "source": "github:#1288 body (decision 4)",
+  "note": "Engine packages also split into a light describe/verify layer and a [run] extra, decided 2026-11-09."
+}

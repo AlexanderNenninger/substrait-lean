@@ -59,6 +59,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sverify._unsupported import SverifyWarning
 from sverify.io._common import public_uri
 from sverify.io._secrets import Secret
 
@@ -69,10 +70,6 @@ if TYPE_CHECKING:
     from sverify.nodes import Node, StageRefresh
 
 __all__ = [
-    "CLIENT_VERSION",
-    "FACET_FORMAT",
-    "FACET_SCHEMA_URL",
-    "SPEC_VERSION",
     "Assertion",
     "Events",
     "Lineage",
@@ -87,8 +84,9 @@ SPEC_VERSION = "2-0-2"
 #: The `openlineage-python` release `sverify[openlineage]` installs and the
 #: tests run against.
 CLIENT_VERSION = "1.55.0"
-#: The version of the `sverify_contract` facet's format.
-FACET_FORMAT = 1
+#: The version of the `sverify_contract` facet's format. Format 2 (1.0)
+#: names `equivalence` `lenses` (`Report.lenses`).
+FACET_FORMAT = 2
 #: The `_schemaURL` of the `sverify_contract` facet: its JSON schema's `$id`
 #: (`sverify/schemas/openlineage-contract-facet.schema.json`).
 FACET_SCHEMA_URL = (
@@ -115,7 +113,7 @@ _FACET_URLS = {
 _FACET = "sverify_contract"
 
 
-class LineageWarning(UserWarning):
+class LineageWarning(SverifyWarning):
     """An event could not be sent (the server is down, the file is not
     writable): the refresh goes on, and the warning says why."""
 
@@ -347,6 +345,7 @@ def contract_facet(
     from sverify.contracts import MaxRows, Unique
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql
+    from sverify.report import proved_not_null
 
     report = node.report
     if report is None:
@@ -379,10 +378,10 @@ def contract_facet(
         "proved": report._proved,
         "verdict": report.verdict,
         "semantics": report.semantics,
-        "equivalence": str(report.observation),
+        "lenses": str(report.lenses),
         "requires": {t: list(labs) for t, labs in report.requires.items()},
         "ensures": ensures,
-        "not_null": list(report.not_null),
+        "not_null": proved_not_null(report),
     }
     if plan:
         export = _export(report)
@@ -500,6 +499,11 @@ class Lineage:
 
     `OPENLINEAGE_DISABLED=true` turns every target off. A target that fails
     warns (`LineageWarning`) and the refresh goes on.
+
+    Attributes:
+        target: Where events go, as given.
+        namespace: The jobs' namespace.
+        disabled: Whether `OPENLINEAGE_DISABLED` turned every target off.
     """
 
     def __init__(

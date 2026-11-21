@@ -1,0 +1,16 @@
+{
+  "id": "F3",
+  "date": "2026-11-17",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Rel.HasIssue is strengthened so every eager subexpression of a filter or join condition may run on any combination of loose join-input rows (left joins count as cross joins); verdicts must not change.",
+  "issues": [
+    1484
+  ],
+  "amended_by": [
+    "F41"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 3",
+  "note": "R3 of #1484. Logged out of order near line 2742. Built as #1531 (entry 13). Fallback: documented exception in docs/proofs.md. Entry 41 later extends HasIssue to padded rows (Rel.LooseRow) for left joins over filtered subqueries."
+}

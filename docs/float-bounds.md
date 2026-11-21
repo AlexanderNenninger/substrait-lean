@@ -349,15 +349,26 @@ over the least magnitude of the reference's value. A difference of nearly
 equal values has a range that reaches zero, so it gets none: cancellation
 loses relative accuracy, and the report does not claim it.
 
+The core's own rounding meets the standard model:
+`float-bounds/FloatBridge/Codes.lean` (#1196) proves that `FloatCode.ofExact`,
+after the nearest multiple of `2⁻¹⁰⁷⁴`, is a `StdModel` (`FloatBridge.model`),
+and that on multiples of `2⁻¹⁰⁷⁴`, the values the core adds, it is `ofExact`
+(`model_fl_grid`). So the theorems here about `StdModel.fl` hold of the
+core's codes with no trusted link; `NativeLink` remains the link for Lean's
+`Float`.
+
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's
 manual states and the probes measured (0.502 ulp on macOS,
 [duckdb-ulp-libm](../engines/duckdb/facts/duckdb-ulp-libm.json)), and
 `rule_exp` bounds `exp a`, `a ≤ ha`, by
 `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + tiny)`. The other elementary
-functions stay tested. The checker evaluates the formulas in
-doubles; every term is nonnegative, so each rounding is relative, and a
-factor `1 + 2⁻⁴⁰` covers them.
+functions stay tested. The checker evaluates the formulas exactly, in
+rationals (`core/Sverify/Core/ExactBound.lean`, [#660](https://github.com/AlexanderNenninger/substrait-lean/issues/660)):
+square roots are rounded outward (`sqrtUp_sq`, `sqrtDown_sq`), `exp` is
+bounded above by `(1 - x/2⁶⁰)^(-2⁶⁰)` for `x ≥ 0` and `1 / (1 + |x|/2⁶⁰)^(2⁶⁰)`
+below 0, and a bound is written as a decimal at least `ε · (1 + 2⁻⁵⁰) + 2⁻¹⁰⁷⁴`
+(`upDecimal_ge`), so the double a JSON reader takes from it is at least `ε`.
 
 ### One operation's bounds and overflow
 
@@ -479,6 +490,7 @@ Welford's update with Chan's merge in any tree, as DuckDB computes them:
 | `core_cov_chan` | `COVAR_*` is within `covTol` |
 | `corr_duck_le`, `core_corr_chan` | DuckDB's `CORR`, `COVAR_POP / (STDDEV_POP_x · STDDEV_POP_y)` from three states, is at most `1 + 3E/L + 8u` |
 | `epsilon_var_cr` | `"abs"` of a `VAR_*` against the reference: `varTol + u · abs(S / d)` |
+| `epsilon_stddev_cr` | `"abs"` of a `STDDEV_*` against the reference: `√τ + u (√V + √τ) + 2u · tiny + u √V`, `τ = varTol`, `V = S / d` |
 | `epsilon_cov_cr` | `"abs"` of a `COVAR_*` against the reference: `covTol + u · abs(C / d)` |
 
 `vEval_nonneg` needs two facts of IEEE rounding beyond the standard model:
@@ -486,14 +498,32 @@ rounding is monotone (`StdModel.Mono`), and doubles are multiples of `2⁻¹⁰�
 that round relatively (`Grid`). With them Welford's new mean lies between the
 old one and the value, so the two differences it multiplies have one sign.
 DuckDB's and Spark's `stat_algo` rows cite `core_var_chan` ([realizability](realizability.md)).
-Polars's algorithms (a reassociated two-pass per block, Schubert and Gertz's
-merge) are not proved, and its row stays tested.
+
+Polars computes the same state with other kernels
+([`SchubertGertz.lean`](../float-bounds/FloatBounds/SchubertGertz.lean)): a
+two-pass block of at most 128 values, its sums in any order and each square
+rounded or fused into its addition (`Block`), Welford's update for groups,
+and Schubert and Gertz's merge (`sgMerge`). The merge's correction term
+`n_b (m_b − m) Δ` cancels in `m_b − m`, whose error is about `u |m|`; times
+`n_b |Δ|` that is within the tree invariant's `u A Σ|D|` term. Any merge that
+meets `MergeSpec` keeps the invariant (`tInv_merge_of`), DuckDB's
+(`dMerge_spec`) and Polars's (`sgMerge_spec`) among them, so Polars's
+co-moment is within DuckDB's bound (`plVar_rel`) and its `VAR_*`, clamped at
+`0` as `VarState::finalize` does, within `varTol` (`core_var_polars`). The
+fuzz (`polars-var-bound`) measured `1.03 n u √(Q' S)` against the proved
+`148`. Polars's `agg.var` row cites `core_var_polars`. Its `COVAR_*`
+(`CovState`) has no theorem yet: at 1.0 Polars's `COVAR_*` rests on the fuzzed
+bound (`polars-var-bound`), and its `agg.stat` row stays tested
+([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
 
 `Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a
 `COVAR_*`'s are `epsilon_var_cr` and `epsilon_cov_cr` for ranges `[-B, B]`
 (a pair's two sides each, `BinFn.pair`) and the row cap `n`, proved on the
-engines `statsProvedOn` names (`"proved_on"`: DuckDB and Spark) and tested on
-the others. A `STDDEV_*`'s goes through the square root, not mechanised.
+engines `statsProvedOn` names for the measure's group (`"proved_on"`: DuckDB, Polars
+and Spark for `VAR_*` and `STDDEV_*`, DuckDB and Spark for `COVAR_*`) and tested on
+the others. A `STDDEV_*`'s is `epsilon_stddev_cr`: the variance's bound
+passes through the square root as `|√a − √b| ≤ √|a − b|`, so it needs no
+lower bound on the variance.
 `CORR` has none: its error grows as a side's variance shrinks, and ranges
 give no lower bound on a variance. Snowflake's textbook formula on values
 shifted by their group's mean is the corrected two-pass algorithm;

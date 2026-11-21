@@ -1,20 +1,22 @@
 import Sverify.Analysis.Contracts
 import Sverify.Analysis.Safety
+import Sverify.Analysis.AssumedCheck
 import Sverify.Analysis.Guards
 import Sverify.Analysis.Keys
 import Sverify.Core.Check
 import Sverify.Frontend.Parse
 import Sverify.Core.Pretty
-import SubstraitLean.Semantic
+import Sverify.Analysis.Semantic
 import Sverify.Frontend.Write
+import Sverify.Frontend.Bind
 import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
-import SubstraitLean.Implied
+import Sverify.Analysis.Implied
 import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
-import SubstraitLean.AnalysisCongr
+import Sverify.Analysis.AnalysisCongr
 
 /-!
 # Checking a contract
@@ -308,6 +310,11 @@ structure Report where
   and operators that read a value picked from a class (`classHere`). Empty
   exactly when `classDetermined` (`Request.classDeterminedIn_eq`). -/
   classPlaces : List (Nat × String × String) := []
+  /-- Is the transformation determined as a sequence of rows
+  (`Rel.seqTotal`): `deterministic`, and its sort has no ties, so every allowed
+  result is `Rel.eval`'s in `Rel.eval`'s order
+  (`check_sequence_determined_sound`)? -/
+  sequenceDetermined : Bool := false
   /-- Runtime errors and wrap-arounds `Rel.issuesCapped_sound` cannot rule
   out: an integer `SUM` the row caps or the bounds on rows per key keep
   within 64 bits is left out. -/
@@ -329,8 +336,10 @@ structure Report where
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
-  /-- The expressions that run correctly without their checks
-  (`Rel.evalG_marks`), as `Rel.marksJson`; `.null` when none is known. -/
+  /-- The expressions that run correctly without their checks, in the root
+  the checker writes (`Parse.Plan.writtenRoot`; `Rel.evalG_marks`,
+  `Rel.duckdb_marks_written`), as `Rel.marksJson`; `.null` when none is
+  known. -/
   unchecked : Json := .null
   /-- The transformation after `Rel.optimize`, as Substrait JSON. -/
   optimized : Json := .null
@@ -374,6 +383,15 @@ the same tree: `{"node": "Filter", "slots": [0], "inputs": [...]}`. -/
 partial def _root_.Substrait.Rel.marksJson (r : Rel) (m : Marks) : Json :=
   Json.mkObj [("node", Lean.toJson r.nodeName), ("slots", Lean.toJson m.slots),
     ("inputs", Json.arr (r.inputs.zipIdx.map fun (x, i) => x.marksJson (m.input i)).toArray)]
+
+/-- **The root the checker writes for a plan** (`--write`): the plan with the
+arguments of nested calls bound as columns (`Rel.bindArgs`, #821), so the
+writers' guards read a column where they would copy a call, where that parses
+back as itself; decimal arithmetic stays as the parser read it (#27). -/
+def _root_.Substrait.Parse.Plan.writtenRoot [Boxes.Ambient] (plan : Parse.Plan) : Rel :=
+  let bound := plan.root.bindArgs plan.catalog
+  if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
+  else bound
 
 /-- Does `e` occur in `t`? -/
 partial def _root_.Substrait.Expr.hasSub (e : Expr) (t : Expr) : Bool :=
@@ -436,6 +454,7 @@ def Report.json (r : Report) : Json :=
       [("relation", Lean.toJson i), ("op", Lean.toJson op), ("kind", Lean.toJson kind),
         ("what", Lean.toJson what)]).toArray),
     ("class_determined", Lean.toJson r.classDetermined),
+    ("sequence_determined", Lean.toJson r.sequenceDetermined),
     ("class_places", Json.arr (r.classPlaces.map fun (i, op, what) => Json.mkObj
       [("relation", Lean.toJson i), ("op", Lean.toJson op), ("what", Lean.toJson what)]).toArray),
     ("rows", match r.rows with | some n => Lean.toJson n | none => .null),
@@ -676,6 +695,12 @@ def colKindOf : Kind → ColKind
   | .dec _ _ => .decimal
   | _ => .other
 
+/-- Might a column of this kind hold a list (at any depth)? `other` counts: the
+checker does not know its type. -/
+def mayHoldList : Kind → Bool
+  | .list _ | .struct _ | .other => true
+  | _ => false
+
 /-- The columns of a plan `T.select(c, …)`, as expressions over `T`'s
 output, with `T`'s column kinds; `none` for another shape. -/
 def postExprs (cat : Catalog) (tables : Tables) : Rel → Option (List Expr × List Kind)
@@ -739,8 +764,12 @@ def _root_.Substrait.Expr.bareCols (guarded : Bool) : Expr → List Nat
 /-- For each postcondition column, its open components (`Rel.openCol` of
 the columns it reads, `"elements"` only where it reads the list bare) and
 the observation's ignored components it depends on, but for `"zeros"`
-(`Expr.robust_of_depends_canon`), `"elements"` and `"floats"` under the
-plan's bound or an `approx` condition (`floatsOk`). -/
+(`Expr.robust_of_depends_canon`) and `"floats"` under the plan's bound or an
+`approx` condition (`floatsOk`). `"elements"` stays where the condition reads
+a column that may hold a list (`mayHoldList`) other than as the argument of
+`cardinality` (`Expr.listCols`): `Expr.robust_of_depends_canon` needs it exact
+in every other column read, so the checker spares only the columns that hold
+no list (#2005). -/
 def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens : List String)
     (floatsOk : Bool) : List (Option (List String × List String)) :=
   match postExprs cat tables r with
@@ -755,9 +784,16 @@ def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens 
         let opened := (e.cols.filterMap fun c => match t.openCol cat c with
           | some "elements" => if bare.contains c then some "elements" else none
           | o => o).eraseDups
-        let base := (e.depends ctx).eraseDups.filter fun c =>
+        let base := (e.dependsC ctx).eraseDups.filter fun c =>
           c != "zeros" && c != "elements" && coarsens.contains c && !(c == "floats" && floatsOk)
-        some (opened, base)
+        -- A lens that ignores the order of a list's elements ignores it in
+        -- every list the condition reads but through `cardinality` (#2005): a
+        -- position (`list_position(l, a) = 1`) changes between lens-equal
+        -- results, a length does not (`Expr.eval_congr_card`). Only a column
+        -- that cannot hold a list is spared.
+        let listy := coarsens.contains "elements" &&
+          e.listCols.any fun c => mayHoldList (ks.getD c .other)
+        some (opened, if listy then base ++ ["elements"] else base)
   | none => List.replicate n none
 
 /-- A postcondition's ignored components: its open ones first (none where
@@ -985,6 +1021,16 @@ where
 
 end Request
 
+/-- The arguments of the plan's aggregate and window measures: where an
+overflow to `±∞` is an issue under every profile (`Request.underReference`). -/
+def _root_.Substrait.Rel.aggArgs : Rel → List Expr
+  | .read _ | .values _ _ => []
+  | .fetch r _ _ | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .distinct r
+  | .unnest r _ => r.aggArgs
+  | .window r _ _ fns => r.aggArgs ++ (WinFn.aggs fns).map (·.arg)
+  | .aggregate r _ ms => r.aggArgs ++ ms.map (·.arg)
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => a.aggArgs ++ b.aggArgs
+
 namespace Request
 
 variable (R : Request)
@@ -1001,7 +1047,9 @@ def perKeyOf : String → List (List Nat × Nat) :=
 engine's profile with no report of its own yet, whose request gets the
 reference's report (`underProfile`'s `pending`, ruling 152 F1). Only DuckDB's
 lift (#575) and Substrait's profile have reports of their own, where an
-overflow to `±∞` is the value and no issue. -/
+overflow to `±∞` of a scalar operation is the value and no issue. An aggregate
+measure over doubles keeps it (`Rel.aggArgs`, ruling 200 A4(2)): the engine's
+running sum overflows where the exact sum, which the model gives, does not. -/
 def underReference : Bool :=
   !["duckdb", "substrait"].contains
     ((R.input.getObjValAs? String "profile").toOption.getD "reference")
@@ -1016,13 +1064,14 @@ def keysIn (K : KnowledgeEnv) : List (List Nat × Bool) := match R.transform wit
 
 /-- The issues the report lists under `K`: those of the plan with its reads
 and joins capped and its sums bounded per key (`Rel.issuesCapped`), and its
-constant errors, an overflow to `±∞` only under the reference
+constant errors, an overflow to `±∞` of a scalar operation only under the reference
 (`check_issues_sound`). -/
 def issuesIn (K : KnowledgeEnv) : List (Issue × Expr) := match R.transform with
   | some p =>
     if p.root.checkWF R.cat then
       ((p.root.issuesCapped R.cat K.cols K.facts (K.windows R.cat) K.keys R.caps R.perKeyOf) ++
-        p.root.constIssues).eraseDups.filter fun (i, _) => R.underReference || i != .infinite
+        p.root.constIssues).eraseDups.filter fun (i, e) =>
+          R.underReference || i != .infinite || p.root.aggArgs.contains e
     else []
   | none => []
 
@@ -1057,6 +1106,24 @@ def optimizedJson (K : KnowledgeEnv) : Json × List String :=
   match R.transform, R.optimizedIn K with
   | some p, some (q, log) => (Write.writePlan (Write.planSchemas p) R.cat q p.names, log.map (·.name))
   | _, _ => (.null, [])
+
+/-- The report's `assumed_check` (#2018, ruling 195): the plan whose one row
+checks the assumed issues on the plan as written (`assumedCheck`), in the
+writer's JSON, and for each of its columns the index in the report's `issues`
+of the issue it checks. Null where the report has no assumed issue. -/
+def assumedCheckJson (K : KnowledgeEnv) : Json :=
+  let issues := R.issuesIn K
+  match R.transform with
+  | some p =>
+    if issues.any (·.1.assumed) then
+      match assumedCheck R.cat p.root issues with
+      | some (q, cols) => Json.mkObj [
+          ("plan", Write.writePlan (Write.planSchemas p) R.cat q
+            ((List.range cols.length).map (s!"c{·}"))),
+          ("issues", Lean.toJson cols)]
+      | none => .null
+    else .null
+  | none => .null
 
 end Request
 
@@ -1239,6 +1306,14 @@ def Request.classDeterminedIn (R : Request) (K : KnowledgeEnv) : Bool := match R
   | some T => T.root.checkWF R.cat && T.root.detClass R.cat K.cols K.facts K.keys
   | none => false
 
+/-- Is the transformation without choices but the order of its rows, and does
+its sort leave none about that order (`Rel.seqTotal`) under the description `K`
+of the inputs: the report's `sequence_determined`
+(`check_sequence_determined_sound`). -/
+def Request.sequenceDeterminedIn (R : Request) (K : KnowledgeEnv) : Bool := match R.transform with
+  | some T => R.deterministicIn K && T.root.seqTotal R.cat K.cols K.facts K.keys
+  | none => false
+
 /-- Where the transformation is open at the class level (`classPlaces`): the
 report's `class_places`. -/
 def Request.classPlacesIn (R : Request) (K : KnowledgeEnv) : List (Nat × String × String) :=
@@ -1355,10 +1430,17 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         (Infer.Rel.bounds cat A F T false p.root).map fun (i, e, b) =>
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
+  -- The marks of the root the checker writes (`--write`), the plan a run
+  -- sends (ruling 228, `Rel.duckdb_marks_written`): given where the theorem's
+  -- decidable hypotheses hold on that root and on the transform (B2), and where
+  -- the root is the transform or the transform bound at this catalog (B3).
   let unchecked := match transform with
     | some p =>
-      if p.root.checkWF cat && p.root.looseSub then
-        p.root.marksJson (p.root.marks cat A F T false)
+      if p.root.checkWF cat then
+        let w := p.writtenRoot
+        if w.checkWF cat && w.looseSub && (w == p.root || w == p.root.bindArgs cat) then
+          w.marksJson (w.marks cat A F T false)
+        else .null
       else .null
     | none => .null
   let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre
@@ -1420,7 +1502,8 @@ def Request.check (R : Request) : Except String Report :=
       let classPlaces := R.classPlacesIn K
       let classDetermined := R.transform.isSome && classPlaces.isEmpty
       let (optimized, rewrites) := R.optimizedJson K
-      let rep := { rep with classPlaces, classDetermined }
+      let sequenceDetermined := R.sequenceDeterminedIn K
+      let rep := { rep with classPlaces, classDetermined, sequenceDetermined }
       .ok { rep with ensures, tiePlaces, deterministic, keys, issues, guardFree, optimized, rewrites }
 
 /-- Check a `--contract` request. -/
@@ -1458,6 +1541,7 @@ structure Request.CheckOk (R : Request) (rep : Report) : Prop where
   closed : rep.closed = R.closedIn
   classDetermined : rep.classDetermined = R.classDeterminedIn R.kenv
   classPlaces : rep.classPlaces = R.classPlacesIn R.kenv
+  sequenceDetermined : rep.sequenceDetermined = R.sequenceDeterminedIn R.kenv
   keys : rep.keys = R.keysIn R.kenv
   issues : rep.issues = R.issuesIn R.kenv
   guardFree : rep.guardFree = R.guardFreeIn R.kenv
@@ -1478,7 +1562,7 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
       · cases hc
         rw [Request.postEnvs_eq]
         exact ⟨by simpa using hwf, by simpa using htw, R.zip_results R.ensures,
-          (R.deterministicIn_eq _).symm, rfl, rfl, (R.classDeterminedIn_eq _).symm, rfl, rfl, rfl,
+          (R.deterministicIn_eq _).symm, rfl, rfl, (R.classDeterminedIn_eq _).symm, rfl, rfl, rfl, rfl,
           rfl, rfl⟩
 
 theorem check_parse {input : Json} {R : Request} {rep : Report}
@@ -1730,6 +1814,47 @@ theorem check_classDetermined {input : Json} {R : Request} {rep : Report}
     rep.classDetermined = R.classDeterminedIn R.kenv :=
   (Request.check_ok (check_parse hR hc)).classDetermined
 
+/-- The report's `sequence_determined` is `Request.sequenceDeterminedIn`'s. -/
+theorem check_sequenceDetermined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep) :
+    rep.sequenceDetermined = R.sequenceDeterminedIn R.kenv :=
+  (Request.check_ok (check_parse hR hc)).sequenceDetermined
+
+/-- **The checker's `sequence_determined` is a theorem.** When `check` reports
+the transformation determined as a sequence, every result the reference allows
+for it is `Rel.eval`'s, row by row, for any data that meets the request
+(`DataMeets`): through `Rel.detPlan`, `Rel.seqTotal` and `Rel.allowed_eq_eval`.
+The sort's columns contain a key of its input, so no two rows tie. -/
+theorem check_sequence_determined_sound {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hseq : rep.sequenceDetermined = true) :
+    ∀ {out : Relation}, T.root.Allowed data out → out = T.root.eval data := by
+  intro out ho
+  rw [check_sequenceDetermined hR hc] at hseq
+  simp only [Request.sequenceDeterminedIn, hT, Bool.and_eq_true] at hseq
+  obtain ⟨hdet, hs⟩ := hseq
+  simp only [Request.deterministicIn, hT, Bool.and_eq_true] at hdet
+  have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
+  have hwf : T.root.WF data := Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hdet.1)
+  have hd : T.root.detPlan data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
+    rw [Rel.detPlan_congr hD.arity]
+    exact hdet.2
+  have hs' : T.root.seqTotal data R.kenv.cols R.kenv.facts R.kenv.keys = true := by
+    rw [Rel.seqTotal_congr hD.arity]
+    exact hs
+  exact Knowledge.allowed_eq_eval hD.wf hK hwf hd hs' ho
+
+/-- **A sequence-determined report means one result as a sequence**: the
+instance of `Rel.DeterminedUpTo` at the identity observation, in every context
+(`Relation.Equiv_exact`). -/
+theorem check_sequence_determined_determined {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) (hseq : rep.sequenceDetermined = true) (ctx : ObsCtx) :
+    T.root.DeterminedUpTo Obs.exact ctx data :=
+  fun _ h => Relation.Equiv_exact.2 (check_sequence_determined_sound hR hc hD hT hseq h)
+
 /-- The report's `class_places` are `Request.classPlacesIn`'s. -/
 theorem check_classPlaces {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep) :
@@ -1810,7 +1935,8 @@ theorem check_keys_sound {input : Json} {R : Request} {rep : Report}
 on data that meets the request and its bounds per key (`rows_per`), and whose
 windows and aggregates read fewer rows than the size hypothesis allows
 (`Rel.Small`), each issue of the transformation (`Rel.HasIssue`) is in the
-report, but an overflow to `±∞` under a profile other than the reference,
+report, but an overflow to `±∞` of a scalar operation under a profile other than
+the reference,
 where it is the engine's value. -/
 theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
@@ -1818,7 +1944,7 @@ theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
     (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
     (hsm : T.root.Small data) :
     ∀ p, T.root.HasIssue data false p →
-      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false) := by
+      p ∈ rep.issues ∨ (p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs) := by
   intro p hp
   have hok := Request.check_ok (check_parse hR hc)
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
@@ -1831,14 +1957,18 @@ theorem check_issues_sound {input : Json} {R : Request} {rep : Report}
   rw [hok.issues]
   simp only [Request.issuesIn, hT, htw, ↓reduceIte, List.mem_filter, List.mem_eraseDups,
     List.mem_append, KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity]
-  by_cases hinf : p.1 = .infinite ∧ R.underReference = false
+  by_cases hinf : p.1 = .infinite ∧ R.underReference = false ∧ p.2 ∉ T.root.aggArgs
   · exact .inr hinf
   · refine .inl ⟨.inl (by simpa [KnowledgeEnv.windows] using hin), ?_⟩
     obtain ⟨i, e⟩ := p
     simp only at hinf ⊢
     cases hr : R.underReference
-    · simp only [hr, and_true] at hinf
-      simp [hinf]
+    · by_cases hi : i = .infinite
+      · subst hi
+        by_cases he : e ∈ T.root.aggArgs
+        · simp [he]
+        · exact absurd ⟨rfl, hr, he⟩ hinf
+      · simp [hi]
     · simp
 
 /-- **A guard-free transformation needs no checks** (`Rel.guardFree_sound`):

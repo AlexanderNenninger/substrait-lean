@@ -236,6 +236,11 @@ inductive UnFn where
   list adds none, and a `NULL` `l` is `NULL` (#810). `list(x)` keeps
   `x`'s NULLs as `flatten(array_agg([x]))`. -/
   | flatten
+  /-- A source mark (D52): the identity. It records that the source the plan
+  was lifted from computes this value with a construct of its own, within
+  `k · 2⁻⁵³` of it, relatively. No profile reads it; the checker's tolerance
+  analysis does (`Epsilon.exprEps`). -/
+  | approx (k : Nat)
   deriving Repr, DecidableEq
 
 /-- The list functions of two arguments (#812). One `BinFn` constructor holds them all, so that
@@ -488,11 +493,16 @@ def UnFn.apply : UnFn → Value → Value
   | .listElement off, .list vs => Value.listElement off vs
   | .cardinality, .list vs => .int vs.length
   | .flatten, v => Value.flatten v
+  -- D52: a source mark is the identity.
+  | .approx _, v => v
   | .isNum k, v => .bool (v.isNum k)
   | .fit m w, .int i => .int (w.fit m i)
   | .fit _ _, v => v
   | .bbox n, v => BlackBox.callScalar Boxes.Ambient.boxes n [v]
   | _, _ => .null
+
+/-- D52: the mark changes no value. -/
+@[simp] theorem UnFn.apply_approx (k : Nat) (v : Value) : UnFn.apply (.approx k) v = v := rfl
 
 /-- Evaluation does not read a `dkind`'s precision: only the scale (#1484). -/
 theorem UnFn.apply_dkind_precision (p q s : Nat) (v : Value) :
@@ -1116,5 +1126,28 @@ def Expr.cols : Expr → List Nat
   | .ifThen c t e => c.cols ++ t.cols ++ e.cols
   -- A lambda's body reads its parameter as field 0 and the row from 1 (D28).
   | .hof _ l b => l.cols ++ b.cols.filterMap fun i => if i = 0 then none else some (i - 1)
+
+/-- An expression's value depends only on the columns it reads. -/
+theorem Expr.eval_congr_cols {r r' : Row} :
+    ∀ e : Expr, (∀ i ∈ e.cols, r.getD i .null = r'.getD i .null) → e.eval r = e.eval r'
+  | .lit _, _ => rfl
+  | .field i, h => h i (List.mem_singleton_self i)
+  | .un _ a, h => by simp only [Expr.eval, Expr.eval_congr_cols a h]
+  | .bin _ a b, h => by
+    simp only [Expr.cols, List.mem_append] at h
+    simp only [Expr.eval, Expr.eval_congr_cols a fun i hi => h i (.inl hi),
+      Expr.eval_congr_cols b fun i hi => h i (.inr hi)]
+  | .ifThen c t e, h => by
+    simp only [Expr.cols, List.mem_append] at h
+    simp only [Expr.eval, Expr.eval_congr_cols c fun i hi => h i (.inl (.inl hi)),
+      Expr.eval_congr_cols t fun i hi => h i (.inl (.inr hi)), Expr.eval_congr_cols e fun i hi => h i (.inr hi)]
+  | .hof _ l b, h => by
+    simp only [Expr.cols, List.mem_append, List.mem_filterMap] at h
+    simp only [Expr.eval, Expr.eval_congr_cols l fun i hi => h i (.inl hi)]
+    congr 1; funext x
+    refine Expr.eval_congr_cols b fun i hi => ?_
+    cases i with
+    | zero => rfl
+    | succ i => exact h i (.inr ⟨i + 1, hi, by simp⟩)
 
 end Substrait

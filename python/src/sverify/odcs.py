@@ -35,16 +35,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import uuid
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import sqlglot as sg
 
+from sverify._plan_read import simple_regex
+from sverify._unsupported import SverifyWarning
 from sverify.io._common import public_uri
 
 if TYPE_CHECKING:
@@ -54,7 +57,6 @@ if TYPE_CHECKING:
     from sverify.nodes import Node
 
 __all__ = [
-    "ODCS_VERSION",
     "OdcsContract",
     "Unread",
     "UnreadRuleWarning",
@@ -73,7 +75,7 @@ _DIALECT = "duckdb"
 _ZERO = ({"mustBe": 0}, {"mustBeLessThan": 1}, {"mustBeLessOrEqualTo": 0})
 
 
-class UnreadRuleWarning(UserWarning):
+class UnreadRuleWarning(SverifyWarning):
     """`read` met rules it cannot read as conditions; `OdcsContract.unread`
     lists them with the reason."""
 
@@ -213,6 +215,7 @@ def export(
     )
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql, not_null_column
+    from sverify.report import proved_not_null
     from sverify.report_json import _sverify_version
 
     report = node.report
@@ -236,7 +239,7 @@ def export(
         if col in flags and rank[st] > rank.get(flags[col].get(name, ""), -1):
             flags[col][name] = st
 
-    for col in report.not_null:
+    for col in proved_not_null(report):
         flag(col, "required", "proved")
     for c in report.ensures:
         cond, st, lab = c.condition, _status(c), c.label
@@ -537,6 +540,11 @@ _LOGICAL_IBIS = {
 }
 
 
+#: A time zone after a timestamp's time of day: `Z`, `+10:00`, `-0530`. A
+#: date alone (`2020-01-01`) has none.
+_OFFSET = re.compile(r"\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s*(Z|[+-]\d{2}(:?\d{2})?)$")
+
+
 def _ibis_type(p: Mapping[str, Any]) -> Any:
     import ibis.expr.datatypes as dt
     from ibis.backends.sql.datatypes import DuckDBType
@@ -544,9 +552,15 @@ def _ibis_type(p: Mapping[str, Any]) -> Any:
     nullable = not p.get("required", False)
     if (phys := p.get("physicalType")) is not None:
         try:
-            return DuckDBType.from_string(str(phys), nullable=nullable)
-        except Exception:  # noqa: BLE001, S110 - another database's type: use the logical one
-            pass
+            t = DuckDBType.from_string(str(phys), nullable=nullable)
+        except Exception:  # noqa: BLE001 - another database's type: use the logical one
+            t = None
+        # DuckDB reads `varchar[3]` as an array, where ODCS's AdventureWorks
+        # example writes it for a string of three (its logical type says
+        # `string`). The logical type decides: an array only where it says
+        # `array` or says nothing.
+        if t is not None and (not t.is_array() or p.get("logicalType", "array") == "array"):
+            return t
     logical = _LOGICAL_IBIS.get(p.get("logicalType", "string"), "string")
     return dt.dtype(logical).copy(nullable=nullable)
 
@@ -651,10 +665,40 @@ def _rows_per(query: str, cols: set[str]) -> Any | None:
     return rows_per(*keys, at_most=int(cond.expression.this))
 
 
+def _resolver(doc: Mapping[str, Any]) -> Callable[[Any], tuple[str, str] | None]:
+    """Reads a reference of a relationship as `(table, column)`: the shorthand
+    `table.column`, or an id path `[/]schema/<object id>/properties/<property
+    id>` through the `id`s of the objects and their properties (#1956)."""
+    objects = {o["id"]: o for o in doc.get("schema") or [] if "id" in o and "name" in o}
+
+    def resolve(ref: Any) -> tuple[str, str] | None:
+        if not isinstance(ref, str):
+            return None
+        parts = ref.lstrip("/").split("/")
+        if len(parts) == 4 and parts[0] == "schema" and parts[2] == "properties":
+            obj = objects.get(parts[1])
+            for p in (obj or {}).get("properties") or []:
+                if p.get("id") == parts[3] and "name" in p:
+                    return obj["name"], p["name"]  # type: ignore[index]
+            return None
+        if ref.count(".") == 1 and "/" not in ref:
+            table, col = ref.split(".")
+            return table, col
+        return None
+
+    return resolve
+
+
 class _Reader:
-    def __init__(self, table: str, cols: Mapping[str, Mapping[str, Any]]):
+    def __init__(
+        self,
+        table: str,
+        cols: Mapping[str, Mapping[str, Any]],
+        resolve: Callable[[Any], tuple[str, str] | None] = lambda ref: None,
+    ):
         self.table = table
         self.cols = cols
+        self.resolve = resolve
         self.out: list[Any] = []
         self.unread: list[Unread] = []
         self.valued: set[str] = set()
@@ -671,6 +715,17 @@ class _Reader:
         query = str(rule.get("query", ""))
         if column is not None:
             query = query.replace("{property}", _quote(column))
+        # The object by its own name, as ODCS's examples write it (#864).
+        # A quoted name matches with its case, a bare one without (DuckDB's).
+        query = re.sub(
+            rf"(\b(?i:FROM)\s+){re.escape(_quote(self.table))}(?=\s|;|$)", r"\1{object}", query
+        )
+        query = re.sub(
+            rf"(\bFROM\s+){re.escape(self.table)}(?=\s|;|$)",
+            r"\1{object}",
+            query,
+            flags=re.IGNORECASE,
+        )
         if not _is_zero(rule):
             self.skip(column, rule, "a threshold on a count: sverify reads rules that must be 0")
             return
@@ -715,15 +770,15 @@ class _Reader:
         if metric == "rowCount":
             n = None
             if "mustBeLessOrEqualTo" in rule:
-                n = rule["mustBeLessOrEqualTo"]
+                n = math.floor(rule["mustBeLessOrEqualTo"])
             elif "mustBeLessThan" in rule:
-                n = rule["mustBeLessThan"] - 1
+                n = math.ceil(rule["mustBeLessThan"]) - 1
             elif "mustBeBetween" in rule and min(rule["mustBeBetween"]) <= 0:
-                n = max(rule["mustBeBetween"])
-            if n is None or n != int(n) or n < 0:
+                n = math.floor(max(rule["mustBeBetween"]))
+            if n is None or n < 0:
                 self.skip(column, rule, "a lower bound on the row count: sverify reads caps")
             else:
-                self.out.append(max_rows(int(n)))
+                self.out.append(max_rows(n))
             return
         if not _is_zero(rule):
             self.skip(column, rule, "a threshold on a count: sverify reads rules that must be 0")
@@ -766,6 +821,27 @@ class _Reader:
         else:
             self.skip(column, rule, f"metric {metric!r} sverify does not read")
 
+    def relationship(self, rel: Any) -> None:
+        """A relationship on the object: a foreign key from one of its columns
+        (`from` and `to` as one reference each, or lists of one)."""
+        from sverify.contracts import references
+
+        def refs(v: Any) -> list[tuple[str, str] | None]:
+            return [self.resolve(r) for r in (v if isinstance(v, list) else [v])]
+
+        if not (isinstance(rel, Mapping) and rel.get("type", "foreignKey") == "foreignKey"):
+            self.skip(None, rel, "a relationship that is not a foreign key")
+            return
+        src, dst = refs(rel.get("from")), refs(rel.get("to"))
+        if None in src or None in dst or len(src) != len(dst):
+            self.skip(None, rel, "a relationship sverify does not read")
+        elif len(src) > 1:
+            self.skip(None, rel, "a composite foreign key: references() takes one column")
+        elif src[0][0] != self.table:  # type: ignore[index]
+            self.skip(None, rel, "a foreign key from another table")
+        else:
+            self.out.append(references(src[0][1], to=dst[0]))  # type: ignore[index, arg-type]
+
     def rule(self, column: str | None, rule: Any) -> None:
         if not isinstance(rule, Mapping):
             self.skip(column, rule, "not a rule")
@@ -797,7 +873,17 @@ class _Reader:
                 self.valued.add(col)
         opts = p.get("logicalTypeOptions") or {}
         logical = p.get("logicalType")
-        cast = {"date": "DATE", "timestamp": "TIMESTAMP", "time": "TIME"}.get(str(logical))
+        # A temporal bound is a literal of the column's own type.
+        t = _ibis_type(p)
+        cast = (
+            ("TIMESTAMP" if t.timezone is None else "TIMESTAMPTZ")
+            if t.is_timestamp()
+            else "DATE"
+            if t.is_date()
+            else "TIME"
+            if t.is_time()
+            else None
+        )
         bounds = [
             ("minimum", sg.exp.GTE),
             ("exclusiveMinimum", sg.exp.GT),
@@ -809,6 +895,14 @@ class _Reader:
                 continue
             v = opts[key]
             lit = _lit(v)
+            if t.is_timestamp() and t.timezone is not None and not _OFFSET.search(str(v)):
+                # DuckDB reads it in the session's time zone (D53).
+                self.skip(col, {key: v}, f"a {key} without a time zone on a timestamp with one")
+                continue
+            if t.is_timestamp() and t.timezone is None and _OFFSET.search(str(v)):
+                # DuckDB's CAST to TIMESTAMP drops the offset (#864).
+                self.skip(col, {key: v}, f"a {key} with a time zone on a timestamp without one")
+                continue
             if cast is not None:
                 lit = sg.exp.cast(sg.exp.Literal.string(str(v)), cast)
             elif not isinstance(v, int | float) or isinstance(v, bool):
@@ -819,19 +913,24 @@ class _Reader:
             if key in opts:
                 e = op(this=sg.exp.Length(this=_ident(col)), expression=_lit(int(opts[key])))
                 self.out.append(_or_null(col, e, self.required(col)))
-        for key in ("pattern", "format", "multipleOf"):
+        if "pattern" in opts:
+            pat = opts["pattern"]
+            if isinstance(pat, str) and simple_regex(pat):
+                e = sg.exp.RegexpLike(this=_ident(col), expression=_lit(pat))
+                self.out.append(_or_null(col, e, self.required(col)))
+            else:
+                self.skip(
+                    col,
+                    {"pattern": pat},
+                    "a pattern outside the regular expressions all engines agree on",
+                )
+        for key in ("format", "multipleOf"):
             if key in opts:
                 self.skip(col, {key: opts[key]}, f"logicalTypeOptions.{key}")
         for rel in p.get("relationships") or []:
-            to = rel.get("to") if isinstance(rel, Mapping) else None
-            if (
-                isinstance(rel, Mapping)
-                and rel.get("type", "foreignKey") == "foreignKey"
-                and isinstance(to, str)
-                and to.count(".") == 1
-            ):
-                table, other = to.split(".")
-                self.out.append(references(col, to=(table, other)))
+            to = self.resolve(rel.get("to")) if isinstance(rel, Mapping) else None
+            if isinstance(rel, Mapping) and rel.get("type", "foreignKey") == "foreignKey" and to:
+                self.out.append(references(col, to=to))
             else:
                 self.skip(col, rel, "a relationship sverify does not read")
         for r in p.get("quality") or []:
@@ -884,10 +983,11 @@ def read(
     from sverify.conditions import key
 
     out = OdcsContract(doc)
+    resolve = _resolver(doc)
     for obj in doc.get("schema") or []:
         name = obj.get("name")
         props = {p["name"]: p for p in obj.get("properties") or [] if "name" in p}
-        r = _Reader(name, props)
+        r = _Reader(name, props, resolve)
         pk = sorted(
             (p for p in props.values() if p.get("primaryKey")),
             key=lambda p: p.get("primaryKeyPosition", -1),
@@ -897,7 +997,7 @@ def read(
         for p in props.values():
             r.property(p)
         for rel in obj.get("relationships") or []:
-            r.skip(None, rel, "a relationship on the object")
+            r.relationship(rel)
         for rule in obj.get("quality") or []:
             r.rule(None, rule)
         out.tables[name] = _dedupe(r.out)

@@ -26,6 +26,7 @@ from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
 from sverify._dialect import DialectDifference, difference
+from sverify._unsupported import QUANTILE_OF_DECIMAL
 from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
@@ -89,14 +90,14 @@ class Profile:
             declared width: `"ERROR"` (DuckDB, and #185's reference default).
         on_division_by_zero: `//` and `%` by zero: `"ERROR"` (DuckDB with
             `error_on_division_by_zero`, its default, and the reference).
+        min_mod_neg_one: `MIN % -1` of integers: `"ERROR"` (DuckDB raises,
+            `duckdb-R15-int-modulus`) or `"ZERO"` (reference: the remainder,
+            0, fits).
         float_division_by_zero: `/` by zero, which divides doubles:
             `"ERROR"` (reference). DuckDB's `/` is the generated lift's.
         float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
             (DuckDB rounds, `CAST(2.5 AS INT)` is 2) or `"TRUNCATE"`
             (reference, #209 R9).
-        decimal_to_int: A cast of a decimal to an integer:
-            `"TIE_AWAY_FROM_ZERO"` (DuckDB, `CAST(2.5 AS INT)` is 3) or
-            `"TRUNCATE"` (reference, R9).
         domain_error: Elementary functions and `power` outside their domain
             (`sqrt(-1)`, `power(-8, 1/3)`): `"NAN"` (DuckDB) or `"ERROR"`
             (reference, #257).
@@ -114,9 +115,9 @@ class Profile:
     avg_integer: str = "fp64"
     overflow: str = "ERROR"
     on_division_by_zero: str = "ERROR"
+    min_mod_neg_one: str = "ZERO"
     float_division_by_zero: str = "ERROR"
     float_to_int: str = "TRUNCATE"
-    decimal_to_int: str = "TRUNCATE"
     domain_error: str = "ERROR"
     log_zero: str = "ERROR"
     corr_degenerate: str = "NULL"
@@ -124,8 +125,8 @@ class Profile:
 
 DUCKDB = Profile(
     "duckdb",
+    min_mod_neg_one="ERROR",
     float_to_int="TIE_TO_EVEN",
-    decimal_to_int="TIE_AWAY_FROM_ZERO",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
@@ -163,6 +164,38 @@ class LiftTable:
 
 
 _LIFT_TABLE: list[LiftTable] = []
+
+
+def _function(node: Any) -> str:
+    """A refusal's `construct` for a function: `function` and sqlglot's name for it,
+    lower-cased."""
+    name = node.sql_name() if isinstance(node, sge.Func) else node.key
+    return f"function {name.lower()}"
+
+
+def _category(node: Any) -> str:
+    """A node's `construct`, for a refusal and for a dialect difference: its
+    function (`function corr`), else its kind in upper case (`CAST`)."""
+    return _function(node) if isinstance(node, sge.Func) else _keywords(node)
+
+
+#: SQL keywords for the sqlglot classes whose words do not read off the class name.
+_KEYWORDS = {
+    "NullSafeEQ": "IS NOT DISTINCT FROM",
+    "NullSafeNEQ": "IS DISTINCT FROM",
+    "Neg": "NEGATION",
+    "Intersect": "INTERSECT",
+    "Union": "UNION",
+}
+
+
+def _keywords(node: Any) -> str:
+    """The SQL keywords of a node that is no function: sqlglot's class name split
+    into words (`AlterTable` is `ALTER TABLE`), where `_KEYWORDS` has no spelling."""
+    name = type(node).__name__
+    return (
+        _KEYWORDS.get(name) or " ".join(re.findall(r"[A-Z][a-z0-9]*|[A-Z]+(?![a-z])", name)).upper()
+    )
 
 
 def lift_table() -> LiftTable:
@@ -207,9 +240,8 @@ def _instantiate(template: Any, args: Sequence[Json]) -> Any:
         return [_instantiate(t, args) for t in template]
     if not isinstance(template, dict):
         return template
-    sel = template.get("selection")
-    if isinstance(sel, dict) and "rootReference" in sel:
-        return copy.deepcopy(args[sel["directReference"]["structField"].get("field", 0)])
+    if (i := column_of(template)) is not None:
+        return copy.deepcopy(args[i])
     out: dict[str, Any] = {k: _instantiate(v, args) for k, v in template.items()}
     if "functionReference" in out:
         functions: Mapping[int, str] = lift_table().functions
@@ -226,10 +258,83 @@ def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
         return None
     entry = lift_table().scalars[construct]
     if "refused" in entry:
-        raise SqlUnsupported(f"{construct}: {entry['refused']}")
+        raise SqlUnsupported(
+            f"{construct}: {entry['refused']}", construct=f"function {construct.lower()}"
+        )
     ts = [_TABLE_TYPES[a] for a in entry["args"]]
     js = [lf.to(a, t).json for a, t in zip(args, ts, strict=True)]
+    # An argument the template names more than once, and evaluates on every
+    # row, is bound to a column first (#1952).
+    shared = _shareable(construct)
+    js = [lf.share(j) if i in shared else j for i, j in enumerate(js)]
     return E(_instantiate(entry["template"], js), _TABLE_TYPES[entry["result"]])
+
+
+@functools.cache
+def _shareable(construct: str) -> frozenset[int]:
+    """The arguments of `construct`'s template that it names more than once
+    and evaluates on every row: those in its first condition or outside any
+    `CASE`, and the first operand of an `and` or `or` (the second is
+    evaluated only where the first does not decide)."""
+    template = lift_table().scalars[construct]["template"]
+    functions = lift_table().functions
+    refs: list[int] = []
+
+    def count(t: Any) -> None:
+        if isinstance(t, list):
+            for x in t:
+                count(x)
+        elif isinstance(t, dict):
+            if (i := column_of(t)) is not None:
+                refs.append(i)
+            else:
+                for v in t.values():
+                    count(v)
+
+    def always(t: Any) -> set[int]:
+        if not isinstance(t, dict):
+            return set()
+        if (i := column_of(t)) is not None:
+            return {i}
+        if "ifThen" in t:
+            return always(t["ifThen"]["ifs"][0]["if"])
+        if "cast" in t:
+            return always(t["cast"]["input"])
+        if "scalarFunction" in t:
+            f = t["scalarFunction"]
+            args = [a["value"] for a in f["arguments"]]
+            if functions[f["functionReference"]] in ("and", "or"):
+                args = args[:1]
+            return set().union(*(always(a) for a in args))
+        return set()
+
+    count(template)
+    return frozenset(i for i in always(template) if refs.count(i) > 1)
+
+
+def _fields(j: Any) -> set[int]:
+    """The input columns an expression reads."""
+    if isinstance(j, list):
+        return set().union(*(_fields(x) for x in j))
+    if not isinstance(j, dict):
+        return set()
+    sel = j.get("selection")
+    if isinstance(sel, dict) and "rootReference" in sel:
+        # A column, or a reference into one of its values.
+        return {sel["directReference"]["structField"].get("field", 0)}
+    return set().union(*(_fields(v) for v in j.values()))
+
+
+def _with_shared(rel: Json, width: int, shared: list[Json]) -> Json:
+    """`rel` with the bound arguments appended as columns `width`, `width +
+    1`, …: each projection appends those that read no column of its own."""
+    group: list[Json] = []
+    for j in shared:
+        if any(f >= width for f in _fields(j)):
+            rel = {"project": {"input": rel, "expressions": group}}
+            width, group = width + len(group), []
+        group.append(j)
+    return {"project": {"input": rel, "expressions": group}} if group else rel
 
 
 @dataclasses.dataclass(frozen=True)
@@ -328,6 +433,17 @@ def expand_table_shorthand(query: str) -> str:
     return "".join(out) + query[last:]
 
 
+#: DuckDB aggregates the lift does not read, each with its reason (#326).
+_UNREAD_AGGREGATES = {
+    "arg_min_null": "a NULL argument is a value of the group there, which arg_min skips",
+    "arg_max_null": "a NULL argument is a value of the group there, which arg_max skips",
+    "arg_min_nulls_last": "its order of NULLs is not modelled",
+    "arg_max_nulls_last": "its order of NULLs is not modelled",
+    "bitstring_agg": "its result is a BIT string, a type the model lacks",
+    "histogram_exact": "its result is a MAP, a type the model lacks",
+}
+
+
 def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperation:
     """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
     every name resolved (`qualify`) against the tables `schemas` (Ibis
@@ -347,24 +463,43 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     except sg.errors.ParseError as e:
         raise Unsupported(
             f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}; check that DuckDB "
-            "runs it, or write the step in Ibis"
+            "runs it, or write the step in Ibis",
+            construct="SQL SYNTAX",
         ) from e
+    tree = tree.transform(_builtin_schema, copy=False)
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
     for node in tree.find_all(*_NONDETERMINISTIC):
         raise SqlUnsupported(
-            _nondeterministic(node), hint="pass the value in as a column or a constant"
+            _nondeterministic(node),
+            hint="pass the value in as a column or a constant",
+            construct=_function(node),
+            sql=_shown(node),
         )
     for f in tree.find_all(sge.Anonymous):
         if f.name.lower() in _NONDETERMINISTIC_NAMES:
             raise SqlUnsupported(
-                _nondeterministic(f), hint="pass the value in as a column or a constant"
+                _nondeterministic(f),
+                hint="pass the value in as a column or a constant",
+                construct=f"function {f.name.lower()}",
+                sql=_shown(f),
+            )
+        if f.name.lower() in _UNREAD_AGGREGATES:
+            raise SqlUnsupported(
+                f"{f.name.lower()}() is not supported yet: {_UNREAD_AGGREGATES[f.name.lower()]} "
+                "(#326)",
+                hint="write the step in Ibis, or compute it from other aggregates",
+                construct=f"function {f.name.lower()}",
+                sql=_shown(f),
             )
         if f.name.lower() not in _KNOWN:
             raise SqlUnsupported(
                 f"unknown function {f.name}(): DuckDB SQL here has no such function",
                 hint="check the name against DuckDB's functions, or write the step in Ibis",
+                construct=f"function {f.name.lower()}",
+                sql=_shown(f),
             )
+    _resolve_tables(tree, schemas)
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
     _check_export_state(tree)
@@ -390,10 +525,75 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
         raise SqlUnsupported(
             f"cannot resolve the SQL's names: {message}",
             hint="check the table and column names against the schemas you declared" + close,
+            construct="NAME RESOLUTION",
         ) from e
     if not isinstance(tree, sge.Select | sge.SetOperation):
-        raise Unsupported(_ONLY_SELECT.format(type(tree).__name__))
+        raise Unsupported(_ONLY_SELECT.format(type(tree).__name__), construct=_keywords(tree))
     return tree
+
+
+def _builtin_schema(n: sge.Expr) -> sge.Expr:
+    """A call qualified by its built-in schema (`main.lower(x)`,
+    `pg_catalog.lower(x)`, `system.main.lower(x)`) read as the bare function
+    (#328). SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
+    anonymous one, so the call is parsed again without its qualifier."""
+    if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
+        schema = n.this
+        if isinstance(schema, sge.Dot):
+            schema = schema.expression
+        if isinstance(schema, sge.Identifier) and schema.name.lower() in ("main", "pg_catalog"):
+            return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
+    return n
+
+
+def full_name(table: sge.Table | str) -> tuple[str, str, str]:
+    """A table's (catalog, schema, name) as DuckDB resolves it: the defaults
+    are `memory` and `main`, and the names are normalized."""
+    if isinstance(table, str):
+        table = sge.to_table(table, dialect=DIALECT)
+    parts = (table.catalog or "memory", table.db or "main", table.name)
+    c, d, n = (_normalized(p) for p in parts)
+    return c, d, n
+
+
+def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
+    """Point each table the query reads at the input it names, as DuckDB
+    resolves names (#706): `shop.main.orders`, `main.orders` and `orders` are
+    one table where the inputs' keys say so, and the same table name in two
+    schemas stays two inputs. The table keeps its name as its alias, so the
+    query's own column references still resolve."""
+    by_full: dict[tuple[str, str, str], str] = {}
+    for key in schemas:
+        full = full_name(key)
+        if full in by_full:
+            raise Unsupported(
+                f"the inputs {by_full[full]!r} and {key!r} are the same table in DuckDB "
+                f"({'.'.join(full)}); declare it once",
+                construct="FROM",
+            )
+        by_full[full] = key
+    ctes = {_normalized(c.alias) for c in tree.find_all(sge.CTE)}
+    for node in tree.find_all(sge.Table):
+        if not isinstance(node.this, sge.Identifier):
+            continue
+        qualified = bool(node.args.get("db") or node.args.get("catalog"))
+        if not qualified and _normalized(node.name) in ctes:
+            continue
+        key = by_full.get(full_name(node))
+        if key is None and qualified:
+            raise SqlUnsupported(
+                f"FROM {_shown(node)}: only the inputs' tables can be read",
+                hint="add the table to the tables, under its qualified name "
+                f"(for example '{node.sql(DIALECT)}'), as DuckDB resolves it",
+                construct="FROM",
+            )
+        if key is None or (not qualified and key == node.name):
+            continue
+        alias = node.args.get("alias") or sge.TableAlias(this=sge.to_identifier(node.name))
+        node.set("catalog", None)
+        node.set("db", None)
+        node.set("this", sge.to_identifier(key, quoted=True))
+        node.set("alias", alias)
 
 
 def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
@@ -417,7 +617,8 @@ def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
                 if not col.table and name in aliases and name in columns:
                     raise Unsupported(
                         f"{name} in {clause.upper()} is both an input column and an output "
-                        "alias, which SQLGlot and DuckDB resolve differently; rename the alias"
+                        "alias, which SQLGlot and DuckDB resolve differently; rename the alias",
+                        construct=clause.upper(),
                     )
 
 
@@ -535,6 +736,9 @@ _AGGREGATES: dict[type, str] = {
     sge.ArrayAgg: "array_agg",
     sge.First: "first",
     sge.Last: "last",
+    # `any_value`: a non-NULL value of the group, as the Ibis producer writes
+    # `arbitrary()` (#1920, #319).
+    sge.AnyValue: "first",
 }
 
 #: The aggregates that take their rows in the order of their ORDER BY,
@@ -616,6 +820,27 @@ def _conjuncts(node: sge.Expression) -> list[sge.Expression]:
 
 
 #: The arguments of a SELECT the lift reads; any other one set is refused.
+#: The expressions that evaluate every operand on every row they are evaluated
+#: on, through which `_Lift.share` may bind an argument below the SELECT list.
+_STRICT = frozenset(
+    {
+        sge.Add,
+        sge.Sub,
+        sge.Mul,
+        sge.Div,
+        sge.IntDiv,
+        sge.Mod,
+        sge.Pow,
+        sge.Neg,
+        sge.Paren,
+        sge.Cast,
+        sge.TryCast,
+        sge.Column,
+        sge.Literal,
+        sge.Alias,
+    }
+)
+
 _SELECT_ARGS = {
     "with_",
     "expressions",
@@ -634,7 +859,6 @@ _SELECT_ARGS = {
 #: The SELECT clauses the lift refuses, each with its rewrite or issue.
 _CLAUSES = {
     "qualify": ("QUALIFY", "filter the window's column in a subquery (#319)"),
-    "windows": ("WINDOW", "write each window in its OVER (…)"),
     "laterals": ("LATERAL", "write it as a join (#813)"),
     "pivots": ("PIVOT", "write one aggregate per value, SUM(CASE WHEN k = v THEN x END)"),
     "sample": ("SAMPLE", "sample the input before sverify reads it"),
@@ -707,15 +931,33 @@ class _Lift:
         self.profile = profile
         # The inputs by their normalized names, as `qualify` writes them.
         self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
-        # The CTEs in scope, by name, and the scopes of the queries a
-        # subquery is in (which it may not read: no correlated subqueries).
-        self.ctes: dict[str, sge.Expression] = {}
+        # The CTEs in scope, by name, each with the CTEs its body sees (the
+        # ones defined before it), and the scopes of the queries a subquery
+        # is in (which it may not read: no correlated subqueries).
+        self.ctes: dict[str, tuple[sge.Expression, dict]] = {}
         self.outer: list[list[Column]] = []
         # The overflow guard of each window whose RANGE frame bounds DuckDB
         # computes in its integer key's type (`_bound_guard`).
         self.guards: dict[int, Json] = {}
         # Where the reference reads this text differently from DuckDB (D54).
         self.differences: list[DialectDifference] = []
+        # The arguments bound to columns below the SELECT list being lifted
+        # (`share`), the first at column `shared_base`; None where nothing
+        # may be bound.
+        self.shared: list[Json] | None = None
+        self.shared_base = 0
+
+    def share(self, j: Json) -> Json:
+        """`j` as a column computed below the SELECT list being lifted, where
+        every row evaluates it anyway, or `j` itself. A template that names an
+        argument several times then copies a column, and a nested expression
+        stays linear in its depth (#1952). A column stays itself, and so
+        does a constant: it reads no column, and the parser reads some only
+        in place (a cast of a string literal)."""
+        if self.shared is None or column_of(j) is not None or not _fields(j):
+            return j
+        self.shared.append(j)
+        return field_ref(self.shared_base + len(self.shared) - 1)
 
     # -- relations ---------------------------------------------------------
 
@@ -723,35 +965,41 @@ class _Lift:
         """A query's relation and its output columns."""
         if isinstance(node, sge.Subquery):
             return self.query(node.this)
-        if isinstance(node, sge.SetOperation):
-            return self.set_op(node)
-        if not isinstance(node, sge.Select):
-            raise Unsupported(_ONLY_SELECT.format(type(node).__name__))
+        if not isinstance(node, sge.Select | sge.SetOperation):
+            raise Unsupported(_ONLY_SELECT.format(type(node).__name__), construct=_keywords(node))
         if (with_ := node.args.get("with_")) is not None:
             # CTEs are inlined where they are read; each sees the ones before.
+            # A WITH in front of a set operation covers all its branches.
             if with_.args.get("recursive"):
-                raise Unsupported("WITH RECURSIVE is not supported yet (#320)")
+                raise Unsupported(
+                    "WITH RECURSIVE is not supported yet (#320)", construct="WITH RECURSIVE"
+                )
             saved = self.ctes
             self.ctes = dict(saved)
             for cte in with_.expressions:
-                self.ctes[_normalized(cte.alias)] = cte.this
+                self.ctes[_normalized(cte.alias)] = (cte.this, dict(self.ctes))
             body = node.copy()
             body.set("with_", None)
             try:
                 return self.query(body)
             finally:
                 self.ctes = saved
+        if isinstance(node, sge.SetOperation):
+            return self.set_op(node)
         for arg, (what, exit_) in _CLAUSES.items():
             if node.args.get(arg):
-                raise SqlUnsupported(f"{what} is not supported yet; {exit_}")
+                raise SqlUnsupported(f"{what} is not supported yet; {exit_}", construct=f"{what}")
         extra = [k for k, v in node.args.items() if v and k not in _SELECT_ARGS]
         if extra:
-            raise SqlUnsupported(f"SELECT with {', '.join(sorted(extra))} is not supported")
+            raise SqlUnsupported(
+                f"SELECT with {', '.join(sorted(extra))} is not supported", construct="SELECT"
+            )
         distinct = node.args.get("distinct")
         if distinct is not None and distinct.args.get("on") is not None:
             raise Unsupported(
                 "DISTINCT ON is not supported; keep the rows whose "
-                "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …) is 1, in a subquery"
+                "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …) is 1, in a subquery",
+                construct="DISTINCT ON",
             )
         rel, scope = self.from_(node)
         if (where := node.args.get("where")) is not None:
@@ -771,15 +1019,26 @@ class _Lift:
             raise SqlUnsupported(
                 "HAVING without GROUP BY or an aggregate",
                 hint="add a GROUP BY, or an aggregate to the SELECT",
+                construct="HAVING",
             )
         if wins := _windows([*node.expressions, node.args.get("order")]):
             rel, scope, bound = self.windows(rel, scope, bound, wins)
         if explodes := _explodes(node.expressions):
             if group is not None or aggs or wins:
-                raise SqlUnsupported("UNNEST next to an aggregate or a window is not supported yet")
+                raise SqlUnsupported(
+                    "UNNEST next to an aggregate or a window is not supported yet",
+                    construct="UNNEST",
+                )
             rel, scope, bound = self.unnest(rel, scope, bound, explodes)
 
-        outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
+        saved = self.shared, self.shared_base
+        self.shared, self.shared_base = [], len(scope)
+        try:
+            outs = [self.expr(e.unalias(), scope, bound) for e in node.expressions]
+            shared = self.shared
+        finally:
+            self.shared, self.shared_base = saved
+        rel = _with_shared(rel, len(scope), shared)
         names = [e.alias_or_name for e in node.expressions]
         outs = [self.timestamp_of(e) if e.midnight else e for e in outs]
         # Sort keys that are not output columns are computed after them, and
@@ -798,7 +1057,8 @@ class _Lift:
                     if distinct is not None:
                         raise Unsupported(
                             f"ORDER BY {_shown(o.this)} of a SELECT DISTINCT must be an "
-                            "output column"
+                            "output column",
+                            construct="SELECT DISTINCT",
                         )
                     extra_keys.append(self.expr(o.this, scope, aliased))
                     i = len(outs) + len(extra_keys) - 1
@@ -806,7 +1066,7 @@ class _Lift:
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
                 direction = f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"
                 keys.append({"expr": field_ref(i), "direction": direction})
-        width = len(scope)
+        width = len(scope) + len(shared)
         rel = select(rel, width, [e.json for e in outs + extra_keys])
         if distinct is not None:
             rel = distinct_rel(rel, len(outs))
@@ -824,13 +1084,17 @@ class _Lift:
         the other columns repeated, and no row for a NULL or empty list
         (`Rel.unnest`). The list is computed as a column, unnested in place."""
         if len(set(explodes)) != 1:
-            raise SqlUnsupported("more than one UNNEST in a SELECT is not supported yet")
+            raise SqlUnsupported(
+                "more than one UNNEST in a SELECT is not supported yet", construct="UNNEST"
+            )
         node = explodes[0]
         if node.args.get("expressions"):
-            raise SqlUnsupported(f"{_shown(node)} with options is not supported yet")
+            raise SqlUnsupported(
+                f"{_shown(node)} with options is not supported yet", construct="UNNEST"
+            )
         x = self.expr(node.this, scope, bound)
         if not x.type.is_array():
-            raise SqlUnsupported(f"UNNEST of a {x.type} is not supported")
+            raise SqlUnsupported(f"UNNEST of a {x.type} is not supported", construct="UNNEST")
         width = len(scope)
         rel = {"project": {"input": rel, "expressions": [x.json]}}
         detail = {"@type": "type.googleapis.com/sverify.Unnest", "column": width}
@@ -849,15 +1113,21 @@ class _Lift:
         `m` and `n` copies leave `min(m, n)` (`max(m - n, 0)`)."""
         what = type(node).__name__.upper()
         if node.args.get("by_name"):
-            raise SqlUnsupported(f"{what} BY NAME is not supported yet")
+            raise SqlUnsupported(
+                f"{what} BY NAME is not supported yet", construct=" ".join([what, "BY NAME"])
+            )
         allowed = ("this", "expression", "distinct", "order", "limit", "offset")
         unknown = [k for k, v in node.args.items() if v and k not in allowed]
         if unknown:
-            raise SqlUnsupported(f"{what} with {', '.join(sorted(unknown))} is not supported")
+            raise SqlUnsupported(
+                f"{what} with {', '.join(sorted(unknown))} is not supported", construct=f"{what}"
+            )
         left, lcols = self.query(node.this)
         right, rcols = self.query(node.expression)
         if len(lcols) != len(rcols):
-            raise SqlUnsupported(f"{what} of {len(lcols)} and {len(rcols)} columns")
+            raise SqlUnsupported(
+                f"{what} of {len(lcols)} and {len(rcols)} columns", construct=f"{what}"
+            )
         n = len(lcols)
         types = [
             self.common([E(field_ref(i), a.type), E(field_ref(i), b.type)], what)
@@ -944,6 +1214,13 @@ class _Lift:
         if offset is not None:
             body["offsetExpr"] = literal(_count(offset.expression, "OFFSET"), dt.int64)
         if limit is not None:
+            opts = limit.args.get("limit_options")
+            if opts and (opts.args.get("percent") or opts.args.get("with_ties")):
+                raise SqlUnsupported(
+                    "LIMIT with PERCENT or WITH TIES is not supported yet",
+                    hint="write a row count: LIMIT n",
+                    construct="LIMIT",
+                )
             body["countExpr"] = literal(_count(limit.expression, "LIMIT"), dt.int64)
         return {"fetch": body}
 
@@ -960,14 +1237,20 @@ class _Lift:
                 # row's latest match, a POSITIONAL join pairs rows by position.
                 rule = JOIN_METHODS.get(str(method).upper())
                 if rule is None:
-                    raise SqlUnsupported(f"{str(method).upper()} JOIN is not supported yet")
+                    raise SqlUnsupported(
+                        f"{str(method).upper()} JOIN is not supported yet",
+                        construct=" ".join([str(method).upper(), "JOIN"]),
+                    )
                 rel, scope = rule(self, rel, scope, join)
                 continue
             right, cols = self.source(join.this)
             side, kind = (join.side or "").upper(), (join.kind or "").upper()
             on = join.args.get("on")
             if join.args.get("using"):
-                raise Unsupported("JOIN … USING is not supported; write the join with ON a.k = b.k")
+                raise Unsupported(
+                    "JOIN … USING is not supported; write the join with ON a.k = b.k",
+                    construct="JOIN USING",
+                )
             if kind == "CROSS" or (not side and not kind and on is None):
                 rel = {"cross": {"left": rel, "right": right}}
                 scope = scope + cols
@@ -975,7 +1258,9 @@ class _Lift:
             how = _JOIN_TYPES.get((side, kind))
             if how is None or on is None:
                 what = " ".join(w for w in (side, kind) if w) or "this"
-                raise SqlUnsupported(f"{what} JOIN is not supported yet")
+                raise SqlUnsupported(
+                    f"{what} JOIN is not supported yet", construct=" ".join([what.upper(), "JOIN"])
+                )
             cond = self.condition(on, scope + cols)
             rel = {"join": {"left": rel, "right": right, "expression": cond, "type": how}}
             # A semi or anti join keeps the left side's columns only.
@@ -990,11 +1275,17 @@ class _Lift:
         extra = sorted(k for k, v in node.args.items() if v and k not in _SOURCE_ARGS)
         if extra and isinstance(node, sge.Table | sge.Subquery):
             raise SqlUnsupported(
-                f"FROM {_shown(node)} with {', '.join(extra)} is not supported yet"
+                f"FROM {_shown(node)} with {', '.join(extra)} is not supported yet",
+                construct="FROM",
             )
         alias = node.alias_or_name
         if isinstance(node, sge.Table) and not node.args.get("db") and node.name in self.ctes:
-            rel, cols = self.query(self.ctes[node.name])
+            body, visible = self.ctes[node.name]
+            saved, self.ctes = self.ctes, visible
+            try:
+                rel, cols = self.query(body)
+            finally:
+                self.ctes = saved
             return rel, [Column(alias, c.name, c.type) for c in cols]
         if isinstance(node, sge.Table):
             if (
@@ -1002,12 +1293,18 @@ class _Lift:
                 or node.args.get("catalog")
                 or not isinstance(node.this, sge.Identifier)
             ):
-                raise Unsupported(f"FROM {_shown(node)}: only the inputs' tables can be read")
+                raise SqlUnsupported(
+                    f"FROM {_shown(node)}: only the inputs' tables can be read",
+                    hint="add the table to the tables, under its qualified name "
+                    "(for example 'shop.main.orders'), as DuckDB resolves it",
+                    construct="FROM",
+                )
             found = self.schemas.get(node.name)
             if found is None:
                 raise SqlUnsupported(
                     f"the query reads {node.name}, which is not an input",
                     hint="declare the table in the schemas, or read one that is declared",
+                    construct="FROM",
                 )
             name, schema = found
             cols = [Column(alias, _normalized(c), t) for c, t in schema.items()]
@@ -1017,7 +1314,7 @@ class _Lift:
             return rel, [Column(alias, c.name, c.type) for c in cols]
         if (rule := SOURCES.get(type(node))) is not None:
             return rule(self, node)
-        raise SqlUnsupported(f"FROM {_shown(node)} is not supported")
+        raise SqlUnsupported(f"FROM {_shown(node)} is not supported", construct="FROM")
 
     def windows(
         self,
@@ -1077,7 +1374,8 @@ class _Lift:
         if w.args.get("alias") is not None or w.args.get("first") is not None:
             raise Unsupported(
                 f"{_shown(w)}: named windows are not supported yet; write the window in "
-                "its OVER (…)"
+                "its OVER (…)",
+                construct="WINDOW",
             )
         f = w.this
         ignore_nulls = False
@@ -1086,14 +1384,27 @@ class _Lift:
         elif isinstance(f, sge.IgnoreNulls) and isinstance(f.this, sge.FirstValue | sge.LastValue):
             f, ignore_nulls = f.this, True
         if isinstance(f, sge.IgnoreNulls | sge.RespectNulls | sge.Filter):
-            raise SqlUnsupported(f"{_shown(w)} is not supported yet")
+            raise SqlUnsupported(
+                f"{_shown(w)} is not supported yet",
+                construct="FILTER"
+                if isinstance(f, sge.Filter)
+                else "IGNORE NULLS"
+                if isinstance(f, sge.IgnoreNulls)
+                else "RESPECT NULLS",
+            )
         if isinstance(f, sge.First | sge.Last):
             # DuckDB's `first(x) OVER …` keeps NULLs: `first_value(x)`.
             if isinstance(f.this, sge.Order):
-                raise SqlUnsupported(f"{_shown(w)}: ORDER BY inside a window aggregate")
+                raise SqlUnsupported(
+                    f"{_shown(w)}: ORDER BY inside a window aggregate",
+                    construct=_function(f),
+                )
             f = (sge.FirstValue if isinstance(f, sge.First) else sge.LastValue)(this=f.this)
         if _AGGREGATES.get(type(f)) in _ORDERED:
-            raise SqlUnsupported(f"{_shown(f)} over a window is not supported yet")
+            raise SqlUnsupported(
+                f"{_shown(f)} over a window is not supported yet",
+                construct=_function(f),
+            )
 
         def arg(n: sge.Expression) -> E:
             return self.expr(n, scope, bound)
@@ -1105,12 +1416,15 @@ class _Lift:
                 # `rank(ORDER BY x) OVER (… frame)` ranks by `x` within the
                 # frame (#625); a plain ranking ignores the frame.
                 raise SqlUnsupported(
-                    f"{_shown(w)}: a ranking function with its own ORDER BY is not supported"
+                    f"{_shown(w)}: a ranking function with its own ORDER BY is not supported",
+                    construct=_function(f),
                 )
             if isinstance(f, sge.Ntile):
                 n = arg(f.this)
                 if not (n.constant and isinstance(n.value, int) and n.value > 0):
-                    raise Unsupported("ntile needs a positive integer constant")
+                    raise Unsupported(
+                        "ntile needs a positive integer constant", construct="function ntile"
+                    )
                 args = [literal(n.value, dt.int64)]
         elif isinstance(f, sge.Lag | sge.Lead):
             name = "lag" if isinstance(f, sge.Lag) else "lead"
@@ -1119,13 +1433,19 @@ class _Lift:
             offset = f.args.get("offset")
             k = arg(offset) if offset is not None else E({}, dt.int64, 1)
             if not (k.constant and isinstance(k.value, int) and k.value >= 0):
-                raise Unsupported(f"{name} needs a non-negative integer constant offset")
+                raise Unsupported(
+                    f"{name} needs a non-negative integer constant offset",
+                    construct=f"function {name}",
+                )
             args = [column(x), literal(k.value, dt.int64)]
             if (default := f.args.get("default")) is not None:
                 d = arg(default)
                 t = self.common([x, d], name)
                 if not _same(t, x.type):
-                    raise SqlUnsupported(f"{name} with a default of another type is not supported")
+                    raise SqlUnsupported(
+                        f"{name} with a default of another type is not supported",
+                        construct=f"function {name}",
+                    )
                 args.append(self.to(d, t).json)
         elif isinstance(f, sge.FirstValue | sge.LastValue | sge.NthValue):
             x = arg(f.this)
@@ -1149,13 +1469,22 @@ class _Lift:
             if isinstance(f, sge.NthValue):
                 k = arg(f.args["offset"])
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
-                    raise Unsupported("nth_value needs a positive integer constant")
+                    raise Unsupported(
+                        "nth_value needs a positive integer constant",
+                        construct="function nth_value",
+                    )
                 args.append(literal(k.value, dt.int64))
         elif _AGGREGATES.get(type(f)) in (*_PAIRED, *_HOLISTIC):
             # Lean's `parseWindow` refuses them too.
-            raise SqlUnsupported(f"{_shown(f)} over a window is not supported")
+            raise SqlUnsupported(
+                f"{_shown(f)} over a window is not supported",
+                construct=_function(f),
+            )
         elif type(f) in AGG_RULES:
-            raise SqlUnsupported(f"{_shown(f)} over a window is not supported yet")
+            raise SqlUnsupported(
+                f"{_shown(f)} over a window is not supported yet",
+                construct=_function(f),
+            )
         elif type(f) in _AGGREGATES:
             # Each measure over the window, with its type (DuckDB's AVG of a
             # DECIMAL is a DOUBLE).
@@ -1164,7 +1493,10 @@ class _Lift:
             for m, t in ms:
                 agg = m["measure"]
                 if agg["invocation"] != "AGGREGATION_INVOCATION_ALL":
-                    raise SqlUnsupported(f"{_shown(w)}: DISTINCT in a window is not supported")
+                    raise SqlUnsupported(
+                        f"{_shown(w)}: DISTINCT in a window is not supported",
+                        construct=_function(f),
+                    )
                 values = [column(E(a["value"], dt.null)) for a in agg["arguments"]]
                 fn = self.window_json(w, agg["functionReference"], values, scope, bound, column)
                 fn["windowFunction"]["outputType"] = agg["outputType"]
@@ -1174,7 +1506,10 @@ class _Lift:
                 fns.append((fn, t))
             return fns, finish
         else:
-            raise SqlUnsupported(f"window function {_shown(f)} is not supported yet")
+            raise SqlUnsupported(
+                f"window function {_shown(f)} is not supported yet",
+                construct=_category(f),
+            )
         fn = self.window_json(w, name, args, scope, bound, column)
         return [(fn, out)], lambda refs: E(refs[0], out)
 
@@ -1282,6 +1617,7 @@ class _Lift:
                         "is not supported yet",
                         hint=f"write the {what} over one SELECT",
                         issue=345,
+                        construct="CORRELATED SUBQUERY",
                     ) from e
                 raise
             finally:
@@ -1305,6 +1641,7 @@ class _Lift:
                     "query's columns",
                     hint="compare in the WHERE of the subquery: x IN (SELECT k FROM r WHERE …)",
                     issue=345,
+                    construct="CORRELATED SUBQUERY",
                 )
             keep = [c for c, r in zip(parts, reads, strict=True) if not r]
             if keep:
@@ -1323,7 +1660,8 @@ class _Lift:
                 self.common([nt, E({}, kt.type)], "IN"), kt.type
             ):
                 raise SqlUnsupported(
-                    f"IN of a {nt.type} in a subquery of {kt.type} is not supported yet"
+                    f"IN of a {nt.type} in a subquery of {kt.type} is not supported yet",
+                    construct="IN",
                 )
             match: sge.Expression = sge.EQ(this=x, expression=k)
             if negated:
@@ -1354,15 +1692,17 @@ class _Lift:
                     f"{arg.upper()} in a correlated {what} is not supported yet",
                     hint="write EXISTS (SELECT 1 FROM … WHERE …) or x IN (SELECT k FROM … WHERE …)",
                     issue=345,
+                    construct="CORRELATED SUBQUERY",
                 )
         if what == "IN" and (len(sub.expressions) != 1 or isinstance(sub.expressions[0], sge.Star)):
-            raise Unsupported("an IN subquery must return one column")
+            raise Unsupported("an IN subquery must return one column", construct="IN")
         for e in sub.expressions if what == "EXISTS" else []:
             if not isinstance(e.unalias(), sge.Star | sge.Literal | sge.Column):
                 raise SqlUnsupported(
                     f"the select list {_shown(e)} of a correlated EXISTS is not supported",
                     hint="write SELECT 1",
                     issue=345,
+                    construct="EXISTS",
                 )
         nested = (sge.Subquery, sge.Exists, sge.Select, sge.Window, *_AGGREGATES)
         for c, r in zip(parts, reads, strict=True):
@@ -1372,6 +1712,7 @@ class _Lift:
                     "outer query's columns is not supported yet",
                     hint="write it as a join",
                     issue=345,
+                    construct="CORRELATED SUBQUERY",
                 )
 
     def nested(self, node: sge.Expression, scope: list[Column]) -> tuple[Json, list[Column]]:
@@ -1483,23 +1824,34 @@ class _Lift:
         distinct = isinstance(arg, sge.Distinct)
         if distinct:
             if len(arg.expressions) != 1:
-                raise SqlUnsupported(f"{_shown(node)}: DISTINCT of several values is not supported")
+                raise SqlUnsupported(
+                    f"{_shown(node)}: DISTINCT of several values is not supported",
+                    construct=_function(node),
+                )
             arg = arg.expressions[0]
         if isinstance(node, sge.Count) and (arg is None or isinstance(arg, sge.Star)):
             args: list[E] = []
             out: Any = dt.int64
         elif name in _PAIRED:
             if distinct:
-                raise SqlUnsupported(f"{_shown(node)}: DISTINCT is not supported")
+                raise SqlUnsupported(
+                    f"{_shown(node)}: DISTINCT is not supported",
+                    construct=_function(node),
+                )
             args = [self.expr(a, scope, bound) for a in (arg, node.expression)]
             for a in args:
                 if not (a.type.is_integer() or a.type.is_float64()):
-                    raise SqlUnsupported(f"{name} of {a.type} is not supported")
+                    raise SqlUnsupported(
+                        f"{name} of {a.type} is not supported",
+                        construct=_function(node),
+                    )
             out = dt.float64
         else:
             if not isinstance(node, sge.Count) and node.expressions:
                 raise SqlUnsupported(
-                    f"{_shown(node)} takes one argument", hint="call it with one argument"
+                    f"{_shown(node)} takes one argument",
+                    hint="call it with one argument",
+                    construct=_function(node),
                 )
             a = self.expr(arg, scope, bound)
             if a.midnight:
@@ -1512,14 +1864,21 @@ class _Lift:
                 out = dt.int64
             elif name in ("min", "max"):
                 if isinstance(node, sge.LogicalAnd | sge.LogicalOr) and not t.is_boolean():
-                    raise SqlUnsupported(f"{_shown(node)} of {t} is not supported")
+                    raise SqlUnsupported(
+                        f"{_shown(node)} of {t} is not supported",
+                        construct=_function(node),
+                    )
                 out = t
             elif not _numeric(t):
-                raise SqlUnsupported(f"{name} of {t} is not supported")
+                raise SqlUnsupported(
+                    f"{name} of {t} is not supported",
+                    construct=_function(node),
+                )
             elif name in ("variance", "std_dev"):
                 if t.is_decimal():
                     raise SqlUnsupported(
-                        f"{_shown(node)}: {name} of a DECIMAL is not supported yet"
+                        f"{_shown(node)}: {name} of a DECIMAL is not supported yet",
+                        construct=_function(node),
                     )
                 out = dt.float64
             elif name == "sum":
@@ -1539,7 +1898,7 @@ class _Lift:
                 out = dt.float64
         invocation = "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
         if name == "corr" and self.profile.corr_degenerate != DUCKDB.corr_degenerate:
-            self.differences.append(difference("corr_degenerate", _shown(node)))
+            self.differences.append(difference("corr_degenerate", _category(node), _shown(node)))
         if name in ("sum", "avg") and args and (gen := _generated_agg(self, name, args[0])):
             # DISTINCT and FILTER apply to each measure alike.
             parts = [
@@ -1583,8 +1942,8 @@ class _Lift:
         scope: list[Column],
         bound: Mapping[sge.Expression, E] | None,
     ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
-        """`string_agg(x, sep)`, `list(x)` (`array_agg`), `first(x)` and
-        `last(x)`, each with an optional `ORDER BY` of columns (#810).
+        """`string_agg(x, sep)`, `list(x)` (`array_agg`), `first(x)`, `last(x)` and
+        `any_value(x)`, each with an optional `ORDER BY` of columns (#810).
         `string_agg` skips NULLs, as the model's measure does; DuckDB's
         `list`, `first` and `last` keep them, so their measure takes `[x]`,
         never NULL: `flatten(array_agg([x]))` and `first([x])[1]`. Without
@@ -1595,19 +1954,26 @@ class _Lift:
         if isinstance(arg, sge.Order):
             order, arg = arg, arg.this
         if isinstance(arg, sge.Distinct) or arg is None:
-            raise SqlUnsupported(f"{_shown(node)}: DISTINCT is not supported")
+            raise SqlUnsupported(
+                f"{_shown(node)}: DISTINCT is not supported",
+                construct=_function(node),
+            )
         a = self.expr(arg, scope, bound)
         if a.midnight:
             raise Unsupported(
                 f"{_shown(node)}: an aggregate of a DATE at midnight that DuckDB types a "
-                "TIMESTAMP is not supported yet; CAST it to DATE first"
+                "TIMESTAMP is not supported yet; CAST it to DATE first",
+                construct=_function(node),
             )
         t = a.type
         sorts: list[Json] = []
         for o in order.expressions if order is not None else []:
             key = self.expr(o.this, scope, bound).json
             if "selection" not in key or "expression" in key["selection"]:
-                raise Unsupported(f"{_shown(node)}: ORDER BY a column only")
+                raise Unsupported(
+                    f"{_shown(node)}: ORDER BY a column only",
+                    construct=_function(node),
+                )
             desc = bool(o.args.get("desc"))
             nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
             sorts.append(
@@ -1619,24 +1985,50 @@ class _Lift:
         args = [a.json]
         if name == "string_agg":
             if not (t.is_string() or t.is_null()):
-                raise Unsupported(f"{_shown(node)} of {t} is not supported; cast it to VARCHAR")
+                raise Unsupported(
+                    f"{_shown(node)} of {t} is not supported; cast it to VARCHAR",
+                    construct=_function(node),
+                )
             sep = node.args.get("separator")
             s_ = self.expr(sep, scope, bound) if sep is not None else E({}, dt.string, ",")
             if not (s_.constant and isinstance(s_.value, str)):
-                raise Unsupported(f"{_shown(node)} needs a constant separator")
+                raise Unsupported(
+                    f"{_shown(node)} needs a constant separator",
+                    construct=_function(node),
+                )
             args.append(literal(s_.value, dt.string))
             out: Any = dt.string
             finish: Callable[[list[Json]], E] = lambda refs: E(refs[0], dt.string)  # noqa: E731
+        elif isinstance(node, sge.AnyValue):
+            # `any_value` skips NULLs: the model's `first`, of the non-NULL
+            # values in the ORDER BY's order, as the Ibis producer writes
+            # `arbitrary()` and `first()` (#1920, #55).
+            if node.args.get("expressions") or node.args.get("expression"):
+                raise SqlUnsupported(
+                    f"{_shown(node)} takes one argument",
+                    hint="call it with one argument",
+                    construct=_function(node),
+                )
+            out = t
+            finish = lambda refs: E(refs[0], t)  # noqa: E731
         else:
             if node.args.get("expressions") or node.args.get("expression"):
                 raise SqlUnsupported(
-                    f"{_shown(node)} takes one argument", hint="call it with one argument"
+                    f"{_shown(node)} takes one argument",
+                    hint="call it with one argument",
+                    construct=_function(node),
                 )
             if t.is_null():
-                raise Unsupported(f"{_shown(node)} of NULL has no type; cast it")
+                raise Unsupported(
+                    f"{_shown(node)} of NULL has no type; cast it",
+                    construct=_function(node),
+                )
             if t.is_decimal():
                 # The model holds a decimal unscaled; inside a list nothing rescales it.
-                raise SqlUnsupported(f"{_shown(node)} of a DECIMAL is not supported yet")
+                raise SqlUnsupported(
+                    f"{_shown(node)} of a DECIMAL is not supported yet",
+                    construct=_function(node),
+                )
             one = dt.Array(value_type=t)
             # `[x]`: a list, never NULL, so the measure keeps the rows where
             # `x` is NULL, as DuckDB does.
@@ -1696,16 +2088,30 @@ class _Lift:
                 # the fraction inside the DISTINCT.
                 q = arg.expressions[1]
             elif len(arg.expressions) != 1:
-                raise SqlUnsupported(f"{_shown(node)}: DISTINCT of several values is not supported")
+                raise SqlUnsupported(
+                    f"{_shown(node)}: DISTINCT of several values is not supported",
+                    construct=_function(node),
+                )
             arg = arg.expressions[0]
         if arg is None:
-            raise Unsupported(f"{_shown(node)} needs an argument")
+            raise Unsupported(f"{_shown(node)} needs an argument", construct=_function(node))
         a = self.expr(arg, scope, bound)
         if a.midnight:
             a = self.timestamp_of(a)  # DuckDB's TIMESTAMP (#807)
         t = a.type
         args = [a.json]
         sorts: list[Json] = []
+        if name == "median" and (t.is_temporal() or t.is_timestamp() or t.is_float32()):
+            # DuckDB interpolates the median of dates, timestamps and FLOATs, as
+            # `quantile_cont` does (a FLOAT or a timestamp comes back): the
+            # lower middle the model takes is another value (#2153). The
+            # model reads `quantile_cont` of integers and doubles only.
+            raise SqlUnsupported(
+                f"{_shown(node)} of {t} is not supported: DuckDB interpolates it as "
+                "quantile_cont does, which the model reads for integers and doubles only",
+                hint="use quantile_disc(x, 0.5) for the lower middle, or cast to DOUBLE",
+                construct=_function(node),
+            )
         if name == "median" and not _numeric(t):
             # DuckDB's median of other ordered values is the 0.5 quantile_disc.
             name = "quantile_disc"
@@ -1713,20 +2119,32 @@ class _Lift:
         elif name in ("quantile_cont", "quantile_disc"):
             if isinstance(q, sge.Neg):
                 # DuckDB reads a negative fraction from the largest value.
-                raise Unsupported(f"{_shown(node)}: the fraction must be between 0 and 1")
+                raise Unsupported(
+                    f"{_shown(node)}: the fraction must be between 0 and 1",
+                    construct=_function(node),
+                )
             if not (isinstance(q, sge.Literal) and not q.is_string):
-                raise Unsupported(f"{_shown(node)}: the fraction must be one number")
+                raise Unsupported(
+                    f"{_shown(node)}: the fraction must be one number",
+                    construct=_function(node),
+                )
             if not 0 <= Decimal(q.this) <= 1:
-                raise Unsupported(f"{_shown(node)}: the fraction must be between 0 and 1")
+                raise Unsupported(
+                    f"{_shown(node)}: the fraction must be between 0 and 1",
+                    construct=_function(node),
+                )
             args.append(decimal_literal(q.this, dt.Decimal()))
         if name in ("median", "quantile_cont"):
             if t.is_decimal():
                 raise Unsupported(
-                    f"{_shown(node)} of a DECIMAL is not supported yet (DuckDB interpolates "
-                    "it as a DECIMAL); cast it to DOUBLE"
+                    f"{_shown(node)} of {t} {QUANTILE_OF_DECIMAL}; cast it to DOUBLE first",
+                    construct=_function(node),
                 )
             if not (t.is_integer() or t.is_float64()):
-                raise SqlUnsupported(f"{_shown(node)} of {t} is not supported")
+                raise SqlUnsupported(
+                    f"{_shown(node)} of {t} is not supported",
+                    construct=_function(node),
+                )
             out: Any = dt.float64
         else:
             out = t
@@ -1734,12 +2152,16 @@ class _Lift:
             if order is None:
                 raise Unsupported(
                     f"{_shown(node)} breaks ties in the engine's order; give it an order "
-                    "(mode(x ORDER BY x) takes the smallest of the most frequent values)"
+                    "(mode(x ORDER BY x) takes the smallest of the most frequent values)",
+                    construct=_function(node),
                 )
             for o in order.expressions:
                 key = self.expr(o.this, scope, bound).json
                 if "selection" not in key:
-                    raise Unsupported(f"{_shown(node)}: ORDER BY a column only")
+                    raise Unsupported(
+                        f"{_shown(node)}: ORDER BY a column only",
+                        construct=_function(node),
+                    )
                 desc = bool(o.args.get("desc"))
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
                 sorts.append(
@@ -1749,16 +2171,28 @@ class _Lift:
                     }
                 )
         elif order is not None:
-            raise SqlUnsupported(f"{_shown(node)}: ORDER BY in {name} is not supported")
+            raise SqlUnsupported(
+                f"{_shown(node)}: ORDER BY in {name} is not supported",
+                construct=_function(node),
+            )
         if name in ("arg_min", "arg_max"):
             if node.args.get("count") is not None:
                 # `arg_max(x, y, n)`: a list of the `n` best.
-                raise SqlUnsupported(f"{_shown(node)}: {name} of the n best is not supported yet")
+                raise SqlUnsupported(
+                    f"{_shown(node)}: {name} of the n best is not supported yet",
+                    construct=_function(node),
+                )
             if distinct:
-                raise SqlUnsupported(f"{_shown(node)}: DISTINCT is not supported")
+                raise SqlUnsupported(
+                    f"{_shown(node)}: DISTINCT is not supported",
+                    construct=_function(node),
+                )
             by = self.expr(node.expression, scope, bound).json
             if "selection" not in by:
-                raise Unsupported(f"{_shown(node)} orders by a column only")
+                raise Unsupported(
+                    f"{_shown(node)} orders by a column only",
+                    construct=_function(node),
+                )
             args.append(by)
         measure: Json = {
             "functionReference": anchor(name),
@@ -1782,7 +2216,9 @@ class _Lift:
     ) -> Json:
         e = self.expr(node, scope, bound)
         if not (e.type.is_boolean() or e.type.is_null()):
-            raise SqlUnsupported(f"{_shown(node)} is a {e.type}, not a condition")
+            raise SqlUnsupported(
+                f"{_shown(node)} is a {e.type}, not a condition", construct="CONDITION"
+            )
         return e.json
 
     def expr(
@@ -1794,12 +2230,25 @@ class _Lift:
         bound = bound or {}
         if node in bound:
             return bound[node]
+        if self.shared is not None and type(node) not in _STRICT:
+            # Below this node some rows may skip an operand, so binding it
+            # below the SELECT list could evaluate it where the query does
+            # not: nothing under it is bound.
+            saved, self.shared = self.shared, None
+            try:
+                return self.expr(node, scope, bound)
+            finally:
+                self.shared = saved
         if getattr(bound, "grouped", False) and isinstance(node, sge.Column):
-            raise Unsupported(f"column {_shown(node)} must be in GROUP BY or inside an aggregate")
+            raise Unsupported(
+                f"column {_shown(node)} must be in GROUP BY or inside an aggregate",
+                construct="GROUP BY",
+            )
         if type(node) in _AGGREGATES:
             raise SqlUnsupported(
                 f"aggregate {_shown(node)} is not allowed here",
                 hint="use it in the SELECT list or in HAVING, or compute it in a subquery",
+                construct=_function(node),
             )
         if node.args.get("negate"):
             # SQLGlot writes `s NOT LIKE p` as `LIKE` with `negate`.
@@ -1809,8 +2258,16 @@ class _Lift:
             return E(_fn("not", [_bool_json(self, e)], dt.boolean), dt.boolean)
         rule = RULES.get(type(node))
         if rule is None:
-            raise SqlUnsupported(f"{_shown(node)} is not supported yet")
-        return rule(self, node, lambda n: self.expr(n, scope, bound), scope)
+            raise SqlUnsupported(
+                f"{_shown(node)} is not supported yet",
+                construct=_category(node),
+            )
+        try:
+            return rule(self, node, lambda n: self.expr(n, scope, bound), scope)
+        except Unsupported as e:
+            if e.sql is None:  # the innermost node being read is the fragment (#700)
+                e.sql = _shown(node)
+            raise
 
     def column(self, node: sge.Column, scope: list[Column]) -> E:
         table, name = node.table, node.name
@@ -1823,10 +2280,11 @@ class _Lift:
             ):
                 raise Unsupported(
                     f"correlated subqueries are not supported yet (it reads {_shown(node)}); "
-                    "write it as a join (#345 for EXISTS and IN, #813 for the rest)"
+                    "write it as a join (#345 for EXISTS and IN, #813 for the rest)",
+                    construct="CORRELATED SUBQUERY",
                 )
             what = "unknown" if not found else "ambiguous"
-            raise SqlUnsupported(f"{what} column {_shown(node)}")
+            raise SqlUnsupported(f"{what} column {_shown(node)}", construct="COLUMN")
         return E(field_ref(found[0]), scope[found[0]].type)
 
     def to(self, e: E, t: Any) -> E:
@@ -1840,6 +2298,10 @@ class _Lift:
             if v is not None:
                 if t.is_float64():
                     v = float(v)
+                elif t.is_float32():
+                    # The checker folds the cast, rounding once as DuckDB does, or
+                    # refuses where it cannot (ruling 186 P3, `castConst`).
+                    v = None
                 elif t.is_decimal():
                     # A double's exact binary value: `_fits` folds it only
                     # where the decimal holds it exactly (10.0, 2.5, not 0.1).
@@ -1879,21 +2341,26 @@ class _Lift:
             raise SqlUnsupported(
                 f"{what} of a {base} and an integer literal is not supported yet: DuckDB types "
                 f"the literal as the {base} where it fits; write `CAST({lits[0].value} AS INTEGER)`"
-                " (an INTEGER) or cast the column"
+                " (an INTEGER) or cast the column",
+                construct="INTEGER LITERAL",
             )
         wide = [e.type for e in lits if not _fits(e.value, base)]
         return max([base, *wide], key=lambda t: t.nbytes).copy(nullable=True)
 
     def common(self, es: list[E], what: str, sum_digits: bool = False) -> Any:
         """The type DuckDB brings `es` to as one value: the widest integer;
-        a double if one is; else a decimal with the most integer digits and
+        a double if one is; a float32 if one is; else a decimal with the most integer digits and
         the largest scale (plus a digit for `+` and `-`)."""
         ts = [e.type for e in es if not e.type.is_null()]
         if not ts:
             return dt.null
-        if all(_numeric(t) for t in ts):
+        if all(_numeric(t) or t.is_float32() for t in ts):
             if any(t.is_float64() for t in ts):
                 return dt.float64
+            # DuckDB brings a REAL and an integer or a decimal to a REAL
+            # (`0.3::REAL = 0.3` is true), and a REAL and a DOUBLE to a DOUBLE.
+            if any(t.is_float32() for t in ts):
+                return dt.float32
             if any(t.is_decimal() for t in ts):
                 p, s = _decimals.common(_digits(t) for t in ts)
                 return _decimal(p + int(sum_digits), s)
@@ -1905,12 +2372,16 @@ class _Lift:
             # DuckDB brings the other side to a TIMESTAMPTZ in the session's zone (D53).
             raise SqlUnsupported(
                 f"{what} of a timestamp with a time zone and another type follows the session "
-                "time zone in DuckDB; convert with x AT TIME ZONE 'UTC' (#1725)"
+                "time zone in DuckDB; convert with x AT TIME ZONE 'UTC' (#1725)",
+                construct="TIMESTAMP WITH TIME ZONE",
             )
         if all(t.is_temporal() and not t.is_time() for t in ts):
             return dt.timestamp(scale=6)
         shown = ", ".join(str(t) for t in ts)
-        raise SqlUnsupported(f"{what} of {shown} is not supported")
+        raise SqlUnsupported(
+            f"{what} of {shown} is not supported",
+            construct=what if what.isupper() else f"function {what}",
+        )
 
 
 # -- expression rules -------------------------------------------------------
@@ -1926,6 +2397,66 @@ RULES: dict[type, Rule] = {}
 #: Rewrites of the parsed tree, before its functions are checked: the black
 #: boxes' (`blackbox.py`, #325) give their calls nodes of their own.
 PARSE_REWRITES: list[Callable[[sge.Expr], sge.Expr]] = []
+
+
+def _any_value(tree: sge.Expr) -> sge.Expr:
+    """SQLGlot reads DuckDB's `any_value(x)` as `IgnoreNulls(AnyValue(x))`; it
+    skips NULLs, so it is the `AnyValue` node (#319)."""
+
+    def unwrap(n: sge.Expr) -> sge.Expr:
+        if isinstance(n, sge.IgnoreNulls) and isinstance(n.this, sge.AnyValue):
+            return n.this
+        return n
+
+    return tree.transform(unwrap, copy=False)
+
+
+_WINDOW_PARTS = {"partition_by": "a PARTITION BY", "order": "an ORDER BY", "spec": "a frame"}
+
+
+def _named_windows(tree: sge.Expr) -> sge.Expr:
+    """`WINDOW w AS (…)`: each `OVER w` or `OVER (w ORDER BY …)` of the same
+    SELECT written out (#319). A window that adds a PARTITION BY, a second
+    ORDER BY or a second frame to the named one is refused, as SQL does."""
+    for sel in list(tree.find_all(sge.Select)):
+        defs = sel.args.get("windows")
+        if not defs:
+            continue
+        named = {}
+        for d in defs:
+            if d.args.get("alias") is not None:
+                raise SqlUnsupported(
+                    f"WINDOW {d.this.name} is defined from another named window; write it out",
+                    construct="WINDOW",
+                )
+            named[_normalized(d.this)] = d
+        sel.set("windows", None)
+        for w in list(sel.find_all(sge.Window)):
+            if w.find_ancestor(sge.Select) is not sel or w.args.get("alias") is None:
+                continue
+            base = named.get(_normalized(w.args["alias"]))
+            if base is None:
+                raise SqlUnsupported(
+                    f"the window {w.args['alias'].name} is not defined in this SELECT",
+                    hint="write the window in its OVER (…), or name one this SELECT defines",
+                    construct="WINDOW",
+                )
+            for key in ("partition_by", "order", "spec"):
+                mine, theirs = w.args.get(key), base.args.get(key)
+                if mine and theirs:
+                    raise SqlUnsupported(
+                        f"OVER ({w.args['alias'].name} …) adds {_WINDOW_PARTS[key]} to the "
+                        "named window, which SQL refuses",
+                        hint="write the whole window in its OVER (…)",
+                        construct="WINDOW",
+                    )
+                if theirs:
+                    w.set(key, theirs.copy())
+            w.set("alias", None)
+    return tree
+
+
+PARSE_REWRITES.extend([_any_value, _named_windows])
 
 #: The relations in FROM of other node types (`VALUES`), each area's: the
 #: relation and its columns, `rule(lf, node)`.
@@ -2018,7 +2549,7 @@ def _distribution(population: bool) -> Json:
 
 def _bool_json(lf: _Lift, e: E) -> Json:
     if not (e.type.is_boolean() or e.type.is_null()):
-        raise SqlUnsupported(f"NOT of a {e.type} is not supported")
+        raise SqlUnsupported(f"NOT of a {e.type} is not supported", construct="NOT")
     return lf.to(e, dt.boolean).json
 
 
@@ -2069,10 +2600,12 @@ def _frame(w: sge.Window, ordered: bool, lf: _Lift | None = None, key: Any = Non
             "boundsType": "BOUNDS_TYPE_RANGE",
         }
     if spec.args.get("exclude"):
-        raise SqlUnsupported("a window frame with EXCLUDE is not supported")
+        raise SqlUnsupported(
+            "a window frame with EXCLUDE is not supported", construct="WINDOW FRAME"
+        )
     kind = (spec.args.get("kind") or "").upper()
     if kind not in ("ROWS", "RANGE"):
-        raise SqlUnsupported(f"{kind} frames are not supported")
+        raise SqlUnsupported(f"{kind} frames are not supported", construct="WINDOW FRAME")
 
     def bound(value: Any, side: str | None) -> Json:
         if isinstance(value, str) and value.upper() == "UNBOUNDED":
@@ -2082,7 +2615,10 @@ def _frame(w: sge.Window, ordered: bool, lf: _Lift | None = None, key: Any = Non
         if isinstance(value, sge.Interval) and lf is not None:
             n = _interval_offset(lf, value, kind, key)
         elif not (isinstance(value, sge.Literal) and not value.is_string and value.this.isdigit()):
-            raise Unsupported(f"frame offset {value} is not supported; use an integer constant")
+            raise Unsupported(
+                f"frame offset {value} is not supported; use an integer constant",
+                construct="WINDOW FRAME",
+            )
         else:
             n = int(value.this)
         if n == 0:
@@ -2101,17 +2637,23 @@ def _interval_offset(lf: _Lift, value: sge.Interval, kind: str, key: Any) -> int
     microseconds for a timestamp, days for a date."""
     if kind != "RANGE" or key is None or not (key.is_timestamp() or key.is_date()):
         raise Unsupported(
-            f"frame offset {_shown(value)} needs a RANGE frame over one timestamp or date"
+            f"frame offset {_shown(value)} needs a RANGE frame over one timestamp or date",
+            construct="WINDOW FRAME",
         )
     months, micros = lf.expr(value, [], Bound()).value
     day = 86_400_000_000
     if months or micros < 0:
         raise Unsupported(
-            f"frame offset {_shown(value)}: months and years have no fixed length; use days or less"
+            f"frame offset {_shown(value)}: months and years have no fixed length; "
+            "use days or less",
+            construct="WINDOW FRAME",
         )
     if key.is_date():
         if micros % day:
-            raise Unsupported(f"frame offset {_shown(value)} over a DATE must be whole days")
+            raise Unsupported(
+                f"frame offset {_shown(value)} over a DATE must be whole days",
+                construct="WINDOW FRAME",
+            )
         return micros // day
     return micros
 
@@ -2199,6 +2741,7 @@ def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
                 raise SqlUnsupported(
                     f"nested aggregates ({_shown(n)}) are not allowed",
                     hint="compute the inner aggregate in a subquery",
+                    construct=_function(n),
                 )
             if n not in found:
                 found.append(n)
@@ -2206,7 +2749,10 @@ def _aggregates(nodes: list[sge.Expression | None]) -> list[sge.Expression]:
         if isinstance(n, sge.Grouping):
             return  # a column of the grouping sets, not a measure
         if isinstance(n, sge.AggFunc):
-            raise SqlUnsupported(f"aggregate {n.sql_name()}() is not supported yet")
+            raise SqlUnsupported(
+                f"aggregate {n.sql_name()}() is not supported yet",
+                construct=_function(n),
+            )
         for child in n.iter_expressions():
             walk(child)
 
@@ -2294,7 +2840,9 @@ def _grouping_value(node: sge.Grouping, keys: list[sge.Expression], s: list[int]
     for a in node.expressions:
         i = next((i for i, k in enumerate(keys) if k == a), None)
         if i is None:
-            raise SqlUnsupported(f"{_shown(node)}: GROUPING of {_shown(a)}, which is not a key")
+            raise SqlUnsupported(
+                f"{_shown(node)}: GROUPING of {_shown(a)}, which is not a key", construct="GROUPING"
+            )
         value = value * 2 + (i not in s)
     return value
 
@@ -2325,7 +2873,8 @@ def _check_numbers(query: str) -> None:
         if re.search(r"(?<!\d)_|_(?!\d)", m.group()):
             raise Unsupported(
                 f"the number {m.group()!r}: an underscore not between two digits is read "
-                "differently by DuckDB and SQLGlot (SG-4); write the number without it"
+                "differently by DuckDB and SQLGlot (SG-4); write the number without it",
+                construct="NUMERIC LITERAL",
             )
 
 
@@ -2352,7 +2901,8 @@ def _check_regex_operators(query: str) -> None:
         if before.token_type in operand:
             raise Unsupported(
                 "the regular expression operator ~ is not supported yet: SQLGlot reads it as "
-                "regexp_full_match, DuckDB as regexp_matches; write regexp_matches(s, p)"
+                "regexp_full_match, DuckDB as regexp_matches; write regexp_matches(s, p)",
+                construct="REGULAR EXPRESSION OPERATOR",
             )
 
 
@@ -2374,7 +2924,8 @@ def _check_intervals(query: str) -> None:
         ):
             raise Unsupported(
                 f"INTERVAL {tok.text!r}: an interval with `ago` is not supported yet (SG-8); "
-                "write a negative interval, INTERVAL '-1' DAY"
+                "write a negative interval, INTERVAL '-1' DAY",
+                construct="INTERVAL",
             )
 
 
@@ -2391,7 +2942,8 @@ def _check_export_state(tree: Any) -> None:
         ):
             raise Unsupported(
                 f"{_shown(a)}: EXPORT_STATE is not supported (SG-9); drop it to read the "
-                "aggregate's value"
+                "aggregate's value",
+                construct="EXPORT STATE",
             )
 
 
@@ -2404,14 +2956,15 @@ def _check_using_stars(tree: Any) -> None:
         for e in node.expressions:
             if isinstance(e, sge.Column) and isinstance(e.this, sge.Star) and e.table:
                 raise Unsupported(
-                    f"{e.table}.* with JOIN … USING is not supported yet; list the columns"
+                    f"{e.table}.* with JOIN … USING is not supported yet; list the columns",
+                    construct="JOIN USING",
                 )
 
 
 def _count(node: sge.Expression, what: str) -> int:
     if isinstance(node, sge.Literal) and not node.is_string and node.this.isdigit():
         return int(node.this)
-    raise Unsupported(f"{what} must be a non-negative integer constant")
+    raise Unsupported(f"{what} must be a non-negative integer constant", construct=f"{what}")
 
 
 def _normalized(name: str) -> str:
@@ -2430,16 +2983,28 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     `semantics` profile ("duckdb" or "reference").
 
     Raises:
-        Unsupported: The query is outside the subset, saying what.
+        Unsupported: The query is outside the subset, saying what; also a
+            query nested deeper than Python's recursion limit.
         ValueError: `semantics` is not a profile.
     """
+    try:
+        return _lift(query, schemas, semantics)
+    except RecursionError:
+        raise Unsupported(
+            "the query is nested too deeply to lift; split it into CTEs",
+            construct="NESTING DEPTH",
+        ) from None
+
+
+def _lift(query: str, schemas: Mapping[str, Any], semantics: str) -> Lifted:
     profile = PROFILES.get(semantics)
     if profile is None:
         raise ValueError(f"semantics must be one of {', '.join(PROFILES)}, not {semantics!r}")
     if profile.null_ordering != sg.Dialect.get_or_raise(DIALECT).NULL_ORDERING:
         raise Unsupported(
             "SQLGlot's DuckDB dialect no longer sorts NULLs as DuckDB does; install the "
-            "SQLGlot release sverify's requirements name"
+            "SQLGlot release sverify's requirements name",
+            construct="NULL ORDERING",
         )
     tree = parse(query, schemas)
     with compiling() as compiler:
@@ -2449,14 +3014,19 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     names = [c.name for c in cols]
     if len(set(names)) != len(names):
         dup = next(n for n in names if names.count(n) > 1)
-        raise Unsupported(f"the query has two output columns named {dup}; alias one of them")
+        raise Unsupported(
+            f"the query has two output columns named {dup}; alias one of them",
+            construct="DUPLICATE OUTPUT COLUMN",
+        )
     for c in cols:
         if c.type.is_interval():
             # The model holds an interval as microseconds; DuckDB keeps its
             # months, days and microseconds apart (`INTERVAL 2 DAYS` is not
             # `48:00:00`), and the written plan returns the microseconds.
             raise SqlUnsupported(
-                f"the INTERVAL output column {c.name} is not supported yet", issue=342
+                f"the INTERVAL output column {c.name} is not supported yet",
+                issue=342,
+                construct="INTERVAL",
             )
     # Every output column may be NULL, as the plan's computed values are
     # (a LEFT JOIN's right side, an aggregate of no rows, …).

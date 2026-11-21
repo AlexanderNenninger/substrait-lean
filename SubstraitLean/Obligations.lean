@@ -1,5 +1,6 @@
 import Lean.Data.Json
 import SubstraitLean.EngineTables
+import Sverify.Engines.Entry
 import Sverify.Polars.Shims
 import Sverify.Spark.Engine
 import Sverify.Core.Allowed
@@ -180,9 +181,6 @@ def obligations (t : ProfileTable) (obs : ObsTable) : List Obligation :=
 /-- The shims a table names, each once, in order. -/
 def shimNames (os : List Obligation) : List String :=
   (os.filterMap fun r => match r.case with | .shim s => some s | _ => none).eraseDups
-
-/-- The shim count (D9's measure of few shims). -/
-def shimTotal (os : List Obligation) : Nat := (shimNames os).length
 
 /-! ## Checks -/
 
@@ -561,7 +559,6 @@ elab "#check_engine_profiles " t:term : command => do
     unless e.evidenced do throwError "{e.name}: a shim or row without evidence or cost"
     unless e.tracked do throwError "{e.name}: a tested or probed row names no issue tracking its proof"
 
-#check_engine_profiles builtinEntries
 
 /-! ## For Python -/
 

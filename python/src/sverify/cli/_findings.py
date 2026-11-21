@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from sverify._user_text import plain
 from sverify.cli import _explain
 
 if TYPE_CHECKING:
     from sverify.cli._discover import Checked, Discovery
+    from sverify.io._common import Drift
     from sverify.io._credentials import CredentialUse
 
 
@@ -44,7 +46,7 @@ def of(c: Checked) -> list[dict[str, Any]]:
         extra: dict[str, Any] = {"condition": cond.label}
         if cond.counterexample is not None:
             extra["counterexample"] = str(cond.counterexample)
-        out.append(_finding(c, code, f"ensures {cond.label}: {cond.why}", **extra))
+        out.append(_finding(c, code, f"{plain(cond.label)}: {cond.why}", **extra))
     for n in r.needs:
         text = f"needs {n.code} on {n.table}"
         if n.issue is not None:
@@ -60,6 +62,65 @@ def of(c: Checked) -> list[dict[str, Any]]:
         out.append(_finding(c, "floats", r.floats_unmet))
     out += [_finding(c, "composition", m) for m in c.links]
     return out
+
+
+def drift(var: str, d: Drift) -> list[dict[str, Any]]:
+    """The findings of a stored node's contract against its sink's record
+    (`--against-sink`): one `contract_weakened` per committed promise it no
+    longer proves, and a `plan_changed` note."""
+
+    def finding(code: str, message: str, condition: str | None = None) -> dict[str, Any]:
+        out = {
+            "code": code,
+            "level": _explain.level_of(code),
+            "message": message,
+            "item": var,
+            "nodes": [var],
+            "line": None,
+        }
+        return out if condition is None else {**out, "condition": condition}
+
+    w = d.weakened
+    out = [
+        finding(
+            "contract_weakened",
+            f"the sink promised {c} IS NOT NULL; not proved now",
+            f"{c} IS NOT NULL",
+        )
+        for c in w["not_null"]
+    ]
+    out += [
+        finding(
+            "contract_weakened", f"the sink promised CHECK ({t}); {d.why.get(t, 'not proved')}", t
+        )
+        for t in w["checks"]
+    ]
+    out += [
+        finding(
+            "contract_weakened",
+            f"the sink promised unique({', '.join(u)}); not proved now",
+            f"unique({', '.join(u)})",
+        )
+        for u in w["unique"]
+    ]
+    if d.plan_changed:
+        old, new = d.profiles
+        text = "the plan differs from the one the sink last committed"
+        if (old or "reference") != new:
+            text += f" (profile {old or 'reference'} then, {new} now)"
+        out.append(finding("plan_changed", text))
+    return out
+
+
+def checked_only(c: Checked) -> dict[str, Any]:
+    """With `--require-proved`: a node whose postconditions are checked on the
+    data, not proved."""
+    return _finding(
+        c,
+        "checked_only",
+        "its unproved postconditions are checked on the data at each refresh "
+        f"({', '.join(c.relaxations) or 'on_unproved'}), and --require-proved asks for a proof",
+    )
 
 
 def unchecked(name: str, d: Discovery) -> dict[str, Any]:

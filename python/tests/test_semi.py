@@ -1,5 +1,5 @@
 """Delta rules for semi and anti joins (`sverify._semi`,
-`SubstraitLean/IncrementalSemi.lean`, #248): the view keeps a count of
+`analysis/Sverify/Analysis/IncrementalSemi.lean`, #248): the view keeps a count of
 matches per key and changes with each batch of either side, and its rows
 equal a full recompute over random change streams."""
 
@@ -54,7 +54,7 @@ def run_stream(seed: int, engine: str, anti: bool, steps: int = 40) -> None:
         lambda o, customers: gold_orders(o, customers, anti=anti), customers=customers
     )
     node.refresh(engine=engine)
-    assert view(node).strategy == "delta rules" and view(node).semi is not None
+    assert view(node).strategy == "state per group" and view(node).semi is not None
     sides = [(orders, "orders", order, ORDERS), (customers, "customers", customer, CUSTOMERS)]
     for _ in range(steps):
         for src, name, make, schema in sides:
@@ -137,7 +137,7 @@ def test_a_composite_key():
 
     node = left.pipe(step, right=right)
     node.refresh()
-    assert view(node).strategy == "delta rules"
+    assert view(node).strategy == "state per group"
     for batch in [
         Changes(inserts=table(schema, [(2, "p", 9), (1, None, 1)])),
         Changes(deletes=table(schema, [(1, "p", 0)])),

@@ -20,7 +20,7 @@ import sverify as sv
 from _repo import ROOT, needs_repo
 from sverify import contracts, routes
 from sverify._checker import _checker_file
-from sverify.errors import UnsupportedError
+from sverify.errors import PreconditionError, UnsupportedError
 from sverify.sql import to_sql
 from sverify_duckdb.dialect import DUCKDB
 
@@ -126,8 +126,7 @@ def test_a_sequence_under_an_order_by_takes_the_rewrite(rules):
 
 
 def test_an_issue_in_the_rewrite_keeps_the_plan_as_written(rules):
-    # The SUM may overflow in both plans: an assumed issue the rewrite keeps,
-    # and no rule has its lemma that it sees no more rows (`Rule.keepsIssues`).
+    # The SUM may overflow in both plans: an assumed issue the rewrite keeps.
     rules(DISTINCT)
     report = sv.verify(
         (d := T.distinct()).aggregate(s=d.a.sum()), requires={"t": [sv.unique("id")]}
@@ -136,10 +135,43 @@ def test_an_issue_in_the_rewrite_keeps_the_plan_as_written(rules):
     assert report._run_gate == "issues"
 
 
+def test_an_issue_the_rewrite_drops_keeps_the_plan_as_written():
+    # The right input's SUM may overflow, an assumed issue, and no column of it
+    # is used: the default rule drops the join, and with it the raise. The
+    # plan as written raises where the SUM overflows, so it runs (#2006).
+    # Doubles compared exactly, so that no other gate keeps it.
+    u = ibis.table({"k": "int64", "v": "int64"}, name="u")
+    sums = u.group_by("k").aggregate(total=u.v.sum())
+    expr = T.left_join(sums, T.g == sums.k).select(T.id, T.g)
+    report = sv.verify(expr, requires=KEY, ensures=[sv.equivalent(floats="exact")])
+    assert "left join on a key, no column used" in report._rewrites
+    assert any(i for i in report.assumed), report.assumed
+    assert report._run_gate == "issues" and report._run_plan is None
+    # An overflowing SUM stops the run, as the reference does.
+    c = con()
+    c.put("u", pa.table({"k": [1, 1], "v": [2**62, 2**62]}))
+    with pytest.raises(PreconditionError, match="SUM of v fits 64 bits"):
+        report.run(c, "polars")
+
+
 def test_doubles_within_a_bound_keep_the_plan_as_written(rules):
     rules(DISTINCT)
     d = ibis.table({"id": "int64", "x": "float64"}, name="d")
     report = sv.verify(d.distinct(), requires={"d": [sv.unique("id")]})
+    assert DISTINCT in report._rewrites
+    assert report._run_gate == "near"
+
+
+def test_a_stated_tolerance_keeps_the_plan_as_written(rules):
+    # `sv.within` coarsens the doubles as `floats="plan"` does, and the verdict
+    # rests on it in the same way (#2105).
+    rules(DISTINCT)
+    d = ibis.table({"id": "int64", "x": "float64"}, name="d")
+    report = sv.verify(
+        d.distinct(),
+        requires={"d": [sv.unique("id")]},
+        ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
+    )
     assert DISTINCT in report._rewrites
     assert report._run_gate == "near"
 

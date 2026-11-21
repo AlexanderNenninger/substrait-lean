@@ -27,17 +27,17 @@ def _found(sql: str, semantics: str = "reference") -> list[str]:
 
 
 def test_each_silent_difference_is_refused_or_listed() -> None:
-    """A `Profile` field in which the reference gives a value (not a raise)
-    and DuckDB another is refused by the lift or has a row; a field that joins
+    """A `Profile` field in which the reference gives a value and DuckDB
+    another value (neither a raise) is refused by the lift or has a row; a field that joins
     with neither fails."""
     keys = {
         f.name
         for f in dataclasses.fields(REFERENCE)
         if f.name != "name"
         and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
-        and getattr(REFERENCE, f.name) != "ERROR"
+        and "ERROR" not in (getattr(REFERENCE, f.name), getattr(DUCKDB, f.name))
     }
-    assert keys == set(_dialect.TABLE) | set(_dialect.REFUSED)
+    assert keys | _dialect.NATIVE == set(_dialect.TABLE) | set(_dialect.REFUSED)
     assert not set(_dialect.TABLE) & set(_dialect.REFUSED)
 
 
@@ -45,8 +45,6 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
     ("sql", "spelling"),
     [
         ("SELECT CAST(x AS BIGINT) AS a FROM t", "CAST(round(x) AS BIGINT)"),
-        ("SELECT CAST(2.7 AS BIGINT) AS a FROM t", "#322"),
-        ("SELECT CAST(d AS BIGINT) AS a FROM t", "#322"),
     ],
 )
 def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
@@ -82,7 +80,7 @@ def test_the_where_of_each_plan_is_named(monkeypatch: pytest.MonkeyPatch) -> Non
 
     def stub(schemas, query, semantics):
         text, _ = real(schemas, query, semantics)
-        return text, (difference("corr_degenerate", "corr(x, y)"),)
+        return text, (difference("corr_degenerate", "function corr", "corr(x, y)"),)
 
     monkeypatch.setattr(contracts, "plan_and_differences", stub)
     r = sv.verify(
@@ -101,6 +99,38 @@ def test_the_where_of_each_plan_is_named(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_the_corr_construct_is_listed() -> None:
     assert _found("SELECT corr(x, y) AS c FROM t") == ["corr_degenerate"]
+
+
+LISTS = {"t": ibis.schema({"l": "array<int64>", "x": "int64"})}
+
+
+def _found_lists(sql: str, semantics: str = "reference") -> list[str]:
+    return [d.key for d in lift(sql, LISTS, semantics).differences]
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT list_contains(l, x) AS c FROM t", "SELECT list_has(l, NULL) AS c FROM t"]
+)
+def test_a_list_contains_with_a_needle_that_may_be_null_is_listed(sql: str) -> None:
+    # DuckDB's own reading differs from the plan's under both semantics.
+    assert _found_lists(sql) == ["list_contains_null_needle"]
+    assert _found_lists(sql, "duckdb") == ["list_contains_null_needle"]
+
+
+def test_a_literal_needle_is_not_listed() -> None:
+    assert _found_lists("SELECT list_contains(l, 5) AS c FROM t") == []
+
+
+def test_the_report_lists_a_list_contains() -> None:
+    r = sv.verify(
+        "SELECT list_contains(l, x) AS c FROM t",
+        tables={"t": {"l": "BIGINT[]", "x": "BIGINT"}},
+        counterexamples=0,
+    )
+    (d,) = r.dialect_differences
+    assert (d.key, d.where) == ("list_contains_null_needle", "the query")
+    assert "FALSE" in d.dialect and "NULL" in d.here
+    assert Report.from_json(r.to_json()).dialect_differences == r.dialect_differences
 
 
 def test_a_construct_is_listed_once() -> None:
@@ -152,3 +182,30 @@ def test_the_docs_name_each_key() -> None:
     section = text.split("## DuckDB SQL under the reference", 1)[1].split("\n## ", 1)[0]
     for key in _dialect.TABLE:
         assert f"`{key}`" in section, key
+
+
+def test_a_difference_has_the_refusal_category_and_the_sql_as_written() -> None:
+    """#700, ruling 126: `construct` is the category `UnsupportedError.construct` uses;
+    `sql` is the text, and what `str` prints."""
+    r = sv.verify("SELECT corr(x, y) AS c FROM t", tables={"t": {"x": "DOUBLE", "y": "DOUBLE"}})
+    (d,) = r.dialect_differences
+    assert d.construct == "function corr"
+    assert d.sql == "CORR(t.x, t.y)"
+    assert str(d).startswith("CORR(t.x, t.y) in the query")
+
+
+@pytest.mark.parametrize("semantics", ["reference", "duckdb"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CAST(d AS BIGINT) AS a FROM t",
+        "SELECT CAST(2.5 AS BIGINT) AS a FROM t",
+        "SELECT CAST(d AS DECIMAL(10, 0)) AS a FROM t",
+    ],
+)
+def test_a_cast_of_a_decimal_rounds_half_away_under_both_semantics(
+    sql: str, semantics: str
+) -> None:
+    """#322: DuckDB's cast of a decimal rounds half away from zero, as the model's rescale
+    does, so the lift reads it as that rescale and the exact cast, whichever the semantics."""
+    assert _found(sql, semantics) == []

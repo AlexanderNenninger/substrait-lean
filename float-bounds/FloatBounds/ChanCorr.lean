@@ -413,6 +413,128 @@ theorem StdModel.epsilon_var_cr (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : 
     _ ≤ |M.fl ((M.vEval p).2.2 / d) - e| + |v - e| := abs_sub _ _
     _ ≤ _ := by linarith
 
+/-- `√a ≤ √b + √c` where `a ≤ b + c`. -/
+theorem sqrt_le_sqrt_add {a b c : ℝ} (hb : 0 ≤ b) (hc : 0 ≤ c) (h : a ≤ b + c) :
+    √a ≤ √b + √c :=
+  calc √a ≤ √((√b + √c) ^ 2) := Real.sqrt_le_sqrt (by
+        nlinarith [Real.sq_sqrt hb, Real.sq_sqrt hc,
+          mul_nonneg (Real.sqrt_nonneg b) (Real.sqrt_nonneg c)])
+    _ = √b + √c := Real.sqrt_sq (by positivity)
+
+/-- **A `STDDEV_*` from a variance within `varTol`**: any engine's
+`fl(√v̂)`, for a variance `v̂ ≥ 0` within `varTol` of `V = S / d` for every
+`r ≥ √(Q' S)`, is within `√τ + u (√V + √τ) + 2u · tiny + u √V` of any `w`
+within `u (√V + tiny)` of `√V`, which the reference's square root of the
+exact variance, rounded once, is; `τ = varTol`. The variance's distance
+passes through the root as `|√a − √b| ≤ √|a − b|`, so no lower bound on `V`
+is needed. -/
+theorem StdModel.stddev_of_var {xs : List ℝ} (hN : xs.length ≤ 2 ^ 32)
+    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 398) {d : ℕ} (hd1 : 1 ≤ d) {vh : ℝ} (hvh0 : 0 ≤ vh)
+    (hvar : ∀ r, √((xs.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL xs)) ≤ r →
+      |vh - comoment (dupL xs) / d| ≤ varTol xs.length d r (xs.map fun x => (|x| + tiny) ^ 2).sum)
+    {r : ℝ} (hr : √((xs.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL xs)) ≤ r)
+    {w : ℝ} (hw : |w - √(comoment (dupL xs) / d)| ≤ u * (√(comoment (dupL xs) / d) + tiny)) :
+    |M.fl √vh - w|
+      ≤ √(varTol xs.length d r (xs.map fun x => (|x| + tiny) ^ 2).sum)
+        + u * (√(comoment (dupL xs) / d)
+          + √(varTol xs.length d r (xs.map fun x => (|x| + tiny) ^ 2).sum))
+        + 2 * u * tiny + u * √(comoment (dupL xs) / d) := by
+  obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
+  have hu1 : u ≤ 1 / 2 ^ 53 := hu'
+  set n : ℕ := xs.length with hn_def
+  set Q := (xs.map fun x => (|x| + tiny) ^ 2).sum with hQ_def
+  set S := comoment (dupL xs) with hS_def
+  set τ := varTol n d r Q with hτ_def
+  have hv := hvar r hr
+  obtain ⟨hS0, hSQ, hQbig⟩ := SQ_facts (qs := xs) (fun x => x) hN hB
+  have hdup : (xs.map fun x => (x, x)) = dupL xs := rfl
+  rw [hdup] at hS0 hSQ
+  have hQ0 : 0 ≤ Q := le_trans hS0 hSQ
+  have hd' : (1 : ℝ) ≤ d := by exact_mod_cast hd1
+  have hnN : (n : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN
+  set V := S / d with hV_def
+  have hV0 : 0 ≤ V := div_nonneg hS0 (by positivity)
+  have hτ0 : 0 ≤ τ := le_trans (abs_nonneg _) hv
+  -- `vh` is far from overflow: `hvar` at `r = √(Q S) ≤ Q`.
+  have hvhb : vh ≤ 2 ^ 1000 := by
+    have hv' := hvar (√Q * √S) le_rfl
+    have hsS : √S ≤ √Q := Real.sqrt_le_sqrt hSQ
+    have hRQ : √Q * √S ≤ Q := by
+      have : √Q * √Q = Q := Real.mul_self_sqrt hQ0
+      have := mul_le_mul_of_nonneg_left hsS (Real.sqrt_nonneg Q)
+      linarith
+    have hnu : (n : ℝ) * u ≤ 1 / 2 ^ 21 := by
+      calc (n : ℝ) * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := mul_le_mul hnN hu1 hu.le (by norm_num)
+        _ = 1 / 2 ^ 21 := by norm_num
+    have hnu0 : 0 ≤ (n : ℝ) * u := by positivity
+    have htiny : tiny ≤ 1 := by unfold tiny; exact pow_le_one₀ (by norm_num) (by norm_num)
+    have hR0 : 0 ≤ √Q * √S := by positivity
+    have hnum : 160 * n * u * (√Q * √S) + 3970 * n ^ 2 * u ^ 2 * Q + 800 * n ^ 2 * u * tiny
+        ≤ 2 * Q + 2 ^ 44 := by
+      have h1 : 160 * n * u * (√Q * √S) ≤ Q := by nlinarith
+      have hsq : ((n : ℝ) * u) * ((n : ℝ) * u) ≤ (1 / 2 ^ 21) * (1 / 2 ^ 21) :=
+        mul_le_mul hnu hnu hnu0 (by norm_num)
+      have h2 : 3970 * n ^ 2 * u ^ 2 * Q ≤ Q := by
+        have := mul_le_mul_of_nonneg_right hsq hQ0
+        have : (3970 : ℝ) * ((1 / 2 ^ 21) * (1 / 2 ^ 21)) ≤ 1 := by norm_num
+        nlinarith
+      have h3 : 800 * n ^ 2 * u * tiny ≤ 2 ^ 44 := by
+        have : (n : ℝ) * (n * u) ≤ 2 ^ 32 * (1 / 2 ^ 21) :=
+          mul_le_mul hnN hnu hnu0 (by norm_num)
+        have : (0 : ℝ) ≤ n * (n * u) := by positivity
+        have : (n : ℝ) ^ 2 * u * tiny ≤ n ^ 2 * u := by
+          have : (0 : ℝ) ≤ n ^ 2 * u := by positivity
+          nlinarith
+        nlinarith
+      linarith
+    have hT : varTol n d (√Q * √S) Q ≤ 2 * Q + 2 ^ 44 := by
+      unfold varTol
+      exact le_trans (div_le_self (by positivity) hd') hnum
+    have hVQ : V ≤ Q := le_trans (div_le_self hS0 hd') hSQ
+    have := (abs_le.mp hv').2
+    have : (3 : ℝ) * 2 ^ 830 + 2 ^ 44 ≤ 2 ^ 1000 := by norm_num
+    linarith
+  -- the engine's root rounds once
+  have hs := Real.sqrt_nonneg vh
+  have hsb : √vh ≤ maxFinite := by
+    have : √vh ≤ vh + 1 := by
+      rw [Real.sqrt_le_left (by linarith)]; nlinarith
+    have hmax := fpFacts.max_ge
+    have : (2 : ℝ) ^ 1000 + 1 ≤ 2 ^ 1023 := by norm_num
+    linarith
+  have he := M.err (√vh) (by rw [abs_of_nonneg hs]; exact hsb)
+  rw [abs_of_nonneg hs] at he
+  -- the variance's distance through the root
+  have hv2 := abs_le.mp hv
+  have hup : √vh ≤ √V + √τ := sqrt_le_sqrt_add hV0 hτ0 (by linarith)
+  have hlo : √V ≤ √vh + √τ := sqrt_le_sqrt_add hvh0 hτ0 (by linarith)
+  have hsq : |√vh - √V| ≤ √τ := abs_le.mpr ⟨by linarith, by linarith⟩
+  have hsu : u * √vh ≤ u * (√V + √τ) := mul_le_mul_of_nonneg_left hup hu.le
+  calc |M.fl √vh - w| = |(M.fl √vh - √vh) + (√vh - √V) - (w - √V)| := by ring_nf
+    _ ≤ |M.fl √vh - √vh| + |√vh - √V| + |w - √V| := by
+        have h1 := abs_sub ((M.fl √vh - √vh) + (√vh - √V)) (w - √V)
+        have h2 := abs_add_le (M.fl √vh - √vh) (√vh - √V)
+        linarith
+    _ ≤ _ := by nlinarith
+
+/-- **`"abs"` of a `STDDEV_*` against the reference (D30)**: DuckDB's
+`fl(√fl(M₂ / d))` is within `√τ + u (√V + √τ) + 2u · tiny + u √V` of any
+`w` within `u (√V + tiny)` of `√V`, which the reference's square root of the
+exact variance `V = S / d`, rounded once, is; `τ` is `core_var_chan`'s
+`varTol` (`stddev_of_var`). -/
+theorem StdModel.epsilon_stddev_cr (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p.vals ≠ [])
+    (hN : p.vals.length ≤ 2 ^ 32) (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 398)
+    (hx : ∀ x ∈ p.vals, OnGrid x ∧ M.fl x = x) {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ p.vals.length)
+    {r : ℝ} (hr : √((p.vals.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL p.vals)) ≤ r)
+    {w : ℝ} (hw : |w - √(comoment (dupL p.vals) / d)| ≤ u * (√(comoment (dupL p.vals) / d) + tiny)) :
+    |M.fl √(M.fl ((M.vEval p).2.2 / d)) - w|
+      ≤ √(varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum)
+        + u * (√(comoment (dupL p.vals) / d)
+          + √(varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum))
+        + 2 * u * tiny + u * √(comoment (dupL p.vals) / d) :=
+  M.stddev_of_var hN hB hd1 (M.core_var_chan hg hmo p hne hN hB hx hd1 hdn hr).1
+    (fun _ h => (M.core_var_chan hg hmo p hne hN hB hx hd1 hdn h).2) hr hw
+
 /-- **`"abs"` of a `COVAR_*` against the reference (D30)**: an engine's
 `fl(C / d)` (`core_cov_chan`) is within `covTol + u · |C / d|` of any `v`
 within `u` of `C / d`, relatively, which the reference's `covOf` is. -/
@@ -446,6 +568,6 @@ open Lean in
 run_cmd do
   for thm in ["FloatBounds.StdModel.core_var_chan", "FloatBounds.StdModel.core_cov_chan",
       "FloatBounds.StdModel.core_corr_chan", "FloatBounds.StdModel.epsilon_var_cr",
-      "FloatBounds.StdModel.epsilon_cov_cr"] do
+      "FloatBounds.StdModel.epsilon_stddev_cr", "FloatBounds.StdModel.epsilon_cov_cr"] do
     unless (← getEnv).contains thm.toName do
       throwError "no theorem {thm}"

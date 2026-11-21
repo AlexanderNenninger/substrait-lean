@@ -24,7 +24,7 @@ jobs:
       - uses: ./.github/actions/setup
       # Annotations on the transforms that are not proved, the contract on
       # the job's summary page, and comment.md for the pull request.
-      - run: python scripts/lake.py check --out check.json --comment comment.md
+      - run: python scripts/lake.py check --require-proved --out check.json --comment comment.md --plans plans
       - if: always() && github.event_name == 'pull_request' && hashFiles('comment.md') != ''
         # A pull request from a fork gets a read-only token: no comment there.
         continue-on-error: true

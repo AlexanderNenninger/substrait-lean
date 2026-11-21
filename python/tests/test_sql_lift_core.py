@@ -6,6 +6,8 @@ the other areas are in `test_sql_lift_<area>.py`."""
 
 import json
 import re
+import subprocess
+import sys
 from typing import Any
 
 import duckdb
@@ -56,9 +58,15 @@ QUERIES = [
     "SELECT id, sqrt(amount + 1) AS s, ln(amount + 1) AS l, log(amount + 1) AS lg,"
     " log2(amount + 1) AS l2, log(3, amount + 1) AS lb, exp(qty) AS e, sin(price) AS si"
     " FROM orders",
+    # `radians` and `degrees` multiply by DuckDB's constants (#1938).
+    "SELECT id, radians(price) AS r, degrees(price) AS d, radians(qty) AS rq FROM orders",
     "SELECT id, amount / 0 AS inf, price / 0 AS p FROM orders",
     # The written plan's division of two double literals (#96, fixed with #335).
     "SELECT 7 / 2 AS h",
+    # Nested double arithmetic: its operands are bound to columns first (#1952),
+    # and under a CASE they are not.
+    "SELECT id, price / qty / amount * price - price + qty AS x,"
+    " CASE WHEN qty > 2 THEN price / qty / amount ELSE 0 END AS y FROM orders",
 ]
 
 
@@ -81,8 +89,8 @@ def test_the_profiles_differ_only_in_what_functions_do():
     fields = DUCKDB.__dataclass_fields__
     assert {f for f in fields if getattr(DUCKDB, f) != getattr(REFERENCE, f)} == {
         "name",
+        "min_mod_neg_one",
         "float_to_int",
-        "decimal_to_int",
         "domain_error",
         "log_zero",
         "corr_degenerate",
@@ -124,6 +132,30 @@ def test_division_states_its_meaning():
     for plan in (duck, ref):
         assert {**zero, "preference": ["ERROR"]} in options(plan, "divide")[1]
     assert lift(query, SCHEMAS).schema == ibis.schema({"r": "float64", "q": "int64"})
+
+
+def test_nested_double_arithmetic_lifts_to_a_linear_plan():
+    # Each double operation's template names its operands several times; the
+    # lift binds a nested operand to a column, so every further division adds
+    # the same size (#1952). Copied, the plan grew fourfold per division.
+    def size(n: int) -> int:
+        query = "SELECT " + " / ".join(f"c{i}" for i in range(n)) + " AS s FROM t"
+        schema = ibis.schema({f"c{i}": "float64" for i in range(n)})
+        return len(json.dumps(lift(query, {"t": schema}, "duckdb").plan))
+
+    assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
+
+
+def test_nested_double_arithmetic_checks_quickly():
+    # The check end to end, in a subprocess with a timeout: six divisions took
+    # 193 s before #1952, ten now take a few seconds.
+    script = (
+        "import ibis, sverify as sv\n"
+        "cols = {f'c{i}': 'float64' for i in range(10)}\n"
+        "sv.verify('SELECT ' + ' / '.join(cols) + ' AS s FROM t',"
+        " tables={'t': ibis.table(cols, name='t')}, semantics='duckdb', on_inferred='warn')\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
 
 
 def test_constants_compared_with_a_narrow_column_take_its_type():
@@ -554,3 +586,50 @@ def test_a_folded_constant_is_not_a_literal():
     schema = {"t": ibis.schema({"v": "int8"})}
     assert lift("SELECT v + (50 + 50) AS x FROM t", schema).schema["x"] == dt.int32
     assert lift("SELECT v + CAST(100 AS INTEGER) AS x FROM t", schema).schema["x"] == dt.int32
+
+
+@pytest.mark.parametrize("width", [64, 32])
+def test_a_lens_remainder_lists_min_mod_neg_one(width):
+    """DuckDB raises at `MIN % -1`, where the reference's 0 fits (#2058): under
+    `semantics="duckdb"` the issue is listed, and a bound on either operand
+    discharges it; under the reference there is none. A literal divisor
+    needs no guard."""
+    t = ibis.table({"a": f"int{width}", "b": f"int{width}"}, name="t")
+    low = -(2 ** (width - 1))
+
+    def verify(semantics, requires, sql="SELECT a % b AS m FROM t"):
+        return sv.verify(
+            sql,
+            tables={"t": t},
+            semantics=semantics,
+            requires={"t": [requires]},
+            on_inferred="off",
+            counterexamples=0,
+        )
+
+    unbounded = verify("duckdb", "b <> 0")
+    assert unbounded.verdict != sv.Verdict.PROVED
+    assert any("MIN % -1" in str(i) for i in unbounded.issues)
+    for bound in ("b > 0", f"b <> 0 AND a > {low + 1}"):
+        assert verify("duckdb", bound).verdict == sv.Verdict.PROVED
+    assert verify("reference", "b <> 0").verdict == sv.Verdict.PROVED
+    assert (
+        verify("duckdb", "a IS NOT NULL", "SELECT a % 7 AS m FROM t").verdict == sv.Verdict.PROVED
+    )
+
+
+def test_the_remainder_verdict_does_not_depend_on_the_engine():
+    """An engine changes whether a plan is accepted, never what it means
+    (#2058, ruling 206): the lens's `a % b` is one plan, whatever engine runs
+    it. DuckDB, Polars and Spark list its guard and accept it; an engine that
+    does not refuses it by naming the guard."""
+    from sverify import _support
+    from sverify.engine import connect, put_table, substrait_json, written_plan
+
+    con = connect()
+    put_table(con, "r", pa.table({"a": pa.array([1], pa.int64()), "b": pa.array([1], pa.int64())}))
+    plan = json.loads(written_plan(substrait_json(con, "SELECT a % b AS m FROM r", "duckdb")))
+    for engine in ("duckdb", "polars", "spark"):
+        _support.check(plan, engine)
+    with pytest.raises(ValueError, match="integer % under semantics="):
+        _support.check(plan, "snowflake")

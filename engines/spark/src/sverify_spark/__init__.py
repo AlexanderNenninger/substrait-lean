@@ -34,8 +34,8 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
         "install both from the same release (`pip install -U sverify sverify-spark`)"
     )
 
-from sverify._unsupported import ISSUE_271, RANGE_GUARD
-from sverify.profiles import ProfilePlugin, Setting
+from sverify._unsupported import ISSUE_271, MIN_MOD_GUARD, RANGE_GUARD
+from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_spark.store import SparkStore
 
 #: The settings Spark's profile assumes.
@@ -116,7 +116,7 @@ DEFAULTS: Mapping[str, str] = {
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: bool, tie_free: bool
+    con: Any, plan_json: str, session: Any, *, keep: bool, finite: Finite, tie_free: bool
 ) -> Any:
     from sverify.engine import _rename_tables, read_tables
     from sverify_spark import engine as spark_engine
@@ -225,7 +225,6 @@ PLUGIN = ProfilePlugin(
     installed_version=_version,
     restore=_restore,
     runner=_run,
-    checks_assumed=True,
     rows=ROWS,
     session=_is_session,
     modules=("pyspark",),
@@ -238,7 +237,7 @@ PLUGIN = ProfilePlugin(
             ISSUE_271,
         )
     },
-    guards=(RANGE_GUARD,),
+    guards=(RANGE_GUARD, MIN_MOD_GUARD),
     # `collect()` of an unordered list (the dialect refuses an ordered one).
     functions=frozenset({"array_agg"}),
     shim_text={"null_order": "NULLs sorted as the reference sorts them"},

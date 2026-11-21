@@ -269,6 +269,7 @@ TIES_OPEN = {
     "rolling sum (range)",
     "rolling sum (interval)",
     "sum over group",
+    "window over expressions",
     "running mean",
     "rolling mean (rows)",
     "rolling mean (interval)",
@@ -328,7 +329,14 @@ def test_spark_agrees_with_duckdb(con, data):
             with pytest.raises(Exception, match="(?i)sverify|overflow|cast"):
                 query(sql)
             continue
-        got = query(sql)
+        try:
+            got = query(sql)
+        except Exception as error:
+            # IEEE division (`cot` is `1 / tan`) raises on Spark at a zero
+            # divisor, where DuckDB gives ±inf: `sparkBin .fdivIeee` (ruling 161).
+            if '"IEEE"' in plan and "DIVIDE_BY_ZERO" in str(error):
+                continue
+            raise
         if case.label in coverage.APPROXIMATE | coverage.APPROXIMATE_SPARK:
             got, duck = approximately(got), approximately(duck)
         root = parse_plan(json.loads(plan)).root

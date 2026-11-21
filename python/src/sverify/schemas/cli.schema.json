@@ -9,8 +9,8 @@
     "format": {"description": "The version of this format.", "const": 1},
     "sverify": {"description": "The version of sverify that wrote the document.", "type": "string"},
     "command": {"description": "The command.", "enum": ["check", "refresh", "explain"]},
-    "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported or refused, 4 time or memory budget exceeded, 5 a refresh quarantined rows or held a node, 6 error.", "type": "integer", "minimum": 0, "maximum": 6},
-    "status": {"description": "The exit code in words. 1.x may add values.", "type": "string", "examples": ["proved", "not_proved", "usage", "unsupported", "budget_exceeded", "quarantined", "held", "error"]},
+    "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh quarantined rows, 6 error, 7 refused (no route to the engine), 8 a refresh held a node.", "type": "integer", "minimum": 0, "maximum": 8},
+    "status": {"description": "The exit code in words. 1.x may add values.", "type": "string", "examples": ["proved", "not_proved", "usage", "unsupported", "budget_exceeded", "quarantined", "error", "refused", "held"]},
     "file": {"description": "The pipeline's file, as given.", "type": "string"},
     "target": {"description": "The node or transform asked for (file.py:<target>); null for the whole file.", "type": ["string", "null"]},
     "items": {
@@ -31,6 +31,24 @@
       "type": "object",
       "required": ["timeout", "elapsed"],
       "properties": {"timeout": {"type": "number"}, "elapsed": {"type": "number"}}
+    },
+    "drift": {
+      "description": "check --against-sink (#769): per stored node, its contract against the one its sink last committed; null where the sink has committed none. A promise is weakened when the node no longer proves it (contract_weakened); checks are SQL texts.",
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "null"},
+          {
+            "type": "object",
+            "required": ["weakened", "added", "plan_changed"],
+            "properties": {
+              "weakened": {"$ref": "#/$defs/promises"},
+              "added": {"$ref": "#/$defs/promises"},
+              "plan_changed": {"type": "boolean"}
+            }
+          }
+        ]
+      }
     },
     "fixes": {
       "description": "check --fix and --diff: the preconditions each transform needs, per parameter, as code for requires=.",
@@ -83,18 +101,28 @@
     },
     "outcome": {"description": "refresh: \"ok\", \"quarantined\" or \"held\".", "type": "string"},
     "alert": {"description": "refresh: Refresh.alert(), what needs attention when rows were quarantined or a node held; null otherwise. It shows rows only with --examples.", "type": ["string", "null"]},
-    "memory_limit": {"description": "refresh: the --memory-limit given, if any.", "type": ["string", "null"]},
+    "memory_limit": {"description": "refresh: the --memory-limit given, if any: DuckDB's memory_limit and Spark's driver memory; it does not reach Polars.", "type": ["string", "null"]},
     "code": {"description": "explain: the code, in snake case.", "type": "string"},
     "level": {"description": "explain: the code's level.", "enum": ["error", "warning", "note"]},
     "text": {"description": "explain: what the code means and how to fix it.", "type": "string"}
   },
   "$defs": {
+    "promises": {
+      "type": "object",
+      "required": ["not_null", "checks", "unique"],
+      "properties": {
+        "not_null": {"type": "array", "items": {"type": "string"}},
+        "checks": {"type": "array", "items": {"type": "string"}},
+        "unique": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
+      }
+    },
     "item": {
       "type": "object",
       "required": ["name", "nodes", "status", "summary", "links", "report"],
       "properties": {
         "name": {"description": "The transform's name.", "type": "string"},
         "nodes": {"description": "The file's variables that hold the node this application built.", "type": "array", "items": {"type": "string"}},
+        "relaxations": {"description": "The settings of this transform that weaken its gate, as written in the file: on_unproved=\"check\" or \"warn\", on_inferred=\"warn\", \"ignore\" or \"off\", check_requires=False. Empty when the gate is the default. A CI step can diff them between base and head.", "type": "array", "items": {"type": "string"}},
         "status": {"description": "proved; checked (every postcondition it does not prove is checked on the data at each refresh); not_proved; or unfinished (the time budget ran out first).", "enum": ["proved", "checked", "not_proved", "unfinished"]},
         "summary": {
           "description": "The contract in plain words; null when unfinished.",

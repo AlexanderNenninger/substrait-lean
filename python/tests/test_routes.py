@@ -8,6 +8,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _repo import ROOT, needs_repo
 from sverify import routes
 from sverify.errors import PreconditionError
 
@@ -143,21 +144,28 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     assert strict.refused and "rerun must give the same result" in strict.reason
 
 
-def test_sequence_needs_a_sorted_result(con) -> None:
+def test_sequence_needs_a_total_sort(con) -> None:
+    """`rows="sequence"` needs a result the plan orders without ties: sorted
+    on columns that contain a key of its input (`check_sequence_determined_sound`).
+    A result sorted on a non-key keeps its ties open."""
     t = con.table("t")
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
     assert "not sorted" in routes.choose(unsorted, "duckdb").reason
-    ordered = sv.verify(
-        t.select("k", "i").order_by([ibis.asc("k", nulls_first=True), "i"]),
-        requires=req,
-        ensures=[seq],
-    )
-    assert routes.choose(ordered, "duckdb").kind == "translated"
+    order = [ibis.asc("k", nulls_first=True), "i"]
+    tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
+    assert not tied._sequence_determined
+    assert "not sorted on a key" in routes.choose(tied, "duckdb").reason
+    keyed = {"t": [*req["t"], sv.unique("k", "i")]}
+    total = sv.verify(t.select("k", "i").order_by(order), requires=keyed, ensures=[seq])
+    assert total._sequence_determined
+    assert routes.choose(total, "duckdb").kind == "translated"
 
 
 def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D70: a probed version claims in full, an unprobed patch warns, an
+    unprobed minor or major is refused."""
     versions = {"duckdb": "2.0.0", "polars": "2.1.0", "spark": "4.3.0"}
     monkeypatch.setattr(
         routes,
@@ -166,10 +174,18 @@ def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert routes.check_version("duckdb", "2.0.0") is None
     assert routes.check_version("outside", "1.0.0") is None
-    with pytest.warns(routes.EngineVersionWarning, match="polars 2.2.0"):
-        assert routes.check_version("polars", "2.2.0")
-    with pytest.raises(routes.EngineVersionError, match="needs its facts probed again"):
-        routes.check_version("duckdb", "3.0.0")
+    with pytest.warns(
+        routes.EngineVersionWarning,
+        match="2.1.0 does, and an unproved run relies on 2.1.3's own errors",
+    ):
+        assert routes.check_version("polars", "2.1.3")
+    for v in ("2.2.0", "2.0.9", "3.0.0", "nightly"):
+        with pytest.raises(
+            routes.EngineVersionError, match=r"install a version of polars in >=2\.1\.0,<2\.2"
+        ):
+            routes.check_version("polars", v)
+    with pytest.raises(routes.EngineVersionError, match="unverified=True"):
+        routes.check_version("duckdb", "2.1.0")
     # The checker's profiles are the only source of the versions.
     monkeypatch.setattr(
         routes,
@@ -179,12 +195,68 @@ def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     assert routes.check_version("duckdb", "3.0.0") is None
 
 
+#: Installed versions that are not yet probed versions, with the issue that closes each.
+UNPROBED = {"duckdb": "2.0.1"}
+
+
+def test_the_range_is_the_probed_minors() -> None:
+    assert routes._version_range(("2.0.0",)) == ("2.0.0", "2.1")
+    assert routes._version_range(("2.0.2", "2.0.1", "2.1.0")) == ("2.0.1", "2.2")
+    assert routes._version_range(("py-1.2.3",)) == ("1.2.3", "1.3")
+    assert routes._version_range(()) is None
+    probed = ("2.0.1", "2.1.0")
+    assert [routes._in_range(v, probed) for v in ("2.0.0", "2.0.1", "2.0.7", "2.1.4", "2.2.0")] == [
+        False,
+        True,
+        True,
+        True,
+        False,
+    ]
+
+
+#: Each engine package's own dependency on its engine (D70, V1), and
+#: sverify-dbt's on DuckDB.
+_BOUNDS = {
+    "duckdb": ("engines/duckdb/pyproject.toml", "duckdb"),
+    "polars": ("engines/polars/pyproject.toml", "polars"),
+    "spark": ("engines/spark/pyproject.toml", "pyspark"),
+    "dbt": ("dbt/pyproject.toml", "duckdb"),
+}
+
+
+@needs_repo
+@pytest.mark.parametrize("package", sorted(_BOUNDS))
+def test_the_package_bound_is_the_profiles_range(package: str) -> None:
+    """The bound is the profile's range, written in the profile once: a bump
+    of the probed versions moves the bound with it, and no released package
+    allows an install its guard refuses (V7)."""
+    import tomllib
+
+    from packaging.requirements import Requirement
+
+    path, dist = _BOUNDS[package]
+    meta = tomllib.loads((ROOT / path).read_text())
+    reqs = [
+        *meta["project"].get("dependencies", ()),
+        *(r for rs in meta["project"].get("optional-dependencies", {}).values() for r in rs),
+    ]
+    found = {str(Requirement(r).specifier) for r in reqs if Requirement(r).name == dist}
+    engine = "duckdb" if package == "dbt" else package
+    versions = routes.profiles()[engine].versions
+    # One probed minor (D70 at 1.0): only then is the range one bound.
+    assert len({r[:2] for v in versions if (r := routes._release(v))}) == 1
+    floor, ceiling = routes._version_range(versions) or ("", "")
+    assert found == {f"<{ceiling},>={floor}"}, path
+
+
 def test_installed_versions_are_the_probed_ones() -> None:
     """The pinned engines match their profiles' facts; bump the facts with the pins."""
     found = {e: p for e, p in routes.profiles().items() if e in ("duckdb", "polars", "spark")}
     assert set(found) == {"duckdb", "polars", "spark"}
     for engine, prof in found.items():
-        assert routes.installed_version(engine) in prof.versions, engine
+        installed = routes.installed_version(engine)
+        # DuckDB 2.0.1 is locked, with facts probed; its `alsoProbed` follows C2′ (#2045).
+        assert installed in prof.versions or installed == UNPROBED.get(engine), engine
 
 
 def _verdict(cls="exact", evidence="proved", observed=(), shims=(), problems=(), **kw) -> dict:
@@ -420,3 +492,24 @@ def test_a_failed_transfer_check_is_not_kept(monkeypatch) -> None:
     assert routes._transfer("checker", "{}") == '{"ok": true}'
     assert len(calls) == 2
     routes._answer.cache_clear()
+
+
+# -- the engine version a report's profile describes (#710) ---------------------------
+
+
+def test_engine_version_is_the_profiles():
+    sql, tables = "select k from t", {"t": {"k": "BIGINT"}}
+    r = sv.verify(sql, tables=tables, semantics="duckdb")
+    assert r.engine_version == routes.probed_version("duckdb") is not None
+    assert sv.Report.from_json(r.to_json()).engine_version == r.engine_version
+    assert sv.verify(sql, tables=tables).engine_version is None
+
+
+def test_a_sessions_own_version_decides() -> None:
+    """V6: a session of the caller's (a Spark session) reports its version."""
+
+    class Session:
+        version = "4.3.1"
+
+    assert routes.session_version(Session()) == "4.3.1"
+    assert routes.session_version("spark") is None

@@ -191,7 +191,8 @@ still needs the precondition. Guarding the division itself,
 where none applies. The route names the plan's class on that engine:
 `exact` (every result the engine gives, the reference allows), `observed`
 (equal under an observation the postcondition states, a float tolerance
-included), `shim` (after a proved translation) or `refused`
+included), `shim` (after shims proved against the model of the engine's
+functions) or `refused`
 ([how a route is chosen](verifying.md),
 [route classes](verifying.md)).
 
@@ -225,11 +226,11 @@ r = con.table("readings")
 mean_x = r.group_by("k").aggregate(mean_x=r.x.mean())
 bounded = {"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]}
 means = sv.verify(mean_x, requires=bounded)
-print(means.observation)
+print(means.lenses)
 # equivalent(elements='multiset', floats=plan, ≤ 1.1e-10, zeros='canon')
 on_duckdb = means.run(con, "duckdb", route="auto")
 on_polars = means.run(con, "polars", route="auto")
-print(means.equivalence.equal(on_duckdb, on_polars))
+print(means.lenses.equal(on_duckdb, on_polars))
 # True
 ```
 
@@ -248,12 +249,12 @@ tight = sv.verify(mean_x, requires=bounded, ensures=[sv.equivalent(floats=sv.wit
 print(tight.verdict == sv.Verdict.PROVED)
 # False
 print(tight.details())
-# observes: equivalent(floats=within(abs=1e-12)); the plan's bound on its doubles is 1.1e-10; NOT met: no engine meets the tolerance
+# lenses: equivalent(floats=within(abs=1e-12)); the plan's bound on its doubles is 1.1e-10; NOT met: no engine meets the tolerance
 #   on duckdb: agg.fsum's sum_order: mean_x is within abs=1.11577e-10 of the reference, and the postcondition asks within(abs=1e-12): state sv.equivalent(floats=sv.within(abs=2e-10)) or looser in ensures, ...
 ```
 
 `floats="exact"` asks for the same bits, and the report lists the engines
-that give them on its `observes:` line: for this mean, none.
+that give them on its `lenses:` line: for this mean, none.
 
 Three helpers state what a postcondition observes:
 
@@ -318,7 +319,7 @@ print(totals.refresh(engine="polars", route="auto"))
 
 The second refresh adds the insert to its group's exact sum and rounds it
 once, without reading the input
-([`LinearAgg.fsum_no_drift`](../SubstraitLean/IncrementalFloat.lean)). A result
+([`LinearAgg.fsum_no_drift`](../analysis/Sverify/Analysis/IncrementalFloat.lean)). A result
 not determined up to row order, such as a `LIMIT` over ties, is refused by
 every sink.
 
@@ -509,7 +510,7 @@ The most common, and what sverify does about each:
 | NULL join keys | SQL engines never match them; pandas `merge` does, Polars with `nulls_equal=True` | the reference's semantics, on every engine; proofs use it (`merchant` is never NULL after `a.merchant = b.merchant`) |
 | Integer division | PostgreSQL truncates; DuckDB and Spark give a double; Snowflake a NUMBER with extra scale | truncates on every engine |
 | Division by zero (14 queries) | Snowflake and PostgreSQL raise; DuckDB returns NULL; Polars null or inf | proved impossible, or reported as `may fail` before the job runs |
-| Integer overflow | Polars wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; the engines raise there. A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
+| Integer overflow | Polars wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; at the probed versions DuckDB and Spark raise there ([DuckDB](../engines/duckdb/facts/duckdb-R15-int-arith.json), [Spark](../engines/spark/facts/spark-int-arith.json)) and Sverify guards Polars ([Polars](../engines/polars/facts/polars-int-arith.json)). A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows | refused; write an anti join |
 | Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](tasks.md#guards)); a constant that raises makes the whole plan raise |
@@ -536,8 +537,11 @@ exactly what is proved and what each result rests on.
    recompute, which runs on the inserts and deletes
    alone.
 4. For each engine, sverify writes the checked plan with every choice
-   spelled out and a proved shim where the engine differs from the
-   reference, and the route says how the proof carries over.
+   spelled out and a shim where the engine differs from the reference. The
+   shims and DuckDB's lowering are proved against the model of each engine's
+   functions, the Polars and Spark translations are tested
+   ([what is trusted](trusted-base.md)), and the route says how the proof
+   carries over.
 
 [how-it-works.md](how-it-works.md) follows each step in detail, with the
 checker's output; [reference-semantics.md](reference-semantics.md) says

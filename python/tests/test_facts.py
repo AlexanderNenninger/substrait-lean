@@ -1,4 +1,4 @@
-"""The engine facts (`characterization/<engine>/facts/*.json`) are well-formed:
+"""The engine facts (`engines/<engine>/facts/*.json`) are well-formed:
 each follows `fact.schema.json`, ids are unique and name their files, and the
 files, probes and facts they point at exist."""
 

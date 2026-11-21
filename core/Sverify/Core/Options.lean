@@ -362,6 +362,10 @@ structure ProfileTable where
   /-- The engine version (or range) the facts were probed at (D14); `""` for
   the reference and the core. -/
   version : String := ""
+  /-- Later versions the profile holds at (D70, ruling 199): each version's record exists, and
+  every fact that a lowering, a shim or a check reads matched there or is superseded on the error
+  side. The first of `version :: alsoProbed` is the one the tables were written at. -/
+  alsoProbed : List String := []
   /-- Functions the engine has no expression for, by Substrait name, with the
   facts that say so: a plan that calls one is refused there. -/
   missing : List (String × List String) := []

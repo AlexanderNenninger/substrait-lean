@@ -14,6 +14,12 @@ tables `t` and change tables `t$delta` (the same columns plus a trailing
 `__weight`); its output is the change to the result, with a trailing
 `__weight` column.
 
+`substrait-check --reads plan.json`: for each table the plan reads, the
+0-based columns of it the plan's output needs (`Rel.colsOf`), as JSON
+`{"t": [0, 2]}`, or `"all"` outside the incremental fragment. A store that
+keeps those columns of the table, consolidated, gives the view
+(`Rel.zeval_prune`, #1329).
+
 `substrait-check --contract contract.json`: try to prove postconditions from
 preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
 and print a JSON report.
@@ -48,6 +54,11 @@ anywhere in the plan, its name on one line, or nothing: every filter,
 projection, join and aggregate evaluates its expressions on the rows its
 input gives. What `sverify.testing.lean_values` reads to raise `LeanRaised`.
 
+`substrait-check --assumed plan.json`: the first assumed issue (a `SUM` that
+leaves its type, an operation on finite doubles that gives `±∞`) the plan
+runs into on its data, as `Rel.HasIssue` states it, or nothing. The oracle of
+the assumed check's tests (`tests/test_assumed_check.py`, #2018).
+
 `substrait-check --rows plan.json`: the default check's well-formedness
 verdict and rows only, without the plan, its round trip or its other
 facts: what the counterexample search reads (#825).
@@ -74,7 +85,7 @@ def generatedChecked : Bool := generated_checked%
 at startup (`sverify.engine.PROTOCOL`): bump both when the output of a mode
 changes shape (a JSON field added, renamed or dropped, a new mode), so that a
 stale build fails with a clear message instead of a `KeyError`. -/
-def protocol : Nat := 2
+def protocol : Nat := 3
 
 /-- Shared static checks; `none` means the plan passed. -/
 def checkPlan (plan : Plan) : Option (UInt32 × String) :=
@@ -107,6 +118,24 @@ def delta (plan : Plan) : IO UInt32 := do
   if !d.isIncremental || !d.checkWF (Write.deltaCatalog plan) then
     IO.eprintln "the delta plan failed its static checks"; return 2
   IO.println (Write.writeDeltaPlan plan d).compress
+  return 0
+
+/-- `--reads`: the columns of each table the plan needs. `Rel.zeval_prune`
+proves a store keeping a superset of them, consolidated, gives the view: the
+set printed is `S` with `Rel.readsOnly` true, for a well-formed incremental
+plan. -/
+def reads (plan : Plan) : IO UInt32 := do
+  if let some (code, msg) := checkPlan plan then
+    IO.eprintln msg; return code
+  let cat := plan.catalog
+  let r := plan.root
+  let cols (t : String) : Lean.Json :=
+    -- `isIncremental_iff`: this decides `Rel.Incremental`, which the theorem needs.
+    if r.isIncremental then
+      .arr ((r.colsOf cat t (List.range (r.arity cat))).eraseDups.mergeSort.map
+        (fun i => Lean.toJson i)).toArray
+    else .str "all"
+  IO.println (Lean.Json.mkObj (r.tables.eraseDups.map fun t => (t, cols t))).compress
   return 0
 
 /-- A result value, printed by its column's kind: integers (unbounded in the
@@ -226,6 +255,42 @@ def raises (plan : Plan) : IO UInt32 := do
     IO.println e
   return 0
 
+/-- The first assumed issue (`Issue.assumed`) the plan as written runs into on
+its data, evaluated as `Rel.HasIssue` states it: `Expr.issues` on every row an
+operator evaluates (its loose input under a filter or join, `Rel.loose`), and
+per group the true `SUM` (`Measure.sumOk`) and an aggregate of finite doubles
+that is `±∞` (`Measure.makesInf`). A window's aggregates are not evaluated:
+none where the plan has one. The test oracle of the assumed check (#2018). -/
+def relAssumed (cat : Catalog) : Bool → Rel → Option (Issue × Expr)
+  | _, .read _ | _, .values _ _ => none
+  | _, .filter r c => relAssumed cat true r <|> exprAssumed (r.loose.evalFast cat) [c]
+  | u, .project r es =>
+    relAssumed cat u r <|> exprAssumed ((if u then r.loose else r).evalFast cat) es
+  | u, .emit r _ | u, .fetch r _ _ | u, .orderBy r _ | u, .distinct r | u, .unnest r _ =>
+    relAssumed cat u r
+  | _, .window _ _ _ _ => none
+  | u, .cross a b | u, .unionAll a b => relAssumed cat u a <|> relAssumed cat u b
+  | _, .join a b _ on | _, .semi a b _ on =>
+    relAssumed cat true a <|> relAssumed cat true b <|>
+      exprAssumed ((Rel.cross a.loose b.loose).evalFast cat) [on]
+  | u, .aggregate r gs ms =>
+    let rows := r.evalFast cat
+    relAssumed cat u r <|>
+      exprAssumed ((if u then r.loose else r).evalFast cat) (gs ++ ms.flatMap Measure.exprs) <|>
+      ms.findSome? fun m => (aggGroups gs rows).findSome? fun grp =>
+        if m.fn = .sum ∧ !m.sumOk (intSum (m.inputs grp)) then some (.sumWraps, m.arg)
+        else if m.makesInf grp then some (.infinite, m.arg) else none
+where
+  exprAssumed (rows : Relation) (es : List Expr) : Option (Issue × Expr) :=
+    rows.findSome? fun row => es.findSome? fun e => (e.issues row).find? (·.1.assumed)
+
+/-- `--assumed`: the first assumed issue the plan runs into on its data
+(`relAssumed`), printed as its name; nothing where it runs into none. -/
+def assumed (plan : Plan) : IO UInt32 := do
+  if let some (i, _) := relAssumed plan.catalog false plan.root then
+    IO.println (Issue.name i)
+  return 0
+
 /-- `spec`: evaluate with `Rel.eval`, the specification, in place of
 `Rel.evalFast` (equal by `Rel.evalFast_eq`; `--eval-spec`, for tests).
 `full := false` prints only the well-formedness verdict and the rows
@@ -291,14 +356,8 @@ def write (plan : Plan) : IO UInt32 := do
   if plan.root.decimalOps && !Write.roundtrips plan then
     IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
     return 1
-  -- Arguments of nested calls become columns (`Rel.bindArgs`, #821), so the
-  -- writers' guards read a column where they would copy a call. Decimal
-  -- arithmetic stays as the parser read it: it must parse back (#27).
-  -- The bound plan is written only where it parses back as itself.
-  let bound := plan.root.bindArgs plan.catalog
-  let root := if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
-    else bound
-  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names).compress
+  -- Arguments of nested calls become columns (`Parse.Plan.writtenRoot`).
+  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.writtenRoot plan.names).compress
   return 0
 
 open Lean (Json toJson) in
@@ -423,9 +482,14 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
         -- The plan an engine runs, or the gate that keeps the plan as
         -- written (#1787, `SubstraitLean/RunPlan.lean`).
         let runPlan := match ContractCheck.parse j with
-          | .ok R => R.runPlanJson
+          | .ok R => R.runPlanJson ++ [("assumed_check", R.assumedCheckJson R.kenv)]
           | .error _ => []
-        let base := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
+        let withRun := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
+        -- A decision on a marked value (D52, ruling 104): an error issue.
+        let source := (EngineRobust.sourceIssues es j).toOption.getD []
+        let issues := ((withRun.getObjValAs? (Array Lean.Json) "issues").toOption.getD #[]) ++
+          source.toArray
+        let base := withRun |>.setObjVal! "issues" (Lean.Json.arr issues)
             |>.setObjVal! "depends" depends
             |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
             |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
@@ -436,7 +500,7 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
               | .ok R => (R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[])
               | .error _ => Lean.Json.arr #[])
         match underProfile es j (engines.foldl (fun r (k, v) => r.setObjVal! k v) base)
-            report.allProved with
+            (report.allProved && source.isEmpty) with
         | .error e => IO.eprintln s!"error: {e}"; return 1
         | .ok (out, proved) =>
           IO.println out.compress
@@ -453,9 +517,11 @@ def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UIn
     | "--rows" => pure (check · false false)
     | "--eval-choices" => pure evalChoices
     | "--delta" => pure delta
+    | "--reads" => pure reads
     | "--write" => pure write
     | "--outcomes" => pure (outcomes Profile.reference)
     | "--raises" => pure raises
+    | "--assumed" => pure assumed
     -- Internal stopgap; converges to `semantics="duckdb"` (#1288).
     | "--outcomes-duckdb-stopgap" => pure (outcomes (Profile.duckdb {}))
     | "--dependencies" => pure fun plan => do
@@ -613,14 +679,14 @@ def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 :=
     return 0
   | [path] => runOn es "" (← IO.FS.readFile path)
   | [flag, path] =>
-    if ["--delta", "--contract", "--write", "--shard", "--outcomes", "--raises",
+    if ["--delta", "--reads", "--contract", "--write", "--shard", "--outcomes", "--raises", "--assumed",
         "--outcomes-duckdb-stopgap", "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
       return ← runOn es flag (← IO.FS.readFile path)
     usage
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --contract | --write | --shard | --outcomes | --raises | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --reads | --contract | --write | --shard | --outcomes | --raises | --assumed | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker
