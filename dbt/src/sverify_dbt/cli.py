@@ -233,7 +233,7 @@ def _suggest(args: argparse.Namespace) -> int:
         return 2
     text = result.suggestions_yaml()
     if args.output:
-        Path(args.output).write_text(text)
+        Path(args.output).write_text(text, encoding="utf-8")
         n = len(result.suggestions())
         print(f"wrote {n} suggested test(s) to {args.output}", file=sys.stderr)
     else:
