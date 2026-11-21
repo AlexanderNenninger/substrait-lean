@@ -81,8 +81,10 @@ def function_names(plan: Any, err: Err = ValueError) -> dict[int, str]:
 # --- Types ------------------------------------------------------------------
 
 
-#: The types sverify carries and never reads (`opaqueTypes` in
-#: `frontend/Sverify/Frontend/Parse.lean`).
+#: The types sverify carries and never reads: the list of `opaqueTypes` in
+#: `frontend/Sverify/Frontend/Parse.lean`. Lean's `typeKind` also makes a
+#: timestamp or time opaque at a precision other than 6; this list leaves that
+#: rule out, and the Ibis producer writes precision 6 only.
 OPAQUE_TYPES = ("binary", "fixedBinary", "map", "uuid", "userDefined")
 
 
