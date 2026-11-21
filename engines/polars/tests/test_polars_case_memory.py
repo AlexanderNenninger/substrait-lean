@@ -61,3 +61,22 @@ def test_a_case_over_double_comparisons_uses_memory_of_its_input(sql: str) -> No
     rows, mb = peak_mb(sql)
     assert rows == 64
     assert mb < LIMIT_MB, f"peak {mb} MB"
+
+
+def test_issues_whose_flags_differ_in_a_long_list_both_stay() -> None:
+    """`str(flag)` prints a long `is_in` list in part, so a dedupe keyed on it
+    would drop the second of two distinct flags (reviewer 2, #2221)."""
+    import polars as pl
+
+    from sverify_polars.engine import DivisionByZero, Issue, distinct_issues
+
+    values = list(range(1000))
+    other = [*values[:500], -1, *values[501:]]
+    a = Issue(pl.col("x").is_in(values), DivisionByZero, "zero")
+    b = Issue(pl.col("x").is_in(other), DivisionByZero, "zero")
+    assert str(a.flag) == str(b.flag)  # the premise: the text cannot tell them apart
+    same = Issue(pl.col("x").is_in(list(values)), DivisionByZero, "zero")
+    assert distinct_issues([a, b, same]) == (a, b)
+    # A different message or kind is a different issue whatever the flag.
+    c = Issue(a.flag, DivisionByZero, "other")
+    assert distinct_issues([a, c]) == (a, c)

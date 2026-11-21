@@ -63,7 +63,7 @@ import itertools
 import json
 import math
 import re
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
@@ -1858,15 +1858,26 @@ def _raise_issues(issues: tuple[Issue, ...]):
     return check
 
 
+def distinct_issues(found: Iterable[Issue]) -> tuple[Issue, ...]:
+    """`found` without the issues an earlier one repeats: the same kind and
+    message, and a structurally equal flag (`Expr.meta.eq`; `str(flag)` is not
+    injective, it prints a long `is_in` list or a literal series in part). The
+    first of each stays, in order."""
+    kept: list[Issue] = []
+    by_text: dict[tuple[type, str], list[Issue]] = {}
+    for i in found:
+        same = by_text.setdefault((i.kind, i.message), [])
+        if not any(k.flag.meta.eq(i.flag) for k in same):
+            same.append(i)
+            kept.append(i)
+    return tuple(kept)
+
+
 def guard(lf: pl.LazyFrame, vals: list[Val], checks: frozenset[str] = ALL_GUARDS) -> pl.LazyFrame:
     """Raise if any row of `lf` runs into an issue of `vals`, which an operator
     evaluates on exactly these rows. A filter is never pruned, and `collect`
     keeps it in place (no predicate pushdown), so it sees the same rows."""
-    found = tuple(
-        {
-            (str(i.flag), i.kind, i.message): i for i in issues(*vals) if i.kind.issue in checks
-        }.values()
-    )
+    found = distinct_issues(i for i in issues(*vals) if i.kind.issue in checks)
     if not found:
         return lf
     # An operand an operation reads twice reports its issues twice: the same
