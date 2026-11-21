@@ -100,11 +100,16 @@ def Profile.duckdb.obs : ObsTable := [
     "duckdb-R4", "duckdb-R15-double-modulus"]).proved "Lowering.duckdb_exact"),
   (some "fp.div", "on_division_by_zero", (ObsRow.native ["duckdb-R5", "duckdb-R15-double-arith"]).proved
     "Lowering.duckdb_exact"),
-  -- `fp.log` reads this row: `duckdb-R15-math-domain` probes `log(b, x)` too, the
-  -- quotient `ln x / ln b` the writer guards (#1985).
   (none, "on_domain_error", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-int-div-domain",
     "duckdb-R15-math-domain", "duckdb-R15-atan2"]).proved "Lowering.duckdb_exact"),
   (some "int.pow", "on_domain_error", (ObsRow.native ["duckdb-int-pow"]).tracking 1985),
+  -- DuckDB's `log(b, x)` is `ln x / ln b`, NaN or `±inf` outside the domain with
+  -- `ieee_floating_point_ops` on (duckdb-R15-math-domain). `Profile.duckdb` has no
+  -- `flogb` case, so the lowering's entry is native and the reference's raise comes
+  -- from the writer's guard (`float_logb` under `domain`), tested. #1985 states
+  -- DuckDB's quotient in the profile and generates the guard.
+  (some "fp.log", "on_domain_error", (ObsRow.shimmed "log(b, x) domain guard"
+    ["duckdb-R15-math-domain"]).tracking 1985),
   (none, "division_type", (ObsRow.native ["duckdb-R3"]).tracking 1985),
   (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 1985),
@@ -202,7 +207,7 @@ def Profile.duckdb.obs : ObsTable := [
 def Profile.duckdb.shimCosts : List (String × ShimCost) :=
   [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
    ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression),
-   ("null_order", .argument), ("list_lt", .expression)]
+   ("null_order", .argument), ("list_lt", .expression), ("log(b, x) domain guard", .expression)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/
