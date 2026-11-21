@@ -48,6 +48,7 @@ import Sverify.Analysis.TouchedFrames
 import Sverify.Analysis.TouchedGroups
 import Sverify.Analysis.WSet
 import Sverify.Analysis.Weighted
+import Sverify.Analysis.Zone
 
 /-! The analysis (#1189, step 3b): what `verify` proves of a plan under the
 core, engine-free. It imports only the core, which the standalone build of

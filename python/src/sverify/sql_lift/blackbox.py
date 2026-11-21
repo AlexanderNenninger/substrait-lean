@@ -149,6 +149,9 @@ def _call(n: sge.Expr) -> sge.Expr:
     if type(n) is not sge.Anonymous:
         return n
     name = n.name.lower()
+    if name == "arbitrary" and len(n.expressions) == 1:
+        # DuckDB's other name of `first` (#328).
+        return sge.First(this=n.expressions[0])
     if name in REFUSED:
         raise SqlUnsupported(REFUSED[name], construct=f"function {name}")
     name = ALIASES.get(name, name)
@@ -199,7 +202,7 @@ def _aggregate(lf: _Lift, node: sge.Expression, a: E) -> tuple[str, Any]:
     return name, _TYPES[row.result]
 
 
-_KNOWN.update(black_box.NAMES, ALIASES, REFUSED)
+_KNOWN.update(black_box.NAMES, ALIASES, REFUSED, {"arbitrary"})
 PARSE_REWRITES.append(_rewrite)
 _AGGREGATES[BlackBoxAgg] = "black_box"
 AGG_RULES[BlackBoxAgg] = _aggregate

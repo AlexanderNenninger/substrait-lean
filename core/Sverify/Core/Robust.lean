@@ -524,64 +524,112 @@ postcondition ignores. -/
 def Row.DoubleCodes (ctx : ObsCtx) (r : Row) : Prop :=
   ∀ j, ctx.kind j = .double → r.getD j .null = .null ∨ ∃ c, r.getD j .null = .float c ∧ fp64.IsRef c
 
-/-- **One zero on reference codes**: a condition whose components the
-observation does not coarsen, but for zeros, is robust on rows of
-reference codes. -/
-theorem Expr.robust_of_depends_canon {q : Obs} {ctx : ObsCtx} {e : Expr}
-    (h : (e.dependsC ctx).all (fun c => c == "zeros" || !q.coarsens c) = true) {r r' : Row}
+/-- A value with no elements whose order a lens could ignore: not a list or
+a struct. -/
+def Value.Flat : Value → Bool
+  | .list _ | .struct _ => false
+  | _ => true
+
+/-- `q` with the elements of lists compared in order. -/
+def Obs.sequenced (q : Obs) : Obs := { q with elements := .sequence }
+
+omit [Boxes.Ambient] in
+/-- **A flat value does not see the order of elements**: two values equal up to
+`q`, the first flat, are equal up to `q` with lists compared in order. -/
+theorem Value.Equiv.sequenced_of_flat {q : Obs} {ctx : ObsCtx} {col : Nat} {a b : Value}
+    (ha : a.Flat = true) (e : Value.Equiv q ctx col a b) :
+    Value.Equiv q.sequenced ctx col a b := by
+  cases a <;> cases b <;> first | exact e.elim | (simp [Value.Flat] at ha; done) | exact e
+
+omit [Boxes.Ambient] in
+theorem Value.Equiv.sequenced_of_sequence {q : Obs} {ctx : ObsCtx} {col : Nat} {a b : Value}
+    (hq : q.elements = .sequence) (e : Value.Equiv q ctx col a b) :
+    Value.Equiv q.sequenced ctx col a b := by
+  obtain ⟨⟩ := q; simp only at hq; subst hq; exact e
+
+/-- **One zero on reference codes, elements of flat values**: a condition whose
+components the observation does not coarsen, but for zeros, and for the order
+of elements where every column it reads other than through `cardinality`
+holds a flat value in `r`, is robust on rows of reference codes. The side
+condition is a fact about the rows: rows of the plan's kinds give it at every
+column whose kind holds no list (`Expr.robust_of_kinds`, `ContractCheck`). -/
+theorem Expr.robust_of_depends_flat {q : Obs} {ctx : ObsCtx} {e : Expr}
+    (h : (e.dependsC ctx).all (fun c => c == "zeros" || c == "elements" || !q.coarsens c) = true)
+    {r r' : Row}
+    (hflat : q.coarsens "elements" = true → ∀ i ∈ e.listCols, (r.getD i .null).Flat = true)
     (hr : Row.DoubleCodes ctx r) (hr' : Row.DoubleCodes ctx r') (he : Row.Equiv q ctx r r')
     (ht : (e.eval r).isTrue = true) : (e.eval r').isTrue = true := by
   have hcol : ∀ i ∈ e.listCols, r.getD i .null = r'.getD i .null := by
     intro i hi'
     have hi := Expr.listCols_subset e i hi'
-    have hd : ∀ c ∈ ctx.colDepends i, c = "zeros" ∨ q.coarsens c = false := by
+    have hd : ∀ c ∈ ctx.colDepends i, c = "zeros" ∨ c = "elements" ∨ q.coarsens c = false := by
       intro c hc
       have := List.all_eq_true.1 h c
         (List.mem_flatMap.2 ⟨i, hi, List.mem_filter.2 ⟨hc, by simp [hi']⟩⟩)
-      simpa using this
-    have hv := he.getD i
-    have hel : q.elements = .sequence := by
-      have := hd "elements" (by simp [ObsCtx.colDepends])
-      simpa [Obs.coarsens] using this
+      simpa [or_assoc] using this
+    have hv : Value.Equiv q.sequenced ctx i (r.getD i .null) (r'.getD i .null) := by
+      by_cases hq : q.elements = .sequence
+      · exact (he.getD i).sequenced_of_sequence hq
+      · exact (he.getD i).sequenced_of_flat (hflat (by simpa [Obs.coarsens] using hq) i hi')
+    have hx : ∀ c, c ∈ ctx.colDepends i → c ≠ "zeros" → c ≠ "elements" → q.coarsens c = false :=
+      fun c hc hz hl => ((hd c hc).resolve_left hz).resolve_left hl
     cases hk : ctx.kind i with
     | double =>
       have hf : q.floats = .exact := by
-        have := hd "floats" (by simp [ObsCtx.colDepends, hk])
-        simpa [Obs.coarsens] using this
+        simpa [Obs.coarsens] using hx "floats" (by simp [ObsCtx.colDepends, hk]) (by decide)
+          (by decide)
       rcases hr i hk with h₁ | ⟨a, h₁, ra⟩ <;> rcases hr' i hk with h₂ | ⟨b, h₂, rb⟩ <;>
         rw [h₁, h₂] at hv ⊢
       · exact hv.elim
       · exact hv.elim
-      · change IntEquiv q ctx i a b at hv
-        simp only [IntEquiv, hk, hf] at hv
+      · change IntEquiv q.sequenced ctx i a b at hv
+        simp only [IntEquiv, hk, Obs.sequenced, hf] at hv
         unfold Obs.zeroNorm at hv
         cases hz : q.zeros <;> simp only [hz] at hv
         · rw [hv]
         · rw [fp64.canon_of_isRef ra, fp64.canon_of_isRef rb] at hv; rw [hv]
     | other =>
-      have hx : ctx.exactCol q i = true := by
-        simp [ObsCtx.exactCol, ObsCtx.colIgnores, hel, hk]
+      have hx : ctx.exactCol q.sequenced i = true := by
+        simp [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.sequenced, hk]
       exact Value.Equiv.eq_of_exactCol hx _ _ hv
     | timestamp =>
-      have := hd "timestamps" (by simp [ObsCtx.colDepends, hk])
-      have hx : ctx.exactCol q i = true := by
-        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens]
+      have := hx "timestamps" (by simp [ObsCtx.colDepends, hk]) (by decide) (by decide)
+      have hx : ctx.exactCol q.sequenced i = true := by
+        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens, Obs.sequenced]
       exact Value.Equiv.eq_of_exactCol hx _ _ hv
     | string =>
-      have := hd "strings" (by simp [ObsCtx.colDepends, hk])
-      have hx : ctx.exactCol q i = true := by
-        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens]
+      have := hx "strings" (by simp [ObsCtx.colDepends, hk]) (by decide) (by decide)
+      have hx : ctx.exactCol q.sequenced i = true := by
+        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens, Obs.sequenced]
       exact Value.Equiv.eq_of_exactCol hx _ _ hv
     | decimal =>
-      have := hd "decimals" (by simp [ObsCtx.colDepends, hk])
-      have hx : ctx.exactCol q i = true := by
-        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens]
+      have := hx "decimals" (by simp [ObsCtx.colDepends, hk]) (by decide) (by decide)
+      have hx : ctx.exactCol q.sequenced i = true := by
+        simp_all [ObsCtx.exactCol, ObsCtx.colIgnores, Obs.coarsens, Obs.sequenced]
       exact Value.Equiv.eq_of_exactCol hx _ _ hv
   have hcard : ∀ i, (Expr.un .cardinality (.field i)).eval r =
       (Expr.un .cardinality (.field i)).eval r' := fun i => by
     have := Value.Equiv.card_eq (he.getD i)
     simpa [Expr.eval] using this
   rw [← Expr.eval_congr_card e hcol hcard]; exact ht
+
+/-- **One zero on reference codes**: a condition whose components the
+observation does not coarsen, but for zeros, is robust on rows of
+reference codes. The case of `Expr.robust_of_depends_flat` where the order
+of elements is exact in every column read. -/
+theorem Expr.robust_of_depends_canon {q : Obs} {ctx : ObsCtx} {e : Expr}
+    (h : (e.dependsC ctx).all (fun c => c == "zeros" || !q.coarsens c) = true) {r r' : Row}
+    (hr : Row.DoubleCodes ctx r) (hr' : Row.DoubleCodes ctx r') (he : Row.Equiv q ctx r r')
+    (ht : (e.eval r).isTrue = true) : (e.eval r').isTrue = true := by
+  refine Expr.robust_of_depends_flat ?_ (fun hq i hi => ?_) hr hr' he ht
+  · rw [List.all_eq_true] at h ⊢
+    intro c hc
+    have := h c hc
+    simp only [Bool.or_eq_true, beq_iff_eq] at this ⊢
+    exact this.elim (fun h => .inl (.inl h)) .inr
+  · have := List.all_eq_true.1 h "elements" (List.mem_flatMap.2 ⟨i, Expr.listCols_subset e i hi,
+      List.mem_filter.2 ⟨by simp [ObsCtx.colDepends], by simp [hi]⟩⟩)
+    simp [hq] at this
 
 /-! ## Examples -/
 

@@ -1,0 +1,16 @@
+{
+  "id": "F219",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "'check' reads data and 'verify' proves (`ContractedTransform.verify()`); the plan layer is `sverify.engines.plan`, outside the promise; a data check with no engine named runs on the table's own engine through the checker-written plan; exception bases are frozen at 1.0; a contract delta comes from two check documents.",
+  "issues": [
+    881
+  ],
+  "prs": [
+    2113
+  ],
+  "source": "fable-ruling-219-881-api-check-plan-layer-errors.md",
+  "note": "No D-number. The word for data checks and three notices are held for the maintainer."
+}

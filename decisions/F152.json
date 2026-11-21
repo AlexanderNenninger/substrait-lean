@@ -14,6 +14,9 @@
   "prs": [
     1829
   ],
+  "amended_by": [
+    "F217"
+  ],
   "source": "fable-ruling-152-1787-rewrites-under-profiles.md",
   "note": "Corrects #1787's item text (R5). Finding F1: pending profiles labelled 'reference' drop the ±inf precondition (bug). U1/U2 (optimize keyword defaults) held for the user. No D-number."
 }

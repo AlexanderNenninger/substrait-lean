@@ -34,7 +34,7 @@ build-backend = "hatchling.build"
 packages = ["src/sverify_dbt"]
 # The replay of dbt packages' projects (#859) is maintainers' tooling: it
 # reads and writes this repository's ledgers, which no installed copy has.
-exclude = ["src/sverify_dbt/replay.py"]
+exclude = ["src/sverify_dbt/replay.py", "src/sverify_dbt/replay_suites.py"]
 
 # The sdist: the package, its tests and the sample project's sources, without
 # what dbt writes there (`dbt deps`, `dbt compile`, `dbt build`).
@@ -53,6 +53,8 @@ exclude = [
 dev = [
     "dbt-core>=1.10",
     "dbt-duckdb>=1.9",
+    # The adapter suite the replay reads (#859), at the release its ledger names.
+    "dbt-tests-adapter==1.20.0",
     "pyrefly>=1.4.0",
     "pytest>=9.2.0",
     "ruff>=0.17.3",

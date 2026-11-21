@@ -67,6 +67,7 @@ import sqlglot as sg
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched, profiles
 from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
+from sverify._plan_read import function_names
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify._run_schema import table_problems
@@ -583,8 +584,8 @@ def plan_digest(
 ) -> str:
     """The sha256 of a plan's canonical form and of the changes of meaning
     (`MEANING_CHANGES`, or `changes`): its JSON with sorted keys, no
-    `extensions` (the list of every function the writer knows, which grows with
-    each release), each `functionReference` replaced by the function's name.
+    `extensions` (which once listed every function the writer knows, and grew
+    with each release), each `functionReference` replaced by the function's name.
     The profile the plan was verified under is a component of its own, left out
     for the reference (`verify(semantics=...)`): the same plan under two profiles
     has two digests. With no changes recorded the digest is that of the plan alone. It is the
@@ -595,11 +596,7 @@ def plan_digest(
     digest)."""
     changes = MEANING_CHANGES if changes is None else changes
     p = json.loads(plan)
-    names = {
-        f["functionAnchor"]: f["name"]
-        for e in p.get("extensions", [])
-        if isinstance(f := e.get("extensionFunction"), dict)
-    }
+    names = function_names(p)
 
     def canon(node: Any) -> Any:
         if isinstance(node, dict):

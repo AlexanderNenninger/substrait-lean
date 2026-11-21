@@ -701,6 +701,44 @@ def mayHoldList : Kind → Bool
   | .list _ | .struct _ | .other => true
   | _ => false
 
+-- The two theorems belong to `Substrait`, beside the ones they extend.
+end Substrait.ContractCheck
+
+namespace Substrait
+variable [Boxes.Ambient]
+
+omit [Boxes.Ambient] in
+/-- A value of a kind that holds no list is flat. -/
+theorem Value.flat_of_hasKind {k : Kind} {v : Value} (hv : v.hasKind k = true)
+    (hk : ContractCheck.mayHoldList k = false) : v.Flat = true := by
+  cases v <;> cases k <;> simp_all [Value.hasKind, Value.Flat, ContractCheck.mayHoldList]
+
+/-- **What `postIgnores` spares of `"elements"` is sound** (#2005). On rows of
+the plan's kinds `ks` (`Row.HasKinds`, which `Rel.kinds_sound` gives a
+well-kinded plan's output), a postcondition is robust under `q` when `q`
+coarsens none of its components but zeros and the order of elements, and the
+order of elements only where no column it reads other than through
+`cardinality` may hold a list: the `listy` test of `postIgnores`. -/
+theorem Expr.robust_of_kinds {q : Obs} {ctx : ObsCtx} {e : Expr} {ks : List Kind}
+    (h : (e.dependsC ctx).all (fun c => c == "zeros" || c == "elements" || !q.coarsens c) = true)
+    (hl : q.coarsens "elements" = true →
+      (e.listCols.any fun c => ContractCheck.mayHoldList (ks.getD c .other)) = false)
+    {r r' : Row} (hk : Row.HasKinds ks r) (hr : Row.DoubleCodes ctx r)
+    (hr' : Row.DoubleCodes ctx r') (he : Row.Equiv q ctx r r')
+    (ht : (e.eval r).isTrue = true) : (e.eval r').isTrue = true :=
+  Expr.robust_of_depends_flat h (fun hq i hi => Value.flat_of_hasKind (hk i) <| by
+    have := hl hq
+    simp only [List.any_eq_false, Bool.not_eq_true] at this
+    exact this i hi) hr hr' he ht
+
+end Substrait
+
+namespace Substrait.ContractCheck
+
+open Lean (Json)
+open Parse
+variable [Boxes.Ambient]
+
 /-- The columns of a plan `T.select(c, …)`, as expressions over `T`'s
 output, with `T`'s column kinds; `none` for another shape. -/
 def postExprs (cat : Catalog) (tables : Tables) : Rel → Option (List Expr × List Kind)
@@ -767,9 +805,9 @@ the observation's ignored components it depends on, but for `"zeros"`
 (`Expr.robust_of_depends_canon`) and `"floats"` under the plan's bound or an
 `approx` condition (`floatsOk`). `"elements"` stays where the condition reads
 a column that may hold a list (`mayHoldList`) other than as the argument of
-`cardinality` (`Expr.listCols`): `Expr.robust_of_depends_canon` needs it exact
-in every other column read, so the checker spares only the columns that hold
-no list (#2005). -/
+`cardinality` (`Expr.listCols`): the checker spares it only where every such
+column holds no list, which `Expr.robust_of_kinds` proves sound on rows of the
+plan's kinds (#2005). -/
 def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens : List String)
     (floatsOk : Bool) : List (Option (List String × List String)) :=
   match postExprs cat tables r with
