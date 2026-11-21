@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import sverify as sv
+from _repo import needs_repo
 from sverify.cli import discover, main, summary
 from sverify.cli._main import split_target
 
@@ -591,11 +592,17 @@ def test_github_annotations(tmp_path, capsys):
     assert "::amount > 20: it may be FALSE" in line and "%0Acounterexample: " in line
 
 
+@needs_repo
 def test_sarif(tmp_path, capsys):
+    import jsonschema
+    from _sarif import valid_sarif
+
+    with pytest.raises(jsonschema.ValidationError):  # the schema is not vacuous
+        valid_sarif('{"version": "2.1.0", "runs": 1}')
     path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
     code, out = run(capsys, "check", str(path), "--format", "sarif")
     assert code == 1
-    log = json.loads(out)
+    log = valid_sarif(out)
     assert log["version"] == "2.1.0"
     [run_] = log["runs"]
     rules = run_["tool"]["driver"]["rules"]

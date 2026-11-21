@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from _repo import needs_repo
 from sverify.cli import main
 
 SCHEMA = "orders:\n  id: BIGINT NOT NULL\n  amount: INTEGER\n"
@@ -53,10 +54,13 @@ def test_json_schema_file_and_the_json_document(tmp_path, capsys) -> None:
     assert "report" in item
 
 
+@needs_repo
 def test_the_sarif_document(tmp_path, capsys) -> None:
+    from _sarif import valid_sarif
+
     q, s = _files(tmp_path, "SELECT id, amount * 2 AS d FROM orders")
     code, out = _run(capsys, "check", q, "--schema", s, "--format", "sarif")
-    assert code == 1 and json.loads(out)["version"] == "2.1.0"
+    assert code == 1 and valid_sarif(out)["version"] == "2.1.0"
 
 
 @pytest.mark.parametrize(
