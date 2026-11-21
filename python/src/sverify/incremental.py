@@ -2544,24 +2544,12 @@ class Pipeline:
         self._check_changed(changes)
         # New base tables first: this also checks that every delete exists.
         new_tables: dict[str, pa.Table | Native] = {}
-        new_inputs: dict[str, tuple[State, Merger]] = {}
         for t, ch in changes.items():
             given = (whole or {}).get(t)
-            if given is None and t in self.inputs:
-                # A sealed source: the store adds the change to its rows,
-                # and a delete that finds no row leaves a negative weight.
-                state, merge = self.inputs[t]
-                store = self._views[0].store
-                new = merge(state, store.kept(ch.cast(merge.schema)), keep=True)
-                if store.has_negative(new):
-                    raise ValueError(f"cannot delete rows from {t}: no such row")
-                new_inputs[t] = (new, merge)
-                given = store.expanded(new)
-            elif given is None:
+            if given is None and t not in self.inputs:
                 given = _apply_change(_as_arrow(self.con.get(t)), ch, t)
-            new_tables[t] = given
-        arrived, latest = self._arrivals(changes)
-        found = arrived + self._check_batch(changes, new_tables, facts or {})
+            if given is not None:
+                new_tables[t] = given
         deltas: dict[str, pa.Table] = {t: consolidated(ch) for t, ch in changes.items()}
         stale = set(recompute or ())
         checked: list[Discharged] = []
@@ -2582,6 +2570,36 @@ class Pipeline:
             elif v.touched is not None or (v.linear is not None and v.linear.regroup):
                 # It recomputes the touched groups on the new inputs.
                 read_new.update(v.tables)
+        # A sealed source: the store adds the change to its rows, and a delete
+        # that finds no row leaves a negative weight. DuckDB's state changes
+        # in place, at the cost of the change, unless a view or a check reads
+        # the new rows.
+        new_inputs: dict[str, tuple[State, Merger]] = {}
+        input_updates: dict[str, tuple[Resident, pa.Table, pa.Table, pa.Table]] = {}
+        for t, ch in changes.items():
+            if t in new_tables:
+                continue
+            state, merge = self.inputs[t]
+            store = self._views[0].store
+            rows = ch.cast(merge.schema)
+            if (
+                isinstance(state, Resident)
+                and not audit
+                and t not in read_new
+                and not any(isinstance(c, TableCondition) for c in self.requires.get(t, []))
+            ):
+                old = matching(state, rows)
+                merged = arrow_of(merge(old, rows))
+                _refuse_missing(store, merged, f"cannot delete rows from {t}")
+                input_updates[t] = (state, rows, merged, old)
+                new_tables[t] = self.con.get(t)
+                continue
+            new = merge(state, store.kept(rows), keep=True)
+            _refuse_missing(store, new, f"cannot delete rows from {t}")
+            new_inputs[t] = (new, merge)
+            new_tables[t] = store.expanded(new)
+        arrived, latest = self._arrivals(changes)
+        found = arrived + self._check_batch(changes, new_tables, facts or {})
         # Views read the *old* tables (and their inputs' changes), so nothing
         # is replaced until every view has its change.
         for v in self._views:
@@ -2639,6 +2657,7 @@ class Pipeline:
             in_place,
             changed,
             inputs=new_inputs,
+            input_updates=input_updates,
             before=before,
             latest=latest,
             checked=checked,
@@ -2680,30 +2699,31 @@ class Pipeline:
                 views[name]._record(delta)
             for name, g in pending.groups.items():
                 views[name].groups = g
-            if pending.in_place:
+            if pending.in_place or pending.input_updates:
                 # The published rows are a DuckDB view of the state table,
                 # so they show the update once it commits.
                 for name in pending.in_place:
                     views[name]._publish()
-                # One transaction: every view's state changes, or none does.
-                updates = []
+                # One transaction: every state changes, or none does.
+                updates = [
+                    (self.inputs[t][0], r, m) for t, (_, r, m, _) in pending.input_updates.items()
+                ]
+                undo = [
+                    (self.inputs[t][0], r, o) for t, (_, r, _, o) in pending.input_updates.items()
+                ]
                 for name, merged in pending.in_place.items():
                     state = views[name].state
                     assert isinstance(state, Resident)
                     updates.append((state, pending.deltas[name], merged))
+                    undo.append((state, pending.deltas[name], pending.before[name]))
                 # Every state in place is a `Resident`, so one store holds them all.
-                store = views[next(iter(pending.in_place))].store
+                store = self._views[0].store
                 try:
                     store.apply(updates)
                 except BaseException:
                     # Committed or not, the rows the change touches go back
                     # to the ones `_prepare` read.
-                    store.apply(
-                        [
-                            (s, d, pending.before[n])
-                            for n, (s, d, _) in zip(pending.in_place, updates, strict=True)
-                        ]
-                    )
+                    store.apply(undo)
                     raise
         except BaseException:
             for t, table in tables.items():
@@ -2747,6 +2767,20 @@ class _Commit:
     """The new state per group of each view kept from one (`sverify._linear`)."""
     inputs: dict[str, tuple[Any, Any]] = field(default_factory=dict)
     """The new rows of each sealed source, in the store (`Pipeline.seal`)."""
+    input_updates: dict[str, tuple[Any, pa.Table, pa.Table, pa.Table]] = field(default_factory=dict)
+    """Each sealed source DuckDB updates in place: its state, the change, the
+    state rows the change touches merged with it, and those rows as they are
+    before the commit."""
+
+
+def _refuse_missing(store: Store, merged: State, what: str) -> None:
+    """Raise `ValueError` if a delete found no row: `merged` has a negative
+    weight, and the message names the first such row."""
+    if not store.has_negative(merged):
+        return
+    rows = arrow_of(merged)
+    missing = rows.filter(_call("less", rows.column(WEIGHT), 0)).slice(0, 1).to_pylist()
+    raise ValueError(f"{what}: no such row {missing[0] if missing else ''}")
 
 
 def _audit_source(t: str, difference: pa.Table, start: int, end: int) -> None:
