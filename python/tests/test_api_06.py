@@ -14,7 +14,7 @@ from ibis import _
 import sverify as sv
 from _pipelines import doubled, make_orders, paid
 from sverify import routes
-from sverify.engines import to_sql
+from sverify.engines.plan import to_sql
 from sverify.errors import (
     InferredWarning,
     RouteError,

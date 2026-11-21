@@ -214,12 +214,15 @@ class _Checker:
             name = self.names[r.unique_id]
             conds: list = []
             nn = self._not_null(r)
+            held = [t for t in self.p.tests_on(r.unique_id) if self._holds(t)]
             for t in self.p.tests_on(r.unique_id):
                 if not self._holds(t):
                     sev = t.severity.lower()
                     skipped.append(f"{r.ref}: {t.short} (severity {sev}, not proved)")
                     continue
-                got = mapping.test_conditions(t, side="requires", table_of=table_of, not_null=nn)
+                got = mapping.test_conditions(
+                    t, side="requires", table_of=table_of, not_null=nn, siblings=held
+                )
                 if got.conditions:
                     conds += got.conditions
                 elif got.reason and t.kind != "relationships":

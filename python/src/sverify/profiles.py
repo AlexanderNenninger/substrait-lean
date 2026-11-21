@@ -317,6 +317,12 @@ def sql_front_end(dialect: str) -> tuple[ProfilePlugin, SqlFrontEnd]:
     return found[dialect]
 
 
+@functools.cache
+def _distributions() -> dict[str, list[str]]:
+    """The installed distributions by top-level package (a scan of all of them, once)."""
+    return dict(packages_distributions())
+
+
 def front_end_label(dialect: str) -> str:
     """The package and version that read `dialect`, as a report names them:
     `sverify-snowflake 0.9.0 (snowflake)`. The front-end decides what the SQL
@@ -324,7 +330,7 @@ def front_end_label(dialect: str) -> str:
     _, front = sql_front_end(dialect)
     module = getattr(front.lift, "__module__", "") or ""
     top = module.partition(".")[0]
-    dist = next(iter(packages_distributions().get(top, [])), top)
+    dist = next(iter(_distributions().get(top, [])), top)
     try:
         return f"{dist} {version(dist)} ({dialect})"
     except PackageNotFoundError:

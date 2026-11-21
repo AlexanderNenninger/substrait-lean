@@ -4,10 +4,12 @@
   "decided_by": "fable",
   "scope": "reference-semantics",
   "status": "reserved",
-  "summary": "Reserved for a struct constructor.",
+  "summary": "Reserved for struct casts, a later `Expr.mkStruct`.",
   "issues": [
-    1918,
     1919
   ],
-  "note": "Reserved in ruling 186; ruling 187 names its subject."
+  "prs": [
+    1978
+  ],
+  "note": "Reserved in ruling 186; #1978 landed its list half. Open: matching fields by name (DuckDB SQL, D54) or by position (Substrait)."
 }

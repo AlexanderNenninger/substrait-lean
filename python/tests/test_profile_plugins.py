@@ -20,7 +20,7 @@ from ibis import _
 import sverify as sv
 from _arrow_store import ArrowStore
 from sverify import _checker, _engine_settings, profiles, routes
-from sverify.engines import to_sql, written_plan
+from sverify.engines.plan import to_sql, written_plan
 from sverify.profiles import ProfilePlugin, Setting, SqlFrontEnd
 from sverify.routes import EngineSettingsError, EngineVersionError
 
@@ -319,7 +319,7 @@ def test_plugin_api_is_bumped_with_the_plugin_fields():
 def test_the_report_names_the_front_end_that_read_the_sql(sql_dialects: None) -> None:
     t = ibis.table({"a": "int64"}, name="t")
     toy = sv.verify(sv.sql("SELECT a AS b FROM t", dialect="toy", t=t), on_inferred="off")
-    assert toy.sql_front_ends == ("test_profile_plugins (toy)",)
+    assert toy._sql_front_ends == ("test_profile_plugins (toy)",)
     assert "sql read by test_profile_plugins (toy)" in toy.notes
     duck = sv.verify(sv.sql("SELECT a AS b FROM t", t=t), on_inferred="off")
-    assert duck.sql_front_ends == ()
+    assert duck._sql_front_ends == ()

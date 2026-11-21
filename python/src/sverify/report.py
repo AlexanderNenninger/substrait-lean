@@ -25,6 +25,7 @@ import ibis
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
+import pyarrow.compute as pc
 from ibis.common.deferred import Deferred
 
 from sverify import _decimals, _duckdb, _hooks
@@ -501,13 +502,13 @@ class Report:
     _guard_free: bool = field(default=False, repr=False)
     """The only issues are assumed ones (`SUM`s that may overflow, double
     operations that may give `±∞`, which keep their checks): on data that meets
-    the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
+    the preconditions, the transformation's SQL (`sverify.engines.plan.to_sql`)
     and Polars plan give the same result with `guards=False`, without
     per-row checks (`Rel.guardFree_sound`)."""
     _unchecked: dict | None = field(default=None, repr=False)
     """The expressions that run correctly without their checks, on data that
     meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
-    plan the checker writes; pass it to `sverify.engines.to_sql(...,
+    plan the checker writes; pass it to `sverify.engines.plan.to_sql(...,
     unchecked=...)` with `written_plan`'s output, and only the other
     expressions keep their checks (ruling 228). None when
     Lean found none (a left join with a filter on its right side, for one)."""
@@ -516,7 +517,7 @@ class Report:
     and keys of the preconditions (`Rel.optimize` in
     `analysis/Sverify/Analysis/Semantic.lean`): for example a `DISTINCT` over a key is
     gone. On data that meets the preconditions it gives the same rows
-    (`Rel.optimize_sound`); pass it to `sverify.engines.to_sql`, or as JSON
+    (`Rel.optimize_sound`); pass it to `sverify.engines.plan.to_sql`, or as JSON
     to `sverify.engines.run`, instead of the transformation. None if Lean
     did not return one."""
     _rewrites: list[str] = field(default_factory=list, repr=False)
@@ -709,7 +710,7 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
-    sql_front_ends: tuple[str, ...] = field(default=(), compare=False)
+    _sql_front_ends: tuple[str, ...] = field(default=(), compare=False)
     """The SQL front-ends other than DuckDB's that read the plan's SQL
     (`sverify.sql(dialect=)`), each as `package version (dialect)`: what the
     SQL means is theirs (`docs/trusted-base.md`)."""
@@ -937,8 +938,24 @@ class Report:
             d,
             deterministic=self._exact,
             finite=finite,
-            rows="sequence" if self.lenses.rows == "sequence" else "multiset",
+            rows=self._rows,
         )
+
+    @property
+    def _rows(self) -> Literal["sequence", "multiset"]:
+        """What the observation reads of the rows, as `to_sql`'s `rows`:
+        their order only under a `rows="sequence"` lens."""
+        return "sequence" if self.lenses.rows == "sequence" else "multiset"
+
+    @property
+    def _ordinal_free(self) -> bool:
+        """A run's rows need no ordinal to meet the observation (ruling 223,
+        O1 and O3): under a `rows="sequence"` lens every result the reference
+        allows is one row by row (`_sequence_determined`,
+        `check_sequence_determined_sound`); under any other, one up to row
+        order (`_exact`, `check_deterministic_sound`). Each rests on the
+        preconditions, so a run takes it only after checking them (O2)."""
+        return self._sequence_determined or (self._rows == "multiset" and self._exact)
 
     def _plan_to_run(self, kind: str | None, *, checked: bool, engine: str) -> str:
         """The plan `engine` runs on the route `kind`, as JSON text: the
@@ -1367,11 +1384,17 @@ class Report:
         # without their checks, the one against `±∞` included, on an engine
         # whose writer a theorem covers so (`"marks_theorem"`, ruling 223), on
         # the same gate: the preconditions were checked on these tables.
+        checked = check_requires and kind == "translated" and self.semantics == "reference"
         marked = (
-            check_requires
-            and kind == "translated"
-            and self.semantics == "reference"
-            and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
+            checked and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
+        )
+        # On the same gate, a runner that numbers the rows to keep Lean's order
+        # (`ProfilePlugin.rows`) leaves the numbering out where the checker
+        # proved the observation cannot see it (`_ordinal_free`, ruling 223 O1).
+        rows: Literal["multiset"] | None = (
+            "multiset"
+            if checked and plugin is not None and plugin.rows == "sequence" and self._ordinal_free
+            else None
         )
 
         def recheck(written: str) -> None:
@@ -1392,7 +1415,7 @@ class Report:
                 out = self._with_plan(
                     plan,
                     run_engine,
-                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite, rows=rows),
                     recheck,
                 )
             else:
@@ -1409,6 +1432,7 @@ class Report:
                         # without a row-order tiebreak (`to_sql`'s `deterministic`).
                         tie_free=self._exact and kind != "unverified",
                         unchecked=self._marks_of(plan) if marked else None,
+                        rows=rows,
                     ),
                     recheck,
                 )
@@ -1828,7 +1852,7 @@ class Report:
         if self._params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
         out += [f"dialect: {d}" for d in self.dialect_differences]
-        out += [f"sql read by {f}" for f in self.sql_front_ends]
+        out += [f"sql read by {f}" for f in self._sql_front_ends]
         return out
 
     def route(
@@ -2749,8 +2773,14 @@ def _run_planned(table: ir.Table, cond: PlannedCondition, engine: str) -> tuple[
         return 0, str(e).splitlines()[0] if str(e) else type(e).__name__
 
 
-def _not_true(column: Any) -> int:
-    return sum(v is not True for v in column.to_pylist())
+def _not_true(column: pa.ChunkedArray | pa.Array) -> int:
+    """The values of a condition's column that are not TRUE (FALSE or NULL),
+    counted in Arrow: a boolean column's sum is its TRUEs, and a column of
+    another type holds none."""
+    if not pa.types.is_boolean(column.type):
+        return len(column)
+    trues = pc.sum(pc.fill_null(column, False))  # pyrefly: ignore[missing-attribute]
+    return len(column) - (trues.as_py() or 0)
 
 
 def _columns_read(conds: Sequence[str], columns: Sequence[str]) -> list[str]:

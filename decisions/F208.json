@@ -1,0 +1,16 @@
+{
+  "id": "F208",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#2071: DuckDB 2.0.1 joins `alsoProbed` after C1-C10; no profile row widens, the `string_split` evaluator stops where the probed versions disagree, and `default_collation` needs no new refusal.",
+  "prs": [
+    2071
+  ],
+  "amended_by": [
+    "F221"
+  ],
+  "source": "fable-ruling-208-2071-duckdb-2-0-1.md",
+  "note": "C2, C9 and C10 amended by ruling 221. No D-number."
+}

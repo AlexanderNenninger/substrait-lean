@@ -32,7 +32,7 @@ import sqlglot
 import sverify as sv
 from _repo import needs_repo
 from sverify.engine import run_checker
-from sverify.engines import substrait_json
+from sverify.engines.plan import substrait_json
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql

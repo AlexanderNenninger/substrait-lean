@@ -14,8 +14,9 @@
   ],
   "amends": [
     "D70",
-    "F195"
+    "F195",
+    "F198"
   ],
-  "source": "fable-rulings-night-1117.md, entry 200",
-  "note": "File ruling-200-d70-audit-findings.md. R1-R2 lapse if R3's strict xfail passes today. A7's U1 is a clarification of D70's third paragraph by its author, appended to ruling 198. Answers the round-3 #1484 finding on unproved runs (U4). No D-number."
+  "source": "fable-ruling-200-d70-audit-findings.md",
+  "note": "Log entry 200. R1-R2 lapse if R3's strict xfail passes today. A7's U1 is a clarification of D70's third paragraph by its author, appended to ruling 198. Answers the round-3 #1484 finding on unproved runs (U4). No D-number."
 }

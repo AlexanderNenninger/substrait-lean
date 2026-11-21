@@ -124,6 +124,14 @@ The macOS wheel jobs can wait a long time for runners, so the publish may take a
 - **Docs:** <https://alexandernenninger.github.io/substrait-lean/> shows the version, and its Skills page lists the skills.
 - Optionally create the GitHub release from the changelog section: `gh release create v<version> --notes-file <section>`. Ask first, since it notifies watchers.
 
+## Compatibility by hand
+
+Before the tag, one refresh and one read of the contract record on each store and catalog the
+template's [compatibility page](../../../templates/pipelines/docs/compatibility.md) lists as
+checked by hand: MinIO with the open-source Unity Catalog (the homelab stack), Databricks Unity
+Catalog, AWS Glue, S3 Tables and Snowflake Open Catalog. Update the page's rows for what passed,
+and name what failed in the release notes. A failure does not block the release.
+
 ## When something fails
 
 - **`publish` says `dbt/` is at another version, or doesn't pin this sverify:** the bump missed `dbt/pyproject.toml`. Nothing was uploaded; handle it as a tag that doesn't match.

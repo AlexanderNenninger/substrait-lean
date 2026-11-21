@@ -33,7 +33,7 @@ from sverify.engine import (
     run_plan,
     substrait_json,
 )
-from sverify.engines import written_plan
+from sverify.engines.plan import written_plan
 from sverify.errors import PostconditionError, PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
@@ -436,6 +436,28 @@ def test_remainder_by_minus_one_is_zero(width):
     # Without the MIN row the lens runs and agrees with Lean.
     rest = r.slice(1)
     assert check_three_ways(sql, {"r": rest}) == [(0,), (None,)]
+
+
+@pytest.mark.parametrize(
+    ("alias", "name"),
+    [
+        ("len(s)", "length(s)"),
+        ("substr(s, 2, 3)", "substring(s, 2, 3)"),
+        ("substr(s, -2)", "substring(s, -2)"),
+        ("main.lower(s)", "lower(s)"),
+        ("main.len(s)", "length(s)"),
+        ("system.main.length(s)", "length(s)"),
+    ],
+)
+def test_an_alias_is_the_function_it_names(alias, name):
+    """#328: `len`, `substr` and a call qualified by its built-in schema lift
+    to the plan of the function they name, and DuckDB and Lean agree on it."""
+    r = pa.table({"s": pa.array(["héllo", "", "ab", None], pa.string())})
+    tables, sql = {"r": r}, f"SELECT {alias} AS u FROM r"
+    assert plan_of(sql, tables) == plan_of(f"SELECT {name} AS u FROM r", tables)
+    native = duckdb.connect()
+    native.register("r", r)
+    assert check_three_ways(sql, tables) == native.execute(sql).fetchall()
 
 
 def test_a_lens_power_with_a_zero_exponent_is_strict():
