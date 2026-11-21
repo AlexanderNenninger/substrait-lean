@@ -43,7 +43,7 @@ message Condition {
   // "row" (a boolean on each row), "assumed", or a table condition's class:
   // "Unique", "References", "ArrivesWithin", "MaxRows", "RowsPer".
   string kind = 3;
-  // Inferred by sverify (`Report.inferred`, `Report.assumed`).
+  // Inferred by sverify (`Report.needs`, `Report.assumed`).
   bool inferred = 4;
   // For kind "row": a plan of one boolean column, over the input table for a
   // precondition and over the exported plan's inputs for a postcondition,

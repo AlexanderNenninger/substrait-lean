@@ -70,5 +70,6 @@
     810,
     811,
     812
-  ]
+  ],
+  "superseded_by": "duckdb-list-contains-null"
 }

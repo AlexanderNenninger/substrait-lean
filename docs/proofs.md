@@ -81,6 +81,7 @@ contract's preconditions.
 | Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `Polars/Shims.lean`, `Shims.lean` |
 | Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Engine.lean`, `Spark/Shims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
+| A marked expression meets no issue on the rows its marks were decided on, so its checks, the one against `±∞` included, never fire there; DuckDB runs the marked expressions without them (ruling 223), and runs the root the checker writes, with nested calls' arguments bound, with that root's marks unchecked: the size hypothesis is stated on the written root (ruling 228) | `eval` | `Expr.issues_nil_of_safe`, `Expr.issues_nil_of_safe_cond`, `Rel.duckdb_marks`, `Rel.duckdb_marks_written`, `Rel.evalG_marks`, `Rel.eval_bindArgs` | `Guards.lean`, `DuckDB/Profile.lean`, `Bind.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
 | Each engine profile refines the core | `AllowedP` | `Rel.allowed_duckdb_core`, `Rel.allowed_polars_core`, `Rel.allowed_substrait_core` | `DuckDB/Tables.lean`, `Polars/Tables.lean`, `Substrait/Profile.lean` |
 | An engine's functions are ones its table allows (`Impl.Within`): DuckDB's with IEEE operations where they do not raise, Polars's written plan; a plan that does not raise computes the same rows with them | `AllowedP` | `Profile.duckdb_withinOk`, `Polars.written_within`, `Profile.okImpl_within`, `Rel.eval_okImpl`, `Rel.AllowedE.allowedP` | `DuckDB/Engine.lean`, `Polars/Engine.lean` |
@@ -311,7 +312,7 @@ build as the guard. The modules below import it as `Sverify.DuckDB.*`.
 |---|---|
 | `DuckDB/Functions.lean` | `Profile.duckdb` under DuckDB's settings and `Profile.duckdbWritten`, as the SQL printer writes it, on the core alone |
 | `DuckDB/Tables.lean` | DuckDB's choice table and observation rows, refining the core for every setting |
-| `DuckDB/Profile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, and `Rel.duckdb_sound` |
+| `DuckDB/Profile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, `Rel.duckdb_sound`, `Rel.duckdb_marks` and `Rel.duckdb_marks_written` |
 | `DuckDB/Boxes.lean` | DuckDB's black-box catalogue `Boxes.duckdb`: its rows, Lean's evaluators, the opaque functions, `Boxes.duckdb_wf`, and the scoped instance `Substrait.DuckDB.boxes` |
 | `DuckDB/VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `DuckDB/SQL.lean` | What each DuckDB SQL function means under each semantics |
@@ -461,7 +462,8 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |
 | `CorrTwoPass.lean` | The corrected two-pass formula on shifted doubles (Snowflake's `VAR_*` on mean-shifted values), its sums in any order: within `(2n + 9) u W + 7 u K √(n W) + 128 n² u² W + 64 n² u · tiny` of `S` (`corrTwoPass_error`, #1810) |
 | `Welford.lean`, `WelfordRel.lean` | Welford's update and Chan's merge, absolute and relative |
-| `MergeRel.lean`, `CovRel.lean` | Chan's merge and the covariance, relative to the spread |
+| `MergeRel.lean`, `CovRel.lean` | Chan's merge and the covariance, relative to the spread; what any merge must meet for the tree invariant (`MergeSpec`, `tInv_merge_of`), DuckDB's merge one instance |
+| `SchubertGertz.lean` | Polars's `VAR_*` and `STDDEV_*`: two-pass blocks in any summation order, Welford's update and Schubert and Gertz's merge in any tree meet the tree invariant (`sgMerge_spec`, `tInv_prun`); the variance within `varTol` (`core_var_polars`) and the reference's distance (`epsilon_var_polars`, `epsilon_stddev_polars`, #1808) |
 | `Chan.lean`, `ChanCorr.lean` | DuckDB's `VAR_*`, `STDDEV_*` and `CORR` meet `StatProps`; an engine's `VAR_*`, `STDDEV_*` and `COVAR_*` are within `statEps` of the reference's (`epsilon_var_cr`, `epsilon_stddev_cr`, `epsilon_cov_cr`) |
 | `CoreStats.lean`, `CoreKappa.lean` | The statistical properties of `StatProps.lean`, proved over the reals; trusted facts before D30 |
 

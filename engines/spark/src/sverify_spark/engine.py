@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
+from sverify._unsupported import Unsupported
 from sverify.profiles import Finite
 from sverify.sql import to_sql
 from sverify_spark.dialect import SPARK, SPARK_CONF
@@ -207,7 +208,7 @@ def run(
 
     Raises:
         sverify.engines.UnsupportedError: Spark SQL cannot express the plan with
-            Lean's meaning.
+            Lean's meaning, or Spark's parser refuses the SQL as too complex.
         TypeError: A column has a type Spark cannot hold here, such as a
             timestamp with a time zone.
     """
@@ -227,4 +228,28 @@ def run_df(
     spark = spark or session()
     sql = to_sql(plan, SPARK, deterministic=deterministic, finite=finite)
     put_tables(tables, spark)
-    return spark.sql(sql)
+    return parse_sql(spark, sql)
+
+
+def _condition(e: BaseException) -> str | None:
+    """The error condition of a Spark exception (`getCondition`, `getErrorClass`
+    before PySpark 4), None for an exception without one."""
+    get = getattr(e, "getCondition", None) or getattr(e, "getErrorClass", None)
+    return get() if get is not None else None
+
+
+def parse_sql(spark: Any, sql: str) -> Any:
+    """`spark.sql(sql)` for SQL that sverify wrote. Spark's parser refuses a
+    deeply nested statement with `FAILED_TO_PARSE_TOO_COMPLEX` (SQLSTATE 54001);
+    that is `Unsupported`, with the size of the statement the user never wrote
+    (the fact `spark-exec-parser-depth`). Any other error passes through."""
+    try:
+        return spark.sql(sql)
+    except Exception as e:
+        if _condition(e) != "FAILED_TO_PARSE_TOO_COMPLEX":
+            raise
+        raise Unsupported(
+            f"Spark {spark.version}'s parser refused the SQL sverify wrote for this plan "
+            f"({len(sql):,} bytes) as too complex to parse; nothing ran. The plan nests its "
+            "expressions deeper than the parser's stack takes (fact spark-exec-parser-depth)"
+        ) from e

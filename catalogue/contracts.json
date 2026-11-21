@@ -6,7 +6,6 @@
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates (#1985)",
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_equality (#1985)",
           "row tested: cmp's nan_order (#1985)",
           "row tested: cmp's zero_sign (#1985)",
           "row tested: win.agg's window_sum_algo (#900)"
@@ -417,7 +416,6 @@
           "row tested: agg.order's list_null_order (#1484)",
           "row tested: agg.order's nan_order (#1985)",
           "row tested: agg.order's zero_sign (#1985)",
-          "row tested: cmp's nan_equality (#1985)",
           "row tested: cmp's nan_order (#1985)",
           "row tested: cmp's zero_sign (#1985)"
         ],
@@ -530,7 +528,6 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_equality (#1985)",
           "row tested: cmp's nan_order (#1985)",
           "row tested: cmp's zero_sign (#1985)"
         ],
@@ -626,7 +623,6 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_equality (#1985)",
           "row tested: cmp's nan_order (#1985)",
           "row tested: cmp's zero_sign (#1985)"
         ],
@@ -665,7 +661,6 @@
       "duckdb": {
         "causes": [
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_equality (#1985)",
           "row tested: cmp's nan_order (#1985)",
           "row tested: cmp's zero_sign (#1985)"
         ],
@@ -703,7 +698,6 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_equality (#1985)",
           "row tested: cmp's nan_order (#1985)",
           "row tested: cmp's zero_sign (#1985)"
         ],
@@ -968,8 +962,7 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding (#271)",
-          "row tested: agg.var's stat_algo (#918)"
+          "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1003,8 +996,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)",
-          "row tested: agg.var's stat_algo (#918)"
+          "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1326,7 +1318,6 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_equality (#1985)",
           "row tested: cmp's nan_order (#1985)",
           "row tested: cmp's zero_sign (#1985)"
         ],
@@ -1419,8 +1410,7 @@
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding (#271)",
-          "row tested: agg.var's stat_algo (#918)"
+          "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
         "outcome": "tested"

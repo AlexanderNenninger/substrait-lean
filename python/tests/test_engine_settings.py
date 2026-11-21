@@ -136,6 +136,12 @@ def test_a_global_only_setting_is_seen_from_any_cursor(con) -> None:
         other.execute("RESET GLOBAL default_null_order").fetchall()
 
 
+def _settings_warnings(report: sv.Report) -> tuple[str, ...]:
+    """The route's warnings but the engine-version one: DuckDB 2.0.1 is installed and not yet a
+    probed version (#2045), which these tests are not about."""
+    return tuple(w for w in report.routes["duckdb"].warnings if "is not a version" not in w)
+
+
 def test_the_time_zone_is_not_checked(con, duckdb_global) -> None:
     """No choice depends on the session's zone: the written SQL never reads
     it (duckdb-time-zones)."""
@@ -143,7 +149,7 @@ def test_the_time_zone_is_not_checked(con, duckdb_global) -> None:
     report = sv.verify(t.select("k"))
     duckdb_global("TimeZone", "'America/New_York'")
     report.run(con, "duckdb", route="auto")
-    assert report.routes["duckdb"].warnings == ()
+    assert _settings_warnings(report) == ()
 
 
 def test_the_calendar_is_not_checked_and_insertion_order_warns(con, duckdb_global) -> None:
@@ -151,7 +157,7 @@ def test_the_calendar_is_not_checked_and_insertion_order_warns(con, duckdb_globa
     report = sv.verify(t.select("k"))
     duckdb_global("Calendar", "'japanese'")
     report.run(con, "duckdb", route="auto")
-    assert report.routes["duckdb"].warnings == ()
+    assert _settings_warnings(report) == ()
     duckdb_global("preserve_insertion_order", "false")
     with pytest.warns(EngineSettingsWarning, match="preserve_insertion_order is False"):
         report.run(con, "duckdb", route="auto")

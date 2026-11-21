@@ -2,7 +2,7 @@
 # means for this query". `quirks` are entries of
 # catalogue/backend_semantics.py: its questions per engine.
 #
-# The pitfalls predate the engine facts (characterization/<engine>/facts/,
+# The pitfalls predate the engine facts (engines/<engine>/facts/,
 # judged as characterization/README.md says). Where an `engines` note and a
 # fact disagree, the fact wins.
 

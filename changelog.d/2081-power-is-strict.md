@@ -1,0 +1,3 @@
+### `power` is strict in a NULL base
+
+`power(x, 0)` is NULL for a NULL `x`, as DuckDB, Polars and Spark give it. It was the constant 1: the parser, the SQL plan reader and the Polars engine folded a literal zero exponent, and the base was never evaluated. A proof that `power(x, 0)` is not NULL now needs `x` not NULL. For a non-NULL `x` the result is still 1, NaN and `±inf` included. On Spark, a double `power(x, 0.0)` is refused with the other double powers ([D71](docs/decisions.md#d71-power-is-strict-in-both-arguments), part of [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)). Every incremental sink is recomputed once at the upgrade, since a stored plan keeps `power(x, 0)` and the stored 1 is no longer the reference's value.

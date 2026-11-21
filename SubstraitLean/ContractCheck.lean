@@ -8,6 +8,7 @@ import Sverify.Frontend.Parse
 import Sverify.Core.Pretty
 import Sverify.Analysis.Semantic
 import Sverify.Frontend.Write
+import Sverify.Frontend.Bind
 import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
@@ -335,8 +336,10 @@ structure Report where
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
-  /-- The expressions that run correctly without their checks
-  (`Rel.evalG_marks`), as `Rel.marksJson`; `.null` when none is known. -/
+  /-- The expressions that run correctly without their checks, in the root
+  the checker writes (`Parse.Plan.writtenRoot`; `Rel.evalG_marks`,
+  `Rel.duckdb_marks_written`), as `Rel.marksJson`; `.null` when none is
+  known. -/
   unchecked : Json := .null
   /-- The transformation after `Rel.optimize`, as Substrait JSON. -/
   optimized : Json := .null
@@ -380,6 +383,15 @@ the same tree: `{"node": "Filter", "slots": [0], "inputs": [...]}`. -/
 partial def _root_.Substrait.Rel.marksJson (r : Rel) (m : Marks) : Json :=
   Json.mkObj [("node", Lean.toJson r.nodeName), ("slots", Lean.toJson m.slots),
     ("inputs", Json.arr (r.inputs.zipIdx.map fun (x, i) => x.marksJson (m.input i)).toArray)]
+
+/-- **The root the checker writes for a plan** (`--write`): the plan with the
+arguments of nested calls bound as columns (`Rel.bindArgs`, #821), so the
+writers' guards read a column where they would copy a call, where that parses
+back as itself; decimal arithmetic stays as the parser read it (#27). -/
+def _root_.Substrait.Parse.Plan.writtenRoot [Boxes.Ambient] (plan : Parse.Plan) : Rel :=
+  let bound := plan.root.bindArgs plan.catalog
+  if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
+  else bound
 
 /-- Does `e` occur in `t`? -/
 partial def _root_.Substrait.Expr.hasSub (e : Expr) (t : Expr) : Bool :=
@@ -1418,10 +1430,17 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         (Infer.Rel.bounds cat A F T false p.root).map fun (i, e, b) =>
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
+  -- The marks of the root the checker writes (`--write`), the plan a run
+  -- sends (ruling 228, `Rel.duckdb_marks_written`): given where the theorem's
+  -- decidable hypotheses hold on that root and on the transform (B2), and where
+  -- the root is the transform or the transform bound at this catalog (B3).
   let unchecked := match transform with
     | some p =>
-      if p.root.checkWF cat && p.root.looseSub then
-        p.root.marksJson (p.root.marks cat A F T false)
+      if p.root.checkWF cat then
+        let w := p.writtenRoot
+        if w.checkWF cat && w.looseSub && (w == p.root || w == p.root.bindArgs cat) then
+          w.marksJson (w.marks cat A F T false)
+        else .null
       else .null
     | none => .null
   let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre

@@ -283,7 +283,7 @@ class Route:
     the plan's bound, …). None for the other classes."""
     bound_proved: bool | None = None
     """Whether the tolerance in `observation` rests on a bound Lean proves
-    (`Report.epsilon`); False where it rests on a test; None without one."""
+    (`Report._epsilon`); False where it rests on a test; None without one."""
     suggested: dict[str, list[str]] = field(default_factory=dict, compare=False)
     """For a refusal, what to declare to make the plan verify, as condition
     labels per input table: an `sv.unique(...)` that determines a result
@@ -476,7 +476,7 @@ def check_settings(
     Args:
         engine: The engine's name.
         values: The settings to check; the engine's current ones by default.
-        depends: The options the plan depends on (`Report.depends`); None
+        depends: The options the plan depends on (`Report._depends`); None
             when unknown, which relies on every setting.
 
     Returns:
@@ -656,7 +656,7 @@ def _plan_bound(
     meets the postcondition rests on an unproved bound.
 
     The contract's result gives each double output column's `ε`
-    (`Report.epsilon`): bounds of several kinds, each of which holds on its
+    (`Report._epsilon`): bounds of several kinds, each of which holds on its
     own. The postcondition's tolerance (`sv.within`) is met when one of
     them is no larger than the stated bound of the same kind (#568's
     propagation, B1)."""
@@ -940,7 +940,7 @@ def _with_bound(
 
 def plan_bound(epsilon: Mapping[str, Mapping[str, Any]] | None) -> Within | None:
     """The plan's bound on its doubles as one tolerance: per kind every
-    column has, the largest of the columns' `ε` (`Report.epsilon`). None
+    column has, the largest of the columns' `ε` (`Report._epsilon`). None
     where no double column has a bound above zero, or one has none."""
     if not epsilon or any(e["unbounded"] for e in epsilon.values()):
         return None
@@ -1089,7 +1089,7 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
 
 def max_rows_fix(report: Report, engine: str, required: Observation | None) -> dict[str, list[str]]:
     """The `sv.max_rows(N)` under which the plan's bound on its doubles
-    (`Report.epsilon`) meets the tolerance `required` states, by the input
+    (`Report._epsilon`) meets the tolerance `required` states, by the input
     table that has a row cap now: the bound grows linearly with the rows,
     so `N` is the cap scaled by the tightest ratio of tolerance to bound.
     Empty where there is no stated tolerance, no single capped input, or

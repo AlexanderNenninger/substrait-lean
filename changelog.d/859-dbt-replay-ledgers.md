@@ -1,0 +1,1 @@
+The dbt replay ledgers are refreshed: dbt-utils now proves 3 tests (was 1) and dbt-expectations reads its row-level tests ([#859](https://github.com/AlexanderNenninger/substrait-lean/issues/859)). `replay/constructs.json` names the issue or design reason of each refusal.
