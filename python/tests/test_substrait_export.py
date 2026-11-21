@@ -467,7 +467,7 @@ def _evaluate(plan: dict, e: dict, row: tuple):
     if "selection" in e:
         return row[e["selection"]["directReference"]["structField"]["field"]]
     if "literal" in e:
-        return float(e["literal"]["fp64"])
+        return None if "null" in e["literal"] else float(e["literal"]["fp64"])
     if "ifThen" in e:
         (arm,) = e["ifThen"]["ifs"]
         pick = arm["then"] if _evaluate(plan, arm["if"], row) else e["ifThen"]["else"]
@@ -511,85 +511,14 @@ def test_the_ordering_shim_is_three_valued_over_the_special_doubles(name: str) -
     def key(v):  # NaN greatest
         return (v != v, 0.0 if v != v else v + 0.0)
 
-    values = [NAN, None, float("inf"), float("-inf"), 0.0, -0.0, 1.0]
+    values = SPECIAL
     for x in values:
         for y in values:
             want = None if x is None or y is None else ref(key(x), key(y))
             assert _evaluate(plan, expr, (x, y)) is want, (name, x, y)
 
 
-def _exported_condition(report: sv.Report) -> tuple[dict, dict]:
-    """The exported plan and the expression of its project's last output, a column `c`."""
-    plan = read(report.to_substrait()).plan
-    node = plan["relations"][0]["root"]["input"]
-    while "project" not in node:
-        node = next(v for v in node.values() if isinstance(v, dict) and "input" in v)
-    return plan, node["project"]["expressions"][-1]
-
-
-def _as_sql(plan: dict, e: dict) -> str:
-    """The exported expression as DuckDB SQL over the columns `i`, `a`, `b`."""
-    names = {
-        x["extensionFunction"]["functionAnchor"]: x["extensionFunction"]["name"].split(":")[0]
-        for x in plan["extensions"]
-    }
-    if "selection" in e:
-        return "iab"[e["selection"]["directReference"]["structField"].get("field", 0)]
-    if "literal" in e:
-        return f"CAST('{float(e['literal']['fp64'])}' AS DOUBLE)"
-    if "ifThen" in e:
-        (arm,) = e["ifThen"]["ifs"]
-        c, t, o = (_as_sql(plan, x) for x in (arm["if"], arm["then"], e["ifThen"]["else"]))
-        return f"CASE WHEN {c} THEN {t} ELSE {o} END"
-    f = e["scalarFunction"]
-    a = [_as_sql(plan, x["value"]) for x in f["arguments"]]
-    return {
-        "is_nan": "isnan({})",
-        "is_null": "({} IS NULL)",
-        "not": "(NOT {})",
-        "add": "({} + {})",
-        "lt": "({} < {})",
-        "and": "({} AND {})",
-        "or": "({} OR {})",
-    }[names[f["functionReference"]]].format(*a)
-
-
-def _as_polars(plan: dict, e: dict):
-    import polars as pl
-
-    names = {
-        x["extensionFunction"]["functionAnchor"]: x["extensionFunction"]["name"].split(":")[0]
-        for x in plan["extensions"]
-    }
-    if "selection" in e:
-        return pl.col("iab"[e["selection"]["directReference"]["structField"].get("field", 0)])
-    if "literal" in e:
-        return pl.lit(float(e["literal"]["fp64"]), dtype=pl.Float64)
-    if "ifThen" in e:
-        (arm,) = e["ifThen"]["ifs"]
-        c, t, o = (_as_polars(plan, x) for x in (arm["if"], arm["then"], e["ifThen"]["else"]))
-        return pl.when(c).then(t).otherwise(o)
-    f = e["scalarFunction"]
-    a = [_as_polars(plan, x["value"]) for x in f["arguments"]]
-    match names[f["functionReference"]]:
-        case "is_nan":
-            return a[0].is_nan()
-        case "is_null":
-            return a[0].is_null()
-        case "not":
-            return ~a[0]
-        case "add":
-            return a[0] + a[1]
-        case "lt":
-            return a[0] < a[1]
-        case "and":
-            return a[0] & a[1]
-        case "or":
-            return a[0] | a[1]
-    raise AssertionError(names)
-
-
-SPECIAL = [NAN, None, float("inf"), float("-inf"), 0.0, -0.0, 1.0]
+SPECIAL = [None, NAN, float("-inf"), -1.0, -0.0, 0.0, 1.0, float("inf")]
 PAIRS = [(a, b) for a in SPECIAL for b in SPECIAL]
 PAIR_ROWS = pa.table(
     {
@@ -599,28 +528,34 @@ PAIR_ROWS = pa.table(
     }
 )
 PT = ibis.table({"i": "int64", "a": "float64", "b": "float64"}, name="t")
+COMPARISONS = {
+    "lt": lambda: PT.a < PT.b,
+    "le": lambda: PT.a <= PT.b,
+    "gt": lambda: PT.a > PT.b,
+    "ge": lambda: PT.a >= PT.b,
+    "between_value": lambda: PT.a.between(PT.b, 1.0),
+    "between_low": lambda: PT.a.between(-1.0, PT.b),
+    "between_high": lambda: PT.b.between(PT.a, 1.0),
+}
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
-@pytest.mark.parametrize("op", ["__lt__", "__gt__", "__le__", "__ge__"])
-def test_the_exported_ordering_agrees_with_the_reference_on_an_engine(op: str, engine: str) -> None:
-    """#741: over NaN, NULL, ±inf, ±0 and 1.0 on each side, the exported expression, run by the
-    engine, gives what the reference gives (the verified plan's run, NaN greatest, one zero)."""
+@pytest.mark.parametrize("case", list(COMPARISONS))
+def test_the_exported_ordering_agrees_with_the_reference_on_an_engine(
+    case: str, engine: str
+) -> None:
+    """#741: over NULL, NaN, -inf, -1, -0, +0, 1 and +inf, all 64 ordered pairs (and, for
+    `between`, each pair as the value and one bound), the plan read back from the export,
+    run on the engine, gives the reference's values. The export carries the shim, and the
+    read-back keeps it."""
     pytest.importorskip(engine)
-    report = _verify(PT.select("i", c=getattr(PT.a, op)(PT.b)), counterexamples=0)
+    report = _verify(PT.select("i", c=COMPARISONS[case]()), counterexamples=0)
+    exported = report.to_substrait()
+    assert "is_nan" in json.dumps(read(exported).plan)
+    back = sv.Report.from_substrait(exported)
+    assert "is_nan" in json.dumps(back.internal_plan, default=str)
     con = connect()
     put_table(con, "t", PAIR_ROWS)
     want = report.run(con, engine).sort_by("i").column("c").to_pylist()
-    plan, expr = _exported_condition(report)
-    if engine == "duckdb":
-        import duckdb
-
-        db = duckdb.connect()
-        db.register("t", PAIR_ROWS)
-        got = [r[0] for r in db.sql(f"SELECT {_as_sql(plan, expr)} FROM t ORDER BY i").fetchall()]
-    else:
-        import polars as pl
-
-        frame = pl.DataFrame(PAIR_ROWS).sort("i")
-        got = frame.select(_as_polars(plan, expr).alias("c"))["c"].to_list()
+    got = back.run(con, engine).sort_by("i").column("c").to_pylist()
     assert got == want

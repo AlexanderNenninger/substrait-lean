@@ -20,7 +20,8 @@ write the gap away (the export then refuses, or annotates with
   double grouping key is the pair `(is_nan(x), if is_nan(x) then 0.0 else
   x + 0.0)`, and the key comes back as `if k1 then NaN else k2`; a double
   sort key is `is_nan(x)` and then `x + 0.0`, so NaN sorts greatest and the
-  two zeros tie. An ordering comparison of doubles is built from one
+  two zeros tie. An ordering comparison of doubles is
+  `CASE WHEN x IS NULL OR y IS NULL THEN NULL ELSE t END`, with `t` built from one
   `x < y`: `(NOT is_nan(x) AND is_nan(y)) OR (NOT is_nan(x) AND NOT is_nan(y) AND
   x + 0.0 < y + 0.0)`; `x > y` is `y < x`, `x <= y` is `NOT y < x`, `x >= y` is
   `NOT x < y` and `between` is `>=` and `<=`.
@@ -115,7 +116,7 @@ def st4(typer: _Typer, b: Builder) -> Json | None:
             args = [a["value"] for a in c.node["arguments"]]
             if c.name == "between":
                 e, lo, hi = args
-                out = b.call("and", _not_less(b, e, lo), _not_less(b, hi, e))
+                out = b.call("and", ordering(b, "gte", e, lo), ordering(b, "lte", e, hi))
             else:
                 out = ordering(b, c.name, *args)
             c.holder.clear()
@@ -154,32 +155,40 @@ def st4(typer: _Typer, b: Builder) -> Json | None:
 
 
 def ordering(b: Builder, name: str, x: Json, y: Json) -> Json:
-    """The comparison `name` of two doubles, with NaN greatest and one zero."""
+    """The comparison `name` of two doubles, with NaN greatest and one zero,
+    and NULL when either side is NULL: `(t AND NOT n) OR (n AND NULL)`, with
+    `t` the two-valued comparison and `n` the test `x IS NULL OR y IS NULL`.
+    The NULL is a literal, so it does not depend on the consumer's own `lt`,
+    and no negation sits outside `t`. (`CASE WHEN n THEN NULL ELSE t END` is
+    the same but makes Polars' optimiser use gigabytes on 64 rows.)"""
     if name == "lt":
-        return _less(b, x, y)
-    if name == "gt":
-        return _less(b, y, x)
-    if name == "lte":
-        return _not_less(b, y, x)
-    return _not_less(b, x, y)
+        t = _less(b, x, y)
+    elif name == "gt":
+        t = _less(b, y, x)
+    elif name == "lte":
+        t = b.call("not", _less(b, y, x))
+    else:
+        t = b.call("not", _less(b, x, y))
+
+    def either_null() -> Json:
+        return b.call(
+            "or", b.call("is_null", copy.deepcopy(x)), b.call("is_null", copy.deepcopy(y))
+        )
+
+    null = {"literal": {"null": {"bool": {"nullability": "NULLABILITY_NULLABLE"}}}}
+    return b.call(
+        "or",
+        b.call("and", t, b.call("not", either_null())),
+        b.call("and", either_null(), null),
+    )
 
 
 def _less(b: Builder, x: Json, y: Json) -> Json:
-    """`x < y` with NaN greatest and one zero; NULL when either side is NULL
-    (the formula alone gives FALSE for NaN and NULL, and its negation TRUE)."""
+    """The two-valued `x < y` of non-NULL doubles, NaN greatest and one zero."""
     nx, ny = (b.call("is_nan", copy.deepcopy(v)) for v in (x, y))
     both = b.call("and", b.call("not", copy.deepcopy(nx)), b.call("not", copy.deepcopy(ny)))
     plain = b.call("and", both, b.call("lt", b.canonical(x), b.canonical(y)))
-    formula = b.call("or", b.call("and", b.call("not", nx), ny), plain)
-    either_null = b.call(
-        "or", b.call("is_null", copy.deepcopy(x)), b.call("is_null", copy.deepcopy(y))
-    )
-    return b.if_then(either_null, b.call("lt", b.canonical(x), b.canonical(y)), formula)
-
-
-def _not_less(b: Builder, x: Json, y: Json) -> Json:
-    """`x >= y`, which is `NOT x < y`: the order is total."""
-    return b.call("not", _less(b, x, y))
+    return b.call("or", b.call("and", b.call("not", nx), ny), plain)
 
 
 def _split_sorts(node: Any) -> None:
