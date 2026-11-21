@@ -209,13 +209,7 @@ def test_needed_text_is_a_field() -> None:
     n = next(n for n in report.needs if "< 2**62" in n.label)
     assert "(_.amount < 2**62) on t, inferred from `amount * 2`" in n.text
     assert not hasattr(report, "needs_lines") and not hasattr(report, "needs_text")
-    with pytest.warns(DeprecationWarning, match=r"Report.needed is deprecated"):
-        assert report.needed == {"t": [m.label for m in report.needs]}
-    with pytest.warns(DeprecationWarning, match=r"Report.needed_text is deprecated"):
-        assert report.needed_text == report._needs_lines()
-    with pytest.warns(DeprecationWarning, match=r"Report.needed_conditions is deprecated"):
-        conds = report.needed_conditions
-    assert [repr(c) for c in conds["t"]] == [repr(m.condition) for m in report.needs]
+    assert not hasattr(report, "needed") and not hasattr(report, "needed_conditions")
 
 
 def test_equivalence_is_the_observation() -> None:

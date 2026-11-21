@@ -88,6 +88,15 @@ QUERIES = [
     " last(day ORDER BY id) AS d FROM orders GROUP BY customer",
     "SELECT list(customer ORDER BY id) FILTER (WHERE id > 1) AS l, first(qty ORDER BY id) AS f,"
     " bool_or(qty > 3) AS b FROM orders WHERE id > 10",
+    # `any_value`: a non-NULL value of the group (#319), here the only one.
+    "SELECT customer, any_value(customer) AS a, any_value(qty) FILTER (WHERE id < 0) AS n"
+    " FROM orders GROUP BY customer",
+    "SELECT any_value(id) AS a FROM orders WHERE id = 1",
+    # It skips NULLs, in the ORDER BY's order (unique ids).
+    "SELECT customer, any_value(qty ORDER BY id) AS f, any_value(qty ORDER BY id DESC) AS l"
+    " FROM orders GROUP BY customer",
+    "SELECT any_value(price ORDER BY placed) AS p, any_value(customer ORDER BY id) AS c"
+    " FROM orders",
     # A key that is the alias of a constant: `qualify` writes its position
     # (`GROUPING SETS ((1), ())`), which is the select list's first column.
     "SELECT count(k) AS c, sum(k) AS s FROM (SELECT 7 AS k FROM orders"
@@ -140,6 +149,10 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT bool_and(amount) FROM orders", "not supported"),
         ("SELECT list(cost ORDER BY id) FROM orders", "DECIMAL"),
         ("SELECT first(qty ORDER BY amount + 1) FROM orders", "ORDER BY a column only"),
+        ("SELECT any_value(DISTINCT id) FROM orders", "DISTINCT"),
+        ("SELECT arg_min_null(id, qty) FROM orders", r"arg_min_null\(\) is not supported yet"),
+        ("SELECT bitstring_agg(id) FROM orders", "BIT string"),
+        ("SELECT histogram_exact(id, [1, 2]) FROM orders", "MAP"),
         ("SELECT list(qty) OVER (ORDER BY id) FROM orders", "over a window"),
         # SQLGlot reads EXPORT_STATE as an alias (upstream/bugs/SG-9.json).
         ("SELECT first(qty ORDER BY id) EXPORT_STATE FROM orders", "EXPORT_STATE"),
