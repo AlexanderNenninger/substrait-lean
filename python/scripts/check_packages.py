@@ -174,7 +174,15 @@ def _testing(tmp: str) -> None:
         return t
 
     node = StaticSource(pa.table({"a": [1]}), name="t").pipe(kept)
-    assert all(v > 0 for v in cases(node, max_rows=3).example()["t"].column("a").to_pylist())
+    strategy = cases(node, max_rows=3)
+    # Drawing runs the preconditions on an engine, which the extra leaves to
+    # the user (`sverify[testing,duckdb]`); alone, a draw names the extra.
+    try:
+        strategy.example()
+    except ValueError as e:
+        assert "sverify[duckdb]" in str(e), e
+    else:
+        raise AssertionError("cases() drew an example with no engine installed")
 
 
 def _odcs(tmp: str) -> None:
