@@ -3294,8 +3294,14 @@ def sink_parquet(lf: pl.LazyFrame, path: str) -> None:
     lf.sink_parquet(path, engine="streaming", optimizations=_OPTIMIZATIONS)
 
 
-def run(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pa.Table:
-    """Run a plan in Lean's written form on Polars (`guards`: see `to_lazy`).
-    The columns are named by `RelRoot.names`, repeats included."""
-    lf, names = _translate(plan, tables, guards)
+def run(
+    plan: str | dict,
+    tables: Tables,
+    *,
+    guards: Guards = True,
+    rows: Literal["sequence", "multiset"] = "sequence",
+) -> pa.Table:
+    """Run a plan in Lean's written form on Polars (`guards`, `rows`: see
+    `to_lazy`). The columns are named by `RelRoot.names`, repeats included."""
+    lf, names = _translate(plan, tables, guards, rows)
     return collect(lf).to_arrow().rename_columns(names)

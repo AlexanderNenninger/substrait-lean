@@ -108,7 +108,16 @@ def test_the_contract_records_the_table_id(lake):
 
 def test_other_tables():
     def contract(sources, table_ids):
-        return Contract("v", "p", sources, sum(sources.values()), [], {}, [], table_ids=table_ids)
+        return Contract(
+            node="v",
+            plan="p",
+            sources=sources,
+            epoch=sum(sources.values()),
+            not_null=[],
+            checks={},
+            unique=[],
+            table_ids=table_ids,
+        )
 
     done = contract({"a": 4, "b": 2}, {"a": "x"})
     assert other_tables(done, contract({"a": 5, "b": 2}, {"a": "x"})) == []

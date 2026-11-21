@@ -38,7 +38,9 @@ structure Table where
   arity : Nat
   rows : Relation
 
-/-- Named tables. Unknown names resolve to an empty, zero-column table. -/
+/-- Named tables. Unknown names resolve to an empty, zero-column table. A parsed
+plan's own reads never reach it: the parser registers every named read with its
+`baseSchema`, and `Plan.catalog` looks the name up there. -/
 abbrev Catalog := String → Table
 
 def Catalog.WF (cat : Catalog) : Prop :=

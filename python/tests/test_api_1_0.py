@@ -3,6 +3,7 @@
 1.x, the exception names, `SverifyWarning`, `SverifyError.code`, and the
 environment variables. Each renamed released name warns for one release."""
 
+import importlib
 import re
 import warnings
 
@@ -34,7 +35,6 @@ from sverify.errors import (
     [
         (sverify.errors, "Unsupported", UnsupportedError),
         (sverify.errors, "NotIncremental", NotIncrementalError),
-        (sverify.engines, "Unsupported", UnsupportedError),
     ],
 )
 def test_the_old_exception_names_warn(module, old, new) -> None:
@@ -85,6 +85,15 @@ def test_every_warning_is_a_sverify_warning() -> None:
     names = [n for n in sverify.errors.__all__ if n.endswith("Warning")]
     assert sorted(c.__name__ for c in _public(SverifyWarning)) == sorted(names)
     assert issubclass(SverifyWarning, UserWarning)
+    # The warnings of modules outside `sverify.errors` too (#881 1.8).
+    importlib.import_module("sverify.odcs")
+    importlib.import_module("sverify.openlineage")
+
+    def subclasses(c: type) -> list[type]:
+        return [s for d in c.__subclasses__() for s in (d, *subclasses(d))]
+
+    ours = {c for c in subclasses(Warning) if c.__module__.startswith("sverify.")}
+    assert ours and all(issubclass(c, SverifyWarning) for c in ours), ours
 
 
 @sv.transform(ensures=[_.big > 100], on_unproved="warn")
@@ -157,3 +166,18 @@ def test_sverify_spill_directory_is_sverify_temp_directory(monkeypatch, tmp_path
     monkeypatch.setenv("SVERIFY_SPILL_DIRECTORY", str(tmp_path))
     with pytest.warns(DeprecationWarning, match="set SVERIFY_TEMP_DIRECTORY"):
         assert _duckdb.limits()["temp_directory"] == str(tmp_path)
+
+
+def test_result_dataclasses_are_keyword_only() -> None:
+    """#881 1.5: a result or IO dataclass is built by keyword, so a field
+    added in 1.x breaks no caller. `Report` and `Contract` are built by
+    sverify alone; `Batch`, `Snapshot`, `SourceBatch` and `SinkWrite` by
+    custom IO too."""
+    import dataclasses
+
+    from sverify.incremental import Snapshot, SourceBatch
+    from sverify.io import Batch, Contract
+    from sverify.io._common import SinkWrite
+
+    for cls in (sv.Report, Contract, Batch, Snapshot, SourceBatch, SinkWrite):
+        assert all(f.kw_only for f in dataclasses.fields(cls) if f.init), cls.__name__

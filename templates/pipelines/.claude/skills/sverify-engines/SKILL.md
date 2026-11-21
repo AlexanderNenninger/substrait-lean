@@ -68,7 +68,7 @@ for dialect in ("duckdb", "snowflake", "spark"):
 
 `sverify.engines.run(con, node.internal_plan, engine)` runs the plan over a
 connection's tables; `engine="spark"` or a Spark session configured with
-`SPARK_CONF` runs it on Spark. `sverify.engines.to_sql(plan, dialect)` writes
+`SPARK_CONF` runs it on Spark. `sverify.engines.plan.to_sql(plan, dialect)` writes
 any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused
@@ -107,7 +107,7 @@ print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is 
   windows are refused unless the report is `deterministic` (a key on the
   partition and order columns rules out ties), and so is `SUM` or `AVG` of
   doubles (the rounding depends on the order of additions). `node.to_sql` and
-  `report.to_sql` read it from the report; `sverify.engines.to_sql` takes
+  `report.to_sql` read it from the report; `sverify.engines.plan.to_sql` takes
   `deterministic=True`, which you pass only when a report says so.
 * **Snowflake has no interval type**: interval-valued expressions are refused.
 * **Warehouse setup the SQL assumes:** Snowflake time columns are

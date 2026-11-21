@@ -359,14 +359,8 @@ def write (plan : Plan) : IO UInt32 := do
   if plan.root.decimalOps && !Write.roundtrips plan then
     IO.eprintln "error: this decimal arithmetic cannot be written for the engines yet (#27)"
     return 1
-  -- Arguments of nested calls become columns (`Rel.bindArgs`, #821), so the
-  -- writers' guards read a column where they would copy a call. Decimal
-  -- arithmetic stays as the parser read it: it must parse back (#27).
-  -- The bound plan is written only where it parses back as itself.
-  let bound := plan.root.bindArgs plan.catalog
-  let root := if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
-    else bound
-  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog root plan.names).compress
+  -- Arguments of nested calls become columns (`Parse.Plan.writtenRoot`).
+  IO.println (Write.writePlan (Write.planSchemas plan) plan.catalog plan.writtenRoot plan.names).compress
   return 0
 
 open Lean (Json toJson) in

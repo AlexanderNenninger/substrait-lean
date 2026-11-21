@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_string",
   "summary": {
-    "agree": 44,
+    "agree": 65,
     "disagree": 0,
-    "refused": 34,
+    "refused": 13,
     "unproved": 19,
     "skipped": 30
   },
@@ -54,98 +54,62 @@
       "reason": "text the engines' case mapping treats differently: UPPER((… SUBSTRING_FOR_1 N))"
     },
     "test_capitalize[duckdb-none]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-add-abc-def-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-add-abc-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-add-abc-typed-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-add-null-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-concat-abc-def-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-concat-abc-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-concat-abc-typed-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat[duckdb-concat-null-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat_with_null[duckdb-a-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat_with_null[duckdb-null-a]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_concat_with_null[duckdb-null-null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_empty_array_string_join[duckdb]": {
       "outcome": "skipped",
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_levenshtein[duckdb-ibis]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_levenshtein[duckdb-python]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_multiple_subs[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_no_conditional_percent_escape[duckdb-case]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_no_conditional_percent_escape[duckdb-ifelse]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_non_match_regex_search_is_false[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_parse_url[duckdb-authority]": {
       "outcome": "skipped",
@@ -188,9 +152,7 @@
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_re_replace_global[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_re_split[duckdb]": {
       "outcome": "refused",
@@ -463,14 +425,10 @@
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_subs_with_re_replace[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_substr_with_null_values[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_substring[duckdb-expr_empty_slice]": {
       "outcome": "agree"

@@ -157,7 +157,8 @@ def test_an_engine_from_outside_runs_as_the_built_ins_do(twin: ProfilePlugin) ->
     import pyarrow as pa
 
     import sverify as sv
-    from sverify.engines import run, to_sql, written_plan
+    from sverify.engines import run
+    from sverify.engines.plan import to_sql, written_plan
     from sverify.sql import dialect_of
 
     con = sv.connect("twin")  # type: ignore[arg-type]

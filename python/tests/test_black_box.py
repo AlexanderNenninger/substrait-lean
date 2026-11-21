@@ -82,10 +82,13 @@ def test_a_black_box_is_under_sverifys_urn():
     written = json.loads(written_plan(json.dumps(plan)))
     ref = {e["extensionFunction"]["name"]: e["extensionFunction"] for e in written["extensions"]}
     anchors = {b.name: 700 + i for i, b in enumerate(black_box.TABLE)}
-    assert ref["base64"]["functionAnchor"] == 700
-    assert ref["entropy"]["functionAnchor"] == anchors["entropy"]
-    assert ref["entropy"]["extensionUrnReference"] == 1
-    assert "extensionUrnReference" not in ref["add"]
+    # The written plan declares the functions it calls, each box at its fixed
+    # anchor under the URN, and no unused one (#1787 item 5).
+    assert ref["base64"]["functionAnchor"] == anchors["base64"] == 700
+    assert ref["base64"]["extensionUrnReference"] == 1
+    assert "entropy" not in ref
+    for name, f in ref.items():
+        assert ("extensionUrnReference" in f) == (name in anchors), name
 
 
 def test_a_scalar_black_box_through_oracles_a_and_c():
@@ -102,6 +105,28 @@ def test_written_back_it_is_duckdbs_function(query, semantics):
     assert code == 0, err or out
     got = duckdb_engine.run(written_plan(plan), TABLES)
     assert _rows(got) == _rows(duckdb_result(query, TABLES))
+
+
+@pytest.mark.parametrize(
+    ("query", "tables"),
+    [
+        (
+            "SELECT signbit(x) AS b FROM t",
+            {"t": pa.table({"x": pa.array([math.nan], pa.float64())})},
+        ),
+        (
+            "SELECT string_split(s, s) AS p FROM t",
+            {"t": pa.table({"s": pa.array([""], pa.string())})},
+        ),
+    ],
+)
+def test_a_refused_call_is_refused_every_time(query, tables):
+    # One served checker answers both requests. The refusal is raised on each
+    # call, not computed once and NULL after (#2154).
+    for _ in range(2):
+        result = check(query, tables)
+        assert result.stage == "oracle A", result
+        assert "black box Lean does not evaluate" in result.detail, result
 
 
 def test_lean_does_not_evaluate_entropy():
@@ -267,13 +292,13 @@ def test_base64_keeps_its_laws_on_random_data(vs):
 
 # -- #328: scalars -------------------------------------------------------------
 
-#: Lean evaluates these, so oracles A and C. `signbit` away from `±0.0` and
-#: NaN, whose sign the model's codes drop; `weekday` is `dayofweek`, exact.
+#: Lean evaluates these, so oracles A and C: `signbit` at both zeros too
+#: (`signbit(-price)` at a price of 0 is TRUE, #2154); `weekday` is `dayofweek`, exact.
 SCALARS_328 = [
     "SELECT id, octet_length(encode(customer)) AS o, strlen(customer || 'é') AS s FROM orders",
     "SELECT id, yearweek(day) AS y, weekday(day) AS w, yearweek(DATE '0001-01-01') AS z"
     " FROM orders",
-    "SELECT id, signbit(price) AS b, signbit(-price) AS c FROM orders WHERE price <> 0",
+    "SELECT id, signbit(price) AS b, signbit(-price) AS c FROM orders",
 ]
 #: Lean does not evaluate `printf` and `format`: oracle C only.
 FORMATS = [
@@ -548,7 +573,7 @@ def test_327_lists_through_oracles_a_and_c(query):
 def test_list_sum_raises_past_a_bigint():
     # DuckDB's own is a HUGEINT; the model's a BIGINT, as `SUM`'s.
     plan = written_plan(json.dumps(lift(LISTS[0], _VEC_SCHEMAS).plan))
-    with pytest.raises(Exception, match="out of range|Overflow|overflow"):
+    with pytest.raises(Exception, match="sverify: CAST to a 64-bit integer out of range"):
         duckdb_engine.run(plan, _VECS)
     report = sv.verify(LISTS[0], tables=_VEC_SCHEMAS)
     assert any("domain" in str(e) for e in report.errors), report

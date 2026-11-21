@@ -137,7 +137,8 @@ an observation that reads the members asks for the exact level.
 
 Each output can carry a postcondition that names the equivalence its
 consumer expects: rows as a multiset (the default) or as a sequence; floats
-within the plan's proved bound `ε` (`floats="plan"`, the default, #689),
+within the plan's bound `ε` (`floats="plan"`, the default, #689; computed from
+the bounds `float-bounds/` proves over the reals),
 exact, or within a stated tolerance, absolute, relative or in ulps, which
 `verify` checks against `ε` on each engine; timestamps up to a precision;
 strings up to NFC. Verification then
@@ -708,7 +709,7 @@ hold of every engine's result. The bounds differ in kind: `VAR_*` and
 `STDDEV_*` are relative to the spread, the deviation's half the variance's;
 `CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
 `√(Sxx · Syy)`, or relative only under a sign-definite precondition.
-`Report.epsilon` reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
+`Report.epsilon` (since 1.0 the bound `report.lenses` prints) reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
 (`Epsilon.statEps`). `CORR` has no data-free bound (decided 2026-11-08,
 #918): its distance to the reference is bounded only under a lower bound on
 both sides' variances (`core_corr_chan`'s `L`), stated by the user and
@@ -1771,7 +1772,7 @@ construct unless its needle is a literal, under `semantics="reference"` and `"du
 L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
 `Profile.reference`, and the verdict gains no value: the list says what the
 proof covers, and proved stays proved. An Ibis transformation lists nothing, and
-a SQL query with `semantics="duckdb"` lists only `list_contains` (2026-11-20). `semantics="reference"` stays the
+a SQL query with `semantics="duckdb"` lists only `list_contains` and the order of lists (2026-11-20; amended 2026-11-21: `list_null_order`, ordering comparisons of lists, whose NULL elements DuckDB orders last, ruling 232, [#2163](https://github.com/AlexanderNenninger/substrait-lean/issues/2163)). `semantics="reference"` stays the
 default for raw SQL ("verify two paths" and "portable everywhere" keep it).
 
 Recomputes sinks: no
