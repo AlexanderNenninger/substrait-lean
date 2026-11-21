@@ -424,7 +424,7 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
     | (obtain ⟨_, rfl⟩ := h; exact hout)
     | (subst h; first | exact hout | (simp [KT.has, KT.toKind]; done))
     | skip
-  case wrap | widen => obtain ⟨_, rfl⟩ := h; exact hv
+  case wrap | widen | dwiden => obtain ⟨_, rfl⟩ := h; exact hv
   case fit =>
     obtain ⟨_, rfl⟩ := h
     cases v <;> simp only [UnFn.apply] <;> first | exact hv | exact KT.has_int hv _
