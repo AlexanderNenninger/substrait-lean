@@ -682,6 +682,9 @@ theorem Substrait.duckdbOn.guardsUn : ∀ f : Substrait.UnFn,
     | Substrait.UnFn.narrowOrNull _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.wrap _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.itos  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.dtext  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.dtextFull  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.dwiden  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.widen  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.atUtc _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.upper  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
