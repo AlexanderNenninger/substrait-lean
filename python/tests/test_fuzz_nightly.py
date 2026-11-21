@@ -204,6 +204,25 @@ def test_the_checker_over_its_cap_is_a_memory_finding(tmp_path):
     ]
 
 
+def test_a_duckdb_fuzz_disagreement_that_verify_flags_is_no_finding(tmp_path):
+    flagged = {
+        "cls": "disagree",
+        "sql": "SELECT COALESCE(i, (i // i)) FROM t",
+        "lean": "error: Substrait.Issue.divByZero",
+        "duckdb": "[[0]]",
+        "reason": "verify: division by zero: i / i",
+    }
+    silent = {**flagged, "reason": None, "sql": "SELECT i % -1 FROM t"}
+    duck = json.dumps({"results": [flagged, silent]})
+    b = _batch(
+        tmp_path / "b", "duckdb:int_division", 2, **{"duckdb__fuzz__int_division.json": duck}
+    )
+    ledger, _ = nightly.merge({}, [b])
+    # Only the query `verify` does not flag stays; the `% -1` rule explains it.
+    [entry] = ledger["entries"].values()
+    assert entry["signature"][1] == "SELECT i % -? FROM t"
+
+
 @pytest.mark.slow
 def test_a_crashed_fuzzer_is_not_ok_and_names_its_last_case(tmp_path, monkeypatch):
     code = (
