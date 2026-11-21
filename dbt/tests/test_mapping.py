@@ -433,12 +433,15 @@ def test_an_open_end_needs_every_start_before_it() -> None:
         t("dbt_utils.expression_is_true", None, expression=f"lo < {end}"),
         t("dbt_utils.expression_is_true", "lo", expression=f"< {end}"),
         t("dbt_utils.accepted_range", "lo", max_value=end, inclusive=False),
+        t("dbt_utils.expression_is_true", None, expression=f"lo IS NULL OR lo < {end}"),
     ]:
         assert conds(test, "requires", siblings=[sibling]) == want, sibling
     for other in [
         t("dbt_utils.accepted_range", "lo", max_value=end),  # lo <= L
         t("dbt_utils.expression_is_true", None, expression=f"hi < {end}"),
         t("dbt_utils.expression_is_true", None, expression="lo < timestamp '9999-12-30'"),
+        # Rows with `flag` NULL may start at L or later (review of #2209).
+        t("dbt_utils.expression_is_true", None, expression=f"flag IS NULL OR lo < {end}"),
     ]:
         assert conds(test, "requires", siblings=[other]) == [], other
     assert conds(test) == []  # ensures: no column states the open end

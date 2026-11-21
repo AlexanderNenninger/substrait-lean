@@ -368,7 +368,7 @@ def _ranges(test: Test, side: str, siblings: Sequence[Test]) -> Mapped:
         )
     if end is not None:
         below = sg.exp.LT(this=sg.exp.column(lo), expression=end.copy()).sql("duckdb")
-        if not any(below in _row_conditions(t) for t in siblings):
+        if not any(below in _row_conditions(t, lo) for t in siblings):
             return Mapped(
                 [],
                 f"an open end written coalesce({hi}, {end.sql('duckdb')}) is assumed only with "
@@ -404,16 +404,19 @@ def _columns(sql: Any) -> tuple[str, ...] | None:
     return None if None in names else tuple(n for n in names if n)
 
 
-def _row_conditions(test: Test) -> set[str]:
-    """The row conditions `test` states, without the NULL passes dbt adds
-    (`c IS NULL OR …`, `coalesce(…, TRUE)`), as DuckDB SQL."""
+def _row_conditions(test: Test, col: str) -> set[str]:
+    """The row conditions `test` states, as DuckDB SQL, without the NULL
+    passes dbt adds: `coalesce(…, TRUE)`, and `col IS NULL OR …` for the one
+    column `col`, which the caller knows is never NULL. A NULL pass on another
+    column stays: it lets rows through the rest."""
+    null_pass = sg.exp.Is(this=sg.exp.column(col), expression=sg.exp.null())
     out = set()
     for c in test_conditions(test, side="requires", table_of=lambda _: None).conditions:
         tree = _parse(c)
         while tree is not None:
             if isinstance(tree, sg.exp.Coalesce) and tree.expressions == [sg.exp.true()]:
                 tree = tree.this
-            elif isinstance(tree, sg.exp.Or) and isinstance(tree.this, sg.exp.Is):
+            elif isinstance(tree, sg.exp.Or) and tree.this == null_pass:
                 tree = tree.expression
             elif isinstance(tree, sg.exp.Paren):
                 tree = tree.unnest()
