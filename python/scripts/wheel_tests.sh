@@ -73,7 +73,7 @@ fi
 # The test dependencies the installed package doesn't bring. Add one here
 # when a test needs it, or skip the test with `pytest.importorskip`.
 uv run --isolated --no-project ${python[@]+"${python[@]}"} "${install[@]}" \
-  "${pins[@]}" --with pytest --with pytest-xdist --with hypothesis --with pyyaml --with jsonschema --with mpmath \
+  "${pins[@]}" --with pytest --with pytest-xdist --with hypothesis --with pyyaml --with mpmath \
   --with "pyiceberg[sql-sqlite]" \
   pytest -p no:cacheprovider -W "ignore:The 'future.infer_string' option is deprecated" \
   --rootdir "$work/python" \
