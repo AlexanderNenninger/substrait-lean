@@ -65,6 +65,7 @@ def test_the_sarif_document(tmp_path, capsys) -> None:
         ("SELECT id FROM orders; SELECT 1", "one query per file"),
         ("", "one query per file"),
         ("SELECT id FROM orders PIVOT x", "cannot parse"),
+        ("SELECT 'unterminated FROM orders", "cannot parse"),
         ("SELECT id FROM nowhere", "no schema for: nowhere"),
     ],
 )

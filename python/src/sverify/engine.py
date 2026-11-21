@@ -451,8 +451,9 @@ def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "ref
 def lift_sql_plan(
     schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference"
 ) -> Any:
-    """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
-    `schemas` it reads."""
+    """The lift of `sql`, DuckDB's SQL (`sverify.sql_lift.Lifted`), over the
+    tables of `schemas` it reads. A string of `verify` is DuckDB's; `sverify.sql`
+    reads other dialects through their front-ends (`ProfilePlugin.sql`)."""
     from sverify.sql_lift import full_name, lift
 
     try:
