@@ -23,6 +23,9 @@
     2026,
     2180
   ],
+  "amended_by": [
+    "F239"
+  ],
   "source": "fable-ruling-237-m4-triage.md",
-  "note": "The maintainer confirmed #177, #323, #814 and #27 for 1.0; #1930 and #322 were explained to the maintainer, and #1808 is open."
+  "note": "The maintainer confirmed #177, #323, #814 and #27 for 1.0; #1930 and #322 were explained to the maintainer, and #1808 is open. Ruling 239 withdraws the note's rounding option on the core's cast (D72)."
 }

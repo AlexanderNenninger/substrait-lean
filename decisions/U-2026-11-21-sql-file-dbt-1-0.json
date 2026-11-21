@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-21-sql-file-dbt-1-0",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Verifying a bare SQL file (#1362) and sverify-dbt (#177) are 1.0 goals.",
+  "issues": [
+    177,
+    1362
+  ],
+  "source": "coordinator's relay, 2026-11-21"
+}
