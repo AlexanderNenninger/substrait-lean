@@ -2,12 +2,13 @@
   "source": "https://github.com/bitol-io/open-data-contract-standard/tree/v3.2.0/docs/examples",
   "license": "Apache-2.0",
   "summary": {
-    "conditions": 155,
+    "conditions": 158,
     "examples read": 42,
     "round trip no conditions": 8,
     "round trip not tried": 6,
-    "round trip same": 98,
-    "unread": 18
+    "round trip refused": 4,
+    "round trip same": 94,
+    "unread": 15
   },
   "results": {
     "all/full-example.odcs.yaml": {
@@ -17,14 +18,10 @@
             "Key(cols=('rcvr_id',))",
             "references(rcvr_id, receivers.id)",
             "(\"rcvr_cntry_code\" IN ('US', 'CA', 'MX')) OR \"rcvr_cntry_code\" IS NULL",
-            "NOT \"rcvr_cntry_code\" IS NULL"
+            "NOT \"rcvr_cntry_code\" IS NULL",
+            "references((rcvr_id, rcvr_cntry_code), receivers.(id, country_code))"
           ],
           "unread": [
-            {
-              "column": null,
-              "reason": "a composite foreign key: references() takes one column",
-              "issue": 2223
-            },
             {
               "column": null,
               "reason": "a lower bound on the row count: sverify reads caps",
@@ -99,7 +96,10 @@
             "Key(cols=('addressid',))"
           ],
           "unread": [],
-          "round_trip": "same"
+          "round_trip": {
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"addressid\" IS NOT NULL: condition '\"addressid\" IS NOT NULL': column 'spatiallocation' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is lef",
+            "issue": 1958
+          }
         },
         "addresstype": {
           "conditions": [
@@ -204,7 +204,10 @@
             "Key(cols=('documentnode',))"
           ],
           "unread": [],
-          "round_trip": "same"
+          "round_trip": {
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"documentnode\" IS NOT NULL: condition '\"documentnode\" IS NOT NULL': column 'document' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is left",
+            "issue": 1958
+          }
         },
         "illustration": {
           "conditions": [
@@ -295,7 +298,10 @@
             "Key(cols=('productphotoid',))"
           ],
           "unread": [],
-          "round_trip": "same"
+          "round_trip": {
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"productphotoid\" IS NOT NULL: condition '\"productphotoid\" IS NOT NULL': column 'thumbnailphoto' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never rea",
+            "issue": 1958
+          }
         },
         "productproductphoto": {
           "conditions": [
@@ -747,15 +753,10 @@
             "Key(cols=('id',))",
             "NOT \"id\" IS NULL",
             "references(customer_id, customers.id)",
-            "references(shipping_address_street, addresses.address_street)"
+            "references(shipping_address_street, addresses.address_street)",
+            "references((customer_id, shipping_address_street), addresses.(customer_id, address_street))"
           ],
-          "unread": [
-            {
-              "column": null,
-              "reason": "a composite foreign key: references() takes one column",
-              "issue": 2223
-            }
-          ],
+          "unread": [],
           "round_trip": {
             "not tried": "a foreign key: the round trip reads one object"
           }
@@ -842,7 +843,10 @@
             "NOT \"product_id\" IS NULL"
           ],
           "unread": [],
-          "round_trip": "same"
+          "round_trip": {
+            "refused": "ConditionError: 2 condition(s) cannot be read: \"product_id\" IS NOT NULL: condition '\"product_id\" IS NOT NULL': column 'user_preferences' of 't': type map<!string, string> is not supported; cast the column to a supported type in the source query; only a column the query never reads is left out",
+            "issue": 1958
+          }
         }
       }
     },
@@ -906,15 +910,10 @@
             "NOT \"customer_id\" IS NULL",
             "NOT \"customer_country\" IS NULL",
             "NOT \"product_id\" IS NULL",
-            "references(product_id, products.id)"
+            "references(product_id, products.id)",
+            "references((customer_id, customer_country), customers.(id, country_code))"
           ],
-          "unread": [
-            {
-              "column": null,
-              "reason": "a composite foreign key: references() takes one column",
-              "issue": 2223
-            }
-          ],
+          "unread": [],
           "round_trip": {
             "not tried": "a foreign key: the round trip reads one object"
           }

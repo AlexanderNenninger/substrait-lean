@@ -28,7 +28,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _duckdb, _hooks
+from sverify import _decimals, _duckdb, _engines, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -47,7 +47,7 @@ from sverify.engine import (
     run_plan,
     written_plan,
 )
-from sverify.observation import Observation, _deterministic_arg
+from sverify.observation import Observation
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
@@ -710,6 +710,10 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
+    _sql_front_ends: tuple[str, ...] = field(default=(), compare=False)
+    """The SQL front-ends other than DuckDB's that read the plan's SQL
+    (`sverify.sql(dialect=)`), each as `package version (dialect)`: what the
+    SQL means is theirs (`docs/trusted-base.md`)."""
     dialect_differences: tuple[DialectDifference, ...] = field(default=(), compare=False)
     """For SQL, where the reference reads the text differently from DuckDB, as
     a value it gives and DuckDB does not: a double or decimal cast to an
@@ -910,7 +914,7 @@ class Report:
             sverify.errors.UnverifiedRunError: The plan is not proved.
             sverify.errors.RouteError: No route takes the plan to the
                 dialect's engine.
-            sverify.errors.Unsupported: The dialect cannot express the plan.
+            sverify.errors.UnsupportedError: The dialect cannot express the plan.
 
         Examples:
             ```python
@@ -1188,7 +1192,6 @@ class Report:
         reproducible: Observation | None = None,
         check_requires: bool = True,
         streaming: Literal["allow", "require"] = "allow",
-        deterministic: bool | None = None,
         optimize: bool = True,
     ) -> pa.Table:
         """Run the plan this report checked (`plan`) over the tables of
@@ -1222,8 +1225,7 @@ class Report:
                 Spark session. Default: the connection's engine.
             route: `"auto"` (the default) chooses a route; `"native"`,
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or
-                refuses (`"reference"` is a deprecated alias of
-                `"translated"`).
+                refuses .
             unverified: Run a plan that is not proved, or an engine version
                 outside its profile's range (D70), without a route. Default
                 False: such a run is refused.
@@ -1295,9 +1297,10 @@ class Report:
 
         if self.internal_plan is None:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
-        reproducible = _deterministic_arg("Report.run", deterministic, reproducible)
         kind: str | None = None
         target = engine if engine is not None else con.engine
+        if missing := _engines.not_installed(target):
+            raise missing
         chosen = None
         if unverified and not routes.verified(self):
             chosen = routes.unverified(self, target)
@@ -1848,6 +1851,7 @@ class Report:
         if self._params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
         out += [f"dialect: {d}" for d in self.dialect_differences]
+        out += [f"sql read by {f}" for f in self._sql_front_ends]
         return out
 
     def route(

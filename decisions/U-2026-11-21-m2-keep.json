@@ -1,0 +1,18 @@
+{
+  "id": "U-2026-11-21-m2-keep",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "#2008, #886, #1130 and #271 are needed for 1.0, and ruling 243 decides the rest of its confirm calls.",
+  "issues": [
+    271,
+    886,
+    929,
+    1130,
+    1719,
+    2008
+  ],
+  "source": "coordinator's relay, 2026-11-21",
+  "note": "The maintainer's words, answering ruling 243: '1 is good. No api change, just a core hardening.' (#2008, the proof route); '2. Yeah, tidying and optimization are continuous processes' (#886); 'Follow fable for the rest. We should really have complete polars and spark lifts for 1.0' (#1130, #1719, #929, #271); then 'Sorry, I meant polars and spark lowerings' (#271 is the lowerings)."
+}

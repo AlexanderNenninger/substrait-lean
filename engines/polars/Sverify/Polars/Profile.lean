@@ -73,7 +73,25 @@ def floorFmodT : Expr := Expr.floorFmodOf (.field 0) (.field 1)
 
 theorem floorFmodT_subst (a b : Expr) : floorFmodT.subst [a, b] = Expr.floorFmodOf a b := rfl
 
+/-- Polars's `round` or `ceil` of the argument as field 0, as the translation
+writes them (`round(mode='half_away_from_zero')`, `ceil`): the reference's,
+but IEEE's `-0.0` for a negative value that rounds to zero (`round(-0.4)`,
+`ceil(-0.4)`; polars-round, polars-round-digits), where the reference gives
+`0.0` (`round_zero_sign`). -/
+def negZeroT (f : UnFn) : Expr :=
+  .ifThen (.bin .and (.bin .lt (.field 0) (.lit (.float 0)))
+      (.bin .eq (.un f (.field 0)) (.lit (.float 0))))
+    (.lit (.float FloatCode.negZero)) (.un f (.field 0))
+
 end Polars
+
+/-- The unary functions where Polars's profile differs from the reference: its
+template, in the reference's operations. `round` and `ceil` give `-0.0`
+(polars-round). -/
+def UnFn.polarsTmpl : UnFn → Option Expr
+  | .fround => some (Polars.negZeroT .fround)
+  | .fceil => some (Polars.negZeroT .fceil)
+  | _ => none
 
 /-- The functions where Polars's profile differs from the reference: its
 template, in the reference's operations. -/
@@ -85,9 +103,13 @@ def BinFn.polarsTmpl : BinFn → Option Expr
 
 variable [Boxes.Ambient]
 /-- **Polars's profile**: `//` and `%` floor (`division_type` =
-`FLOOR`), of integers and, for `%`, of doubles, every other function is the reference's. -/
+`FLOOR`), of integers and, for `%`, of doubles; `round` and `ceil` give `-0.0`
+for a negative value that rounds to zero (`round_zero_sign`); every other
+function is the reference's. -/
 def Profile.polars : Profile where
-  un := Profile.reference.un
+  un f v := match f.polarsTmpl with
+    | some t => t.evalP Profile.reference [v]
+    | none => Profile.reference.un f v
   bin f x y := match f.polarsTmpl with
     | some t => t.evalP Profile.reference [x, y]
     | none => Profile.reference.bin f x y
@@ -281,12 +303,28 @@ operations: each integer `//` and `%` replaced by its template. -/
 def elaborate : Expr → Expr
   | .lit v => .lit v
   | .field i => .field i
-  | .un f a => .un f (elaborate a)
+  | .un f a => match f.polarsTmpl with
+    | some t => t.subst [elaborate a]
+    | none => .un f (elaborate a)
   | .bin f a b => match f.polarsTmpl with
     | some t => t.subst [elaborate a, elaborate b]
     | none => .bin f (elaborate a) (elaborate b)
   | .ifThen c t e => .ifThen (elaborate c) (elaborate t) (elaborate e)
   | .hof f l b => .hof f (elaborate l) (elaborate b)
+
+/-- A unary template evaluates its argument before anything that may raise. -/
+theorem untmpl_subst_eval {f : UnFn} {t : Expr} (h : f.polarsTmpl = some t) (a : Expr) (row : Row) :
+    (t.subst [a]).evalP Profile.reference row =
+      (do let x ← a.evalP Profile.reference row
+          t.evalP Profile.reference [x]) := by
+  cases ha : a.evalP Profile.reference row with
+  | error k =>
+    cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
+      simp [negZeroT, Expr.subst, Expr.evalP, ha, bind, Except.bind]
+  | ok x =>
+    simp only [bind, Except.bind]
+    exact Expr.evalP_subst (vs := [x]) (fun i => by
+      rcases i with _ | i <;> simp [ha, Expr.evalP]) t
 
 /-- A template evaluates its first argument, then its second, before
 anything that may raise: substituting expressions is binding their
@@ -321,7 +359,15 @@ the reference**: the same value, or the same error. A contract proved of
 theorem elaborate_eq : ∀ (e : Expr) (row : Row),
     (elaborate e).evalP Profile.reference row = e.evalP Profile.polars row
   | .lit _, _ | .field _, _ => rfl
-  | .un f a, row => by simp only [elaborate, Expr.evalP, elaborate_eq a row]; rfl
+  | .un f a, row => by
+    cases h : f.polarsTmpl with
+    | none =>
+      simp only [elaborate, h, Expr.evalP, elaborate_eq a row]
+      simp only [Profile.polars, h]
+    | some t =>
+      simp only [elaborate, h]
+      rw [untmpl_subst_eval h, elaborate_eq a row]
+      simp only [Expr.evalP, Profile.polars, h]
   | .bin f a b, row => by
     cases h : f.polarsTmpl with
     | none =>
@@ -380,5 +426,99 @@ theorem Profile.polars_fmod_zero_divisor (a b : Int) (h : FloatCode.canon b = 0)
   have : Profile.reference.bin .fdiv (.float a) (.float b) = .error .divByZero := by
     simp [Profile.reference, BinFn.issue, h, raiseIf]; rfl
   simp [this, bind, Except.bind]
+
+/-! ## `round` and `ceil`: IEEE's `-0.0` (`round_zero_sign`) -/
+
+/-- Polars's `round` or `ceil` of a double (`Polars.negZeroT`), for `f` the
+rounding `g` of the codes: `-0.0` for a negative value that rounds to zero,
+else the reference's. -/
+theorem Profile.polars_un_negZero {f : UnFn} {g : Int → Int}
+    (hf : f.polarsTmpl = some (Polars.negZeroT f))
+    (href : ∀ c, Profile.reference.un f (.float c) = .ok (.float (g c)))
+    (hz : g FloatCode.negZero = FloatCode.negZero) (hn : g FloatCode.negNan = FloatCode.negNan)
+    (hcan : ∀ c, FloatCode.canon c = c → FloatCode.canon (g c) = g c) (c : Int) :
+    Profile.polars.un f (.float c) =
+      (if c < 0 ∧ g c = 0 then some (Except.ok (.float FloatCode.negZero)) else none).getD
+        (.ok (.float (g c))) := by
+  have hlt' : ∀ a b : Int, BinFn.apply .lt (.float a) (.float b) =
+      .bool (decide (FloatCode.canon a < FloatCode.canon b)) := fun _ _ => rfl
+  have heq' : ∀ a b : Int, BinFn.apply .eq (.float a) (.float b) =
+      .bool (FloatCode.canon a == FloatCode.canon b) := fun _ _ => rfl
+  have hZ := FloatCode.negZero_eq'; have hY := FloatCode.negNan_eq'
+  have hq : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+  simp only [Profile.polars, hf, Polars.negZeroT, Expr.evalP, List.getD_cons_zero, Outcome.ok_bind,
+    Lowering.ref_lt, Lowering.ref_eq, Lowering.ref_and, href, hlt']
+  rcases FloatCode.canon_cases c with ⟨rfl, h0⟩ | ⟨rfl, h0⟩ | h0
+  · have : ¬ (FloatCode.negZero = 0) := by omega
+    simp [heq', this, h0, hz, FloatCode.canon_zero, and3, Value.isTrue]
+  · have : ¬ (FloatCode.negNan = 0) := by omega
+    have hn1 : ¬ (FloatCode.nan < 0) := by omega
+    simp [heq', this, hn1, h0, hn, FloatCode.canon_zero, and3, Value.isTrue]
+  · have hr := hcan c h0
+    have hb : (g c == 0) = decide (g c = 0) := rfl
+    by_cases hneg : c < 0 <;> by_cases hr0 : g c = 0 <;>
+      simp [heq', h0, hr, hneg, hr0, hb, FloatCode.canon_zero, and3, Value.isTrue]
+
+/-- On a value that is not a double, Polars's unary functions are the
+reference's. -/
+theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .float c) :
+    Profile.polars.un f v = Profile.reference.un f v := by
+  unfold Profile.polars; dsimp only
+  cases hf : f.polarsTmpl with
+  | none => rfl
+  | some t =>
+    have : f = .fround ∨ f = .fceil := by cases f <;> simp_all [UnFn.polarsTmpl]
+    rcases this with rfl | rfl <;> simp only [UnFn.polarsTmpl, Option.some.injEq] at hf <;>
+      subst hf <;> cases v <;> first | rfl | exact absurd rfl (hv _)
+
+/-- `round` on Polars, through `Lowering.zeroTemplate`, agrees with the
+reference: the lowering's entry for `round` (`round_zero_sign`). -/
+theorem Polars.fround_agree (x : Value) :
+    (Lowering.froundTemplate.evalP Profile.polars [x]).Agree (Profile.reference.un .fround x) := by
+  cases x
+  case float c =>
+    exact Lowering.zeroTemplate_float (p := Profile.polars) (fun x y => Lowering.ref_lt x y) (fun x y => Lowering.ref_eq x y)
+      (fun x y => Lowering.ref_and x y)
+      (Profile.polars_un_negZero (f := .fround) rfl (fun _ => rfl) FloatCode.round_negZero FloatCode.round_negNan
+        (fun _ h => FloatCode.canon_round h))
+      (fun _ => rfl) FloatCode.round_negZero FloatCode.round_negNan (fun _ h => FloatCode.canon_round h) c
+  all_goals rfl
+
+/-- `ceil` on Polars, through `Lowering.zeroTemplate`, agrees with the
+reference. -/
+theorem Polars.fceil_agree (x : Value) :
+    (Lowering.fceilTemplate.evalP Profile.polars [x]).Agree (Profile.reference.un .fceil x) := by
+  cases x
+  case float c =>
+    exact Lowering.zeroTemplate_float (p := Profile.polars) (fun x y => Lowering.ref_lt x y) (fun x y => Lowering.ref_eq x y)
+      (fun x y => Lowering.ref_and x y)
+      (Profile.polars_un_negZero (f := .fceil) rfl (fun _ => rfl) FloatCode.ceil_negZero FloatCode.ceil_negNan
+        (fun _ h => FloatCode.canon_ceil h))
+      (fun _ => rfl) FloatCode.ceil_negZero FloatCode.ceil_negNan (fun _ h => FloatCode.canon_ceil h) c
+  all_goals rfl
+
+-- Each case of `Profile.polars` against Polars's probed value (C1, ruling 235):
+-- `round(-0.4)` and `ceil(-0.4)` are `-0.0` (polars-round), `round(-0.5)` is
+-- `-1.0` (`mode='half_away_from_zero'`), `7 // -2` is `-4` and `7 % -2` is `-1`
+-- (polars-int-divide, polars-int-modulus), `7.5 % -2.0` is `-0.5`
+-- (polars-double-modulus).
+#guard letI := Boxes.Ambient.none
+  match Profile.polars.un .fround (.float (FloatCode.ofFloat (-0.4))) with
+  | .ok (.float c) => c == FloatCode.negZero | _ => false
+#guard letI := Boxes.Ambient.none
+  match Profile.polars.un .fceil (.float (FloatCode.ofFloat (-0.4))) with
+  | .ok (.float c) => c == FloatCode.negZero | _ => false
+#guard letI := Boxes.Ambient.none
+  match Profile.polars.un .fround (.float (FloatCode.ofFloat (-0.5))) with
+  | .ok (.float c) => c == FloatCode.ofFloat (-1.0) | _ => false
+#guard letI := Boxes.Ambient.none
+  match Profile.polars.bin .idiv (.int 7) (.int (-2)) with
+  | .ok (.int c) => c == -4 | _ => false
+#guard letI := Boxes.Ambient.none
+  match Profile.polars.bin .imod (.int 7) (.int (-2)) with
+  | .ok (.int c) => c == -1 | _ => false
+#guard letI := Boxes.Ambient.none
+  match Profile.polars.bin .fmod (.float (FloatCode.ofFloat 7.5)) (.float (FloatCode.ofFloat (-2.0))) with
+  | .ok (.float c) => c == FloatCode.ofFloat (-0.5) | _ => false
 
 end Substrait

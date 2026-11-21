@@ -118,7 +118,7 @@ TIMEOUT = 10.0
 def duckdb_version(lock: Path = REPO / "python" / "uv.lock") -> str:
     """The DuckDB version `uv.lock` pins (the installed one without a lock)."""
     if lock.exists():
-        for pkg in tomllib.loads(lock.read_text())["package"]:
+        for pkg in tomllib.loads(lock.read_text(encoding="utf-8"))["package"]:
             if pkg["name"] == "duckdb":
                 return pkg["version"]
     return duckdb.__version__
@@ -1119,7 +1119,7 @@ def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
 
 def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
     """The results of one test file, and why it was skipped (if it was)."""
-    tf = parse(path.read_text(errors="replace"))
+    tf = parse(path.read_text(encoding="utf-8", errors="replace"))
     if tf.skip:
         return [], tf.skip
     if os.environ.get("SVERIFY_SLT_PROGRESS"):
@@ -1489,7 +1489,7 @@ def record_time(rel: str, seconds: float) -> None:
     """Append a file's replay time to `$SVERIFY_SLT_TIMINGS`, if set: what
     `sverify_dev.shard_durations` balances `oracle-a`'s shards by."""
     if path := os.environ.get("SVERIFY_SLT_TIMINGS"):
-        with open(path, "a") as f:
+        with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps({"file": rel, "s": round(seconds, 3)}) + "\n")
 
 

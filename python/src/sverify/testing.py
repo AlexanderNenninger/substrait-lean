@@ -42,7 +42,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
-import warnings
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -213,9 +212,7 @@ def _arrow(rows: Rows, schema: pa.Schema) -> pa.Table:
     return pa.Table.from_pylist(dicts, schema=schema)
 
 
-def source(
-    rows: Rows, schema: Any = None, *, name: str | None = None, version: int = 0
-) -> StaticSource:
+def source(rows: Rows, schema: Any = None, *, name: str, version: int = 0) -> StaticSource:
     """An in-memory source (`sverify.io.StaticSource`) holding `rows`.
 
     The `sv_source` fixture of sverify's pytest plugin is this function.
@@ -226,8 +223,7 @@ def source(
         schema: The columns, as anything `ibis.schema` accepts (such as
             `{"id": "!int64", "amount": "int64"}`, where `!` is NOT NULL),
             an Ibis schema or an Arrow schema. Optional for an Arrow table.
-        name: The table's name in the plans that read it. Required (before
-            1.0 it defaulted to `"table"`, which warns for one release).
+        name: The table's name in the plans that read it. Required.
         version: The source's version. Default: 0.
 
     Returns:
@@ -242,14 +238,6 @@ def source(
         table = rows
     else:
         table = _arrow(rows, _arrow_schema(schema))
-    if name is None:
-        warnings.warn(
-            'source() without name= is deprecated (it defaulted to "table"); '
-            "name the table as the plans read it",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        name = "table"
     return StaticSource(table, name=name, version=version)
 
 
@@ -740,12 +728,18 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
         ]
         for t, cs in requirements.items()
     }
-    foreign = [
+    foreign: list[tuple[str, list[int], str, list[int]]] = [
         (t, *c.plan_entry(t, lambda n: schemas[n].names))
         for t, cs in requirements.items()
         for c in cs
         if isinstance(c, References)
     ]
+
+    def parts(r: tuple, cols: list[int]) -> tuple | None:
+        """The parts of a row's foreign key; None when one is NULL (exempt)."""
+        p = tuple(r[i] for i in cols)
+        return None if any(v is None for v in p) else p
+
     literals = counterexample._plan_literals(
         [json.loads(node.internal_plan), *(p for ps in row_plans.values() for p in ps)]
     )
@@ -779,25 +773,28 @@ def cases(node: Node, *, max_rows: int = 5) -> SearchStrategy[dict[str, pa.Table
     @st.composite
     def admissible(draw: st.DrawFn) -> dict[str, pa.Table]:
         drawn = {t: repair(t, draw(rows)) for t, rows in tables.items()}
-        # A foreign key that matches nothing takes a value of the referenced
-        # column (then the row is repaired again); what still matches nothing
-        # is dropped.
-        for t, col, other, other_col in foreign:
-            present = [r[other_col] for r in drawn[other]]
-            known = {_norm(v) for v in present}
-            fixed = [
-                r
-                if r[col] is None or _norm(r[col]) in known or not present
-                else (*r[:col], draw(st.sampled_from(present)), *r[col + 1 :])
-                for r in drawn[t]
-            ]
+        # A foreign key that matches nothing takes all its parts from one
+        # referenced row (then the row is repaired again); what still matches
+        # nothing is dropped.
+        for t, cols, other, other_cols in foreign:
+            present = [tuple(r[i] for i in other_cols) for r in drawn[other]]
+            known = {_norm(p) for p in present}
+            fixed = []
+            for r in drawn[t]:
+                p = parts(r, cols)
+                if p is not None and _norm(p) not in known and present:
+                    row = list(r)
+                    for i, v in zip(cols, draw(st.sampled_from(present)), strict=True):
+                        row[i] = v
+                    r = tuple(row)
+                fixed.append(r)
             drawn[t] = repair(t, fixed)
         changed = True
         while changed:
             changed = False
-            for t, col, other, other_col in foreign:
-                known = {_norm(r[other_col]) for r in drawn[other]}
-                kept = [r for r in drawn[t] if r[col] is None or _norm(r[col]) in known]
+            for t, cols, other, other_cols in foreign:
+                known = {_norm(tuple(r[i] for i in other_cols)) for r in drawn[other]}
+                kept = [r for r in drawn[t] if (p := parts(r, cols)) is None or _norm(p) in known]
                 changed |= len(kept) < len(drawn[t])
                 drawn[t] = kept
         return {

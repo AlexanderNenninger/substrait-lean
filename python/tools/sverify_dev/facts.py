@@ -144,7 +144,7 @@ def groups(functions: Path = FUNCTIONS) -> dict[str, list[str]]:
     """Each function group's options: `Functions.groups` of `Functions.lean`
     (`substrait-check --options` prints the same), read from the source so no
     Lean build is needed."""
-    text = functions.read_text()
+    text = functions.read_text(encoding="utf-8")
     block = text[text.index("def groups") :]
     block = block[: block.index("\n\n")]
     found = {

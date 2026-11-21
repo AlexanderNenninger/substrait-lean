@@ -4,6 +4,7 @@ import Sverify.Core.Functions
 import Sverify.Core.Options
 import Sverify.Core.Kinds
 import Sverify.Frontend.Guard
+import Sverify.Frontend.GuardedColumns
 
 /-!
 # Parsing Substrait JSON plans
@@ -3083,6 +3084,125 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
   modify ((key, es.length, Json.mkObj [("struct", Json.mkObj [
     ("types", Json.arr (refined.map kindSchemaType).toArray)])]) :: ·)
 
+/-! ### Guarded columns beyond the cap (D50-d, #1719)
+
+The frontends write `AND` and `OR` as `sverify_and` and `sverify_or` at every
+depth. The parser lifts the top `liftLevels` levels of a nest with the chain
+(`Expr.andLift`). Deeper, a filter's condition is bound (`Rel.guardedFilter`,
+whose plan has the lift's rows and raises, `Rel.guardedFilter_eval` and
+`Rel.guardedFilter_raises`), and anywhere else the connectives below the cap are
+read eagerly, as before D50-d (`capChains`). -/
+
+/-- How many levels of nested `AND` and `OR` the chain lifts (ruling 183, O2). -/
+def liftLevels : Nat := 3
+
+/-- `sverify_and` (`true`) or `sverify_or` with its operands. -/
+def chainCall? (fns : List (Nat × String)) (j : Json) : Option (Bool × List Json) := do
+  let f ← field? j "scalarFunction"
+  let anchor ← (natD f "functionReference").toOption
+  let name ← fns.lookup anchor
+  let isAnd ← match baseName name with
+    | "sverify_and" => some true
+    | "sverify_or" => some false
+    | _ => none
+  let args ← (arrD f "arguments").toOption
+  let vs ← args.mapM fun a => field? a "value"
+  return (isAnd, vs)
+
+/-- The deepest nest of lifted connectives in `j`. -/
+partial def liftDepth (fns : List (Nat × String)) (j : Json) : Nat :=
+  match chainCall? fns j with
+  | some (_, args) => 1 + args.foldl (fun m a => max m (liftDepth fns a)) 0
+  | none => match j with
+    | .obj kvs => kvs.toList.foldl (fun m (_, v) => max m (liftDepth fns v)) 0
+    | .arr a => a.foldl (fun m v => max m (liftDepth fns v)) 0
+    | _ => 0
+
+/-- `j` with each outermost chain replaced by a reference to column `base + k`,
+`k` the chain's index in the state. A lambda's body and a subquery keep theirs. -/
+partial def extractChains (fns : List (Nat × String)) (base : Nat) (j : Json) :
+    StateM (Array (Bool × List Json)) Json := do
+  match chainCall? fns j with
+  | some c =>
+    let k := (← get).size
+    modify (·.push c)
+    return fieldJson (base + k)
+  | none => match j with
+    | .obj kvs =>
+      if (field? j "lambda").isSome || (field? j "subquery").isSome then return j
+      return Json.mkObj (← kvs.toList.mapM fun (k, v) => do return (k, ← extractChains fns base v))
+    | .arr a => return .arr (← a.mapM (extractChains fns base))
+    | _ => return j
+
+/-- A condition with its chains kept apart (`LExpr`): the body reads chain `k`
+at column `cols.length + k`, a boolean, and each operand is parsed as the
+parser parses it in place. -/
+partial def toLExpr (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (j : Json) :
+    J LExpr := do
+  let (body, cs) := (extractChains fns cols.length j).run #[]
+  let body ← parseExpr fns (cols ++ cs.toList.map fun _ => .bool) (bits ++ cs.toList.map fun _ => 64) body
+  let chains ← cs.toList.mapM fun (isAnd, ops) => do
+    return LChain.mk isAnd (← ops.mapM (toLExpr fns cols bits))
+  return .mk body chains
+
+/-- `j` with every chain at `liftLevels` or more lifted ones above it written as
+the eager `and` (`andA`) or `or` (`orA`), the frontends' reading before D50-d. -/
+partial def capChains (fns : List (Nat × String)) (andA orA : Nat) (level : Nat) (j : Json) : Json :=
+  match chainCall? fns j with
+  | some (isAnd, args) =>
+    let args := args.map (capChains fns andA orA (level + 1))
+    let anchor := if level ≥ liftLevels then (if isAnd then andA else orA)
+      else ((field? j "scalarFunction").bind fun f => (natD f "functionReference").toOption).getD 0
+    let f := (field? j "scalarFunction").getD (Json.mkObj [])
+    Json.mkObj [("scalarFunction", f.setObjVal! "functionReference" (Lean.toJson anchor)
+      |>.setObjVal! "arguments" (Json.arr (args.map fun a => Json.mkObj [("value", a)]).toArray))]
+  | none => match j with
+    | .obj kvs => Json.mkObj (kvs.toList.map fun (k, v) => (k, capChains fns andA orA level v))
+    | .arr a => .arr (a.map (capChains fns andA orA level))
+    | _ => j
+
+/-- A filter's condition the binder takes: deeper than the cap, with no subquery. -/
+def bindsCondition (fns : List (Nat × String)) (cond : Json) : Bool :=
+  liftLevels < liftDepth fns cond && (nodesIn "subquery" cond).isEmpty
+
+/-- A projection's expressions the binder takes: one deeper than the cap, and no
+subquery or window function. -/
+def bindsProject (fns : List (Nat × String)) (ejs : List Json) : Bool :=
+  ejs.any (fun e => liftLevels < liftDepth fns e) &&
+    (ejs.flatMap (nodesIn "subquery")).isEmpty && (ejs.flatMap (nodesIn "windowFunction")).isEmpty
+
+/-- The plan with every chain beyond the cap read eagerly (`capChains`), but in
+the filter conditions and projections the binder takes. -/
+partial def capPlan (fns : List (Nat × String)) (andA orA : Nat) (j : Json) : Json :=
+  match j with
+  | .obj kvs =>
+    -- A projection the binder takes keeps its expressions; its input is capped.
+    let keep : Option String := (field? j "project").bind fun pj =>
+      match (field? pj "expressions").bind (·.getArr?.toOption) with
+      | some ejs => if bindsProject fns ejs.toList then some "project" else none
+      | none => none
+    if let some key := keep then
+      let pj := (field? j key).getD (Json.mkObj [])
+      let pj' := Json.mkObj ((match pj with | .obj m => m.toList | _ => []).map fun (k, v) =>
+        (k, if k == "expressions" then v else capPlan fns andA orA v))
+      Json.mkObj (kvs.toList.map fun (k, v) => (k, if k == key then pj' else capPlan fns andA orA v))
+    else
+    match field? j "filter" with
+    | some f =>
+      match field? f "condition" with
+      | some c =>
+        if bindsCondition fns c then
+          let f' := Json.mkObj (((match f with | .obj m => m.toList | _ => []).map fun (k, v) =>
+            (k, if k == "condition" then v else capPlan fns andA orA v)))
+          Json.mkObj (kvs.toList.map fun (k, v) => (k, if k == "filter" then f' else capPlan fns andA orA v))
+        else Json.mkObj (kvs.toList.map fun (k, v) => (k, capPlan fns andA orA v))
+      | none => Json.mkObj (kvs.toList.map fun (k, v) => (k, capPlan fns andA orA v))
+    | none =>
+      if (chainCall? fns j).isSome then capChains fns andA orA 0 j
+      else Json.mkObj (kvs.toList.map fun (k, v) => (k, capPlan fns andA orA v))
+  | .arr a => .arr (a.map (capPlan fns andA orA))
+  | _ => j
+
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
   if let some f := field? j "scalarFunction" then
@@ -3102,25 +3222,30 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       let inp ← input "input"
       let cols := inp.kinds (← get)
       let bits := inp.bits (← get)
-      -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter,
-      -- with other subqueries lifted into columns that an emit drops after.
-      let mut base := inp
-      let mut rest : List Json := []
-      for c in ← conjuncts fns (← field r "condition") do
-        match (field? c "subquery").bind (field? · "inPredicate") with
-        | some ip =>
-          let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
-          let needle ← parseExpr fns cols bits nj
-          let hay ← parseRel fns (← field ip "haystack")
-          if (hay.kinds (← get)).length != 1 then throw "IN subquery must return one column"
-          base := .semi base hay false (.bin .eq needle (.field cols.length))
-        | none => rest := rest ++ [c]
-      let (lifted, conds) ← parseLifted fns (parseRel fns) base rest
-      let filtered := match conds with
-        | [] => lifted
-        | e :: es => .filter lifted (es.foldl (.bin .and) e)
-      if (rest.flatMap (nodesIn "subquery")).isEmpty then pure filtered
-      else pure (.emit filtered (List.range cols.length))
+      -- Beyond the cap, the chains are bound below the filter (D50-d).
+      let cond ← field r "condition"
+      if bindsCondition fns cond then
+        pure (Rel.guardedFilter inp cols.length (← toLExpr fns cols bits cond))
+      else do
+        -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter,
+        -- with other subqueries lifted into columns that an emit drops after.
+        let mut base := inp
+        let mut rest : List Json := []
+        for c in ← conjuncts fns (← field r "condition") do
+          match (field? c "subquery").bind (field? · "inPredicate") with
+          | some ip =>
+            let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
+            let needle ← parseExpr fns cols bits nj
+            let hay ← parseRel fns (← field ip "haystack")
+            if (hay.kinds (← get)).length != 1 then throw "IN subquery must return one column"
+            base := .semi base hay false (.bin .eq needle (.field cols.length))
+          | none => rest := rest ++ [c]
+        let (lifted, conds) ← parseLifted fns (parseRel fns) base rest
+        let filtered := match conds with
+          | [] => lifted
+          | e :: es => .filter lifted (es.foldl (.bin .and) e)
+        if (rest.flatMap (nodesIn "subquery")).isEmpty then pure filtered
+        else pure (.emit filtered (List.range cols.length))
     | "project" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
@@ -3135,6 +3260,9 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         recordDeclaredBits (lifted.bits (← get)) ejs es
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
+      else if bindsProject fns ejs then
+        -- Beyond the cap, the chains are bound below the projection (D50-d).
+        pure (Rel.guardedProject inp cols.length (← ejs.mapM fun e => do return (← toLExpr fns cols bits e)))
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
@@ -3480,7 +3608,11 @@ def parsePlan (s : String) : J Plan := do
   let fns ← parseExtensions j
   let some root := (← arrD j "relations").findSome? (field? · "root")
     | throw "plan has no root relation"
-  let (rel, tables) ← (parseRel fns (← field root "input")).run []
+  -- The eager connectives the cap writes below `liftLevels`, at fresh anchors.
+  let fresh := fns.foldl (fun m (a, _) => max m (a + 1)) 0
+  let fns := fns ++ [(fresh, "and"), (fresh + 1, "or")]
+  let input := capPlan fns fresh (fresh + 1) (← field root "input")
+  let (rel, tables) ← (parseRel fns input).run []
   let rel := rel.settleDivs tables
   let names ← (← arrD root "names").mapM (·.getStr?)
   return { root := rel, names, tables }
