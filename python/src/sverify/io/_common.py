@@ -414,7 +414,7 @@ class Contract:
     those of the release."""
     profile: str | None = None
     """The profile the plan was verified under (`verify(semantics=...)`); the
-    plan's digest includes it unless it is `"reference"`."""
+    plan's digest includes it unless it is `"portable"`."""
     package: str | None = None
     """For an engine that comes from another package than sverify, that package
     as `name==version`: its facts ship with it."""

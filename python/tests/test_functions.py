@@ -208,7 +208,8 @@ def test_lift_profiles_agree(group: str) -> None:
         for option in fns.GROUPS[group]:
             if option not in fixed:
                 continue
-            c = fns.choice(name, group, option)
+            # The portable lift's choices are the reference profile's rows.
+            c = fns.choice("reference" if name == "portable" else name, group, option)
             assert (fixed[option],) == (c.default or c.behaviours), (name, option)
 
 

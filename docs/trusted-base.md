@@ -131,7 +131,7 @@ Sverify's words claim no more than these theorems give
   bounds hold over the reals in `float-bounds/`; the link from them to the
   core's codes is [#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), and `contract_sound_runs` for double
   aggregates beyond a root `SUM` or `AVG` is [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
-- Under `semantics="reference"`, the default for SQL, the lift from SQL is
+- Under `semantics="portable"`, the default for SQL, the lift from SQL is
   tested Python. The generated `liftReference` entries are unused, and no
   theorem states that the reference's reading is DuckDB's value wherever the
   reference gives one (`DuckFn.reference_refines_duckdb`,

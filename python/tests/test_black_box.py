@@ -93,7 +93,7 @@ def test_a_scalar_black_box_through_oracles_a_and_c():
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", AGGREGATES)
 def test_written_back_it_is_duckdbs_function(query, semantics):
     # Oracle C: DuckDB on the SQL, and DuckDB on the plan Lean writes back.
@@ -154,7 +154,7 @@ def test_a_raise_is_not_a_law_break():
     assert "broke a declared law" not in str(raised.value)
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [
@@ -311,7 +311,7 @@ def test_328_scalars_through_oracles_a_and_c(query):
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", FORMATS)
 def test_printf_written_back_is_duckdbs(query, semantics):
     plan = json.dumps(lift(query, SCHEMAS, semantics).plan)
@@ -327,7 +327,7 @@ def test_printf_may_raise():
     assert any("domain" in str(e) for e in report.errors), report
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [
@@ -546,7 +546,7 @@ LISTS = [
 ]
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", VECTORS)
 def test_vectors_written_back_are_duckdbs(query, semantics):
     plan = json.dumps(lift(query, _VEC_SCHEMAS, semantics).plan)
@@ -576,7 +576,7 @@ def test_list_sum_raises_past_a_bigint():
     assert any("domain" in str(e) for e in report.errors), report
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [
@@ -699,7 +699,7 @@ STATS = [
 ]
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", STATS)
 def test_statistics_written_back_are_duckdbs(query, semantics):
     plan = json.dumps(lift(query, SCHEMAS, semantics).plan)
@@ -714,7 +714,7 @@ def test_bit_count_through_oracles_a_and_c():
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [

@@ -505,7 +505,7 @@ print(report.details())
 # requires samples: (_.cpu >= 0)
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
-# semantics: reference
+# semantics: portable
 # evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #1985)
 # evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
 # evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)
@@ -923,7 +923,7 @@ as doubles, NULLs sort last, an integer literal has the narrowest type that
 holds it.
 
 Every check uses sverify's reference semantics unless you opt into DuckDB's.
-`semantics="reference"`, the default, means what sverify's reference
+`semantics="portable"`, the default, means what sverify's reference
 computes, so a double divided by zero raises; `semantics="duckdb"` means what
 DuckDB computes, which gives `inf`, and models NaN and ±inf as DuckDB has
 them. `sv.sql(query, semantics=...)` attaches the choice to the query.
@@ -939,7 +939,7 @@ the report is the reference's, with the stated `FLOOR` read by the core, and a
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode, and doubles that overflow are ±inf with no precondition.
 Until the checker reports under Spark's own profile,
-the report is the reference's, `report.semantics` says `"reference"`, a
+the report is the reference's, `report.semantics` says `"portable"`, a
 `ProfilePendingWarning` says so, and the plan reaches Spark through its
 translation ([engine-profiles.md](engine-profiles.md#spark-as-a-profile)).
 The lift reads a subset (SELECT, WHERE,
@@ -1708,7 +1708,7 @@ defines it. On `x = -7`, with `d = 2`:
 
 | Input | `x // 2` | `x % 2` | `q * 2 + r == x` |
 |---|---|---|---|
-| Ibis, `semantics="reference"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
+| Ibis, `semantics="portable"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
 | SQL through `sv.sql` or `sv.verify`, reference | -3 (truncated) | -1 | yes |
 
 A plan that splits milliseconds into seconds and a remainder with `t.ms // 1000`
@@ -1747,7 +1747,7 @@ the evidence, and the route where it is not `translated`:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
+| `observed` | the result equals one the proof covers up to the report's lenses: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
@@ -1769,7 +1769,7 @@ list every fact). What to do about one:
 
 - Verify under the reference (the default), whose translation shims most
   differences, in place of an engine's profile.
-- State the observation the difference hides: `rows="multiset"` for row
+- State the lenses that hide the difference: `rows="multiset"` for row
   order, `zeros="canon"` for the sign of a zero. A sum in another order is
   within the plan's bound, which a run accepts by default.
 - Add the precondition the reference raises on, such as a bound on a
@@ -1815,7 +1815,7 @@ absolute.
 
 Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
 list elements are multisets, one zero and one NaN are read, doubles are within
-the plan's bound and other values are exact: the default observation
+the plan's bound and other values are exact: the default lenses
 ([the table](core-semantics.md#the-default-observation)), which
 `report.lenses` prints with its bound,
 `equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
@@ -1828,14 +1828,14 @@ would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
 `sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
 `timestamps="ms"`, `strings="nfc"` (or `"casefold"`, `"ascii"`), `decimals="value"` and
-`errors="kind"`; `Observation.refines` orders observations component by
-component. A postcondition that reads what the observation ignores, such as
+`errors="kind"`; `Observation.refines` orders lenses component by
+component. A postcondition that reads what the lenses ignore, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
 `CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
 tolerance. The checker names the components each condition's value depends
 on, from the columns it reads, and a condition that depends on none the
-observation ignores holds on every result equal to a proved one up to the
-observation. A comparison with a constant
+lenses ignore holds on every result equal to a proved one up to the
+lenses. A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
 every such result. A postcondition is proved on every
 result the reference allows, and
@@ -2051,7 +2051,7 @@ to sverify and back, keeps every rule sverify reads.
 
 A stored node's sink commits each epoch once, so a rerun must give the same
 result. The sink states what "the same" means (`reproducible=`,
-[two observations per output](tasks.md#reproducible-sinks)): `sv.equivalent()` asks for exact
+[two lenses per output](tasks.md#reproducible-sinks)): `sv.equivalent()` asks for exact
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
 refused with a `RouteError`; so is a plan whose ties stay open, since the

@@ -86,7 +86,7 @@ CODES: dict[str, str] = {
         "allows more at some option; the report names the options."
     ),
     "floats": (
-        "No engine's doubles meet the observation's tolerance. Widen the tolerance in "
+        "No engine's doubles meet the lenses' tolerance. Widen the tolerance in "
         "`sv.equivalent(floats=sv.within(...))`, or cap the rows (`sv.max_rows`)."
     ),
     "checked_only": (
