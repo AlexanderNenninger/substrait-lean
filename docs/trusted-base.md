@@ -183,7 +183,10 @@ Sverify's words claim no more than these theorems give
 - The frontends produce the plan the user meant: the Ibis producer
   (`python/src/sverify/ibis_substrait/`) and the SQLGlot lift for DuckDB's
   SQL (`python/src/sverify/sql_lift/`), which writes each function's options explicitly from the source
-  dialect.
+  dialect. A plugin's SQL front-end (`ProfilePlugin.sql`, a dialect's parse name and
+  its lift) decides what that dialect's SQL means, so it is in the trusted base
+  as DuckDB's is, and a report of SQL it read names its package and version
+  (`Report.sql_front_ends`).
 - The parser and the writer, `Parse.lean` and `Write.lean`. The CLI checks
   that every plan it writes parses back to the same `Rel`, and the golden
   tests (`tests/run.sh`) run that round trip on every fixture. That shows the

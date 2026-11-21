@@ -10,7 +10,9 @@ from __future__ import annotations
 from collections.abc import Iterator
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any
 
+import ibis
 import pyarrow as pa
 import pytest
 from ibis import _
@@ -19,7 +21,7 @@ import sverify as sv
 from _arrow_store import ArrowStore
 from sverify import _checker, _engine_settings, profiles, routes
 from sverify.engines import to_sql, written_plan
-from sverify.profiles import ProfilePlugin, Setting
+from sverify.profiles import ProfilePlugin, Setting, SqlFrontEnd
 from sverify.routes import EngineSettingsError, EngineVersionError
 
 
@@ -115,6 +117,65 @@ def test_semantics_needs_a_checker_with_the_profile(installed: None) -> None:
         sv.verify(t.filter(t.i > 0), semantics="dummy")  # type: ignore[arg-type]
 
 
+def _toy_lift(query, schemas, semantics):
+    """A toy dialect that reads DuckDB's text, as an engine's package would read its own."""
+    from sverify.sql_lift import lift
+
+    return lift(query, schemas, "reference" if semantics == "toy" else semantics)
+
+
+TOY = ProfilePlugin(engine="toy", profile=True, sql=SqlFrontEnd("toy", _toy_lift))
+NO_PROFILE = ProfilePlugin(engine="bare", profile=False, sql=SqlFrontEnd("bare", _toy_lift))
+
+
+@pytest.fixture
+def sql_dialects(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    found = [
+        *entry_points(group=profiles.GROUP),
+        _EntryPoint("toy", TOY),
+        _EntryPoint("bare", NO_PROFILE),
+    ]
+    monkeypatch.setattr(profiles, "entry_points", lambda group: found)
+    profiles.plugins.cache_clear()
+    yield
+    profiles.plugins.cache_clear()
+
+
+def test_duckdb_reads_sql_through_the_same_registry_entry() -> None:
+    plugin, front = profiles.sql_front_end("duckdb")
+    assert plugin.engine == "duckdb" and front.read == "duckdb"
+
+
+@pytest.mark.filterwarnings("ignore::sverify.profiles.ProfilePluginWarning")
+def test_a_dialect_from_outside_is_lifted_through_the_seam(sql_dialects: None) -> None:
+    t = ibis.table({"a": "int64"}, name="t")
+    via_toy = sv.sql("SELECT a + 1 AS b FROM t", dialect="toy", semantics="toy", t=t)  # type: ignore[call-overload]
+    via_duckdb = sv.sql("SELECT a + 1 AS b FROM t", t=t)
+    assert (
+        sv.verify(via_toy, on_inferred="off").verdict
+        == sv.verify(via_duckdb, on_inferred="off").verdict
+    )
+    op: Any = via_toy.op()
+    assert op.dialect == "toy"
+
+
+@pytest.mark.filterwarnings("ignore::sverify.profiles.ProfilePluginWarning")
+def test_an_unknown_dialect_names_the_installed_ones(sql_dialects: None) -> None:
+    t = ibis.table({"a": "int64"}, name="t")
+    with pytest.raises(ValueError, match="dialect must be 'bare', 'duckdb', 'toy', not 'postgres'"):
+        sv.sql("SELECT a FROM t", dialect="postgres", t=t)
+
+
+@pytest.mark.filterwarnings("ignore::sverify.profiles.ProfilePluginWarning")
+def test_a_dialect_whose_plugin_has_no_checker_profile_is_refused(sql_dialects: None) -> None:
+    t = ibis.table({"a": "int64"}, name="t")
+    with pytest.raises(ValueError, match="brings no checker profile"):
+        sv.sql("SELECT a FROM t", dialect="bare", semantics="bare", t=t)  # type: ignore[call-overload]
+    sv.sql(
+        "SELECT a FROM t", dialect="bare", t=t
+    )  # the reference reading is the front-end's to offer
+
+
 def test_the_checker_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     mine = tmp_path / "substrait-check-dummy"
     mine.touch()
@@ -207,7 +268,7 @@ def test_an_engine_beside_a_sverify_of_another_build_says_which_to_align(engine)
 
 #: PLUGIN_API and ProfilePlugin's fields; change both together.
 PINNED = (
-    3,
+    4,
     (
         "engine",
         "versions",
@@ -237,6 +298,7 @@ PINNED = (
         "store",
         "refuse_declared_types",
         "default",
+        "sql",
     ),
 )
 
@@ -251,3 +313,13 @@ def test_plugin_api_is_bumped_with_the_plugin_fields():
 
     fields = tuple(f.name for f in dataclasses.fields(ProfilePlugin))
     assert (_meta.PLUGIN_API, fields) == PINNED
+
+
+@pytest.mark.filterwarnings("ignore::sverify.profiles.ProfilePluginWarning")
+def test_the_report_names_the_front_end_that_read_the_sql(sql_dialects: None) -> None:
+    t = ibis.table({"a": "int64"}, name="t")
+    toy = sv.verify(sv.sql("SELECT a AS b FROM t", dialect="toy", t=t), on_inferred="off")
+    assert toy.sql_front_ends == ("test_profile_plugins (toy)",)
+    assert "sql read by test_profile_plugins (toy)" in toy.notes
+    duck = sv.verify(sv.sql("SELECT a AS b FROM t", t=t), on_inferred="off")
+    assert duck.sql_front_ends == ()

@@ -161,7 +161,8 @@ packages.
 to a plan's SQL and Substrait.
 
 The engine extension point is documented and outside the promise as well:
-the entry-point group `sverify.profiles`, `ProfilePlugin` and the checker's
+the entry-point group `sverify.profiles`, `ProfilePlugin`, `SqlFrontEnd` (the SQL a plugin
+reads, which `sverify-snowflake` builds on out of tree) and the checker's
 engine list (`EngineEntry`, `builtinEntries`,
 [engine profiles from outside](engine-profiles.md#engine-profiles-from-outside))
 may change in a minor release. A plugin checks `PLUGIN_API`, and an engine

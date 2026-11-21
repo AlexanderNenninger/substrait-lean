@@ -1924,7 +1924,18 @@ def _prove_once(
             report._hints += division_hints(transform)
     report._hints += contradictions(requires, schemas)
     report.dialect_differences = tuple(differences)
+    if not isinstance(transform, str):
+        report.sql_front_ends = _sql_front_ends(transform)
     return report, out["inferred"], schemas
+
+
+def _sql_front_ends(transform: Any) -> tuple[str, ...]:
+    """The front-ends of the `sv.sql` steps of `transform` other than DuckDB's."""
+    from sverify.ibis_substrait.relations import SQLModel
+    from sverify.profiles import front_end_label
+
+    found = {op.dialect for op in transform.op().find(SQLModel)}
+    return tuple(front_end_label(d) for d in sorted(found - {None, "duckdb"}))
 
 
 def _finite_bounds(
