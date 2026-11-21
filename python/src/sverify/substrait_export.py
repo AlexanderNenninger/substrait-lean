@@ -39,6 +39,7 @@ from importlib import resources
 from typing import TYPE_CHECKING, Any, Literal
 
 from sverify import _meta
+from sverify._plan_read import function_names
 from sverify._unsupported import SverifyError
 
 if TYPE_CHECKING:
@@ -626,11 +627,7 @@ class _Typer:
 
     def __init__(self, plan: Json):
         self.plan = plan
-        self.names = {
-            e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
-            for e in plan.get("extensions", [])
-            if "extensionFunction" in e
-        }
+        self.names = function_names(plan)
         self.anchors: dict[tuple[str, str], int] = {}
         self.calls: list[Call] = []
         self.canonical = False
