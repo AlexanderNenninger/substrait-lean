@@ -1343,10 +1343,11 @@ theorem Rel.keysFds_sound_all {cat : Catalog} (hcat : cat.WF) {A : String → Li
       refine ⟨closeKeys_sound (fun k hk => ?_) ?hf, ?hf⟩
       case hf =>
         simp only [Rel.fdsNode]
-        exact (FDsOn.append_left (fun o ho => by
+        exact ((FDsOn.append_left (fun o ho => by
             obtain ⟨x, hx, rfl⟩ := List.mem_map.mp ho
             exact ⟨x, hx, _, rfl, orderAllowed_arity hcat hwf.1 hi x hx⟩) ih.2).append
-          (copyFds_sound (orderAllowed_arity hcat hwf.1 hi))
+          (copyFds_sound (orderAllowed_arity hcat hwf.1 hi))).append
+          (copiedFds_sound (orderAllowed_arity hcat hwf.1 hi) ih.2)
       simp only [List.mem_flatMap, List.mem_filter, List.all_eq_true,
         decide_eq_true_eq] at hk
       obtain ⟨k₀, ⟨hk₀, hr⟩, hv⟩ := hk
