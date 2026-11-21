@@ -1,4 +1,4 @@
-"""Engines, SQL and plans: the lower-level tools under `sverify`'s transforms.
+"""Engines and SQL: the lower-level tools under `sverify`'s transforms.
 
     import sverify as sv
     from sverify.engines import run
@@ -18,6 +18,8 @@ Running plans:
   and `con.rows` put rows in and read them back). `run_sharded` runs a plan
   shard by shard and combines the results (with `tolerance=True`, a
   `Sharded`: the result and its doubles' distance from Lean's values).
+  `run` and `run_sharded` take the plan as a value a node or report holds
+  (`node.internal_plan`); its content is outside the 1.x promise.
   `con.get` gives a table as it is held: an Arrow table, or a `Native`
   table an engine reads where it is, whose members are outside the 1.x
   promise while the native scans move into the engine packages.
@@ -33,45 +35,18 @@ SQL:
   `sverify.errors.UnsupportedError`). `Dialect`'s SQL-writing methods
   and subclassing it are outside the 1.x promise.
 
-Plans, the low-level layer, outside the 1.x promise (they take sverify's
-internal plan, and may change in a minor release):
-
-* `to_sql` writes any plan in sverify's internal form as SQL.
-* `substrait_json` compiles DuckDB's SQL with sverify's lift; `written_plan`
-  is a plan as the checker parsed and wrote it back, the form `run` and
-  `to_sql` take; `delta_plans` are the weighted delta plans the checker derives for
-  incremental maintenance.
-
-Deprecated: `create_table` (`con.create`), `table_rows` (`con.rows`).
+The plan layer (`to_sql` of any plan, `substrait_json`, `written_plan`,
+`delta_plans`) is `sverify.engines.plan`, outside the 1.x promise.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 from sverify._scan import Native
 from sverify._unsupported import UnsupportedError
-from sverify.engine import (
-    ENGINES,
-    Connection,
-    create_table,
-    substrait_json,
-    table_rows,
-    written_plan,
-)
+from sverify.engine import ENGINES, Connection
 from sverify.engine import run_plan as run
-from sverify.incremental import delta_plans
 from sverify.partition import Sharded, run_sharded
-from sverify.sql import Dialect, to_sql
-
-
-def __getattr__(name: str) -> Any:
-    if name == "Unsupported":
-        from sverify.errors import deprecated_name
-
-        return deprecated_name(__name__, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
+from sverify.sql import Dialect
 
 __all__ = [
     "ENGINES",
@@ -80,12 +55,6 @@ __all__ = [
     "Native",
     "Sharded",
     "UnsupportedError",
-    "create_table",
-    "delta_plans",
     "run",
     "run_sharded",
-    "substrait_json",
-    "table_rows",
-    "to_sql",
-    "written_plan",
 ]

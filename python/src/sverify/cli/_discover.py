@@ -199,7 +199,7 @@ def _check_declared(out: Discovery) -> None:
         if id(t) in applied or t.schemas is None:
             continue
         try:
-            t.check(*(t.schemas[p] for p in t.signature.parameters))
+            t.verify(*(t.schemas[p] for p in t.signature.parameters))
         except Exception as e:  # noqa: BLE001 - reported, with what was found before it
             out.error = e
             return

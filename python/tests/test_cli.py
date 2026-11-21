@@ -186,6 +186,8 @@ def test_diff_shows_the_fix_and_fix_writes_it(tmp_path, capsys):
     code, out = run(capsys, "check", str(path), "--diff")
     assert code == 1
     assert '+@sv.transform(requires={"orders": [' in out
+    # It says what the fix does to the input (#881 1.4, ruling 219 D4).
+    assert "narrow the input each node accepts: its sources must meet them" in out
     assert path.read_text() == before
     code, doc = run_json(capsys, "check", str(path), "--fix")
     assert code == 0, doc

@@ -14,7 +14,7 @@ import pytest
 import sverify as sv
 from _repo import needs_repo
 from sverify.engine import connect, put_table
-from sverify.engines import to_sql
+from sverify.engines.plan import to_sql
 from sverify.errors import PreconditionError
 from sverify_duckdb import engine as duckdb_engine
 

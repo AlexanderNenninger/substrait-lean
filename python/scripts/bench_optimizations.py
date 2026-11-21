@@ -32,7 +32,7 @@ import pyarrow as pa
 from ibis import _
 
 import sverify as sv
-from sverify.engine import connect, create_table, plan_json, substrait_json, written_plan
+from sverify.engine import connect, plan_json, substrait_json, written_plan
 from sverify.partition import run_sharded
 from sverify.sql import to_sql
 from sverify_duckdb import engine as duckdb_engine
@@ -73,7 +73,7 @@ def guards(n: int) -> None:
 
 def sharded(n: int, k: int = 8) -> None:
     con = connect()
-    create_table(con, "r", ibis.schema({"a": "int64", "b": "int64"}))
+    con.create("r", ibis.schema({"a": "int64", "b": "int64"}))
     sql = "SELECT b, COUNT(*) AS n, SUM(a) AS s, MAX(a) AS hi FROM r GROUP BY b"
     plan = substrait_json(con, sql)
     rng = np.random.default_rng(0)

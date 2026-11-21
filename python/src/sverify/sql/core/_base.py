@@ -99,7 +99,7 @@ between integer and double arithmetic by it, so this module tracks it too."""
 class Unsupported(_Unsupported):
     """The plan is outside the Lean model, or the dialect cannot express it.
 
-    Raised by `sverify.engines.to_sql`, and so by `sverify.engines.run` on
+    Raised by `sverify.engines.plan.to_sql`, and so by `sverify.engines.run` on
     DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
@@ -6257,7 +6257,7 @@ def to_sql(
     The result has the plan's output names (`RelRoot.names`, else `c0`, …),
     and is ordered as Lean orders it when the plan has a FETCH or a window.
     Raises `Unsupported` for plans outside the Lean model. This is
-    `sverify.engines.to_sql`.
+    `sverify.engines.plan.to_sql`.
 
     `deterministic=True` promises that no two rows tie on any window's
     PARTITION BY and ORDER BY columns (what a contract report's
@@ -6288,7 +6288,7 @@ def to_sql(
     Args:
         plan: A Substrait JSON plan, as a string or parsed (`json.loads`),
             such as a node's `internal_plan` or
-            `sverify.engines.written_plan`'s output.
+            `sverify.engines.plan.written_plan`'s output.
         dialect: The engine to write SQL for, by name (`"duckdb"`,
             `"snowflake"`, `"spark"`), or its `Dialect`.
         deterministic: Promise that windows have no ties on their PARTITION
@@ -6323,7 +6323,7 @@ def to_sql(
 
         import pyarrow as pa
         import sverify as sv
-        from sverify.engines import to_sql
+        from sverify.engines.plan import to_sql
         from sverify.io import StaticSource
 
         orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
