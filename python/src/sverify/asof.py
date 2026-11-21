@@ -32,8 +32,10 @@ No theorem is about ASOF joins: the plan is proved as any plan is. What an
 ASOF join promises, stated in `ensures`, is proved for each plan by the
 theorems every contract rests on (`docs/proofs.md`): `on_right <= on` and
 `on - on_right <= tolerance` (`contract_sound`); `tests/test_asof.py` proves
-the two. The plan computes one output row per left row, but sverify does not
-prove it, nor `unique(*by, on)` of the output, yet (#1517). The ranking is only
+the two. The plan computes one output row per left row. Sverify proves at most
+one: a key of the left table is a key of the output (#1992), so
+`unique(*by, on)` on the left gives it of the output. That a `how="left"` join
+keeps every left row is not proved. The ranking is only
 determined when no two right rows tie: without a key on `(*by, on)` on the
 right side these guarantees still hold for every pick of the tied rows,
 and the report is not `deterministic`.
@@ -75,7 +77,8 @@ def asof_join(
     columns are equal and `left.on - tolerance <= right.on <= left.on`.
     The output has one row per left row, whatever its `by` and `on` values
     (an inner join drops the rows without a match). With `how="left"`, left
-    rows without a match are kept with NULLs. The output has the left columns,
+    rows without a match are kept with NULLs. A key of `left` that `requires`
+    states is proved a key of the output. The output has the left columns,
     then the right ones except `by`, with clashing names suffixed `_right`
     (so `on_right` is the time of the match).
 
