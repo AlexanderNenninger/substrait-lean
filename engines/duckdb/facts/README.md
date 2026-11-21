@@ -177,7 +177,7 @@ cd python && uv run python -m sverify_dev.slt --jobs 2
 ```
 
 <!-- slt:start -->
-Totals over 46634 queries of DuckDB's tests: 12927 agree, 43 disagree, 21229 refused, 12435 skipped (1042 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
+Totals over 46634 queries of DuckDB's tests: 12923 agree, 32 disagree, 21245 refused, 12434 skipped (1042 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
 
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
 |---|---:|---:|---:|---|---:|---:|---:|---|
@@ -185,7 +185,7 @@ Totals over 46634 queries of DuckDB's tests: 12927 agree, 43 disagree, 21229 ref
 | [alter](../replay/alter.json) | 129 | 29 | 0 |  | 39 | 129 | 1 | lift 37, tables 2 |
 | [attach](../replay/attach.json) | 7 | 0 | 0 |  | 150 | 90 | 15 | lift 98, tables 52 |
 | [binder](../replay/binder.json) | 63 | 1 | 0 |  | 143 | 103 | 3 | lift 134, checker 9 |
-| [cast](../replay/cast.json) | 49 | 4 | 12 | both 12 | 1001 | 172 | 2 | lift 627, checker 356 |
+| [cast](../replay/cast.json) | 45 | 4 | 1 | both 1 | 1017 | 171 | 2 | lift 643, checker 356 |
 | [catalog](../replay/catalog.json) | 109 | 0 | 0 |  | 415 | 673 | 4 | lift 404, tables 11 |
 | [collate](../replay/collate.json) | 4 | 1 | 0 |  | 31 | 232 | 7 | lift 30, checker 1 |
 | [conjunction](../replay/conjunction.json) | 3 | 0 | 0 |  | 0 | 0 | 0 |  |
