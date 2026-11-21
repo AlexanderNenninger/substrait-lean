@@ -474,6 +474,29 @@ def test_a_tagged_raise_of_a_reported_assumption_is_checked_not_a_disagreement(t
     assert json.loads(led.read_text())["agree_checked"] == 1
 
 
+@pytest.mark.parametrize(
+    ("listed", "lean"),
+    [
+        # Two issues of the kind: the harness cannot tell which one raised.
+        (["SUM overflow: SUM(a)", "SUM overflow: SUM(b)"], "Substrait.Issue.sumWraps"),
+        # Lean finds an issue of another kind than the raise's tag.
+        (["SUM overflow: SUM(a)"], "Substrait.Issue.wraps"),
+        # The report lists no issue of the kind.
+        (["overflow: a * b"], "Substrait.Issue.sumWraps"),
+    ],
+)
+def test_a_tagged_raise_without_one_matching_issue_stays_a_disagreement(monkeypatch, listed, lean):
+    """The class ties the raise to one listed issue and to the same kind of
+    issue in the checker (rulings 230 and 236); otherwise it is a gap (C2)."""
+    from sverify import _lean_eval, engine
+    from sverify_dev.checked import checked
+
+    monkeypatch.setattr(_lean_eval, "lean_assumed", lambda plan: lean)
+    monkeypatch.setattr(engine, "run_checker", lambda args, plan: (0, "", ""))
+    msg = "Invalid Input Error: sverify: integer overflow in SUM: 9223372036854775808"
+    assert checked(msg, listed, "{}") is None
+
+
 def test_a_time_of_24_00_is_refused(tmp_path):
     """Python's `datetime.time`, through which the rows reach Lean, has no
     `24:00:00`: it became midnight (#619)."""

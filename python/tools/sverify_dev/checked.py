@@ -16,12 +16,13 @@ a disagreement, and is a soundness-relevant gap to report (ruling 230, C2).
 
 from __future__ import annotations
 
-#: What the written plan's tagged errors say, and the kinds of `Issue` that
-#: report the assumption behind them.
-TAGS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("integer overflow in SUM", ("SUM overflow",)),
-    ("CAST to", ("overflow", "cast out of range")),
-    ("overflow", ("overflow",)),
+#: What the written plan's tagged errors say, the kinds of `Issue` the report
+#: lists for the assumption behind them, and the `Issue` constructors the
+#: Lean checker reports for it.
+TAGS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+    ("integer overflow in SUM", ("SUM overflow",), ("sumWraps", "SUM overflow")),
+    ("CAST to", ("overflow", "cast out of range"), ("wraps", "badCast")),
+    ("overflow", ("overflow",), ("overflow", "wraps")),
 )
 
 
@@ -35,12 +36,18 @@ def checked(message: str, listed: list[str], plan_with_data: str) -> str | None:
 
     if "sverify:" not in message:
         return None
-    text = message.split("sverify:", 1)[1]
-    kinds = next((ks for tag, ks in TAGS if text.strip().startswith(tag)), ())
-    named = [a for a in listed if a.split(":", 1)[0] in kinds]
-    if not named:
+    text = message.split("sverify:", 1)[1].strip()
+    kinds, lean = next(((ks, ls) for tag, ks, ls in TAGS if text.startswith(tag)), ((), ()))
+    # The message names the operation by its tag only, so the raise is tied to
+    # the report's issue of that kind when exactly one is listed (ruling 236,
+    # C1); with several, the harness cannot tell which one raised.
+    named = sorted({a for a in listed if a.split(":", 1)[0] in kinds})
+    if len(named) != 1:
         return None
-    # An assumption (`--assumed`) or an issue the reference raises (`--raises`).
+    # The same kind of issue in the checker, on the same data (ruling 230, C1):
+    # an assumption (`--assumed`), or one the reference raises (`--raises`).
     code, out, _ = run_checker(("--raises",), plan_with_data)
-    found = lean_assumed(plan_with_data) or (out.strip() if code == 0 else "") or None
-    return None if found is None else f"checked: {named[0]} (Lean: {found})"
+    for found in (lean_assumed(plan_with_data), out.strip() if code == 0 else ""):
+        if found and found.rsplit(".", 1)[-1] in lean:
+            return f"checked: {named[0]} (Lean: {found})"
+    return None
