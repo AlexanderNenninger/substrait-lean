@@ -710,6 +710,10 @@ class Report:
     """For a result not determined up to row order (`deterministic`), the
     `sv.unique(...)` per input table that would determine it: the partition
     (or grouping) and order columns of its windows and ordered aggregates."""
+    _sql_front_ends: tuple[str, ...] = field(default=(), compare=False)
+    """The SQL front-ends other than DuckDB's that read the plan's SQL
+    (`sverify.sql(dialect=)`), each as `package version (dialect)`: what the
+    SQL means is theirs (`docs/trusted-base.md`)."""
     dialect_differences: tuple[DialectDifference, ...] = field(default=(), compare=False)
     """For SQL, where the reference reads the text differently from DuckDB, as
     a value it gives and DuckDB does not: a double or decimal cast to an
@@ -1848,6 +1852,7 @@ class Report:
         if self._params:
             out.append(f"{PARAMS_NOTE}: {', '.join(self._params)}")
         out += [f"dialect: {d}" for d in self.dialect_differences]
+        out += [f"sql read by {f}" for f in self._sql_front_ends]
         return out
 
     def route(

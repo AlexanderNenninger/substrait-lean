@@ -11,6 +11,7 @@ from typing import Any
 
 from sverify.cli._common import UsageError
 from sverify.cli._discover import Checked, Discovery
+from sverify.errors import UnsupportedError
 
 
 def read_schemas(path: Path) -> dict[str, dict[str, str]]:
@@ -78,7 +79,9 @@ def load_sql(
     query = read_query(path, dialect)
     try:
         step: Any = sv.sql(query, dialect=dialect, semantics=semantics)  # type: ignore[arg-type]
-    except ValueError as e:
+    except UnsupportedError:
+        raise
+    except ValueError as e:  # an unknown dialect or semantics
         raise UsageError(str(e)) from None
     schemas = read_schemas(Path(schema))
     from sverify.sql_model import query_tables
