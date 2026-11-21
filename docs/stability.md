@@ -172,8 +172,8 @@ The engines in the promise are those [Engines](#engines) lists.
 
 A minor release may break the public API only when the break is:
 
-- loud: a call that used the old form raises, or warns with a
-  `DeprecationWarning`, and the message names the replacement;
+- loud: a call that used the old form raises, and the changelog names the
+  replacement;
 - caught by a unit test that uses the old form;
 - listed under "Breaking changes" in the changelog;
 - given a migration note in that entry: what to write instead, with an
@@ -193,13 +193,15 @@ refine the core ([core, profiles and engines](core-and-profiles.md)), and an eng
 by a route that the checker justifies against it
 ([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
 
-| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound by | In the 1.x promise |
+| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound | In the 1.x promise |
 |---|---|---|---|---|---|
-| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Engine.duckdb_sound`, under `Engine.NoRaiseSide` | yes |
-| Polars, streaming | `engine="polars"` | | `"polars"` | `Engine.polars_sound`, under `Engine.GuardFreeSide` | yes |
-| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound`, under `Engine.GuardFreeSide` | yes |
+| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | for plans proved never to raise | yes |
+| Polars, streaming | `engine="polars"` | | `"polars"` | for plans without guards | yes |
+| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | for plans without guards | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
+The theorems are named in [engine-profiles.md](engine-profiles.md#engines). The two conditions come from the same check: a plan with no guards
+meets both.
 `sverify.engines.ENGINES` names the engines in the promise that run plans
 on a `Connection`'s tables. The engine
 versions each profile describes, the class of every option on each engine

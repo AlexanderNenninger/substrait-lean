@@ -17,7 +17,7 @@ A view of a contracted transformation (`sverify.transform`, possibly
 composed) keeps its proved postconditions in every state: the preconditions
 on the base tables are checked once in full, and then only on each batch
 (row conditions on the inserted rows, `unique` keys against the kept keys;
-`Spec.update`, `Triple.maintained` in `SubstraitLean/Compose.lean`).
+`Spec.update`, `Triple.maintained` in `analysis/Sverify/Analysis/Compose.lean`).
 Postconditions a transform checks on its output instead of proving them
 (`on_unproved="check"`) are checked on the view's full state once, and then
 on the rows each batch inserts into it, before anything is replaced
@@ -40,7 +40,7 @@ Sources come from a table format (`sverify.io`): `Pipeline.source` loads a
 snapshot and records its version, and a refresh applies the format's change
 feed from the recorded version to the latest, advancing the version in the
 same commit. The feed is trusted to turn the old snapshot into the new one
-(`ChangeFeed`, `Rel.cdf_sound` in `SubstraitLean/TableFormat.lean`), and
+(`ChangeFeed`, `Rel.cdf_sound` in `analysis/Sverify/Analysis/TableFormat.lean`), and
 every `RefreshReport` says so; where the feed is unavailable, the new
 snapshot is diffed against the view's state instead and the views reading it
 are recomputed (`ChangeFeed.of_diff`). A source whose schema changed is read
@@ -135,7 +135,6 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
 )
 from sverify.ibis_substrait.prune import mentioning
 from sverify.report import refuse_schema
-from sverify_duckdb import DuckDBStore
 
 Row = tuple
 
@@ -1651,7 +1650,7 @@ class IncrementalView:
     def _retires(self) -> bool:
         """The view drops its final buckets: it has retention and every sink
         keeps what the state drops."""
-        return self.retention is not None and all(_keeps_retired(s) for s in self._sinks)
+        return self.retention is not None and all(s.keeps_retired for s in self._sinks)
 
     def _kept(self, result: State) -> State:
         """The rows of a result (or a weighted table) whose change the view
@@ -1823,16 +1822,25 @@ class Pipeline:
         return native(version)
 
     def view(
-        self, name: str, query: ir.Table | str, *, resume: Stored | None = None
+        self,
+        name: str,
+        query: ir.Table | str,
+        *,
+        resume: Stored | None = None,
+        engine: Engine | None = None,
     ) -> IncrementalView:
         """Add a view. With `resume` (what a sink stored, e.g.
         `DeltaSource(uri).stored()`), its first state is the stored one
         instead of a computation, if the plan is the same and the pipeline
         holds the view's sources at the stored versions (`pipe.source(...,
-        version=stored.sources[name])`); `view.resumed` says which."""
+        version=stored.sources[name])`); `view.resumed` says which. With
+        `engine`, the view's plans run there and its state is kept in that
+        engine's store (`store_for`), else on the pipeline's engine."""
         if name in self.views or name in self.sources:
             raise ValueError(f"the pipeline already has a view {name!r}")
-        return IncrementalView(self.con, query, name, self.engine, pipeline=self, resume=resume)
+        return IncrementalView(
+            self.con, query, name, engine or self.engine, pipeline=self, resume=resume
+        )
 
     @property
     def views(self) -> dict[str, IncrementalView]:
@@ -2095,7 +2103,7 @@ class Pipeline:
                 continue
             report = RetentionReport(v.name, spec.column, 0, 0, spec.bound, None)
             out.append(report)
-            if bad := [s for s in v._sinks if not _keeps_retired(s)]:
+            if bad := [s for s in v._sinks if not s.keeps_retired]:
                 report.off = (
                     f"sink {bad[0].name} may rewrite its whole table, which would drop "
                     "the retired buckets"
@@ -2457,7 +2465,7 @@ class Pipeline:
             saved["_log"] = list(v._log)
             if isinstance(v.state, Resident):
                 # A refresh updates the state in place: keep a copy.
-                saved["state"] = DuckDBStore().copy(v.state)
+                saved["state"] = v.store.copy(v.state)
                 tables[v.name] = v.store.expanded(saved["state"])
             views[v.name] = saved
         return tables, views, dict(self.versions), dict(self.latest), dict(self.inputs)
@@ -2526,7 +2534,7 @@ class Pipeline:
         caller checked that the change's deletes exist.
 
         A view whose state DuckDB holds is updated in place at the commit,
-        at the cost of its change (`DuckDBStore.apply`), unless its new
+        at the cost of its change (`Store.apply`), unless its new
         contents are read before then: by a view recomputed on the new
         tables, or by the `audit`. Then its new state is a full merge."""
         self._check_changed(changes)
@@ -2679,12 +2687,14 @@ class Pipeline:
                     state = views[name].state
                     assert isinstance(state, Resident)
                     updates.append((state, pending.deltas[name], merged))
+                # Every state in place is a `Resident`, so one store holds them all.
+                store = views[next(iter(pending.in_place))].store
                 try:
-                    DuckDBStore().apply(updates)
+                    store.apply(updates)
                 except BaseException:
                     # Committed or not, the rows the change touches go back
                     # to the ones `_prepare` read.
-                    DuckDBStore().apply(
+                    store.apply(
                         [
                             (s, d, pending.before[n])
                             for n, (s, d, _) in zip(pending.in_place, updates, strict=True)
@@ -2795,15 +2805,3 @@ def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
         (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
     return concat([rest, expanded(consolidated(kept, inserts))])
-
-
-def _keeps_retired(sink: Any) -> bool:
-    """Whether `sink` keeps the rows a view drops from its state: the
-    sink's `_keeps_retired`, or a custom sink's own `keeps_retired`."""
-    for k in type(sink).__mro__:
-        own = k.__dict__.get("keeps_retired")
-        if own is not None and not isinstance(own, property):
-            return bool(own)
-        if "_keeps_retired" in k.__dict__:
-            return bool(k.__dict__["_keeps_retired"])
-    return False

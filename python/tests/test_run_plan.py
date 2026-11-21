@@ -162,6 +162,20 @@ def test_doubles_within_a_bound_keep_the_plan_as_written(rules):
     assert report._run_gate == "near"
 
 
+def test_a_stated_tolerance_keeps_the_plan_as_written(rules):
+    # `sv.within` coarsens the doubles as `floats="plan"` does, and the verdict
+    # rests on it in the same way (#2105).
+    rules(DISTINCT)
+    d = ibis.table({"id": "int64", "x": "float64"}, name="d")
+    report = sv.verify(
+        d.distinct(),
+        requires={"d": [sv.unique("id")]},
+        ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
+    )
+    assert DISTINCT in report._rewrites
+    assert report._run_gate == "near"
+
+
 def test_doubles_compared_exactly_take_the_rewrite(rules):
     rules(DISTINCT)
     d = ibis.table({"id": "int64", "x": "float64"}, name="d")

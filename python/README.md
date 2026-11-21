@@ -163,19 +163,22 @@ every possible input, or says why it can't ([what is proved](https://github.com/
   and Iceberg metadata, and a batch that breaks one is refused before
   anything runs. The [runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#runtime-errors) list what is ruled out.
 * A route takes the proof to the engine. `route="auto"` runs the plan on
-  DuckDB, Polars or Spark natively, through the reference's translation (proved against the model of
-  the engine), or by a check that the engine's choices are within the proof's, and names
+  DuckDB, Polars or Spark natively, through the reference's translation, or by a check that the engine's choices are within the proof's, and names
   the plan's class there: exact, equal under an observation the
   postcondition states (a float tolerance is one), or exact or observed
-  after a shim proved against that model. Where no route
+  after a shim. The proofs speak of a model of each engine's scalar
+  functions. DuckDB's lowering and the shims are proved against that model;
+  the writers' SQL and the Polars translation are tested against the lowered
+  plan ([what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/trusted-base.md)). Where no route
   applies, the plan is refused with the reason
   ([routes and classes](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles)). DuckDB,
   Polars and Spark are characterized fact by fact, with the evidence for each
   ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)).
 * Postconditions say what the result's consumer observes. By default,
   doubles within the plan's bound (`floats="plan"`, which the report
-  prints; the bound holds for the model of each engine's functions, and
-  [what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/trusted-base.md) says how far the models are tested); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
+  prints; [`float-bounds/`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/float-bounds.md)
+  proves the bounds over the reals, and [what is trusted](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/trusted-base.md) lists the
+  step from them to the report's bound and how far the models are tested); `sv.equivalent(floats=sv.within(abs=1e-6))` states a tolerance,
   which `verify` checks against that bound, and also rows as a sequence or
   a multiset, one zero. A sink states what a
   rerun must reproduce (`reproducible=`), and a refresh whose engine can't

@@ -20,6 +20,7 @@ from sverify.plan_json import (
     Json,
     ProducerUnsupported,
     Unsupported,
+    add_months_json,
     between,
     call,
     cast_json,
@@ -28,6 +29,7 @@ from sverify.plan_json import (
     interval_parts,
     literal,
     make_date_json,
+    make_timestamp_json,
 )
 
 
@@ -128,6 +130,18 @@ def _temporal_add(name: str) -> Callable[[Exprs, Any], Json]:
             left, right = op.right, op.left
         else:
             left, right = op.left, op.right
+        if (
+            isinstance(right, ops.IntervalFromInteger)
+            and interval_parts(1, dt.Interval(unit=right.unit))[0]
+        ):
+            # A column's count of months or years (#1925).
+            months, _ = interval_parts(1, dt.Interval(unit=right.unit))
+            n = x(right.arg, dt.int64)
+            if months != 1:
+                n = call("multiply", [n, literal(months, dt.int64)])
+            if name == "subtract":
+                n = call("negate", [n])
+            return add_months_json(x(left), n, op.left.dtype.is_timestamp())
         iv = _interval(x, right)
         return call(name, [x(left), iv])
 
@@ -235,14 +249,21 @@ def _constants(*args: Any) -> list[int] | None:
 
 def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[Exprs, Any], Json]:
     """`DateFromYMD` and friends: of constants, a literal; a bad date is an
-    error, as in DataFusion. A date of columns is `make_date_json`; the others
-    of columns are refused."""
+    error, as in DataFusion. A date or timestamp of columns is `make_date_json` or
+    `make_timestamp_json`; the others of columns are refused."""
 
     def rule(x: Exprs, op: Any) -> Json:
         values = _constants(*op.args)
         if values is None and isinstance(op, ops.DateFromYMD):
             # `make_date` of columns (#809), which raises outside the calendar.
             return make_date_json(*(x(a, dt.int64) for a in op.args))
+        if values is None and isinstance(op, ops.TimestampFromYMDHMS):
+            if not all(a.dtype.is_integer() for a in op.args):
+                raise Unsupported(
+                    f"{what} of columns is only supported of integers",
+                    construct="function make_timestamp",
+                )
+            return make_timestamp_json(*(x(a, dt.int64) for a in op.args))
         if values is None:
             raise Unsupported(
                 f"{what} of columns is not supported, only of constants",

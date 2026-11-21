@@ -29,8 +29,7 @@ finite operands they are `ofExact` and `ofExactDiv` of the exact result
 axioms (#582) follow: `add_scaled`, `sub_scaled`, `mul_scaled`, `div_scaled`,
 `div_scaled_err`, `add_nonneg`, `mul_nonneg` and `div_nonneg`.
 
-Everything here is integer arithmetic. `tests/test_float_arith.py` checks it
-bit for bit against native doubles.
+Everything here is integer arithmetic.
 -/
 
 namespace Substrait.FloatCode

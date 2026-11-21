@@ -63,7 +63,7 @@ a sum `c` is finite and within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of th
 an exact inequality on integers. `float-bounds` proves it of every order the
 engines' facts record (`StdModel.Summed.near`: trees, a sequential sum,
 Kahan's, a constant run's `fl(k · x)`); that the engines' algorithms meet it
-is trusted (docs/proofs.md, retired by #1196). -/
+is trusted (docs/proofs.md) until #1196 proves it. -/
 def SumBound (vs : List Value) (c : Int) : Prop :=
   (∀ x, Value.float x ∈ vs → FloatCode.IsFin x) → vs.length ≤ 2 ^ 32 →
     2 * (scaledAbsSum vs + vs.length * 2 ^ 52) ≤ FloatCode.maxMag →

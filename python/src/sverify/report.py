@@ -510,7 +510,7 @@ class Report:
     _optimized: dict | None = field(default=None, repr=False)
     """The transformation as a Substrait JSON plan, rewritten with the facts
     and keys of the preconditions (`Rel.optimize` in
-    `SubstraitLean/Semantic.lean`): for example a `DISTINCT` over a key is
+    `analysis/Sverify/Analysis/Semantic.lean`): for example a `DISTINCT` over a key is
     gone. On data that meets the preconditions it gives the same rows
     (`Rel.optimize_sound`); pass it to `sverify.engines.to_sql`, or as JSON
     to `sverify.engines.run`, instead of the transformation. None if Lean
@@ -550,7 +550,7 @@ class Report:
     _implied: dict[str, str] = field(default_factory=dict, repr=False)
     """A SQL condition per input table that every row reaching the result
     passes, given `requires` (#81, `Rel.need_eval` in
-    `SubstraitLean/Implied.lean`): the transformation gives the same result
+    `analysis/Sverify/Analysis/Implied.lean`): the transformation gives the same result
     on the table's rows that pass it. `sverify.io` sources read only those,
     and skip the files whose statistics rule it out."""
     assumed: list[Issue] = field(default_factory=list)
@@ -2588,13 +2588,14 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
     otherwise (a SQL condition on an Ibis table is a SQL model over it, with
     `semantics`)."""
     if isinstance(cond, str):
-        query = f'SELECT ({cond}) AS "c" FROM {{}} AS "t"'
+        # Not `str.format`: a regular expression's `{8}` is no placeholder.
+        select = f'SELECT ({cond}) AS "c" FROM '
         if isinstance(table, str):
-            return query.format(f"({table})")
+            return f'{select}({table}) AS "t"'
         from sverify.ibis_substrait import SQLModel, Unsupported, sql_model_schema
         from sverify.ibis_substrait.prune import prune_unmentioned
 
-        query = query.format('"t"')
+        query = f'{select}"t" AS "t"'
         # The SQL model hides `table` from the producer's pruning: its unread
         # columns of types sverify does not read go first (#1958).
         inner: Any = prune_unmentioned(table).op()

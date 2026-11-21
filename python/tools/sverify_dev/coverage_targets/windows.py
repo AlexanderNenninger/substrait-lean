@@ -59,7 +59,7 @@ TARGETS = [
         "QUALIFY",
         "in",
         "catalogue qualify 7 (written as subqueries); dedup pattern; replay 62",
-        False,
+        True,
         sql="SELECT * FROM t QUALIFY row_number() OVER (PARTITION BY name ORDER BY ts DESC) = 1",
         issue=319,
     ),
