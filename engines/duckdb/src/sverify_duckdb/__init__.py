@@ -120,8 +120,9 @@ SETTINGS: tuple[Setting, ...] = (
         "default_collation",
         ("",),
         "refuse",
-        ("engines/duckdb/replay/collate.json",),
-        "how strings compare; NOCASE may change starts_with, strpos and replace",
+        ("engines/duckdb/replay/collate.json", "duckdb-default-collation-matching"),
+        "how strings compare; NOCASE changes `=`, sorting and grouping, and from 2.0.1 `LIKE`, "
+        "`contains`, `starts_with` and `strpos` too (`replace` is unchanged)",
     ),
     Setting(
         "scalar_subquery_error_on_multiple_rows",
@@ -163,15 +164,18 @@ def _run(
     finite: Finite,
     tie_free: bool,
     asof: Sequence[dict] = (),
+    unchecked: dict | None = None,
 ) -> Any:
     from sverify.engine import read_tables
     from sverify_duckdb import engine as duckdb_engine
 
-    # DuckDB reads `Scan` and `Resident` tables where they are.
+    # DuckDB reads `Scan` and `Resident` tables where they are. `unchecked`:
+    # the marks `Report.run` passes on a checked run (ruling 223).
     tables = {t: con.get(t) for t in read_tables(json.loads(plan_json))}
+    kw = {"finite": finite, "asof": asof, "unchecked": unchecked}
     if keep:
-        return duckdb_engine.run(plan_json, tables, keep=True, finite=finite, asof=asof)
-    return duckdb_engine.run(plan_json, tables, finite=finite, asof=asof)
+        return duckdb_engine.run(plan_json, tables, keep=True, **kw)
+    return duckdb_engine.run(plan_json, tables, **kw)
 
 
 def _run_tables(

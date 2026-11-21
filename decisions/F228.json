@@ -1,0 +1,15 @@
+{
+  "id": "F228",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The checker's unchecked is Rel.marks of the root it writes (Parse.Plan.writtenRoot, shared by --write and the contract), covered by Rel.evalG_marks with Rel.eval_bindArgs; F226's W1 to W3 are withdrawn and the fit test is part of 1a.",
+  "issues": [
+    1787
+  ],
+  "amends": [
+    "F226"
+  ],
+  "source": "fable-ruling-228-1787-marks-of-the-written-root.md"
+}

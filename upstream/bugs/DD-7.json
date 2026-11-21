@@ -3,7 +3,7 @@
   "project": "duckdb",
   "version": "2.0.0",
   "status": "fixed upstream",
-  "status_note": "Fixed on main by [#27300](https://github.com/duckdb/duckdb/pull/27300) and [#27619](https://github.com/duckdb/duckdb/pull/27619) (the `CASE` simplification uses `TryEvaluateScalar`), backported to v2.0-cyanoptera; 2.0.0, the latest release, still raises.",
+  "status_note": "Fixed on main by [#27300](https://github.com/duckdb/duckdb/pull/27300) and [#27619](https://github.com/duckdb/duckdb/pull/27619) (the `CASE` simplification uses `TryEvaluateScalar`), backported to v2.0-cyanoptera; released in 2.0.1, and 2.0.0 still raises.",
   "summary": [
     "A `CASE` whose later `WHEN` is a constant expression that raises fails while planning, even when no row reaches that `WHEN`: on a table where every row takes the first branch, and on an empty table. The optimizer's `CASE` simplification evaluates every foldable `WHEN` with `ExpressionExecutor::EvaluateScalar`, which throws, where constant folding uses `TryEvaluateScalar` and leaves a failing expression to run time.",
     "At run time `CASE` is lazy (a raising `ELSE` on rows that never reach it does not raise), so the plan-time fold is the one place where a `CASE` branch is evaluated eagerly."
@@ -56,11 +56,18 @@
         "duckdb": "2.0.0"
       },
       "note": "triage: repro run on 2.0.0"
+    },
+    {
+      "checked_at": "2026-11-20",
+      "against": {
+        "duckdb": "2.0.1"
+      },
+      "note": "released: the repro no longer raises; the CASE is lazy (#2045)"
     }
   ],
   "upstream": [
     "https://github.com/duckdb/duckdb/pull/27300",
     "https://github.com/duckdb/duckdb/pull/27619"
   ],
-  "fixed_in": "2.0.1 (unreleased; in the 2.0.1 and 2.1.0 nightlies)"
+  "fixed_in": "2.0.1"
 }

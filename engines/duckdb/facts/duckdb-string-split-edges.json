@@ -1,0 +1,41 @@
+{
+  "id": "duckdb-string-split-edges",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`string_split` of two empty strings: one empty piece at 2.0.0, none at 2.0.1",
+  "verdict": "`string_split` agrees at 2.0.0 and 2.0.1 but for two empty strings, which give `[\"\"]` then and `[]` now; Lean leaves that cell unevaluated",
+  "area": "strings",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "string_split"
+  ],
+  "settings": {},
+  "description": [
+    "Grid of `s` in NULL, `''`, `'a'`, `'a,b'` against `sep` in NULL, `''`, `','`. At both versions: NULL for a NULL `s`; `[s]` for a NULL `sep` (`['']` for `''`); the characters of `s` for `sep = ''` (`['a', ',', 'b']`); `s.split(sep)` otherwise (`['']` for `('', ',')`). The one cell that differs is `('', '')`: `['']` at 2.0.0 and `[]` at 2.0.1.",
+    "`string_split` is a black box (`engines/duckdb/Sverify/DuckDB/Boxes.lean`): its only law is `nonNull`, which both values meet, so no proof changes. The evaluator is the one place that states a value, so `evalScalar` returns `unevaluated` at `('', '')` (as `signbit` does at `±0.0`), and no writer shim is added: a black box means the engine's own function (ruling 208, C1).",
+    "Grid at 2.0.0: 2.0.0; string_split(NULL, NULL) = None; string_split(NULL, '') = None; string_split(NULL, ',') = None; string_split('', NULL) = ['']; string_split('', '') = ['']; string_split('', ',') = ['']; string_split('a', NULL) = ['a']; string_split('a', '') = ['a']; string_split('a', ',') = ['a']; string_split('a,b', NULL) = ['a,b']; string_split('a,b', '') = ['a', ',', 'b']; string_split('a,b', ',') = ['a', 'b']. Grid at 2.0.1: 2.0.1; string_split(NULL, NULL) = None; string_split(NULL, '') = None; string_split(NULL, ',') = None; string_split('', NULL) = ['']; string_split('', '') = []; string_split('', ',') = ['']; string_split('a', NULL) = ['a']; string_split('a', '') = ['a']; string_split('a', ',') = ['a']; string_split('a,b', NULL) = ['a,b']; string_split('a,b', '') = ['a', ',', 'b']; string_split('a,b', ',') = ['a', 'b']."
+  ],
+  "reference": "The reference has no `string_split`: a black box is the engine's own function, with its laws.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045, duckdb 2.0.0 and 2.0.1 Python packages (found by CI on #2071: `tests/test_black_box.py::test_string_split_is_leans_on_random_data`)",
+      "evidence": [
+        {
+          "sql": "SELECT string_split('', ''), string_split('', ','), string_split('a,b', '')",
+          "observed": "2.0.0: [''], [''], ['a', ',', 'b']; 2.0.1: [], [''], ['a', ',', 'b']"
+        },
+        {
+          "test": "python/tests/test_black_box.py::test_string_split_is_leans_on_random_data"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2045
+  ]
+}

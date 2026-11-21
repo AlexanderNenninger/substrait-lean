@@ -1,5 +1,6 @@
 import SubstraitLean.Epsilon
 import Sverify.Polars.Shims
+import Sverify.DuckDB.Profile
 
 /-!
 # How each engine realizes a plan (#1166, theme 3)
@@ -30,7 +31,10 @@ does not change, and the evidence is `tested`. `"class_basis"` and
 `"sorted_basis"` are `"computed"`: no theorem connects the class to the
 engine's refinement yet (#900). `"guard_free_theorem"` names the theorem by
 which the engine's translation runs a `guard_free` plan without its other
-guards (`guardFreeTheorems`), or is null where it keeps every guard. `"transfer"` gives, per other profile a plan may be verified under,
+guards (`guardFreeTheorems`), or is null where it keeps every guard.
+`"marks_theorem"` names the theorem by which it runs the expressions the
+checker marked without their checks on a checked run (`marksTheorems`,
+ruling 223), or is null where it keeps every check. `"transfer"` gives, per other profile a plan may be verified under,
 the options where the engine allows a behaviour that profile does not
 (`transferB`, which `Rel.transfer_of_transferB` proves sound). `"sorted"`
 says whether the plan's result comes out of a sort.
@@ -129,6 +133,15 @@ def guardFreeTheorems : List (String × String) := [("polars", "Rel.polars_sound
 /-- The names in `guardFreeTheorems` are theorems. -/
 example := @Rel.polars_sound
 
+/-- The theorem by which each engine's translation runs the expressions the
+checker marked (`Rel.marks`) without their checks, the one against `±∞`
+included, on a checked run (ruling 223). An engine not listed keeps every
+check of every expression; Polars runs all or none (`guardFreeTheorems`). -/
+def marksTheorems : List (String × String) := [("duckdb", "Rel.duckdb_marks_written")]
+
+/-- The names in `marksTheorems` are theorems. -/
+example := @Rel.duckdb_marks_written
+
 def where_ (d : Dep) : List (String × Json) := [("group", toJson d.group), ("option", toJson d.option)]
 
 /-- The options where `E` allows a behaviour `P` does not, among `reads`: a
@@ -180,6 +193,7 @@ def engineJson (es : List EngineProfile) (E : EngineProfile) (ds : List Dep) (re
       if r.evidence.theorem?.isSome then r.evidence.facts else []).eraseDups),
     ("issues", toJson (rows.filterMap fun (_, r) => r.evidence.issue?).eraseDups),
     ("guard_free_theorem", toJson (guardFreeTheorems.lookup E.name)),
+    ("marks_theorem", toJson (marksTheorems.lookup E.name)),
     ("version", toJson E.table.version),
     ("shims", Json.arr shims.toArray), ("observed", Json.arr observed.toArray),
     ("problems", Json.arr (refused ++ threshold).toArray),

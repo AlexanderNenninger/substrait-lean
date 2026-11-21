@@ -4,7 +4,7 @@
 surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
-* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report.guard_free`,
+* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report._guard_free`,
   and `guards=False` in `sverify.engines.to_sql` (and in
   `sverify_polars.engine.run` and `duckdb_engine.run`);
 * sharded evaluation: `analysis/Sverify/Analysis/Partition.lean`,
@@ -103,14 +103,27 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 `MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
 `sverify_polars.engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
-`to_sql(plan, dialect, unchecked=report._unchecked)` drops the checks of the
-expressions `unchecked` lists and keeps the others, and every aggregate's.
+`to_sql(written_plan(report.internal_plan), dialect, unchecked=report._unchecked)`
+drops the checks of the
+expressions `unchecked` lists, the check against `±∞` included, and keeps the
+others, and every aggregate's own. A marked expression meets no issue on data
+that meets the preconditions (`Expr.issues_nil_of_safe`), so its `finite`
+check, which `guards=False` keeps, would never fire there (ruling 223).
+`Report.run` passes the marks of the plan it runs on a checked, translated run
+under the reference, to an engine the checker names a `"marks_theorem"` for:
+DuckDB (`Rel.duckdb_marks`). It rests on `check_inputs` deciding the contract
+on the data the run reads, as Polars's guard-free run does. The marks are
+those of the plan as the checker writes it, with the arguments of nested calls
+bound as columns (`Rel.duckdb_marks_written`, ruling 228), and a run passes
+them only where they fit the plan the writer reads. A plan with a decimal `AVG` keeps every
+check for now: the checker reads it as a sum and a count, which the writer
+folds back (ruling 226).
 The writer checks that the tree's nodes are the plan's, so a report on
 another plan raises `UnsupportedError`. In `SELECT a // b, a * b` with
 `0 ≤ a ≤ 1000` and `b ≥ 1`, the division loses its `CASE` and the product
 keeps its overflow check (`test_per_expression_guards` in
 `python/tests/test_guards.py`). The Polars engine still drops all of its
-checks or none.
+checks or none, and DuckDB's whole-plan `guard_free` stays refused.
 
 Benchmark (`python/scripts/bench_optimizations.py`, a 12-core Linux machine, 10⁶ rows,
 `a // b`, `a % b`, `a * 3 + b` under a filter, preconditions `0 ≤ a ≤ 10⁶`,
@@ -231,7 +244,7 @@ The exact-semantics catches, and what we do with each:
   shard's partial sum before the combine, so `--shard` refuses these
   aggregates by default. With `float_order="any"` it splits them anyway
   (`floatCombine`: `SUM` of partial sums, `AVG` as summed sums over summed
-  counts), within a proved bound.
+  counts), within the bound `Shard.lean` proves over the reals (`sharded_near`).
   Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split
   double (`floatBoundParts`), and from them the combined `SUM` of a group of
   `n` values in `k` shards of at most `m` is within

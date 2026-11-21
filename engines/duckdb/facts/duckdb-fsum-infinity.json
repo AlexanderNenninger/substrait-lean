@@ -1,0 +1,43 @@
+{
+  "id": "duckdb-fsum-infinity",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`fsum`, `kahan_sum`, `sumkahan` and `favg` of an infinity and finite values: NaN at 2.0.0, the infinity at 2.0.1",
+  "verdict": "`fsum` and `favg` (also `kahan_sum`, `sumkahan`) of one kind of infinity with finite values give that infinity at 2.0.1, grouped and over a window; at 2.0.0 they gave NaN once a finite value followed the infinity; both infinities still give NaN",
+  "area": "aggregates",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "fsum",
+    "kahan_sum",
+    "sumkahan",
+    "favg"
+  ],
+  "settings": {},
+  "description": [
+    "The observation `sum-avg-infinities` (`engines/duckdb/replay/probes.json`) over a table of 9 rows: `fsum` and `favg` of a group of `+inf` and `1.0` give NaN at 2.0.0 and `inf` at 2.0.1; of `-inf` and `1.0`, NaN and `-inf`; the window frames `w1` to `w7` the same. `sum` and `avg` are unchanged (the infinity at both versions), `+inf` with `-inf` still gives NaN at every function, and finite groups are unchanged.",
+    "These are DuckDB's own functions, which sverify reaches only as black boxes (`python/src/sverify/black_box.py`, `engines/duckdb/Sverify/DuckDB/Boxes.lean`): their only law is `nonNull`, which a NaN and an infinity both meet, so no theorem about a plan that calls them changes, and no profile row reads them. The model's `AggFn.fsum` is not this function: it is written as DuckDB's `SUM`, which the probe shows unchanged. It supersedes the infinite-input claim of `duckdb-kahan-sum` (true at 2.0.0)."
+  ],
+  "reference": "A black box is the engine's own function; Lean has no evaluator for an aggregate black box (`evalAgg` is `unevaluated`).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045 (found by `sverify_dev.canary drift`, #2053), duckdb 2.0.0 and 2.0.1 Python packages",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "sum-avg-infinities"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2045
+  ],
+  "supersedes": [
+    "duckdb-kahan-sum"
+  ]
+}
