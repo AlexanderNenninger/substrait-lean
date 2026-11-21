@@ -9,17 +9,17 @@ CI names its test; a cell checked by hand is on the release checklist
 
 | Store | Status | Tested with |
 |---|---|---|
-| Local disk | tested in CI | the sink and source tests |
+| Local disk | tested in CI | [`test_io_sink_readers.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_sink_readers.py) |
 | S3 | tested in CI, against a moto server | [`test_io_delta_s3.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_delta_s3.py), moto 5.2.5: writes, maintenance and a restart past another writer's compaction |
-| R2, MinIO | checked by hand | MinIO on the homelab stack, before a release |
-| GCS, Azure | untested | |
+| MinIO | checked by hand | MinIO with the open-source Unity Catalog, before a release |
+| R2, GCS, Azure | untested | |
 
 ## Catalogs
 
 | Catalog | Status | Tested with |
 |---|---|---|
-| Delta tables by path | tested in CI | deltalake 1.6.6 |
-| Unity Catalog, open source (`uc://`) | tested in CI against a stand-in for delta-rs's catalog, and checked by hand on the homelab stack | [`test_io_delta_catalog.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_delta_catalog.py) |
+| Delta tables by path | tested in CI | [`test_io_sink_readers.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_sink_readers.py), deltalake 1.6.6 |
+| Unity Catalog, open source (`uc://`) | tested in CI against a stand-in for delta-rs's catalog, and checked by hand with MinIO, before a release | [`test_io_delta_catalog.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_delta_catalog.py) |
 | Databricks Unity Catalog, AWS Glue, S3 Tables, Snowflake Open Catalog | checked by hand | the release checklist |
 | Iceberg SQL catalog (SQLite) | tested in CI | [`test_io_iceberg.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_iceberg.py), pyiceberg 0.12.0 |
 | Iceberg REST catalogs (Lakekeeper, Polaris), Nessie, Hive Metastore | untested | |
