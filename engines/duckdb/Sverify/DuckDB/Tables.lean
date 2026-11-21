@@ -88,10 +88,12 @@ def Profile.duckdb.obs : ObsTable := [
   -- has a row of its own (ruling 185).
   (none, "overflow", (ObsRow.native ["duckdb-R1", "duckdb-R15-int-arith", "duckdb-R1-min",
     "duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
-  -- Integer powers are written as checked products, and decimals as the
-  -- printer writes them (`Profile.duckdb` states that SQL, not DuckDB's own
-  -- functions): tested, not proved.
-  (some "int.pow", "overflow", (ObsRow.native ["duckdb-int-pow"]).tracking 1985),
+  -- DuckDB's `power` is of doubles (duckdb-int-pow): sverify writes an integer
+  -- power as checked products, a shim, tested; integer powers are After 1.0
+  -- (ruling 227). Decimals are as the printer writes them (`Profile.duckdb`
+  -- states that SQL, not DuckDB's own functions): tested, not proved.
+  (some "int.pow", "overflow", (ObsRow.shimmed "integer power as checked products"
+    ["duckdb-int-pow"]).tracking 1985),
   (some "dec.arith", "overflow", (ObsRow.native ["duckdb-decimal-arith"]).tracking 1985),
   -- `SUM(BIGINT)` is a `HUGEINT`; the written plan casts it back, which raises
   -- where the reference does: a type, not a value, so no shim.
@@ -102,10 +104,14 @@ def Profile.duckdb.obs : ObsTable := [
     "Lowering.duckdb_exact"),
   (none, "on_domain_error", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-int-div-domain",
     "duckdb-R15-math-domain", "duckdb-R15-atan2"]).proved "Lowering.duckdb_exact"),
-  (some "int.pow", "on_domain_error", (ObsRow.native ["duckdb-int-pow"]).tracking 1985),
+  (some "int.pow", "on_domain_error", (ObsRow.shimmed "integer power as checked products"
+    ["duckdb-int-pow"]).tracking 1985),
   -- `log(b, x)` (`flogb`) lowers natively, and no fact probes its domain yet.
   (some "fp.log", "on_domain_error", (ObsRow.native ["duckdb-R15-math-domain"]).tracking 1985),
-  (none, "division_type", (ObsRow.native ["duckdb-R3"]).tracking 1985),
+  -- `//`, `%` and `%` of doubles truncate (duckdb-R2, duckdb-int-div-domain,
+  -- duckdb-R3, duckdb-R15-double-modulus), as `Profile.duckdb` states them.
+  (none, "division_type", (ObsRow.native ["duckdb-R2", "duckdb-int-div-domain", "duckdb-R3",
+    "duckdb-R15-double-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "min_mod_neg_one", (ObsRow.shimmed "MIN % -1 written out" ["duckdb-R15-int-modulus"]).proved "Lowering.duckdb_exact"),
   (none, "rounding", (ObsRow.native ["duckdb-float-ieee", "duckdb-ieee-arith-macos-arm64", "duckdb-ieee-arith-linux-x86-64"]).tracking 1985),
   (none, "nan_creation", (ObsRow.native ["duckdb-R15-double-arith", "duckdb-R15-double-modulus",
@@ -127,7 +133,7 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "pow_one_inf", (ObsRow.native ["duckdb-pow-one-inf"]).tracking 271),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["duckdb-signbit"]).tracking 1985),
   (none, "nan_order", (ObsRow.native ["duckdb-arg-min-nulls"]).tracking 1985),
-  (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).tracking 1985),
+  (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).proved "Lowering.duckdb_exact"),
   -- `<` of lists is NULL where a NULL element decides it, which DuckDB gives as FALSE or TRUE:
   -- the written `list_lt` finds the first distinct position (`Dialect.list_lt`). MIN and MAX
   -- of lists order a NULL element greatest, as the reference does at `agg.order`.
@@ -161,11 +167,15 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "tie_pick", ({ ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
     rerun := some { rows := .tiesPermuted },
     rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 900),
-  (some "fp.round", "rounding", (ObsRow.native ["duckdb-R15-round"]).tracking 1985),
+  (some "fp.round", "rounding", (ObsRow.native ["duckdb-R15-round"]).proved "Lowering.duckdb_exact"),
   (none, "float_overflow", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 1985),
-  (none, "negative_start", (ObsRow.native ["duckdb-R13"]).tracking 1985),
-  (none, "case_sensitivity", (ObsRow.native ["duckdb-string-match-case"]).tracking 1985),
-  (none, "string_positions", (ObsRow.native ["duckdb-string-match-case", "duckdb-R13"]).tracking 1985),
+  -- The string functions are the reference's in `Profile.duckdb`, as the facts
+  -- find DuckDB's (`substring` wraps from the end, `LIKE` is case-sensitive).
+  (none, "negative_start", (ObsRow.native ["duckdb-R13"]).proved "Lowering.duckdb_exact"),
+  (none, "case_sensitivity", (ObsRow.native ["duckdb-string-match-case"]).proved
+    "Lowering.duckdb_exact"),
+  (none, "string_positions", (ObsRow.native ["duckdb-string-match-case", "duckdb-R13"]).proved
+    "Lowering.duckdb_exact"),
   (none, "null_join_keys", (ObsRow.native ["duckdb-null-keys"]).tracking 1985),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]).tracking 900),
   -- Welford with Chan's merge meets the generic properties the reference allows:
@@ -202,7 +212,8 @@ def Profile.duckdb.obs : ObsTable := [
 def Profile.duckdb.shimCosts : List (String × ShimCost) :=
   [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
    ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression),
-   ("null_order", .argument), ("list_lt", .expression)]
+   ("null_order", .argument), ("list_lt", .expression),
+   ("integer power as checked products", .expression)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/
