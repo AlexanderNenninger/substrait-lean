@@ -744,10 +744,14 @@ def _run_plan(
     tie_free: bool = False,
     asof: Sequence[dict] = (),
     unchecked: dict | None = None,
+    rows: Literal["sequence", "multiset"] | None = None,
 ) -> pa.Table | Resident:
     """`run_plan`, and with `unchecked` the plan's marks (`Rel.marks`):
     `Report.run` passes them on a checked run, to an engine the checker names
-    a `"marks_theorem"` for (ruling 223), whose runner takes the keyword."""
+    a `"marks_theorem"` for (ruling 223), whose runner takes the keyword.
+    `rows` is `to_sql`'s, for a runner whose `ProfilePlugin.rows` is
+    `"sequence"`: `Report.run` passes `"multiset"` where the result needs no
+    ordinal (`Report._ordinal_free`)."""
     from sverify import profiles
 
     engine = engine or con.engine
@@ -760,6 +764,8 @@ def _run_plan(
     extra: dict[str, Any] = {"asof": asof} if asof else {}
     if unchecked is not None:
         extra["unchecked"] = unchecked
+    if rows is not None:
+        extra["rows"] = rows
     out = plugin.runner(
         con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
     )
@@ -767,14 +773,20 @@ def _run_plan(
 
 
 def run_guard_free(
-    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: Finite = True
+    con: Connection,
+    plan_json: str,
+    engine: str,
+    theorem: str | None,
+    *,
+    finite: Finite = True,
+    rows: Literal["sequence", "multiset"] | None = None,
 ) -> pa.Table:
     """Run a plan whose contract report is `guard_free` on `engine` without
     its other per-row checks, on data that meets its preconditions. The
     assumed issues keep their checks. The engine's plugin names the theorem
     that covers its writer without them (`ProfilePlugin.guard_free_theorem`),
     and the checker names it per engine (`"guard_free_theorem"`,
-    `SubstraitLean/Realize.lean`).
+    `SubstraitLean/Realize.lean`). `rows`: as `_run_plan`'s.
 
     Raises:
         ValueError: No theorem covers the engine's writer without them, or
@@ -791,7 +803,8 @@ def run_guard_free(
             + (f" ({theorem} is not its writer's)" if theorem and covers else "")
         )
     tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
-    return run(plan_json, tables, guard_free=True, finite=finite)
+    extra = {"rows": rows} if rows is not None else {}
+    return run(plan_json, tables, guard_free=True, finite=finite, **extra)
 
 
 def _rename_tables(node: object, names: dict[str, str]) -> None:

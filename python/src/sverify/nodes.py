@@ -262,7 +262,7 @@ class Node:
             self.internal_plan,
             d,
             deterministic=report._exact,
-            rows="sequence" if report.lenses.rows == "sequence" else "multiset",
+            rows=report._rows,
         )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:

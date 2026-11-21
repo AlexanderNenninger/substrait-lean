@@ -933,8 +933,24 @@ class Report:
             d,
             deterministic=self._exact,
             finite=finite,
-            rows="sequence" if self.lenses.rows == "sequence" else "multiset",
+            rows=self._rows,
         )
+
+    @property
+    def _rows(self) -> Literal["sequence", "multiset"]:
+        """What the observation reads of the rows, as `to_sql`'s `rows`:
+        their order only under a `rows="sequence"` lens."""
+        return "sequence" if self.lenses.rows == "sequence" else "multiset"
+
+    @property
+    def _ordinal_free(self) -> bool:
+        """A run's rows need no ordinal to meet the observation (ruling 223,
+        O1 and O3): under a `rows="sequence"` lens every result the reference
+        allows is one row by row (`_sequence_determined`,
+        `check_sequence_determined_sound`); under any other, one up to row
+        order (`_exact`, `check_deterministic_sound`). Each rests on the
+        preconditions, so a run takes it only after checking them (O2)."""
+        return self._sequence_determined or (self._rows == "multiset" and self._exact)
 
     def _plan_to_run(self, kind: str | None, *, checked: bool, engine: str) -> str:
         """The plan `engine` runs on the route `kind`, as JSON text: the
@@ -1363,11 +1379,17 @@ class Report:
         # without their checks, the one against `±∞` included, on an engine
         # whose writer a theorem covers so (`"marks_theorem"`, ruling 223), on
         # the same gate: the preconditions were checked on these tables.
+        checked = check_requires and kind == "translated" and self.semantics == "reference"
         marked = (
-            check_requires
-            and kind == "translated"
-            and self.semantics == "reference"
-            and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
+            checked and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
+        )
+        # On the same gate, a runner that numbers the rows to keep Lean's order
+        # (`ProfilePlugin.rows`) leaves the numbering out where the checker
+        # proved the observation cannot see it (`_ordinal_free`, ruling 223 O1).
+        rows: Literal["multiset"] | None = (
+            "multiset"
+            if checked and plugin is not None and plugin.rows == "sequence" and self._ordinal_free
+            else None
         )
 
         def recheck(written: str) -> None:
@@ -1388,7 +1410,9 @@ class Report:
                 out = self._with_plan(
                     plan,
                     run_engine,
-                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite),
+                    lambda plan: run_guard_free(
+                        con, plan, name, theorem, finite=finite, rows=rows
+                    ),
                     recheck,
                 )
             else:
@@ -1405,6 +1429,7 @@ class Report:
                         # without a row-order tiebreak (`to_sql`'s `deterministic`).
                         tie_free=self._exact and kind != "unverified",
                         unchecked=self._marks_of(plan) if marked else None,
+                        rows=rows,
                     ),
                     recheck,
                 )
