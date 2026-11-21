@@ -1002,7 +1002,7 @@ def _(mo):
     and the tests use DuckDB as their default oracle. DuckDB and Polars are
     characterized fact by fact, each fact with its evidence
     ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
-    written form of the plan (`sverify.engines.written_plan`), so what runs
+    written form of the plan (`sverify.engines.plan.written_plan`), so what runs
     is what was checked, and their translators spell out the reference's
     semantics explicitly, whatever the engine's defaults.
 
@@ -1394,7 +1394,7 @@ def _(mo):
     ### SQL for DuckDB, Snowflake and Spark
 
     When the data lives in a warehouse, the plan goes to the warehouse.
-    `sverify.engines.to_sql` writes a checked plan, or one of Lean's update
+    `sverify.engines.plan.to_sql` writes a checked plan, or one of Lean's update
     plans, as SQL whose result is `Rel.eval` of the plan. Columns are
     positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS TRUE`),
     integers are checked at their declared width and every `ORDER BY` says where

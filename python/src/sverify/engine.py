@@ -490,7 +490,7 @@ def canonical(table: pa.Table) -> pa.Table:
 class NotIncrementalError(SverifyError):
     """The plan is outside the fragment with verified delta rules.
 
-    Raised by `sverify.engines.delta_plans` for a plan with an operator
+    Raised by `sverify.engines.plan.delta_plans` for a plan with an operator
     without a delta rule (a left join, aggregate, window, `DISTINCT` or
     `LIMIT`). A node over such a plan is recomputed and diffed instead, so
     refreshing it does not raise this. (A view that ends in `COUNT` and `SUM`
@@ -512,7 +512,7 @@ def delta_plans(plan_json: str) -> list[str]:
 
     Args:
         plan_json: A Substrait plan as protobuf JSON, as
-            `sverify.engines.substrait_json` or a node's `plan` write it.
+            `sverify.engines.plan.substrait_json` or a node's `plan` write it.
 
     Returns:
         The delta plan, a Substrait JSON plan in Lean's written form, as a
@@ -599,7 +599,7 @@ def written_plan(plan_json: str) -> str:
     (`substrait-check --write`; the golden tests check this round trip), once
     the checker has found it well-formed.
 
-    This is the form `sverify.engines.run` and `sverify.engines.to_sql`
+    This is the form `sverify.engines.run` and `sverify.engines.plan.to_sql`
     take, and what a node's `plan` holds.
 
     Args:
@@ -664,16 +664,16 @@ def run_plan(
     on the local Spark session (`sverify_spark.engine.session`), and a Spark
     session as `engine` runs it there.
 
-    DuckDB runs the SQL `sverify.engines.to_sql` writes for the plan, Polars
+    DuckDB runs the SQL `sverify.engines.plan.to_sql` writes for the plan, Polars
     a translation to a lazy frame, Spark the Spark SQL
-    `sverify.engines.to_sql` writes in Spark's dialect
+    `sverify.engines.plan.to_sql` writes in Spark's dialect
     (`sverify_spark.dialect.SPARK`); each gives the result `Rel.eval` gives.
     This is `sverify.engines.run`.
 
     Args:
         con: The connection whose tables the plan reads.
         plan_json: A plan in Lean's written form (a node's `plan`, or
-            `sverify.engines.written_plan`'s output).
+            `sverify.engines.plan.written_plan`'s output).
         engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session.
             Default: the connection's engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
