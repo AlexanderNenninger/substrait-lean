@@ -2263,6 +2263,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- A decimal's text: its scale's digits, exact (D72, #346).
     if target == .str then
       if let .dec p s := k then return .un (if p == s then .dtextFull else .dtext) e
+      -- DuckDB and Spark trim the fraction's trailing zeros and Polars prints six digits
+      -- (D72, ruling 244); a format that states the text is the same on every engine.
+      if k == .time || k == .timeTz then
+        throw ("casts of timestamps to strings are not supported: the engines print the fraction " ++
+          "differently; write strftime with an explicit format, for example '%Y-%m-%d %H:%M:%S'")
     -- `true` / `false`, as every tier-1 engine prints a boolean; NULL stays NULL (#346).
     if target == .str && k == .bool then
       return .ifThen e (.lit (.str "true")) (.ifThen (.un .not e) (.lit (.str "false")) (.lit .null))
