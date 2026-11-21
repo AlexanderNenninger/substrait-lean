@@ -1,0 +1,1126 @@
+{
+  "source": "https://github.com/bitol-io/open-data-contract-standard/tree/v3.2.0/docs/examples",
+  "license": "Apache-2.0",
+  "summary": {
+    "conditions": 153,
+    "examples read": 42,
+    "round trip no conditions": 8,
+    "round trip not tried": 5,
+    "round trip refused": 4,
+    "round trip same": 95,
+    "unread": 20
+  },
+  "results": {
+    "all/full-example.odcs.yaml": {
+      "objects": {
+        "tbl": {
+          "conditions": [
+            "Key(cols=('rcvr_id',))",
+            "references(rcvr_id, receivers.id)",
+            "(\"rcvr_cntry_code\" IN ('US', 'CA', 'MX')) OR \"rcvr_cntry_code\" IS NULL",
+            "NOT \"rcvr_cntry_code\" IS NULL"
+          ],
+          "unread": [
+            {
+              "column": null,
+              "reason": "a composite foreign key: references() takes one column",
+              "issue": 1956
+            },
+            {
+              "column": null,
+              "reason": "a lower bound on the row count: sverify reads caps",
+              "design": "a lower bound depends on the data"
+            }
+          ],
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
+        },
+        "receivers": {
+          "conditions": [
+            "Key(cols=('id', 'country_code'))",
+            "NOT \"id\" IS NULL",
+            "NOT \"country_code\" IS NULL",
+            "NOT \"receiver_name\" IS NULL",
+            "references(receiver_type, receiver_types.type_code)"
+          ],
+          "unread": [],
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
+        }
+      }
+    },
+    "all/postgresql-adventureworks-contract.odcs.yaml": {
+      "objects": {
+        "department": {
+          "conditions": [
+            "Key(cols=('departmentid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "employee": {
+          "conditions": [
+            "Key(cols=('businessentityid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "employeedepartmenthistory": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'departmentid', 'shiftid', 'startdate'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "employeepayhistory": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'ratechangedate'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "jobcandidate": {
+          "conditions": [
+            "Key(cols=('jobcandidateid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "shift": {
+          "conditions": [
+            "Key(cols=('shiftid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "address": {
+          "conditions": [
+            "Key(cols=('addressid',))"
+          ],
+          "unread": [],
+          "round_trip": {
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"addressid\" IS NOT NULL: condition '\"addressid\" IS NOT NULL': column 'spatiallocation' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is lef",
+            "issue": 1958
+          }
+        },
+        "addresstype": {
+          "conditions": [
+            "Key(cols=('addresstypeid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "businessentity": {
+          "conditions": [
+            "Key(cols=('businessentityid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "businessentityaddress": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'addressid', 'addresstypeid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "businessentitycontact": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'personid', 'contacttypeid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "contacttype": {
+          "conditions": [
+            "Key(cols=('contacttypeid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "countryregion": {
+          "conditions": [
+            "Key(cols=('countryregioncode',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "emailaddress": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'emailaddressid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "password": {
+          "conditions": [
+            "Key(cols=('businessentityid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "person": {
+          "conditions": [
+            "Key(cols=('businessentityid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "personphone": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'phonenumber', 'phonenumbertypeid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "phonenumbertype": {
+          "conditions": [
+            "Key(cols=('phonenumbertypeid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "stateprovince": {
+          "conditions": [
+            "Key(cols=('stateprovinceid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "billofmaterials": {
+          "conditions": [
+            "Key(cols=('billofmaterialsid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "culture": {
+          "conditions": [
+            "Key(cols=('cultureid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "document": {
+          "conditions": [
+            "Key(cols=('documentnode',))"
+          ],
+          "unread": [],
+          "round_trip": {
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"documentnode\" IS NOT NULL: condition '\"documentnode\" IS NOT NULL': column 'document' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is left",
+            "issue": 1958
+          }
+        },
+        "illustration": {
+          "conditions": [
+            "Key(cols=('illustrationid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "location": {
+          "conditions": [
+            "Key(cols=('locationid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "product": {
+          "conditions": [
+            "Key(cols=('productid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productcategory": {
+          "conditions": [
+            "Key(cols=('productcategoryid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productcosthistory": {
+          "conditions": [
+            "Key(cols=('productid', 'startdate'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productdescription": {
+          "conditions": [
+            "Key(cols=('productdescriptionid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productdocument": {
+          "conditions": [
+            "Key(cols=('productid', 'documentnode'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productinventory": {
+          "conditions": [
+            "Key(cols=('productid', 'locationid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productlistpricehistory": {
+          "conditions": [
+            "Key(cols=('productid', 'startdate'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productmodel": {
+          "conditions": [
+            "Key(cols=('productmodelid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productmodelillustration": {
+          "conditions": [
+            "Key(cols=('productmodelid', 'illustrationid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productmodelproductdescriptionculture": {
+          "conditions": [
+            "Key(cols=('productmodelid', 'productdescriptionid', 'cultureid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productphoto": {
+          "conditions": [
+            "Key(cols=('productphotoid',))"
+          ],
+          "unread": [],
+          "round_trip": {
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"productphotoid\" IS NOT NULL: condition '\"productphotoid\" IS NOT NULL': column 'thumbnailphoto' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never rea",
+            "issue": 1958
+          }
+        },
+        "productproductphoto": {
+          "conditions": [
+            "Key(cols=('productid', 'productphotoid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productreview": {
+          "conditions": [
+            "Key(cols=('productreviewid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productsubcategory": {
+          "conditions": [
+            "Key(cols=('productsubcategoryid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "scrapreason": {
+          "conditions": [
+            "Key(cols=('scrapreasonid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "transactionhistory": {
+          "conditions": [
+            "Key(cols=('transactionid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "transactionhistoryarchive": {
+          "conditions": [
+            "Key(cols=('transactionid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "unitmeasure": {
+          "conditions": [
+            "Key(cols=('unitmeasurecode',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "workorder": {
+          "conditions": [
+            "Key(cols=('workorderid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "workorderrouting": {
+          "conditions": [
+            "Key(cols=('workorderid', 'productid', 'operationsequence'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "productvendor": {
+          "conditions": [
+            "Key(cols=('productid', 'businessentityid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "purchaseorderdetail": {
+          "conditions": [
+            "Key(cols=('purchaseorderid', 'purchaseorderdetailid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "purchaseorderheader": {
+          "conditions": [
+            "Key(cols=('purchaseorderid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "shipmethod": {
+          "conditions": [
+            "Key(cols=('shipmethodid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "vendor": {
+          "conditions": [
+            "Key(cols=('businessentityid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "countryregioncurrency": {
+          "conditions": [
+            "Key(cols=('countryregioncode', 'currencycode'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "creditcard": {
+          "conditions": [
+            "Key(cols=('creditcardid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "currency": {
+          "conditions": [
+            "Key(cols=('currencycode',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "currencyrate": {
+          "conditions": [
+            "Key(cols=('currencyrateid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "customer": {
+          "conditions": [
+            "Key(cols=('customerid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "personcreditcard": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'creditcardid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salesorderdetail": {
+          "conditions": [
+            "Key(cols=('salesorderid', 'salesorderdetailid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salesorderheader": {
+          "conditions": [
+            "Key(cols=('salesorderid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salesorderheadersalesreason": {
+          "conditions": [
+            "Key(cols=('salesorderid', 'salesreasonid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salesperson": {
+          "conditions": [
+            "Key(cols=('businessentityid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salespersonquotahistory": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'quotadate'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salesreason": {
+          "conditions": [
+            "Key(cols=('salesreasonid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salestaxrate": {
+          "conditions": [
+            "Key(cols=('salestaxrateid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salesterritory": {
+          "conditions": [
+            "Key(cols=('territoryid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "salesterritoryhistory": {
+          "conditions": [
+            "Key(cols=('businessentityid', 'territoryid', 'startdate'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "shoppingcartitem": {
+          "conditions": [
+            "Key(cols=('shoppingcartitemid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "specialoffer": {
+          "conditions": [
+            "Key(cols=('specialofferid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "specialofferproduct": {
+          "conditions": [
+            "Key(cols=('specialofferid', 'productid'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "store": {
+          "conditions": [
+            "Key(cols=('businessentityid',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "authoritative-definitions/authoritative-definitions.odcs.yaml": {
+      "objects": {
+        "products": {
+          "conditions": [
+            "Key(cols=('id',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "custom-other-properties/custom-properties.odcs.yaml": {
+      "objects": {
+        "events": {
+          "conditions": [
+            "Key(cols=('event_id',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "custom-other-properties/vendor.odcs.yaml": {
+      "objects": {
+        "orders": {
+          "conditions": [
+            "NOT \"order_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "data-types/all-data-types.odcs.yaml": {
+      "objects": {
+        "transactions_tbl": {
+          "conditions": [
+            "(LENGTH(\"account_id\") >= 11) OR \"account_id\" IS NULL",
+            "(LENGTH(\"account_id\") <= 11) OR \"account_id\" IS NULL",
+            "(REGEXP_MATCHES(\"account_id\", 'ACC[0-9]{8}')) OR \"account_id\" IS NULL",
+            "(\"txn_ref_date\" > CAST('2020-01-01' AS DATE)) OR \"txn_ref_date\" IS NULL",
+            "(\"txn_ref_date\" <= CAST('2021-01-01' AS DATE)) OR \"txn_ref_date\" IS NULL",
+            "(\"txn_timestamp\" >= CAST('2020-01-01 00:00:00' AS TIMESTAMP)) OR \"txn_timestamp\" IS NULL",
+            "(\"txn_timestamp\" <= CAST('2021-01-01 00:00:00' AS TIMESTAMP)) OR \"txn_timestamp\" IS NULL",
+            "(\"txn_time\" >= CAST('00:00:00' AS TIME)) OR \"txn_time\" IS NULL",
+            "(\"txn_time\" <= CAST('23:59:59' AS TIME)) OR \"txn_time\" IS NULL",
+            "(\"amount\" >= 0) OR \"amount\" IS NULL",
+            "(\"age\" >= 18) OR \"age\" IS NULL",
+            "(\"age\" < 100) OR \"age\" IS NULL"
+          ],
+          "unread": [
+            {
+              "column": "txn_ref_date",
+              "reason": "logicalTypeOptions.format",
+              "design": "a format for text, which no row breaks"
+            },
+            {
+              "column": "txn_timestamp",
+              "reason": "logicalTypeOptions.format",
+              "design": "a format for text, which no row breaks"
+            },
+            {
+              "column": "txn_timestamp_tz",
+              "reason": "a minimum with a time zone on a timestamp without one",
+              "design": "the offset has no meaning there"
+            },
+            {
+              "column": "txn_timestamp_tz",
+              "reason": "a maximum with a time zone on a timestamp without one",
+              "design": "the offset has no meaning there"
+            },
+            {
+              "column": "txn_timestamp_tz",
+              "reason": "logicalTypeOptions.format",
+              "design": "a format for text, which no row breaks"
+            },
+            {
+              "column": "txn_time",
+              "reason": "logicalTypeOptions.format",
+              "design": "a format for text, which no row breaks"
+            },
+            {
+              "column": "amount",
+              "reason": "logicalTypeOptions.format",
+              "design": "a format for text, which no row breaks"
+            },
+            {
+              "column": "age",
+              "reason": "logicalTypeOptions.format",
+              "design": "a format for text, which no row breaks"
+            }
+          ],
+          "round_trip": "same"
+        }
+      }
+    },
+    "fundamentals/table-column-description.odcs.yaml": {
+      "objects": {
+        "tbl": {
+          "conditions": [],
+          "unread": [],
+          "round_trip": "no conditions"
+        }
+      }
+    },
+    "fundamentals/variables.odcs.yaml": {
+      "objects": {
+        "orders": {
+          "conditions": [],
+          "unread": [
+            {
+              "column": null,
+              "reason": "a SQL rule of another shape: sverify reads SELECT COUNT(*) FROM {object} WHERE <rows that break it>",
+              "design": "a template the contract's runner fills in"
+            }
+          ],
+          "round_trip": "no conditions"
+        }
+      }
+    },
+    "pricing/basic-pricing.odcs.yaml": {
+      "objects": {
+        "events": {
+          "conditions": [
+            "Key(cols=('id',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "quality/column-accuracy.odcs.yaml": {
+      "objects": {
+        "Air_Quality": {
+          "conditions": [
+            "NOT COALESCE((DataValue <= 0 OR DataValue >= 500), FALSE)"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "quality/column-completeness.odcs.yaml": {
+      "objects": {
+        "Air_Quality": {
+          "conditions": [
+            "Key(cols=('UniqueID',))",
+            "NOT \"UniqueID\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "quality/column-custom.odcs.yaml": {
+      "objects": {
+        "Air_Quality": {
+          "conditions": [
+            "Key(cols=('UniqueID',))"
+          ],
+          "unread": [
+            {
+              "column": "UniqueID",
+              "reason": "a rule for engine 'soda'",
+              "design": "another tool's own rule language"
+            },
+            {
+              "column": "UniqueID",
+              "reason": "a rule for engine 'soda'",
+              "design": "another tool's own rule language"
+            }
+          ],
+          "round_trip": "same"
+        }
+      }
+    },
+    "quality/column-validity.odcs.yaml": {
+      "objects": {
+        "Air_Quality": {
+          "conditions": [
+            "Key(cols=('air_quality_status',))"
+          ],
+          "unread": [
+            {
+              "column": "air_quality_status",
+              "reason": "a share of rows: sverify reads rules on every row",
+              "design": "sverify reads rules on every row"
+            }
+          ],
+          "round_trip": "same"
+        }
+      }
+    },
+    "references/relationships.odcs.yaml": {
+      "objects": {
+        "customers": {
+          "conditions": [
+            "Key(cols=('id',))",
+            "NOT \"id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "addresses": {
+          "conditions": [
+            "Key(cols=('customer_id', 'address_seq'))",
+            "NOT \"customer_id\" IS NULL",
+            "NOT \"address_seq\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "orders": {
+          "conditions": [
+            "Key(cols=('id',))",
+            "NOT \"id\" IS NULL",
+            "references(customer_id, customers.id)",
+            "references(shipping_address_street, addresses.address_street)"
+          ],
+          "unread": [
+            {
+              "column": null,
+              "reason": "a composite foreign key: references() takes one column",
+              "issue": 1956
+            }
+          ],
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
+        }
+      }
+    },
+    "roles/service-and-operational-roles.odcs.yaml": {
+      "objects": {}
+    },
+    "schema/all-schema-types.odcs.yaml": {
+      "objects": {
+        "tbl": {
+          "conditions": [
+            "Key(cols=('rcvr_id',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "AnObject": {
+          "conditions": [],
+          "unread": [],
+          "round_trip": "no conditions"
+        },
+        "AnotherObject": {
+          "conditions": [],
+          "unread": [],
+          "round_trip": "no conditions"
+        }
+      }
+    },
+    "schema/deprecated.odcs.yaml": {
+      "objects": {
+        "legacy_orders": {
+          "conditions": [
+            "NOT \"order_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "schema/enum.odcs.yaml": {
+      "objects": {
+        "orders": {
+          "conditions": [
+            "Key(cols=('order_id',))",
+            "NOT \"order_id\" IS NULL",
+            "\"status\" IN ('pending', 'processing', 'shipped', 'cancelled')",
+            "(\"priority\" IN (1, 2, 3)) OR \"priority\" IS NULL",
+            "\"country_code\" IN ('US', 'FR', 'CA', 'MX')"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "schema/kafka-schema.odcs.yaml": {
+      "objects": {
+        "Orders": {
+          "conditions": [
+            "NOT \"cust_id\" IS NULL",
+            "NOT \"prod_id\" IS NULL",
+            "NOT \"qty\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "schema/kafka-schemaregistry.odcs.yaml": {
+      "objects": {
+        "Orders": {
+          "conditions": [],
+          "unread": [],
+          "round_trip": "no conditions"
+        }
+      }
+    },
+    "schema/map.odcs.yaml": {
+      "objects": {
+        "products": {
+          "conditions": [
+            "Key(cols=('product_id',))",
+            "NOT \"product_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": {
+            "refused": "ConditionError: 2 condition(s) cannot be read: \"product_id\" IS NOT NULL: condition '\"product_id\" IS NOT NULL': column 'user_preferences' of 't': type map<!string, string> is not supported; cast the column to a supported type in the source query; only a column the query never reads is left out",
+            "issue": 1958
+          }
+        }
+      }
+    },
+    "schema/measures-and-dimensions.odcs.yaml": {
+      "objects": {
+        "turnover": {
+          "conditions": [
+            "Key(cols=('order_id',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "schema/property-without-logicaltype.odcs.yaml": {
+      "objects": {
+        "raw_import": {
+          "conditions": [
+            "Key(cols=('order_id',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "schema/relationships.odcs.yaml": {
+      "objects": {
+        "categories": {
+          "conditions": [
+            "Key(cols=('id',))",
+            "NOT \"id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "products": {
+          "conditions": [
+            "Key(cols=('id',))",
+            "NOT \"id\" IS NULL",
+            "NOT \"category_id\" IS NULL",
+            "references(category_id, categories.id)"
+          ],
+          "unread": [],
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
+        },
+        "customers": {
+          "conditions": [
+            "Key(cols=('id', 'country_code'))",
+            "NOT \"id\" IS NULL",
+            "NOT \"country_code\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        },
+        "orders": {
+          "conditions": [
+            "Key(cols=('id',))",
+            "NOT \"id\" IS NULL",
+            "NOT \"customer_id\" IS NULL",
+            "NOT \"customer_country\" IS NULL",
+            "NOT \"product_id\" IS NULL"
+          ],
+          "unread": [
+            {
+              "column": "product_id",
+              "reason": "a relationship sverify does not read",
+              "issue": 1956
+            },
+            {
+              "column": null,
+              "reason": "a composite foreign key: references() takes one column",
+              "issue": 1956
+            }
+          ],
+          "round_trip": "same"
+        },
+        "order-items": {
+          "conditions": [
+            "Key(cols=('order_id', 'product_id'))",
+            "NOT \"order_id\" IS NULL",
+            "NOT \"product_id\" IS NULL",
+            "NOT \"quantity\" IS NULL",
+            "references(order_id, orders.id)"
+          ],
+          "unread": [
+            {
+              "column": null,
+              "reason": "a relationship sverify does not read",
+              "issue": 1956
+            }
+          ],
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
+        }
+      }
+    },
+    "schema/stable-id-special-characters.odcs.yaml": {
+      "objects": {
+        "dataset": {
+          "conditions": [],
+          "unread": [
+            {
+              "column": null,
+              "reason": "a relationship sverify does not read",
+              "issue": 1956
+            }
+          ],
+          "round_trip": "no conditions"
+        }
+      }
+    },
+    "schema/table-column.odcs.yaml": {
+      "objects": {
+        "tbl": {
+          "conditions": [],
+          "unread": [],
+          "round_trip": "no conditions"
+        }
+      }
+    },
+    "schema/table-columns-with-partition.odcs.yaml": {
+      "objects": {
+        "tbl": {
+          "conditions": [
+            "Key(cols=('rcvr_cntry_code', 'rcvr_id'))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "schema/vector.odcs.yaml": {
+      "objects": {
+        "tickets": {
+          "conditions": [
+            "Key(cols=('ticket_id',))",
+            "NOT \"ticket_id\" IS NULL",
+            "NOT \"body_embedding\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "server/actian-servers.odcs.yaml": {
+      "objects": {
+        "orders": {
+          "conditions": [
+            "NOT \"order_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "server/azure-server.odcs.yaml": {
+      "objects": {}
+    },
+    "server/exasol-server.odcs.yaml": {
+      "objects": {
+        "sales": {
+          "conditions": [
+            "NOT \"sale_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "server/hana-server.odcs.yaml": {
+      "objects": {
+        "sales": {
+          "conditions": [
+            "NOT \"sale_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "server/iceberg-server.odcs.yaml": {
+      "objects": {
+        "sales": {
+          "conditions": [
+            "NOT \"sale_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "server/kafka-server.odcs.yaml": {
+      "objects": {
+        "Orders": {
+          "conditions": [],
+          "unread": [],
+          "round_trip": "no conditions"
+        }
+      }
+    },
+    "server/s3-server-encoding.odcs.yaml": {
+      "objects": {
+        "customers": {
+          "conditions": [
+            "NOT \"customer_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "server/teradata-server.odcs.yaml": {
+      "objects": {
+        "sales": {
+          "conditions": [
+            "NOT \"sale_id\" IS NULL"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    },
+    "sla/database-table-sla.odcs.yaml": {
+      "objects": {}
+    },
+    "sla/sla-extensions.odcs.yaml": {
+      "objects": {}
+    },
+    "stakeholders/basic-four-dpo.odcs.yaml": {
+      "objects": {}
+    },
+    "support/support-channels.odcs.yaml": {
+      "objects": {}
+    },
+    "tags/tags.odcs.yaml": {
+      "objects": {
+        "payments": {
+          "conditions": [
+            "Key(cols=('payment_id',))",
+            "(\"status\" IN ('pending', 'completed', 'refunded')) OR \"status\" IS NULL"
+          ],
+          "unread": [
+            {
+              "column": "status",
+              "reason": "a share of rows: sverify reads rules on every row",
+              "design": "sverify reads rules on every row"
+            }
+          ],
+          "round_trip": "same"
+        }
+      }
+    },
+    "team/team.odcs.yaml": {
+      "objects": {
+        "events": {
+          "conditions": [
+            "Key(cols=('id',))"
+          ],
+          "unread": [],
+          "round_trip": "same"
+        }
+      }
+    }
+  }
+}

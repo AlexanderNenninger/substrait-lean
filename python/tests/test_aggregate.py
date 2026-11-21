@@ -283,6 +283,31 @@ def test_decimal_avg_is_bounded_by_its_inputs():
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, report.details()
 
 
+def test_decimal_avg_over_a_window_is_bounded_by_its_inputs():
+    # #2015: over a window too, a decimal `AVG` is its frame's `SUM` by its
+    # `COUNT`, so it stays within its inputs (NULL for a frame without values).
+    t = ibis.table({"k": "!int64", "q": "!decimal(12, 2)"}, name="lineitem")
+    w = t.mutate(avg_q=t.q.mean().over(ibis.window(group_by="k")))
+    report = sv.verify(
+        w,
+        requires={"lineitem": [_.q >= 1, _.q <= 50]},
+        ensures=[_.avg_q.isnull() | ((_.avg_q >= 1) & (_.avg_q <= 50))],
+    )
+    assert report.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS), report.details()
+
+
+def test_a_sum_minus_its_window_average_fits():
+    # #2015 (TPC-DS Q89's shape): monthly sums of bounded prices over at most
+    # 10^12 rows, and each one's difference from their average per store,
+    # which divides by that average.
+    t = ibis.table({"item": "int64", "store": "int64", "price": "decimal(7, 2)"}, name="sales")
+    monthly = t.group_by(["item", "store"]).aggregate(total=t.price.sum())
+    m = monthly.mutate(avg=monthly.total.mean().over(ibis.window(group_by="store")))
+    q = m.filter(ibis.ifelse(m.avg != 0, (m.total - m.avg).abs() / m.avg, None) > ibis.literal(0.1))
+    report = sv.verify(q, requires={"sales": [_.price.between(0.01, 300), sv.max_rows(10**12)]})
+    assert not report.errors, report.details()
+
+
 def test_avg_of_a_nullable_column_may_be_null():
     t = ibis.table({"k": "!int64", "x": "float64"}, name="readings")
     g = t.group_by("k").aggregate(avg=t.x.mean(), hi=t.x.max())

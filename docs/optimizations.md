@@ -4,7 +4,7 @@
 surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
-* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report.guard_free`,
+* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report._guard_free`,
   and `guards=False` in `sverify.engines.to_sql` (and in
   `sverify_polars.engine.run` and `duckdb_engine.run`);
 * sharded evaluation: `analysis/Sverify/Analysis/Partition.lean`,
