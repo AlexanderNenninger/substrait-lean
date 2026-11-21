@@ -34,7 +34,7 @@ order_by = { lean = "yes", description = "ORDER BY in the result" }
 limit = { lean = "yes", description = "LIMIT / top-N after a sort" }
 offset = { lean = "yes", description = "OFFSET (pagination)" }
 cte = { lean = "yes", description = "non-recursive WITH (inlined)" }
-recursive_cte = { lean = "no", description = "WITH RECURSIVE", note = "DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model" }
+recursive_cte = { lean = "no", description = "WITH RECURSIVE", note = "the core has no recursive CTE, by design: a fixpoint is outside the model" }
 in_subquery = { lean = "yes", description = "x IN (SELECT …)" }
 not_in_subquery = { lean = "yes", description = "x NOT IN (SELECT …), with its NULL semantics", note = "the checker lifts it with SQL's NULL rule; DataFusion running the SQL gets NULLs in the subquery wrong" }
 exists_subquery = { lean = "yes", description = "EXISTS / NOT EXISTS with a correlated subquery", note = "the Ibis producer writes a semi or anti join; DataFusion's Substrait producer cannot convert Exists" }
