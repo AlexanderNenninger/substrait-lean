@@ -152,7 +152,9 @@ def profiled(owner: object, name: str, label: str, sampler: Sampler, out: list) 
         try:
             return inner(*args, **kwargs)
         finally:
-            out.append((f"{label} rows={rows} from {who}", sampler.high - start, time.perf_counter() - t0))
+            out.append(
+                (f"{label} rows={rows} from {who}", sampler.high - start, time.perf_counter() - t0)
+            )
 
     setattr(owner, name, call)
 
@@ -198,12 +200,14 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
         assert isinstance(src, StaticSource)
         src.apply(sv.io.Changes(inserts=rows(n, n + CHANGE)))
     calls: list = []
+    started = time.perf_counter()
     sampler = Sampler() if profile else None
     if sampler is not None:
         profile_calls(engine, calls, sampler)
         sampler.high = rss_mb()
         base = rss_mb()
     node.refresh(engine=engine)
+    seconds = time.perf_counter() - started
     gc.collect()
     if sampler is not None:
         for label, added, secs in calls:
@@ -222,6 +226,8 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
         "store_mb": store_held(pipe) / 2**20,
         "peak_after_first_mb": first,
         "peak_after_change_mb": peak_mb(),
+        "added_by_change_mb": peak_mb() - first,
+        "change_refresh_s": seconds,
     }
     print(json.dumps(out))
     return out

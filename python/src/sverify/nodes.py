@@ -853,6 +853,7 @@ class _Stage:
             found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}
             if found:
                 return _Stage._load(node, leaves, versions, engine, resume, found, target=target)
+        pipe.seal()  # the rows of an Arrow-fed source move into the store at the first load
         stage = _Stage(pipe, view)
         stage.use(engine)
         return stage
