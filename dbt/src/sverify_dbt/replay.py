@@ -23,8 +23,10 @@ beside `dbt`, the test's status in dbt's own run (`pass`, `fail`, `error`,
 `unsound`: a soundness bug, fixed first.
 
 `--write` rewrites the ledgers `dbt/replay/<source>.json`, keeping each
-entry's `issue`; `--check` exits 1 on an `unsound` entry or an outcome that
-changed, and CI turns that into a warning (gates report and never block).
+entry's `issue`; `--check` exits 1 on an `unsound` entry, an outcome that
+changed or an entry waiting on a closed issue (asked of `gh`, skipped
+without it), and CI turns that into a warning (gates report and never
+block).
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -270,6 +273,44 @@ def changes(fresh: dict[str, Any], stored: dict[str, Any]) -> list[str]:
     return out
 
 
+def _gh_state(number: int) -> str | None:
+    """The state of issue `number` (`OPEN`, `CLOSED`), or None without `gh`."""
+    try:
+        out = subprocess.run(
+            ["gh", "issue", "view", str(number), "--json", "state", "--jq", ".state"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() or None
+
+
+def closed_issues(
+    ledgers: dict[str, dict[str, Any]], state: Callable[[int], str | None] = _gh_state
+) -> list[str]:
+    """The entries that wait on an issue that is closed: the refusal has
+    another reason now, or the issue's fix has landed."""
+    waiting: dict[int, list[str]] = {}
+    for name, led in ledgers.items():
+        for key, r in led["results"].items():
+            if "issue" in r:
+                waiting.setdefault(r["issue"], []).append(f"{name}: {key}")
+    out = []
+    for number, entries in sorted(waiting.items()):
+        found = state(number)
+        if found is None:
+            print("closed-issue check skipped: gh unavailable", file=sys.stderr)
+            break
+        if found == "CLOSED":
+            out.append(
+                f"#{number} is closed; {len(entries)} entries wait on it, such as {entries[0]}"
+            )
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("sources", nargs="*", default=list(SOURCES))
@@ -287,6 +328,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.write:
             LEDGERS.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(fresh, indent=2, ensure_ascii=False) + "\n")
+    if args.check:
+        found += closed_issues(
+            {n: json.loads((LEDGERS / f"{n}.json").read_text()) for n in args.sources}
+        )
     if args.check and found:
         print("\n".join(found), file=sys.stderr)
         return 1

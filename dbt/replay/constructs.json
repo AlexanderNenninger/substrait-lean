@@ -11,7 +11,7 @@
     },
     {
       "match": "unsupported cast from Substrait.Kind.bool",
-      "issue": 1911
+      "issue": 2180
     },
     {
       "match": "% of decimal",

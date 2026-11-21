@@ -33,7 +33,13 @@ else:
 
 @functools.lru_cache(maxsize=4096)
 def _sql(
-    plan: str, guards: bool = True, finite: Finite = True, asof: str = "[]", unchecked: str = "null"
+    plan: str,
+    guards: bool = True,
+    finite: Finite = True,
+    asof: str = "[]",
+    unchecked: str = "null",
+    rows: Literal["sequence", "multiset"] = "sequence",
+    deterministic: bool = False,
 ) -> str:
     """`to_sql` of a JSON plan, memoized: an incremental view runs the same
     delta plans on every batch. `asof`: the plan's as-of join sites, and
@@ -41,10 +47,12 @@ def _sql(
     return to_sql(
         json.loads(plan),
         DUCKDB,
+        deterministic=deterministic,
         guards=guards,
         finite=finite,
         asof=json.loads(asof),
         unchecked=json.loads(unchecked),
+        rows=rows,
     )
 
 
@@ -96,6 +104,8 @@ def run(
     finite: Finite = True,
     asof: Sequence[dict] = (),
     unchecked: dict | None = None,
+    rows: Literal["sequence", "multiset"] = "sequence",
+    deterministic: bool = False,
 ) -> pa.Table: ...
 
 
@@ -109,7 +119,24 @@ def run(
     finite: Finite = True,
     asof: Sequence[dict] = (),
     unchecked: dict | None = None,
+    rows: Literal["sequence", "multiset"] = "sequence",
+    deterministic: bool = False,
 ) -> Resident: ...
+
+
+@overload
+def run(
+    plan: str | dict,
+    tables: Mapping[str, pa.Table | Native],
+    *,
+    guards: bool = True,
+    keep: bool,
+    finite: Finite = True,
+    asof: Sequence[dict] = (),
+    unchecked: dict | None = None,
+    rows: Literal["sequence", "multiset"] = "sequence",
+    deterministic: bool = False,
+) -> pa.Table | Resident: ...
 
 
 def run(
@@ -121,6 +148,8 @@ def run(
     finite: Finite = True,
     asof: Sequence[dict] = (),
     unchecked: dict | None = None,
+    rows: Literal["sequence", "multiset"] = "sequence",
+    deterministic: bool = False,
 ) -> pa.Table | Resident:
     """Run a Substrait JSON plan on DuckDB over `tables`: Arrow tables, or
     tables DuckDB reads where they are (`sverify._scan.Native`: Parquet
@@ -130,13 +159,23 @@ def run(
     The process's database serves every call (`sverify._duckdb`; opening
     one costs ~10 ms), through a cursor of the engine's own; the tables are
     created for the call, as temporary tables, and dropped after it.
-    `guards=False`, `finite=False`, `asof`, `unchecked`: see
-    `sverify.sql.to_sql`."""
+    `guards=False`, `finite=False`, `asof`, `unchecked`, `rows` and
+    `deterministic`: see `sverify.sql.to_sql`; without the ordinal of
+    `rows="sequence"`, an input needs no copy to number its rows."""
     global _DB
     sql = (
-        _sql(plan, guards, finite, json.dumps(asof), json.dumps(unchecked))
+        _sql(plan, guards, finite, json.dumps(asof), json.dumps(unchecked), rows, deterministic)
         if isinstance(plan, str)
-        else to_sql(plan, DUCKDB, guards=guards, finite=finite, asof=asof, unchecked=unchecked)
+        else to_sql(
+            plan,
+            DUCKDB,
+            deterministic=deterministic,
+            guards=guards,
+            finite=finite,
+            asof=asof,
+            unchecked=unchecked,
+            rows=rows,
+        )
     )
     # `to_sql` numbers a table's rows with `rowid` where the plan needs their order.
     ordered = DUCKDB.row_ordinal() in sql

@@ -490,11 +490,12 @@ def test_unknown_function_is_refused():
             substrait_json(con, "SELECT id FROM orders WHERE amount > 10", semantics="duckdb")
         )
     )
-    plan["extensions"][0]["extensionFunction"]["name"] = "sqrt"
+    fn = plan["extensions"][0]["extensionFunction"]
+    fn["name"] = "sqrt"
     filt = plan["relations"][0]["root"]["input"]["project"]["input"]["filter"]
     filt["condition"] = {
         "scalarFunction": {
-            "functionReference": 1,
+            "functionReference": fn["functionAnchor"],
             "arguments": [filt["condition"]["scalarFunction"]["arguments"][0]],
         }
     }

@@ -944,6 +944,9 @@ jobs:
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read  # the replay's closed-issue check (`gh issue view`)
     defaults:
       run:
         working-directory: dbt
@@ -992,9 +995,10 @@ jobs:
       - name: dbt packages' integration projects (#859)
         env:
           DO_NOT_TRACK: "1"
+          GH_TOKEN: ${{ github.token }}  # the closed-issue check asks `gh`
         run: |
           if ! uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1; then
-            echo "::warning title=dbt replay gate::outcomes differ from dbt/replay/; see the step's log and the summary"
+            echo "::warning title=dbt replay gate::the replay check found something (an outcome that differs from dbt/replay/, or an entry on a closed issue); see the step's log and the summary"
           fi
           cat "$RUNNER_TEMP/replay.txt"
           { echo "### dbt packages' integration projects (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
