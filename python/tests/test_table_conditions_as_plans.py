@@ -23,21 +23,24 @@ ROWS = {
     "ts": pa.array([None, 1, 2, 3, 4, 5], pa.timestamp("us")),
     "fk": [None, 5, 6, 9, None, 5],
 }
+P = {"id": [5, 6], "j": [1, 2]}
 CONDS = [
     Unique(("k",)),
     Unique(("k", "j")),
     Unique(("j",)),
-    References("fk", "p", "id"),
+    References(("fk",), "p", ("id",)),
     MaxRows(4),
     MaxRows(10),
     RowsPer(("k",), 2),
     RowsPer((), 2),
     RowsPer(("j",), 1),
     ArrivesWithin("ts", timedelta(hours=1)),
+    # (6, 1) and (5, 2) match no row of p, though each part does (#2223).
+    References(("fk", "j"), "p", ("id", "j")),
 ]
 #: The counts DuckDB's Ibis path gave before the plans (the specification): NULL
 #: keys are one key in `unique` and `rows_per`; a NULL foreign key is no violation.
-WANT = [3, 2, 3, 1, 2, 0, 1, 4, 3, 1]
+WANT = [3, 2, 3, 1, 2, 0, 1, 4, 3, 1, 2]
 
 
 @pytest.fixture(params=["duckdb", "polars", "spark"])
@@ -51,7 +54,7 @@ def engine(request: pytest.FixtureRequest) -> str:
 def table(engine: str):
     con = sv.connect("polars" if engine == "polars" else None)
     con.put("t", pa.table(ROWS))
-    con.put("p", pa.table({"id": [5, 6]}))
+    con.put("p", pa.table(P))
     con.put("e", pa.table({"k": pa.array([], pa.int64())}))
     return con
 
@@ -108,7 +111,7 @@ def test_a_table_of_the_callers_own_backend_is_counted_there(monkeypatch):
     backend = ibis.duckdb.connect()
     # `register`, not `create_table`: SQLGlot 30.18 breaks Ibis's DROP (SG-7).
     backend.con.register("t", pa.table(ROWS))
-    backend.con.register("p", pa.table({"id": [5, 6]}))
+    backend.con.register("p", pa.table(P))
 
     def refuse(*args, **kwargs):
         raise AssertionError("a table of the caller's backend was copied into a connection")

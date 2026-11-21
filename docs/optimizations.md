@@ -365,7 +365,7 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   join that is never TRUE on a padded row (`Expr.absD` with the right
   columns NULL) turns it into an inner join; engines do this case too. With a
   foreign key and NOT NULL, every left row matches, so the conversion holds
-  without a filter. `sv.references(col, table, other)` declares the foreign
+  without a filter. `sv.references(col, to=...)` declares the foreign
   key (`ForeignKeys.Hold`), checked on the data like `unique`. `Rel.origin`
   follows the join column back to a table column and `Rel.cover` checks that
   the right side keeps every value of the referenced one. The inner join is

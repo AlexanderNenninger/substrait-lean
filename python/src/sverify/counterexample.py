@@ -174,12 +174,12 @@ class _Search:
                 if len(set(seen)) < len(seen):
                     return False
         for name, fks in self.references.items():
-            for col, other_table, other in fks:
-                present = {repr(r[other]) for r in tables.get(other_table, [])}
-                if any(
-                    r[col] is not None and repr(r[col]) not in present for r in tables.get(name, [])
-                ):
-                    return False
+            for cols, other_table, others in fks:
+                present = {repr([r[i] for i in others]) for r in tables.get(other_table, [])}
+                for r in tables.get(name, []):
+                    parts = [r[i] for i in cols]
+                    if all(v is not None for v in parts) and repr(parts) not in present:
+                        return False
         return all(all(v is True for (v,) in evaluate(plan, tables)) for _, plan in self.requires)
 
     def counterexample(self, tables: dict[str, list[tuple]]) -> bool:
@@ -231,7 +231,8 @@ def search(
 ) -> Counterexample | None:
     """Small input tables meeting `requires` (condition plans per table),
     `keys` (unique column positions per table) and `references` (foreign keys
-    per table: column position, referenced table, its column position) on
+    per table: column positions, referenced table, its column positions;
+    a row with a NULL part is exempt) on
     which `ensures` fails.
 
     `ensures` is a condition plan over the transformation's output (it fails
