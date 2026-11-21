@@ -2085,13 +2085,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if (hasFloat || floatCall) && !keepInt k then
         if let some (.int i) ← constOf? fns j then return Expr.lit (.float (FloatCode.ofInt i))
       return e
-    -- DataFusion's simplifier makes `power(x, 0)` a constant 1, even for a
-    -- NULL `x`.
-    if baseName name == "power" then
-      if let [_, Expr.lit (.int 0)] := args then
-        return .lit (if floatCall then .float (FloatCode.ofFloat 1.0) else .int 1)
-      if let [_, Expr.lit (.float 0)] := args then
-        return .lit (if floatCall then .float (FloatCode.ofFloat 1.0) else .int 1)
     -- Arithmetic on `FLOAT`s rounds to 32 bits, which is not modelled
     -- (#208); on their conversion to `DOUBLE` it is exact.
     if floatCall && ((outTy.getObjVal? "fp32").toOption.isSome ||

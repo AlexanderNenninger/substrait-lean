@@ -62,7 +62,8 @@ def test_the_digest_is_pinned() -> None:
         "extensions": [{"extensionFunction": {"functionAnchor": 7, "name": "sum:i64"}}],
         "relations": [{"root": {"input": {"read": {}}, "functionReference": 7}}],
     }
-    assert plan_digest(json.dumps(plan)) == (
+    # Without `MEANING_CHANGES`: the pin is of the canonical form alone.
+    assert plan_digest(json.dumps(plan), ()) == (
         "40387fa8d0c5b97ac7f516e8e7975568d526a328b248d58d9b0f570a5571dcae"
     )
 
@@ -113,6 +114,7 @@ def test_a_change_of_meaning_changes_the_digest_and_is_named_on_refresh(
     report = sv.verify(t.group_by("k").aggregate(total=t.a.sum()))
     plan = report.internal_plan
     assert plan is not None
+    monkeypatch.setattr(incremental, "MEANING_CHANGES", ())
     assert plan_digest(plan, ()) == plan_digest(plan)
     assert plan_digest(plan, ("D53",)) != plan_digest(plan, ())
     assert plan_digest(plan, ("D53", "#1702")) != plan_digest(plan, ("D53",))

@@ -2015,6 +2015,34 @@ Why: D14 refused only another major, and a patch release changed a native value
 (`list_contains([], NULL)` at DuckDB 2.0.1, [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045)). An unprobed patch
 warns and an unprobed minor is refused.
 
+### D71. `power` is strict in both arguments
+
+Decided 2026-11-20 (the maintainer, on the theory advisor's recommendation,
+ruling 209; [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+
+`power(x, y)` is `NULL` where `x` or `y` is `NULL`. The parser, the SQL plan
+reader and the Polars engine fold nothing: `power(x, 0)` evaluates `x`, and it
+is 1 for every `x` that is not `NULL`, integer or double, NaN and `±∞` included
+([D40](#d40-power1--is-cs-pow)'s `pow`). A literal exponent and a column that
+holds the same value give the same result.
+
+Before, a literal exponent `0` or `0.0` made the call the constant 1, also for
+a `NULL` base, in three places. What changes for a plan: at a `NULL` base with
+a literal zero exponent the value is `NULL` where it was 1, and a proof that
+`power(x, 0)` is not `NULL` needs `x` not `NULL`. Spark's writer refuses a
+double `power(x, 0.0)` with the other double powers, where the fold wrote the
+literal. For a base that is not `NULL` nothing moves.
+
+Recomputes sinks: yes
+
+Why: DuckDB, Polars and Spark give `NULL` for a `NULL` base with a zero
+exponent ([duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json),
+[polars-int-pow-exponent](../engines/polars/facts/polars-int-pow-exponent.json),
+[spark-int-pow](../engines/spark/facts/spark-int-pow.json)), so 1 was a value
+sverify reached only by rewriting the plan. The fold also dropped `x`, and with
+it an error inside `x`, and under `semantics="duckdb"` it claimed 1 where
+DuckDB's own SQL gives `NULL` ([D54](#d54-the-lift-refines-the-dialect)).
+
 ### D61. Timestamp precisions
 
 Decided 2026-11-19 (theory advisor, ruling 142; #323).
