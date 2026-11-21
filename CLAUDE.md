@@ -351,7 +351,10 @@ conflicts with other PRs:
 - `upstream/REPORT.md`, the upstream bugs to report and the count of each
   class, from `sverify_dev.bugs --write`;
 - `docs/ledger.md`, the decisions in force by scope, from
-  `sverify_dev.decisions --write`.
+  `sverify_dev.decisions --write`;
+- `engines/duckdb/facts/README.md`'s replay totals and table
+  (`<!-- slt:start -->` … `<!-- slt:end -->`), from the ledgers, by
+  `sverify_dev.slt --write-summary`.
 
 Generated Lean modules are different: `engines/duckdb/Sverify/DuckDB/LoweringOn`
 (the DuckDB lowering, for DuckDB's default settings only) and

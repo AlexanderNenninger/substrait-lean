@@ -109,11 +109,54 @@ place, and what retires it.
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `core/Sverify/Core/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
 | Python glue | `Observation.reads_members`, `routes.reproducibility` | `python/src/sverify/observation.py`, `python/src/sverify/routes.py` | The step from an observation to a level of determinism (D48): an observation that reads one zero and one NaN (`zeros="canon"`, `floats="plan"` or a tolerance) is met by `Report.deterministic`, the class level (`check_class_determined_sound`, and `check_class_determined_determined` for `Rel.DeterminedUpTo` at `Obs.classes`); one that reads the members asks for the exact level (`check_deterministic_sound`, `check_deterministic_determined`). The bridge from `Row.canon` to `Relation.Equiv` is proved (`Relation.Equiv_classes_of_canon_perm`); what stays trusted is that the kinds the Python side passes read every column that may hold a double as a double (`Relation.DoublesKinded`) | `Rel.kinds_sound` (`core/Sverify/Core/Kinds.lean`) gives a result's kinds; the lemma that they meet `DoublesKinded`, and `data.HasKinds` beside `DataMeets`, are P1c (#1285) |
-| Python glue | `Report.check_inputs`, `Report._unchecked_requires` | `python/src/sverify/report.py` | On Polars (and Spark) a guard-free plan runs without its per-row guards, which rests on `check_inputs` deciding `Rel.polars_sound`'s `hpre` on the data: each `requires` is checked on the run's engine, a report read back with `Report.from_substrait` carries its preconditions as plans (`PlannedCondition`), and a run refuses a report with a precondition it holds no check for | A theorem that ties the checks to `hpre` |
+| Python glue | `Report.check_inputs`, `Report._unchecked_requires` | `python/src/sverify/report.py` | On Polars (and Spark) a guard-free plan runs without its per-row guards, and on DuckDB the expressions the checker marked run without theirs, the check against `±∞` included (`Rel.duckdb_marks`, ruling 223); both rest on `check_inputs` deciding the theorem's `hpre` on the data the run reads: each `requires` is checked on the run's engine, a report read back with `Report.from_substrait` carries its preconditions as plans (`PlannedCondition`), and a run refuses a report with a precondition it holds no check for | A theorem that ties the checks to `hpre` |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
 | engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `engines/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
 | size hypothesis | `Rel.Small`, `Text.sizeCap` | `analysis/Sverify/Analysis/Contracts/Sound.lean`, `core/Sverify/Core/Text.lean` | Fewer than 2⁶² rows a window reads, strings under 2³² characters ([the size hypothesis](reference-semantics.md#overrides)) | |
 | toolchain | Lean `v4.35.0` | `lean-toolchain` | The kernel and the compiler | |
+
+## Stated limits
+
+Each limit below names the theorem that is missing and where it is tracked.
+Sverify's words claim no more than these theorems give
+([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)).
+
+- The engine models are the reference's relational evaluator with each
+  engine's scalar functions. A proof on an engine is a proof on that model:
+  DuckDB's lowering and the shims are proved against it, and the Polars and
+  Spark translations are tested. Engine profiles that evaluate their own
+  relational behaviour are [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+- The report's `ε` (`SubstraitLean/Epsilon.lean`, `robust`, `rows_exact`,
+  `margin_checks`) has no theorem that it bounds an engine's doubles. The
+  bounds hold over the reals in `float-bounds/`; the link from them to the
+  core's codes is [#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), and `contract_sound_runs` for double
+  aggregates beyond a root `SUM` or `AVG` is [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
+- Under `semantics="reference"`, the default for SQL, the lift from SQL is
+  tested Python. The generated `liftReference` entries are unused, and no
+  theorem states that the reference's reading is DuckDB's value wherever the
+  reference gives one (`DuckFn.reference_refines_duckdb`,
+  [#2008](https://github.com/AlexanderNenninger/substrait-lean/issues/2008)).
+- Dropping the `floats` component under `floats="plan"` (`floatsOk`) rests on
+  `routes.observed` refusing a route for a double postcondition that is not
+  robust, which is Python. `Observation.difference` has no proof that it
+  matches `Value.Equiv`; its pairwise comparison with a tolerance gives false
+  alarms only.
+- `references` is checked on the data with SQL `=`, and `ForeignKeys.Hold`
+  uses `Value` equality. The two differ at `-0.0`, `0.0` and NaN, and no
+  theorem relates them.
+- The generated aggregate lift entries have no `#guard` that ties their JSON to
+  the proved measure, and none states that every argument is evaluated on
+  every path. A script over the JSON checks both.
+- The exact limbs of a maintained double sum: `limbs_grouped` is integer
+  arithmetic, and nothing in Lean ties the split an engine computes to
+  `exactOf` (`limbSplit_sound`). A run-time check tests each limb's normal form.
+- `Rel.evalChoices` has no theorem for ordering measures.
+- `UnFn.dkind` is a decimal kind without the overflow check. A parsed plan
+  builds it only where its precision holds the value (`Parse.Rel.settleDivs`)
+  or where nothing reads the precision (a comparison's side,
+  `UnFn.apply_dkind_precision`).
+- DuckDB's implicit coercions are its facts and the lift's tests.
+- `Report.output` is Ibis's schema, and integer widths live in the parser.
 
 ## The trusted parts in detail
 

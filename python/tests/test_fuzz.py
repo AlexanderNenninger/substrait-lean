@@ -99,6 +99,18 @@ def test_a_reference_raise_that_verify_flags_is_not_a_finding():
     assert fuzz._findings((q, {"t": [], "u": [(1, "a")]})) == []
 
 
+def test_a_tagged_raise_of_a_reported_assumption_is_not_a_finding():
+    # A sum past 64 bits: the written plan's guard raises "integer overflow in
+    # SUM", the report lists "SUM overflow" and Lean finds it on this data
+    # (ruling 230, #2162). With a small sum nothing raises.
+    q = Query("SELECT SUM(i) AS c0 FROM t AS q", {"c0": fuzz.INT})
+    big = 2**62
+    row = (big, None, None, None, None, None)
+    engines = ("rows", "engines")
+    assert check(q, {"t": [row, row, row], "u": []}, engines) == []
+    assert check(q, {"t": [(1, None, None, None, None, None)], "u": []}, engines) == []
+
+
 def test_a_tlp_predicate_that_raises_is_not_a_finding():
     # The partition `WHERE (k // k) = 1` raises on k = 0 where the whole query
     # doesn't: no partition to compare, and no harness error (the first
