@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from _repo import needs_repo
 from sverify.cli import main
 
 SCHEMA = "orders:\n  id: BIGINT NOT NULL\n  amount: INTEGER\n"
@@ -54,7 +53,6 @@ def test_json_schema_file_and_the_json_document(tmp_path, capsys) -> None:
     assert "report" in item
 
 
-@needs_repo
 def test_the_sarif_document(tmp_path, capsys) -> None:
     from _sarif import valid_sarif
 
