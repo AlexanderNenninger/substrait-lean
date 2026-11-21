@@ -20,7 +20,7 @@ _GITHUB_LEVEL = {"error": "error", "warning": "warning", "note": "notice"}
 def findings(result: CheckResult) -> list[dict[str, Any]]:
     """What is wrong with the project, one dict per finding: `file` (the
     model's file), `code` (sverify's, `sverify explain CODE`), `level`,
-    `item` and `message`."""
+    `item`, `message`, `nodes` and `line` (None), as `cli.schema.json` has them."""
     out: list[dict[str, Any]] = []
     for m in result.models:
         file = m.path or m.ref
@@ -33,7 +33,8 @@ def findings(result: CheckResult) -> list[dict[str, Any]]:
             if t.status == "proved":
                 continue
             checked = t.status == "not proved"
-            code = ("may_be_false" if t.counterexample else "unknown") if checked else "unchecked"
+            code = t.reason or ("may_be_false" if t.counterexample else "unknown")
+            code = code if checked else "unchecked"
             f = _f(m, file, code, "error" if checked else "warning", t.label, _text(t))
             if t.counterexample:
                 f["counterexample"] = t.counterexample
@@ -42,7 +43,15 @@ def findings(result: CheckResult) -> list[dict[str, Any]]:
 
 
 def _f(m: ModelResult, file: str, code: str, level: str, item: str, message: str) -> dict[str, Any]:
-    return {"file": file, "code": code, "level": level, "item": item, "message": message}
+    return {
+        "file": file,
+        "code": code,
+        "level": level,
+        "message": message,
+        "item": item,
+        "nodes": [m.name],
+        "line": None,
+    }
 
 
 def _text(t: Any) -> str:

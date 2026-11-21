@@ -23,8 +23,10 @@ beside `dbt`, the test's status in dbt's own run (`pass`, `fail`, `error`,
 `unsound`: a soundness bug, fixed first.
 
 `--write` rewrites the ledgers `dbt/replay/<source>.json`, keeping each
-entry's `issue`; `--check` exits 1 on an `unsound` entry or an outcome that
-changed, and CI turns that into a warning (gates report and never block).
+entry's `issue`; `--check` exits 1 on an `unsound` entry, an outcome that
+changed or an entry waiting on a closed issue (asked of `gh`, skipped
+without it), and CI turns that into a warning (gates report and never
+block).
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -59,6 +62,10 @@ class Source:
     project: str
     """The integration project's directory in the repository."""
     license: str
+    kind: str = "package"
+    """`package`: a hub package's integration project, cloned at `commit`.
+    `suite`: the pytest classes of an installed test suite (`project` is its
+    import package), whose release `tag` must be the one installed."""
 
 
 SOURCES = {
@@ -79,6 +86,15 @@ SOURCES = {
             "f93478ca00b48347073f6a39217ac18bf6685820",
             "integration_tests",
             "Apache-2.0",
+        ),
+        Source(
+            "dbt-tests-adapter",
+            "https://github.com/dbt-labs/dbt-adapters",
+            "1.20.0",
+            "",
+            "dbt.tests.adapter",
+            "Apache-2.0",
+            kind="suite",
         ),
     )
 }
@@ -112,7 +128,7 @@ def extract(source: Source, dest: Path) -> Path:
     return project
 
 
-def _dbt(project: Path, *args: str) -> None:
+def _dbt(project: Path, *args: str, quiet: bool = False) -> None:
     """A dbt command in `project`; a failing build is part of the record, and
     its last lines are printed, for CI's log."""
     exe = Path(sys.executable).with_name("dbt")
@@ -123,7 +139,7 @@ def _dbt(project: Path, *args: str) -> None:
         capture_output=True,
         text=True,
     )
-    if done.returncode != 0:
+    if done.returncode != 0 and not quiet:
         tail = (done.stdout + done.stderr).strip().splitlines()[-15:]
         print(
             f"dbt {' '.join(args)} exited {done.returncode} in {project.name}:", *tail, sep="\n  "
@@ -133,19 +149,63 @@ def _dbt(project: Path, *args: str) -> None:
 def run(source: Source) -> dict[str, Any]:
     """Build the source's project with dbt, check it with sverify-dbt, and
     the record of each test."""
-    from sverify_dbt import check
-    from sverify_dbt.manifest import load
-
+    if source.kind == "suite":
+        return _run_suite(source)
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / source.name)
         _dbt(project, "deps")
         packages = _packages(project / "package-lock.yml")
-        _dbt(project, "build")
-        statuses = _statuses(project / "target" / "run_results.json")
-        _dbt(project, "docs", "generate", "--no-compile")
-        proj = load(project)
-        result = check(proj, counterexamples=0)
-    return {"packages": packages, "results": _records(proj, result, statuses)}
+        results = _replay(project)
+    return {"packages": packages, "results": results}
+
+
+def _replay(project: Path, quiet: bool = False) -> dict[str, Any]:
+    """`dbt build` and `docs generate` in `project`, then the record of its tests."""
+    from sverify_dbt import check
+    from sverify_dbt.manifest import load
+
+    _dbt(project, "build", quiet=quiet)
+    statuses = _statuses(project / "target" / "run_results.json")
+    _dbt(project, "docs", "generate", "--no-compile", quiet=quiet)
+    proj = load(project)
+    result = check(proj, counterexamples=0)
+    return _records(proj, result, statuses)
+
+
+def _run_suite(source: Source) -> dict[str, Any]:
+    """Every distinct project of an installed pytest suite, built and checked
+    one after the other; the classes it cannot read are listed beside."""
+    import importlib
+    import importlib.metadata
+
+    from sverify_dbt import replay_suites
+    from sverify_dbt.manifest import ProjectError
+
+    package = source.project
+    dist = source.name
+    installed = importlib.metadata.version(dist)
+    if installed != source.tag:
+        raise SystemExit(f"{dist} {installed} is installed, not {source.tag}")
+    root = Path(importlib.import_module(package).__path__[0])
+    cases, unextracted = replay_suites.projects(root, package)
+    results: dict[str, Any] = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for case in cases:
+            project = Path(tmp) / re.sub(r"\W", "_", case.name)
+            replay_suites.write(case, project)
+            label = case.name.removeprefix(package + ".")
+            try:
+                records = _replay(project, quiet=True)
+            except (ProjectError, ValueError) as e:
+                unextracted[case.name] = f"not replayed: {normalize(str(e))}"
+                continue
+            except Exception as e:  # noqa: BLE001 - one project's crash must not end the replay
+                # A sverify-dbt bug: listed, to be fixed.
+                unextracted[case.name] = f"crashed: {type(e).__name__}: {normalize(str(e))}"
+                continue
+            for key, rec in records.items():
+                results[f"{label}::{key}"] = rec
+    return {"packages": [], "results": results, "unextracted": dict(sorted(unextracted.items()))}
 
 
 def _packages(lock: Path) -> list[str]:
@@ -245,6 +305,7 @@ def ledger(source: Source, run: dict[str, Any]) -> dict[str, Any]:
         "summary": {k: counts.get(k, 0) for k in OUTCOMES},
         "unsound": sum(1 for r in results.values() if r.get("unsound")),
         "results": results,
+        **({"unextracted": run["unextracted"]} if run.get("unextracted") else {}),
     }
 
 
@@ -270,6 +331,44 @@ def changes(fresh: dict[str, Any], stored: dict[str, Any]) -> list[str]:
     return out
 
 
+def _gh_state(number: int) -> str | None:
+    """The state of issue `number` (`OPEN`, `CLOSED`), or None without `gh`."""
+    try:
+        out = subprocess.run(
+            ["gh", "issue", "view", str(number), "--json", "state", "--jq", ".state"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() or None
+
+
+def closed_issues(
+    ledgers: dict[str, dict[str, Any]], state: Callable[[int], str | None] = _gh_state
+) -> list[str]:
+    """The entries that wait on an issue that is closed: the refusal has
+    another reason now, or the issue's fix has landed."""
+    waiting: dict[int, list[str]] = {}
+    for name, led in ledgers.items():
+        for key, r in led["results"].items():
+            if "issue" in r:
+                waiting.setdefault(r["issue"], []).append(f"{name}: {key}")
+    out = []
+    for number, entries in sorted(waiting.items()):
+        found = state(number)
+        if found is None:
+            print("closed-issue check skipped: gh unavailable", file=sys.stderr)
+            break
+        if found == "CLOSED":
+            out.append(
+                f"#{number} is closed; {len(entries)} entries wait on it, such as {entries[0]}"
+            )
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("sources", nargs="*", default=list(SOURCES))
@@ -287,6 +386,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.write:
             LEDGERS.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(fresh, indent=2, ensure_ascii=False) + "\n")
+    if args.check:
+        found += closed_issues(
+            {n: json.loads((LEDGERS / f"{n}.json").read_text()) for n in args.sources}
+        )
     if args.check and found:
         print("\n".join(found), file=sys.stderr)
         return 1

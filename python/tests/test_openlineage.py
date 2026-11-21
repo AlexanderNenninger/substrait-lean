@@ -334,7 +334,7 @@ def test_a_verified_facet_becomes_requires(tmp_path):
     def doubled(paid):
         return paid.select(paid.id, doubled=paid.amount * 2)
 
-    assert doubled.check(paid=up.schema).verdict == sv.Verdict.PROVED
+    assert doubled.verify(paid=up.schema).verdict == sv.Verdict.PROVED
 
 
 def test_an_unverifiable_facet_is_evidence(tmp_path):
