@@ -1,5 +1,10 @@
 import Sverify.Polars.Engine
 import Sverify.Polars.Lowering
+import Sverify.Polars.LoweringLemmas
+import Sverify.Polars.LoweringOn.Integers
+import Sverify.Polars.LoweringOn.Math
+import Sverify.Polars.LoweringOn.Native
+import Sverify.Polars.LoweringOn.Table
 import Sverify.Polars.LoweringSchemas
 import Sverify.Polars.OpenSums
 import Sverify.Polars.Profile
