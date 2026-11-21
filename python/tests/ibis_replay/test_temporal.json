@@ -5,10 +5,10 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_temporal",
   "summary": {
-    "agree": 82,
+    "agree": 117,
     "disagree": 0,
-    "refused": 66,
-    "unproved": 6,
+    "refused": 25,
+    "unproved": 12,
     "skipped": 11
   },
   "results": {
@@ -71,9 +71,7 @@
       "outcome": "agree"
     },
     "test_date_scalar_from_iso[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_date_truncate[duckdb-D]": {
       "outcome": "agree"
@@ -100,44 +98,28 @@
       "outcome": "agree"
     },
     "test_day_of_week_scalar[duckdb-friday]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_day_of_week_scalar[duckdb-monday]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_day_of_week_scalar[duckdb-saturday]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_day_of_week_scalar[duckdb-sunday]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_day_of_week_scalar[duckdb-thursday]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_day_of_week_scalar[duckdb-tuesday]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_day_of_week_scalar[duckdb-wednesday]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_delta[duckdb-date]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_delta[duckdb-time]": {
       "outcome": "refused",
@@ -145,9 +127,7 @@
       "issue": 60
     },
     "test_delta[duckdb-timestamp]": {
-      "outcome": "refused",
-      "construct": "run: Unsupported: date_bin is only supported on timestamps",
-      "issue": 1924
+      "outcome": "agree"
     },
     "test_extract_iso_year[duckdb-date]": {
       "outcome": "agree"
@@ -156,14 +136,10 @@
       "outcome": "agree"
     },
     "test_extract_time_from_timestamp[duckdb-second]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_extract_time_from_timestamp[duckdb-subsecond]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_integer_cast_to_timestamp_column[duckdb]": {
       "outcome": "agree"
@@ -176,9 +152,8 @@
       "reason": "domain error: VARCHAR_DATE((((((… + (date_string_col SUBSTRING_FOR_2_LEFT_OF_BEGINNING IF NOT(((N + N) < N)) THEN (N + N) ELSE ((N + N) + LENGTH(date_string_col"
     },
     "test_integer_to_interval_date[duckdb-M]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: a column's count of months or years is not supported; rewrite it with a supported operation or column type",
-      "issue": 1925
+      "outcome": "unproved",
+      "reason": "domain error: VARCHAR_DATE((((((… + (date_string_col SUBSTRING_FOR_2_LEFT_OF_BEGINNING IF NOT(((N + N) < N)) THEN (N + N) ELSE ((N + N) + LENGTH(date_string_col"
     },
     "test_integer_to_interval_date[duckdb-Q]": {
       "outcome": "skipped",
@@ -189,17 +164,15 @@
       "reason": "domain error: VARCHAR_DATE((((((… + (date_string_col SUBSTRING_FOR_2_LEFT_OF_BEGINNING IF NOT(((N + N) < N)) THEN (N + N) ELSE ((N + N) + LENGTH(date_string_col"
     },
     "test_integer_to_interval_date[duckdb-Y]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: a column's count of months or years is not supported; rewrite it with a supported operation or column type",
-      "issue": 1925
+      "outcome": "unproved",
+      "reason": "domain error: VARCHAR_DATE((((((… + (date_string_col SUBSTRING_FOR_2_LEFT_OF_BEGINNING IF NOT(((N + N) < N)) THEN (N + N) ELSE ((N + N) + LENGTH(date_string_col"
     },
     "test_integer_to_interval_timestamp[duckdb-D-DateOffset]": {
       "outcome": "agree"
     },
     "test_integer_to_interval_timestamp[duckdb-M-DateOffset]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: a column's count of months or years is not supported; rewrite it with a supported operation or column type",
-      "issue": 1925
+      "outcome": "unproved",
+      "reason": "overflow: N + DAYS ((((((((((((((DAY_PART_year(DATE(timestamp_col)) * N) + (DAY_PART_month(DATE(timestamp_col)) - N)) + int_col) - ((((((DAY_PART_year(DATE(time"
     },
     "test_integer_to_interval_timestamp[duckdb-Q-DateOffset]": {
       "outcome": "skipped",
@@ -209,9 +182,8 @@
       "outcome": "agree"
     },
     "test_integer_to_interval_timestamp[duckdb-Y-DateOffset]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: a column's count of months or years is not supported; rewrite it with a supported operation or column type",
-      "issue": 1925
+      "outcome": "unproved",
+      "reason": "overflow: N + DAYS ((((((((((((((DAY_PART_year(DATE(timestamp_col)) * N) + (DAY_PART_month(DATE(timestamp_col)) - N)) + (int_col * N)) - ((((((DAY_PART_year(DAT"
     },
     "test_integer_to_interval_timestamp[duckdb-h-Timedelta]": {
       "outcome": "agree"
@@ -229,41 +201,32 @@
       "outcome": "agree"
     },
     "test_integer_to_timestamp[duckdb-ms]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_integer_to_timestamp[duckdb-ns]": {
       "outcome": "skipped",
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_integer_to_timestamp[duckdb-s]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_integer_to_timestamp[duckdb-us]": {
       "outcome": "skipped",
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_interval_add_cast_column[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: type interval(…) is not supported; cast the column to a supported type in the source query",
-      "issue": 1926
+      "outcome": "unproved",
+      "reason": "overflow: DATE(timestamp_col) + DAYS bigint_col"
     },
     "test_interval_add_cast_scalar[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: type interval(…) is not supported; cast the column to a supported type in the source query",
-      "issue": 1926
+      "outcome": "agree"
     },
     "test_interval_literal[duckdb]": {
       "outcome": "skipped",
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_iso_year_does_not_match_date_year[duckdb]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: date_part is only supported on timestamps and dates. Lean's model does not cover it yet: rewrite ",
-      "issue": 1927
+      "outcome": "agree"
     },
     "test_large_timestamp[duckdb]": {
       "outcome": "agree"
@@ -279,22 +242,20 @@
       "design": "the time differs between runs"
     },
     "test_simple_unix_date_offset[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_strftime[duckdb-column_format_str]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: strftime formats must be constants",
+      "issue": 347
     },
     "test_strftime[duckdb-literal_format_str]": {
       "outcome": "agree"
     },
     "test_string_as_date[duckdb-mysql_format]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: StringToDate is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_string_as_date[duckdb-pyspark_format]": {
       "outcome": "skipped",
@@ -302,13 +263,13 @@
     },
     "test_string_as_time[duckdb]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: StringToTime is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_string_as_timestamp[duckdb-mysql_format]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: StringToTimestamp is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_string_as_timestamp[duckdb-pyspark_format]": {
       "outcome": "skipped",
@@ -316,13 +277,13 @@
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp(1)]": {
       "outcome": "refused",
-      "construct": "Unsupported: only microsecond timestamps are supported (#323); cast the column to microseconds before sverify reads the table",
+      "construct": "Unsupported: only second, millisecond and microsecond timestamps are supported (#323); cast the column to microseconds before sverify reads the table",
       "issue": 323
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp(3)]": {
       "outcome": "refused",
-      "construct": "Unsupported: only microsecond timestamps are supported (#323); cast the column to microseconds before sverify reads the table",
-      "issue": 323
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
+      "issue": 1922
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp(6)]": {
       "outcome": "refused",
@@ -423,39 +384,26 @@
       "outcome": "agree"
     },
     "test_timestamp_column_from_ymdhms[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: TimestampFromYMDHMS of columns is not supported, only of constants",
-      "issue": 1928
+      "outcome": "unproved",
+      "reason": "raised by a guard: RAISE_…(DATE_PART_month(timestamp_col))"
     },
     "test_timestamp_comparison_filter[duckdb-eq]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_timestamp_comparison_filter[duckdb-ge]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_timestamp_comparison_filter[duckdb-gt]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_timestamp_comparison_filter[duckdb-le]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_timestamp_comparison_filter[duckdb-lt]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_timestamp_comparison_filter[duckdb-ne]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_timestamp_comparison_filter_numpy[duckdb-eq]": {
       "outcome": "refused",
@@ -524,49 +472,31 @@
       "reason": "harness: ArrowInvalid: Float value N was truncated converting to int32"
     },
     "test_timestamp_extract_literal[duckdb-day]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-day_of_week_full_name]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-day_of_week_index]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-hour]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-millisecond]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-minute]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-month]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-second]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_literal[duckdb-year]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_microseconds[duckdb]": {
       "outcome": "agree"
@@ -575,9 +505,7 @@
       "outcome": "agree"
     },
     "test_timestamp_extract_milliseconds_with_big_value[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_extract_week_of_year[duckdb]": {
       "outcome": "agree"
@@ -588,19 +516,15 @@
       "design": "an expression's type is each engine's own inference (#508)"
     },
     "test_timestamp_precision_output[duckdb-ms]": {
-      "outcome": "refused",
-      "construct": "Unsupported: only microsecond timestamps are supported (#323); cast the column to microseconds before sverify reads the table",
-      "issue": 323
+      "outcome": "agree"
     },
     "test_timestamp_precision_output[duckdb-ns]": {
       "outcome": "refused",
-      "construct": "Unsupported: only microsecond timestamps are supported (#323); cast the column to microseconds before sverify reads the table",
+      "construct": "Unsupported: only second, millisecond and microsecond timestamps are supported (#323); cast the column to microseconds before sverify reads the table",
       "issue": 323
     },
     "test_timestamp_precision_output[duckdb-us]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-D-D]": {
       "outcome": "agree"
