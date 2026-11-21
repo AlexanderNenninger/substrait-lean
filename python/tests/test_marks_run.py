@@ -192,6 +192,7 @@ def test_the_marks_stay_on_their_slots_across_a_bound_layer():
     assert marks is not None
     bound = marks["inputs"][0]["inputs"][0]
     assert bound["node"] == "Project" and bound["slots"] == [0]
+    assert report.internal_plan is not None
     plan = written_plan(report.internal_plan)
     marked, full = to_sql(plan, "duckdb", unchecked=marks), to_sql(plan, "duckdb")
     assert marked.count("sverify: ") < full.count("sverify: ")
