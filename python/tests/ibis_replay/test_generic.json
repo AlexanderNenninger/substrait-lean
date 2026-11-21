@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_generic",
   "summary": {
-    "agree": 180,
+    "agree": 181,
     "disagree": 1,
-    "refused": 34,
+    "refused": 33,
     "unproved": 1,
     "skipped": 17
   },
@@ -639,9 +639,7 @@
       "outcome": "agree"
     },
     "test_simple_pivot_wider[duckdb]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: aggregate Arbitrary is not supported; rewrite it with a supported operation or column type",
-      "issue": 1920
+      "outcome": "agree"
     },
     "test_static_table_slice[duckdb-[-3:-3]]": {
       "outcome": "agree"
@@ -710,7 +708,7 @@
     "test_table_describe_with_multiple_decimal_columns[duckdb]": {
       "outcome": "refused",
       "construct": "ProducerUnsupported: quantile of decimal(N, N) is not supported: no engine gives one value for it (DuckDB truncates a double interpolation, Spark and Polars ret",
-      "issue": 1921
+      "design": "no engine gives one value for a quantile of a decimal (ruling 191); cast the column to float64 first"
     },
     "test_table_fill_null_invalid[duckdb]": {
       "outcome": "skipped",
