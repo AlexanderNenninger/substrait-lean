@@ -20,8 +20,7 @@ from typing import Any
 import duckdb
 import sqlglot as sg
 import sverify as sv
-from sverify.conditions import label as condition_label
-from sverify.errors import ConditionError
+from sverify.errors import ConditionError, UnsupportedError
 
 from sverify_dbt import mapping
 from sverify_dbt.manifest import Project, Relation, Test, load
@@ -102,6 +101,8 @@ class _Checker:
             unit_tests=self.p.unit_tests,
             relations=self.p.relations,
             selected=bool(select),
+            adapter=self.p.adapter,
+            dbt_version=self.p.dbt_version,
         )
 
     def _upstream(self, uids: set[str]) -> set[str]:
@@ -326,7 +327,7 @@ class _Checker:
             if (
                 tr.status != "not proved"
                 or tr.would_hold
-                or tr.blocker not in ("may_be_false", "may_be_null")
+                or tr.reason not in ("may_be_false", "may_be_null")
             ):
                 continue
             if len(candidates) > _BLAME_COLUMNS or budget[0] < 1:
@@ -367,7 +368,7 @@ class _Checker:
                     on_inferred="error",
                     counterexamples=0,
                 )
-        except ValueError:
+        except UnsupportedError:
             return None
         return extra if all(c.portable for c in report.ensures) and not report.needs else None
 
@@ -435,7 +436,7 @@ class _Checker:
                 if not self._drop(e, res, requires, ensures):
                     res.refuse(_refusal(e))
                     return None
-            except ValueError as e:  # a refusal after planning: the model or a condition
+            except UnsupportedError as e:  # a refusal after planning: the model or a condition
                 return self._isolate(go, res, requires, ensures, e)
 
     @staticmethod
@@ -446,7 +447,7 @@ class _Checker:
         none = {t: [] for t in requires}
         try:
             go(none, [])
-        except ValueError:
+        except UnsupportedError:
             res.refuse(_refusal(first))
             return None
         for tr, cs in ensures:
@@ -454,11 +455,11 @@ class _Checker:
                 continue
             try:
                 go(none, cs)
-            except ValueError as e:
+            except UnsupportedError as e:
                 tr.skip(f"sverify cannot read its condition: {_first_line(e)}")
         try:
             return go(requires, _checked(ensures))
-        except ValueError:
+        except UnsupportedError:
             res.refuse(_refusal(first))
             return None
 
@@ -469,7 +470,7 @@ class _Checker:
         dropped = False
         for name, err in e.errors.items():
             for t, cs in requires.items():
-                hit = [c for c in cs if _named(c) == name]
+                hit = [c for c in cs if _label(c) == name]
                 if hit:
                     requires[t] = [c for c in cs if c not in hit]
                     res.not_assumed.append(
@@ -477,7 +478,7 @@ class _Checker:
                     )
                     dropped = True
             for tr, cs in ensures:
-                if tr.status != "not checked" and any(_named(c) == name for c in cs):
+                if tr.status != "not checked" and any(_label(c) == name for c in cs):
                     tr.skip(f"sverify cannot read its condition: {_first_line(err)}")
                     dropped = True
         return dropped
@@ -519,7 +520,7 @@ class _Checker:
                 c = bad[0]
                 tr.status = "not proved"
                 tr.why = _why(c)
-                tr.blocker = c.reason
+                tr.reason = c.reason
                 tr.counterexample = str(c.counterexample) if c.counterexample else None
                 tr.would_hold = {}
                 for n in c.needs:
@@ -748,12 +749,8 @@ def _why(c: Any) -> str:
     return _WHY.get(c.reason, f"sverify only knows it is {c.value}")
 
 
-def _named(c: Any) -> str:
-    """A condition as the keys of `ConditionError.errors` name it."""
-    return condition_label(c)
-
-
 def _label(c: Any) -> str:
+    """A condition as the keys of `ConditionError.errors` name it."""
     return c if isinstance(c, str) else c.label
 
 
