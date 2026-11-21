@@ -86,6 +86,6 @@ def has (j : Json) (path : List String) : Bool :=
 #guard (Checker.underProfile builtinEngines (Lean.Json.mkObj [("profile", "dummy")])
   (Lean.Json.mkObj []) true |>.toOption.map (·.1.getObjValD "profile")) == some "reference"
 -- The derived engine-wide facts take it in.
-#guard Epsilon.statsProvedOn engines == ["duckdb", "spark", "dummy"]
+#guard Epsilon.statsProvedOn "agg.var" engines == ["duckdb", "polars", "spark", "dummy"]
 
 end Substrait.DummyEngine

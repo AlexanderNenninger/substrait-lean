@@ -421,7 +421,8 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
     reference's correctly rounded value (`epsilon_var_cr`,
     `epsilon_stddev_cr`, `epsilon_cov_cr`),
     proved on the engines whose algorithm a theorem covers (DuckDB's and
-    Spark's `core_var_chan`; Polars's is tested). `CORR` has no bound: a
+    Spark's `core_var_chan`, Polars's `VAR_*` and `STDDEV_*` by
+    `core_var_polars`; Polars's `COVAR_*` is tested). `CORR` has no bound: a
     stated tolerance on it is refused, naming #918."""
     con = sv.connect()
     con.put(
@@ -444,7 +445,10 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
 
     for col in ("v", "s", "c"):
         assert proved._epsilon[col]["bounds"]["abs"]["value"] > 0
-        assert proved_on(engines, col) == ["duckdb", "spark"]
+    # Polars's `VAR_*` and `STDDEV_*` are proved, its `COVAR_*` not yet (#1808).
+    for col in ("v", "s"):
+        assert proved_on(engines, col) == ["duckdb", "polars", "spark"]
+    assert proved_on(engines, "c") == ["duckdb", "spark"]
     corr = sv.verify(t.group_by("k").aggregate(c=t.x.corr(t.y)), requires=req)
     assert corr._epsilon is not None and corr._epsilon["c"]["unbounded"]
     assert "#918" in corr._epsilon["c"]["why"]

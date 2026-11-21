@@ -45,7 +45,9 @@ def floatBoundsTheorems : List String :=
    "FloatBounds.StdModel.core_corr_chan", "FloatBounds.StdModel.epsilon_sum_cr",
    "FloatBounds.StdModel.epsilon_avg_cr", "FloatBounds.StdModel.epsilon_var_cr",
    "FloatBounds.StdModel.epsilon_stddev_cr",
-   "FloatBounds.StdModel.epsilon_cov_cr", "FloatBounds.StdModel.TreeSum.sign",
+   "FloatBounds.StdModel.epsilon_cov_cr", "FloatBounds.StdModel.core_var_polars",
+   "FloatBounds.StdModel.epsilon_var_polars", "FloatBounds.StdModel.epsilon_stddev_polars",
+   "FloatBounds.StdModel.TreeSum.sign",
    "FloatBounds.StdModel.TreeSum.avg_sign"]
 
 /-- Evidence from the facts or tests `ids`, none where empty. -/

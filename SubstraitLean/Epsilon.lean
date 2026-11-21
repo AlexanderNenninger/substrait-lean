@@ -288,20 +288,31 @@ def ordersProved (es : List EngineProfile) : Bool :=
 the reference's own, and Welford's update with Chan's merge. -/
 def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN"]
 
-/-- The engines whose statistics a theorem bounds: the `stat_algo` choices
-are ones the theorems cover, and the engine's `stat_algo` row is proved
-(`core_var_chan`) on facts about its algorithm. An engine whose algorithm no
-fact settles, or whose row is only tested, is not among them: its
-statistics' columns are tested (`Report.epsilon[col].proved_on`). -/
-def statsProvedOn (es : List EngineProfile) : List String :=
+/-- The function group of a statistic: `agg.var` for `VAR_*` and `STDDEV_*`,
+`agg.stat` for `COVAR_*` and `CORR` (`Functions.groups`). -/
+def statGroup (m : Measure) : String :=
+  match m.fn with
+  | .var _ _ => "agg.var"
+  | _ => "agg.stat"
+
+/-- The engines whose statistics of `group` a theorem bounds: the group's
+`stat_algo` choices are ones the theorems cover, and the `stat_algo` row the
+plan reads for the group (`ObsTable.row?`: the group's own, else the
+option's) is proved on facts about the engine's algorithm (`core_var_chan`,
+`core_var_polars`). An engine whose algorithm no fact settles, or whose row is
+only tested, is not among them: its statistics' columns are tested
+(`Report.epsilon[col].proved_on`). -/
+def statsProvedOn (group : String) (es : List EngineProfile) : List String :=
   es.filterMap fun e =>
-    let algos := (e.table.allows "agg.var" "stat_algo" []) ++ (e.table.allows "agg.stat" "stat_algo" [])
-    let proved := e.obs.any fun (g, o, r) =>
-      g.isNone && o == "stat_algo" && match r.evidence with | .proved _ _ => true | _ => false
+    let algos := e.table.allows group "stat_algo" []
+    let proved := match e.obs.row? group "stat_algo" with
+      | some r => match r.evidence with | .proved _ _ => true | _ => false
+      | none => false
     if algos.all (provedStatAlgos.contains ·) && proved then some e.name else none
 
--- DuckDB's and Spark's rows are proved; Polars's algorithm is not (float-bounds.md).
-#guard statsProvedOn builtinEngines == ["duckdb", "spark"]
+-- Every engine's `VAR_*` is proved; Polars's `COVAR_*` is not (#1808, ruling 220).
+#guard statsProvedOn "agg.var" builtinEngines == ["duckdb", "polars", "spark"]
+#guard statsProvedOn "agg.stat" builtinEngines == ["duckdb", "spark"]
 
 /-- Why a `CORR` column has no bound, and what lifts it (D30). -/
 def corrWhy : String :=
@@ -1154,7 +1165,9 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
     | some e =>
       -- Proved on the engines of `statsProvedOn`, tested on the others.
       let p := m?.any fun m => statProvedFn m && same m
-      let on := if p then statsProvedOn es else []
+      let on := match m? with
+        | some m => if p then statsProvedOn (statGroup m) es else []
+        | none => []
       Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson (p && on.length ==
         es.length))]), ("proved_on", toJson on)]
     | none => Json.mkObj ([("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])] ++
