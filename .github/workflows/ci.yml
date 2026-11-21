@@ -1025,7 +1025,32 @@ jobs:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.
           prune-cache: true
           cache-suffix: pruned
+      # actionlint is the release's binary, checked against the release's
+      # checksum and cached: a Docker Hub pull failed a merge batch (#2090).
+      # The path is under the workspace, so a cache saved on another runner
+      # restores to the same place.
+      - id: actionlint
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .actionlint
+          key: actionlint-1.7.7-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.actionlint.outputs.cache-hit != 'true'
+        env:
+          VERSION: 1.7.7
+        run: |
+          set -euo pipefail
+          case "$RUNNER_ARCH" in
+            ARM64) arch=arm64 sum=401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0 ;;
+            *) arch=amd64 sum=023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757 ;;
+          esac
+          tgz="$RUNNER_TEMP/actionlint_${VERSION}_linux_$arch.tar.gz"
+          curl -fsSL --retry 5 --retry-all-errors -o "$tgz" \
+            "https://github.com/rhysd/actionlint/releases/download/v$VERSION/actionlint_${VERSION}_linux_$arch.tar.gz"
+          echo "$sum  $tgz" | sha256sum -c -
+          mkdir -p .actionlint
+          tar -xzf "$tgz" -C .actionlint actionlint
       - run: |
+          actionlint="$PWD/.actionlint/actionlint"
           repo=$(mktemp -d)
           cp -R templates/pipelines/. "$repo/"
           git -C "$repo" init --quiet -b main
@@ -1041,9 +1066,8 @@ jobs:
           uv run --locked --project "$py" ruff check .
           uv run --locked --project "$py" ruff format --check .
           uv run --locked --project "$py" python -m pytest -q -p no:cacheprovider
-          # actionlint reads the workflows of the git repository it runs in;
-          # as the owner of the files, or git refuses the repository.
-          docker run --rm --user "$(id -u):$(id -g)" -v "$repo:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+          # actionlint reads the workflows of the git repository it runs in.
+          "$actionlint" -color
 
   # Float error bounds (docs/float-bounds.md): a separate Lake package that
   # needs Mathlib, fetched as prebuilt oleans.

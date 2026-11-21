@@ -35,10 +35,10 @@ view's input:
 Lean proves that the state of the old input plus the state of the change
 finishes to the aggregate (or `DISTINCT`) of the new input, groups appearing
 and disappearing included (`LinearAgg.aggregate_maintained` and
-`LinearAgg.distinct_maintained` in `SubstraitLean/IncrementalAgg.lean`), and
+`LinearAgg.distinct_maintained` in `analysis/Sverify/Analysis/IncrementalAgg.lean`), and
 with `MIN` and `MAX`, that merging the groups a batch only inserts into and
 recomputing the others gives the aggregate too
-(`ExtremeAgg.extreme_maintained` in `SubstraitLean/IncrementalMinMax.lean`).
+(`ExtremeAgg.extreme_maintained` in `analysis/Sverify/Analysis/IncrementalMinMax.lean`).
 A projection that finishes an `AVG` keeps that (`ExtremeAgg.map_maintained`).
 This module is trusted glue: it recognises the shape on the Ibis expression
 and builds the plans. The checker parses and writes them (`written_plan`) and
