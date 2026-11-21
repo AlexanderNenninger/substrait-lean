@@ -1260,15 +1260,6 @@ KNOWN: tuple[Known, ...] = (
     Known(
         "#2153", ("aggregate/aggregates/test_median.test",), r"median\(range::(date|timestamp)\)"
     ),
-    # signbit's black box gives NULL for a stored zero, against its law.
-    Known(
-        "#2154",
-        (
-            "storage/compression/constant/constant_negative_zero.test",
-            "storage/compression/rle/rle_signed_zero.test",
-        ),
-        r"\bsignbit\(",
-    ),
     # `list_contains` of an empty list and a NULL needle: FALSE in DuckDB 2.0.1, NULL in the
     # model and the written plan (D54's listed exception).
     Known(
