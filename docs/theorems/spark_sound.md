@@ -5,8 +5,8 @@ A plan Sverify has proved returns the reference's rows when it runs on Spark und
 Lean: `Substrait.Rel.spark_sound`, in
 [`engines/spark/Sverify/Spark/Engine.lean`](../../engines/spark/Sverify/Spark/Engine.lean).
 Layer: `eval`, the reference's result for the plan. Axioms: `propext`, `Classical.choice`, `Quot.sound` and
-`Substrait.FloatCode.exp_fin`, the float fact [float-bounds.md](../float-bounds.md)
-lists as trusted ([trusted-base.md](../trusted-base.md)).
+`Substrait.FloatCode.exp_fin`, a float fact that [trusted-base.md](../trusted-base.md)
+lists as trusted.
 
 ## What it says
 
