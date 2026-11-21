@@ -15,7 +15,7 @@ dependencies = [
 [project.optional-dependencies]
 # Running plans on Spark: a local session, or the user's (and a JVM). Writing
 # Spark SQL (`sverify_spark.dialect`) needs nothing more.
-run = ["pyspark>=4.0"]
+run = ["pyspark>=4.3.0,<4.4"]
 
 # sverify finds its engines here and nowhere else (`sverify.profiles`).
 [project.entry-points."sverify.profiles"]

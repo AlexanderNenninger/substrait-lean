@@ -1,4 +1,4 @@
-"""Rewrites from contracts (`SubstraitLean/Semantic.lean`): the report's
+"""Rewrites from contracts (`analysis/Sverify/Analysis/Semantic.lean`): the report's
 `optimized` plan gives the same rows as the transformation on data that meets
 the preconditions (`Rel.optimize_sound`), and is simpler."""
 

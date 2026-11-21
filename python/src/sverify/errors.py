@@ -62,8 +62,8 @@ Setup:
 * `CheckerVersionError` (`checker_version`): the `substrait-check` binary
   is older or newer than this sverify.
 * `EngineVersionError` (`engine_version`), `EngineVersionWarning`: an
-  engine's version is not one its profile's facts were probed at (another
-  major version refuses).
+  engine's version is not one its profile's facts were probed at (D70: an
+  unprobed patch warns, a version outside the probed minors refuses).
 * `EngineSettingsError` (`engine_settings`), `EngineSettingsWarning`: an
   engine setting differs from the one its profile's facts were probed
   under.

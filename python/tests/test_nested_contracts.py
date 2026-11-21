@@ -57,6 +57,26 @@ def test_an_element_in_range_is_not_null():
     assert report.verdict == sv.Verdict.UNPROVED
 
 
+def test_a_position_in_a_list_depends_on_the_order_of_its_elements():
+    """An element access (`xs[0]`) reads where an element sits: `[b, a]` and `[a, b]`
+    are equal under the default lens (`elements="multiset"`), so the postcondition
+    is not proved there; with `elements="sequence"` it is, and a length read
+    through `cardinality` is (#2005)."""
+    expr = T.select(T.id, xs=T.xs.map(lambda x: x.fill_null(0)))
+    first = _.xs[0] == _.id
+    default = sv.verify(expr, requires={"t": [_.xs.notnull(), _.xs.length() >= 1]}, ensures=[first])
+    assert "elements" in default.ensures[0].ignores, default.ensures[0]
+    assert default.verdict != sv.Verdict.PROVED
+    exact = sv.verify(
+        expr,
+        requires={"t": [_.xs.notnull(), _.xs.length() >= 1]},
+        ensures=[sv.equivalent(elements="sequence"), first],
+    )
+    assert not exact.ensures[0].ignores
+    sized = sv.verify(expr, requires={"t": [_.xs.notnull()]}, ensures=[_.xs.length() >= 0])
+    assert sized.verdict == sv.Verdict.PROVED, sized.unproved
+
+
 def test_unnest_keep_empty_gives_an_empty_or_null_list_one_row_of_null():
     # #1917: a project replaces such a list by `[NULL]` before the unnest.
     from sverify.engine import connect
