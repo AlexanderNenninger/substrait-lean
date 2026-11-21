@@ -394,6 +394,28 @@ def test_qualified_table_names_resolve_as_duckdb_resolves_them(query):
     json.dumps(lift(query, QUALIFIED).plan)
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        # #2169: a CTE named like an input reads the input in its body, by the input's key.
+        "WITH customers AS (SELECT x, name FROM customers) SELECT name FROM customers",
+        "WITH c AS (SELECT x FROM customers), customers AS (SELECT x FROM c)"
+        " SELECT x FROM customers",
+        "SELECT x FROM (WITH customers AS (SELECT x FROM customers) SELECT x FROM customers)",
+        "WITH customers AS (SELECT x FROM main.customers) SELECT x FROM customers",
+    ],
+)
+def test_a_cte_named_like_a_qualified_input_still_reads_the_input(query):
+    json.dumps(lift(query, QUALIFIED).plan)
+
+
+def test_a_cte_is_not_an_input_before_it_is_defined():
+    """#2169: the name is a CTE only where it is in scope, so a body before it still
+    reads the input, and a qualified reference never reads a CTE."""
+    with pytest.raises(Refused, match="only the inputs' tables can be read"):
+        lift("WITH customers AS (SELECT 1 AS x) SELECT x FROM other.main.customers", QUALIFIED)
+
+
 def test_a_table_in_the_wrong_schema_is_refused_with_the_name_to_declare():
     with pytest.raises(Refused, match="only the inputs' tables can be read"):
         lift("SELECT x FROM other.main.orders", QUALIFIED)
