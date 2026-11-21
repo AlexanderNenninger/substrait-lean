@@ -1217,15 +1217,16 @@ class Known:
         return r["file"] in self.files and re.search(self.sql, r["sql"], re.I) is not None
 
 
-#: The recorded disagreements by what explains them (#747). `tests/test_slt.py`
-#: fails on a `disagree` entry of a ledger that none matches, and on an entry
-#: here that no ledger needs.
+#: The recorded disagreements by what explains them (#747).
+#: `engines/duckdb/tests/test_unexplained.py` fails on a `disagree` entry of a
+#: ledger that none matches, and on an entry here that no ledger needs.
 KNOWN: tuple[Known, ...] = (
     # DuckDB widens an integer SUM to HUGEINT; the reference raises past i64.
     Known(
         "duckdb-R6",
         (
             "aggregate/aggregates/test_sum.test",
+            "aggregate/aggregates/test_sum_fastpath.test",
             "aggregate/sparse_clustered_aggregation.test",
             "sql_export/aggregate_results.test",
         ),
@@ -1242,8 +1243,6 @@ KNOWN: tuple[Known, ...] = (
     Known("duckdb-substring-range", ("function/string/test_substring.test",), r"4294967296"),
     # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.
     Known("duckdb-R15-math-domain", ("types/float/nan_functions.test",), r"\b(a?sin|a?cos|tan)\("),
-    # SUM of +inf and -inf: NaN in DuckDB, a domain error in the written plan.
-    Known("#341", ("types/float/nan_aggregate.test",), r"\bsum\("),
     # list_sum past 64 bits: DuckDB's is a HUGEINT, the model's a BIGINT that
     # raises, as `SUM`.
     Known(
@@ -1254,6 +1253,22 @@ KNOWN: tuple[Known, ...] = (
     # A NULL element in a list comparison: DuckDB orders it last, the reference
     # gives NULL.
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
+    # A FLOAT cast to an integer truncates in the model; DuckDB rounds.
+    Known("#2152", ("cast/float_integer_cast.test",), r"::FLOAT as "),
+    # MEDIAN of dates and timestamps: DuckDB interpolates, the model takes the
+    # lower middle.
+    Known(
+        "#2153", ("aggregate/aggregates/test_median.test",), r"median\(range::(date|timestamp)\)"
+    ),
+    # signbit's black box gives NULL for a stored zero, against its law.
+    Known(
+        "#2154",
+        (
+            "storage/compression/constant/constant_negative_zero.test",
+            "storage/compression/rle/rle_signed_zero.test",
+        ),
+        r"\bsignbit\(",
+    ),
 )
 
 

@@ -5,10 +5,10 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_numeric",
   "summary": {
-    "agree": 44,
+    "agree": 106,
     "disagree": 0,
-    "refused": 88,
-    "unproved": 26,
+    "refused": 18,
+    "unproved": 34,
     "skipped": 1
   },
   "results": {
@@ -81,59 +81,37 @@
       "outcome": "agree"
     },
     "test_bitwise_not_scalar[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-col_int-and_]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-col_int-lshift]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-col_int-or_]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-col_int-rshift]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-col_int-xor]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-int_col-and_]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-int_col-lshift]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-int_col-or_]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-int_col-rshift]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_scalars[duckdb-int_col-xor]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_bitwise_shift[duckdb-lshift_col_col]": {
       "outcome": "unproved",
@@ -267,14 +245,12 @@
       "reason": "division by zero: double_col / N"
     },
     "test_divide_by_zero[duckdb-float_col-0.0]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "division by zero: float_col / N"
     },
     "test_divide_by_zero[duckdb-float_col-0]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "division by zero: float_col / N"
     },
     "test_divide_by_zero[duckdb-int_col-0.0]": {
       "outcome": "unproved",
@@ -305,219 +281,137 @@
       "reason": "division by zero: double_col % WRAP32((INT32(smallint_col) + N))"
     },
     "test_floor_divide_precedence[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_histogram[duckdb]": {
       "outcome": "unproved",
-      "reason": "division by zero: (int_col - (min(int_col) - N)) / ((max(int_col) - (min(int_col) - N)) / N)"
+      "reason": "division by zero: (int_col - (min(int_col) - 1e-N)) / ((max(int_col) - (min(int_col) - 1e-N)) / N)"
     },
     "test_integer_truediv[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isinf--inf-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isinf-double-column]": {
       "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isinf-float-column]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isinf-float-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isinf-inf-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isinf-nan-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isnan--inf-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isnan-double-column]": {
       "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isnan-float-column]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isnan-float-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isnan-inf-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_isnan_isinf[duckdb-isnan-nan-literal]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-abs-neg]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-abs]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-ceil]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-degrees0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-degrees1]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-degrees2]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-exp]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-floor]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-greatest]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-least]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-ln0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-ln1]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-log-base]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-log10_0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-log10_1]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-log10_2]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-log2]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-mod0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-mod1]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-mod2]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-radians0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-radians1]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-radians2]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-round-digits]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-round]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-sign-neg]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-sign-pos]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-sign-zero]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_math_functions_literals[duckdb-sqrt]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_memtable_decimal[duckdb-decimals]": {
       "outcome": "agree"
@@ -536,8 +430,8 @@
     },
     "test_numeric_literal[duckdb-float32]": {
       "outcome": "refused",
-      "construct": "ProducerUnsupported: literal of type float32 is not supported; rewrite it with a supported operation or column type",
-      "issue": 1908
+      "construct": "Unsupported: typeof is only supported of a column; select the expression as a column first",
+      "design": "an expression's type is each engine's own inference (#508)"
     },
     "test_numeric_literal[duckdb-float64]": {
       "outcome": "refused",
@@ -595,9 +489,7 @@
       "design": "each run gives another value"
     },
     "test_scalar_round_is_integer[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_simple_math_functions_columns[duckdb-abs-neg]": {
       "outcome": "agree"
@@ -618,79 +510,55 @@
       "outcome": "agree"
     },
     "test_trig_functions_columns[duckdb-acos]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "domain error: None"
     },
     "test_trig_functions_columns[duckdb-asin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "domain error: None"
     },
     "test_trig_functions_columns[duckdb-atan2]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "domain error: None"
     },
     "test_trig_functions_columns[duckdb-atan]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_trig_functions_columns[duckdb-cos]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "domain error: None"
     },
     "test_trig_functions_columns[duckdb-sin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "domain error: None"
     },
     "test_trig_functions_columns[duckdb-tan]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "domain error: None"
     },
     "test_trig_functions_literals[duckdb-acos]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_trig_functions_literals[duckdb-asin]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_trig_functions_literals[duckdb-atan2]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_trig_functions_literals[duckdb-atan]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_trig_functions_literals[duckdb-cos]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_trig_functions_literals[duckdb-cot]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_trig_functions_literals[duckdb-sin]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_trig_functions_literals[duckdb-tan]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     }
   }
 }

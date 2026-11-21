@@ -5,27 +5,21 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_conditionals",
   "summary": {
-    "agree": 5,
+    "agree": 11,
     "disagree": 0,
-    "refused": 6,
+    "refused": 0,
     "unproved": 0,
     "skipped": 0
   },
   "results": {
     "test_ibis_case_still_works[duckdb-method-false-value]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_ibis_case_still_works[duckdb-method-false]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_ibis_case_still_works[duckdb-method-true]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_ibis_cases_column[duckdb]": {
       "outcome": "agree"
@@ -43,19 +37,13 @@
       "outcome": "agree"
     },
     "test_value_cases_null[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_value_cases_scalar[duckdb-fallthrough]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_value_cases_scalar[duckdb-one_kwarg]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     }
   }
 }
