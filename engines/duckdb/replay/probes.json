@@ -7701,6 +7701,18 @@
    "observed": "'all', 'nan', 'nan', 'nan', 'nan'; 'both', 'nan', 'nan', 'nan', 'nan'; 'finite', '3.0', '1.5', '3.0', '1.5'; 'neg', '-inf', '-inf', 'nan', 'nan'; 'pos', 'inf', 'inf', 'nan', 'nan'; 'w1', 'inf', 'inf', 'inf', 'nan'; 'w2', 'nan', 'nan', 'nan', 'nan'; 'w3', '-inf', '-inf', 'nan', 'nan'; 'w4', 'inf', 'inf', 'inf', 'nan'; 'w5', 'inf', 'inf', 'nan', 'nan'; 'w6', '-inf', '-inf', '-inf', 'nan'; 'w7', '-inf', '-inf', 'nan', 'nan'; 'w8', '2.0', '1.0', '2.0', '1.0'; 'w9', '3.0', '1.5', '3.0', '1.5'"
   },
   {
+   "construct": "sum-constant-run-nonfinite",
+   "area": "aggregates",
+   "setup": [
+    "CREATE MACRO nan_text(x) AS CASE WHEN isnan(x) THEN 'nan' ELSE x::VARCHAR END",
+    "ATTACH ':memory:' AS m (COMPRESS)",
+    "CREATE TABLE m.t AS SELECT g, x FROM ( SELECT 'pinf' AS g, 'inf'::DOUBLE AS x FROM range(130000) UNION ALL SELECT 'ninf', '-inf'::DOUBLE FROM range(130000) UNION ALL SELECT 'nan', 'nan'::DOUBLE FROM range(130000) UNION ALL SELECT 'pinf+finite', CASE WHEN i < 125000 THEN 'inf'::DOUBLE ELSE 1.0 END FROM range(130000) r(i) UNION ALL SELECT 'ninf+finite', CASE WHEN i < 125000 THEN '-inf'::DOUBLE ELSE 1.0 END FROM range(130000) r(i) UNION ALL SELECT 'nan+finite', CASE WHEN i < 125000 THEN 'nan'::DOUBLE ELSE 1.0 END FROM range(130000) r(i) UNION ALL SELECT 'both', CASE WHEN i < 65000 THEN 'inf'::DOUBLE ELSE '-inf'::DOUBLE END FROM range(130000) r(i)) ORDER BY g",
+    "CHECKPOINT m"
+   ],
+   "sql": "SELECT g, nan_text(sum(x)), nan_text(avg(x)), nan_text(sum('inf'::DOUBLE)), nan_text(sum('-inf'::DOUBLE)), nan_text(sum('nan'::DOUBLE)) FROM m.t GROUP BY g UNION ALL SELECT 'constant segments', (SELECT count(*) FROM pragma_storage_info('m.t') WHERE column_name = 'x' AND segment_type = 'DOUBLE' AND compression = 'Constant')::VARCHAR, NULL, NULL, NULL, NULL ORDER BY g",
+   "observed": "'both', 'nan', 'nan', 'inf', '-inf', 'nan'; 'constant segments', '3', NULL, NULL, NULL, NULL; 'nan', 'nan', 'nan', 'inf', '-inf', 'nan'; 'nan+finite', 'nan', 'nan', 'inf', '-inf', 'nan'; 'ninf', '-inf', '-inf', 'inf', '-inf', 'nan'; 'ninf+finite', '-inf', '-inf', 'inf', '-inf', 'nan'; 'pinf', 'inf', 'inf', 'inf', '-inf', 'nan'; 'pinf+finite', 'inf', 'inf', 'inf', '-inf', 'nan'"
+  },
+  {
    "construct": "sum-empty",
    "area": "aggregates",
    "setup": [],
