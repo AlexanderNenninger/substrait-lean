@@ -1744,7 +1744,7 @@ the evidence, and the route where it is not `translated`:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
+| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
@@ -2139,9 +2139,10 @@ and `MAX` combine in two phases; with split keys (`keys={"orders":
 key, co-partitioned joins and tie-free windows run per shard. `SUM` and
 `AVG` of doubles split where `reproducible=` accepts doubles within a
 tolerance, as a sink's `reproducible=` states it:
-`sv.equivalent(floats="plan")` accepts the proved bound, and
+`sv.equivalent(floats="plan")` accepts the bound `Shard.lean` proves over the
+reals (`sharded_near`), and
 `sv.equivalent(floats=sv.within(abs=...))` raises where a row's bound exceeds
-the tolerance. `tolerance=True` returns the proved bound per row on how far
+the tolerance. `tolerance=True` returns that bound per row on how far
 each is from the one-pass sum
 ([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg)).
 Anything else raises `NotShardable` with the reason. The checker also proves

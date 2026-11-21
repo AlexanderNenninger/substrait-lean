@@ -71,7 +71,7 @@ SQL or relational algebra, most of it in Coq.
 
 ## Related tools
 
-As far as we found, no other project combines a mechanized semantics of plans with proved contracts, proved translations to engines, incremental maintenance and float bounds, and none formalizes Substrait. Each neighbour covers one part:
+As far as we found, no other project combines a mechanized semantics of plans with proved contracts, translations to engines proved against a model of each engine's functions, incremental maintenance and float bounds, and none formalizes Substrait. Each neighbour covers one part:
 
 | Tool | What it does | Relation to sverify |
 |---|---|---|
