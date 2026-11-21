@@ -19,14 +19,24 @@
 # pull request that changes python/), so the two can't drift apart.
 set -euo pipefail
 
+# The absolute path of a file, as uv reads it: Git Bash on Windows writes
+# `/d/a/x`, which a `file://` URL keeps as it is, so take Windows' form there.
+abs() {
+  local dir
+  dir=$(cd "$(dirname "$1")" && { pwd -W 2>/dev/null || pwd; })
+  echo "$dir/$(basename "$1")"
+}
+# `file:///D:/a/x.whl` on Windows, `file:///a/x.whl` elsewhere.
+uri() { local p; p=$(abs "$1"); echo "file:///${p#/}"; }
+
 here=$(cd "$(dirname "$0")/.." && pwd)
 #: The engine packages whose tests run here (`python/pyproject.toml`'s `testpaths`).
 engines=(polars spark duckdb)
 install=() python=() select=()
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wheel) install+=(--with "sverify[all] @ file://$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
-    --engine-wheel) install+=(--with "$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift 2 ;;
+    --wheel) install+=(--with "sverify[all] @ $(uri "$2")"); shift 2 ;;
+    --engine-wheel) install+=(--with "$(abs "$2")"); shift 2 ;;
     --editable)
       install+=(--with-editable "$(cd "$2" && pwd)[all]")
       for e in "${engines[@]}"; do install+=(--with-editable "$here/../engines/$e"); done
@@ -53,7 +63,8 @@ for e in "${engines[@]}"; do
   cp -r "$here/../engines/$e/tests" "$work/engines/$e/tests"
   engine_tests+=("../engines/$e/tests")
 done
-export PYTHONPATH="$work/python/tools"
+PYTHONPATH=$(cd "$work/python/tools" && { pwd -W 2>/dev/null || pwd; })
+export PYTHONPATH
 cd "$work/python"
 
 # DuckDB at the version `uv.lock` locks: the engine facts are probed at one
