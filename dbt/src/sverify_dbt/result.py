@@ -305,11 +305,11 @@ class CheckResult:
         path = Path(path)
         data: dict[str, Any] = {}
         if path.is_file():
-            data = yaml.safe_load(path.read_text()) or {}
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         selectors = [s for s in data.get("selectors") or [] if s.get("name") != name]
         selectors.append(self.selector(name))
         data["selectors"] = selectors
-        path.write_text(yaml.safe_dump(data, sort_keys=False))
+        path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         return path
 
 
