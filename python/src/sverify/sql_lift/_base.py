@@ -1759,7 +1759,7 @@ class _Lift:
             raise SqlUnsupported(
                 "GROUP BY ALL over `*` (which is also what a query that starts with FROM selects) "
                 "is not supported yet; name the columns in a SELECT",
-                construct="GROUP BY ALL over *",
+                construct="GROUP BY ALL",
             )
         groups = [self.expr(k, scope) for k in keys]
         measures = [self.measure(a, scope) for a in aggs]
