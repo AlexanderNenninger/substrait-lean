@@ -1,0 +1,13 @@
+{
+  "id": "F212",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The two-stage double SUM/AVG rests on a Lean lemma for the shaped summation orders and on probed facts for SCALED_CONSTANT and COMPENSATED; SumOrder and D35 are unchanged; the SQL rewrite is tested by a differential.",
+  "issues": [
+    1608,
+    1787
+  ],
+  "source": "fable-ruling-212-1608-7-two-stage-sum.md"
+}

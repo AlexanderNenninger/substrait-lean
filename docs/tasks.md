@@ -563,7 +563,7 @@ assert report.verdict == sv.Verdict.PROVED
 Lean gives each order at most one version when the join condition equates the
 `by` columns, tests `valid_from <= x` and `x < valid_to` (or `valid_to IS NULL OR
 x < valid_to`) for one expression `x` of the order's columns; the join keeps the
-orders' keys (`Rel.keys`). A closed end (`x <= valid_to`) matches two versions at a
+orders' keys. A closed end (`x <= valid_to`) matches two versions at a
 boundary and has no rule. `dbt_utils.mutually_exclusive_ranges` is the same test
 in dbt.
 
@@ -636,7 +636,7 @@ def unit_price(orders):
     return orders.select(orders.id, unit=orders.amount // orders.qty)
 
 
-report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
+report = unit_price.verify(orders={"id": "int64", "amount": "int64", "qty": "int64"})
 print(report.verdict == sv.Verdict.PROVED, [n.label for n in report.needs])
 # False ['(_.qty != 0)']
 print(report.ensures[0].message)
@@ -693,8 +693,9 @@ the profile), sverify's version and a hash of the checker binary, so a
 change to any of them proves again
 ([test_proof_cache.py](../python/tests/test_proof_cache.py)). The cache is
 in `SVERIFY_CACHE_DIR`, else `$XDG_CACHE_HOME/sverify`, else
-`~/.cache/sverify`; processes share it, and `SVERIFY_CACHE=off` turns it
-off. Within a Python process or a command, one checker process answers
+`~/.cache/sverify`; processes share it. `SVERIFY_CACHE_DIR` moves the cache
+and `SVERIFY_CACHE=off` (or `0`, `false`, `no`) turns it off; the two are
+independent, and `off` wins when both are set. Within a Python process or a command, one checker process answers
 every request. A request that a time budget or an interrupt stops ends that
 process, and the next request starts another.
 
@@ -710,16 +711,29 @@ sverify check pipelines/orders.py:paid       # one node or transform
 sverify check pipelines/orders.py --full     # with each node's full report
 sverify check pipelines/orders.py --diff     # the preconditions the proofs need, as a diff
 sverify check pipelines/orders.py --fix      # write them into requires=, then check again
+sverify check models/orders.sql --schema schemas.yaml   # one SQL query, no Python
 sverify refresh pipelines/orders.py:paid     # run a node and report what changed
 sverify explain may_be_false                 # what a [code] of check's output means
 ```
 
-`check` imports the file without running it. Every contracted transform
+`check` imports the file without running it, so a pull request from a fork is
+untrusted code under `pull_request_target`; use `pull_request` for it, or
+check out only the base branch. Every contracted transform
 the file applies is proved, a node's on its sources' schemas, and a proof
 that fails is reported where a call would raise, so one unproved node does
 not hide the next. A `refresh()` in the file belongs under
 `if __name__ == "__main__":`; while sverify checks the file, it raises. A
 directory with a `dbt_project.yml` goes to `sverify-dbt check`.
+
+A `.sql` file holds one query (a second statement is a usage error, exit 2).
+`--schema FILE` gives the types of the tables it reads, as YAML or JSON,
+`{table: {column: type}}` with the type strings of `sverify.verify(tables=)`.
+The verdict is the one `verify` gives with no contract: what the query
+computes and what it can raise, with the preconditions it needs. A table the
+file does not describe is a usage error, and a construct the lift does not read is
+exit 3, by name. `--dialect` and `--semantics` take `sverify.sql`'s values and
+defaults (`sverify.sql` documents them). `--fix`, `--diff` and `--against-sink` read
+Python files only.
 
 A `DeltaSource` or `IcebergSource` opens its table to learn its schema, which
 on a pull request means credentials and a network. Declare it instead,
@@ -760,7 +774,7 @@ conditions is no drift, and a changed plan or profile is a `plan_changed`
 note ([test_drift.py](../python/tests/test_drift.py)). The preconditions a
 contract added are not compared: the sink's record does not store them.
 
-`--format` (or `--output-format`) chooses the output:
+`--format` chooses the output:
 
 - `text`, the default, as above;
 - `json` (`--json` for short), one document for tools in the format of
@@ -784,12 +798,14 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 0 | proved, or every postcondition it does not prove is checked on the data at each refresh; a refresh committed every row |
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
-| 3 | refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`), or no route takes a proved node to the engine |
+| 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 4 | time or memory budget exceeded |
-| 5 | a refresh committed with rows quarantined, or held a node |
+| 5 | a refresh committed with rows quarantined |
 | 6 | error: the file raised, I/O, a crash |
+| 7 | refused: no route takes a proved node to the engine |
+| 8 | a refresh held a node |
 
-With 5, `refresh` prints `Refresh.alert()` after the summary, and its
+With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
 data that otherwise stay out of CI artifacts and issues.
@@ -948,21 +964,21 @@ A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
 over an input with delta rules, is maintained from a count and a sum per
 group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
-[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[`analysis/Sverify/Analysis/IncrementalAgg.lean`](../analysis/Sverify/Analysis/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
 `DECIMAL` `SUM` and `AVG` keep the same state, `SUM`, `AVG`, `VAR`,
 `STDDEV`, `COVAR` and `CORR` of doubles an exact one, rounded once, with no
 drift
 (`LinearAgg.fsum_no_drift` in
-[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
+[`analysis/Sverify/Analysis/IncrementalFloat.lean`](../analysis/Sverify/Analysis/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
 groups it deletes from are recomputed from the new input
 (`ExtremeAgg.extreme_maintained` in
-[`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)).
+[`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)).
 A node that ends in a semi or anti join on equal keys keeps a count of
 matches per key and reads the left input only for the keys whose count
 leaves or returns to 0 (`SemiDelta.semi_maintained` in
-[`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean)).
+[`analysis/Sverify/Analysis/IncrementalSemi.lean`](../analysis/Sverify/Analysis/IncrementalSemi.lean)).
 A node without delta rules (left join, other aggregates, window, `LIMIT`) is
 recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
@@ -1418,6 +1434,18 @@ reading or writing (`StageRefresh.credentials`, `"credentials"` in
 what its credential may write (`Storage(writes=[...])` or the
 configuration's `writes`), and with `[inline_credentials]` when options
 hold values or a URI holds them in its userinfo (`s3://key:secret@bucket`).
+Where nothing is declared, an AWS session in the options
+(`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, with `AWS_SESSION_TOKEN`
+for an assumed role) reports its own scope when `boto3` is installed
+(`sverify[secrets-aws]`): sverify asks STS who the session is and reads the
+`GetObject` and `PutObject` grants of that role's or user's policies, once
+per credential. A `Deny`, a condition, a `NotAction`, `NotResource` or
+a pattern that is not a prefix leaves the scope unknown, as does a session that
+cannot read its own policies. Session policies, permissions boundaries and
+bucket policies are not in the identity's policies, so the scope is what they
+grant: a session policy or boundary can narrow the session below it, and a
+bucket policy can widen it, so neither `in_scope` value is a guarantee. Other stores (GCS, Azure, a vended catalog credential) report nothing
+yet and need `reads=` and `writes=`.
 Every URI sverify records, reports, exports or sends is written without
 userinfo, query string or fragment: a sink's `location`, `started`,
 `credentials[].location`, the ODCS `physicalName` and the OpenLineage
@@ -1535,7 +1563,7 @@ upstream = openlineage.read("events.jsonl").dataset(paid_sink)
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(upstream.verified, doubled_paid.check(paid=upstream.schema).verdict)
+print(upstream.verified, doubled_paid.verify(paid=upstream.schema).verdict)
 # True proved
 ```
 
@@ -1730,7 +1758,7 @@ the evidence, and the route where it is not `translated`:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
+| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
@@ -1870,9 +1898,10 @@ the export handles it in one of these ways:
   doubles is `x + 0.0 = y + 0.0 OR (is_nan(x) AND is_nan(y))`, a double
   grouping key is the pair `(is_nan(x), x + 0.0)`, and a double sort key
   sorts by `is_nan(x)` first, so that NaN equals NaN and sorts greatest,
-  and the two zeros are one (ST-4). A cast of a double to an integer
-  truncates first (ST-6). A gap the plan meets where no shim applies yet,
-  such as an ordering comparison of doubles, refuses the export.
+  and the two zeros are one (ST-4). An ordering comparison of doubles
+  (`<`, `<=`, `>`, `>=`, `between`) follows the same order. A cast of a
+  double to an integer truncates first (ST-6). A gap the plan meets where
+  no shim applies refuses the export.
 - `"annotate"` keeps the plan as written and records each choice in the
   manifest as an assumption the consumer must honour (`assumptions`, class
   `assumed`).
@@ -1944,6 +1973,17 @@ every export against that release's JSON schema
 [test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:
 `pip install 'sverify[odcs]'`. JSON needs nothing.
 
+Sverify reads the standard's own published examples, the 42 contracts of
+ODCS v3.2.0's `docs/examples`
+([vendored](../python/tests/standards/odcs-examples-v3.2.0/SOURCE),
+[ledger](../python/tests/odcs_examples.json),
+`python -m sverify_dev.odcs_examples`). It reads 151 conditions from them,
+and 22 rules stay unread, each with its reason and the issue that would read
+it or why it does not by design. Of the 104 schema objects with conditions,
+95 export and read back to the same conditions, 4 are not tried (a foreign
+key to another object) and 5 are refused on a column type sverify does not
+read yet.
+
 ```python
 import pyarrow as pa
 import sverify as sv
@@ -1970,7 +2010,7 @@ paid_contract = odcs.read("paid.odcs.yaml")
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(doubled_paid.check(paid=paid_contract.schema()).verdict)
+print(doubled_paid.verify(paid=paid_contract.schema()).verdict)
 # proved
 ```
 
@@ -2077,8 +2117,13 @@ reads the settings the plan will run under and compares them:
 - Polars: an engine affinity that forces another engine than streaming
   (`pl.Config.set_engine_affinity("in-memory")`) refuses the run, since
   sverify runs Polars's streaming engine.
-- Another engine version warns (`EngineVersionWarning`), and another major
-  version is refused (`EngineVersionError`) until the probes are re-run.
+- An unprobed patch of the probed minor warns (`EngineVersionWarning`) and
+  is recorded on the route (`Route.unprobed_version`); another minor or
+  major is refused (`EngineVersionError`) until the probes are re-run, and
+  runs with `run(..., unverified=True)`
+  ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)). To
+  refuse every unprobed version, turn the warning into an error:
+  `warnings.simplefilter("error", sverify.errors.EngineVersionWarning)`.
 
 `lines.get_backend()`, the backend of a table of the connection, is its Ibis
 DuckDB backend, for SQL of your own, such as
@@ -2109,9 +2154,10 @@ and `MAX` combine in two phases; with split keys (`keys={"orders":
 key, co-partitioned joins and tie-free windows run per shard. `SUM` and
 `AVG` of doubles split where `reproducible=` accepts doubles within a
 tolerance, as a sink's `reproducible=` states it:
-`sv.equivalent(floats="plan")` accepts the proved bound, and
+`sv.equivalent(floats="plan")` accepts the bound `Shard.lean` proves over the
+reals (`sharded_near`), and
 `sv.equivalent(floats=sv.within(abs=...))` raises where a row's bound exceeds
-the tolerance. `tolerance=True` returns the proved bound per row on how far
+the tolerance. `tolerance=True` returns that bound per row on how far
 each is from the one-pass sum
 ([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg)).
 Anything else raises `NotShardable` with the reason. The checker also proves

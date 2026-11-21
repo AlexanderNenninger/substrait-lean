@@ -73,7 +73,7 @@ def _(mo):
 
 @app.cell
 def _(pa, sv):
-    from sverify.engines import delta_plans
+    from sverify.engines.plan import delta_plans
     from sverify.io import StaticSource
 
     def arrow_table(schema, rows):
@@ -371,7 +371,7 @@ def _(mo):
     Lean proves the full rule once. `Rel.delta` generates the update plan
     as an ordinary plan that reads the old tables and the change tables,
     and `Rel.delta_correct` proves it computes exactly the change. Any
-    engine can run it. `sverify.engines.delta_plans(view.internal_plan)` returns the
+    engine can run it. `sverify.engines.plan.delta_plans(view.internal_plan)` returns the
     plan of our view. `orders$delta` and `customers$delta` are the change
     tables, with a trailing `__weight` column; old tables get weight 1
     (`Project +[1]`), and the join multiplies weights (`$3 * $6`):
@@ -993,7 +993,7 @@ def _(mo):
     keys, NaN, integer overflow, the rounding of integer division and the
     order of ties. Plans come from one producer: the vendored Ibis
     producer, or sverify's lift of DuckDB's SQL (SQLGlot) for SQL strings.
-    DuckDB (the default), Polars on its streaming engine and Spark 4.x run
+    DuckDB (the default), Polars on its streaming engine and Spark 4.3 run
     plans, each with a proved profile, and sverify writes DuckDB, Spark and
     Snowflake SQL; Snowflake's profile and running plans on it come before
     1.0.
@@ -1002,7 +1002,7 @@ def _(mo):
     and the tests use DuckDB as their default oracle. DuckDB and Polars are
     characterized fact by fact, each fact with its evidence
     ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
-    written form of the plan (`sverify.engines.written_plan`), so what runs
+    written form of the plan (`sverify.engines.plan.written_plan`), so what runs
     is what was checked, and their translators spell out the reference's
     semantics explicitly, whatever the engine's defaults.
 
@@ -1015,7 +1015,8 @@ def _(mo):
 
 @app.cell
 def _(ibis, math, sv):
-    from sverify.engines import ENGINES, run, substrait_json, written_plan
+    from sverify.engines import ENGINES, run
+    from sverify.engines.plan import substrait_json, written_plan
 
     T_SCHEMA = ibis.schema({"k": "string", "qty": "int64", "v": "float64"})
     U_SCHEMA = ibis.schema({"k": "string", "label": "string"})
@@ -1393,7 +1394,7 @@ def _(mo):
     ### SQL for DuckDB, Snowflake and Spark
 
     When the data lives in a warehouse, the plan goes to the warehouse.
-    `sverify.engines.to_sql` writes a checked plan, or one of Lean's update
+    `sverify.engines.plan.to_sql` writes a checked plan, or one of Lean's update
     plans, as SQL whose result is `Rel.eval` of the plan. Columns are
     positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS TRUE`),
     integers are checked at their declared width and every `ORDER BY` says where
@@ -1420,7 +1421,8 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(con, dialect, json, mo, sql_query, substrait_json):
     import sqlglot
-    from sverify.engines import UnsupportedError, to_sql
+    from sverify.engines import UnsupportedError
+    from sverify.engines.plan import to_sql
 
     try:
         _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))

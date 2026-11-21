@@ -196,9 +196,13 @@ jobs:
           out ledger=false
           out backlog=false
           out upstack=false
-          # The `test` matrix: the backends that run, and `core` in three shards.
+          # The `test` matrix: the backends that run, `core` in three shards,
+          # and `spark` in two when it runs (`$2`): one Spark job ran 9.5 to
+          # 13.7 min against the 15-min timeout.
           matrix() {
-            echo "{\"backends\":[$1],\"include\":[{\"backends\":\"core\",\"shard\":\"1/3\"},{\"backends\":\"core\",\"shard\":\"2/3\"},{\"backends\":\"core\",\"shard\":\"3/3\"}]}"
+            local shards='{"backends":"core","shard":"1/3"},{"backends":"core","shard":"2/3"},{"backends":"core","shard":"3/3"}'
+            [ "$2" = true ] && shards="$shards"',{"backends":"spark","shard":"1/2"},{"backends":"spark","shard":"2/2"}'
+            echo "{\"backends\":[$1],\"include\":[$shards]}"
           }
           all() {
             out code=true
@@ -209,7 +213,7 @@ jobs:
             out dbt=true
             out python=true
             out models=true
-            out "matrix=$(matrix '"duckdb","spark","polars snowflake"')"
+            out "matrix=$(matrix '"duckdb","polars snowflake"' true)"
           }
           # A push to main whose tree a pull request's run already tested.
           tested() {
@@ -292,9 +296,8 @@ jobs:
             out dbt=false
           fi
           backends='"duckdb"'
-          [ "$(flag "$skip_spark")" = true ] && backends="$backends,\"spark\""
           [ "$(flag "$skip_polars")" = true ] && backends="$backends,\"polars snowflake\""
-          m=$(matrix "$backends")
+          m=$(matrix "$backends" "$(flag "$skip_spark")")
           echo "matrix: $m"
           out "matrix=$m"
           if grep -qE '^(float-bounds/|core/Sverify/Core/Float(Exact|Format)?\.lean$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
@@ -504,8 +507,8 @@ jobs:
     name: test (${{ matrix.backends }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     strategy:
       fail-fast: false
-      # `core` is split into three shards (`SVERIFY_SHARD`, tests/conftest.py)
-      # so that no job runs much longer than the others.
+      # `core` is split into three shards and `spark` into two (`SVERIFY_SHARD`,
+      # tests/_suite.py) so that no job runs much longer than the others.
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     # Spark stays on GitHub's runners for now: its runs were reclaimed twice on spot (#1737).
     runs-on: ${{ contains(matrix.backends, 'spark') && 'ubuntu-latest' || fromJSON(needs.route.outputs.runner) }}
@@ -941,6 +944,9 @@ jobs:
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
     timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read  # the replay's closed-issue check (`gh issue view`)
     defaults:
       run:
         working-directory: dbt
@@ -969,7 +975,16 @@ jobs:
       # The sample project's packages once: the tests' copies of it take
       # them (tests/conftest.py), and the steps below too.
       - run: uv run --no-sync dbt --no-use-colors deps --project-dir examples/shop --profiles-dir examples/shop
-      - run: uv run --no-sync pytest -q
+      # The coverage of `sverify_dbt` (#750), as `sverify`'s: in the job
+      # summary, a warning under 90 %, never a failure, and traced outside pull
+      # requests only (tracing costs time).
+      - if: github.event_name == 'pull_request'
+        run: uv run --no-sync pytest -q
+      - if: github.event_name != 'pull_request'
+        run: |
+          uv run --no-sync --with coverage coverage run --branch --source=sverify_dbt -m pytest -q
+          uv run --no-sync --with coverage coverage json -o coverage.json
+          python3 ../python/scripts/coverage_summary.py coverage.json --package sverify_dbt --target 90 >> "$GITHUB_STEP_SUMMARY"
       - env:
           DBT: uv run --no-sync dbt --no-use-colors
           SHOP: --project-dir examples/shop --profiles-dir examples/shop
@@ -989,9 +1004,10 @@ jobs:
       - name: dbt packages' integration projects (#859)
         env:
           DO_NOT_TRACK: "1"
+          GH_TOKEN: ${{ github.token }}  # the closed-issue check asks `gh`
         run: |
           if ! uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1; then
-            echo "::warning title=dbt replay gate::outcomes differ from dbt/replay/; see the step's log and the summary"
+            echo "::warning title=dbt replay gate::the replay check found something (an outcome that differs from dbt/replay/, or an entry on a closed issue); see the step's log and the summary"
           fi
           cat "$RUNNER_TEMP/replay.txt"
           { echo "### dbt packages' integration projects (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
@@ -1025,7 +1041,32 @@ jobs:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.
           prune-cache: true
           cache-suffix: pruned
+      # actionlint is the release's binary, checked against the release's
+      # checksum and cached: a Docker Hub pull failed a merge batch (#2090).
+      # The path is under the workspace, so a cache saved on another runner
+      # restores to the same place.
+      - id: actionlint
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .actionlint
+          key: actionlint-1.7.7-${{ runner.os }}-${{ runner.arch }}
+      - if: steps.actionlint.outputs.cache-hit != 'true'
+        env:
+          VERSION: 1.7.7
+        run: |
+          set -euo pipefail
+          case "$RUNNER_ARCH" in
+            ARM64) arch=arm64 sum=401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0 ;;
+            *) arch=amd64 sum=023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757 ;;
+          esac
+          tgz="$RUNNER_TEMP/actionlint_${VERSION}_linux_$arch.tar.gz"
+          curl -fsSL --retry 5 --retry-all-errors -o "$tgz" \
+            "https://github.com/rhysd/actionlint/releases/download/v$VERSION/actionlint_${VERSION}_linux_$arch.tar.gz"
+          echo "$sum  $tgz" | sha256sum -c -
+          mkdir -p .actionlint
+          tar -xzf "$tgz" -C .actionlint actionlint
       - run: |
+          actionlint="$PWD/.actionlint/actionlint"
           repo=$(mktemp -d)
           cp -R templates/pipelines/. "$repo/"
           git -C "$repo" init --quiet -b main
@@ -1041,9 +1082,8 @@ jobs:
           uv run --locked --project "$py" ruff check .
           uv run --locked --project "$py" ruff format --check .
           uv run --locked --project "$py" python -m pytest -q -p no:cacheprovider
-          # actionlint reads the workflows of the git repository it runs in;
-          # as the owner of the files, or git refuses the repository.
-          docker run --rm --user "$(id -u):$(id -g)" -v "$repo:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+          # actionlint reads the workflows of the git repository it runs in.
+          "$actionlint" -color
 
   # Float error bounds (docs/float-bounds.md): a separate Lake package that
   # needs Mathlib, fetched as prebuilt oleans.

@@ -6,7 +6,7 @@ Internal: not part of sverify's public API.
 D25 and D30, functions of exact moments: integer sums over a group's values
 in units of `2⁻¹⁰⁷⁴` (`Σx`, `Σy`) and `2⁻²¹⁴⁸` (`Σx²`, `Σxy`, `Σy²`), with
 the counts of NaN, `+∞` and `-∞` among them. `LinearAgg.floatState`,
-`varState`, `covState` and `corrState` (`SubstraitLean/IncrementalFloat.lean`)
+`varState`, `covState` and `corrState` (`analysis/Sverify/Analysis/IncrementalFloat.lean`)
 keep them and finish as `floatSumCR`, `floatAvgCR`, `varOf`, `covOf` and
 `corrOf` do; `LinearAgg.no_drift` proves that after any sequence of batches
 the state finishes to the aggregate of the group's current rows.

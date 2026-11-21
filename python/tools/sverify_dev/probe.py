@@ -820,6 +820,32 @@ OBSERVATIONS: list[Observation] = [
        " (2, 'both', '-inf'::DOUBLE), (3, 'both', 1.0), (4, 'pos', 'inf'::DOUBLE),"
        " (5, 'pos', 1.0), (6, 'neg', '-inf'::DOUBLE), (7, 'neg', 1.0), (8, 'finite', 1.0),"
        " (9, 'finite', 2.0)) v(i, g, x)"),
+    # A grouped `sum` and `avg` over constant runs of `+inf`, `-inf` and NaN,
+    # alone and with finite rows, from a checkpointed table whose runs are
+    # constant-compressed segments (`RepeatedStateValue::Multiply`, the
+    # `SCALED_CONSTANT` order), and of a constant argument: every result is
+    # not finite (ruling 212, A2).
+    _o("sum-constant-run-nonfinite", "aggregates",
+       "SELECT g, nan_text(sum(x)), nan_text(avg(x)), nan_text(sum('inf'::DOUBLE)),"
+       " nan_text(sum('-inf'::DOUBLE)), nan_text(sum('nan'::DOUBLE)) FROM m.t GROUP BY g"
+       " UNION ALL SELECT 'constant segments', (SELECT count(*) FROM pragma_storage_info('m.t')"
+       " WHERE column_name = 'x' AND segment_type = 'DOUBLE' AND compression = 'Constant')"
+       "::VARCHAR, NULL, NULL, NULL, NULL ORDER BY g",
+       *_NAN_TEXT,
+       "ATTACH ':memory:' AS m (COMPRESS)",
+       "CREATE TABLE m.t AS SELECT g, x FROM ("
+       " SELECT 'pinf' AS g, 'inf'::DOUBLE AS x FROM range(130000)"
+       " UNION ALL SELECT 'ninf', '-inf'::DOUBLE FROM range(130000)"
+       " UNION ALL SELECT 'nan', 'nan'::DOUBLE FROM range(130000)"
+       " UNION ALL SELECT 'pinf+finite', CASE WHEN i < 125000 THEN 'inf'::DOUBLE ELSE 1.0 END"
+       " FROM range(130000) r(i)"
+       " UNION ALL SELECT 'ninf+finite', CASE WHEN i < 125000 THEN '-inf'::DOUBLE ELSE 1.0 END"
+       " FROM range(130000) r(i)"
+       " UNION ALL SELECT 'nan+finite', CASE WHEN i < 125000 THEN 'nan'::DOUBLE ELSE 1.0 END"
+       " FROM range(130000) r(i)"
+       " UNION ALL SELECT 'both', CASE WHEN i < 65000 THEN 'inf'::DOUBLE ELSE '-inf'::DOUBLE END"
+       " FROM range(130000) r(i)) ORDER BY g",
+       "CHECKPOINT m"),
     _o("sum-empty", "aggregates",
        "SELECT sum(d), avg(d), sum(f), avg(f), sum(i), avg(i), (SELECT sum(d) FROM"
        " (VALUES (NULL::DOUBLE)) n(d)) FROM (SELECT 1.0::DOUBLE AS d, 1.0::FLOAT AS f,"

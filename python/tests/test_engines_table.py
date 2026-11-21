@@ -157,7 +157,8 @@ def test_an_engine_from_outside_runs_as_the_built_ins_do(twin: ProfilePlugin) ->
     import pyarrow as pa
 
     import sverify as sv
-    from sverify.engines import run, to_sql, written_plan
+    from sverify.engines import run
+    from sverify.engines.plan import to_sql, written_plan
     from sverify.sql import dialect_of
 
     con = sv.connect("twin")  # type: ignore[arg-type]
@@ -238,6 +239,7 @@ _NAME_LISTS = {
     "sverify/engine.py": 1,
     "sverify/report.py": 1,
     "sverify_dev/bugs.py": 2,
+    "sverify_dev/canary.py": 1,
     "sverify_dev/catalogue.py": 3,
     "sverify_dev/coverage.py": 1,
     "sverify_dev/coverage_cases/_common.py": 3,

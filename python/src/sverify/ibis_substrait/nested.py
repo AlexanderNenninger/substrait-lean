@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import (
@@ -26,6 +27,8 @@ from sverify.plan_json import (
     Unsupported,
     call,
     cast_json,
+    field_ref,
+    if_then,
     literal,
     type_json,
 )
@@ -125,19 +128,49 @@ def _table_unnest(op: Any) -> Json:
     # detail (`docs/nested-values.md`). The column keeps its place.
     if op.offset is not None:
         raise ProducerUnsupported("unnest(offset=) is not supported", construct="function unnest")
-    if op.keep_empty:
-        raise ProducerUnsupported(
-            "unnest(keep_empty=True) is not supported", construct="function unnest"
-        )
     if op.column_name != op.column.name or not isinstance(op.column, ops.Field):
         raise Unsupported("unnest must unnest a column in place", construct="function unnest")
     col = list(op.parent.schema.names).index(op.column.name)
+    source = rel(op.parent)
+    if op.keep_empty:
+        source = _keep_empty(source, op.parent.schema, col)
     detail = {"@type": "type.googleapis.com/sverify.Unnest", "column": col}
-    return {"extensionSingle": {"input": rel(op.parent), "detail": detail}}
+    return {"extensionSingle": {"input": source, "detail": detail}}
+
+
+def _keep_empty(source: Json, schema: Any, col: int) -> Json:
+    """`unnest(keep_empty=True)` (#1917, ruling 181): an empty or NULL list is
+    `[NULL]` first, so that the one row Rel.unnest gives it keeps the other
+    columns and has a NULL element. A project, not a union with the empty
+    rows: the input is read once."""
+    lst = field_ref(col)
+    empty = call("or", [call("is_null", [lst]), call("equal", [call("cardinality", [lst]),
+                                                              literal(0, dt.int64)])])  # fmt: skip
+    one_null = literal([None], schema.types[col])
+    fixed = if_then([(empty, one_null)], lst)
+    n = len(schema)
+    mapping = [n if i == col else i for i in range(n)]
+    return {
+        "project": {
+            "common": {"emit": {"outputMapping": mapping}},
+            "input": source,
+            "expressions": [fixed],
+        }
+    }
+
+
+def _array(x: Exprs, op: Any) -> Json:
+    """`[a, b]` as `list_prepend(a, list_prepend(b, []))`, the elements of a
+    list that are not constants (#1910)."""
+    out = literal([], op.dtype)
+    for e in reversed(op.exprs):
+        out = call("list_prepend", [x(e, op.dtype.value_type), out])
+    return out
 
 
 register(
     {
+        ops.Array: _array,
         ops.StructField: _struct_field,
         ops.ArrayIndex: _array_index,
         ops.ArrayLength: _unary("cardinality"),

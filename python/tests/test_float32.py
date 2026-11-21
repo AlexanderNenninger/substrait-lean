@@ -11,6 +11,7 @@ import duckdb
 import ibis
 import pyarrow as pa
 import pytest
+from ibis import _
 
 import sverify as sv
 from sverify._unsupported import Unsupported
@@ -200,3 +201,35 @@ def test_an_integer_constant_rounds_to_float32_as_duckdb():
     con = sv.connect()
     con.put("t", data)
     assert report.run(con, "duckdb").column("f").to_pylist() == [16777216.0]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_negative_zero_constant_meets_zero_at_a_key(engine):
+    """A `-0.0` constant stays `-0.0` (ruling 186 P4, D31), and a key compares
+    it equal to `0.0`: one group, and every row joins."""
+    zero = ibis.literal(0.0)
+    flip = ibis.ifelse(T.i % 2 == 0, ibis.literal(-0.0), zero)
+    grouped = sv.verify(T.mutate(k=flip).group_by("k").agg(x=T.i.count()))
+    assert grouped.issues == [], grouped.issues
+    assert run(grouped, engine).to_pylist() == [5]
+    left = T.select(k=ibis.literal(-0.0), a=T.i)
+    right = T.select(k=zero, b=T.i)
+    joined = sv.verify(left.join(right, "k").select(x=_.a))
+    assert joined.issues == [], joined.issues
+    assert len(run(joined, engine)) == 25
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_float32_cast_to_an_integer_truncates_on_every_engine(engine):
+    """The reference truncates (R9), and the written plan does too, where
+    DuckDB's own cast rounds 0.55 to 1 (#2152)."""
+    t = ibis.table({"f": "!float32"}, name="t")
+    report = sv.verify(t.select(x=t.f.cast("int8")), requires=["f > -100 AND f < 100"])
+    assert report.verdict == "proved", report.issues
+    if engine == "spark":
+        from spark_session import session
+
+        session()
+    con = sv.connect()
+    con.put("t", pa.table({"f": pa.array([0.55, 1.5, -1.5, 99.9], pa.float32())}))
+    assert report.run(con, engine).column("x").to_pylist() == [0, 1, -1, 99]

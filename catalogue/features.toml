@@ -22,7 +22,7 @@ cross_join = { lean = "yes", description = "cartesian product" }
 non_equi_join = { lean = "partial", description = "join on <, <=, BETWEEN of the two sides", note = "integers and timestamps only: string < is NULL in the model, so engines refuse it" }
 self_join = { lean = "yes", description = "a table joined with itself" }
 multi_join = { lean = "yes", description = "four or more tables joined (star or snowflake schema)" }
-asof_join = { lean = "yes", description = "latest right row at or before each left row", note = "sverify.asof_join: range join + ROW_NUMBER; DataFusion has no native ASOF" }
+asof_join = { lean = "yes", description = "latest right row at or before each left row", note = "sverify.asof_join: range join + ROW_NUMBER" }
 range_join = { lean = "yes", description = "join on a value lying between two columns (SCD2 validity, intervals)" }
 union_all = { lean = "yes", description = "UNION ALL" }
 union_distinct = { lean = "yes", description = "UNION (distinct)" }
@@ -34,13 +34,13 @@ order_by = { lean = "yes", description = "ORDER BY in the result" }
 limit = { lean = "yes", description = "LIMIT / top-N after a sort" }
 offset = { lean = "yes", description = "OFFSET (pagination)" }
 cte = { lean = "yes", description = "non-recursive WITH (inlined)" }
-recursive_cte = { lean = "no", description = "WITH RECURSIVE", note = "DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model" }
+recursive_cte = { lean = "no", description = "WITH RECURSIVE", note = "not supported yet: the model has no fixpoint ([#320](https://github.com/AlexanderNenninger/substrait-lean/issues/320))" }
 in_subquery = { lean = "yes", description = "x IN (SELECT …)" }
-not_in_subquery = { lean = "yes", description = "x NOT IN (SELECT …), with its NULL semantics", note = "the checker lifts it with SQL's NULL rule; DataFusion running the SQL gets NULLs in the subquery wrong" }
-exists_subquery = { lean = "yes", description = "EXISTS / NOT EXISTS with a correlated subquery", note = "the Ibis producer writes a semi or anti join; DataFusion's Substrait producer cannot convert Exists" }
-scalar_subquery = { lean = "yes", description = "uncorrelated scalar subquery (x > (SELECT avg …))", note = "through the Ibis producer, where the checker proves at most one row; DataFusion's Substrait producer cannot convert it" }
+not_in_subquery = { lean = "yes", description = "x NOT IN (SELECT …), with its NULL semantics", note = "the checker lifts it with SQL's NULL rule" }
+exists_subquery = { lean = "yes", description = "EXISTS / NOT EXISTS with a correlated subquery", note = "the Ibis producer writes a semi or anti join" }
+scalar_subquery = { lean = "yes", description = "uncorrelated scalar subquery (x > (SELECT avg …))", note = "through the Ibis producer, where the checker proves at most one row" }
 correlated_subquery = { lean = "no", description = "correlated scalar subquery", note = "as scalar_subquery; rewrite as a join with a grouped aggregate" }
-unnest = { lean = "partial", description = "UNNEST / explode of lists", note = "Rel.unnest of a list column; Ibis pivot_longer as a UNION ALL (#804); DataFusion's Substrait producer has no Unnest" }
+unnest = { lean = "partial", description = "UNNEST / explode of lists", note = "Rel.unnest of a list column; Ibis pivot_longer as a UNION ALL (#804)" }
 pivot = { lean = "yes", description = "pivot with a fixed list of values (conditional aggregates)", note = "Ibis pivot_wider compiles to first_value, which is refused; write it as sum/max with where=" }
 unpivot = { lean = "partial", description = "unpivot / melt", note = "as a UNION ALL of projections: SQL UNPIVOT, UNNEST of lists written out and Ibis pivot_longer are rewritten into one (#804)" }
 generate_series = { lean = "partial", description = "generate a spine of numbers or dates", note = "constant ranges only (folded to VALUES); date ranges need month intervals or a calendar table" }
@@ -69,12 +69,12 @@ bool_agg = { lean = "no", description = "BOOL_AND / BOOL_OR / EVERY" }
 row_number = { lean = "yes", description = "ROW_NUMBER() OVER (PARTITION BY … ORDER BY …)" }
 lag_lead = { lean = "yes", description = "LAG / LEAD" }
 rank = { lean = "yes", description = "RANK / DENSE_RANK", note = "peers by the sort keys (`WinFn.rank`): independent of the order of ties" }
-ntile = { lean = "yes", description = "NTILE / PERCENT_RANK / CUME_DIST", note = "NTILE as DataFusion computes it, ⌊i·min(k, n)/n⌋ + 1 (not the SQL standard's buckets; the SQL engines compute it from ROW_NUMBER and COUNT)" }
+ntile = { lean = "yes", description = "NTILE / PERCENT_RANK / CUME_DIST", note = "NTILE spreads rows as ⌊i·min(k, n)/n⌋ + 1 (not the SQL standard's buckets; the SQL engines compute it from ROW_NUMBER and COUNT)" }
 first_last_value = { lean = "yes", description = "FIRST_VALUE / LAST_VALUE / NTH_VALUE over a window", note = "over ROWS or RANGE frames; they follow the order of ties" }
 window_partition_agg = { lean = "yes", description = "aggregate over a whole partition (SUM(x) OVER (PARTITION BY g)), incl. percent of total", note = "of a column (an expression is refused); integer sums may wrap around (`Issue.sumWraps`)" }
 running_agg = { lean = "yes", description = "running aggregate (ROWS/RANGE UNBOUNDED PRECEDING to CURRENT ROW)" }
-rows_frame = { lean = "partial", description = "bounded ROWS frame (moving average over n rows)", note = "SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused: DataFusion retracts rows wrongly (NaN for an emptied AVG, a stale MIN, different rounding)" }
-range_frame = { lean = "partial", description = "RANGE frame over an interval (last 7 days)", note = "offsets on one integer, timestamp or date key, from Ibis (a condition on the key; NULL keys are only their own peers). DataFusion's Substrait producer drops RANGE offsets, so such SQL is refused, and DataFusion cannot run Ibis's SQL for an interval frame. Sliding AVG/MIN as for rows_frame" }
+rows_frame = { lean = "partial", description = "bounded ROWS frame (moving average over n rows)", note = "SUM/COUNT/MAX of integers and FIRST/LAST/NTH_VALUE verify; AVG and SUM of doubles and MIN over a sliding frame are refused" }
+range_frame = { lean = "partial", description = "RANGE frame over an interval (last 7 days)", note = "offsets on one integer, timestamp or date key, from Ibis (a condition on the key; NULL keys are only their own peers). Sliding AVG/MIN as for rows_frame" }
 window_over_aggregate = { lean = "yes", description = "window over a grouped result (LAG of a monthly sum, SUM(SUM(x)) OVER ())", note = "the plan shape is fine; the window function itself must be supported" }
 qualify = { lean = "yes", description = "filter on a window result (QUALIFY, or a subquery)" }
 dedup_latest = { lean = "yes", description = "keep one row per key, the latest (ROW_NUMBER = 1)" }
@@ -98,17 +98,17 @@ string_split = { lean = "no", description = "SPLIT_PART / CONCAT_WS / string spl
 string_compare = { lean = "partial", description = "<, > on strings (also MIN/MAX of strings)", note = "MIN/MAX yes; < and > are NULL in the model, and every engine refuses them" }
 math_funcs = { lean = "yes", description = "round, floor, ceil, abs, power, greatest, least" }
 hash = { lean = "partial", description = "MD5 / hashing (surrogate keys)", note = "md5 and sha256; DuckDB's hash() is refused, as it is the engine's own and changes between versions" }
-date_literal = { lean = "yes", description = "DATE / TIMESTAMP literals", note = "with sverify's Ibis producer ibis.date(…) works; through Ibis's DataFusion SQL it compiled to DATE_TRUNC('DAY', …), which the checker refuses. The catalogue writes D(…), a cast, which works both ways" }
+date_literal = { lean = "yes", description = "DATE / TIMESTAMP literals", note = "with sverify's Ibis producer ibis.date(…) works. The catalogue writes D(…), a cast, which works both ways" }
 date_part = { lean = "partial", description = "EXTRACT(year / month / dow … FROM x)", note = "timestamps and dates (`UnFn.dayPart`); EPOCH refused (Ibis epoch_seconds() works)" }
-time_bucket = { lean = "partial", description = "fixed-width time buckets (15 minutes): DATE_BIN, Ibis bucket, group_by_dynamic", note = "intervals of days or less from an origin (`Time.bucket`, DATE_BIN; DataFusion bins in nanoseconds, so outside 1677-2262 an error is reported); month buckets and overlapping group_by_dynamic windows (UNNEST, #94) are refused" }
-date_trunc = { lean = "yes", description = "DATE_TRUNC / truncate", note = "timestamps, and dates to a day or longer (`UnFn.dayTrunc`; DataFusion goes through nanoseconds, so an error is reported outside 1677-2262)" }
-interval_day_time = { lean = "yes", description = "x ± INTERVAL in days, hours, minutes", note = "timestamps, and DATE ± whole days (`BinFn.dateAdd`). Comparing a duration with an interval of days is refused: DataFusion compares it as (months, days, ns)" }
-dynamic_interval = { lean = "partial", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "a column's count of days added to a DATE (the Ibis producer writes n * INTERVAL '1 day'); added to a timestamp, or of months, refused. Ibis's DataFusion SQL, CAST(CAST(n AS VARCHAR) || ' day' AS INTERVAL), fails on NULL" }
-interval_month = { lean = "yes", description = "x ± INTERVAL in months or years", note = "constant months added to a date or timestamp, clamped to the end of a shorter month (`Time.addMonths`), before any days, as DataFusion does" }
-date_diff = { lean = "partial", description = "difference of two dates or timestamps", note = "timestamps, and Ibis's DateDiff/delta of dates (`BinFn.dateDiff`); DataFusion's DATE - DATE is refused: a duration it compares wrongly with intervals" }
+time_bucket = { lean = "partial", description = "fixed-width time buckets (15 minutes): DATE_BIN, Ibis bucket, group_by_dynamic", note = "intervals of days or less from an origin (`Time.bucket`, DATE_BIN); month buckets and overlapping group_by_dynamic windows (UNNEST, #94) are refused" }
+date_trunc = { lean = "yes", description = "DATE_TRUNC / truncate", note = "timestamps, and dates to a day or longer (`UnFn.dayTrunc`)" }
+interval_day_time = { lean = "yes", description = "x ± INTERVAL in days, hours, minutes", note = "timestamps, and DATE ± whole days (`BinFn.dateAdd`). Comparing a duration with an interval of days is refused" }
+dynamic_interval = { lean = "partial", description = "an interval built from a column (n days, rn * INTERVAL '1 day')", note = "a column's count of days added to a DATE (the Ibis producer writes n * INTERVAL '1 day'); added to a timestamp, or of months, refused." }
+interval_month = { lean = "yes", description = "x ± INTERVAL in months or years", note = "constant months added to a date or timestamp, clamped to the end of a shorter month (`Time.addMonths`), before any days" }
+date_diff = { lean = "partial", description = "difference of two dates or timestamps", note = "timestamps, and Ibis's DateDiff/delta of dates (`BinFn.dateDiff`); the duration of a DATE - DATE compared with intervals is refused" }
 interval_to_number = { lean = "partial", description = "a duration as a number of seconds (time weighting, rates per second)", note = "Ibis epoch_seconds() differences and delta(unit=\"day\") of dates work; casting an interval to a number is refused" }
 math_transcendental = { lean = "yes", description = "LN, EXP, LOG, SQRT (log returns, volatility)", note = "C's libm, with an error outside a function's domain (`core/Sverify/Core/Numeric.lean`); Spark runs only SQRT, Snowflake none of them" }
 epoch = { lean = "partial", description = "EXTRACT(EPOCH …) / epoch seconds / to_char", note = "Ibis epoch_seconds() works (built from date parts), and so do to_char/strftime with %Y %m %d %H %M %S %j %F %T; date_part('EPOCH') and other directives are refused" }
-time_of_day = { lean = "yes", description = "TIME values: CAST(ts AS TIME), clock parts, comparisons", note = "microseconds since midnight (`Kind.tod`); time + interval and truncating a time are refused (DataFusion cannot add intervals to times)" }
+time_of_day = { lean = "yes", description = "TIME values: CAST(ts AS TIME), clock parts, comparisons", note = "microseconds since midnight (`Kind.tod`); time + interval and truncating a time are refused" }
 timezone = { lean = "no", description = "time zones (AT TIME ZONE, tz-aware timestamps)" }
 json = { lean = "no", description = "JSON / semi-structured extraction" }

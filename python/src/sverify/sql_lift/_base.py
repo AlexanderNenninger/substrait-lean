@@ -26,6 +26,7 @@ from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
 from sverify._dialect import DialectDifference, difference
+from sverify._unsupported import QUANTILE_OF_DECIMAL
 from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
@@ -89,6 +90,9 @@ class Profile:
             declared width: `"ERROR"` (DuckDB, and #185's reference default).
         on_division_by_zero: `//` and `%` by zero: `"ERROR"` (DuckDB with
             `error_on_division_by_zero`, its default, and the reference).
+        min_mod_neg_one: `MIN % -1` of integers: `"ERROR"` (DuckDB raises,
+            `duckdb-R15-int-modulus`) or `"ZERO"` (reference: the remainder,
+            0, fits).
         float_division_by_zero: `/` by zero, which divides doubles:
             `"ERROR"` (reference). DuckDB's `/` is the generated lift's.
         float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
@@ -111,6 +115,7 @@ class Profile:
     avg_integer: str = "fp64"
     overflow: str = "ERROR"
     on_division_by_zero: str = "ERROR"
+    min_mod_neg_one: str = "ZERO"
     float_division_by_zero: str = "ERROR"
     float_to_int: str = "TRUNCATE"
     domain_error: str = "ERROR"
@@ -120,6 +125,7 @@ class Profile:
 
 DUCKDB = Profile(
     "duckdb",
+    min_mod_neg_one="ERROR",
     float_to_int="TIE_TO_EVEN",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
@@ -427,6 +433,17 @@ def expand_table_shorthand(query: str) -> str:
     return "".join(out) + query[last:]
 
 
+#: DuckDB aggregates the lift does not read, each with its reason (#326).
+_UNREAD_AGGREGATES = {
+    "arg_min_null": "a NULL argument is a value of the group there, which arg_min skips",
+    "arg_max_null": "a NULL argument is a value of the group there, which arg_max skips",
+    "arg_min_nulls_last": "its order of NULLs is not modelled",
+    "arg_max_nulls_last": "its order of NULLs is not modelled",
+    "bitstring_agg": "its result is a BIT string, a type the model lacks",
+    "histogram_exact": "its result is a MAP, a type the model lacks",
+}
+
+
 def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperation:
     """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
     every name resolved (`qualify`) against the tables `schemas` (Ibis
@@ -464,6 +481,14 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             raise SqlUnsupported(
                 _nondeterministic(f),
                 hint="pass the value in as a column or a constant",
+                construct=f"function {f.name.lower()}",
+                sql=_shown(f),
+            )
+        if f.name.lower() in _UNREAD_AGGREGATES:
+            raise SqlUnsupported(
+                f"{f.name.lower()}() is not supported yet: {_UNREAD_AGGREGATES[f.name.lower()]} "
+                "(#326)",
+                hint="write the step in Ibis, or compute it from other aggregates",
                 construct=f"function {f.name.lower()}",
                 sql=_shown(f),
             )
@@ -509,14 +534,15 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
 
 def _builtin_schema(n: sge.Expr) -> sge.Expr:
     """A call qualified by its built-in schema (`main.lower(x)`,
-    `pg_catalog.lower(x)`, `system.main.lower(x)`) read as the bare function
-    (#328). SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
+    `system.main.lower(x)`) read as the bare function (#328). DuckDB reads
+    no other qualifier of a built-in function (`pg_catalog.lower(x)` and
+    `memory.main.lower(x)` are binder errors), so neither does the lift.
+    SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
     anonymous one, so the call is parsed again without its qualifier."""
     if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
-        schema = n.this
-        if isinstance(schema, sge.Dot):
-            schema = schema.expression
-        if isinstance(schema, sge.Identifier) and schema.name.lower() in ("main", "pg_catalog"):
+        path = [n.this] if not isinstance(n.this, sge.Dot) else [n.this.this, n.this.expression]
+        names = [p.name.lower() if isinstance(p, sge.Identifier) else None for p in path]
+        if names in (["main"], ["system", "main"]):
             return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
     return n
 
@@ -547,13 +573,9 @@ def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
                 construct="FROM",
             )
         by_full[full] = key
-    ctes = {_normalized(c.alias) for c in tree.find_all(sge.CTE)}
-    for node in tree.find_all(sge.Table):
-        if not isinstance(node.this, sge.Identifier):
-            continue
+
+    def table(node: sge.Table) -> None:
         qualified = bool(node.args.get("db") or node.args.get("catalog"))
-        if not qualified and _normalized(node.name) in ctes:
-            continue
         key = by_full.get(full_name(node))
         if key is None and qualified:
             raise SqlUnsupported(
@@ -563,12 +585,34 @@ def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
                 construct="FROM",
             )
         if key is None or (not qualified and key == node.name):
-            continue
+            return
         alias = node.args.get("alias") or sge.TableAlias(this=sge.to_identifier(node.name))
         node.set("catalog", None)
         node.set("db", None)
         node.set("this", sge.to_identifier(key, quoted=True))
         node.set("alias", alias)
+
+    def walk(node: sge.Expression, scope: frozenset[str]) -> None:
+        # A CTE's body sees the CTEs before it, as `_Lift.query` scopes them (#2166).
+        with_ = node.args.get("with_")
+        if with_ is not None:
+            inner = scope
+            for cte in with_.expressions:
+                walk(cte.this, inner)
+                inner = inner | {_normalized(cte.alias)}
+            scope = inner
+        if isinstance(node, sge.Table) and isinstance(node.this, sge.Identifier):
+            qualified = node.args.get("db") or node.args.get("catalog")
+            if qualified or _normalized(node.name) not in scope:
+                table(node)
+        for key, value in list(node.args.items()):
+            if key == "with_":
+                continue
+            for child in value if isinstance(value, list) else [value]:
+                if isinstance(child, sge.Expression):
+                    walk(child, scope)
+
+    walk(tree, frozenset())
 
 
 def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:
@@ -711,6 +755,9 @@ _AGGREGATES: dict[type, str] = {
     sge.ArrayAgg: "array_agg",
     sge.First: "first",
     sge.Last: "last",
+    # `any_value`: a non-NULL value of the group, as the Ibis producer writes
+    # `arbitrary()` (#1920, #319).
+    sge.AnyValue: "first",
 }
 
 #: The aggregates that take their rows in the order of their ORDER BY,
@@ -831,7 +878,6 @@ _SELECT_ARGS = {
 #: The SELECT clauses the lift refuses, each with its rewrite or issue.
 _CLAUSES = {
     "qualify": ("QUALIFY", "filter the window's column in a subquery (#319)"),
-    "windows": ("WINDOW", "write each window in its OVER (…)"),
     "laterals": ("LATERAL", "write it as a join (#813)"),
     "pivots": ("PIVOT", "write one aggregate per value, SUM(CASE WHEN k = v THEN x END)"),
     "sample": ("SAMPLE", "sample the input before sverify reads it"),
@@ -904,9 +950,10 @@ class _Lift:
         self.profile = profile
         # The inputs by their normalized names, as `qualify` writes them.
         self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
-        # The CTEs in scope, by name, and the scopes of the queries a
-        # subquery is in (which it may not read: no correlated subqueries).
-        self.ctes: dict[str, sge.Expression] = {}
+        # The CTEs in scope, by name, each with the CTEs its body sees (the
+        # ones defined before it), and the scopes of the queries a subquery
+        # is in (which it may not read: no correlated subqueries).
+        self.ctes: dict[str, tuple[sge.Expression, dict]] = {}
         self.outer: list[list[Column]] = []
         # The overflow guard of each window whose RANGE frame bounds DuckDB
         # computes in its integer key's type (`_bound_guard`).
@@ -937,12 +984,11 @@ class _Lift:
         """A query's relation and its output columns."""
         if isinstance(node, sge.Subquery):
             return self.query(node.this)
-        if isinstance(node, sge.SetOperation):
-            return self.set_op(node)
-        if not isinstance(node, sge.Select):
+        if not isinstance(node, sge.Select | sge.SetOperation):
             raise Unsupported(_ONLY_SELECT.format(type(node).__name__), construct=_keywords(node))
         if (with_ := node.args.get("with_")) is not None:
             # CTEs are inlined where they are read; each sees the ones before.
+            # A WITH in front of a set operation covers all its branches.
             if with_.args.get("recursive"):
                 raise Unsupported(
                     "WITH RECURSIVE is not supported yet (#320)", construct="WITH RECURSIVE"
@@ -950,13 +996,15 @@ class _Lift:
             saved = self.ctes
             self.ctes = dict(saved)
             for cte in with_.expressions:
-                self.ctes[_normalized(cte.alias)] = cte.this
+                self.ctes[_normalized(cte.alias)] = (cte.this, dict(self.ctes))
             body = node.copy()
             body.set("with_", None)
             try:
                 return self.query(body)
             finally:
                 self.ctes = saved
+        if isinstance(node, sge.SetOperation):
+            return self.set_op(node)
         for arg, (what, exit_) in _CLAUSES.items():
             if node.args.get(arg):
                 raise SqlUnsupported(f"{what} is not supported yet; {exit_}", construct=f"{what}")
@@ -1251,7 +1299,12 @@ class _Lift:
             )
         alias = node.alias_or_name
         if isinstance(node, sge.Table) and not node.args.get("db") and node.name in self.ctes:
-            rel, cols = self.query(self.ctes[node.name])
+            body, visible = self.ctes[node.name]
+            saved, self.ctes = self.ctes, visible
+            try:
+                rel, cols = self.query(body)
+            finally:
+                self.ctes = saved
             return rel, [Column(alias, c.name, c.type) for c in cols]
         if isinstance(node, sge.Table):
             if (
@@ -1908,8 +1961,8 @@ class _Lift:
         scope: list[Column],
         bound: Mapping[sge.Expression, E] | None,
     ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
-        """`string_agg(x, sep)`, `list(x)` (`array_agg`), `first(x)` and
-        `last(x)`, each with an optional `ORDER BY` of columns (#810).
+        """`string_agg(x, sep)`, `list(x)` (`array_agg`), `first(x)`, `last(x)` and
+        `any_value(x)`, each with an optional `ORDER BY` of columns (#810).
         `string_agg` skips NULLs, as the model's measure does; DuckDB's
         `list`, `first` and `last` keep them, so their measure takes `[x]`,
         never NULL: `flatten(array_agg([x]))` and `first([x])[1]`. Without
@@ -1965,6 +2018,18 @@ class _Lift:
             args.append(literal(s_.value, dt.string))
             out: Any = dt.string
             finish: Callable[[list[Json]], E] = lambda refs: E(refs[0], dt.string)  # noqa: E731
+        elif isinstance(node, sge.AnyValue):
+            # `any_value` skips NULLs: the model's `first`, of the non-NULL
+            # values in the ORDER BY's order, as the Ibis producer writes
+            # `arbitrary()` and `first()` (#1920, #55).
+            if node.args.get("expressions") or node.args.get("expression"):
+                raise SqlUnsupported(
+                    f"{_shown(node)} takes one argument",
+                    hint="call it with one argument",
+                    construct=_function(node),
+                )
+            out = t
+            finish = lambda refs: E(refs[0], t)  # noqa: E731
         else:
             if node.args.get("expressions") or node.args.get("expression"):
                 raise SqlUnsupported(
@@ -2055,6 +2120,17 @@ class _Lift:
         t = a.type
         args = [a.json]
         sorts: list[Json] = []
+        if name == "median" and (t.is_temporal() or t.is_timestamp() or t.is_float32()):
+            # DuckDB interpolates the median of dates, timestamps and FLOATs, as
+            # `quantile_cont` does (a FLOAT or a timestamp comes back): the
+            # lower middle the model takes is another value (#2153). The
+            # model reads `quantile_cont` of integers and doubles only.
+            raise SqlUnsupported(
+                f"{_shown(node)} of {t} is not supported: DuckDB interpolates it as "
+                "quantile_cont does, which the model reads for integers and doubles only",
+                hint="use quantile_disc(x, 0.5) for the lower middle, or cast to DOUBLE",
+                construct=_function(node),
+            )
         if name == "median" and not _numeric(t):
             # DuckDB's median of other ordered values is the 0.5 quantile_disc.
             name = "quantile_disc"
@@ -2080,8 +2156,7 @@ class _Lift:
         if name in ("median", "quantile_cont"):
             if t.is_decimal():
                 raise Unsupported(
-                    f"{_shown(node)} of a DECIMAL is not supported yet (DuckDB interpolates "
-                    "it as a DECIMAL); cast it to DOUBLE",
+                    f"{_shown(node)} of {t} {QUANTILE_OF_DECIMAL}; cast it to DOUBLE first",
                     construct=_function(node),
                 )
             if not (t.is_integer() or t.is_float64()):
@@ -2341,6 +2416,66 @@ RULES: dict[type, Rule] = {}
 #: Rewrites of the parsed tree, before its functions are checked: the black
 #: boxes' (`blackbox.py`, #325) give their calls nodes of their own.
 PARSE_REWRITES: list[Callable[[sge.Expr], sge.Expr]] = []
+
+
+def _any_value(tree: sge.Expr) -> sge.Expr:
+    """SQLGlot reads DuckDB's `any_value(x)` as `IgnoreNulls(AnyValue(x))`; it
+    skips NULLs, so it is the `AnyValue` node (#319)."""
+
+    def unwrap(n: sge.Expr) -> sge.Expr:
+        if isinstance(n, sge.IgnoreNulls) and isinstance(n.this, sge.AnyValue):
+            return n.this
+        return n
+
+    return tree.transform(unwrap, copy=False)
+
+
+_WINDOW_PARTS = {"partition_by": "a PARTITION BY", "order": "an ORDER BY", "spec": "a frame"}
+
+
+def _named_windows(tree: sge.Expr) -> sge.Expr:
+    """`WINDOW w AS (…)`: each `OVER w` or `OVER (w ORDER BY …)` of the same
+    SELECT written out (#319). A window that adds a PARTITION BY, a second
+    ORDER BY or a second frame to the named one is refused, as SQL does."""
+    for sel in list(tree.find_all(sge.Select)):
+        defs = sel.args.get("windows")
+        if not defs:
+            continue
+        named = {}
+        for d in defs:
+            if d.args.get("alias") is not None:
+                raise SqlUnsupported(
+                    f"WINDOW {d.this.name} is defined from another named window; write it out",
+                    construct="WINDOW",
+                )
+            named[_normalized(d.this)] = d
+        sel.set("windows", None)
+        for w in list(sel.find_all(sge.Window)):
+            if w.find_ancestor(sge.Select) is not sel or w.args.get("alias") is None:
+                continue
+            base = named.get(_normalized(w.args["alias"]))
+            if base is None:
+                raise SqlUnsupported(
+                    f"the window {w.args['alias'].name} is not defined in this SELECT",
+                    hint="write the window in its OVER (…), or name one this SELECT defines",
+                    construct="WINDOW",
+                )
+            for key in ("partition_by", "order", "spec"):
+                mine, theirs = w.args.get(key), base.args.get(key)
+                if mine and theirs:
+                    raise SqlUnsupported(
+                        f"OVER ({w.args['alias'].name} …) adds {_WINDOW_PARTS[key]} to the "
+                        "named window, which SQL refuses",
+                        hint="write the whole window in its OVER (…)",
+                        construct="WINDOW",
+                    )
+                if theirs:
+                    w.set(key, theirs.copy())
+            w.set("alias", None)
+    return tree
+
+
+PARSE_REWRITES.extend([_any_value, _named_windows])
 
 #: The relations in FROM of other node types (`VALUES`), each area's: the
 #: relation and its columns, `rule(lf, node)`.
@@ -2867,9 +3002,20 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     `semantics` profile ("duckdb" or "reference").
 
     Raises:
-        Unsupported: The query is outside the subset, saying what.
+        Unsupported: The query is outside the subset, saying what; also a
+            query nested deeper than Python's recursion limit.
         ValueError: `semantics` is not a profile.
     """
+    try:
+        return _lift(query, schemas, semantics)
+    except RecursionError:
+        raise Unsupported(
+            "the query is nested too deeply to lift; split it into CTEs",
+            construct="NESTING DEPTH",
+        ) from None
+
+
+def _lift(query: str, schemas: Mapping[str, Any], semantics: str) -> Lifted:
     profile = PROFILES.get(semantics)
     if profile is None:
         raise ValueError(f"semantics must be one of {', '.join(PROFILES)}, not {semantics!r}")

@@ -20,6 +20,6 @@ Each audience has an example that CI runs from a checkout to a proved result:
 
 | Audience | Example | CI job |
 | --- | --- | --- |
-| Data engineer | The tour, `notebooks/01_duplicate_payments.py` to `05_pipelines_and_engines.py` | `notebooks` |
-| Analytics engineer | The `shop` dbt project, checked by `sverify-dbt` | `dbt` |
-| Platform team | `templates/pipelines`: `scripts/lake.py check --plans` proves every pipeline, exports each node with `Node.to_substrait` and proves the export again with `Report.from_substrait` | `template` |
+| Data engineer | The tour, `notebooks/01_duplicate_payments.py` to `05_pipelines_and_engines.py` | `notebooks`; on a release, `notebooks-wheels` |
+| Analytics engineer | The `shop` dbt project, checked by `sverify-dbt` | `dbt`; on a release, the `dbt` combination of `packages` |
+| Platform team | `templates/pipelines`: `scripts/lake.py check --plans` proves every pipeline, exports each node with `Node.to_substrait` and proves the export again with `Report.from_substrait` | `template`; on a release, `template-wheel` |

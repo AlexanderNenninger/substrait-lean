@@ -8,7 +8,9 @@
   `substrait-check`). This checks the generated SQL end to end, but DuckDB is
   not Snowflake: it proves nothing about Snowflake's behaviour.
 * Real Snowflake: the same comparisons, only when `SNOWFLAKE_ACCOUNT`,
-  `SNOWFLAKE_USER` and a credential are in the environment.
+  `SNOWFLAKE_USER` and a credential are in the environment, or
+  `SNOWFLAKE_CONNECTION_NAME`. Each run pins the session parameters
+  (`SESSION`) and works in a schema of its own, dropped afterwards.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ import sqlglot
 import sverify as sv
 from _repo import needs_repo
 from sverify.engine import run_checker
-from sverify.engines import substrait_json
+from sverify.engines.plan import substrait_json
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
@@ -687,9 +689,52 @@ def snowflake_connection():
     return snowflake.connector.connect(**params)
 
 
+#: The session parameters the written SQL's results depend on (the module
+#: docstring of `sverify.sql.snowflake`), pinned at connect time and asserted.
+SESSION = {
+    "TIMEZONE": "UTC",
+    "TIMESTAMP_TYPE_MAPPING": "TIMESTAMP_NTZ",
+    "DEFAULT_NULL_ORDERING": "LAST",
+    "WEEK_START": "0",
+    "WEEK_OF_YEAR_POLICY": "0",
+    "QUOTED_IDENTIFIERS_IGNORE_CASE": "false",
+}
+
+
+def pin_session(cur) -> None:
+    """Set `SESSION` and check that the session took each value."""
+    for name, value in SESSION.items():
+        literal = value if value.isdigit() or value in ("false", "true") else f"'{value}'"
+        cur.execute(f"ALTER SESSION SET {name} = {literal}")
+    cur.execute("SHOW PARAMETERS IN SESSION")
+    names = [c[0].lower() for c in cur.description]
+    got = {r[names.index("key")]: r[names.index("value")] for r in cur.fetchall()}
+    assert {k: str(got[k]).lower() for k in SESSION} == {k: v.lower() for k, v in SESSION.items()}
+
+
 def test_real_snowflake_matches_lean():
-    """Opt-in: runs only with SNOWFLAKE_* connection variables set."""
-    with snowflake_connection() as conn:
+    """Opt-in: runs only with SNOWFLAKE_* connection variables set. The run
+    has the session parameters of `SESSION` and a schema of its own
+    (`SVERIFY_<uuid>`, in the connection's database), dropped afterwards. A
+    role that may not create one runs in the connection's schema: its tables
+    are temporary, so no other session sees them and none outlives the run."""
+    with snowflake_connection() as conn:  # skips without an account
+        import snowflake.connector
+
         cur = conn.cursor()
-        snowflake_differential(cur, f"_{uuid.uuid4().hex[:8]}")
-        run_semantics(cur)
+        schema = f"SVERIFY_{uuid.uuid4().hex[:12].upper()}"
+        try:
+            cur.execute(f'CREATE SCHEMA "{schema}"')
+        except snowflake.connector.errors.ProgrammingError as e:
+            if e.errno != 3001:  # insufficient privileges
+                raise
+            schema = None
+        try:
+            if schema:
+                cur.execute(f'USE SCHEMA "{schema}"')
+            pin_session(cur)
+            snowflake_differential(cur, f"_{uuid.uuid4().hex[:8]}")
+            run_semantics(cur)
+        finally:
+            if schema:
+                cur.execute(f'DROP SCHEMA IF EXISTS "{schema}"')

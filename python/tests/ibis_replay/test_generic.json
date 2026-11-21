@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_generic",
   "summary": {
-    "agree": 101,
-    "disagree": 0,
-    "refused": 114,
+    "agree": 180,
+    "disagree": 1,
+    "refused": 34,
     "unproved": 1,
     "skipped": 17
   },
@@ -21,59 +21,41 @@
       "design": "an expression's type is each engine's own inference (#508)"
     },
     "test_case_where[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_cast[duckdb-array]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.list (Substrait.Kind.int) to Substrait.Kind.list (Substrait.",
-      "issue": 1919
+      "construct": "run: Unsupported: lambdas have no SQL form yet (#348)",
+      "issue": 348
     },
     "test_cast[duckdb-float_to_int]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_cast[duckdb-int_to_float]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_cast[duckdb-string_to_float]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_cast[duckdb-string_to_int]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_cast[duckdb-struct]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.struct [Substrait.Kind.int, Substrait.Kind.str] to Substrait",
-      "design": "sverify cannot build a struct; cast its fields (ruling 186, D66 reserved)"
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: casts of structs are not supported: sverify cannot build a struct value yet; cast its fields. Lea",
+      "design": "sverify cannot build a struct value yet; cast its fields"
     },
     "test_coalesce[duckdb-generic]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_coalesce[duckdb-non_null_last]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_coalesce[duckdb-null_start_end]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_column_fill_null[duckdb-None]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_column_fill_null[duckdb-nan_col]": {
       "outcome": "skipped",
@@ -109,53 +91,37 @@
     },
     "test_drop_null_table[duckdb-empty-all]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "IndexError: list index out of range",
+      "issue": 2155
     },
     "test_drop_null_table[duckdb-empty-any]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "IndexError: list index out of range",
+      "issue": 2155
     },
     "test_drop_null_table[duckdb-none-all]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-none-any]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-one-and-three-all]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-one-and-three-any]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-one-and-two-all]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-one-and-two-any]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-single-all]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-single-any]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_dynamic_table_slice[duckdb-[-3:-2]]": {
       "outcome": "refused",
@@ -215,29 +181,19 @@
       "outcome": "agree"
     },
     "test_filter[duckdb-and]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_filter[duckdb-negate]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_filter[duckdb-no_op]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_filter[duckdb-or]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_filter[duckdb-xor]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_filter_with_window_op[duckdb]": {
       "outcome": "refused",
@@ -280,17 +236,15 @@
       "outcome": "agree"
     },
     "test_int_column[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_int_scalar[duckdb]": {
       "outcome": "agree"
     },
     "test_interactive[duckdb]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: ibis.now() is not supported: the time differs between runs; pass the time in as a column or constant; rewrite it with a supported operation",
+      "design": "the time differs between runs"
     },
     "test_isin[duckdb-int_col-elements0]": {
       "outcome": "agree"
@@ -311,44 +265,28 @@
       "outcome": "agree"
     },
     "test_isin_notin[duckdb-isin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_notin[duckdb-isin_non_empty]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_notin[duckdb-notin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_notin[duckdb-notin_non_empty]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_notin_column_expr[duckdb-isin_col]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_notin_column_expr[duckdb-isin_expr]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_notin_column_expr[duckdb-notin_col]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_notin_column_expr[duckdb-notin_expr]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_isin_uncorrelated[duckdb]": {
       "outcome": "agree"
@@ -373,16 +311,14 @@
     },
     "test_literal_na[duckdb-bytes]": {
       "outcome": "refused",
-      "construct": "Unsupported: type binary is not supported; cast the column to a supported type in the source query",
-      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
+      "construct": "Unsupported: sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out",
+      "issue": 1918
     },
     "test_literal_na[duckdb-date]": {
       "outcome": "agree"
     },
     "test_literal_na[duckdb-float32]": {
-      "outcome": "refused",
-      "construct": "Unsupported: float32 is not supported; use float64",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_literal_na[duckdb-float64]": {
       "outcome": "agree"
@@ -421,17 +357,13 @@
       "outcome": "agree"
     },
     "test_logical_negation_literal[duckdb-false_invert]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_logical_negation_literal[duckdb-false_noop]": {
       "outcome": "agree"
     },
     "test_logical_negation_literal[duckdb-true_invert]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_logical_negation_literal[duckdb-true_noop]": {
       "outcome": "agree"
@@ -519,9 +451,7 @@
       "design": "an expression's type is each engine's own inference (#508)"
     },
     "test_null_literal_typed[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_null_literal_typed_typeof[duckdb]": {
       "outcome": "refused",
@@ -529,34 +459,22 @@
       "design": "an expression's type is each engine's own inference (#508)"
     },
     "test_order_by[duckdb-<lambda>-df_kwargs2]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_order_by[duckdb-id-df_kwargs0]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_order_by[duckdb-key1-df_kwargs1]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_order_by[duckdb-key3-df_kwargs3]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_order_by[duckdb-key4-df_kwargs4]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_order_by[duckdb-key5-df_kwargs5]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_order_by_nulls[duckdb-asc]": {
       "outcome": "agree"
@@ -575,8 +493,8 @@
     },
     "test_order_by_random[duckdb]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: RandomScalar is not supported: each run gives another value, so no contract can be proved about it; rewrite it with a supported operation o",
+      "design": "each run gives another value"
     },
     "test_order_by_two_cols_nulls[duckdb-asc-asc-tf]": {
       "outcome": "agree"
@@ -611,23 +529,23 @@
     },
     "test_sample[duckdb-subquery-block]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: Sample is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_sample[duckdb-subquery-row]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: Sample is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_sample[duckdb-table-block]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: Sample is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_sample[duckdb-table-row]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: Sample is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_sample_memtable[duckdb]": {
       "outcome": "refused",
@@ -640,126 +558,82 @@
       "issue": 60
     },
     "test_scalar_fill_null_nullif[duckdb-na_fill_null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_scalar_fill_null_nullif[duckdb-non_na_fill_null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_scalar_fill_null_nullif[duckdb-nullif_not_null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_scalar_fill_null_nullif[duckdb-nullif_null]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-filter-order_by-select-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-filter-select-distinct-order_by]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-filter-select-order_by-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-order_by-filter-select-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-order_by-select-distinct-filter]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-order_by-select-filter-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-select-distinct-filter-order_by]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-select-distinct-order_by-filter]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-select-filter-distinct-order_by]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-select-filter-order_by-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-select-order_by-distinct-filter]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_filter_order_by_commute[duckdb-select-order_by-filter-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_order_by[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_distinct_order_by_alias[duckdb]": {
       "outcome": "agree"
     },
     "test_select_distinct_order_by_expr[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_filter[duckdb]": {
       "outcome": "agree"
     },
     "test_select_filter_mutate[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_filter_select[duckdb]": {
       "outcome": "agree"
     },
     "test_select_mutate_with_dict[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_scalar[duckdb]": {
       "outcome": "agree"
     },
     "test_select_sort_sort[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_select_sort_sort_deferred[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_simple_memtable_construct[duckdb]": {
       "outcome": "agree"
@@ -812,33 +686,30 @@
       "outcome": "agree"
     },
     "test_subsequent_overlapping_order_by[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_describe[duckdb-all_cols]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: avg of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not cove",
+      "issue": 417
     },
     "test_table_describe[duckdb-numeric_col]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: avg of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not cove",
+      "issue": 417
     },
     "test_table_describe[duckdb-string_col]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "disagree",
+      "side": "rows",
+      "reason": "row ('date_string_col', 0, 'string', 7300, 0, 730, '01/01/09') where Ibis has ('date_string_col', 0, 'string', 7300, 0, 730, '11/01/10')",
+      "issue": 2157
     },
     "test_table_describe_large[duckdb]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.int. Lean's model does not cover it y",
-      "issue": 1911
+      "outcome": "agree"
     },
     "test_table_describe_with_multiple_decimal_columns[duckdb]": {
       "outcome": "refused",
-      "construct": "ProducerUnsupported: quantile of decimal(N, N) is not supported yet; rewrite it with a supported operation or column type",
+      "construct": "ProducerUnsupported: quantile of decimal(N, N) is not supported: no engine gives one value for it (DuckDB truncates a double interpolation, Spark and Polars ret",
       "issue": 1921
     },
     "test_table_fill_null_invalid[duckdb]": {
@@ -846,34 +717,22 @@
       "reason": "executes nothing"
     },
     "test_table_fill_null_mapping[duckdb-double-int-str]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_fill_null_mapping[duckdb-double-str]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_fill_null_mapping[duckdb-empty]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_fill_null_mapping[duckdb-int]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_fill_null_scalar[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_info[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_info_large[duckdb]": {
       "outcome": "agree"
@@ -884,24 +743,16 @@
       "issue": 60
     },
     "test_try_cast[duckdb-0-float-0.0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_try_cast[duckdb-0-int-0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_try_cast[duckdb-0.0-float-0.0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_try_cast[duckdb-0.0-int-0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_try_cast[duckdb-2023-01-01 00:00:00-int-1672531200]": {
       "outcome": "skipped",
@@ -910,22 +761,18 @@
     "test_try_cast_func[duckdb-datetime-to-float]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a double. Lean's model does not cover it yet: rewrite the step, or find",
-      "issue": 1922
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
     },
     "test_try_cast_func[duckdb-string-to-float]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_try_cast_null[duckdb-2023-01-01 00:00:00-int]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to an integer. Lean's model does not cover it yet: rewrite the step, or fi",
-      "issue": 1922
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
     },
     "test_try_cast_null[duckdb-a-int]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_try_cast_table[duckdb]": {
       "outcome": "agree"
@@ -948,14 +795,10 @@
       "outcome": "agree"
     },
     "test_zero_ifnull_literals[duckdb-float64-0.0-1.0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_zero_ifnull_literals[duckdb-int64-0-1]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     }
   }
 }

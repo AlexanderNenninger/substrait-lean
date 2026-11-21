@@ -18,7 +18,7 @@ from ibis import _
 import sverify as sv
 from _arrow_store import ArrowStore
 from sverify import _checker, _engine_settings, profiles, routes
-from sverify.engines import to_sql, written_plan
+from sverify.engines.plan import to_sql, written_plan
 from sverify.profiles import ProfilePlugin, Setting
 from sverify.routes import EngineSettingsError, EngineVersionError
 

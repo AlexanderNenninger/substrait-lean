@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 # An engine built from main beside PyPI's sverify of the same version number
 # fails deep inside sverify with a TypeError (#1585): check the interface first.
 from importlib.metadata import version as _version
-from typing import Any
+from typing import Any, Literal
 
 from sverify import _meta
 
@@ -30,6 +30,7 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
         "install both from the same release (`pip install -U sverify sverify-polars`)"
     )
 
+from sverify._unsupported import MIN_MOD_GUARD
 from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_polars.store import PolarsStore
 
@@ -55,14 +56,23 @@ _ENV = {"engine_affinity": ("POLARS_ENGINE_AFFINITY", "auto")}
 
 
 def _run(
-    con: Any, plan_json: str, session: Any, *, keep: bool, finite: Finite, tie_free: bool
+    con: Any,
+    plan_json: str,
+    session: Any,
+    *,
+    keep: bool,
+    finite: Finite,
+    tie_free: bool,
+    rows: Literal["sequence", "multiset"] = "sequence",
 ) -> Any:
     from sverify.engine import read_tables
 
+    # `rows="multiset"`: `Report.run` passes it where the result needs no
+    # ordinal (`Report._ordinal_free`), and the groups come in any order.
     tables = {t: _table(con, t) for t in read_tables(json.loads(plan_json))}
     if keep:
-        return _kept(plan_json, tables, finite=finite)
-    return _run_tables(plan_json, tables, finite=finite)
+        return _kept(plan_json, tables, finite=finite, rows=rows)
+    return _run_tables(plan_json, tables, finite=finite, rows=rows)
 
 
 def _checks(checks: frozenset[str], finite: Finite) -> frozenset[str]:
@@ -78,14 +88,21 @@ def _checks(checks: frozenset[str], finite: Finite) -> frozenset[str]:
     return checks - gone
 
 
-def _kept(plan_json: str, tables: Mapping[str, Any], *, finite: Finite) -> Any:
+def _kept(
+    plan_json: str,
+    tables: Mapping[str, Any],
+    *,
+    finite: Finite,
+    rows: Literal["sequence", "multiset"] = "sequence",
+) -> Any:
     """The plan's result as a lazy weighted-table handle
     (`sverify._parts.Lazy`): the merge that adds it to the state
     streams it into a file, so it is never collected."""
     from sverify_polars import engine
     from sverify_polars.store import lazy_plan
 
-    return lazy_plan(engine.to_lazy(plan_json, tables, guards=_checks(engine.ALL_GUARDS, finite)))
+    guards = _checks(engine.ALL_GUARDS, finite)
+    return lazy_plan(engine.to_lazy(plan_json, tables, guards=guards, rows=rows))
 
 
 def _table(con: Any, name: str) -> Any:
@@ -107,11 +124,12 @@ def _run_tables(
     *,
     guard_free: bool = False,
     finite: Finite = True,
+    rows: Literal["sequence", "multiset"] = "sequence",
 ) -> Any:
     from sverify_polars import engine
 
     checks = engine.NO_GUARDS if guard_free else engine.ALL_GUARDS
-    return engine.run(plan_json, tables, guards=_checks(checks, finite))
+    return engine.run(plan_json, tables, guards=_checks(checks, finite), rows=rows)
 
 
 def _fallbacks(plan: Mapping[str, Any], tables: Mapping[str, Any]) -> Sequence[str]:
@@ -155,6 +173,8 @@ PLUGIN = ProfilePlugin(
     guard_free_theorem="Rel.polars_sound",
     fallbacks=_fallbacks,
     functions=frozenset({"array_agg"}),
+    # Only the integer `%` guard (#2058); the date and RANGE guards stay refused.
+    guards=(MIN_MOD_GUARD,),
     shim_text={
         "int_div_trunc": "integer division rewritten to truncate",
         "int_mod_trunc": "integer remainder rewritten to truncate",

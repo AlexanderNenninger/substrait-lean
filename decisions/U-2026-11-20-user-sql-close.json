@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-20-user-sql-close",
+  "date": "2026-11-20",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Proved rewrites do not run by default on native routes: the SQL sverify writes reproduces the user's closely.",
+  "issues": [
+    1787
+  ],
+  "source": "memory:optimize-reproduce-user-sql.md",
+  "note": "Applied in ruling 217."
+}

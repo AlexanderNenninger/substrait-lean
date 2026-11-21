@@ -31,7 +31,8 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.engines import ENGINES, delta_plans
+from sverify.engines import ENGINES
+from sverify.engines.plan import delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.io import Changes
@@ -489,11 +490,12 @@ def test_unknown_function_is_refused():
             substrait_json(con, "SELECT id FROM orders WHERE amount > 10", semantics="duckdb")
         )
     )
-    plan["extensions"][0]["extensionFunction"]["name"] = "sqrt"
+    fn = plan["extensions"][0]["extensionFunction"]
+    fn["name"] = "sqrt"
     filt = plan["relations"][0]["root"]["input"]["project"]["input"]["filter"]
     filt["condition"] = {
         "scalarFunction": {
-            "functionReference": 1,
+            "functionReference": fn["functionAnchor"],
             "arguments": [filt["condition"]["scalarFunction"]["arguments"][0]],
         }
     }
@@ -818,3 +820,30 @@ def test_variance_of_finite_values_that_polars_makes_nan_is_refused(grouped):
         else:
             with pytest.raises(polars_engine.VarianceNaN):
                 polars_engine.run(plan, tables, guards=guards)
+
+
+@pytest.mark.parametrize("width", [pa.int64(), pa.int32()], ids=str)
+def test_the_lens_remainder_guard_raises_at_min_mod_neg_one(width):
+    """Under `semantics="duckdb"` the lifted `a % b` carries the guard DuckDB's
+    raise at `MIN % -1` needs (#2058): Polars runs it, at each width's own MIN;
+    `(5, 0)` still raises the division by zero, and the other rows agree with
+    Lean."""
+    low = -(2 ** (width.bit_width - 1))
+    sql = "SELECT a % b AS m FROM r"
+
+    def run(rows):
+        con = connect()
+        cols = {k: pa.array([r[i] for r in rows], width) for i, k in enumerate("ab")}
+        put_table(con, "r", pa.table(cols))
+        plan = written_plan(substrait_json(con, sql, semantics="duckdb"))
+        return plan, lambda: rows_of(run_plan(con, plan, "polars"))
+
+    _, go = run([(5, 2), (low, -1), (7, 2)])
+    with pytest.raises(polars_engine.RuntimeIssue, match=r"MIN % -1"):
+        go()
+    _, go = run([(5, 0), (7, 2)])
+    with pytest.raises(polars_engine.DivisionByZero):
+        go()
+    rows = [(5, 2), (-7, 2), (low + 1, -1), (None, 3), (4, None)]
+    plan, go = run(rows)
+    assert go() == lean_values(json.dumps(inline_tables(json.loads(plan), {"r": rows})))

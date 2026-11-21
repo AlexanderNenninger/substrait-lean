@@ -147,16 +147,21 @@ Every type a public name returns, holds or takes is public too, so
 `sverify.types` names the types a report and a refresh hold. The
 [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents each public name, and `tests/test_public_api.py` holds the
-reference, the `__all__`s and that closure equal. Every other module is
+reference, the `__all__`s and that closure equal. In the Python API "verify" proves
+(`sv.verify`, `ContractedTransform.verify`) and "check" reads data
+(`check_requires`, `Report.check_inputs`, `proved_with_checks`); the
+commands named `check` (`sverify check`, `sverify-dbt check`) verify a
+project. Every other module is
 internal, whether or not its name starts with an underscore, and so are
 the maintainer tooling `sverify_dev` and the printed text of a report
 (`str(report)`); tools read the report through its attributes or its JSON.
 Three parts of `sverify.engines` are documented but outside the promise,
-and may change in a minor release: the plan layer (`to_sql`,
-`substrait_json`, `written_plan`, `delta_plans`), which takes sverify's
-internal plan; `Dialect`'s SQL-writing methods and subclasses of it; and
-the members of `Native`, while the native scans move into the engine
-packages.
+and may change in a minor release: the plan layer, the module
+`sverify.engines.plan`, which takes sverify's internal plan; `Dialect`'s
+SQL-writing methods and subclasses of it; and the members of `Native`,
+while the native scans move into the engine packages. `run` and
+`run_sharded` take a plan as a value a node or report holds
+(`node.internal_plan`), and its content is outside the promise.
 `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
 to a plan's SQL and Substrait.
 
@@ -168,12 +173,16 @@ may change in a minor release. A plugin checks `PLUGIN_API`, and an engine
 package pins the sverify version it was built for. Custom sources and sinks
 are the stable extension points.
 
+The checker, `substrait-check`, ships in the wheel as part of the package. Its
+flags and its JSON protocol belong to one release of sverify, and
+`CheckerVersionError` is the whole promise about a binary of another release.
+
 The engines in the promise are those [Engines](#engines) lists.
 
 A minor release may break the public API only when the break is:
 
-- loud: a call that used the old form raises, or warns with a
-  `DeprecationWarning`, and the message names the replacement;
+- loud: a call that used the old form raises, and the changelog names the
+  replacement;
 - caught by a unit test that uses the old form;
 - listed under "Breaking changes" in the changelog;
 - given a migration note in that entry: what to write instead, with an
@@ -184,6 +193,10 @@ alias. The old form raises, and the changelog entry names the replacement. A
 release with breaking changes lists them first in its section of
 [the changelog](../CHANGELOG.md).
 
+The 1.x promise covers sverify-dbt's command line, exit codes and JSON, which
+are sverify's own ([the package's README](../dbt/README.md)). Its Python names
+are documented and outside the promise.
+
 ## Engines
 
 This section is the one statement of which engines sverify supports; other
@@ -193,13 +206,15 @@ refine the core ([core, profiles and engines](core-and-profiles.md)), and an eng
 by a route that the checker justifies against it
 ([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
 
-| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound by | In the 1.x promise |
+| Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound | In the 1.x promise |
 |---|---|---|---|---|---|
-| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | `Engine.duckdb_sound`, under `Engine.NoRaiseSide` | yes |
-| Polars, streaming | `engine="polars"` | | `"polars"` | `Engine.polars_sound`, under `Engine.GuardFreeSide` | yes |
-| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | `Engine.spark_sound`, under `Engine.GuardFreeSide` | yes |
+| DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | for plans proved never to raise | yes |
+| Polars, streaming | `engine="polars"` | | `"polars"` | for plans without guards | yes |
+| Spark 4.3 | `engine="spark"` | `dialect="spark"` | `"spark"` | for plans without guards | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
+The theorems are named in [engine-profiles.md](engine-profiles.md#engines). The two conditions come from the same check: a plan with no guards
+meets both.
 `sverify.engines.ENGINES` names the engines in the promise that run plans
 on a `Connection`'s tables. The engine
 versions each profile describes, the class of every option on each engine

@@ -1063,6 +1063,8 @@ class Exprs:
                     raise Unsupported(f"overflow = {prefs}")
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
                 return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
+            if name == "sverify_raise" and len(arg_js) == 2:
+                return self.raise_guard(arg_js)
             if name in ("any_match", "all_match", "transform", "filter"):
                 return self.higher_order(name, arg_js)
             if name in _PICKS:
@@ -1074,14 +1076,6 @@ class Exprs:
                 return self(arg_js[0])
             if name == "round" and len(arg_js) == 2:
                 return self.round_to(self(arg_js[0]), arg_js[1])
-            if name == "power" and len(arg_js) == 2 and "literal" in arg_js[1]:
-                # DataFusion's simplifier makes `power(x, 0)` a constant 1, even
-                # for a NULL `x` (as `Parse.parseExpr`).
-                v, t = literal(arg_js[1]["literal"])
-                if repr(v) in ("0", "0.0"):
-                    floats = pl.Float64 in (self(arg_js[0]).dtype, t)
-                    one, dtype = (1.0, pl.Float64) if floats else (1, pl.Int64)
-                    return Val(lit_expr(one, dtype), dtype)
             if name == "array_length" and len(arg_js) == 1:
                 return self.regex_match(arg_js[0])
             if name == "replace" and len(arg_js) == 3:
@@ -1391,6 +1385,20 @@ class Exprs:
                 ),
             )
         return out
+
+    def raise_guard(self, arg_js: list[dict]) -> Val:
+        """`sverify_raise(dep, message)`: NULL, and an issue on every row where
+        the call is evaluated (`Profile.reference.un (.raise m)`); an enclosing
+        `CASE` restricts it to the rows that take its branch. Only the integer
+        `%` guard is listed (`ProfilePlugin.guards`, #2058)."""
+        dep = self(arg_js[0])
+        msg = arg_js[1].get("literal", {}).get("string", "")
+        # A NULL of no type: the `CASE` around it takes its other branch's.
+        return Val(
+            pl.lit(None),
+            pl.Null,
+            (*dep.issues, Issue(pl.lit(True), RuntimeIssue, msg)),
+        )
 
     def floor_divide(self, name: str, a: Val, b: Val) -> Val:
         """Integer `//` or `%` with `division_type` = `FLOOR`: Polars's own,
@@ -2569,6 +2577,10 @@ class Translator:
     def values(self, v: dict, arity: int) -> Frame:
         if "values" in v:
             raise Unsupported("the deprecated VirtualTable.values encoding is not written by Lean")
+        if arity == 0:
+            # A frame without columns has no rows in Polars, so `SELECT 1 + 1`'s
+            # one row would vanish.
+            raise Unsupported("a relation without columns (a plan that reads no table)")
         rows = []
         for row in v.get("expressions", []):
             fields = row.get("fields", [])
@@ -3278,8 +3290,14 @@ def sink_parquet(lf: pl.LazyFrame, path: str) -> None:
     lf.sink_parquet(path, engine="streaming", optimizations=_OPTIMIZATIONS)
 
 
-def run(plan: str | dict, tables: Tables, *, guards: Guards = True) -> pa.Table:
-    """Run a plan in Lean's written form on Polars (`guards`: see `to_lazy`).
-    The columns are named by `RelRoot.names`, repeats included."""
-    lf, names = _translate(plan, tables, guards)
+def run(
+    plan: str | dict,
+    tables: Tables,
+    *,
+    guards: Guards = True,
+    rows: Literal["sequence", "multiset"] = "sequence",
+) -> pa.Table:
+    """Run a plan in Lean's written form on Polars (`guards`, `rows`: see
+    `to_lazy`). The columns are named by `RelRoot.names`, repeats included."""
+    lf, names = _translate(plan, tables, guards, rows)
     return collect(lf).to_arrow().rename_columns(names)

@@ -642,6 +642,50 @@ theorem intSum_bounds {b : Bound} :
       have := hi.2 h hh; have := ih.2 h hh
       rw [Int.natCast_add, Int.add_mul]; omega
 
+/-- A `SUM` and a `COUNT`'s `ratio` fact holds on any row whose two columns hold
+their values over `grp`. -/
+theorem ratioPair_sound {s c : Nat} {env : List AVal} {fs : List Fact} {mi mj : Measure}
+    {grp : Relation} {row : Row}
+    (hcol : mi.fn = .sum → mj.fn = .count →
+      row.getD s .null = mi.eval grp ∧ row.getD c .null = mj.eval grp)
+    (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) :
+    FactsHold (ratioPair s c env fs mi mj) row := by
+  intro f hf
+  simp only [ratioPair] at hf
+  split at hf
+  · rename_i hc
+    obtain ⟨hsum, hcount, harg, hfil, hdis, honly⟩ := hc
+    split at hf
+    · rename_i b hb
+      simp only [List.mem_singleton] at hf; subst hf
+      intro x n hx hn
+      obtain ⟨hs, hc⟩ := hcol hsum hcount
+      rw [hs, Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
+      rw [hc, Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
+      have hsame : mj.inputs grp = mi.inputs grp := by
+        simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
+      rw [hsame] at hn
+      cases hvs : mi.inputs grp with
+      | nil => rw [hvs] at hx; simp [AggFn.apply] at hx
+      | cons v vs =>
+        rw [hvs] at hx hn
+        simp only [AggFn.apply] at hx hn
+        have hx' := sumOf_unscaled hx
+        simp only [Value.unscaled?, Option.some.injEq] at hn
+        subst hx' hn
+        have hint : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i := by
+          intro w hw
+          have hw' : w ∈ mi.inputs grp := hvs ▸ hw
+          obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hw'
+          have hm := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) mi.arg
+          obtain ⟨i, b', he, hb', hi⟩ := AVal.unscaledOnly_mem honly hm hnn
+          rw [hb] at hb'; cases hb'
+          exact ⟨i, he, hi⟩
+        obtain ⟨hlo, hhi⟩ := intSum_bounds hint
+        exact ⟨by simp, hlo, hhi⟩
+    · simp at hf
+  · simp at hf
+
 /-- The `ratio` facts hold on any row whose measures that do not sort hold
 their values over `grp`. -/
 theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : List Measure}
@@ -655,40 +699,9 @@ theorem ratioFacts_sound_of {g : Nat} {env : List AVal} {fs : List Fact} {ms : L
   obtain ⟨i, _, j, _, hf⟩ := hf
   split at hf
   · rename_i mi mj hmi hmj
-    split at hf
-    · rename_i hc
-      obtain ⟨hsum, hcount, harg, hfil, hdis, honly⟩ := hc
-      split at hf
-      · rename_i b hb
-        simp only [List.mem_singleton] at hf; subst hf
-        intro x n hx hn
-        rw [col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; rfl),
-          Measure.eval_eq (by rw [hsum]; rfl), hsum] at hx
-        rw [col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; rfl),
-          Measure.eval_eq (by rw [hcount]; rfl), hcount] at hn
-        have hsame : mj.inputs grp = mi.inputs grp := by
-          simp only [Measure.inputs, Measure.kept, harg, hfil, hdis]
-        rw [hsame] at hn
-        cases hvs : mi.inputs grp with
-        | nil => rw [hvs] at hx; simp [AggFn.apply] at hx
-        | cons v vs =>
-          rw [hvs] at hx hn
-          simp only [AggFn.apply] at hx hn
-          have hx' := sumOf_unscaled hx
-          simp only [Value.unscaled?, Option.some.injEq] at hn
-          subst hx' hn
-          have hint : ∀ w ∈ v :: vs, ∃ i, w.unscaled? = some i ∧ b.Mem i := by
-            intro w hw
-            have hw' : w ∈ mi.inputs grp := hvs ▸ hw
-            obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hw'
-            have hm := Expr.absD_sound (hall y hy).1 (hall y hy).2 (ks := []) (by simp [KsHold]) mi.arg
-            obtain ⟨i, b', he, hb', hi⟩ := AVal.unscaledOnly_mem honly hm hnn
-            rw [hb] at hb'; cases hb'
-            exact ⟨i, he, hi⟩
-          obtain ⟨hlo, hhi⟩ := intSum_bounds hint
-          exact ⟨by simp, hlo, hhi⟩
-      · simp at hf
-    · simp at hf
+    exact ratioPair_sound (fun hsum hcount =>
+      ⟨col i mi hmi (by rw [hsum]; rfl) (by rw [hsum]; rfl),
+        col j mj hmj (by rw [hcount]; rfl) (by rw [hcount]; rfl)⟩) hall f hf
   · simp at hf
 
 /-- The `ratio` facts hold on a group's row. -/
@@ -699,6 +712,44 @@ theorem ratioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {ms : List
   ratioFacts_sound_of (fun i m h _ _ => by
     rw [← hk, getD_append_right']
     simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]) hall
+
+omit [Boxes.Ambient] in
+/-- A row of a window frame's sides is the row, or one before or after it. -/
+theorem mem_frame_sides {p : Row → Bool} {b a : List Row} {x y : Row}
+    (hy : y ∈ b.filter p ++ x :: a.filter p) : y = x ∨ y ∈ b ∨ y ∈ a := by
+  rcases List.mem_append.mp hy with h | h
+  · exact .inr (.inl (List.mem_filter.mp h).1)
+  · rcases List.mem_cons.mp h with rfl | h
+    · exact .inl rfl
+    · exact .inr (.inr (List.mem_filter.mp h).1)
+
+/-- The window's `ratio` facts hold on a row `x ++ vs` whose window aggregates
+that do not pick hold their values over their frames (#2015): a `SUM` and a
+`COUNT` over the same frame read the same rows. -/
+theorem winRatioFacts_sound {g : Nat} {env : List AVal} {fs : List Fact} {fns : List WinFn}
+    {pb pa : List Row} {x : Row} {vs : List Value} (hx : x.length = g)
+    (hcol : ∀ (i : Nat) (m : Measure) (sort : List SortKey) (fr : Frame),
+      fns[i]? = some (WinFn.agg m sort fr) → m.fn.classPick = false →
+      vs[i]? = some (m.eval (fr.rows sort pb x pa)))
+    (hall : ∀ y ∈ pb ++ x :: pa, EnvMem env y ∧ FactsHold fs y) :
+    FactsHold (winRatioFacts g env fs fns) (x ++ vs) := by
+  intro f hf
+  simp only [winRatioFacts, List.mem_flatMap, List.mem_range] at hf
+  obtain ⟨i, _, j, _, hf⟩ := hf
+  split at hf
+  · rename_i mi si fi mj sj fj hi hj
+    split at hf
+    · rename_i hsf
+      obtain ⟨rfl, rfl⟩ := hsf
+      have col : ∀ (k : Nat) (m : Measure), fns[k]? = some (WinFn.agg m sj fj) → m.fn.classPick = false →
+          (x ++ vs).getD (g + k) .null = m.eval (fj.rows sj pb x pa) := fun k m hk hp => by
+        rw [← hx, getD_append_right', List.getD_eq_getElem?_getD, hcol k m sj fj hk hp]
+        rfl
+      exact ratioPair_sound (fun hsum hcount =>
+        ⟨col i mi hi (by rw [hsum]; rfl), col j mj hj (by rw [hcount]; rfl)⟩)
+        (fun y hy => hall y (Frame.mem_rows hy)) f hf
+    · simp at hf
+  · simp at hf
 
 theorem EnvMem.measures {env : List AVal} {fs : List Fact} {grp : Relation}
     (hall : ∀ y ∈ grp, EnvMem env y ∧ FactsHold fs y) (ms : List Measure) (grouped : Bool := false)
@@ -935,10 +986,20 @@ theorem Rel.ratioPart_sound {cat : Catalog} (hcat : cat.WF) {A : String → List
       refine ratioFacts_sound ?_ fun y hy => ⟨aeval_sound hcat hA hF hT hwf.1 (fun h => (hs h).2) y (hgrp y hy),
         Rel.facts_sound hcat hF hT hwf.1 y (hgrp y hy)⟩
       rcases hk with ⟨rfl, rfl⟩ | ⟨z, _, rfl⟩ <;> simp [groupKey]
+  | .window r part _ fns, hwf, hs, row, h => by
+      obtain ⟨b, x, a, he, hx, rfl⟩ := mem_windowEval h
+      obtain ⟨_, _, hin⟩ := sorted_split he
+      refine winRatioFacts_sound (pb := b.filter (samePart part x)) (pa := a.filter (samePart part x))
+        (eval_arity hcat hwf.1 x hx) (fun k m sort fr hk _ => ?_)
+        fun y hy => ?_
+      · simp [List.getElem?_map, hk, WinFn.value, WinFn.valueIn]
+      · have hy' := hin y (mem_frame_sides hy)
+        exact ⟨aeval_sound hcat hA hF hT hwf.1 (fun h => (hs h).2) y hy',
+          Rel.facts_sound hcat hF hT hwf.1 y hy'⟩
   | .read _, _, _, _, _ | .values _ _, _, _, _, _ | .filter _ _, _, _, _, _
   | .project _ _, _, _, _, _ | .emit _ _, _, _, _, _ | .cross _ _, _, _, _, _
   | .join _ _ _ _, _, _, _, _ | .fetch _ _ _, _, _, _, _ | .unionAll _ _, _, _, _, _
-  | .window _ _ _ _, _, _, _, _ | .semi _ _ _ _, _, _, _, _ | .orderBy _ _, _, _, _, _
+  | .semi _ _ _ _, _, _, _, _ | .orderBy _ _, _, _, _, _
   | .distinct _, _, _, _, _ | .unnest _ _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
 end
 
@@ -1080,10 +1141,23 @@ theorem Rel.ratioPart_sound_allSz {cat : Catalog} (hcat : cat.WF) {A : String �
       exact ratioFacts_sound_of (hkl ▸ aggCol_eq hv) fun y hy =>
         ⟨aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi y (hgrp y hy),
           Rel.facts_sound_all hcat hF hT hwf.1 hi y (hgrp y hy)⟩
+  | .window r part _ fns, hwf, hsz, _, ⟨i, hi, s, hp, hs, o, h, ho⟩, row, hr => by
+      obtain ⟨b, x, a, vs, -, rfl, hvs, _, _, hin⟩ := mem_windowRowsA_sorted hs ho (h.mem_iff.mp hr)
+      refine winRatioFacts_sound (pb := b.filter (samePart part x)) (pa := a.filter (samePart part x))
+        (orderAllowed_arity hcat hwf.1 hi x (hp.mem_iff.mp (hin x (.inl rfl))))
+        (fun k m sort fr hk hpick => ?_) fun y hy => ?_
+      · rcases hvs.getElem? k with ⟨f, v, hf, hv, hfv⟩ | ⟨hf, -⟩
+        · rw [hk] at hf; cases hf
+          simp only [WinFn.Allowed, hpick, Bool.false_eq_true, ite_false] at hfv
+          rw [hv, hfv]
+        · rw [hk] at hf; cases hf
+      · have hy' := hp.mem_iff.mp (hin y (mem_frame_sides hy))
+        exact ⟨aeval_sound_allSz hcat hA hF hT hwf.1 (fun h => (hsz h).2) hi y hy',
+          Rel.facts_sound_all hcat hF hT hwf.1 hi y hy'⟩
   | .read _, _, _, _, _, _, _ | .values _ _, _, _, _, _, _, _ | .filter _ _, _, _, _, _, _, _
   | .project _ _, _, _, _, _, _, _ | .emit _ _, _, _, _, _, _, _ | .cross _ _, _, _, _, _, _, _
   | .join _ _ _ _, _, _, _, _, _, _ | .fetch _ _ _, _, _, _, _, _, _
-  | .unionAll _ _, _, _, _, _, _, _ | .window _ _ _ _, _, _, _, _, _, _
+  | .unionAll _ _, _, _, _, _, _, _
   | .semi _ _ _ _, _, _, _, _, _, _ | .orderBy _ _, _, _, _, _, _, _ | .distinct _, _, _, _, _, _, _
   | .unnest _ _, _, _, _, _, _, _ => fun f hf => by simp [ratioPart] at hf
 end

@@ -191,7 +191,8 @@ still needs the precondition. Guarding the division itself,
 where none applies. The route names the plan's class on that engine:
 `exact` (every result the engine gives, the reference allows), `observed`
 (equal under an observation the postcondition states, a float tolerance
-included), `shim` (after a proved translation) or `refused`
+included), `shim` (after shims proved against the model of the engine's
+functions) or `refused`
 ([how a route is chosen](verifying.md),
 [route classes](verifying.md)).
 
@@ -318,7 +319,7 @@ print(totals.refresh(engine="polars", route="auto"))
 
 The second refresh adds the insert to its group's exact sum and rounds it
 once, without reading the input
-([`LinearAgg.fsum_no_drift`](../SubstraitLean/IncrementalFloat.lean)). A result
+([`LinearAgg.fsum_no_drift`](../analysis/Sverify/Analysis/IncrementalFloat.lean)). A result
 not determined up to row order, such as a `LIMIT` over ties, is refused by
 every sink.
 
@@ -536,8 +537,11 @@ exactly what is proved and what each result rests on.
    recompute, which runs on the inserts and deletes
    alone.
 4. For each engine, sverify writes the checked plan with every choice
-   spelled out and a proved shim where the engine differs from the
-   reference, and the route says how the proof carries over.
+   spelled out and a shim where the engine differs from the reference. The
+   shims and DuckDB's lowering are proved against the model of each engine's
+   functions, the Polars and Spark translations are tested
+   ([what is trusted](trusted-base.md)), and the route says how the proof
+   carries over.
 
 [how-it-works.md](how-it-works.md) follows each step in detail, with the
 checker's output; [reference-semantics.md](reference-semantics.md) says

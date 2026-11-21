@@ -2,18 +2,6 @@
   "description": "What each construct the Ibis replay meets waits on: an issue, or the reason sverify refuses it by design. sverify_dev.ibis_replay reads it; a refusal that names an issue itself (#n) needs no entry.",
   "constructs": [
     {
-      "match": "float32 is not supported",
-      "issue": 1908
-    },
-    {
-      "match": "literal of type float32",
-      "issue": 1908
-    },
-    {
-      "match": "relations without columns have no SQL form",
-      "issue": 1916
-    },
-    {
       "match": "mode() of an expression",
       "issue": 1909
     },
@@ -26,27 +14,19 @@
       "issue": 1913
     },
     {
-      "match": "group_concat needs a constant separator",
-      "issue": 1914
-    },
-    {
-      "match": "Substrait.Kind.bool to Substrait.Kind",
-      "issue": 1911
-    },
-    {
-      "match": "count of months or years",
-      "issue": 1925
-    },
-    {
       "match": "CountDistinctStar",
       "issue": 1912
     },
     {
-      "match": "type interval(",
-      "issue": 1926
+      "match": "cannot cast this value to a double",
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
     },
     {
-      "match": "cannot cast this value to",
+      "match": "cannot cast this value to an integer",
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
+    },
+    {
+      "match": "cannot cast this value to a timestamp",
       "issue": 1922
     },
     {
@@ -62,52 +42,8 @@
       "issue": 1923
     },
     {
-      "match": "unsupported window function: string_agg",
-      "issue": 1915
-    },
-    {
-      "match": "date_bin is only supported on timestamps",
-      "issue": 1924
-    },
-    {
-      "match": "date_part is only supported on timestamps and dates",
-      "issue": 1927
-    },
-    {
-      "match": "TimestampFromYMDHMS of columns",
-      "issue": 1928
-    },
-    {
-      "match": "truncating to milliseconds",
-      "issue": 1929
-    },
-    {
-      "match": "truncating to microseconds",
-      "issue": 1929
-    },
-    {
-      "match": "unnest(keep_empty=True)",
-      "issue": 1917
-    },
-    {
       "match": "unnest(offset=)",
       "issue": 1917
-    },
-    {
-      "match": "Substrait.Kind.list",
-      "issue": 1919
-    },
-    {
-      "match": "Substrait.Kind.struct",
-      "design": "sverify cannot build a struct; cast its fields (ruling 186, D66 reserved)"
-    },
-    {
-      "match": "type binary is not supported",
-      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
-    },
-    {
-      "match": "literal of type binary",
-      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
     },
     {
       "match": "aggregate Arbitrary",
@@ -116,10 +52,6 @@
     {
       "match": "quantile of decimal",
       "issue": 1921
-    },
-    {
-      "match": "RANGE frames with offsets need",
-      "issue": 1931
     },
     {
       "match": "ApproxQuantile is not supported",
@@ -184,6 +116,42 @@
     {
       "match": "aggregate Kurtosis",
       "issue": 326
+    },
+    {
+      "match": "collect(include_null=True)",
+      "issue": 505
+    },
+    {
+      "match": "collect(distinct=True)",
+      "issue": 2156
+    },
+    {
+      "match": "first(include_null=True)",
+      "issue": 2156
+    },
+    {
+      "match": "last(include_null=True)",
+      "issue": 2156
+    },
+    {
+      "match": "comparison of float with int",
+      "issue": 2158
+    },
+    {
+      "match": "casts of structs are not supported",
+      "design": "sverify cannot build a struct value yet; cast its fields"
+    },
+    {
+      "match": "avg of FLOAT (fp32) values is not modelled",
+      "issue": 417
+    },
+    {
+      "match": "strftime formats must be constants",
+      "issue": 347
+    },
+    {
+      "match": "IndexError: list index out of range",
+      "issue": 2155
     }
   ]
 }

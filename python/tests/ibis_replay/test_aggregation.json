@@ -5,10 +5,10 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_aggregation",
   "summary": {
-    "agree": 69,
+    "agree": 96,
     "disagree": 0,
-    "refused": 75,
-    "unproved": 13,
+    "refused": 47,
+    "unproved": 14,
     "skipped": 10
   },
   "results": {
@@ -33,9 +33,7 @@
       "outcome": "agree"
     },
     "test_aggregate[duckdb-mean]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_aggregate[duckdb-mean_udf]": {
       "outcome": "skipped",
@@ -122,144 +120,120 @@
     },
     "test_arbitrary[duckdb-False]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: aggregate Arbitrary is not supported; rewrite it with a supported operation or column type",
+      "issue": 1920
     },
     "test_arbitrary[duckdb-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: aggregate Arbitrary is not supported; rewrite it with a supported operation or column type",
+      "issue": 1920
     },
     "test_argmin_argmax[duckdb-non-null-filtered-argmax]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_argmin_argmax[duckdb-non-null-filtered-argmin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_argmin_argmax[duckdb-non-null-unfiltered-argmax]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_argmin_argmax[duckdb-non-null-unfiltered-argmin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_argmin_argmax[duckdb-null-filtered-argmax]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_argmin_argmax[duckdb-null-filtered-argmin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_argmin_argmax[duckdb-null-unfiltered-argmax]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_argmin_argmax[duckdb-null-unfiltered-argmin]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_binds_are_cast[duckdb]": {
       "outcome": "agree"
     },
     "test_collect[duckdb-False-False-False-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_collect[duckdb-False-False-False-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_collect[duckdb-False-False-True-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_collect[duckdb-False-False-True-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_collect[duckdb-False-True-False-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_collect[duckdb-False-True-False-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_collect[duckdb-False-True-True-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_collect[duckdb-False-True-True-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_collect[duckdb-True-False-False-False]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: collect(distinct=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_collect[duckdb-True-False-False-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_collect[duckdb-True-False-True-False]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: collect(distinct=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_collect[duckdb-True-False-True-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_collect[duckdb-True-True-False-False]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: collect(distinct=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_collect[duckdb-True-True-False-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_collect[duckdb-True-True-True-False]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: collect(distinct=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_collect[duckdb-True-True-True-True]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "Unsupported: collect(include_null=True) is not supported; use collect(), which skips nulls",
+      "issue": 505
     },
     "test_corr_cov[duckdb-cond-corr_pop]": {
       "outcome": "agree"
     },
     "test_corr_cov[duckdb-cond-corr_pop_bool]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
-      "issue": 1911
+      "construct": "run: Unsupported: comparison of float with int; cast one side first",
+      "issue": 2158
     },
     "test_corr_cov[duckdb-cond-corr_samp]": {
       "outcome": "skipped",
@@ -270,8 +244,8 @@
     },
     "test_corr_cov[duckdb-cond-covar_pop_bool]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
-      "issue": 1911
+      "construct": "run: Unsupported: comparison of float with int; cast one side first",
+      "issue": 2158
     },
     "test_corr_cov[duckdb-cond-covar_samp]": {
       "outcome": "agree"
@@ -281,8 +255,8 @@
     },
     "test_corr_cov[duckdb-no_cond-corr_pop_bool]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
-      "issue": 1911
+      "construct": "run: Unsupported: comparison of float with int; cast one side first",
+      "issue": 2158
     },
     "test_corr_cov[duckdb-no_cond-corr_samp]": {
       "outcome": "skipped",
@@ -293,8 +267,8 @@
     },
     "test_corr_cov[duckdb-no_cond-covar_pop_bool]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.float. Lean's model does not cover it",
-      "issue": 1911
+      "construct": "run: Unsupported: comparison of float with int; cast one side first",
+      "issue": 2158
     },
     "test_corr_cov[duckdb-no_cond-covar_samp]": {
       "outcome": "agree"
@@ -316,89 +290,72 @@
       "outcome": "agree"
     },
     "test_filter[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "unproved",
+      "reason": "domain error: double_col"
     },
     "test_first_last[duckdb-False-False-first]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last[duckdb-False-False-last]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last[duckdb-False-True-first]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last[duckdb-False-True-last]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last[duckdb-True-False-first]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: first(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last[duckdb-True-False-last]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: last(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last[duckdb-True-True-first]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: first(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last[duckdb-True-True-last]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: last(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last_ordered[duckdb-exclude-null-filtered-first]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last_ordered[duckdb-exclude-null-filtered-last]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last_ordered[duckdb-exclude-null-not-filtered-first]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last_ordered[duckdb-exclude-null-not-filtered-last]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_first_last_ordered[duckdb-include-null-filtered-first]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: first(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last_ordered[duckdb-include-null-filtered-last]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: last(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last_ordered[duckdb-include-null-not-filtered-first]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: first(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last_ordered[duckdb-include-null-not-filtered-last]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: last(include_null=True) is not supported; rewrite it with a supported operation or column type",
+      "issue": 2156
     },
     "test_first_last_ordered_in_mutate[duckdb-first_asc]": {
       "outcome": "refused",
@@ -433,25 +390,19 @@
       "outcome": "agree"
     },
     "test_group_concat[duckdb-is_in-expr]": {
-      "outcome": "refused",
-      "construct": "Unsupported: group_concat needs a constant separator",
-      "issue": 1914
+      "outcome": "agree"
     },
     "test_group_concat[duckdb-no_cond-const]": {
       "outcome": "agree"
     },
     "test_group_concat[duckdb-no_cond-expr]": {
-      "outcome": "refused",
-      "construct": "Unsupported: group_concat needs a constant separator",
-      "issue": 1914
+      "outcome": "agree"
     },
     "test_group_concat[duckdb-not_in-const]": {
       "outcome": "agree"
     },
     "test_group_concat[duckdb-not_in-expr]": {
-      "outcome": "refused",
-      "construct": "Unsupported: group_concat needs a constant separator",
-      "issue": 1914
+      "outcome": "agree"
     },
     "test_group_concat_ordered[duckdb-False]": {
       "outcome": "agree"
@@ -460,9 +411,7 @@
       "outcome": "agree"
     },
     "test_group_concat_over_window[duckdb]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported window function: string_agg. Lean's model does not cover it yet: rewrite the step, or",
-      "issue": 1915
+      "outcome": "agree"
     },
     "test_grouped_case[duckdb]": {
       "outcome": "agree"
@@ -521,9 +470,7 @@
       "outcome": "agree"
     },
     "test_reduction_ops[duckdb-is_in-bool_sum]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.int. Lean's model does not cover it y",
-      "issue": 1911
+      "outcome": "agree"
     },
     "test_reduction_ops[duckdb-is_in-count]": {
       "outcome": "agree"
@@ -610,9 +557,7 @@
       "outcome": "agree"
     },
     "test_reduction_ops[duckdb-no_cond-bool_sum]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.int. Lean's model does not cover it y",
-      "issue": 1911
+      "outcome": "agree"
     },
     "test_reduction_ops[duckdb-no_cond-count]": {
       "outcome": "agree"
@@ -675,8 +620,8 @@
     },
     "test_topk_filter_op[duckdb-string_col_filter_top3]": {
       "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "construct": "ProducerUnsupported: Alias is not supported yet (see #60, ",
+      "issue": 60
     },
     "test_topk_op[duckdb]": {
       "outcome": "refused",

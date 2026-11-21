@@ -2,10 +2,16 @@
 
 Every exception below derives from `SverifyError`, so
 `except sverify.errors.SverifyError` catches whatever sverify raises on
-purpose; each also keeps its built-in base (`ValueError`, `RuntimeError`).
-Each has a `code`, a snake_case string that names what failed and stays the
-same across 1.x. Every warning derives from `SverifyWarning`. The same
-classes are importable where they are defined (`sverify.routes.RouteError`,
+purpose. Most also keep a built-in base (`ValueError`, `RuntimeError`);
+six derive from `SverifyError` alone, since none is a bad argument:
+`AuditError`, `NotIncrementalError`, `SchemaError`, `PostconditionError`,
+`PreconditionError` and `VerificationError`. `UnverifiedRunError` is also a
+`RouteError`, and so a `ValueError`. The bases are fixed for 1.x. Each
+exception has a `code`, a snake_case string that names what failed and stays
+the same across 1.x. Every warning derives from `SverifyWarning`, also the
+two that live beside what gives them, `sverify.odcs.UnreadRuleWarning` and
+`sverify.openlineage.LineageWarning`. The same classes are importable where
+they are defined (`sverify.routes.RouteError`,
 `sverify.engines.UnsupportedError`); import them from here.
 
 The proof:
@@ -62,8 +68,8 @@ Setup:
 * `CheckerVersionError` (`checker_version`): the `substrait-check` binary
   is older or newer than this sverify.
 * `EngineVersionError` (`engine_version`), `EngineVersionWarning`: an
-  engine's version is not one its profile's facts were probed at (another
-  major version refuses).
+  engine's version is not one its profile's facts were probed at (D70: an
+  unprobed patch warns, a version outside the probed minors refuses).
 * `EngineSettingsError` (`engine_settings`), `EngineSettingsWarning`: an
   engine setting differs from the one its profile's facts were probed
   under.

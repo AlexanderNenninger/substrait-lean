@@ -27,7 +27,7 @@ from collections.abc import Sequence
 # fails deep inside sverify with a TypeError (#1585): check the interface first.
 from importlib.metadata import version as _version
 from importlib.util import find_spec
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import pyarrow as pa
 
@@ -43,7 +43,7 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
 from sverify import _duckdb, black_box
 from sverify._scan import Resident, _q
 from sverify._store import State, Store
-from sverify._unsupported import RANGE_GUARD
+from sverify._unsupported import MIN_MOD_GUARD, RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
 from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_duckdb.declared import refuse_base_table
@@ -120,8 +120,9 @@ SETTINGS: tuple[Setting, ...] = (
         "default_collation",
         ("",),
         "refuse",
-        ("engines/duckdb/replay/collate.json",),
-        "how strings compare; NOCASE may change starts_with, strpos and replace",
+        ("engines/duckdb/replay/collate.json", "duckdb-default-collation-matching"),
+        "how strings compare; NOCASE changes `=`, sorting and grouping, and from 2.0.1 `LIKE`, "
+        "`contains`, `starts_with` and `strpos` too (`replace` is unchanged)",
     ),
     Setting(
         "scalar_subquery_error_on_multiple_rows",
@@ -163,15 +164,27 @@ def _run(
     finite: Finite,
     tie_free: bool,
     asof: Sequence[dict] = (),
+    unchecked: dict | None = None,
+    rows: Literal["sequence", "multiset"] = "sequence",
 ) -> Any:
     from sverify.engine import read_tables
     from sverify_duckdb import engine as duckdb_engine
 
-    # DuckDB reads `Scan` and `Resident` tables where they are.
+    # DuckDB reads `Scan` and `Resident` tables where they are. `unchecked`:
+    # the marks `Report.run` passes on a checked run (ruling 223), and
+    # `rows="multiset"` where the result needs no ordinal: then the windows
+    # need no tiebreak either where the report is exact (`tie_free`).
     tables = {t: con.get(t) for t in read_tables(json.loads(plan_json))}
-    if keep:
-        return duckdb_engine.run(plan_json, tables, keep=True, finite=finite, asof=asof)
-    return duckdb_engine.run(plan_json, tables, finite=finite, asof=asof)
+    return duckdb_engine.run(
+        plan_json,
+        tables,
+        keep=keep,
+        finite=finite,
+        asof=asof,
+        unchecked=unchecked,
+        rows=rows,
+        deterministic=tie_free and rows == "multiset",
+    )
 
 
 def _run_tables(
@@ -428,5 +441,5 @@ PLUGIN = ProfilePlugin(
     ),
     # The variance over a frame, which only DuckDB's writer computes so far.
     window_functions=frozenset({"variance", "std_dev"}),
-    guards=(RANGE_GUARD,),
+    guards=(RANGE_GUARD, MIN_MOD_GUARD),
 )

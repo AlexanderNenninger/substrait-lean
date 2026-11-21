@@ -6,23 +6,24 @@ import Sverify.DuckDB.AvgSet
 import Sverify.Core.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
+import Sverify.Analysis.Zone
 import Sverify.Analysis.Terms
 import Sverify.Analysis.Contracts
 import Sverify.Analysis.Retention
 import Sverify.Analysis.TouchedGroups
 import Sverify.Analysis.TouchedFrames
-import SubstraitLean.IncrementalAgg
-import SubstraitLean.IncrementalFloat
-import SubstraitLean.IncrementalMinMax
-import SubstraitLean.IncrementalSemi
+import Sverify.Analysis.IncrementalAgg
+import Sverify.Analysis.IncrementalFloat
+import Sverify.Analysis.IncrementalMinMax
+import Sverify.Analysis.IncrementalSemi
 import Sverify.Analysis.Safety
 import Sverify.Analysis.Keys
 import Sverify.Analysis.Rows
 import Sverify.Core.Completeness
-import SubstraitLean.Compose
-import SubstraitLean.TableFormat
-import SubstraitLean.Pruning
-import SubstraitLean.Implied
+import Sverify.Analysis.Compose
+import Sverify.Analysis.TableFormat
+import Sverify.Analysis.Pruning
+import Sverify.Analysis.Implied
 import Sverify.Analysis.Partition
 import Sverify.Core.Allowed
 import Sverify.Core.Ties
@@ -30,7 +31,7 @@ import Sverify.Analysis.Knowledge
 import Sverify.Analysis.Guards
 import Sverify.DuckDB.Lowering
 import Sverify.DuckDB.Lift
-import SubstraitLean.Semantic
+import Sverify.Analysis.Semantic
 import SubstraitLean.Obligations
 import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
@@ -431,6 +432,8 @@ end Substrait.Examples
 #print axioms Substrait.ContractCheck.verdict_proved_sound
 #print axioms Substrait.ContractCheck.verified_holds_run_plan
 #print axioms Substrait.ContractCheck.verified_holds_run_plan_duckdb
+#print axioms Substrait.ContractCheck.verified_holds_run_plan_polars
+#print axioms Substrait.ContractCheck.verified_holds_run_plan_spark
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
 #print axioms Substrait.Expr.robust_of_robustB
 #print axioms Substrait.Expr.narrow_sound
@@ -455,3 +458,6 @@ end Substrait.Examples
 #print axioms Substrait.UnFn.apply_approx
 #print axioms Substrait.DuckAgg.avgBigint_nearRel
 #print axioms Substrait.Lift.duckdb_marked
+#print axioms Substrait.Zone.close_sat
+#print axioms Substrait.Zone.add_sat
+#print axioms Substrait.Zone.empty?_sound

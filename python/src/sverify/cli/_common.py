@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 #: The exit codes (API review I1).
-OK, NOT_PROVED, USAGE, UNSUPPORTED, BUDGET, QUARANTINED, ERROR = 0, 1, 2, 3, 4, 5, 6
+(OK, NOT_PROVED, USAGE, UNSUPPORTED, BUDGET, QUARANTINED, ERROR, NO_ROUTE, HELD) = range(9)
 
 
 class UsageError(Exception):

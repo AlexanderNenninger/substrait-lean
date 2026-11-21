@@ -588,7 +588,7 @@ class DeltaSource(_TableSource):
         dt = self._read_at(self.table(version))
         v = dt.version()
         rows, files = self._rows(dt)
-        return Snapshot(v, rows, self._facts(dt, files, f"file stats @v{v}"))
+        return Snapshot(version=v, table=rows, facts=self._facts(dt, files, f"file stats @v{v}"))
 
     def contract(self, version: int | None = None) -> Contract | None:
         """The contract the last sverify commit up to `version` recorded.
@@ -899,7 +899,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         ```
     """
 
-    _keeps_retired = True
+    keeps_retired = True
     # Writes MERGE the change; it overwrites only on `SinkChange.replace`.
     _create_errors = (DeltaError,)
     _commit_errors = (CommitFailedError,)
@@ -1127,7 +1127,15 @@ class DeltaSink(_TableSink[DeltaTable]):
         if done is None:
             return None
         contract = change.contract
-        return SinkWrite(mode, None, contract, *done, contract.checks)
+        inserted, deleted = done
+        return SinkWrite(
+            mode=mode,
+            version=None,
+            contract=contract,
+            inserted=inserted,
+            deleted=deleted,
+            constraints=contract.checks,
+        )
 
     def _write_arrow(self, table: DeltaTable, created: bool, change: SinkChange) -> SinkWrite:
         assert self._view is not None
@@ -1170,7 +1178,14 @@ class DeltaSink(_TableSink[DeltaTable]):
                 self._check(dt, contract, kept)
                 dt.alter.add_constraint(missing, commit_properties=commit)
             inserted, deleted = rows.num_rows, 0
-        return SinkWrite(mode, None, contract, inserted, deleted, contract.checks)
+        return SinkWrite(
+            mode=mode,
+            version=None,
+            contract=contract,
+            inserted=inserted,
+            deleted=deleted,
+            constraints=contract.checks,
+        )
 
     def _commit_files(
         self,

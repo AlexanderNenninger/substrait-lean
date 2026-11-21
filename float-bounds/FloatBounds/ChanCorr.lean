@@ -421,32 +421,33 @@ theorem sqrt_le_sqrt_add {a b c : ℝ} (hb : 0 ≤ b) (hc : 0 ≤ c) (h : a ≤ 
           mul_nonneg (Real.sqrt_nonneg b) (Real.sqrt_nonneg c)])
     _ = √b + √c := Real.sqrt_sq (by positivity)
 
-/-- **`"abs"` of a `STDDEV_*` against the reference (D30)**: an engine's
-`fl(√fl(M₂ / d))` is within `√τ + u (√V + √τ) + 2u · tiny + u √V` of any
-`w` within `u (√V + tiny)` of `√V`, which the reference's square root of the
-exact variance `V = S / d`, rounded once, is; `τ` is `core_var_chan`'s
-`varTol`. The variance's distance passes through the root as
-`|√a − √b| ≤ √|a − b|`, so no lower bound on `V` is needed. -/
-theorem StdModel.epsilon_stddev_cr (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p.vals ≠ [])
-    (hN : p.vals.length ≤ 2 ^ 32) (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 398)
-    (hx : ∀ x ∈ p.vals, OnGrid x ∧ M.fl x = x) {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ p.vals.length)
-    {r : ℝ} (hr : √((p.vals.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL p.vals)) ≤ r)
-    {w : ℝ} (hw : |w - √(comoment (dupL p.vals) / d)| ≤ u * (√(comoment (dupL p.vals) / d) + tiny)) :
-    |M.fl √(M.fl ((M.vEval p).2.2 / d)) - w|
-      ≤ √(varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum)
-        + u * (√(comoment (dupL p.vals) / d)
-          + √(varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum))
-        + 2 * u * tiny + u * √(comoment (dupL p.vals) / d) := by
+/-- **A `STDDEV_*` from a variance within `varTol`**: any engine's
+`fl(√v̂)`, for a variance `v̂ ≥ 0` within `varTol` of `V = S / d` for every
+`r ≥ √(Q' S)`, is within `√τ + u (√V + √τ) + 2u · tiny + u √V` of any `w`
+within `u (√V + tiny)` of `√V`, which the reference's square root of the
+exact variance, rounded once, is; `τ = varTol`. The variance's distance
+passes through the root as `|√a − √b| ≤ √|a − b|`, so no lower bound on `V`
+is needed. -/
+theorem StdModel.stddev_of_var {xs : List ℝ} (hN : xs.length ≤ 2 ^ 32)
+    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 398) {d : ℕ} (hd1 : 1 ≤ d) {vh : ℝ} (hvh0 : 0 ≤ vh)
+    (hvar : ∀ r, √((xs.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL xs)) ≤ r →
+      |vh - comoment (dupL xs) / d| ≤ varTol xs.length d r (xs.map fun x => (|x| + tiny) ^ 2).sum)
+    {r : ℝ} (hr : √((xs.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL xs)) ≤ r)
+    {w : ℝ} (hw : |w - √(comoment (dupL xs) / d)| ≤ u * (√(comoment (dupL xs) / d) + tiny)) :
+    |M.fl √vh - w|
+      ≤ √(varTol xs.length d r (xs.map fun x => (|x| + tiny) ^ 2).sum)
+        + u * (√(comoment (dupL xs) / d)
+          + √(varTol xs.length d r (xs.map fun x => (|x| + tiny) ^ 2).sum))
+        + 2 * u * tiny + u * √(comoment (dupL xs) / d) := by
   obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   have hu1 : u ≤ 1 / 2 ^ 53 := hu'
-  set n : ℕ := p.vals.length with hn_def
-  set Q := (p.vals.map fun x => (|x| + tiny) ^ 2).sum with hQ_def
-  set S := comoment (dupL p.vals) with hS_def
+  set n : ℕ := xs.length with hn_def
+  set Q := (xs.map fun x => (|x| + tiny) ^ 2).sum with hQ_def
+  set S := comoment (dupL xs) with hS_def
   set τ := varTol n d r Q with hτ_def
-  set vh := M.fl ((M.vEval p).2.2 / d) with hvh_def
-  obtain ⟨hvh0, hv⟩ := M.core_var_chan hg hmo p hne hN hB hx hd1 hdn hr
-  obtain ⟨hS0, hSQ, hQbig⟩ := SQ_facts (qs := p.vals) (fun x => x) hN hB
-  have hdup : (p.vals.map fun x => (x, x)) = dupL p.vals := rfl
+  have hv := hvar r hr
+  obtain ⟨hS0, hSQ, hQbig⟩ := SQ_facts (qs := xs) (fun x => x) hN hB
+  have hdup : (xs.map fun x => (x, x)) = dupL xs := rfl
   rw [hdup] at hS0 hSQ
   have hQ0 : 0 ≤ Q := le_trans hS0 hSQ
   have hd' : (1 : ℝ) ≤ d := by exact_mod_cast hd1
@@ -454,9 +455,9 @@ theorem StdModel.epsilon_stddev_cr (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne
   set V := S / d with hV_def
   have hV0 : 0 ≤ V := div_nonneg hS0 (by positivity)
   have hτ0 : 0 ≤ τ := le_trans (abs_nonneg _) hv
-  -- `vh` is far from overflow: `core_var_chan` at `r = √(Q S) ≤ Q`.
+  -- `vh` is far from overflow: `hvar` at `r = √(Q S) ≤ Q`.
   have hvhb : vh ≤ 2 ^ 1000 := by
-    obtain ⟨-, hv'⟩ := M.core_var_chan hg hmo p hne hN hB hx hd1 hdn (r := √Q * √S) le_rfl
+    have hv' := hvar (√Q * √S) le_rfl
     have hsS : √S ≤ √Q := Real.sqrt_le_sqrt hSQ
     have hRQ : √Q * √S ≤ Q := by
       have : √Q * √Q = Q := Real.mul_self_sqrt hQ0
@@ -515,6 +516,24 @@ theorem StdModel.epsilon_stddev_cr (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne
         have h2 := abs_add_le (M.fl √vh - √vh) (√vh - √V)
         linarith
     _ ≤ _ := by nlinarith
+
+/-- **`"abs"` of a `STDDEV_*` against the reference (D30)**: DuckDB's
+`fl(√fl(M₂ / d))` is within `√τ + u (√V + √τ) + 2u · tiny + u √V` of any
+`w` within `u (√V + tiny)` of `√V`, which the reference's square root of the
+exact variance `V = S / d`, rounded once, is; `τ` is `core_var_chan`'s
+`varTol` (`stddev_of_var`). -/
+theorem StdModel.epsilon_stddev_cr (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p.vals ≠ [])
+    (hN : p.vals.length ≤ 2 ^ 32) (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 398)
+    (hx : ∀ x ∈ p.vals, OnGrid x ∧ M.fl x = x) {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ p.vals.length)
+    {r : ℝ} (hr : √((p.vals.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL p.vals)) ≤ r)
+    {w : ℝ} (hw : |w - √(comoment (dupL p.vals) / d)| ≤ u * (√(comoment (dupL p.vals) / d) + tiny)) :
+    |M.fl √(M.fl ((M.vEval p).2.2 / d)) - w|
+      ≤ √(varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum)
+        + u * (√(comoment (dupL p.vals) / d)
+          + √(varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum))
+        + 2 * u * tiny + u * √(comoment (dupL p.vals) / d) :=
+  M.stddev_of_var hN hB hd1 (M.core_var_chan hg hmo p hne hN hB hx hd1 hdn hr).1
+    (fun _ h => (M.core_var_chan hg hmo p hne hN hB hx hd1 hdn h).2) hr hw
 
 /-- **`"abs"` of a `COVAR_*` against the reference (D30)**: an engine's
 `fl(C / d)` (`core_cov_chan`) is within `covTol + u · |C / d|` of any `v`

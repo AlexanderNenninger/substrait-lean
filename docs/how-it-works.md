@@ -21,7 +21,7 @@ lake build                                                  # proofs + CLI
 tests/run.sh                                                # golden tests for the CLI
 ```
 
-The core package depends on Lean core alone, so the build takes seconds. Mathlib is used only by the separate [`float-bounds/`](float-bounds.md) project.
+The core package depends on Lean core alone. Mathlib is used only by the separate [`float-bounds/`](float-bounds.md) project.
 
 ## Checking real plans
 
@@ -29,7 +29,7 @@ The core package depends on Lean core alone, so the build takes seconds. Mathlib
 and reports what was proved about it:
 
 ```python
-from sverify.engines import substrait_json
+from sverify.engines.plan import substrait_json
 
 plan = substrait_json(con, "select id, amount * 2 as doubled from orders where amount > 10")
 open("plan.json", "w").write(plan)
@@ -234,6 +234,18 @@ rewritten files as deleted and added, which nets to the change.
 and through delta-rs and pyiceberg, and compares the tables after every
 refresh and the statistics both record.
 
+Other engines read what the sinks write (#861).
+`python/tests/test_io_sink_readers.py` writes a merged, a maintained and a
+replaced table in each format. delta-rs, pyiceberg, DuckDB's `delta_scan`
+and `iceberg_scan`, and sverify's own sources each read the rows the writes
+call for, and the contract record survives each library's own maintenance.
+`python/tests/test_delta_dat.py` reads the Delta Acceptance Testing suite
+through `DeltaSource`. Spark's own readers are outside these tests: sverify
+pins pyspark 4.3, and on Maven Central (2026-11-21) the newest delta-spark,
+4.4.1, builds against Spark 4.2, and the newest iceberg-spark-runtime,
+1.12.0, against Spark 4.1
+([#2140](https://github.com/AlexanderNenninger/substrait-lean/issues/2140)).
+
 #### Doubles under the reference profile
 
 The core has IEEE's doubles, both zeros and signed NaNs, and each profile
@@ -358,8 +370,8 @@ part of a condition that always runs may run on the rows of the join inputs
 it reads alone, even when another input is empty, as DuckDB's filter pushdown
 and hash joins do (#1484). These assumptions are stated in
 [`Safety.lean`](../analysis/Sverify/Analysis/Safety.lean)'s header, and
-`Rel.mayIssues_sound_all` proves that every issue they allow on every order of
-the ties is reported.
+the checker proves that every issue they allow on every order of the ties is
+reported ([proved-theorems.md](proved-theorems.md#runtime-errors)).
 
 ## Modelling choices
 

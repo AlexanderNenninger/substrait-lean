@@ -4,8 +4,8 @@
 surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
-* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report.guard_free`,
-  and `guards=False` in `sverify.engines.to_sql` (and in
+* guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report._guard_free`,
+  and `guards=False` in `sverify.engines.plan.to_sql` (and in
   `sverify_polars.engine.run` and `duckdb_engine.run`);
 * sharded evaluation: `analysis/Sverify/Analysis/Partition.lean`,
   `substrait-check --shard` and `sverify.engines.run_sharded`
@@ -40,7 +40,7 @@ The checker knows three things:
 | Rank | Candidate | Why engines cannot do it | Status |
 |---|---|---|---|
 | 1 | Guard elimination | The checks are ours. An engine cannot know that a `CASE WHEN b = 0 THEN error(…)` never fires. | Public, proved: `to_sql(…, guards=False)`, for a plan whose report's internal `_guard_free` holds |
-| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `SubstraitLean/Semantic.lean`: DISTINCT elimination, implied filters, outer to inner joins, join elimination, GROUP BY through FDs, eager aggregation |
+| 2 | Constraint-based rewrites | Snowflake, BigQuery and Spark/Databricks keep PK/FK/UNIQUE as unenforced metadata. They use it only when the user asserts `RELY`, and the result is then silently wrong if the data disagrees. Our contracts are checked or proved. | `analysis/Sverify/Analysis/Semantic.lean`: DISTINCT elimination, implied filters, outer to inner joins, join elimination, GROUP BY through FDs, eager aggregation |
 | 3 | Sharded evaluation with exact semantics | Engines parallelise only inside one engine. Splitting work across engine instances, files or systems needs a proof that the plan commutes with the split, and the 64-bit and float catches below. | Public, proved, including split keys: `sverify.engines.run_sharded` |
 | 4 | Proved partition and file pruning | Engines prune from statistics they trust. We can prune from predicates implied by contracts, which engines do not infer, and prove pruning sound against how statistics are defined (truncated strings, NaN, NULL counts). | Proved, [section 4](#4-partition-and-file-pruning) |
 | 5 | View matching and shared subplans | Needs plan equivalence across pipelines (`≈ᵣ`), which only the checker has. | Not started ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/82)) |
@@ -103,14 +103,27 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 `MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
 `sverify_polars.engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
-`to_sql(plan, dialect, unchecked=report._unchecked)` drops the checks of the
-expressions `unchecked` lists and keeps the others, and every aggregate's.
+`to_sql(written_plan(report.internal_plan), dialect, unchecked=report._unchecked)`
+drops the checks of the
+expressions `unchecked` lists, the check against `±∞` included, and keeps the
+others, and every aggregate's own. A marked expression meets no issue on data
+that meets the preconditions (`Expr.issues_nil_of_safe`), so its `finite`
+check, which `guards=False` keeps, would never fire there (ruling 223).
+`Report.run` passes the marks of the plan it runs on a checked, translated run
+under the reference, to an engine the checker names a `"marks_theorem"` for:
+DuckDB (`Rel.duckdb_marks`). It rests on `check_inputs` deciding the contract
+on the data the run reads, as Polars's guard-free run does. The marks are
+those of the plan as the checker writes it, with the arguments of nested calls
+bound as columns (`Rel.duckdb_marks_written`, ruling 228), and a run passes
+them only where they fit the plan the writer reads. A plan with a decimal `AVG` keeps every
+check for now: the checker reads it as a sum and a count, which the writer
+folds back (ruling 226).
 The writer checks that the tree's nodes are the plan's, so a report on
 another plan raises `UnsupportedError`. In `SELECT a // b, a * b` with
 `0 ≤ a ≤ 1000` and `b ≥ 1`, the division loses its `CASE` and the product
 keeps its overflow check (`test_per_expression_guards` in
 `python/tests/test_guards.py`). The Polars engine still drops all of its
-checks or none.
+checks or none, and DuckDB's whole-plan `guard_free` stays refused.
 
 Benchmark (`python/scripts/bench_optimizations.py`, a 12-core Linux machine, 10⁶ rows,
 `a // b`, `a % b`, `a * 3 + b` under a filter, preconditions `0 ≤ a ≤ 10⁶`,
@@ -127,6 +140,47 @@ It now multiplies the corners of two finite intervals (`Bound.mem_corners`),
 so such products go guard-free; a half-open range still gives ⊤. The
 elimination was also all or nothing per plan; `Rel.evalG_marks` now decides
 per expression.
+
+### The row ordinal
+
+To give the rows in Lean's order (`to_sql`'s `rows="sequence"`), DuckDB's
+and Polars's runners number them. DuckDB reads `rowid` for it and first copies
+each input into a temporary table, Parquet scans included. Where the checker
+proved that the observation can't see the order the numbering keeps
+(`Report._ordinal_free`), a checked run leaves it out (#1787 item 2,
+ruling 223 O1–O4):
+
+* Under a multiset lens, the report is exact: every result the reference
+  allows is one up to row order (`check_deterministic_sound`). DuckDB's
+  windows then drop their tiebreak too (`to_sql`'s `deterministic`).
+* Under `rows="sequence"`, the report is sequence-determined: the plan's last
+  sort orders the result on a key, so every result the reference allows is
+  the same row by row (`check_sequence_determined_sound`).
+
+Both rest on the preconditions, declared keys included, so `Report.run` takes
+them only where it checked the preconditions on its tables, on the translated
+route under the reference (O2). `Report.to_sql` and `Node.to_sql` already
+wrote a multiset lens's SQL this way. That rests on the lens alone and needs
+no data (`Report._rows`). `python/tests/test_ordinal_free.py` compares each
+run with the run that keeps the ordinal, as the lens compares, on DuckDB and
+Polars (O4).
+
+Benchmark (`python/scripts/bench_ordinal.py`, homelab, DuckDB 2.0.1, 10⁷
+rows in a shuffled key order, 4 threads, the median of 5, seconds):
+
+| Plan | Engine, input | With the ordinal | Without | |
+|---|---|---|---|---|
+| top-N by the key | DuckDB, Arrow | 0.039 | 0.008 | 4.7× |
+| top-N by the key | DuckDB, Parquet | 0.083 | 0.045 | 1.8× |
+| top-N by the key | Polars, Arrow | 0.016 | 0.017 | 0.9× |
+| window ordered by the key | DuckDB, Arrow | 1.574 | 0.596 | 2.6× |
+| window ordered by the key | DuckDB, Parquet | 1.663 | 0.648 | 2.6× |
+| window ordered by the key | Polars, Arrow | 0.351 | 0.337 | 1.0× |
+| grouped sum | DuckDB, Arrow | 0.028 | 0.024 | 1.2× |
+| grouped sum | DuckDB, Parquet | 0.035 | 0.034 | 1.0× |
+| grouped sum | Polars, Arrow | 0.031 | 0.025 | 1.2× |
+
+Polars numbers rows cheaply, so it gains little.
 
 ## 2. Sharded evaluation
 
@@ -231,7 +285,7 @@ The exact-semantics catches, and what we do with each:
   shard's partial sum before the combine, so `--shard` refuses these
   aggregates by default. With `float_order="any"` it splits them anyway
   (`floatCombine`: `SUM` of partial sums, `AVG` as summed sums over summed
-  counts), within a proved bound.
+  counts), within the bound `Shard.lean` proves over the reals (`sharded_near`).
   Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split
   double (`floatBoundParts`), and from them the combined `SUM` of a group of
   `n` values in `k` shards of at most `m` is within
@@ -297,7 +351,7 @@ hold:
   for `fn(DISTINCT x)` when `x` alone is a key (`COUNT(DISTINCT id)` becomes
   `COUNT(id)`).
 
-Wiring. `Rel.optimize` (`SubstraitLean/Semantic.lean`) applies the
+Wiring. `Rel.optimize` (`analysis/Sverify/Analysis/Semantic.lean`) applies the
 rewrites bottom-up, deciding each from the analyses of the already rewritten
 inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
 is well-formed, has the same arity and gives the same list of rows (not just
@@ -328,7 +382,8 @@ Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
   `Rel.fds` derives dependencies: input keys and aggregate groups determine
   every column, equalities in filters and inner joins and copied columns
   determine each other, and they follow emits, projections and joins
-  (`Rel.fds_sound`). `Rel.fdAgg` drops each grouping column that the closure
+  (`Rel.fds_sound`; the same dependencies give `Rel.keys` its keys,
+  `analysis/Sverify/Analysis/FunctionalDeps.lean`). `Rel.fdAgg` drops each grouping column that the closure
   of the others determines and carries it through `MIN`, which is the
   group's one value, NULL included (`Measure.eval_min_const`). The groups
   stay the same (`dedup_parallel`), so the result is the same list of rows.
@@ -369,7 +424,8 @@ the observation compares doubles within a bound. `Same` equates the
 reference's results and says nothing of where a plan raises, so a rule that
 drops a part of the plan that may raise, such as an unused join input with an
 `assumed` overflow, keeps the plan as written (#2006). The report names the check that kept the
-plan as written (`run_gate`), and `check_run_plan_sound` proves the rest.
+plan as written (`run_gate`), and `check_run_plan_sound` proves the rest. On an
+engine's model the statement is `verified_holds_run_plan_duckdb`, `_polars` or `_spark`.
 `Report.run` takes the rewrite on the translated and transfer routes
 (`routes.RUNS_REWRITE`), where it checked the preconditions on its data
 (`check_requires=True`, the default): every rewrite rests on them, so
@@ -414,7 +470,7 @@ through the request's `"rules"`.
 (`stats_table`, `stats_bounds`). A source with a condition,
 `DeltaSource(uri, where=...)` or `IcebergSource(catalog, name, where=...)`,
 reads the rows on which it is TRUE and skips the data files whose statistics
-rule it out. `SubstraitLean/Pruning.lean` proves the criterion:
+rule it out. `analysis/Sverify/Analysis/Pruning.lean` proves the criterion:
 
 * Shard the source by data file. A skipped file's shard holds no row on
   which the condition is TRUE, so dropping it leaves a sharding of the same
@@ -456,7 +512,7 @@ A view can also imply a predicate on a base table that the query does not
 state, and engines do not derive one. With `o.ts >= c.since` in a join of
 orders and customers, and `since >= DATE '2026-01-01'` among the
 customers' preconditions, only orders from 2026 on can reach the result.
-`Rel.need` (`SubstraitLean/Implied.lean`) finds such predicates. It pushes
+`Rel.need` (`analysis/Sverify/Analysis/Implied.lean`) finds such predicates. It pushes
 a demand down the plan through filters, emits, projections, unions and
 inner joins. At a join, it refines the join condition and the demand on
 the other input's abstract values (`Rel.aeval`), carrying bounds across
@@ -491,12 +547,12 @@ over Z-sets (`Rel.incremental_sound` in
 [`analysis/Sverify/Analysis/Incremental.lean`](../analysis/Sverify/Analysis/Incremental.lean)).
 Further delta rules cover operators that are not linear: `COUNT` and
 integer `SUM` per group, and `DISTINCT`
-([`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+([`analysis/Sverify/Analysis/IncrementalAgg.lean`](../analysis/Sverify/Analysis/IncrementalAgg.lean),
 [`sverify._linear`](../python/src/sverify/_linear.py)),
 exact `SUM` and `AVG`, `MIN` and `MAX` per group
-([`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)),
+([`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)),
 and semi and anti joins
-([`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean),
+([`analysis/Sverify/Analysis/IncrementalSemi.lean`](../analysis/Sverify/Analysis/IncrementalSemi.lean),
 [`sverify._semi`](../python/src/sverify/_semi.py)).
 
 `COUNT` and `SUM` per group are linear over Z-sets: each is a sum of a
@@ -537,7 +593,7 @@ each changed row's value times its weight to it, and the view's value is
 the exact sum rounded once, `floatSumCR`. Lean proves that after any
 sequence of batches the state finishes to the aggregate of the current rows
 (`LinearAgg.fsum_no_drift` in
-[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)):
+[`analysis/Sverify/Analysis/IncrementalFloat.lean`](../analysis/Sverify/Analysis/IncrementalFloat.lean)):
 a delete cancels its insert exactly. Over 1,000 batches of the prototype
 (`python -m sverify_dev.ivm_float_sum`), a running double sum was off in
 17,226 of 18,432 group results, the worst by 9.4·10¹⁴ ulps. The engine keeps the integer itself, in limbs: a finite double is
