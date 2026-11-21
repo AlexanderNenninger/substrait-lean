@@ -20,7 +20,6 @@ LAYERS: list[tuple[str, list[str]]] = [
         "base",
         [
             "_meta",
-            "_deprecated",
             "_duration",
             "_stages",
             "_cursor",

@@ -42,7 +42,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
-import warnings
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -213,9 +212,7 @@ def _arrow(rows: Rows, schema: pa.Schema) -> pa.Table:
     return pa.Table.from_pylist(dicts, schema=schema)
 
 
-def source(
-    rows: Rows, schema: Any = None, *, name: str | None = None, version: int = 0
-) -> StaticSource:
+def source(rows: Rows, schema: Any = None, *, name: str, version: int = 0) -> StaticSource:
     """An in-memory source (`sverify.io.StaticSource`) holding `rows`.
 
     The `sv_source` fixture of sverify's pytest plugin is this function.
@@ -226,8 +223,7 @@ def source(
         schema: The columns, as anything `ibis.schema` accepts (such as
             `{"id": "!int64", "amount": "int64"}`, where `!` is NOT NULL),
             an Ibis schema or an Arrow schema. Optional for an Arrow table.
-        name: The table's name in the plans that read it. Required (before
-            1.0 it defaulted to `"table"`, which warns for one release).
+        name: The table's name in the plans that read it. Required.
         version: The source's version. Default: 0.
 
     Returns:
@@ -242,14 +238,6 @@ def source(
         table = rows
     else:
         table = _arrow(rows, _arrow_schema(schema))
-    if name is None:
-        warnings.warn(
-            'source() without name= is deprecated (it defaulted to "table"); '
-            "name the table as the plans read it",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        name = "table"
     return StaticSource(table, name=name, version=version)
 
 

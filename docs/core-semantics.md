@@ -148,8 +148,8 @@ Three kinds of semantics, each with one job.
   overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
   so neither of the two refines the other.
 
-A plan is verified up to an observation `o` when its verdict is one of the
-proved values and it is determined up to `o`: every result the reference
+A plan is verified when its verdict is one of the proved values and it is
+determined up to its profile's observation `o`: every result the reference
 allows is equal, up to `o`, to `Rel.eval`'s (`Rel.DeterminedUpTo`). A sound
 engine's model then gives that one observed answer (`Engine.Sound.equiv_eval`),
 and two sound engines agree on it (`Engine.sound_agree`). The proof outcome

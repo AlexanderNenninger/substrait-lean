@@ -233,6 +233,83 @@ theorem canon_finite (c : Int) : F.canon (F.finite c) = F.finite c := by
       have := F.negInf_eq; have := F.posInf_eq; have := F.negNan_eq; have := F.negZero_eq
       omega
 
+/-! ## The codes of the format's values (ruling 248, #271)
+
+Every integer magnitude up to `maxMag` has a code, but only those with at
+most `p` significant bits are values of the format: `k · 2^e` with `k < 2ᵖ`.
+`Dbl` names the codes of values: the zeros, `±∞`, the NaNs and such
+magnitudes. The reference only produces them from them. -/
+
+/-- A magnitude with at most `p` significant bits: the bits below its top `p`
+are zero. Every magnitude below `2ᵖ` is one. -/
+def magDbl (m : Nat) : Bool := m % 2 ^ (m.log2 + 1 - F.p) == 0
+
+/-- The code of a value of the format: `0`, `-0.0`, `±∞`, NaN, the negative
+NaN, or `±(2m + 1)` for a magnitude `0 < m ≤ maxMag` with at most `p`
+significant bits. -/
+def dbl (c : Int) : Bool :=
+  c == 0 || c == F.negZero || c == F.posInf || c == F.negInf || c == F.nan || c == F.negNan ||
+    (c.natAbs % 2 == 1 && decide (0 < (c.natAbs - 1) / 2) && decide ((c.natAbs - 1) / 2 ≤ F.maxMag) &&
+      F.magDbl ((c.natAbs - 1) / 2))
+
+/-- `c` is the code of a value of the format. -/
+def Dbl (c : Int) : Prop := F.dbl c = true
+
+instance (c : Int) : Decidable (F.Dbl c) := inferInstanceAs (Decidable (_ = true))
+
+/-- `k · 2^g` for `k ≤ 2ᵖ` has at most `p` significant bits: the rounding of
+a magnitude to `p` bits, which may carry up to `2ᵖ`, gives one. -/
+theorem magDbl_mul (hp : 1 ≤ F.p) {k : Nat} (hk : k ≤ 2 ^ F.p) (g : Nat) :
+    F.magDbl (k * 2 ^ g) = true := by
+  simp only [magDbl, beq_iff_eq]
+  apply Nat.mod_eq_zero_of_dvd
+  by_cases k0 : k = 0
+  · subst k0; simp
+  have hm : k * 2 ^ g ≠ 0 := Nat.mul_ne_zero k0 (Nat.pos_iff_ne_zero.mp (Nat.two_pow_pos g))
+  rcases Nat.lt_or_eq_of_le hk with hk | hk
+  · have hlt : (k * 2 ^ g).log2 < F.p + g := by
+      rw [Nat.log2_lt hm, Nat.pow_add]
+      exact Nat.mul_lt_mul_of_pos_right hk (Nat.two_pow_pos g)
+    exact Nat.dvd_trans (Nat.pow_dvd_pow 2 (by omega)) (Nat.dvd_mul_left _ _)
+  · subst hk
+    rw [← Nat.pow_add, Nat.log2_two_pow]
+    exact Nat.pow_dvd_pow 2 (by omega)
+
+/-- A magnitude below `2ᵖ` has at most `p` significant bits. -/
+theorem magDbl_small (hp : 1 ≤ F.p) {m : Nat} (hm : m < 2 ^ F.p) : F.magDbl m = true := by
+  simpa using F.magDbl_mul hp (Nat.le_of_lt hm) 0
+
+/-- The non-negative code of a magnitude of the format's values. -/
+theorem dbl_ofMag {neg : Bool} {m : Nat} (hm : m ≤ F.maxMag) (hd : F.magDbl m = true) :
+    F.Dbl (F.ofMag neg m) := by
+  have hn : m ≠ F.nanMag := by simp [nanMag]; omega
+  unfold Dbl dbl ofMag
+  by_cases m0 : m = 0
+  · simp [m0]
+  have hodd : ∀ c : Int, c = 2 * m + 1 ∨ c = -(2 * m + 1) →
+      (c.natAbs % 2 == 1 && decide (0 < (c.natAbs - 1) / 2) &&
+        decide ((c.natAbs - 1) / 2 ≤ F.maxMag) && F.magDbl ((c.natAbs - 1) / 2)) = true := by
+    intro c hc
+    have ha : c.natAbs = 2 * m + 1 := by omega
+    have hh : (2 * m + 1 - 1) / 2 = m := by omega
+    simp only [ha, hh, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq]
+    exact ⟨⟨⟨by omega, by omega⟩, hm⟩, hd⟩
+  simp only [m0, ↓reduceIte, hn, ne_eq, not_false_eq_true, and_true]
+  split
+  · exact Bool.or_eq_true_iff.mpr (.inr (hodd _ (.inr rfl)))
+  · exact Bool.or_eq_true_iff.mpr (.inr (hodd _ (.inl rfl)))
+
+theorem dbl_zero : F.Dbl 0 := by simp [Dbl, dbl]
+theorem dbl_negZero : F.Dbl F.negZero := by simp [Dbl, dbl]
+theorem dbl_posInf : F.Dbl F.posInf := by simp [Dbl, dbl]
+theorem dbl_negInf : F.Dbl F.negInf := by simp [Dbl, dbl]
+theorem dbl_nan : F.Dbl F.nan := by simp [Dbl, dbl]
+theorem dbl_negNan : F.Dbl F.negNan := by simp [Dbl, dbl]
+
+/-- The largest finite magnitude, `(2ᵖ − 1) · 2^…`, is a value's. -/
+theorem magDbl_maxMag (hp : 1 ≤ F.p) : F.magDbl F.maxMag = true := by
+  unfold maxMag; exact F.magDbl_mul hp (Nat.sub_le _ _) _
+
 /-! ## Casts into the format
 
 The checker reasons about a cast only through these contracts; each instance
@@ -255,6 +332,8 @@ structure IntConv extends F.FiniteMonoConv where
   rel : ∀ {i}, i ≠ 0 → i.natAbs ≤ 2 ^ F.emax → ∃ M, conv i = signedCode (decide (i < 0)) M ∧
     2 ^ F.p * M ≤ (2 ^ F.p + 1) * (i.natAbs * 2 ^ F.scale) ∧
     (2 ^ F.p - 1) * (i.natAbs * 2 ^ F.scale) ≤ 2 ^ F.p * M
+  /-- Its results are values of the format (ruling 248). -/
+  dbl : ∀ i, F.Dbl (conv i)
 
 end FloatFormat
 

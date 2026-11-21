@@ -134,7 +134,7 @@ def test_source_takes_tuples_dicts_or_arrow():
     assert not a.table.schema.field("id").nullable
     assert a.name == "orders" and a.version == 0
     with pytest.raises(TypeError, match="needs a schema"):
-        source([(1,)])
+        source([(1,)], name="t")
 
 
 # -- assert_contract -------------------------------------------------------------
