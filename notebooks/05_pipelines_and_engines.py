@@ -73,7 +73,7 @@ def _(mo):
 
 @app.cell
 def _(pa, sv):
-    from sverify.engines import delta_plans
+    from sverify.engines.plan import delta_plans
     from sverify.io import StaticSource
 
     def arrow_table(schema, rows):
@@ -1015,7 +1015,8 @@ def _(mo):
 
 @app.cell
 def _(ibis, math, sv):
-    from sverify.engines import ENGINES, run, substrait_json, written_plan
+    from sverify.engines import ENGINES, run
+    from sverify.engines.plan import substrait_json, written_plan
 
     T_SCHEMA = ibis.schema({"k": "string", "qty": "int64", "v": "float64"})
     U_SCHEMA = ibis.schema({"k": "string", "label": "string"})
@@ -1420,7 +1421,8 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(con, dialect, json, mo, sql_query, substrait_json):
     import sqlglot
-    from sverify.engines import UnsupportedError, to_sql
+    from sverify.engines import UnsupportedError
+    from sverify.engines.plan import to_sql
 
     try:
         _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))

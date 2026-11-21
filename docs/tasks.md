@@ -636,7 +636,7 @@ def unit_price(orders):
     return orders.select(orders.id, unit=orders.amount // orders.qty)
 
 
-report = unit_price.check(orders={"id": "int64", "amount": "int64", "qty": "int64"})
+report = unit_price.verify(orders={"id": "int64", "amount": "int64", "qty": "int64"})
 print(report.verdict == sv.Verdict.PROVED, [n.label for n in report.needs])
 # False ['(_.qty != 0)']
 print(report.ensures[0].message)
@@ -1535,7 +1535,7 @@ upstream = openlineage.read("events.jsonl").dataset(paid_sink)
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(upstream.verified, doubled_paid.check(paid=upstream.schema).verdict)
+print(upstream.verified, doubled_paid.verify(paid=upstream.schema).verdict)
 # True proved
 ```
 
@@ -1970,7 +1970,7 @@ paid_contract = odcs.read("paid.odcs.yaml")
 def doubled_paid(paid):
     return paid.select(paid.id, doubled=paid.amount * 2)
 
-print(doubled_paid.check(paid=paid_contract.schema()).verdict)
+print(doubled_paid.verify(paid=paid_contract.schema()).verdict)
 # proved
 ```
 

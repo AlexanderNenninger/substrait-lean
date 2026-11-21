@@ -92,7 +92,6 @@ from sverify.engine import (
     plan_json,
     quote,
     run_plan,
-    written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import StaticSource, arrow_rows
@@ -280,6 +279,8 @@ class _Target:
 
 
 def _target(subject: Any) -> _Target:
+    from sverify.engine import written_plan  # the plan layer stays out of this namespace
+
     if isinstance(subject, ir.Table):
         prov = _lookup(subject.op())
         if prov is None:
@@ -330,6 +331,7 @@ def _target(subject: Any) -> _Target:
 def _requirements(node: Node, leaves: Sequence[Node]) -> dict[str, list[Condition]]:
     """What the node's stage assumes about each table it reads: the
     preconditions on its sources, and what a stored node guarantees."""
+
     out: dict[str, list[Condition]] = {leaf.name: [] for leaf in leaves}
     prov = _lookup(node._query()._expr.op())
     extra = [(t, cs) for t, cs in (prov.external if prov else {}).items() if t in out]

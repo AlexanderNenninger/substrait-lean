@@ -29,7 +29,7 @@ def big_orders(orders):
 
 def prove() -> sv.Report:
     """The contract's proof for the declared schema: no data is read."""
-    return big_orders.check(orders=SCHEMA)
+    return big_orders.verify(orders=SCHEMA)
 
 
 def run(orders: pa.Table) -> pa.Table:

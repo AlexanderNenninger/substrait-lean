@@ -17,7 +17,7 @@ how to pick one, and how to install what you need.
   `sv.connect(engine=...)` pick the engine that runs a plan, and a route
   says how the proof reaches it ([Verifying: the two paths](verifying.md)).
 - `node.to_sql(dialect)`, `report.to_sql(dialect)` and
-  `sverify.engines.to_sql(plan, dialect)` write the checked plan as SQL in
+  `sverify.engines.plan.to_sql(plan, dialect)` write the checked plan as SQL in
   the dialect named, among the installed engines'. What a dialect cannot
   write is refused (`UnsupportedError`).
 - `semantics=` on `verify` picks the profile the proof is under: the

@@ -59,6 +59,10 @@ FORMAT = 1
 FORMATS = ("text", "json", "github", "sarif")
 
 
+#: What `--fix` and `--diff` say when they have fixes (#881 1.4, ruling 219 D4).
+NARROWS = "These preconditions narrow the input each node accepts: its sources must meet them."
+
+
 def _version() -> str:
     import sverify
 
@@ -431,6 +435,8 @@ def cmd_check(args: argparse.Namespace) -> int:
         lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
         if f.reason:
             lines.append(f"  not placed: {f.reason}")
+    if plan.fixes:
+        lines.append(NARROWS)
     if diff:
         lines.append(diff.rstrip("\n"))
     if applied:
@@ -609,7 +615,8 @@ def parser() -> argparse.ArgumentParser:
     fix.add_argument(
         "--fix",
         action="store_true",
-        help="write the preconditions the proofs need into requires=, then check again",
+        help="write the preconditions the proofs need into requires=, then check again; "
+        "they narrow the input each node accepts, so its sources must meet them",
     )
     fix.add_argument("--diff", action="store_true", help="show what --fix would write")
     c.add_argument(

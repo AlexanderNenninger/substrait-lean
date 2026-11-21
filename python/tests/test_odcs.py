@@ -385,7 +385,7 @@ def test_read_conditions_are_requires_a_transform_proves_with():
     def doubled(orders):
         return orders.select(orders.id, doubled=orders.amount * 2)
 
-    assert doubled.check(orders=c.schema()).verdict == sv.Verdict.PROVED
+    assert doubled.verify(orders=c.schema()).verdict == sv.Verdict.PROVED
 
 
 def test_cli_contract_export(tmp_path, capsys):

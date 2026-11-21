@@ -34,7 +34,6 @@ from sverify.errors import (
     [
         (sverify.errors, "Unsupported", UnsupportedError),
         (sverify.errors, "NotIncremental", NotIncrementalError),
-        (sverify.engines, "Unsupported", UnsupportedError),
     ],
 )
 def test_the_old_exception_names_warn(module, old, new) -> None:

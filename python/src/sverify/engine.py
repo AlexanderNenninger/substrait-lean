@@ -1001,24 +1001,3 @@ def to_arrow(rows, schema: pa.Schema) -> pa.Table:
         return pa.Table.from_pylist([{} for _ in rows], schema=schema)
     arrays = [pa.array(c, type=f.type) for c, f in zip(columns, schema, strict=True)]
     return pa.Table.from_arrays(arrays, schema=schema)
-
-
-def create_table(con: Connection, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
-    """Deprecated: `con.create(name, schema, rows)`."""
-    warnings.warn(
-        "sverify.engines.create_table(con, ...) is deprecated; "
-        "write con.create(name, schema, rows)",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    con.create(name, schema, rows)
-
-
-def table_rows(con: Connection, name: str) -> list[tuple]:
-    """Deprecated: `con.rows(name)`."""
-    warnings.warn(
-        "sverify.engines.table_rows(con, name) is deprecated; write con.rows(name)",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return con.rows(name)

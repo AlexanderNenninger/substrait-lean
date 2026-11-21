@@ -6317,7 +6317,7 @@ def to_sql(
 
         import pyarrow as pa
         import sverify as sv
-        from sverify.engines import to_sql
+        from sverify.engines.plan import to_sql
         from sverify.io import StaticSource
 
         orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")
