@@ -100,7 +100,7 @@ stated against `HasIssue`, so it does not cover them. Strengthening
 Wiring. `Report._guard_free`. `to_sql(plan, dialect, guards=False)` drops
 the division-by-zero `CASE`s, the `date_trunc` range check, Snowflake's
 row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
-`MIN % -1 = 0`, which is part of the semantics and no check, and every `SUM` check.
+`MIN % -1 = 0`, which belongs to the semantics, and every `SUM` check.
 `sverify_polars.engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
 `to_sql(written_plan(report.internal_plan), dialect, unchecked=report._unchecked)`
