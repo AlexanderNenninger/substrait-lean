@@ -9,8 +9,8 @@
   "sverify_substrait": "0.106.0",
   "summary": {
     "agree": 332,
-    "disagree": 10,
-    "refused": 190,
+    "disagree": 9,
+    "refused": 191,
     "skipped": 146
   },
   "refusals": {
@@ -55,7 +55,8 @@
     "no impl of add in Substrait's YAMLs takes (precision_time<N>, interval_day<N>); cast the arguments to the types of one of its impls": 2,
     "no impl of add in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 2,
     "no impl of nth_value in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 2,
-    "refused for Substrait: agg.stat'…'annotate'…'s pow_one_inf: Substrait allows ONE, NAN where the proof uses ONE; no shim writes it for this plan: export with shi": 1
+    "refused for Substrait: agg.stat'…'annotate'…'s pow_one_inf: Substrait allows ONE, NAN where the proof uses ONE; no shim writes it for this plan: export with shi": 1,
+    "the inputs of a set relation differ in their column types (for example decimals of two precisions), which Substrait does not allow (#N); report.to_sql(dialect) ": 1
   },
   "findings": {
     "0001 not yet implemented: PrecisionTime literals are not yet implemented": {
@@ -65,10 +66,6 @@
     "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented": {
       "plans": 7,
       "record": "ST-19"
-    },
-    "4005 mismatched types: all set inputs must have matching schemas: N vs. N on parameter path N.precision": {
-      "plans": 1,
-      "record": "#1904"
     }
   },
   "results": {
@@ -671,10 +668,8 @@
       "outcome": "agree"
     },
     "catalogue/tpcds-q51 [annotate]": {
-      "outcome": "disagree",
-      "findings": [
-        "4005 mismatched types: all set inputs must have matching schemas: N vs. N on parameter path N.precision"
-      ]
+      "outcome": "refused",
+      "reason": "the inputs of a set relation differ in their column types (for example decimals of two precisions), which Substrait does not allow (#N); report.to_sql(dialect) "
     },
     "catalogue/tpcds-q51 [apply]": {
       "outcome": "refused",

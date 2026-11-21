@@ -44,10 +44,10 @@ TARGETS = [
     ),
     target(
         AREA,
-        "DuckDB aliases: if, iff, len, substr, arbitrary",
+        "DuckDB aliases: if, len, substr, arbitrary",
         "in",
         "DuckDB style SQL; replay (binder tests)",
-        False,
+        True,
         sql="SELECT if(flag, 1, 0), substr(name, 2) FROM t",
         issue=328,
     ),

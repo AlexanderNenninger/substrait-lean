@@ -504,7 +504,7 @@
       "outcome": "refused",
       "construct": "sverify cannot check it: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.str. Lean's model does not cov",
       "dbt": "pass",
-      "issue": 1911
+      "issue": 2180
     },
     "dbt_utils_equality_test_unpivot_original_api_ref_data_unpivot_original_api_expected_.ded9a98c93": {
       "test": "dbt_utils.equality",

@@ -39,10 +39,16 @@ def test_window_test_is_proved(result: sverify_dbt.CheckResult) -> None:
     assert got["dbt_utils.unique_combination_of_columns(customer_id, valid_from)"] == "proved"
 
 
-def test_unproved_key(result: sverify_dbt.CheckResult) -> None:
-    [t] = [t for t in result["orders_with_city"].tests if t.label == "unique(order_id)"]
-    assert t.status == "not proved"
-    assert t.why == "the tests upstream do not make it a key"
+def test_a_point_in_time_join_keeps_the_key(result: sverify_dbt.CheckResult) -> None:
+    """`customer_history`'s versions don't overlap (`mutually_exclusive_ranges`,
+    its open end bounded by `valid_from < L`), so each order meets at most one
+    version and `order_id` stays a key of the join (#814)."""
+    assert statuses(result["orders_with_city"])["unique(order_id)"] == "proved"
+    got = statuses(result["customer_history"])
+    assert got["dbt_utils.expression_is_true(valid_from < timestamp '9999-12-31')"] == "proved"
+    # On the model's own result the open end has no condition (ruling 103);
+    # SCD 2 derives the ranges (#763).
+    assert got["dbt_utils.mutually_exclusive_ranges"] == "not checked"
 
 
 def test_refused_models_say_why(result: sverify_dbt.CheckResult) -> None:
@@ -156,9 +162,19 @@ def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
         main(["check", str(shop), "--fail-on", "unproved", "--json", "--counterexamples", "0"]) == 1
     )
     data = json.loads(capsys.readouterr().out)
-    assert {m["name"] for m in data["models"]} >= {"stg_orders", "org_depth"}
+    assert {m["name"] for m in data["items"]} >= {"stg_orders", "org_depth"}
     # `sverify check <dbt dir> --format json` forwards `--format` (#891).
-    assert main(["check", str(shop), "--format", "json", "--counterexamples", "0"]) == 0
+    again = [
+        "check",
+        str(shop),
+        "--fail-on",
+        "unproved",
+        "--format",
+        "json",
+        "--counterexamples",
+        "0",
+    ]
+    assert main(again) == 1
     assert json.loads(capsys.readouterr().out) == data
     assert main(["check", str(shop), "--format", "text", "--counterexamples", "0"]) == 0
     assert "stg_orders (models/staging/stg_orders.sql)" in capsys.readouterr().out
@@ -597,6 +613,8 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
 def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
     """A refusal `ConditionError` does not name (the checker's) skips only the
     test whose conditions fail; the others are proved."""
+    from sverify.errors import UnsupportedError
+
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
 
@@ -605,10 +623,12 @@ def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
 
     def go(req: dict, ens: list) -> str:
         if "boom" in ens:
-            raise ValueError("the checker refuses boom")
+            raise UnsupportedError("the checker refuses boom")
         return "report"
 
-    out = _Checker._isolate(go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], ValueError("x"))
+    out = _Checker._isolate(
+        go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], UnsupportedError("x")
+    )
     assert out == "report" and bad.status == "not checked" and good.status == "pending"
 
 

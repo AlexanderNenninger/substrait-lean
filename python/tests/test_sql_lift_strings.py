@@ -39,6 +39,11 @@ QUERIES = [
     "SELECT id, customer || '!' AS a, concat(customer, '-', customer) AS b,"
     " replace(customer, 'a', 'A') AS r, repeat(customer, qty) AS t, left(customer, 2) AS f,"
     " upper(customer) AS u, lower(customer) AS lo FROM orders",
+    # `ascii` is the code point of the first character, 0 for '' (#328);
+    # `levenshtein` the edit distance in characters. Both agree with DuckDB on
+    # ASCII text, which the reference requires (D43).
+    "SELECT id, ascii(customer) AS a, ascii('') AS e, levenshtein(customer, 'bob') AS l,"
+    " levenshtein(customer, customer || 'x') AS m FROM orders",
     # Digests: lowercase hex of the UTF-8 bytes (#725), and the surrogate key
     # dbt_utils.generate_surrogate_key writes.
     "SELECT id, md5(customer) AS m, sha256(customer) AS s FROM orders",
