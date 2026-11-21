@@ -931,9 +931,10 @@ class _Lift:
         self.profile = profile
         # The inputs by their normalized names, as `qualify` writes them.
         self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
-        # The CTEs in scope, by name, and the scopes of the queries a
-        # subquery is in (which it may not read: no correlated subqueries).
-        self.ctes: dict[str, sge.Expression] = {}
+        # The CTEs in scope, by name, each with the CTEs its body sees (the
+        # ones defined before it), and the scopes of the queries a subquery
+        # is in (which it may not read: no correlated subqueries).
+        self.ctes: dict[str, tuple[sge.Expression, dict]] = {}
         self.outer: list[list[Column]] = []
         # The overflow guard of each window whose RANGE frame bounds DuckDB
         # computes in its integer key's type (`_bound_guard`).
@@ -976,7 +977,7 @@ class _Lift:
             saved = self.ctes
             self.ctes = dict(saved)
             for cte in with_.expressions:
-                self.ctes[_normalized(cte.alias)] = cte.this
+                self.ctes[_normalized(cte.alias)] = (cte.this, dict(self.ctes))
             body = node.copy()
             body.set("with_", None)
             try:
@@ -1279,7 +1280,12 @@ class _Lift:
             )
         alias = node.alias_or_name
         if isinstance(node, sge.Table) and not node.args.get("db") and node.name in self.ctes:
-            rel, cols = self.query(self.ctes[node.name])
+            body, visible = self.ctes[node.name]
+            saved, self.ctes = self.ctes, visible
+            try:
+                rel, cols = self.query(body)
+            finally:
+                self.ctes = saved
             return rel, [Column(alias, c.name, c.type) for c in cols]
         if isinstance(node, sge.Table):
             if (
@@ -2095,6 +2101,17 @@ class _Lift:
         t = a.type
         args = [a.json]
         sorts: list[Json] = []
+        if name == "median" and (t.is_temporal() or t.is_timestamp() or t.is_float32()):
+            # DuckDB interpolates the median of dates, timestamps and FLOATs, as
+            # `quantile_cont` does (a FLOAT or a timestamp comes back): the
+            # lower middle the model takes is another value (#2153). The
+            # model reads `quantile_cont` of integers and doubles only.
+            raise SqlUnsupported(
+                f"{_shown(node)} of {t} is not supported: DuckDB interpolates it as "
+                "quantile_cont does, which the model reads for integers and doubles only",
+                hint="use quantile_disc(x, 0.5) for the lower middle, or cast to DOUBLE",
+                construct=_function(node),
+            )
         if name == "median" and not _numeric(t):
             # DuckDB's median of other ordered values is the 0.5 quantile_disc.
             name = "quantile_disc"
@@ -2966,9 +2983,20 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     `semantics` profile ("duckdb" or "reference").
 
     Raises:
-        Unsupported: The query is outside the subset, saying what.
+        Unsupported: The query is outside the subset, saying what; also a
+            query nested deeper than Python's recursion limit.
         ValueError: `semantics` is not a profile.
     """
+    try:
+        return _lift(query, schemas, semantics)
+    except RecursionError:
+        raise Unsupported(
+            "the query is nested too deeply to lift; split it into CTEs",
+            construct="NESTING DEPTH",
+        ) from None
+
+
+def _lift(query: str, schemas: Mapping[str, Any], semantics: str) -> Lifted:
     profile = PROFILES.get(semantics)
     if profile is None:
         raise ValueError(f"semantics must be one of {', '.join(PROFILES)}, not {semantics!r}")
