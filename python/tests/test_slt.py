@@ -9,6 +9,7 @@ import textwrap
 
 import pytest
 
+from _repo import needs_repo
 from sverify_dev import slt
 
 pytestmark = pytest.mark.backend("duckdb")
@@ -288,6 +289,42 @@ def test_the_summary_skips_files_that_are_not_ledgers(tmp_path):
     )
     text = slt.write_summary(tmp_path).read_text()
     assert "| [area](area.json) | 1 | 0 |" in text and "probes" not in text
+
+
+def test_the_summary_counts_the_fuzzer_apart(tmp_path):
+    """The totals line counts DuckDB's tests and the fuzzer's queries apart,
+    and the links are relative to the README written."""
+
+    def ledger(area, agree, disagree, files):
+        name = area.replace("/", "__") + ".json"
+        (tmp_path / name).write_text(
+            json.dumps(
+                {
+                    "area": area,
+                    "summary": {"agree": agree, "disagree": disagree, "refused": 2, "skipped": 1},
+                    "skipped_files": files,
+                    "results": [],
+                }
+            )
+        )
+
+    ledger("cast", 3, 1, {"cast/a.test": "require json"})
+    ledger("fuzz/int_overflow", 10, 0, {})
+    readme = tmp_path / "facts" / "README.md"
+    readme.parent.mkdir()
+    text = slt.write_summary(tmp_path, readme).read_text()
+    assert (
+        "Totals over 7 queries of DuckDB's tests: 3 agree, 1 disagree, 2 refused, 1 skipped "
+        "(1 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 13 generated queries: "
+        "10 agree, 0 disagree."
+    ) in text
+    assert "| [cast](../cast.json) |" in text
+
+
+@needs_repo
+def test_the_committed_summary_goes_to_the_facts_readme():
+    assert slt.FACTS_README.relative_to(slt.REPO).as_posix() == "engines/duckdb/facts/README.md"
+    assert "<!-- slt:start -->" in slt.FACTS_README.read_text()
 
 
 def test_nested_values_become_arrow_structs():
