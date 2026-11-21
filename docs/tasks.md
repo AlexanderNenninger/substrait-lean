@@ -1418,6 +1418,17 @@ reading or writing (`StageRefresh.credentials`, `"credentials"` in
 what its credential may write (`Storage(writes=[...])` or the
 configuration's `writes`), and with `[inline_credentials]` when options
 hold values or a URI holds them in its userinfo (`s3://key:secret@bucket`).
+Where nothing is declared, an AWS session in the options
+(`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, with `AWS_SESSION_TOKEN`
+for an assumed role) reports its own scope when `boto3` is installed
+(`sverify[secrets-aws]`): sverify asks STS who the session is and reads the
+`GetObject` and `PutObject` grants of that role's or user's policies, once
+per credential. A `Deny`, a condition, a `NotAction`, `NotResource` or
+a pattern that is not a prefix leaves the scope unknown, as does a session that
+cannot read its own policies. Session policies, permissions boundaries and
+bucket policies are not in the identity's policies, so the scope is what they
+grant. Other stores (GCS, Azure, a vended catalog credential) report nothing
+yet and need `reads=` and `writes=`.
 Every URI sverify records, reports, exports or sends is written without
 userinfo, query string or fragment: a sink's `location`, `started`,
 `credentials[].location`, the ODCS `physicalName` and the OpenLineage
