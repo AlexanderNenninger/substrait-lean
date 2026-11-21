@@ -98,22 +98,32 @@ theorem check_proved_on_duckdb {input : Json} {R : Request} {rep : Report}
   check_proved_on Engine.duckdb_sound hR hc hD hT hp hproved hclosed rfl
     (check_noRaise_duckdb hR hc hD hT hP hsm href hi hg)
 
-/-- **Guard elimination's side condition from the report**: a guard-free
-transformation (`guard_free`) meets `Engine.GuardFreeSide` on data that meets
-the request and the size hypothesis, with the request's own description of
-its inputs. -/
-theorem check_guardFreeSide {input : Json} {R : Request} {rep : Report}
-    (hR : parse input = .ok R) (hc : check input = .ok rep)
-    {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hsm : T.root.Small data) (hg : rep.guardFree = true) : Engine.GuardFreeSide data T.root := by
-  rw [(Request.check_ok (check_parse hR hc)).guardFree] at hg
+/-- **Guard elimination's side condition from the request**: a transformation
+the request finds guard-free (`Request.guardFreeIn`) meets
+`Engine.GuardFreeSide` on data that meets the request and the size
+hypothesis, with the request's own description of its inputs. It serves the
+plan as written (`check_guardFreeSide`) and the plan to run
+(`run_plan_guardFreeSide`). -/
+theorem Request.guardFreeSide {R : Request} {data : Catalog} (hD : DataMeets R data) {T : Plan}
+    (hT : R.transform = some T) (hsm : T.root.Small data) (hg : R.guardFreeIn R.kenv = true) :
+    Engine.GuardFreeSide data T.root := by
   simp only [Request.guardFreeIn, hT, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨-, hloose⟩, hm⟩, -⟩ := hg
+  obtain ⟨⟨⟨hw, hloose⟩, hm⟩, -⟩ := hg
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   rw [KnowledgeEnv.windows, ← Rel.keyedWindows_congr hD.arity, ← Rel.mayIssues_congr hD.arity] at hm
   exact ⟨R.kenv.cols, R.kenv.facts, R.kenv.windows data,
     ⟨hD.wf, hK.cols, hK.facts, hK.windows hD.wf, hsm⟩,
-    ⟨check_transform_wf hR hc hD hT, hloose, by simpa [KnowledgeEnv.windows] using hm⟩⟩
+    ⟨Rel.wf_congr hD.arity (Rel.checkWF_iff.mp hw), hloose,
+      by simpa [KnowledgeEnv.windows] using hm⟩⟩
+
+/-- **Guard elimination's side condition from the report**: a guard-free
+transformation (`guard_free`) meets `Engine.GuardFreeSide` on data that meets
+the request and the size hypothesis. -/
+theorem check_guardFreeSide {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
+    (hsm : T.root.Small data) (hg : rep.guardFree = true) : Engine.GuardFreeSide data T.root :=
+  R.guardFreeSide hD hT hsm (by rwa [(Request.check_ok (check_parse hR hc)).guardFree] at hg)
 
 /-- **A proved postcondition holds on Polars's model**: proved, closed and
 guard-free in the report. -/

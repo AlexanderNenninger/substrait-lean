@@ -1,0 +1,1 @@
+A typed decimal NULL literal in a Substrait plan reads with its declared decimal kind, so calls of only such NULLs (`negate`, `abs`, `add`, `coalesce`, `nullif` and the others) are read instead of refused as "a DECIMAL result of non-decimal arguments" (#2026).

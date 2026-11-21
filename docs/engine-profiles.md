@@ -336,8 +336,8 @@ The Polars rows of `--options` name these theorems as their evidence. The
 is the profile `--contract` takes with `"profile": "polars"`. It is an
 evaluable `Profile`, as `Profile.duckdb` is, and it takes Polars's choice
 option by option. `verify(semantics="polars")` does not check under it yet:
-the report is the reference's, marked pending (`ProfilePendingWarning`, #271),
-and the plan runs on Polars by the translated route until #271.
+the report is the reference's, marked pending (`ProfilePendingWarning`, [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)),
+and the plan runs on Polars by the translated route until then.
 
 | Option | `Profile.polars` | Polars 2.1.0 | Why |
 |---|---|---|---|
@@ -410,7 +410,7 @@ Spark as it is (`Engine.spark_sound`). Until the checker reports under
 Spark's profile ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
 a `"profile": "spark"` request gets the reference's report, labelled
 `"reference"`, with `"pending": "spark"`. `power(±1, ±∞)` is NaN on Spark
-(`pow_one_inf`, D40) and `floor` and `ceil` of NaN are `0` (`float_to_int`);
+(`pow_one_inf`, [D40](decisions.md#d40-power1--is-cs-pow)) and `floor` and `ceil` of NaN are `0` (`float_to_int`);
 the writer refuses double `power` and passes NaN through `floor` and `ceil`
 (`Profile.sparkWritten`). `atan2` reads `-0.0` as `0.0` (`zero_sign`), and
 the writer refuses double `atan2`. Once the checker reports under the profile, a plan proved
@@ -458,8 +458,9 @@ ANSI mode, `timestampType`, the session time zone, `caseSensitive` and
 `escapedStringLiterals` refuse every run when they differ from `SPARK_CONF`;
 `legacy.statisticalAggregate`, `decimalOperations.allowPrecisionLoss` and
 `legacy.percentileDiscCalculation` refuse the plans whose options they
-change. A run on another Spark version warns, and on another major version is
-refused. Tested, and trusted: that Spark computes as the model says
+change. A run on an unprobed Spark 4.3 patch warns, and on another minor is
+refused ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)).
+The version a session of yours reports decides. Tested, and trusted: that Spark computes as the model says
 (`engines/spark/tests/test_spark_profile.py`, `engines/spark/tests/test_sql_spark.py`).
 
 ## Engine profiles from outside

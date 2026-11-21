@@ -1,5 +1,5 @@
 """Delta rules for COUNT, SUM and DISTINCT (`sverify._linear`,
-`SubstraitLean/IncrementalAgg.lean`, #248): the view keeps a state per group
+`analysis/Sverify/Analysis/IncrementalAgg.lean`, #248): the view keeps a state per group
 and adds each batch's change to it, and its rows equal a full recompute over
 random change streams."""
 

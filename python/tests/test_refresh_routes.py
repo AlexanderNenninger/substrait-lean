@@ -61,3 +61,20 @@ def test_a_stored_node_needs_a_determined_result(tmp_path) -> None:
         # #655: the fix sentence is kept on every route.
         with pytest.raises(RouteError, match="rerun must give the same.*declare `unique"):
             stored.refresh(route=how)
+
+
+def test_a_refused_version_refreshes_with_unverified(tmp_path, monkeypatch) -> None:
+    """A Polars minor outside the profile's range is refused, and
+    `refresh(unverified=True)` runs the proved plan anyway, as `Report.run`
+    does (D70, ruling 211 C1)."""
+    from sverify import routes
+
+    orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
+    node = doubled(paid(orders))
+    monkeypatch.setattr(routes, "installed_version", lambda e: "2.2.0" if e == "polars" else None)
+    with pytest.raises(routes.EngineVersionError, match="polars 2.2.0 is outside the range"):
+        node.refresh(engine="polars")
+    with pytest.warns(routes.UnverifiedRunWarning, match="polars 2.2.0 is outside the range"):
+        out = node.refresh(engine="polars", unverified=True)
+    r = out["doubled"].route
+    assert r is not None and r.kind == "unverified"

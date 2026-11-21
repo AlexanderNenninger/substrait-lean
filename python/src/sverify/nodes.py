@@ -868,7 +868,10 @@ class _Stage:
         while view_name in taken:
             n += 1
             view_name = f"{name}_{n}"
-        view = pipe.view(view_name, bound, resume=resume)
+        # The view runs on the node's engine from its first state, so its state
+        # is kept in that engine's store (#1881): Spark is no local engine, so
+        # `con` is DuckDB's.
+        view = pipe.view(view_name, bound, resume=resume, engine=engine)
         report = node.report
         view.tie_free = report is not None and report._proved and report._exact
         prunable = {t for t, src in pipe.sources.items() if isinstance(src, _TableSource)}
@@ -1600,8 +1603,9 @@ def _routes(
 ) -> dict[int, Route]:
     """Each node's route to `engine` (by `id`), checked before anything runs.
 
-    A node whose contract is not proved is refused, or, with `unverified`,
-    runs by the route `"unverified"` with a warning. What a rerun must
+    A node whose contract is not proved, or whose engine's version is outside
+    its profile's range (D70), is refused, or, with `unverified`, runs by the
+    route `"unverified"` with a warning. What a rerun must
     reproduce (D20): a stored node's sink commits each epoch once,
     so it needs the sink's `reproducible` (rows as a multiset, doubles
     within the plan's bound, by default), or `reproducible` where the
@@ -1648,7 +1652,20 @@ def _routes(
             )
             out[id(n)] = chosen
             continue
-        chosen = routes.choose(report, engine, route, reproducible=needed)
+        try:
+            chosen = routes.choose(report, engine, route, reproducible=needed)
+        except routes.EngineVersionError as err:
+            if not unverified:
+                raise
+            # A proved plan on a version outside the range (D70), as `Report.run`.
+            chosen = routes.unverified(report, engine, str(err))
+            warnings.warn(
+                f"refreshing {name} on {e} unverified: {chosen.reason}",
+                routes.UnverifiedRunWarning,
+                stacklevel=4,
+            )
+            out[id(n)] = chosen
+            continue
         if chosen.refused:
             refused = replace(chosen, reason=f"{name}: {chosen.reason}")
             if not routes.verified(report):

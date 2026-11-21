@@ -58,6 +58,7 @@ QUERIES = [
     # repeated and cut (#808).
     "SELECT id, right(customer, 2) AS r, right(customer, -1) AS r2, right(customer, 10) AS r3,"
     " right(customer, 0) AS r4, right(customer, -9223372036854775808) AS r5,"
+    " right(customer, qty - 3) AS r6, right(customer, 2 - qty) AS r7, right(customer, NULL) AS r8,"
     " lpad(customer, 5, 'xy') AS l, rpad(customer, 2, '0') AS p,"
     " rpad(customer, 6, 'é-') AS q, lpad(customer, 0, '*') AS z, lpad(customer, -1, '*') AS n"
     " FROM orders",
@@ -67,7 +68,8 @@ QUERIES = [
     " split_part(customer || ',x,,y', ',', 3) AS b, split_part(customer || ',x,,y', ',', -1) AS c,"
     " split_part(customer || ',x,,y', ',', -5) AS c2, split_part(customer, ',', 5) AS d,"
     " split_part(customer, '', 2) AS e, split_part(customer, ',', 0) AS f,"
-    " string_split(customer || '--' || customer, '--')[2] AS g, str_split(customer, 'a')[-1] AS h"
+    " string_split(customer || '--' || customer, '--')[2] AS g, str_split(customer, 'a')[-1] AS h,"
+    " str_split(str_split(customer || '//x?y', '//')[2], '?')[1] AS nested"
     " FROM orders",
     # `concat_ws` leaves out NULLs: '' if all are NULL (#808).
     "SELECT o.id, concat_ws('-', o.customer, c.region, NULL) AS k, concat_ws(', ', c.name) AS n,"
@@ -113,7 +115,7 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT lpad(customer, qty, 'x') FROM orders", "lpad needs a constant int"),
         ("SELECT rpad(customer, 3, '') FROM orders", "empty fill"),
         ("SELECT split_part(customer, ',', qty) FROM orders", "constant int"),
-        ("SELECT right(customer, qty) FROM orders", "right needs a constant int"),
+        ("SELECT right(customer, qty * 1.5) FROM orders", "right by a"),
     ],
 )
 def test_refusals_say_what(query, message):
