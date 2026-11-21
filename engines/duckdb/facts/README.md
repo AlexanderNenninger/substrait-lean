@@ -176,7 +176,7 @@ needs an extension, a setting, a second connection, …). Rerun with:
 cd python && uv run python -m sverify_dev.slt --jobs 2
 ```
 
-Totals over 46322 queries of DuckDB's tests: 12006 agree, 24 disagree, 21697 refused, 12595 skipped (1035 files skipped whole). The fuzzer checked 42306 random queries on homelab and kept 17 distinct disagreements (`fuzz/*`).
+Totals over 46322 queries of DuckDB's tests: 12013 agree, 24 disagree, 21690 refused, 12595 skipped (1035 files skipped whole). The fuzzer checked 42306 random queries on homelab and kept 17 distinct disagreements (`fuzz/*`).
 
 <!-- slt:start -->
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
@@ -262,7 +262,7 @@ Totals over 46322 queries of DuckDB's tests: 12006 agree, 24 disagree, 21697 ref
 | [settings](../replay/settings.json) | 6 | 1 | 0 |  | 712 | 85 | 7 | lift 712 |
 | [show_select](../replay/show_select.json) | 1 | 0 | 0 |  | 20 | 0 | 1 | lift 19, tables 1 |
 | [sql_export](../replay/sql_export.json) | 200 | 1 | 2 | engine 2 | 664 | 1169 | 8 | lift 655, tables 5 |
-| [storage](../replay/storage.json) | 3006 | 40 | 0 |  | 1151 | 505 | 170 | lift 884, tables 154 |
+| [storage](../replay/storage.json) | 3013 | 40 | 0 |  | 1144 | 505 | 170 | lift 878, tables 154 |
 | [storage_version](../replay/storage_version.json) | 0 | 0 | 0 |  | 5 | 0 | 0 | tables 5 |
 | [subquery](../replay/subquery.json) | 130 | 0 | 0 |  | 380 | 388 | 2 | lift 372, checker 7 |
 | [table_function](../replay/table_function.json) | 0 | 0 | 0 |  | 228 | 107 | 7 | lift 228 |
