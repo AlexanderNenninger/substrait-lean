@@ -1,6 +1,7 @@
 """Casts to VARCHAR of booleans and dates (#346): `true`/`false` and `YYYY-MM-DD`, the text every
-tier-1 engine gives, on every engine, from Ibis and from DuckDB SQL. Timestamps and decimals stay
-refused until their text is decided."""
+tier-1 engine gives, from Ibis and from DuckDB SQL. Booleans run on DuckDB and Polars, dates on
+DuckDB: Polars has no cast from a date to a timestamp (#271) and refuses the plan. Timestamps and
+decimals stay refused until their text is decided."""
 
 import datetime as dt
 
@@ -18,7 +19,7 @@ ROWS = pa.table(
 )
 T = ibis.table({"b": "boolean", "d": "date"}, name="t")
 WANT = {"b": ["true", "false", None], "d": ["0001-01-01", "1970-01-01", None]}
-ENGINES = ["duckdb", "polars"]
+SQL = "SELECT CAST(b AS VARCHAR) AS b, CAST(d AS VARCHAR) AS d FROM t"
 
 
 def _run(report, engine):
@@ -27,21 +28,30 @@ def _run(report, engine):
     return report.run(con, engine, unverified=True)
 
 
-@pytest.mark.parametrize("engine", ENGINES)
-def test_ibis_casts_of_booleans_and_dates_give_their_text(engine):
-    report = sv.verify(T.select(b=T.b.cast("string"), d=T.d.cast("string")), counterexamples=0)
-    out = _run(report, engine)
+def _ibis():
+    return sv.verify(T.select(b=T.b.cast("string"), d=T.d.cast("string")), counterexamples=0)
+
+
+def _sql():
+    return sv.verify(sv.sql(SQL, dialect="duckdb", t=T), counterexamples=0)
+
+
+@pytest.mark.parametrize("make", [_ibis, _sql], ids=["ibis", "sql"])
+def test_casts_of_booleans_and_dates_give_their_text_on_duckdb(make):
+    out = _run(make(), "duckdb")
     assert out.column("b").to_pylist() == WANT["b"]
     assert out.column("d").to_pylist() == WANT["d"]
 
 
-@pytest.mark.parametrize("engine", ENGINES)
-def test_sql_casts_of_booleans_and_dates_give_their_text(engine):
-    sql = "SELECT CAST(b AS VARCHAR) AS b, CAST(d AS VARCHAR) AS d FROM t"
-    report = sv.verify(sv.sql(sql, dialect="duckdb", t=T), counterexamples=0)
-    out = _run(report, engine)
-    assert out.column("b").to_pylist() == WANT["b"]
-    assert out.column("d").to_pylist() == WANT["d"]
+@pytest.mark.parametrize("make", [_ibis, _sql], ids=["ibis", "sql"])
+def test_polars_refuses_the_date_cast(make):
+    with pytest.raises(Exception, match="unsupported cast from Date"):
+        _run(make(), "polars")
+
+
+def test_boolean_casts_give_their_text_on_polars():
+    report = sv.verify(T.select(b=T.b.cast("string")), counterexamples=0)
+    assert _run(report, "polars").column("b").to_pylist() == WANT["b"]
 
 
 def test_constant_casts_fold_to_their_text():
