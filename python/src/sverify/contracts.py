@@ -3475,8 +3475,7 @@ def transform(
             `ibis.Schema` or a mapping from column name to type
             (`{"orders": {"id": "int64", "total": "int64"}}`). They let
             `sverify check file.py` prove the contract of a transform the
-            file never applies, which is `fn.check(**schemas)`
-            (`ContractedTransform.verify`). Calls ignore them. Default: none.
+            file never applies, which is `fn.verify(**schemas)`. Calls ignore them. Default: none.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.

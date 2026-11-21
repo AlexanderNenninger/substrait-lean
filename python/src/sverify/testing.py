@@ -331,7 +331,6 @@ def _target(subject: Any) -> _Target:
 def _requirements(node: Node, leaves: Sequence[Node]) -> dict[str, list[Condition]]:
     """What the node's stage assumes about each table it reads: the
     preconditions on its sources, and what a stored node guarantees."""
-
     out: dict[str, list[Condition]] = {leaf.name: [] for leaf in leaves}
     prov = _lookup(node._query()._expr.op())
     extra = [(t, cs) for t, cs in (prov.external if prov else {}).items() if t in out]

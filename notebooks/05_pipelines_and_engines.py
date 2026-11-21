@@ -371,7 +371,7 @@ def _(mo):
     Lean proves the full rule once. `Rel.delta` generates the update plan
     as an ordinary plan that reads the old tables and the change tables,
     and `Rel.delta_correct` proves it computes exactly the change. Any
-    engine can run it. `sverify.engines.delta_plans(view.internal_plan)` returns the
+    engine can run it. `sverify.engines.plan.delta_plans(view.internal_plan)` returns the
     plan of our view. `orders$delta` and `customers$delta` are the change
     tables, with a trailing `__weight` column; old tables get weight 1
     (`Project +[1]`), and the join multiplies weights (`$3 * $6`):
