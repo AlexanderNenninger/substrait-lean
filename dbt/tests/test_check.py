@@ -158,7 +158,17 @@ def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
     data = json.loads(capsys.readouterr().out)
     assert {m["name"] for m in data["items"]} >= {"stg_orders", "org_depth"}
     # `sverify check <dbt dir> --format json` forwards `--format` (#891).
-    assert main(["check", str(shop), "--format", "json", "--counterexamples", "0"]) == 0
+    again = [
+        "check",
+        str(shop),
+        "--fail-on",
+        "unproved",
+        "--format",
+        "json",
+        "--counterexamples",
+        "0",
+    ]
+    assert main(again) == 1
     assert json.loads(capsys.readouterr().out) == data
     assert main(["check", str(shop), "--format", "text", "--counterexamples", "0"]) == 0
     assert "stg_orders (models/staging/stg_orders.sql)" in capsys.readouterr().out
