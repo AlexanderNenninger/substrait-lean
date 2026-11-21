@@ -1215,8 +1215,8 @@ class Field:
 
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
-    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo", "ftoi",
-    "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
+    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo",
+    "ftoi", "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
     "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
@@ -1718,8 +1718,9 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 #: it (`register`).
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
-    "froundEven": "float", "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
-    "narrow": "int", "fit": "int", "itos": "str", **_functions.kinds("core", un=True),
+    "froundEven": "float", "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int",
+    "narrow_or_null": "int", "narrow": "int", "fit": "int", "itos": "str",
+    **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
     "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fdivIeee": "float",
@@ -2791,12 +2792,17 @@ class _Parser:
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                         op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
                         return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
-                    if name == "round" and _option(v, "rounding", "TIE_AWAY_FROM_ZERO") == "TIE_TO_EVEN":
+                    if (
+                        name == "round"
+                        and _option(v, "rounding", "TIE_AWAY_FROM_ZERO") == "TIE_TO_EVEN"
+                    ):
                         # D55: half to even, at zero digits only (`Parse`'s `round` arm).
                         match parsed:
                             case [a] | [a, Lit(value=0, kind="int")]:
                                 return Un("froundEven", a)
-                        raise Unsupported("round: rounding TIE_TO_EVEN is only modelled at zero digits")
+                        raise Unsupported(
+                            "round: rounding TIE_TO_EVEN is only modelled at zero digits"
+                        )
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
                 if name in ("divide", "modulus") and len(parsed) == 2:

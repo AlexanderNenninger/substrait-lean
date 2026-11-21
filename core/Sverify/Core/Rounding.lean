@@ -134,6 +134,15 @@ theorem evenMag_mono {m n : Nat} (h : m ≤ n) : evenMag m ≤ evenMag n := by
     have : r ≤ r' := by omega
     omega
 
+theorem ceilMag_le {m N : Nat} (hm : m ≤ N * K) : ceilMag m ≤ N * K := by
+  unfold ceilMag
+  apply Nat.mul_le_mul_right
+  have := K_pos
+  have h : (m + K - 1) / K < N + 1 := (Nat.div_lt_iff_lt_mul K_pos).mpr (by rw [Nat.succ_mul]; omega)
+  omega
+
+theorem floorMag_le (m : Nat) : floorMag m ≤ m := Nat.div_mul_le_self m K
+
 theorem roundMag_le_ceilMag (m : Nat) : roundMag m ≤ ceilMag m := by
   unfold roundMag ceilMag
   apply Nat.mul_le_mul_right

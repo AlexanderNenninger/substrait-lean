@@ -1072,7 +1072,9 @@ class Exprs:
             if name == "round" and len(arg_js) in (1, 2) and _rounds_to_even(f):
                 # D55: `rounding: TIE_TO_EVEN` at zero digits is Polars's own `round(0)`.
                 if len(arg_js) == 2 and self.constant(arg_js[1], "ROUND digits") != 0:
-                    raise Unsupported("ROUND to digits with TIE_TO_EVEN: the model has zero digits only")
+                    raise Unsupported(
+                        "ROUND to digits with TIE_TO_EVEN: the model has zero digits only"
+                    )
                 return self.round_even(self(arg_js[0]))
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
                 return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
