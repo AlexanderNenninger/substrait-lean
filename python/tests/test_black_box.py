@@ -570,7 +570,7 @@ def test_327_lists_through_oracles_a_and_c(query):
 def test_list_sum_raises_past_a_bigint():
     # DuckDB's own is a HUGEINT; the model's a BIGINT, as `SUM`'s.
     plan = written_plan(json.dumps(lift(LISTS[0], _VEC_SCHEMAS).plan))
-    with pytest.raises(Exception, match="sverify: CAST to a 64-bit integer out of range"):
+    with pytest.raises(Exception, match="sverify: list_sum out of range"):
         duckdb_engine.run(plan, _VECS)
     report = sv.verify(LISTS[0], tables=_VEC_SCHEMAS)
     assert any("domain" in str(e) for e in report.errors), report
