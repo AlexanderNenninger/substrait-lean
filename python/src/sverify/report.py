@@ -2545,14 +2545,18 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     `unique`, rows beyond the first for each repeated key.
 
     With an engine named, the condition's plan runs there, over the tables of
-    the connection `table` is bound to; otherwise Ibis counts on that
-    connection."""
+    the connection `table` is bound to, and counts the rows in the engine
+    (no row reaches Python); otherwise Ibis counts on that connection."""
     if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
             raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
-        plan = written_plan(plan_json(con, condition_query(table, cond)))
-        return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
+        q = condition_query(table, cond)
+        assert isinstance(q, ir.Table)  # an Ibis table's condition query is Ibis
+        broken = q.filter(~q.c.fill_null(False))
+        broken = broken.aggregate(n=broken.count())
+        plan = written_plan(plan_json(con, broken))
+        return int(run_plan(con, plan, engine).column(0)[0].as_py())
     if isinstance(cond, TableCondition):
         return _table_violations(table, cond, engine)
     if isinstance(cond, str):
