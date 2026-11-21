@@ -572,7 +572,6 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     from types import SimpleNamespace
     from typing import Any, cast
 
-    from sverify.errors import UnsupportedError
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
 
@@ -599,6 +598,7 @@ def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
     """A refusal `ConditionError` does not name (the checker's) skips only the
     test whose conditions fail; the others are proved."""
     from sverify.errors import UnsupportedError
+
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
 
@@ -610,7 +610,9 @@ def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
             raise UnsupportedError("the checker refuses boom")
         return "report"
 
-    out = _Checker._isolate(go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], UnsupportedError("x"))
+    out = _Checker._isolate(
+        go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], UnsupportedError("x")
+    )
     assert out == "report" and bad.status == "not checked" and good.status == "pending"
 
 
