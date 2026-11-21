@@ -196,9 +196,13 @@ jobs:
           out ledger=false
           out backlog=false
           out upstack=false
-          # The `test` matrix: the backends that run, and `core` in three shards.
+          # The `test` matrix: the backends that run, `core` in three shards,
+          # and `spark` in two when it runs (`$2`): one Spark job ran 9.5 to
+          # 13.7 min against the 15-min timeout.
           matrix() {
-            echo "{\"backends\":[$1],\"include\":[{\"backends\":\"core\",\"shard\":\"1/3\"},{\"backends\":\"core\",\"shard\":\"2/3\"},{\"backends\":\"core\",\"shard\":\"3/3\"}]}"
+            local shards='{"backends":"core","shard":"1/3"},{"backends":"core","shard":"2/3"},{"backends":"core","shard":"3/3"}'
+            [ "$2" = true ] && shards="$shards"',{"backends":"spark","shard":"1/2"},{"backends":"spark","shard":"2/2"}'
+            echo "{\"backends\":[$1],\"include\":[$shards]}"
           }
           all() {
             out code=true
@@ -209,7 +213,7 @@ jobs:
             out dbt=true
             out python=true
             out models=true
-            out "matrix=$(matrix '"duckdb","spark","polars snowflake"')"
+            out "matrix=$(matrix '"duckdb","polars snowflake"' true)"
           }
           # A push to main whose tree a pull request's run already tested.
           tested() {
@@ -292,9 +296,8 @@ jobs:
             out dbt=false
           fi
           backends='"duckdb"'
-          [ "$(flag "$skip_spark")" = true ] && backends="$backends,\"spark\""
           [ "$(flag "$skip_polars")" = true ] && backends="$backends,\"polars snowflake\""
-          m=$(matrix "$backends")
+          m=$(matrix "$backends" "$(flag "$skip_spark")")
           echo "matrix: $m"
           out "matrix=$m"
           if grep -qE '^(float-bounds/|core/Sverify/Core/Float(Exact|Format)?\.lean$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
@@ -504,8 +507,8 @@ jobs:
     name: test (${{ matrix.backends }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
     strategy:
       fail-fast: false
-      # `core` is split into three shards (`SVERIFY_SHARD`, tests/conftest.py)
-      # so that no job runs much longer than the others.
+      # `core` is split into three shards and `spark` into two (`SVERIFY_SHARD`,
+      # tests/_suite.py) so that no job runs much longer than the others.
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     # Spark stays on GitHub's runners for now: its runs were reclaimed twice on spot (#1737).
     runs-on: ${{ contains(matrix.backends, 'spark') && 'ubuntu-latest' || fromJSON(needs.route.outputs.runner) }}

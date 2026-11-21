@@ -1,0 +1,34 @@
+{
+"loads": [
+559.5,
+567.2
+],
+"n": 2,
+"shard": {
+"tests/test_and_or_engines.py::test_a_cast_guarded_by_a_range_runs_where_the_guard_is_false[spark]": 2,
+"tests/test_backends.py::test_spark_agrees_with_duckdb": 2,
+"tests/test_exact_sum.py::test_a_maintained_double_sum_is_exact[spark-6-5]": 2,
+"tests/test_exact_sum.py::test_a_refresh_on_spark_without_ansi_is_refused": 1,
+"tests/test_exact_sum.py::test_limbs_are_the_exact_moments[spark-corr]": 1,
+"tests/test_io_native_spark.py::test_a_delta_scan_over_histories": 2,
+"tests/test_io_native_spark.py::test_a_mapped_delta_scan_over_histories[name]": 1,
+"tests/test_io_native_spark.py::test_a_type_that_does_not_widen_raises": 2,
+"tests/test_io_native_spark_connect.py::test_a_connect_session_reads_the_files_on_the_server": 2,
+"tests/test_retention.py::test_a_long_stream_keeps_its_state_bounded[spark]": 1,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[False-0-spark]": 2,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[False-1-spark]": 1,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[False-2-spark]": 1,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[False-3-spark]": 2,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[True-0-spark]": 1,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[True-1-spark]": 2,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[True-2-spark]": 2,
+"tests/test_retention.py::test_retention_matches_a_full_recompute[True-3-spark]": 1,
+"tests/test_touched.py::test_a_time_bucket_key_reads_only_the_touched_range[spark]": 2,
+"tests/test_touched.py::test_touched_groups_match_a_full_recompute[spark-0]": 1,
+"tests/test_touched.py::test_touched_groups_match_a_full_recompute[spark-1]": 1,
+"tests/test_touched.py::test_touched_groups_match_a_full_recompute[spark-2]": 2,
+"tests/test_touched.py::test_touched_partitions_match_a_full_recompute[spark-0]": 2,
+"tests/test_touched.py::test_touched_partitions_match_a_full_recompute[spark-1]": 1,
+"tests/test_usability_655.py::test_a_mean_into_a_sink_needs_no_settings[spark]": 1
+}
+}
