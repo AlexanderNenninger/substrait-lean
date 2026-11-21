@@ -63,6 +63,7 @@ contract's preconditions.
 | A raise of the reference is an issue, so a plan with no reported issue meets DuckDB's side condition (`Engine.NoRaiseSide`), for a plan whose loose rows include its rows (`Rel.looseSub`). Where `Rel.looseSub` fails (an `UNNEST`, or a left join whose right side has a filter, an inner join or a `DISTINCT`), the step from a report without issues to "the reference does not raise" is not proved yet | `eval` | `Rel.hasIssue_of_raises`, `Engine.duckdb_noRaise_of_mayIssues` | `Obligations.lean`, `Engine.lean` |
 | Row caps rule out `SUM` overflow | `eval` | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | A well-formed plan on a well-formed catalog gives rows of its declared arity | `eval` | `Rel.eval_arity` | `Rel.lean` |
+| On a catalog of doubles, every double a plan computes is a double's code, not merely an integer magnitude below the largest (ruling 248) | `eval` | `Rel.eval_dbl`, `Expr.eval_dbl`, `AggFn.apply_dbl` | `EvalDbl.lean`, `FloatDbl.lean` |
 | The checker decides well-formedness | the plan | `Rel.checkWF_iff` | `Check.lean` |
 | A well-kinded plan evaluates to its kinds | `eval` | `Rel.kinds_sound`, `Expr.kindT_sound` | `Kinds.lean` |
 | A well-kinded plan's values have the kinds it states, so a double never passes for an integer and a `SUM` of decimals of one scale has that scale; a `SUM` gives one value in any order of its rows, and partial sums of decimals of a scale are decimals of that scale (the case of a `SUM` over mixed kinds is unreachable for a well-kinded plan) | `eval` | `Rel.kinds_sound`, `Expr.kindT_sound`, `sumOf_perm`, `sum_partials` | `Kinds.lean`, `Aggregate.lean`, `Decomposable.lean` |
@@ -168,6 +169,8 @@ declares no instance. An engine's theorems name the instance: DuckDB's is
 | `ExactBound.lean` | Exact arithmetic for the reported bounds (#660): square roots rounded outward, an upper bound on `exp`, and a bound written as JSON rounded up |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `FloatArith.lean` | `+ − × ÷` of doubles as the exact result rounded once (D31), IEEE 754's signed zeros and NaN, and their bounds (`add_scaled` …) |
+| `FloatDbl.lean` | Every double operation gives a double's code (`FloatFormat.Dbl`): rounding to 53 bits, the arithmetic of D31, native results, `floor`, `ceil`, `fmod` |
+| `EvalDbl.lean` | `Value.dbl` through every function, aggregate, window and plan (`Rel.eval_dbl`) |
 | `BlackBox.lean` | The black-box mechanism: a row's types, NULL handling, raising and laws, the black-box catalogue `Boxes` with its well-formedness, and `Boxes.Ambient`, the catalogue in scope; no rows |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
 | `Regex.lean` | The regular-expression evaluator behind the regex black boxes |
