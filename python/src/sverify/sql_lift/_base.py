@@ -534,14 +534,15 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
 
 def _builtin_schema(n: sge.Expr) -> sge.Expr:
     """A call qualified by its built-in schema (`main.lower(x)`,
-    `pg_catalog.lower(x)`, `system.main.lower(x)`) read as the bare function
-    (#328). SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
+    `system.main.lower(x)`) read as the bare function (#328). DuckDB reads
+    no other qualifier of a built-in function (`pg_catalog.lower(x)` and
+    `memory.main.lower(x)` are binder errors), so neither does the lift.
+    SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
     anonymous one, so the call is parsed again without its qualifier."""
     if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
-        schema = n.this
-        if isinstance(schema, sge.Dot):
-            schema = schema.expression
-        if isinstance(schema, sge.Identifier) and schema.name.lower() in ("main", "pg_catalog"):
+        path = [n.this] if not isinstance(n.this, sge.Dot) else [n.this.this, n.this.expression]
+        names = [p.name.lower() if isinstance(p, sge.Identifier) else None for p in path]
+        if names in (["main"], ["system", "main"]):
             return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
     return n
 
