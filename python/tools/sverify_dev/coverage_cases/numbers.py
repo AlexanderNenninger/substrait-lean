@@ -5,6 +5,7 @@ from __future__ import annotations
 import ibis
 
 from sverify_dev.coverage_cases._common import (
+    DUCKDB_ONLY,
     Case,
     V,
     case,
@@ -29,6 +30,11 @@ CASES: list[Case] = [
     case("numbers", "cast date → string", V, lambda: t.select(x=t.ts.date().cast("string"))),
     case("numbers", "cast double → int", V, lambda: t.select(x=t.amount.cast("int64"))),
 ]
+
+REFUSED: dict[str, dict[str, str]] = {
+    # The date's text is the timestamp's `strftime`; the engines have no Date to timestamp cast (#271).
+    "cast date → string": DUCKDB_ONLY,
+}
 
 NO_DUCKDB_SQL = {
     "cast double → int": "DuckDB's cast of a double to an integer rounds, the plan's truncates",
