@@ -595,6 +595,7 @@ def test_github_annotations(tmp_path, capsys):
 @needs_repo
 def test_sarif(tmp_path, capsys):
     import jsonschema
+
     from _sarif import valid_sarif
 
     with pytest.raises(jsonschema.ValidationError):  # the schema is not vacuous
