@@ -105,7 +105,13 @@ def test_a_raise_on_data_that_breaks_an_inferred_precondition_is_not_a_finding()
     # data meets the precondition, nothing raises.
     q = Query("SELECT COUNT(k) AS c0 FROM u AS q WHERE (k = (k // k))", {"c0": fuzz.INT})
     assert fuzz._findings((q, {"t": [], "u": [(0, "a")]})) == []
-    assert fuzz._findings((q, {"t": [], "u": [(2, "a")]})) == []
+
+
+def test_an_assumed_issue_does_not_cover_an_unrelated_raise():
+    # The report assumes the `SUM` fits 64 bits: an assumption is no cover for
+    # a raise, which `checked` ties to its own issue (#2162).
+    s = fuzz.Session({"t": [(2**62, None, None, None, None, None)] * 3, "u": []})
+    assert not fuzz.reports_runtime_error(s, "SELECT SUM(i) AS c0 FROM t")
 
 
 def test_a_tagged_raise_of_a_reported_assumption_is_not_a_finding():

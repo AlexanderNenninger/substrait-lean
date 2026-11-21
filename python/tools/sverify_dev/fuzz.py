@@ -464,11 +464,10 @@ def listed_issues(sql: str) -> list[str]:
 
 def reports_runtime_error(s: Session, sql: str) -> bool:
     """Whether `verify` reports the possible runtime error on this input: it
-    names one, assumes one (a `SUM` that may leave 64 bits), or the input
-    breaks a precondition it needs (`x IS NULL OR x <> 0`), which the proof
+    names one, or the input breaks a precondition it needs (`x IS NULL OR x <> 0`), which the proof
     rests on (#638, #2101)."""
     report = verify(sql, tables=SCHEMAS)
-    if report.errors or report.assumed:
+    if report.errors:
         return True
     return any(
         duckdb_sql(s.con, f"SELECT 1 FROM {n.table} WHERE ({n.sql}) IS FALSE LIMIT 1").num_rows
