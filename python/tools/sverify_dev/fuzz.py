@@ -451,6 +451,20 @@ class Session:
         return _arrow_rows(duckdb_sql(self.con, sql))
 
 
+def reports_runtime_error(s: Session, sql: str) -> bool:
+    """Whether `verify` reports the possible runtime error on this input: it
+    names one, or the input breaks a precondition it infers (`x IS NULL OR
+    x <> 0`), which the proof rests on (#638, #2101)."""
+    report = verify(sql, tables=SCHEMAS)
+    if report.errors:
+        return True
+    return any(
+        duckdb_sql(s.con, f"SELECT 1 FROM {table} WHERE ({cond}) IS FALSE LIMIT 1").num_rows
+        for table, conds in report.inferred.items()
+        for cond in conds
+    )
+
+
 def check(
     query: Query,
     tables: Mapping[str, list[tuple]],
@@ -472,7 +486,7 @@ def check(
     except LeanRaised as e:
         # The reference raises (a zero divisor, an overflow): `verify` must
         # report the possible runtime error, as for an engine that raises.
-        if not verify(query.sql, tables=SCHEMAS).errors:
+        if not reports_runtime_error(s, query.sql):
             found("runtime", f"Lean raises {e}; verify reports no runtime error")
         return findings
     try:
@@ -482,8 +496,7 @@ def check(
         df_table, df, df_error = None, None, e
 
     if "runtime" in oracles and df_error is not None:
-        report = verify(query.sql, tables=SCHEMAS)
-        if not report.errors:
+        if not reports_runtime_error(s, query.sql):
             found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
     if "rows" in oracles and df is not None and not same_rows(lean, df, query.ordered):
         found("rows", f"Lean:   {lean!r}\nDuckDB: {df!r}")

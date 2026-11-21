@@ -99,6 +99,15 @@ def test_a_reference_raise_that_verify_flags_is_not_a_finding():
     assert fuzz._findings((q, {"t": [], "u": [(1, "a")]})) == []
 
 
+def test_a_raise_on_data_that_breaks_an_inferred_precondition_is_not_a_finding():
+    # `k // k` at k = 0: verify infers `k IS NULL OR k <> 0` and does not prove
+    # the plan without it, so the raise is covered (#638, #2101); where the
+    # data meets the precondition, nothing raises.
+    q = Query("SELECT COUNT(k) AS c0 FROM u AS q WHERE (k = (k // k))", {"c0": fuzz.INT})
+    assert fuzz._findings((q, {"t": [], "u": [(0, "a")]})) == []
+    assert fuzz._findings((q, {"t": [], "u": [(2, "a")]})) == []
+
+
 def test_a_tlp_predicate_that_raises_is_not_a_finding():
     # The partition `WHERE (k // k) = 1` raises on k = 0 where the whole query
     # doesn't: no partition to compare, and no harness error (the first
