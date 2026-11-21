@@ -15,3 +15,4 @@ over (`eval`, `OrderAllowed`, `Allowed`, `AllowedP`, `Near`) and its axioms.
 | [`Rel.duckdb_sound`](duckdb_sound.md) | A proved plan returns the reference's rows on DuckDB as the printer writes it |
 | [`Rel.polars_sound`](polars_sound.md) | … on Polars, after the shims |
 | [`Rel.spark_sound`](spark_sound.md) | … on Spark under ANSI |
+| [`Rel.keys_sound`](keys_sound.md) | A derived key holds on the output: no two rows share its columns |
