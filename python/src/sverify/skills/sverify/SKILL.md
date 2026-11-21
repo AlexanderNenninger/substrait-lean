@@ -70,7 +70,8 @@ report.facts["doubled"].lower  # the same as data: nullable, lower, upper
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL
   snippets (`"doubled >= 22"`). `sv.unique(...)` states a key;
   `sv.references("cust", to=customers.id)` a foreign key (only in
-  `requires`); `sv.max_rows(n)` caps an input's rows. A transformation with
+  `requires`; several columns: `sv.references("street", "zip",
+  to=[addresses.street, addresses.zip])`); `sv.max_rows(n)` caps an input's rows. A transformation with
   one input also takes a plain list, `requires=[_.amount >= 0]`.
 * `requires` is checked on the source's data when the node is refreshed
   (`sverify.errors.PreconditionError`), or proved from table metadata.
