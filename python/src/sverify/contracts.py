@@ -143,7 +143,7 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
+from sverify.observation import Observation
 from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DECIMAL_ARG,
     _EPOCH_DAY,
@@ -1068,17 +1068,6 @@ class UnprovedWarning(SverifyWarning):
     def __init__(self, message: str, report: Report | None = None):
         super().__init__(message)
         self.report = report
-
-
-def __getattr__(name: str) -> Any:
-    if name == "InferredPreconditionWarning":
-        warnings.warn(
-            "InferredPreconditionWarning is deprecated; catch sverify.errors.InferredWarning",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return InferredWarning
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[str, Any]:
@@ -2998,16 +2987,6 @@ class ContractedTransform:
         self._counterexamples: int | None = None
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
-
-    @property
-    def last_report(self) -> Report | None:
-        """Deprecated: `report`."""
-        warnings.warn(
-            "ContractedTransform.last_report is deprecated; read .report",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.report
 
     def to_substrait(
         self,
