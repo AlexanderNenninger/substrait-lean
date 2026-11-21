@@ -596,8 +596,11 @@ def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Table
 
 /-- The entry in `Tables` of the integer widths a projection's source plan
 declares where `Expr.colBits` cannot see them (a `CASE` of literals, #1968):
-one type per expression, `{}` where `colBits` holds (`recordDeclaredKinds`). -/
-def projectBitsKey (es : List Expr) : String := s!"$projectBits {reprStr es}"
+one type per expression, `{}` where `colBits` holds (`recordDeclaredKinds`).
+The expressions are encoded as `projectKey` encodes them: `reprStr` at every
+`Rel.bits` call made a deep plan quadratic (#1952). -/
+def projectBitsKey (es : List Expr) : String :=
+  s!"$projectBits {es.length}:" ++ String.join (es.map projectKey.exprKey)
 
 /-- The widths of a projection's columns: the declared one where the source
 plan recorded one, `colBits` elsewhere. A plan without such an entry never
