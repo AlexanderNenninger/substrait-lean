@@ -10,3 +10,10 @@ and the projection's), and a guard below the third level is proved where the
 analysis already reads it, in the level's `CASE` condition. Elsewhere
 (aggregates, join conditions, lambdas) the levels below the third stay eager,
 as before.
+
+On Spark 4.3, Spark's parser refuses the SQL sverify writes for an alternating
+nest 80 levels deep (299 KB) and nothing runs; 70 levels (231 KB) parse and run
+in 16 to 31 s, most of it in Spark's optimizer (measured on homelab,
+[#2030](https://github.com/AlexanderNenninger/substrait-lean/pull/2030#issuecomment-7056408687),
+[phases](https://github.com/AlexanderNenninger/substrait-lean/pull/2030#issuecomment-7057113974)).
+Sverify sets no depth limit of its own.
