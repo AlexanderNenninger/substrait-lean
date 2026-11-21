@@ -561,7 +561,7 @@ elimination (`analysis/Sverify/Analysis/Guards.lean`) is the part already proved
 
 Polars runs Lean's own serialisation of the checked plan: the plan as
 `substrait-check --write` writes it back out from the parsed `Rel`
-(`sverify.engines.written_plan`), and the delta plans of `--delta`, which use the same
+(`sverify.engines.plan.written_plan`), and the delta plans of `--delta`, which use the same
 writer. `sverify_polars/engine.py` translates only that small, canonical form
 to a `LazyFrame` and raises `UnsupportedError` on anything else. It does not go
 through Ibis's Polars backend, which would compile a different plan. The

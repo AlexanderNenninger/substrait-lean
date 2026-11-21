@@ -175,7 +175,8 @@ def comment(docs: list[dict[str, Any]], code: int) -> str:
             lines.append("")
     if code:
         lines.append(
-            f"{EXPLAIN} `sverify check <file> --fix` adds the preconditions a proof needs."
+            f"{EXPLAIN} `sverify check <file> --fix` adds the preconditions a proof needs; "
+            "they narrow the input the node accepts, so the source must meet them."
         )
     return "\n".join(lines).rstrip() + "\n"
 

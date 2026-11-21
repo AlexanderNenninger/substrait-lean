@@ -8,7 +8,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.engines import substrait_json, to_sql, written_plan
+from sverify.engines.plan import substrait_json, to_sql, written_plan
 from sverify.errors import RouteError, UnverifiedRunError
 from sverify.io import StaticSource
 from sverify.sql import dialect_of
@@ -111,14 +111,16 @@ def test_connection_create_and_rows():
         con.rows("missing")
 
 
-def test_create_table_and_table_rows_are_deprecated():
-    from sverify.engines import create_table, table_rows
+def test_the_plan_layer_is_its_own_module():
+    """#881 1.6 (ruling 219): the plan layer is `sverify.engines.plan`,
+    outside the 1.x promise; `sverify.engines` re-exports none of it, and
+    `create_table`, `table_rows` and the old `Unsupported` are gone."""
+    import sverify.engines
+    import sverify.engines.plan as plan
 
-    con = sv.connect()
-    with pytest.warns(DeprecationWarning, match=r"con\.create\(name, schema, rows\)"):
-        create_table(con, "t", SCHEMA, [(1, 2)])
-    with pytest.warns(DeprecationWarning, match=r"con\.rows\(name\)"):
-        assert table_rows(con, "t") == [(1, 2)]
+    assert set(plan.__all__) == {"delta_plans", "substrait_json", "to_sql", "written_plan"}
+    for name in [*plan.__all__, "create_table", "table_rows", "Unsupported"]:
+        assert not hasattr(sverify.engines, name), name
 
 
 def test_connection_arrow_and_ibis_are_deprecated():
@@ -138,8 +140,7 @@ def test_substrait_json_defaults_to_the_reference():
 
 def test_run_spark_is_gone():
     """`run_spark`, deprecated since 0.5, is gone (#1288): `run(con, plan, "spark")`."""
-    with pytest.raises(AttributeError):
-        sv.engines.run_spark  # noqa: B018
+    assert not hasattr(sv.engines, "run_spark")
 
 
 def test_rows_and_tables_column_by_column():

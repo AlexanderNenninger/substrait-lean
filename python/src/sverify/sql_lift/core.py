@@ -15,6 +15,7 @@ import sqlglot.expressions as sge
 from ibis.common.temporal import IntervalUnit
 
 from sverify import _functions
+from sverify._dialect import difference
 from sverify._unsupported import MIN_MOD_GUARD
 from sverify.plan_json import (
     Json,
@@ -32,6 +33,7 @@ from sverify.sql_lift._base import (
     Column,
     E,
     Sub,
+    _category,
     _decimal,
     _digits,
     _fits,
@@ -301,6 +303,21 @@ def _operands(lf: _Lift, es: list[E], what: str) -> list[Json]:
     return [lf.to(e, t).json for e in es]
 
 
+def _null_free_list(node: sge.Expression) -> bool:
+    """Whether `node` is a list literal whose elements are all non-NULL literals."""
+    return isinstance(node, sge.Array) and all(
+        isinstance(e.this if isinstance(e, sge.Neg) else e, sge.Literal) for e in node.expressions
+    )
+
+
+def _list_order(lf: _Lift, node: sge.Expression, operands: list[sge.Expression]) -> None:
+    """List the order of lists (D54, ruling 232, #2163): the plan gives NULL where a NULL element
+    decides it and DuckDB, running the text natively, orders NULL last. Both readings agree where
+    every operand is a constant list without a NULL element."""
+    if not all(_null_free_list(o) for o in operands):
+        lf.differences.append(difference("list_null_order", _category(node), _shown(node)))
+
+
 def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _COMPARISONS[type(node)]
     a, b = sub(node.this), sub(node.expression)
@@ -311,6 +328,8 @@ def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> 
             f"{_shown(node)}: ordering comparisons of {a.type} are not supported yet",
             construct="COMPARISON",
         )
+    if name not in ("equal", "not_equal") and (a.type.is_array() or b.type.is_array()):
+        _list_order(lf, node, [node.this, node.expression])
     args = _operands(lf, [a, b], name)
     return E(_fn(name, args, dt.boolean), dt.boolean)
 
@@ -368,9 +387,10 @@ def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
 def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("symmetric"):
         raise SqlUnsupported("BETWEEN SYMMETRIC is not supported", construct="BETWEEN SYMMETRIC")
-    x, lo, hi = _operands(
-        lf, [sub(node.this), sub(node.args["low"]), sub(node.args["high"])], "BETWEEN"
-    )
+    es = [sub(node.this), sub(node.args["low"]), sub(node.args["high"])]
+    if any(e.type.is_array() for e in es):
+        _list_order(lf, node, [node.this, node.args["low"], node.args["high"]])
+    x, lo, hi = _operands(lf, es, "BETWEEN")
     return E(between(x, lo, hi, typed=True), dt.boolean)
 
 
@@ -581,6 +601,8 @@ def _extremum(name: str) -> Callable[..., E]:
         t = lf.common(es, name)
         if t.is_null():
             t = dt.int32
+        if t.is_array():
+            _list_order(lf, node, [node.this, *node.expressions])
         sql = "BIGINT" if t.is_int64() else "DOUBLE" if t.is_float64() else None
         if sql is not None and lf.profile is DUCKDB:
             # Of BIGINTs or DOUBLEs: the generated lift's, pairwise.

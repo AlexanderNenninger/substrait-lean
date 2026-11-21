@@ -1,0 +1,12 @@
+{
+  "id": "F207",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#2003 meets ruling 197's N1-N3; one docstring qualifier (D1) and the golden conflicts (D2) come before merge.",
+  "prs": [
+    2003
+  ],
+  "source": "fable-ruling-207-2003-n1-n3.md"
+}

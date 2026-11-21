@@ -316,6 +316,43 @@ def test_every_error_is_a_sverify_error():
         assert issubclass(cls, errors.SverifyError), cls
 
 
+def test_the_bases_the_errors_docstring_names():
+    """`sverify.errors`'s docstring names the six exceptions without a
+    built-in base, and the bases are fixed for 1.x (#881 1.8, ruling 219 E1
+    and E2); every warning sverify defines is a `SverifyWarning` (E3, E4)."""
+    import builtins
+    import importlib
+
+    import sverify.errors as errors
+
+    alone = {
+        n
+        for n in errors.__all__
+        if isinstance(c := getattr(errors, n), type)
+        and issubclass(c, errors.SverifyError)
+        and c is not errors.SverifyError
+        and not any(b.__module__ == "builtins" and b is not Exception for b in c.__mro__[1:-2])
+    }
+    assert alone == {
+        "AuditError",
+        "NotIncrementalError",
+        "SchemaError",
+        "PostconditionError",
+        "PreconditionError",
+        "VerificationError",
+        "CompositionError",  # a VerificationError
+    }
+    assert issubclass(errors.UnverifiedRunError, builtins.ValueError)
+    for module in ("sverify.odcs", "sverify.openlineage"):
+        importlib.import_module(module)
+
+    def subclasses(c: type) -> list[type]:
+        return [s for d in c.__subclasses__() for s in (d, *subclasses(d))]
+
+    ours = {c for c in subclasses(Warning) if c.__module__.startswith("sverify.")}
+    assert ours and all(issubclass(c, errors.SverifyWarning) for c in ours), ours
+
+
 def test_errors_keep_their_builtin_bases_and_old_names():
     import sverify.engines
     import sverify.routes

@@ -1,0 +1,13 @@
+{
+  "id": "F205",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "PR #2063's sections pass: D55, D59, D62, D67, D69 and D70 are recorded in decisions.md, and D57 waits for its implementing PR.",
+  "prs": [
+    2063
+  ],
+  "source": "fable-ruling-205-2063-recheck.md",
+  "note": "A check of the record."
+}

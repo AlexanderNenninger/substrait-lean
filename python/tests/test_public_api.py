@@ -32,6 +32,10 @@ PUBLIC = [
     "sverify.openlineage",
 ]
 
+#: Documented modules outside the 1.x promise (#881 1.6): their names are in
+#: the API reference under a heading that says so, and in no public module.
+OUTSIDE = ["sverify.engines.plan"]
+
 
 def documented(module, name: str) -> bool:
     obj = getattr(module, name)
@@ -42,7 +46,7 @@ def documented(module, name: str) -> bool:
     return f"`{name}`" in (module.__doc__ or "")
 
 
-@pytest.mark.parametrize("name", PUBLIC)
+@pytest.mark.parametrize("name", PUBLIC + OUTSIDE)
 def test_every_public_name_is_documented(name):
     module = importlib.import_module(name)
     assert module.__doc__, f"{name} has no docstring"
@@ -83,11 +87,7 @@ def test_the_top_level_is_small():
     ]
 
 
-UNLISTED = {
-    # Deprecated; removed under #1288's decision 5.
-    "engines.create_table",
-    "engines.table_rows",
-}
+UNLISTED: set[str] = set()
 """In an `__all__` and out of the reference."""
 
 EXCLUDED = {
@@ -123,8 +123,20 @@ def test_the_reference_lists_the_public_api():
     for name in PUBLIC:
         prefix = "" if name == "sverify" else name.removeprefix("sverify.") + "."
         public |= {prefix + n for n in importlib.import_module(name).__all__}
-    assert toc - public == set(), "in the reference, in no __all__"
+    outside = {
+        name.removeprefix("sverify.") + "." + n
+        for name in OUTSIDE
+        for n in importlib.import_module(name).__all__
+    }
+    assert toc - public == outside, "in the reference, in no __all__"
     assert public - toc == UNLISTED, "in an __all__, not in the reference"
+
+
+def test_the_modules_outside_the_promise_are_in_no_public_namespace():
+    for name in OUTSIDE:
+        names = set(importlib.import_module(name).__all__)
+        for public in map(importlib.import_module, PUBLIC):
+            assert not names & set(vars(public)), (name, public.__name__)
 
 
 @needs_repo
