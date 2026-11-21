@@ -60,6 +60,20 @@ class Checked:
         missing = rest or r.errors or r.needs or r._transfer or r.floats_unmet
         return "not_proved" if missing else "checked"
 
+    @property
+    def relaxations(self) -> list[str]:
+        """The settings of the transform that weaken its gate, as written in
+        the file: `on_unproved="check"` or `"warn"`, `on_inferred="warn"`,
+        `"ignore"` or `"off"` (the default is `"error"`), and
+        `check_requires=False`. A CI step diffs them between base and head."""
+        t = self.transform
+        out = [f'on_unproved="{t.on_unproved}"'] if t.on_unproved != "error" else []
+        if t.on_inferred != "error":
+            out.append(f'on_inferred="{t.on_inferred}"')
+        if not t.check_requires:
+            out.append("check_requires=False")
+        return out
+
 
 @dataclass
 class Discovery:
@@ -135,8 +149,8 @@ def load(path: str | Path, out: Discovery | None = None) -> Discovery:
         raise FileNotFoundError(f"{path}: no such file")
     if path.suffix != ".py":
         raise UsageError(
-            f"{path}: sverify check reads Python files; check SQL through `sv.sql` in a "
-            "`.py` file, or a dbt project through `sverify-dbt check`"
+            f"{path}: sverify check reads Python and SQL files; check a dbt project "
+            "through `sverify-dbt check`"
         )
     name = f"_sverify_cli_{abs(hash(str(path.resolve())))}"
     spec = importlib.util.spec_from_file_location(name, path)
@@ -185,7 +199,7 @@ def _check_declared(out: Discovery) -> None:
         if id(t) in applied or t.schemas is None:
             continue
         try:
-            t.check(*(t.schemas[p] for p in t.signature.parameters))
+            t.verify(*(t.schemas[p] for p in t.signature.parameters))
         except Exception as e:  # noqa: BLE001 - reported, with what was found before it
             out.error = e
             return

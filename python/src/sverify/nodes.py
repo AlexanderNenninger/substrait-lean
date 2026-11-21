@@ -160,9 +160,9 @@ class Node:
     def internal_plan(self) -> str:
         """The Substrait plan (JSON) of the node's stage, as Lean checked and
         wrote it: what every engine runs. It uses sverify's own extension
-        URNs, so only sverify reads it (`sverify.engines.to_sql`, `run`,
+        URNs, so only sverify reads it (`sverify.engines.plan.to_sql`, `run`,
         `delta_plans`); `Report.to_substrait()` is the portable plan.
-        `sverify.engines.delta_plans(plan)` are the plans that maintain it
+        `sverify.engines.plan.delta_plans(plan)` are the plans that maintain it
         from changes.
 
         The stage reads the sources and stored nodes upstream under their
@@ -262,7 +262,7 @@ class Node:
             self.internal_plan,
             d,
             deterministic=report._exact,
-            rows="sequence" if report.lenses.rows == "sequence" else "multiset",
+            rows=report._rows,
         )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
@@ -879,6 +879,7 @@ class _Stage:
             found = {t: p for t, p in _implied(pipe, bound).items() if t in prunable}
             if found:
                 return _Stage._load(node, leaves, versions, engine, resume, found, target=target)
+        pipe.seal()  # the rows of an Arrow-fed source move into the store at the first load
         stage = _Stage(pipe, view)
         stage.use(engine)
         return stage

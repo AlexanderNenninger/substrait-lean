@@ -1,0 +1,1 @@
+Fixed: a CTE named like a table it reads (`WITH t AS (SELECT a FROM t) ...`) no longer crashes the SQL lift with a `RecursionError`. A CTE's body sees the tables and the CTEs defined before it, as in DuckDB.

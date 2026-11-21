@@ -66,8 +66,7 @@ customer_revenue_by_category (models/marts/customer_revenue_by_category.sql)
 orders_with_city (models/marts/orders_with_city.sql)
   proved before the model runs (dbt build may skip them):
     not_null(order_id)
-  not proved (dbt build still runs them):
-    unique(order_id): the tests upstream do not make it a key
+    unique(order_id)
 
 org_depth (models/marts/org_depth.sql)
   refused: sverify cannot read WITH RECURSIVE yet (#320)
@@ -178,7 +177,7 @@ dbt's `unique` lets NULLs repeat while a key counts them as one value, so a
 When the proof needs a precondition no test states, such as a bound that
 rules out an overflow, the model's tests stay unproved and the report lists
 the test to add under `needs`, as YAML for the input's column (sverify's
-`Report.needed`).
+`Report.needs`).
 
 ## Limits
 
@@ -217,16 +216,15 @@ with sverify-dbt and records every test beside dbt's own result, in
 
 | Source | Proved | Not proved | Not checked | Refused | Inputs |
 |---|---|---|---|---|---|
-| dbt-utils 1.4.1 | 1 | 8 | 48 | 19 | 37 |
-| dbt-expectations 0.10.10 | 0 | 0 | 42 | 115 | 0 |
+| dbt-utils 1.4.1 | 3 | 13 | 45 | 15 | 37 |
+| dbt-expectations 0.10.10 | 0 | 33 | 9 | 115 | 0 |
 
 These projects test macros more than they model data: most of their tests
-compare two relations or match patterns, which sverify-dbt does not map yet
-([#1936](https://github.com/AlexanderNenninger/substrait-lean/issues/1936),
-[#1937](https://github.com/AlexanderNenninger/substrait-lean/issues/1937)),
-and most of dbt-expectations' models read a float32 column
-([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908))
-or `random()`. Every refusal and test not checked names its issue or the
+compare two relations or match patterns with flags, which sverify-dbt leaves
+to dbt by design, and most of dbt-expectations' models cast to float32,
+which Lean's model does not cover
+([#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417)),
+or use `random()`. Every refusal and test not checked names its issue or the
 reason it is by design ([`replay/constructs.json`](replay/constructs.json)).
 CI's `dbt` job replays them and warns when an outcome changes.
 

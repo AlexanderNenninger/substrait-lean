@@ -160,11 +160,11 @@ DATE_GUARDS = {"polars": "see #271", "snowflake": "208 MB", "spark": "heap"}
 REFUSED: dict[str, dict[str, str]] = {
     "timestamp delta": DUCKDB_ONLY,
     "timestamp + column interval": DUCKDB_ONLY,
-    "time of day": {"spark": "no tod type"},
-    "time parts": {"spark": "no tod type"},
-    "compare times": {"spark": "no tod type"},
-    "time + interval": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
-    "time truncate": {"polars": "see #271", "snowflake": "see #271", "spark": "no tod type"},
+    "time of day": {"spark": "spark-time-type"},
+    "time parts": {"spark": "spark-time-type"},
+    "compare times": {"spark": "spark-time-type"},
+    "time + interval": {"polars": "see #271", "snowflake": "see #271", "spark": "spark-time-type"},
+    "time truncate": {"polars": "see #271", "snowflake": "see #271", "spark": "spark-time-type"},
     "date + column months": DATE_GUARDS,
     "date from columns": DATE_GUARDS,
 }

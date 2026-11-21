@@ -3,7 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "`kahan_sum`, `fsum`, `sumkahan`, `favg`: classic Kahan",
-  "verdict": "classic Kahan (not Neumaier); NaN with an infinite input",
+  "verdict": "classic Kahan (not Neumaier); NaN with an infinite input at 2.0.0, superseded at 2.0.1 by duckdb-fsum-infinity (the infinity)",
   "area": "aggregates",
   "options": [
     "sum_order",
@@ -83,7 +83,10 @@
       "method": "docs",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://duckdb.org/docs/2.0/sql/functions/aggregates", "note": "fsum, favg: Kahan Sum, affected by ordering; silent on the NaN of an infinite input"}
+        {
+          "url": "https://duckdb.org/docs/2.0/sql/functions/aggregates",
+          "note": "fsum, favg: Kahan Sum, affected by ordering; silent on the NaN of an infinite input"
+        }
       ]
     },
     {
@@ -91,14 +94,24 @@
       "method": "engine-test",
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_sum.test#L5-L25", "note": "fsum, sumKahan, kahan_sum of 9007199254740992, 1, 1, 0 → 9007199254740994"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_avg.test#L5-L15", "note": "favg of the same → 2251799813685248.5"},
-        {"url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L1-L50", "note": "state combines keep the compensation's sign: fsum(2^53, 1, 1) → 9007199254740994, favg → 3002399751580331.5; grouped and exported states; no test of an infinite input"}
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_sum.test#L5-L25",
+          "note": "fsum, sumKahan, kahan_sum of 9007199254740992, 1, 1, 0 → 9007199254740994"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_avg.test#L5-L15",
+          "note": "favg of the same → 2251799813685248.5"
+        },
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.0/test/sql/aggregate/aggregates/test_kahan_combine.test#L1-L50",
+          "note": "state combines keep the compensation's sign: fsum(2^53, 1, 1) → 9007199254740994, favg → 3002399751580331.5; grouped and exported states; no test of an infinite input"
+        }
       ]
     }
   ],
   "issues": [
     54,
     85
-  ]
+  ],
+  "superseded_by": "duckdb-fsum-infinity"
 }

@@ -38,9 +38,8 @@ TARGETS = [
         "DATE ± INTEGER",
         "in",
         "dbt.dateadd on DuckDB; replay 57",
-        False,
+        True,
         sql="SELECT d + 1, d - 7 FROM t",
-        issue=319,
     ),
     target(
         AREA,

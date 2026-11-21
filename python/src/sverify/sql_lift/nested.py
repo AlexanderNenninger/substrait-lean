@@ -16,9 +16,11 @@ from sverify.sql_lift._base import (
     Column,
     E,
     Sub,
+    _category,
     _fn,
     _Lift,
     _shown,
+    difference,
     register,
 )
 
@@ -111,6 +113,13 @@ def _contains(lf: _Lift, node: sge.ArrayContains, sub: Sub, scope: list[Column])
     #812)."""
     lst = sub(node.this)
     x, _ = _needle(lf, node, lst, sub(node.expression), "list_contains")
+    # DuckDB 2.0.1 reads `list_contains([], NULL)` natively as FALSE, where the plan and 2.0.0
+    # give NULL: a listed exception under every semantics, unless the needle is a literal
+    # (D54, ruling 208).
+    if not isinstance(node.expression, sge.Literal):
+        lf.differences.append(
+            difference("list_contains_null_needle", _category(node), _shown(node))
+        )
     return E(_fn("list_contains", [lst.json, x.json], dt.boolean), dt.boolean)
 
 

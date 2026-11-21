@@ -22,7 +22,8 @@ from _pipelines import (
 )
 from sverify import nodes
 from sverify.contracts import label, violations
-from sverify.engines import ENGINES, delta_plans
+from sverify.engines import ENGINES
+from sverify.engines.plan import delta_plans
 from sverify.errors import (
     CompositionError,
     PostconditionError,

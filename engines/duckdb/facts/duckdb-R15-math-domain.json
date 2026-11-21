@@ -21,6 +21,7 @@
     "ln",
     "log10",
     "log2",
+    "log",
     "asin",
     "acos",
     "sin",
@@ -40,7 +41,8 @@
   "description": [
     "NaN outside the domain, `-inf` for a logarithm of 0.",
     "With `ieee_floating_point_ops` off, a zero divisor of doubles raises, and so do the elementary functions outside their domains (as the reference does), and `power(0, negative)` raises; the NaN of `inf - inf`, `0 * inf` and `inf / inf`, `atan2(0, 0)` and the shifts are unchanged.",
-    "The docs are silent on the domains of `ln`, `log`, `sqrt`, `asin` and the others (the setting is documented): a docs gap."
+    "The docs are silent on the domains of `ln`, `log`, `sqrt`, `asin` and the others (the setting is documented): a docs gap.",
+    "Two-argument `log(b, x)` (`fp.log`) is `ln(x) / ln(b)` in doubles with `ieee_floating_point_ops` on (the default): NaN for a negative or NaN argument, `-inf` for `log(2, 0)`, `±inf` at base 1 (`log(1, 0)` is `-inf`, `log(1, 2)` and `log(1, inf)` are `inf`, `log(1, 1)` is NaN), `-0.0` at base 0 (`log(0, 1)`, `log(0, 2)`), `0.0` at base `inf` and NaN for `log(inf, inf)`. With the setting off it raises for a value `≤ 0` or `-inf` and for a base `≤ 0`, `1` or `-inf` (`Out of Range Error`: negative number, zero, or division by zero in based logarithm), and is the same quotient otherwise, a NaN argument giving NaN."
   ],
   "reference": "Outside the domain, the reference raises.",
   "status": "shimmed",
@@ -118,6 +120,16 @@
       "checked_by": "characterization pipeline reverse pass",
       "evidence": [
         {"url": "https://duckdb.org/docs/2.0/sql/functions/numeric.html", "note": "no domain stated for ln, log, log10, log2, sqrt, asin"}
+      ]
+    },
+    {
+      "checked_at": "2026-11-21",
+      "method": "probe",
+      "checked_by": "lean-d session (#1985), DuckDB 2.0.0 Python, macOS arm64",
+      "evidence": [
+        {
+          "note": "`SELECT log(b::DOUBLE, x::DOUBLE)` over b, x in {NULL, NaN, 0.0, -0.0, 1.0, -1.0, 2.0, inf, -inf}, `ieee_floating_point_ops` true and false. On, rows b = 0.0/-0.0: [NULL, nan, nan, nan, -0.0, nan, -0.0, nan, nan]; b = 1.0: [NULL, nan, -inf, -inf, nan, nan, inf, inf, nan]; b = 2.0: [NULL, nan, -inf, -inf, 0.0, nan, 1.0, inf, nan]; b = inf: [NULL, nan, nan, nan, 0.0, nan, 0.0, nan, nan]; b negative, -inf or NaN: NULL then nan. Off, b = 2.0: [NULL, nan, raise, raise, 0.0, raise, 1.0, inf, raise]; b = inf: [NULL, nan, raise, raise, 0.0, raise, 0.0, nan, raise]; b = NaN: [NULL, nan, raise, raise, nan, raise, nan, nan, raise]; b in {0.0, -0.0, 1.0, -1.0, -inf}: NULL then raise. A NULL argument gives NULL."
+        }
       ]
     }
   ],

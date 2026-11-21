@@ -30,7 +30,7 @@ and Snowflake.
   the keyword inputs by their table names; `sql(query, orders=orders)`
   writes a transform's body in SQL over its input tables.
 * `verify` proves a contract of an Ibis expression without a transform, and
-  returns a `Report`; `paid.check(orders=schema)` returns the report of a
+  returns a `Report`; `paid.verify(orders=schema)` returns the report of a
   transform's contract for input schemas, without raising or reading data.
 * `connect` gives a connection of named in-memory tables, for Ibis
   expressions bound to data; `asof_join` matches each row with the latest

@@ -223,6 +223,20 @@ def test_checks_on_data_do_not_warn_through_pandas():
         assert violations(t, _.amount < 100) == 1
 
 
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_condition_plan_counts_as_ibis_does(engine: str) -> None:
+    """The condition's plan, run on the engine, counts the rows where it is
+    not TRUE inside the engine, as the Ibis path does: FALSE and NULL both
+    break it, and a SQL condition too (#881 1.7)."""
+    pytest.importorskip(f"sverify_{engine}")
+    con = sv.connect(engine)
+    schema = ibis.schema({"x": "int64", "s": "string"})
+    con.create("t", schema, [(-1, "a"), (None, None), (5, "b"), (7, "c")])
+    t = con.table("t")
+    for cond, n in ((_.x >= 0, 2), (_.s.notnull(), 1), ("x > 6", 3)):
+        assert violations(t, cond) == violations(t, cond, engine) == n, cond
+
+
 # Soundness on data: whatever Lean proves must hold on any input that satisfies
 # the preconditions.
 CONTRACTS = [

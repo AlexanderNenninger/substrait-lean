@@ -6,7 +6,7 @@ conforming consumer of Substrait 0.106:
 - every function call names its YAML's URN, its compound name
   (`add:i64_i64`) and its output type (`_substrait_extensions.json`, from
   the YAMLs);
-- every option the proof depends on (`Report.depends`) is pinned in the
+- every option the proof depends on (`Report._depends`) is pinned in the
   call's options, at the reference's behaviour, so the consumer cannot
   choose differently (`overflow`, `rounding`, `on_division_by_zero`, …);
 - where Substrait has no option for a choice the proof uses (a spec gap,
@@ -39,6 +39,7 @@ from importlib import resources
 from typing import TYPE_CHECKING, Any, Literal
 
 from sverify import _meta
+from sverify._plan_read import function_names
 from sverify._unsupported import SverifyError
 
 if TYPE_CHECKING:
@@ -626,11 +627,7 @@ class _Typer:
 
     def __init__(self, plan: Json):
         self.plan = plan
-        self.names = {
-            e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
-            for e in plan.get("extensions", [])
-            if "extensionFunction" in e
-        }
+        self.names = function_names(plan)
         self.anchors: dict[tuple[str, str], int] = {}
         self.calls: list[Call] = []
         self.canonical = False
@@ -715,6 +712,16 @@ class _Typer:
             return cols
         if kind == "set":
             outs = [self.rel(i) for i in b["inputs"]]
+            if any(o != outs[0] for o in outs[1:]):
+                # Substrait asks every input of a set relation for one schema (#1904).
+                # A cast of the narrower decimals would give it, but the checker
+                # reads an aggregate's decimal column untyped and refuses the
+                # cast on the import, so the export would not read back.
+                raise ExportError(
+                    "the inputs of a set relation differ in their column types (for example "
+                    "decimals of two precisions), which Substrait does not allow (#1904); "
+                    f"{_TO_SQL}"
+                )
             return outs[0]
         raise ExportError(
             f"the plan has a {kind} relation, which to_substrait does not write for "
@@ -2117,7 +2124,7 @@ __all__ = [
 
 
 def _plan_bound_met(report: Any) -> dict[str, float] | None:
-    """The plan's proved bound on its doubles (`Report.epsilon`) as a
+    """The plan's proved bound on its doubles (`Report._epsilon`) as a
     tolerance, when it meets the one the postconditions state on every
     double column; None otherwise."""
     from sverify.observation import Within

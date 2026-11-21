@@ -37,7 +37,7 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
         and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
         and "ERROR" not in (getattr(REFERENCE, f.name), getattr(DUCKDB, f.name))
     }
-    assert keys == set(_dialect.TABLE) | set(_dialect.REFUSED)
+    assert keys | _dialect.NATIVE == set(_dialect.TABLE) | set(_dialect.REFUSED)
     assert not set(_dialect.TABLE) & set(_dialect.REFUSED)
 
 
@@ -99,6 +99,62 @@ def test_the_where_of_each_plan_is_named(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_the_corr_construct_is_listed() -> None:
     assert _found("SELECT corr(x, y) AS c FROM t") == ["corr_degenerate"]
+
+
+LISTS = {"t": ibis.schema({"l": "array<int64>", "x": "int64"})}
+
+
+def _found_lists(sql: str, semantics: str = "reference") -> list[str]:
+    return [d.key for d in lift(sql, LISTS, semantics).differences]
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT list_contains(l, x) AS c FROM t", "SELECT list_has(l, NULL) AS c FROM t"]
+)
+def test_a_list_contains_with_a_needle_that_may_be_null_is_listed(sql: str) -> None:
+    # DuckDB's own reading differs from the plan's under both semantics.
+    assert _found_lists(sql) == ["list_contains_null_needle"]
+    assert _found_lists(sql, "duckdb") == ["list_contains_null_needle"]
+
+
+def test_a_literal_needle_is_not_listed() -> None:
+    assert _found_lists("SELECT list_contains(l, 5) AS c FROM t") == []
+
+
+def test_the_report_lists_a_list_contains() -> None:
+    r = sv.verify(
+        "SELECT list_contains(l, x) AS c FROM t",
+        tables={"t": {"l": "BIGINT[]", "x": "BIGINT"}},
+        counterexamples=0,
+    )
+    (d,) = r.dialect_differences
+    assert (d.key, d.where) == ("list_contains_null_needle", "the query")
+    assert "FALSE" in d.dialect and "NULL" in d.here
+    assert Report.from_json(r.to_json()).dialect_differences == r.dialect_differences
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT l < CAST([1, NULL, 3] AS BIGINT[]) AS c FROM t",
+        "SELECT l >= l AS c FROM t",
+        "SELECT [1, 2] < [1, NULL, 3] AS c FROM t",
+        "SELECT greatest(l, CAST([1] AS BIGINT[])) AS c FROM t",
+        "SELECT l BETWEEN CAST([1] AS BIGINT[]) AND CAST([2, NULL] AS BIGINT[]) AS c FROM t",
+    ],
+)
+def test_an_ordering_of_lists_that_may_hold_a_null_element_is_listed(sql: str) -> None:
+    # D54, ruling 232 (#2163): the plan gives NULL where a NULL element decides the order.
+    assert _found_lists(sql) == ["list_null_order"]
+    assert _found_lists(sql, "duckdb") == ["list_null_order"]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["SELECT [1, 2] < [1, 3] AS c FROM t", "SELECT l = l AS c FROM t", "SELECT x < 1 AS c FROM t"],
+)
+def test_other_comparisons_are_not_listed_as_list_orders(sql: str) -> None:
+    assert _found_lists(sql) == []
 
 
 def test_a_construct_is_listed_once() -> None:

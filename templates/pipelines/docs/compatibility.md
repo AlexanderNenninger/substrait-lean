@@ -1,8 +1,31 @@
 # Compatibility
 
 Each cell is tested in CI, checked by hand before a release, or untested
-([#787](https://github.com/AlexanderNenninger/substrait-lean/issues/787)). This page holds the
-orchestrator cells so far; stores and catalogs follow with the `compat` job.
+([#787](https://github.com/AlexanderNenninger/substrait-lean/issues/787)). A cell tested in
+CI names its test; a cell checked by hand is on the release checklist
+(`.claude/skills/release-sverify/SKILL.md`, "Compatibility by hand").
+
+## Stores
+
+| Store | Status | Tested with |
+|---|---|---|
+| Local disk | tested in CI | [`test_io_sink_readers.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_sink_readers.py) |
+| S3 | tested in CI, against a moto server | [`test_io_delta_s3.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_delta_s3.py), moto 5.2.5: writes, maintenance and a restart past another writer's compaction |
+| MinIO | checked by hand | MinIO with the open-source Unity Catalog, before a release |
+| R2, GCS, Azure | untested | |
+
+## Catalogs
+
+| Catalog | Status | Tested with |
+|---|---|---|
+| Delta tables by path | tested in CI | [`test_io_sink_readers.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_sink_readers.py), deltalake 1.6.6 |
+| Unity Catalog, open source (`uc://`) | tested in CI against a stand-in for delta-rs's catalog, and checked by hand with MinIO, before a release | [`test_io_delta_catalog.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_delta_catalog.py) |
+| Databricks Unity Catalog, AWS Glue, S3 Tables, Snowflake Open Catalog | checked by hand | the release checklist |
+| Iceberg SQL catalog (SQLite) | tested in CI | [`test_io_iceberg.py`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/tests/test_io_iceberg.py), pyiceberg 0.12.0 |
+| Iceberg REST catalogs (Lakekeeper, Polaris), Nessie, Hive Metastore | untested | |
+
+The S3, GCS and Azure rows, and the Unity Catalog, REST and Nessie rows, move to tested in CI when
+the containers of [#787](https://github.com/AlexanderNenninger/substrait-lean/issues/787) run.
 
 ## Orchestrators
 

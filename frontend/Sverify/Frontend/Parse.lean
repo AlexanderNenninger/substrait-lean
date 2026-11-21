@@ -720,7 +720,9 @@ def castConst (ty : Json) (c : Const) : J Const := do
   | .str =>
     match c with
     | .str s => return .str s
-    | _ => throw "casts to strings are not supported"
+    | .bool b => return .str (if b then "true" else "false")
+    | .date d => return .str (Time.strftime "%Y-%m-%d" (d * Time.usPerDay))
+    | _ => throw "casts of this value to strings are not supported"
   | .tod =>
     match c with
     | .int us | .tod us =>
@@ -2085,13 +2087,6 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if (hasFloat || floatCall) && !keepInt k then
         if let some (.int i) ← constOf? fns j then return Expr.lit (.float (FloatCode.ofInt i))
       return e
-    -- DataFusion's simplifier makes `power(x, 0)` a constant 1, even for a
-    -- NULL `x`.
-    if baseName name == "power" then
-      if let [_, Expr.lit (.int 0)] := args then
-        return .lit (if floatCall then .float (FloatCode.ofFloat 1.0) else .int 1)
-      if let [_, Expr.lit (.float 0)] := args then
-        return .lit (if floatCall then .float (FloatCode.ofFloat 1.0) else .int 1)
     -- Arithmetic on `FLOAT`s rounds to 32 bits, which is not modelled
     -- (#208); on their conversion to `DOUBLE` it is exact.
     if floatCall && ((outTy.getObjVal? "fp32").toOption.isSome ||
@@ -2258,6 +2253,11 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
     if target == .str && k == .int then return .un .itos e
+    -- `true` / `false`, as every tier-1 engine prints a boolean; NULL stays NULL (#346).
+    if target == .str && k == .bool then
+      return .ifThen e (.lit (.str "true")) (.ifThen (.un .not e) (.lit (.str "false")) (.lit .null))
+    -- `YYYY-MM-DD`, the date's text in every tier-1 engine inside the calendar of D32 (#346).
+    if target == .str && k == .date then return .un (.strftime "%Y-%m-%d") (.un .dateTime e)
     -- `FLOAT` to `DOUBLE`: exact, but kept, so that the written plan widens too.
     if target == .float && k == .float && argBits bits input e == 32 then return .un .widen e
     if target == .date && k == .time then return .un .toDate e

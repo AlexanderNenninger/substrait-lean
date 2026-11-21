@@ -7,10 +7,10 @@
   "project": "integration_tests",
   "license": "Apache-2.0",
   "summary": {
-    "proved": 1,
-    "not proved": 8,
-    "not checked": 48,
-    "refused": 19,
+    "proved": 3,
+    "not proved": 13,
+    "not checked": 45,
+    "refused": 15,
     "input": 37
   },
   "unsound": 0,
@@ -148,17 +148,17 @@
       "test": "assert_equal",
       "model": "test_haversine_distance_km",
       "outcome": "refused",
-      "construct": "sverify cannot read RADIANS((data.lat_2 - data.lat_1) / N) yet (write this step in Ibis)",
+      "construct": "sverify cannot read round of a DECIMAL yet (write this step in Ibis)",
       "dbt": "pass",
-      "issue": 1938
+      "issue": 27
     },
     "assert_equal_test_haversine_distance_mi_actual__expected.577f11040d": {
       "test": "assert_equal",
       "model": "test_haversine_distance_mi",
       "outcome": "refused",
-      "construct": "sverify cannot read RADIANS((data.lat_2 - data.lat_1) / N) yet (write this step in Ibis)",
+      "construct": "sverify cannot read round of a DECIMAL yet (write this step in Ibis)",
       "dbt": "pass",
-      "issue": 1938
+      "issue": 27
     },
     "assert_equal_test_safe_add_actual__expected.165d6f1efd": {
       "test": "assert_equal",
@@ -171,10 +171,10 @@
     "assert_equal_test_safe_divide_actual__expected.b0a326bd12": {
       "test": "assert_equal",
       "model": "test_safe_divide",
-      "outcome": "refused",
-      "construct": "sverify cannot read UNION with with_ yet (write this step in Ibis)",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
       "dbt": "pass",
-      "issue": 1939
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
     },
     "assert_equal_test_safe_subtract_actual__expected.77bd266001": {
       "test": "assert_equal",
@@ -203,26 +203,26 @@
     "assert_equal_test_url_host_actual__expected.8467cd81db": {
       "test": "assert_equal",
       "model": "test_url_host",
-      "outcome": "refused",
-      "construct": "sverify cannot read STR_SPLIT(REPLACE(REPLACE(REPLACE(data.original_url, 'and... yet (write this step in Ibis)",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
       "dbt": "pass",
-      "issue": 1940
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
     },
     "assert_equal_test_url_path_actual__expected.8d91d8bf8d": {
       "test": "assert_equal",
       "model": "test_url_path",
-      "outcome": "refused",
-      "construct": "sverify cannot check it: right needs a constant int",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
       "dbt": "pass",
-      "issue": 1942
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
     },
     "assert_equal_test_urls_actual__expected.9cfc18d36f": {
       "test": "assert_equal",
       "model": "test_urls",
-      "outcome": "refused",
-      "construct": "sverify cannot read UNION with with_ yet (write this step in Ibis)",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
       "dbt": "pass",
-      "issue": 1939
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
     },
     "assert_equal_test_width_bucket_actual__expected.5781abe245": {
       "test": "assert_equal",
@@ -305,17 +305,17 @@
       "test": "dbt_utils.equal_rowcount",
       "model": "test_equal_rowcount",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equal_rowcount; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equal_rowcount: it compares the row counts of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equal_rowcount_test_equal_rowcount_ref_test_equal_rowcount___field.62c78a1511": {
       "test": "dbt_utils.equal_rowcount",
       "model": "test_equal_rowcount",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equal_rowcount; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equal_rowcount: it compares the row counts of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_data_test_equality_a_col_a__col_b__ref_data_test_equality_b_.979b442f01": {
       "test": "dbt_utils.equality",
@@ -366,9 +366,9 @@
       "test": "dbt_utils.equality",
       "model": "equality_less_columns",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_date_spine_ref_data_date_spine_.47dec42629": {
       "test": "dbt_utils.equality",
@@ -382,9 +382,9 @@
       "test": "dbt_utils.equality",
       "model": "test_deduplicate",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_equal_column_subset_first_name__last_name__email__ref_data_people_.3f31c2f0d2": {
       "test": "dbt_utils.equality",
@@ -398,25 +398,25 @@
       "test": "dbt_utils.equality",
       "model": "test_generate_series",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_get_column_values_where_ref_data_get_column_values_where_expected_.f3b69fffd7": {
       "test": "dbt_utils.equality",
       "model": "test_get_column_values_where",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_get_filtered_columns_in_relation_ref_data_filtered_columns_in_relation_expected_.d469bf7522": {
       "test": "dbt_utils.equality",
       "model": "test_get_filtered_columns_in_relation",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_get_relations_by_pattern_ref_data_union_events_expected_.11c7165a94": {
       "test": "dbt_utils.equality",
@@ -430,73 +430,73 @@
       "test": "dbt_utils.equality",
       "model": "test_pivot_apostrophe",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_pivot_ref_data_pivot_expected_.8c49a9377c": {
       "test": "dbt_utils.equality",
       "model": "test_pivot",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_star_aggregate_ref_data_star_aggregate_expected_.c5fbc9020c": {
       "test": "dbt_utils.equality",
       "model": "test_star_aggregate",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_star_prefix_suffix_ref_data_star_prefix_suffix_expected_.18182f3f4a": {
       "test": "dbt_utils.equality",
       "model": "test_star_prefix_suffix",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_star_ref_data_star_expected_.b45cbb2e87": {
       "test": "dbt_utils.equality",
       "model": "test_star",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_star_uppercase_ref_data_star_expected_.b172eeab68": {
       "test": "dbt_utils.equality",
       "model": "test_star_uppercase",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_union_exclude_lowercase_ref_data_union_exclude_expected_.66e9da5f74": {
       "test": "dbt_utils.equality",
       "model": "test_union_exclude_lowercase",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_union_exclude_uppercase_ref_data_union_exclude_expected_.16dda11e18": {
       "test": "dbt_utils.equality",
       "model": "test_union_exclude_uppercase",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_union_ref_data_union_expected_.e05c57a725": {
       "test": "dbt_utils.equality",
       "model": "test_union",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_unpivot_bool_ref_data_unpivot_bool_expected_.552f6376ee": {
       "test": "dbt_utils.equality",
@@ -504,7 +504,7 @@
       "outcome": "refused",
       "construct": "sverify cannot check it: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.str. Lean's model does not cov",
       "dbt": "pass",
-      "issue": 1911
+      "issue": 2180
     },
     "dbt_utils_equality_test_unpivot_original_api_ref_data_unpivot_original_api_expected_.ded9a98c93": {
       "test": "dbt_utils.equality",
@@ -515,17 +515,17 @@
       "test": "dbt_utils.equality",
       "model": "test_unpivot_quote",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_unpivot_ref_data_unpivot_expected_.9a4250a2fa": {
       "test": "dbt_utils.equality",
       "model": "test_unpivot",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.equality; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_expression_is_true_data_test_expression_is_true_col_a_0_5.694c46146b": {
       "test": "dbt_utils.expression_is_true(col_a = 0.5)",
@@ -558,17 +558,17 @@
       "test": "dbt_utils.fewer_rows_than",
       "model": "test_fewer_rows_than",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.fewer_rows_than; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.fewer_rows_than: it compares the row counts of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_fewer_rows_than_test_fewer_rows_than_ref_data_test_fewer_rows_than_table_2___col_a.a5d483941d": {
       "test": "dbt_utils.fewer_rows_than",
       "model": "test_fewer_rows_than",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.fewer_rows_than; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.fewer_rows_than: it compares the row counts of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_mutually_exclusive_ranges_data_test_mutually_exclusive_ranges_no_gaps_not_allowed__lower_bound__upper_bound.8a608eab5f": {
       "test": "dbt_utils.mutually_exclusive_ranges",
@@ -609,33 +609,29 @@
       "test": "dbt_utils.not_constant(favorite_number)",
       "model": "test_union_where",
       "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.not_constant; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "why": "dbt_utils.not_constant: it needs two distinct values, and sverify proves no lower bound; dbt still runs it",
       "dbt": "pass",
-      "issue": 1937
+      "design": "a lower bound on distinct values is not a condition sverify proves; dbt still runs it"
     },
     "dbt_utils_not_empty_string_test_not_empty_string_failing_string_trim_whitespace_true.e90d102696": {
       "test": "dbt_utils.not_empty_string(string_trim_whitespace_true)",
       "model": "test_not_empty_string_failing",
-      "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
-      "dbt": "pass",
-      "issue": 1936
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
     },
     "dbt_utils_not_empty_string_test_not_empty_string_passing_string_trim_whitespace_false__False.a41c0bc021": {
       "test": "dbt_utils.not_empty_string(string_trim_whitespace_false)",
       "model": "test_not_empty_string_passing",
-      "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
-      "dbt": "pass",
-      "issue": 1936
+      "outcome": "proved",
+      "dbt": "pass"
     },
     "dbt_utils_not_empty_string_test_not_empty_string_passing_string_trim_whitespace_true.59d932f47c": {
       "test": "dbt_utils.not_empty_string(string_trim_whitespace_true)",
       "model": "test_not_empty_string_passing",
-      "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for dbt_utils.not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
-      "dbt": "pass",
-      "issue": 1936
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
     },
     "dbt_utils_not_null_proportion_data_not_null_proportion_0_5__0_5__point_5.f98f7ac847": {
       "test": "dbt_utils.not_null_proportion(point_5)",
@@ -720,34 +716,29 @@
     "expect_table_columns_to_match_set_test_union_no_source_column_id__name__favorite_color__favorite_number.078611f042": {
       "test": "expect_table_columns_to_match_set",
       "model": "test_union_no_source_column",
-      "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for expect_table_columns_to_match_set; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
-      "dbt": "pass",
-      "issue": 1937
+      "outcome": "proved",
+      "dbt": "pass"
     },
     "not_empty_string_test_nullcheck_table_field_1.a51d259bb5": {
       "test": "not_empty_string(field_1)",
       "model": "test_nullcheck_table",
-      "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
-      "dbt": "pass",
-      "issue": 1936
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
     },
     "not_empty_string_test_nullcheck_table_field_2.2eaba41ebc": {
       "test": "not_empty_string(field_2)",
       "model": "test_nullcheck_table",
-      "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
-      "dbt": "pass",
-      "issue": 1936
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
     },
     "not_empty_string_test_nullcheck_table_field_3.f26a4ed21c": {
       "test": "not_empty_string(field_3)",
       "model": "test_nullcheck_table",
-      "outcome": "not checked",
-      "why": "sverify-dbt has no mapping for not_empty_string; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
-      "dbt": "pass",
-      "issue": 1936
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
     },
     "not_null_test_get_relations_by_prefix_and_union_event.02af59bb21": {
       "test": "not_null(event)",

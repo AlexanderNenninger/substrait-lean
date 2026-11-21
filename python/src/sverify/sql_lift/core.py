@@ -6,13 +6,16 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
+from ibis.common.temporal import IntervalUnit
 
 from sverify import _functions
+from sverify._dialect import difference
 from sverify._unsupported import MIN_MOD_GUARD
 from sverify.plan_json import (
     Json,
@@ -21,6 +24,7 @@ from sverify.plan_json import (
     between,
     if_then,
     in_values,
+    interval_json,
     literal,
     logical,
 )
@@ -29,6 +33,7 @@ from sverify.sql_lift._base import (
     Column,
     E,
     Sub,
+    _category,
     _decimal,
     _digits,
     _fits,
@@ -115,11 +120,44 @@ def _neg(lf: _Lift, node: sge.Neg, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("negate", [a.json], a.type, _overflow(lf, a.type)), a.type)
 
 
+def _date_plus_days(name: str, a: E, b: E) -> E:
+    """`DATE ± INTEGER`: DuckDB adds days and the result is a DATE (#319). A
+    constant count is the interval of that many days; a column's is not read."""
+    if name == "add" and b.type.is_date():
+        a, b = b, a
+    if not a.type.is_date() or a.midnight or not (b.type.is_integer() or b.type.is_null()):
+        raise SqlUnsupported(
+            f"{name} of {a.type} and {b.type} is not supported yet", construct=name.upper()
+        )
+    if not b.constant or b.value is None:
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} an integer that is not a constant is not "
+            "supported yet (#319); write the interval, DATE + INTERVAL 1 DAY",
+            construct=name.upper(),
+        )
+    if abs(int(b.value)) > 3_000_000:  # a date's range is about 5.8 million years
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} {b.value} days leaves DuckDB's date range",
+            construct=name.upper(),
+        )
+    micros = int(b.value) * 86_400_000_000
+    day = E(interval_json(0, micros), dt.Interval(unit=IntervalUnit.MICROSECOND), (0, micros))
+    try:
+        return replace(_temporal_plus(name, a, day), midnight=False)
+    except OverflowError:
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} {b.value} days leaves the dates sverify reads",
+            construct=name.upper(),
+        ) from None
+
+
 def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _ARITHMETIC[type(node)]
     a, b = sub(node.this), sub(node.expression)
     if a.type.is_interval() or b.type.is_interval():
         return _temporal_plus(name, a, b)
+    if name in ("add", "subtract") and a.type.is_date() != b.type.is_date():
+        return _date_plus_days(name, a, b)
     if name == "subtract" and a.type.is_date() and b.type.is_date():
         # DuckDB's DATE - DATE is a BIGINT of days.
         if a.midnight or b.midnight:
@@ -265,6 +303,21 @@ def _operands(lf: _Lift, es: list[E], what: str) -> list[Json]:
     return [lf.to(e, t).json for e in es]
 
 
+def _null_free_list(node: sge.Expression) -> bool:
+    """Whether `node` is a list literal whose elements are all non-NULL literals."""
+    return isinstance(node, sge.Array) and all(
+        isinstance(e.this if isinstance(e, sge.Neg) else e, sge.Literal) for e in node.expressions
+    )
+
+
+def _list_order(lf: _Lift, node: sge.Expression, operands: list[sge.Expression]) -> None:
+    """List the order of lists (D54, ruling 232, #2163): the plan gives NULL where a NULL element
+    decides it and DuckDB, running the text natively, orders NULL last. Both readings agree where
+    every operand is a constant list without a NULL element."""
+    if not all(_null_free_list(o) for o in operands):
+        lf.differences.append(difference("list_null_order", _category(node), _shown(node)))
+
+
 def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _COMPARISONS[type(node)]
     a, b = sub(node.this), sub(node.expression)
@@ -275,6 +328,8 @@ def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> 
             f"{_shown(node)}: ordering comparisons of {a.type} are not supported yet",
             construct="COMPARISON",
         )
+    if name not in ("equal", "not_equal") and (a.type.is_array() or b.type.is_array()):
+        _list_order(lf, node, [node.this, node.expression])
     args = _operands(lf, [a, b], name)
     return E(_fn(name, args, dt.boolean), dt.boolean)
 
@@ -332,9 +387,10 @@ def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
 def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("symmetric"):
         raise SqlUnsupported("BETWEEN SYMMETRIC is not supported", construct="BETWEEN SYMMETRIC")
-    x, lo, hi = _operands(
-        lf, [sub(node.this), sub(node.args["low"]), sub(node.args["high"])], "BETWEEN"
-    )
+    es = [sub(node.this), sub(node.args["low"]), sub(node.args["high"])]
+    if any(e.type.is_array() for e in es):
+        _list_order(lf, node, [node.this, node.args["low"], node.args["high"]])
+    x, lo, hi = _operands(lf, es, "BETWEEN")
     return E(between(x, lo, hi, typed=True), dt.boolean)
 
 
@@ -545,6 +601,8 @@ def _extremum(name: str) -> Callable[..., E]:
         t = lf.common(es, name)
         if t.is_null():
             t = dt.int32
+        if t.is_array():
+            _list_order(lf, node, [node.this, *node.expressions])
         sql = "BIGINT" if t.is_int64() else "DOUBLE" if t.is_float64() else None
         if sql is not None and lf.profile is DUCKDB:
             # Of BIGINTs or DOUBLEs: the generated lift's, pairwise.

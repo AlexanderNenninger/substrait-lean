@@ -5,7 +5,7 @@ the line and the line-and-branch coverage of `sverify` and the modules with the
 most missed lines. The gate warns: it prints a warning annotation under the
 target and always exits 0.
 
-    python scripts/coverage_summary.py coverage.json [--target 89] [--top 10]
+    python scripts/coverage_summary.py coverage.json [--target 89] [--top 10] [--package sverify]
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ import sys
 from pathlib import Path
 
 
-def summarise(data: dict, target: float, top: int) -> tuple[str, bool]:
+def summarise(data: dict, target: float, top: int, package: str = "sverify") -> tuple[str, bool]:
     """The Markdown report and whether the combined number meets `target`."""
     files = {
         name: f["summary"]
         for name, f in data["files"].items()
-        if "/sverify/" in name.replace("\\", "/") or name.startswith("sverify/")
+        if f"/{package}/" in name.replace("\\", "/") or name.startswith(f"{package}/")
     }
     stmts = sum(s["num_statements"] for s in files.values())
     missed = sum(s["missing_lines"] for s in files.values())
@@ -33,7 +33,7 @@ def summarise(data: dict, target: float, top: int) -> tuple[str, bool]:
     combined = 100 * (stmts - missed + branches - partial) / (stmts + branches) if stmts else 0.0
     ok = combined >= target
     out = [
-        "### Coverage of `sverify`",
+        f"### Coverage of `{package}`",
         "",
         f"- lines: {lines:.1f} % ({stmts - missed} of {stmts} statements)",
         f"- lines and branches: {combined:.1f} % (target {target:g} %)",
@@ -56,11 +56,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("json", type=Path)
     p.add_argument("--target", type=float, default=89.0)
     p.add_argument("--top", type=int, default=10)
+    p.add_argument("--package", default="sverify", help="the package to report (default sverify)")
     args = p.parse_args(argv)
-    text, ok = summarise(json.loads(args.json.read_text()), args.target, args.top)
+    text, ok = summarise(json.loads(args.json.read_text()), args.target, args.top, args.package)
     print(text)
     if not ok:
-        print(f"::warning::coverage of sverify is under {args.target:g} %", file=sys.stderr)
+        print(f"::warning::coverage of {args.package} is under {args.target:g} %", file=sys.stderr)
     return 0
 
 
