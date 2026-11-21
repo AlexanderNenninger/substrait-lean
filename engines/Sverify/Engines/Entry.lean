@@ -51,7 +51,7 @@ structure EngineEntry where
   sameLibm : Bool := true
   /-- The engine's elementary functions that are not the reference's, S + R in ulps
   (`EngineProfile.elemUlps`). -/
-  elemUlps : List (String × Float) := []
+  elemUlps : List (String × Rat) := []
 
 open Lean Elab Term Meta in
 /-- `engine_entry% thm`: the entry whose proof is `thm`, with `soundName` the
