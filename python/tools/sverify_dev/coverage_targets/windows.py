@@ -68,9 +68,8 @@ TARGETS = [
         "named WINDOW",
         "in",
         "replay 71",
-        False,
+        True,
         sql="SELECT sum(qty) OVER w FROM t WINDOW w AS (PARTITION BY name ORDER BY ts)",
-        issue=319,
     ),
     target(
         AREA,
