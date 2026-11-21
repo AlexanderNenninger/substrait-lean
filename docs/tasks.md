@@ -1887,9 +1887,10 @@ the export handles it in one of these ways:
   doubles is `x + 0.0 = y + 0.0 OR (is_nan(x) AND is_nan(y))`, a double
   grouping key is the pair `(is_nan(x), x + 0.0)`, and a double sort key
   sorts by `is_nan(x)` first, so that NaN equals NaN and sorts greatest,
-  and the two zeros are one (ST-4). A cast of a double to an integer
-  truncates first (ST-6). A gap the plan meets where no shim applies yet,
-  such as an ordering comparison of doubles, refuses the export.
+  and the two zeros are one (ST-4). An ordering comparison of doubles
+  (`<`, `<=`, `>`, `>=`, `between`) follows the same order. A cast of a
+  double to an integer truncates first (ST-6). A gap the plan meets where
+  no shim applies refuses the export.
 - `"annotate"` keeps the plan as written and records each choice in the
   manifest as an assumption the consumer must honour (`assumptions`, class
   `assumed`).
