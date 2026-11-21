@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import warnings
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -37,7 +36,6 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     CheckerVersionError,
     _checker_file,
     _run_checker,
-    checker_env,
     checker_path,
     checker_refusal,
     run_checker,
@@ -112,7 +110,7 @@ class _Refusal:
 
 
 class _Arrow(MutableMapping[str, pa.Table]):
-    """`Connection.arrow`: the connection's tables as Arrow tables. A table
+    """`Connection._arrow`: the connection's tables as Arrow tables. A table
     DuckDB reads where it is (a `Scan` or `Resident`) is read into Arrow
     when it is first looked up here, and is held as that Arrow table from
     then on."""
@@ -169,10 +167,6 @@ class Connection:
 
     Attributes:
         engine: The engine that runs plans unless a call names another.
-        arrow: Deprecated: the tables by name, as Arrow tables; `get`,
-            `rows` and `put` read and write them.
-        ibis: Deprecated: the Ibis DuckDB backend the bound tables read
-            through; `table(name).get_backend()` is the same backend.
 
     Raises:
         ValueError: `engine` is unknown.
@@ -219,27 +213,6 @@ class Connection:
         """
         schema = ibis.Schema.from_pyarrow(self.schema(name))
         return ops.DatabaseTable(name, schema=schema, source=self._source).to_expr()
-
-    @property
-    def arrow(self) -> MutableMapping[str, pa.Table]:
-        """Deprecated: the tables by name, as Arrow tables."""
-        warnings.warn(
-            "Connection.arrow is deprecated; read a table with con.get(name) or "
-            "con.rows(name), and write one with con.put(name, table)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._arrow
-
-    @property
-    def ibis(self) -> Any:
-        """Deprecated: the Ibis DuckDB backend the bound tables read through."""
-        warnings.warn(
-            "Connection.ibis is deprecated; con.table(name).get_backend() is the same Ibis backend",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._ibis
 
     @property
     def _ibis(self) -> Any:

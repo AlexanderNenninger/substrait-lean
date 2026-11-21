@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify._engines import translations
 from sverify._unsupported import SverifyError, SverifyWarning
-from sverify.observation import Observation, Within, _deterministic_arg
+from sverify.observation import Observation, Within
 
 if TYPE_CHECKING:
     from sverify.report import Report
@@ -1350,7 +1350,6 @@ def choose(
     engine: Any,
     route: RouteKind | Literal["auto"] = "auto",
     *,
-    deterministic: bool | None = None,
     version: str | None = None,
     reproducible: Observation | None = None,
 ) -> Route:
@@ -1362,7 +1361,6 @@ def choose(
         route: `"auto"` (the default) tries `"native"`, `"translated"`,
             `"transfer"` and `"recheck"` in turn; a route by name is taken or
             refused.
-        deterministic: Deprecated: `reproducible=sv.equivalent()`.
         reproducible: What a rerun must reproduce, as an
             idempotent sink needs: the engine's run-to-run variation must
             refine it (`reproducibility`), or the route is refused. None
@@ -1416,7 +1414,6 @@ def choose(
             cap = max_rows_fix(report, e, report.lenses)
             return replace(refuse(not_verified(report) + _cap_text(cap)), suggested=cap)
         return refuse(not_verified(report))
-    reproducible = _deterministic_arg("choose", deterministic, reproducible)
     rerun_evidence: Evidence | None = None
     if reproducible is not None:
         problems, rerun_evidence = reproducibility(report, e, reproducible)
