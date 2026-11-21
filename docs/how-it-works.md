@@ -234,6 +234,18 @@ rewritten files as deleted and added, which nets to the change.
 and through delta-rs and pyiceberg, and compares the tables after every
 refresh and the statistics both record.
 
+Other engines read what the sinks write (#861).
+`python/tests/test_io_sink_readers.py` writes a merged, a maintained and a
+replaced table in each format. delta-rs, pyiceberg, DuckDB's `delta_scan`
+and `iceberg_scan`, and sverify's own sources each read the rows the writes
+call for, and the contract record survives each library's own maintenance.
+`python/tests/test_delta_dat.py` reads the Delta Acceptance Testing suite
+through `DeltaSource`. Spark's own readers are outside these tests: sverify
+pins pyspark 4.3, and on Maven Central (2026-11-21) the newest delta-spark,
+4.4.1, builds against Spark 4.2, and the newest iceberg-spark-runtime,
+1.12.0, against Spark 4.1
+([#2140](https://github.com/AlexanderNenninger/substrait-lean/issues/2140)).
+
 #### Doubles under the reference profile
 
 The core has IEEE's doubles, both zeros and signed NaNs, and each profile
