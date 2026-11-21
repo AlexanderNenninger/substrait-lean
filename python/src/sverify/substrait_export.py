@@ -724,7 +724,7 @@ class _Typer:
             f"other consumers yet; {_TO_SQL}"
         )
 
-    def _one_set_type(self, b: Json, outs: list[Ty] | list[list[Ty]]) -> list[list[Ty]]:
+    def _one_set_type(self, b: Json, outs: list[list[Ty]]) -> list[list[Ty]]:
         """Give every input of a set relation one schema, which Substrait asks
         (#1904): an input whose decimal column is narrower than another's, at the
         same scale, gets a projection casting it to the widest precision, which
