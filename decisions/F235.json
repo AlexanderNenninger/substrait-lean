@@ -1,0 +1,16 @@
+{
+  "id": "F235",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#271's Polars step: scalar functions are stated once in `Profile.polars` (value side; the error side stays the reference's raise, D21); a generated lowering sits beside `Rel.polars_sound` until the hooks and `Polars.written` leave together; relational rows are out of #271; the `pl.Expr` interpreter is step 2; the generator takes the engine's module split.",
+  "issues": [
+    271
+  ],
+  "amends": [
+    "F218"
+  ],
+  "source": "fable-ruling-235-271-polars-generated-lowering.md",
+  "note": "Withdraws ruling 218's recommendation on #271; the rest of ruling 218 stands. Modelling NaN and infinities under semantics=\"polars\" is After 1.0."
+}

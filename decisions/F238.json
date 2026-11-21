@@ -2,9 +2,9 @@
   "id": "F238",
   "date": "2026-11-21",
   "decided_by": "fable",
-  "scope": "engines",
+  "scope": "architecture",
   "status": "in-force",
-  "summary": "#1787 item 4: a double SUM or AVG is marked, and runs without its check against ±∞, only where Measure.finiteAnyOrder holds (SumOrder.near's margin, 2 for a sum and 4 for a mean, a finite interval and a row cap n ≤ 2³²); crBound inside Rel.mayIssues keeps describing the reference. Ruling 223's L1 was false at the boundary.",
+  "summary": "#1787 item 4's L1 is `Measure.FiniteAnyOrder` (finite input interval, at most 2^32 group rows, `SumOrder.near`'s margin for SUM and `AvgOrder.near`'s for AVG): a double measure's two-stage form is dropped only where the predicate holds, and `Rel.mayIssues` keeps describing the reference.",
   "issues": [
     1787
   ],
@@ -12,8 +12,9 @@
     "F223"
   ],
   "amended_by": [
-    "F242"
+    "F242",
+    "U-2026-11-21-land-optimizations"
   ],
   "source": "fable-ruling-238-1787-item4-finite-any-order.md",
-  "note": "K7 (land only on a 1.5× bench) was replaced by the user's ruling of 2026-11-21 to land item 4 before 1.0."
+  "note": "Corrects ruling 223's L1, which was false at the boundary (K1-K7). Its addendum placed item 4 After 1.0 by K7 (a catalogue count of zero); the maintainer's ruling to land optimizations where we can moves it before 1.0. No D-number."
 }

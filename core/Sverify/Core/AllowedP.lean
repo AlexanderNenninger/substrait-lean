@@ -62,9 +62,12 @@ a sum `c` is finite and within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of th
 `u = 2⁻⁵³`, `γₙ = nu / (1 − nu)`: in units of `2⁻¹⁰⁷⁴` and multiplied out,
 an exact inequality on integers. `float-bounds` proves it of every order the
 engines' facts record (`StdModel.Summed.near`: trees, a sequential sum,
-Kahan's, a constant run's `fl(k · x)`); that the engines' algorithms meet it
-is trusted (docs/proofs.md) until #1196 proves it. `SumBound` states it of
-the codes as they are and of the canonical codes (ruling 242). -/
+Kahan's, a constant run's `fl(k · x)`). For the orders with a shape
+(`FloatSums`) `float-bounds/FloatBridge/Sums.lean` proves it
+(`FloatSums.sumBound`); for Kahan's and a constant run it is trusted
+(docs/trusted-base.md) until #1196 writes those algorithms on codes.
+`SumBound` states it of the codes as they are and of the canonical codes
+(ruling 242). -/
 def SumBoundRaw (vs : List Value) (c : Int) : Prop :=
   (∀ x, Value.float x ∈ vs → FloatCode.IsFin x) → vs.length ≤ 2 ^ 32 →
     2 * (scaledAbsSum vs + vs.length * 2 ^ 52) ≤ FloatCode.maxMag →

@@ -52,6 +52,12 @@ def _substring(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0, and from the end for negative starts.
     if isinstance(op.length, ops.Literal) and op.length.value < 0:
         raise ProducerUnsupported("substring with a negative length", construct="function substr")
+    if op.length is not None and op.length.find(ops.Field):
+        raise Unsupported(
+            "substring with a length that comes from a column is not supported: "
+            "use a constant length, or write the cases you need with ifelse",
+            construct="function substr",
+        )
     start = call("add", [x(op.start, dt.int64), literal(1, dt.int64)])
     start = if_then(
         [(call("gte", [start, literal(1, dt.int64)]), start)],

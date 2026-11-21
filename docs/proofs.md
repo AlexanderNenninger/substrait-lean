@@ -271,6 +271,7 @@ that build as the guard. Engine packages may import it, as
 | Module | Job |
 |---|---|
 | `Guard.lean` | D50: `AND`/`OR` over a raising operand as a nested `CASE` chain (`Expr.andLift`, `Expr.orLift`), with the proofs that the guard protects and an error still surfaces |
+| `GuardedColumns.lean` | D50-d: a filter's and a projection's chains bound as guarded columns below it, one level per operand that may raise (`Rel.guardedFilter`, `Rel.guardedProject`), with the proofs that they keep the lift's rows (`Rel.guardedFilter_eval`, `Rel.guardedProject_eval`) and raise where the lift raises (`Rel.guardedFilter_raises`, `Rel.guardedProject_raises`) |
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `SubstraitJson.lean` | Builders of Substrait's JSON: references, types, casts, literals, calls and measures by anchor, the functions templates call, and the options the parser accepts |
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
@@ -459,6 +460,7 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `Moments.lean` | Exact moments and the scale of the variance bounds |
 | `Variance.lean` | Variance, covariance and correlation bounds for any algorithm |
 | `FloatBridge/Codes.lean` | The bridge to the core (#1196): the core's rounding (`FloatCode.ofExact` after the nearest multiple of `2⁻¹⁰⁷⁴`) is a `StdModel` (`FloatBridge.model`), and on multiples of `2⁻¹⁰⁷⁴` it is `ofExact` (`model_fl_grid`) |
+| `FloatBridge/Sums.lean` | The core's summation orders over the bridge (#1196): a `FloatSums` sum of finite doubles is finite and a `StdModel.TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's `SumBound` (`FloatSums.sumBound`) |
 | `Textbook.lean` | The textbook one-pass algorithm |
 | `TwoPass.lean`, `TwoPassRel.lean` | Lean's two-pass algorithm, absolute and relative to the variance |
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |

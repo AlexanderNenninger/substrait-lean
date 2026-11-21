@@ -202,6 +202,8 @@ def test_sorts_put_nulls_last_unless_told():
             "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t) SELECT n FROM t",
             "RECURSIVE",
         ),
+        # A query that starts with FROM selects `*`: the refusal names it (#176).
+        ("FROM orders GROUP BY ALL", "GROUP BY ALL over `*`"),
         # Correlated EXISTS shapes that stay refused, each by name (#345).
         (
             "SELECT id FROM orders o WHERE amount > 0 OR EXISTS"
