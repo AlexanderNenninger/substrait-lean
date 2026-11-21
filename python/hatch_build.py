@@ -32,7 +32,8 @@ from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 # Windows runs `.exe` files only. A Windows wheel is not on PyPI yet
 # (`WHEEL_PLATFORMS`): it builds with SVERIFY_BUILD_FROM_SOURCE=1 (#183).
-BINARY = "substrait-check" + (".exe" if sys.platform == "win32" else "")
+TARGET = "substrait-check"
+BINARY = TARGET + (".exe" if sys.platform == "win32" else "")
 
 # The (sys.platform, machine) pairs that have a wheel on PyPI.
 WHEEL_PLATFORMS = {("linux", "x86_64"), ("linux", "aarch64"), ("darwin", "arm64")}
@@ -86,7 +87,7 @@ class LakeBuildHook(BuildHookInterface):
             raise RuntimeError("building sverify needs `lake` (install elan) on PATH")
         # `-R` applies the option even where a previous build set it otherwise.
         check = [] if version == "editable" else ["-R", "-Kcheck_generated=true"]
-        subprocess.run([lake, *check, "build", BINARY], cwd=repo, check=True)
+        subprocess.run([lake, *check, "build", TARGET], cwd=repo, check=True)
 
         built = repo / ".lake" / "build" / "bin" / BINARY
         if version == "editable":
