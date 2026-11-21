@@ -2,6 +2,7 @@ import SubstraitLean.ShardCheck
 import SubstraitLean.EngineTables
 import Sverify.Core.MarginCheck
 import Sverify.Analysis.AsofSite
+import Sverify.Core.ExactBound
 
 /-!
 # The float tolerance of a plan's outputs (#444, #85)
@@ -51,7 +52,7 @@ count is not bounded. -/
 namespace Substrait.Epsilon
 
 open Lean (Json toJson)
-open ContractCheck ShardCheck Parse
+open ContractCheck ShardCheck Parse ExactBound
 
 /-- The aggregate under filters, projections, emits and sorts. -/
 def findAggregate : Rel → Option (Rel × List Expr × List Measure)
@@ -59,49 +60,15 @@ def findAggregate : Rel → Option (Rel × List Expr × List Measure)
   | .filter r _ | .project r _ | .emit r _ | .orderBy r _ => findAggregate r
   | _ => none
 
-/-- `n` scaled units (`FloatCode.scaled`: the value times `2¹⁰⁷⁴`) as a
-double, rounded up: its top 53 bits, plus one where bits are dropped. -/
-def unscale (n : Nat) : Float :=
-  let k := n.log2
-  if k ≤ 52 then Float.scaleB (Float.ofNat n) (-1074)
-  else
-    let sh := k - 52
-    let m := n >>> sh
-    let m := if m <<< sh == n then m else m + 1
-    Float.scaleB (Float.ofNat m) ((sh : Int) - 1074)
-
-/-- `n` scaled units as a double, rounded down: its top 53 bits. -/
-def unscaleDown (n : Nat) : Float :=
-  let k := n.log2
-  if k ≤ 52 then Float.scaleB (Float.ofNat n) (-1074)
-  else
-    let sh := k - 52
-    Float.scaleB (Float.ofNat (n >>> sh)) ((sh : Int) - 1074)
-
-/-- A positive double as JSON, rounded up to 17 significant digits (Lean's
-`toJson` of a `Float` keeps six decimals, which would round a bound down). -/
-def upJson (f : Float) : Json :=
-  if f ≤ 0 || f.isNaN || f.isInf then toJson f else
-  let e : Int := (Float.floor (Float.log10 f)).toInt64.toInt
-  let k : Int := 16 - e
-  let scaled := if k ≥ 0 then f * Float.ofNat (10 ^ k.toNat) else f / Float.ofNat (10 ^ (-k).toNat)
-  let m : Nat := (Float.ceil scaled).toUInt64.toNat + 1
-  if k ≥ 0 then .num ⟨m, k.toNat⟩ else .num ⟨m * 10 ^ (-k).toNat, 0⟩
-
 /-- A relative bound where the values cannot cancel (all `≥ 0`, or all `≤ 0`):
 each order's result is within `γ = k·u/(1 − k·u)` of the exact one,
 relatively, with `u = 2⁻⁵³` and `k` the number of roundings (Higham, §4.2), so
 two results are within `2γ/(1 − γ)` of each other relative to either
-(`StdModel.epsilon_sum_rel`, `epsilon_avg_rel`). Evaluated in doubles, the
-formula's few roundings are covered by the factor `1.000001`. -/
-def relEps (k : Nat) : Float :=
-  let u : Float := Float.scaleB 1.0 (-53)
-  let ku := Float.ofNat k * u
-  let γ := ku / (1.0 - ku)
-  2.0 * γ / (1.0 - γ) * 1.000001
-
-/-- As `upJson`, `0` for zero. -/
-def upJsonZ (f : Float) : Json := if f == 0.0 then toJson (0 : Nat) else upJson f
+(`StdModel.epsilon_sum_rel`, `epsilon_avg_rel`). -/
+def relEps (k : Nat) : Rat :=
+  let ku := (k : Rat) * unitRound
+  let γ := ku / (1 - ku)
+  2 * γ / (1 - γ)
 
 variable [Boxes.Ambient]
 /-- A `SUM` or `AVG` of converted integers that every engine computes
@@ -125,8 +92,8 @@ least `2⁻¹⁰²²`). Outside `intMeanExact`'s case it gives no bound over mor
 `2³²` rows: a `SUM` or `AVG` of a double column under a larger row cap is
 unbounded (`test_a_double_sum_over_more_than_2_32_rows_has_no_bound`). -/
 def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
-    Option (Float × Option (Float × Bool)) := do
-  if intMeanExact env m rows then return (0.0, some (0.0, true))
+    Option (Rat × Option (Rat × Bool)) := do
+  if intMeanExact env m rows then return (0, some (0, true))
   let a := m.arg.absD env []
   guard a.intsOnly
   let b ← a.int
@@ -146,15 +113,17 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
   return (unscale t, rel)
 
 /-- The largest magnitude `B ≤ 2³⁹⁸` of the doubles `e` gives, from its range. -/
-def doubleMag (env : List AVal) (e : Expr) : Option Float := do
+def doubleMag (env : List AVal) (e : Expr) : Option Rat := do
   let a := e.absD env []
   guard a.intsOnly
   let b ← a.int
   let lo ← b.lo
   let hi ← b.hi
-  let x := max (FloatCode.toFloat lo).abs (FloatCode.toFloat hi).abs
-  guard (!x.isNaN && !x.isInf && x ≤ Float.scaleB 1.0 398)
-  return x
+  -- Finite codes only (`FloatCode.IsFin`): an infinite end has no magnitude.
+  guard (FloatCode.negInf < lo && lo < FloatCode.posInf && FloatCode.negInf < hi && hi < FloatCode.posInf)
+  let x := max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs
+  guard (x ≤ 2 ^ (398 + 1074))
+  return unscale x
 
 /-- The bound of a statistical aggregate over at most `rows` values (D30),
 `n` of them, `d` the divisor (`n − 1` of a sample, `n` of a population),
@@ -176,29 +145,26 @@ def doubleMag (env : List AVal) (e : Expr) : Option Float := do
   it under a stated lower bound `L` on both co-moments, which waits for
   preconditions on aggregates (#918). `[-1, 1]` holds regardless.
 
-Each is padded by `2⁻⁴⁰` relatively and one subnormal, for the `Float`
-arithmetic here. -/
-def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float := do
+Evaluated exactly (`ExactBound`), the square roots rounded up. -/
+def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Rat := do
   let n ← rows
   guard (n ≤ 2 ^ 32)
-  let u := Float.scaleB 1.0 (-53)
-  let tiny := Float.scaleB 1.0 (-1022)
-  let pad (e : Float) : Float := e * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074)
-  let nf := Float.ofNat n
-  let dOf (sample : Bool) := Float.ofNat (if sample then max 1 (n - 1) else max 1 n)
+  let u := unitRound
+  let nf : Rat := n
+  let dOf (sample : Bool) : Rat := ((if sample then max 1 (n - 1) else max 1 n : Nat) : Rat)
   match m.fn, m.arg with
   | .var sample sqrt, arg =>
     let x ← doubleMag env arg
     let d := dOf sample
     let q := nf * (x + tiny) * (x + tiny)
     let r := nf * (x + tiny) * x
-    let varTol := (160.0 * nf * u * r + 3970.0 * nf * nf * u * u * q
-      + 800.0 * nf * nf * u * tiny) / d
+    let varTol := (160 * nf * u * r + 3970 * nf * nf * u * u * q
+      + 800 * nf * nf * u * tiny) / d
     let v := nf * x * x / d
-    let tv := pad (varTol + u * v)
+    let tv := varTol + u * v
     if sqrt then
-      let st := tv.sqrt
-      return pad (st + u * (v.sqrt + st) + 2.0 * u * tiny + u * v.sqrt)
+      let st := sqrtUp tv
+      return st + u * (sqrtUp v + st) + 2 * u * tiny + u * sqrtUp v
     else return tv
   | .cov sample, .bin .pair a b =>
     let bx ← doubleMag env a
@@ -208,9 +174,9 @@ def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Float :
     let r2 := nf * (byy + tiny) * bx
     let rs := nf * bx * byy
     let rq := nf * (bx + tiny) * (byy + tiny)
-    let covTol := (71.0 * nf * u * (r1 + r2) + 15.0 * nf * u * rs
-      + 3970.0 * nf * nf * u * u * rq + 800.0 * nf * nf * u * tiny) / d
-    return pad (covTol + u * rs / d)
+    let covTol := (71 * nf * u * (r1 + r2) + 15 * nf * u * rs
+      + 3970 * nf * nf * u * u * rq + 800 * nf * nf * u * tiny) / d
+    return covTol + u * rs / d
   | _, _ => none
 
 /-- Is `statEps` of `m` a theorem (`epsilon_var_cr`, `epsilon_stddev_cr`,
@@ -262,19 +228,12 @@ Each rule holds where the exact results do not overflow, which `fits`
 checks. A column's bound is proved (its flag) where every step is one of
 these rules, the `SUM`s and `AVG`s it reads are proved (`provedOrders`), and
 no filter, sort key, `DISTINCT` or group key reads a value that may differ
-between engines. The formulas are evaluated in doubles: every term is
-nonnegative, so each rounding is relative and the factor `1 + 2⁻⁴⁰` covers
-them. -/
-
-/-- The unit roundoff of a double. -/
-def unitRound : Float := Float.scaleB 1.0 (-53)
-
-/-- `2⁻¹⁰²²`, the least normal double: the underflow term of a rounding. -/
-def tinyF : Float := Float.scaleB 1.0 (-1022)
+between engines. The formulas are evaluated exactly (`ExactBound`, #660),
+square roots rounded outward and `exp` bounded above. -/
 
 /-- Below the largest finite double, with room: an exact result this large
 does not overflow. -/
-def fits (x : Float) : Bool := x ≤ 1.0e308
+def fits (x : Rat) : Bool := x ≤ 1.0e308
 
 /-- The `sum_order` behaviours `float-bounds` proves the bound for:
 `TreeSum` and Kahan's sum (`StdModel.Summed`). -/
@@ -308,7 +267,7 @@ def corrWhy : String :=
   "CORR has no data-free bound: its distance to the reference is bounded only under a stated lower bound on both sides' variances, a precondition the run checks; without one only [-1, 1] holds, and a tolerance on it is tested (D30, #918)"
 
 /-- A bound on `|e|` from the preconditions, for a double expression. -/
-def magOf (env : List AVal) (e : Expr) : Option Float := do
+def magOf (env : List AVal) (e : Expr) : Option Rat := do
   let a := e.absD env []
   guard a.intsOnly
   let b ← a.int
@@ -317,33 +276,26 @@ def magOf (env : List AVal) (e : Expr) : Option Float := do
   return unscale (max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs)
 
 /-- An upper bound on `e` from the preconditions (`0` where it is negative). -/
-def hiOf (env : List AVal) (e : Expr) : Option Float := do
+def hiOf (env : List AVal) (e : Expr) : Option Rat := do
   let a := e.absD env []
   guard a.intsOnly
   let b ← a.int
   let hi ← b.hi
   let s := FloatCode.scaled hi
-  return if s ≤ 0 then 0.0 else unscale s.natAbs
+  return if s ≤ 0 then 0 else unscale s.natAbs
 
-/-- The range of `e` from the preconditions, as doubles: the low end rounded
-down, the high end up. -/
-def rangeOf (env : List AVal) (e : Expr) : Option (Float × Float) := do
+/-- The range of `e` from the preconditions, exactly. -/
+def rangeOf (env : List AVal) (e : Expr) : Option (Rat × Rat) := do
   let a := e.absD env []
   guard a.intsOnly
   let b ← a.int
   let lo ← b.lo
   let hi ← b.hi
   let (l, h) := (FloatCode.scaled lo, FloatCode.scaled hi)
-  let lf := if 0 ≤ l then unscaleDown l.natAbs else -unscale l.natAbs
-  let hf := if 0 ≤ h then unscale h.natAbs else -unscaleDown h.natAbs
-  return (lf, hf)
-
-/-- `x < y` with room for the doubles' own rounding of both. -/
-def clearlyBelow (x y : Float) : Bool :=
-  x + (x.abs + y.abs) * Float.scaleB 1.0 (-40) + tinyF < y
+  return ((l : Rat) / ((2 ^ 1074 : Nat) : Rat), (h : Rat) / ((2 ^ 1074 : Nat) : Rat))
 
 /-- The least `|e|` from the preconditions, where `0` is outside its range. -/
-def minAbsOf (env : List AVal) (e : Expr) : Option Float := do
+def minAbsOf (env : List AVal) (e : Expr) : Option Rat := do
   let a := e.absD env []
   guard a.intsOnly
   let b ← a.int
@@ -356,13 +308,13 @@ def minAbsOf (env : List AVal) (e : Expr) : Option Float := do
 
 /-- A bound on `|e|`: from the preconditions, else from its operation (a
 quotient by a divisor bounded away from 0, a logarithm of a finite double). -/
-def resultMag (env : List AVal) (e : Expr) : Option Float :=
+def resultMag (env : List AVal) (e : Expr) : Option Rat :=
   (magOf env e).orElse fun _ => match e with
     | .bin .fdiv a b => do return (← magOf env a) / (← minAbsOf env b)
-    | .un (.fmath .log10) _ => some 324.0
-    | .un (.fmath .log2) _ => some 1075.0
-    | .un (.fmath .ln) _ => some 745.0
-    | .un (.fmath .sin) _ | .un (.fmath .cos) _ => some 1.0
+    | .un (.fmath .log10) _ => some 324
+    | .un (.fmath .log2) _ => some 1075
+    | .un (.fmath .ln) _ => some 745
+    | .un (.fmath .sin) _ | .un (.fmath .cos) _ => some 1
     | .un (.fmath .asin) _ | .un (.fmath .atan) _ => some 1.5707963267948968
     | .un (.fmath .acos) _ => some 3.1415926535897936
     | _ => none
@@ -382,19 +334,19 @@ def elemKey : Expr → Option String
 and the result's bound: twice its `elemUlps` entry. An elementary function
 without an entry is the reference's on an engine that calls its `libm`
 (`sameLibm`), and has no bound on one that does not. -/
-def opExtra (es : List EngineProfile) (engine : String) (e : Expr) : Option Float :=
+def opExtra (es : List EngineProfile) (engine : String) (e : Expr) : Option Rat :=
   match elemKey e with
-  | none => some 0.0
+  | none => some 0
   | some k =>
     let ep := engineNamed? es engine
     match ep.bind (·.elemUlps.lookup k) with
-    | some v => some (2.0 * v)
-    | none => if ep.all (·.sameLibm) then some 0.0 else none
+    | some v => some (2 * v)
+    | none => if ep.all (·.sameLibm) then some 0 else none
 
 /-- The largest `|x|` for which an engine's `sin`, `cos` and `tan` are bounded:
 Java gives them one ulp for every argument, where glibc's large-argument
 reduction, the reference's side, errs by more (ruling 132). -/
-def trigArgMax : Float := 1048576.0
+def trigArgMax : Rat := 1048576
 
 /-- `sin`, `cos` and `tan`, which carry the guard `trigArgMax` on an engine
 whose own values they are. -/
@@ -414,48 +366,47 @@ def inexact : Expr → Bool
   | _ => false
 
 /-- Exact on this engine, with a proof: the same value as the reference's. -/
-def exactP : Option (Float × Bool) → Bool
-  | some (e, p) => e == 0.0 && p
+def exactP : Option (Rat × Bool) → Bool
+  | some (e, p) => e == 0 && p
   | none => false
 
 /-- The columns' values where a `CASE` takes its `THEN` branch: refined by the
 condition where it has the same outcome on every engine (`ec` exact), so
 that, say, a mean guarded by `0 < count` reads a count of at least one. -/
-def thenEnv (env : List AVal) (ec : Option (Float × Bool)) (c : Expr) : List AVal :=
+def thenEnv (env : List AVal) (ec : Option (Rat × Bool)) (c : Expr) : List AVal :=
   if exactP ec then c.refine env else env
 
 /-- How far an engine's value of `e` may be from the reference's, from the
 columns' errors `cols` (`none`: not bounded), and whether a rule of
 `Propagate.lean` proves it. -/
-def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols : List (Option (Float × Bool))) :
-    Expr → Option (Float × Bool)
-  | .lit _ => some (0.0, true)
+def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols : List (Option (Rat × Bool))) :
+    Expr → Option (Rat × Bool)
+  | .lit _ => some (0, true)
   | .field i => cols.getD i none
   | .un .fneg a => exprEps es engine env cols a
   | .un .itof a => (exprEps es engine env cols a).bind fun (x, p) =>
-    if x == 0.0 then some (0.0, p) else none
+    if x == 0 then some (0, p) else none
   -- D52: a source mark. The source's construct is within `k · 2⁻⁵³` of the
   -- plan's value, relatively (`DuckAgg.avgBigint_nearRel` for `avg(BIGINT)`):
-  -- that band over the argument's range, rounded up, where the argument is
-  -- exact; no bound otherwise. It does not test `engine`: one bound, whoever
-  -- runs the SQL (ruling 82).
+  -- that band over the argument's range, exactly, and `2⁻¹⁰⁷⁴` beside it, where
+  -- the argument is exact; no bound otherwise. It does not test `engine`: one
+  -- bound, whoever runs the SQL (ruling 82).
   -- Proved by the theorem that states the band (ruling 85) where the argument
   -- is exact with a proof (`exactP`).
   | .un (.approx k) a => (exprEps es engine env cols a).bind fun (x, p) => do
-    guard (x == 0.0)
+    guard (x == 0)
     let m ← doubleMag env a
-    let band := Float.ofNat k * Float.scaleB 1.0 (-53) * m
-    return (band * (1.0 + Float.scaleB 1.0 (-40)) + Float.scaleB 1.0 (-1074), p)
+    return ((k : Rat) * unitRound * m + pow2 (-1074), p)
   | .bin .lt a b | .bin .eq a b => do
     -- `rule_threshold`: where the ranges, widened by `ε`, do not straddle, the
     -- comparison has one outcome on both sides.
     let (ea, pa) ← exprEps es engine env cols a
     let (eb, pb) ← exprEps es engine env cols b
-    if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
+    if ea == 0 && eb == 0 then return (0, pa && pb)
     let (la, ha) ← rangeOf env a
     let (lb, hb) ← rangeOf env b
-    guard (clearlyBelow (ha + ea) (lb - eb) || clearlyBelow (hb + eb) (la - ea))
-    return (0.0, pa && pb)
+    guard (ha + ea < lb - eb || hb + eb < la - ea)
+    return (0, pa && pb)
   | e@(.bin f a b) => do
     let (ea, pa) ← exprEps es engine env cols a
     let (eb, pb) ← exprEps es engine env cols b
@@ -466,79 +417,80 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
     let recip := engine == "polars" && f == .fdiv && b.cols.isEmpty
     match f with
     | .fadd | .fsub =>
-      if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
+      if ea == 0 && eb == 0 then return (0, pa && pb)
       let ma ← magOf env a
       let mb ← magOf env b
       guard (fits (ma + mb + ea + eb))
-      return ((ea + eb) * (1.0 + u) + 2.0 * u * (ma + mb + tinyF), pa && pb)
+      return ((ea + eb) * (1 + u) + 2 * u * (ma + mb + tiny), pa && pb)
     | .fmul =>
-      if ea == 0.0 && eb == 0.0 then return (0.0, pa && pb)
+      if ea == 0 && eb == 0 then return (0, pa && pb)
       let ma ← magOf env a
       let mb ← magOf env b
       let d := ma * eb + mb * ea + ea * eb
       guard (fits (ma * mb + d))
-      return (d * (1.0 + u) + 2.0 * u * (ma * mb + tinyF), pa && pb)
+      return (d * (1 + u) + 2 * u * (ma * mb + tiny), pa && pb)
     | .fdiv =>
-      guard (eb == 0.0)
-      if ea == 0.0 && !recip then return (0.0, pa && pb)
+      guard (eb == 0)
+      if ea == 0 && !recip then return (0, pa && pb)
       let lb ← minAbsOf env b
       -- Below the smallest normal `1 / y` overflows and Polars gives inf or NaN where the
       -- rule would state a finite bound: no bound there (the row's precondition, ruling 157).
-      guard (!recip || tinyF ≤ lb)
+      guard (!recip || tiny ≤ lb)
       match magOf env a with
       | some ma =>
         guard (fits (ma / lb + ea / lb))
         if recip then
-          return (ea / lb * (1.0 + u) * (1.0 + u) + (3.0 * u + u * u) * (ma / lb)
-            + (u * (1.0 + u) * (ma + ea) + 2.0 * u) * tinyF, pa && pb)
-        return (ea / lb * (1.0 + u) + 2.0 * u * (ma / lb + tinyF), pa && pb)
+          return (ea / lb * (1 + u) * (1 + u) + (3 * u + u * u) * (ma / lb)
+            + (u * (1 + u) * (ma + ea) + 2 * u) * tiny, pa && pb)
+        return (ea / lb * (1 + u) + 2 * u * (ma / lb + tiny), pa && pb)
       | none =>
         -- From the quotient's own bound: not a proved rule.
         let mq ← resultMag env e
-        return (ea / lb + 2.0 * u * mq + (if recip then 3.0 * u * mq else 0.0), false)
+        return (ea / lb + 2 * u * mq + (if recip then 3 * u * mq else 0), false)
     | _ =>
       let extra ← opExtra es engine e
-      if ea == 0.0 && eb == 0.0 && extra == 0.0 then return (0.0, pa && pb && !inexact e)
-      guard (ea == 0.0 && eb == 0.0)
+      if ea == 0 && eb == 0 && extra == 0 then return (0, pa && pb && !inexact e)
+      guard (ea == 0 && eb == 0)
       return (extra * u * (← resultMag env e), false)
   | .un (.fmath .sqrt) a => do
     -- `rule_sqrt`: correctly rounded on both sides.
     let (ea, pa) ← exprEps es engine env cols a
-    if ea == 0.0 then return (0.0, pa)
+    if ea == 0 then return (0, pa)
     let (la, ha) ← rangeOf env a
-    guard (la - ea ≥ 0.0)
-    let s := Float.sqrt (la - ea) + Float.sqrt la
-    let d1 := Float.sqrt ea
-    let d := if s > 0.0 then min d1 (ea / s) else d1
+    guard (la - ea ≥ 0)
+    -- The roots rounded outward: `s` divides, `d1` and `√ha` add.
+    let s := sqrtDown (la - ea) + sqrtDown la
+    let d1 := sqrtUp ea
+    let d := if s > 0 then min d1 (ea / s) else d1
     let u := unitRound
-    return (d * (1.0 + u) + 2.0 * u * (Float.sqrt ha + tinyF), pa)
+    return (d * (1 + u) + 2 * u * (sqrtUp ha + tiny), pa)
   | .un .ffloor a | .un .fceil a | .un .fround a => do
     -- `rule_floor`, `rule_ceil`, `rule_round`: a step of one.
     let (ea, pa) ← exprEps es engine env cols a
-    if ea == 0.0 then return (0.0, pa)
-    return (ea + 1.0, pa)
+    if ea == 0 then return (0, pa)
+    return (ea + 1, pa)
   | .un .ftoi a => do
     -- `rule_trunc`: each side within one of its input.
     let (ea, pa) ← exprEps es engine env cols a
-    if ea == 0.0 then return (0.0, pa)
-    return (ea + 2.0, pa)
+    if ea == 0 then return (0, pa)
+    return (ea + 2, pa)
   | .un (.fmath .exp) a => do
     -- `rule_exp`: the platform's `libm` on both sides, one ulp each.
     let (ea, pa) ← exprEps es engine env cols a
     let ha ← hiOf env a
     let u := unitRound
-    guard (ha + ea ≤ 709.0)
-    return (ea * Float.exp (ha + ea) * (1.0 + 2.0 * u) + 4.0 * u * (Float.exp ha + tinyF), pa)
+    guard (ha + ea ≤ 709)
+    return (ea * expUp (ha + ea) * (1 + 2 * u) + 4 * u * (expUp ha + tiny), pa)
   | e@(.un _ a) => do
     let (ea, pa) ← exprEps es engine env cols a
     let extra ← opExtra es engine e
     -- Spark's `sin`, `cos` and `tan` are bounded for arguments up to `trigArgMax`.
-    if extra != 0.0 then
+    if extra != 0 then
       match trigArg? e with
       | some a' => guard ((magOf env a').any (· ≤ trigArgMax))
       | none => pure ()
-    if ea == 0.0 && extra == 0.0 then return (0.0, pa && !inexact e)
-    if ea == 0.0 then return (extra * unitRound * (← resultMag env e), false)
+    if ea == 0 && extra == 0 then return (0, pa && !inexact e)
+    if ea == 0 then return (extra * unitRound * (← resultMag env e), false)
     none
   | .ifThen c@(.bin .lt a (.lit (.float 0))) t@(.un .fneg a₁) f => do
     -- `abs` as the parser writes it: `rule_abs`, whatever the sign of `a`.
@@ -559,7 +511,7 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
 
 /-- `cs` with every flag cleared where `ok` fails: rows or groups that may
 differ between engines. -/
-def keepIf (ok : Bool) (cs : List (Option (Float × Bool))) : List (Option (Float × Bool)) :=
+def keepIf (ok : Bool) (cs : List (Option (Rat × Bool))) : List (Option (Rat × Bool)) :=
   if ok then cs else cs.map (·.map fun (e, _) => (e, false))
 
 /-- The window algorithms that sum the frame's own values, so that the
@@ -575,7 +527,7 @@ def windowSumsBounded (es : List EngineProfile) : Bool :=
 check covers (`Rel.marginCheck`), on an engine whose sums are in the orders
 `StdModel.margin_check` covers. The check runs on the data before the plan. -/
 def marginCovered (es : List EngineProfile) (engine : String) (cat : Catalog) (env : List AVal)
-    (cs : List (Option (Float × Bool))) (r : Rel) (c : Expr) : Bool :=
+    (cs : List (Option (Rat × Bool))) (r : Rel) (c : Expr) : Bool :=
   let on := es.filter (·.name == engine)
   match (Rel.filter r c).marginSite cat with
   | some s => ordersProved on && (!s.win || windowSumsBounded on) && exactP (exprEps es engine env cs s.thr)
@@ -585,9 +537,9 @@ def marginCovered (es : List EngineProfile) (engine : String) (cat : Catalog) (e
 projections, filters, sorts and one aggregate over reads. A threshold filter
 the margin check covers keeps the reference's rows (`marginCovered`). -/
 def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
-    (T : WindowKeys) : Rel → Option (List (Option (Float × Bool)))
-  | .read t => some ((List.range (cat t).arity).map fun _ => some (0.0, true))
-  | .values n _ => some ((List.range n).map fun _ => some (0.0, true))
+    (T : WindowKeys) : Rel → Option (List (Option (Rat × Bool)))
+  | .read t => some ((List.range (cat t).arity).map fun _ => some (0, true))
+  | .values n _ => some ((List.range n).map fun _ => some (0, true))
   | .filter r c => (colEps es engine cat A F T r).map fun cs =>
       keepIf (exactP (exprEps es engine (r.aeval cat A F T) cs c) ||
         marginCovered es engine cat (r.aeval cat A F T) cs r c) cs
@@ -623,7 +575,7 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
   | .aggregate r gs ms => (colEps es engine cat A F T r).map fun cs =>
       let env := r.aeval cat A F T
       let keys := gs.all fun g => exactP (exprEps es engine env cs g)
-      keepIf keys <| gs.map (fun _ => some (0.0, true)) ++ ms.map fun m => do
+      keepIf keys <| gs.map (fun _ => some (0, true)) ++ ms.map fun m => do
         let (ea, pa) ← exprEps es engine env cs m.arg
         let pf := m.filter.all fun c => exactP (exprEps es engine env cs c)
         match m.fn with
@@ -633,20 +585,20 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
           let (order, _) ← measureEps env m r.maxRows
           let n ← r.maxRows
           -- The order's bound is proved for the same doubles on both sides.
-          return (order + (if m.fn = .avg then ea else Float.ofNat n * ea),
-            ea == 0.0 && pa && pf && (intMeanExact env m r.maxRows || ordersProved es))
-        | .count => return (0.0, pf)
+          return (order + (if m.fn = .avg then ea else (n : Rat) * ea),
+            ea == 0 && pa && pf && (intMeanExact env m r.maxRows || ordersProved es))
+        | .count => return (0, pf)
         -- An integer or decimal `SUM` the argument's range and the proved row
         -- cap keep inside its type (`Measure.sumFits_sound`) is outside the
         -- `overflow` option's scope, so every profile gives the reference's
         -- value (D34, ruling 197).
-        | .sum => if ea == 0.0 then return (0.0, pa && pf && m.sumFits (·.absD env []) r.maxRows) else none
+        | .sum => if ea == 0 then return (0, pa && pf && m.sumFits (·.absD env []) r.maxRows) else none
         | .min | .max => return (ea, pa && pf)
         -- D30: an engine's statistic is within the plan's bound of the
         -- reference's exact moments rounded once.
-        | .var _ _ => if ea == 0.0 && pf then return (← statEps env m r.maxRows, false) else none
+        | .var _ _ => if ea == 0 && pf then return (← statEps env m r.maxRows, false) else none
         | .cov _ | .corr => none
-        | _ => if ea == 0.0 then some (0.0, false) else none
+        | _ => if ea == 0 then some (0, false) else none
   | _ => none
 
 /-! ### Decisions on a marked value (D52, ruling 104)
@@ -777,9 +729,8 @@ def perGroupJson (avg : Bool) : Json := Json.mkObj [("abs", Json.null),
     else "FloatBounds.StdModel.epsilon_group")),
   ("proved", Json.mkObj [("abs", toJson false), ("per_group", toJson true)])]
 
-/-- A computed bound as JSON, with the factor that covers its evaluation in
-doubles. -/
-def epsJson (e : Float) : Json := upJsonZ (e * (1.0 + Float.scaleB 1.0 (-40)))
+/-- A computed bound as JSON, rounded up (`ExactBound.toJsonUp`). -/
+def epsJson (e : Rat) : Json := toJsonUp e
 
 /-- What `epsilonByEngine`, `rowsExactByEngine`, `marginChecksJson` and
 `epsilon` start from: a request's transformation (`tj`, `plan`), the tables'
@@ -840,12 +791,12 @@ def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Jso
     else (List.range kinds.length).map (s!"#{·}")
   let f32 := hasFp32 tj
   -- The least magnitude of each column, for the relative bound.
-  let mins : List (Option Float) := (root.aeval cat A F T).map fun a => do
+  let mins : List (Option Rat) := (root.aeval cat A F T).map fun a => do
     guard a.intsOnly
     let b ← a.int
     let (l, h) := (FloatCode.scaled (← b.lo), FloatCode.scaled (← b.hi))
-    if 0 < l then some (unscaleDown l.natAbs)
-    else if h < 0 then some (unscaleDown h.natAbs) else none
+    if 0 < l then some (unscale l.natAbs)
+    else if h < 0 then some (unscale h.natAbs) else none
   return Json.mkObj <| (es.map (·.name)).map fun engine =>
     let cols := colEps es engine cat A F T root
     (engine, Json.mkObj <| ((names.zip kinds).zipIdx.filter (·.1.2 == .float)).map
@@ -1042,9 +993,9 @@ where
         .unbounded derivedWhy else .other
 
 /-- A bound as `"epsilon"` gives it, proved or not. -/
-def boundJson (e : Float) (rel : Option (Float × Bool)) (p : Bool) : Json :=
-  Json.mkObj ([("abs", upJson e)] ++
-    (match rel with | some (r, _) => [("rel", upJson r)] | none => []) ++
+def boundJson (e : Rat) (rel : Option (Rat × Bool)) (p : Bool) : Json :=
+  Json.mkObj ([("abs", toJsonUp e)] ++
+    (match rel with | some (r, _) => [("rel", toJsonUp r)] | none => []) ++
     [("proved", Json.mkObj ([("abs", toJson p)] ++
       match rel with | some (_, pr) => [("rel", toJson (p && pr))] | none => []))])
 
@@ -1113,7 +1064,7 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
     else
       let bs := perEngine.map fun cs? => cs?.bind (·.getD i none)
       if bs.all Option.isSome && !bs.isEmpty then
-        let e := bs.foldl (fun acc b => max acc (b.map (·.1) |>.getD 0.0)) 0.0
+        let e := bs.foldl (fun acc b => max acc (b.map (·.1) |>.getD 0)) 0
         some (name, boundJson e none (bs.all fun b => b.any (·.2)))
       else some (name, Json.mkObj [("abs", Json.null)])
   let some (r, gs, ms) := findAggregate root | return Json.mkObj (winCols ++ marked)
@@ -1155,7 +1106,7 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
       -- Proved on the engines of `statsProvedOn`, tested on the others.
       let p := m?.any fun m => statProvedFn m && same m
       let on := if p then statsProvedOn es else []
-      Json.mkObj [("abs", upJson e), ("proved", Json.mkObj [("abs", toJson (p && on.length ==
+      Json.mkObj [("abs", toJsonUp e), ("proved", Json.mkObj [("abs", toJson (p && on.length ==
         es.length))]), ("proved_on", toJson on)]
     | none => Json.mkObj ([("abs", Json.null), ("proved", Json.mkObj [("abs", toJson false)])] ++
         if m?.any (·.fn == .corr) then [("why", toJson corrWhy)] else []))

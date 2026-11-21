@@ -346,7 +346,7 @@ class IcebergSource(_TableSource):
         where: A SQL condition on the columns. The source is the rows on
             which it is TRUE; data files are skipped only where Lean proves
             from their statistics that it is TRUE on none of their rows
-            (`Rel.eval_pruned` in `SubstraitLean/Pruning.lean`). Default:
+            (`Rel.eval_pruned` in `analysis/Sverify/Analysis/Pruning.lean`). Default:
             None, every row.
         name: The table's name in the plans that read it. Default: the last
             part of `identifier`.

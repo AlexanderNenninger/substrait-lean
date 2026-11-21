@@ -66,8 +66,7 @@ def test_the_public_attributes_do_not_warn(recwarn):
 
 def test_sink_and_source_internals(tmp_path):
     sink = DeltaSink(str(tmp_path / "out"))
-    with pytest.warns(DeprecationWarning, match="DeltaSink.keeps_retired is internal"):
-        assert sink.keeps_retired is True  # type: ignore[attr-defined]
+    assert sink.keeps_retired is True
     assert not hasattr(sink, "view")
     node = StaticSource(pa.table({"id": [1]}), name="t").pipe(lambda t: t)
     node.write(sink).refresh()
@@ -78,7 +77,6 @@ def test_sink_and_source_internals(tmp_path):
 
 
 def test_a_custom_sink_still_says_it_keeps_retired_rows():
-    from sverify.incremental import _keeps_retired
     from sverify.io import Sink
 
     class Keeps(Sink):
@@ -91,8 +89,8 @@ def test_a_custom_sink_still_says_it_keeps_retired_rows():
         def write(self, change):
             pass
 
-    assert _keeps_retired(Keeps("k")) and not _keeps_retired(Plain("p"))
-    assert _keeps_retired(DeltaSink("unused"))
+    assert Keeps("k").keeps_retired and not Plain("p").keeps_retired
+    assert DeltaSink("unused").keeps_retired
 
 
 def test_flight_log_moved_to_testing():

@@ -1,4 +1,4 @@
-import SubstraitLean.TableFormat
+import Sverify.Analysis.TableFormat
 import Sverify.Analysis.Partition
 
 /-!

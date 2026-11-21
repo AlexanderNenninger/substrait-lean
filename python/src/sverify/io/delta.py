@@ -899,7 +899,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         ```
     """
 
-    _keeps_retired = True
+    keeps_retired = True
     # Writes MERGE the change; it overwrites only on `SinkChange.replace`.
     _create_errors = (DeltaError,)
     _commit_errors = (CommitFailedError,)

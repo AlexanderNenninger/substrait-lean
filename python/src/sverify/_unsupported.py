@@ -14,6 +14,13 @@ from typing import ClassVar
 ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
 #: Where #1725 is: an engine that has no map for a UTC-zoned timestamp (an instant) yet.
 ISSUE_1725 = "see #1725, https://github.com/AlexanderNenninger/substrait-lean/issues/1725"
+#: Why a quantile of a DECIMAL is refused (by design, ruling 191, #1921): both
+#: frontends say it, each adding its own way out (`CAST(x AS DOUBLE)`,
+#: `x.cast('float64')`).
+QUANTILE_OF_DECIMAL = (
+    "is not supported: no engine gives one value for it (DuckDB truncates a double "
+    "interpolation, Spark and Polars return doubles)"
+)
 #: The end of a refusal of what only DuckDB runs: its exit.
 DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 
@@ -21,6 +28,10 @@ DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 #: leaves its integer key's type. An engine whose dialect raises writes it
 #: (`ProfilePlugin.guards`).
 RANGE_GUARD = "Overflow in a RANGE frame bound"
+#: The message of the integer `%` guard under `semantics="duckdb"` (#2058): DuckDB
+#: raises at `MIN % -1`, where the reference's remainder, 0, fits. DuckDB,
+#: Spark and Polars run it (`ProfilePlugin.guards`).
+MIN_MOD_GUARD = "integer overflow: MIN % -1"
 
 
 #: The exit of a refusal of data that breaks a stated condition.

@@ -513,7 +513,7 @@ class Report:
     _optimized: dict | None = field(default=None, repr=False)
     """The transformation as a Substrait JSON plan, rewritten with the facts
     and keys of the preconditions (`Rel.optimize` in
-    `SubstraitLean/Semantic.lean`): for example a `DISTINCT` over a key is
+    `analysis/Sverify/Analysis/Semantic.lean`): for example a `DISTINCT` over a key is
     gone. On data that meets the preconditions it gives the same rows
     (`Rel.optimize_sound`); pass it to `sverify.engines.to_sql`, or as JSON
     to `sverify.engines.run`, instead of the transformation. None if Lean
@@ -553,7 +553,7 @@ class Report:
     _implied: dict[str, str] = field(default_factory=dict, repr=False)
     """A SQL condition per input table that every row reaching the result
     passes, given `requires` (#81, `Rel.need_eval` in
-    `SubstraitLean/Implied.lean`): the transformation gives the same result
+    `analysis/Sverify/Analysis/Implied.lean`): the transformation gives the same result
     on the table's rows that pass it. `sverify.io` sources read only those,
     and skip the files whose statistics rule it out."""
     assumed: list[Issue] = field(default_factory=list)
@@ -1182,8 +1182,9 @@ class Report:
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or
                 refuses (`"reference"` is a deprecated alias of
                 `"translated"`).
-            unverified: Run a plan that is not proved, without a route.
-                Default False: such a plan is refused.
+            unverified: Run a plan that is not proved, or an engine version
+                outside its profile's range (D70), without a route. Default
+                False: such a run is refused.
             reproducible: What a rerun must reproduce: the
                 engine's run-to-run variation must refine it, as a sink's
                 `reproducible=` states it; `sv.equivalent()` asks for the
@@ -1229,8 +1230,8 @@ class Report:
             sverify.errors.RouteError: No route takes the plan to `engine`,
                 or, with `streaming="require"`, a node of its Polars plan
                 runs on the in-memory engine.
-            sverify.routes.EngineVersionError: The engine's major version is
-                not the one its profile's facts were probed at.
+            sverify.routes.EngineVersionError: The engine's version is
+                outside its profile's range (D70), and `unverified` is False.
             sverify.errors.PreconditionError: With `check_inputs`, a
                 precondition does not hold on the data: nothing ran.
 
@@ -1266,7 +1267,18 @@ class Report:
                 stacklevel=2,
             )
         else:
-            chosen = routes.choose(self, target, route, reproducible=reproducible)
+            try:
+                chosen = routes.choose(self, target, route, reproducible=reproducible)
+            except routes.EngineVersionError as err:
+                if not unverified:
+                    raise
+                # A proved plan on a version outside the range (D70).
+                chosen = routes.unverified(self, target, str(err))
+                warnings.warn(
+                    f"running on {chosen.engine} unverified: {chosen.reason}",
+                    routes.UnverifiedRunWarning,
+                    stacklevel=2,
+                )
             self.routes[chosen.engine] = chosen
             kind = chosen.kind
             if chosen.refused:
@@ -1803,8 +1815,8 @@ class Report:
             proved is refused, with `reason` saying so.
 
         Raises:
-            EngineVersionError: The installed engine is another major
-                version than its profile's.
+            EngineVersionError: The engine's version is outside its
+                profile's range (D70).
             EngineSettingsError: A setting the engine's profile depends on
                 differs from its facts'.
         """
@@ -2500,13 +2512,14 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
     otherwise (a SQL condition on an Ibis table is a SQL model over it, with
     `semantics`)."""
     if isinstance(cond, str):
-        query = f'SELECT ({cond}) AS "c" FROM {{}} AS "t"'
+        # Not `str.format`: a regular expression's `{8}` is no placeholder.
+        select = f'SELECT ({cond}) AS "c" FROM '
         if isinstance(table, str):
-            return query.format(f"({table})")
+            return f'{select}({table}) AS "t"'
         from sverify.ibis_substrait import SQLModel, Unsupported, sql_model_schema
         from sverify.ibis_substrait.prune import prune_unmentioned
 
-        query = query.format('"t"')
+        query = f'{select}"t" AS "t"'
         # The SQL model hides `table` from the producer's pruning: its unread
         # columns of types sverify does not read go first (#1958).
         inner: Any = prune_unmentioned(table).op()

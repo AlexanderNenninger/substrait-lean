@@ -46,7 +46,7 @@ it can be when they are few: at most `strCap` (64) of them, past that any string
   four strings proves `status IN ('placed', 'shipped', 'returned')`.
 * `Rel.keys_sound` ([Keys.lean](../analysis/Sverify/Analysis/Keys.lean)): derived keys hold. No two
   output rows agree on them.
-* `Rel.optimize_sound` ([Semantic.lean](../SubstraitLean/Semantic.lean)): the
+* `Rel.optimize_sound` ([Semantic.lean](../analysis/Sverify/Analysis/Semantic.lean)): the
   rewrites a contract's keys and facts allow keep a plan's rows, on data that
   meets the preconditions. A `DISTINCT` or measure-less `GROUP BY` over a key
   goes, and so does the `DISTINCT` of `COUNT(DISTINCT id)` with `id` a key.
@@ -102,7 +102,7 @@ the JSON plumbing.
 
 ## Composition
 
-[Compose.lean](../SubstraitLean/Compose.lean) builds on `contract_sound`,
+[Compose.lean](../analysis/Sverify/Analysis/Compose.lean) builds on `contract_sound`,
 `Rel.keys_sound` and `Rel.delta_correct`, with no induction over plans:
 
 * `Triple.compose`: Hoare triples over queries compose, `{P} g {Q}` and
@@ -224,7 +224,7 @@ plan and an inner join where both sides change.
 
 ## Table formats
 
-[TableFormat.lean](../SubstraitLean/TableFormat.lean) covers what `sverify.io`
+[TableFormat.lean](../analysis/Sverify/Analysis/TableFormat.lean) covers what `sverify.io`
 takes from Delta Lake and Iceberg, with the format's part as explicit
 hypotheses:
 

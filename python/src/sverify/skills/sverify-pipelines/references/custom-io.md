@@ -86,7 +86,7 @@ class Prices(Source):
         self.fetch = fetch
 
     def read(self, since):
-        return Batch(self.fetch(), kind="snapshot")
+        return Batch(table=self.fetch(), kind="snapshot")
 
 
 prices = Prices(lambda: pa.table({"sku": ["a", "b"], "price": [3, 4]}))
