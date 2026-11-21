@@ -693,8 +693,9 @@ the profile), sverify's version and a hash of the checker binary, so a
 change to any of them proves again
 ([test_proof_cache.py](../python/tests/test_proof_cache.py)). The cache is
 in `SVERIFY_CACHE_DIR`, else `$XDG_CACHE_HOME/sverify`, else
-`~/.cache/sverify`; processes share it, and `SVERIFY_CACHE=off` turns it
-off. Within a Python process or a command, one checker process answers
+`~/.cache/sverify`; processes share it. `SVERIFY_CACHE_DIR` moves the cache
+and `SVERIFY_CACHE=off` (or `0`, `false`, `no`) turns it off; the two are
+independent, and `off` wins when both are set. Within a Python process or a command, one checker process answers
 every request. A request that a time budget or an interrupt stops ends that
 process, and the next request starts another.
 
@@ -714,7 +715,9 @@ sverify refresh pipelines/orders.py:paid     # run a node and report what change
 sverify explain may_be_false                 # what a [code] of check's output means
 ```
 
-`check` imports the file without running it. Every contracted transform
+`check` imports the file without running it, so a pull request from a fork is
+untrusted code under `pull_request_target`; use `pull_request` for it, or
+check out only the base branch. Every contracted transform
 the file applies is proved, a node's on its sources' schemas, and a proof
 that fails is reported where a call would raise, so one unproved node does
 not hide the next. A `refresh()` in the file belongs under
@@ -760,7 +763,7 @@ conditions is no drift, and a changed plan or profile is a `plan_changed`
 note ([test_drift.py](../python/tests/test_drift.py)). The preconditions a
 contract added are not compared: the sink's record does not store them.
 
-`--format` (or `--output-format`) chooses the output:
+`--format` chooses the output:
 
 - `text`, the default, as above;
 - `json` (`--json` for short), one document for tools in the format of
@@ -1744,7 +1747,7 @@ the evidence, and the route where it is not `translated`:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's proved bound (`floats="plan"`, the default), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
+| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
@@ -2139,9 +2142,10 @@ and `MAX` combine in two phases; with split keys (`keys={"orders":
 key, co-partitioned joins and tie-free windows run per shard. `SUM` and
 `AVG` of doubles split where `reproducible=` accepts doubles within a
 tolerance, as a sink's `reproducible=` states it:
-`sv.equivalent(floats="plan")` accepts the proved bound, and
+`sv.equivalent(floats="plan")` accepts the bound `Shard.lean` proves over the
+reals (`sharded_near`), and
 `sv.equivalent(floats=sv.within(abs=...))` raises where a row's bound exceeds
-the tolerance. `tolerance=True` returns the proved bound per row on how far
+the tolerance. `tolerance=True` returns that bound per row on how far
 each is from the one-pass sum
 ([Sharded `SUM` and `AVG`](float-bounds.md#sharded-sum-and-avg)).
 Anything else raises `NotShardable` with the reason. The checker also proves

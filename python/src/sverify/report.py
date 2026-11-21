@@ -38,6 +38,7 @@ from sverify.black_box import Law
 from sverify.engine import (
     Connection,
     Engine,
+    _run_plan,
     connection_of,
     plan_json,
     read_tables,
@@ -506,8 +507,9 @@ class Report:
     _unchecked: dict | None = field(default=None, repr=False)
     """The expressions that run correctly without their checks, on data that
     meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
-    plan; pass it to `sverify.engines.to_sql(..., unchecked=...)` with the
-    same plan, and only the other expressions keep their checks. None when
+    plan the checker writes; pass it to `sverify.engines.to_sql(...,
+    unchecked=...)` with `written_plan`'s output, and only the other
+    expressions keep their checks (ruling 228). None when
     Lean found none (a left join with a filter on its right side, for one)."""
     _optimized: dict | None = field(default=None, repr=False)
     """The transformation as a Substrait JSON plan, rewritten with the facts
@@ -531,7 +533,9 @@ class Report:
     `"functions"`, or `"writer"` where an engine's writer refused the
     rewrite), or None where the plan to run is the rewrite."""
     _run_unchecked: dict | None = field(default=None, repr=False)
-    """`_unchecked` for `_run_plan`: the marks of its expressions."""
+    """`_unchecked` for `_run_plan`, as the checker writes it: the marks of
+    its expressions (ruling 226)."""
+
     _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
     """The check of the assumed issues (#2018, ruling 195): a plan of one row
     whose columns say where an issue of `assumed` occurs on the data, on the
@@ -954,6 +958,28 @@ class Report:
         self._run_gates.pop(engine, None)
         return json.dumps(self._run_plan)
 
+    def _marks_of(self, plan: str) -> dict | None:
+        """The checker's marks (`Rel.marks`) of `plan`, the plan a run runs:
+        `_run_unchecked` for the rewrite, `_unchecked` for the plan as
+        written (`_unchecked`), each the marks of the root the checker
+        writes (ruling 228); None where the checker gave none (ruling 223,
+        M2), and where they are of another shape than the plan the writer
+        reads, so every check stays (ruling 226, N1-N3)."""
+        from sverify.sql.core._base import WriterUnsupported, parse_plan, unchecked_slots
+
+        marks = None
+        if self._run_plan is not None and plan == json.dumps(self._run_plan):
+            marks = self._run_unchecked
+        elif self.internal_plan is not None and plan == written_plan(self.internal_plan):
+            marks = self._unchecked
+        if marks is None:
+            return None
+        try:
+            unchecked_slots(parse_plan(json.loads(plan)).root, marks)
+        except WriterUnsupported:
+            return None
+        return marks
+
     def _with_plan(
         self,
         plan: str,
@@ -1333,6 +1359,16 @@ class Report:
         # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
         name = chosen.engine if chosen is not None else ""
         theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
+        # Short of a guard-free plan, the expressions the checker marked run
+        # without their checks, the one against `±∞` included, on an engine
+        # whose writer a theorem covers so (`"marks_theorem"`, ruling 223), on
+        # the same gate: the preconditions were checked on these tables.
+        marked = (
+            check_requires
+            and kind == "translated"
+            and self.semantics == "reference"
+            and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
+        )
 
         def recheck(written: str) -> None:
             """The run's checks of the plan it runs, again for the plan as
@@ -1359,7 +1395,7 @@ class Report:
                 out = self._with_plan(
                     plan,
                     run_engine,
-                    lambda plan: run_plan(
+                    lambda plan: _run_plan(
                         con,
                         plan,
                         engine,
@@ -1368,6 +1404,7 @@ class Report:
                         # A proved report's exact level justifies Spark's windows
                         # without a row-order tiebreak (`to_sql`'s `deterministic`).
                         tie_free=self._exact and kind != "unverified",
+                        unchecked=self._marks_of(plan) if marked else None,
                     ),
                     recheck,
                 )
