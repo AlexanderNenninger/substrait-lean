@@ -742,6 +742,7 @@ def test_without_sigalrm_the_time_budget_raises_in_the_main_thread(monkeypatch):
     from sverify.cli._limits import Budget, BudgetExceeded
 
     monkeypatch.delattr(signal, "SIGALRM", raising=False)
+    before = signal.getsignal(signal.SIGINT)  # Spark's, once a test has started it
 
     def hard_stop() -> None:
         raise AssertionError("the watchdog stopped the process")
@@ -754,4 +755,4 @@ def test_without_sigalrm_the_time_budget_raises_in_the_main_thread(monkeypatch):
     assert budget.exceeded and time.monotonic() < end
     with pytest.raises(KeyboardInterrupt), Budget(60, on_hard_stop=hard_stop).armed():
         signal.raise_signal(signal.SIGINT)
-    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+    assert signal.getsignal(signal.SIGINT) is before
