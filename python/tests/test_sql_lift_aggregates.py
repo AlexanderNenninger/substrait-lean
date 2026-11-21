@@ -92,6 +92,11 @@ QUERIES = [
     "SELECT customer, any_value(customer) AS a, any_value(qty) FILTER (WHERE id < 0) AS n"
     " FROM orders GROUP BY customer",
     "SELECT any_value(id) AS a FROM orders WHERE id = 1",
+    # It skips NULLs, in the ORDER BY's order (unique ids).
+    "SELECT customer, any_value(qty ORDER BY id) AS f, any_value(qty ORDER BY id DESC) AS l"
+    " FROM orders GROUP BY customer",
+    "SELECT any_value(price ORDER BY placed) AS p, any_value(customer ORDER BY id) AS c"
+    " FROM orders",
     # A key that is the alias of a constant: `qualify` writes its position
     # (`GROUPING SETS ((1), ())`), which is the select list's first column.
     "SELECT count(k) AS c, sum(k) AS s FROM (SELECT 7 AS k FROM orders"

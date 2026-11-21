@@ -1936,8 +1936,8 @@ class _Lift:
         scope: list[Column],
         bound: Mapping[sge.Expression, E] | None,
     ) -> tuple[list[tuple[Json, Any]], Callable[[list[Json]], E]]:
-        """`string_agg(x, sep)`, `list(x)` (`array_agg`), `first(x)` and
-        `last(x)`, each with an optional `ORDER BY` of columns (#810).
+        """`string_agg(x, sep)`, `list(x)` (`array_agg`), `first(x)`, `last(x)` and
+        `any_value(x)`, each with an optional `ORDER BY` of columns (#810).
         `string_agg` skips NULLs, as the model's measure does; DuckDB's
         `list`, `first` and `last` keep them, so their measure takes `[x]`,
         never NULL: `flatten(array_agg([x]))` and `first([x])[1]`. Without
@@ -1993,6 +1993,18 @@ class _Lift:
             args.append(literal(s_.value, dt.string))
             out: Any = dt.string
             finish: Callable[[list[Json]], E] = lambda refs: E(refs[0], dt.string)  # noqa: E731
+        elif isinstance(node, sge.AnyValue):
+            # `any_value` skips NULLs: the model's `first`, of the non-NULL
+            # values in the ORDER BY's order, as the Ibis producer writes
+            # `arbitrary()` and `first()` (#1920, #55).
+            if node.args.get("expressions") or node.args.get("expression"):
+                raise SqlUnsupported(
+                    f"{_shown(node)} takes one argument",
+                    hint="call it with one argument",
+                    construct=_function(node),
+                )
+            out = t
+            finish = lambda refs: E(refs[0], t)  # noqa: E731
         else:
             if node.args.get("expressions") or node.args.get("expression"):
                 raise SqlUnsupported(
