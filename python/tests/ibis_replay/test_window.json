@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_window",
   "summary": {
-    "agree": 35,
+    "agree": 39,
     "disagree": 0,
-    "refused": 4,
+    "refused": 0,
     "unproved": 15,
     "skipped": 6
   },
@@ -139,9 +139,7 @@
       "outcome": "agree"
     },
     "test_over_with_scalar_group_by[duckdb]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window partitions must be columns. Lean's model does not cover it yet: rewrite the step, or find ",
-      "issue": 1930
+      "outcome": "agree"
     },
     "test_percent_rank_whole_table_no_order_by[duckdb]": {
       "outcome": "agree"
@@ -151,9 +149,7 @@
       "reason": "domain error: bid"
     },
     "test_rank_followed_by_over_call_merge_frames[duckdb]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window partitions must be columns. Lean's model does not cover it yet: rewrite the step, or find ",
-      "issue": 1930
+      "outcome": "agree"
     },
     "test_simple_ungrouped_unbound_following_window[duckdb-mean]": {
       "outcome": "agree"
@@ -165,9 +161,7 @@
       "outcome": "agree"
     },
     "test_simple_ungrouped_window_with_scalar_order_by[duckdb]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window sort keys must be columns. Lean's model does not cover it yet: rewrite the step, or find i",
-      "issue": 1930
+      "outcome": "agree"
     },
     "test_ungrouped_bounded_expanding_window[duckdb-mean]": {
       "outcome": "unproved",
@@ -217,9 +211,7 @@
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_windowed_order_by_sequence_is_preserved[duckdb]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: window sort keys must be columns. Lean's model does not cover it yet: rewrite the step, or find i",
-      "issue": 1930
+      "outcome": "agree"
     }
   }
 }
