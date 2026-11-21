@@ -118,7 +118,7 @@
     },
     "item": {
       "type": "object",
-      "required": ["name", "nodes", "status", "relaxations", "summary", "links", "report"],
+      "required": ["name", "nodes", "status", "summary", "links", "report"],
       "properties": {
         "name": {"description": "The transform's name.", "type": "string"},
         "nodes": {"description": "The file's variables that hold the node this application built.", "type": "array", "items": {"type": "string"}},

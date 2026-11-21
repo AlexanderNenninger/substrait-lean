@@ -159,8 +159,7 @@ class Check:
         elif (
             unchecked
             or any(c.status == "not_proved" for c in self.checked)
-            or require_proved
-            and any(c.status == "checked" for c in self.checked)
+            or (require_proved and any(c.status == "checked" for c in self.checked))
         ):
             self.code = NOT_PROVED
         else:
