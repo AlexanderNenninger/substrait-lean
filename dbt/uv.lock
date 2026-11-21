@@ -367,6 +367,21 @@ wheels = [
 ]
 
 [[package]]
+name = "dbt-tests-adapter"
+version = "1.20.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dbt-adapters" },
+    { name = "dbt-common" },
+    { name = "freezegun" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/83/ede118214addb99e8c45338d8b18e30a22872fc8c3043f429a538232e529/dbt_tests_adapter-1.20.0.tar.gz", hash = "sha256:91562371852790a647c59270136a4461bfda7e7484f349fcd3473f0a1d6059c6", size = 175324, upload-time = "2026-05-22T09:23:56.379Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/53/860853817edbc50168af0e4520f6c203270e92e20f9edb2ca82c62116f3d/dbt_tests_adapter-1.20.0-py3-none-any.whl", hash = "sha256:333d0d08c1690278a8cf681989f6359a7a8a5b3da464f14430c3ea3ea32fa5ff", size = 250410, upload-time = "2026-05-22T09:23:54.353Z" },
+]
+
+[[package]]
 name = "deepdiff"
 version = "8.6.2"
 source = { registry = "https://pypi.org/simple" }
@@ -391,6 +406,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cc/33/01ad2535ee897db2bad70cbc800655167c53afd0b955eed84f0759c2f417/duckdb-2.0.0-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ab51ec57d329d6f3df37c0287b55d71c3fc07bb54b61d1afed09104f953b1431", size = 24371005, upload-time = "2026-10-21T12:51:06.86Z" },
     { url = "https://files.pythonhosted.org/packages/09/d3/9e8ca1242b98f04041bef09686ecfe098b41f820aa23240f63f360b64eaf/duckdb-2.0.0-cp312-abi3-win_amd64.whl", hash = "sha256:f61c96547ed432f54dae42a717fd88563eda55cb47549715fac9f61f770c205a", size = 15368860, upload-time = "2026-10-21T12:51:09.395Z" },
     { url = "https://files.pythonhosted.org/packages/37/81/6ea5dc1050f86ec4dd038a2774766b42247ba6104e7785f13a0c600e2b33/duckdb-2.0.0-cp312-abi3-win_arm64.whl", hash = "sha256:c5e6708efaa8647e0914a16f1914354419e529a1925929950e7d610418e45873", size = 15726489, upload-time = "2026-10-21T12:51:11.643Z" },
+]
+
+[[package]]
+name = "freezegun"
+version = "1.5.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/dd/23e2f4e357f8fd3bdff613c1fe4466d21bfb00a6177f238079b17f7b1c84/freezegun-1.5.5.tar.gz", hash = "sha256:ac7742a6cc6c25a2c35e9292dfd554b897b517d2dec26891a2e8debf205cb94a", size = 35914, upload-time = "2025-08-09T10:39:08.338Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/2e/b41d8a1a917d6581fc27a35d05561037b048e47df50f27f8ac9c7e27a710/freezegun-1.5.5-py3-none-any.whl", hash = "sha256:cd557f4a75cf074e84bc374249b9dd491eaeacd61376b9eb3c423282211619d2", size = 19266, upload-time = "2025-08-09T10:39:06.636Z" },
 ]
 
 [[package]]
@@ -1660,12 +1687,13 @@ name = "sverify"
 version = "0.9.0.dev0"
 source = { editable = "../python" }
 dependencies = [
-    { name = "duckdb" },
-    { name = "ibis-framework", extra = ["duckdb"] },
+    { name = "ibis-framework" },
+    { name = "packaging" },
     { name = "pyarrow" },
+    { name = "pyarrow-hotfix" },
     { name = "sqlglot" },
     { name = "substrait" },
-    { name = "sverify-duckdb", extra = ["run"] },
+    { name = "sverify-duckdb" },
 ]
 
 [package.metadata]
@@ -1674,25 +1702,29 @@ requires-dist = [
     { name = "azure-keyvault-secrets", marker = "extra == 'secrets-azure'", specifier = ">=4.8" },
     { name = "boto3", marker = "extra == 'secrets-aws'", specifier = ">=1.35" },
     { name = "deltalake", marker = "extra == 'delta'", specifier = ">=1.6.6" },
-    { name = "duckdb", specifier = ">=2.0.0" },
     { name = "google-cloud-secret-manager", marker = "extra == 'secrets-gcp'", specifier = ">=2.20" },
     { name = "hypothesis", marker = "extra == 'testing'", specifier = ">=6.170.14" },
-    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
+    { name = "ibis-framework", specifier = ">=12.0.0" },
+    { name = "ibis-framework", extras = ["duckdb"], marker = "extra == 'duckdb'", specifier = ">=12.0.0" },
     { name = "keyring", marker = "extra == 'secrets-keychain'", specifier = ">=25" },
     { name = "openlineage-python", marker = "extra == 'openlineage'", specifier = ">=1.55.0,<2" },
+    { name = "packaging", specifier = ">=23" },
     { name = "pyarrow", specifier = ">=26.0.0" },
     { name = "pyarrow", marker = "extra == 'flight'", specifier = ">=26.0.0" },
+    { name = "pyarrow-hotfix", specifier = ">=0.6" },
     { name = "pyiceberg", extras = ["pyarrow", "sql-sqlite"], marker = "extra == 'iceberg'", specifier = ">=0.12.0" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=9.2.0" },
     { name = "pyyaml", marker = "extra == 'odcs'", specifier = ">=6.0" },
-    { name = "sqlglot", specifier = "~=30.17.0" },
+    { name = "sqlglot", specifier = ">=30.8.0,<30.18" },
     { name = "substrait", specifier = ">=0.37.0" },
-    { name = "sverify", extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
-    { name = "sverify-duckdb", extras = ["run"], editable = "../engines/duckdb" },
+    { name = "sverify", extras = ["duckdb"], marker = "extra == 'spark'" },
+    { name = "sverify", extras = ["duckdb", "polars", "spark", "delta", "iceberg", "flight", "testing", "odcs", "openlineage"], marker = "extra == 'all'" },
+    { name = "sverify-duckdb", editable = "../engines/duckdb" },
+    { name = "sverify-duckdb", extras = ["run"], marker = "extra == 'duckdb'", editable = "../engines/duckdb" },
     { name = "sverify-polars", extras = ["run"], marker = "extra == 'polars'", editable = "../engines/polars" },
     { name = "sverify-spark", extras = ["run"], marker = "extra == 'spark'", editable = "../engines/spark" },
 ]
-provides-extras = ["polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "secrets-aws", "secrets-gcp", "secrets-azure", "secrets-keychain", "all"]
+provides-extras = ["duckdb", "polars", "spark", "delta", "iceberg", "flight", "testing", "openlineage", "odcs", "secrets-aws", "secrets-gcp", "secrets-azure", "secrets-keychain", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1705,6 +1737,7 @@ dev = [
     { name = "poethepoet", specifier = ">=0.49.0" },
     { name = "pyiceberg", extras = ["sql-sqlite"], specifier = ">=0.12.0" },
     { name = "pyrefly", specifier = ">=1.4.0" },
+    { name = "pyspark", extras = ["connect"], specifier = ">=4.0" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-cov", specifier = ">=7.0.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
@@ -1720,6 +1753,8 @@ name = "sverify-dbt"
 version = "0.9.0.dev0"
 source = { editable = "." }
 dependencies = [
+    { name = "duckdb" },
+    { name = "ibis-framework", extra = ["duckdb"] },
     { name = "pyyaml" },
     { name = "sqlglot" },
     { name = "sverify" },
@@ -1729,6 +1764,7 @@ dependencies = [
 dev = [
     { name = "dbt-core" },
     { name = "dbt-duckdb" },
+    { name = "dbt-tests-adapter" },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "ruff" },
@@ -1736,6 +1772,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "duckdb", specifier = ">=2.0.0,<2.1" },
+    { name = "ibis-framework", extras = ["duckdb"], specifier = ">=12.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "sqlglot", specifier = ">=30.17.0" },
     { name = "sverify", editable = "../python" },
@@ -1745,6 +1783,7 @@ requires-dist = [
 dev = [
     { name = "dbt-core", specifier = ">=1.10" },
     { name = "dbt-duckdb", specifier = ">=1.9" },
+    { name = "dbt-tests-adapter", specifier = "==1.20.0" },
     { name = "pyrefly", specifier = ">=1.4.0" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "ruff", specifier = ">=0.17.3" },
@@ -1758,14 +1797,9 @@ dependencies = [
     { name = "sverify" },
 ]
 
-[package.optional-dependencies]
-run = [
-    { name = "duckdb" },
-]
-
 [package.metadata]
 requires-dist = [
-    { name = "duckdb", marker = "extra == 'run'", specifier = ">=2.0.0" },
+    { name = "duckdb", marker = "extra == 'run'", specifier = ">=2.0.0,<2.1" },
     { name = "sverify", editable = "../python" },
 ]
 provides-extras = ["run"]

@@ -59,6 +59,10 @@ class Source:
     project: str
     """The integration project's directory in the repository."""
     license: str
+    kind: str = "package"
+    """`package`: a hub package's integration project, cloned at `commit`.
+    `suite`: the pytest classes of an installed test suite (`project` is its
+    import package), whose release `tag` must be the one installed."""
 
 
 SOURCES = {
@@ -79,6 +83,15 @@ SOURCES = {
             "f93478ca00b48347073f6a39217ac18bf6685820",
             "integration_tests",
             "Apache-2.0",
+        ),
+        Source(
+            "dbt-tests-adapter",
+            "https://github.com/dbt-labs/dbt-adapters",
+            "1.20.0",
+            "",
+            "dbt.tests.adapter",
+            "Apache-2.0",
+            kind="suite",
         ),
     )
 }
@@ -112,7 +125,7 @@ def extract(source: Source, dest: Path) -> Path:
     return project
 
 
-def _dbt(project: Path, *args: str) -> None:
+def _dbt(project: Path, *args: str, quiet: bool = False) -> None:
     """A dbt command in `project`; a failing build is part of the record, and
     its last lines are printed, for CI's log."""
     exe = Path(sys.executable).with_name("dbt")
@@ -123,7 +136,7 @@ def _dbt(project: Path, *args: str) -> None:
         capture_output=True,
         text=True,
     )
-    if done.returncode != 0:
+    if done.returncode != 0 and not quiet:
         tail = (done.stdout + done.stderr).strip().splitlines()[-15:]
         print(
             f"dbt {' '.join(args)} exited {done.returncode} in {project.name}:", *tail, sep="\n  "
@@ -133,19 +146,59 @@ def _dbt(project: Path, *args: str) -> None:
 def run(source: Source) -> dict[str, Any]:
     """Build the source's project with dbt, check it with sverify-dbt, and
     the record of each test."""
-    from sverify_dbt import check
-    from sverify_dbt.manifest import load
-
+    if source.kind == "suite":
+        return _run_suite(source)
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / source.name)
         _dbt(project, "deps")
         packages = _packages(project / "package-lock.yml")
-        _dbt(project, "build")
-        statuses = _statuses(project / "target" / "run_results.json")
-        _dbt(project, "docs", "generate", "--no-compile")
-        proj = load(project)
-        result = check(proj, counterexamples=0)
-    return {"packages": packages, "results": _records(proj, result, statuses)}
+        results = _replay(project)
+    return {"packages": packages, "results": results}
+
+
+def _replay(project: Path, quiet: bool = False) -> dict[str, Any]:
+    """`dbt build` and `docs generate` in `project`, then the record of its tests."""
+    from sverify_dbt import check
+    from sverify_dbt.manifest import load
+
+    _dbt(project, "build", quiet=quiet)
+    statuses = _statuses(project / "target" / "run_results.json")
+    _dbt(project, "docs", "generate", "--no-compile", quiet=quiet)
+    proj = load(project)
+    result = check(proj, counterexamples=0)
+    return _records(proj, result, statuses)
+
+
+def _run_suite(source: Source) -> dict[str, Any]:
+    """Every distinct project of an installed pytest suite, built and checked
+    one after the other; the classes it cannot read are listed beside."""
+    import importlib
+    import importlib.metadata
+
+    from sverify_dbt import replay_suites
+    from sverify_dbt.manifest import ProjectError
+
+    package = source.project
+    dist = source.name
+    installed = importlib.metadata.version(dist)
+    if installed != source.tag:
+        raise SystemExit(f"{dist} {installed} is installed, not {source.tag}")
+    root = Path(importlib.import_module(package).__path__[0])
+    cases, unextracted = replay_suites.projects(root, package)
+    results: dict[str, Any] = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for case in cases:
+            project = Path(tmp) / re.sub(r"\W", "_", case.name)
+            replay_suites.write(case, project)
+            label = case.name.removeprefix(package + ".")
+            try:
+                records = _replay(project, quiet=True)
+            except (ProjectError, ValueError) as e:
+                unextracted[case.name] = f"not replayed: {normalize(str(e))}"
+                continue
+            for key, rec in records.items():
+                results[f"{label}::{key}"] = rec
+    return {"packages": [], "results": results, "unextracted": dict(sorted(unextracted.items()))}
 
 
 def _packages(lock: Path) -> list[str]:
@@ -245,6 +298,7 @@ def ledger(source: Source, run: dict[str, Any]) -> dict[str, Any]:
         "summary": {k: counts.get(k, 0) for k in OUTCOMES},
         "unsound": sum(1 for r in results.values() if r.get("unsound")),
         "results": results,
+        **({"unextracted": run["unextracted"]} if run.get("unextracted") else {}),
     }
 
 
