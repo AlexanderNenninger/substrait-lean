@@ -76,6 +76,8 @@ from sverify_duckdb.declared import refuse_unmodelled
 REPO = Path(__file__).resolve().parents[3]
 CACHE = Path(os.environ.get("SVERIFY_SLT_CACHE", Path.home() / ".cache" / "sverify" / "duckdb-slt"))
 REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
+#: Where the committed ledgers' summary goes, beside the facts drawn from them.
+FACTS_README = REPO / "engines" / "duckdb" / "facts" / "README.md"
 
 #: The semantics the lift reads the queries under: DuckDB's, or (L2 of #1484,
 #: `--semantics reference`) the reference's, where the replay checks that
@@ -1356,30 +1358,50 @@ def _oracle_a_only(results: list[dict]) -> int:
     )
 
 
-def write_summary(out: Path = REPLAY_DIR) -> Path:
-    """`<out>/README.md`'s table, from every ledger in `out`."""
+def write_summary(out: Path = REPLAY_DIR, readme: Path | None = None) -> Path:
+    """The totals and table between `readme`'s `slt` markers, from every
+    ledger in `out` (DuckDB's tests and the fuzzer's, counted apart).
+    `readme` defaults to `FACTS_README` for the committed ledgers and to
+    `<out>/README.md` for any other directory."""
+    if readme is None:
+        readme = FACTS_README if out == REPLAY_DIR else out / "README.md"
     rows = []
+    totals: Counter[str] = Counter()  # DuckDB's tests
+    fuzz: Counter[str] = Counter()  # `sverify_dev.duckdb_fuzz`'s queries
     for p in sorted(out.glob("*.json")):
         led = json.loads(p.read_text())
         if "summary" not in led:
             continue  # not a ledger (`probes.json`)
         s = led["summary"]
+        if led["area"].startswith("fuzz/"):
+            fuzz.update(s)
+        else:
+            totals.update(s)
+            totals["files"] += len(led["skipped_files"])
         reasons = Counter(
             (r.get("reason") or "").split(":")[0] for r in led["results"] if r["cls"] == "refused"
         )
         top = ", ".join(f"{k} {n}" for k, n in reasons.most_common(2))
         d = led.get("disagree_sides", {})
         sides = ", ".join(f"{k} {n}" for k, n in sorted(d.items()))
+        link = os.path.relpath(p, readme.parent)
         rows.append(
-            f"| [{led['area']}]({p.name}) | {s['agree']} | {_oracle_a_only(led['results'])} "
+            f"| [{led['area']}]({link}) | {s['agree']} | {_oracle_a_only(led['results'])} "
             f"| {s['disagree']} | {sides} "
             f"| {s['refused']} | {s['skipped']} | {len(led['skipped_files'])} | {top} |"
         )
-    path = out / "README.md"
-    text = path.read_text() if path.exists() else ""
+    classes = ("agree", "disagree", "refused", "skipped")
+    queries = sum(totals[k] for k in classes)
+    text = readme.read_text() if readme.exists() else ""
     table = "\n".join(
         [
             "<!-- slt:start -->",
+            f"Totals over {queries} queries of DuckDB's tests: {totals['agree']} agree, "
+            f"{totals['disagree']} disagree, {totals['refused']} refused, "
+            f"{totals['skipped']} skipped ({totals['files']} files skipped whole). "
+            f"The fuzzer's ledgers (`fuzz/*`) hold {sum(fuzz[k] for k in classes)} "
+            f"generated queries: {fuzz['agree']} agree, {fuzz['disagree']} disagree.",
+            "",
             "| Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped "
             "| Files skipped | Refused by |",
             "|---|---:|---:|---:|---|---:|---:|---:|---|",
@@ -1391,8 +1413,8 @@ def write_summary(out: Path = REPLAY_DIR) -> Path:
         text = re.sub(r"<!-- slt:start -->.*<!-- slt:end -->", lambda _: table, text, flags=re.S)
     else:
         text = text + ("\n" if text else "") + table + "\n"
-    path.write_text(text)
-    return path
+    readme.write_text(text)
+    return readme
 
 
 def test_files(root: Path, areas: Sequence[str]) -> dict[str, list[tuple[str, str]]]:
@@ -1513,6 +1535,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
     parser.add_argument(
+        "--write-summary",
+        action="store_true",
+        help="only rewrite the summary table from the ledgers in --out, replaying nothing",
+    )
+    parser.add_argument(
         "--semantics",
         choices=("duckdb", "reference"),
         default="duckdb",
@@ -1523,6 +1550,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     os.environ[SEMANTICS_ENV] = args.semantics
     if args.out is None:
         args.out = REPLAY_DIR / "reference" if args.semantics == "reference" else REPLAY_DIR
+    if args.write_summary:
+        write_summary(args.out)
+        return
     version = args.version or duckdb_version()
     root = fetch(version)
     for area, files in test_files(root, args.areas).items():
