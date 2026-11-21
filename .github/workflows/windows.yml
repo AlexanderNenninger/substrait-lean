@@ -1,0 +1,101 @@
+name: Windows
+
+# A trial of the Windows wheel (#183): build substrait-check and the wheel on
+# windows-latest, measure the build's time, peak memory and longest path, and
+# run the installed wheel's fast tests. Started by hand only (and by a pull
+# request that changes this file); it joins the nightly or a release only once
+# its numbers are known and the user decides that Windows wheels ship. Nothing
+# is published.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/windows.yml
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  wheel:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Before the checkout: paths under .lake may pass Windows' 260 characters.
+      - run: git config --global core.longpaths true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install elan
+        shell: pwsh
+        run: |
+          curl.exe -sSfL -o elan-init.ps1 https://raw.githubusercontent.com/leanprover/elan/master/elan-init.ps1
+          ./elan-init.ps1 -NoPrompt 1 -DefaultToolchain (Get-Content lean-toolchain)
+          Remove-Item elan-init.ps1
+          "$env:USERPROFILE\.elan\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - run: lake --version
+
+      # The wheel's build runs `lake -R -Kcheck_generated=true build
+      # substrait-check` (python/hatch_build.py), as a release's does. It is
+      # built in the checkout, where the next step can measure its paths; a
+      # release builds from the unpacked sdist, under a longer temp prefix.
+      - name: Build the wheel (measured)
+        env:
+          SVERIFY_BUILD_FROM_SOURCE: "1"
+        run: |
+          uv run --no-project --with psutil python python/scripts/peak_memory.py \
+            --out build-memory.json -- uv build python --wheel --out-dir dist
+      - name: Build the engine packages
+        run: |
+          for e in polars spark duckdb; do uv build "engines/$e" --out-dir "dist-$e"; done
+      - name: Longest path in the build
+        if: always()
+        run: |
+          uv run --no-project python - <<'PY'
+          import json, os
+          paths = (os.path.abspath(os.path.join(d, f)) for d, _, fs in os.walk(".") for f in fs)
+          longest = max(paths, key=len, default="")
+          json.dump({"longest_path": len(longest), "path": longest}, open("paths.json", "w"))
+          print(len(longest), longest)
+          PY
+
+      - name: Test the installed wheel (fast set)
+        id: tests
+        continue-on-error: true
+        run: |
+          bash python/scripts/wheel_tests.sh --wheel dist/*.whl \
+            --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl \
+            --engine-wheel dist-duckdb/*.whl --fast
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Windows trial"
+            echo '```'
+            cat build-memory.json 2>/dev/null || echo "no build measurement"
+            echo
+            cat paths.json 2>/dev/null || echo "no path measurement"
+            echo
+            echo "tests: ${{ steps.tests.outcome }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-trial
+          path: |
+            dist/*.whl
+            build-memory.json
+            paths.json
+          if-no-files-found: warn

@@ -143,7 +143,8 @@ def _checker_file() -> Path:
     # A profile from outside ships a checker over the built-in profiles and its own.
     if plugged := profiles.checker():
         return plugged
-    path = Path(__file__).parent / "_bin" / "substrait-check"
+    name = "substrait-check.exe" if os.name == "nt" else "substrait-check"
+    path = Path(__file__).parent / "_bin" / name
     if not path.exists():
         raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECKER")
     return path
