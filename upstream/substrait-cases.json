@@ -35,13 +35,13 @@
       "disagree": 0
     },
     "comparison": {
-      "agree": 152,
-      "refused": 31,
+      "agree": 154,
+      "refused": 29,
       "disagree": 0
     },
     "datetime": {
-      "agree": 49,
-      "refused": 56,
+      "agree": 50,
+      "refused": 55,
       "disagree": 0
     },
     "list": {
@@ -75,8 +75,8 @@
       "disagree": 0
     },
     "all": {
-      "agree": 618,
-      "refused": 642,
+      "agree": 621,
+      "refused": 639,
       "disagree": 57
     }
   },
@@ -123,18 +123,13 @@
     },
     "arithmetic_decimal": {
       "checker: power: option complex_number_result is not supported": 20,
-      "checker: bitwise_and of DECIMAL is not supported yet (#N)": 13,
-      "checker: bitwise_or of DECIMAL is not supported yet (#N)": 13,
-      "checker: bitwise_xor of DECIMAL is not supported yet (#N)": 13,
-      "checker: sqrt of DECIMAL is not supported yet (#N)": 12,
+      "checker: bitwise_and of DECIMAL is not supported yet (#N)": 14,
+      "checker: bitwise_or of DECIMAL is not supported yet (#N)": 14,
+      "checker: bitwise_xor of DECIMAL is not supported yet (#N)": 14,
+      "checker: sqrt of DECIMAL is not supported yet (#N)": 14,
+      "checker: factorial of DECIMAL is not supported yet (#N)": 7,
       "checker: avg: option overflow is not supported": 6,
-      "checker: factorial of DECIMAL is not supported yet (#N)": 5,
-      "checker: factorial: a DECIMAL result of non-decimal arguments is not supported": 2,
-      "checker: negate: a DECIMAL result of non-decimal arguments is not supported": 2,
-      "checker: the expected result raises (Substrait.Issue.overflow)": 2,
-      "checker: bitwise_and: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: bitwise_or: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: bitwise_xor: a DECIMAL result of non-decimal arguments is not supported": 1
+      "checker: the expected result raises (Substrait.Issue.overflow)": 2
     },
     "arithmetic_unsigned": {
       "harness: unsigned integers (u!u8) are not modelled": 18,
@@ -151,9 +146,7 @@
     "comparison": {
       "checker: unsupported function between/N": 17,
       "checker: unsupported function is_finite/N": 6,
-      "checker: unsupported function is_infinite/N": 6,
-      "checker: coalesce: a DECIMAL result of non-decimal arguments is not supported": 1,
-      "checker: nullif: a DECIMAL result of non-decimal arguments is not supported": 1
+      "checker: unsupported function is_infinite/N": 6
     },
     "datetime": {
       "checker: gte with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 7,
@@ -171,7 +164,6 @@
       "checker: missing field 'value' in {\"enum\":\"SECOND\"}": 2,
       "checker: missing field 'value' in {\"enum\":\"YEAR\"}": 2,
       "checker: month and year intervals are only supported added to a date or timestamp": 2,
-      "checker: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried through, by design; a constant of its type is not supported": 1,
       "checker: missing field 'value' in {\"enum\":\"DAY_OF_YEAR\"}": 1,
       "checker: missing field 'value' in {\"enum\":\"ISO_WEEK\"}": 1,
       "checker: missing field 'value' in {\"enum\":\"ISO_YEAR\"}": 1,

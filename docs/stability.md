@@ -168,12 +168,16 @@ may change in a minor release. A plugin checks `PLUGIN_API`, and an engine
 package pins the sverify version it was built for. Custom sources and sinks
 are the stable extension points.
 
+The checker, `substrait-check`, ships in the wheel as part of the package. Its
+flags and its JSON protocol belong to one release of sverify, and
+`CheckerVersionError` is the whole promise about a binary of another release.
+
 The engines in the promise are those [Engines](#engines) lists.
 
 A minor release may break the public API only when the break is:
 
-- loud: a call that used the old form raises, or warns with a
-  `DeprecationWarning`, and the message names the replacement;
+- loud: a call that used the old form raises, and the changelog names the
+  replacement;
 - caught by a unit test that uses the old form;
 - listed under "Breaking changes" in the changelog;
 - given a migration note in that entry: what to write instead, with an
@@ -197,7 +201,7 @@ by a route that the checker justifies against it
 |---|---|---|---|---|---|
 | DuckDB | `engine="duckdb"`, the default | `dialect="duckdb"` | `"duckdb"` | for plans proved never to raise | yes |
 | Polars, streaming | `engine="polars"` | | `"polars"` | for plans without guards | yes |
-| Spark 4.x | `engine="spark"` | `dialect="spark"` | `"spark"` | for plans without guards | yes |
+| Spark 4.3 | `engine="spark"` | `dialect="spark"` | `"spark"` | for plans without guards | yes |
 | Snowflake | in your account, from the written SQL | `dialect="snowflake"` | none yet | | the written SQL |
 
 The theorems are named in [engine-profiles.md](engine-profiles.md#engines). The two conditions come from the same check: a plan with no guards

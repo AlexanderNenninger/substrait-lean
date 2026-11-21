@@ -17,7 +17,7 @@ A view of a contracted transformation (`sverify.transform`, possibly
 composed) keeps its proved postconditions in every state: the preconditions
 on the base tables are checked once in full, and then only on each batch
 (row conditions on the inserted rows, `unique` keys against the kept keys;
-`Spec.update`, `Triple.maintained` in `SubstraitLean/Compose.lean`).
+`Spec.update`, `Triple.maintained` in `analysis/Sverify/Analysis/Compose.lean`).
 Postconditions a transform checks on its output instead of proving them
 (`on_unproved="check"`) are checked on the view's full state once, and then
 on the rows each batch inserts into it, before anything is replaced
@@ -40,7 +40,7 @@ Sources come from a table format (`sverify.io`): `Pipeline.source` loads a
 snapshot and records its version, and a refresh applies the format's change
 feed from the recorded version to the latest, advancing the version in the
 same commit. The feed is trusted to turn the old snapshot into the new one
-(`ChangeFeed`, `Rel.cdf_sound` in `SubstraitLean/TableFormat.lean`), and
+(`ChangeFeed`, `Rel.cdf_sound` in `analysis/Sverify/Analysis/TableFormat.lean`), and
 every `RefreshReport` says so; where the feed is unavailable, the new
 snapshot is diffed against the view's state instead and the views reading it
 are recomputed (`ChangeFeed.of_diff`). A source whose schema changed is read
@@ -561,7 +561,7 @@ def _refuse_schema(plan: str, tables: Mapping[str, pa.Table], source: str | None
         )
 
 
-MEANING_CHANGES: tuple[str, ...] = ()
+MEANING_CHANGES: tuple[str, ...] = ("D71",)
 """The changes that make an unchanged plan compute another result than before,
 one entry per change, in the order they landed: `"D53"` for a decision that
 changes a value of the reference or narrows what it allows (its section in
@@ -1650,7 +1650,7 @@ class IncrementalView:
     def _retires(self) -> bool:
         """The view drops its final buckets: it has retention and every sink
         keeps what the state drops."""
-        return self.retention is not None and all(_keeps_retired(s) for s in self._sinks)
+        return self.retention is not None and all(s.keeps_retired for s in self._sinks)
 
     def _kept(self, result: State) -> State:
         """The rows of a result (or a weighted table) whose change the view
@@ -2103,7 +2103,7 @@ class Pipeline:
                 continue
             report = RetentionReport(v.name, spec.column, 0, 0, spec.bound, None)
             out.append(report)
-            if bad := [s for s in v._sinks if not _keeps_retired(s)]:
+            if bad := [s for s in v._sinks if not s.keeps_retired]:
                 report.off = (
                     f"sink {bad[0].name} may rewrite its whole table, which would drop "
                     "the retired buckets"
@@ -2805,15 +2805,3 @@ def _apply_change(current: pa.Table, change: pa.Table, t: str) -> pa.Table:
         (row,) = arrow_rows(rows_of(missing.slice(0, 1)))
         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
     return concat([rest, expanded(consolidated(kept, inserts))])
-
-
-def _keeps_retired(sink: Any) -> bool:
-    """Whether `sink` keeps the rows a view drops from its state: the
-    sink's `_keeps_retired`, or a custom sink's own `keeps_retired`."""
-    for k in type(sink).__mro__:
-        own = k.__dict__.get("keeps_retired")
-        if own is not None and not isinstance(own, property):
-            return bool(own)
-        if "_keeps_retired" in k.__dict__:
-            return bool(k.__dict__["_keeps_retired"])
-    return False

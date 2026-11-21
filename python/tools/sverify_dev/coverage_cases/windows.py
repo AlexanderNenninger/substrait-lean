@@ -124,6 +124,20 @@ CASES: list[Case] = [
         V,
         lambda: t.mutate(s=(t.qty * 2).sum().over(group_by="name")),
     ),
+    case(
+        "windows",
+        "window over expressions",
+        V,
+        lambda: t.mutate(s=t.qty.sum().over(group_by=t.id % 2, order_by=t.id % 5)),
+    ),
+    case(
+        "windows",
+        "group_concat over a window",
+        V,
+        lambda: t.mutate(
+            c=t.name.group_concat(sep="|").over(group_by="qty", order_by="id", rows=(0, None))
+        ),
+    ),
     # `varOf` over a frame (#54, D30).
     case(
         "windows",
@@ -144,6 +158,7 @@ REFUSED: dict[str, dict[str, str]] = {
     # surfaced when the row-order refusal, which came first, went.
     "sum over group": NO_ORDER_BY,
     "window sum of an expression": NO_ORDER_BY,
+    "group_concat over a window": DUCKDB_ONLY,
     "stddev over group": DUCKDB_ONLY,
     "rolling variance (rows)": DUCKDB_ONLY,
 }

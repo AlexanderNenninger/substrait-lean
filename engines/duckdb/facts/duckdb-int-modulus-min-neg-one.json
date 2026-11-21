@@ -1,0 +1,63 @@
+{
+  "id": "duckdb-int-modulus-min-neg-one",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`MIN % -1` returns 0 at 2.0.1; it raised at 2.0.0",
+  "verdict": "`MIN % -1` is 0 at every integer width at 2.0.1, as the reference says; at 2.0.0 it raised `Overflow in division`; the SQL writes the case out at both versions",
+  "area": "integers",
+  "options": [
+    "min_mod_neg_one"
+  ],
+  "rows": [
+    {
+      "group": "int.mod",
+      "option": "min_mod_neg_one",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
+  ],
+  "constructs": [
+    "%"
+  ],
+  "settings": {
+    "error_on_division_by_zero": [
+      true,
+      false
+    ],
+    "ieee_floating_point_ops": [
+      true,
+      false
+    ]
+  },
+  "description": [
+    "The probe of `BIGINT % BIGINT` (`engines/duckdb/replay/probes.json`) over the 64-bit bounds finds one row that moved: `-9223372036854775808 % -1` raised `Out of Range Error: Overflow in division of -9223372036854775808 / -1` at 2.0.0 (`duckdb-R15-int-modulus`) and is 0 at 2.0.1. At 2.0.1 the candidate `ERROR` of `on_division_by_zero` matches all 121 rows of the probe (the NULL candidate for the rows where `error_on_division_by_zero` is off), where at 2.0.0 none did. The probes `int-mod-min-i8`, `int-mod-min-i16`, `int-mod-min-i32` and `int-mod-min-i64` (observations of `probes.json`) each raised at 2.0.0 and give 0 at 2.0.1.",
+    "The change is error-side (D70): DuckDB raises less than at 2.0.0, and gives the reference's value. The profile's `min_mod_neg_one` row still says `ERROR`, which stays a safe bound at 2.0.1 (a plan verified under the engine's own semantics is not claimed to avoid a raise that no longer happens). The lowering writes the case out (`MIN % -1 written out`), so a plan runs the same at both versions."
+  ],
+  "reference": "`modulus`: `MIN % -1` is 0.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045, `sverify_dev.probe` at duckdb 2.0.1",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "BIGINT % BIGINT"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "int-mod-min-i8"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2045
+  ]
+}

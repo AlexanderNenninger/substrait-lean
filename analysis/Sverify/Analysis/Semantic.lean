@@ -219,64 +219,7 @@ def Rel.condVal (cat : Catalog) (A : String → List AVal) (F : String → List 
   let T := Rel.keyedWindows cat A F K
   c.absD (r.aeval cat A F T) (r.facts cat F T)
 
-/-! ## Functional dependencies -/
-
-/-- On `rows`, the columns `k` determine column `c`. -/
-def FD (k : List Nat) (c : Nat) (rows : Relation) : Prop :=
-  ∀ x ∈ rows, ∀ y ∈ rows, keyOf k x = keyOf k y →
-    (x.getD c .null).canonV = (y.getD c .null).canonV
-
-/-- A key determines every column. -/
-def keyFds (ks : List (List Nat)) (n : Nat) : List (List Nat × Nat) :=
-  ks.flatMap fun k => (List.range n).map (k, ·)
-
-/-- Columns a condition equates determine each other. -/
-def eqFds (ps : List (Nat × Nat)) : List (List Nat × Nat) :=
-  ps.flatMap fun p => [([p.1], p.2), ([p.2], p.1)]
-
-def inRange (n : Nat) (fd : List Nat × Nat) : Bool := fd.1.all (· < n) && decide (fd.2 < n)
-
-def shiftFd (n : Nat) (fd : List Nat × Nat) : List Nat × Nat := (fd.1.map (n + ·), n + fd.2)
-
-/-- A position of column `x` in an emit. -/
-def emitPos? (m : List Nat) (x : Nat) : Option Nat := (List.range m.length).find? (m[·]? == some x)
-
-/-- A dependency through an emit, for every position of its column. -/
-def emitFd (m : List Nat) (fd : List Nat × Nat) : List (List Nat × Nat) :=
-  if fd.1.all fun x => (emitPos? m x).isSome then
-    ((List.range m.length).filter (m[·]? == some fd.2)).map
-      fun p => (fd.1.map fun x => (emitPos? m x).getD 0, p)
-  else []
-
-/-- A projected column `$j` and its copy determine each other. -/
-def copyFds (n : Nat) (es : List Expr) : List (List Nat × Nat) :=
-  es.zipIdx.flatMap fun (e, q) => match e with
-    | .field j => if j < n then [([j], n + q), ([n + q], j)] else []
-    | _ => []
-
-/-- Functional dependencies of a plan's output: from the input keys, the
-grouping columns of an aggregate, equalities in filters and inner joins, and
-copied columns. -/
-def Rel.fds (cat : Catalog) (K : TableCond) : Rel → List (List Nat × Nat)
-  | .read t => keyFds (K.keys t) (cat t).arity
-  | .aggregate _ gs ms => keyFds [List.range gs.length] (gs.length + ms.length)
-  | .filter r c => r.fds cat K ++ eqFds c.eqCols
-  | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => r.fds cat K
-  | .unnest _ _ => []
-  | .project r es => (r.fds cat K).filter (inRange (r.arity cat)) ++ copyFds (r.arity cat) es
-  | .window r _ _ _ => (r.fds cat K).filter (inRange (r.arity cat))
-  | .emit r m => (r.fds cat K).flatMap (emitFd m)
-  | .cross a b => (a.fds cat K).filter (inRange (a.arity cat)) ++
-      (b.fds cat K).map (shiftFd (a.arity cat))
-  | .join a b .inner on => (a.fds cat K).filter (inRange (a.arity cat)) ++
-      (b.fds cat K).map (shiftFd (a.arity cat)) ++ eqFds on.eqCols
-  | .join a _ .left _ => (a.fds cat K).filter (inRange (a.arity cat))
-  | .values _ _ | .unionAll _ _ => []
-
-/-- The columns that `X` determines, `fuel` rounds deep. -/
-def fdClosure (fds : List (List Nat × Nat)) : Nat → List Nat → List Nat
-  | 0, X => X
-  | fuel + 1, X => fdClosure fds fuel (X ++ (fds.filter fun fd => fd.1.all (X.contains ·)).map (·.2))
+/-! ## Functional dependencies (`analysis/Sverify/Analysis/FunctionalDeps.lean`) -/
 
 def fieldsOf (es : List Expr) : List Nat := es.filterMap fun | .field j => some j | _ => none
 
@@ -311,7 +254,7 @@ determine through `MIN` (all values of a group agree on them). -/
 def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (K : TableCond) (r : Rel) (gs : List Expr) (ms : List Measure) :
     Option (Rule × Rel) :=
-  let fds := r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat)
+  let fds := inputFds (r.arity cat) (r.keys cat A F K) (r.fds cat A F K)
   let qs := keepCols fds gs
   let drops := (List.range gs.length).filter (!qs.contains ·)
   let cl := fdClosure fds (fds.length + 1) (fieldsOf (qs.map (gAt gs)))
@@ -323,10 +266,6 @@ def Rel.fdAgg (cat : Catalog) (A : String → List AVal) (F : String → List Fa
       .emit (.aggregate r (qs.map (gAt gs)) (ms ++ drops.map (minOf gs)))
         (fdEmit qs drops gs.length ms.length))
   else none
-
-/-- The position of the grouping column `$c`. -/
-def gpos (gs : List Expr) (c : Nat) : Option Nat :=
-  (List.range gs.length).find? fun q => gs[q]? == some (.field c)
 
 /-- A join condition's columns after the left side is aggregated: grouped
 left columns move to their group position, right columns after the
@@ -881,92 +820,6 @@ theorem Measure.eval_min_const {e : Expr} {grp : Relation} {x : Row} (hx : x ∈
     rw [has] at hall ⊢
     exact hall _ (pickFold_mem _ a as)
 
-omit [Boxes.Ambient] in
-theorem FD.of_key {k : List Nat} {rows : Relation} (h : KeyOn k rows) (c : Nat) : FD k c rows :=
-  fun _ hx _ hy he => by rw [KeyOn.eq_of_keyOf h hx hy he]
-
-omit [Boxes.Ambient] in
-theorem FD.mono {k : List Nat} {c : Nat} {rows rows' : Relation} (hsub : ∀ x ∈ rows', x ∈ rows)
-    (h : FD k c rows) : FD k c rows' := fun x hx y hy => h x (hsub x hx) y (hsub y hy)
-
-omit [Boxes.Ambient] in
-theorem keyFds_sound {ks : List (List Nat)} {n : Nat} {rows : Relation} (h : ∀ k ∈ ks, KeyOn k rows) :
-    ∀ fd ∈ keyFds ks n, FD fd.1 fd.2 rows := by
-  intro fd hfd
-  simp only [keyFds, List.mem_flatMap, List.mem_map] at hfd
-  obtain ⟨k, hk, c, _, rfl⟩ := hfd
-  exact FD.of_key (h k hk) c
-
-omit [Boxes.Ambient] in
-/-- Columns that agree on every row determine each other. -/
-theorem FD.of_eq {i j : Nat} {rows : Relation}
-    (h : ∀ x ∈ rows, ∀ y ∈ rows, (x.getD i .null).canonV = (y.getD i .null).canonV →
-      (x.getD j .null).canonV = (y.getD j .null).canonV) :
-    FD [i] j rows := fun x hx y hy he => h x hx y hy (by simpa [keyOf] using he)
-
-theorem eqFds_sound {c : Expr} {rows : Relation} (ht : ∀ x ∈ rows, (c.eval x).isTrue = true) :
-    ∀ fd ∈ eqFds c.eqCols, FD fd.1 fd.2 rows := by
-  intro fd hfd
-  simp only [eqFds, List.mem_flatMap, List.mem_cons, List.not_mem_nil, or_false] at hfd
-  obtain ⟨p, hp, rfl | rfl⟩ := hfd
-  · exact FD.of_eq fun x hx y hy => (Expr.eqCols_det (ht x hx) (ht y hy) p hp).1
-  · exact FD.of_eq fun x hx y hy => (Expr.eqCols_det (ht x hx) (ht y hy) p hp).2
-
-omit [Boxes.Ambient] in
-/-- A dependency of the left rows holds on rows extending them. -/
-theorem FD.left {rows A : Relation} {n : Nat} (hA : ∀ x ∈ A, x.length = n)
-    (hrows : ∀ r ∈ rows, ∃ x ∈ A, ∃ w, r = x ++ w) {fd : List Nat × Nat}
-    (hr : inRange n fd = true) (h : FD fd.1 fd.2 A) : FD fd.1 fd.2 rows := by
-  simp only [inRange, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hr
-  intro r hr' s hs he
-  obtain ⟨x, hx, w, rfl⟩ := hrows r hr'
-  obtain ⟨y, hy, v, rfl⟩ := hrows s hs
-  rw [keyOf_append_left (by rw [hA x hx]; exact hr.1), keyOf_append_left (by rw [hA y hy]; exact hr.1)] at he
-  rw [getD_append_left' (by rw [hA x hx]; exact hr.2), getD_append_left' (by rw [hA y hy]; exact hr.2)]
-  exact h x hx y hy he
-
-omit [Boxes.Ambient] in
-/-- A dependency of the right rows holds, shifted, on rows extending them. -/
-theorem FD.right {rows B : Relation} {n : Nat}
-    (hrows : ∀ r ∈ rows, ∃ x w, x.length = n ∧ w ∈ B ∧ r = x ++ w) {fd : List Nat × Nat}
-    (h : FD fd.1 fd.2 B) : FD (shiftFd n fd).1 (shiftFd n fd).2 rows := by
-  intro r hr s hs he
-  obtain ⟨x, w, hx, hw, rfl⟩ := hrows r hr
-  obtain ⟨y, v, hy, hv, rfl⟩ := hrows s hs
-  simp only [shiftFd] at he ⊢
-  have e1 := keyOf_shift fd.1 x w
-  have e2 := keyOf_shift fd.1 y v
-  rw [hx] at e1; rw [hy] at e2
-  rw [e1, e2] at he
-  have g1 := getD_append_right' (x := x) (y := w) fd.2
-  have g2 := getD_append_right' (x := y) (y := v) fd.2
-  rw [hx] at g1; rw [hy] at g2
-  rw [g1, g2]
-  exact h w hw v hv he
-
-omit [Boxes.Ambient] in
-theorem fdClosure_sound {fds : List (List Nat × Nat)} {rows : Relation}
-    (h : ∀ fd ∈ fds, FD fd.1 fd.2 rows) {x y : Row} (hx : x ∈ rows) (hy : y ∈ rows) :
-    ∀ (fuel : Nat) (X : List Nat), (∀ i ∈ X, (x.getD i .null).canonV = (y.getD i .null).canonV) →
-      ∀ i ∈ fdClosure fds fuel X, (x.getD i .null).canonV = (y.getD i .null).canonV
-  | 0, _, hX => hX
-  | fuel + 1, X, hX => fdClosure_sound h hx hy fuel _ fun i hi => by
-    rcases List.mem_append.mp hi with hi | hi
-    · exact hX i hi
-    · simp only [List.mem_map, List.mem_filter, List.all_eq_true, List.contains_iff_mem] at hi
-      obtain ⟨fd, ⟨hfd, hsub⟩, rfl⟩ := hi
-      exact h fd hfd x hx y hy (List.map_inj_left.mpr fun c hc => hX c (hsub c hc))
-
-omit [Boxes.Ambient] in
-theorem emitPos?_spec {m : List Nat} {x p : Nat} (h : emitPos? m x = some p) : m[p]? = some x := by
-  have := List.find?_some h
-  simpa using this
-
-omit [Boxes.Ambient] in
-theorem getD_emit {m : List Nat} {y : Row} {p x : Nat} (h : m[p]? = some x) :
-    (m.map (y.getD · .null)).getD p .null = y.getD x .null := by
-  simp [List.getD_eq_getElem?_getD, List.getElem?_map, h]
-
 /-! ### Eager aggregation -/
 
 theorem Expr.eval_congr_allFields {p : Nat → Bool} {r r' : Row}
@@ -991,10 +844,6 @@ theorem Expr.refsLt_subst {cols : List Expr} {m : Nat} (hc : ∀ c ∈ cols, c.r
       rcases hc' with rfl | ⟨c', hc'', rfl⟩
       · show 0 < m + 1; omega
       · exact Expr.refsLt_shift 0 (hc c' hc'')) b⟩
-
-omit [Boxes.Ambient] in
-theorem gpos_spec {gs : List Expr} {c q : Nat} (h : gpos gs c = some q) : gs[q]? = some (.field c) := by
-  simpa using List.find?_some h
 
 /-- An aggregate over the rows of its groups that pass `p`, when `p` is the
 same on a group, is the aggregate's rows that pass `P`. The keys hold no
@@ -1069,132 +918,15 @@ variable {cat : Catalog} (hcat : cat.WF) {A : String → List AVal} {F : String 
   (hK : K.Hold cat) {R : ForeignKeys} (hR : R.Hold cat)
 include hcat hA hF hK hR
 
-omit hA hF hR in
-theorem Rel.fds_sound : ∀ {r : Rel}, r.WF cat → ∀ fd ∈ r.fds cat K, FD fd.1 fd.2 (r.eval cat)
-  | .read t, _ => keyFds_sound (hK.keys t)
-  | .aggregate _ gs ms, _ => keyFds_sound fun k hk => by
-      simp only [List.mem_singleton] at hk; subst hk; exact aggregateEval_key gs ms _
-  | .values _ _, _ | .unionAll _ _, _ | .unnest _ _, _ => fun _ h => by simp [fds] at h
-  | .filter r c, hwf => fun fd hfd => by
-      simp only [fds, List.mem_append] at hfd
-      rcases hfd with h | h
-      · exact (fds_sound hwf.1 fd h).mono fun x hx => (List.mem_filter.mp hx).1
-      · exact eqFds_sound (fun x hx => (List.mem_filter.mp hx).2) fd h
-  | .fetch r _ _, hwf => fun fd hfd => by
-      simp only [fds] at hfd
-      refine (fds_sound (r := r) hwf fd hfd).mono fun x hx => ?_
-      simp only [eval] at hx
-      split at hx
-      · exact List.mem_of_mem_drop hx
-      · exact List.mem_of_mem_drop (List.mem_of_mem_take hx)
-  | .orderBy r _, hwf => fun fd hfd => by
-      simp only [fds] at hfd
-      exact (fds_sound hwf.1 fd hfd).mono fun x hx => by simpa [eval, List.mem_mergeSort] using hx
-  | .distinct r, hwf => fun fd hfd => by
-      simp only [fds] at hfd
-      exact (fds_sound (r := r) hwf fd hfd).mono fun x hx => canonReps_sub hx
-  | .semi r _ _ _, hwf => fun fd hfd => by
-      simp only [fds] at hfd
-      exact (fds_sound hwf.1 fd hfd).mono fun x hx => (List.mem_filter.mp hx).1
-  | .window r _ _ _, hwf => fun fd hfd => by
-      simp only [fds, List.mem_filter] at hfd
-      refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) hfd.2 (fds_sound hwf.1 fd hfd.1)
-      obtain ⟨_, y, _, _, hy, rfl⟩ := mem_windowEval hrow
-      exact ⟨y, hy, _, rfl⟩
-  | .project r es, hwf => fun fd hfd => by
-      simp only [fds, List.mem_append, List.mem_filter] at hfd
-      rcases hfd with h | h
-      · refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) h.2 (fds_sound hwf.1 fd h.1)
-        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hrow
-        exact ⟨y, hy, _, rfl⟩
-      · simp only [copyFds, List.mem_flatMap] at h
-        obtain ⟨⟨e, q⟩, hq, h⟩ := h
-        have heq := List.mem_zipIdx_iff_getElem?.mp hq
-        cases e with
-        | field j =>
-          simp only at h
-          split at h
-          · rename_i hj
-            -- The copy and its column agree on every row.
-            have hc : ∀ row ∈ (Rel.project r es).eval cat,
-                row.getD (r.arity cat + q) .null = row.getD j .null := fun row hrow => by
-              obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hrow
-              have hl := eval_arity hcat hwf.1 y hy
-              rw [← hl, getD_append_right', getD_append_left' (by omega)]
-              simp [List.getD_eq_getElem?_getD, List.getElem?_map, heq, Expr.eval]
-            simp only [List.mem_cons, List.not_mem_nil, or_false] at h
-            rcases h with rfl | rfl
-            · exact FD.of_eq fun x hx y hy he => by rw [hc x hx, hc y hy]; exact he
-            · exact FD.of_eq fun x hx y hy he => by rw [← hc x hx, ← hc y hy]; exact he
-          · simp at h
-        | _ => simp at h
-  | .emit r m, hwf => fun fd hfd => by
-      simp only [fds, List.mem_flatMap] at hfd
-      obtain ⟨fd₀, h₀, hfd⟩ := hfd
-      have ih := fds_sound hwf.1 fd₀ h₀
-      unfold emitFd at hfd
-      split at hfd
-      · rename_i hall
-        obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hfd
-        have hp' : m[p]? = some fd₀.2 := by simpa using (List.mem_filter.mp hp).2
-        have hk : ∀ y : Row, keyOf (fd₀.1.map fun x => (emitPos? m x).getD 0)
-            (m.map (y.getD · .null)) = keyOf fd₀.1 y := fun y => by
-          simp only [keyOf, List.map_map]
-          refine List.map_congr_left fun x hx => ?_
-          have := List.all_eq_true.mp hall x hx
-          obtain ⟨p', hp''⟩ := Option.isSome_iff_exists.mp this
-          simp only [Function.comp_apply, hp'', Option.getD_some]
-          rw [getD_emit (emitPos?_spec hp'')]
-        intro o ho o' ho' he
-        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp ho
-        obtain ⟨y', hy', rfl⟩ := List.mem_map.mp ho'
-        rw [hk, hk] at he
-        rw [getD_emit hp', getD_emit hp']
-        exact ih y hy y' hy' he
-      · simp at hfd
-  | .cross a b, hwf => fun fd hfd => by
-      simp only [fds, List.mem_append, List.mem_filter, List.mem_map] at hfd
-      rcases hfd with h | ⟨fd₀, h₀, rfl⟩
-      · refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) h.2 (fds_sound hwf.1 fd h.1)
-        obtain ⟨x, hx, y, _, rfl⟩ := mem_crossRows.mp hrow
-        exact ⟨x, hx, y, rfl⟩
-      · refine FD.right (fun row hrow => ?_) (fds_sound hwf.2 fd₀ h₀)
-        obtain ⟨x, hx, y, hy, rfl⟩ := mem_crossRows.mp hrow
-        exact ⟨x, y, eval_arity hcat hwf.1 x hx, hy, rfl⟩
-  | .join a b .inner on, hwf => fun fd hfd => by
-      simp only [fds, List.mem_append, List.mem_filter, List.mem_map] at hfd
-      rcases hfd with (h | ⟨fd₀, h₀, rfl⟩) | h
-      · refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) h.2 (fds_sound hwf.1 fd h.1)
-        obtain ⟨x, hx, y, _, rfl⟩ := mem_crossRows.mp (List.mem_filter.mp hrow).1
-        exact ⟨x, hx, y, rfl⟩
-      · refine FD.right (fun row hrow => ?_) (fds_sound hwf.2.1 fd₀ h₀)
-        obtain ⟨x, hx, y, hy, rfl⟩ := mem_crossRows.mp (List.mem_filter.mp hrow).1
-        exact ⟨x, y, eval_arity hcat hwf.1 x hx, hy, rfl⟩
-      · exact eqFds_sound (fun x hx => (List.mem_filter.mp hx).2) fd h
-  | .join a b .left on, hwf => fun fd hfd => by
-      simp only [fds, List.mem_filter] at hfd
-      refine FD.left (eval_arity hcat hwf.1) (fun row hrow => ?_) hfd.2 (fds_sound hwf.1 fd hfd.1)
-      simp only [eval, List.mem_flatMap] at hrow
-      obtain ⟨x, hx, hrow⟩ := hrow
-      unfold leftJoinRow at hrow
-      simp only [] at hrow
-      split at hrow
-      · exact ⟨x, hx, _, List.mem_singleton.mp hrow⟩
-      · obtain ⟨⟨y, _, rfl⟩, _⟩ := by simpa only [List.mem_filter, List.mem_map] using hrow
-        exact ⟨x, hx, y, rfl⟩
-
 omit hR in
 theorem Rel.fdAgg_sound {r s : Rel} {gs : List Expr} {ms : List Measure} {name : Rule}
     (hwf : (Rel.aggregate r gs ms).WF cat) (h : r.fdAgg cat A F K gs ms = some (name, s)) :
     Same cat (.aggregate r gs ms) s := by
-  have hfds : ∀ fd ∈ r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat),
-      FD fd.1 fd.2 (r.eval cat) := fun fd hfd => by
-    rcases List.mem_append.mp hfd with h | h
-    · exact fds_sound hcat hK hwf.1 fd h
-    · exact keyFds_sound (fun k hk => keys_sound hcat hA hF hK hwf.1 k hk) fd h
+  have hfds : FDsOn (inputFds (r.arity cat) (r.keys cat A F K) (r.fds cat A F K)) (r.eval cat) :=
+    (Rel.fds_sound hcat hA hF hK hwf.1).append (keyFds_sound fun k hk => keys_sound hcat hA hF hK hwf.1 k hk)
   unfold Rel.fdAgg at h
   simp only at h
-  generalize r.fds cat K ++ keyFds (r.keys cat A F K) (r.arity cat) = fds at h hfds
+  generalize inputFds (r.arity cat) (r.keys cat A F K) (r.fds cat A F K) = fds at h hfds
   generalize keepCols fds gs = qs at h
   generalize hD : (List.range gs.length).filter (!qs.contains ·) = drops at h
   split at h

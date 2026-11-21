@@ -15,8 +15,8 @@ merge; [INDEX.md](INDEX.md) lists every query with its status. As of
 reference, is retired: what the reference computes is in
 [docs/reference-semantics.md](../docs/reference-semantics.md) and
 [docs/core-semantics.md](../docs/core-semantics.md), what each engine does
-is in its facts under [characterization/](../characterization/README.md),
-and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
+is in its facts under `engines/<engine>/facts/`
+([how facts are judged](../characterization/README.md)), and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
 [docs/guide.md](../docs/guide.md).
 
 How to read the tables:
@@ -151,7 +151,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
+| `recursive_cte` | 1 | 1 | no | not supported yet: the model has no fixpoint ([#320](https://github.com/AlexanderNenninger/substrait-lean/issues/320)) |
 | `timezone` | 1 | 1 | no |  |
 
 ### Why engines refuse verified queries

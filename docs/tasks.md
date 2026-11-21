@@ -784,12 +784,14 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 0 | proved, or every postcondition it does not prove is checked on the data at each refresh; a refresh committed every row |
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
-| 3 | refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`), or no route takes a proved node to the engine |
+| 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 4 | time or memory budget exceeded |
-| 5 | a refresh committed with rows quarantined, or held a node |
+| 5 | a refresh committed with rows quarantined |
 | 6 | error: the file raised, I/O, a crash |
+| 7 | refused: no route takes a proved node to the engine |
+| 8 | a refresh held a node |
 
-With 5, `refresh` prints `Refresh.alert()` after the summary, and its
+With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
 data that otherwise stay out of CI artifacts and issues.
@@ -948,21 +950,21 @@ A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
 over an input with delta rules, is maintained from a count and a sum per
 group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
-[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[`analysis/Sverify/Analysis/IncrementalAgg.lean`](../analysis/Sverify/Analysis/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
 `DECIMAL` `SUM` and `AVG` keep the same state, `SUM`, `AVG`, `VAR`,
 `STDDEV`, `COVAR` and `CORR` of doubles an exact one, rounded once, with no
 drift
 (`LinearAgg.fsum_no_drift` in
-[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
+[`analysis/Sverify/Analysis/IncrementalFloat.lean`](../analysis/Sverify/Analysis/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
 groups it deletes from are recomputed from the new input
 (`ExtremeAgg.extreme_maintained` in
-[`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)).
+[`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)).
 A node that ends in a semi or anti join on equal keys keeps a count of
 matches per key and reads the left input only for the keys whose count
 leaves or returns to 0 (`SemiDelta.semi_maintained` in
-[`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean)).
+[`analysis/Sverify/Analysis/IncrementalSemi.lean`](../analysis/Sverify/Analysis/IncrementalSemi.lean)).
 A node without delta rules (left join, other aggregates, window, `LIMIT`) is
 recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
@@ -1418,6 +1420,18 @@ reading or writing (`StageRefresh.credentials`, `"credentials"` in
 what its credential may write (`Storage(writes=[...])` or the
 configuration's `writes`), and with `[inline_credentials]` when options
 hold values or a URI holds them in its userinfo (`s3://key:secret@bucket`).
+Where nothing is declared, an AWS session in the options
+(`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, with `AWS_SESSION_TOKEN`
+for an assumed role) reports its own scope when `boto3` is installed
+(`sverify[secrets-aws]`): sverify asks STS who the session is and reads the
+`GetObject` and `PutObject` grants of that role's or user's policies, once
+per credential. A `Deny`, a condition, a `NotAction`, `NotResource` or
+a pattern that is not a prefix leaves the scope unknown, as does a session that
+cannot read its own policies. Session policies, permissions boundaries and
+bucket policies are not in the identity's policies, so the scope is what they
+grant: a session policy or boundary can narrow the session below it, and a
+bucket policy can widen it, so neither `in_scope` value is a guarantee. Other stores (GCS, Azure, a vended catalog credential) report nothing
+yet and need `reads=` and `writes=`.
 Every URI sverify records, reports, exports or sends is written without
 userinfo, query string or fragment: a sink's `location`, `started`,
 `credentials[].location`, the ODCS `physicalName` and the OpenLineage
@@ -2077,8 +2091,13 @@ reads the settings the plan will run under and compares them:
 - Polars: an engine affinity that forces another engine than streaming
   (`pl.Config.set_engine_affinity("in-memory")`) refuses the run, since
   sverify runs Polars's streaming engine.
-- Another engine version warns (`EngineVersionWarning`), and another major
-  version is refused (`EngineVersionError`) until the probes are re-run.
+- An unprobed patch of the probed minor warns (`EngineVersionWarning`) and
+  is recorded on the route (`Route.unprobed_version`); another minor or
+  major is refused (`EngineVersionError`) until the probes are re-run, and
+  runs with `run(..., unverified=True)`
+  ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)). To
+  refuse every unprobed version, turn the warning into an error:
+  `warnings.simplefilter("error", sverify.errors.EngineVersionWarning)`.
 
 `lines.get_backend()`, the backend of a table of the connection, is its Ibis
 DuckDB backend, for SQL of your own, such as

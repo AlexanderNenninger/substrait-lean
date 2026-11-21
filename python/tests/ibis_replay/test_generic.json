@@ -53,7 +53,7 @@
     "test_cast[duckdb-struct]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.struct [Substrait.Kind.int, Substrait.Kind.str] to Substrait",
-      "design": "sverify cannot build a struct; cast its fields (ruling 186, D66 reserved)"
+      "design": "sverify cannot build a struct value yet; cast its fields"
     },
     "test_coalesce[duckdb-generic]": {
       "outcome": "refused",
@@ -374,7 +374,7 @@
     "test_literal_na[duckdb-bytes]": {
       "outcome": "refused",
       "construct": "Unsupported: type binary is not supported; cast the column to a supported type in the source query",
-      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out (ruling 186, D65 reserved)"
+      "design": "sverify reads no binary values; encode them as text at the source (hex or base64), or leave the column out"
     },
     "test_literal_na[duckdb-date]": {
       "outcome": "agree"
@@ -910,7 +910,7 @@
     "test_try_cast_func[duckdb-datetime-to-float]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a double. Lean's model does not cover it yet: rewrite the step, or find",
-      "issue": 1922
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
     },
     "test_try_cast_func[duckdb-string-to-float]": {
       "outcome": "refused",
@@ -920,7 +920,7 @@
     "test_try_cast_null[duckdb-2023-01-01 00:00:00-int]": {
       "outcome": "refused",
       "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to an integer. Lean's model does not cover it yet: rewrite the step, or fi",
-      "issue": 1922
+      "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
     },
     "test_try_cast_null[duckdb-a-int]": {
       "outcome": "refused",

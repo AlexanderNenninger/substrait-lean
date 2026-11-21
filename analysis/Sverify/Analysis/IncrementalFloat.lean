@@ -1,4 +1,4 @@
-import SubstraitLean.IncrementalAgg
+import Sverify.Analysis.IncrementalAgg
 
 /-!
 # Delta rules for `SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` and `CORR` of doubles, exactly (#918 Part B)

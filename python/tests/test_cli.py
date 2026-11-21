@@ -124,7 +124,7 @@ def test_the_json_document(tmp_path, capsys):
     assert doc["unchecked"] == []
     assert set(doc["budget"]) == {"timeout", "elapsed"}
     [item] = doc["items"]
-    assert set(item) == {"name", "nodes", "status", "summary", "links", "report"}
+    assert set(item) == {"name", "nodes", "status", "relaxations", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
     assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
     assert item["report"]["format"] == 4 and item["report"]["proved"] is False
@@ -623,7 +623,9 @@ def test_sarif(tmp_path, capsys):
 def test_help_lists_the_exit_codes(capsys):
     assert main(["--help"]) == 0
     out = capsys.readouterr().out
-    assert "  5  a refresh committed with rows quarantined, or held a node" in out
+    assert "  5  a refresh committed with rows quarantined" in out
+    assert "  7  refused: no route takes the proved node to the engine" in out
+    assert "  8  a refresh held a node" in out
 
 
 QUARANTINE = """
@@ -641,7 +643,7 @@ p = orders.pipe(paid)
 
 
 @pytest.mark.parametrize(
-    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 5, "held")]
+    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 8, "held")]
 )
 def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     tmp_path, capsys, policy, code, status
@@ -691,3 +693,36 @@ def test_classifying_an_import_error_in_sverify_errors_does_not_raise(monkeypatc
 
     monkeypatch.setitem(sys.modules, "sverify.errors", None)  # `import` then raises
     assert _classify(TypeError("boom")) == (ERROR, "error")
+
+
+CHECKED = NOT_PROVED.replace(
+    "ensures=[_.amount > 20])", 'ensures=[_.amount > 20], on_unproved="check")'
+)
+
+
+def test_require_proved_fails_a_node_that_is_only_checked_on_the_data(tmp_path, capsys):
+    path = write(tmp_path, HEAD + CHECKED)
+    got, doc = run_json(capsys, "check", f"{path}:p")
+    assert got == 0 and doc["items"][0]["status"] == "checked"
+    assert doc["items"][0]["relaxations"] == ['on_unproved="check"']
+    got, doc = run_json(capsys, "check", f"{path}:p", "--require-proved")
+    assert got == 1 and doc["status"] == "not_proved"
+    assert [f["code"] for f in doc["findings"]] == ["checked_only"]
+    got, out = run(capsys, "explain", "checked_only")
+    assert got == 0 and "--require-proved" in out
+
+
+def test_a_proved_node_has_no_relaxations_and_passes_require_proved(tmp_path, capsys):
+    path = write(tmp_path, HEAD + PROVED)
+    got, doc = run_json(capsys, "check", f"{path}:p", "--require-proved")
+    assert got == 0 and doc["items"][0]["relaxations"] == []
+
+
+def test_the_relaxations_name_each_setting_that_weakens_the_gate(tmp_path, capsys):
+    body = PROVED.replace(
+        'ensures=[_.amount > 10, sv.unique("id")],',
+        'ensures=[_.amount > 10, sv.unique("id")], on_inferred="ignore", check_requires=False,',
+    )
+    path = write(tmp_path, HEAD + body)
+    _, doc = run_json(capsys, "check", f"{path}:p")
+    assert doc["items"][0]["relaxations"] == ['on_inferred="ignore"', "check_requires=False"]

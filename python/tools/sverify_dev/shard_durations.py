@@ -2,17 +2,19 @@
 
 Maintainer tooling (`sverify_dev`): not in the wheel.
 
-CI splits the `core` tests three ways (`SVERIFY_SHARD`, `tests/_suite.py`)
-and oracle A's replay two ways (`--shard`, `sverify_dev.oracle`). Without a
-table, the tests go by a hash of their node id and the files round-robin,
-which leaves shards unequal. This reads the durations a run records,
-`$SVERIFY_TEST_TIMINGS` (one line per test phase) and `$SVERIFY_SLT_TIMINGS`
-(one line per replayed file, and the benchmarks shard 1 runs), and writes
-each item's shard: longest first, to the shard with the least so far. A test
-or file the table doesn't list keeps the old rule, so the table only needs
-refreshing when the shards drift apart.
+CI splits the `core` tests three ways and the `spark` tests two
+(`SVERIFY_SHARD`, `tests/_suite.py`), and oracle A's replay two ways
+(`--shard`, `sverify_dev.oracle`). Without a table, the tests go by a hash
+of their node id and the files round-robin, which leaves shards unequal.
+This reads the durations a run records, `$SVERIFY_TEST_TIMINGS` (one line
+per test phase) and `$SVERIFY_SLT_TIMINGS` (one line per replayed file, and
+the benchmarks shard 1 runs), and writes each item's shard: longest first,
+to the shard with the least so far. A test or file the table doesn't list
+keeps the old rule, so the table only needs refreshing when the shards
+drift apart.
 
     uv run python -m sverify_dev.shard_durations --tests t1.jsonl t2.jsonl t3.jsonl
+    uv run python -m sverify_dev.shard_durations --spark s1.jsonl s2.jsonl
     uv run python -m sverify_dev.shard_durations --slt s1.jsonl s2.jsonl s3.jsonl s4.jsonl
 """
 
@@ -26,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 TESTS = ROOT / "python" / "tests" / "shards.json"
+SPARK = ROOT / "python" / "tests" / "spark_shards.json"
 ORACLE = ROOT / "python" / "tools" / "sverify_dev" / "oracle_shards.json"
 
 
@@ -67,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--tests", type=Path, nargs="*", default=[], help="$SVERIFY_TEST_TIMINGS files")
     ap.add_argument("--min-s", type=float, default=0.05, help="the shortest test the table lists")
+    ap.add_argument("--spark", type=Path, nargs="*", default=[], help="the spark shards' timings")
     ap.add_argument("--slt", type=Path, nargs="*", default=[], help="$SVERIFY_SLT_TIMINGS files")
     a = ap.parse_args(argv)
     if a.tests:
@@ -74,6 +78,9 @@ def main(argv: list[str] | None = None) -> int:
         # every shard, and the table stays small.
         tests = read(a.tests, "test")
         write(TESTS, balance({t: s for t, s in tests.items() if s >= a.min_s}, 3))
+    if a.spark:
+        tests = read(a.spark, "test")
+        write(SPARK, balance({t: s for t, s in tests.items() if s >= a.min_s}, 2))
     if a.slt:
         from sverify_dev.oracle import BENCHMARKS_TIMING
 
