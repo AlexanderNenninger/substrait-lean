@@ -140,10 +140,12 @@ def test_from_frame_diffs_full_reads():
 
 def test_a_source_of_changes_and_polars_frames():
     pl = pytest.importorskip("polars")
-    batches = [Batch(pl.DataFrame({"id": [1, 2], "ts": [1, 2], "amount": [30, 40]}), cursor=1)]
+    batches = [
+        Batch(table=pl.DataFrame({"id": [1, 2], "ts": [1, 2], "amount": [30, 40]}), cursor=1)
+    ]
     later = [
         Batch(
-            pl.DataFrame({"id": [3], "ts": [3], "amount": [50]}),
+            table=pl.DataFrame({"id": [3], "ts": [3], "amount": [50]}),
             cursor=2,
             kind="changes",
             deletes=pl.DataFrame({"id": [1], "ts": [1], "amount": [30]}),
@@ -187,7 +189,7 @@ class Down(Source):
             raise ConnectionError("server down")
         if since is not None:
             return None
-        return Batch(pa.table({"id": [1], "ts": [1], "amount": [20]}), cursor=1)
+        return Batch(table=pa.table({"id": [1], "ts": [1], "amount": [20]}), cursor=1)
 
 
 def test_a_declared_schema_proves_without_reading():
@@ -244,7 +246,7 @@ class Versioned:
 
     def snapshot(self, version=None):
         v = self.latest() if version is None else version
-        return Snapshot(v, self.versions[v], [])
+        return Snapshot(version=v, table=self.versions[v], facts=[])
 
     def changes(self, since, until=None):
         end = self.latest() if until is None else until
@@ -375,7 +377,7 @@ class Log(Source):
         new = self.entries[since or 0 :]
         if not new:
             return None
-        return Batch(pa.Table.from_pylist(new), cursor=len(self.entries))
+        return Batch(table=pa.Table.from_pylist(new), cursor=len(self.entries))
 
     def restore(self, cursor):
         if not self.durable or cursor > len(self.entries):
@@ -566,7 +568,7 @@ def test_versions_continue_through_a_stored_node_in_memory(tmp_path):
 
 
 def test_a_contract_with_fields_it_does_not_know():
-    c = Contract("v", "p", {"t": 1}, 1, [], {}, [])
+    c = Contract(node="v", plan="p", sources={"t": 1}, epoch=1, not_null=[], checks={}, unique=[])
     text = c.to_json().replace('"node"', '"later": 1, "node"')
     assert Contract.from_json(text) == c
 

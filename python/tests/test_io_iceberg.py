@@ -12,6 +12,7 @@ from pyiceberg.table.snapshots import Operation
 
 import sverify as sv
 from _pipelines import batch, discharged, recomputed, rows
+from sverify import routes
 from sverify._weighted import consolidated
 from sverify.contracts import ON_DATA, SCHEMA
 from sverify.errors import PreconditionError
@@ -620,6 +621,7 @@ def test_sink_creates_its_table_with_location_partitions_and_properties(
     # A sink on the existing table with the same options warns about nothing.
     with warnings.catch_warnings():
         warnings.simplefilter("error")
+        warnings.simplefilter("ignore", routes.EngineVersionWarning)
         again = by_day(src).write(
             IcebergSink(catalog, "db.out", location=where, partition_by=[(column, transform)])
         )
@@ -642,9 +644,14 @@ def test_create_options_of_an_existing_table_are_ignored_with_a_warning(catalog,
     src.table().append(rows_table([(3, "cy", 1)]))
     with pytest.warns(UserWarning, match=IcebergSink._create_options_ignored) as caught:
         big.refresh()
-    # The first warning caught may be another one, such as a ResourceWarning
-    # for an unclosed SQLite connection that a collection raises meanwhile.
-    message = next(str(w.message) for w in caught if issubclass(w.category, UserWarning))
+    # The first warning caught may be another one, such as a ResourceWarning for an unclosed
+    # SQLite connection that a collection raises meanwhile, or the engine-version one (#2045).
+    message = next(
+        str(w.message)
+        for w in caught
+        if issubclass(w.category, UserWarning)
+        and not issubclass(w.category, routes.EngineVersionWarning)
+    )
     assert "location" in message and "partition fields" in message and "'a'" in message
     after = catalog.load_table("db.big")
     assert after.location() == before.location() and after.spec().is_unpartitioned()
@@ -653,6 +660,7 @@ def test_create_options_of_an_existing_table_are_ignored_with_a_warning(catalog,
     src.table().append(rows_table([(4, "di", 1)]))
     with warnings.catch_warnings():
         warnings.simplefilter("error")
+        warnings.simplefilter("ignore", routes.EngineVersionWarning)
         big.refresh()
 
 
@@ -716,6 +724,7 @@ def test_maintenance_keeps_a_streaming_sink_bounded(catalog, tmp_path, partition
         src.table().append(dated([(i, "ab"[i % 2], i, 1 + i % 3)]))
         with warnings.catch_warnings():
             warnings.simplefilter("error", UserWarning)
+            warnings.simplefilter("ignore", routes.EngineVersionWarning)
             down.refresh()
         t = catalog.load_table("db.totals")
         table = t.scan().to_arrow().select(["customer", "n", "total"])

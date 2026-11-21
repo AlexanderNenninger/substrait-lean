@@ -417,22 +417,35 @@ def WinFn.abs (sz : Bool) (env : List AVal) : WinFn → AVal
   | .firstValue _ _ _ | .lastValue _ _ _ | .nthValue _ _ _ _ => AVal.top
   | .lag c _ d | .lead c _ d => (env.getD c AVal.top).join (AVal.ofValue d)
 
-/-- `ratio` facts for a `SUM` and a `COUNT` of the same values, which a
-decimal `AVG` divides (`Parse.decimalAvgs`, #237): the sum is of as many
+/-- The `ratio` fact of a `SUM` in column `s` and a `COUNT` in column `c` of the
+same values, which a decimal `AVG` divides (#237): the sum is of as many
 integers as the count, each within the bound `env` and `fs` give the values. -/
+def ratioPair (s c : Nat) (env : List AVal) (fs : List Fact) (mi mj : Measure) : List Fact :=
+  let a := mi.arg.absD env fs
+  if mi.fn = .sum ∧ mj.fn = .count ∧ mj.arg = mi.arg ∧ mj.filter = mi.filter ∧
+      mj.distinct = mi.distinct ∧ a.unscaledOnly = true then
+    match a.int with
+    | some b => [.ratio s c b]
+    | none => []
+  else []
+
+/-- `ratio` facts for an aggregate's sums and counts of the same values
+(`Parse.decimalAvgs`). -/
 def ratioFacts (g : Nat) (env : List AVal) (fs : List Fact) (ms : List Measure) : List Fact :=
   (List.range ms.length).flatMap fun i => (List.range ms.length).flatMap fun j =>
     match ms[i]?, ms[j]? with
-    | some mi, some mj =>
-      let a := mi.arg.absD env fs
-      if mi.fn = .sum ∧ mj.fn = .count ∧ mj.arg = mi.arg ∧ mj.filter = mi.filter ∧
-          mj.distinct = mi.distinct ∧ a.unscaledOnly = true then
-        match a.int with
-        | some b => [.ratio (g + i) (g + j) b]
-        | none => []
-      else []
+    | some mi, some mj => ratioPair (g + i) (g + j) env fs mi mj
     | _, _ => []
 
+/-- `ratio` facts for a window's sums and counts of the same values over the
+same frame: the `SUM` and `COUNT` of a decimal `AVG` over a window
+(`Parse.parseWindowProject`, #2015). -/
+def winRatioFacts (g : Nat) (env : List AVal) (fs : List Fact) (fns : List WinFn) : List Fact :=
+  (List.range fns.length).flatMap fun i => (List.range fns.length).flatMap fun j =>
+    match fns[i]?, fns[j]? with
+    | some (WinFn.agg mi si fi), some (WinFn.agg mj sj fj) =>
+      if sj = si ∧ fj = fi then ratioPair (g + i) (g + j) env fs mi mj else []
+    | _, _ => []
 
 mutual
 /-- Abstract evaluation. `A t` describes the columns of table `t`; `F t` holds
@@ -469,12 +482,13 @@ def Rel.aeval (cat : Catalog) (A : String → List AVal) (F : String → List Fa
       let n := r.maxRows
       gs.map (·.absD env fs) ++ ms.map fun m => Measure.abs env fs m (!gs.isEmpty) n
 
-/-- Facts about an aggregate's rows that need its input's description: the
-`ratio` facts of its sums and counts, for the decimal `AVG`s a projection
-divides (#237). -/
+/-- Facts about an aggregate's or a window's rows that need its input's
+description: the `ratio` facts of its sums and counts, for the decimal `AVG`s a
+projection divides (#237, #2015). -/
 def Rel.ratioPart (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
     (T : WindowKeys) (sz : Bool := false) : Rel → List Fact
   | .aggregate r gs ms => ratioFacts gs.length (r.aeval cat A F T sz) (r.facts cat F T) ms
+  | .window r _ _ fns => winRatioFacts (r.arity cat) (r.aeval cat A F T sz) (r.facts cat F T) fns
   | _ => []
 end
 
@@ -537,7 +551,7 @@ def Rel.laneStep (cat : Catalog) (A : String → List AVal) (F : String → List
   | .window r part sort fns, l, _ =>
       ⟨l.arity + fns.length,
         l.facts.filter (·.inRange l.arity) ++ winFacts part sort (T r part sort) l.arity fns,
-        l.env ++ fns.map (WinFn.abs sz l.env), [], l.rows⟩
+        l.env ++ fns.map (WinFn.abs sz l.env), winRatioFacts l.arity l.env l.facts fns, l.rows⟩
   | .semi _ _ _ _, l, _ =>
       ⟨l.arity, l.facts, l.env, [], l.rows⟩
   | .orderBy _ _, l, _ =>

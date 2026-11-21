@@ -168,6 +168,10 @@ may change in a minor release. A plugin checks `PLUGIN_API`, and an engine
 package pins the sverify version it was built for. Custom sources and sinks
 are the stable extension points.
 
+The checker, `substrait-check`, ships in the wheel as part of the package. Its
+flags and its JSON protocol belong to one release of sverify, and
+`CheckerVersionError` is the whole promise about a binary of another release.
+
 The engines in the promise are those [Engines](#engines) lists.
 
 A minor release may break the public API only when the break is:
@@ -183,6 +187,10 @@ A renamed or removed name is gone in that release: sverify keeps no deprecated
 alias. The old form raises, and the changelog entry names the replacement. A
 release with breaking changes lists them first in its section of
 [the changelog](../CHANGELOG.md).
+
+The 1.x promise covers sverify-dbt's command line, exit codes and JSON, which
+are sverify's own ([the package's README](../dbt/README.md)). Its Python names
+are documented and outside the promise.
 
 ## Engines
 

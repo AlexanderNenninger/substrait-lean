@@ -130,7 +130,7 @@ current text built from it, so that a frontend phrases it in its own terms.
 
 Closed in substrait-lean#685: `CheckedCondition.reason`; sverify-dbt words each reason from it (`_WHY`).
 
-### 5. `Report.needed` gives Ibis code; the SQL and the column are hidden
+### 5. `Report.needed` (now `Report.needs`) gives Ibis code; the SQL and the column are hidden
 
 With `on_inferred="error"`, `report.needed` is `{"subscriptions":
 ["(_.mrr < 7 * 10**17)"]}`: Ibis code, which a SQL or dbt user cannot

@@ -1,0 +1,42 @@
+{
+  "id": "spark-exec-parser-depth",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "Parser: a deeply nested statement is refused as too complex",
+  "verdict": "`FAILED_TO_PARSE_TOO_COMPLEX` (SQLSTATE 54001) for a nest of about 80 levels; 70 parse",
+  "area": "execution",
+  "options": [
+    "size_limits"
+  ],
+  "constructs": [
+    "spark.sql",
+    "FAILED_TO_PARSE_TOO_COMPLEX",
+    "AND",
+    "OR"
+  ],
+  "settings": {},
+  "description": [
+    "Spark's SQL parser is recursive, so its depth is bounded by the JVM thread's stack. A statement nested past what the stack takes makes `spark.sql` raise a `ParseException` with the condition `FAILED_TO_PARSE_TOO_COMPLEX` (SQLSTATE 54001) and run nothing; the driver also logs the whole statement, 299 KB at the depth below.",
+    "The probe (`python -m sverify_dev.spark_parser_depth`) filters 3,000 rows on a guarded column nested to n levels of `(z > 0) | e` and `(z > 0) & e`, the SQL sverify writes for a nest of bound guards (#2030). The statement grows by about 3 KB per level on average: 9.7 KB at 10 levels, 26 KB at 20, 231 KB at 70, 299 KB at 80. At 70 levels every run parsed it; at 80 levels two runs on a fresh JVM were refused and a run that had parsed the smaller levels first accepted it, so the depth is not a fixed number: it moves with how the JVM has compiled the parser (compiled frames are smaller than interpreted ones). The fact claims no threshold, and a plan near 80 levels may or may not parse.",
+    "Time is in the optimizer, not the parser: at 10 levels parse and analysis took 0.6 s and the optimizer 0.3 s; at 20 levels 0.2 s and 0.6 s, under 1 s each; at 70 levels parse and analysis 0.6 to 1.7 s and the optimizer 5 to 15 s of the 6 to 17 s the statement took, with execution under 0.5 s. A run that seemed to hang at 80 levels was the probe's own child process, whose undrained stderr pipe filled while Spark logged the statement; read to the end, the child exits in 12 s."
+  ],
+  "reference": "The reference has no limit on nesting.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-21",
+      "method": "probe",
+      "checked_by": "sverify_dev.spark_parser_depth on homelab (#2030, ruling 224 E3)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/parser-depth.json",
+          "note": "rows for 10, 20, 70 and 80 levels with the SQL's size and each phase's time, and the cold-JVM runs at 70 and 80"
+        }
+      ],
+      "notes": [
+        "Spark 4.3.0 (PySpark 4.3.0), local[2], one process per row of `cold`; the refusal is `ParseException` with `getCondition()` = FAILED_TO_PARSE_TOO_COMPLEX, which `sverify_spark.engine.parse_sql` raises as `Unsupported` naming this fact (E1, E2)."
+      ]
+    }
+  ]
+}
