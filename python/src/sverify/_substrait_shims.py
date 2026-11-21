@@ -21,7 +21,7 @@ write the gap away (the export then refuses, or annotates with
   x + 0.0)`, and the key comes back as `if k1 then NaN else k2`; a double
   sort key is `is_nan(x)` and then `x + 0.0`, so NaN sorts greatest and the
   two zeros tie. An ordering comparison of doubles is
-  `CASE WHEN x IS NULL OR y IS NULL THEN NULL ELSE t END`, with `t` built from one
+  `(t AND NOT n) OR (n AND NULL)`, with `n` the test `x IS NULL OR y IS NULL` and `t` built from one
   `x < y`: `(NOT is_nan(x) AND is_nan(y)) OR (NOT is_nan(x) AND NOT is_nan(y) AND
   x + 0.0 < y + 0.0)`; `x > y` is `y < x`, `x <= y` is `NOT y < x`, `x >= y` is
   `NOT x < y` and `between` is `>=` and `<=`.
