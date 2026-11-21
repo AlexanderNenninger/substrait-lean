@@ -431,6 +431,8 @@ end Substrait.Examples
 #print axioms Substrait.ContractCheck.verdict_proved_sound
 #print axioms Substrait.ContractCheck.verified_holds_run_plan
 #print axioms Substrait.ContractCheck.verified_holds_run_plan_duckdb
+#print axioms Substrait.ContractCheck.verified_holds_run_plan_polars
+#print axioms Substrait.ContractCheck.verified_holds_run_plan_spark
 #print axioms Substrait.Rel.unsorted_refinesBag_not_refines
 #print axioms Substrait.Expr.robust_of_robustB
 #print axioms Substrait.Expr.narrow_sound
