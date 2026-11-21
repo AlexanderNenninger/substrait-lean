@@ -431,3 +431,27 @@ def test_a_text_fact_travels_and_is_checked_on_read_back() -> None:
     put_table(con, "s", pa.table({"s": ["abc", "äbc"]}))
     with pytest.raises(PreconditionError, match="refused before the run"):
         back.run(con, "duckdb")
+
+
+# -- ST-4: the ordering comparisons of doubles (#741) ----------------------------------
+
+ORDERINGS = {
+    "gt": orders.filter(orders.x > 1.0).select("id"),
+    "gte": orders.filter(orders.x >= 1.0).select("id"),
+    "lt": orders.filter(orders.x < orders.amount).select("id"),
+    "lte": orders.filter(orders.x <= 1.0).select("id"),
+    "between": orders.filter(orders.x.between(0.0, 2.0)).select("id"),
+}
+
+
+@pytest.mark.parametrize("case", list(ORDERINGS))
+def test_an_ordering_comparison_of_doubles_exports(case: str) -> None:
+    report = _verify(ORDERINGS[case], BOUNDED)
+    m = read(report.to_substrait()).manifest
+    assert any(s["option"] in ("nan_order", "nan_equality", "zero_sign") for s in m["shims"]), m
+    assert not m["assumptions"]
+    assert "is_nan" in json.dumps(read(report.to_substrait()).plan)
+    back = sv.Report.from_substrait(report.to_substrait())
+    assert back.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS)
+    with pytest.raises(ExportError, match="ST-4"):
+        report.to_substrait(shims="refuse")

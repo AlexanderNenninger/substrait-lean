@@ -20,8 +20,10 @@ write the gap away (the export then refuses, or annotates with
   double grouping key is the pair `(is_nan(x), if is_nan(x) then 0.0 else
   x + 0.0)`, and the key comes back as `if k1 then NaN else k2`; a double
   sort key is `is_nan(x)` and then `x + 0.0`, so NaN sorts greatest and the
-  two zeros tie. An ordering comparison of doubles (`<`, `>=`, …) has no
-  shim yet.
+  two zeros tie. An ordering comparison of doubles is built from one
+  `x < y`: `(NOT is_nan(x) AND is_nan(y)) OR (NOT is_nan(x) AND NOT is_nan(y) AND
+  x + 0.0 < y + 0.0)`; `x > y` is `y < x`, `x <= y` is `NOT y < x`, `x >= y` is
+  `NOT x < y` and `between` is `>=` and `<=`.
 - ST-6 (`float_to_int`): a cast of a double or decimal to an integer
   truncates first, `if x >= 0 then floor(x) else ceil(x)`, so the cast is
   exact.
@@ -104,12 +106,30 @@ def _is_double(t: Any) -> bool:
 
 def st4(typer: _Typer, b: Builder) -> Json | None:
     """Comparisons, keys and sorts of doubles, with NaN equal to NaN and
-    greatest, and one zero (ST-4). None where the plan orders doubles by a
-    comparison, which no shim writes yet."""
-    if any(c.name in _ORDERING and any(_is_double(a) for a in c.args) for c in typer.calls):
-        return None
+    greatest, and one zero (ST-4)."""
     done: list[str] = []
     for c in typer.calls:
+        if c.name in _ORDERING and any(_is_double(a) for a in c.args):
+            if not all(_is_double(a) for a in c.args) or c.holder is None:
+                return None
+            args = [a["value"] for a in c.node["arguments"]]
+            if c.name == "between":
+                e, lo, hi = args
+                out = b.call("and", _not_less(b, e, lo), _not_less(b, hi, e))
+            else:
+                x, y = args
+                if c.name == "lt":
+                    out = _less(b, x, y)
+                elif c.name == "gt":
+                    out = _less(b, y, x)
+                elif c.name == "lte":
+                    out = _not_less(b, y, x)
+                else:
+                    out = _not_less(b, x, y)
+            c.holder.clear()
+            c.holder.update(out)
+            done.append(f"{c.name} of doubles: NaN greatest, one zero")
+            continue
         if c.name in _EQUALITY and len(c.args) == 2 and all(_is_double(a) for a in c.args):
             x, y = (a["value"] for a in c.node["arguments"])
             eq = b.call("equal", b.canonical(x), b.canonical(y))
@@ -139,6 +159,19 @@ def st4(typer: _Typer, b: Builder) -> Json | None:
                 return None
             done.append("grouping key of doubles: (is_nan(x), if is_nan(x) then 0.0 else x + 0.0)")
     return {"shim": "; ".join(dict.fromkeys(done)) or "no double comparison, key or sort"}
+
+
+def _less(b: Builder, x: Json, y: Json) -> Json:
+    """`x < y` with NaN greatest and one zero."""
+    nx, ny = (b.call("is_nan", copy.deepcopy(v)) for v in (x, y))
+    both = b.call("and", b.call("not", copy.deepcopy(nx)), b.call("not", copy.deepcopy(ny)))
+    plain = b.call("and", both, b.call("lt", b.canonical(x), b.canonical(y)))
+    return b.call("or", b.call("and", b.call("not", nx), ny), plain)
+
+
+def _not_less(b: Builder, x: Json, y: Json) -> Json:
+    """`x >= y`, which is `NOT x < y`: the order is total."""
+    return b.call("not", _less(b, x, y))
 
 
 def _split_sorts(node: Any) -> None:
