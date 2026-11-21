@@ -2,14 +2,15 @@
   "id": "F245",
   "date": "2026-11-21",
   "decided_by": "fable",
-  "scope": "reference-semantics",
+  "scope": "engines",
   "status": "in-force",
-  "summary": "#346: no core option and no `.500` arm for DuckDB's DECIMAL(p, p) text (amends ruling 244 (b)): dtextFull equals dtext, its only DuckDB lowering is the widening template, the lift refuses the cast, D72 adds no option, and DECIMAL(38, 38) on DuckDB is a refusal in verify's report.",
+  "summary": "#346: DuckDB's DECIMAL(p, p) text needs no core option: `dtextFull` is proved equal to `dtext`, DuckDB lowers it only through widening, and the SQL lift refuses `CAST(DECIMAL(p,p) AS VARCHAR)` as a listed D54 dialect difference whose message names the cast to DECIMAL(p+1, p).",
   "issues": [
     346
   ],
-  "source": "fable-ruling-245-346-decimal-text-no-option.md",
   "amends": [
     "F244"
-  ]
+  ],
+  "source": "fable-ruling-245-346-decimal-text-no-option.md",
+  "note": "Amends ruling 244 (b) (E1-E6). DuckDB at DECIMAL(38,38) is refused in verify's report, never at run time. A decimal_text option is After 1.0, on request."
 }

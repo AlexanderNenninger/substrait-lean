@@ -59,12 +59,21 @@ def test_the_sarif_document(tmp_path, capsys) -> None:
     assert code == 1 and json.loads(out)["version"] == "2.1.0"
 
 
+def test_the_sarif_document_is_valid(tmp_path, capsys) -> None:
+    from _sarif import valid_sarif
+
+    q, s = _files(tmp_path, "SELECT id, amount * 2 AS d FROM orders")
+    code, out = _run(capsys, "check", q, "--schema", s, "--format", "sarif")
+    assert code == 1 and valid_sarif(out)["runs"][0]["results"]
+
+
 @pytest.mark.parametrize(
     ("sql", "text"),
     [
         ("SELECT id FROM orders; SELECT 1", "one query per file"),
         ("", "one query per file"),
         ("SELECT id FROM orders PIVOT x", "cannot parse"),
+        ("SELECT 'unterminated FROM orders", "cannot parse"),
         ("SELECT id FROM nowhere", "no schema for: nowhere"),
     ],
 )

@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -236,90 +236,143 @@ def expand_keys(conds: Sequence[Condition]) -> list[Condition]:
 
 @dataclass(frozen=True)
 class References(TableCondition):
-    """A foreign key: every non-NULL value of `col` occurs in column `other`
-    of table `table` (see `references`).
+    """A foreign key: every row whose `cols` are all non-NULL has a row of
+    `table` whose `others` equal them, part by part (see `references`).
 
     Attributes:
-        col: The referencing column, in the table the condition is on.
+        cols: The referencing columns, in the table the condition is on.
         table: The name of the referenced table.
-        other: The referenced column of `table`.
+        others: The referenced columns of `table`; part i of `cols` refers to
+            part i of `others`.
     """
 
-    col: str
+    cols: tuple[str, ...]
     table: str
-    other: str
+    others: tuple[str, ...]
 
     entry: ClassVar[str | None] = "references"
 
     @property
     def label(self) -> str:
-        return f"references({self.col}, {self.table}.{self.other})"
+        if len(self.cols) == 1:
+            return f"references({self.cols[0]}, {self.table}.{self.others[0]})"
+        cols, others = ", ".join(self.cols), ", ".join(self.others)
+        return f"references(({cols}), {self.table}.({others}))"
 
     def count_query(self, table: ir.Table, tables: Callable[[str], ir.Table]) -> ir.Table:
         other = tables(self.table)
-        present = table.filter(table[self.col].notnull())
-        missing = present.anti_join(other, [present[self.col] == other[self.other]])
+        present = table.filter([table[c].notnull() for c in self.cols])
+        on = [present[c] == other[o] for c, o in zip(self.cols, self.others, strict=True)]
+        missing = present.anti_join(other, on)
         return missing.aggregate(v=missing.count())
 
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
-        present = {key(r[self.other]) for r in other(self.table)}
-        return [r for r in rows if r[self.col] is not None and key(r[self.col]) not in present]
+        present = {tuple(key(r[o]) for o in self.others) for r in other(self.table)}
+        return [
+            r
+            for r in rows
+            if all(r[c] is not None for c in self.cols)
+            and tuple(key(r[c]) for c in self.cols) not in present
+        ]
 
     def plan_entry(self, t: str, names: Callable[[str], Sequence[str]]) -> Any:
         try:
             other = names(self.table)
         except KeyError:
             raise ValueError(f"references() names an unknown table: {self.table!r}") from None
-        [col] = _positions([self.col], names(t))
-        [ref] = _positions([self.other], other)
-        return [col, self.table, ref]
+        return [_positions(self.cols, names(t)), self.table, _positions(self.others, other)]
+
+    def check_types(self, t: str, schemas: Mapping[str, Any]) -> None:
+        """Refuse a pair of columns that do not compare, on which the data
+        check's join would fail."""
+        import ibis.expr.datatypes as dt
+
+        if t not in schemas or self.table not in schemas:
+            return
+        for c, o in zip(self.cols, self.others, strict=True):
+            a = schemas[t][c] if c in schemas[t].names else None
+            b = schemas[self.table][o] if o in schemas[self.table].names else None
+            if a is not None and b is not None and not (dt.castable(a, b) or dt.castable(b, a)):
+                raise TypeError(
+                    f"{self.label} on {t}: {t}.{c} is {a} and {self.table}.{o} is {b}, "
+                    "which do not compare"
+                )
 
     def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
         return CheckedCondition(self.label, False, "foreign keys are not proved")
 
 
-def references(col: str, *, to: ir.Column | tuple[str, str] | None = None) -> References:
-    """A foreign key: every non-NULL value of `col` occurs in the column `to`
-    of another table.
+def references(
+    *cols: str,
+    to: ir.Column | Sequence[ir.Column] | tuple[str, str | Sequence[str]] | None = None,
+) -> References:
+    """A foreign key: every row whose `cols` are all non-NULL has a row of the
+    referenced table whose columns `to` equal them, part by part (SQL's MATCH
+    SIMPLE: a row with a NULL part is exempt).
 
     Only for `requires`, where it is checked on the data like `unique` (the
     referenced table must be bound to the same backend). With a key on the
     referenced column it lets `Rel.optimize` turn a left join on it into an
-    inner join (`Rel.optimize`; the report keeps it internally). Not supported by incremental views.
+    inner join (one column only; the report keeps it internally). Not
+    supported by incremental views.
 
     Args:
-        col: The referencing column of the input the condition is on.
-        to: The referenced column, keyword-only: an Ibis column of a named
-            table (`customers.id`), or a `(table, column)` pair of names as
-            `verify` and the backend know them.
+        *cols: The referencing columns of the input the condition is on.
+        to: The referenced columns, keyword-only, in the order of `cols`: an
+            Ibis column of a named table (`customers.id`) or a list of them
+            from one table, or a `(table, column)` pair of names as `verify`
+            and the backend know them, with a list of columns for several.
 
     Returns:
         A `References` condition, for `requires`.
 
     Raises:
-        TypeError: `to` is missing, or is not a column of a named table.
+        TypeError: `to` is missing, or is not columns of one named table.
+        ValueError: no columns, a column repeated, or `to` naming another
+            number of columns.
 
     Examples:
         ```python
         sv.references("customer_id", to=customers.id)
         sv.references("customer_id", to=("customers", "id"))
+        sv.references("street", "zip", to=[addresses.street, addresses.zip])
+        sv.references("street", "zip", to=("addresses", ["street", "zip"]))
         ```
     """
+    if not cols:
+        raise ValueError("references() needs at least one column")
     if to is None:
         raise TypeError(
-            f"references({col!r}) needs the referenced column: to=customers.id or "
-            "to=('customers', 'id')"
+            f"references({', '.join(map(repr, cols))}) needs the referenced column: "
+            "to=customers.id or to=('customers', 'id')"
         )
-    elif isinstance(to, ir.Column):
-        op = to.op()
-        if not (isinstance(op, ops.Field) and isinstance(op.rel, ops.PhysicalTable)):
-            raise TypeError(
-                "references(to=...) takes a column of a named table, such as customers.id"
-            )
-        table, other = op.rel.name, op.name
+    if isinstance(to, ir.Column) or (
+        isinstance(to, list | tuple) and to and all(isinstance(c, ir.Column) for c in to)
+    ):
+        named = [_named_column(c) for c in ([to] if isinstance(to, ir.Column) else to)]
+        tables = sorted({t for t, _ in named})
+        if len(tables) > 1:
+            raise TypeError(f"references(to=...) takes columns of one table, not of {tables}")
+        table, others = tables[0], tuple(o for _, o in named)
     else:
-        table, other = to
-    return References(col, table, other)
+        table, other = to  # type: ignore[misc]
+        others = (other,) if isinstance(other, str) else tuple(other)
+    if len(others) != len(cols):
+        raise ValueError(
+            f"references() has {len(cols)} column(s) and {len(others)} referenced column(s)"
+        )
+    for side in (cols, others):
+        if dup := sorted({c for c in side if side.count(c) > 1}):
+            raise ValueError(f"references() repeats the column(s) {dup}")
+    return References(tuple(cols), table, others)
+
+
+def _named_column(c: ir.Column) -> tuple[str, str]:
+    """The table and name of a column of a named table."""
+    op = c.op()
+    if not (isinstance(op, ops.Field) and isinstance(op.rel, ops.PhysicalTable)):
+        raise TypeError("references(to=...) takes a column of a named table, such as customers.id")
+    return op.rel.name, op.name
 
 
 @dataclass(frozen=True)

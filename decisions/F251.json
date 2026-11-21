@@ -1,0 +1,13 @@
+{
+  "id": "F251",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#271: `Ty.has` requires a double for a float under `.double`, `.atom`, `.doubles` and inside `.any`, so a black box that returns a non-double fails its type and falls back to its sample, with no new hypothesis.",
+  "issues": [
+    271
+  ],
+  "source": "fable-ruling-251-271-blackbox-dbl.md",
+  "note": "K1-K4; the fallback is a Boxes.Dbl field per package if the check's cost puts the module over its build target. No D-number."
+}

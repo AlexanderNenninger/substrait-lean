@@ -210,13 +210,12 @@ def test_ties_permuted_sits_between_sequence_and_multiset(monkeypatch, con) -> N
     assert r.refused and "rows" in r.reason
 
 
-def test_deterministic_is_deprecated():
+def test_deterministic_is_gone():
     t = ibis.table({"k": "int64"}, name="t")
     report = sv.verify(t.select("k"))
     con = sv.connect()
     con.put("t", pa.table({"k": [1, 2]}))
-    with pytest.warns(DeprecationWarning, match=r"deterministic=\.\.\.\) is deprecated"):
-        out = report.run(con, "duckdb", deterministic=True)
-    assert sorted(out.column("k").to_pylist()) == [1, 2]
-    with pytest.warns(DeprecationWarning, match="reproducible=sv.equivalent"):
-        assert not routes.choose(report, "duckdb", deterministic=True).refused
+    with pytest.raises(TypeError):
+        report.run(con, "duckdb", deterministic=True)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        routes.choose(report, "duckdb", deterministic=True)  # type: ignore[call-arg]

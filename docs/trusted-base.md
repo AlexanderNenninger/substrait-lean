@@ -183,7 +183,10 @@ Sverify's words claim no more than these theorems give
 - The frontends produce the plan the user meant: the Ibis producer
   (`python/src/sverify/ibis_substrait/`) and the SQLGlot lift for DuckDB's
   SQL (`python/src/sverify/sql_lift/`), which writes each function's options explicitly from the source
-  dialect.
+  dialect. A plugin's SQL front-end (`ProfilePlugin.sql`, a dialect's parse name and
+  its lift) decides what that dialect's SQL means, so it is in the trusted base
+  as DuckDB's is, and a report of SQL it read names its package and version
+  (`Report.notes`).
 - The parser and the writer, `Parse.lean` and `Write.lean`. The CLI checks
   that every plan it writes parses back to the same `Rel`, and the golden
   tests (`tests/run.sh`) run that round trip on every fixture. That shows the
@@ -356,12 +359,19 @@ Sverify's words claim no more than these theorems give
   its formula in Python's doubles.
 
   Beside `Engine.Runs`, the bound on
-  [summation orders](float-bounds.md): the engines' summation algorithms meet
-  `SumBound` (a double `SUM` within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact
-  sum), which `Rel.AllowedP` takes for every non-`EXACT` `sum_order`. It is
-  justified by `float-bounds`' `StdModel.Summed.near`, `epsilon_sum_cr` and
-  `Rnd.kahan_near` on the engines' facts; a link from `float-bounds` to the
-  core's codes, [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), retires it.
+  [summation orders](float-bounds.md): `Rel.AllowedP` takes `SumBound` (a
+  double `SUM` within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact sum) for every
+  non-`EXACT` `sum_order`, of the codes as they are and of the canonical codes
+  (`-0.0` read as `+0.0`; D35, amended 2026-11-21 by ruling 242). For the
+  orders with a shape (`ANY`, `PAIRWISE`, `SEQUENTIAL`: `FloatSums`) both
+  clauses are proved from the shape under the core's rounding
+  (`FloatBridge.FloatSums.sumBound`, `float-bounds/FloatBridge/Sums.lean`; the
+  canonical one by `FloatSums.canonV`, since IEEE addition treats the two zeros
+  alike but for the sign of a zero result). For Kahan's sum (`COMPENSATED`)
+  and a constant run's product (`SCALED_CONSTANT`) both are justified by
+  `float-bounds`' `Rnd.kahan_near` and `TreeSum.const` over the reals; those
+  algorithms written on the core's codes,
+  [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), retire the rest.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the

@@ -41,6 +41,28 @@ breaks a law the compiled checker panics, so it refuses the rows instead of
 showing the sample (#1484).
 -/
 
+namespace Substrait
+
+mutual
+/-- Every double in the value, inside lists and structs too, is a double's
+code (`FloatFormat.Dbl`, ruling 248). -/
+def Value.dbl : Value → Bool
+  | .float c => fp64.dbl c
+  | .list vs | .struct vs => Value.allDbl vs
+  | _ => true
+
+def Value.allDbl : List Value → Bool
+  | [] => true
+  | v :: vs => v.dbl && Value.allDbl vs
+end
+
+theorem Value.allDbl_iff {vs : List Value} : Value.allDbl vs = true ↔ ∀ v ∈ vs, v.dbl = true := by
+  induction vs with
+  | nil => simp [Value.allDbl]
+  | cons v vs ih => simp [Value.allDbl, ih]
+
+end Substrait
+
 namespace Substrait.BlackBox
 
 /-- The URN of sverify's black-box functions: Substrait has none of them. -/
@@ -81,18 +103,21 @@ def strOrNull : Value → Bool
   | .null | .str _ => true
   | _ => false
 
-/-- Is `v` NULL or a value of the type? -/
+/-- Is `v` NULL or a value of the type? A double is a double's code
+(`FloatFormat.Dbl`), not merely an integer magnitude below the largest
+(ruling 251). -/
 def Ty.has : Ty → Value → Bool
   | _, .null => true
-  | .int, .int _ | .double, .float _ | .date, .date _ | .timestamp, .ts _ => true
+  | .double, .float c | .atom, .float c => fp64.dbl c
+  | .int, .int _ | .date, .date _ | .timestamp, .ts _ => true
   | .str, .str _ => true
   | .bool, .bool _ => true
-  | .atom, .int _ | .atom, .float _ | .atom, .date _ | .atom, .ts _ | .atom, .tod _
+  | .atom, .int _ | .atom, .date _ | .atom, .ts _ | .atom, .tod _
   | .atom, .dec _ _ | .atom, .str _ | .atom, .bool _ => true
-  | .doubles, .list vs => vs.all floatOrNull
+  | .doubles, .list vs => vs.all floatOrNull && Value.allDbl vs
   | .ints, .list vs => vs.all intOrNull
   | .strs, .list vs => vs.all strOrNull
-  | .any, _ => true
+  | .any, v => v.dbl
   | _, _ => false
 
 /-- A property of a black box's result that the contract checker may use. -/
@@ -362,6 +387,37 @@ theorem Aggregate.call_ok_of_wf {B : Boxes} (hB : B.WF) {f : Aggregate}
     (hf : f ∈ B.aggregates) {vs : List Value} (hne : vs ≠ []) :
     ok f.result f.laws true (f.call vs) = true :=
   Aggregate.call_ok (hB.2 f hf).1 hne
+
+/-- A value of a type holds doubles only. -/
+theorem Ty.has_dbl {t : Ty} {v : Value} (h : t.has v = true) : v.dbl = true := by
+  cases t <;> cases v <;> simp_all [Ty.has, Value.dbl, Value.allDbl_iff]
+  all_goals
+    intro x hx
+    have := h x hx
+    cases x <;> simp_all [intOrNull, strOrNull, Value.dbl]
+
+theorem ok_dbl {t : Ty} {laws : List Law} {set : Bool} {v : Value} (h : ok t laws set v = true) :
+    v.dbl = true := by
+  simp only [ok, Bool.and_eq_true] at h; exact Ty.has_dbl h.1
+
+/-- **A well-formed catalogue's scalars give doubles.** -/
+theorem callScalar_dbl {B : Boxes} (hB : B.WF) (name : String) (vs : List Value) :
+    (callScalar B name vs).dbl = true := by
+  unfold callScalar
+  split
+  · rename_i f hf; exact ok_dbl (Scalar.call_ok_of_wf hB (scalar?_mem hf) vs)
+  · rfl
+
+/-- **A well-formed catalogue's aggregates give doubles.** -/
+theorem callAgg_dbl {B : Boxes} (hB : B.WF) (name : String) (vs : List Value) :
+    (callAgg B name vs).dbl = true := by
+  unfold callAgg
+  split
+  · rename_i f hf
+    by_cases hne : vs = []
+    · subst hne; rw [Aggregate.call_nil]; exact Ty.has_dbl (hB.2 f (aggregate?_mem hf)).2
+    · exact ok_dbl (Aggregate.call_ok_of_wf hB (aggregate?_mem hf) hne)
+  · rfl
 
 theorem mayRaise_of_raisesOn {B : Boxes} {name : String} {vs : List Value}
     (h : raisesOn B name vs = true) : mayRaise B name = true := by

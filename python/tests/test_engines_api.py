@@ -123,13 +123,10 @@ def test_the_plan_layer_is_its_own_module():
         assert not hasattr(sverify.engines, name), name
 
 
-def test_connection_arrow_and_ibis_are_deprecated():
+def test_connection_arrow_and_ibis_are_gone():
     con = _con()
-    with pytest.warns(DeprecationWarning, match=r"con\.get\(name\)"):
-        assert con.arrow["orders"].num_rows == 2
-    with pytest.warns(DeprecationWarning, match=r"get_backend\(\)"):
-        backend = con.ibis
-    assert backend is con.table("orders").get_backend()
+    assert not hasattr(con, "arrow") and not hasattr(con, "ibis")
+    assert con.table("orders").get_backend() is con._ibis
 
 
 def test_substrait_json_defaults_to_the_reference():

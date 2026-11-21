@@ -134,8 +134,9 @@ def Profile.duckdb.obs : ObsTable := [
   -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
   -- exactly through the proved template (`Lowering.zeroTemplate`).
   (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["duckdb-R15-round",
-    "duckdb-R15-round-digits"] with shim := some "round: 0.0 for a negative value that rounds to zero" }).tracking 271),
-  (none, "pow_one_inf", (ObsRow.native ["duckdb-pow-one-inf"]).tracking 271),
+    "duckdb-R15-round-digits"] with shim := some "round: 0.0 for a negative value that rounds to zero" }).proved
+    "Lowering.duckdb_exact"),
+  (none, "pow_one_inf", (ObsRow.native ["duckdb-pow-one-inf"]).proved "Lowering.duckdb_exact"),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["duckdb-signbit"]).tracking 1985),
   (none, "nan_order", (ObsRow.native ["duckdb-arg-min-nulls"]).tracking 1985),
   (none, "nan_equality", (ObsRow.native ["duckdb-nan-equality"]).proved "Lowering.duckdb_exact"),

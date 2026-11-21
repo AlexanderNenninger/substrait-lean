@@ -44,7 +44,7 @@ import functools
 import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import MISSING, dataclass, field, fields, replace
-from importlib.metadata import PackageNotFoundError, entry_points, version
+from importlib.metadata import PackageNotFoundError, entry_points, packages_distributions, version
 from pathlib import Path
 from typing import Any, Literal
 
@@ -94,6 +94,26 @@ MISSING_BUILTINS = (
     "sverify's engine entry points are not installed, so it names no engine; "
     "run `uv sync` in python/ (or reinstall sverify)"
 )
+
+
+@dataclass(frozen=True)
+class SqlFrontEnd:
+    """The SQL an engine's package reads (#1362): the dialect's SQLGlot name and
+    the lift of its text to a plan. The front-end decides what the SQL means, so
+    it is part of the trusted base (`docs/trusted-base.md`), and the package that
+    provides it provides the engine's profile too."""
+
+    read: str
+    """The SQLGlot `read=` name, which is also the dialect's name in
+    `sverify.sql(dialect=)` and `sverify check --dialect`. Table names are read
+    with it before any schema is known."""
+    lift: Callable[[str, Mapping[str, Any], str], Any]
+    """`lift(query, schemas, semantics)`: the plan of `query` over the Ibis
+    schemas `schemas` (by table name), as what `sverify.sql_lift.Lifted` is
+    (`.plan`, `.schema`, `.differences`), under the profile `semantics` names.
+    It reads the semantics its dialect has and refuses any other by name
+    (`Unsupported`, or `ValueError` for a name it does not know), never by
+    reading the query as another dialect."""
 
 
 @dataclass(frozen=True)
@@ -206,6 +226,11 @@ class ProfilePlugin:
     default: bool = False
     """The engine that runs plans where none is named (`sv.connect()`,
     `Node.refresh()`, `sverify refresh`): `sverify._engines.default`."""
+    sql: SqlFrontEnd | None = None
+    """The SQL the engine's package reads (`sverify.sql`, `sverify check
+    query.sql`). The semantics of the dialect is the engine's own (`engine`),
+    accepted only where this plugin brings the checker's profile (`verifiable`);
+    the front-end offers or refuses any other. None: no SQL front-end."""
 
     @property
     def verifiable(self) -> bool:
@@ -272,6 +297,44 @@ def plugins() -> dict[str, ProfilePlugin]:
             continue
         found.setdefault(plugin.engine, []).append(plugin)
     return {e: _merged(ps) for e, ps in sorted(found.items())}
+
+
+def sql_front_ends() -> dict[str, tuple[ProfilePlugin, SqlFrontEnd]]:
+    """The installed SQL front-ends by dialect name (`SqlFrontEnd.read`)."""
+    return {p.sql.read: (p, p.sql) for p in plugins().values() if p.sql is not None}
+
+
+def sql_front_end(dialect: str) -> tuple[ProfilePlugin, SqlFrontEnd]:
+    """The plugin and front-end of `dialect`.
+
+    Raises:
+        ValueError: No installed package reads it; the message lists those that do.
+    """
+    found = sql_front_ends()
+    if dialect not in found:
+        names = ", ".join(repr(n) for n in sorted(found)) or "none installed"
+        raise ValueError(f"dialect must be {names}, not {dialect!r}")
+    return found[dialect]
+
+
+@functools.cache
+def _distributions() -> dict[str, list[str]]:
+    """The installed distributions by top-level package (a scan of all of them, once)."""
+    return dict(packages_distributions())
+
+
+def front_end_label(dialect: str) -> str:
+    """The package and version that read `dialect`, as a report names them:
+    `sverify-snowflake 0.9.0 (snowflake)`. The front-end decides what the SQL
+    means, so a result names who read it (`docs/trusted-base.md`)."""
+    _, front = sql_front_end(dialect)
+    module = getattr(front.lift, "__module__", "") or ""
+    top = module.partition(".")[0]
+    dist = next(iter(_distributions().get(top, [])), top)
+    try:
+        return f"{dist} {version(dist)} ({dialect})"
+    except PackageNotFoundError:
+        return f"{dist} ({dialect})"
 
 
 def find(engine: Any) -> ProfilePlugin | None:

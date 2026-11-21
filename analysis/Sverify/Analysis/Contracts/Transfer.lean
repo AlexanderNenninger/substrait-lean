@@ -504,7 +504,7 @@ theorem BlackBox.lawsAbs_mem {result : BlackBox.Ty} {laws : List BlackBox.Law} {
       AVal.memAll_iff, Bound.mem_top]
     all_goals
       intro v hv
-      have := ht v hv
+      have := (by first | exact ht v hv | exact ht.1 v hv : _)
       cases v <;> simp_all [BlackBox.intOrNull, BlackBox.floatOrNull, BlackBox.strOrNull, AVal.num,
         AVal.MemNum, Bound.mem_top]
 

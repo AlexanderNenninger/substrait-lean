@@ -11,6 +11,7 @@ from typing import Any
 
 from sverify.cli._common import UsageError
 from sverify.cli._discover import Checked, Discovery
+from sverify.errors import UnsupportedError
 
 
 def read_schemas(path: Path) -> dict[str, dict[str, str]]:
@@ -18,7 +19,7 @@ def read_schemas(path: Path) -> dict[str, dict[str, str]]:
     strings `sverify.verify(tables=)` reads (`"BIGINT"`, `"VARCHAR NOT NULL"`)."""
     if not path.is_file():
         raise UsageError(f"{path}: no such schema file")
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     try:
         if path.suffix == ".json":
             raw = json.loads(text)
@@ -46,12 +47,12 @@ def read_query(path: Path, dialect: str) -> str:
     """The one statement of the file."""
     import sqlglot
 
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     try:
         statements = [s for s in sqlglot.parse(text, read=dialect) if s is not None]
     except ValueError as e:  # an unknown dialect name
         raise UsageError(f"dialect {dialect!r}: {e}") from None
-    except sqlglot.errors.ParseError as e:
+    except sqlglot.errors.SqlglotError as e:
         raise UsageError(f"{path}: cannot parse the SQL: {str(e).splitlines()[0]}") from e
     if len(statements) != 1:
         raise UsageError(f"{path}: one query per file, found {len(statements)} statements")
@@ -78,7 +79,9 @@ def load_sql(
     query = read_query(path, dialect)
     try:
         step: Any = sv.sql(query, dialect=dialect, semantics=semantics)  # type: ignore[arg-type]
-    except ValueError as e:
+    except UnsupportedError:
+        raise
+    except ValueError as e:  # an unknown dialect or semantics
         raise UsageError(str(e)) from None
     schemas = read_schemas(Path(schema))
     from sverify.sql_model import query_tables

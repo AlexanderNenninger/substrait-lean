@@ -49,7 +49,7 @@ def check(path: Path, ref: str, bound: float) -> list[str]:
         ).stdout
     except subprocess.CalledProcessError:
         return []  # new file: nothing to compare
-    after = path.read_text()
+    after = path.read_text(encoding="utf-8")
     if before == after:
         return []
     (old, shape_old), (new, shape_new) = numbers(before), numbers(after)

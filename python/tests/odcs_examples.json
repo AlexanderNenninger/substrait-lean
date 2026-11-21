@@ -2,13 +2,13 @@
   "source": "https://github.com/bitol-io/open-data-contract-standard/tree/v3.2.0/docs/examples",
   "license": "Apache-2.0",
   "summary": {
-    "conditions": 153,
+    "conditions": 158,
     "examples read": 42,
     "round trip no conditions": 8,
-    "round trip not tried": 5,
+    "round trip not tried": 6,
     "round trip refused": 4,
-    "round trip same": 95,
-    "unread": 20
+    "round trip same": 94,
+    "unread": 15
   },
   "results": {
     "all/full-example.odcs.yaml": {
@@ -18,14 +18,10 @@
             "Key(cols=('rcvr_id',))",
             "references(rcvr_id, receivers.id)",
             "(\"rcvr_cntry_code\" IN ('US', 'CA', 'MX')) OR \"rcvr_cntry_code\" IS NULL",
-            "NOT \"rcvr_cntry_code\" IS NULL"
+            "NOT \"rcvr_cntry_code\" IS NULL",
+            "references((rcvr_id, rcvr_cntry_code), receivers.(id, country_code))"
           ],
           "unread": [
-            {
-              "column": null,
-              "reason": "a composite foreign key: references() takes one column",
-              "issue": 1956
-            },
             {
               "column": null,
               "reason": "a lower bound on the row count: sverify reads caps",
@@ -757,15 +753,10 @@
             "Key(cols=('id',))",
             "NOT \"id\" IS NULL",
             "references(customer_id, customers.id)",
-            "references(shipping_address_street, addresses.address_street)"
+            "references(shipping_address_street, addresses.address_street)",
+            "references((customer_id, shipping_address_street), addresses.(customer_id, address_street))"
           ],
-          "unread": [
-            {
-              "column": null,
-              "reason": "a composite foreign key: references() takes one column",
-              "issue": 1956
-            }
-          ],
+          "unread": [],
           "round_trip": {
             "not tried": "a foreign key: the round trip reads one object"
           }
@@ -918,21 +909,14 @@
             "NOT \"id\" IS NULL",
             "NOT \"customer_id\" IS NULL",
             "NOT \"customer_country\" IS NULL",
-            "NOT \"product_id\" IS NULL"
+            "NOT \"product_id\" IS NULL",
+            "references(product_id, products.id)",
+            "references((customer_id, customer_country), customers.(id, country_code))"
           ],
-          "unread": [
-            {
-              "column": "product_id",
-              "reason": "a relationship sverify does not read",
-              "issue": 1956
-            },
-            {
-              "column": null,
-              "reason": "a composite foreign key: references() takes one column",
-              "issue": 1956
-            }
-          ],
-          "round_trip": "same"
+          "unread": [],
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
         },
         "order-items": {
           "conditions": [
@@ -940,15 +924,10 @@
             "NOT \"order_id\" IS NULL",
             "NOT \"product_id\" IS NULL",
             "NOT \"quantity\" IS NULL",
-            "references(order_id, orders.id)"
+            "references(order_id, orders.id)",
+            "references(product_id, products.id)"
           ],
-          "unread": [
-            {
-              "column": null,
-              "reason": "a relationship sverify does not read",
-              "issue": 1956
-            }
-          ],
+          "unread": [],
           "round_trip": {
             "not tried": "a foreign key: the round trip reads one object"
           }
@@ -962,8 +941,8 @@
           "unread": [
             {
               "column": null,
-              "reason": "a relationship sverify does not read",
-              "issue": 1956
+              "reason": "a reference to no single column the contract defines",
+              "design": "it names nothing, or two columns, for sverify to check"
             }
           ],
           "round_trip": "no conditions"

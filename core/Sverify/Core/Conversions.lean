@@ -78,12 +78,12 @@ theorem wOf_mono {N N' D : Nat} (_hD : 0 < D) (h : N ≤ N') : wOf N D ≤ wOf N
   have d1 := Nat.div_add_mod (4 * N) D
   have d2 := Nat.div_add_mod (4 * N') D
   rcases Nat.lt_or_eq_of_le hv with hlt | heq
-  · split <;> split <;> omega
+  · split <;> (try split) <;> omega
   · -- Same quotient: the remainder only grows.
     have hm : 4 * N % D ≤ 4 * N' % D := by
       have : D * (4 * N / D) = D * (4 * N' / D) := by rw [heq]
       omega
-    split <;> split <;> omega
+    split <;> (try split) <;> omega
 
 theorem roundRat_mono {N N' D : Nat} (hD : 0 < D) (h : N ≤ N') : roundRat N D ≤ roundRat N' D :=
   Nat.div_le_div_right (roundW_mono (wOf_mono hD h))
@@ -216,13 +216,13 @@ theorem signedCode_mono {f : Nat → Nat} (hf : ∀ {a b}, a ≤ b → f a ≤ f
   by_cases hi : i < 0 <;> by_cases hj : j < 0
   · have := hf (a := j.natAbs) (b := i.natAbs) (by omega)
     simp only [hi, hj, decide_true, ↓reduceIte]
-    split <;> split <;> omega
+    split <;> (try split) <;> omega
   · simp only [hi, hj, decide_true, decide_false, ↓reduceIte, Bool.false_eq_true]
-    split <;> split <;> omega
+    split <;> (try split) <;> omega
   · omega
   · have := hf (a := i.natAbs) (b := j.natAbs) (by omega)
     simp only [hi, hj, decide_false, ↓reduceIte, Bool.false_eq_true]
-    split <;> split <;> omega
+    split <;> (try split) <;> omega
 
 theorem roundRat_zero (D : Nat) : roundRat 0 D = 0 := by
   simp [roundRat, wOf, roundW, roundTo2]
@@ -285,6 +285,41 @@ theorem ofDecimalExact_rel {n : Int} {s : Nat} (h0 : n ≠ 0) (hn : n.natAbs < 2
   generalize (maxMag : Int) = X at hMi ⊢
   split <;> (try split) <;> omega
 
+/-- `roundRat N D` has at most 53 significant bits (ruling 248). -/
+theorem magDbl_roundRat (N D : Nat) : fp64.magDbl (roundRat N D) = true := by
+  unfold roundRat roundW
+  have hw := lt_two_pow_bitLen (wOf N D) (wOf N D) Nat.lt_two_pow_self
+  have h1 : wOf N D < 2 ^ 53 * 2 ^ shiftW (wOf N D) := by
+    rw [← Nat.pow_add]
+    exact Nat.lt_of_lt_of_le hw (Nat.pow_le_pow_right (by decide) (by unfold shiftW; omega))
+  obtain ⟨k, hk, he⟩ := roundTo2_form _ _ 53 h1
+  have hs : 3 ≤ shiftW (wOf N D) := by unfold shiftW; omega
+  rw [he, show shiftW (wOf N D) = (shiftW (wOf N D) - 3) + 3 by omega, Nat.pow_add,
+    ← Nat.mul_assoc, Nat.mul_div_cancel _ (by decide)]
+  exact fp64.magDbl_mul (by decide) (by exact hk) _
+
+set_option exponentiation.threshold 2100 in
+/-- **A decimal's double is a double.** -/
+theorem dbl_ofDecimalExact (n : Int) (s : Nat) : fp64.Dbl (ofDecimalExact n s) := by
+  have hM := maxMag_pos
+  have hd : fp64.magDbl (min (roundRat (n.natAbs * 2 ^ 1074) (10 ^ s)) maxMag) = true := by
+    rcases Nat.le_total (roundRat (n.natAbs * 2 ^ 1074) (10 ^ s)) maxMag with h | h
+    · rw [Nat.min_eq_left h]; exact magDbl_roundRat _ _
+    · rw [Nat.min_eq_right h]; exact fp64.magDbl_maxMag (by decide)
+  have hn : min (roundRat (n.natAbs * 2 ^ 1074) (10 ^ s)) maxMag ≠ fp64.nanMag := by
+    unfold FloatFormat.nanMag; have := Nat.min_le_right (roundRat (n.natAbs * 2 ^ 1074) (10 ^ s)) maxMag
+    show _ ≠ maxMag + 2; omega
+  have key : ofDecimalExact n s =
+      fp64.ofMag (decide (n < 0)) (min (roundRat (n.natAbs * 2 ^ 1074) (10 ^ s)) maxMag) := by
+    simp only [ofDecimalExact, signedCode, FloatFormat.signedCode, FloatFormat.ofMag, hn, ne_eq,
+      not_false_eq_true, and_true]
+    generalize roundRat (n.natAbs * 2 ^ 1074) (10 ^ s) = M
+    rcases Nat.le_total M maxMag with h | h
+    · rw [Nat.min_eq_left h]; split <;> (try split) <;> omega
+    · rw [Nat.min_eq_right h]; split <;> (try split) <;> omega
+  rw [key]
+  exact fp64.dbl_ofMag (Nat.min_le_right _ _) hd
+
 /-- A conversion of decimals to doubles, with what the checker knows of it. -/
 structure DecToDouble where
   conv : Int → Nat → Int
@@ -296,10 +331,13 @@ structure DecToDouble where
     ∃ M, conv n s = signedCode (decide (n < 0)) M ∧
       2 ^ 53 * (10 ^ s * M) ≤ (2 ^ 53 + 1) * (n.natAbs * 2 ^ 1074) ∧
       (2 ^ 53 - 1) * (n.natAbs * 2 ^ 1074) ≤ 2 ^ 53 * (10 ^ s * M)
+  /-- Its results are doubles (ruling 248). -/
+  dbl : ∀ n s, fp64.Dbl (conv n s)
 
 /-- `ofDecimalExact`, behind a constant the kernel does not unfold. -/
 opaque decToDouble : DecToDouble :=
-  ⟨ofDecimalExact, ofDecimalExact_bounds, ofDecimalExact_mono, ofDecimalExact_rel⟩
+  ⟨ofDecimalExact, ofDecimalExact_bounds, ofDecimalExact_mono, ofDecimalExact_rel,
+    dbl_ofDecimalExact⟩
 
 /-- A decimal's unscaled integer `n` at scale `s` as a double's code,
 correctly rounded (#27): `CAST(d AS DOUBLE)`. -/

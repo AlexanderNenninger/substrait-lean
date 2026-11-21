@@ -4,12 +4,17 @@
   "decided_by": "fable",
   "scope": "reference-semantics",
   "status": "in-force",
-  "summary": "#346: decimal text is one new core function (dtext) on the decimal's exact form; DuckDB's lowering widens a DECIMAL(p, p) first; timestamp text stays refused at 1.0 (After 1.0, with #323) and its refusal names strftime with an explicit format.",
+  "summary": "#346: decimal text is a new exact core op, `dtext` (D72): sign, an integer part of at least one digit, and exactly s fraction digits; the reference prints DECIMAL(p, p) as \"0.500\"; the timestamp text cast stays refused at 1.0 with a message naming `strftime`.",
   "issues": [
+    323,
     346
   ],
-  "source": "fable-ruling-244-346-decimal-timestamp-text.md",
+  "prs": [
+    2182
+  ],
   "amended_by": [
     "F245"
-  ]
+  ],
+  "source": "fable-ruling-244-346-decimal-timestamp-text.md",
+  "note": "D72's section lands with its implementing PR. Part (b), a Profile.duckdb arm stating DuckDB's \".500\", is replaced by ruling 245."
 }

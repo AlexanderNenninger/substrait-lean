@@ -266,10 +266,14 @@ def isInfT (x : Tm) : Tm := orFn (eqFn x posInfT) (eqFn x negInfT)
 /-- **An engine's hand-written template schemas** (#241, #242), for the
 constructs the search does not reach: a construct's schema is tried before the
 search. Each instance is still proved, by the kernel. DuckDB's are
-`duckdbSchemas` (`engines/duckdb/Sverify/DuckDB/LoweringSchemas.lean`). -/
+`duckdbSchemas` (`engines/duckdb/Sverify/DuckDB/LoweringSchemas.lean`), Polars's
+`polarsSchemas` (`engines/polars/Sverify/Polars/LoweringSchemas.lean`). -/
 structure Schemas where
   un : UnFn → Option Tm := fun _ => none
   bin : BinFn → Option Tm := fun _ => none
+  /-- The namespace of the schemas' own proofs: `<proofs>.<construct>_agree`
+  and `<proofs>.<construct>_guards`, where a schema comes with one. -/
+  proofs : Name := `Substrait.Lowering
 
 partial def Tm.hasSelf : Tm → Bool
   | .field _ | .lit _ | .named .. | .expr .. => false
@@ -791,8 +795,8 @@ def lowerSearch (boxes : Boxes.Ambient) (tbl : Name) (pE : Lean.Expr) (p : Profi
         let rhs ← mkAppM (if unary then ``Profile.un else ``Profile.bin)
           (#[(← mkAppOptM ``Profile.reference #[none]), selfE] ++ xs)
         mkForallFVars (ps ++ xs) (← mkAppM ``Outcome.Agree #[lhs, rhs])
-      -- A hand-written schema may come with its proof, `Lowering.<construct>_agree`.
-      let hand := ``Lowering ++ k.short.appendAfter "_agree"
+      -- A hand-written schema may come with its proof, `<proofs>.<construct>_agree`.
+      let hand := schemas.proofs ++ k.short.appendAfter "_agree"
       let byHand := written && (← getEnv).contains hand
       let tac : Syntax ← if byHand then
           `(tactic| (intros; apply $(mkIdent hand))) else pure tac
@@ -831,8 +835,8 @@ def lowerSearch (boxes : Boxes.Ambient) (tbl : Name) (pE : Lean.Expr) (p : Profi
           let iss ← mkAppM issueFn (#[selfE] ++ xs)
           mkForallFVars (ps ++ xs) (← mkAppM ``Expr.GuardsAt #[pE, none', iss, row, tmpl])
         let gName := tbl ++ k.short.appendAfter "_guards"
-        -- A hand-written schema may come with its guards' proof, `Lowering.<construct>_guards`.
-        let handG := ``Lowering ++ k.short.appendAfter "_guards"
+        -- A hand-written schema may come with its guards' proof, `<proofs>.<construct>_guards`.
+        let handG := schemas.proofs ++ k.short.appendAfter "_guards"
         let byHandG := written && (← getEnv).contains handG
         let gtac : Syntax ← if byHandG then `(tactic| (intros; apply $(mkIdent handG)))
           else gtac agreeName
@@ -892,7 +896,8 @@ def guardFns : List Name :=
 
 syntax (name := generateLowering) "generate_lowering " ident " : " term
   " unfolding " "[" ident,* "]" " using " "[" ident,* "]" " excluding " "[" ident,* "]"
-  (" hand_written " ident)? (" cache " ident)? (" writing " str)? (" proving_guards")? : command
+  (" hand_written " ident)? (" cache " ident)? (" writing " str)? (" proving_guards")?
+  (" refusing " "[" ident,* "]")? : command
 
 unsafe def evalHintsImpl (n : Name) : TermElabM (List LoweringHint) := do
   Meta.evalExpr (List LoweringHint) (← mkAppM ``List #[Lean.mkConst ``LoweringHint]) (Lean.mkConst n)
@@ -905,7 +910,9 @@ unsafe def evalSchemasImpl (n : Name) : TermElabM Schemas := evalConst Schemas n
 `defs` unfold the profile, `lemmas` help the proofs, `ctors` are functions the
 engine does not have, which every template must avoid, `S` (optional, a
 `Schemas`) the engine's hand-written schemas, and `hints` (optional, a
-`List LoweringHint`) the templates to try first. -/
+`List LoweringHint`) the templates to try first. `refusing [fns]` (optional)
+names the functions the engine has no exact template for: they get no entry,
+and the table is partial (Polars's `%` of doubles, which floors). -/
 @[command_elab generateLowering]
 def elabGenerateLowering : CommandElab := fun stx => do
   Generated.requireChecked "generate_lowering"
@@ -922,6 +929,10 @@ def elabGenerateLowering : CommandElab := fun stx => do
     else some <$> liftCoreM (realizeGlobalConstNoOverloadWithInfo stx[17][1])
   let writeDir : Option String := if stx[18].isNone then none else stx[18][1].isStrLit?
   let provingGuards := !stx[19].isNone
+  -- Constructors the engine refuses on purpose: no search, no entry, and no
+  -- error for the missing entry (`Lowering.lowerRel?` names them).
+  let refused ← if stx[20].isNone then pure #[] else
+    (stx[20][2].getSepArgs).mapM fun i => liftCoreM (realizeGlobalConstNoOverloadWithInfo i)
   let guardFailures : IO.Ref (Array String) ← IO.mkRef #[]
   let sink : Option Sink ← if writeDir.isSome then some <$> IO.mkRef #[] else pure none
   let ctors ← [(``UnFn, true), (``BinFn, false)].flatMapM fun (ind, unary) => do
@@ -959,6 +970,9 @@ def elabGenerateLowering : CommandElab := fun stx => do
       let ks := (← withCurrHeartbeats (instances c unary)).getD [⟨c, unary, #[]⟩]
       let mut done := #[]
       for k in ks do
+        if refused.contains c then
+          done := done.push (k, .error "refused", 0)
+          continue
         let t0 ← IO.monoMsNow
         let t := tac
         let how ← withCurrHeartbeats (lowerSearch boxes tbl pE p schemas t (excluded.contains c) k (hintOf k) sink guards)
@@ -967,8 +981,9 @@ def elabGenerateLowering : CommandElab := fun stx => do
     return (results, natives, ← ppSource pE)
   let entries (c : Name) : Array (Construct × Except String String × Nat) :=
     ((results.find? (·.1 == c)).bind (·.2)).getD #[]
-  let missing := results.flatMap fun (_, r) => (r.getD #[]).filterMap fun (k, how, _) =>
-    match how with | .error e => some s!"{k.label} ({e})" | .ok _ => none
+  let missing := results.flatMap fun (c, r) => if refused.contains c then #[] else
+    (r.getD #[]).filterMap fun (k, how, _) =>
+      match how with | .error e => some s!"{k.label} ({e})" | .ok _ => none
   -- The table: an arm for each constructor, or for each construct of one.
   let arms (ind : Name) : CommandElabM (Array (TSyntax ``Lean.Parser.Term.matchAlt)) := do
     (← getConstInfoInduct ind).ctors.toArray.flatMapM fun c => do
@@ -995,11 +1010,12 @@ def elabGenerateLowering : CommandElab := fun stx => do
     (k.label, (match how with | .ok h => h | .error e => e), ms)
   let rowStx ← rows.mapM fun (c, how, ms) => `(($(quote c), $(quote how), $(quote ms)))
   elabCommand (← `(def $(mkIdent (short ++ `coverage)) : List (String × String × Nat) := [$rowStx,*]))
-  if missing.isEmpty then
+  -- A table with refused functions is partial: no `total`.
+  if missing.isEmpty && refused.isEmpty then
     elabCommand (← `(theorem $(mkIdent (short ++ `total)) : ($(mkIdent tbl)).Total :=
       ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
        fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
-  else
+  else if !missing.isEmpty then
     logError m!"no lowering found for {missing.toList}"
   let failedGuards ← guardFailures.get
   unless failedGuards.isEmpty do
@@ -1014,7 +1030,17 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let env ← getEnv
   let moduleOf (n : Name) : Option Name :=
     (env.getModuleIdxFor? n).map fun i => env.header.moduleNames[i.toNat]!
-  let deps := ((unfold ++ extra).filterMap moduleOf).toList.eraseDups
+  -- The hand-written schemas' own proofs (`Schemas.proofs`), by the modules
+  -- that hold the ones this table uses.
+  let proofsNs ← match schemasName with
+    | some n => liftTermElabM do return (← evalSchemas n).proofs
+    | none => pure `Substrait.Lowering
+  let handProofs := results.flatMap fun (_, r) => (r.getD #[]).filterMap fun (k, how, _) =>
+    match how with
+    | .ok h => if h.startsWith "hand-written schema" then
+        some (proofsNs ++ k.short.appendAfter "_agree") else none
+    | .error _ => none
+  let deps := ((unfold ++ extra ++ handProofs).filterMap moduleOf).toList.eraseDups
   let names (ns : Array Name) := ", ".intercalate (ns.toList.map toString)
   let macros :=
     s!"local macro \"native_tac\" : tactic => `(tactic| lowering_native [{names unfold}])\n" ++
@@ -1059,10 +1085,12 @@ def elabGenerateLowering : CommandElab := fun stx => do
     s!"def {tbl} : Substrait.Lowering ({pSrc}) :=\n  ⟨fun f => match f with\n{← armText ``UnFn},\n" ++
     s!"   fun f => match f with\n{← armText ``BinFn}⟩\n\n" ++
     s!"/-- How each construct is lowered (`--lowering-coverage`). -/\n" ++
-    s!"def {tbl}.coverage : List (String × String × Nat) := [\n{",\n".intercalate covRows}]\n\n" ++
-    s!"theorem {tbl}.total : ({tbl}).Total :=\n" ++
-    "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
-    "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n"
+    s!"def {tbl}.coverage : List (String × String × Nat) := [\n{",\n".intercalate covRows}]\n" ++
+    -- A table with refused functions is partial: no `total`.
+    (if !refused.isEmpty then "" else
+      s!"\ntheorem {tbl}.total : ({tbl}).Total :=\n" ++
+      "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
+      "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n")
   IO.FS.writeFile s!"{dir}/Table.lean" table
   logInfo m!"wrote {dir}: Native, {areas}, Table"
   -- The guards (`proving_guards`), in a module of their own after the table,

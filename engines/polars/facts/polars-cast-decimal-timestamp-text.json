@@ -6,7 +6,8 @@
   "verdict": "the scale's digits with a leading zero; datetimes always print six fraction digits",
   "settings": {
     "engine": [
-      "in-memory"
+      "in-memory",
+      "streaming"
     ]
   },
   "description": [
@@ -34,7 +35,8 @@
           "sql": "pl.DataFrame({'t': [datetime(2024,1,5,9,30), datetime(2024,1,5,9,30,0,250000), datetime(2024,1,5,9,30,0,123456)]}).select(pl.col('t').cast(pl.String))",
           "observed": "2024-01-05 09:30:00.000000, 2024-01-05 09:30:00.250000, 2024-01-05 09:30:00.123456"
         }
-      ]
+      ],
+      "notes": "Re-run under `collect(engine=\"streaming\")` on the decimals (`10.50`, `-0.05`, `0.00`, `-0.500`, `0.500`, `0.05`, `12`) and read by reviewer 2 on the datetimes: the same text."
     }
   ],
   "issues": [

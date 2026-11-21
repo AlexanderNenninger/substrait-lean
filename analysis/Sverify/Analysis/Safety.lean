@@ -1921,6 +1921,30 @@ theorem Measure.sumFits_sound {m : Measure} {abs : Expr → AVal} {n : Option Na
     exact Measure.sumOk_of_le (by omega) (by omega)
   · simp at h
 
+/-- The bound of `Measure.finiteAnyOrder`: `[lo, hi]` holds only finite codes,
+at most `k ≤ 2³²` values, and `c · (k · M + k · 2⁵²)` stays within the largest
+double, `M` the larger magnitude of `lo` and `hi`. A NaN's code lies above
+`+∞`'s, so `hi < +∞` rules a NaN out (ruling 238, K1). -/
+def finiteSumBound (c : Nat) (lo hi : Int) (k : Nat) : Bool :=
+  decide (FloatCode.negInf < lo) && decide (hi < FloatCode.posInf) && decide (k ≤ 2 ^ 32) &&
+    decide (c * (k * max (FloatCode.scaled lo).natAbs (FloatCode.scaled hi).natAbs + k * 2 ^ 52)
+      ≤ FloatCode.maxMag)
+
+/-- **A double `SUM` or `AVG` no summation order overflows** (#1787 item 4,
+rulings 238 and 242): its argument's values are doubles whose canonical codes
+lie in a finite `[lo, hi]`, a group has at most `k` rows (`n`, from
+`Rel.maxRows`), and `finiteSumBound` holds with `c = 2` for a sum and `4` for
+a mean. Then every sum and mean a `sum_order` behaviour allows has a finite
+canonical code (`Measure.finiteAnyOrder_sound`, `MarginSound.lean`), so the
+writer's check against `±∞` cannot fire. It reads the bound `Measure.sumFits`
+reads, with a margin for an order that rounds at every step: `crBound`, which
+`Measure.mayInf` reads, has none (ruling 238). -/
+def Measure.finiteAnyOrder (m : Measure) (abs : Expr → AVal) (n : Option Nat) : Bool :=
+  match m.fn, (abs m.arg).int, n with
+  | .fsum, some ⟨some lo, some hi⟩, some k => (abs m.arg).kindOnly .float && finiteSumBound 2 lo hi k
+  | .avg, some ⟨some lo, some hi⟩, some k => (abs m.arg).kindOnly .float && finiteSumBound 4 lo hi k
+  | _, _, _ => false
+
 /-! ## Conditions that read some of a join's inputs (#1484, R3)
 
 An engine may evaluate a part of a filter or join condition on one input of
