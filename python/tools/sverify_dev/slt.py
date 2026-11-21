@@ -1254,6 +1254,18 @@ KNOWN: tuple[Known, ...] = (
     # A NULL element in a list comparison: DuckDB orders it last, the reference
     # gives NULL.
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
+    # `list_contains` of an empty list and a NULL needle: FALSE in DuckDB 2.0.1, NULL in the
+    # model and the written plan (D54's listed exception).
+    Known(
+        "duckdb-list-contains-null",
+        ("function/list/list_position_null_needle.test",),
+        r"list_contains",
+    ),
+    # A cast below a join: DuckDB 2.0.1 still raises natively, the written plan no longer does
+    # (error-side; `verify` flags the cast at both versions).
+    Known(
+        "duckdb-exec-filter-pushdown", ("optimizer/secure_view_pushdown.test",), r"sec\.s::INT = 42"
+    ),
 )
 
 
