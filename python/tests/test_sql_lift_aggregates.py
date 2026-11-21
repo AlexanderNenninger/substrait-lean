@@ -3,6 +3,7 @@
 
 import json
 
+import ibis
 import pytest
 
 from _sql_lift import SCHEMAS, TABLES
@@ -109,6 +110,13 @@ def test_the_reference_lift_is_checked_too(query):
     plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
+
+
+def test_median_of_a_float_is_refused_as_it_interpolates():
+    schemas = {"t": ibis.schema({"f": "float32", "g": "float64"})}
+    with pytest.raises(Refused, match="DuckDB interpolates it"):
+        lift("SELECT median(f) FROM t", schemas)
+    lift("SELECT median(g) FROM t", schemas)
 
 
 @pytest.mark.parametrize(

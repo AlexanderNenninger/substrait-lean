@@ -2062,14 +2062,15 @@ class _Lift:
         t = a.type
         args = [a.json]
         sorts: list[Json] = []
-        if name == "median" and (t.is_temporal() or t.is_timestamp()):
-            # DuckDB interpolates the median of dates and timestamps, as
-            # `quantile_cont` does, and returns a timestamp: the lower middle
-            # the model takes is another value (#2153).
+        if name == "median" and (t.is_temporal() or t.is_timestamp() or t.is_float32()):
+            # DuckDB interpolates the median of dates, timestamps and FLOATs, as
+            # `quantile_cont` does (a FLOAT or a timestamp comes back): the
+            # lower middle the model takes is another value (#2153). The
+            # model reads `quantile_cont` of integers and doubles only.
             raise SqlUnsupported(
                 f"{_shown(node)} of {t} is not supported: DuckDB interpolates it as "
-                "quantile_cont does, which the model reads for numbers only",
-                hint="use quantile_disc(x, 0.5) for the lower middle, or cast to a number",
+                "quantile_cont does, which the model reads for integers and doubles only",
+                hint="use quantile_disc(x, 0.5) for the lower middle, or cast to DOUBLE",
                 construct=_function(node),
             )
         if name == "median" and not _numeric(t):
