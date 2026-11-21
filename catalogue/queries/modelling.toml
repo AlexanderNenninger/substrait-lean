@@ -177,7 +177,7 @@ WITH RECURSIVE chain AS (
 )
 SELECT emp_id, depth FROM chain
 '''
-notes = "Ibis has no recursive queries, so this is SQL. Sverify refuses it: the core has no recursive CTE, by design."
+notes = "Ibis has no recursive queries, so this is SQL. Not supported yet: `WITH RECURSIVE` needs a fixpoint with termination (#320). The anchor names the columns, since the standard column list `chain (emp_id, depth)` is not written."
 
 [[query]]
 id = "dbt-generate-date-spine"
