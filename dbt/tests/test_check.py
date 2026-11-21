@@ -156,7 +156,7 @@ def test_cli(shop: Path, capsys: pytest.CaptureFixture[str]) -> None:
         main(["check", str(shop), "--fail-on", "unproved", "--json", "--counterexamples", "0"]) == 1
     )
     data = json.loads(capsys.readouterr().out)
-    assert {m["name"] for m in data["models"]} >= {"stg_orders", "org_depth"}
+    assert {m["name"] for m in data["items"]} >= {"stg_orders", "org_depth"}
     # `sverify check <dbt dir> --format json` forwards `--format` (#891).
     assert main(["check", str(shop), "--format", "json", "--counterexamples", "0"]) == 0
     assert json.loads(capsys.readouterr().out) == data
@@ -572,6 +572,7 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     from types import SimpleNamespace
     from typing import Any, cast
 
+    from sverify.errors import UnsupportedError
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
 
@@ -597,6 +598,7 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
 def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
     """A refusal `ConditionError` does not name (the checker's) skips only the
     test whose conditions fail; the others are proved."""
+    from sverify.errors import UnsupportedError
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
 
@@ -605,10 +607,10 @@ def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
 
     def go(req: dict, ens: list) -> str:
         if "boom" in ens:
-            raise ValueError("the checker refuses boom")
+            raise UnsupportedError("the checker refuses boom")
         return "report"
 
-    out = _Checker._isolate(go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], ValueError("x"))
+    out = _Checker._isolate(go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], UnsupportedError("x"))
     assert out == "report" and bad.status == "not checked" and good.status == "pending"
 
 
