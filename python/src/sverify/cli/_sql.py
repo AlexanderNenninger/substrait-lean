@@ -51,7 +51,7 @@ def read_query(path: Path, dialect: str) -> str:
         statements = [s for s in sqlglot.parse(text, read=dialect) if s is not None]
     except ValueError as e:  # an unknown dialect name
         raise UsageError(f"dialect {dialect!r}: {e}") from None
-    except sqlglot.errors.ParseError as e:
+    except sqlglot.errors.SqlglotError as e:
         raise UsageError(f"{path}: cannot parse the SQL: {str(e).splitlines()[0]}") from e
     if len(statements) != 1:
         raise UsageError(f"{path}: one query per file, found {len(statements)} statements")
