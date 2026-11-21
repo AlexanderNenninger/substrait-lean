@@ -112,7 +112,7 @@ def accepted_fixtures() -> list[Path]:
 
 def fixture_plan(path: Path) -> dict:
     """A fixture's plan."""
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def pipeline_plans() -> dict[str, dict]:

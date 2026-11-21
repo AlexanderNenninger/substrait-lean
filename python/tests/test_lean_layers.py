@@ -48,7 +48,7 @@ def _modules(layer: str) -> dict[str, Path]:
 
 
 def _imports(path: Path) -> list[str]:
-    return re.findall(r"^import (\S+)", path.read_text(), re.M)
+    return re.findall(r"^import (\S+)", path.read_text(encoding="utf-8"), re.M)
 
 
 def _lakefile(layer: str) -> tuple[str, list[list[str]], dict[str, str]]:

@@ -108,7 +108,7 @@ def signature(record: dict[str, Any]) -> str:
 
 
 def load_known(path: Path = KNOWN) -> list[dict[str, Any]]:
-    return json.loads(path.read_text()) if path.exists() else []
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
 
 
 def known_issue(record: dict[str, Any], known: list[dict[str, Any]]) -> int | None:

@@ -207,7 +207,7 @@ def load_bugs(root: Path) -> dict[str, dict]:
 
 def _load(path: Path) -> dict:
     """A JSON document, with its path (`_path`) for its relative links."""
-    return {**json.loads(path.read_text()), "_path": path.resolve()}
+    return {**json.loads(path.read_text(encoding="utf-8")), "_path": path.resolve()}
 
 
 def _id_key(doc: dict) -> tuple:

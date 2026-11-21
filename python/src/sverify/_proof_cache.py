@@ -97,7 +97,7 @@ def get(path: str, flags: tuple[str, ...], stdin: str) -> tuple[int, str, str] |
         entry = _entry(path, flags, stdin)
         if entry is None:
             return None
-        data = json.loads(entry.read_text())
+        data = json.loads(entry.read_text(encoding="utf-8"))
         code, out, err = data["answer"]
         if not (isinstance(code, int) and isinstance(out, str) and isinstance(err, str)):
             return None

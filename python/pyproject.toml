@@ -268,12 +268,14 @@ cwd = "${POE_ROOT}/../float-bounds"
 
 [tool.poe.tasks.lint]
 help = "Lint and check formatting of the Python code and the notebooks"
-sequence = ["ruff check . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb", "ruff format --check . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb"]
+# The second check: text files name their encoding, since Windows reads them as cp1252
+# otherwise (#183). PLW1514 is a preview rule, so it runs alone, with no other preview behaviour.
+sequence = ["ruff check . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb", "ruff check --preview --select PLW1514 . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb", "ruff format --check . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb"]
 default_item_type = "cmd"
 
 [tool.poe.tasks.fmt]
 help = "Fix lint issues and format the Python code and the notebooks"
-sequence = ["ruff check --fix . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb", "ruff format . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb"]
+sequence = ["ruff check --fix . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb", "ruff check --preview --select PLW1514 --fix --unsafe-fixes . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb", "ruff format . ../notebooks ../engines/polars ../engines/spark ../engines/duckdb"]
 default_item_type = "cmd"
 
 [tool.poe.tasks.typecheck]

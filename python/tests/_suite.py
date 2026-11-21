@@ -155,7 +155,7 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 def pytest_sessionfinish(session: pytest.Session) -> None:
     if path := os.environ.get("SVERIFY_LIFT_BACKLOG"):
         refused = getattr(session.config, "_lift_refused", [])
-        with open(path, "a") as f:
+        with open(path, "a", encoding="utf-8") as f:
             f.writelines(f"{n}\n" for n in refused)
 
 
@@ -280,7 +280,7 @@ def pytest_runtest_logstart(nodeid: str, location: tuple) -> None:
     batch was on when its watchdog stopped it."""
     if path := os.environ.get("SVERIFY_FUZZ_PROGRESS"):
         worker = os.environ.get("PYTEST_XDIST_WORKER", "main")
-        Path(f"{path}.{worker}").write_text(json.dumps({"node": nodeid}))
+        Path(f"{path}.{worker}").write_text(json.dumps({"node": nodeid}), encoding="utf-8")
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
@@ -288,7 +288,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     what `sverify_dev.shard_durations` balances the shards by. Each xdist
     worker appends its own lines."""
     if path := os.environ.get("SVERIFY_TEST_TIMINGS"):
-        with open(path, "a") as f:
+        with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps({"test": report.nodeid, "s": round(report.duration, 4)}) + "\n")
 
 
