@@ -223,6 +223,7 @@ def test_a_duckdb_fuzz_disagreement_that_verify_flags_is_no_finding(tmp_path):
     assert entry["signature"][1] == "SELECT i % -? FROM t"
 
 
+@needs_repo
 def test_the_modulus_rule_explains_a_duckdb_eval_order_mismatch(tmp_path):
     # `i % -1` raises in DuckDB 2.0.0 at MIN (`duckdb-R15-int-modulus`); the
     # reference gives 0. The shipped rule names the fact, whatever the literal.
