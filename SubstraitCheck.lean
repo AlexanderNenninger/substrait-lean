@@ -35,8 +35,12 @@ why it cannot be split.
 DuckDB under each setting of `error_on_division_by_zero`, one per line:
 natively, or the generated template (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
 
+`substrait-check --lowering-coverage polars`: the same for Polars's lowering
+(`engines/polars/Sverify/Polars/Lowering.lean`).
+
 `substrait-check --lowering-table`: print, as JSON, the DuckDB lowering's
-templates that are not the native call, for `sverify.sql.lowering`.
+templates that are not the native call, for `sverify.sql.lowering`, and
+Polars's under `"polars"`.
 
 `substrait-check --lowering-cache`: print a new `engines/duckdb/Sverify/DuckDB/LoweringCache.lean`
 from this build's coverage, the templates the next build tries first.
@@ -643,8 +647,9 @@ def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 :=
     IO.print loweringCacheSource
     return 0
   | ["--lowering-table"] => do
-    -- The DuckDB lowering's templates, for sverify.sql.lowering (#241).
-    IO.println Lowering.duckdbTableJson.compress
+    -- The DuckDB lowering's templates, for sverify.sql.lowering (#241), and
+    -- Polars's under "polars" (#271).
+    IO.println (Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).compress
     return 0
   | ["--black-boxes"] => do
     -- The black boxes' table (#325), for sverify.black_box's test.
@@ -683,6 +688,11 @@ def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 :=
     for (c, how, _) in duckdbOn.coverage do
       IO.println s!"error_on_division_by_zero=on\t{c}\t{how}"
     return 0
+  | ["--lowering-coverage", "polars"] => do
+    -- How each construct is lowered to Polars (#271); a golden test.
+    for (c, how, _) in polarsOn.coverage do
+      IO.println s!"{c}\t{how}"
+    return 0
   | [path] => runOn es "" (← IO.FS.readFile path)
   | [flag, path] =>
     if ["--delta", "--reads", "--contract", "--write", "--shard", "--outcomes", "--raises", "--assumed",
@@ -692,7 +702,7 @@ def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 :=
   | _ => usage
 where
   usage := do
-    IO.eprintln "usage: substrait-check [--delta | --reads | --contract | --write | --shard | --outcomes | --raises | --assumed | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
+    IO.eprintln "usage: substrait-check [--delta | --reads | --contract | --write | --shard | --outcomes | --raises | --assumed | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage [polars] | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
     return 1
 
 end Substrait.Checker

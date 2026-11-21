@@ -286,9 +286,10 @@ the guard. The modules below it import it as
 |---|---|
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `Profile.okImpl`, `AllowedE`, `Engine.reference`, the per-plan `Refines` certificate |
 | `Entry.lean` | The checker's registry entry for an engine (#1443): the `Engine`, its side condition and its `Engine.Sound` proof as a term, written by `engine_entry%` with the names of the theorem and of the side condition, and the tables derived from it |
-| `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
+| `Lowering.lean` | Lowerings: tables of proved templates per engine profile; `round` and `ceil` without IEEE's `-0.0` (`Lowering.zeroTemplate_float`), for any profile |
 | `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |
+| `LoweringExport.lean` | A generated lowering's table as JSON (`substrait-check --lowering-table`), for every engine's table interpreter |
 | `LoweringGuards.lean` | The template guards no engine owns (NaN of IEEE operations, a zero divisor, an elementary function's domain), for every engine's hand-written schemas (#271) |
 | `Generated.lean` | The `check_generated` switch for the generated modules |
 | `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
@@ -341,7 +342,11 @@ and CI runs that build as the guard. The modules below import it as
 |---|---|
 | `Polars/Tables.lean` | Polars's choice table and observation rows, refining the core |
 | `Polars/Shims.lean` | The Polars shims, proved against a model of Polars's functions |
-| `Polars/Profile.lean` | `Profile.polars`, the semantics `semantics="polars"` will check under (pending, #271) |
+| `Polars/Profile.lean` | `Profile.polars`, the semantics `semantics="polars"` will check under (pending, #271): its floored `//` and `%`, and `round` and `ceil` with IEEE's `-0.0` |
+| `Polars/LoweringLemmas.lean` | The truncating `//` and `%` from Polars's floored ones, on every value (`Polars.idiv_agree`, `Polars.imod_agree`) |
+| `Polars/LoweringSchemas.lean` | Polars's hand-written template schemas, for the search |
+| `Polars/Lowering.lean` | The Polars lowering's table (partial: `%` of doubles refused), `Lowering.polars_exact`, `Rel.polars_lowered_sound` and its export |
+| `Polars/LoweringOn/*.lean` | The Polars lowering's entries, one module per area (generated) |
 | `Polars/Engine.lean` | `Engine.polars`, its functions within Polars's table, and `Engine.polars_sound` |
 | `Polars/OpenSums.lean` | A double `SUM` on Polars (#1484): `Engine.polars_sum_example`, `Engine.contract_sound_runs_near` under Polars's table with only `Engine.Runs` open, and `Engine.polars_sum_openSafe_tol` under the checker's own tolerance |
 
@@ -474,6 +479,7 @@ regenerate it. Don't edit them by hand.
 | Modules | Regenerate with | When |
 |---|---|---|
 | `DuckDB/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.duckdb`, the generator or the model's functions change |
+| `Polars/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.polars`, the generator or the model's functions change |
 | `DuckDB/Lift/Duckdb/*.lean`, `DuckDB/Lift/Reference/*.lean` | `poe regen-lift` (from `python/`) | `DuckDB/SQL.lean`, the generator or the model's functions change |
 | `DuckDB/LoweringCache.lean` | `.lake/build/bin/substrait-check --lowering-cache > engines/duckdb/Sverify/DuckDB/LoweringCache.lean` | after a regenerated lowering, to keep the search quick |
 | `DuckDB/LiftCache.lean` | `.lake/build/bin/substrait-check --lift-cache > engines/duckdb/Sverify/DuckDB/LiftCache.lean` | after a regenerated lift |

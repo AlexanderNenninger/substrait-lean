@@ -32,16 +32,22 @@ for req in tests/contracts/*.json; do
     echo "FAIL $req"; printf '%s\n' "$actual" | diff -u "$expected" -; fail=1
   fi
 done
-# The generated lowerings (#241): which constructs are native, which guarded.
-expected=tests/lowering/duckdb.expected
-actual=$("$bin" --lowering-coverage 2>&1; echo "[exit $?]")
-if [ "${1:-}" = "--update" ]; then
-  printf '%s\n' "$actual" > "$expected"
-elif printf '%s\n' "$actual" | diff -u "$expected" - > /dev/null; then
-  echo "ok   $expected"
-else
-  echo "FAIL $expected"; printf '%s\n' "$actual" | diff -u "$expected" -; fail=1
-fi
+# The generated lowerings (#241, #271): which constructs are native, which guarded.
+for engine in duckdb polars; do
+  expected=tests/lowering/$engine.expected
+  if [ "$engine" = duckdb ]; then
+    actual=$("$bin" --lowering-coverage 2>&1; echo "[exit $?]")
+  else
+    actual=$("$bin" --lowering-coverage "$engine" 2>&1; echo "[exit $?]")
+  fi
+  if [ "${1:-}" = "--update" ]; then
+    printf '%s\n' "$actual" > "$expected"
+  elif printf '%s\n' "$actual" | diff -u "$expected" - > /dev/null; then
+    echo "ok   $expected"
+  else
+    echo "FAIL $expected"; printf '%s\n' "$actual" | diff -u "$expected" -; fail=1
+  fi
+done
 # The generated lift tables (#268): what DuckDB's SQL lifts to.
 expected=tests/lowering/duckdb-lift.expected
 actual=$("$bin" --lift-table 2>&1; echo "[exit $?]")

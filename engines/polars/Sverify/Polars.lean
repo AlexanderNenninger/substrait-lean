@@ -1,4 +1,6 @@
 import Sverify.Polars.Engine
+import Sverify.Polars.Lowering
+import Sverify.Polars.LoweringSchemas
 import Sverify.Polars.OpenSums
 import Sverify.Polars.Profile
 import Sverify.Polars.Shims
