@@ -661,8 +661,16 @@ def _rewrite(sql: str, inputs: dict[str, str], own: str | None = None) -> str:
     own_parts = _parts(sg.exp.to_table(own, dialect="duckdb")) if own else None
     unknown = []
     for t in list(tree.find_all(sg.exp.Table)):
+        if isinstance(t.this, sg.exp.GenerateSeries):
+            continue  # `range(…)` reads no data
         if not isinstance(t.this, sg.exp.Identifier):
-            continue
+            # A table function (`read_csv('…')`) opens a file or URL when
+            # DuckDB binds it in `DESCRIBE`: refuse before any DuckDB call.
+            raise _Unreadable(
+                f"it reads {t.this.sql('duckdb')}, a table function; sverify-dbt reads "
+                "the refs and sources of the model, never a file or URL: load it as a "
+                "seed or a source and read it with {{ ref() }} or {{ source() }}"
+            )
         if not t.db and not t.catalog and t.name.lower() in ctes:
             continue
         name = find(t)
