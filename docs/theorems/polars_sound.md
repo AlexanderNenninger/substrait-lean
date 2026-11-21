@@ -9,8 +9,7 @@ Layer: `eval`, the reference's result for the plan. Axioms: not yet listed;
 
 ## What it says
 
-Sverify does not run the reference's plan on Polars as it stands: it writes
-it with a shim for each place where Polars's value differs from the
+Sverify writes the plan for Polars with a shim for each place where Polars's value differs from the
 reference's, and this theorem says that the result is the reference's rows. The shims have lemmas of their own
 (`Polars.int_div_trunc` for the division), and the theorem uses them. A plan
 whose proof holds on the reference therefore holds on Polars for any data
@@ -36,7 +35,7 @@ theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AV
 - `F`, `hF`: the facts between columns or about a whole row that follow from
   the preconditions, and the assumption that every row satisfies them.
 - `T`, `hT`: what the analysis assumes about the order of tied window rows
-  (the keys that close the ties).
+  (the keys that close the ties, from [`Rel.keys_sound`](keys_sound.md)).
 - `r`, `hwf`: the plan, and the assumption that it is well formed.
 - `hsmall`: the size hypothesis (`Rel.Small`): a window reads fewer than
   2⁶² rows and an aggregate fewer than 2⁶³. An engine's memory guarantees it.
@@ -68,8 +67,9 @@ theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AV
 
 `hcat` is a fact about the data, which the run's schema check covers.
 `hwf`, `hsmall`, `hs` and `hm` are the checker's own computations on the
-plan. `hA`, `hF` and `hT` are the contract's schemas, preconditions and the
-tie keys, checked on the data on each run. The route that rests on this
+plan. `hA` and `hF` are the contract's schemas and preconditions, checked on the
+data on each run; `hT` follows from the key analysis
+([`Rel.keys_sound`](keys_sound.md)) and the table conditions the run checks. The route that rests on this
 theorem names it: `routes.choose(report, "polars").theorems`.
 
 ## Example

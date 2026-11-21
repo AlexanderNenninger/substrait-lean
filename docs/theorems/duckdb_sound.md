@@ -37,7 +37,7 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
 - `F`, `hF`: the facts between columns or about a whole row that follow from
   the preconditions, and the assumption that every row satisfies them.
 - `T`, `hT`: what the analysis assumes about the order of tied window rows
-  (the keys that close the ties).
+  (the keys that close the ties, from [`Rel.keys_sound`](keys_sound.md)).
 - `r`, `hwf`: the plan, and the assumption that it is well formed.
 - `hsmall`: the size hypothesis (`Rel.Small`): a window reads fewer than
   2⁶² rows and an aggregate fewer than 2⁶³. An engine's memory guarantees it.
@@ -62,7 +62,7 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
   SQL printer is faithful, and that DuckDB's aggregates are Lean's, are
   trusted ([trusted-base.md](../trusted-base.md)).
 - The exact digits of a double `SUM` or `AVG`: they are within a bound of the
-  model, not equal to it.
+  model.
 - Settings other than the defaults. `hieee` and the settings the run checks
   decide where it holds ([how-to-engines-and-sql.md](../how-to-engines-and-sql.md)).
 
@@ -70,8 +70,9 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
 
 `hcat` is a fact about the data, which the run's schema check covers.
 `hwf`, `hsmall`, `hs` and `hm` are the checker's own computations on the
-plan. `hA`, `hF` and `hT` are the contract's schemas, preconditions and the
-tie keys, checked on the data on each run.
+plan. `hA` and `hF` are the contract's schemas and preconditions, checked on the
+data on each run; `hT` follows from the key analysis
+([`Rel.keys_sound`](keys_sound.md)) and the table conditions the run checks.
 
 ## Example
 
