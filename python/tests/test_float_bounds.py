@@ -161,7 +161,7 @@ def test_rows_cite_theorems_float_bounds_has() -> None:
     cited = core[core.index("def floatBoundsTheorems") :].split("\n\n")[0]
     checked = "".join(
         (root / "float-bounds" / "FloatBounds" / f).read_text().split("run_cmd do")[1]
-        for f in ("Epsilon.lean", "ChanCorr.lean")
+        for f in ("Epsilon.lean", "ChanCorr.lean", "SchubertGertz.lean")
     )
     assert set(names.findall(cited)) == set(names.findall(checked)) != set()
 
