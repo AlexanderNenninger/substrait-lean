@@ -4,10 +4,9 @@
   "decided_by": "fable",
   "scope": "reference-semantics",
   "status": "reserved",
-  "summary": "Reserved for binary values with equality and order.",
+  "summary": "Reserved for a later binary (BLOB) value kind.",
   "issues": [
-    1918,
-    1919
+    1918
   ],
-  "note": "Reserved in ruling 186; ruling 187 names its subject."
+  "note": "Reserved in ruling 186 (B3); ruling 187 names its subject. Float32 constants have no reserved number."
 }

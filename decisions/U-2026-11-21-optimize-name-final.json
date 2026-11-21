@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-21-optimize-name-final",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "`optimize` is the final 1.0 name of the keyword on `run` and `to_sql`, and rewrites on native routes get no opt-in at 1.0.",
+  "issues": [
+    1787
+  ],
+  "amends": [
+    "F217"
+  ],
+  "source": "fable-ruling-217a-optimize-name-final.md",
+  "note": "Delegated to the theory advisor ('Decide the two open questions yourself'); ruling 217a closes ruling 217's U1."
+}

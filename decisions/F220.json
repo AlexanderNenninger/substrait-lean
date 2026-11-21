@@ -1,0 +1,13 @@
+{
+  "id": "F220",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "`statsProvedOn` is per group and reads the row the plan reads; Polars's `agg.var` `stat_algo` row is proved by `core_var_polars` over every partition and merge tree; Polars's COVAR row stays tested at 1.0.",
+  "issues": [
+    1808
+  ],
+  "source": "fable-ruling-220-1808-polars-var-proved-per-group.md",
+  "note": "COVAR's proof is After 1.0. No D-number."
+}
