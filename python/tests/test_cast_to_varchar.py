@@ -66,5 +66,5 @@ def test_constant_casts_fold_to_their_text():
 )
 def test_timestamps_and_decimals_stay_refused(expr):
     t = ibis.table({"ts": "timestamp", "dec": "decimal(10, 2)"}, name="t")
-    with pytest.raises(Exception, match="string"):
+    with pytest.raises(Exception, match="cast"):
         sv.verify(expr(t), counterexamples=0)
