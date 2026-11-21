@@ -140,6 +140,7 @@ def test_the_report_lists_a_list_contains() -> None:
         "SELECT l >= l AS c FROM t",
         "SELECT [1, 2] < [1, NULL, 3] AS c FROM t",
         "SELECT greatest(l, CAST([1] AS BIGINT[])) AS c FROM t",
+        "SELECT l BETWEEN CAST([1] AS BIGINT[]) AND CAST([2, NULL] AS BIGINT[]) AS c FROM t",
     ],
 )
 def test_an_ordering_of_lists_that_may_hold_a_null_element_is_listed(sql: str) -> None:
