@@ -151,7 +151,7 @@ How many of the 139 queries need each feature (as originally written, so subquer
 
 | feature | blocks | alone | Lean | note |
 |---|---|---|---|---|
-| `recursive_cte` | 1 | 1 | no | DataFusion plans it (without a column list) but its Substrait producer has no RecursiveQuery; no fixpoint in the model |
+| `recursive_cte` | 1 | 1 | no | not supported yet: the model has no fixpoint ([#320](https://github.com/AlexanderNenninger/substrait-lean/issues/320)) |
 | `timezone` | 1 | 1 | no |  |
 
 ### Why engines refuse verified queries
