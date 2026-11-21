@@ -369,7 +369,8 @@ the observation compares doubles within a bound. `Same` equates the
 reference's results and says nothing of where a plan raises, so a rule that
 drops a part of the plan that may raise, such as an unused join input with an
 `assumed` overflow, keeps the plan as written (#2006). The report names the check that kept the
-plan as written (`run_gate`), and `check_run_plan_sound` proves the rest.
+plan as written (`run_gate`), and `check_run_plan_sound` proves the rest. On an
+engine's model the statement is `verified_holds_run_plan_duckdb`, `_polars` or `_spark`.
 `Report.run` takes the rewrite on the translated and transfer routes
 (`routes.RUNS_REWRITE`), where it checked the preconditions on its data
 (`check_requires=True`, the default): every rewrite rests on them, so
