@@ -2,7 +2,9 @@
 
 Will a plan give the same answer on every engine? Sverify asks that in one
 of two ways. Under the reference, the default, it proves the plan once and
-carries the proof to each engine through a proved translation. Under an
+carries the proof to each engine through a translation: proved against the
+model of the engine's functions for DuckDB, tested for Polars and Spark
+([what is trusted](trusted-base.md)). Under an
 engine's own profile, it proves what that one engine computes. The
 `semantics` argument of `verify` picks the path, and the report says which
 one a run took.

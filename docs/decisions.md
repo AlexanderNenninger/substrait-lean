@@ -137,7 +137,8 @@ an observation that reads the members asks for the exact level.
 
 Each output can carry a postcondition that names the equivalence its
 consumer expects: rows as a multiset (the default) or as a sequence; floats
-within the plan's proved bound `ε` (`floats="plan"`, the default, #689),
+within the plan's bound `ε` (`floats="plan"`, the default, #689; computed from
+the bounds `float-bounds/` proves over the reals),
 exact, or within a stated tolerance, absolute, relative or in ulps, which
 `verify` checks against `ε` on each engine; timestamps up to a precision;
 strings up to NFC. Verification then
