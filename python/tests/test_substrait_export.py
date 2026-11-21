@@ -433,14 +433,19 @@ def test_a_text_fact_travels_and_is_checked_on_read_back() -> None:
         back.run(con, "duckdb")
 
 
-def test_set_inputs_of_two_decimal_precisions_are_refused() -> None:
+def test_set_inputs_of_two_decimal_precisions_are_cast_to_one() -> None:
     """A full outer join of two sums is written as a set relation whose inputs
     differ in decimal precision, which Substrait does not allow: the export
-    says so, and `to_sql` still writes the plan (#1904)."""
+    casts the narrower input to the wider precision, at the same scale, and
+    the plan reads back with the same verdict (#1904)."""
     a = ibis.table({"k": "int64", "d": "decimal(10,2)"}, name="a")
     b = ibis.table({"k": "int64", "d": "decimal(12,2)"}, name="b")
     ga, gb = (t.group_by("k").agg(s=t.d.sum()) for t in (a, b))
     report = _verify(ga.outer_join(gb, "k").select(ga.k, x=ga.s, y=gb.s))
-    with pytest.raises(ExportError, match=r"inputs of a set relation differ.*#1904"):
-        report.to_substrait(shims="annotate")
-    assert "SELECT" in report.to_sql("spark").upper()
+    plan = report.to_substrait(shims="annotate")
+    rel = json.loads(plan)["relations"][0]["root"]["input"]
+    while "set" not in rel:
+        [(_, body)] = rel.items()
+        rel = body["input"]
+    assert any("project" in i for i in rel["set"]["inputs"])
+    assert sv.Report.from_substrait(plan).verdict == report.verdict

@@ -2994,9 +2994,10 @@ def kindSchemaType : Kind → Json
   | .str => Json.mkObj [("string", Json.mkObj [])]
   | .bool => Json.mkObj [("bool", Json.mkObj [])]
   | .int => Json.mkObj [("i64", Json.mkObj [])]
+  | .dec p s => Json.mkObj [("decimal", Json.mkObj [("precision", p), ("scale", s)])]
   | _ => Json.mkObj []
 
-#guard [Kind.float, .time, .date, .tod, .str, .bool, .int].all fun k =>
+#guard [Kind.float, .time, .date, .tod, .str, .bool, .int, .dec 27 2, .dec 38 0].all fun k =>
   typeKind (kindSchemaType k) == k
 
 /-- The integer width the source plan declares for an expression where
@@ -3040,7 +3041,7 @@ def recordDeclaredBits (bits : List Nat) (ejs : List Json) (es : List Expr) : P 
 
 /-- Record the kinds a projection's source plan declares (`projectKey`)
 where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
-or typed `NULL` (#96). Projections with the same expressions share an entry;
+or typed `NULL` (#96), a decimal one included (#1904). Projections with the same expressions share an entry;
 where their kinds differ, `Expr.kind` holds. -/
 def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : List Json)
     (es : List Expr) : P Unit := do
@@ -3050,6 +3051,9 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
     let k := declaredKind fns j
     if [Kind.int, .other].contains (e.kind cols) &&
         [Kind.float, .time, .date, .tod, .str, .bool].contains k then k
+    -- A typed `NULL` of a decimal type, which the writer pads a set's input with
+    -- (a full outer join's branch, #1904): a cast of the column reads back.
+    else if e.kind cols == .other && (match k with | .dec .. => true | _ => false) then k
     -- A typed `NULL` of an integer type, which engines otherwise read as
     -- untyped (`CAST(NULL AS BIGINT)` under `DISTINCT`).
     else if e.kind cols == .other && k == .int then k
