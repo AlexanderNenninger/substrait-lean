@@ -225,6 +225,7 @@ as the guard. Engines-common and the modules below import it as
 | `WSet.lean` | Relations with weights in any `K`, `Rel.evalK`, delta rules and delta plans over `K` |
 | `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output; evaluation sees only weights (`Rel.zeval_weight_congr`); the columns a plan reads (`Rel.colsOf`) and the store pruned to them (`Rel.zeval_prune`) |
 | `Weighted.lean` | Z-set plans as bag plans with a weight column |
+| `Zone.lean` | Zones, difference-bound matrices (#959): closing keeps the valuations (`Zone.close_sat`), `Zone.add` adds one constraint (`Zone.add_sat`), and an empty zone admits none (`Zone.empty?_sound`) |
 | `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
 | `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
 | `Contracts/Transfer.lean` | Abstract expression evaluation: `UnFn.abs`, `BinFn.abs`, `Expr.abs` |
