@@ -15,9 +15,11 @@ import pytest
 
 pytestmark = pytest.mark.backend("polars")
 
-#: The peak, in MB, of a process that has imported sverify and run the plan.
-#: The plan took over 5,000 MB before the fix and about 500 MB after.
-LIMIT_MB = 1200
+#: What the plan may use beyond a process that has imported sverify and run a
+#: plain `SELECT x`, in MB. That process peaks at 400 to 1,000 MB, depending on
+#: the machine's thread count; the plan took over 5,000 MB more before the fix
+#: and a few hundred after.
+GROWTH_MB = 1000
 
 #: The comparison `x < y` of doubles as sverify's export writes it (NaN
 #: greatest, one zero), under a NULL guard.
@@ -58,9 +60,10 @@ def peak_mb(sql: str) -> tuple[int, int]:
     ids=["not", "plain"],
 )
 def test_a_case_over_double_comparisons_uses_memory_of_its_input(sql: str) -> None:
+    _, base = peak_mb("SELECT x AS c FROM t")
     rows, mb = peak_mb(sql)
     assert rows == 64
-    assert mb < LIMIT_MB, f"peak {mb} MB"
+    assert mb - base < GROWTH_MB, f"peak {mb} MB, plain query {base} MB"
 
 
 def test_issues_whose_flags_differ_in_a_long_list_both_stay() -> None:
