@@ -10,7 +10,7 @@ model's compiled SQL with [sverify](https://github.com/AlexanderNenninger/substr
 the models and sources it reads, and reports per model which tests hold on
 every run, which may fail and why, and which source tests would let it prove
 more. A test it proves can be left out of `dbt build`: it rests on
-`contract_sound` and `Rel.keys_sound`, applied to the model's compiled SQL
+[`contract_sound`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/theorems/contract_sound.md) and [`Rel.keys_sound`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/theorems/keys_sound.md), applied to the model's compiled SQL
 under `semantics="duckdb"` ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proofs.md)).
 
 It reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
