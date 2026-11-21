@@ -290,7 +290,7 @@ def findings(batch_dir: Path) -> list[dict[str, Any]]:
                         "repro": DUCKDB_REPLAY,
                     }
                 )
-            if r.get("cls") != "disagree":
+            if r.get("cls") != "disagree" or covered_by_verify(r):
                 continue
             found.append(
                 {
@@ -333,6 +333,18 @@ def findings(batch_dir: Path) -> list[dict[str, Any]]:
 
 
 # --- explanations (#747) --------------------------------------------------------------
+
+
+def covered_by_verify(r: dict[str, Any]) -> bool:
+    """A `duckdb_fuzz` disagreement on a query `verify` flags (its `reason`
+    lists the issues) where one side raises or the query divides by zero: the
+    reference raises or is open there, and `verify` says so, as the checker's
+    own `--raises` does for the `runtime` oracle (#2101)."""
+    reason = r.get("reason") or ""
+    raised = str(r.get("lean", "")).startswith("error:") or str(r.get("duckdb", "")).startswith(
+        "error:"
+    )
+    return reason.startswith("verify:") and (raised or "division by zero" in reason)
 
 
 def load_rules(path: Path = EXPLAINED) -> list[dict[str, Any]]:
