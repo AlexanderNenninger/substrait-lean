@@ -149,7 +149,6 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     _EPOCH_DAY,
     _MICROSECOND,
     _ORDERED,
-    _REPORT_INTERNAL,
     CONSTANT_HINT,
     FINITE_ASSUMED,
     INFINITE,
@@ -843,7 +842,7 @@ def verify(
             `_.amount < 2**62`) and the `IS NOT NULL`s a postcondition
             needs (`Report.inferred`). `"error"` (the default): the plan is
             not proved without it, and the report says where it came from
-            and how to state it (`Report.needed`). `"warn"`: it is assumed,
+            and how to state it (`Report.needs`). `"warn"`: it is assumed,
             checked on the data before each run, and a warning names it
             (`sverify.errors.InferredWarning`). `"ignore"`: it is assumed and
             checked without a warning. `"off"`: nothing is inferred or
@@ -3221,7 +3220,7 @@ class ContractedTransform:
         unproved contract does not raise `VerificationError`, a bound table
         stands for its schema (its data is not read, so `requires` is not
         checked on it), and `on_unproved` does not apply. An editor, a test
-        or a CI step reads the report (`Report.verdict`, `Report.needed`).
+        or a CI step reads the report (`Report.verdict`, `Report.needs`).
 
         Args:
             *args: The inputs, positionally: Ibis tables, `ibis.Schema`s, or
@@ -3462,7 +3461,7 @@ def transform(
             `verify`'s. sverify infers the bounds it needs (`amount * 2` on
             BIGINT needs `_.amount < 2**62`). `"error"` (the default): the
             contract is not proved until `requires` states it or the
-            transformation no longer needs it (`Report.needed`). `"warn"`:
+            transformation no longer needs it (`Report.needs`). `"warn"`:
             it is assumed and checked on the data or proved from table
             metadata, with an `sverify.errors.InferredWarning`. `"ignore"`:
             the same without the warning. `"off"`: nothing is inferred or

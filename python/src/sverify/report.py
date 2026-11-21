@@ -27,7 +27,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _duckdb, _hooks
+from sverify import _decimals, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -1725,42 +1725,6 @@ class Report:
                 have.append(c)
         return {t: cs for t, cs in out.items() if cs}
 
-    @property
-    def needed(self) -> dict[str, list[str]]:
-        """Deprecated: `needs`. Their labels per input table."""
-        warnings.warn(
-            "Report.needed is deprecated; read Report.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return {t: list(labs) for t, labs in _labels_by_table(self.needs).items()}
-
-    @property
-    def needed_text(self) -> list[str]:
-        """Deprecated: `Needed.text` of each of `needs`."""
-        warnings.warn(
-            "Report.needed_text is deprecated; read Needed.text of report.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._needs_lines()
-
-    @property
-    def needed_conditions(self) -> dict[str, list[Condition]]:
-        """Deprecated: `Needed.condition` of each of `needs`, or the whole
-        mapping as `suggested_requires`."""
-        warnings.warn(
-            "Report.needed_conditions is deprecated; read Needed.condition of report.needs, "
-            "or report.suggested_requires",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        out: dict[str, list[Condition]] = {}
-        for n in self.needs:
-            if n.condition is not None:
-                out.setdefault(n.table, []).append(n.condition)
-        return out
-
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
@@ -2116,61 +2080,6 @@ class Report:
                 *facts,
             ]
         )
-
-
-#: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = [
-    "assumed_check",
-    "table_params",
-    "run_plan",
-    "run_gate",
-    "run_unchecked",
-    "run_gates",
-    "asof_checks",
-    "asof_max_pairs",
-    "stated_facts",
-    "sequence_determined",
-]
-
-_REPORT_INTERNAL = [
-    "windows_total",
-    "tie_places",
-    "exact",
-    "class_places",
-    "guard_free",
-    "unchecked",
-    "optimized",
-    "rewrites",
-    "inferred",
-    "implied",
-    "params",
-    "hints",
-    "bounds",
-    "relations",
-    "stated",
-    "floats_on",
-    "depends",
-    "contract",
-    "transfer",
-    "epsilon",
-    "rows_exact",
-    "margin_checks",
-    "margin_flags",
-    "engines",
-    "sorted",
-    "generated_proofs",
-    "conditions",
-    "dialect",
-    "on_inferred",
-    "inferred_from",
-    "postconditions",
-]
-"""`Report`'s fields that are internal (B4 of the 1.0 API review): each has
-an underscore, and its old name reads it with a `DeprecationWarning` for a
-release. `plan` is `internal_plan`."""
-
-
-_deprecated.add(Report, {**{old: "_" + old for old in _REPORT_INTERNAL}, "plan": "internal_plan"})
 
 
 def _would_hold(c: CheckedCondition) -> str | None:
