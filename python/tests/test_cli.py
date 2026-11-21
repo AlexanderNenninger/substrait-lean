@@ -729,3 +729,29 @@ def test_the_relaxations_name_each_setting_that_weakens_the_gate(tmp_path, capsy
     path = write(tmp_path, HEAD + body)
     _, doc = run_json(capsys, "check", f"{path}:p")
     assert doc["items"][0]["relaxations"] == ['on_inferred="ignore"', "check_requires=False"]
+
+
+def test_without_sigalrm_the_time_budget_raises_in_the_main_thread(monkeypatch):
+    """Windows has no SIGALRM: a timer raises SIGINT, which the budget turns
+    into `BudgetExceeded` in the main thread, so the partial report is
+    printed and the watchdog's hard stop is not needed (#183). Ctrl-C before
+    the timer stays a KeyboardInterrupt. Runs on every platform."""
+    import signal
+    import time
+
+    from sverify.cli._limits import Budget, BudgetExceeded
+
+    monkeypatch.delattr(signal, "SIGALRM", raising=False)
+
+    def hard_stop() -> None:
+        raise AssertionError("the watchdog stopped the process")
+
+    budget = Budget(0.2, on_hard_stop=hard_stop)
+    end = time.monotonic() + 5
+    with pytest.raises(BudgetExceeded), budget.armed():
+        while time.monotonic() < end:  # Python code, where a raised signal lands on every platform
+            time.sleep(0.01)
+    assert budget.exceeded and time.monotonic() < end
+    with pytest.raises(KeyboardInterrupt), Budget(60, on_hard_stop=hard_stop).armed():
+        signal.raise_signal(signal.SIGINT)
+    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
