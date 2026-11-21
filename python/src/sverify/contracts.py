@@ -85,7 +85,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _decimals, _hooks, _pipe, _stages
+from sverify import _decimals, _engines, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._dialect import DialectDifference
@@ -248,7 +248,7 @@ def semantics_names() -> tuple[str, ...]:
 def _checked_semantics(semantics: str) -> Semantics:
     if semantics not in semantics_names():
         named = ", ".join(map(repr, semantics_names()))
-        raise ValueError(
+        raise _engines.not_installed(semantics) or ValueError(
             f"semantics must be one of {named} (each installed engine profile, "
             f"sverify.profiles), not {semantics!r}"
         )
@@ -544,7 +544,6 @@ def _text_condition(col: str, fact: TextFact) -> Inferred:
     (`Text.upperRaises`, `lowerRaises`, D51).
     Its SQL is the writers' guard in the default engine's dialect, the one the data is
     checked on; its Ibis form is one regular expression with the same characters."""
-    from sverify import _engines
     from sverify.sql.core import ascii_text, case_class
 
     dialect = _engines.sql_dialect()

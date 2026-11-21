@@ -176,15 +176,10 @@ class Connection:
         from sverify import profiles
 
         plugin = profiles.find(engine if engine is not None else _engines.default())
-        if plugin is not None and plugin.runner is not None and not plugin.local:
-            missing = [m for m in plugin.modules or (plugin.engine,) if not _importable(m)]
-            if missing:
-                raise ImportError(
-                    f"engine {plugin.engine!r} cannot run plans here: {', '.join(missing)} "
-                    f"is not installed (pip install 'sverify[{plugin.engine}]')"
-                )
         if plugin is None or not plugin.local:
-            raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+            raise _engines.not_installed(plugin.engine if plugin else engine) or ValueError(
+                f"unknown engine {engine!r}; expected one of {ENGINES}"
+            )
         self.engine: Engine = plugin.engine  # type: ignore[assignment] - an installed engine's name
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
@@ -731,7 +726,9 @@ def _run_plan(
     engine = engine or con.engine
     plugin = profiles.find(engine)
     if plugin is None or plugin.runner is None:
-        raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+        raise _engines.not_installed(engine) or ValueError(
+            f"unknown engine {engine!r}; expected one of {ENGINES}"
+        )
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine

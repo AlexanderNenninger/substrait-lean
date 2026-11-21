@@ -28,7 +28,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _duckdb, _hooks
+from sverify import _decimals, _duckdb, _engines, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -1299,6 +1299,8 @@ class Report:
             raise ValueError("this report has no plan to run: it was not made by sv.verify")
         kind: str | None = None
         target = engine if engine is not None else con.engine
+        if missing := _engines.not_installed(target):
+            raise missing
         chosen = None
         if unverified and not routes.verified(self):
             chosen = routes.unverified(self, target)
