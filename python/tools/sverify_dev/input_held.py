@@ -134,7 +134,7 @@ class Sampler:
         self.high = 0.0
         self.steps: list[tuple[float, str]] = []
         self.on = True
-        self.main = threading.main_thread().ident
+        self.main = threading.main_thread().ident or 0
         threading.Thread(target=self._run, daemon=True).start()
 
     def start(self) -> None:
@@ -218,6 +218,7 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
     calls: list = []
     started = time.perf_counter()
     sampler = Sampler() if profile else None
+    base = 0.0
     if sampler is not None:
         profile_calls(engine, calls, sampler)
         sampler.start()

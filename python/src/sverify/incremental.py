@@ -62,7 +62,6 @@ from typing import Any, Literal, Protocol
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
-import pyarrow.compute as pc
 import sqlglot as sg
 
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched, profiles
@@ -2776,7 +2775,7 @@ def _refuse_missing(store: Store, merged: State, what: str) -> None:
     if not store.has_negative(merged):
         return
     rows = arrow_of(merged)
-    missing = rows.filter(pc.less(rows.column(WEIGHT), 0)).slice(0, 1).to_pylist()
+    missing = rows.filter(_call("less", rows.column(WEIGHT), 0)).slice(0, 1).to_pylist()
     raise ValueError(f"{what}: no such row {missing[0] if missing else ''}")
 
 
