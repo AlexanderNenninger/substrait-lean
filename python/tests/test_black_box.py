@@ -819,7 +819,10 @@ def _string_split(s: str | None, sep: str | None) -> list[str] | None:
 )
 def test_string_split_is_leans_on_random_data(rows):
     # The pieces left to right, characters for '', `[s]` for a NULL separator
-    # (#808): Python's `str.split`, DuckDB's, and through oracles A and C.
+    # (#808): Python's `str.split`, DuckDB's, and through oracles A and C. The cell
+    # `('', '')` is left out: `['']` at 2.0.0 and `[]` at 2.0.1 (`duckdb-string-split-edges`),
+    # which Lean does not evaluate.
+    rows = [(s, p) for s, p in rows if (s, p) != ("", "")]
     t = pa.table(
         {"s": pa.array([s for s, _ in rows], pa.string()),
          "p": pa.array([p for _, p in rows], pa.string())}

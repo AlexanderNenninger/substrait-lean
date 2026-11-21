@@ -13,7 +13,7 @@ outside it, with the evaluators Lean has for some of them.
 
 Lean's evaluator computes the black boxes it has an evaluator for
 (`evalScalar`: `base64`, `octet_length`, `strlen`, `yearweek`, `list_sum`,
-`string_split`, the casts from VARCHAR on a subset, and `signbit` away from
+`string_split` away from `('', '')`, the casts from VARCHAR on a subset, and `signbit` away from
 `±0.0` and NaN) and panics at the others, so `substrait-check` refuses to
 print rows rather than print wrong ones. The kernel sees none of it: a row's
 function is `rawScalar name` (`rawAgg name`), an `opaque` constant, and no
@@ -97,12 +97,12 @@ def splitChars (sep : List Char) : Nat → List Char → List Char → List Stri
 
 /-- DuckDB's `string_split(s, sep)`: by characters for `sep = ''`. -/
 def stringSplit (s sep : String) : List String :=
-  if sep.isEmpty then (if s.isEmpty then [""] else s.toList.map Char.toString)
+  if sep.isEmpty then s.toList.map Char.toString
   else splitChars sep.toList 0 s.toList []
 
 #guard stringSplit "a,,b" "," == ["a", "", "b"] && stringSplit "" "," == [""]
 #guard stringSplit "aaa" "aa" == ["", "a"] && stringSplit "ababcab" "abc" == ["ab", "ab"]
-#guard stringSplit "a,b," "," == ["a", "b", ""] && stringSplit "" "" == [""]
+#guard stringSplit "a,b," "," == ["a", "b", ""]
 #guard stringSplit "héllo" "" == ["h", "é", "l", "l", "o"]
 
 /-- A cast from VARCHAR (#806) by its target, the row's name less its prefix. -/
@@ -132,6 +132,8 @@ def evalScalar : String → List Value → Value
   | "list_sum", [.list vs] => match listSum vs with
     | some n => .int n
     | none => .null
+  -- `string_split('', '')` is `['']` at 2.0.0 and `[]` at 2.0.1 (`duckdb-string-split-edges`).
+  | "string_split", [.str "", .str ""] => unevaluated "string_split of '' by '' (2.0.0 and 2.0.1 differ)"
   | "string_split", [.str s, .str sep] => .list ((stringSplit s sep).map .str)
   | "string_split", [.str s, .null] => .list [.str s]
   | "string_split", [.null, _] => .null

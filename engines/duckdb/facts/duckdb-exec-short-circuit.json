@@ -268,6 +268,21 @@
         }
       ],
       "notes": "Since D21 (docs/core-semantics.md, #609) the reference itself raises on a constant subexpression that raises, in any CASE branch and on an empty table too (`Rel.constIssues`), so DuckDB's plan-time fold (DD-7) no longer breaks a verified plan's no-error guarantee: such a plan is not verified error-free."
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045, duckdb 2.0.1 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT CASE WHEN x > 0 THEN 1 WHEN 1 // 0 = 1 THEN 2 END FROM t",
+          "observed": "2.0.0: Division by zero while planning, on an empty table and on rows that take the first branch; 2.0.1: no error, the CASE is lazy"
+        },
+        {
+          "test": "python/tests/test_characterization_findings.py::test_dd7_constant_case_when_raises_while_planning_before_2_0_1"
+        }
+      ],
+      "notes": "DD-7 is fixed upstream in 2.0.1 (the `CASE` simplification no longer evaluates a failing constant `WHEN` at plan time). Error-side: the reference still raises on such a constant (D21), so nothing relies on DuckDB raising. The rest of the fact holds at 2.0.1 as far as the replay probes cover."
     }
   ],
   "issues": [

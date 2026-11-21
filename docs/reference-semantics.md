@@ -375,9 +375,13 @@ construct or lists it:
   half away from zero) and the exact cast (#322).
 - `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
   is NULL here and NaN on DuckDB. `Report.dialect_differences` lists it.
+- `list_contains_null_needle`: `list_contains([], NULL)` is NULL here and FALSE
+  on DuckDB 2.0.1 (NULL at 2.0.0); every other list gives NULL. The report lists
+  each `list_contains` whose needle is not a literal, under every semantics: the plan
+  gives NULL, and the SQL run natively on 2.0.1 gives FALSE.
 
-The verdict is unchanged by the list. The list is empty under
-`semantics="duckdb"` and for an Ibis transformation.
+The verdict is unchanged by the list. The list is empty for an Ibis transformation, and
+under `semantics="duckdb"` it holds only `list_contains`.
 
 ## Aggregates
 
