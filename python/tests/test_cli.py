@@ -622,6 +622,20 @@ def test_sarif(tmp_path, capsys):
     assert fixed == path.read_bytes()
 
 
+def test_fix_keeps_a_files_crlf_line_endings(tmp_path, capsys):
+    """A file with Windows line endings is fixed with them: no line gains a
+    second `\r`, and the diff removes only the decorators it rewrites (#183)."""
+    path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
+    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    code, out = run(capsys, "check", str(path), "--diff")
+    lines = out.splitlines()
+    removed = [line for line in lines if line.startswith("-") and not line.startswith("---")]
+    assert removed and all(line.startswith("-@sv.transform(") for line in removed), out
+    assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
+    fixed = path.read_bytes()
+    assert b"\r\r\n" not in fixed and fixed.count(b"\n") == fixed.count(b"\r\n")
+
+
 def test_sarif_is_valid(tmp_path, capsys):
     from _sarif import jsonschema, valid_sarif
 
