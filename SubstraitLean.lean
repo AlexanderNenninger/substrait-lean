@@ -54,6 +54,7 @@ import Sverify.DuckDB.LoweringCache
 import Sverify.Engines.LoweringSearch
 import Sverify.DuckDB.LoweringSchemas
 import Sverify.DuckDB.Lowering
+import Sverify.Polars.Lowering
 import Sverify.DuckDB.Engine
 import Sverify.Core.StatProps
 import Sverify.Analysis.AllowedAnalysis

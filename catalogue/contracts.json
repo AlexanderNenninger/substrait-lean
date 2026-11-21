@@ -887,8 +887,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: fp.arith's rounding (#271)"
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -961,8 +960,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding (#271)"
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -995,8 +993,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1409,8 +1406,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding (#271)"
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
