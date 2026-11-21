@@ -212,7 +212,8 @@ theorem toIntEven?_eq_toInt?_roundEven (c : Int) : toIntEven? c = toInt? (roundE
         simp [h0, code, this]
       · have hpos : 0 < code (evenMag (mag c)) := by unfold code; simp [h0]; omega
         have : -code (evenMag (mag c)) < 0 := by omega
-        simp [not_le.mpr hpos]
+        simp [this]
+        intro h; omega
     · rw [hr]; simp only [hc, ↓reduceIte]
       have : ¬ code (evenMag (mag c)) < 0 := by have := code_nonneg (evenMag (mag c)); omega
       simp [this]
