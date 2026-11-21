@@ -433,6 +433,17 @@ def expand_table_shorthand(query: str) -> str:
     return "".join(out) + query[last:]
 
 
+#: DuckDB aggregates the lift does not read, each with its reason (#326).
+_UNREAD_AGGREGATES = {
+    "arg_min_null": "a NULL argument is a value of the group there, which arg_min skips",
+    "arg_max_null": "a NULL argument is a value of the group there, which arg_max skips",
+    "arg_min_nulls_last": "its order of NULLs is not modelled",
+    "arg_max_nulls_last": "its order of NULLs is not modelled",
+    "bitstring_agg": "its result is a BIT string, a type the model lacks",
+    "histogram_exact": "its result is a MAP, a type the model lacks",
+}
+
+
 def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperation:
     """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
     every name resolved (`qualify`) against the tables `schemas` (Ibis
@@ -470,6 +481,14 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             raise SqlUnsupported(
                 _nondeterministic(f),
                 hint="pass the value in as a column or a constant",
+                construct=f"function {f.name.lower()}",
+                sql=_shown(f),
+            )
+        if f.name.lower() in _UNREAD_AGGREGATES:
+            raise SqlUnsupported(
+                f"{f.name.lower()}() is not supported yet: {_UNREAD_AGGREGATES[f.name.lower()]} "
+                "(#326)",
+                hint="write the step in Ibis, or compute it from other aggregates",
                 construct=f"function {f.name.lower()}",
                 sql=_shown(f),
             )
@@ -717,6 +736,9 @@ _AGGREGATES: dict[type, str] = {
     sge.ArrayAgg: "array_agg",
     sge.First: "first",
     sge.Last: "last",
+    # `any_value`: a non-NULL value of the group, as the Ibis producer writes
+    # `arbitrary()` (#1920, #319).
+    sge.AnyValue: "first",
 }
 
 #: The aggregates that take their rows in the order of their ORDER BY,
@@ -837,7 +859,6 @@ _SELECT_ARGS = {
 #: The SELECT clauses the lift refuses, each with its rewrite or issue.
 _CLAUSES = {
     "qualify": ("QUALIFY", "filter the window's column in a subquery (#319)"),
-    "windows": ("WINDOW", "write each window in its OVER (…)"),
     "laterals": ("LATERAL", "write it as a join (#813)"),
     "pivots": ("PIVOT", "write one aggregate per value, SUM(CASE WHEN k = v THEN x END)"),
     "sample": ("SAMPLE", "sample the input before sverify reads it"),
@@ -2347,6 +2368,66 @@ RULES: dict[type, Rule] = {}
 #: Rewrites of the parsed tree, before its functions are checked: the black
 #: boxes' (`blackbox.py`, #325) give their calls nodes of their own.
 PARSE_REWRITES: list[Callable[[sge.Expr], sge.Expr]] = []
+
+
+def _any_value(tree: sge.Expr) -> sge.Expr:
+    """SQLGlot reads DuckDB's `any_value(x)` as `IgnoreNulls(AnyValue(x))`; it
+    skips NULLs, so it is the `AnyValue` node (#319)."""
+
+    def unwrap(n: sge.Expr) -> sge.Expr:
+        if isinstance(n, sge.IgnoreNulls) and isinstance(n.this, sge.AnyValue):
+            return n.this
+        return n
+
+    return tree.transform(unwrap, copy=False)
+
+
+_WINDOW_PARTS = {"partition_by": "a PARTITION BY", "order": "an ORDER BY", "spec": "a frame"}
+
+
+def _named_windows(tree: sge.Expr) -> sge.Expr:
+    """`WINDOW w AS (…)`: each `OVER w` or `OVER (w ORDER BY …)` of the same
+    SELECT written out (#319). A window that adds a PARTITION BY, a second
+    ORDER BY or a second frame to the named one is refused, as SQL does."""
+    for sel in list(tree.find_all(sge.Select)):
+        defs = sel.args.get("windows")
+        if not defs:
+            continue
+        named = {}
+        for d in defs:
+            if d.args.get("alias") is not None:
+                raise SqlUnsupported(
+                    f"WINDOW {d.this.name} is defined from another named window; write it out",
+                    construct="WINDOW",
+                )
+            named[_normalized(d.this)] = d
+        sel.set("windows", None)
+        for w in list(sel.find_all(sge.Window)):
+            if w.find_ancestor(sge.Select) is not sel or w.args.get("alias") is None:
+                continue
+            base = named.get(_normalized(w.args["alias"]))
+            if base is None:
+                raise SqlUnsupported(
+                    f"the window {w.args['alias'].name} is not defined in this SELECT",
+                    hint="write the window in its OVER (…), or name one this SELECT defines",
+                    construct="WINDOW",
+                )
+            for key in ("partition_by", "order", "spec"):
+                mine, theirs = w.args.get(key), base.args.get(key)
+                if mine and theirs:
+                    raise SqlUnsupported(
+                        f"OVER ({w.args['alias'].name} …) adds {_WINDOW_PARTS[key]} to the "
+                        "named window, which SQL refuses",
+                        hint="write the whole window in its OVER (…)",
+                        construct="WINDOW",
+                    )
+                if theirs:
+                    w.set(key, theirs.copy())
+            w.set("alias", None)
+    return tree
+
+
+PARSE_REWRITES.extend([_any_value, _named_windows])
 
 #: The relations in FROM of other node types (`VALUES`), each area's: the
 #: relation and its columns, `rule(lf, node)`.

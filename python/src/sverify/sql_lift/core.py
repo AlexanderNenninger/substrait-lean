@@ -6,11 +6,13 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
+from ibis.common.temporal import IntervalUnit
 
 from sverify import _functions
 from sverify._unsupported import MIN_MOD_GUARD
@@ -21,6 +23,7 @@ from sverify.plan_json import (
     between,
     if_then,
     in_values,
+    interval_json,
     literal,
     logical,
 )
@@ -115,11 +118,44 @@ def _neg(lf: _Lift, node: sge.Neg, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("negate", [a.json], a.type, _overflow(lf, a.type)), a.type)
 
 
+def _date_plus_days(name: str, a: E, b: E) -> E:
+    """`DATE ± INTEGER`: DuckDB adds days and the result is a DATE (#319). A
+    constant count is the interval of that many days; a column's is not read."""
+    if name == "add" and b.type.is_date():
+        a, b = b, a
+    if not a.type.is_date() or a.midnight or not (b.type.is_integer() or b.type.is_null()):
+        raise SqlUnsupported(
+            f"{name} of {a.type} and {b.type} is not supported yet", construct=name.upper()
+        )
+    if not b.constant or b.value is None:
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} an integer that is not a constant is not "
+            "supported yet (#319); write the interval, DATE + INTERVAL 1 DAY",
+            construct=name.upper(),
+        )
+    if abs(int(b.value)) > 3_000_000:  # a date's range is about 5.8 million years
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} {b.value} days leaves DuckDB's date range",
+            construct=name.upper(),
+        )
+    micros = int(b.value) * 86_400_000_000
+    day = E(interval_json(0, micros), dt.Interval(unit=IntervalUnit.MICROSECOND), (0, micros))
+    try:
+        return replace(_temporal_plus(name, a, day), midnight=False)
+    except OverflowError:
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} {b.value} days leaves the dates sverify reads",
+            construct=name.upper(),
+        ) from None
+
+
 def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _ARITHMETIC[type(node)]
     a, b = sub(node.this), sub(node.expression)
     if a.type.is_interval() or b.type.is_interval():
         return _temporal_plus(name, a, b)
+    if name in ("add", "subtract") and a.type.is_date() != b.type.is_date():
+        return _date_plus_days(name, a, b)
     if name == "subtract" and a.type.is_date() and b.type.is_date():
         # DuckDB's DATE - DATE is a BIGINT of days.
         if a.midnight or b.midnight:
