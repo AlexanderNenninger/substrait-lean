@@ -300,7 +300,11 @@ def closed_issues(
                 waiting.setdefault(r["issue"], []).append(f"{name}: {key}")
     out = []
     for number, entries in sorted(waiting.items()):
-        if state(number) == "CLOSED":
+        found = state(number)
+        if found is None:
+            print("closed-issue check skipped: gh unavailable", file=sys.stderr)
+            break
+        if found == "CLOSED":
             out.append(
                 f"#{number} is closed; {len(entries)} entries wait on it, such as {entries[0]}"
             )
