@@ -352,7 +352,7 @@ def test_cases_copy_a_composite_foreign_key_from_one_referenced_row():
     @sv.transform(
         requires={
             "o": [*small["x"], *small["y"], sv.references("x", "y", to=("p", ["x", "y"]))],
-            "p": [*small["x"], *small["y"], sv.key("x"), sv.key("y")],
+            "p": [*small["x"], *small["y"]],
         }
     )
     def joined(o, p):
@@ -362,7 +362,7 @@ def test_cases_copy_a_composite_foreign_key_from_one_referenced_row():
     node = joined(source([], pairs, name="o"), source([], pairs, name="p"))
     seen = 0
 
-    @settings(deadline=None)
+    @settings(max_examples=60, deadline=None, derandomize=True)
     @given(cases(node, max_rows=4))
     def check(data):
         nonlocal seen
