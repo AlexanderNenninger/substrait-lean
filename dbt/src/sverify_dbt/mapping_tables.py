@@ -32,7 +32,6 @@ TABLE_LEVEL = {
     "fewer_rows_than": _TWO,
     "equality": "it compares the rows of two relations",
     "cardinality_equality": "it compares the values of a column in two relations",
-    "mutually_exclusive_ranges": "it compares the ranges of different rows",
     "sequential_values": "it compares each row with its neighbour",
     "expect_table_row_count_to_equal_other_table": _TWO,
     "expect_table_row_count_to_equal_other_table_times_factor": _TWO,

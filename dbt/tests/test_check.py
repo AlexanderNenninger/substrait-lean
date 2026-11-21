@@ -39,10 +39,15 @@ def test_window_test_is_proved(result: sverify_dbt.CheckResult) -> None:
     assert got["dbt_utils.unique_combination_of_columns(customer_id, valid_from)"] == "proved"
 
 
-def test_unproved_key(result: sverify_dbt.CheckResult) -> None:
-    [t] = [t for t in result["orders_with_city"].tests if t.label == "unique(order_id)"]
-    assert t.status == "not proved"
-    assert t.why == "the tests upstream do not make it a key"
+def test_a_point_in_time_join_keeps_the_key(result: sverify_dbt.CheckResult) -> None:
+    """`customer_history`'s versions don't overlap (`mutually_exclusive_ranges`,
+    its open end bounded by `valid_from < L`), so each order meets at most one
+    version and `order_id` stays a key of the join (#814)."""
+    assert statuses(result["orders_with_city"])["unique(order_id)"] == "proved"
+    got = statuses(result["customer_history"])
+    assert got["dbt_utils.expression_is_true(valid_from < timestamp '9999-12-31')"] == "proved"
+    # Proved of the model's own result only once SCD 2 derives it (#763).
+    assert got["dbt_utils.mutually_exclusive_ranges"] == "not proved"
 
 
 def test_refused_models_say_why(result: sverify_dbt.CheckResult) -> None:

@@ -88,7 +88,12 @@ sources:
             data_type: varchar
           - name: updated_at
             data_type: timestamp
-            data_tests: [not_null]
+            data_tests:
+              - not_null
+              - dbt_utils.accepted_range:
+                  arguments:
+                    max_value: "timestamp '9999-12-31'"
+                    inclusive: false
 
       - name: events
         columns:
