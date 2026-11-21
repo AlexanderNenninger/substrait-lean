@@ -148,7 +148,11 @@ def _string_concat(x: Exprs, op: Any) -> Json:
 
 def _regex_search(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal):
-        raise Unsupported("regular expressions must be constants", construct="REGEXP")
+        raise ProducerUnsupported(
+            "regular expressions must be constants",
+            "use a literal, or write each case with ifelse",
+            construct="REGEXP",
+        )
     arg, pattern = x(op.arg), x(op.pattern)
     matches = call("array_length", [call("regexp_match", [arg, pattern])])
     found = call(
@@ -159,16 +163,20 @@ def _regex_search(x: Exprs, op: Any) -> Json:
 
 def _regex_extract(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.index, ops.Literal):
-        raise Unsupported(
-            "re_extract needs a constant pattern and group", construct="function re_extract"
+        raise ProducerUnsupported(
+            "re_extract needs a constant pattern and group",
+            "use a literal, or write each case with ifelse",
+            construct="function re_extract",
         )
     return call("regexp_extract", [x(op.arg), x(op.pattern), x(op.index, dt.int64)])
 
 
 def _regex_replace(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
-        raise Unsupported(
-            "re_replace needs a constant pattern and replacement", construct="function re_replace"
+        raise ProducerUnsupported(
+            "re_replace needs a constant pattern and replacement",
+            "use a literal, or write each case with ifelse",
+            construct="function re_replace",
         )
     # Every match, as Ibis's SQL does (DuckDB's flag `'g'`).
     args = [x(op.arg), x(op.pattern), x(op.replacement), literal("g", dt.string)]
@@ -177,7 +185,7 @@ def _regex_replace(x: Exprs, op: Any) -> Json:
 
 def _hex_digest(x: Exprs, op: Any) -> Json:
     if op.how not in ("md5", "sha256") or not op.arg.dtype.is_string():
-        raise Unsupported(
+        raise ProducerUnsupported(
             f"hexdigest({op.how!r}) of {op.arg.dtype} is not supported; "
             "md5 and sha256 of strings are",
             construct="function hexdigest",

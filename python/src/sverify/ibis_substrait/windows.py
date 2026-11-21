@@ -65,7 +65,9 @@ def _frame_offset(op: Any, b: Any) -> int:
         key = op.order_by[0].arg.dtype if len(op.order_by) == 1 else None
         if key is not None and key.is_date():
             if micros % _US_PER_DAY:
-                raise Unsupported("a RANGE frame over a date needs whole days", construct="FRAME")
+                raise ProducerUnsupported(
+                    "a RANGE frame over a date needs whole days", construct="FRAME"
+                )
             return micros // _US_PER_DAY
         return micros
     if isinstance(v, ops.Cast):
@@ -73,9 +75,10 @@ def _frame_offset(op: Any, b: Any) -> int:
     if isinstance(v, ops.Negate) and isinstance(v.arg, ops.Literal):
         v = ops.Literal(-v.arg.value, v.arg.dtype) if isinstance(v.arg.value, int) else v
     if not isinstance(v, ops.Literal) or not isinstance(v.value, int) or isinstance(v.value, bool):
-        raise Unsupported(
+        raise ProducerUnsupported(
             "frame offsets must be integer constants (a column or expression offset "
             "makes each row's frame its own)",
+            "use a literal, or write each case with ifelse",
             construct="FRAME",
         )
     return v.value
@@ -96,7 +99,11 @@ def _interval_offset(v: Any) -> int:
         factor = INTERVAL_MICROS.get(dtype.unit.short)
         if factor is not None and isinstance(v.value, int):
             return v.value * factor
-    raise Unsupported("frame offsets must be constant intervals of days or less", construct="FRAME")
+    raise ProducerUnsupported(
+        "frame offsets must be constant intervals of days or less",
+        "use a literal, or write each case with ifelse",
+        construct="FRAME",
+    )
 
 
 def _bound(op: Any, b: Any) -> Json:
@@ -190,8 +197,10 @@ def window(x: Exprs, op: Any) -> Json:
         else:
             nth = func.nth.value if isinstance(func.nth, ops.Literal) else None
             if not isinstance(nth, int) or nth < 0:
-                raise Unsupported(
-                    "nth must be a non-negative integer constant", construct="function nth"
+                raise ProducerUnsupported(
+                    "nth must be a non-negative integer constant",
+                    "use a literal, or write each case with ifelse",
+                    construct="function nth",
                 )
             name, args = "nth_value", [x(func.arg), literal(nth + 1, dt.int64)]
     elif isinstance(func, ops.Reduction):

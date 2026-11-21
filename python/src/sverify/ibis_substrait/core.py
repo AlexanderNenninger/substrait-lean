@@ -29,6 +29,7 @@ from sverify.ibis_substrait._base import (
 )
 from sverify.plan_json import (
     Json,
+    ProducerUnsupported,
     Unsupported,
     between,
     call,
@@ -49,7 +50,7 @@ _NONDETERMINISTIC = "each run gives another value, so no contract can be proved 
 
 def _field(x: Exprs, op: Any) -> Json:
     if op.rel not in x.offsets:
-        raise Unsupported(
+        raise ProducerUnsupported(
             f"column {op.name} refers to a relation outside its input "
             "(correlated subqueries are only supported in EXISTS)",
             construct="SUBQUERY",

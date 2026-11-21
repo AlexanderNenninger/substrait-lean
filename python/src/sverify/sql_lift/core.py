@@ -220,7 +220,7 @@ def _int_div(lf: _Lift, node: sge.IntDiv, sub: Sub, scope: list[Column]) -> E:
     a, b = sub(node.this), sub(node.expression)
     t = lf.common([a, b], "//")
     if not t.is_integer():
-        raise Unsupported(
+        raise SqlUnsupported(
             f"// of {a.type} and {b.type} is not supported; it divides integers",
             construct="INTEGER DIVISION",
         )
@@ -377,7 +377,7 @@ def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
         test = x if node.expression.this else sge.Not(this=sge.Paren(this=x))
         return sub(sge.Coalesce(this=test, expressions=[sge.false()]))
     if not isinstance(node.expression, sge.Null):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"IS {_shown(node.expression)} is not supported; only IS [NOT] NULL, TRUE or FALSE is",
             construct="IS",
         )
@@ -410,7 +410,7 @@ def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
         needle = sub(node.this)
         rel, cols = lf.nested(query, scope)
         if len(cols) != 1:
-            raise Unsupported("an IN subquery must return one column", construct="IN SUBQUERY")
+            raise SqlUnsupported("an IN subquery must return one column", construct="IN SUBQUERY")
         t = cols[0].type
         if not needle.type.is_null() and not _same(lf.common([needle, E({}, t)], "IN"), t):
             raise SqlUnsupported(
@@ -590,8 +590,10 @@ def _rounding(name: str) -> Callable[..., E]:
         if digits is not None:
             d = sub(digits)
             if not (d.constant and isinstance(d.value, int)):
-                raise Unsupported(
-                    "round needs a constant number of digits", construct="function round"
+                raise SqlUnsupported(
+                    "round needs a constant number of digits",
+                    "use a literal, or write each case with ifelse",
+                    construct="function round",
                 )
             if a.type.is_integer():
                 raise SqlUnsupported(

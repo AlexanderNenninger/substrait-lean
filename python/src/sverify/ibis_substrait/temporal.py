@@ -45,7 +45,7 @@ def _date(x: Exprs, op: Any) -> Json:
 def _truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
     if unit == "nanosecond":
-        raise Unsupported(
+        raise ProducerUnsupported(
             "truncating to nanoseconds is not supported; timestamps have microseconds",
             construct="function truncate",
         )
@@ -259,14 +259,15 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
             return make_date_json(*(x(a, dt.int64) for a in op.args))
         if values is None and isinstance(op, ops.TimestampFromYMDHMS):
             if not all(a.dtype.is_integer() for a in op.args):
-                raise Unsupported(
+                raise ProducerUnsupported(
                     f"{what} of columns is only supported of integers",
                     construct="function make_timestamp",
                 )
             return make_timestamp_json(*(x(a, dt.int64) for a in op.args))
         if values is None:
-            raise Unsupported(
+            raise ProducerUnsupported(
                 f"{what} of columns is not supported, only of constants",
+                "use a literal, or write each case with ifelse",
                 construct=class_construct(what),
             )
         try:
@@ -298,9 +299,15 @@ def _from_unix(x: Exprs, op: Any) -> Json:
 
 def _strftime(x: Exprs, op: Any) -> Json:
     if not op.arg.dtype.is_timestamp():
-        raise Unsupported("strftime is only supported of timestamps", construct="function strftime")
+        raise ProducerUnsupported(
+            "strftime is only supported of timestamps", construct="function strftime"
+        )
     if not isinstance(op.format_str, ops.Literal):
-        raise Unsupported("strftime formats must be constants", construct="function strftime")
+        raise ProducerUnsupported(
+            "strftime formats must be constants",
+            "use a literal, or write each case with ifelse",
+            construct="function strftime",
+        )
     return call("strftime", [x(op.arg), literal(op.format_str.value, dt.string)])
 
 
@@ -310,8 +317,10 @@ def _bucket(x: Exprs, op: Any) -> Json:
     c = _const_interval(op.interval)
     o = (0, 0) if op.offset is None else _const_interval(op.offset)
     if c is None or c[0] or c[1] <= 0 or o is None or o[0]:
-        raise Unsupported(
-            "bucket needs constant intervals of days or less", construct="function bucket"
+        raise ProducerUnsupported(
+            "bucket needs constant intervals of days or less",
+            "use a literal, or write each case with ifelse",
+            construct="function bucket",
         )
     origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(o[1])}}}
     return call("date_bin", [interval_json(0, c[1]), x(op.arg), origin])
@@ -351,8 +360,10 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
     def rule(x: Exprs, op: Any) -> Json:
         c = _const_interval(op.right)
         if c is None:
-            raise Unsupported(
-                "a time of day plus an interval needs a constant interval", construct="INTERVAL"
+            raise ProducerUnsupported(
+                "a time of day plus an interval needs a constant interval",
+                "use a literal, or write each case with ifelse",
+                construct="INTERVAL",
             )
         if c[0]:
             raise ProducerUnsupported(

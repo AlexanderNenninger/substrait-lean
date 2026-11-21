@@ -61,3 +61,25 @@ def test_no_lean_parser_refusal_cites_datafusion():
     assert throws
     bad = [t for t in throws if "datafusion" in t.lower()]
     assert not bad, bad
+
+
+#: Words that mark a message as saying what to do instead.
+_FIX = re.compile(
+    r"\b(use|write|pass|rewrite|cast|instead|take|select|replace|set|add|drop|remove|spell|give"
+    r"|change|move|put|try|call|apply|provide|specify|choose|wrap|compute|alias|rename|declare"
+    r"|list|filter|unpivot|split|keep|match|read|check|install|build)\b|see #|\(#\d+|Ibis",
+    re.I,
+)
+
+FRONTENDS = [
+    *sorted((SRC / "ibis_substrait").glob("*.py")),
+    *sorted((SRC / "sql_lift").glob("*.py")),
+]
+
+
+@pytest.mark.parametrize("path", FRONTENDS, ids=lambda p: p.relative_to(ROOT).as_posix())
+def test_a_frontend_refusal_says_what_to_do_instead(path):
+    """A frontend raises `ProducerUnsupported` or `SqlUnsupported`, which end
+    with a fix, or a plain `Unsupported` whose own text names one (#176)."""
+    bad = [(n, t) for n, t in _refusals(path) if t and not _FIX.search(t)]
+    assert not bad, bad

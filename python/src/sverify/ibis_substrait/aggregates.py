@@ -122,7 +122,7 @@ def collect(x: Exprs, op: Any) -> Json:
     for k in op.order_by:
         key = _sort_key(x, k)
         if "selection" not in key["expr"]:
-            raise Unsupported(
+            raise ProducerUnsupported(
                 "collect(order_by=) must order by columns", construct="function collect"
             )
         sorts.append(key)
@@ -155,8 +155,10 @@ def group_concat(x: Exprs, op: Any) -> Json:
     deterministic (`Rel.windowsTotal`)."""
     sep = _const_string(op.sep)
     if sep is None:
-        raise Unsupported(
-            "group_concat needs a constant separator", construct="function group_concat"
+        raise ProducerUnsupported(
+            "group_concat needs a constant separator",
+            "use a literal, or write each case with ifelse",
+            construct="function group_concat",
         )
     if not op.arg.dtype.is_string():
         raise Unsupported(
@@ -167,7 +169,7 @@ def group_concat(x: Exprs, op: Any) -> Json:
     for k in op.order_by:
         key = _sort_key(x, k)
         if "selection" not in key["expr"]:
-            raise Unsupported(
+            raise ProducerUnsupported(
                 "group_concat(order_by=) must order by columns", construct="function group_concat"
             )
         sorts.append(key)
@@ -197,7 +199,7 @@ def first_last(x: Exprs, op: Any) -> Json:
     for k in () if isinstance(op, ops.Arbitrary) else op.order_by:
         key = _sort_key(x, k)
         if "selection" not in key["expr"]:
-            raise Unsupported(
+            raise ProducerUnsupported(
                 f"{name}(order_by=) must order by columns", construct=f"function {name}"
             )
         sorts.append(key)
@@ -234,9 +236,13 @@ def quantile(x: Exprs, op: Any) -> Json:
     elif isinstance(op.quantile, ops.Literal) and isinstance(op.quantile.value, int | float):
         q = op.quantile.value
     else:
-        raise Unsupported("quantile() needs a constant fraction", construct="function quantile")
+        raise ProducerUnsupported(
+            "quantile() needs a constant fraction",
+            "use a literal, or write each case with ifelse",
+            construct="function quantile",
+        )
     if not 0 <= q <= 1:
-        raise Unsupported(
+        raise ProducerUnsupported(
             "quantile() needs a fraction between 0 and 1", construct="function quantile"
         )
     t = op.arg.dtype
@@ -277,7 +283,11 @@ def split_multi_quantiles(metric: Any) -> Any:
     for m in metric.find(ops.MultiQuantile):
         qs = m.quantile
         if not (isinstance(qs, ops.Literal) and isinstance(qs.value, tuple | list)):
-            raise Unsupported("quantile() needs constant fractions", construct="function quantile")
+            raise ProducerUnsupported(
+                "quantile() needs constant fractions",
+                "use a literal, or write each case with ifelse",
+                construct="function quantile",
+            )
         one = [
             ops.Quantile(m.arg, ops.Literal(q, qs.dtype.value_type), m.where)  # pyrefly: ignore
             for q in qs.value
