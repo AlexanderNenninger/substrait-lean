@@ -511,8 +511,10 @@ meets `MergeSpec` keeps the invariant (`tInv_merge_of`), DuckDB's
 co-moment is within DuckDB's bound (`plVar_rel`) and its `VAR_*`, clamped at
 `0` as `VarState::finalize` does, within `varTol` (`core_var_polars`). The
 fuzz (`polars-var-bound`) measured `1.03 n u √(Q' S)` against the proved
-`148`. Polars's `agg.var` row cites `core_var_polars`; its `COVAR_*`
-(`CovState`) has no theorem yet, and its `agg.stat` row stays tested.
+`148`. Polars's `agg.var` row cites `core_var_polars`. Its `COVAR_*`
+(`CovState`) has no theorem yet: at 1.0 Polars's `COVAR_*` rests on the fuzzed
+bound (`polars-var-bound`), and its `agg.stat` row stays tested
+([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
 
 `Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a
 `COVAR_*`'s are `epsilon_var_cr` and `epsilon_cov_cr` for ranges `[-B, B]`

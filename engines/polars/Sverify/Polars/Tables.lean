@@ -139,7 +139,7 @@ def Profile.polars.obs : ObsTable := [
       ["polars-var-std", "polars-var-std-streaming", "polars-var-bound", "polars-var-pop-one-nan"] with
     shim := some "nan_through",
     rerun := some { floats := .within "plan" },
-    note := "Two-pass blocks of at most 128 values, Welford's update and Schubert and Gertz's merge, in any tree, meet StatProps on finite values (FloatBounds.StdModel.core_var_polars, #1808; polars-var-bound fuzzes it); Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan), so the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves)." }).proved
+    note := "Two-pass blocks of at most 128 values (CHUNK_SIZE in crates/polars-compute/src/moment.rs at py-2.1.0, a hypothesis of the theorem), Welford's update and Schubert and Gertz's merge, over every partition of the values into blocks, every summation order and every merge tree, meet StatProps on finite values (FloatBounds.StdModel.core_var_polars, #1808; polars-var-bound fuzzes it); Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan), so the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves)." }).proved
     "FloatBounds.StdModel.core_var_polars"),
   -- `lo + (hi - lo) · w`: with an infinite neighbour `hi - lo` is infinite and the
   -- result a NaN where `lo` is `-∞` and `+∞` where `hi - lo` overflows

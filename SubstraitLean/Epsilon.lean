@@ -243,16 +243,19 @@ def provedOrders : List String := ["SEQUENTIAL", "ANY", "PAIRWISE", "SCALED_CONS
 def ordersProved (es : List EngineProfile) : Bool :=
   es.all fun e => (e.table.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
 
-/-- The `stat_algo` behaviours `core_var_chan` and `core_cov_chan` cover:
-the reference's own, and Welford's update with Chan's merge. -/
+/-- The `stat_algo` behaviours `core_var_chan`, `core_cov_chan` and
+`core_var_polars` cover: the reference's own, and Welford's update with a
+merge that meets `MergeSpec` (Chan's, or Schubert and Gertz's on two-pass
+blocks). -/
 def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN"]
 
-/-- The function group of a statistic: `agg.var` for `VAR_*` and `STDDEV_*`,
-`agg.stat` for `COVAR_*` and `CORR` (`Functions.groups`). -/
+/-- The group whose `stat_algo` row a statistic reads, as the plan does
+(`AggFn.reads`): `agg.var` for `VAR_*` and `STDDEV_*`, `agg.stat` for
+`COVAR_*` and `CORR`. -/
 def statGroup (m : Measure) : String :=
-  match m.fn with
-  | .var _ _ => "agg.var"
-  | _ => "agg.stat"
+  match (AggFn.reads m.fn).find? (·.2.1 == "stat_algo") with
+  | some (g, _, _) => g
+  | none => "agg.stat"
 
 /-- The engines whose statistics of `group` a theorem bounds: the group's
 `stat_algo` choices are ones the theorems cover, and the `stat_algo` row the
@@ -269,7 +272,8 @@ def statsProvedOn (group : String) (es : List EngineProfile) : List String :=
       | none => false
     if algos.all (provedStatAlgos.contains ·) && proved then some e.name else none
 
--- Every engine's `VAR_*` is proved; Polars's `COVAR_*` is not (#1808, ruling 220).
+-- Every engine's `VAR_*` and `STDDEV_*` is proved; Polars's `COVAR_*` is not: its
+-- `agg.stat` row rests on a fuzzed bound until #1808's remainder (ruling 220).
 #guard statsProvedOn "agg.var" builtinEngines == ["duckdb", "polars", "spark"]
 #guard statsProvedOn "agg.stat" builtinEngines == ["duckdb", "spark"]
 
