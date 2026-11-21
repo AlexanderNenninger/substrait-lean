@@ -1,0 +1,17 @@
+{
+  "id": "F218",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Epic-pass rescope: #1484's remaining theorems (epsilon, #271, frontend validation, proof scaling, N10) become stated limits once docs/trusted-base.md names each and the docs' wording matches; #881 S5 and 2.1, #1485 item 9, #891 2.3 and 2.6 stay 1.0; #936 closes as an index.",
+  "issues": [
+    271,
+    881,
+    891,
+    936,
+    1484,
+    1485
+  ],
+  "source": "fable-ruling-218-epic-pass-rescope.md"
+}

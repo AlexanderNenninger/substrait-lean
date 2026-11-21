@@ -1,0 +1,13 @@
+{
+  "id": "F209",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "#2081: the interval refusal, the casts of constants and the scalar-subquery limit stand with new reasons; `power`'s folds go (D71, held for the maintainer); `Sink.keeps_retired` is the one public name.",
+  "prs": [
+    2081
+  ],
+  "source": "fable-ruling-209-2081-datafusion-choices-keeps-retired.md",
+  "note": "The maintainer approved D71 (ruling 216); it lands with #2123."
+}

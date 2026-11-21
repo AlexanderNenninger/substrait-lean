@@ -1,0 +1,13 @@
+{
+  "id": "F204",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "PR #2063's sections need E1-E7 before merge: 'Tracked in' lines where no PR implements a section, ruling 188's bound in D62, and corrections to D55 and D70.",
+  "prs": [
+    2063
+  ],
+  "source": "fable-ruling-204-check-2063-sections.md",
+  "note": "A check of the record; ruling 205 finds E1-E7 in."
+}

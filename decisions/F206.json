@@ -1,0 +1,16 @@
+{
+  "id": "F206",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1951: the lens's `MIN % -1` guard is a raise every engine runs, with a Polars translator case and one constant for its message; a DuckDB-only guard and a lasting Polars refusal are declined (E1-E7).",
+  "prs": [
+    1951
+  ],
+  "amends": [
+    "F202"
+  ],
+  "source": "fable-ruling-206-1951-guard-on-engines.md",
+  "note": "No Lean change, no D-number."
+}
