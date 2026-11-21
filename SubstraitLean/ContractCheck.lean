@@ -8,6 +8,7 @@ import Sverify.Frontend.Parse
 import Sverify.Core.Pretty
 import Sverify.Analysis.Semantic
 import Sverify.Frontend.Write
+import Sverify.Frontend.Bind
 import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
@@ -338,6 +339,8 @@ structure Report where
   /-- The expressions that run correctly without their checks
   (`Rel.evalG_marks`), as `Rel.marksJson`; `.null` when none is known. -/
   unchecked : Json := .null
+  /-- `unchecked` for the plan as the checker writes it (`Parse.Plan.writtenRoot`). -/
+  writtenUnchecked : Json := .null
   /-- The transformation after `Rel.optimize`, as Substrait JSON. -/
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
@@ -380,6 +383,15 @@ the same tree: `{"node": "Filter", "slots": [0], "inputs": [...]}`. -/
 partial def _root_.Substrait.Rel.marksJson (r : Rel) (m : Marks) : Json :=
   Json.mkObj [("node", Lean.toJson r.nodeName), ("slots", Lean.toJson m.slots),
     ("inputs", Json.arr (r.inputs.zipIdx.map fun (x, i) => x.marksJson (m.input i)).toArray)]
+
+/-- **The root the checker writes for a plan** (`--write`): the plan with the
+arguments of nested calls bound as columns (`Rel.bindArgs`, #821), so the
+writers' guards read a column where they would copy a call, where that parses
+back as itself; decimal arithmetic stays as the parser read it (#27). -/
+def _root_.Substrait.Parse.Plan.writtenRoot [Boxes.Ambient] (plan : Parse.Plan) : Rel :=
+  let bound := plan.root.bindArgs plan.catalog
+  if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
+  else bound
 
 /-- Does `e` occur in `t`? -/
 partial def _root_.Substrait.Expr.hasSub (e : Expr) (t : Expr) : Bool :=
@@ -466,6 +478,7 @@ def Report.json (r : Report) : Json :=
         Json.arr (E.map fun (j, b) => need (t, j, b)).toArray).toArray)]).toArray),
     ("guard_free", Lean.toJson r.guardFree),
     ("unchecked", r.unchecked),
+    ("written_unchecked", r.writtenUnchecked),
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
 
@@ -1424,6 +1437,13 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         p.root.marksJson (p.root.marks cat A F T false)
       else .null
     | none => .null
+  -- The marks of the plan as the checker writes it, the one a run sends
+  -- (ruling 226).
+  let writtenUnchecked := match transform with
+    | some p =>
+      let w := p.writtenRoot
+      if w.checkWF cat && w.looseSub then w.marksJson (w.marks cat A F T false) else .null
+    | none => .null
   let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre
   return {
     implied
@@ -1452,7 +1472,8 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
     guardFree
     constant
     underAndOr := issuesUnderAndOr transform issues
-    unchecked }
+    unchecked
+    writtenUnchecked }
 
 /-- The report of a parsed request. Each postcondition is analysed once
 (`ensureEnv`); its verdicts are read from that analysis (`ensureResults`,

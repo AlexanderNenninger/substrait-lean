@@ -77,6 +77,20 @@ theorem Rel.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
     r.eval cat (Profile.duckdbWritten s).impl = r.eval cat :=
   Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm (Profile.duckdbWritten_faithful s hieee)
 
+/-- **DuckDB runs the marked expressions without their checks** (ruling 223,
+M3): on every catalog that satisfies the preconditions, the plan with the
+expressions `Rel.marks` lists written without their checks gives `Rel.eval`'s
+rows under DuckDB's IEEE operations; `Expr.issues_nil_of_safe` gives that their
+checks, the one against `±∞` included, would not have fired. `Report.run`
+writes them so on a checked run (`marksTheorems`). -/
+theorem Rel.duckdb_marks (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
+    (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {u : Bool} {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true) :
+    r.evalG (Profile.duckdbWritten s).impl cat (r.marks cat A F T u) = r.eval cat :=
+  Rel.evalG_marks hcat hA hF hT (Profile.duckdbWritten_faithful s hieee) hwf hsmall hs
+
 /-- `Rel.duckdb_sound` on one hypothesis. -/
 theorem Knowledge.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
     (hcat : cat.WF) {K : KnowledgeEnv} (hK : K.Sound cat) {r : Rel} (hwf : r.WF cat)
