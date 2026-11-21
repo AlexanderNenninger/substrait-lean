@@ -668,25 +668,35 @@ def _rows_per(query: str, cols: set[str]) -> Any | None:
 def _resolver(doc: Mapping[str, Any]) -> Callable[[Any], tuple[str, str] | None]:
     """Reads a reference of a relationship as `(table, column)`: the shorthand
     `table.column`, or an id path `[/]schema/<object id>/properties/<property
-    id>` through the `id`s of the objects and their properties (#1956)."""
-    objects = {o["id"]: o for o in doc.get("schema") or [] if "id" in o and "name" in o}
+    id>` through the `id`s of the objects and their properties (#1956). An
+    object or property without an `id` is named by its `name`, as ODCS's own
+    example `schema/relationships.odcs.yaml` does. A segment that names two
+    objects, or two properties of one object (one's `id` the other's
+    `name`), resolves to neither."""
+
+    def named(items: Any, segment: str) -> Mapping[str, Any] | None:
+        found = [o for o in items or [] if "name" in o and o.get("id", o["name"]) == segment]
+        return found[0] if len(found) == 1 else None
 
     def resolve(ref: Any) -> tuple[str, str] | None:
         if not isinstance(ref, str):
             return None
         parts = ref.lstrip("/").split("/")
         if len(parts) == 4 and parts[0] == "schema" and parts[2] == "properties":
-            obj = objects.get(parts[1])
-            for p in (obj or {}).get("properties") or []:
-                if p.get("id") == parts[3] and "name" in p:
-                    return obj["name"], p["name"]  # type: ignore[index]
-            return None
+            obj = named(doc.get("schema"), parts[1])
+            prop = obj and named(obj.get("properties"), parts[3])
+            return (obj["name"], prop["name"]) if obj and prop else None
         if ref.count(".") == 1 and "/" not in ref:
             table, col = ref.split(".")
             return table, col
         return None
 
     return resolve
+
+
+_UNDEFINED = "a reference to no single column the contract defines"
+"""A relationship whose `from` or `to` names no object and property of the
+contract, or two (`_resolver`), or whose two lists differ in length."""
 
 
 class _Reader:
@@ -834,7 +844,7 @@ class _Reader:
             return
         src, dst = refs(rel.get("from")), refs(rel.get("to"))
         if None in src or None in dst or len(src) != len(dst):
-            self.skip(None, rel, "a relationship sverify does not read")
+            self.skip(None, rel, _UNDEFINED)
         elif len(src) > 1:
             self.skip(None, rel, "a composite foreign key: references() takes one column")
         elif src[0][0] != self.table:  # type: ignore[index]
@@ -928,11 +938,12 @@ class _Reader:
             if key in opts:
                 self.skip(col, {key: opts[key]}, f"logicalTypeOptions.{key}")
         for rel in p.get("relationships") or []:
-            to = self.resolve(rel.get("to")) if isinstance(rel, Mapping) else None
-            if isinstance(rel, Mapping) and rel.get("type", "foreignKey") == "foreignKey" and to:
+            if not (isinstance(rel, Mapping) and rel.get("type", "foreignKey") == "foreignKey"):
+                self.skip(col, rel, "a relationship that is not a foreign key")
+            elif to := self.resolve(rel.get("to")):
                 self.out.append(references(col, to=to))
             else:
-                self.skip(col, rel, "a relationship sverify does not read")
+                self.skip(col, rel, _UNDEFINED)
         for r in p.get("quality") or []:
             self.rule(col, r)
         if p.get("required") and col not in self.valued:

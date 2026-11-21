@@ -465,6 +465,15 @@ def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
     return E(if_then(pairs, lf.to(dflt, t).json), t, midnight=midnight)
 
 
+def _if(lf: _Lift, node: sge.If, sub: Sub, scope: list[Column]) -> E:
+    """DuckDB's `if(c, a, b)`, another spelling of `CASE WHEN c THEN a ELSE b END`
+    (#328)."""
+    case = sge.Case(
+        ifs=[sge.If(this=node.this, true=node.args["true"])], default=node.args.get("false")
+    )
+    return _case(lf, case, sub, scope)
+
+
 def _coalesce(lf: _Lift, node: sge.Coalesce, sub: Sub, scope: list[Column]) -> E:
     es = [sub(node.this), *(sub(a) for a in node.expressions)]
     t = lf.common(es, "COALESCE")
@@ -695,6 +704,7 @@ register(
         sge.Between: _between,
         sge.In: _in,
         sge.Case: _case,
+        sge.If: _if,
         sge.Coalesce: _coalesce,
         sge.Pow: _pow,
         sge.Abs: _abs,
