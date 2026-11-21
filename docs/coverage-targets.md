@@ -138,7 +138,7 @@ is what the probe gives.
 | math functions | in | covered | catalogue: math_funcs 5, math_transcendental 2 |  |
 | decimal arithmetic and aggregates | in | covered | catalogue: decimal 40 (TPC-H, TPC-DS, finance); double-entry pattern ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749)) |  |
 | round of a decimal | in | — | money rounding: round(price * 1.19, 2); replay 28 | [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
-| DuckDB aliases: if, iff, len, substr, arbitrary | in | — | DuckDB style SQL; replay (binder tests) | [#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328) |
+| DuckDB aliases: if, len, substr, arbitrary | in | covered | DuckDB style SQL; replay (binder tests) |  |
 | fp32 (FLOAT) | skipped | — | replay 427; Parquet files written by ML tools | [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) |
 | now, current_date, random, uuid | skipped | — | Ibis now, today, random, uuid | [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
 | unsigned integers and HUGEINT | after 1.0 | — | replay 1,495, mostly DuckDB's own type tests | [#350](https://github.com/AlexanderNenninger/substrait-lean/issues/350) |
