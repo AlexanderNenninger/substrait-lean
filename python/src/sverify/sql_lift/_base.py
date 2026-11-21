@@ -931,9 +931,10 @@ class _Lift:
         self.profile = profile
         # The inputs by their normalized names, as `qualify` writes them.
         self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
-        # The CTEs in scope, by name, and the scopes of the queries a
-        # subquery is in (which it may not read: no correlated subqueries).
-        self.ctes: dict[str, sge.Expression] = {}
+        # The CTEs in scope, by name, each with the CTEs its body sees (the
+        # ones defined before it), and the scopes of the queries a subquery
+        # is in (which it may not read: no correlated subqueries).
+        self.ctes: dict[str, tuple[sge.Expression, dict]] = {}
         self.outer: list[list[Column]] = []
         # The overflow guard of each window whose RANGE frame bounds DuckDB
         # computes in its integer key's type (`_bound_guard`).
@@ -976,7 +977,7 @@ class _Lift:
             saved = self.ctes
             self.ctes = dict(saved)
             for cte in with_.expressions:
-                self.ctes[_normalized(cte.alias)] = cte.this
+                self.ctes[_normalized(cte.alias)] = (cte.this, dict(self.ctes))
             body = node.copy()
             body.set("with_", None)
             try:
@@ -1279,7 +1280,12 @@ class _Lift:
             )
         alias = node.alias_or_name
         if isinstance(node, sge.Table) and not node.args.get("db") and node.name in self.ctes:
-            rel, cols = self.query(self.ctes[node.name])
+            body, visible = self.ctes[node.name]
+            saved, self.ctes = self.ctes, visible
+            try:
+                rel, cols = self.query(body)
+            finally:
+                self.ctes = saved
             return rel, [Column(alias, c.name, c.type) for c in cols]
         if isinstance(node, sge.Table):
             if (

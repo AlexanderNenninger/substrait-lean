@@ -60,6 +60,14 @@ QUERIES = [
     "SELECT c FROM (SELECT customer AS c FROM orders INTERSECT SELECT name FROM customers)",
     "WITH c AS (SELECT name FROM customers UNION ALL SELECT name FROM customers)"
     " SELECT name, count(*) AS n FROM c GROUP BY name",
+    # #2166: a CTE's body sees the base tables and the CTEs before it, never itself
+    # or a later one: a CTE named like a table reads that table, and later
+    # queries read the CTE.
+    "WITH orders AS (SELECT id, amount FROM orders WHERE amount > 1) SELECT id FROM orders",
+    "WITH a AS (SELECT id, amount FROM orders), b AS (SELECT id FROM a WHERE amount > 1)"
+    " SELECT id FROM b",
+    "WITH a AS (SELECT id FROM orders), orders AS (SELECT id FROM a WHERE id > 1),"
+    " c AS (SELECT id FROM orders) SELECT id FROM c",
     # #1939: a WITH in front of a set operation covers its branches.
     "WITH c AS (SELECT name FROM customers) SELECT name FROM c UNION ALL"
     " SELECT customer FROM orders",
