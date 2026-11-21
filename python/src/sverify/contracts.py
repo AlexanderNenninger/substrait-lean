@@ -826,12 +826,10 @@ def verify(
             inside an Ibis transformation keeps its own `semantics`. Unstated
             (None), it is `"duckdb"` for a transformation whose SQL is all
             `sv.sql(..., semantics="duckdb")`, else `"reference"`.
-            `"polars"` checks an Ibis transformation under Polars's
-            profile, `"spark"` under Spark's, which evaluates as the
-            reference does: its plan runs natively on that engine
-            (`sverify.routes`, the route `"native"`). The proof holds for
-            the model of the engine's functions; that the model matches
-            the engine rests on tests (`docs/trusted-base.md`).
+            `"polars"` and `"spark"` name the engine's own profile, under
+            which the checker has no report yet (#271): `verify` warns
+            `ProfilePendingWarning` and returns the reference's report
+            (`Report.semantics` is `"reference"`).
             `"substrait"` checks an Ibis transformation under Substrait's
             own semantics (`Profile.substrait`): the proof under the
             reference holds there where Substrait allows nothing more at
