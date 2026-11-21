@@ -70,3 +70,6 @@ render them, searchable by id, function and option, and the
 [realizability table](realizability.md) gives each engine's class on every
 option. [engine-profiles.md](engine-profiles.md) describes each engine's
 translation and shims.
+
+Spark's parser refuses a statement nested about 80 levels deep (a nest of bound guards in a contract); sverify then raises `Unsupported` naming the fact
+([`spark-exec-parser-depth`](../engines/spark/facts/spark-exec-parser-depth.json)).
