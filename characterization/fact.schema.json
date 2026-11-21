@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/characterization/fact.schema.json",
   "title": "Engine fact",
-  "description": "One finding about what an engine does, with the checks that support it. Stored as characterization/<engine>/facts/<id>.json. Prose fields take a string or a list of paragraphs (Markdown, joined by blank lines).",
+  "description": "One finding about what an engine does, with the checks that support it. Stored as engines/<engine>/facts/<id>.json. Prose fields take a string or a list of paragraphs (Markdown, joined by blank lines).",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "engine", "engine_version", "title", "area", "description", "status", "evidence", "provenance"],
@@ -12,7 +12,7 @@
       "type": "string",
       "pattern": "^[a-z]+-[A-Za-z0-9][A-Za-z0-9.-]*$"
     },
-    "engine": {"description": "The engine's folder under characterization/.", "type": "string", "pattern": "^[a-z]+$"},
+    "engine": {"description": "The engine's folder under engines/.", "type": "string", "pattern": "^[a-z]+$"},
     "engine_version": {"description": "The exact version checked, or \"unknown\".", "type": "string"},
     "title": {"description": "A short name for the finding.", "type": "string"},
     "verdict": {"description": "One line for the summary table.", "type": "string"},

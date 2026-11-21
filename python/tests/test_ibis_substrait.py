@@ -287,10 +287,108 @@ def test_timestamp_literals_are_not_local_time():
     ("build", "message"),
     [
         (lambda: t.select(x=t.qty.cast("uint8")), "unsigned"),
-        (lambda: t.select(x=t.amount.cast("float32")), "float32"),
         (lambda: t.sample(0.5), "Sample"),
     ],
 )
 def test_what_lean_does_not_model_is_refused(build, message):
     with pytest.raises(Unsupported, match=message):
         to_substrait(build())
+
+
+def test_a_plan_that_reads_no_table_runs_on_duckdb_and_polars_refuses_it():
+    # A relation without columns keeps its row (#1916): DuckDB's SQL writes a
+    # column nothing reads; a Polars frame without columns has no rows.
+    import sverify as sv
+
+    report = sv.verify(ibis.literal([1, 2, 3]).length().name("n").as_table())  # pyrefly: ignore
+    con = connect()
+    assert report.run(con, engine="duckdb").to_pylist() == [{"n": 3}]
+    with pytest.raises(Exception, match="relation without columns"):
+        report.run(con, engine="polars")
+
+
+def test_a_timestamp_of_integer_columns_is_duckdbs_make_timestamp():
+    # #1928: hours 0 to 24, minutes 0 to 59, seconds 0 to 60, at most a day;
+    # NULL for a NULL; an error otherwise, in both.
+    cols = ["y", "m", "d", "h", "mi", "s"]
+    good = [
+        (2024, 2, 29, 23, 59, 59), (2024, 2, 29, 24, 0, 0), (2024, 2, 29, 23, 59, 60),
+        (2024, 12, 31, 0, 0, 0), (1999, 1, 1, 12, 30, 15), (2024, 2, 29, None, 0, 0),
+    ]  # fmt: skip
+    bad = [
+        (2024, 2, 29, 24, 0, 1), (2024, 2, 29, 0, 60, 0), (2024, 2, 29, 0, 0, 61),
+        (2024, 2, 29, -1, 0, 0), (2024, 2, 29, 0, 0, -1), (2024, 2, 30, 0, 0, 0),
+    ]  # fmt: skip
+    tab = ibis.table({c: "int64" for c in cols}, name="ts_parts")
+    expr = tab.select(x=ibis.timestamp(*(tab[c] for c in cols)))
+
+    def run(rows):
+        con = connect()
+        con.create("ts_parts", tab.schema(), rows)
+        plan = inline_tables(to_substrait(expr), {"ts_parts": rows})
+        return con, plan
+
+    con, plan = run(good)
+    want = [
+        r[0] for r in zip(*(c.to_pylist() for c in duckdb_ibis(con, expr).columns), strict=True)
+    ]
+    got = [r[0] for r in lean_values(json.dumps(plan))]
+    schema = expr.schema()
+    assert canonical(normalize([(g,) for g in got], schema, lean=True)) == canonical(
+        normalize([(w,) for w in want], schema, lean=False)
+    )
+    for row in bad:
+        con, plan = run([row])
+        with pytest.raises(LeanRaised):
+            lean_values(json.dumps(plan))
+        with pytest.raises(Exception, match="out of range"):
+            duckdb_ibis(con, expr)
+
+
+def test_a_column_of_months_or_years_moves_a_date_as_duckdb_does():
+    # #1925: the day is cut to the month's length, a timestamp keeps its time.
+    import datetime as D
+
+    tab = ibis.table({"d": "date", "ts": "timestamp", "n": "int64"}, name="tm")
+    rows = [
+        (D.date(2024, 1, 31), D.datetime(2024, 1, 31, 13, 5, 6, 7), 1),
+        (D.date(2024, 3, 31), D.datetime(2024, 3, 31, 1), -1),
+        (D.date(2023, 12, 31), D.datetime(2023, 12, 31, 23), 2),
+        (D.date(2024, 2, 29), D.datetime(2024, 2, 29), 12),
+        (D.date(2024, 2, 29), D.datetime(2024, 2, 29), -12),
+        (D.date(2000, 5, 15), D.datetime(2000, 5, 15), -30),
+        (D.date(2000, 5, 15), None, None),
+    ]  # fmt: skip
+    con = connect()
+    con.create("tm", tab.schema(), rows)
+    cases = {
+        "d + n months": tab.d + tab.n.as_interval("M"),
+        "d + n years": tab.d + tab.n.as_interval("Y"),
+        "d - n months": tab.d - tab.n.as_interval("M"),
+        "ts + n months": tab.ts + tab.n.as_interval("M"),
+        "ts - n years": tab.ts - tab.n.as_interval("Y"),
+    }
+    for name, value in cases.items():
+        expr = tab.select(x=value)
+        plan = inline_tables(to_substrait(expr), {"tm": rows})
+        got = [r[0] for r in lean_values(json.dumps(plan))]
+        want = duckdb_ibis(con, expr).columns[0].to_pylist()
+
+        unit = 86_400_000_000 if name.startswith("d ") else 1
+        codes = [
+            None
+            if v is None
+            else (v - D.datetime(1970, 1, 1)) // D.timedelta(microseconds=1) // unit
+            for v in want
+        ]
+        assert codes == got, name
+
+
+def test_a_date_part_of_a_constant_computed_from_literals():
+    # #1927: `iso_year` of a literal date is the date part of a constant sum,
+    # whose kind is its operation's (the checker took it for no date).
+    import datetime as D
+
+    lit = ibis.literal(D.date(2024, 12, 30))
+    report = __import__("sverify").verify(lit.iso_year().name("x").as_table())  # pyrefly: ignore
+    assert report.run(connect(), engine="duckdb").to_pylist() == [{"x": 2025}]

@@ -7,7 +7,6 @@ import ibis
 from sverify_dev.coverage_cases._common import (
     NO_LISTS_SNOWFLAKE,
     Case,
-    R,
     V,
     case,
     ls,
@@ -16,7 +15,7 @@ from sverify_dev.coverage_cases._common import (
 
 CASES: list[Case] = [
     case("lists", "unnest column", V, lambda: ls.unnest("xs")),
-    case("lists", "unnest keep_empty", R, lambda: ls.unnest("xs", keep_empty=True)),
+    case("lists", "unnest keep_empty", V, lambda: ls.unnest("xs", keep_empty=True)),
     case(
         "lists",
         "list literal",
@@ -38,5 +37,6 @@ CASES: list[Case] = [
 
 REFUSED: dict[str, dict[str, str]] = {
     "unnest column": NO_LISTS_SNOWFLAKE,
+    "unnest keep_empty": NO_LISTS_SNOWFLAKE,
     "list literal": NO_LISTS_SNOWFLAKE,
 }

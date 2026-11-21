@@ -19,6 +19,7 @@ import contextlib
 import contextvars
 import datetime as dt_
 import math
+import struct
 from collections.abc import Iterable, Iterator
 from decimal import Decimal
 from typing import Any
@@ -91,7 +92,8 @@ class ProducerUnsupported(Unsupported):
 #: (D53, #1725).
 INSTANT_NOTE = (
     "(#1725): a timestamp with a time zone can be read, compared with other such columns, "
-    "used as a key and written back; literals, conversions and calendar functions follow"
+    "used as a key and written back, and converted to a timestamp at UTC (a cast to a "
+    "timestamp, `x AT TIME ZONE 'UTC'` in SQL), which the calendar functions read (D69)"
 )
 
 #: The spellings of the time zone UTC the readers produce (Arrow, Delta, Ibis).
@@ -123,6 +125,10 @@ def _type_json(dtype: Any) -> Json:
         return {f"i{dtype.nbytes * 8}": NULLABLE}
     if dtype.is_float64():
         return {"fp64": NULLABLE}
+    # Read and compared as their values, which doubles hold exactly; arithmetic
+    # on them rounds to 32 bits, which the checker refuses (#417).
+    if dtype.is_float32():
+        return {"fp32": NULLABLE}
     if dtype.is_decimal():
         if dtype.precision is None or dtype.scale is None:
             raise Unsupported(
@@ -161,6 +167,11 @@ def _type_json(dtype: Any) -> Json:
         return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     if dtype.is_struct():
         return {"struct": {"types": [type_json(t) for t in dtype.types], **NULLABLE}}
+    if dtype.is_binary():
+        raise Unsupported(
+            "sverify reads no binary values (#1918): encode them as text at the source "
+            "(hex or base64), or leave the column out"
+        )
     if dtype.is_uuid():
         raise Unsupported(
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
@@ -200,12 +211,19 @@ def literal(value: Any, dtype: Any) -> Json:
         key = type_json(dtype)
         name = next(iter(key))
         return {"literal": {name: str(value) if name == "i64" else int(value)}}
-    if dtype.is_float64():
+    if dtype.is_float64() or dtype.is_float32():
         x = float(value)  # raw (D31): -0.0 as the text "-0.0", a NaN as one below
+        if dtype.is_float32():
+            # The single's own value, whose round-trip digits the frontend reads
+            # without rounding again (ruling 186 P4).
+            try:
+                x = struct.unpack("<f", struct.pack("<f", x))[0]
+            except OverflowError as e:
+                raise ProducerUnsupported(f"{value} does not fit {dtype}") from e
         text: Any = "NaN" if math.isnan(x) else "-0.0" if str(x) == "-0.0" else x
         if math.isinf(x):
             text = "Infinity" if x > 0 else "-Infinity"
-        return {"literal": {"fp64": text}}
+        return {"literal": {"fp64" if dtype.is_float64() else "fp32": text}}
     if dtype.is_decimal():
         return decimal_literal(value, dtype)
     if dtype.is_string():
@@ -235,6 +253,8 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_struct():
         fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
         return {"literal": {"struct": {"fields": fields}}}
+    if dtype.is_binary():
+        type_json(dtype)  # refuses, saying why (#1918)
     raise ProducerUnsupported(f"literal of type {dtype} is not supported")
 
 
@@ -310,8 +330,8 @@ def interval_literal(value: Any, dtype: Any) -> Json:
 def interval_json(months: int, micros: int) -> Json:
     """`months` and `micros` as one interval literal: a compound one if it
     has months (Lean reads those only added to a date or timestamp). Days are
-    written as seconds: DataFusion compares a duration with an interval as
-    `(months, days, nanoseconds)`, so only one of seconds compares as a number."""
+    written as seconds: a duration compares as microseconds, and the checker
+    refuses a comparison with an interval of days or months."""
     seconds, sub = divmod(micros, 1_000_000)
     day_to_second = {"seconds": seconds, "subseconds": str(sub), "precision": 6}
     if months:
@@ -485,6 +505,42 @@ def days_json(date: Json, n: Json) -> Json:
     return call("add", [date, call("multiply", [n, interval_json(0, 86_400_000_000)])])
 
 
+def month_length(y: Json, m: Json) -> Json:
+    """The days of month `m` (1 to 12) of year `y`: 30 or 31 alternating, with
+    the turn at August (`(m + m / 8) % 2`), and February's 28 or 29."""
+
+    def divides(k: int) -> Json:
+        return call("equal", [call("modulus", [y, _i64(k)]), _i64(0)])
+
+    leap = call("or", [call("and", [divides(4), call("not", [divides(100)])]), divides(400)])
+    feb = chain("add", [_i64(28), if_then([(leap, _i64(1))], _i64(0))])
+    long = chain("add", [_i64(30), call("modulus", [chain("add", [m, call("divide", [m, _i64(8)])]),
+                                                    _i64(2)])])  # fmt: skip
+    return if_then([(call("equal", [m, _i64(2)]), feb)], long)
+
+
+def add_months_json(x: Json, n: Json, timestamp: bool) -> Json:
+    """`x + n months` of a date or `timestamp` (#1925), `n` an integer: the
+    month `n` after, and the day cut to its length (`2024-01-31 + 1 month` is
+    `2024-02-29`); a timestamp keeps its time of day. A year outside 1 to 9999
+    raises, as `make_date_json` does."""
+    day = cast_json(x, dt.date) if timestamp else x
+
+    def part(name: str) -> Json:
+        return call("date_part", [literal(name, dt.string), day])
+
+    months = chain("add", [call("multiply", [part("year"), _i64(12)]),
+                           call("subtract", [part("month"), _i64(1)]), n])  # fmt: skip
+    # The floor of `months / 12`, and `months % 12`, for a negative count too.
+    rest = call("modulus", [call("add", [call("modulus", [months, _i64(12)]), _i64(12)]), _i64(12)])
+    year = call("divide", [call("subtract", [months, rest]), _i64(12)])
+    month = call("add", [rest, _i64(1)])
+    moved = make_date_json(year, month, call("least", [part("day"), month_length(year, month)]))
+    if not timestamp:
+        return moved
+    return days_json(x, call("date_diff", [moved, day]))
+
+
 def make_date_json(y: Json, m: Json, d: Json) -> Json:
     """`make_date(y, m, d)` of integers: the date by H. Hinnant's
     `days_from_civil`, NULL if an argument is. It raises for a month or day
@@ -523,19 +579,32 @@ def make_date_json(y: Json, m: Json, d: Json) -> Json:
     fail = call("sverify_raise", [m, literal("make_date of a date outside the calendar "
                                               "or the years 1 to 9999", dt.string)])  # fmt: skip
 
-    # The month's length: 30 or 31 alternating, with the turn at August
-    # (`(m + m / 8) % 2`), and February's 28 or 29.
-    def divides(k: int) -> Json:
-        return call("equal", [call("modulus", [yc, _i64(k)]), _i64(0)])
-
-    leap = call("or", [call("and", [divides(4), call("not", [divides(100)])]), divides(400)])
-    feb = add(_i64(28), if_then([(leap, _i64(1))], _i64(0)))
-    long = add(_i64(30), call("modulus", [add(mc, div(mc, 8)), _i64(2)]))
-    length = if_then([(call("equal", [mc, _i64(2)]), feb)], long)
+    length = month_length(yc, mc)
     valid = chain("and", [within(y, 1, 9999), within(m, 1, 12), call("gte", [d, _i64(1)]),
                           call("lte", [d, length])])  # fmt: skip
     null = literal(None, dt.date)
     return if_then([(call("is_null", [a]), null) for a in (y, m, d)] + [(valid, date)], fail)
+
+
+def make_timestamp_json(y: Json, m: Json, d: Json, h: Json, mi: Json, sec: Json) -> Json:
+    """`make_timestamp(y, m, d, h, mi, s)` of integers (#1928): the date at
+    midnight plus `h` hours, `mi` minutes and `s` seconds, NULL if an argument
+    is. DuckDB accepts `h` from 0 to 24, `mi` from 0 to 59 and `s` from 0 to
+    60, in all at most a day, and raises otherwise (`duckdb-make-timestamp-ranges`); the
+    date is `make_date_json`'s."""
+
+    def within(a: Json, lo: int, hi: int) -> Json:
+        return call("and", [call("gte", [a, _i64(lo)]), call("lte", [a, _i64(hi)])])
+
+    secs = chain("add", [call("multiply", [h, _i64(3600)]), call("multiply", [mi, _i64(60)]), sec])
+    valid = chain("and", [within(h, 0, 24), within(mi, 0, 59), within(sec, 0, 60),
+                          call("lte", [secs, _i64(86_400)])])  # fmt: skip
+    ts = call("add", [cast_json(make_date_json(y, m, d), dt.timestamp),
+                      call("multiply", [secs, interval_json(0, 1_000_000)])])  # fmt: skip
+    fail = call("sverify_raise", [h, literal("make_timestamp of a time out of range", dt.string)])
+    null = literal(None, dt.timestamp)
+    nulls = [(call("is_null", [a]), null) for a in (h, mi, sec)]
+    return if_then([*nulls, (valid, ts)], fail)
 
 
 # --------------------------------------------------------------------------

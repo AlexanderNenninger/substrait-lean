@@ -26,6 +26,7 @@ from sqlglot.optimizer.qualify import qualify
 
 from sverify import _decimals
 from sverify._dialect import DialectDifference, difference
+from sverify._unsupported import QUANTILE_OF_DECIMAL
 from sverify._user_text import did_you_mean
 from sverify.plan_json import (
     Json,
@@ -89,6 +90,9 @@ class Profile:
             declared width: `"ERROR"` (DuckDB, and #185's reference default).
         on_division_by_zero: `//` and `%` by zero: `"ERROR"` (DuckDB with
             `error_on_division_by_zero`, its default, and the reference).
+        min_mod_neg_one: `MIN % -1` of integers: `"ERROR"` (DuckDB raises,
+            `duckdb-R15-int-modulus`) or `"ZERO"` (reference: the remainder,
+            0, fits).
         float_division_by_zero: `/` by zero, which divides doubles:
             `"ERROR"` (reference). DuckDB's `/` is the generated lift's.
         float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
@@ -111,6 +115,7 @@ class Profile:
     avg_integer: str = "fp64"
     overflow: str = "ERROR"
     on_division_by_zero: str = "ERROR"
+    min_mod_neg_one: str = "ZERO"
     float_division_by_zero: str = "ERROR"
     float_to_int: str = "TRUNCATE"
     domain_error: str = "ERROR"
@@ -120,6 +125,7 @@ class Profile:
 
 DUCKDB = Profile(
     "duckdb",
+    min_mod_neg_one="ERROR",
     float_to_int="TIE_TO_EVEN",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
@@ -937,12 +943,11 @@ class _Lift:
         """A query's relation and its output columns."""
         if isinstance(node, sge.Subquery):
             return self.query(node.this)
-        if isinstance(node, sge.SetOperation):
-            return self.set_op(node)
-        if not isinstance(node, sge.Select):
+        if not isinstance(node, sge.Select | sge.SetOperation):
             raise Unsupported(_ONLY_SELECT.format(type(node).__name__), construct=_keywords(node))
         if (with_ := node.args.get("with_")) is not None:
             # CTEs are inlined where they are read; each sees the ones before.
+            # A WITH in front of a set operation covers all its branches.
             if with_.args.get("recursive"):
                 raise Unsupported(
                     "WITH RECURSIVE is not supported yet (#320)", construct="WITH RECURSIVE"
@@ -957,6 +962,8 @@ class _Lift:
                 return self.query(body)
             finally:
                 self.ctes = saved
+        if isinstance(node, sge.SetOperation):
+            return self.set_op(node)
         for arg, (what, exit_) in _CLAUSES.items():
             if node.args.get(arg):
                 raise SqlUnsupported(f"{what} is not supported yet; {exit_}", construct=f"{what}")
@@ -2080,8 +2087,7 @@ class _Lift:
         if name in ("median", "quantile_cont"):
             if t.is_decimal():
                 raise Unsupported(
-                    f"{_shown(node)} of a DECIMAL is not supported yet (DuckDB interpolates "
-                    "it as a DECIMAL); cast it to DOUBLE",
+                    f"{_shown(node)} of {t} {QUANTILE_OF_DECIMAL}; cast it to DOUBLE first",
                     construct=_function(node),
                 )
             if not (t.is_integer() or t.is_float64()):
@@ -2242,6 +2248,10 @@ class _Lift:
             if v is not None:
                 if t.is_float64():
                     v = float(v)
+                elif t.is_float32():
+                    # The checker folds the cast, rounding once as DuckDB does, or
+                    # refuses where it cannot (ruling 186 P3, `castConst`).
+                    v = None
                 elif t.is_decimal():
                     # A double's exact binary value: `_fits` folds it only
                     # where the decimal holds it exactly (10.0, 2.5, not 0.1).
@@ -2289,14 +2299,18 @@ class _Lift:
 
     def common(self, es: list[E], what: str, sum_digits: bool = False) -> Any:
         """The type DuckDB brings `es` to as one value: the widest integer;
-        a double if one is; else a decimal with the most integer digits and
+        a double if one is; a float32 if one is; else a decimal with the most integer digits and
         the largest scale (plus a digit for `+` and `-`)."""
         ts = [e.type for e in es if not e.type.is_null()]
         if not ts:
             return dt.null
-        if all(_numeric(t) for t in ts):
+        if all(_numeric(t) or t.is_float32() for t in ts):
             if any(t.is_float64() for t in ts):
                 return dt.float64
+            # DuckDB brings a REAL and an integer or a decimal to a REAL
+            # (`0.3::REAL = 0.3` is true), and a REAL and a DOUBLE to a DOUBLE.
+            if any(t.is_float32() for t in ts):
+                return dt.float32
             if any(t.is_decimal() for t in ts):
                 p, s = _decimals.common(_digits(t) for t in ts)
                 return _decimal(p + int(sum_digits), s)

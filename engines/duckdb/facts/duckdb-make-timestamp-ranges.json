@@ -1,0 +1,60 @@
+{
+  "id": "duckdb-make-timestamp-ranges",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`make_timestamp(y, m, d, h, mi, s)`: hours 0 to 24, minutes 0 to 59, seconds 0 to 60, at most a day",
+  "verdict": "no finding: the reference's `ibis.timestamp` of integer columns takes DuckDB's ranges",
+  "area": "temporal",
+  "options": [],
+  "constructs": [
+    "make_timestamp"
+  ],
+  "settings": {},
+  "description": [
+    "The date is `make_date`'s (a day outside the month raises `Date out of range`). The time raises `Time out of range` unless the hour is 0 to 24, the minute 0 to 59, the second 0 to 60 and the whole at most 24:00:00: `24:00:00` gives the next day's midnight, `23:59:60` too, while `24:00:01`, `24:01:00`, `0:60:0`, `0:0:61`, `25:0:0`, `-1:0:0` and `0:0:-1` raise. A fractional second is kept (`0:0:59.999999`)."
+  ],
+  "reference": "`make_timestamp_json` (`plan_json.py`) writes the date plus the seconds, with these ranges and a raise outside them; a NULL argument gives NULL.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "manual-repro",
+      "checked_by": "lift-dates session (duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "sql": "select make_timestamp(2024,2,29,23,59,59), make_timestamp(2024,2,29,24,0,0), make_timestamp(2024,1,1,23,59,60)",
+          "observed": "2024-02-29 23:59:59; 2024-03-01 00:00:00; 2024-01-02 00:00:00"
+        },
+        {
+          "sql": "select make_timestamp(2024,1,1,24,0,1)",
+          "observed": "Conversion Error: Time out of range: 24:0:1.0"
+        },
+        {
+          "sql": "select make_timestamp(2024,1,1,24,1,0)",
+          "observed": "Conversion Error: Time out of range: 24:1:0.0"
+        },
+        {
+          "sql": "select make_timestamp(2024,2,29,0,60,0)",
+          "observed": "Conversion Error: Time out of range: 0:60:0.0"
+        },
+        {
+          "sql": "select make_timestamp(2024,1,1,0,0,61)",
+          "observed": "Conversion Error: Time out of range: 0:0:61.0"
+        },
+        {
+          "sql": "select make_timestamp(2024,1,1,25,0,0), make_timestamp(2024,1,1,-1,0,0), make_timestamp(2024,1,1,0,0,-1)",
+          "observed": "Time out of range"
+        },
+        {
+          "sql": "select make_timestamp(2024,2,30,0,0,0)",
+          "observed": "Conversion Error: Date out of range: 2024-2-30"
+        },
+        {
+          "sql": "select make_timestamp(2024,2,29,0,0,59.999999)",
+          "observed": "2024-02-29 00:00:59.999999"
+        }
+      ]
+    }
+  ]
+}

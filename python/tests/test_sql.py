@@ -407,10 +407,20 @@ def test_runtime_errors_raise(sql, a, b):
         duckdb_rows(plan_json, {"r": r})
 
 
-def test_remainder_by_minus_one_is_zero():
-    """`MIN % -1` is 0 in Lean; DuckDB's `%` raises there, so it is special-cased."""
-    r = ints(a=[-(2**63), 5, None], b=[-1, -1, -1])
-    assert check_three_ways("SELECT a % b AS m FROM r", {"r": r}) == [(0,), (0,), (None,)]
+@pytest.mark.parametrize("width", [pa.int64(), pa.int32(), pa.int16()], ids=str)
+def test_remainder_by_minus_one_is_zero(width):
+    """`MIN % -1` is 0 in the reference; DuckDB's `%` raises there, so it is
+    written out. Under DuckDB's semantics the plan raises as DuckDB does, at
+    each width's own MIN (#2058)."""
+    low = -(2 ** (width.bit_width - 1))
+    r = pa.table({"a": pa.array([low, 5, None], width), "b": pa.array([-1, -1, -1], width)})
+    sql = "SELECT a % b AS m FROM r"
+    assert check_three_ways(sql, {"r": r}, "reference") == [(0,), (0,), (None,)]
+    with pytest.raises(duckdb.Error, match="MIN % -1"):
+        duckdb_rows(plan_of(sql, {"r": r}), {"r": r})
+    # Without the MIN row the lens runs and agrees with Lean.
+    rest = r.slice(1)
+    assert check_three_ways(sql, {"r": rest}) == [(0,), (None,)]
 
 
 def test_integer_powers_are_exact():
@@ -998,3 +1008,58 @@ def test_a_repeated_date_operation_is_computed_once():
     sql = to_sql(plan, DUCKDB)
     assert len(sql) < 2000 and '"b0"' in sql, len(sql)
     agree(plan, *lean_and_duckdb(plan, {"t": days}))
+
+
+# D52: `sverify_approx(a, k)` is a source mark for the checker. An engine computes the
+# plan's value, so every writer erases it and the written SQL is the unmarked plan's.
+def marked(plan: dict, k: int = 16) -> dict:
+    """`plan` with each projected expression wrapped in `sverify_approx(e, k)`."""
+    plan = copy.deepcopy(plan)
+    plan["extensions"].append(
+        {"extensionFunction": {"functionAnchor": 126, "name": "sverify_approx"}}
+    )
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "project" in node:
+                node["project"]["expressions"] = [
+                    {
+                        "scalarFunction": {
+                            "functionReference": 126,
+                            "outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+                            "arguments": [
+                                {"value": e},
+                                {"value": {"literal": {"i64": str(k)}}},
+                            ],
+                        }
+                    }
+                    for e in node["project"]["expressions"]
+                ]
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(plan["relations"])
+    return plan
+
+
+@pytest.mark.parametrize("dialect", [DUCKDB, SNOWFLAKE])
+def test_the_approx_mark_is_erased_from_the_written_sql(dialect):
+    tables = {"r": pa.table({"x": pa.array([1.5, None, -2.0], pa.float64())})}
+    plan = json.loads(plan_of("SELECT x AS y, x + 1.0 AS z FROM r", tables))
+    assert to_sql(marked(plan), dialect) == to_sql(plan, dialect)
+    assert "approx" not in to_sql(marked(plan), dialect).lower()
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars", "spark"])
+def test_an_engine_runs_the_approx_marked_plan_as_the_unmarked_one(engine):
+    pytest.importorskip({"duckdb": "duckdb", "polars": "polars", "spark": "pyspark"}[engine])
+    tables = {"r": pa.table({"x": pa.array([1.5, None, -2.0], pa.float64())})}
+    plan = json.loads(plan_of("SELECT x AS y, x + 1.0 AS z FROM r", tables))
+    con = connect()
+    for name, t in tables.items():
+        put_table(con, name, t)
+    got = run_plan(con, json.dumps(marked(plan)), engine)
+    assert got.to_pylist() == run_plan(con, json.dumps(plan), engine).to_pylist()

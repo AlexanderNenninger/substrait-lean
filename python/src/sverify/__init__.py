@@ -97,26 +97,9 @@ _LAZY = {
 }
 
 
-#: Moved before 1.0 (the API review's A1); the old names warn for a release.
-_DEPRECATED = {
-    "Changes": ("sverify.incremental", "sverify.Changes is deprecated; import it from sverify.io"),
-    "from_substrait": (
-        "sverify.substrait_export",
-        "sverify.from_substrait is deprecated; call sverify.Report.from_substrait",
-    ),
-}
-
-
 def __getattr__(name: str) -> _Any:
-    """A public name, imported on first use; a deprecated one, with a
-    warning; else a submodule (`sverify.contracts`), as an eager import
-    used to load them."""
-    if name in _DEPRECATED:
-        import warnings
-
-        module, message = _DEPRECATED[name]
-        warnings.warn(message, DeprecationWarning, stacklevel=2)
-        return getattr(_importlib.import_module(module), name)
+    """A public name, imported on first use; else a submodule
+    (`sverify.contracts`), as an eager import used to load them."""
     if name in _LAZY:
         value = getattr(_importlib.import_module(_LAZY[name]), name)
         globals()[name] = value

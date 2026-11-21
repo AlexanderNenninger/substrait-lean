@@ -93,6 +93,17 @@ class Store[S](ABC):
         a store that holds Arrow tables."""
         return table  # type: ignore[return-value]
 
+    def copy(self, z: S) -> S:
+        """A state with the rows of `z` that a later `apply` leaves alone:
+        `z` itself, for a store whose states are never changed in place."""
+        return z
+
+    def apply(self, updates: list[tuple[S, pa.Table, pa.Table]]) -> None:
+        """For each `(state, change, merged)`, all or none: replace the rows
+        of `state` equal to a row of `change` by `merged`, in place. Only a
+        store whose states are changed in place (`keep`) has it."""
+        raise NotImplementedError(f"{type(self).__name__} changes no state in place")
+
     # The operations below do what an Arrow table needs (a change, the state
     # per group): `sverify._weighted`, in the Python process. A store
     # overrides them for the handles of its own engine and calls them for an

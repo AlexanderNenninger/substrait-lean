@@ -12,7 +12,7 @@ files"):
   site has stay on the site; links to other files of the repository point at
   GitHub.
 - `ledgers/`: the upstream ledger (`upstream/bugs/*.json`, bugs and spec
-  gaps), each engine's characterization (`characterization/<engine>/facts/`),
+  gaps), each engine's facts (`engines/<engine>/facts/`),
   the checklist's coverage per engine (`characterization/areas.json`) and the
   realizability table (`docs/realizability.md`). Each entry is a heading with
   its id as the anchor, so search finds it by id, engine, function, option

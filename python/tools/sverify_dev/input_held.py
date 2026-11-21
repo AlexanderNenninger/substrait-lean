@@ -130,12 +130,23 @@ class Sampler:
 
     def __init__(self) -> None:
         self.high = 0.0
+        self.where = ""
         self.on = True
+        self.main = threading.main_thread().ident
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self) -> None:
         while self.on:
-            self.high = max(self.high, rss_mb())
+            now = rss_mb()
+            if now > self.high:
+                self.high = now
+                frame = sys._current_frames().get(self.main)
+                names = []
+                while frame is not None and len(names) < 14:
+                    code = frame.f_code
+                    names.append(f"{code.co_name}:{frame.f_lineno}")
+                    frame = frame.f_back
+                self.where = " < ".join(names)
             time.sleep(0.002)
 
 
@@ -214,6 +225,7 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
             if added > 5:
                 print(f"PROFILE {engine} {kind} {label} +{added:.0f} MB {secs:.2f}s")
         print(f"PROFILE {engine} {kind} refresh total high +{sampler.high - base:.0f} MB")
+        print(f"PROFILE {engine} {kind} at the high: {sampler.where}")
     pipe = node._stage.pipe
     held = pipe.con.get("t")
     out = {

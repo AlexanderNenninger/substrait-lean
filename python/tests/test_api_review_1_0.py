@@ -78,14 +78,13 @@ def test_sink_and_source_internals(tmp_path):
     sink = DeltaSink(str(tmp_path / "out"))
     with pytest.warns(DeprecationWarning, match="DeltaSink.keeps_retired is internal"):
         assert sink.keeps_retired is True  # type: ignore[attr-defined]
-    with pytest.warns(DeprecationWarning, match="view is internal"):
-        assert sink.view is None  # type: ignore[attr-defined]
+    assert not hasattr(sink, "view")
     node = StaticSource(pa.table({"id": [1]}), name="t").pipe(lambda t: t)
     node.write(sink).refresh()
     source = DeltaSource(str(tmp_path / "out"))
     with pytest.warns(DeprecationWarning, match="hi_slack is internal"):
         assert source.hi_slack == source._hi_slack  # type: ignore[attr-defined]
-    assert hasattr(SinkChange, "native") and hasattr(SinkChange, "_native")
+    assert not hasattr(SinkChange, "native") and hasattr(SinkChange, "_native")
 
 
 def test_a_custom_sink_still_says_it_keeps_retired_rows():
@@ -114,5 +113,4 @@ def test_flight_log_moved_to_testing():
 
     assert sverify.testing.FlightLog is FlightLog
     assert "FlightLog" in sverify.testing.__all__ and "FlightLog" not in sverify.io.__all__
-    with pytest.warns(DeprecationWarning, match="import it from sverify.testing"):
-        assert sverify.io.FlightLog is FlightLog
+    assert not hasattr(sverify.io, "FlightLog")

@@ -108,6 +108,7 @@ from sverify.contracts import (
     References,
     TableCondition,
     Unique,
+    _mentioned_names,
     discharge,
     label,
     register_facts,
@@ -133,8 +134,8 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     to_arrow,
     written_plan,
 )
+from sverify.ibis_substrait.prune import mentioning
 from sverify.report import refuse_schema
-from sverify_duckdb import DuckDBStore
 
 Row = tuple
 
@@ -1037,7 +1038,12 @@ class IncrementalView:
         self.record_changes: dict[str, tuple[str | None, str | None]] = {}
         """What a resumed record says differently from this run: by field, the
         record's value and this run's (`Contract.engine` …)."""
-        self._plan(query, standalone=pipeline is None)
+        # The plans of the view's strategies read the columns the view and its
+        # conditions mention, as `verify` writes them (`contracts._verify_once`).
+        conditions = [*(contract.guarantees + contract.checked)] if contract else []
+        names = _mentioned_names(query, contract.requires if contract else {}, conditions)
+        with mentioning(names):
+            self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.not_null: list[str] = contract.not_null if contract else []
@@ -1817,16 +1823,25 @@ class Pipeline:
         return native(version)
 
     def view(
-        self, name: str, query: ir.Table | str, *, resume: Stored | None = None
+        self,
+        name: str,
+        query: ir.Table | str,
+        *,
+        resume: Stored | None = None,
+        engine: Engine | None = None,
     ) -> IncrementalView:
         """Add a view. With `resume` (what a sink stored, e.g.
         `DeltaSource(uri).stored()`), its first state is the stored one
         instead of a computation, if the plan is the same and the pipeline
         holds the view's sources at the stored versions (`pipe.source(...,
-        version=stored.sources[name])`); `view.resumed` says which."""
+        version=stored.sources[name])`); `view.resumed` says which. With
+        `engine`, the view's plans run there and its state is kept in that
+        engine's store (`store_for`), else on the pipeline's engine."""
         if name in self.views or name in self.sources:
             raise ValueError(f"the pipeline already has a view {name!r}")
-        return IncrementalView(self.con, query, name, self.engine, pipeline=self, resume=resume)
+        return IncrementalView(
+            self.con, query, name, engine or self.engine, pipeline=self, resume=resume
+        )
 
     @property
     def views(self) -> dict[str, IncrementalView]:
@@ -2451,7 +2466,7 @@ class Pipeline:
             saved["_log"] = list(v._log)
             if isinstance(v.state, Resident):
                 # A refresh updates the state in place: keep a copy.
-                saved["state"] = DuckDBStore().copy(v.state)
+                saved["state"] = v.store.copy(v.state)
                 tables[v.name] = v.store.expanded(saved["state"])
             views[v.name] = saved
         return tables, views, dict(self.versions), dict(self.latest), dict(self.inputs)
@@ -2520,7 +2535,7 @@ class Pipeline:
         caller checked that the change's deletes exist.
 
         A view whose state DuckDB holds is updated in place at the commit,
-        at the cost of its change (`DuckDBStore.apply`), unless its new
+        at the cost of its change (`Store.apply`), unless its new
         contents are read before then: by a view recomputed on the new
         tables, or by the `audit`. Then its new state is a full merge."""
         self._check_changed(changes)
@@ -2698,12 +2713,14 @@ class Pipeline:
                     assert isinstance(state, Resident)
                     updates.append((state, pending.deltas[name], merged))
                     undo.append((state, pending.deltas[name], pending.before[name]))
+                # Every state in place is a `Resident`, so one store holds them all.
+                store = self._views[0].store
                 try:
-                    DuckDBStore().apply(updates)
+                    store.apply(updates)
                 except BaseException:
                     # Committed or not, the rows the change touches go back
                     # to the ones `_prepare` read.
-                    DuckDBStore().apply(undo)
+                    store.apply(undo)
                     raise
         except BaseException:
             for t, table in tables.items():
