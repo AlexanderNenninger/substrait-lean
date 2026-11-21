@@ -89,6 +89,10 @@ SEMANTICS_ENV = "SVERIFY_SLT_SEMANTICS"
 #: The reason of a reference-mode agreement that only a `verify` issue gives.
 STATIC = "static verify:"
 
+#: The reason of an agreement where the written plan raised its own tagged
+#: check of an assumption the report lists (`sverify_dev.checked`, #2162).
+CHECKED = "checked:"
+
 
 def semantics() -> str:
     return os.environ.get(SEMANTICS_ENV, "duckdb")
@@ -843,6 +847,7 @@ class Replay:
             ordered,
             outcome,
             functools.partial(_lift_issues, rec.sql, schemas),
+            functools.partial(_lift_listed, rec.sql, schemas),
         )
 
     def judge(
@@ -855,11 +860,13 @@ class Replay:
         ordered: bool,
         outcome: Any,
         issues: Any,
+        listed: Any = None,
     ) -> Result:
         """Check `plan` and compare Lean's and the engine's results with the
         expected ones."""
         from sverify.engine import run_checker, run_plan, written_plan
         from sverify.testing import LeanRaised, lean_values
+        from sverify_dev.checked import checked
 
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
@@ -907,6 +914,7 @@ class Replay:
             res.cls, res.reason = "agree", "reference raises: " + _clip(lean_err, 120)
             return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
+        flagged = False  # Lean differs, and `verify` flags the query
         try:
             found = [] if lean_ok else issues()
         except Exception as e:  # noqa: BLE001 - `verify` refusing the query
@@ -920,6 +928,7 @@ class Replay:
             # DuckDB gives NaN (`duckdb-R15-math-domain`, #617). Where the test
             # expects an error, the warning is the reference raising with it.
             res.reason = "verify: " + _clip("; ".join(found), 200)
+            flagged = not lean_ok
             lean_ok = outcome(None, res.reason, ordered)
 
         if semantics() == "reference":
@@ -961,6 +970,13 @@ class Replay:
             else:
                 res.engine = _error(e)
                 engine_ok = outcome(None, res.engine, ordered)
+                if (lean_ok or flagged) and engine_ok is False and listed is not None:
+                    # The written plan's own check of a reported assumption
+                    # (ruling 230): the report lists it and Lean finds it.
+                    data = json.dumps(_typed_inline(json.loads(written_plan(plan)), rows, self.con))
+                    if why := checked(str(e), listed(), data):
+                        res.cls, res.reason = "agree", why
+                        return res
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
@@ -1003,6 +1019,17 @@ def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
     # the test expects (#619). A query `verify` refuses raises.
     report = verify(sql, tables=schemas, on_inferred="off")
     return [str(i) for i in report.issues + report.assumed]
+
+
+def _lift_listed(sql: str, schemas: dict[str, Any]) -> list[str]:
+    """The issues the report lists: its errors without inference (as
+    `_lift_issues`, where an inferred precondition would absorb a wrap) and
+    its assumptions as a user gets them under the replay's semantics (an
+    assumed `SUM` is an error without inference)."""
+    from sverify.contracts import verify
+
+    assumed = verify(sql, tables=schemas, semantics=semantics()).assumed
+    return [*_lift_issues(sql, schemas), *map(str, assumed)]
 
 
 def _typed_inline(plan: dict, rows: dict[str, list[tuple]], con: Any) -> dict:
@@ -1320,6 +1347,9 @@ def write_ledger(
     static = sum(
         1 for r in results if r["cls"] == "agree" and str(r.get("reason") or "").startswith(STATIC)
     )
+    checked_n = sum(
+        1 for r in results if r["cls"] == "agree" and str(r.get("reason") or "").startswith(CHECKED)
+    )
     head = {
         **{
             "duckdb": version,
@@ -1329,6 +1359,7 @@ def write_ledger(
             "summary": {c: counts.get(c, 0) for c in CLASSES},
             "agree_oracle_a_only": oracle_a,
             "agree_static": static or None,
+            "agree_checked": checked_n or None,
             "disagree_sides": dict(sorted(sides.items())),
             "skipped_files": dict(sorted(skipped_files.items())),
         },

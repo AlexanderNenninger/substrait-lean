@@ -484,6 +484,56 @@ def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     assert json.loads(led.read_text())["agree_static"] == 1
 
 
+def test_a_tagged_raise_of_a_reported_assumption_is_checked_not_a_disagreement(tmp_path):
+    """The written plan's `SUM` guard raises where a sum leaves 64 bits and
+    DuckDB gives a HUGEINT: the report lists "SUM overflow" and the checker
+    finds it on the data, so the replay agrees with `checked:` (ruling 230,
+    #2162)."""
+    path = tmp_path / "sum.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            CREATE TABLE bigints AS SELECT 4611686018427387904 AS b FROM range(3)
+
+            query I
+            SELECT SUM(b) FROM bigints
+            ----
+            13835058055282163712
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/sum.test")
+    assert r.cls == "agree", r
+    assert (r.reason or "").startswith(slt.CHECKED + " SUM overflow"), r.reason
+    assert "sverify: integer overflow in SUM" in (r.engine or "")
+    led = slt.write_ledger("area", "2.0.0", [slt.asdict(r)], {}, tmp_path)
+    assert json.loads(led.read_text())["agree_checked"] == 1
+
+
+@pytest.mark.parametrize(
+    ("listed", "lean"),
+    [
+        # Two issues of the kind: the harness cannot tell which one raised.
+        (["SUM overflow: SUM(a)", "SUM overflow: SUM(b)"], "Substrait.Issue.sumWraps"),
+        # Lean finds an issue of another kind than the raise's tag.
+        (["SUM overflow: SUM(a)"], "Substrait.Issue.wraps"),
+        # The report lists no issue of the kind.
+        (["overflow: a * b"], "Substrait.Issue.sumWraps"),
+    ],
+)
+def test_a_tagged_raise_without_one_matching_issue_stays_a_disagreement(monkeypatch, listed, lean):
+    """The class ties the raise to one listed issue and to the same kind of
+    issue in the checker (rulings 230 and 236); otherwise it is a gap (C2)."""
+    from sverify import _lean_eval, engine
+    from sverify_dev.checked import checked
+
+    monkeypatch.setattr(_lean_eval, "lean_assumed", lambda plan: lean)
+    monkeypatch.setattr(engine, "run_checker", lambda args, plan: (0, "", ""))
+    msg = "Invalid Input Error: sverify: integer overflow in SUM: 9223372036854775808"
+    assert checked(msg, listed, "{}") is None
+
+
 def test_a_time_of_24_00_is_refused(tmp_path):
     """Python's `datetime.time`, through which the rows reach Lean, has no
     `24:00:00`: it became midnight (#619)."""
