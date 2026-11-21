@@ -41,7 +41,10 @@ LEDGER = ROOT / "python" / "tests" / "odcs_examples.json"
 #: that would read it, or why sverify does not by design.
 WAITS_ON: tuple[tuple[str, dict[str, Any]], ...] = (
     ("a relationship that is not a foreign key", {"design": "sverify reads foreign keys"}),
-    ("a column the contract does not define", {"design": "it names nothing sverify can check"}),
+    (
+        "no single column the contract defines",
+        {"design": "it names nothing, or two columns, for sverify to check"},
+    ),
     ("a foreign key from another table", {"design": "it constrains the table it starts from"}),
     ("a composite foreign key", {"issue": 2223}),
     ("is not supported; cast the column", {"issue": 1958}),

@@ -667,11 +667,11 @@ def test_read_lists_what_it_cannot_read_with_reasons():
         "logicalTypeOptions.multipleOf",
         "a share of rows",
         "metric 'averageValue' sverify does not read",
-        "a reference to a column the contract does not define",
+        "a reference to no single column the contract defines",
         "a relationship that is not a foreign key",
         "a relationship that is not a foreign key",
         "a minimum sverify cannot read for boolean",
-        "a reference to a column the contract does not define",
+        "a reference to no single column the contract defines",
         "a key over columns the object lacks",
         "metric 'nullValues' on a whole object",
         "reads columns the object lacks",
@@ -833,8 +833,38 @@ def test_an_id_path_names_a_property_without_an_id_by_its_name():
     refs = [(r.col, r.table, r.other) for r in c.tables["orders"] if isinstance(r, References)]
     assert refs == [("product_id", "products", "id"), ("kept", "orders", "kept")]
     assert [(u.column, u.reason) for u in c.unread] == [
-        ("other", "a reference to a column the contract does not define")
+        ("other", "a reference to no single column the contract defines")
     ]
+
+
+def test_an_id_path_that_names_two_objects_or_columns_reads_neither():
+    """One object's `id` is another's `name` (which has no `id`), and likewise
+    two properties: a path through that segment is unread, never the
+    reference of whichever comes last."""
+    doc = {
+        "apiVersion": "v3.2.0",
+        "kind": "DataContract",
+        "id": "x",
+        "version": "1",
+        "schema": [
+            {"id": "t", "name": "first", "properties": [{"name": "c"}]},
+            {"name": "t", "properties": [{"name": "c"}]},
+            {"name": "u", "properties": [{"id": "c", "name": "a"}, {"name": "c"}]},
+            {
+                "name": "orders",
+                "properties": [
+                    {"name": "x", "relationships": [{"to": "schema/t/properties/c"}]},
+                    {"name": "y", "relationships": [{"to": "schema/u/properties/c"}]},
+                    {"name": "z", "relationships": [{"to": "schema/u/properties/a"}]},
+                ],
+            },
+        ],
+    }
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(doc)
+    refs = [(r.col, r.table, r.other) for r in c.tables["orders"] if isinstance(r, References)]
+    assert refs == []
+    assert [u.column for u in c.unread] == ["x", "y", "z"]
 
 
 def test_read_pattern_is_a_search_condition_inside_the_regex_subset():

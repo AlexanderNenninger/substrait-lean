@@ -955,8 +955,8 @@
           "unread": [
             {
               "column": null,
-              "reason": "a reference to a column the contract does not define",
-              "design": "it names nothing sverify can check"
+              "reason": "a reference to no single column the contract defines",
+              "design": "it names nothing, or two columns, for sverify to check"
             }
           ],
           "round_trip": "no conditions"

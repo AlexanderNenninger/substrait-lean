@@ -670,23 +670,22 @@ def _resolver(doc: Mapping[str, Any]) -> Callable[[Any], tuple[str, str] | None]
     `table.column`, or an id path `[/]schema/<object id>/properties/<property
     id>` through the `id`s of the objects and their properties (#1956). An
     object or property without an `id` is named by its `name`, as ODCS's own
-    example `schema/relationships.odcs.yaml` does."""
+    example `schema/relationships.odcs.yaml` does. A segment that names two
+    objects, or two properties of one object (one's `id` the other's
+    `name`), resolves to neither."""
 
-    def ident(o: Mapping[str, Any]) -> Any:
-        return o.get("id", o.get("name"))
-
-    objects = {ident(o): o for o in doc.get("schema") or [] if "name" in o}
+    def named(items: Any, segment: str) -> Mapping[str, Any] | None:
+        found = [o for o in items or [] if "name" in o and o.get("id", o["name"]) == segment]
+        return found[0] if len(found) == 1 else None
 
     def resolve(ref: Any) -> tuple[str, str] | None:
         if not isinstance(ref, str):
             return None
         parts = ref.lstrip("/").split("/")
         if len(parts) == 4 and parts[0] == "schema" and parts[2] == "properties":
-            obj = objects.get(parts[1])
-            for p in (obj or {}).get("properties") or []:
-                if ident(p) == parts[3] and "name" in p:
-                    return obj["name"], p["name"]  # type: ignore[index]
-            return None
+            obj = named(doc.get("schema"), parts[1])
+            prop = obj and named(obj.get("properties"), parts[3])
+            return (obj["name"], prop["name"]) if obj and prop else None
         if ref.count(".") == 1 and "/" not in ref:
             table, col = ref.split(".")
             return table, col
@@ -695,9 +694,9 @@ def _resolver(doc: Mapping[str, Any]) -> Callable[[Any], tuple[str, str] | None]
     return resolve
 
 
-_UNDEFINED = "a reference to a column the contract does not define"
+_UNDEFINED = "a reference to no single column the contract defines"
 """A relationship whose `from` or `to` names no object and property of the
-contract (or the two lists differ in length)."""
+contract, or two (`_resolver`), or whose two lists differ in length."""
 
 
 class _Reader:
