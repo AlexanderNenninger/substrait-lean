@@ -188,6 +188,10 @@ alias. The old form raises, and the changelog entry names the replacement. A
 release with breaking changes lists them first in its section of
 [the changelog](../CHANGELOG.md).
 
+The 1.x promise covers sverify-dbt's command line, exit codes and JSON, which
+are sverify's own ([the package's README](../dbt/README.md)). Its Python names
+are documented and outside the promise.
+
 ## Engines
 
 This section is the one statement of which engines sverify supports; other
