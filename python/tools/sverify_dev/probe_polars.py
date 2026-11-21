@@ -428,6 +428,20 @@ OBSERVATIONS: list[Observation] = [
     _o("float-sum-nonfinite", "doubles",
        "df(x=[inf, -inf, 1.0]).select(pl.col('x').sum().alias('sum'),"
        " pl.col('x').mean().alias('mean'), pl.col('x').std().alias('std')).rows()"),
+    # A grouped `sum` and `mean` with NaN and finite values, `+inf` and finite
+    # values in both orders, both infinities, and the same in groups of 401
+    # rows, which Kahan's sum (`COMPENSATED`) takes: every result is not
+    # finite (ruling 212, A2).
+    _o("float-sum-grouped-nonfinite", "aggregates",
+       "(lambda gs: df(g=[k for k, v in gs for _ in v], x=[e for _, v in gs for e in v])"
+       ".group_by('g', maintain_order=True).agg(pl.col('x').sum().alias('sum'),"
+       " pl.col('x').mean().alias('mean')).sort('g').rows())(["
+       "('nan+f', [nan, 1.0, 2.0]), ('f+nan', [1.0, nan]), ('inf+f', [inf, 1.0]),"
+       " ('f+inf', [1.0, inf]), ('ninf+f', [-inf, 1.0]), ('f+ninf', [1.0, -inf]),"
+       " ('both', [inf, -inf]), ('both-rev', [-inf, 1.0, inf]),"
+       " ('long-inf', [1.0] * 200 + [inf] + [1.0] * 200),"
+       " ('long-nan', [1.0] * 200 + [nan] + [1.0] * 200),"
+       " ('long-both', [1.0] * 200 + [inf, -inf] + [1.0] * 200)])"),
     _o("float-std-inf", "aggregates",
        "df(x=[inf, 1.0]).select(pl.col('x').std().alias('std'),"
        " pl.col('x').var().alias('var')).rows()"),

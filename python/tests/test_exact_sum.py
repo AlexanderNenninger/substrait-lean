@@ -1,6 +1,6 @@
 """`SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` and `CORR` of doubles maintained
 from an exact state (#918 Part B, `sverify._exact_sum`,
-`SubstraitLean/IncrementalFloat.lean`): the engine's limbs against exact
+`analysis/Sverify/Analysis/IncrementalFloat.lean`): the engine's limbs against exact
 moments, the glue's finish against exact rationals and against the checker's
 `floatSumCR`, `varOf`, `covOf` and `corrOf`, and a pipeline that keeps them
 exactly over random inserts and deletes."""
