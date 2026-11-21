@@ -218,9 +218,28 @@ def test_a_duckdb_fuzz_disagreement_that_verify_flags_is_no_finding(tmp_path):
         tmp_path / "b", "duckdb:int_division", 2, **{"duckdb__fuzz__int_division.json": duck}
     )
     ledger, _ = nightly.merge({}, [b])
-    # Only the query `verify` does not flag stays; the `% -1` rule explains it.
+    # Only the query `verify` does not flag stays (the rule for `% -1` is tested below).
     [entry] = ledger["entries"].values()
     assert entry["signature"][1] == "SELECT i % -? FROM t"
+
+
+def test_the_modulus_rule_explains_a_duckdb_eval_order_mismatch(tmp_path):
+    # `i % -1` raises in DuckDB 2.0.0 at MIN (`duckdb-R15-int-modulus`); the
+    # reference gives 0. The shipped rule names the fact, whatever the literal.
+    mod = {
+        "cls": "disagree",
+        "sql": "SELECT i % -1 FROM t",
+        "lean": "[[0]]",
+        "duckdb": "error: Out of Range Error: Overflow in modulus of -9223372036854775808 % -1",
+        "reason": None,
+    }
+    duck = json.dumps({"results": [mod]})
+    b = _batch(tmp_path / "b", "duckdb:eval_order", 2, **{"duckdb__fuzz__eval_order.json": duck})
+    ledger, night = nightly.merge({}, [b], nightly.load_rules())
+    [entry] = ledger["entries"].values()
+    assert entry["signature"] == ["duckdb:eval_order", "SELECT i % -? FROM t", "error"]
+    assert entry["explained"] == "fact duckdb-R15-int-modulus"
+    assert nightly.rule_problems(nightly.load_rules()) == []
 
 
 @pytest.mark.slow
