@@ -11,7 +11,8 @@ golden tests run that check on every fixture.
 Conventions:
 * `Rel.emit` becomes `RelCommon.emit` on a `ProjectRel` (wrapping the child
   in an empty project if needed); directly nested emits are composed.
-* Every modelled function is declared in `extensions` with a fixed anchor.
+* Every function a plan calls is declared in `extensions`, with a fixed anchor,
+  and no other.
 -/
 
 namespace Substrait.Write
@@ -1095,16 +1096,29 @@ def writeRel (schemas : Schemas) (cat : Catalog)
         let ks := relKinds schemas cat r
         Json.arr (fns.map (writeWindow ks part sort)).toArray)] out
 
+/-- The function anchors a written relation calls (`functionReference`). -/
+partial def usedAnchors : Json → List Nat
+  | .arr xs => xs.toList.flatMap usedAnchors
+  | .obj kvs => (Parse.entries kvs).flatMap fun (key, v) =>
+      if key == "functionReference" then (v.getNat?.toOption.toList) else usedAnchors v
+  | _ => []
+
+/-- A plan with its relation, declaring the functions it calls and no others
+(#1787 item 5: the table holds 152). The parser refuses a reference to an
+undeclared anchor, so `roundtrips` fails on a missing one. -/
 def writePlan (schemas : Schemas) (cat : Catalog) (root : Rel) (names : List String) : Json :=
+  let rel := writeRel schemas cat [] root none
+  let used := usedAnchors rel
+  let declared := functions.filter fun (a, _) => used.contains a
   obj [
-    -- The black boxes' URN (#325); the other functions are Substrait's own.
+    -- The black boxes' URN (#325), always: a plan's digest keeps it
+    -- (`sverify.incremental.plan_digest`). The other functions are Substrait's own.
     ("extensionUrns", Json.arr #[obj [("extensionUrnAnchor", toJson 1),
       ("urn", toJson BlackBox.blackBoxUrn)]]),
-    ("extensions", Json.arr (functions.map fun (a, n) => obj [("extensionFunction", obj ([
+    ("extensions", Json.arr (declared.map fun (a, n) => obj [("extensionFunction", obj ([
       ("functionAnchor", toJson a), ("name", toJson n)] ++
       if blackBoxFns.contains (a, n) then [("extensionUrnReference", toJson 1)] else []))]).toArray),
-    ("relations", Json.arr #[obj [("root", obj [
-      ("input", writeRel schemas cat [] root none), ("names", toJson names)])]])]
+    ("relations", Json.arr #[obj [("root", obj [("input", rel), ("names", toJson names)])]])]
 
 /-- Schemas recorded by the parser, falling back to placeholders. -/
 def planSchemas (p : Parse.Plan) : Schemas := fun t n =>
