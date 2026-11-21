@@ -143,6 +143,20 @@ the Lean kernel does not check: the project's axiom, its `opaque` and
 `implemented_by` constants, what tests cover and what nothing covers, each
 with what retires it. `python/tests/test_trusted_base.py` keeps it complete.
 
+Two runtime obligations tie a run to the hypotheses of `Engine.contract_sound`
+(#1130). The theorem is about the engine's profile, which holds under the
+settings its facts were probed under, and about a run that commits only when
+the engine returns:
+
+- Before a run or a refresh, sverify reads the session's settings back and
+  refuses the run when a setting the plan relies on differs from the
+  profile's (`sverify.routes.check_settings`, which `Report.run` and
+  `refresh` reach through `choose`). The refresh writes nothing.
+- An engine that raises leaves the sink untouched: no commit, and the epoch of
+  the last refresh stays.
+
+`python/tests/test_run_obligations.py` tests both on DuckDB, Polars and Spark.
+
 ## The modules
 
 One line per module, by layer: values and expressions first, then
