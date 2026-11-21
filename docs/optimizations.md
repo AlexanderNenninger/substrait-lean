@@ -285,7 +285,7 @@ The exact-semantics catches, and what we do with each:
   shard's partial sum before the combine, so `--shard` refuses these
   aggregates by default. With `float_order="any"` it splits them anyway
   (`floatCombine`: `SUM` of partial sums, `AVG` as summed sums over summed
-  counts), within a proved bound.
+  counts), within the bound `Shard.lean` proves over the reals (`sharded_near`).
   Each shard also reports `SUM(|x|)`, `COUNT(x)` and `MAX(|x|)` per split
   double (`floatBoundParts`), and from them the combined `SUM` of a group of
   `n` values in `k` shards of at most `m` is within

@@ -581,7 +581,6 @@ def parser() -> argparse.ArgumentParser:
     common = _Parser(add_help=False)
     common.add_argument(
         "--format",
-        "--output-format",
         dest="format",
         choices=FORMATS,
         default="text",

@@ -77,7 +77,10 @@ Snowflake has no profile in sverify: it runs the SQL sverify writes
 `semantics="duckdb"`, `"polars"` or `"spark"` verifies a plan under that
 engine's profile. Under Spark's profile that is the same proof as under
 the reference; what it changes is the route, which runs the plan on Spark
-natively.
+natively. Under DuckDB's profile an integer `SUM` is checked to fit 64 bits,
+where DuckDB sums to a HUGEINT ([#350](https://github.com/AlexanderNenninger/substrait-lean/issues/350)):
+the report lists "SUM overflow" among its assumptions, and a run whose sum
+leaves 64 bits raises.
 
 ## Substrait's profile
 

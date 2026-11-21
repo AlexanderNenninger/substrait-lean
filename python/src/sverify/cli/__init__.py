@@ -18,7 +18,7 @@ starts with the contract in plain words: what the output guarantees, what
 each refresh checks on the data, and what is not proved, each finding with
 a code that `explain` expands.
 
-Every command takes `--format` (`--output-format`): `text` (the default) or
+Every command takes `--format`: `text` (the default) or
 `json`, one document in the format of `sverify/schemas/cli.schema.json`
 that embeds each node's `Report.to_json()`; `check` also writes `github`
 (workflow commands that annotate a pull request's lines) and `sarif`
