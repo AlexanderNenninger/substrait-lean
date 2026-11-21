@@ -217,6 +217,7 @@ end Substrait.Examples
 -- Proofs rely only on Lean's standard axioms (no `sorry`).
 #print axioms Substrait.Rel.eval_arity
 #print axioms Substrait.Rel.kinds_sound
+#print axioms Substrait.Expr.robust_of_kinds
 #print axioms Substrait.filter_project_pushdown
 #print axioms Substrait.filter_cross_pushdown_left
 #print axioms Substrait.emit_project_identity
