@@ -87,3 +87,17 @@ def test_each_entry_point_names_its_missing_extra() -> None:
 def test_a_name_that_is_no_extra_keeps_its_error() -> None:
     with pytest.raises(ValueError, match="unknown engine 'oracle'"):
         sv.connect("oracle")
+
+
+def test_an_installed_engine_is_not_missing() -> None:
+    """Spark runs through a session (`local=False`) and is installed all the
+    same: its name names no extra, and neither does any other engine whose
+    modules import here."""
+    from importlib.util import find_spec
+
+    from sverify import _engines, profiles
+
+    for engine, p in profiles.plugins().items():
+        if engine in _engines._engine_extras() and all(find_spec(m) for m in p.modules):
+            assert _engines.not_installed(engine) is None, engine
+    assert "spark" in _engines._engine_extras() and "all" not in _engines._engine_extras()
