@@ -12,7 +12,13 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
-from sverify.ibis_substrait._base import Exprs, register, register_refusals, table_rules
+from sverify.ibis_substrait._base import (
+    CONSTANT_FIX,
+    Exprs,
+    register,
+    register_refusals,
+    table_rules,
+)
 from sverify.plan_json import (
     Json,
     ProducerUnsupported,
@@ -150,7 +156,7 @@ def _regex_search(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal):
         raise ProducerUnsupported(
             "regular expressions must be constants",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="REGEXP",
         )
     arg, pattern = x(op.arg), x(op.pattern)
@@ -165,7 +171,7 @@ def _regex_extract(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.index, ops.Literal):
         raise ProducerUnsupported(
             "re_extract needs a constant pattern and group",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function re_extract",
         )
     return call("regexp_extract", [x(op.arg), x(op.pattern), x(op.index, dt.int64)])
@@ -175,7 +181,7 @@ def _regex_replace(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
         raise ProducerUnsupported(
             "re_replace needs a constant pattern and replacement",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function re_replace",
         )
     # Every match, as Ibis's SQL does (DuckDB's flag `'g'`).

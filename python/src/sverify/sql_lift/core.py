@@ -29,6 +29,7 @@ from sverify.plan_json import (
     logical,
 )
 from sverify.sql_lift._base import (
+    CONSTANT_FIX,
     DUCKDB,
     Column,
     E,
@@ -592,7 +593,7 @@ def _rounding(name: str) -> Callable[..., E]:
             if not (d.constant and isinstance(d.value, int)):
                 raise SqlUnsupported(
                     "round needs a constant number of digits",
-                    "use a literal, or write each case with ifelse",
+                    CONSTANT_FIX,
                     construct="function round",
                 )
             if a.type.is_integer():

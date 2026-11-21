@@ -13,7 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify._unsupported import QUANTILE_OF_DECIMAL
-from sverify.ibis_substrait._base import Exprs, _sort_key
+from sverify.ibis_substrait._base import CONSTANT_FIX, Exprs, _sort_key
 from sverify.ibis_substrait._constructs import op_construct
 from sverify.plan_json import (
     Json,
@@ -157,7 +157,7 @@ def group_concat(x: Exprs, op: Any) -> Json:
     if sep is None:
         raise ProducerUnsupported(
             "group_concat needs a constant separator",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function group_concat",
         )
     if not op.arg.dtype.is_string():
@@ -238,7 +238,7 @@ def quantile(x: Exprs, op: Any) -> Json:
     else:
         raise ProducerUnsupported(
             "quantile() needs a constant fraction",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function quantile",
         )
     if not 0 <= q <= 1:
@@ -285,7 +285,7 @@ def split_multi_quantiles(metric: Any) -> Any:
         if not (isinstance(qs, ops.Literal) and isinstance(qs.value, tuple | list)):
             raise ProducerUnsupported(
                 "quantile() needs constant fractions",
-                "use a literal, or write each case with ifelse",
+                CONSTANT_FIX,
                 construct="function quantile",
             )
         one = [

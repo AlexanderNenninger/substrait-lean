@@ -24,7 +24,18 @@ from sverify.plan_json import (
     literal,
     make_date_json,
 )
-from sverify.sql_lift._base import _KNOWN, DIALECT, Column, E, Sub, _fn, _Lift, _shown, register
+from sverify.sql_lift._base import (
+    _KNOWN,
+    CONSTANT_FIX,
+    DIALECT,
+    Column,
+    E,
+    Sub,
+    _fn,
+    _Lift,
+    _shown,
+    register,
+)
 from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
 
 
@@ -350,7 +361,7 @@ def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) ->
         if not (isinstance(part, sge.Literal) and part.is_string):
             raise SqlUnsupported(
                 f"{name} needs a constant part",
-                "use a literal, or write each case with ifelse",
+                CONSTANT_FIX,
                 construct=f"function {name.lower()}",
             )
         return _date_part(lf, part.this, sub(args[1]))
@@ -569,7 +580,7 @@ def _strftime(lf: _Lift, node: sge.TimeToStr, sub: Sub, scope: list[Column]) -> 
     if not (isinstance(fmt, sge.Literal) and fmt.is_string):
         raise SqlUnsupported(
             "strftime needs a constant format",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function strftime",
         )
     # `%F` and `%T` are the model's (chrono's), but DuckDB rejects them.

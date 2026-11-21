@@ -64,6 +64,9 @@ _KNOWN = {"date_part", "datepart", "prefix", "suffix"}
 # --------------------------------------------------------------------------
 # Profiles
 
+#: What a refusal says where a constant is needed (#176).
+CONSTANT_FIX = "use a literal, or write each case with CASE WHEN"
+
 
 @dataclasses.dataclass(frozen=True)
 class Profile:
@@ -1443,7 +1446,7 @@ class _Lift:
                 if not (n.constant and isinstance(n.value, int) and n.value > 0):
                     raise SqlUnsupported(
                         "ntile needs a positive integer constant",
-                        "use a literal, or write each case with ifelse",
+                        CONSTANT_FIX,
                         construct="function ntile",
                     )
                 args = [literal(n.value, dt.int64)]
@@ -1456,7 +1459,7 @@ class _Lift:
             if not (k.constant and isinstance(k.value, int) and k.value >= 0):
                 raise SqlUnsupported(
                     f"{name} needs a non-negative integer constant offset",
-                    "use a literal, or write each case with ifelse",
+                    CONSTANT_FIX,
                     construct=f"function {name}",
                 )
             args = [column(x), literal(k.value, dt.int64)]
@@ -1493,7 +1496,7 @@ class _Lift:
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
                     raise SqlUnsupported(
                         "nth_value needs a positive integer constant",
-                        "use a literal, or write each case with ifelse",
+                        CONSTANT_FIX,
                         construct="function nth_value",
                     )
                 args.append(literal(k.value, dt.int64))
@@ -2018,7 +2021,7 @@ class _Lift:
             if not (s_.constant and isinstance(s_.value, str)):
                 raise SqlUnsupported(
                     f"{_shown(node)} needs a constant separator",
-                    "use a literal, or write each case with ifelse",
+                    CONSTANT_FIX,
                     construct=_function(node),
                 )
             args.append(literal(s_.value, dt.string))
@@ -2993,7 +2996,7 @@ def _count(node: sge.Expression, what: str) -> int:
         return int(node.this)
     raise SqlUnsupported(
         f"{what} must be a non-negative integer constant",
-        "use a literal, or write each case with ifelse",
+        CONSTANT_FIX,
         construct=f"{what}",
     )
 

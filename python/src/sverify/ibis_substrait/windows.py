@@ -13,7 +13,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
-from sverify.ibis_substrait._base import Exprs, _sort_key
+from sverify.ibis_substrait._base import CONSTANT_FIX, Exprs, _sort_key
 from sverify.ibis_substrait._constructs import op_construct
 from sverify.ibis_substrait.aggregates import measure
 from sverify.ibis_substrait.temporal import _const_interval
@@ -78,7 +78,7 @@ def _frame_offset(op: Any, b: Any) -> int:
         raise ProducerUnsupported(
             "frame offsets must be integer constants (a column or expression offset "
             "makes each row's frame its own)",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="FRAME",
         )
     return v.value
@@ -101,7 +101,7 @@ def _interval_offset(v: Any) -> int:
             return v.value * factor
     raise ProducerUnsupported(
         "frame offsets must be constant intervals of days or less",
-        "use a literal, or write each case with ifelse",
+        CONSTANT_FIX,
         construct="FRAME",
     )
 
@@ -199,7 +199,7 @@ def window(x: Exprs, op: Any) -> Json:
             if not isinstance(nth, int) or nth < 0:
                 raise ProducerUnsupported(
                     "nth must be a non-negative integer constant",
-                    "use a literal, or write each case with ifelse",
+                    CONSTANT_FIX,
                     construct="function nth",
                 )
             name, args = "nth_value", [x(func.arg), literal(nth + 1, dt.int64)]

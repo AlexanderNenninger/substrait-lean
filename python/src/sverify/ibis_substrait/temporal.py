@@ -13,7 +13,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
-from sverify.ibis_substrait._base import Exprs, register, register_refusals
+from sverify.ibis_substrait._base import CONSTANT_FIX, Exprs, register, register_refusals
 from sverify.ibis_substrait._constructs import class_construct
 from sverify.plan_json import (
     EPOCH,
@@ -267,7 +267,7 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
         if values is None:
             raise ProducerUnsupported(
                 f"{what} of columns is not supported, only of constants",
-                "use a literal, or write each case with ifelse",
+                CONSTANT_FIX,
                 construct=class_construct(what),
             )
         try:
@@ -305,7 +305,7 @@ def _strftime(x: Exprs, op: Any) -> Json:
     if not isinstance(op.format_str, ops.Literal):
         raise ProducerUnsupported(
             "strftime formats must be constants",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function strftime",
         )
     return call("strftime", [x(op.arg), literal(op.format_str.value, dt.string)])
@@ -319,7 +319,7 @@ def _bucket(x: Exprs, op: Any) -> Json:
     if c is None or c[0] or c[1] <= 0 or o is None or o[0]:
         raise ProducerUnsupported(
             "bucket needs constant intervals of days or less",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function bucket",
         )
     origin = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(o[1])}}}
@@ -362,7 +362,7 @@ def _time_add(name: str) -> Callable[[Exprs, Any], Json]:
         if c is None:
             raise ProducerUnsupported(
                 "a time of day plus an interval needs a constant interval",
-                "use a literal, or write each case with ifelse",
+                CONSTANT_FIX,
                 construct="INTERVAL",
             )
         if c[0]:

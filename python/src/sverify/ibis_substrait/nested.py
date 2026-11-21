@@ -13,6 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import (
+    CONSTANT_FIX,
     Exprs,
     _common,
     _unary,
@@ -100,7 +101,7 @@ def _array_contains(x: Exprs, op: Any) -> Json:
     if not isinstance(op.other, ops.Literal):
         raise ProducerUnsupported(
             "contains needs a constant value (a lambda reading a column is not supported yet)",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function contains",
         )
     elem = op.arg.dtype.value_type

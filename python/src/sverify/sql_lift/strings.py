@@ -21,7 +21,17 @@ from sverify.plan_json import (
     logical,
     substring_left,
 )
-from sverify.sql_lift._base import Column, E, Sub, _fn, _Lift, _option, _shown, register
+from sverify.sql_lift._base import (
+    CONSTANT_FIX,
+    Column,
+    E,
+    Sub,
+    _fn,
+    _Lift,
+    _option,
+    _shown,
+    register,
+)
 
 # -- strings ---------------------------------------------------------------
 
@@ -203,7 +213,7 @@ def _left(lf: _Lift, node: sge.Left, sub: Sub, scope: list[Column]) -> E:
     if not (n.constant and isinstance(n.value, int) and n.value >= 0):
         raise SqlUnsupported(
             "left needs a constant count of 0 or more",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function left",
         )
     (s_,) = _strings(lf, [sub(node.this)], "left")
@@ -239,13 +249,13 @@ def _const(e: E, what: str, kind: type) -> Any:
     if not e.constant or not (e.value is None or isinstance(e.value, kind)):
         raise SqlUnsupported(
             f"{what} needs a constant {kind.__name__}",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct=f"function {what.partition(chr(39))[0]}",
         )
     if isinstance(e.value, bool):
         raise SqlUnsupported(
             f"{what} needs a constant {kind.__name__}",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct=f"function {what.partition(chr(39))[0]}",
         )
     return e.value
@@ -257,7 +267,7 @@ def _pattern(lf: _Lift, node: sge.Expression, sub: Sub, what: str) -> tuple[Json
     if not (p.constant and isinstance(p.value, str)):
         raise SqlUnsupported(
             f"{what} needs a constant pattern",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct=f"function {what}",
         )
     if not simple_regex(p.value):
@@ -337,7 +347,7 @@ def _regexp_replace(lf: _Lift, node: sge.RegexpReplace, sub: Sub, scope: list[Co
     if not (r.constant and isinstance(r.value, str)):
         raise SqlUnsupported(
             "regexp_replace needs a constant replacement",
-            "use a literal, or write each case with ifelse",
+            CONSTANT_FIX,
             construct="function regexp_replace",
         )
     args = [s_, literal(p, dt.string), literal(r.value, dt.string)]
