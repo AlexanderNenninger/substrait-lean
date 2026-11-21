@@ -12,3 +12,4 @@ over (`eval`, `OrderAllowed`, `Allowed`, `AllowedP`, `Near`) and its axioms.
 | [`contract_sound_all`](contract_sound_all.md) | … in every row order the reference allows |
 | [`contract_sound_allowed`](contract_sound_allowed.md) | … on every result the reference allows, doubles summed in any order included |
 | [`contract_sound_allowed_closed`](contract_sound_allowed_closed.md) | … with the float-safety condition replaced by a check on the plan |
+| [`Rel.keys_sound`](keys_sound.md) | A derived key holds on the output: no two rows share its columns |
