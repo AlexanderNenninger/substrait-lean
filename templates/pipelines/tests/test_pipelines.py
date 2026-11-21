@@ -8,10 +8,12 @@ No network: `EUROSTAT_FIXTURES` points the sources at tests/fixtures/.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -131,6 +133,16 @@ def test_refresh_then_catalog(env, tmp_path):
     assert not {"cursors", "table_ids", "digests"} & meta["contract"].keys()
     assert (site / "data" / "gdp.parquet").exists()
 
+    # The pipeline's status page, for a phone: last run, rows, contract, next run.
+    status = (site / "status-gdp.html").read_text()
+    assert 'name="viewport"' in status
+    assert '<p class="ok">ok</p>' in status
+    assert '<a href="gdp.html">1,100</a>' in status  # rows stored, linked to the table
+    assert "+110 −0" in status  # rows the last run wrote
+    assert "no two rows share (geo, unit, na_item, time)" in status  # the contract
+    assert "<code>17 5 * * *</code>" in status  # refresh.yml's schedule
+    assert 'href="status-gdp.html"' in (site / "index.html").read_text()
+
     # A public repository's pages read the data branch's files.
     env = env | {"GITHUB_REPOSITORY": "you/pipelines", "REPOSITORY_PUBLIC": "true"}
     done = lake("catalog", "--out", str(tmp_path / "linked"), "--stage", "production", env=env)
@@ -168,6 +180,36 @@ def test_data_that_breaks_the_contract_fails_the_refresh(env, tmp_path):
     assert "pipelines/gdp.py:trade_openness_table" in alert
     assert "PreconditionError" in alert
     assert not (Path(env["SVERIFY_LAKE"]) / "gdp").exists()  # nothing written
+
+    # The status page says so, with the error.
+    done = lake(
+        "catalog",
+        "--out",
+        str(tmp_path / "site"),
+        "--refresh",
+        str(tmp_path / "refresh.json"),
+        env=env,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    status = (tmp_path / "site" / "status-gdp.html").read_text()
+    assert '<p class="bad">failed: not proved (exit 1)</p>' in status
+    assert "<code>[" in status  # the error's code and message
+
+
+def test_next_run_reads_the_refresh_schedule():
+    spec = importlib.util.spec_from_file_location("lake", ROOT / "scripts" / "lake.py")
+    assert spec and spec.loader
+    lake_py = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lake_py)
+    now = datetime(2026, 11, 21, 6, 0, tzinfo=UTC)  # a Saturday
+    assert lake_py.next_run("17 5 * * *", now) == datetime(2026, 11, 22, 5, 17, tzinfo=UTC)
+    assert lake_py.next_run("*/15 * * * *", now) == datetime(2026, 11, 21, 6, 15, tzinfo=UTC)
+    assert lake_py.next_run("0 9 * * 1-5", now) == datetime(2026, 11, 23, 9, 0, tzinfo=UTC)
+    assert lake_py.next_run("0 0 1 * *", now) == datetime(2026, 12, 1, 0, 0, tzinfo=UTC)
+    # Both day fields restricted: either one matches (Sunday the 22nd).
+    assert lake_py.next_run("0 0 15 * 0", now) == datetime(2026, 11, 22, 0, 0, tzinfo=UTC)
+    assert lake_py.next_run("@daily", now) is None
+    assert lake_py.schedules() == ["17 5 * * *"]
 
 
 def test_stored_keys_reach_only_the_store_that_needs_them():
