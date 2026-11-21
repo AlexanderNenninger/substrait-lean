@@ -303,7 +303,7 @@ def test_a_sum_minus_its_window_average_fits():
     t = ibis.table({"item": "int64", "store": "int64", "price": "decimal(7, 2)"}, name="sales")
     monthly = t.group_by(["item", "store"]).aggregate(total=t.price.sum())
     m = monthly.mutate(avg=monthly.total.mean().over(ibis.window(group_by="store")))
-    q = m.filter(ibis.ifelse(m.avg != 0, (m.total - m.avg).abs() / m.avg, None) > 0.1)
+    q = m.filter(ibis.ifelse(m.avg != 0, (m.total - m.avg).abs() / m.avg, None) > ibis.literal(0.1))
     report = sv.verify(q, requires={"sales": [_.price.between(0.01, 300), sv.max_rows(10**12)]})
     assert not report.errors, report.details()
 
