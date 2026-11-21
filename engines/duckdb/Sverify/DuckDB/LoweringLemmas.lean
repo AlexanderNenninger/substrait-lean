@@ -255,8 +255,7 @@ DuckDB's `dtext` is the reference's. -/
 theorem Lowering.dtextFull_agree (s : DuckDBSettings) (x : Value) :
     (Lowering.dtextFullTemplate.evalP (Profile.duckdb s) [x]).Agree
       (Profile.reference.un .dtextFull x) := by
-  cases x <;> simp [Lowering.dtextFullTemplate, Expr.evalP, Profile.duckdb, Profile.reference,
-    UnFn.apply, Outcome.Agree]
+  cases x <;> rfl
 
 /-- `round` on DuckDB, through `zeroTemplate`, agrees with the reference. -/
 theorem Lowering.fround_agree (s : DuckDBSettings) (x : Value) :
