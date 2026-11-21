@@ -45,9 +45,11 @@ KEEP = 64
 latest table instead (and are recomputed)."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Batch:
     """What a `Source` read: new rows and the cursor to read from next time.
+
+    Built by keyword: a source of your own returns one.
 
     Attributes:
         table: The rows, as an Arrow table, a Polars or pandas DataFrame, a
@@ -190,7 +192,7 @@ class Source(Pipeable, ABC):
                 new = [r for r in rows if since is None or r["id"] > since]
                 if not new:
                     return None
-                return Batch(pa.Table.from_pylist(new), cursor=new[-1]["id"])
+                return Batch(table=pa.Table.from_pylist(new), cursor=new[-1]["id"])
 
 
         @sv.transform()
@@ -324,7 +326,7 @@ class Source(Pipeable, ABC):
         st = self._st()
         st.fresh = False
         if version is None or version == st.version:
-            return Snapshot(st.version, st.table, [])
+            return Snapshot(version=st.version, table=st.table, facts=[])
         if not max(st.log.floor, st.oldest) <= version < st.version:
             raise ValueError(f"{self.name} no longer keeps v{version} (latest: v{st.version})")
         # Undo the batches after `version`.
@@ -334,8 +336,12 @@ class Source(Pipeable, ABC):
             for t in (weighted(e.deletes, 1), weighted(e.inserts, -1))
         ]
         if not undo:
-            return Snapshot(version, st.table, [])
-        return Snapshot(version, _apply_change(st.table, pa.concat_tables(undo), self.name), [])
+            return Snapshot(version=version, table=st.table, facts=[])
+        return Snapshot(
+            version=version,
+            table=_apply_change(st.table, pa.concat_tables(undo), self.name),
+            facts=[],
+        )
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from version `since` to the latest, as a refresh reads
@@ -591,7 +597,9 @@ class _Query(Source):
         table = as_arrow(data)
         if not table.num_rows:
             return None
-        return Batch(table, cursor=pc.call_function("max", [table.column(self.cursor_on)]).as_py())
+        return Batch(
+            table=table, cursor=pc.call_function("max", [table.column(self.cursor_on)]).as_py()
+        )
 
     def reread(self, cursor: Any) -> Any:
         table = as_arrow(self.fn(None))
@@ -672,7 +680,7 @@ class _Frame(Source):
 
     def read(self, since: Any) -> Batch | None:
         data = self.fn()
-        return None if data is None else Batch(data, kind="snapshot")
+        return None if data is None else Batch(table=data, kind="snapshot")
 
 
 def from_frame(
@@ -753,7 +761,7 @@ class _Files(Source):
         new = [p for p in paths if p not in seen]
         if not new:
             return None
-        return Batch(self._scan(fs, new), cursor=sorted(seen | set(new)))
+        return Batch(table=self._scan(fs, new), cursor=sorted(seen | set(new)))
 
     def reread(self, cursor: Any) -> Any:
         fs, _ = self._files()

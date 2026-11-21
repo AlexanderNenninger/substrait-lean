@@ -6,7 +6,7 @@ conforming consumer of Substrait 0.106:
 - every function call names its YAML's URN, its compound name
   (`add:i64_i64`) and its output type (`_substrait_extensions.json`, from
   the YAMLs);
-- every option the proof depends on (`Report.depends`) is pinned in the
+- every option the proof depends on (`Report._depends`) is pinned in the
   call's options, at the reference's behaviour, so the consumer cannot
   choose differently (`overflow`, `rounding`, `on_division_by_zero`, …);
 - where Substrait has no option for a choice the proof uses (a spec gap,
@@ -2117,7 +2117,7 @@ __all__ = [
 
 
 def _plan_bound_met(report: Any) -> dict[str, float] | None:
-    """The plan's proved bound on its doubles (`Report.epsilon`) as a
+    """The plan's proved bound on its doubles (`Report._epsilon`) as a
     tolerance, when it meets the one the postconditions state on every
     double column; None otherwise."""
     from sverify.observation import Within

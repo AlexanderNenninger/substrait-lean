@@ -48,7 +48,7 @@ Rows per evidence level:
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 14 | 5 | 22 | 3 | 0 | 0 | 15 |
-| Polars | 29 | 2 | 17 | 0 | 0 | 0 | 17 |
+| Polars | 30 | 1 | 17 | 0 | 0 | 0 | 17 |
 | Spark | 17 | 17 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
@@ -200,7 +200,7 @@ Rows per evidence level:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | fuzz | tested: [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
-| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | fuzz | tested: [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
+| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../engines/polars/facts/polars-avg-int.json) |

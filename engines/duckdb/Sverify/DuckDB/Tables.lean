@@ -106,8 +106,13 @@ def Profile.duckdb.obs : ObsTable := [
     "duckdb-R15-math-domain", "duckdb-R15-atan2"]).proved "Lowering.duckdb_exact"),
   (some "int.pow", "on_domain_error", (ObsRow.shimmed "integer power as checked products"
     ["duckdb-int-pow"]).tracking 1985),
-  -- `log(b, x)` (`flogb`) lowers natively, and no fact probes its domain yet.
-  (some "fp.log", "on_domain_error", (ObsRow.native ["duckdb-R15-math-domain"]).tracking 1985),
+  -- DuckDB's `log(b, x)` is `ln x / ln b`, NaN or `±inf` outside the domain with
+  -- `ieee_floating_point_ops` on (duckdb-R15-math-domain). `Profile.duckdb` has no
+  -- `flogb` case, so the lowering's entry is native and the reference's raise comes
+  -- from the writer's guard (`float_logb` under `domain`), tested. #1985 states
+  -- DuckDB's quotient in the profile and generates the guard.
+  (some "fp.log", "on_domain_error", (ObsRow.shimmed "log(b, x) domain guard"
+    ["duckdb-R15-math-domain"]).tracking 1985),
   -- `//`, `%` and `%` of doubles truncate (duckdb-R2, duckdb-int-div-domain,
   -- duckdb-R3, duckdb-R15-double-modulus), as `Profile.duckdb` states them.
   (none, "division_type", (ObsRow.native ["duckdb-R2", "duckdb-int-div-domain", "duckdb-R3",
@@ -212,7 +217,7 @@ def Profile.duckdb.obs : ObsTable := [
 def Profile.duckdb.shimCosts : List (String × ShimCost) :=
   [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
    ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression),
-   ("null_order", .argument), ("list_lt", .expression),
+   ("null_order", .argument), ("list_lt", .expression), ("log(b, x) domain guard", .expression),
    ("integer power as checked products", .expression)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in

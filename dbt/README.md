@@ -178,7 +178,7 @@ dbt's `unique` lets NULLs repeat while a key counts them as one value, so a
 When the proof needs a precondition no test states, such as a bound that
 rules out an overflow, the model's tests stay unproved and the report lists
 the test to add under `needs`, as YAML for the input's column (sverify's
-`Report.needed`).
+`Report.needs`).
 
 ## Limits
 

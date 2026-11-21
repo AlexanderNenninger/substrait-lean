@@ -120,8 +120,9 @@ SETTINGS: tuple[Setting, ...] = (
         "default_collation",
         ("",),
         "refuse",
-        ("engines/duckdb/replay/collate.json",),
-        "how strings compare; NOCASE may change starts_with, strpos and replace",
+        ("engines/duckdb/replay/collate.json", "duckdb-default-collation-matching"),
+        "how strings compare; NOCASE changes `=`, sorting and grouping, and from 2.0.1 `LIKE`, "
+        "`contains`, `starts_with` and `strpos` too (`replace` is unchanged)",
     ),
     Setting(
         "scalar_subquery_error_on_multiple_rows",

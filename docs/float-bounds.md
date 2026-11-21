@@ -498,13 +498,29 @@ rounding is monotone (`StdModel.Mono`), and doubles are multiples of `2⁻¹⁰�
 that round relatively (`Grid`). With them Welford's new mean lies between the
 old one and the value, so the two differences it multiplies have one sign.
 DuckDB's and Spark's `stat_algo` rows cite `core_var_chan` ([realizability](realizability.md)).
-Polars's algorithms (a reassociated two-pass per block, Schubert and Gertz's
-merge) are not proved, and its row stays tested.
+
+Polars computes the same state with other kernels
+([`SchubertGertz.lean`](../float-bounds/FloatBounds/SchubertGertz.lean)): a
+two-pass block of at most 128 values, its sums in any order and each square
+rounded or fused into its addition (`Block`), Welford's update for groups,
+and Schubert and Gertz's merge (`sgMerge`). The merge's correction term
+`n_b (m_b − m) Δ` cancels in `m_b − m`, whose error is about `u |m|`; times
+`n_b |Δ|` that is within the tree invariant's `u A Σ|D|` term. Any merge that
+meets `MergeSpec` keeps the invariant (`tInv_merge_of`), DuckDB's
+(`dMerge_spec`) and Polars's (`sgMerge_spec`) among them, so Polars's
+co-moment is within DuckDB's bound (`plVar_rel`) and its `VAR_*`, clamped at
+`0` as `VarState::finalize` does, within `varTol` (`core_var_polars`). The
+fuzz (`polars-var-bound`) measured `1.03 n u √(Q' S)` against the proved
+`148`. Polars's `agg.var` row cites `core_var_polars`. Its `COVAR_*`
+(`CovState`) has no theorem yet: at 1.0 Polars's `COVAR_*` rests on the fuzzed
+bound (`polars-var-bound`), and its `agg.stat` row stays tested
+([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
 
 `Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a
 `COVAR_*`'s are `epsilon_var_cr` and `epsilon_cov_cr` for ranges `[-B, B]`
 (a pair's two sides each, `BinFn.pair`) and the row cap `n`, proved on the
-engines `statsProvedOn` names (`"proved_on"`: DuckDB and Spark) and tested on
+engines `statsProvedOn` names for the measure's group (`"proved_on"`: DuckDB, Polars
+and Spark for `VAR_*` and `STDDEV_*`, DuckDB and Spark for `COVAR_*`) and tested on
 the others. A `STDDEV_*`'s is `epsilon_stddev_cr`: the variance's bound
 passes through the square root as `|√a − √b| ≤ √|a − b|`, so it needs no
 lower bound on the variance.

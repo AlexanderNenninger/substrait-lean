@@ -1254,6 +1254,18 @@ KNOWN: tuple[Known, ...] = (
     # A NULL element in a list comparison: DuckDB orders it last, the reference
     # gives NULL.
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
+    # `list_contains` of an empty list and a NULL needle: FALSE in DuckDB 2.0.1, NULL in the
+    # model and the written plan (D54's listed exception).
+    Known(
+        "duckdb-list-contains-null",
+        ("function/list/list_position_null_needle.test",),
+        r"list_contains",
+    ),
+    # A cast below a join: DuckDB 2.0.1 still raises natively, the written plan no longer does
+    # (error-side; `verify` flags the cast at both versions).
+    Known(
+        "duckdb-exec-filter-pushdown", ("optimizer/secure_view_pushdown.test",), r"sec\.s::INT = 42"
+    ),
 )
 
 
@@ -1287,7 +1299,9 @@ def write_ledger(
     head: dict | None = None,
 ) -> Path:
     """`<out>/<area>.json`: one result per line, sorted by file and line.
-    `head` adds to (or replaces) the keys before the results."""
+    `head` adds to (or replaces) the keys before the results. A ledger's `"duckdb"` is the
+    version of its area's run; `"refreshed"` (file to version) marks the entries of single files
+    replayed at another version after it, and a whole-area run writes none (#2045)."""
     out.mkdir(parents=True, exist_ok=True)
     results = sorted(results, key=lambda r: (r["file"], r["line"]))
     counts = Counter(r["cls"] for r in results)

@@ -708,7 +708,7 @@ hold of every engine's result. The bounds differ in kind: `VAR_*` and
 `STDDEV_*` are relative to the spread, the deviation's half the variance's;
 `CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
 `√(Sxx · Syy)`, or relative only under a sign-definite precondition.
-`Report.epsilon` reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
+`Report.epsilon` (since 1.0 the bound `report.lenses` prints) reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
 (`Epsilon.statEps`). `CORR` has no data-free bound (decided 2026-11-08,
 #918): its distance to the reference is bounded only under a lower bound on
 both sides' variances (`core_corr_chan`'s `L`), stated by the user and
@@ -1744,6 +1744,7 @@ preconditions guard it. In three the reference gives another value:
 | `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
 | `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | reads it as DuckDB's (since #322, below) |
 | `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
+| `list_contains` | NULL | FALSE (2.0.1) | `list_contains(l, x)` with `x` NULL and `l` empty | lists it, under every semantics |
 
 Amended 2026-11-20 (ruling 106 §2c, #322): the lift reads `CAST(decimal AS integer)` as the
 reference's own rescale to scale 0, which rounds half away from zero, and the exact cast.
@@ -1760,10 +1761,17 @@ readings differ only on one pair or a constant side (ST-3), and refusing it
 would refuse every `corr`. `Report.dialect_differences` shows it with the
 construct, where it is, both readings, an example and the spellings.
 
+Since 2026-11-20 (#2045, ruling 198) `list_contains` is a second listed
+exception: DuckDB 2.0.1 gives FALSE for `list_contains([], NULL)` where 2.0.0
+and the reference give NULL, and only for the empty list (`duckdb-list-contains-null`).
+A verified plan runs the reference's NULL at both versions, because the DuckDB writer
+guards the needle; SQL run natively on 2.0.1 gives FALSE, so the report lists the
+construct unless its needle is a literal, under `semantics="reference"` and `"duckdb"` alike.
+
 L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
 `Profile.reference`, and the verdict gains no value: the list says what the
-proof covers, and proved stays proved. A SQL query with `semantics="duckdb"`
-and an Ibis transformation list nothing. `semantics="reference"` stays the
+proof covers, and proved stays proved. An Ibis transformation lists nothing, and
+a SQL query with `semantics="duckdb"` lists only `list_contains` (2026-11-20). `semantics="reference"` stays the
 default for raw SQL ("verify two paths" and "portable everywhere" keep it).
 
 Recomputes sinks: no
@@ -2006,6 +2014,34 @@ Recomputes sinks: no
 Why: D14 refused only another major, and a patch release changed a native value
 (`list_contains([], NULL)` at DuckDB 2.0.1, [#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045)). An unprobed patch
 warns and an unprobed minor is refused.
+
+### D71. `power` is strict in both arguments
+
+Decided 2026-11-20 (the maintainer, on the theory advisor's recommendation,
+ruling 209; [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+
+`power(x, y)` is `NULL` where `x` or `y` is `NULL`. The parser, the SQL plan
+reader and the Polars engine fold nothing: `power(x, 0)` evaluates `x`, and it
+is 1 for every `x` that is not `NULL`, integer or double, NaN and `±∞` included
+([D40](#d40-power1--is-cs-pow)'s `pow`). A literal exponent and a column that
+holds the same value give the same result.
+
+Before, a literal exponent `0` or `0.0` made the call the constant 1, also for
+a `NULL` base, in three places. What changes for a plan: at a `NULL` base with
+a literal zero exponent the value is `NULL` where it was 1, and a proof that
+`power(x, 0)` is not `NULL` needs `x` not `NULL`. Spark's writer refuses a
+double `power(x, 0.0)` with the other double powers, where the fold wrote the
+literal. For a base that is not `NULL` nothing moves.
+
+Recomputes sinks: yes
+
+Why: DuckDB, Polars and Spark give `NULL` for a `NULL` base with a zero
+exponent ([duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json),
+[polars-int-pow-exponent](../engines/polars/facts/polars-int-pow-exponent.json),
+[spark-int-pow](../engines/spark/facts/spark-int-pow.json)), so 1 was a value
+sverify reached only by rewriting the plan. The fold also dropped `x`, and with
+it an error inside `x`, and under `semantics="duckdb"` it claimed 1 where
+DuckDB's own SQL gives `NULL` ([D54](#d54-the-lift-refines-the-dialect)).
 
 ### D61. Timestamp precisions
 

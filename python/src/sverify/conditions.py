@@ -285,7 +285,7 @@ def references(col: str, *, to: ir.Column | tuple[str, str] | None = None) -> Re
     Only for `requires`, where it is checked on the data like `unique` (the
     referenced table must be bound to the same backend). With a key on the
     referenced column it lets `Rel.optimize` turn a left join on it into an
-    inner join (`Report.optimized`). Not supported by incremental views.
+    inner join (`Rel.optimize`; the report keeps it internally). Not supported by incremental views.
 
     Args:
         col: The referencing column of the input the condition is on.
@@ -538,8 +538,8 @@ def rows_per(*cols: str, at_most: int | None = None) -> RowsPer:
     of at most `at_most` rows (`Rel.groupRows_sound`). So an integer or
     decimal `SUM` of values in `[-m, m]` per group is proved to fit its type
     when `at_most · m` does, where a cap on the whole table
-    (`max_rows`) would have to bound every group at once. `Report.relations`
-    lists the bounds per relation.
+    (`max_rows`) would have to bound every group at once. The report keeps
+    the bounds per relation internally (`RelationRows`).
 
     Incremental views do not check it on batches yet, and refuse it.
 
@@ -691,8 +691,8 @@ def non_overlapping(lo: str, hi: str, *, by: str | Sequence[str] = ()) -> NonOve
 
 @dataclass(frozen=True)
 class RelationRows:
-    """What the checker bounds a relation of the transformation's plan by (see
-    `Report.relations`)."""
+    """What the checker bounds a relation of the transformation's plan by: one
+    per relation, which the report keeps internally."""
 
     op: str
     """The operator, such as "filter", "join" or "read orders"."""
@@ -913,8 +913,9 @@ class CheckedCondition:
     known (every column)."""
     robust: bool = field(default=False, repr=False, compare=False)
     """Proved on every value an engine's doubles may take: each double column
-    the condition reads widened by its bound (`Report.epsilon`) and, for a
-    sum, an average or a variance, kept to its sign
+    the condition reads widened by its bound (the bound the report's
+    `lenses:` line prints) and, for a sum, an average or a variance, kept to
+    its sign
     (`EngineRobust.robust`, #1045). Such a condition needs no `sv.approx`."""
     checker_ignores: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     """What the checker reports the condition ignores (#1071), the same
@@ -955,7 +956,7 @@ class CheckedCondition:
     #688): `why` reads it first."""
     ties: bool = False
     """Unproved only because rows may tie: the checker proves it where every
-    window orders its rows totally (`Report.tie_places` names where they
+    window orders its rows totally (`Report.ties` names where they
     may not). The counterexample search is skipped for it (#691)."""
 
     @property
