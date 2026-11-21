@@ -229,7 +229,7 @@ class File:
     """Files: `file:/path`; `~` is the home directory."""
 
     def get(self, path: str) -> Value:
-        return Path(path).expanduser().read_text().rstrip("\n")
+        return Path(path).expanduser().read_text(encoding="utf-8").rstrip("\n")
 
 
 def _github_oidc(audience: str) -> str:
@@ -351,12 +351,13 @@ class Bao:
             tok = os.environ.get(f"{self.env_prefix}_TOKEN") or os.environ.get("VAULT_TOKEN")
             if tok:
                 return tok
-            return Path(self.token_file or "~/.vault-token").expanduser().read_text().strip()
+            token = Path(self.token_file or "~/.vault-token").expanduser()
+            return token.read_text(encoding="utf-8").strip()
         with self._lock:
             if self._login is not None and self._login[1] > time.monotonic():
                 return self._login[0]
             jwt = (
-                Path(self.jwt_file).expanduser().read_text().strip()
+                Path(self.jwt_file).expanduser().read_text(encoding="utf-8").strip()
                 if self.jwt_file
                 else _github_oidc(self.audience)
             )
@@ -552,7 +553,7 @@ class Resolver:
         table: Mapping[str, Any] = {}
         file = Path(path) if path else _config_file()
         if file is not None:
-            data = tomllib.loads(file.read_text())
+            data = tomllib.loads(file.read_text(encoding="utf-8"))
             nested = data.get("tool", {}).get("sverify", {}).get("secrets")
             table = nested if nested is not None or file.name == "pyproject.toml" else data
             table = table or {}

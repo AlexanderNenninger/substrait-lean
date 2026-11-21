@@ -29,7 +29,7 @@ PYTHON = [
 def _refusals(path: Path) -> list[tuple[int, str]]:
     """The text of each `raise Unsupported(...)` in `path`."""
     found = []
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
             continue
         func = node.exc.func
@@ -86,7 +86,7 @@ def _without_a_fix(path: Path) -> list[tuple[int, str]]:
     """The plain `raise Unsupported(...)` of `path` whose text names no fix. A
     message that ends in a shared exit (`... + DUCKDB_ONLY`) has one."""
     bad = []
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
             continue
         call = node.exc
