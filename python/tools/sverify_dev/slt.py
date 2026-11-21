@@ -1282,8 +1282,6 @@ KNOWN: tuple[Known, ...] = (
     # A NULL element in a list comparison: DuckDB orders it last, the reference
     # gives NULL.
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
-    # A FLOAT cast to an integer truncates in the model; DuckDB rounds.
-    Known("#2152", ("cast/float_integer_cast.test",), r"::FLOAT as "),
     # MEDIAN of dates and timestamps: DuckDB interpolates, the model takes the
     # lower middle.
     Known(
