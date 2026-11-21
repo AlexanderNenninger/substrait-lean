@@ -117,15 +117,7 @@ def st4(typer: _Typer, b: Builder) -> Json | None:
                 e, lo, hi = args
                 out = b.call("and", _not_less(b, e, lo), _not_less(b, hi, e))
             else:
-                x, y = args
-                if c.name == "lt":
-                    out = _less(b, x, y)
-                elif c.name == "gt":
-                    out = _less(b, y, x)
-                elif c.name == "lte":
-                    out = _not_less(b, y, x)
-                else:
-                    out = _not_less(b, x, y)
+                out = ordering(b, c.name, *args)
             c.holder.clear()
             c.holder.update(out)
             done.append(f"{c.name} of doubles: NaN greatest, one zero")
@@ -161,12 +153,28 @@ def st4(typer: _Typer, b: Builder) -> Json | None:
     return {"shim": "; ".join(dict.fromkeys(done)) or "no double comparison, key or sort"}
 
 
+def ordering(b: Builder, name: str, x: Json, y: Json) -> Json:
+    """The comparison `name` of two doubles, with NaN greatest and one zero."""
+    if name == "lt":
+        return _less(b, x, y)
+    if name == "gt":
+        return _less(b, y, x)
+    if name == "lte":
+        return _not_less(b, y, x)
+    return _not_less(b, x, y)
+
+
 def _less(b: Builder, x: Json, y: Json) -> Json:
-    """`x < y` with NaN greatest and one zero."""
+    """`x < y` with NaN greatest and one zero; NULL when either side is NULL
+    (the formula alone gives FALSE for NaN and NULL, and its negation TRUE)."""
     nx, ny = (b.call("is_nan", copy.deepcopy(v)) for v in (x, y))
     both = b.call("and", b.call("not", copy.deepcopy(nx)), b.call("not", copy.deepcopy(ny)))
     plain = b.call("and", both, b.call("lt", b.canonical(x), b.canonical(y)))
-    return b.call("or", b.call("and", b.call("not", nx), ny), plain)
+    formula = b.call("or", b.call("and", b.call("not", nx), ny), plain)
+    either_null = b.call(
+        "or", b.call("is_null", copy.deepcopy(x)), b.call("is_null", copy.deepcopy(y))
+    )
+    return b.if_then(either_null, b.call("lt", b.canonical(x), b.canonical(y)), formula)
 
 
 def _not_less(b: Builder, x: Json, y: Json) -> Json:

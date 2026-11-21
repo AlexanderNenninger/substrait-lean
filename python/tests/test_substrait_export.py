@@ -455,3 +455,64 @@ def test_an_ordering_comparison_of_doubles_exports(case: str) -> None:
     assert back.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS)
     with pytest.raises(ExportError, match="ST-4"):
         report.to_substrait(shims="refuse")
+
+
+def _evaluate(plan: dict, e: dict, row: tuple):
+    """The shim's expressions under SQL's three-valued logic, doubles as IEEE 754 has them
+    and `lt` as a consumer gives it (False when a side is NaN)."""
+    names = {
+        x["extensionFunction"]["functionAnchor"]: x["extensionFunction"]["name"]
+        for x in plan["extensions"]
+    }
+    if "selection" in e:
+        return row[e["selection"]["directReference"]["structField"]["field"]]
+    if "literal" in e:
+        return float(e["literal"]["fp64"])
+    if "ifThen" in e:
+        (arm,) = e["ifThen"]["ifs"]
+        pick = arm["then"] if _evaluate(plan, arm["if"], row) else e["ifThen"]["else"]
+        return _evaluate(plan, pick, row)
+    f = e["scalarFunction"]
+    a = [_evaluate(plan, x["value"], row) for x in f["arguments"]]
+    match names[f["functionReference"].__int__()].split(":")[0]:
+        case "is_nan":
+            return None if a[0] is None else a[0] != a[0]
+        case "is_null":
+            return a[0] is None
+        case "not":
+            return None if a[0] is None else not a[0]
+        case "add":
+            return None if None in a else a[0] + a[1]
+        case "lt":
+            return None if None in a else a[0] < a[1]
+        case "and":
+            return False if False in a else None if None in a else True
+        case "or":
+            return True if True in a else None if None in a else False
+    raise AssertionError(names)
+
+
+@pytest.mark.parametrize("name", ["lt", "gt", "lte", "gte"])
+def test_the_ordering_shim_is_three_valued_over_the_special_doubles(name: str) -> None:
+    """NaN greatest, one zero, NULL when a side is NULL: the cross product of NaN, NULL, the
+    infinities, the zeros and a number."""
+    from sverify._substrait_shims import Builder, ordering
+
+    plan: dict = {}
+    b = Builder(plan)
+    expr = ordering(b, name, b.field(0), b.field(1))
+    ref = {
+        "lt": lambda x, y: x < y,
+        "gt": lambda x, y: x > y,
+        "lte": lambda x, y: x <= y,
+        "gte": lambda x, y: x >= y,
+    }[name]
+
+    def key(v):  # NaN greatest
+        return (v != v, 0.0 if v != v else v + 0.0)
+
+    values = [NAN, None, float("inf"), float("-inf"), 0.0, -0.0, 1.0]
+    for x in values:
+        for y in values:
+            want = None if x is None or y is None else ref(key(x), key(y))
+            assert _evaluate(plan, expr, (x, y)) is want, (name, x, y)
