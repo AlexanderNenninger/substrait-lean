@@ -154,7 +154,7 @@ class Observation:
     in the sort (an engine's run-to-run variation, `tie_order`)."""
     floats: Floats = "exact"
     """`"exact"`: the same bits; a tolerance (`within`); or `"plan"`: within
-    the bound the checker computes for the plan (`Report.epsilon`, its `ε`
+    the bound the checker computes for the plan (the bound `report.lenses` prints, its `ε`
     per double column), whatever it is. `"plan"` is what `ensures` observes
     when it names no observation, and the default of a sink's
     `reproducible`. A double column a postcondition reads is held to its
@@ -424,7 +424,7 @@ EXACT = Observation(rows="sequence")
 #: The default when `ensures` names none: rows as a multiset, values exact.
 EXACT_MULTISET = Observation()
 #: Rows and list elements as multisets, one zero and one NaN, doubles within
-#: the plan's bound (`Report.epsilon`), other values exact: what `ensures`
+#: the plan's bound (the bound `report.lenses` prints), other values exact: what `ensures`
 #: observes where it names no observation (`Report.lenses`), and what a
 #: sink's rerun must reproduce by default.
 PLAN_BOUND = Observation(floats="plan", zeros="canon", elements="multiset")
@@ -457,7 +457,7 @@ def equivalent(
         floats: `"exact"` (the default here), the same bits; a tolerance,
             `sv.within(abs=…, rel=…, ulps=…)`, which `verify` checks
             against the plan's bound; or `"plan"`: within the bound the
-            checker computes for the plan (`Report.epsilon`), what
+            checker computes for the plan (the bound `report.lenses` prints), what
             `ensures` observes without `equivalent`, and the default of a
             sink's `reproducible`.
         zeros: `"canon"` makes `-0.0` equal `0.0` and every NaN equal.

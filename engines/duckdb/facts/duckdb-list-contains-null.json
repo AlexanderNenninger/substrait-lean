@@ -1,0 +1,58 @@
+{
+  "id": "duckdb-list-contains-null",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`list_contains` of a NULL needle: NULL at 2.0.0, FALSE for the empty list at 2.0.1",
+  "verdict": "list_contains(l, x) is NULL for a NULL x at every list at 2.0.0; at 2.0.1 the empty list gives FALSE, the other lists NULL; the lowering guards the needle, so the plan gives the model's NULL at both versions",
+  "area": "nested",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "list_contains",
+    "list_position"
+  ],
+  "settings": {},
+  "description": [
+    "Grid of `l` in NULL, `[]`, `[1]`, `[NULL]`, `[1, NULL]` against `x` in NULL, 1, 2, as `list_contains(l, x)` and `list_position(l, x)` over INT arrays. At 2.0.0 and 2.0.1 every cell agrees except one: `list_contains([], NULL)` is NULL at 2.0.0 and FALSE at 2.0.1. `list_position` is the same at both versions (`list_position([], NULL)` is NULL, `list_position([NULL], NULL)` is 1), and so is `list_contains` of a NULL list.",
+    "`duckdb-list-functions-nulls` stated 'NULL for a NULL `x`' from a probe that had `list_contains([1], NULL)` only; the empty list was not in it, so the rule was wider than its probe. This fact supersedes that rule for `list_contains`; the rest of that fact (`list_prepend`, `list_concat`, `list_position`, `len`, the aggregates) holds at 2.0.1 by the probes of `python/tests/test_sql_lift_nested.py`.",
+    "The change is value-side (D70): a native call returns another value than the model. The DuckDB writer guards the needle (`CASE WHEN x IS NULL THEN NULL ELSE list_contains(l, x) END`, `Dialect.list_fn`), so the native call sees non-NULL needles only and the plan gives the model's NULL at both versions. DuckDB's own `list_contains(l, NULL)` on an empty list read as SQL is a listed exception of D54: the lift reads it as the model does.",
+    "Grid at 2.0.0: 2.0.0; list_contains NULL [None, None, None]; list_contains [] [None, False, False]; list_contains [1] [None, True, False]; list_contains [NULL] [None, False, False]; list_contains [1,NULL] [None, True, False]; list_position NULL [None, None, None]; list_position [] [None, None, None]; list_position [1] [None, 1, None]; list_position [NULL] [1, None, None]; list_position [1,NULL] [2, 1, None]. Grid at 2.0.1: 2.0.1; list_contains NULL [None, None, None]; list_contains [] [False, False, False]; list_contains [1] [None, True, False]; list_contains [NULL] [None, False, False]; list_contains [1,NULL] [None, True, False]; list_position NULL [None, None, None]; list_position [] [None, None, None]; list_position [1] [None, 1, None]; list_position [NULL] [1, None, None]; list_position [1,NULL] [2, 1, None]."
+  ],
+  "reference": "`Value.listContains` (`core/Sverify/Core/Expr.lean`) gives NULL for a NULL list or a NULL needle.",
+  "status": "shimmed",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045, duckdb 2.0.0 and 2.0.1 Python packages",
+      "evidence": [
+        {
+          "sql": "SELECT list_contains([]::INT[], NULL), list_contains([1]::INT[], NULL), list_contains([NULL]::INT[], NULL), list_contains([1, NULL]::INT[], NULL), list_contains(NULL::INT[], NULL)",
+          "observed": "2.0.0: NULL, NULL, NULL, NULL, NULL; 2.0.1: FALSE, NULL, NULL, NULL, NULL"
+        },
+        {
+          "test": "python/tests/test_sql_lift_nested.py::test_list_contains_of_a_null_needle_is_null_at_every_list"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-21",
+      "method": "engine-test",
+      "checked_by": "session for #2045, DuckDB's sqllogictests at v2.0.1",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.1/test/sql/function/list/list_contains.test",
+          "note": "v2.0.1 adds `list_contains([]::VARCHAR[], NULL)` and `contains([], NULL)` as false, `list_contains([1], NULL)` and `list_contains(NULL::INT[], NULL)` as NULL, with the comment 'an empty list never contains NULL, a list of only NULLs gives NULL'; the same file adds `map_contains` of an empty map with a NULL needle as false"
+        }
+      ],
+      "notes": "The change is intended upstream: the test file of the release pins it, so it is no regression to report. `map_contains` of an empty map and a NULL needle gives false too; sverify has no row for it."
+    }
+  ],
+  "supersedes": [
+    "duckdb-list-functions-nulls"
+  ],
+  "issues": [
+    2045
+  ]
+}

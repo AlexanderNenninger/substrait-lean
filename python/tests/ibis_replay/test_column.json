@@ -5,32 +5,24 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_column",
   "summary": {
-    "agree": 0,
+    "agree": 4,
     "disagree": 0,
-    "refused": 5,
+    "refused": 1,
     "unproved": 0,
     "skipped": 0
   },
   "results": {
     "test_distinct_column[duckdb-date_string_col]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_distinct_column[duckdb-double_col]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_distinct_column[duckdb-string_col]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_distinct_column[duckdb-timestamp_col]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_rowid[duckdb]": {
       "outcome": "refused",

@@ -5,32 +5,24 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_set_ops",
   "summary": {
-    "agree": 0,
+    "agree": 19,
     "disagree": 0,
-    "refused": 19,
+    "refused": 0,
     "unproved": 0,
     "skipped": 3
   },
   "results": {
     "test_difference[duckdb-all]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_difference[duckdb-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_intersect[duckdb-all]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_intersect[duckdb-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_table_set_operations_api[duckdb-difference]": {
       "outcome": "skipped",
@@ -45,79 +37,49 @@
       "reason": "executes nothing"
     },
     "test_top_level_intersect_difference[duckdb-False-difference-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_intersect_difference[duckdb-False-difference-True]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_intersect_difference[duckdb-False-intersect-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_intersect_difference[duckdb-False-intersect-True]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_intersect_difference[duckdb-True-difference-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_intersect_difference[duckdb-True-difference-True]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_intersect_difference[duckdb-True-intersect-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_intersect_difference[duckdb-True-intersect-True]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_union[duckdb-False-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_union[duckdb-False-True]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_union[duckdb-True-False]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_top_level_union[duckdb-True-True]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_union[duckdb-all]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_union[duckdb-distinct]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     },
     "test_union_mixed_distinct[duckdb]": {
-      "outcome": "refused",
-      "construct": "Unsupported: column … of …: float32 is not supported; use float64; only a column the query never reads is left out",
-      "issue": 1908
+      "outcome": "agree"
     }
   }
 }

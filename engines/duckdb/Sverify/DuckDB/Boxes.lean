@@ -13,9 +13,10 @@ outside it, with the evaluators Lean has for some of them.
 
 Lean's evaluator computes the black boxes it has an evaluator for
 (`evalScalar`: `base64`, `octet_length`, `strlen`, `yearweek`, `list_sum`,
-`string_split`, the casts from VARCHAR on a subset, and `signbit` away from
-`±0.0` and NaN) and panics at the others, so `substrait-check` refuses to
-print rows rather than print wrong ones. The kernel sees none of it: a row's
+`string_split` away from `('', '')`, the casts from VARCHAR on a subset, and `signbit` away from
+NaN) and panics at the others, so `substrait-check` refuses to print rows
+rather than print wrong ones. The panic comes on every such call: `unevaluated`
+is never extracted into a value computed once (#2154). The kernel sees none of it: a row's
 function is `rawScalar name` (`rawAgg name`), an `opaque` constant, and no
 proof depends on it, only on the row's laws (`Boxes.WF`, `Boxes.duckdb_wf`).
 The differential tests pin each black box to DuckDB, and the laws are
@@ -51,6 +52,10 @@ def base64 (s : String) : String := String.ofList (base64Bytes s.toUTF8.toList)
 #guard base64 "" == "" && base64 "f" == "Zg==" && base64 "fo" == "Zm8=" && base64 "foo" == "Zm9v"
 #guard base64 "foobar" == "Zm9vYmFy" && base64 "é" == "w6k="
 
+/-- A refusal: a call Lean does not evaluate. `@[never_extract]`, as Lean's own
+`panicCore`: the compiler must not hoist a call with a constant name into a
+value computed once per process, which panics once and is `default` after (#2154). -/
+@[never_extract]
 def unevaluated {α : Type} [Inhabited α] (name : String) : α :=
   panic! s!"{name} is a black box Lean does not evaluate"
 
@@ -97,12 +102,12 @@ def splitChars (sep : List Char) : Nat → List Char → List Char → List Stri
 
 /-- DuckDB's `string_split(s, sep)`: by characters for `sep = ''`. -/
 def stringSplit (s sep : String) : List String :=
-  if sep.isEmpty then (if s.isEmpty then [""] else s.toList.map Char.toString)
+  if sep.isEmpty then s.toList.map Char.toString
   else splitChars sep.toList 0 s.toList []
 
 #guard stringSplit "a,,b" "," == ["a", "", "b"] && stringSplit "" "," == [""]
 #guard stringSplit "aaa" "aa" == ["", "a"] && stringSplit "ababcab" "abc" == ["ab", "ab"]
-#guard stringSplit "a,b," "," == ["a", "b", ""] && stringSplit "" "" == [""]
+#guard stringSplit "a,b," "," == ["a", "b", ""]
 #guard stringSplit "héllo" "" == ["h", "é", "l", "l", "o"]
 
 /-- A cast from VARCHAR (#806) by its target, the row's name less its prefix. -/
@@ -124,14 +129,17 @@ def varcharRow? (name : String) : Option ((String → VarcharCasts.Parsed) × Bo
 def evalScalar : String → List Value → Value
   | "base64", [.str s] => .str (base64 s)
   | "octet_length", [.str s] | "strlen", [.str s] => .int s.utf8ByteSize
-  -- The sign of `±0.0` and of NaN is not in their codes.
+  -- The sign of a zero is in its code (D31: `+0.0` is `0`, `-0.0` is
+  -- `FloatCode.negZero`); NaN has one code, and its sign stays open.
   | "signbit", [.float c] =>
-    if c == 0 || c == FloatCode.nan then unevaluated "signbit at ±0.0 or NaN" else .bool (c < 0)
+    if c == FloatCode.nan then unevaluated "signbit at NaN" else .bool (c < 0)
   | "yearweek", [.date d] => yearweek d
   | "bit_count", [.int i] => .int (bitCount i)
   | "list_sum", [.list vs] => match listSum vs with
     | some n => .int n
     | none => .null
+  -- `string_split('', '')` is `['']` at 2.0.0 and `[]` at 2.0.1 (`duckdb-string-split-edges`).
+  | "string_split", [.str "", .str ""] => unevaluated "string_split of '' by '' (2.0.0 and 2.0.1 differ)"
   | "string_split", [.str s, .str sep] => .list ((stringSplit s sep).map .str)
   | "string_split", [.str s, .null] => .list [.str s]
   | "string_split", [.null, _] => .null
@@ -213,8 +221,8 @@ def scalarRows : List Scalar := [
   { name := "strlen", args := [.str], result := .int, laws := [.nonNull, .atLeast 0],
     sample := .int 0 },
   -- `signbit(x)`: the sign bit of a double (#328), TRUE for `-0.0` and a
-  -- negative NaN, which the model's codes do not tell from `+0.0` and NaN
-  -- (`core/Sverify/Core/Float.lean`). Lean evaluates it elsewhere.
+  -- negative NaN. The model's codes keep a zero's sign and have one NaN
+  -- (`core/Sverify/Core/Float.lean`), so Lean evaluates it away from NaN.
   { name := "signbit", args := [.double], result := .bool, laws := [.nonNull],
     sample := .bool false },
   -- `yearweek(d)`: the ISO year times 100 plus the ISO week, the week
@@ -341,6 +349,7 @@ def evaluated : List (String × List Value × Value) := [
   ("base64", [.str "foo"], .str "Zm9v"), ("base64", [.str ""], .str ""),
   ("octet_length", [.str "é"], .int 2), ("strlen", [.str "abc"], .int 3),
   ("signbit", [.float (-DuckDB.codeOne)], .bool true), ("signbit", [.float DuckDB.codeOne], .bool false),
+  ("signbit", [.float 0], .bool false), ("signbit", [.float FloatCode.negZero], .bool true),
   ("yearweek", [.date 19723], .int 202401), ("yearweek", [.date Time.dayMin], .int 101),
   ("bit_count", [.int (-1)], .int 64), ("bit_count", [.int 7], .int 3),
   ("list_sum", [.list [.int 1, .null, .int 2]], .int 3), ("list_sum", [.list [.null]], .null),

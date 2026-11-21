@@ -126,6 +126,12 @@ CASES: list[Case] = [
     ),
     case(
         "windows",
+        "window over expressions",
+        V,
+        lambda: t.mutate(s=t.qty.sum().over(group_by=t.id % 2, order_by=t.id % 5)),
+    ),
+    case(
+        "windows",
         "group_concat over a window",
         V,
         lambda: t.mutate(

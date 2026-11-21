@@ -40,9 +40,12 @@ theorem Rel.aeval_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String →
       r.ratioPart c A F T sz = r.ratioPart cat A F T sz
   | .read t => by simp only [aeval, ratioPart, h t, and_self]
   | .values _ _ => by simp only [aeval, ratioPart, and_self]
-  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .window r _ _ _
+  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r
   | .unnest r _ | .semi r _ _ _ => by
       simp only [aeval, ratioPart, (aeval_congr h A F T sz r).1, facts_congr h F T r, and_self]
+  | .window r _ _ _ => by
+      simp only [aeval, ratioPart, (aeval_congr h A F T sz r).1, facts_congr h F T r,
+        arity_congr h r, and_self]
   | .project r _ => by
       simp only [aeval, ratioPart, (aeval_congr h A F T sz r).1, (aeval_congr h A F T sz r).2,
         facts_congr h F T r, and_self]

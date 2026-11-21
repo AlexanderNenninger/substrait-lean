@@ -27,7 +27,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _duckdb, _hooks
+from sverify import _decimals, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -139,7 +139,7 @@ class TiePlace:
     total on the input's keys, or a value picked from a class of doubles."""
 
     relation: int
-    """The relation's index in the plan, in pre-order (`Report.relations`)."""
+    """The relation's index in the plan, in pre-order (`Report._relations`)."""
     op: str
     """The relation's operator: `window`, `aggregate` or `fetch`."""
     what: str
@@ -252,9 +252,8 @@ _DECIMAL_ARG = re.compile(r"DECIMAL_(\d+)_(\d+)\(")
 
 #: How a report explains an operation it assumes stays finite (#575).
 FINITE_ASSUMED = (
-    "stays finite on finite inputs (checked at run time: the data is checked "
-    'before the run, which is refused if it overflows to ±inf; on_inferred="off" '
-    "makes it an error)"
+    "stays finite on finite inputs (checked at run time: the plan raises and "
+    'commits nothing if it overflows to ±inf; on_inferred="off" makes it an error)'
 )
 
 
@@ -438,7 +437,7 @@ class Verdict(StrEnum):
         raise TypeError("a Verdict is not a bool: compare it with Verdict.PROVED, ...")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Report:
     """What the checker proved about a transformation, returned by `verify` and kept
     in `ContractedTransform.report`.
@@ -446,6 +445,9 @@ class Report:
     `str(report)` lists each postcondition with its status, the possible
     runtime errors and warnings, and what is known about each output column;
     in a notebook the report renders as tables.
+
+    sverify builds it; user code reads it and does not construct one
+    (`Report.from_json` reads one back). Its fields are keyword-only.
     """
 
     requires: dict[str, list[str]]
@@ -1771,42 +1773,6 @@ class Report:
                 have.append(c)
         return {t: cs for t, cs in out.items() if cs}
 
-    @property
-    def needed(self) -> dict[str, list[str]]:
-        """Deprecated: `needs`. Their labels per input table."""
-        warnings.warn(
-            "Report.needed is deprecated; read Report.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return {t: list(labs) for t, labs in _labels_by_table(self.needs).items()}
-
-    @property
-    def needed_text(self) -> list[str]:
-        """Deprecated: `Needed.text` of each of `needs`."""
-        warnings.warn(
-            "Report.needed_text is deprecated; read Needed.text of report.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._needs_lines()
-
-    @property
-    def needed_conditions(self) -> dict[str, list[Condition]]:
-        """Deprecated: `Needed.condition` of each of `needs`, or the whole
-        mapping as `suggested_requires`."""
-        warnings.warn(
-            "Report.needed_conditions is deprecated; read Needed.condition of report.needs, "
-            "or report.suggested_requires",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        out: dict[str, list[Condition]] = {}
-        for n in self.needs:
-            if n.condition is not None:
-                out.setdefault(n.table, []).append(n.condition)
-        return out
-
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
@@ -2162,61 +2128,6 @@ class Report:
                 *facts,
             ]
         )
-
-
-#: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = [
-    "assumed_check",
-    "table_params",
-    "run_plan",
-    "run_gate",
-    "run_unchecked",
-    "run_gates",
-    "asof_checks",
-    "asof_max_pairs",
-    "stated_facts",
-    "sequence_determined",
-]
-
-_REPORT_INTERNAL = [
-    "windows_total",
-    "tie_places",
-    "exact",
-    "class_places",
-    "guard_free",
-    "unchecked",
-    "optimized",
-    "rewrites",
-    "inferred",
-    "implied",
-    "params",
-    "hints",
-    "bounds",
-    "relations",
-    "stated",
-    "floats_on",
-    "depends",
-    "contract",
-    "transfer",
-    "epsilon",
-    "rows_exact",
-    "margin_checks",
-    "margin_flags",
-    "engines",
-    "sorted",
-    "generated_proofs",
-    "conditions",
-    "dialect",
-    "on_inferred",
-    "inferred_from",
-    "postconditions",
-]
-"""`Report`'s fields that are internal (B4 of the 1.0 API review): each has
-an underscore, and its old name reads it with a `DeprecationWarning` for a
-release. `plan` is `internal_plan`."""
-
-
-_deprecated.add(Report, {**{old: "_" + old for old in _REPORT_INTERNAL}, "plan": "internal_plan"})
 
 
 def _would_hold(c: CheckedCondition) -> str | None:
@@ -2683,14 +2594,18 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     `unique`, rows beyond the first for each repeated key.
 
     With an engine named, the condition's plan runs there, over the tables of
-    the connection `table` is bound to; otherwise Ibis counts on that
-    connection."""
+    the connection `table` is bound to, and counts the rows in the engine
+    (no row reaches Python); otherwise Ibis counts on that connection."""
     if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
             raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
-        plan = written_plan(plan_json(con, condition_query(table, cond)))
-        return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
+        q = condition_query(table, cond)
+        assert isinstance(q, ir.Table)  # an Ibis table's condition query is Ibis
+        broken = q.filter(~q.c.fill_null(False))
+        broken = broken.aggregate(n=broken.count())
+        plan = written_plan(plan_json(con, broken))
+        return int(run_plan(con, plan, engine).column(0)[0].as_py())
     if isinstance(cond, TableCondition):
         return _table_violations(table, cond, engine)
     if isinstance(cond, str):

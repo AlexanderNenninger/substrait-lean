@@ -784,12 +784,14 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 0 | proved, or every postcondition it does not prove is checked on the data at each refresh; a refresh committed every row |
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
-| 3 | refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`), or no route takes a proved node to the engine |
+| 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 4 | time or memory budget exceeded |
-| 5 | a refresh committed with rows quarantined, or held a node |
+| 5 | a refresh committed with rows quarantined |
 | 6 | error: the file raised, I/O, a crash |
+| 7 | refused: no route takes a proved node to the engine |
+| 8 | a refresh held a node |
 
-With 5, `refresh` prints `Refresh.alert()` after the summary, and its
+With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
 data that otherwise stay out of CI artifacts and issues.
@@ -1418,6 +1420,18 @@ reading or writing (`StageRefresh.credentials`, `"credentials"` in
 what its credential may write (`Storage(writes=[...])` or the
 configuration's `writes`), and with `[inline_credentials]` when options
 hold values or a URI holds them in its userinfo (`s3://key:secret@bucket`).
+Where nothing is declared, an AWS session in the options
+(`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, with `AWS_SESSION_TOKEN`
+for an assumed role) reports its own scope when `boto3` is installed
+(`sverify[secrets-aws]`): sverify asks STS who the session is and reads the
+`GetObject` and `PutObject` grants of that role's or user's policies, once
+per credential. A `Deny`, a condition, a `NotAction`, `NotResource` or
+a pattern that is not a prefix leaves the scope unknown, as does a session that
+cannot read its own policies. Session policies, permissions boundaries and
+bucket policies are not in the identity's policies, so the scope is what they
+grant: a session policy or boundary can narrow the session below it, and a
+bucket policy can widen it, so neither `in_scope` value is a guarantee. Other stores (GCS, Azure, a vended catalog credential) report nothing
+yet and need `reads=` and `writes=`.
 Every URI sverify records, reports, exports or sends is written without
 userinfo, query string or fragment: a sink's `location`, `started`,
 `credentials[].location`, the ODCS `physicalName` and the OpenLineage
@@ -1943,6 +1957,17 @@ every export against that release's JSON schema
 ([tests/standards/](../python/tests/standards/odcs-json-schema-v3.2.0.json),
 [test_odcs.py](../python/tests/test_odcs.py)). YAML needs PyYAML:
 `pip install 'sverify[odcs]'`. JSON needs nothing.
+
+Sverify reads the standard's own published examples, the 42 contracts of
+ODCS v3.2.0's `docs/examples`
+([vendored](../python/tests/standards/odcs-examples-v3.2.0/SOURCE),
+[ledger](../python/tests/odcs_examples.json),
+`python -m sverify_dev.odcs_examples`). It reads 151 conditions from them,
+and 22 rules stay unread, each with its reason and the issue that would read
+it or why it does not by design. Of the 104 schema objects with conditions,
+95 export and read back to the same conditions, 4 are not tried (a foreign
+key to another object) and 5 are refused on a column type sverify does not
+read yet.
 
 ```python
 import pyarrow as pa

@@ -39,7 +39,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 7 | 27 | 1 | 4 | 5 | 0 | 15 | 0 |
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 8 | 27 | 1 | 4 | 4 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
 | Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 3 | 5 | 16 | 0 |
 
@@ -48,14 +48,15 @@ Rows per evidence level:
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 14 | 5 | 22 | 3 | 0 | 0 | 15 |
-| Polars | 29 | 2 | 17 | 0 | 0 | 0 | 17 |
-| Spark | 17 | 17 | 14 | 0 | 0 | 0 | 16 |
+| Polars | 30 | 1 | 17 | 0 | 0 | 0 | 17 |
+| Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
 | Engine | Shim | Cost | Options |
 |---|---|---|---|
 | DuckDB | `MIN % -1 written out` | expression | `min_mod_neg_one` |
+| DuckDB | `log(b, x) domain guard` | expression | fp.log: `on_domain_error` |
 | DuckDB | `round: 0.0 for a negative value that rounds to zero` | expression | `round_zero_sign` |
 | DuckDB | `list_lt` | expression | `list_null_order` |
 | DuckDB | `nan_through` | expression | agg.var: `stat_algo` |
@@ -84,7 +85,7 @@ Rows per evidence level:
 
 ## DuckDB 2.0.0
 
-7 shims (1 argument, 5 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
+8 shims (1 argument, 6 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -108,7 +109,7 @@ Rows per evidence level:
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json), [duckdb-R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json), [duckdb-R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json) |
 | int.pow | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | probe | tested: [duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json) |
-| fp.log | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | probe | tested: [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json) |
+| fp.log | `on_domain_error` | raise | `ERROR` | `NAN` | shim `log(b, x) domain guard` (expression) | probe | tested: [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json) |
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.duckdb_shim_sound`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json), [duckdb-nonfinite-aggregates](../engines/duckdb/facts/duckdb-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | probe | tested: [duckdb-R14](../engines/duckdb/facts/duckdb-R14.json), [duckdb-float-signs](../engines/duckdb/facts/duckdb-float-signs.json), [duckdb-minmax-zero-sign](../engines/duckdb/facts/duckdb-minmax-zero-sign.json) |
@@ -200,7 +201,7 @@ Rows per evidence level:
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
 | every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | fuzz | tested: [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
-| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | fuzz | tested: [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
+| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std](../engines/polars/facts/polars-var-std.json), [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../engines/polars/facts/polars-avg-int.json) |
@@ -242,7 +243,7 @@ Refused on Polars, with no expression there:
 | agg.isum | `overflow` | raise | `ERROR` | `ERROR` | shim `int_sum_decimal` (expression) | proof | proved `Shim.sum_empty_null`; [spark-sum-int](../engines/spark/facts/spark-sum-int.json), [spark-exec-parallel](../engines/spark/facts/spark-exec-parallel.json) |
 | int.div | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json), [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
-| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | fuzz | tested: [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
+| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | proof | proved `Rel.spark_sound`; [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |

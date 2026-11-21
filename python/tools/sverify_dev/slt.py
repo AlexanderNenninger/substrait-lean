@@ -1217,15 +1217,16 @@ class Known:
         return r["file"] in self.files and re.search(self.sql, r["sql"], re.I) is not None
 
 
-#: The recorded disagreements by what explains them (#747). `tests/test_slt.py`
-#: fails on a `disagree` entry of a ledger that none matches, and on an entry
-#: here that no ledger needs.
+#: The recorded disagreements by what explains them (#747).
+#: `engines/duckdb/tests/test_unexplained.py` fails on a `disagree` entry of a
+#: ledger that none matches, and on an entry here that no ledger needs.
 KNOWN: tuple[Known, ...] = (
     # DuckDB widens an integer SUM to HUGEINT; the reference raises past i64.
     Known(
         "duckdb-R6",
         (
             "aggregate/aggregates/test_sum.test",
+            "aggregate/aggregates/test_sum_fastpath.test",
             "aggregate/sparse_clustered_aggregation.test",
             "sql_export/aggregate_results.test",
         ),
@@ -1242,8 +1243,6 @@ KNOWN: tuple[Known, ...] = (
     Known("duckdb-substring-range", ("function/string/test_substring.test",), r"4294967296"),
     # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.
     Known("duckdb-R15-math-domain", ("types/float/nan_functions.test",), r"\b(a?sin|a?cos|tan)\("),
-    # SUM of +inf and -inf: NaN in DuckDB, a domain error in the written plan.
-    Known("#341", ("types/float/nan_aggregate.test",), r"\bsum\("),
     # list_sum past 64 bits: DuckDB's is a HUGEINT, the model's a BIGINT that
     # raises, as `SUM`.
     Known(
@@ -1254,6 +1253,25 @@ KNOWN: tuple[Known, ...] = (
     # A NULL element in a list comparison: DuckDB orders it last, the reference
     # gives NULL.
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
+    # A FLOAT cast to an integer truncates in the model; DuckDB rounds.
+    Known("#2152", ("cast/float_integer_cast.test",), r"::FLOAT as "),
+    # MEDIAN of dates and timestamps: DuckDB interpolates, the model takes the
+    # lower middle.
+    Known(
+        "#2153", ("aggregate/aggregates/test_median.test",), r"median\(range::(date|timestamp)\)"
+    ),
+    # `list_contains` of an empty list and a NULL needle: FALSE in DuckDB 2.0.1, NULL in the
+    # model and the written plan (D54's listed exception).
+    Known(
+        "duckdb-list-contains-null",
+        ("function/list/list_position_null_needle.test",),
+        r"list_contains",
+    ),
+    # A cast below a join: DuckDB 2.0.1 still raises natively, the written plan no longer does
+    # (error-side; `verify` flags the cast at both versions).
+    Known(
+        "duckdb-exec-filter-pushdown", ("optimizer/secure_view_pushdown.test",), r"sec\.s::INT = 42"
+    ),
 )
 
 
@@ -1287,7 +1305,9 @@ def write_ledger(
     head: dict | None = None,
 ) -> Path:
     """`<out>/<area>.json`: one result per line, sorted by file and line.
-    `head` adds to (or replaces) the keys before the results."""
+    `head` adds to (or replaces) the keys before the results. A ledger's `"duckdb"` is the
+    version of its area's run; `"refreshed"` (file to version) marks the entries of single files
+    replayed at another version after it, and a whole-area run writes none (#2045)."""
     out.mkdir(parents=True, exist_ok=True)
     results = sorted(results, key=lambda r: (r["file"], r["line"]))
     counts = Counter(r["cls"] for r in results)
