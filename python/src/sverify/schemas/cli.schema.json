@@ -123,7 +123,7 @@
         "name": {"description": "The transform's name.", "type": "string"},
         "nodes": {"description": "The file's variables that hold the node this application built.", "type": "array", "items": {"type": "string"}},
         "relaxations": {"description": "The settings of this transform that weaken its gate, as written in the file: on_unproved=\"check\" or \"warn\", on_inferred=\"warn\", \"ignore\" or \"off\", check_requires=False. Empty when the gate is the default. A CI step can diff them between base and head.", "type": "array", "items": {"type": "string"}},
-        "status": {"description": "proved; checked (every postcondition it does not prove is checked on the data at each refresh); not_proved; or unfinished (the time budget ran out first).", "enum": ["proved", "checked", "not_proved", "unfinished"]},
+        "status": {"description": "proved; checked (every postcondition it does not prove is checked on the data at each refresh); not_proved; unfinished (the time budget ran out first); or refused (sverify-dbt: sverify cannot read the model).", "enum": ["proved", "checked", "not_proved", "unfinished", "refused"]},
         "summary": {
           "description": "The contract in plain words; null when unfinished.",
           "oneOf": [

@@ -12,7 +12,13 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
-from sverify.ibis_substrait._base import Exprs, register, register_refusals, table_rules
+from sverify.ibis_substrait._base import (
+    CONSTANT_FIX,
+    Exprs,
+    register,
+    register_refusals,
+    table_rules,
+)
 from sverify.plan_json import (
     Json,
     ProducerUnsupported,
@@ -52,6 +58,12 @@ def _substring(x: Exprs, op: Any) -> Json:
     # Ibis counts from 0, and from the end for negative starts.
     if isinstance(op.length, ops.Literal) and op.length.value < 0:
         raise ProducerUnsupported("substring with a negative length", construct="function substr")
+    if op.length is not None and op.length.find(ops.Field):
+        raise Unsupported(
+            "substring with a length that comes from a column is not supported: "
+            "use a constant length, or write the cases you need with ifelse",
+            construct="function substr",
+        )
     start = call("add", [x(op.start, dt.int64), literal(1, dt.int64)])
     start = if_then(
         [(call("gte", [start, literal(1, dt.int64)]), start)],
@@ -148,7 +160,11 @@ def _string_concat(x: Exprs, op: Any) -> Json:
 
 def _regex_search(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal):
-        raise Unsupported("regular expressions must be constants", construct="REGEXP")
+        raise ProducerUnsupported(
+            "regular expressions must be constants",
+            CONSTANT_FIX,
+            construct="REGEXP",
+        )
     arg, pattern = x(op.arg), x(op.pattern)
     matches = call("array_length", [call("regexp_match", [arg, pattern])])
     found = call(
@@ -159,16 +175,20 @@ def _regex_search(x: Exprs, op: Any) -> Json:
 
 def _regex_extract(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.index, ops.Literal):
-        raise Unsupported(
-            "re_extract needs a constant pattern and group", construct="function re_extract"
+        raise ProducerUnsupported(
+            "re_extract needs a constant pattern and group",
+            CONSTANT_FIX,
+            construct="function re_extract",
         )
     return call("regexp_extract", [x(op.arg), x(op.pattern), x(op.index, dt.int64)])
 
 
 def _regex_replace(x: Exprs, op: Any) -> Json:
     if not isinstance(op.pattern, ops.Literal) or not isinstance(op.replacement, ops.Literal):
-        raise Unsupported(
-            "re_replace needs a constant pattern and replacement", construct="function re_replace"
+        raise ProducerUnsupported(
+            "re_replace needs a constant pattern and replacement",
+            CONSTANT_FIX,
+            construct="function re_replace",
         )
     # Every match, as Ibis's SQL does (DuckDB's flag `'g'`).
     args = [x(op.arg), x(op.pattern), x(op.replacement), literal("g", dt.string)]
@@ -177,7 +197,7 @@ def _regex_replace(x: Exprs, op: Any) -> Json:
 
 def _hex_digest(x: Exprs, op: Any) -> Json:
     if op.how not in ("md5", "sha256") or not op.arg.dtype.is_string():
-        raise Unsupported(
+        raise ProducerUnsupported(
             f"hexdigest({op.how!r}) of {op.arg.dtype} is not supported; "
             "md5 and sha256 of strings are",
             construct="function hexdigest",

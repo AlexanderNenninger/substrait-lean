@@ -333,7 +333,7 @@ FUNCTIONS: tuple[Fn, ...] = (
          sql={"": "REVERSE({0})"}, ibis=("Reverse",)),
     # The code point of the first character, 0 for ''.
     _str("ascii", 201, "str.ascii", 1, "int", expr=True, ascii="ascii", sql={"": "ASCII({0})"},
-         ibis=("StringAscii",)),
+         lift=("Ascii",), ibis=("StringAscii",)),
     _str("replace", 202, "str.match", 1, "str", call=False),
     Fn("repeat", 203, "strings", "str.plain", ("str", "int"), "str", "repeat",
        ibis=("Repeat",)),
@@ -341,7 +341,7 @@ FUNCTIONS: tuple[Fn, ...] = (
     # The edit distance in characters.
     _str("levenshtein", 205, "str.ascii", 2, "int", expr=True, ascii="levenshtein",
          sql={"": "LEVENSHTEIN({0}, {1})", "snowflake": "EDITDISTANCE({0}, {1})"},
-         ibis=("Levenshtein",)),
+         lift=("Levenshtein",), ibis=("Levenshtein",)),
     _str("regexp_extract", 206, "str.ascii", 1, "str", "regex_extract", call=False),
     _str("regexp_replace", 207, "str.ascii", 1, "str", "regex_replace", call=False),
     # Lowercase hex of the UTF-8 bytes (#50).

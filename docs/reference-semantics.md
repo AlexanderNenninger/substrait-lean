@@ -380,9 +380,14 @@ construct or lists it:
   on DuckDB 2.0.1 (NULL at 2.0.0); every other list gives NULL. The report lists
   each `list_contains` whose needle is not a literal, under every semantics: the plan
   gives NULL, and the SQL run natively on 2.0.1 gives FALSE.
+- `list_null_order`: an ordering comparison of lists (`<`, `<=`, `>`, `>=`, `BETWEEN`, `greatest`, `least`)
+  is lexicographic, and a NULL element against a value makes it NULL here; DuckDB orders the NULL
+  last. `[1,2] < [1,NULL,3]` is NULL here and TRUE on DuckDB (R11, #2163). The report lists each
+  such comparison, under every semantics, unless every operand is a constant list without a NULL
+  element.
 
 The verdict is unchanged by the list. The list is empty for an Ibis transformation, and
-under `semantics="duckdb"` it holds only `list_contains`.
+under `semantics="duckdb"` it holds only `list_contains` and `list_null_order`.
 
 ## Aggregates
 
@@ -526,7 +531,7 @@ the writers in `python/src/sverify/black_box.py`.
 | `base64` | `base64(encode(s))` (also `to_base64`): the UTF-8 bytes of a string in base64. Strict, and not NULL for a string. Lean evaluates it. | ✓ on DuckDB; other engines refuse it |
 | `printf`, `format` | `printf(fmt, x)` (C's format strings) and `format(fmt, x)` (`{}` fields) of one integer, string or boolean. Strict; raise where a field does not fit the value or has none, which `verify` reports as a domain error; a string where they do not. A double or a date is refused: the model's value of either is an integer, which the function could not tell apart from one (`duckdb-printf`). More values are refused. Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them |
 | `octet_length`, `strlen` | `octet_length(encode(s))` and `strlen(s)`: the number of UTF-8 bytes of a string. Strict, not NULL for a string, and at least 0. Lean evaluates them. | ✓ on DuckDB; other engines refuse them |
-| `signbit` | `signbit(x)` of a double: its sign bit, TRUE for `-0.0` and a negative NaN. Strict, and not NULL for a double. The reference reads doubles with one zero and one NaN, so Lean evaluates it everywhere else and refuses to print rows there (`duckdb-signbit`). | ✓ on DuckDB; other engines refuse it |
+| `signbit` | `signbit(x)` of a double: its sign bit, TRUE for `-0.0` and a negative NaN. Strict, and not NULL for a double. The reference's doubles keep a zero's sign and have one NaN, so Lean evaluates it everywhere but at NaN and refuses to print rows there (`duckdb-signbit`). | ✓ on DuckDB; other engines refuse it |
 | `yearweek` | `yearweek(d)` of a date: its ISO year times 100 plus its ISO week, the week subtracted in the years up to 0 (`duckdb-yearweek`). Strict, between -587764053 and 588158053, and NULL for an infinite date and before 5877641-01-04 BC, where DuckDB raises (as `date_part` is NULL outside chrono's dates). Lean evaluates it. | ✓ on DuckDB; other engines refuse it |
 | `weekday` | `weekday(d)` is `dayofweek(d)`, `date_part('dow', d)`: modelled exactly, Sunday 0. | ✓ |
 | Vectors | `list_cosine_similarity`, `list_cosine_distance`, `list_distance`, `list_inner_product` (also `list_dot_product`), `list_negative_inner_product` and `array_cross_product` of two lists of doubles. Strict; raise where a list holds a NULL or the two differ in length (the cross product: are not of length 3). The similarity is at least `-1.0` and the cosine distance at least `+0.0`: NULL for empty lists, NaN for a zero vector or one with NaN or an infinity, so neither has an upper bound. The distance is not NULL and at least `+0.0`; the inner products and the cross product are not NULL (`duckdb-list-vectors`). The model has no fixed-size ARRAY, so DuckDB's `array_cosine_similarity`, `array_distance`, `array_inner_product`, … are read as the functions of lists. Lean does not evaluate them. | ✓ on DuckDB; other engines refuse them |

@@ -2,22 +2,6 @@
   "description": "What each construct the Ibis replay meets waits on: an issue, or the reason sverify refuses it by design. sverify_dev.ibis_replay reads it; a refusal that names an issue itself (#n) needs no entry.",
   "constructs": [
     {
-      "match": "mode() of an expression",
-      "issue": 1909
-    },
-    {
-      "match": "quantile() of several fractions",
-      "issue": 1910
-    },
-    {
-      "match": "first/last with where or order_by",
-      "issue": 1913
-    },
-    {
-      "match": "CountDistinctStar",
-      "issue": 1912
-    },
-    {
       "match": "cannot cast this value to a double",
       "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
     },
@@ -30,28 +14,16 @@
       "issue": 1922
     },
     {
-      "match": "window partitions must be columns",
-      "issue": 1930
-    },
-    {
-      "match": "window sort keys must be columns",
-      "issue": 1930
-    },
-    {
-      "match": "substring lengths must be constants",
-      "issue": 1923
+      "match": "substring with a length that comes from a column",
+      "design": "the length of a substring is a constant: a length read from a column is not modelled; use a constant length or ifelse over the cases"
     },
     {
       "match": "unnest(offset=)",
       "issue": 1917
     },
     {
-      "match": "aggregate Arbitrary",
-      "issue": 1920
-    },
-    {
       "match": "quantile of decimal",
-      "issue": 1921
+      "design": "no engine gives one value for a quantile of a decimal (ruling 191); cast the column to float64 first"
     },
     {
       "match": "ApproxQuantile is not supported",

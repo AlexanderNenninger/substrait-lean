@@ -76,6 +76,8 @@ from sverify_duckdb.declared import refuse_unmodelled
 REPO = Path(__file__).resolve().parents[3]
 CACHE = Path(os.environ.get("SVERIFY_SLT_CACHE", Path.home() / ".cache" / "sverify" / "duckdb-slt"))
 REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
+#: Where the committed ledgers' summary goes, beside the facts drawn from them.
+FACTS_README = REPO / "engines" / "duckdb" / "facts" / "README.md"
 
 #: The semantics the lift reads the queries under: DuckDB's, or (L2 of #1484,
 #: `--semantics reference`) the reference's, where the replay checks that
@@ -86,6 +88,10 @@ SEMANTICS_ENV = "SVERIFY_SLT_SEMANTICS"
 
 #: The reason of a reference-mode agreement that only a `verify` issue gives.
 STATIC = "static verify:"
+
+#: The reason of an agreement where the written plan raised its own tagged
+#: check of an assumption the report lists (`sverify_dev.checked`, #2162).
+CHECKED = "checked:"
 
 
 def semantics() -> str:
@@ -841,6 +847,7 @@ class Replay:
             ordered,
             outcome,
             functools.partial(_lift_issues, rec.sql, schemas),
+            functools.partial(_lift_listed, rec.sql, schemas),
         )
 
     def judge(
@@ -853,11 +860,13 @@ class Replay:
         ordered: bool,
         outcome: Any,
         issues: Any,
+        listed: Any = None,
     ) -> Result:
         """Check `plan` and compare Lean's and the engine's results with the
         expected ones."""
         from sverify.engine import run_checker, run_plan, written_plan
         from sverify.testing import LeanRaised, lean_values
+        from sverify_dev.checked import checked
 
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
@@ -905,6 +914,7 @@ class Replay:
             res.cls, res.reason = "agree", "reference raises: " + _clip(lean_err, 120)
             return res
         lean_ok = outcome(lean_rows, lean_err, ordered)
+        flagged = False  # Lean differs, and `verify` flags the query
         try:
             found = [] if lean_ok else issues()
         except Exception as e:  # noqa: BLE001 - `verify` refusing the query
@@ -918,6 +928,7 @@ class Replay:
             # DuckDB gives NaN (`duckdb-R15-math-domain`, #617). Where the test
             # expects an error, the warning is the reference raising with it.
             res.reason = "verify: " + _clip("; ".join(found), 200)
+            flagged = not lean_ok
             lean_ok = outcome(None, res.reason, ordered)
 
         if semantics() == "reference":
@@ -959,6 +970,13 @@ class Replay:
             else:
                 res.engine = _error(e)
                 engine_ok = outcome(None, res.engine, ordered)
+                if (lean_ok or flagged) and engine_ok is False and listed is not None:
+                    # The written plan's own check of a reported assumption
+                    # (ruling 230): the report lists it and Lean finds it.
+                    data = json.dumps(_typed_inline(json.loads(written_plan(plan)), rows, self.con))
+                    if why := checked(str(e), listed(), data):
+                        res.cls, res.reason = "agree", why
+                        return res
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
@@ -1001,6 +1019,17 @@ def _lift_issues(sql: str, schemas: dict[str, Any]) -> list[str]:
     # the test expects (#619). A query `verify` refuses raises.
     report = verify(sql, tables=schemas, on_inferred="off")
     return [str(i) for i in report.issues + report.assumed]
+
+
+def _lift_listed(sql: str, schemas: dict[str, Any]) -> list[str]:
+    """The issues the report lists: its errors without inference (as
+    `_lift_issues`, where an inferred precondition would absorb a wrap) and
+    its assumptions as a user gets them under the replay's semantics (an
+    assumed `SUM` is an error without inference)."""
+    from sverify.contracts import verify
+
+    assumed = verify(sql, tables=schemas, semantics=semantics()).assumed
+    return [*_lift_issues(sql, schemas), *map(str, assumed)]
 
 
 def _typed_inline(plan: dict, rows: dict[str, list[tuple]], con: Any) -> dict:
@@ -1243,31 +1272,14 @@ KNOWN: tuple[Known, ...] = (
     Known("duckdb-substring-range", ("function/string/test_substring.test",), r"4294967296"),
     # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.
     Known("duckdb-R15-math-domain", ("types/float/nan_functions.test",), r"\b(a?sin|a?cos|tan)\("),
-    # list_sum past 64 bits: DuckDB's is a HUGEINT, the model's a BIGINT that
-    # raises, as `SUM`.
-    Known(
-        "duckdb-list-sum",
-        ("function/list/aggregates/bigints_sum_avg.test", "function/list/aggregates/sum.test"),
-        r"\blist_sum\(",
-    ),
     # A NULL element in a list comparison: DuckDB orders it last, the reference
-    # gives NULL.
+    # gives NULL (D54's listed exception `list_null_order`, #2163: the lift lists it under every
+    # semantics, so under `--semantics reference` the record counts as explained).
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
-    # A FLOAT cast to an integer truncates in the model; DuckDB rounds.
-    Known("#2152", ("cast/float_integer_cast.test",), r"::FLOAT as "),
     # MEDIAN of dates and timestamps: DuckDB interpolates, the model takes the
     # lower middle.
     Known(
         "#2153", ("aggregate/aggregates/test_median.test",), r"median\(range::(date|timestamp)\)"
-    ),
-    # signbit's black box gives NULL for a stored zero, against its law.
-    Known(
-        "#2154",
-        (
-            "storage/compression/constant/constant_negative_zero.test",
-            "storage/compression/rle/rle_signed_zero.test",
-        ),
-        r"\bsignbit\(",
     ),
     # `list_contains` of an empty list and a NULL needle: FALSE in DuckDB 2.0.1, NULL in the
     # model and the written plan (D54's listed exception).
@@ -1327,6 +1339,9 @@ def write_ledger(
     static = sum(
         1 for r in results if r["cls"] == "agree" and str(r.get("reason") or "").startswith(STATIC)
     )
+    checked_n = sum(
+        1 for r in results if r["cls"] == "agree" and str(r.get("reason") or "").startswith(CHECKED)
+    )
     head = {
         **{
             "duckdb": version,
@@ -1336,6 +1351,7 @@ def write_ledger(
             "summary": {c: counts.get(c, 0) for c in CLASSES},
             "agree_oracle_a_only": oracle_a,
             "agree_static": static or None,
+            "agree_checked": checked_n or None,
             "disagree_sides": dict(sorted(sides.items())),
             "skipped_files": dict(sorted(skipped_files.items())),
         },
@@ -1365,30 +1381,50 @@ def _oracle_a_only(results: list[dict]) -> int:
     )
 
 
-def write_summary(out: Path = REPLAY_DIR) -> Path:
-    """`<out>/README.md`'s table, from every ledger in `out`."""
+def write_summary(out: Path = REPLAY_DIR, readme: Path | None = None) -> Path:
+    """The totals and table between `readme`'s `slt` markers, from every
+    ledger in `out` (DuckDB's tests and the fuzzer's, counted apart).
+    `readme` defaults to `FACTS_README` for the committed ledgers and to
+    `<out>/README.md` for any other directory."""
+    if readme is None:
+        readme = FACTS_README if out == REPLAY_DIR else out / "README.md"
     rows = []
+    totals: Counter[str] = Counter()  # DuckDB's tests
+    fuzz: Counter[str] = Counter()  # `sverify_dev.duckdb_fuzz`'s queries
     for p in sorted(out.glob("*.json")):
         led = json.loads(p.read_text())
         if "summary" not in led:
             continue  # not a ledger (`probes.json`)
         s = led["summary"]
+        if led["area"].startswith("fuzz/"):
+            fuzz.update(s)
+        else:
+            totals.update(s)
+            totals["files"] += len(led["skipped_files"])
         reasons = Counter(
             (r.get("reason") or "").split(":")[0] for r in led["results"] if r["cls"] == "refused"
         )
         top = ", ".join(f"{k} {n}" for k, n in reasons.most_common(2))
         d = led.get("disagree_sides", {})
         sides = ", ".join(f"{k} {n}" for k, n in sorted(d.items()))
+        link = os.path.relpath(p, readme.parent)
         rows.append(
-            f"| [{led['area']}]({p.name}) | {s['agree']} | {_oracle_a_only(led['results'])} "
+            f"| [{led['area']}]({link}) | {s['agree']} | {_oracle_a_only(led['results'])} "
             f"| {s['disagree']} | {sides} "
             f"| {s['refused']} | {s['skipped']} | {len(led['skipped_files'])} | {top} |"
         )
-    path = out / "README.md"
-    text = path.read_text() if path.exists() else ""
+    classes = ("agree", "disagree", "refused", "skipped")
+    queries = sum(totals[k] for k in classes)
+    text = readme.read_text() if readme.exists() else ""
     table = "\n".join(
         [
             "<!-- slt:start -->",
+            f"Totals over {queries} queries of DuckDB's tests: {totals['agree']} agree, "
+            f"{totals['disagree']} disagree, {totals['refused']} refused, "
+            f"{totals['skipped']} skipped ({totals['files']} files skipped whole). "
+            f"The fuzzer's ledgers (`fuzz/*`) hold {sum(fuzz[k] for k in classes)} "
+            f"generated queries: {fuzz['agree']} agree, {fuzz['disagree']} disagree.",
+            "",
             "| Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped "
             "| Files skipped | Refused by |",
             "|---|---:|---:|---:|---|---:|---:|---:|---|",
@@ -1400,8 +1436,8 @@ def write_summary(out: Path = REPLAY_DIR) -> Path:
         text = re.sub(r"<!-- slt:start -->.*<!-- slt:end -->", lambda _: table, text, flags=re.S)
     else:
         text = text + ("\n" if text else "") + table + "\n"
-    path.write_text(text)
-    return path
+    readme.write_text(text)
+    return readme
 
 
 def test_files(root: Path, areas: Sequence[str]) -> dict[str, list[tuple[str, str]]]:
@@ -1522,6 +1558,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
     parser.add_argument(
+        "--write-summary",
+        action="store_true",
+        help="only rewrite the summary table from the ledgers in --out, replaying nothing",
+    )
+    parser.add_argument(
         "--semantics",
         choices=("duckdb", "reference"),
         default="duckdb",
@@ -1532,6 +1573,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     os.environ[SEMANTICS_ENV] = args.semantics
     if args.out is None:
         args.out = REPLAY_DIR / "reference" if args.semantics == "reference" else REPLAY_DIR
+    if args.write_summary:
+        write_summary(args.out)
+        return
     version = args.version or duckdb_version()
     root = fetch(version)
     for area, files in test_files(root, args.areas).items():

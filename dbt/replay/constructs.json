@@ -2,75 +2,23 @@
   "description": "What each refusal and each test not checked in the replay's ledgers waits on: an issue, or the reason sverify-dbt does not check it by design. sverify_dbt.replay reads it; a reason that names an issue itself (#n) needs no entry.",
   "constructs": [
     {
-      "match": "match_like_pattern",
-      "issue": 1936
+      "match": "of two relations",
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     {
-      "match": "match_regex",
-      "issue": 1936
-    },
-    {
-      "match": "no mapping for dbt_utils.not_empty_string",
-      "issue": 1936
-    },
-    {
-      "match": "no mapping for not_empty_string",
-      "issue": 1936
-    },
-    {
-      "match": "dbt_utils.equality;",
-      "issue": 1937
-    },
-    {
-      "match": "dbt_utils.equal_rowcount",
-      "issue": 1937
-    },
-    {
-      "match": "dbt_utils.fewer_rows_than",
-      "issue": 1937
-    },
-    {
-      "match": "dbt_utils.not_constant",
-      "issue": 1937
-    },
-    {
-      "match": "expect_table_row_count_to_equal_other_table_times_factor",
-      "issue": 1937
-    },
-    {
-      "match": "expect_table_columns_to_match_set",
-      "issue": 1937
-    },
-    {
-      "match": "float32",
-      "issue": 1908
+      "match": "needs two distinct values",
+      "design": "a lower bound on distinct values is not a condition sverify proves; dbt still runs it"
     },
     {
       "match": "unsupported cast from Substrait.Kind.bool",
-      "issue": 1911
-    },
-    {
-      "match": "cannot read RADIANS",
-      "issue": 1938
-    },
-    {
-      "match": "UNION with with_",
-      "issue": 1939
-    },
-    {
-      "match": "cannot read STR_SPLIT",
-      "issue": 1940
+      "issue": 2180
     },
     {
       "match": "% of decimal",
       "issue": 1941
     },
     {
-      "match": "right needs a constant int",
-      "issue": 1942
-    },
-    {
-      "match": "no mapping for assert_equal",
+      "match": "sverify-dbt has no mapping for",
       "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
     },
     {
@@ -96,6 +44,50 @@
     {
       "match": "dbt runs no test on an ephemeral model",
       "design": "dbt does not run the test"
+    },
+    {
+      "match": "casts to FLOAT (fp32) are not modelled",
+      "issue": 417
+    },
+    {
+      "match": "round of a DECIMAL",
+      "issue": 27
+    },
+    {
+      "match": "sverify reads no regex flags",
+      "design": "a regex flag changes what the pattern matches; sverify's regexp functions take no flags, and dbt still runs the test"
+    },
+    {
+      "match": "of float32",
+      "issue": 417
+    },
+    {
+      "match": "unknown function ARBITRARY()",
+      "issue": 1920
+    },
+    {
+      "match": "unknown function LIST_AGGR()",
+      "issue": 348
+    },
+    {
+      "match": "multiply of int64 and interval",
+      "issue": 83
+    },
+    {
+      "match": "replace needs a constant pattern",
+      "issue": 319
+    },
+    {
+      "match": "not on a model sverify-dbt reports",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    {
+      "match": "the model has no column",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    {
+      "match": "the compiled SQL does not parse: Error tokenizing",
+      "design": "another adapter's SQL (a backslash-escaped quote) that DuckDB does not read either"
     }
   ]
 }

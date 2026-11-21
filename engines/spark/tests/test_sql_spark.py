@@ -88,6 +88,10 @@ def test_refusals():
         SPARK.float_pow("a", "b")
     with pytest.raises(Unsupported, match="ORDER BY"):
         SPARK.over(["`c0`"], [])
+    # A time of day, as a column's type or a literal: TIME is off by default.
+    for refuse in (lambda: SPARK.type_name("tod"), lambda: SPARK.time_of_day_lit(0)):
+        with pytest.raises(Unsupported, match=r"^a time of day \(TIME\) on Spark.*spark-time-type"):
+            refuse()
     for name in ("window", "fetch"):
         with pytest.raises(Unsupported, match=r'no row order.*rows="multiset"'):
             to_sql(NAMED_ORDERED[name], SPARK, rows="sequence")

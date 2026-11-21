@@ -31,7 +31,8 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.engines import ENGINES, delta_plans
+from sverify.engines import ENGINES
+from sverify.engines.plan import delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.io import Changes
@@ -489,11 +490,12 @@ def test_unknown_function_is_refused():
             substrait_json(con, "SELECT id FROM orders WHERE amount > 10", semantics="duckdb")
         )
     )
-    plan["extensions"][0]["extensionFunction"]["name"] = "sqrt"
+    fn = plan["extensions"][0]["extensionFunction"]
+    fn["name"] = "sqrt"
     filt = plan["relations"][0]["root"]["input"]["project"]["input"]["filter"]
     filt["condition"] = {
         "scalarFunction": {
-            "functionReference": 1,
+            "functionReference": fn["functionAnchor"],
             "arguments": [filt["condition"]["scalarFunction"]["arguments"][0]],
         }
     }

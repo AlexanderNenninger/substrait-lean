@@ -338,9 +338,30 @@ def test_rewrite_reads_inputs_by_name() -> None:
     assert "FROM x" in out
 
 
+def test_rewrite_refuses_sql_that_does_not_tokenize() -> None:
+    """An unterminated string is a TokenError, not a ParseError: still a refusal."""
+    with pytest.raises(_Unreadable, match="does not parse"):
+        _rewrite("select 'unterminated from t", {})
+
+
 def test_rewrite_refuses_unknown_tables() -> None:
     with pytest.raises(_Unreadable, match="no ref or source"):
         _rewrite('select * from "db"."main"."other"', {'"db"."main"."orders"': "orders"})
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["read_csv('/no/such/file.csv')", "read_parquet('s3://bucket/x.parquet') p", "glob('*')"],
+)
+def test_rewrite_refuses_a_table_function_before_duckdb_binds_it(source: str) -> None:
+    """A table function opens a file or URL when DuckDB plans it (#891 2.3):
+    the refusal names it, and no DuckDB call has happened by then."""
+    with pytest.raises(_Unreadable, match="a table function"):
+        _rewrite(f"select * from {source}", {'"db"."main"."orders"': "orders"})
+
+
+def test_rewrite_reads_a_series_function() -> None:
+    assert "range" in _rewrite("select i from range(3) t(i)", {}).lower()
 
 
 def test_needs_as_dbt_tests() -> None:
@@ -375,3 +396,77 @@ def test_sverify_proves_a_test_it_is_given(cond: str) -> None:
         on_inferred="error",
     )
     assert report.ensures[0].proved
+
+
+def ranges(**kw) -> Test:
+    return t("dbt_utils.mutually_exclusive_ranges", None, **kw)
+
+
+def test_mutually_exclusive_ranges_on_plain_columns() -> None:
+    """dbt-utils 1.4.1's macro fails a NULL bound and any row whose upper bound
+    passes the next lower bound, so every variant implies sv.non_overlapping."""
+    want = sv.non_overlapping("lo", "hi", by=("k",))
+    for gaps in ("allowed", "not_allowed", "required"):
+        test = ranges(lower_bound_column="lo", upper_bound_column="hi", partition_by="k", gaps=gaps)
+        assert conds(test, "requires") == [want]
+    both = ranges(lower_bound_column="lo", upper_bound_column="hi", partition_by="a, b")
+    assert conds(both, "requires") == [sv.non_overlapping("lo", "hi", by=("a", "b"))]
+    alone = ranges(lower_bound_column="lo", upper_bound_column="hi")
+    assert conds(alone, "requires") == [sv.non_overlapping("lo", "hi")]
+
+
+def test_mutually_exclusive_ranges_in_ensures_adds_the_rows_conditions() -> None:
+    test = ranges(lower_bound_column="lo", upper_bound_column="hi", partition_by="k")
+    assert conds(test) == [sv.non_overlapping("lo", "hi", by=("k",)), "hi IS NOT NULL", "lo < hi"]
+    zero = ranges(lower_bound_column="lo", upper_bound_column="hi", zero_length_range_allowed=True)
+    assert conds(zero)[2] == "lo <= hi"
+    gapless = ranges(lower_bound_column="lo", upper_bound_column="hi", gaps="not_allowed")
+    assert conds(gapless) == []
+
+
+def test_an_open_end_needs_every_start_before_it() -> None:
+    """`coalesce(hi, L)` reads a NULL end as L. A row starting at L or later
+    could follow the open row, so the test implies the condition only with a
+    test that `lo < L`."""
+    end = "timestamp '9999-12-31'"
+    test = ranges(
+        lower_bound_column="lo", upper_bound_column=f"coalesce(hi, {end})", partition_by="k"
+    )
+    got = mapping.test_conditions(test, side="requires", table_of=lambda _: None)
+    assert got.conditions == [] and "lo < CAST('9999-12-31' AS TIMESTAMP)" in (got.reason or "")
+    want = [sv.non_overlapping("lo", "hi", by=("k",))]
+    for sibling in [
+        t("dbt_utils.expression_is_true", None, expression=f"lo < {end}"),
+        t("dbt_utils.expression_is_true", "lo", expression=f"< {end}"),
+        t("dbt_utils.accepted_range", "lo", max_value=end, inclusive=False),
+        t("dbt_utils.expression_is_true", None, expression=f"lo IS NULL OR lo < {end}"),
+    ]:
+        assert conds(test, "requires", siblings=[sibling]) == want, sibling
+    for other in [
+        t("dbt_utils.accepted_range", "lo", max_value=end),  # lo <= L
+        t("dbt_utils.expression_is_true", None, expression=f"hi < {end}"),
+        t("dbt_utils.expression_is_true", None, expression="lo < timestamp '9999-12-30'"),
+        # Rows with `flag` NULL may start at L or later (review of #2209).
+        t("dbt_utils.expression_is_true", None, expression=f"flag IS NULL OR lo < {end}"),
+    ]:
+        assert conds(test, "requires", siblings=[other]) == [], other
+    assert conds(test) == []  # ensures: no column states the open end
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"lower_bound_column": "lo + 1", "upper_bound_column": "hi"},
+        {"lower_bound_column": "lo", "upper_bound_column": "greatest(hi, lo)"},
+        {"lower_bound_column": "lo", "upper_bound_column": "hi", "partition_by": "k || 'x'"},
+    ],
+)
+def test_mutually_exclusive_ranges_on_expressions_are_not_mapped(kw: dict) -> None:
+    got = mapping.test_conditions(ranges(**kw), side="requires", table_of=lambda _: None)
+    assert got.conditions == [] and "dbt still runs it" in (got.reason or "")
+
+
+def test_mutually_exclusive_ranges_with_where_is_not_mapped() -> None:
+    test = ranges(lower_bound_column="lo", upper_bound_column="hi")
+    test.where = "k > 0"
+    assert conds(test, "requires") == []

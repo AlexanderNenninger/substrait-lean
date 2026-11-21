@@ -170,8 +170,21 @@ TABLE: tuple[BlackBox, ...] = (
         "bit_count({0})",
         laws=(("non_null",), ("at_least", 0), ("at_most", 64)),
     ),
-    # A BIGINT, which raises past its range: DuckDB's own is a HUGEINT.
-    BlackBox("list_sum", "scalar", ("ints",), "int", "CAST(list_sum({0}) AS BIGINT)", raises=True),
+    # A BIGINT, which raises past its range: DuckDB's own is a HUGEINT. The
+    # raise is sverify's tagged check, as a written cast's (`narrow`), on the
+    # sum bound once per row.
+    BlackBox(
+        "list_sum",
+        "scalar",
+        ("ints",),
+        "int",
+        "list_transform([list_sum({0})], lambda s: CASE"
+        " WHEN s NOT BETWEEN -9223372036854775808 AND 9223372036854775807"
+        " THEN CAST(error(concat('sverify: list_sum out of range: ',"
+        " CAST(s AS VARCHAR))) AS BIGINT)"
+        " ELSE CAST(s AS BIGINT) END)[1]",
+        raises=True,
+    ),
     # The pieces of `s` between the occurrences of `sep` (#808); `[s]` for a
     # NULL `sep`, so not strict.
     BlackBox(

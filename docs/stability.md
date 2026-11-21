@@ -147,21 +147,27 @@ Every type a public name returns, holds or takes is public too, so
 `sverify.types` names the types a report and a refresh hold. The
 [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents each public name, and `tests/test_public_api.py` holds the
-reference, the `__all__`s and that closure equal. Every other module is
+reference, the `__all__`s and that closure equal. In the Python API "verify" proves
+(`sv.verify`, `ContractedTransform.verify`) and "check" reads data
+(`check_requires`, `Report.check_inputs`, `proved_with_checks`); the
+commands named `check` (`sverify check`, `sverify-dbt check`) verify a
+project. Every other module is
 internal, whether or not its name starts with an underscore, and so are
 the maintainer tooling `sverify_dev` and the printed text of a report
 (`str(report)`); tools read the report through its attributes or its JSON.
 Three parts of `sverify.engines` are documented but outside the promise,
-and may change in a minor release: the plan layer (`to_sql`,
-`substrait_json`, `written_plan`, `delta_plans`), which takes sverify's
-internal plan; `Dialect`'s SQL-writing methods and subclasses of it; and
-the members of `Native`, while the native scans move into the engine
-packages.
+and may change in a minor release: the plan layer, the module
+`sverify.engines.plan`, which takes sverify's internal plan; `Dialect`'s
+SQL-writing methods and subclasses of it; and the members of `Native`,
+while the native scans move into the engine packages. `run` and
+`run_sharded` take a plan as a value a node or report holds
+(`node.internal_plan`), and its content is outside the promise.
 `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable way
 to a plan's SQL and Substrait.
 
 The engine extension point is documented and outside the promise as well:
-the entry-point group `sverify.profiles`, `ProfilePlugin` and the checker's
+the entry-point group `sverify.profiles`, `ProfilePlugin`, `SqlFrontEnd` (the SQL a plugin
+reads, which `sverify-snowflake` builds on out of tree) and the checker's
 engine list (`EngineEntry`, `builtinEntries`,
 [engine profiles from outside](engine-profiles.md#engine-profiles-from-outside))
 may change in a minor release. A plugin checks `PLUGIN_API`, and an engine
@@ -187,6 +193,10 @@ A renamed or removed name is gone in that release: sverify keeps no deprecated
 alias. The old form raises, and the changelog entry names the replacement. A
 release with breaking changes lists them first in its section of
 [the changelog](../CHANGELOG.md).
+
+The 1.x promise covers sverify-dbt's command line, exit codes and JSON, which
+are sverify's own ([the package's README](../dbt/README.md)). Its Python names
+are documented and outside the promise.
 
 ## Engines
 

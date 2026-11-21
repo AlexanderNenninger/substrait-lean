@@ -8,6 +8,7 @@ import Sverify.Frontend.Parse
 import Sverify.Core.Pretty
 import Sverify.Analysis.Semantic
 import Sverify.Frontend.Write
+import Sverify.Frontend.Bind
 import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
@@ -335,8 +336,10 @@ structure Report where
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
-  /-- The expressions that run correctly without their checks
-  (`Rel.evalG_marks`), as `Rel.marksJson`; `.null` when none is known. -/
+  /-- The expressions that run correctly without their checks, in the root
+  the checker writes (`Parse.Plan.writtenRoot`; `Rel.evalG_marks`,
+  `Rel.duckdb_marks_written`), as `Rel.marksJson`; `.null` when none is
+  known. -/
   unchecked : Json := .null
   /-- The transformation after `Rel.optimize`, as Substrait JSON. -/
   optimized : Json := .null
@@ -380,6 +383,15 @@ the same tree: `{"node": "Filter", "slots": [0], "inputs": [...]}`. -/
 partial def _root_.Substrait.Rel.marksJson (r : Rel) (m : Marks) : Json :=
   Json.mkObj [("node", Lean.toJson r.nodeName), ("slots", Lean.toJson m.slots),
     ("inputs", Json.arr (r.inputs.zipIdx.map fun (x, i) => x.marksJson (m.input i)).toArray)]
+
+/-- **The root the checker writes for a plan** (`--write`): the plan with the
+arguments of nested calls bound as columns (`Rel.bindArgs`, #821), so the
+writers' guards read a column where they would copy a call, where that parses
+back as itself; decimal arithmetic stays as the parser read it (#27). -/
+def _root_.Substrait.Parse.Plan.writtenRoot [Boxes.Ambient] (plan : Parse.Plan) : Rel :=
+  let bound := plan.root.bindArgs plan.catalog
+  if plan.root.decimalOps || !Write.roundtrips { plan with root := bound } then plan.root
+  else bound
 
 /-- Does `e` occur in `t`? -/
 partial def _root_.Substrait.Expr.hasSub (e : Expr) (t : Expr) : Bool :=
@@ -689,6 +701,44 @@ def mayHoldList : Kind → Bool
   | .list _ | .struct _ | .other => true
   | _ => false
 
+-- The two theorems belong to `Substrait`, beside the ones they extend.
+end Substrait.ContractCheck
+
+namespace Substrait
+variable [Boxes.Ambient]
+
+omit [Boxes.Ambient] in
+/-- A value of a kind that holds no list is flat. -/
+theorem Value.flat_of_hasKind {k : Kind} {v : Value} (hv : v.hasKind k = true)
+    (hk : ContractCheck.mayHoldList k = false) : v.Flat = true := by
+  cases v <;> cases k <;> simp_all [Value.hasKind, Value.Flat, ContractCheck.mayHoldList]
+
+/-- **What `postIgnores` spares of `"elements"` is sound** (#2005). On rows of
+the plan's kinds `ks` (`Row.HasKinds`, which `Rel.kinds_sound` gives a
+well-kinded plan's output), a postcondition is robust under `q` when `q`
+coarsens none of its components but zeros and the order of elements, and the
+order of elements only where no column it reads other than through
+`cardinality` may hold a list: the `listy` test of `postIgnores`. -/
+theorem Expr.robust_of_kinds {q : Obs} {ctx : ObsCtx} {e : Expr} {ks : List Kind}
+    (h : (e.dependsC ctx).all (fun c => c == "zeros" || c == "elements" || !q.coarsens c) = true)
+    (hl : q.coarsens "elements" = true →
+      (e.listCols.any fun c => ContractCheck.mayHoldList (ks.getD c .other)) = false)
+    {r r' : Row} (hk : Row.HasKinds ks r) (hr : Row.DoubleCodes ctx r)
+    (hr' : Row.DoubleCodes ctx r') (he : Row.Equiv q ctx r r')
+    (ht : (e.eval r).isTrue = true) : (e.eval r').isTrue = true :=
+  Expr.robust_of_depends_flat h (fun hq i hi => Value.flat_of_hasKind (hk i) <| by
+    have := hl hq
+    simp only [List.any_eq_false, Bool.not_eq_true] at this
+    exact this i hi) hr hr' he ht
+
+end Substrait
+
+namespace Substrait.ContractCheck
+
+open Lean (Json)
+open Parse
+variable [Boxes.Ambient]
+
 /-- The columns of a plan `T.select(c, …)`, as expressions over `T`'s
 output, with `T`'s column kinds; `none` for another shape. -/
 def postExprs (cat : Catalog) (tables : Tables) : Rel → Option (List Expr × List Kind)
@@ -755,9 +805,9 @@ the observation's ignored components it depends on, but for `"zeros"`
 (`Expr.robust_of_depends_canon`) and `"floats"` under the plan's bound or an
 `approx` condition (`floatsOk`). `"elements"` stays where the condition reads
 a column that may hold a list (`mayHoldList`) other than as the argument of
-`cardinality` (`Expr.listCols`): `Expr.robust_of_depends_canon` needs it exact
-in every other column read, so the checker spares only the columns that hold
-no list (#2005). -/
+`cardinality` (`Expr.listCols`): the checker spares it only where every such
+column holds no list, which `Expr.robust_of_kinds` proves sound on rows of the
+plan's kinds (#2005). -/
 def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens : List String)
     (floatsOk : Bool) : List (Option (List String × List String)) :=
   match postExprs cat tables r with
@@ -1418,10 +1468,17 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         (Infer.Rel.bounds cat A F T false p.root).map fun (i, e, b) =>
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
+  -- The marks of the root the checker writes (`--write`), the plan a run
+  -- sends (ruling 228, `Rel.duckdb_marks_written`): given where the theorem's
+  -- decidable hypotheses hold on that root and on the transform (B2), and where
+  -- the root is the transform or the transform bound at this catalog (B3).
   let unchecked := match transform with
     | some p =>
-      if p.root.checkWF cat && p.root.looseSub then
-        p.root.marksJson (p.root.marks cat A F T false)
+      if p.root.checkWF cat then
+        let w := p.writtenRoot
+        if w.checkWF cat && w.looseSub && (w == p.root || w == p.root.bindArgs cat) then
+          w.marksJson (w.marks cat A F T false)
+        else .null
       else .null
     | none => .null
   let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre

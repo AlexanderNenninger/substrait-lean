@@ -1,0 +1,19 @@
+{
+  "id": "F222",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#2030 merges on M1-M3; Spark's depth for a guarded nest is an engine fact stated in the docs, with no refusal or option; a lowering change, shim or refusal for it needs a ruling.",
+  "prs": [
+    2030
+  ],
+  "amends": [
+    "F183"
+  ],
+  "amended_by": [
+    "F224"
+  ],
+  "source": "fable-ruling-222-2030-d50d-o3-spark-depth.md",
+  "note": "Amends ruling 183's O3: R1 is met by the probed facts. Addendum 222a (same day): M1 met, M2 no longer gates, M3 remains."
+}

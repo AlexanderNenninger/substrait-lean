@@ -1,0 +1,16 @@
+{
+  "id": "F221",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#2071 splits: DuckDB 2.0.1's facts, shims and refusals merge with the lock and five refreshed ledgers; `alsoProbed` follows ruling 206's guard on a replay of the decided files and of those that differ between the tags; the full-tree replay gates no version claim.",
+  "prs": [
+    2071
+  ],
+  "amends": [
+    "F208"
+  ],
+  "source": "fable-ruling-221-2071-c2-replay-baseline-split.md",
+  "note": "Amends ruling 208's C2, C9 and C10. Ruling 225 amends its P7: the script merge of one ledger file is accepted under A1-A7 (fable-ruling-225-2071-p7-script-merge.md)."
+}

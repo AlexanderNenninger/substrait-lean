@@ -81,18 +81,22 @@ def _in_filtered_aggregate(node: sge.Expression) -> bool:
 
 #: The roundings whose `CAST(... AS BIGINT)` of a double lifts as one function
 #: of the generated table (#1655), by sqlglot's node.
-_ROUNDED = {sge.Round: "round", sge.Floor: "floor", sge.Ceil: "ceil"}
+_ROUNDED: dict[type[sge.Expression], str] = {
+    sge.Round: "round",
+    sge.Floor: "floor",
+    sge.Ceil: "ceil",
+}
 
 
-def _rounding(node: sge.Cast) -> str | None:
-    """`round`, `floor` or `ceil` (no digit count) when `node` casts one of them,
-    through any parentheses: its operand is integral, so both readings of the
-    cast agree. `round(x, 2)` is not: it leaves a fraction."""
+def _rounding(node: sge.Cast) -> sge.Expression | None:
+    """The `round`, `floor` or `ceil` (no digit count) that `node` casts, through
+    any parentheses: its operand is integral, so both readings of the cast agree.
+    `round(x, 2)` is not: it leaves a fraction."""
     inner = node.this
     while isinstance(inner, sge.Paren):
         inner = inner.this
-    name = _ROUNDED.get(type(inner))
-    return None if name is None or inner.args.get("decimals") is not None else name
+    rounds = type(inner) in _ROUNDED and inner.args.get("decimals") is None
+    return inner if rounds else None
 
 
 def _rounded_to_bigint(lf: _Lift, node: sge.Cast, a: E, t: Any, sub: Sub) -> E | None:
@@ -100,13 +104,10 @@ def _rounded_to_bigint(lf: _Lift, node: sge.Cast, a: E, t: Any, sub: Sub) -> E |
     under DuckDB's semantics: the argument is integral, so DuckDB's half-to-even
     cast is the model's truncating one (the generated table's
     `CAST(round(DOUBLE) AS BIGINT)`, #1655). None for any other cast."""
-    name = _rounding(node)
-    if name is None or not (a.type.is_float64() and _same(t, dt.int64)):
+    r = _rounding(node)
+    if r is None or not (a.type.is_float64() and _same(t, dt.int64)):
         return None
-    inner = node.this
-    while isinstance(inner, sge.Paren):
-        inner = inner.this
-    return _generated(lf, f"CAST({name}(DOUBLE) AS BIGINT)", [sub(inner.this)])
+    return _generated(lf, f"CAST({_ROUNDED[type(r)]}(DOUBLE) AS BIGINT)", [sub(r.this)])
 
 
 def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
@@ -172,7 +173,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     if from_string and (lifted := _from_varchar(lf, a, t, try_)) is not None:
         return lifted
     if try_:
-        raise Unsupported("TRY_CAST is only supported of strings yet", construct="TRY CAST")
+        raise SqlUnsupported("TRY_CAST is only supported of strings yet", construct="TRY CAST")
     if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp() or t.is_time()):
         return _temporal(a, t)
     if a.constant and a.type.is_string() and t.is_decimal():
@@ -215,20 +216,22 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         whole = dt.Decimal(min(a.type.precision - a.type.scale + 1, 38), 0, nullable=True)
         return lf.to(lf.to(E(a.json, a.type), whole), t)
     # Other casts: pending generation (#268).
-    if t.is_integer() and a.type.is_float64():
+    if t.is_integer() and a.type.is_floating():
+        hint = REFUSED["float_to_int"]
+        if a.type.is_float32():
+            # `round` of a REAL lifts once it is a DOUBLE, which holds it exactly (#2152).
+            hint += "; for a FLOAT x, write CAST(x AS DOUBLE) in place of x"
         if lf.profile.float_to_int != "TRUNCATE":
             raise SqlUnsupported(
                 f"CAST of a {a.type} to {t} rounds ({lf.profile.float_to_int}) in DuckDB, which "
-                f"the model's casts (they truncate) cannot state yet (#322); "
-                f"{REFUSED['float_to_int']}",
+                f"the model's casts (they truncate) cannot state yet (#322); {hint}",
                 construct="CAST",
             )
         # `round`, `floor` and `ceil` leave an integral double: both readings agree.
         if _rounding(node) is None:
             raise SqlUnsupported(
                 f"CAST of a {a.type} to {t} is DuckDB's cast, which rounds "
-                f"({DUCKDB.float_to_int}); sverify's reference truncates (R9); "
-                f"{REFUSED['float_to_int']}",
+                f"({DUCKDB.float_to_int}); sverify's reference truncates (R9); {hint}",
                 construct="CAST",
             )
     # A numeric constant becomes a literal of the type, where that is exact

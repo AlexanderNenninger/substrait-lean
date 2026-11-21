@@ -137,7 +137,8 @@ an observation that reads the members asks for the exact level.
 
 Each output can carry a postcondition that names the equivalence its
 consumer expects: rows as a multiset (the default) or as a sequence; floats
-within the plan's proved bound `ε` (`floats="plan"`, the default, #689),
+within the plan's bound `ε` (`floats="plan"`, the default, #689; computed from
+the bounds `float-bounds/` proves over the reals),
 exact, or within a stated tolerance, absolute, relative or in ulps, which
 `verify` checks against `ε` on each engine; timestamps up to a precision;
 strings up to NFC. Verification then
@@ -1615,8 +1616,9 @@ aggregate's `FILTER` and a window's argument are tested in
 Interim limits, until step D50-d (a gate for 1.0):
 
 - Only the top three levels of a nest of `AND` and `OR` are lifted
-  (`LIFT_LEVELS`, `plan_json.py`; a connective's level is one more than the lifted
-  ones enclosing it). Below that the connective is the eager `AND` or `OR`: a
+  (`Parse.liftLevels`; a connective's level is one more than the lifted
+  ones enclosing it). Below that a filter's chains are bound (D50-d, 2026-11-20,
+  `Rel.guardedFilter`), and elsewhere the connective is the eager `AND` or `OR`: a
   guard there does not protect the next operand, so the guarded operation is
   reported as an inferred precondition, as before D50. The cap exists because a
   lift nested in a lift multiplies the size: with a guarded leaf, depth 3 of
@@ -1771,7 +1773,7 @@ construct unless its needle is a literal, under `semantics="reference"` and `"du
 L is a rule for frontends. It changes nothing in `Rel.eval`, `Rel.Allowed` or
 `Profile.reference`, and the verdict gains no value: the list says what the
 proof covers, and proved stays proved. An Ibis transformation lists nothing, and
-a SQL query with `semantics="duckdb"` lists only `list_contains` (2026-11-20). `semantics="reference"` stays the
+a SQL query with `semantics="duckdb"` lists only `list_contains` and the order of lists (2026-11-20; amended 2026-11-21: `list_null_order`, ordering comparisons of lists, whose NULL elements DuckDB orders last, ruling 232, [#2163](https://github.com/AlexanderNenninger/substrait-lean/issues/2163)). `semantics="reference"` stays the
 default for raw SQL ("verify two paths" and "portable everywhere" keep it).
 
 Recomputes sinks: no

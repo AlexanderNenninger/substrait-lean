@@ -62,6 +62,7 @@ from sverify.engine import (
 )
 from sverify.sql import core as sql_core
 from sverify.testing import EPOCH, duckdb_sql, inline_tables, lean_values
+from sverify_dev.checked import checked
 from sverify_polars import engine as polars_engine
 
 INT, DOUBLE, STRING, BOOL, TS = "int", "double", "string", "bool", "ts"
@@ -450,6 +451,29 @@ class Session:
     def duckdb(self, sql: str) -> list[tuple]:
         return _arrow_rows(duckdb_sql(self.con, sql))
 
+    def written_with_data(self, plan: str) -> str:
+        """The plan as written for the engines, with the tables inlined."""
+        return json.dumps(inline_tables(json.loads(written_plan(plan)), self.tables))
+
+
+def listed_issues(sql: str) -> list[str]:
+    """What the report lists for the query: its errors and its assumptions."""
+    report = verify(sql, tables=SCHEMAS)
+    return [str(i) for i in report.issues + report.assumed]
+
+
+def reports_runtime_error(s: Session, sql: str) -> bool:
+    """Whether `verify` reports the possible runtime error on this input: it
+    names one, or the input breaks a precondition it needs (`x IS NULL OR x <> 0`), which the proof
+    rests on (#638, #2101)."""
+    report = verify(sql, tables=SCHEMAS)
+    if report.errors:
+        return True
+    return any(
+        duckdb_sql(s.con, f"SELECT 1 FROM {n.table} WHERE ({n.sql}) IS FALSE LIMIT 1").num_rows
+        for n in report.needs
+    )
+
 
 def check(
     query: Query,
@@ -472,7 +496,7 @@ def check(
     except LeanRaised as e:
         # The reference raises (a zero divisor, an overflow): `verify` must
         # report the possible runtime error, as for an engine that raises.
-        if not verify(query.sql, tables=SCHEMAS).errors:
+        if not reports_runtime_error(s, query.sql):
             found("runtime", f"Lean raises {e}; verify reports no runtime error")
         return findings
     try:
@@ -481,10 +505,8 @@ def check(
     except Exception as e:  # noqa: BLE001 - recorded below
         df_table, df, df_error = None, None, e
 
-    if "runtime" in oracles and df_error is not None:
-        report = verify(query.sql, tables=SCHEMAS)
-        if not report.errors:
-            found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
+    if "runtime" in oracles and df_error is not None and not reports_runtime_error(s, query.sql):
+        found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
     if "rows" in oracles and df is not None and not same_rows(lean, df, query.ordered):
         found("rows", f"Lean:   {lean!r}\nDuckDB: {df!r}")
     if "engines" in oracles and df_error is None:
@@ -495,6 +517,12 @@ def check(
             except REFUSALS:
                 continue
             except Exception as e:  # noqa: BLE001 - recorded
+                # The written plan's own check of a reported assumption: the
+                # report lists it and Lean finds it on this data (#2162).
+                if "sverify:" in str(e) and checked(
+                    str(e), listed_issues(query.sql), s.written_with_data(plan)
+                ):
+                    continue
                 found(f"rows:{engine}", f"{engine} raises {e!r} (Lean: {lean!r})")
                 continue
             got = _arrow_rows(out)

@@ -35,6 +35,12 @@ QUERIES = [
     "SELECT id, CAST(cost AS BIGINT) AS i, CAST(cost AS INTEGER) AS n,"
     " CAST(cost AS DECIMAL(15, 1)) AS d, CAST(cost AS DECIMAL(5, 0)) AS w FROM orders",
     "SELECT CAST(2.5 AS BIGINT) AS a, CAST(-2.5 AS BIGINT) AS b, CAST(0.49 AS BIGINT) AS c",
+    # Booleans and dates to text (#346): DuckDB's own `true`/`false` and `YYYY-MM-DD`, NULLs kept.
+    "SELECT id, CAST(qty > 3 AS VARCHAR) AS b, CAST(NOT (qty > 3) AS VARCHAR) AS n,"
+    " CAST(day AS VARCHAR) AS d FROM orders",
+    "SELECT CAST(TRUE AS VARCHAR) AS t, CAST(FALSE AS VARCHAR) AS f,"
+    " CAST(DATE '0001-01-01' AS VARCHAR) AS lo, CAST(DATE '9999-12-31' AS VARCHAR) AS hi,"
+    " CAST(DATE '1970-01-01' AS VARCHAR) AS epoch",
 ]
 
 
@@ -253,3 +259,35 @@ def test_a_bare_double_cast_stays_refused():
     model does not state yet; the refusal names the casts that lift (#1655)."""
     with pytest.raises(Refused, match=r"round\(x\), floor\(x\) or ceil\(x\)"):
         lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, "duckdb")
+
+
+#: `cast/float_integer_cast.test` (DuckDB 2.0.0): DuckDB rounds a REAL to the
+#: nearest integer, and raises past the type's range after rounding (#2152).
+FLOAT_CASTS = [
+    *(
+        f"SELECT CAST(0.55::FLOAT AS {t}) AS x"
+        for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")
+    ),
+    *(f"SELECT CAST(1.5::FLOAT AS {t}) AS x" for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")),
+    "SELECT CAST(127.5::FLOAT AS TINYINT) AS x",
+    "SELECT CAST(127.6::FLOAT AS TINYINT) AS x",
+    "SELECT CAST(32767.5::FLOAT AS SMALLINT) AS x",
+]
+
+
+@pytest.mark.parametrize("query", FLOAT_CASTS)
+def test_a_float_cast_to_an_integer_is_refused_as_a_double_one(query):
+    """The model's cast truncates: 0 for `0.55::FLOAT`, where DuckDB gives 1.
+    A REAL is refused as a DOUBLE is, under both semantics (D54)."""
+    for semantics in ("duckdb", "reference"):
+        with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
+            lift(query, {}, semantics)
+
+
+def test_a_float_column_cast_to_an_integer_is_refused():
+    schema = {"t": ibis.schema({"x": "float32"})}
+    for semantics in ("duckdb", "reference"):
+        with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
+            lift("SELECT CAST(x AS INTEGER) AS i FROM t", schema, semantics)
+    # The hint's spelling lifts.
+    lift("SELECT CAST(round(CAST(x AS DOUBLE)) AS BIGINT) AS i FROM t", schema, "reference")

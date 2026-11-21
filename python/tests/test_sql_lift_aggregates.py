@@ -3,6 +3,7 @@
 
 import json
 
+import ibis
 import pytest
 
 from _sql_lift import SCHEMAS, TABLES
@@ -64,8 +65,8 @@ QUERIES = [
     "SELECT customer, qty, stddev_samp(amount) AS sd, count(*) AS n FROM orders"
     " GROUP BY ROLLUP (customer, qty)",
     # Exact quantiles, the mode and arg_min/arg_max (#53). DuckDB's median of
-    # strings and dates is the 0.5 quantile_disc, and `quantile` is
-    # `quantile_disc`.
+    # strings is the 0.5 quantile_disc, and `quantile` is `quantile_disc`; its
+    # median of a date or timestamp interpolates and is refused (#2153).
     "SELECT customer, median(amount) AS m, median(price) AS mp, quantile_cont(qty, 0.25) AS q"
     " FROM orders GROUP BY customer",
     "SELECT quantile_disc(amount, 0.5) AS d, quantile_disc(customer, 0.75) AS s,"
@@ -80,6 +81,8 @@ QUERIES = [
     # does; bool_and and bool_or are min and max of booleans.
     "SELECT customer, string_agg(customer, '-' ORDER BY id) AS s, list(qty ORDER BY id) AS l,"
     " bool_and(amount > 2) AS ba, bool_or(qty > 3) AS bo FROM orders GROUP BY customer",
+    # `arbitrary` is DuckDB's other name of `first` (#328).
+    "SELECT id, arbitrary(customer) AS a FROM orders GROUP BY id",
     "SELECT first(qty ORDER BY id) AS f, last(qty ORDER BY id DESC) AS l,"
     " first(price ORDER BY placed) AS fp, last(customer ORDER BY day) AS lc,"
     " list(customer ORDER BY id) AS lst, array_agg(qty ORDER BY amount DESC) AS aa,"
@@ -120,6 +123,13 @@ def test_the_reference_lift_is_checked_too(query):
     assert code == 0, err or out
 
 
+def test_median_of_a_float_is_refused_as_it_interpolates():
+    schemas = {"t": ibis.schema({"f": "float32", "g": "float64"})}
+    with pytest.raises(Refused, match="DuckDB interpolates it"):
+        lift("SELECT median(f) FROM t", schemas)
+    lift("SELECT median(g) FROM t", schemas)
+
+
 @pytest.mark.parametrize(
     ("query", "message"),
     [
@@ -139,6 +149,9 @@ def test_the_reference_lift_is_checked_too(query):
         ),
         ("SELECT mode(qty) FROM orders", "breaks ties in the engine's order"),
         ("SELECT median(cost) FROM orders", "no engine gives one value for it"),
+        # DuckDB interpolates it (2024-01-05 12:00:00), the lower middle is another value (#2153).
+        ("SELECT median(day) FROM orders", "DuckDB interpolates it"),
+        ("SELECT median(placed) FROM orders", "DuckDB interpolates it"),
         ("SELECT quantile_cont(amount, -0.5) FROM orders", "between 0 and 1"),
         ("SELECT quantile_cont(amount, [0.25, 0.5]) FROM orders", "one number"),
         ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),

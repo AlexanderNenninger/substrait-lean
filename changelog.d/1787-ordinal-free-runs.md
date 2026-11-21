@@ -1,0 +1,3 @@
+### A verified run leaves out the row numbering the result doesn't need
+
+To give the rows in Lean's order, a run on DuckDB or Polars numbers them, and DuckDB first copies each input to do so. Where the checker proved that the observation can't see that order, a verified run now leaves the numbering out (#1787). Under the default multiset lens this holds when the result is deterministic (`check_deterministic_sound`). Under `rows="sequence"` it holds when the plan's last sort decides every row's place (`check_sequence_determined_sound`). This happens only on a run that checked the preconditions on its tables, on a route through the reference. `Report.to_sql` already wrote SQL this way for a multiset lens.

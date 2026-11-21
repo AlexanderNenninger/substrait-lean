@@ -1,0 +1,17 @@
+{
+  "id": "F232",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference's list order with NULL elements stays as decided on #209; the SQL lift lists ordering comparisons of lists as a D54 exception (`list_null_order`, NATIVE key) under every semantics; DuckDB's native list order under `semantics=\"duckdb\"` is After 1.0.",
+  "issues": [
+    209,
+    2163
+  ],
+  "prs": [
+    2173
+  ],
+  "source": "fable-ruling-232-2163-list-order-null-elements.md",
+  "note": "Conditions C1-C3, U1, S1. No D-number."
+}

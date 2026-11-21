@@ -9,6 +9,7 @@ import textwrap
 
 import pytest
 
+from _repo import needs_repo
 from sverify_dev import slt
 
 pytestmark = pytest.mark.backend("duckdb")
@@ -290,6 +291,42 @@ def test_the_summary_skips_files_that_are_not_ledgers(tmp_path):
     assert "| [area](area.json) | 1 | 0 |" in text and "probes" not in text
 
 
+def test_the_summary_counts_the_fuzzer_apart(tmp_path):
+    """The totals line counts DuckDB's tests and the fuzzer's queries apart,
+    and the links are relative to the README written."""
+
+    def ledger(area, agree, disagree, files):
+        name = area.replace("/", "__") + ".json"
+        (tmp_path / name).write_text(
+            json.dumps(
+                {
+                    "area": area,
+                    "summary": {"agree": agree, "disagree": disagree, "refused": 2, "skipped": 1},
+                    "skipped_files": files,
+                    "results": [],
+                }
+            )
+        )
+
+    ledger("cast", 3, 1, {"cast/a.test": "require json"})
+    ledger("fuzz/int_overflow", 10, 0, {})
+    readme = tmp_path / "facts" / "README.md"
+    readme.parent.mkdir()
+    text = slt.write_summary(tmp_path, readme).read_text()
+    assert (
+        "Totals over 7 queries of DuckDB's tests: 3 agree, 1 disagree, 2 refused, 1 skipped "
+        "(1 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 13 generated queries: "
+        "10 agree, 0 disagree."
+    ) in text
+    assert "| [cast](../cast.json) |" in text
+
+
+@needs_repo
+def test_the_committed_summary_goes_to_the_facts_readme():
+    assert slt.FACTS_README.relative_to(slt.REPO).as_posix() == "engines/duckdb/facts/README.md"
+    assert "<!-- slt:start -->" in slt.FACTS_README.read_text()
+
+
 def test_nested_values_become_arrow_structs():
     """A struct is the list of its fields in the model, a dict in Arrow."""
     import pyarrow as pa
@@ -447,6 +484,56 @@ def test_an_expected_error_the_verifier_reports_agrees(tmp_path):
     assert json.loads(led.read_text())["agree_static"] == 1
 
 
+def test_a_tagged_raise_of_a_reported_assumption_is_checked_not_a_disagreement(tmp_path):
+    """The written plan's `SUM` guard raises where a sum leaves 64 bits and
+    DuckDB gives a HUGEINT: the report lists "SUM overflow" and the checker
+    finds it on the data, so the replay agrees with `checked:` (ruling 230,
+    #2162)."""
+    path = tmp_path / "sum.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            CREATE TABLE bigints AS SELECT 4611686018427387904 AS b FROM range(3)
+
+            query I
+            SELECT SUM(b) FROM bigints
+            ----
+            13835058055282163712
+            """
+        )
+    )
+    (r,), _ = slt.replay_file(path, "area/sum.test")
+    assert r.cls == "agree", r
+    assert (r.reason or "").startswith(slt.CHECKED + " SUM overflow"), r.reason
+    assert "sverify: integer overflow in SUM" in (r.engine or "")
+    led = slt.write_ledger("area", "2.0.0", [slt.asdict(r)], {}, tmp_path)
+    assert json.loads(led.read_text())["agree_checked"] == 1
+
+
+@pytest.mark.parametrize(
+    ("listed", "lean"),
+    [
+        # Two issues of the kind: the harness cannot tell which one raised.
+        (["SUM overflow: SUM(a)", "SUM overflow: SUM(b)"], "Substrait.Issue.sumWraps"),
+        # Lean finds an issue of another kind than the raise's tag.
+        (["SUM overflow: SUM(a)"], "Substrait.Issue.wraps"),
+        # The report lists no issue of the kind.
+        (["overflow: a * b"], "Substrait.Issue.sumWraps"),
+    ],
+)
+def test_a_tagged_raise_without_one_matching_issue_stays_a_disagreement(monkeypatch, listed, lean):
+    """The class ties the raise to one listed issue and to the same kind of
+    issue in the checker (rulings 230 and 236); otherwise it is a gap (C2)."""
+    from sverify import _lean_eval, engine
+    from sverify_dev.checked import checked
+
+    monkeypatch.setattr(_lean_eval, "lean_assumed", lambda plan: lean)
+    monkeypatch.setattr(engine, "run_checker", lambda args, plan: (0, "", ""))
+    msg = "Invalid Input Error: sverify: integer overflow in SUM: 9223372036854775808"
+    assert checked(msg, listed, "{}") is None
+
+
 def test_a_time_of_24_00_is_refused(tmp_path):
     """Python's `datetime.time`, through which the rows reach Lean, has no
     `24:00:00`: it became midnight (#619)."""
@@ -471,3 +558,19 @@ def test_a_time_of_24_00_is_refused(tmp_path):
         "tables: column t of times holds 24:00:00, "
         "which the rows inlined for Lean (Python times) cannot",
     )
+
+
+def test_a_tagged_list_sum_raise_is_checked_against_its_domain_issue(monkeypatch):
+    """`list_sum` past BIGINT raises sverify's tagged check; the report lists
+    it as a domain error and the checker reports `Issue.domain` (#2162)."""
+    from sverify import _lean_eval, engine
+    from sverify_dev.checked import checked
+
+    monkeypatch.setattr(_lean_eval, "lean_assumed", lambda plan: None)
+    monkeypatch.setattr(
+        engine, "run_checker", lambda args, plan: (0, "error: Substrait.Issue.domain", "")
+    )
+    msg = "Invalid Input Error: sverify: list_sum out of range: 9223372036854775812"
+    got = checked(msg, ["domain error: LIST_SUM(i)"], "{}")
+    assert got and got.startswith("checked: domain error")
+    assert checked(msg, [], "{}") is None
