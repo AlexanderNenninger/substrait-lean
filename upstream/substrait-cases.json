@@ -40,8 +40,8 @@
       "disagree": 0
     },
     "datetime": {
-      "agree": 50,
-      "refused": 55,
+      "agree": 49,
+      "refused": 56,
       "disagree": 0
     },
     "list": {
@@ -75,8 +75,8 @@
       "disagree": 0
     },
     "all": {
-      "agree": 621,
-      "refused": 639,
+      "agree": 620,
+      "refused": 640,
       "disagree": 57
     }
   },
@@ -164,6 +164,7 @@
       "checker: missing field 'value' in {\"enum\":\"SECOND\"}": 2,
       "checker: missing field 'value' in {\"enum\":\"YEAR\"}": 2,
       "checker: month and year intervals are only supported added to a date or timestamp": 2,
+      "checker: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried through, by design; a constant of its type is not supported": 1,
       "checker: missing field 'value' in {\"enum\":\"DAY_OF_YEAR\"}": 1,
       "checker: missing field 'value' in {\"enum\":\"ISO_WEEK\"}": 1,
       "checker: missing field 'value' in {\"enum\":\"ISO_YEAR\"}": 1,

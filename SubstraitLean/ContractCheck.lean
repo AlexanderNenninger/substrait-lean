@@ -1482,6 +1482,10 @@ def Request.check (R : Request) : Except String Report :=
     throw "a postcondition plan is not well-formed"
   else if !R.transform.all fun T => T.root.checkWF R.cat then
     throw "the transformation plan is not well-formed"
+  -- An opaque column is carried, and no plan reads it (`checkPlan`, D67).
+  else if let some use := (R.transform.toList ++ R.ensures).findSome? fun p =>
+      p.root.opaqueUse? p.catalog p.tableKinds then
+    throw (opaqueRefusal use)
   else
     -- `R.kenv`, with every table's knowledge evaluated once (`knowsTable`):
     -- `R.kenv` itself would evaluate it again at each read.
@@ -1556,6 +1560,8 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
     split at hc
     · cases hc
     · rename_i htw
+      split at hc
+      · cases hc
       simp only at hc
       split at hc
       · cases hc

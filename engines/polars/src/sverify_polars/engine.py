@@ -2540,7 +2540,10 @@ class Translator:
             if k in r:
                 raise Unsupported(f"ReadRel.{k} is not in Lean's written form")
         schema = r.get("baseSchema", {})
-        types = [type_of(t) for t in schema.get("struct", {}).get("types", [])]
+        raw = schema.get("struct", {}).get("types", [])
+        # An opaque column (D67) is read as the table has it: the plan carries it.
+        opaque = [_plan_read.holds_opaque(t) for t in raw]
+        types = [pl.Null if o else type_of(t) for t, o in zip(raw, opaque, strict=True)]
         if "namedTable" in r:
             name = ".".join(r["namedTable"]["names"])
             if name not in self.tables:
@@ -2563,6 +2566,7 @@ class Translator:
                 lf = lf.select(names)
             lf = positional(lf)
             have = list(lf.collect_schema().dtypes())
+            types = [h if o else w for h, w, o in zip(have, types, opaque, strict=True)]
             lf = lf.select(
                 [
                     conform(pl.col(col(i)), h, w, f"{name} column {i}").alias(col(i))
