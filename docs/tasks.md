@@ -711,6 +711,7 @@ sverify check pipelines/orders.py:paid       # one node or transform
 sverify check pipelines/orders.py --full     # with each node's full report
 sverify check pipelines/orders.py --diff     # the preconditions the proofs need, as a diff
 sverify check pipelines/orders.py --fix      # write them into requires=, then check again
+sverify check models/orders.sql --schema schemas.yaml   # one SQL query, no Python
 sverify refresh pipelines/orders.py:paid     # run a node and report what changed
 sverify explain may_be_false                 # what a [code] of check's output means
 ```
@@ -723,6 +724,16 @@ that fails is reported where a call would raise, so one unproved node does
 not hide the next. A `refresh()` in the file belongs under
 `if __name__ == "__main__":`; while sverify checks the file, it raises. A
 directory with a `dbt_project.yml` goes to `sverify-dbt check`.
+
+A `.sql` file holds one query (a second statement is a usage error, exit 2).
+`--schema FILE` gives the types of the tables it reads, as YAML or JSON,
+`{table: {column: type}}` with the type strings of `sverify.verify(tables=)`.
+The verdict is the one `verify` gives with no contract: what the query
+computes and what it can raise, with the preconditions it needs. A table the
+file does not describe is a usage error, and a construct the lift does not read is
+exit 3, by name. `--dialect` and `--semantics` take `sverify.sql`'s values and
+defaults (`sverify.sql` documents them). `--fix`, `--diff` and `--against-sink` read
+Python files only.
 
 A `DeltaSource` or `IcebergSource` opens its table to learn its schema, which
 on a pull request means credentials and a network. Declare it instead,
@@ -1887,9 +1898,10 @@ the export handles it in one of these ways:
   doubles is `x + 0.0 = y + 0.0 OR (is_nan(x) AND is_nan(y))`, a double
   grouping key is the pair `(is_nan(x), x + 0.0)`, and a double sort key
   sorts by `is_nan(x)` first, so that NaN equals NaN and sorts greatest,
-  and the two zeros are one (ST-4). A cast of a double to an integer
-  truncates first (ST-6). A gap the plan meets where no shim applies yet,
-  such as an ordering comparison of doubles, refuses the export.
+  and the two zeros are one (ST-4). An ordering comparison of doubles
+  (`<`, `<=`, `>`, `>=`, `between`) follows the same order. A cast of a
+  double to an integer truncates first (ST-6). A gap the plan meets where
+  no shim applies refuses the export.
 - `"annotate"` keeps the plan as written and records each choice in the
   manifest as an assumption the consumer must honour (`assumptions`, class
   `assumed`).

@@ -70,6 +70,10 @@ def place(path: Path, checked: list[Checked]) -> Plan:
     """The file at `path` with each transform's needed preconditions added
     to its decorator's `requires=`."""
     plan = Plan(fixes(checked))
+    if path.suffix == ".sql":
+        for fix in plan.fixes:
+            fix.reason = f"{path.name} is SQL: it has no requires= to place the conditions in"
+        return plan
     if not plan.fixes:
         return plan
     source = path.read_bytes()
