@@ -35,6 +35,18 @@
           "test": "python/tests/test_sql_lift_nested.py::test_list_contains_of_a_null_needle_is_null_at_every_list"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-21",
+      "method": "engine-test",
+      "checked_by": "session for #2045, DuckDB's sqllogictests at v2.0.1",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.1/test/sql/function/list/list_contains.test",
+          "note": "v2.0.1 adds `list_contains([]::VARCHAR[], NULL)` and `contains([], NULL)` as false, `list_contains([1], NULL)` and `list_contains(NULL::INT[], NULL)` as NULL, with the comment 'an empty list never contains NULL, a list of only NULLs gives NULL'; the same file adds `map_contains` of an empty map with a NULL needle as false"
+        }
+      ],
+      "notes": "The change is intended upstream: the test file of the release pins it, so it is no regression to report. `map_contains` of an empty map and a NULL needle gives false too; sverify has no row for it."
     }
   ],
   "supersedes": [

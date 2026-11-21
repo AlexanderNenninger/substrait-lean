@@ -644,9 +644,14 @@ def test_create_options_of_an_existing_table_are_ignored_with_a_warning(catalog,
     src.table().append(rows_table([(3, "cy", 1)]))
     with pytest.warns(UserWarning, match=IcebergSink._create_options_ignored) as caught:
         big.refresh()
-    # The first warning caught may be another one, such as a ResourceWarning
-    # for an unclosed SQLite connection that a collection raises meanwhile.
-    message = next(str(w.message) for w in caught if issubclass(w.category, UserWarning))
+    # The first warning caught may be another one, such as a ResourceWarning for an unclosed
+    # SQLite connection that a collection raises meanwhile, or the engine-version one (#2045).
+    message = next(
+        str(w.message)
+        for w in caught
+        if issubclass(w.category, UserWarning)
+        and not issubclass(w.category, routes.EngineVersionWarning)
+    )
     assert "location" in message and "partition fields" in message and "'a'" in message
     after = catalog.load_table("db.big")
     assert after.location() == before.location() and after.spec().is_unpartitioned()
