@@ -25,6 +25,7 @@ import ibis
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
+import pyarrow.compute as pc
 from ibis.common.deferred import Deferred
 
 from sverify import _decimals, _duckdb, _hooks
@@ -2744,8 +2745,14 @@ def _run_planned(table: ir.Table, cond: PlannedCondition, engine: str) -> tuple[
         return 0, str(e).splitlines()[0] if str(e) else type(e).__name__
 
 
-def _not_true(column: Any) -> int:
-    return sum(v is not True for v in column.to_pylist())
+def _not_true(column: pa.ChunkedArray | pa.Array) -> int:
+    """The values of a condition's column that are not TRUE (FALSE or NULL),
+    counted in Arrow: a boolean column's sum is its TRUEs, and a column of
+    another type holds none."""
+    if not pa.types.is_boolean(column.type):
+        return len(column)
+    trues = pc.sum(pc.fill_null(column, False))  # pyrefly: ignore[missing-attribute]
+    return len(column) - (trues.as_py() or 0)
 
 
 def _columns_read(conds: Sequence[str], columns: Sequence[str]) -> list[str]:
