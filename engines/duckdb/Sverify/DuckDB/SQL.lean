@@ -152,6 +152,11 @@ refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
   | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
       (they truncate) cannot state; use semantics='reference', or cast round(x), floor(x) or ceil(x), which lift"
+  -- D55: a SQL cast of a double to an integer rounds half to even, under the
+  -- reference too; the core has no such rounding until #322 (#2008).
+  | .reference, .castDoubleBigint => some "a SQL cast of a double rounds half to even (D55), \
+      which the model's casts (they truncate) cannot state until #322; cast round(x), floor(x) \
+      or ceil(x), which lift"
   | _, _ => none
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by
