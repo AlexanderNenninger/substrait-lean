@@ -3036,7 +3036,7 @@ export back and proves its contract again; `report.substrait_contract()`
 gives the contract as JSON for a sidecar, and `sverify.errors.ExportError`
 names the gap a refusal meets
 ([#664](https://github.com/AlexanderNenninger/substrait-lean/issues/664),
-[docs/tasks.md](docs/how-to-export.md#exporting-to-substrait)).
+[docs/how-to-export.md](docs/how-to-export.md#exporting-to-substrait)).
 
 ### Proved file pruning: Iceberg, string bounds, NaN and implied predicates
 
@@ -3792,7 +3792,7 @@ and switched off by `infer=False`:
 
 Where no single bound exists (`∞ / ∞`, `substring` offsets counted from
 either end, the sum of two unbounded decimals), the hint suggests one and
-nothing is assumed ([docs/tasks.md](docs/how-to-bounds.md#inferred-bounds)).
+nothing is assumed ([docs/how-to-bounds.md](docs/how-to-bounds.md#inferred-bounds)).
 
 ### Suggested preconditions for unproved postconditions
 
