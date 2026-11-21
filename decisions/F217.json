@@ -13,7 +13,7 @@
     "F152"
   ],
   "amended_by": [
-    "U-2026-11-21-optimize-name-final"
+    "F-optimize-name-final"
   ],
   "source": "fable-ruling-217-1787-user-sql-stays-close.md",
   "note": "Applies U-2026-11-20-user-sql-close. Ruling 152's R1 and R3 move to After 1.0; closes ruling 150's U2. No D-number."
