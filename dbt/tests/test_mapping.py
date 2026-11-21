@@ -343,6 +343,21 @@ def test_rewrite_refuses_unknown_tables() -> None:
         _rewrite('select * from "db"."main"."other"', {'"db"."main"."orders"': "orders"})
 
 
+@pytest.mark.parametrize(
+    "source",
+    ["read_csv('/no/such/file.csv')", "read_parquet('s3://bucket/x.parquet') p", "glob('*')"],
+)
+def test_rewrite_refuses_a_table_function_before_duckdb_binds_it(source: str) -> None:
+    """A table function opens a file or URL when DuckDB plans it (#891 2.3):
+    the refusal names it, and no DuckDB call has happened by then."""
+    with pytest.raises(_Unreadable, match="a table function"):
+        _rewrite(f"select * from {source}", {'"db"."main"."orders"': "orders"})
+
+
+def test_rewrite_reads_a_series_function() -> None:
+    assert "range" in _rewrite("select i from range(3) t(i)", {}).lower()
+
+
 def test_needs_as_dbt_tests() -> None:
     """`Report.needs` gives the column, comparison and bound directly."""
     assert mapping.dbt_test("q", "IS NOT NULL", None, '"q" IS NOT NULL') == "not_null"

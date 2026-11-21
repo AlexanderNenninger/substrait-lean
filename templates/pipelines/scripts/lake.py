@@ -1,7 +1,7 @@
 """What the workflows run, so that they stay a few lines each and the tests
 run the same steps.
 
-    python scripts/lake.py check   [--out check.json] [--comment comment.md] [--plans DIR]
+    python scripts/lake.py check   [--require-proved] [--out check.json] [--comment comment.md] [--plans DIR]
     python scripts/lake.py refresh [--out refresh.json] [--alert alert.md] [--check check.json]
     python scripts/lake.py catalog --out site [--check check.json] [--refresh refresh.json]
                                    [--data auto|snapshot|none|link:<url>] [--stage production]
@@ -21,9 +21,9 @@ description, lineage, freshness, a chart and a query box (DuckDB-WASM).
 `preview` prints a pull request's preview comment, and `drop` deletes the
 current stage's tables (a closed pull request's).
 
-Each command exits with the highest exit code of the `sverify` runs: 0
-proved, 1 not proved, 2 usage error, 3 unsupported or refused, 4 budget
-exceeded, 5 rows quarantined or a node held, 6 error.
+Each command exits with the worst exit code of the `sverify` runs: 0
+proved, 1 not proved, 2 usage error, 3 unsupported, 4 budget exceeded, 5 rows
+quarantined, 6 error, 7 refused (no route), 8 a node held (`worst` orders them).
 
 Only sverify's CLI (`sverify.cli.main`, in this process), its public
 `sverify.io` and delta-rs are used.
@@ -81,8 +81,12 @@ def sverify(*args: str) -> tuple[int, dict[str, Any]]:
     return code, doc
 
 
+#: The exit codes from the mildest to the worst: 7 (refused) ranks with 3, 8 (held) with 5.
+SEVERITY = [0, 1, 2, 3, 7, 4, 5, 8, 6]
+
+
 def worst(codes: list[int]) -> int:
-    return max(codes, default=0)
+    return max(codes, key=SEVERITY.index, default=0)
 
 
 def lake() -> str:
@@ -131,6 +135,8 @@ def comment(docs: list[dict[str, Any]], code: int) -> str:
         4: "budget exceeded",
         5: "quarantined",
         6: "error",
+        7: "refused",
+        8: "held",
     }
     lines = ["<!-- sverify-check -->", f"## Contract: {status.get(code, 'error')}", ""]
     for doc in docs:
@@ -215,7 +221,7 @@ def export_plans(file: str, out: Path) -> list[str]:
 def cmd_check(args: argparse.Namespace) -> int:
     docs, codes = [], []
     for file in pipeline_files():
-        code, doc = sverify("check", file)
+        code, doc = sverify("check", file, *(["--require-proved"] if args.require_proved else []))
         doc.setdefault("file", file)
         docs.append(doc)
         codes.append(code)
@@ -273,10 +279,10 @@ def alert(runs: list[dict[str, Any]]) -> str:
         ]
     lines += [
         "What to do:",
-        "- exit 1 (not proved) or 3 (unsupported or refused): the data or the pipeline "
+        "- exit 1 (not proved), 3 (unsupported) or 7 (refused): the data or the pipeline "
         "changed. Run `sverify check` on the file, or comment `@claude fix this` here.",
         "- exit 4 (budget): raise `SVERIFY_MEMORY_LIMIT` or the timeout.",
-        "- exit 5 (quarantined or held): rows broke a precondition and were set aside; "
+        "- exit 5 (quarantined) or 8 (held): rows broke a precondition and were set aside; "
         "the alert above names them.",
         "- exit 2 (usage) or 6 (error): read the log of the run.",
         "",
@@ -290,7 +296,9 @@ def alert(runs: list[dict[str, Any]]) -> str:
 def cmd_refresh(args: argparse.Namespace) -> int:
     if args.check:
         # The check first, in this process: the refresh reuses its proofs.
-        cmd_check(argparse.Namespace(out=args.check, comment=None, plans=None))
+        cmd_check(
+            argparse.Namespace(out=args.check, comment=None, plans=None, require_proved=False)
+        )
     runs, codes = [], []
     for p in config().get("pipeline", []):
         for node in p.get("refresh", []):
@@ -710,6 +718,11 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="command", required=True)
     c = sub.add_parser("check")
     c.add_argument("--out")
+    c.add_argument(
+        "--require-proved",
+        action="store_true",
+        help="fail a node whose postconditions are only checked on the data",
+    )
     c.add_argument("--comment")
     c.add_argument("--plans", help="write each proved node's Substrait plan here and read it back")
     c.set_defaults(run=cmd_check)

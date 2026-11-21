@@ -331,11 +331,11 @@ def print_profiles(
             skip = False
             if not ln.startswith("semantics:"):
                 print(f"      {ln}")
-        if rep.depends is not None:
+        if rep._depends is not None:
             print(
                 "      depends on: "
                 + (
-                    ", ".join(where(d.get("group"), d["option"]) for d in rep.depends)
+                    ", ".join(where(d.get("group"), d["option"]) for d in rep._depends)
                     or "no option"
                 )
             )
@@ -741,15 +741,15 @@ def main() -> int:
         from sverify import _plan_read, routes
 
         for rep in reports.values():
-            if not isinstance(rep, str) and rep.plan:
-                plan = json.loads(rep.plan)
+            if not isinstance(rep, str) and rep.internal_plan:
+                plan = json.loads(rep.internal_plan)
                 fns = {
                     _plan_read.base_name(n)
                     for n in _plan_read.function_names(plan).values()
                 }
                 deps = (
-                    rep.depends
-                    if rep.depends is not None
+                    rep._depends
+                    if rep._depends is not None
                     else routes.plan_options(plan)
                 )
                 plan_opts = [(d.get("group"), d["option"]) for d in deps]

@@ -72,9 +72,8 @@ TARGETS = [
         "any_value",
         "in",
         "dbt.any_value; replay 56",
-        False,
+        True,
         sql="SELECT name, any_value(qty) FROM t GROUP BY name",
-        issue=319,
     ),
     target(
         AREA,

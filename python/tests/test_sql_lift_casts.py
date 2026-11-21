@@ -253,3 +253,35 @@ def test_a_bare_double_cast_stays_refused():
     model does not state yet; the refusal names the casts that lift (#1655)."""
     with pytest.raises(Refused, match=r"round\(x\), floor\(x\) or ceil\(x\)"):
         lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, "duckdb")
+
+
+#: `cast/float_integer_cast.test` (DuckDB 2.0.0): DuckDB rounds a REAL to the
+#: nearest integer, and raises past the type's range after rounding (#2152).
+FLOAT_CASTS = [
+    *(
+        f"SELECT CAST(0.55::FLOAT AS {t}) AS x"
+        for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")
+    ),
+    *(f"SELECT CAST(1.5::FLOAT AS {t}) AS x" for t in ("TINYINT", "SMALLINT", "INTEGER", "BIGINT")),
+    "SELECT CAST(127.5::FLOAT AS TINYINT) AS x",
+    "SELECT CAST(127.6::FLOAT AS TINYINT) AS x",
+    "SELECT CAST(32767.5::FLOAT AS SMALLINT) AS x",
+]
+
+
+@pytest.mark.parametrize("query", FLOAT_CASTS)
+def test_a_float_cast_to_an_integer_is_refused_as_a_double_one(query):
+    """The model's cast truncates: 0 for `0.55::FLOAT`, where DuckDB gives 1.
+    A REAL is refused as a DOUBLE is, under both semantics (D54)."""
+    for semantics in ("duckdb", "reference"):
+        with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
+            lift(query, {}, semantics)
+
+
+def test_a_float_column_cast_to_an_integer_is_refused():
+    schema = {"t": ibis.schema({"x": "float32"})}
+    for semantics in ("duckdb", "reference"):
+        with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
+            lift("SELECT CAST(x AS INTEGER) AS i FROM t", schema, semantics)
+    # The hint's spelling lifts.
+    lift("SELECT CAST(round(CAST(x AS DOUBLE)) AS BIGINT) AS i FROM t", schema, "reference")

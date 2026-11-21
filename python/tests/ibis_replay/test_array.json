@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_array",
   "summary": {
-    "agree": 5,
+    "agree": 10,
     "disagree": 0,
-    "refused": 131,
+    "refused": 126,
     "unproved": 0,
     "skipped": 46
   },
@@ -129,13 +129,13 @@
     },
     "test_array_contains[duckdb-x-1]": {
       "outcome": "refused",
-      "construct": "run: Unsupported: lambdas have no SQL form yet (#94)",
-      "issue": 94
+      "construct": "run: Unsupported: lambdas have no SQL form yet (#348)",
+      "issue": 348
     },
     "test_array_contains[duckdb-y-a]": {
       "outcome": "refused",
-      "construct": "run: Unsupported: lambdas have no SQL form yet (#94)",
-      "issue": 94
+      "construct": "run: Unsupported: lambdas have no SQL form yet (#348)",
+      "issue": 348
     },
     "test_array_discovery[duckdb]": {
       "outcome": "skipped",
@@ -218,19 +218,13 @@
       "issue": 60
     },
     "test_array_index[duckdb-0]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_array_index[duckdb-1]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_array_index[duckdb-2]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_array_intersect[duckdb-no_nulls]": {
       "outcome": "skipped",
@@ -241,9 +235,7 @@
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_array_length[duckdb]": {
-      "outcome": "refused",
-      "construct": "run: WriterUnsupported: relations without columns have no SQL form; rewrite this step",
-      "issue": 1916
+      "outcome": "agree"
     },
     "test_array_literal_with_exprs[duckdb-array]": {
       "outcome": "refused",
@@ -738,9 +730,7 @@
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_table_unnest_with_keep_empty[duckdb]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: unnest(keep_empty=True) is not supported; rewrite it with a supported operation or column type",
-      "issue": 1917
+      "outcome": "agree"
     },
     "test_table_unnest_with_offset[duckdb]": {
       "outcome": "refused",

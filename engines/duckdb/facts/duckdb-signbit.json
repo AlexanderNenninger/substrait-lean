@@ -3,7 +3,7 @@
   "engine": "duckdb",
   "engine_version": "2.0.0",
   "title": "signbit reads the sign of -0.0 and of NaN",
-  "verdict": "recorded: signbit is a black box Lean evaluates away from zero and NaN",
+  "verdict": "recorded: signbit is a black box Lean evaluates away from NaN",
   "area": "doubles",
   "options": [
     "nan_kind",
@@ -22,7 +22,7 @@
     "The docs are silent on the type of the literal `-0.0`, a DECIMAL that loses the sign: a docs gap. No upstream test pins `signbit(-0.0)` of the literal; it may change between versions."
   ],
   "reference": [
-    "The model's double codes have one zero and one NaN (`core/Sverify/Core/Float.lean`), so they do not determine `signbit` there. `signbit` is a black box (#328) whose only law is `nonNull`; Lean's evaluator gives `c < 0` for every other code and refuses to print rows at zero and NaN."
+    "The model's double codes keep a zero's sign (D31: `-0.0` is its own code) and have one NaN (`core/Sverify/Core/Float.lean`), so they determine `signbit` everywhere but at NaN. `signbit` is a black box (#328) whose only law is `nonNull`; Lean's evaluator gives `c < 0` for every code but NaN's and refuses to print rows at NaN (#2154)."
   ],
   "status": "decided",
   "evidence": "probe",
