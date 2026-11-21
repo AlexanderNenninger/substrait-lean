@@ -1,0 +1,84 @@
+{
+  "probe": "spark_parser_depth",
+  "engine": "spark",
+  "version": "4.3.0",
+  "shape": "filter",
+  "rows": [
+    {
+      "levels": 10,
+      "to_sql_s": 0.01,
+      "sql_bytes": 9661,
+      "parse_and_analysis_s": 0.64,
+      "optimizer_s": 0.29,
+      "physical_planning_s": 0.01,
+      "prepare_s": 0.0,
+      "rows": 1500,
+      "execution_s": 0.4
+    },
+    {
+      "levels": 20,
+      "to_sql_s": 0.03,
+      "sql_bytes": 25986,
+      "parse_and_analysis_s": 0.2,
+      "optimizer_s": 0.44,
+      "physical_planning_s": 0.0,
+      "prepare_s": 0.0,
+      "rows": 1500,
+      "execution_s": 0.05
+    },
+    {
+      "levels": 70,
+      "to_sql_s": 0.21,
+      "sql_bytes": 230848,
+      "parse_and_analysis_s": 0.72,
+      "optimizer_s": 5.06,
+      "physical_planning_s": 0.0,
+      "prepare_s": 0.0,
+      "rows": 1500,
+      "execution_s": 0.04
+    },
+    {
+      "levels": 80,
+      "to_sql_s": 0.26,
+      "sql_bytes": 298563,
+      "parse_and_analysis_s": 0.59,
+      "optimizer_s": 5.05,
+      "physical_planning_s": 0.0,
+      "prepare_s": 0.0,
+      "rows": 1500,
+      "execution_s": 0.03
+    }
+  ],
+  "order": "one process, levels 10, 20, 70, 80 in turn: the parser's code is warm when 80 comes",
+  "cold": [
+    {
+      "process": "80 alone",
+      "levels": 80,
+      "sql_bytes": 298563,
+      "outcome": "refused: FAILED_TO_PARSE_TOO_COMPLEX (SQLSTATE 54001)"
+    },
+    {
+      "process": "80 alone",
+      "levels": 80,
+      "sql_bytes": 298563,
+      "outcome": "refused: FAILED_TO_PARSE_TOO_COMPLEX (SQLSTATE 54001)"
+    },
+    {
+      "process": "70 alone",
+      "levels": 70,
+      "sql_bytes": 230848,
+      "outcome": "parsed",
+      "parse_and_analysis_s": 1.69,
+      "optimizer_s": 12.65
+    },
+    {
+      "process": "80, 70, 20, 10 in turn",
+      "levels": 80,
+      "sql_bytes": 298563,
+      "outcome": "parsed",
+      "parse_and_analysis_s": 1.95,
+      "optimizer_s": 11.7
+    }
+  ],
+  "machine": "homelab, 12 cores, driver heap 1 GB (Spark's default) in the first run of rows, nice 10 under other jobs; times vary 2x with load"
+}
