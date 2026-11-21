@@ -212,6 +212,30 @@ def test_refresh_on_spark(spark, tmp_path) -> None:
 
 
 @pytest.mark.backend("spark")
+def test_a_spark_node_keeps_its_view_in_the_spark_store(spark, tmp_path) -> None:
+    """A node refreshed on Spark keeps its view's state in Spark's store from
+    the first state on, not in DuckDB's, whose connection the stage reads its
+    sources through (#1881)."""
+    from sverify._scan import Resident
+    from sverify_spark.store import SparkStore
+
+    @sv.transform(requires={"t": [_.amount >= 0, _.amount < 1_000_000_000]})
+    def totals(t):
+        return t.group_by("customer").aggregate(total=t.amount.sum())
+
+    orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7), (3, "bob", 2)])
+    node = totals(paid(orders))
+    node.refresh(engine="spark")
+    view = node._view()
+    assert isinstance(view.store, SparkStore)
+    assert not isinstance(view.state, Resident)
+    assert sorted((r["customer"], r["total"]) for r in node.to_arrow().to_pylist()) == [
+        ("ada", 12),
+        ("bob", 2),
+    ]
+
+
+@pytest.mark.backend("spark")
 def test_a_run_over_the_same_table_does_not_send_it_again(spark, monkeypatch) -> None:
     from sverify_spark import engine as spark_engine
 

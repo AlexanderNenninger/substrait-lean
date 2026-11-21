@@ -30,6 +30,7 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
         "install both from the same release (`pip install -U sverify sverify-polars`)"
     )
 
+from sverify._unsupported import MIN_MOD_GUARD
 from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_polars.store import PolarsStore
 
@@ -155,6 +156,8 @@ PLUGIN = ProfilePlugin(
     guard_free_theorem="Rel.polars_sound",
     fallbacks=_fallbacks,
     functions=frozenset({"array_agg"}),
+    # Only the integer `%` guard (#2058); the date and RANGE guards stay refused.
+    guards=(MIN_MOD_GUARD,),
     shim_text={
         "int_div_trunc": "integer division rewritten to truncate",
         "int_mod_trunc": "integer remainder rewritten to truncate",

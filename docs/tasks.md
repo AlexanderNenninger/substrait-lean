@@ -563,7 +563,7 @@ assert report.verdict == sv.Verdict.PROVED
 Lean gives each order at most one version when the join condition equates the
 `by` columns, tests `valid_from <= x` and `x < valid_to` (or `valid_to IS NULL OR
 x < valid_to`) for one expression `x` of the order's columns; the join keeps the
-orders' keys (`Rel.keys`). A closed end (`x <= valid_to`) matches two versions at a
+orders' keys. A closed end (`x <= valid_to`) matches two versions at a
 boundary and has no rule. `dbt_utils.mutually_exclusive_ranges` is the same test
 in dbt.
 

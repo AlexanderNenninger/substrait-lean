@@ -1,0 +1,472 @@
+"""The engine release canary (#2053, ruling 198, D70, conditions K1 to K6).
+
+Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
+API. `.github/workflows/engine-canary.yml` runs it; it is no required check and
+no part of `qa` (K4), and it files nothing upstream (K6).
+
+    python -m sverify_dev.canary poll [--engine E --version V]
+    python -m sverify_dev.canary files|commands --engine E
+    python -m sverify_dev.canary drift --engine E --old FILE --new FILE
+    python -m sverify_dev.canary collect --engine E --version V --drift FILE... [--suite-exit N ...]
+    python -m sverify_dev.canary report --engine E --version V --results FILE [--post]
+
+`poll` (K1) compares each engine's latest PyPI release with the versions its
+profile was probed at (`version` and `alsoProbed` of `engines/<engine>/Sverify/…/Tables.lean`)
+and prints the matrix of engines with a release nobody has probed. It stops in
+seconds when nothing is new, and skips a version that already has its issue. By hand,
+`--engine` and `--version` name the one to run.
+
+The heavy job (K2) probes the ledger, probes every fact, and runs the engine's
+suite and the `outside-repo` set unpinned. `drift` compares a probe file with its
+recording and classes each difference (K3): an outcome that changes from a raise to
+a value (the engine raises less) or from a value to a raise (it raises more) is
+error-side, since no guarantee rests on an engine raising (D70), and any other
+change of a recorded value is value-side. A value-side drift inside the probed range
+is a bug. `report` writes one issue per engine version, updated in place.
+
+Snowflake behaviour is recorded privately; its canary, if any, runs in the private
+repository, and nothing here names it (K5).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import urllib.request
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+REPO = Path(__file__).resolve().parents[3]
+
+
+@dataclass(frozen=True)
+class Spec:
+    """What the canary knows of one engine."""
+
+    package: str
+    """Its PyPI package."""
+    tables: str
+    """The module of its profile table (`Profile.<engine>.table`)."""
+    probes: tuple[tuple[str, tuple[str, ...]], ...]
+    """Each probe file the heavy job compares with its recording, with the command (module and
+    arguments) that regenerates it, in order."""
+
+
+#: The engines the public canary covers, one table (K5: no Snowflake).
+ENGINES: dict[str, Spec] = {
+    "duckdb": Spec(
+        "duckdb",
+        "engines/duckdb/Sverify/DuckDB/Tables.lean",
+        (("engines/duckdb/replay/probes.json", ("sverify_dev.probe", "--write")),),
+    ),
+    "polars": Spec(
+        "polars",
+        "engines/polars/Sverify/Polars/Tables.lean",
+        (
+            ("engines/polars/probes/probes.json", ("sverify_dev.probe_polars", "--write")),
+            # The streaming engine against the in-memory one, without Lean.
+            (
+                "engines/polars/probes/probes-streaming.json",
+                ("sverify_dev.probe_polars", "--diff", "--write"),
+            ),
+        ),
+    ),
+    "spark": Spec(
+        "pyspark",
+        "engines/spark/Sverify/Spark/Tables.lean",
+        (("engines/spark/probes/probes.json", ("sverify_dev.probe_spark", "--write")),),
+    ),
+}
+
+Json = dict[str, Any]
+
+
+# --- the probed versions (K1) -------------------------------------------------------------
+
+
+def probed(engine: str, root: Path = REPO) -> list[str]:
+    """The versions `engine`'s facts were probed at: the table's `version`, then its
+    `alsoProbed` (the checker's `profiles.<engine>.versions`)."""
+    text = (root / ENGINES[engine].tables).read_text()
+    version = re.search(r'^\s*version := "([^"]+)"', text, re.M)
+    if version is None:
+        raise ValueError(f"no `version :=` in {ENGINES[engine].tables}")
+    also = re.search(r"^\s*alsoProbed := \[([^\]]*)\]", text, re.M)
+    return [version.group(1), *(re.findall(r'"([^"]+)"', also.group(1)) if also else [])]
+
+
+def _key(version: str) -> tuple[int, ...]:
+    return tuple(int(p) for p in version.split("."))
+
+
+def is_release(version: str) -> bool:
+    """A final release (`2.0.1`), not a pre-release or a development build."""
+    return re.fullmatch(r"\d+(\.\d+)*", version) is not None
+
+
+def pypi_latest(package: str) -> str:
+    """The latest final release of `package` on PyPI."""
+    url = f"https://pypi.org/pypi/{package}/json"
+    with urllib.request.urlopen(url, timeout=30) as r:  # noqa: S310 - a fixed https URL
+        info = json.load(r)
+    releases = [v for v, files in info["releases"].items() if is_release(v) and files]
+    return max(releases, key=_key)
+
+
+def new_releases(
+    latest: Callable[[str], str] = pypi_latest, root: Path = REPO
+) -> list[dict[str, str]]:
+    """The engines whose latest release is newer than every probed version."""
+    out = []
+    for engine, spec in ENGINES.items():
+        have = probed(engine, root)
+        version = latest(spec.package)
+        if version not in have and _key(version) > max(map(_key, have)):
+            out.append({"engine": engine, "version": version})
+    return out
+
+
+def title(engine: str, version: str) -> str:
+    return f"Engine release canary: {engine} {version}"
+
+
+def issue_number(engine: str, version: str) -> int | None:
+    """The issue of this engine version (open or closed), if the canary filed one."""
+    search = f'"{title(engine, version)}" in:title'
+    cmd = ["gh", "issue", "list", "--state", "all", "--search", search, "--json", "number,title"]
+    out = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
+    for i in json.loads(out):
+        if i["title"] == title(engine, version):
+            return i["number"]
+    return None
+
+
+# --- drift (K2, K3) -----------------------------------------------------------------------
+
+#: The fields that name a probe: a row of the probe file is the same row when they agree.
+IDENTITY = ("settings", "construct", "function", "option", "sql", "setup", "name", "probe", "id")
+#: The fields whose change is a drift; the examples of a probe say why, and are not compared.
+VALUES = (
+    "matching", "observed", "verdict", "result", "outcome",
+    "differ", "in-memory", "streaming", "examples",
+)  # fmt: skip
+
+
+def _is_error(outcome: Any) -> bool:
+    return isinstance(outcome, str) and outcome.lstrip().lower().startswith("error")
+
+
+def _raises(value: Any) -> bool:
+    """Does the recorded value say the engine raises? An outcome that starts with `error`, or a
+    `matching` list that names `ERROR` (an option row whose engine raises)."""
+    if isinstance(value, list):
+        return "ERROR" in value
+    return _is_error(value)
+
+
+def classify(old: Any, new: Any) -> str:
+    """`error-side` where a raise became a value or a value a raise (D70: no guarantee rests on
+    an engine raising); `value-side` where one value became another."""
+    return "error-side" if _raises(old) != _raises(new) else "value-side"
+
+
+def _outcomes(row: Json | None) -> set[tuple[str, str]]:
+    """The engine outcomes a probe row's examples record, over its candidates: `(row, outcome)`."""
+    if row is None:
+        return set()
+    found = set()
+    for cand in (row.get("candidates") or {}).values():
+        for ex in cand.get("examples", []):
+            found |= {
+                (str(ex.get("row")), str(v)) for k, v in ex.items() if k not in ("row", "lean")
+            }
+    return found
+
+
+def _classify_row(f: str, old: Json, new: Json) -> str:
+    """The class of a changed field of a probe row. A `matching` list that moves without `ERROR`
+    changing sides is error-side too when every example outcome that differs is a raise: the
+    probe row of `MIN % -1` moves from no match to `NULL` where DuckDB stopped raising."""
+    cls = classify(old.get(f), new.get(f))
+    if cls == "error-side" or f != "matching":
+        return cls
+    moved = _outcomes(old) ^ _outcomes(new)
+    return "error-side" if moved and all(_is_error(o) for _, o in moved) else cls
+
+
+def _rows(doc: Any) -> dict[str, Json]:
+    rows = doc.get("probes", []) if isinstance(doc, dict) else doc
+    out: dict[str, Json] = {}
+    for r in rows:
+        ident = json.dumps({k: r[k] for k in IDENTITY if k in r}, sort_keys=True)
+        out[ident] = r
+    return out
+
+
+def drift(old: Any, new: Any) -> list[Json]:
+    """The rows of `new` whose values differ from `old`'s, each with its class."""
+    before, after = _rows(old), _rows(new)
+    found: list[Json] = []
+    for ident, r in after.items():
+        p = before.get(ident)
+        what = json.loads(ident)
+        if p is None:
+            found.append(
+                {
+                    "row": what,
+                    "old": None,
+                    "new": "a row the recording lacks",
+                    "class": "value-side",
+                }
+            )
+            continue
+        for f in VALUES:
+            a, b = p.get(f), r.get(f)
+            if a == b:
+                continue
+            if isinstance(a, dict) and isinstance(b, dict):
+                # Spark records an outcome per setting (`ansi=true`, `ansi=false`).
+                for k in sorted(a.keys() | b.keys()):
+                    if a.get(k) != b.get(k):
+                        cls = classify(a.get(k), b.get(k))
+                        found.append(
+                            {
+                                "row": what,
+                                "field": f"{f}[{k}]",
+                                "old": a.get(k),
+                                "new": b.get(k),
+                                "class": cls,
+                            }
+                        )
+                continue
+            cls = _classify_row(f, p, r) if f != "observed" else classify(a, b)
+            found.append({"row": what, "field": f, "old": a, "new": b, "class": cls})
+    for ident in before.keys() - after.keys():
+        gone = "a row the probe no longer has"
+        found.append(
+            {"row": json.loads(ident), "old": "recorded", "new": gone, "class": "value-side"}
+        )
+    return found
+
+
+# --- ledger (K2) --------------------------------------------------------------------------
+
+
+def ledger(engine: str, version: str, root: Path = REPO) -> list[Json]:
+    """The bugs of the engine whose fix is named for this release (`fixed_in`): a patch release
+    exists to fix bugs, so a fixed `DD-n` is the likeliest drift, and the ledger wants the
+    release the fix landed in."""
+    out = []
+    for path in sorted((root / "upstream" / "bugs").glob("*.json")):
+        bug = json.loads(path.read_text())
+        if bug.get("project") != engine:
+            continue
+        fixed = str(bug.get("fixed_in", ""))
+        if re.match(rf"{re.escape(version)}(\s|$)", fixed):
+            out.append({"id": bug["id"], "status": bug.get("status"), "fixed_in": fixed})
+    return out
+
+
+# --- the issue (K3) -----------------------------------------------------------------------
+
+
+def _cell(x: Any) -> str:
+    text = json.dumps(x, ensure_ascii=False) if not isinstance(x, str) else x
+    return text.replace("|", "\\|").replace("\n", " ")[:160]
+
+
+def body(engine: str, version: str, results: Json) -> str:
+    """The issue's text: one section per step, each drift classed, and the verdict."""
+    have = results.get("probed") or probed(engine)
+    drifts: list[Json] = results.get("drift", [])
+    value = [d for d in drifts if d["class"] == "value-side"]
+    lines = [
+        f"{engine} {version} is not among the probed versions ({', '.join(have)}). "
+        "The canary ran the ledger, the fact probes, the engine's suite and the `outside-repo` "
+        f"set unpinned ([run]({results.get('run_url', '')})).",
+        "",
+        "## Ledger",
+        "",
+    ]
+    bugs = results.get("ledger", [])
+    lines += [f"- {b['id']} ({b['status']}): fixed in {b['fixed_in']}" for b in bugs] or [
+        "No bug of the ledger names this release."
+    ]
+    lines += ["", "## Fact probes", ""]
+    if results.get("probes", {}).get("exit") not in (0, None):
+        lines += [
+            f"The probe step failed (exit {results['probes']['exit']}): no drift was compared.",
+            "",
+        ]
+    if drifts:
+        lines += ["| row | field | recorded | now | class |", "|---|---|---|---|---|"]
+        lines += [
+            f"| {_cell(d['row'])} | {d.get('field', '')} | {_cell(d['old'])} | "
+            f"{_cell(d['new'])} | {d['class']} |"
+            for d in drifts
+        ]
+    else:
+        lines += ["No probe differs from its recording."]
+    for step, name in (("suite", "The engine's suite"), ("outside", "The `outside-repo` set")):
+        r = results.get(step, {})
+        lines += ["", f"## {name}", "", f"exit {r.get('exit', 'not run')}"]
+        if r.get("summary"):
+            lines += ["", "```", r["summary"], "```"]
+    steps = ("probes", "suite", "outside")
+    failed = [s for s in steps if results.get(s, {}).get("exit") not in (0, None)]
+    lines += ["", "## Verdict", ""]
+    if value or failed:
+        lines += [
+            f"Value-side drift: {len(value)} probe row(s); failing step(s): "
+            f"{', '.join(failed) or 'none'}. {engine} {version} is inside the package's range "
+            "(D70), so users run on it today with a warning: this is a bug (K3). Each row needs a "
+            "lowering that reads the engine only where the versions agree, and its input added "
+            "to the fact's probe (the ruling's K2 amendment)."
+        ]
+    else:
+        lines += [
+            f"No value-side drift. Adding {version} to the probed versions is one line: "
+            f'`alsoProbed := [..., "{version}"]` in `{ENGINES[engine].tables}`, with '
+            "`uv.lock` moved when it is the pin."
+        ]
+    lines += ["", "Raises that appear or disappear are error-side (D70)."]
+    return "\n".join(lines) + "\n"
+
+
+def post(engine: str, version: str, text: str) -> None:
+    """Create the engine version's issue, or edit it in place."""
+    n = issue_number(engine, version)
+    if n is None:
+        subprocess.run(
+            [
+                "gh",
+                "issue",
+                "create",
+                "--title",
+                title(engine, version),
+                "--body",
+                text,
+                "--label",
+                "engines",
+            ],
+            check=True,
+        )
+    else:
+        subprocess.run(["gh", "issue", "edit", str(n), "--body", text], check=True)
+
+
+def _tail(path: Path | None, lines: int = 20) -> str:
+    if path is None or not path.is_file():
+        return ""
+    return "\n".join(path.read_text(errors="replace").splitlines()[-lines:])
+
+
+def collect(  # noqa: PLR0913 - one argument per step of the heavy job
+    engine: str,
+    version: str,
+    drifts: Iterable[Path],
+    probe_exit: int | None,
+    suite: tuple[int | None, Path | None],
+    outside: tuple[int | None, Path | None],
+    run_url: str = "",
+    root: Path = REPO,
+) -> Json:
+    """The heavy job's results, as `body` reads them."""
+    found: list[Json] = []
+    for f in drifts:
+        found += json.loads(f.read_text())
+    return {
+        "probed": probed(engine, root),
+        "run_url": run_url,
+        "ledger": ledger(engine, version, root),
+        "drift": found,
+        "probes": {"exit": probe_exit},
+        "suite": {"exit": suite[0], "summary": _tail(suite[1])},
+        "outside": {"exit": outside[0], "summary": _tail(outside[1])},
+    }
+
+
+# --- command line -------------------------------------------------------------------------
+
+
+def _code(text: str) -> int | None:
+    """An exit code from a step output: empty when the step never ran."""
+    return int(text) if text.strip() else None
+
+
+def _matrix(include: Iterable[dict[str, str]]) -> str:
+    return json.dumps({"include": list(include)}, separators=(",", ":"))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("poll", help="the engines with a release nobody has probed")
+    p.add_argument("--engine", choices=sorted(ENGINES))
+    p.add_argument("--version")
+    p.add_argument("--no-issues", action="store_true", help="do not look for an existing issue")
+    d = sub.add_parser("drift", help="the rows of a probe file that differ from its recording")
+    d.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    d.add_argument("--old", type=Path, required=True)
+    d.add_argument("--new", type=Path, required=True)
+    f = sub.add_parser("files", help="the probe files of an engine, one per line")
+    f.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    m = sub.add_parser("commands", help="the commands that regenerate them, one per line")
+    m.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    c = sub.add_parser("collect", help="the heavy job's results, as one JSON file")
+    c.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    c.add_argument("--version", required=True)
+    c.add_argument("--drift", type=Path, action="append", default=[])
+    c.add_argument("--probe-exit", type=_code)
+    c.add_argument("--suite-exit", type=_code)
+    c.add_argument("--suite-log", type=Path)
+    c.add_argument("--outside-exit", type=_code)
+    c.add_argument("--outside-log", type=Path)
+    c.add_argument("--run-url", default="")
+    r = sub.add_parser("report", help="the issue of one engine version")
+    r.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    r.add_argument("--version", required=True)
+    r.add_argument("--results", type=Path, required=True)
+    r.add_argument("--post", action="store_true")
+    args = parser.parse_args(argv)
+    if args.cmd == "poll":
+        if args.engine or args.version:
+            if not (args.engine and args.version):
+                parser.error("--engine and --version go together")
+            todo = [{"engine": args.engine, "version": args.version}]
+        else:
+            todo = new_releases()
+            if not args.no_issues:
+                todo = [t for t in todo if issue_number(t["engine"], t["version"]) is None]
+        print(_matrix(todo))
+    elif args.cmd == "files":
+        print("\n".join(f for f, _ in ENGINES[args.engine].probes))
+    elif args.cmd == "commands":
+        print("\n".join(" ".join(c) for _, c in ENGINES[args.engine].probes))
+    elif args.cmd == "drift":
+        found = drift(json.loads(args.old.read_text()), json.loads(args.new.read_text()))
+        print(json.dumps(found, indent=1))
+    elif args.cmd == "collect":
+        suite = (args.suite_exit, args.suite_log)
+        outside = (args.outside_exit, args.outside_log)
+        out = collect(
+            args.engine, args.version, args.drift, args.probe_exit, suite, outside, args.run_url
+        )
+        print(json.dumps(out, indent=1))
+    else:
+        results = json.loads(args.results.read_text())
+        text = body(args.engine, args.version, results)
+        if args.post:
+            post(args.engine, args.version, text)
+        else:
+            sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -19,6 +19,9 @@ pytestmark = pytest.mark.backend("duckdb")
 
 #: Queries of the subset, each through oracles A and C.
 QUERIES = [
+    # #1991: strftime with a constant format, of a timestamp and of a date.
+    "SELECT id, strftime(placed, '%Y-%m') AS ym, strftime(placed, '%Y-%m-%d %H:%M:%S') AS t,"
+    " strftime(day, '%Y/%m/%d') AS d, strftime(placed, '%j %%') AS j FROM orders",
     "SELECT id FROM orders WHERE day >= DATE '2024-01-01' AND day < '2024-02-01'",
     "SELECT id, date_trunc('day', placed) AS d, date_trunc('week', placed) AS w,"
     " date_trunc('quarter', placed) AS q, date_trunc('hour', placed) AS h FROM orders",
@@ -94,6 +97,10 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT make_date(2024, 2, 30) AS d", "DuckDB raises"),
         ("SELECT make_date(2024, price, 1) AS d FROM orders", "make_date of a float64"),
         ("SELECT placed + INTERVAL 'a while' FROM orders", "integers, each with a unit"),
+        # #1991: DuckDB rejects %F and %T; the model's other directives are not read.
+        ("SELECT strftime(placed, '%F') FROM orders", "%F is not supported"),
+        ("SELECT strftime(placed, '%A') FROM orders", "%A is not supported"),
+        ("SELECT strftime(placed, customer) FROM orders", "constant format"),
         # `ago` negates; SQLGlot drops it from one unit (#626, SG-8).
         ("SELECT placed + INTERVAL '1 day ago' AS p FROM orders", "ago"),
         ("SELECT placed + INTERVAL '-3 microseconds ago' AS p FROM orders", "ago"),

@@ -57,7 +57,7 @@ def test_no_lean_parser_refusal_cites_datafusion():
     text = (ROOT / "frontend" / "Sverify" / "Frontend" / "Parse.lean").read_text()
     # A `throw` and the string literal after it, which may continue over
     # lines with a trailing backslash.
-    throws = re.findall(r'throw s?!?"((?:[^"\\]|\\.)*)"', text)
+    throws = re.findall(r'throw s?!?"((?:[^"\\]|\\.)*)"', text, re.S)
     assert throws
     bad = [t for t in throws if "datafusion" in t.lower()]
     assert not bad, bad
