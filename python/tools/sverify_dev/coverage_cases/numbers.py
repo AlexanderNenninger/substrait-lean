@@ -25,6 +25,8 @@ CASES: list[Case] = [
     case("numbers", "clip", V, lambda: t.select(x=t.qty.clip(0, 10))),
     case("numbers", "cast int → double", V, lambda: t.select(x=t.qty.cast("float64"))),
     case("numbers", "cast int → string", V, lambda: t.select(x=t.qty.cast("string"))),
+    case("numbers", "cast boolean → string", V, lambda: t.select(x=t.flag.cast("string"))),
+    case("numbers", "cast date → string", V, lambda: t.select(x=t.ts.date().cast("string"))),
     case("numbers", "cast double → int", V, lambda: t.select(x=t.amount.cast("int64"))),
 ]
 
