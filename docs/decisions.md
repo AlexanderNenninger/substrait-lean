@@ -2044,6 +2044,43 @@ sverify reached only by rewriting the plan. The fold also dropped `x`, and with
 it an error inside `x`, and under `semantics="duckdb"` it claimed 1 where
 DuckDB's own SQL gives `NULL` ([D54](#d54-the-lift-refines-the-dialect)).
 
+### D72. Decimal text
+
+Decided 2026-11-21 (theory advisor, rulings 244 and 245; [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346)).
+
+`CAST(x AS VARCHAR)` of a `DECIMAL(p, s)` is the text of its exact value: `-` for a
+negative value, the integer part with at least one digit, then `.` and exactly `s`
+digits, none for `s = 0` (`10.50`, `-0.05`, `0.00`, `12`, `0.500`). It is total: no
+rounding, no overflow. `UnFn.dtext` computes it on the unscaled integer and the
+scale (`decText`), and `UnFn.dtextFull` is the same function for a `DECIMAL(p, p)`
+(`UnFn.apply_dtextFull`). Constants fold through the same definition, except a
+`DECIMAL(p, p)`, which stays a call.
+
+DuckDB prints a `DECIMAL(p, p)` without its integer part (`.500`); Polars and Spark
+print `0.500`
+([duckdb-cast-decimal-timestamp-text](../engines/duckdb/facts/duckdb-cast-decimal-timestamp-text.json),
+[polars-cast-decimal-timestamp-text](../engines/polars/facts/polars-cast-decimal-timestamp-text.json),
+[spark-cast-string](../engines/spark/facts/spark-cast-string.json)). The reference takes the common text and adds no option.
+DuckDB's only lowering of `dtextFull` is the template that widens the decimal by one digit of
+precision first (`dwiden`, `Lowering.dtextFullTemplate`); no plan puts a
+`DECIMAL(p, p)` into DuckDB's own text cast, so `Profile.duckdb` states nothing false. At
+`DECIMAL(38, 38)` there is no wider type: `verify` refuses the plan on DuckDB, naming the cast
+to `DECIMAL(38, 37)`. The SQL lift refuses `CAST(DECIMAL(p, p) AS VARCHAR)` under both
+semantics, naming the cast to `DECIMAL(p + 1, p)`
+([D54](#d54-the-lift-refines-the-dialect)). A `decimal_text` option waits until someone needs
+`semantics="duckdb"` to state DuckDB's native text for `DECIMAL(p, p)` (After 1.0).
+
+Timestamp text stays refused at 1.0: DuckDB and Spark trim trailing zeros of the fraction and
+Polars prints six digits, and the shim's value moves with the nanosecond work of
+[D61](#d61-timestamp-precisions). The refusal names `strftime` with an explicit format.
+
+Recomputes sinks: no
+
+Why: every tier-1 engine prints the scale's digits, so a decimal's text is a reference value
+and an exact one: composing it from integer parts overflows past 18 digits and loses the sign
+of `-0.05`. A refusal at plan read would put DuckDB's one quirk into the reference for every
+engine.
+
 ### D61. Timestamp precisions
 
 Decided 2026-11-19 (theory advisor, ruling 142; #323).

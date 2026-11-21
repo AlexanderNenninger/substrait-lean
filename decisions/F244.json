@@ -1,0 +1,15 @@
+{
+  "id": "F244",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "#346: decimal text is one new core function (dtext) on the decimal's exact form; DuckDB's lowering widens a DECIMAL(p, p) first; timestamp text stays refused at 1.0 (After 1.0, with #323) and its refusal names strftime with an explicit format.",
+  "issues": [
+    346
+  ],
+  "source": "fable-ruling-244-346-decimal-timestamp-text.md",
+  "amended_by": [
+    "F245"
+  ]
+}

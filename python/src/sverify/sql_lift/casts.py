@@ -153,6 +153,17 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
+    if t.is_string() and a.type.is_decimal() and a.type.precision == a.type.scale:
+        # DuckDB prints a DECIMAL(p, p) without its integer part (`.500`), the reference with
+        # it (`0.500`): neither reading is the SQL's, so the lift refuses it (D72, ruling 245).
+        p, s = a.type.precision, a.type.scale
+        wide = f"DECIMAL({p + 1}, {s})" if p < 38 else f"DECIMAL(38, {s - 1})"
+        raise SqlUnsupported(
+            f"{node.sql(DIALECT)} is a DECIMAL({p}, {s}) as text: DuckDB prints it without its "
+            f"integer part (.500) and the reference with it (0.500)",
+            hint=f"cast it to {wide} first",
+            construct="CAST",
+        )
     # DuckDB casts to and from a timestamp with a time zone in the session's zone (D53).
     in_tz = a.type.is_timestamp() and a.type.timezone is not None
     to_tz = t.is_timestamp() and t.timezone is not None

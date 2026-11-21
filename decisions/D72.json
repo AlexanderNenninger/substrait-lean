@@ -1,0 +1,13 @@
+{
+  "id": "D72",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Decimal text: a DECIMAL(p, s) cast to VARCHAR is `-` for a negative value, an integer part of at least one digit, then `.` and exactly s digits; the reference prints a DECIMAL(p, p) as `0.500`, DuckDB's own cast as `.500`, which DuckDB's lowering widens around and the lift refuses.",
+  "issues": [
+    346
+  ],
+  "source": "docs/decisions.md",
+  "note": "Rulings 244 and 245."
+}

@@ -374,6 +374,9 @@ construct or lists it:
 - A cast of a decimal to an integer rounds half away from zero on DuckDB. The
   lift reads it, under both semantics, as the rescale to scale 0 (which rounds
   half away from zero) and the exact cast (#322).
+- `CAST(DECIMAL(p, p) AS VARCHAR)`: DuckDB prints `.500` and the reference `0.500`, so the lift
+  refuses it, under both semantics. The message names the cast to `DECIMAL(p + 1, p)` first
+  ([D72](decisions.md#d72-decimal-text), ruling 245).
 - `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
   is NULL here and NaN on DuckDB. `Report.dialect_differences` lists it.
 - `list_contains_null_needle`: `list_contains([], NULL)` is NULL here and FALSE
