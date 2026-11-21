@@ -14,8 +14,7 @@ more. A test it proves can be left out of `dbt build`: it rests on
 under `semantics="duckdb"` ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proofs.md)).
 
 It reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
-other engines, which don't run every function DuckDB does yet
-([the issue that tracks them](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+other engines, which don't run every function DuckDB does yet.
 
 ## Installation
 
