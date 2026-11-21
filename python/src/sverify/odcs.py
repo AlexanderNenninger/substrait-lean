@@ -231,7 +231,7 @@ def export(
     flags: dict[str, dict[str, str]] = {c: {} for c, _t in schema.items()}
     rules: dict[str | None, list[dict[str, Any]]] = {c: [] for c, _t in schema.items()}
     rules[None] = []
-    relationships: dict[str, list[dict[str, Any]]] = {}
+    relationships: dict[str | None, list[dict[str, Any]]] = {}
     uniques: list[tuple[tuple[str, ...], str]] = []
     rank = {"proved": 2, "checked": 1, "declared": 0}
 
@@ -277,10 +277,18 @@ def export(
             )
             continue
         if isinstance(cond, References):
-            relationships.setdefault(cond.col, []).append(
-                {"type": "foreignKey", "to": f"{cond.table}.{cond.other}"}
-            )
-            flag(cond.col, "relationship", st)
+            to = [f"{cond.table}.{o}" for o in cond.others]
+            if len(cond.cols) == 1:
+                relationships.setdefault(cond.cols[0], []).append(
+                    {"type": "foreignKey", "to": to[0]}
+                )
+            else:  # a composite key is the object's (ODCS's `from` and `to` lists)
+                src = [f"{node.name}.{c}" for c in cond.cols]
+                relationships.setdefault(None, []).append(
+                    {"type": "foreignKey", "from": src, "to": to}
+                )
+            for c in cond.cols:
+                flag(c, "relationship", st)
             continue
         try:
             sql = condition_sql(cond, schema)
@@ -389,6 +397,8 @@ def export(
         obj["physicalName"] = public_uri(str(location))
     if description:
         obj["description"] = description
+    if None in relationships:
+        obj["relationships"] = relationships[None]
     if rules[None]:
         obj["quality"] = rules[None]
 
@@ -832,8 +842,9 @@ class _Reader:
             self.skip(column, rule, f"metric {metric!r} sverify does not read")
 
     def relationship(self, rel: Any) -> None:
-        """A relationship on the object: a foreign key from one of its columns
-        (`from` and `to` as one reference each, or lists of one)."""
+        """A relationship on the object: a foreign key from its columns to the
+        columns of one table (`from` and `to` as one reference each, or lists
+        of the same length)."""
         from sverify.contracts import references
 
         def refs(v: Any) -> list[tuple[str, str] | None]:
@@ -845,12 +856,17 @@ class _Reader:
         src, dst = refs(rel.get("from")), refs(rel.get("to"))
         if None in src or None in dst or len(src) != len(dst):
             self.skip(None, rel, _UNDEFINED)
-        elif len(src) > 1:
-            self.skip(None, rel, "a composite foreign key: references() takes one column")
-        elif src[0][0] != self.table:  # type: ignore[index]
+        elif {t for t, _ in src} != {self.table}:  # type: ignore[misc]
             self.skip(None, rel, "a foreign key from another table")
+        elif len({t for t, _ in dst}) > 1:  # type: ignore[misc]
+            self.skip(None, rel, "a foreign key to the columns of several tables")
         else:
-            self.out.append(references(src[0][1], to=dst[0]))  # type: ignore[index, arg-type]
+            cols = [c for _, c in src]  # type: ignore[misc]
+            to = (dst[0][0], [c for _, c in dst])  # type: ignore[index, misc]
+            try:
+                self.out.append(references(*cols, to=to))
+            except ValueError as e:  # a column repeated
+                self.skip(None, rel, str(e))
 
     def rule(self, column: str | None, rule: Any) -> None:
         if not isinstance(rule, Mapping):
