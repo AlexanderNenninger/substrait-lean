@@ -209,6 +209,9 @@ WITNESSES: dict[str, Callable[[], str]] = {
     "integer division by a column": lambda: _sql_plan("SELECT qty // id AS x FROM t", "reference"),
     "integer modulo by a column": lambda: _plan(t.select(x=t.qty % t.id)),
     "date from unbounded columns": lambda: _plan(t.select(x=ibis.date(t.id, t.qty, t.qty))),
+    "text of a date from unbounded columns": lambda: _plan(
+        t.select(x=ibis.date(t.id, t.qty, t.qty).cast("string"))
+    ),
     "substring at an offset from a column, in Ibis": lambda: _plan(
         t.select(x=t.name.substr(t.qty))
     ),

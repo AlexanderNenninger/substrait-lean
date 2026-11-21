@@ -431,3 +431,144 @@ def test_a_text_fact_travels_and_is_checked_on_read_back() -> None:
     put_table(con, "s", pa.table({"s": ["abc", "äbc"]}))
     with pytest.raises(PreconditionError, match="refused before the run"):
         back.run(con, "duckdb")
+
+
+# -- ST-4: the ordering comparisons of doubles (#741) ----------------------------------
+
+ORDERINGS = {
+    "gt": orders.filter(orders.x > 1.0).select("id"),
+    "gte": orders.filter(orders.x >= 1.0).select("id"),
+    "lt": orders.filter(orders.x < orders.amount).select("id"),
+    "lte": orders.filter(orders.x <= 1.0).select("id"),
+    "between": orders.filter(orders.x.between(0.0, 2.0)).select("id"),
+}
+
+
+@pytest.mark.parametrize("case", list(ORDERINGS))
+def test_an_ordering_comparison_of_doubles_exports(case: str) -> None:
+    report = _verify(ORDERINGS[case], BOUNDED)
+    m = read(report.to_substrait()).manifest
+    assert any(s["option"] in ("nan_order", "nan_equality", "zero_sign") for s in m["shims"]), m
+    assert not m["assumptions"]
+    assert "is_nan" in json.dumps(read(report.to_substrait()).plan)
+    back = sv.Report.from_substrait(report.to_substrait())
+    assert back.verdict in (sv.Verdict.PROVED, sv.Verdict.PROVED_WITH_CHECKS)
+    with pytest.raises(ExportError, match="ST-4"):
+        report.to_substrait(shims="refuse")
+
+
+def _evaluate(plan: dict, e: dict, row: tuple):
+    """The shim's expressions under SQL's three-valued logic, doubles as IEEE 754 has them
+    and `lt` as a consumer gives it (False when a side is NaN)."""
+    names = {
+        x["extensionFunction"]["functionAnchor"]: x["extensionFunction"]["name"]
+        for x in plan["extensions"]
+    }
+    if "selection" in e:
+        return row[e["selection"]["directReference"]["structField"]["field"]]
+    if "literal" in e:
+        return None if "null" in e["literal"] else float(e["literal"]["fp64"])
+    if "ifThen" in e:
+        (arm,) = e["ifThen"]["ifs"]
+        pick = arm["then"] if _evaluate(plan, arm["if"], row) else e["ifThen"]["else"]
+        return _evaluate(plan, pick, row)
+    f = e["scalarFunction"]
+    a = [_evaluate(plan, x["value"], row) for x in f["arguments"]]
+    match names[f["functionReference"].__int__()].split(":")[0]:
+        case "is_nan":
+            return None if a[0] is None else a[0] != a[0]
+        case "is_null":
+            return a[0] is None
+        case "not":
+            return None if a[0] is None else not a[0]
+        case "add":
+            return None if None in a else a[0] + a[1]
+        case "lt":
+            return None if None in a else a[0] < a[1]
+        case "and":
+            return False if False in a else None if None in a else True
+        case "or":
+            return True if True in a else None if None in a else False
+    raise AssertionError(names)
+
+
+@pytest.mark.parametrize("name", ["lt", "gt", "lte", "gte"])
+def test_the_ordering_shim_is_three_valued_over_the_special_doubles(name: str) -> None:
+    """NaN greatest, one zero, NULL when a side is NULL: the cross product of NaN, NULL, the
+    infinities, the zeros and a number."""
+    from sverify._substrait_shims import Builder, ordering
+
+    plan: dict = {}
+    b = Builder(plan)
+    expr = ordering(b, name, b.field(0), b.field(1))
+    ref = {
+        "lt": lambda x, y: x < y,
+        "gt": lambda x, y: x > y,
+        "lte": lambda x, y: x <= y,
+        "gte": lambda x, y: x >= y,
+    }[name]
+
+    def key(v):  # NaN greatest
+        return (v != v, 0.0 if v != v else v + 0.0)
+
+    values = SPECIAL
+    for x in values:
+        for y in values:
+            want = None if x is None or y is None else ref(key(x), key(y))
+            assert _evaluate(plan, expr, (x, y)) is want, (name, x, y)
+
+
+SPECIAL = [None, NAN, float("-inf"), -1.0, -0.0, 0.0, 1.0, float("inf")]
+PAIRS = [(a, b) for a in SPECIAL for b in SPECIAL]
+PAIR_ROWS = pa.table(
+    {
+        "i": pa.array(range(len(PAIRS)), pa.int64()),
+        "a": pa.array([a for a, _ in PAIRS], pa.float64()),
+        "b": pa.array([b for _, b in PAIRS], pa.float64()),
+    }
+)
+PT = ibis.table({"i": "int64", "a": "float64", "b": "float64"}, name="t")
+COMPARISONS = {
+    "lt": lambda: PT.a < PT.b,
+    "le": lambda: PT.a <= PT.b,
+    "gt": lambda: PT.a > PT.b,
+    "ge": lambda: PT.a >= PT.b,
+    "between_value": lambda: PT.a.between(PT.b, 1.0),
+    "between_low": lambda: PT.a.between(-1.0, PT.b),
+    "between_high": lambda: PT.b.between(PT.a, 1.0),
+}
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("case", list(COMPARISONS))
+def test_the_exported_ordering_agrees_with_the_reference_on_an_engine(
+    case: str, engine: str
+) -> None:
+    """#741: over NULL, NaN, -inf, -1, -0, +0, 1 and +inf, all 64 ordered pairs (and, for
+    `between`, each pair as the value and one bound), the plan read back from the export,
+    run on the engine, gives the reference's values. The export carries the shim, and the
+    read-back keeps it."""
+    pytest.importorskip(engine)
+    report = _verify(PT.select("i", c=COMPARISONS[case]()), counterexamples=0)
+    exported = report.to_substrait()
+    assert "is_nan" in json.dumps(read(exported).plan)
+    back = sv.Report.from_substrait(exported)
+    assert "is_nan" in json.dumps(back.internal_plan, default=str)
+    con = connect()
+    put_table(con, "t", PAIR_ROWS)
+    want = report.run(con, engine).sort_by("i").column("c").to_pylist()
+    got = back.run(con, engine).sort_by("i").column("c").to_pylist()
+    assert got == want
+
+
+def test_set_inputs_of_two_decimal_precisions_are_refused() -> None:
+    """A full outer join of two sums is written as a set relation whose inputs
+    differ in decimal precision, which Substrait does not allow: the export
+    says so, and `to_sql` still writes the plan (#1904)."""
+    a = ibis.table({"k": "int64", "d": "decimal(10,2)"}, name="a")
+    b = ibis.table({"k": "int64", "d": "decimal(12,2)"}, name="b")
+    ga, gb = (t.group_by("k").agg(s=t.d.sum()) for t in (a, b))
+    report = _verify(ga.outer_join(gb, "k").select(ga.k, x=ga.s, y=gb.s))
+    with pytest.raises(ExportError, match=r"inputs of a set relation differ.*#1904"):
+        report.to_substrait(shims="annotate")
+    assert "SELECT" in report.to_sql("spark").upper()

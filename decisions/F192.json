@@ -18,6 +18,9 @@
   "amends": [
     "F184"
   ],
+  "amended_by": [
+    "F214"
+  ],
   "source": "fable-ruling-192-report-lenses-formats.md",
   "note": "'Ruling 184's item 1 ... is superseded'; 'The rest of ruling 184 stands.' Conditions L1-L13."
 }

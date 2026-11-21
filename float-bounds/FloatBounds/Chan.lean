@@ -199,23 +199,26 @@ theorem StdModel.vEval_nonneg (hg : M.Grid) (hmo : M.Mono) {B : ℝ} (hB0 : 0 �
     exact mul_self_nonneg _
 
 set_option maxHeartbeats 1000000 in
-/-- **DuckDB's `VAR_*`** (`varOf_props` of the reference, for DuckDB's
-algorithm): `fl(M₂ / d)` is `≥ 0` and within `varTol` of `S / d`, for every
-`r ≥ √(Q' S)`. -/
-theorem StdModel.core_var_chan (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p.vals ≠ [])
-    (hN : p.vals.length ≤ 2 ^ 32) (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 398)
-    (hx : ∀ x ∈ p.vals, OnGrid x ∧ M.fl x = x) {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ p.vals.length)
-    {r : ℝ} (hr : √((p.vals.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL p.vals)) ≤ r) :
-    0 ≤ M.fl ((M.vEval p).2.2 / d) ∧
-      |M.fl ((M.vEval p).2.2 / d) - comoment (dupL p.vals) / d|
-        ≤ varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum := by
+/-- **A co-moment within the tree invariant's bound, as a `VAR_*`**: `fl(Ĉ / d)`
+is within `varTol` of `S / d`, for every `r ≥ √(Q' S)`, when `Ĉ` is within
+`TInv.rel`'s bound of `S`. -/
+theorem StdModel.var_of_rel {xs : List ℝ} (hne : xs ≠ []) (hN : xs.length ≤ 2 ^ 32)
+    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 398) {C : ℝ}
+    (hC : |C - comoment (dupL xs)|
+      ≤ 148 * xs.length * u * √((xs.map fun x => (|x| + tiny) ^ 2).sum * comoment (dupL xs))
+        + 3961 * xs.length ^ 2 * u ^ 2 * (xs.map fun x => (|x| + tiny) ^ 2).sum
+        + 793 * xs.length * u * tiny)
+    {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ xs.length)
+    {r : ℝ} (hr : √((xs.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL xs)) ≤ r) :
+    |M.fl (C / d) - comoment (dupL xs) / d|
+      ≤ varTol xs.length d r (xs.map fun x => (|x| + tiny) ^ 2).sum := by
   obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   have hu1 : u ≤ 1 / 2 ^ 53 := hu'
-  set n : ℕ := p.vals.length with hn_def
-  set Q := (p.vals.map fun x => (|x| + tiny) ^ 2).sum with hQ_def
-  set S := comoment (dupL p.vals) with hS_def
-  obtain ⟨hS0, hSQ, hQbig⟩ := SQ_facts (qs := p.vals) (fun x => x) hN hB
-  have hdup : (p.vals.map fun x => (x, x)) = dupL p.vals := rfl
+  set n : ℕ := xs.length with hn_def
+  set Q := (xs.map fun x => (|x| + tiny) ^ 2).sum with hQ_def
+  set S := comoment (dupL xs) with hS_def
+  obtain ⟨hS0, hSQ, hQbig⟩ := SQ_facts (qs := xs) (fun x => x) hN hB
+  have hdup : (xs.map fun x => (x, x)) = dupL xs := rfl
   rw [hdup] at hS0 hSQ
   have hQ0 : 0 ≤ Q := le_trans hS0 hSQ
   have hn1 : (1 : ℝ) ≤ n := by exact_mod_cast List.length_pos_iff.mpr hne
@@ -223,8 +226,7 @@ theorem StdModel.core_var_chan (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p
   have hdn' : (d : ℝ) ≤ n := by exact_mod_cast hdn
   have hnN : (n : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN
   -- the co-moment's error
-  have hE := M.chanVar_rel p hne hN (fun x h => le_trans (hB x h) (by norm_num))
-    (fun x h => (hx x h).2)
+  have hE := hC
   rw [Real.sqrt_mul hQ0] at hE
   set R := √Q * √S with hR_def
   have hR0 : 0 ≤ R := by positivity
@@ -258,12 +260,9 @@ theorem StdModel.core_var_chan (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p
     have h4 : (n : ℝ) * tiny ≤ 2 ^ 32 := by nlinarith
     have : (2 : ℝ) ^ 830 * 3 + 1 + 2 ^ 32 ≤ 2 ^ 999 := by norm_num
     nlinarith
-  have hdiv := M.div_kappa (C := S) (Ch := (M.vEval p).2.2) (E := E) (rs := R) (n := n) (d := d)
+  have hdiv := M.div_kappa (C := S) (Ch := C) (E := E) (rs := R) (n := n) (d := d)
     hE (by rw [abs_of_nonneg hS0]; exact hSR) hE0 hR0 hn1 hd' hdn' hbig
-  have hv0 : 0 ≤ (M.vEval p).2.2 :=
-    M.vEval_nonneg hg hmo (B := 2 ^ 398) (by positivity) (by norm_num) p
-      (fun x h => ⟨(hx x h).1, (hx x h).2, hB x h⟩)
-  refine ⟨M.nonneg _ (div_nonneg hv0 (by linarith)), le_trans hdiv ?_⟩
+  refine le_trans hdiv ?_
   unfold varTol
   apply div_le_div_of_nonneg_right _ (by linarith)
   have hr0 : 0 ≤ r := le_trans hR0 hRr
@@ -278,6 +277,22 @@ theorem StdModel.core_var_chan (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p
   have a3 : (n : ℝ) * u * tiny ≤ n ^ 2 * u * tiny := by nlinarith
   have hEu : 3 * u * E ≤ 1 / 2 ^ 50 * E := mul_le_mul_of_nonneg_right hu3 hE0
   nlinarith
+
+/-- **DuckDB's `VAR_*`** (`varOf_props` of the reference, for DuckDB's
+algorithm): `fl(M₂ / d)` is `≥ 0` and within `varTol` of `S / d`, for every
+`r ≥ √(Q' S)` (`var_of_rel`, `chanVar_rel`). -/
+theorem StdModel.core_var_chan (hg : M.Grid) (hmo : M.Mono) (p : VPlan) (hne : p.vals ≠ [])
+    (hN : p.vals.length ≤ 2 ^ 32) (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 398)
+    (hx : ∀ x ∈ p.vals, OnGrid x ∧ M.fl x = x) {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ p.vals.length)
+    {r : ℝ} (hr : √((p.vals.map fun x => (|x| + tiny) ^ 2).sum) * √(comoment (dupL p.vals)) ≤ r) :
+    0 ≤ M.fl ((M.vEval p).2.2 / d) ∧
+      |M.fl ((M.vEval p).2.2 / d) - comoment (dupL p.vals) / d|
+        ≤ varTol p.vals.length d r (p.vals.map fun x => (|x| + tiny) ^ 2).sum := by
+  have hv0 : 0 ≤ (M.vEval p).2.2 :=
+    M.vEval_nonneg hg hmo (B := 2 ^ 398) (by positivity) (by norm_num) p
+      (fun x h => ⟨(hx x h).1, (hx x h).2, hB x h⟩)
+  refine ⟨M.nonneg _ (div_nonneg hv0 (by positivity)), M.var_of_rel hne hN hB ?_ hd1 hdn hr⟩
+  exact M.chanVar_rel p hne hN (fun x h => le_trans (hB x h) (by norm_num)) (fun x h => (hx x h).2)
 
 theorem sqrt_mul_le_pow {a b : ℝ} (ha' : a ≤ 2 ^ 830) (hb' : b ≤ 2 ^ 830) :
     √a * √b ≤ 2 ^ 830 := by

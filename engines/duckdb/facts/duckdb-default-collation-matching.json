@@ -1,0 +1,48 @@
+{
+  "id": "duckdb-default-collation-matching",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "A NOCASE `default_collation` reaches `LIKE`, `contains`, `starts_with` and `strpos` at 2.0.1; sverify refuses the run",
+  "verdict": "under a NOCASE `default_collation`, `LIKE`, `contains`, `starts_with` and `strpos` ignore case at 2.0.1 and match bytes at 2.0.0; `replace` is unchanged; sverify refuses a session that sets it",
+  "area": "strings",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "LIKE",
+    "contains",
+    "starts_with",
+    "strpos"
+  ],
+  "settings": {
+    "default_collation": [
+      "nocase"
+    ]
+  },
+  "description": [
+    "The probes `default-collation-nocase` and `default-collation-nocase-literals` (`engines/duckdb/replay/probes.json`): after `SET default_collation = 'nocase'`, `'Hello' LIKE 'h%'` is false at 2.0.0 and true at 2.0.1, `contains('Hello', 'ELL')` false and true, `starts_with('Hello', 'he')` false and true, `strpos('Hello', 'EL')` 0 and 2. `=`, `ILIKE`, `ends_with`, `prefix` and `replace` are as before, and the sort probe is unchanged.",
+    "Sverify refuses a run whose session has `default_collation` set, for every plan (`check_settings`, `python/src/sverify/routes.py`; the `Setting` of `engines/duckdb/src/sverify_duckdb/__init__.py` cites this fact; `tests/test_engine_settings.py`): the 2.0.1 change widens what the setting would affect, and the refusal covers it at both versions. `duckdb-string-match-case`'s rows are stated under the default `BINARY` collation, where nothing moved."
+  ],
+  "reference": "The reference compares and matches bytes (`case_sensitivity = CASE_SENSITIVE`).",
+  "status": "decided",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "session for #2045 (found by `sverify_dev.canary drift`, #2053), duckdb 2.0.0 and 2.0.1 Python packages",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "default-collation-nocase"
+        },
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "default-collation-nocase-literals"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2045
+  ]
+}

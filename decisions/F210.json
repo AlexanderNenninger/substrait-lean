@@ -1,0 +1,17 @@
+{
+  "id": "F210",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Issue audit: #354's core parameter channel is dropped (After 1.0, with #1098); #2051 closes as covered by D70; `Report.engine_version` is the one version name; #1764 closes for Polars; #1166 closes with a status map.",
+  "issues": [
+    354,
+    1098,
+    1166,
+    1764,
+    1961,
+    2051
+  ],
+  "source": "fable-ruling-210-issue-audit-design-calls.md"
+}

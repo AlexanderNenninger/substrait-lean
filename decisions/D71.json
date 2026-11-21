@@ -1,0 +1,16 @@
+{
+  "id": "D71",
+  "date": "2026-11-20",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "power is strict in both arguments: a NULL base or exponent gives NULL, and no reader folds power(x, 0) to 1.",
+  "issues": [
+    2081
+  ],
+  "prs": [
+    2123
+  ],
+  "source": "docs/decisions.md",
+  "note": "Theory advisor ruling 209 section 1d proposed it; the maintainer approved on 2026-11-20 ('Yes, approve')."
+}

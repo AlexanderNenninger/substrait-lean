@@ -22,7 +22,7 @@ Closed in substrait-lean#685:
 
 | Note | Addition |
 |---|---|
-| 1 | `sverify.errors.Unsupported(ValueError)`, the base of every refusal (the lift's, the producer's, the SQL writer's, the Polars translator's); `sverify.engines.Unsupported` is the same class |
+| 1 | `sverify.errors.Unsupported(ValueError)`, the base of every refusal (the lift's, the producer's, the SQL writer's, the Polars translator's); `sverify.engines.Unsupported` was the same class until 1.0 removed that name (#881) |
 | 4 | `CheckedCondition.reason -> Literal["observation", "not_a_key", "ties", "always_false", "may_be_false", "may_be_null", "not_proved_kind", "unknown"] \| None` |
 | 5 | `Report.needs -> list[Needed]`, `Needed(table, column, op, value, sql, label, code, issue)`, `code` being the Python for `requires` (`_.qty != 0`) for an editor's quick fix (`sverify.contracts.Needed`) |
 | 13 | `verify(tables={"t": {"id": "BIGINT", "s": "VARCHAR NOT NULL"}})`: DuckDB's type names beside Ibis's (`sverify.contracts.input_schema`) |
@@ -77,7 +77,7 @@ Proposed: one `Unsupported`, exported from `sverify.errors`, that every
 refusal raises (the lift, the producer, the checker), with the others as
 aliases of it.
 
-Closed in substrait-lean#685: `sverify.errors.Unsupported`. Sverify-dbt still catches `ValueError`, since a bad condition raises one too (note 2).
+Closed in substrait-lean#685: `sverify.errors.Unsupported`, now `UnsupportedError`; 1.0 removed `sverify.engines.Unsupported` (#881). Sverify-dbt still catches `ValueError`, since a bad condition raises one too (note 2).
 
 ### 2. A bad condition and an unreadable query raise the same error
 
@@ -130,7 +130,7 @@ current text built from it, so that a frontend phrases it in its own terms.
 
 Closed in substrait-lean#685: `CheckedCondition.reason`; sverify-dbt words each reason from it (`_WHY`).
 
-### 5. `Report.needed` gives Ibis code; the SQL and the column are hidden
+### 5. `Report.needed` (now `Report.needs`) gives Ibis code; the SQL and the column are hidden
 
 With `on_inferred="error"`, `report.needed` is `{"subscriptions":
 ["(_.mrr < 7 * 10**17)"]}`: Ibis code, which a SQL or dbt user cannot

@@ -19,6 +19,8 @@ from sverify.cli import _contract, _explain, _findings, _formats
 from sverify.cli._common import (  # noqa: F401  (re-exported)
     BUDGET,
     ERROR,
+    HELD,
+    NO_ROUTE,
     NOT_PROVED,
     OK,
     QUARANTINED,
@@ -34,6 +36,7 @@ from sverify.cli._limits import (
     memory_limit_from,
     timeout_from,
 )
+from sverify.cli._sql import load_sql
 from sverify.cli._suggest import place
 
 EXIT_CODES = """\
@@ -41,10 +44,12 @@ exit codes:
   0  proved; a refresh committed every row
   1  not proved
   2  usage error: a flag, a missing file, a node the file lacks
-  3  unsupported or refused: a construct outside sverify's model, or no route
+  3  unsupported: a construct outside sverify's model
   4  time or memory budget exceeded
-  5  a refresh committed with rows quarantined, or held a node
-  6  error: the file raised, I/O, a crash"""
+  5  a refresh committed with rows quarantined
+  6  error: the file raised, I/O, a crash
+  7  refused: no route takes the proved node to the engine
+  8  a refresh held a node"""
 STATUS = {
     OK: "proved",
     NOT_PROVED: "not_proved",
@@ -53,10 +58,16 @@ STATUS = {
     BUDGET: "budget_exceeded",
     QUARANTINED: "quarantined",
     ERROR: "error",
+    NO_ROUTE: "refused",
+    HELD: "held",
 }
 #: The version of the JSON document every command prints (`schemas/cli.schema.json`).
 FORMAT = 1
 FORMATS = ("text", "json", "github", "sarif")
+
+
+#: What `--fix` and `--diff` say when they have fixes (#881 1.4, ruling 219 D4).
+NARROWS = "These preconditions narrow the input each node accepts: its sources must meet them."
 
 
 def _version() -> str:
@@ -74,6 +85,7 @@ def _item(c: Checked) -> dict[str, Any]:
         "name": c.name,
         "nodes": c.nodes,
         "status": c.status,
+        "relaxations": c.relaxations,
         "summary": r._plain_contract(c.params) if r is not None else None,
         "links": c.links,
         "report": json.loads(r.to_json()) if r is not None else None,
@@ -119,8 +131,11 @@ def _classify(e: BaseException) -> tuple[int, str]:
 class Check:
     """A check of a file: what `check` prints in every format."""
 
-    def __init__(self, d: Discovery, target: str | None, budget: Budget):
+    def __init__(
+        self, d: Discovery, target: str | None, budget: Budget, require_proved: bool = False
+    ):
         self.d, self.target, self.budget = d, target, budget
+        self.require_proved = require_proved
         self.checked = d.checked if target is None else d.select(target)
         unchecked = d.unchecked if target is None else [t for t in d.unchecked if t == target]
         self.unchecked = unchecked
@@ -146,7 +161,11 @@ class Check:
             self.code = USAGE
         elif any(c.status == "unfinished" for c in self.checked):
             self.code = BUDGET
-        elif unchecked or any(c.status == "not_proved" for c in self.checked):
+        elif (
+            unchecked
+            or any(c.status == "not_proved" for c in self.checked)
+            or (require_proved and any(c.status == "checked" for c in self.checked))
+        ):
             self.code = NOT_PROVED
         else:
             self.code = OK
@@ -184,6 +203,8 @@ class Check:
 
     def findings(self) -> list[dict[str, Any]]:
         out = [f for c in self.checked for f in _findings.of(c)]
+        if self.require_proved:
+            out += [_findings.checked_only(c) for c in self.checked if c.status == "checked"]
         out += [_findings.unchecked(t, self.d) for t in self.unchecked]
         return out + _findings.credentials(self.credential_uses()) + self._drift_findings
 
@@ -328,13 +349,23 @@ def _emit(args: argparse.Namespace, code: int, result: dict, text: Callable[[], 
 # Commands.
 
 
-def _load(path: Path, budget: Budget, d: Discovery) -> Discovery:
+def _load(path: Path, budget: Budget, d: Discovery, args: argparse.Namespace) -> Discovery:
     try:
         with budget.armed():
-            load(path, d)
+            if path.suffix == ".sql":
+                load_sql(path, d, args.schema, args.dialect, args.semantics)
+            else:
+                _only_for_sql(args)
+                load(path, d)
     except BudgetExceeded as e:
         d.error = e
     return d
+
+
+def _only_for_sql(args: argparse.Namespace) -> None:
+    for flag in ("schema", "dialect", "semantics"):
+        if getattr(args, flag, None) is not None:
+            raise UsageError(f"--{flag} reads a .sql file; this target is a Python file")
 
 
 def _on_hard_stop(args: argparse.Namespace, d: Discovery, target: str | None, budget: Budget):
@@ -367,14 +398,16 @@ def _check_file(
     budget.on_hard_stop = _on_hard_stop(args, d, target, budget)
     if not path.is_file():
         raise UsageError(f"{path}: no such file")
-    _load(path, budget, d)
-    return d, Check(d, target, budget)
+    _load(path, budget, d, args)
+    return d, Check(d, target, budget, getattr(args, "require_proved", False))
 
 
 def cmd_check(args: argparse.Namespace) -> int:
     path, target = split_target(args.target)
     if path.is_dir() or path.name == "dbt_project.yml":
         return _dbt(args, path)
+    if path.suffix == ".sql" and (args.fix or args.diff or args.against_sink):
+        raise UsageError("--fix, --diff and --against-sink read a Python file; this is a .sql file")
     d, check = _check_file(args, path, target)
     if args.against_sink:
         with check.budget.armed():
@@ -431,6 +464,8 @@ def cmd_check(args: argparse.Namespace) -> int:
         lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
         if f.reason:
             lines.append(f"  not placed: {f.reason}")
+    if plan.fixes:
+        lines.append(NARROWS)
     if diff:
         lines.append(diff.rstrip("\n"))
     if applied:
@@ -459,7 +494,7 @@ def _dbt(args: argparse.Namespace, path: Path) -> int:
 
 
 def _outcome_code(outcome: str) -> int:
-    return QUARANTINED if outcome in ("quarantined", "held") else OK
+    return {"quarantined": QUARANTINED, "held": HELD}.get(outcome, OK)
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
@@ -502,7 +537,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         if isinstance(e, RouteError):
             # Not proved, or proved with no route to the engine (refused).
             unproved = any(c.status == "not_proved" for c in d.select(target))
-            code, kind = (NOT_PROVED, "not_proved") if unproved else (UNSUPPORTED, "refused")
+            code, kind = (NOT_PROVED, "not_proved") if unproved else (NO_ROUTE, "refused")
         result["error"] = _error(kind, e)
         result["items"] = [_item(c) for c in d.select(target)]
         message = f"{kind}: {e}  [{kind}]"
@@ -565,7 +600,6 @@ def parser() -> argparse.ArgumentParser:
     common = _Parser(add_help=False)
     common.add_argument(
         "--format",
-        "--output-format",
         dest="format",
         choices=FORMATS,
         default="text",
@@ -603,22 +637,46 @@ def parser() -> argparse.ArgumentParser:
         epilog=EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    c.add_argument("target", help="file.py, file.py:<node or transform>, or a dbt project")
+    c.add_argument("target", help="file.py, file.py:<node or transform>, file.sql or a dbt project")
+    c.add_argument(
+        "--schema",
+        metavar="FILE",
+        help="for a .sql file: the types of its tables, YAML or JSON, {table: {column: type}}",
+    )
+    c.add_argument("--dialect", help="for a .sql file: `sverify.sql`'s dialect (its default)")
+    c.add_argument(
+        "--semantics",
+        help="for a .sql file: `sverify.sql`'s semantics (its default)",
+    )
     c.add_argument("--full", action="store_true", help="print each node's full report")
     fix = c.add_mutually_exclusive_group()
     fix.add_argument(
         "--fix",
         action="store_true",
-        help="write the preconditions the proofs need into requires=, then check again",
+        help="write the preconditions the proofs need into requires=, then check again; "
+        "they narrow the input each node accepts, so its sources must meet them",
     )
     fix.add_argument("--diff", action="store_true", help="show what --fix would write")
+    c.add_argument(
+        "--require-proved",
+        action="store_true",
+        help="exit 1 for a node whose postconditions are only checked on the data "
+        '(`on_unproved="check"`), as for one that is not proved',
+    )
     c.add_argument(
         "--against-sink",
         action="store_true",
         help="compare each stored node's contract with the one its sink last committed: "
         "a committed promise the node no longer proves is contract_weakened (exit 1)",
     )
-    c.set_defaults(run=cmd_check, against_sink=False)
+    c.set_defaults(
+        run=cmd_check,
+        against_sink=False,
+        require_proved=False,
+        schema=None,
+        dialect=None,
+        semantics=None,
+    )
     r = sub.add_parser(
         "refresh",
         parents=[common],
@@ -657,8 +715,9 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the `sverify` command with `argv` (default: `sys.argv[1:]`) and
     return its exit code: 0 proved (a refresh committed every row), 1 not
-    proved, 2 usage error, 3 unsupported or refused, 4 time or memory budget
-    exceeded, 5 a refresh quarantined rows or held a node, 6 error."""
+    proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded,
+    5 a refresh quarantined rows, 6 error, 7 refused (no route to the
+    engine), 8 a refresh held a node."""
     try:
         args = parser().parse_args(argv)
     except SystemExit as e:

@@ -214,12 +214,15 @@ class _Checker:
             name = self.names[r.unique_id]
             conds: list = []
             nn = self._not_null(r)
+            held = [t for t in self.p.tests_on(r.unique_id) if self._holds(t)]
             for t in self.p.tests_on(r.unique_id):
                 if not self._holds(t):
                     sev = t.severity.lower()
                     skipped.append(f"{r.ref}: {t.short} (severity {sev}, not proved)")
                     continue
-                got = mapping.test_conditions(t, side="requires", table_of=table_of, not_null=nn)
+                got = mapping.test_conditions(
+                    t, side="requires", table_of=table_of, not_null=nn, siblings=held
+                )
                 if got.conditions:
                     conds += got.conditions
                 elif got.reason and t.kind != "relationships":
@@ -661,8 +664,16 @@ def _rewrite(sql: str, inputs: dict[str, str], own: str | None = None) -> str:
     own_parts = _parts(sg.exp.to_table(own, dialect="duckdb")) if own else None
     unknown = []
     for t in list(tree.find_all(sg.exp.Table)):
+        if isinstance(t.this, sg.exp.GenerateSeries):
+            continue  # `range(…)` reads no data
         if not isinstance(t.this, sg.exp.Identifier):
-            continue
+            # A table function (`read_csv('…')`) opens a file or URL when
+            # DuckDB binds it in `DESCRIBE`: refuse before any DuckDB call.
+            raise _Unreadable(
+                f"it reads {t.this.sql('duckdb')}, a table function; sverify-dbt reads "
+                "the refs and sources of the model, never a file or URL: load it as a "
+                "seed or a source and read it with {{ ref() }} or {{ source() }}"
+            )
         if not t.db and not t.catalog and t.name.lower() in ctes:
             continue
         name = find(t)

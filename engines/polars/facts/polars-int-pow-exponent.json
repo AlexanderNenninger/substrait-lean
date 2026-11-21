@@ -90,6 +90,17 @@
         }
       ],
       "notes": "A negative exponent raises InvalidOperationError at every width."
+    },
+    {
+      "checked_at": "2026-11-21",
+      "method": "probe",
+      "checked_by": "D71 session (power is strict), Polars 2.1.0, in-memory and streaming engines",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'f':[None],'i':[None]}, schema={'f':pl.Float64,'i':pl.Int64}).select(pl.col('f').pow(0), pl.col('i').pow(0))",
+          "observed": "(null, null) on the in-memory and the streaming engine: a null base with a zero exponent is null, not 1 (D71)"
+        }
+      ]
     }
   ]
 }

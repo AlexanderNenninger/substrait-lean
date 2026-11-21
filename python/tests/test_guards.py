@@ -164,10 +164,10 @@ def test_run_drops_the_discharged_checks(monkeypatch, engine):
     from sverify import report as report_module
 
     seen: list[str] = []
-    for name in ("run_plan", "run_guard_free"):
+    for name, label in (("_run_plan", "run_plan"), ("run_guard_free", "run_guard_free")):
         real = getattr(report_module, name)
 
-        def spy(*args, _name=name, _real=real, **kwargs):
+        def spy(*args, _name=label, _real=real, **kwargs):
             seen.append(_name)
             return _real(*args, **kwargs)
 

@@ -84,3 +84,21 @@ def test_records_name_every_test_and_flag_a_proof_dbt_contradicts(shop: Path) ->
     failed = replay._records(proj, result, {proved[0]: "fail"})
     assert failed[proved[0].split(".", 2)[-1]].get("unsound") is True
     assert not any(r.get("unsound") for r in records.values())
+
+
+def test_an_entry_waiting_on_a_closed_issue_is_found() -> None:
+    ledgers = {
+        "src": {
+            "results": {
+                "a": {"issue": 1, "outcome": "refused"},
+                "b": {"issue": 1, "outcome": "refused"},
+                "c": {"issue": 2, "outcome": "refused"},
+                "d": {"design": "x", "outcome": "refused"},
+            }
+        }
+    }
+    states = {1: "CLOSED", 2: "OPEN"}
+    assert replay.closed_issues(ledgers, states.get) == [
+        "#1 is closed; 2 entries wait on it, such as src: a"
+    ]
+    assert replay.closed_issues(ledgers, lambda n: None) == []
