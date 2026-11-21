@@ -15,8 +15,8 @@ merge; [INDEX.md](INDEX.md) lists every query with its status. As of
 reference, is retired: what the reference computes is in
 [docs/reference-semantics.md](../docs/reference-semantics.md) and
 [docs/core-semantics.md](../docs/core-semantics.md), what each engine does
-is in its facts under [characterization/](../characterization/README.md),
-and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
+is in its facts under `engines/<engine>/facts/`
+([how facts are judged](../characterization/README.md)), and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
 [docs/guide.md](../docs/guide.md).
 
 How to read the tables:

@@ -2752,11 +2752,6 @@ class _Parser:
                         e if keep_int(k) else self._as_double(a, e)
                         for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
                     ]
-                # DataFusion's simplifier makes `power(x, 0)` a constant 1, even
-                # for a NULL `x` (as `Parse.parseExpr`).
-                exponent = parsed[1] if name == "power" and len(parsed) == 2 else None
-                if isinstance(exponent, Lit) and repr(exponent.value) in ("0", "0.0"):
-                    return Lit(1.0, "float") if float_call else Lit(1, "int")
                 # Substrait's typed `greatest`/`least` are NULL if any argument is.
                 if name in ("greatest", "least") and ":" in full_name:
                     out_e = _call(name, parsed)

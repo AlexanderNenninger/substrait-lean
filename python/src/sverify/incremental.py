@@ -561,7 +561,7 @@ def _refuse_schema(plan: str, tables: Mapping[str, pa.Table], source: str | None
         )
 
 
-MEANING_CHANGES: tuple[str, ...] = ()
+MEANING_CHANGES: tuple[str, ...] = ("D71",)
 """The changes that make an unchanged plan compute another result than before,
 one entry per change, in the order they landed: `"D53"` for a decision that
 changes a value of the reference or narrows what it allows (its section in
