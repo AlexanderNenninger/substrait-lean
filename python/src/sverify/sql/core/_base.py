@@ -943,6 +943,14 @@ class Dialect:
         (`FIRST_VALUE(v IGNORE NULLS)`). New on DuckDB only (#271)."""
         raise Unsupported(f"{fn} over a window is not supported on {self.name}; " + DUCKDB_ONLY)
 
+    def window_string_agg(self, v: str, sep: str, order: Sequence[str], w: str) -> str:
+        """`AggFn.concat` over the frame `w` (#1915): the frame's non-NULL
+        strings ordered by `order` (the window's sort keys), joined by `sep`; NULL without values.
+        New on DuckDB only (#271)."""
+        raise Unsupported(
+            f"string_agg over a window is not supported on {self.name}; " + DUCKDB_ONLY
+        )
+
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
         in the order `order`, joined by `sep`; NULL without values."""
@@ -3072,7 +3080,16 @@ class _Parser:
                 n = self.positive(args, 1, name) if name == "nth_value" else 0
                 return part, sort, WinFn(name, c, n, frame=self.frame(w, cols, sort))
             case (
-                "count" | "sum" | "avg" | "min" | "max" | "variance" | "std_dev" | "first" | "last"
+                "count"
+                | "sum"
+                | "avg"
+                | "min"
+                | "max"
+                | "variance"
+                | "std_dev"
+                | "first"
+                | "last"
+                | "string_agg"
             ):
                 # The window's sort keys order the frame, not the aggregate;
                 # `first`/`last` take the frame's first (last) non-NULL value
@@ -3128,7 +3145,7 @@ class _Parser:
         if rng and any(b[0] != "unbounded" and b[1] != 0 for b in (lo, hi)):
             if len(sort) != 1:
                 raise Unsupported("RANGE frames with offsets need exactly one sort key")
-            if _get(cols.lean, sort[0].col) not in ("int", "time", "date"):
+            if _get(cols.lean, sort[0].col) not in ("int", "time", "instant", "date"):
                 raise Unsupported(
                     "RANGE frames with offsets need an integer, timestamp or date sort key"
                 )
@@ -5299,7 +5316,7 @@ class _Writer:
                     w = self.framed(f.frame, partition, keys, peers, sort, ks, col)
                 if f.fn == "agg":
                     assert f.measure is not None
-                    sql = self.window_measure(f.measure, col, ks, w, frame_moves(f.frame))
+                    sql = self.window_measure(f.measure, col, ks, w, frame_moves(f.frame), keys)
                 elif f.fn == "nth_value":
                     sql = f"NTH_VALUE({col(f.col)}, {f.offset}) {w}"
                 else:
@@ -5388,7 +5405,7 @@ class _Writer:
             word = "PRECEDING" if side == "preceding" else "FOLLOWING"
             if fr.range:
                 kind = ks[sort[0].col]
-                if kind == "time":
+                if kind in ("time", "instant"):
                     return f"{d.interval_lit(k)} {word}"
                 if kind == "date":
                     return f"{d.day_interval(k)} {word}"
@@ -5399,11 +5416,17 @@ class _Writer:
         return d.over_frame(partition, order, spec)
 
     def window_measure(
-        self, m: Measure, col: Callable[[int], str], ks: list[Kind | None], w: str, moving: bool
+        self,
+        m: Measure,
+        col: Callable[[int], str],
+        ks: list[Kind | None],
+        w: str,
+        moving: bool,
+        keys: list[str],
     ) -> str:
         """`Measure.eval` over the frame `w` (the argument is a column or a
         constant, `Parse.issueFree`); `moving`: rows leave the frame
-        (`frame_moves`)."""
+        (`frame_moves`); `keys`: the window's sort keys."""
         d = self.d
         v = self.expr(m.arg, col, ks, None)
         match m.fn:
@@ -5439,6 +5462,8 @@ class _Writer:
                 )
             case "first" | "last":
                 return d.window_pick(m.fn, v, w)
+            case "string_agg":
+                return d.window_string_agg(v, d.str_lit(m.sep), keys, w)
         f = "MIN" if m.fn == "min" else "MAX"
         if expr_kind(m.arg, ks) == "bool":
             as_int = d.case_when(v, d.int_lit(1), d.int_lit(0))

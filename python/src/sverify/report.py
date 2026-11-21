@@ -1179,8 +1179,9 @@ class Report:
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or
                 refuses (`"reference"` is a deprecated alias of
                 `"translated"`).
-            unverified: Run a plan that is not proved, without a route.
-                Default False: such a plan is refused.
+            unverified: Run a plan that is not proved, or an engine version
+                outside its profile's range (D70), without a route. Default
+                False: such a run is refused.
             reproducible: What a rerun must reproduce: the
                 engine's run-to-run variation must refine it, as a sink's
                 `reproducible=` states it; `sv.equivalent()` asks for the
@@ -1226,8 +1227,8 @@ class Report:
             sverify.errors.RouteError: No route takes the plan to `engine`,
                 or, with `streaming="require"`, a node of its Polars plan
                 runs on the in-memory engine.
-            sverify.routes.EngineVersionError: The engine's major version is
-                not the one its profile's facts were probed at.
+            sverify.routes.EngineVersionError: The engine's version is
+                outside its profile's range (D70), and `unverified` is False.
             sverify.errors.PreconditionError: With `check_inputs`, a
                 precondition does not hold on the data: nothing ran.
 
@@ -1263,7 +1264,18 @@ class Report:
                 stacklevel=2,
             )
         else:
-            chosen = routes.choose(self, target, route, reproducible=reproducible)
+            try:
+                chosen = routes.choose(self, target, route, reproducible=reproducible)
+            except routes.EngineVersionError as err:
+                if not unverified:
+                    raise
+                # A proved plan on a version outside the range (D70).
+                chosen = routes.unverified(self, target, str(err))
+                warnings.warn(
+                    f"running on {chosen.engine} unverified: {chosen.reason}",
+                    routes.UnverifiedRunWarning,
+                    stacklevel=2,
+                )
             self.routes[chosen.engine] = chosen
             kind = chosen.kind
             if chosen.refused:
@@ -1836,8 +1848,8 @@ class Report:
             proved is refused, with `reason` saying so.
 
         Raises:
-            EngineVersionError: The installed engine is another major
-                version than its profile's.
+            EngineVersionError: The engine's version is outside its
+                profile's range (D70).
             EngineSettingsError: A setting the engine's profile depends on
                 differs from its facts'.
         """
