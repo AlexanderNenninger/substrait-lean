@@ -210,8 +210,9 @@ theorem toIntEven?_eq_toInt?_roundEven (c : Int) : toIntEven? c = toInt? (roundE
       · have : evenQuot (mag c) = 0 := by
           have := hq; rw [h0] at this; simpa using this.symm
         simp [h0, code, this]
-      · have : -code (evenMag (mag c)) < 0 := by unfold code; simp [h0]; omega
-        simp [this]
+      · have hpos : 0 < code (evenMag (mag c)) := by unfold code; simp [h0]; omega
+        have : -code (evenMag (mag c)) < 0 := by omega
+        simp [this, hpos.not_ge]
     · rw [hr]; simp only [hc, ↓reduceIte]
       have : ¬ code (evenMag (mag c)) < 0 := by have := code_nonneg (evenMag (mag c)); omega
       simp [this]
