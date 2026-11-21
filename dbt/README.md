@@ -66,8 +66,7 @@ customer_revenue_by_category (models/marts/customer_revenue_by_category.sql)
 orders_with_city (models/marts/orders_with_city.sql)
   proved before the model runs (dbt build may skip them):
     not_null(order_id)
-  not proved (dbt build still runs them):
-    unique(order_id): the tests upstream do not make it a key
+    unique(order_id)
 
 org_depth (models/marts/org_depth.sql)
   refused: sverify cannot read WITH RECURSIVE yet (#320)

@@ -46,8 +46,9 @@ def test_a_point_in_time_join_keeps_the_key(result: sverify_dbt.CheckResult) -> 
     assert statuses(result["orders_with_city"])["unique(order_id)"] == "proved"
     got = statuses(result["customer_history"])
     assert got["dbt_utils.expression_is_true(valid_from < timestamp '9999-12-31')"] == "proved"
-    # Proved of the model's own result only once SCD 2 derives it (#763).
-    assert got["dbt_utils.mutually_exclusive_ranges"] == "not proved"
+    # On the model's own result the open end has no condition (ruling 103);
+    # SCD 2 derives the ranges (#763).
+    assert got["dbt_utils.mutually_exclusive_ranges"] == "not checked"
 
 
 def test_refused_models_say_why(result: sverify_dbt.CheckResult) -> None:

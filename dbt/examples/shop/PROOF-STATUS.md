@@ -38,7 +38,7 @@ Measured on 2026-11-21 (`sverify-dbt check examples/shop`): 23 of the 26 data te
 
 | Model | Test | Blocked by | Class |
 |---|---|---|---|
-| `customer_history` | `dbt_utils.mutually_exclusive_ranges` | The ranges come from `lead(updated_at)`, and sverify derives non-overlapping ranges from a type-2 history only with SCD 2 ([#763]). `dbt build` runs the test before `orders_with_city`, which assumes it | provable with work |
+| `customer_history` | `dbt_utils.mutually_exclusive_ranges` | Its open end is written `coalesce(valid_to, L)`, which no condition of the model's own result states, and the ranges come from `lead(updated_at)`, which sverify derives non-overlapping ranges from only with SCD 2 ([#763]). `dbt build` runs the test before `orders_with_city`, which assumes it | provable with work |
 | `stg_order_items` | `unique(item_key)` | Two keys may hash alike: `md5` is not injective, and the model rightly does not assume it | not provable |
 | `org_depth` | `unique(emp_id)` | The model is refused (`WITH RECURSIVE`, [#320]). Even read, an employee appears once only if the manager graph has no cycle, which is a property of the data no test here states | not provable |
 
