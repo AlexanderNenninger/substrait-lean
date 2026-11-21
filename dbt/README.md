@@ -106,7 +106,7 @@ The other options of `check`:
 | `--format text\|json\|github\|sarif\|junit` | How to print the result (default `text`): `github` is one annotation per finding on the model's file, `sarif` a code-scanning log, `junit` a suite per model; `sverify check` forwards its own |
 | `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 4 past it |
 | `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
-| `--json` | Print the result as JSON (`--format json`) |
+| `--json` | Print the result as JSON (`--format json`): the document of `sverify check --format json` ([`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json)), with each model as an item and `findings`, `exit`, `status`, `adapter` and `dbt_version` beside the project's own keys |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |
 | `--fail-on` | Exit 1 on a contract mismatch, an unproved constraint, or a refused model with an enforced contract, whose contract sverify could not check (`contract`, the default; stderr names the refusal); `unproved`: also on any unproved test; `refused`: all of that, and exit 3 when a model was refused (sverify cannot read it); `never` |
 | `--target-path` | The target directory, if not `target` |
@@ -210,14 +210,16 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 ## Evidence
 
 `python -m sverify_dbt.replay` builds the integration projects of
-dbt-utils 1.4.1 and dbt-expectations 0.10.10 with dbt on DuckDB, checks them
-with sverify-dbt and records every test beside dbt's own result, in
+dbt-utils 1.4.1 and dbt-expectations 0.10.10, and the 175 distinct projects
+of the pytest classes in dbt-tests-adapter 1.20.0, with dbt on DuckDB, checks
+them with sverify-dbt and records every test beside dbt's own result, in
 [`replay/`](replay/) (#859). No test sverify-dbt proves fails in dbt's run.
 
 | Source | Proved | Not proved | Not checked | Refused | Inputs |
 |---|---|---|---|---|---|
 | dbt-utils 1.4.1 | 3 | 13 | 45 | 15 | 37 |
 | dbt-expectations 0.10.10 | 0 | 33 | 9 | 115 | 0 |
+| dbt-tests-adapter 1.20.0 | 8 | 11 | 85 | 11 | 13 |
 
 These projects test macros more than they model data: most of their tests
 compare two relations or match patterns with flags, which sverify-dbt leaves
@@ -226,6 +228,8 @@ which Lean's model does not cover
 ([#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417)),
 or use `random()`. Every refusal and test not checked names its issue or the
 reason it is by design ([`replay/constructs.json`](replay/constructs.json)).
+The adapter suite's classes whose fixtures need a running warehouse, and the
+projects dbt cannot build, are listed under `unextracted` in its ledger.
 CI's `dbt` job replays them and warns when an outcome changes.
 
 ## Development
