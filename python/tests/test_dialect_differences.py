@@ -27,15 +27,15 @@ def _found(sql: str, semantics: str = "reference") -> list[str]:
 
 
 def test_each_silent_difference_is_refused_or_listed() -> None:
-    """A `Profile` field in which the reference gives a value (not a raise)
-    and DuckDB another is refused by the lift or has a row; a field that joins
+    """A `Profile` field in which the reference gives a value and DuckDB
+    another value (neither a raise) is refused by the lift or has a row; a field that joins
     with neither fails."""
     keys = {
         f.name
         for f in dataclasses.fields(REFERENCE)
         if f.name != "name"
         and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
-        and getattr(REFERENCE, f.name) != "ERROR"
+        and "ERROR" not in (getattr(REFERENCE, f.name), getattr(DUCKDB, f.name))
     }
     assert keys | _dialect.NATIVE == set(_dialect.TABLE) | set(_dialect.REFUSED)
     assert not set(_dialect.TABLE) & set(_dialect.REFUSED)

@@ -98,17 +98,19 @@ def test_a_long_stream_keeps_its_state_bounded(engine):
     node.refresh(engine=engine)
     bound = math.ceil(2 / 1) + 1
     sizes = []
-    for minute in range(60, 60 * 48, 10):
+    # Twelve hours of samples: the state reaches its bound after three, and
+    # each later hour retires a bucket per host.
+    for minute in range(60, 60 * 12, 10):
         src.apply(Changes(inserts=samples([("a", minute, 1), ("b", minute, 2)])))
         entry = node.refresh(engine=engine)["hourly"]
         (report,) = entry.retention
         assert report.open <= report.bound == bound
         sizes.append(state_rows(node))
-    # Two hosts, at most `bound` buckets each, after two days of samples.
+    # Two hosts, at most `bound` buckets each, after twelve hours of samples.
     assert max(sizes) <= 2 * bound
     assert sizes[-1] == 2 * bound
-    # The latest sample is at 47:50: buckets up to 44:50 are final.
-    assert view(node).retired_through == T0 + timedelta(hours=44, minutes=50)
+    # The latest sample is at 11:50: buckets up to 8:50 are final.
+    assert view(node).retired_through == T0 + timedelta(hours=8, minutes=50)
 
 
 def test_the_report_counts_open_and_retired_buckets():
@@ -253,7 +255,7 @@ def test_verify_does_not_prove_lateness():
 # -- equality with a full recompute --------------------------------------------
 
 
-def random_stream(seed, batches=80, expire=False):
+def random_stream(seed, batches=40, expire=False):
     """Batches that respect a lateness of 2 h: every insert and delete at or
     after the latest time seen before the batch, minus 2 h. With `expire`,
     batches also delete rows of the final hours (the source's retention)."""

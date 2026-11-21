@@ -43,7 +43,7 @@ if getattr(_meta, "PLUGIN_API", None) != 3:
 from sverify import _duckdb, black_box
 from sverify._scan import Resident, _q
 from sverify._store import State, Store
-from sverify._unsupported import RANGE_GUARD
+from sverify._unsupported import MIN_MOD_GUARD, RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
 from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_duckdb.declared import refuse_base_table
@@ -429,5 +429,5 @@ PLUGIN = ProfilePlugin(
     ),
     # The variance over a frame, which only DuckDB's writer computes so far.
     window_functions=frozenset({"variance", "std_dev"}),
-    guards=(RANGE_GUARD,),
+    guards=(RANGE_GUARD, MIN_MOD_GUARD),
 )
