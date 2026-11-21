@@ -31,7 +31,8 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.engines import ENGINES, delta_plans
+from sverify.engines import ENGINES
+from sverify.engines.plan import delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.io import Changes

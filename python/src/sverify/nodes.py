@@ -160,9 +160,9 @@ class Node:
     def internal_plan(self) -> str:
         """The Substrait plan (JSON) of the node's stage, as Lean checked and
         wrote it: what every engine runs. It uses sverify's own extension
-        URNs, so only sverify reads it (`sverify.engines.to_sql`, `run`,
+        URNs, so only sverify reads it (`sverify.engines.plan.to_sql`, `run`,
         `delta_plans`); `Report.to_substrait()` is the portable plan.
-        `sverify.engines.delta_plans(plan)` are the plans that maintain it
+        `sverify.engines.plan.delta_plans(plan)` are the plans that maintain it
         from changes.
 
         The stage reads the sources and stored nodes upstream under their

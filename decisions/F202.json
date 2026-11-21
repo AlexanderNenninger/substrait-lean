@@ -1,0 +1,19 @@
+{
+  "id": "F202",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#2058: the lens's `MIN % -1` is an in-plan guard that decides by value, with no plan option and no Lean change (G1-G5).",
+  "issues": [
+    2058
+  ],
+  "prs": [
+    1951
+  ],
+  "amended_by": [
+    "F206"
+  ],
+  "source": "fable-ruling-202-2058-min-mod-guard.md",
+  "note": "No D-number."
+}

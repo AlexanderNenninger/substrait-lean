@@ -200,12 +200,9 @@ def _(dt, tables):
     import sverify as sv
     from sverify_duckdb import engine as duckdb_engine
     from sverify.engine import put_table, read_tables, run_checker
-    from sverify.engines import (
-        UnsupportedError,
-        substrait_json,
-        written_plan,
-    )
-    from sverify.engines import to_sql as plan_sql
+    from sverify.engines import UnsupportedError
+    from sverify.engines.plan import substrait_json, written_plan
+    from sverify.engines.plan import to_sql as plan_sql
     from sverify.incremental import arrow_rows
     from sverify.testing import inline_tables
     from sverify_polars import engine as polars_engine

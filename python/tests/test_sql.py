@@ -33,7 +33,7 @@ from sverify.engine import (
     run_plan,
     substrait_json,
 )
-from sverify.engines import written_plan
+from sverify.engines.plan import written_plan
 from sverify.errors import PostconditionError, PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables

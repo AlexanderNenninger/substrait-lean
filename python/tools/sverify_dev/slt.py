@@ -1273,7 +1273,8 @@ KNOWN: tuple[Known, ...] = (
     # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.
     Known("duckdb-R15-math-domain", ("types/float/nan_functions.test",), r"\b(a?sin|a?cos|tan)\("),
     # A NULL element in a list comparison: DuckDB orders it last, the reference
-    # gives NULL.
+    # gives NULL (D54's listed exception `list_null_order`, #2163: the lift lists it under every
+    # semantics, so under `--semantics reference` the record counts as explained).
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
     # MEDIAN of dates and timestamps: DuckDB interpolates, the model takes the
     # lower middle.

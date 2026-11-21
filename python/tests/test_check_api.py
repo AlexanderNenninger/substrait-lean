@@ -42,15 +42,15 @@ def test_contracted_transform_is_exported() -> None:
 def test_check_returns_an_unproved_report_without_raising() -> None:
     with pytest.raises(VerificationError):
         unit(ibis.table(SCHEMA, name="orders"))
-    report = unit.check(orders=SCHEMA)
+    report = unit.verify(orders=SCHEMA)
     assert report.verdict == sv.Verdict.UNPROVED
     assert _needed(report) == {"orders": ["(_.qty != 0)"]}
     assert unit.report is report
 
 
 def test_check_takes_schemas_tables_and_positions() -> None:
-    by_name = doubled.check(orders=ibis.schema(SCHEMA))
-    by_position = doubled.check(ibis.table(SCHEMA, name="anything"))
+    by_name = doubled.verify(orders=ibis.schema(SCHEMA))
+    by_position = doubled.verify(ibis.table(SCHEMA, name="anything"))
     assert by_name.verdict == sv.Verdict.PROVED and by_position.verdict == sv.Verdict.PROVED
     assert by_position.inputs == {"orders": ibis.schema(SCHEMA)}
 
@@ -59,19 +59,19 @@ def test_check_reads_no_data() -> None:
     con = sv.connect()
     con.put("orders", pa.table({"id": [1], "amount": [-5], "qty": [1]}))
     # The precondition amount >= 0 fails on the data; check does not read it.
-    assert doubled.check(con.table("orders")).verdict == sv.Verdict.PROVED
+    assert doubled.verify(con.table("orders")).verdict == sv.Verdict.PROVED
 
 
 def test_check_counterexamples() -> None:
-    assert unit.check(orders=SCHEMA, counterexamples=0).ensures[0].counterexample is None
-    assert unit.check(orders=SCHEMA).ensures[0].counterexample is not None
+    assert unit.verify(orders=SCHEMA, counterexamples=0).ensures[0].counterexample is None
+    assert unit.verify(orders=SCHEMA).ensures[0].counterexample is not None
 
 
 def test_check_refuses_what_is_no_table() -> None:
     with pytest.raises(TypeError, match="orders must be an Ibis table or a schema"):
-        unit.check(orders=3)
+        unit.verify(orders=3)
     with pytest.raises(TypeError):
-        unit.check(customers=SCHEMA)
+        unit.verify(customers=SCHEMA)
 
 
 def test_inputs_of_a_sql_report() -> None:
@@ -82,16 +82,16 @@ def test_inputs_of_a_sql_report() -> None:
 
 
 def test_route_without_a_run() -> None:
-    report = doubled.check(orders=SCHEMA)
+    report = doubled.verify(orders=SCHEMA)
     route = report.route("duckdb")
     assert route.cls == "exact" and not route.refused
     assert report.routes == {}  # nothing ran
-    refused = unit.check(orders=SCHEMA).route("duckdb")
+    refused = unit.verify(orders=SCHEMA).route("duckdb")
     assert refused.refused and refused.reason.startswith("not verified")
 
 
 def test_messages_are_the_lines_of_the_report() -> None:
-    report = unit.check(orders=SCHEMA, counterexamples=0)
+    report = unit.verify(orders=SCHEMA, counterexamples=0)
     [c] = report.ensures
     assert c.message.startswith("NOT proved: it may be FALSE or NULL")
     assert f"ensures {c.label}: {c.message}" in report.details()
@@ -112,7 +112,7 @@ def test_notes() -> None:
     assert not report.deterministic
     assert report.notes and report.notes[0].startswith("rows may tie")
     assert all(f"note: {n}" in report.details() for n in report.notes)
-    assert doubled.check(orders=SCHEMA).notes == []
+    assert doubled.verify(orders=SCHEMA).notes == []
 
 
 def test_issue_suggested_is_the_hint_as_data() -> None:
@@ -142,8 +142,8 @@ def test_counterexamples_from_the_environment(monkeypatch) -> None:
     t = ibis.table(SCHEMA, name="orders")
     report = sv.verify(t.select(t.id), ensures=[_.id > 0])
     assert report.ensures[0].counterexample is None
-    assert unit.check(orders=SCHEMA).ensures[0].counterexample is None
-    assert unit.check(orders=SCHEMA, counterexamples=200).ensures[0].counterexample is not None
+    assert unit.verify(orders=SCHEMA).ensures[0].counterexample is None
+    assert unit.verify(orders=SCHEMA, counterexamples=200).ensures[0].counterexample is not None
     monkeypatch.setenv("SVERIFY_COUNTEREXAMPLES", "many")
     with pytest.raises(ValueError, match="must be an integer"):
         sv.verify(t.select(t.id))
