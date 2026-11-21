@@ -6,16 +6,8 @@
       "issue": 1909
     },
     {
-      "match": "quantile() of several fractions",
-      "issue": 1910
-    },
-    {
       "match": "first/last with where or order_by",
       "issue": 1913
-    },
-    {
-      "match": "CountDistinctStar",
-      "issue": 1912
     },
     {
       "match": "cannot cast this value to a double",
@@ -38,20 +30,16 @@
       "issue": 1930
     },
     {
-      "match": "substring lengths must be constants",
-      "issue": 1923
+      "match": "substring with a length that comes from a column",
+      "design": "the length of a substring is a constant: a length read from a column is not modelled; use a constant length or ifelse over the cases"
     },
     {
       "match": "unnest(offset=)",
       "issue": 1917
     },
     {
-      "match": "aggregate Arbitrary",
-      "issue": 1920
-    },
-    {
       "match": "quantile of decimal",
-      "issue": 1921
+      "design": "no engine gives one value for a quantile of a decimal (ruling 191); cast the column to float64 first"
     },
     {
       "match": "ApproxQuantile is not supported",

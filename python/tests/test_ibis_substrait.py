@@ -288,6 +288,8 @@ def test_timestamp_literals_are_not_local_time():
     [
         (lambda: t.select(x=t.qty.cast("uint8")), "unsigned"),
         (lambda: t.sample(0.5), "Sample"),
+        # #1923, by design: a substring's length is a constant.
+        (lambda: t.select(x=t.name.substr(0, t.qty)), "length that comes from a column"),
     ],
 )
 def test_what_lean_does_not_model_is_refused(build, message):
