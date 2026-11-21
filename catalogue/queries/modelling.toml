@@ -50,7 +50,7 @@ features = ["unpivot", "unnest"]
 ibis = '''
 q = sales_wide.pivot_longer(["q1", "q2", "q3", "q4"], names_to="quarter", values_to="sales")
 '''
-notes = "Ibis compiles pivot_longer to UNNEST of arrays, which DataFusion's Substrait producer cannot convert."
+notes = "Ibis compiles pivot_longer to UNNEST of arrays, which sverify's Ibis producer writes as a UNION ALL (#804)."
 
 [[query]]
 id = "dbt-unpivot-union"
@@ -177,7 +177,7 @@ WITH RECURSIVE chain AS (
 )
 SELECT emp_id, depth FROM chain
 '''
-notes = "Ibis has no recursive queries, so this is DataFusion SQL. DataFusion 51 cannot plan the standard column list `chain (emp_id, depth)`, so the columns are named in the anchor."
+notes = "Ibis has no recursive queries, so this is SQL. Not supported yet: `WITH RECURSIVE` needs a fixpoint with termination (#320). The anchor names the columns, since the standard column list `chain (emp_id, depth)` is not written."
 
 [[query]]
 id = "dbt-generate-date-spine"

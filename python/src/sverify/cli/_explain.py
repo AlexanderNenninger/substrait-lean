@@ -89,6 +89,12 @@ CODES: dict[str, str] = {
         "No engine's doubles meet the observation's tolerance. Widen the tolerance in "
         "`sv.equivalent(floats=sv.within(...))`, or cap the rows (`sv.max_rows`)."
     ),
+    "checked_only": (
+        "With `--require-proved`: the node's postconditions are not all proved. Those it does not "
+        'prove are checked on the data at each refresh (`on_unproved="check"`). Prove them '
+        "(add the preconditions `check --fix` suggests, or weaken the `ensures`), or run "
+        "`check` without the flag to accept the runtime check."
+    ),
     "unchecked": (
         "The file defines a contracted transform but never applies it, so it has no input "
         'schemas to be proved on. Declare them in the decorator, `@sv.transform(schemas={"orders": '

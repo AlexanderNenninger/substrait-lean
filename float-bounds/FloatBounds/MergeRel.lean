@@ -278,35 +278,35 @@ theorem fac_merge {k n : ℝ} (_hk : 0 ≤ k) (hkn : k + 1 ≤ n) (hn : n * u �
   have h3 : 3 * k * u + 3 * u ≤ 3 * n * u := by nlinarith
   linarith
 
+/-- The new terms a merge may add to the tree bound, with `X = h |Δ|`,
+`S_ab = S_a + S_b` and `ΔS = Δ² h`:
+`17 u A X + 9 u S_ab + 9 u n ΔS + 120 u² h A² + 24 h u·tiny`. -/
+noncomputable def mergeNew (n A X Sab ΔS h : ℝ) : ℝ :=
+  17 * u * A * X + 9 * u * Sab + 9 * u * n * ΔS + 120 * u ^ 2 * h * A ^ 2 + 24 * h * u * tiny
+
 /-- The terms of `merge_fold`: the children's bounds and a merge's new terms
 fit in the merged bound. -/
 theorem fold_terms {na nb m h Aa Ab Da Db X Sa Sb ΔS La Lb L : ℝ}
-    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hma : m ≤ na) (_hmb : m ≤ nb) (_hh : 0 ≤ h)
-    (hhm : h ≤ m) (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
-    (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hX : 0 ≤ X) (hSa : 0 ≤ Sa) (hSb : 0 ≤ Sb) (hΔS : 0 ≤ ΔS)
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hhm : h ≤ m) (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
+    (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hSa : 0 ≤ Sa) (hSb : 0 ≤ Sb)
     (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L) :
     (17 * u * Aa * Da + 9 * u * na * Sa + 60 * u ^ 2 * La * Aa ^ 2 + 12 * u * tiny * La)
       + (17 * u * Ab * Db + 9 * u * nb * Sb + 60 * u ^ 2 * Lb * Ab ^ 2 + 12 * u * tiny * Lb)
-      + (14.4 * u * (Aa + Ab) * X + 8.2 * u * (Sa + Sb + ΔS) + 105 * u ^ 2 * h * (Aa + Ab) ^ 2
-        + (7.1 + 5.1 * h) * u * tiny)
+      + mergeNew (na + nb) (Aa + Ab) X (Sa + Sb) ΔS h
       ≤ 17 * u * (Aa + Ab) * (Da + Db + X) + 9 * u * (na + nb) * (Sa + Sb + ΔS)
         + 60 * u ^ 2 * L * (Aa + Ab) ^ 2 + 12 * u * tiny * L := by
   obtain ⟨hu, -, ht, -, -⟩ := fpFacts
+  unfold mergeNew
   have a1 : u * Aa * Da ≤ u * (Aa + Ab) * Da := by
     have := mul_le_mul_of_nonneg_right (by linarith : Aa ≤ Aa + Ab) (by positivity : 0 ≤ u * Da)
     linarith
   have a2 : u * Ab * Db ≤ u * (Aa + Ab) * Db := by
     have := mul_le_mul_of_nonneg_right (by linarith : Ab ≤ Aa + Ab) (by positivity : 0 ≤ u * Db)
     linarith
-  have a3 : 0 ≤ u * (Aa + Ab) * X := by positivity
-  have b1 : u * (na * Sa) ≤ u * ((na + nb - 1) * Sa) :=
+  have b1 : u * ((na + 1) * Sa) ≤ u * ((na + nb) * Sa) :=
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hSa) hu.le
-  have b2 : u * (nb * Sb) ≤ u * ((na + nb - 1) * Sb) :=
+  have b2 : u * ((nb + 1) * Sb) ≤ u * ((na + nb) * Sb) :=
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hSb) hu.le
-  have b3 : 0 ≤ u * ((na + nb - 1) * ΔS) := by
-    have : 0 ≤ na + nb - 1 := by linarith
-    positivity
-  have b4 : 0 ≤ u * (Sa + Sb + ΔS) := by positivity
   have e1 : Aa ^ 2 ≤ (Aa + Ab) ^ 2 := by nlinarith
   have e2 : Ab ^ 2 ≤ (Aa + Ab) ^ 2 := by nlinarith
   have e3 : u ^ 2 * La * Aa ^ 2 ≤ u ^ 2 * La * (Aa + Ab) ^ 2 :=
@@ -317,27 +317,21 @@ theorem fold_terms {na nb m h Aa Ab Da Db X Sa Sb ΔS La Lb L : ℝ}
     mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_left hhm (by positivity)) (by positivity)
   have e6 : u ^ 2 * (La + Lb + 2 * m) * (Aa + Ab) ^ 2 ≤ u ^ 2 * L * (Aa + Ab) ^ 2 :=
     mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_left hL (by positivity)) (by positivity)
-  have e7 : 0 ≤ u ^ 2 * m * (Aa + Ab) ^ 2 := by
-    have : 0 ≤ m := by linarith
-    positivity
-  have f1 : u * tiny * (7.1 + 5.1 * h) ≤ u * tiny * (24 * m) :=
-    mul_le_mul_of_nonneg_left (by linarith) (by positivity)
+  have f1 : u * tiny * h ≤ u * tiny * m := mul_le_mul_of_nonneg_left hhm (by positivity)
   have f2 : u * tiny * (La + Lb + 2 * m) ≤ u * tiny * L := mul_le_mul_of_nonneg_left hL (by positivity)
   linarith
 
 /-- **A merge keeps the invariant's bound**, with `m = min(n_a, n_b)`,
 `h = n_a n_b / n ≤ m` and `X = h |Δ|`. -/
 theorem merge_fold {na nb m h Aa Ab Da Db X Sa Sb ΔS Ea Eb La Lb L : ℝ}
-    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (hma : m ≤ na) (hmb : m ≤ nb) (hh : 0 ≤ h)
-    (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21) (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
-    (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hX : 0 ≤ X) (hSa : 0 ≤ Sa) (hSb : 0 ≤ Sb) (hΔS : 0 ≤ ΔS)
-    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L)
+    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hh : 0 ≤ h) (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21)
+    (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab) (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hX : 0 ≤ X) (hSa : 0 ≤ Sa)
+    (hSb : 0 ≤ Sb) (hΔS : 0 ≤ ΔS) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L)
     (hEa : Ea ≤ (1 + 3 * na * u) * (17 * u * Aa * Da + 9 * u * na * Sa + 60 * u ^ 2 * La * Aa ^ 2
       + 12 * u * tiny * La))
     (hEb : Eb ≤ (1 + 3 * nb * u) * (17 * u * Ab * Db + 9 * u * nb * Sb + 60 * u ^ 2 * Lb * Ab ^ 2
       + 12 * u * tiny * Lb)) :
-    (1 + u) ^ 2 * (Ea + Eb) + 14.4 * u * (Aa + Ab) * X + 8.2 * u * (Sa + Sb + ΔS)
-        + 105 * u ^ 2 * h * (Aa + Ab) ^ 2 + (7.1 + 5.1 * h) * u * tiny
+    (1 + u) ^ 2 * (Ea + Eb) + mergeNew (na + nb) (Aa + Ab) X (Sa + Sb) ΔS h
       ≤ (1 + 3 * (na + nb) * u) * (17 * u * (Aa + Ab) * (Da + Db + X)
         + 9 * u * (na + nb) * (Sa + Sb + ΔS) + 60 * u ^ 2 * L * (Aa + Ab) ^ 2
         + 12 * u * tiny * L) := by
@@ -345,7 +339,6 @@ theorem merge_fold {na nb m h Aa Ab Da Db X Sa Sb ΔS Ea Eb La Lb L : ℝ}
   set A := Aa + Ab
   set S := Sa + Sb + ΔS
   set n := na + nb
-  have hA0 : 0 ≤ A := by positivity
   set Ta := 17 * u * Aa * Da + 9 * u * na * Sa + 60 * u ^ 2 * La * Aa ^ 2 + 12 * u * tiny * La
   set Tb := 17 * u * Ab * Db + 9 * u * nb * Sb + 60 * u ^ 2 * Lb * Ab ^ 2 + 12 * u * tiny * Lb
   have hTa : 0 ≤ Ta := by positivity
@@ -364,16 +357,16 @@ theorem merge_fold {na nb m h Aa Ab Da Db X Sa Sb ΔS Ea Eb La Lb L : ℝ}
         _ = ((1 + u) ^ 2 * (1 + 3 * nb * u)) * Tb := by ring
         _ ≤ _ := by gcongr
     linarith
-  have k2 := fold_terms hna hnb hm1 hma hmb hh hhm hAa hAb hDa hDb hX hSa hSb hΔS hLa hLb hL
-  have hnew0 : 0 ≤ 14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2
-      + (7.1 + 5.1 * h) * u * tiny := by positivity
-  have k3 : 14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2 + (7.1 + 5.1 * h) * u * tiny
-      ≤ (1 + 3 * n * u) * (14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2
-        + (7.1 + 5.1 * h) * u * tiny) := le_mul_of_one_le_left hnew0 (by nlinarith)
-  calc _ ≤ (1 + 3 * n * u) * (Ta + Tb) + (1 + 3 * n * u) * (14.4 * u * A * X + 8.2 * u * S
-        + 105 * u ^ 2 * h * A ^ 2 + (7.1 + 5.1 * h) * u * tiny) := by linarith
-    _ = (1 + 3 * n * u) * (Ta + Tb + (14.4 * u * A * X + 8.2 * u * S + 105 * u ^ 2 * h * A ^ 2
-        + (7.1 + 5.1 * h) * u * tiny)) := by ring
+  have k2 := fold_terms (X := X) (ΔS := ΔS) hna hnb hhm hAa hAb hDa hDb hSa hSb hLa hLb hL
+  have hnew0 : 0 ≤ mergeNew n A X (Sa + Sb) ΔS h := by
+    unfold mergeNew
+    have : 0 ≤ n := by linarith
+    positivity
+  have k3 : mergeNew n A X (Sa + Sb) ΔS h ≤ (1 + 3 * n * u) * mergeNew n A X (Sa + Sb) ΔS h :=
+    le_mul_of_one_le_left hnew0 (by nlinarith)
+  calc _ ≤ (1 + 3 * n * u) * (Ta + Tb) + (1 + 3 * n * u) * mergeNew n A X (Sa + Sb) ΔS h := by
+        linarith
+    _ = (1 + 3 * n * u) * (Ta + Tb + mergeNew n A X (Sa + Sb) ΔS h) := by ring
     _ ≤ (1 + 3 * n * u) * Tn := by gcongr
 
 /-- **The merged mean**: from a computed weighted mean within
@@ -870,47 +863,31 @@ theorem tInv_of_wInv {xs : List ℝ} {s : ℕ × ℝ × ℝ} (h : WInv xs s) : T
       linarith
     exact mul_le_mul a1 a2 (by positivity) (by positivity)
 
-/-- **One merge keeps the co-moment's bound**: the error terms of a merge
-(`delta_err`, `sq_err`, `T_err`, `merge_com`) folded into the tree bound
-(`merge_fold`). -/
-theorem merge_step_arith {na nb m h Aa Ab Da Db Sa Sb La Lb L Ma Mb ma mb Dh T Sha Shb Sh1 Sh : ℝ}
-    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (hma : m ≤ na) (hmb : m ≤ nb) (hh : 0 ≤ h)
-    (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21) (hAa : 0 ≤ Aa) (hAb : 0 ≤ Ab)
-    (htA : tiny ≤ Aa + Ab) (hMa : |Ma| ≤ Aa) (hMb : |Mb| ≤ Ab)
-    (ea : |ma - Ma| ≤ 6 * u * Aa) (eb : |mb - Mb| ≤ 6 * u * Ab)
-    (eD : |Dh - (mb - ma)| ≤ u * (|mb - ma| + tiny))
-    (eT : |T - Dh ^ 2 * h| ≤ 5 * u * (Dh ^ 2 * h + (1 + h) * tiny))
-    (hDa : 0 ≤ Da) (hDb : 0 ≤ Db) (hSa : 0 ≤ Sa) (hSb : 0 ≤ Sb) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
-    (hL : La + Lb + 2 * m ≤ L)
-    (hEa : |Sha - Sa| ≤ tBound na Aa Da Sa La) (hEb : |Shb - Sb| ≤ tBound nb Ab Db Sb Lb)
-    (h1 : |Sh1 - (Sha + Shb)| ≤ u * (|Sha + Shb| + tiny))
-    (h2 : |Sh - (Sh1 + T)| ≤ u * (|Sh1 + T| + tiny)) :
-    |Sh - (Sa + Sb + (Mb - Ma) ^ 2 * h)|
-      ≤ tBound (na + nb) (Aa + Ab) (Da + Db + h * |Mb - Ma|) (Sa + Sb + (Mb - Ma) ^ 2 * h) L := by
-  have hA0 : 0 ≤ Aa + Ab := by positivity
-  have hΔA : |Mb - Ma| ≤ Aa + Ab := by have := abs_sub Mb Ma; linarith
-  have h1' : |(mb - ma) - (Mb - Ma)| ≤ 6 * u * (Aa + Ab) := by
-    have e : (mb - ma) - (Mb - Ma) = (mb - Mb) - (ma - Ma) := by ring
-    rw [e]; have := abs_sub (mb - Mb) (ma - Ma); linarith
-  have hd := delta_err htA h1' eD
-  have hs := sq_err hh hA0 hΔA hd
-  have hQ : |Dh ^ 2 * h - (Mb - Ma) ^ 2 * h| ≤ 14.2 * u * (Aa + Ab) * (h * |Mb - Ma|)
-      + 2 * u * ((Mb - Ma) ^ 2 * h) + 103 * u ^ 2 * h * (Aa + Ab) ^ 2 := by
-    have e : Dh ^ 2 * h - (Mb - Ma) ^ 2 * h = h * (Dh ^ 2 - (Mb - Ma) ^ 2) := by ring
-    rw [e, abs_mul, abs_of_nonneg hh]; exact hs
-  have hX : 0 ≤ h * |Mb - Ma| := by positivity
-  have hT := T_err hX (by positivity) hh hA0 hQ eT
-  have hc := merge_com hSa hSb (by positivity : 0 ≤ (Mb - Ma) ^ 2 * h) hX hA0 hh hEa hEb hT h1 h2
-  refine le_trans hc ?_
-  unfold tBound at hEa hEb ⊢
-  have hf := merge_fold hna hnb hm1 hma hmb hh hhm hn hAa hAb hDa hDb hX hSa hSb
-    (by positivity : 0 ≤ (Mb - Ma) ^ 2 * h) hLa hLb hL le_rfl le_rfl
-  have e : tBound na Aa Da Sa La = (1 + 3 * na * u) * (17 * u * Aa * Da + 9 * u * na * Sa
-      + 60 * u ^ 2 * La * Aa ^ 2 + 12 * u * tiny * La) := rfl
-  have e' : tBound nb Ab Db Sb Lb = (1 + 3 * nb * u) * (17 * u * Ab * Db + 9 * u * nb * Sb
-      + 60 * u ^ 2 * Lb * Ab ^ 2 + 12 * u * tiny * Lb) := rfl
-  rw [← e, ← e'] at hf
-  exact hf
+/-- DuckDB's new terms (`merge_com`) are among the ones a merge may add
+(`mergeNew`), for `h ≥ 1/2`. -/
+theorem merge_com_le {n A X Sab ΔS h : ℝ} (hn : 1 ≤ n) (hh : 1 / 2 ≤ h) (hA : 0 ≤ A)
+    (hX : 0 ≤ X) (hSab : 0 ≤ Sab) (hΔS : 0 ≤ ΔS) :
+    14.4 * u * A * X + 8.2 * u * (Sab + ΔS) + 105 * u ^ 2 * h * A ^ 2 + (7.1 + 5.1 * h) * u * tiny
+      ≤ mergeNew n A X Sab ΔS h := by
+  obtain ⟨hu, -, ht, -, -⟩ := fpFacts
+  unfold mergeNew
+  have p1 : 0 ≤ u * A * X := by positivity
+  have p2 : 0 ≤ u * Sab := by positivity
+  have p3 : 0 ≤ u * ΔS := by positivity
+  have p4 := mul_le_mul_of_nonneg_left hn p3
+  have p5 : 0 ≤ u ^ 2 * h * A ^ 2 := by
+    have : 0 ≤ h := by linarith
+    positivity
+  have p6 : (7.1 + 5.1 * h) * (u * tiny) ≤ 24 * h * (u * tiny) :=
+    mul_le_mul_of_nonneg_right (by linarith) (by positivity)
+  linarith
+
+/-- `h = n_a n_b / n ≥ 1/2` for `n_a, n_b ≥ 1`. -/
+theorem h_ge_half {a b : ℕ} (ha : 1 ≤ a) (hb : 1 ≤ b) : 1 / 2 ≤ (a : ℝ) * b / ((a : ℝ) + b) := by
+  have ha' : (1 : ℝ) ≤ a := by exact_mod_cast ha
+  have hb' : (1 : ℝ) ≤ b := by exact_mod_cast hb
+  rw [le_div_iff₀ (by linarith)]
+  nlinarith [mul_nonneg (sub_nonneg.mpr ha') (sub_nonneg.mpr hb')]
 
 /-- DuckDB's merge of the variance states of a target `t` and a source `s`
 (`VarianceOperation::Combine`), with the mean by a fused multiply-add. -/
@@ -966,107 +943,187 @@ theorem exact_merge {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ []) :
   · rw [mx_append (dupL_ne ha) (dupL_ne hb), dupL_length, dupL_length]; ring
   · rw [comoment_append (dupL_ne ha) (dupL_ne hb), my_dupL, my_dupL, dupL_length, dupL_length]; ring
 
+theorem mag_eq_sum_abs (xs : List ℝ) : mag xs = (xs.map abs).sum + xs.length * tiny := by
+  induction xs with
+  | nil => simp
+  | cons x xs ih =>
+    simp only [mag_cons, List.map_cons, List.sum_cons, List.length_cons, ih]; push_cast; ring
+
+theorem length_mul_abs_mx_le (xs : List ℝ) : xs.length * |mx (dupL xs)| ≤ (xs.map abs).sum := by
+  rcases eq_or_ne xs [] with rfl | hne
+  · simp [mx, sx, dupL]
+  have hl : (0 : ℝ) < xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have e : mx (dupL xs) = xs.sum / xs.length := by
+    simp [mx, sx, dupL, List.map_map, Function.comp_def]
+  rw [e, abs_div, abs_of_pos hl, mul_div_cancel₀ _ hl.ne']
+  exact abs_sum_le_sum_abs xs
+
+/-- One side of a merge: `n ≥ 1` values whose absolute values sum to `P`, the
+computed mean `m` within `6 u (P + n·tiny)` of the exact one `M`, and the
+computed co-moment `Ŝ` within `E` of the exact one `S`, each far from
+overflow. -/
+structure MergeSide (n : ℕ) (m M P S Sh E : ℝ) : Prop where
+  one : 1 ≤ n
+  P0 : 0 ≤ P
+  Pb : P + n * tiny ≤ 2 ^ 432
+  MP : n * |M| ≤ P
+  Mb : |M| ≤ 2 ^ 400
+  mean : |m - M| ≤ 6 * u * (P + n * tiny)
+  S0 : 0 ≤ S
+  Sb : S ≤ 2 ^ 830
+  com : |Sh - S| ≤ E
+  Eb : E ≤ 2 ^ 900
+
+/-- **What a merge must meet** for the tree invariant to hold through it
+(`tInv_merge_of`). Of the states `(n_a, m_a, Ŝ_a)` and `(n_b, m_b, Ŝ_b)`: the
+merged count is `n = n_a + n_b`; the merged mean is within
+`6 u (n_b A_a + n_a A_b) / n` of `(n_a m_a + n_b m_b) / n`, with
+`A = P + n·tiny`; and the merged co-moment is within
+`(1 + u)² (E_a + E_b) + mergeNew` of `S_a + S_b + Δ² h`, with `Δ = M_b − M_a`
+and `h = n_a n_b / n`. DuckDB's merge meets it (`dMerge_spec`), and so does
+Schubert and Gertz's (`sgMerge_spec`). -/
+def MergeSpec (mg : ℕ × ℝ × ℝ → ℕ × ℝ × ℝ → ℕ × ℝ × ℝ) : Prop :=
+  ∀ ⦃na nb : ℕ⦄ ⦃ma mb Ma Mb Pa Pb Sa Sb Sha Shb Ea Eb : ℝ⦄, na + nb ≤ 2 ^ 32 →
+    MergeSide na ma Ma Pa Sa Sha Ea → MergeSide nb mb Mb Pb Sb Shb Eb →
+    (mg (na, ma, Sha) (nb, mb, Shb)).1 = na + nb ∧
+    |(mg (na, ma, Sha) (nb, mb, Shb)).2.1 - ((na : ℝ) * ma + nb * mb) / ((na : ℝ) + nb)|
+      ≤ 6 * u * ((nb : ℝ) * (Pa + na * tiny) + na * (Pb + nb * tiny)) / ((na : ℝ) + nb) ∧
+    |(mg (na, ma, Sha) (nb, mb, Shb)).2.2
+        - (Sa + Sb + (Mb - Ma) ^ 2 * ((na : ℝ) * nb / ((na : ℝ) + nb)))|
+      ≤ (1 + u) ^ 2 * (Ea + Eb) + mergeNew ((na : ℝ) + nb) (Pa + na * tiny + (Pb + nb * tiny))
+          ((na : ℝ) * nb / ((na : ℝ) + nb) * |Mb - Ma|) (Sa + Sb)
+          ((Mb - Ma) ^ 2 * ((na : ℝ) * nb / ((na : ℝ) + nb))) ((na : ℝ) * nb / ((na : ℝ) + nb))
+
+/-- The tree invariant gives one side of a merge. -/
+theorem TInv.side {xs : List ℝ} {s : ℕ × ℝ × ℝ} (hne : xs ≠ []) (hN : xs.length ≤ 2 ^ 32)
+    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 399) (h : TInv xs s) :
+    ∃ Ds, 0 ≤ Ds ∧ Ds ^ 2 ≤ Lw xs.length * comoment (dupL xs) ∧
+      MergeSide xs.length s.2.1 (mx (dupL xs)) (xs.map abs).sum (comoment (dupL xs)) s.2.2
+        (tBound xs.length (mag xs) Ds (comoment (dupL xs)) (Lw xs.length)) := by
+  obtain ⟨-, hm, Ds, hDs0, hDs, hC⟩ := h
+  obtain ⟨hA0, hAb, -, -, hMb, hS0, hSb⟩ := list_facts hne hN hB
+  have hmag := mag_eq_sum_abs xs
+  have hn1 : (1 : ℝ) ≤ xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have hnN : (xs.length : ℝ) ≤ 2 ^ 32 := by exact_mod_cast hN
+  have hL : Lw xs.length ≤ 2 ^ 39 := by have := Lw_le hN; linarith
+  have hP0 : 0 ≤ (xs.map abs).sum :=
+    List.sum_nonneg fun y hy => by obtain ⟨x, -, rfl⟩ := List.mem_map.mp hy; exact abs_nonneg x
+  exact ⟨Ds, hDs0, hDs, List.length_pos_iff.mpr hne, hP0, by rw [← hmag]; exact hAb,
+    length_mul_abs_mx_le xs, hMb, by rw [← hmag]; exact hm, hS0, hSb, hC,
+    tBound_le hn1 hnN hA0 hAb hDs0 (Ds_le hDs0 hS0 hL hSb hDs) hS0 hSb (Lw_nonneg _) hL⟩
+
 set_option maxHeartbeats 1000000 in
-/-- **DuckDB's merge keeps the tree invariant.** -/
-theorem StdModel.tInv_merge {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ [])
+/-- **A merge that meets `MergeSpec` keeps the tree invariant.** -/
+theorem tInv_merge_of {mg : ℕ × ℝ × ℝ → ℕ × ℝ × ℝ → ℕ × ℝ × ℝ} (hmg : MergeSpec mg)
+    {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ [])
     (hN : xa.length + xb.length ≤ 2 ^ 32) (hBa : ∀ x ∈ xa, |x| ≤ 2 ^ 399)
     (hBb : ∀ x ∈ xb, |x| ≤ 2 ^ 399) {t s : ℕ × ℝ × ℝ} (ht : TInv xa t) (hs : TInv xb s) :
-    TInv (xa ++ xb) (M.dMerge t s) := by
-  obtain ⟨hu, hu', htn, htn1, hmax⟩ := fpFacts
+    TInv (xa ++ xb) (mg t s) := by
   obtain ⟨ct, ma, Sha⟩ := t
   obtain ⟨cs, mb, Shb⟩ := s
-  obtain ⟨hna, hma, Da, hDa0, hDa, hEa⟩ := ht
-  obtain ⟨hnb, hmb, Db, hDb0, hDb, hEb⟩ := hs
-  simp only at hna hma hEa hnb hmb hEb
-  subst hna hnb
+  have hct : ct = xa.length := ht.1
+  have hcs : cs = xb.length := hs.1
+  subst hct hcs
   have hla : 1 ≤ xa.length := List.length_pos_iff.mpr ha
   have hlb : 1 ≤ xb.length := List.length_pos_iff.mpr hb
-  obtain ⟨hAa0, hAab, hAat, hMa, hMab, hSa0, hSab⟩ := list_facts ha (by omega) hBa
-  obtain ⟨hAb0, hAbb, hAbt, hMb, hMbb, hSb0, hSbb⟩ := list_facts hb (by omega) hBb
+  obtain ⟨Da, hDa0, hDa, sa⟩ := ht.side ha (by omega) hBa
+  obtain ⟨Db, hDb0, hDb, sb⟩ := hs.side hb (by omega) hBb
+  dsimp only at sa sb
+  obtain ⟨hc, hm, hS⟩ := hmg hN sa sb
   obtain ⟨hme, hce⟩ := exact_merge ha hb
-  have hdm : M.dMerge (xa.length, ma, Sha) (xb.length, mb, Shb) = (xa.length + xb.length,
-      M.fl (M.fl ((xb.length : ℝ) / ((xa.length : ℝ) + xb.length)) * M.fl (mb - ma) + ma),
-      M.fl (M.fl (Shb + Sha) + M.fl (M.fl (M.fl (M.fl (M.fl (mb - ma) * M.fl (mb - ma))
-        * xb.length) * xa.length) / ((xa.length : ℝ) + xb.length)))) := by
-    have h1 : xa.length ≠ 0 := by omega
-    have h2 : xb.length ≠ 0 := by omega
-    simp only [StdModel.dMerge, h1, h2, ite_false]
-  rw [hdm]
-  -- names
-  obtain ⟨na, hna⟩ : ∃ n : ℝ, n = xa.length := ⟨_, rfl⟩
-  obtain ⟨nb, hnb⟩ : ∃ n : ℝ, n = xb.length := ⟨_, rfl⟩
-  have hna1 : 1 ≤ na := by rw [hna]; exact_mod_cast hla
-  have hnb1 : 1 ≤ nb := by rw [hnb]; exact_mod_cast hlb
-  have hnab : na + nb ≤ 2 ^ 32 := by rw [hna, hnb]; exact_mod_cast hN
-  obtain ⟨Ma, hMa'⟩ : ∃ m, m = mx (dupL xa) := ⟨_, rfl⟩
-  obtain ⟨Mb, hMb'⟩ : ∃ m, m = mx (dupL xb) := ⟨_, rfl⟩
-  obtain ⟨Aa, hAa'⟩ : ∃ m, m = mag xa := ⟨_, rfl⟩
-  obtain ⟨Ab, hAb'⟩ : ∃ m, m = mag xb := ⟨_, rfl⟩
-  obtain ⟨Sa, hSa'⟩ : ∃ m, m = comoment (dupL xa) := ⟨_, rfl⟩
-  obtain ⟨Sb, hSb'⟩ : ∃ m, m = comoment (dupL xb) := ⟨_, rfl⟩
-  simp only [← hna, ← hnb, ← hMa', ← hMb', ← hSa', ← hSb'] at hme hce
-  simp only [← hMa', ← hAa', ← hna] at hma hMa hMab
-  simp only [← hMb', ← hAb', ← hnb] at hmb hMb hMbb
-  simp only [← hSa', ← hAa', ← hna] at hEa hDa
-  simp only [← hSb', ← hAb', ← hnb] at hEb hDb
-  simp only [← hAa'] at hAa0 hAab hAat
-  simp only [← hAb'] at hAb0 hAbb hAbt
-  simp only [← hSa'] at hSa0 hSab
-  simp only [← hSb'] at hSb0 hSbb
-  simp only [← hna] at hAat
-  simp only [← hnb] at hAbt
-  simp only [← hna, ← hnb]
-  have hmag : mag (xa ++ xb) = Aa + Ab := by rw [mag_append, hAa', hAb']
-  have hlen : ((xa ++ xb).length : ℝ) = na + nb := by rw [List.length_append, hna, hnb]; push_cast; ring
-  have hnu : (na + nb) * u ≤ 1 / 2 ^ 21 := by
-    calc (na + nb) * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+  have hAa := mag_eq_sum_abs xa
+  have hAb := mag_eq_sum_abs xb
+  rw [← hAa, ← hAb] at hS
+  have hna1 : (1 : ℝ) ≤ xa.length := by exact_mod_cast hla
+  have hnb1 : (1 : ℝ) ≤ xb.length := by exact_mod_cast hlb
+  have hnu : ((xa.length : ℝ) + xb.length) * u ≤ 1 / 2 ^ 21 := by
+    have : ((xa.length : ℝ) + xb.length) ≤ 2 ^ 32 := by exact_mod_cast hN
+    calc ((xa.length : ℝ) + xb.length) * u ≤ 2 ^ 32 * (1 / 2 ^ 53) :=
+          mul_le_mul this fpFacts.u_le u_pos.le (by norm_num)
       _ = 1 / 2 ^ 21 := by norm_num
-  obtain ⟨hma1, hmab, hMaA⟩ := mean_mag hna1 (by linarith) hAa0 hAab hMa hMab hma
-  obtain ⟨hmb1, hmbb, hMbA⟩ := mean_mag hnb1 (by linarith) hAb0 hAbb hMb hMbb hmb
-  -- the weight
-  obtain ⟨h, hh⟩ : ∃ h : ℝ, h = na * nb / (na + nb) := ⟨_, rfl⟩
-  simp only [← hh] at hce
-  have hh0 : 0 ≤ h := by rw [hh]; positivity
-  obtain ⟨m, hm⟩ : ∃ m : ℝ, m = ((min xa.length xb.length : ℕ) : ℝ) := ⟨_, rfl⟩
-  have hhm : h ≤ m := by rw [hh, hm, hna, hnb]; exact h_le_min hla hlb
-  have hm1 : 1 ≤ m := by rw [hm]; exact_mod_cast (le_min hla hlb)
-  have hmA : m ≤ na := by rw [hm, hna]; exact_mod_cast min_le_left _ _
-  have hmB : m ≤ nb := by rw [hm, hnb]; exact_mod_cast min_le_right _ _
+  set na : ℝ := (xa.length : ℝ) with hna
+  set nb : ℝ := (xb.length : ℝ) with hnb
+  set Ma := mx (dupL xa)
+  set Mb := mx (dupL xb)
+  set Sa := comoment (dupL xa)
+  set Sb := comoment (dupL xb)
+  set h : ℝ := na * nb / (na + nb) with hh
+  have hh0 : 0 ≤ h := div_nonneg (mul_nonneg (by linarith) (by linarith)) (by linarith)
+  have hX0 : 0 ≤ h * |Mb - Ma| := mul_nonneg hh0 (abs_nonneg _)
+  have hΔS0 : 0 ≤ (Mb - Ma) ^ 2 * h := mul_nonneg (sq_nonneg _) hh0
+  obtain ⟨m, hm'⟩ : ∃ m : ℝ, m = ((min xa.length xb.length : ℕ) : ℝ) := ⟨_, rfl⟩
+  have hhm : h ≤ m := by rw [hh, hm', hna, hnb]; exact h_le_min hla hlb
   have hLm := Lw_merge hla hlb
-  simp only [← hm] at hLm
-  have hLa0 := Lw_nonneg xa.length
-  have hLb0 := Lw_nonneg xb.length
-  have hLa := Lw_le (n := xa.length) (by omega)
-  have hLb := Lw_le (n := xb.length) (by omega)
-  simp only [← hna] at hLa
-  simp only [← hnb] at hLb
-  have hLa' : Lw xa.length ≤ 2 ^ 39 := by linarith
-  have hLb' : Lw xb.length ≤ 2 ^ 39 := by linarith
-  refine ⟨by simp, ?_, Da + Db + h * |Mb - Ma|, by positivity, ?_, ?_⟩
+  rw [← hm'] at hLm
+  refine ⟨by rw [hc, List.length_append], ?_, Da + Db + h * |Mb - Ma|,
+    add_nonneg (add_nonneg hDa0 hDb0) hX0, ?_, ?_⟩
   · -- the mean
-    dsimp only
-    rw [hme, hmag]
-    apply merge_mean hna1 hnb1 hAa0 hAb0 hma hmb
-    have := M.dmean_spec (ns := xb.length) (nt := xa.length) hlb hla (by omega)
-      (ms := mb) (mt := ma) (As := Ab) (At := Aa) (by rw [← hnb]; exact hmb1)
-      (by rw [← hna]; exact hma1) (by rw [← hnb]; exact hAbt) (by rw [← hna]; exact hAat)
-      hmbb hmab
-    rw [← hna, ← hnb] at this
-    exact this
+    rw [hme, mag_append, hAa, hAb]
+    exact merge_mean hna1 hnb1 (add_nonneg sa.P0 (mul_nonneg (by linarith) tiny_pos.le))
+      (add_nonneg sb.P0 (mul_nonneg (by linarith) tiny_pos.le)) sa.mean sb.mean hm
   · -- `Ds² ≤ L S`
     rw [List.length_append, hce]
     have hX2 : (h * |Mb - Ma|) ^ 2 ≤ (2 * m) * ((Mb - Ma) ^ 2 * h) := by
       have e : (h * |Mb - Ma|) ^ 2 = h * ((Mb - Ma) ^ 2 * h) := by rw [mul_pow, sq_abs]; ring
       rw [e]
-      exact mul_le_mul_of_nonneg_right (by linarith) (by positivity)
-    have := cs3 hDa0 hDb0 (by positivity) hLa0 hLb0 (by linarith) hSa0 hSb0 (by positivity)
+      exact mul_le_mul_of_nonneg_right (by linarith) hΔS0
+    have := cs3 hDa0 hDb0 hX0 (Lw_nonneg _) (Lw_nonneg _) (by linarith) sa.S0 sb.S0 hΔS0
       hDa hDb hX2
-    have hS : 0 ≤ Sa + Sb + (Mb - Ma) ^ 2 * h := by positivity
-    have := mul_le_mul_of_nonneg_right hLm hS
+    have hS0 : 0 ≤ Sa + Sb + (Mb - Ma) ^ 2 * h := add_nonneg (add_nonneg sa.S0 sb.S0) hΔS0
+    have := mul_le_mul_of_nonneg_right hLm hS0
     linarith
   · -- the co-moment
+    rw [List.length_append, hce, mag_append, Nat.cast_add]
+    refine le_trans hS ?_
+    exact merge_fold hna1 hnb1 hh0 hhm hnu (mag_nonneg xa) (mag_nonneg xb) hDa0 hDb0 hX0 sa.S0
+      sb.S0 hΔS0 (Lw_nonneg _) (Lw_nonneg _) hLm le_rfl le_rfl
+
+set_option maxHeartbeats 1000000 in
+/-- **DuckDB's merge meets `MergeSpec`**: the mean by `dmean_spec`, the
+co-moment by `delta_err`, `sq_err`, `T_chain`, `T_err` and `merge_com`. -/
+theorem StdModel.dMerge_spec : MergeSpec M.dMerge := by
+  intro na nb ma mb Ma Mb Pa Pb Sa Sb Sha Shb Ea Eb hN sa sb
+  obtain ⟨hu, hu', htn, htn1, hmax⟩ := fpFacts
+  have hla := sa.one
+  have hlb := sb.one
+  have hdm : M.dMerge (na, ma, Sha) (nb, mb, Shb) = (na + nb,
+      M.fl (M.fl ((nb : ℝ) / ((na : ℝ) + nb)) * M.fl (mb - ma) + ma),
+      M.fl (M.fl (Shb + Sha) + M.fl (M.fl (M.fl (M.fl (M.fl (mb - ma) * M.fl (mb - ma))
+        * nb) * na) / ((na : ℝ) + nb)))) := by
+    have h1 : na ≠ 0 := by omega
+    have h2 : nb ≠ 0 := by omega
+    simp only [StdModel.dMerge, h1, h2, ite_false]
+  rw [hdm]
+  have hna1 : (1 : ℝ) ≤ na := by exact_mod_cast hla
+  have hnb1 : (1 : ℝ) ≤ nb := by exact_mod_cast hlb
+  have hnab : (na : ℝ) + nb ≤ 2 ^ 32 := by exact_mod_cast hN
+  set Aa := Pa + na * tiny with hAa
+  set Ab := Pb + nb * tiny with hAb
+  have hAa0 : 0 ≤ Aa := add_nonneg sa.P0 (mul_nonneg (by linarith) htn.le)
+  have hAb0 : 0 ≤ Ab := add_nonneg sb.P0 (mul_nonneg (by linarith) htn.le)
+  have hAat : (na : ℝ) * tiny ≤ Aa := by have := sa.P0; linarith
+  have hAbt : (nb : ℝ) * tiny ≤ Ab := by have := sb.P0; linarith
+  have hMaA' : |Ma| * na ≤ Aa := by
+    have := sa.MP
+    have : 0 ≤ (na : ℝ) * tiny := by positivity
+    linarith
+  have hMbA' : |Mb| * nb ≤ Ab := by
+    have := sb.MP
+    have : 0 ≤ (nb : ℝ) * tiny := by positivity
+    linarith
+  obtain ⟨hma1, hmab, hMaA⟩ := mean_mag hna1 (by linarith) hAa0 sa.Pb hMaA' sa.Mb sa.mean
+  obtain ⟨hmb1, hmbb, hMbA⟩ := mean_mag hnb1 (by linarith) hAb0 sb.Pb hMbA' sb.Mb sb.mean
+  refine ⟨rfl, ?_, ?_⟩
+  · -- the mean
+    exact M.dmean_spec (ns := nb) (nt := na) hlb hla (by omega) hmb1 hma1 hAbt hAat hmbb hmab
+  · -- the co-moment
     dsimp only
-    rw [hce, hlen, hmag, List.length_append]
+    obtain ⟨h, hh⟩ : ∃ h : ℝ, h = (na : ℝ) * nb / ((na : ℝ) + nb) := ⟨_, rfl⟩
+    rw [← hh]
+    have hh0 : 0 ≤ h := by rw [hh]; positivity
+    have hh2 : 1 / 2 ≤ h := by rw [hh]; exact h_ge_half hla hlb
+    have hA0 : 0 ≤ Aa + Ab := by positivity
+    have hΔA : |Mb - Ma| ≤ Aa + Ab := by have := abs_sub Mb Ma; linarith
     -- the difference of the means
     have hdb : |mb - ma| ≤ 2 ^ 402 := by have := abs_sub mb ma; linarith
     have eD := M.err (mb - ma) (by linarith)
@@ -1080,21 +1137,19 @@ theorem StdModel.tInv_merge {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ [])
       linarith
     -- the correction term
     have eT := M.T_chain (D := Dh) hlb hla (by omega) (by linarith)
-    rw [show (xb.length : ℝ) + xa.length = xa.length + xb.length from add_comm _ _,
-      show (xb.length : ℝ) * xa.length = xa.length * xb.length from mul_comm _ _, ← hna, ← hnb,
-      ← hh] at eT
-    obtain ⟨T, hT⟩ : ∃ T, T = M.fl (M.fl (M.fl (M.fl (Dh * Dh) * nb) * na) / (na + nb)) :=
+    rw [show (nb : ℝ) + na = na + nb from add_comm _ _,
+      show (nb : ℝ) * na = na * nb from mul_comm _ _, ← hh] at eT
+    obtain ⟨T, hT⟩ : ∃ T, T = M.fl (M.fl (M.fl (M.fl (Dh * Dh) * nb) * na) / ((na : ℝ) + nb)) :=
       ⟨_, rfl⟩
     rw [← hT] at eT ⊢
     -- the bounds against overflow
-    have hDa' := Ds_le hDa0 hSa0 hLa' hSab hDa
-    have hDb' := Ds_le hDb0 hSb0 hLb' hSbb hDb
-    have hEa' := tBound_le hna1 (by linarith) hAa0 hAab hDa0 hDa' hSa0 hSab hLa0 hLa'
-    have hEb' := tBound_le hnb1 (by linarith) hAb0 hAbb hDb0 hDb' hSb0 hSbb hLb0 hLb'
+    have hSa0 := sa.S0
+    have hSb0 := sb.S0
     have hSS : |Sha + Shb| ≤ 2 ^ 902 := by
       have := abs_add_le Sha Shb
       have := abs_sub_abs_le_abs_sub Sha Sa
       have := abs_sub_abs_le_abs_sub Shb Sb
+      have := sa.com; have := sb.com; have := sa.Eb; have := sb.Eb; have := sa.Sb; have := sb.Sb
       rw [abs_of_nonneg hSa0] at *; rw [abs_of_nonneg hSb0] at *
       linarith
     have e1 := M.err (Shb + Sha) (by rw [add_comm]; linarith)
@@ -1107,7 +1162,11 @@ theorem StdModel.tInv_merge {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ [])
         mul_le_mul hu' (by linarith) (by positivity) (by norm_num)
       have : (1 : ℝ) / 2 ^ 53 * (2 ^ 902 + 1) + 2 ^ 902 ≤ 2 ^ 903 := by norm_num
       linarith
-    have hh32 : h ≤ 2 ^ 32 := by linarith
+    have hh32 : h ≤ 2 ^ 32 := by
+      have := h_le_min hla hlb
+      rw [← hh] at this
+      have : ((min na nb : ℕ) : ℝ) ≤ na := by exact_mod_cast min_le_left _ _
+      linarith
     have hP : Dh ^ 2 * h ≤ 2 ^ 840 := by
       have : Dh ^ 2 ≤ 2 ^ 806 := by
         rw [← sq_abs]; calc |Dh| ^ 2 ≤ (2 ^ 403) ^ 2 := by gcongr
@@ -1122,14 +1181,35 @@ theorem StdModel.tInv_merge {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ [])
       have : (5 : ℝ) * (1 / 2 ^ 53) * (2 ^ 840 + (1 + 2 ^ 32) * 1) + 2 ^ 840 ≤ 2 ^ 841 := by
         norm_num
       linarith
-    have e2 := M.err (Sh1 + T) (by have := abs_add_le Sh1 T; norm_num at *; linarith)
+    have e2 := M.err (Sh1 + T) (by
+      have := abs_add_le Sh1 T
+      have : (2 : ℝ) ^ 903 + 2 ^ 841 ≤ 2 ^ 1023 := by norm_num
+      linarith)
     have htA : tiny ≤ Aa + Ab := by
       have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
-    have := merge_step_arith (Ma := Ma) (Mb := Mb) (ma := ma) (mb := mb) hna1 hnb1 hm1 hmA hmB
-      hh0 hhm hnu hAa0 hAb0 htA hMaA hMbA hma hmb eD eT hDa0 hDb0 hSa0 hSb0 hLa0 hLb0
-      hLm hEa hEb e1 e2
-    rw [hna, hnb] at this ⊢
-    exact this
+    have h1' : |(mb - ma) - (Mb - Ma)| ≤ 6 * u * (Aa + Ab) := by
+      have e : (mb - ma) - (Mb - Ma) = (mb - Mb) - (ma - Ma) := by ring
+      rw [e]; have := abs_sub (mb - Mb) (ma - Ma); have := sa.mean; have := sb.mean; linarith
+    have hd := delta_err htA h1' eD
+    have hs := sq_err hh0 hA0 hΔA hd
+    have hQ : |Dh ^ 2 * h - (Mb - Ma) ^ 2 * h| ≤ 14.2 * u * (Aa + Ab) * (h * |Mb - Ma|)
+        + 2 * u * ((Mb - Ma) ^ 2 * h) + 103 * u ^ 2 * h * (Aa + Ab) ^ 2 := by
+      have e : Dh ^ 2 * h - (Mb - Ma) ^ 2 * h = h * (Dh ^ 2 - (Mb - Ma) ^ 2) := by ring
+      rw [e, abs_mul, abs_of_nonneg hh0]; exact hs
+    have hX : 0 ≤ h * |Mb - Ma| := by positivity
+    have hΔS : 0 ≤ (Mb - Ma) ^ 2 * h := by positivity
+    have hT' := T_err hX hΔS hh0 hA0 hQ eT
+    have hc := merge_com hSa0 hSb0 hΔS hX hA0 hh0 sa.com sb.com hT' e1 e2
+    have hle := merge_com_le (n := (na : ℝ) + nb) (by linarith) hh2 hA0 hX
+      (add_nonneg hSa0 hSb0) hΔS
+    linarith
+
+/-- **DuckDB's merge keeps the tree invariant.** -/
+theorem StdModel.tInv_merge {xa xb : List ℝ} (ha : xa ≠ []) (hb : xb ≠ [])
+    (hN : xa.length + xb.length ≤ 2 ^ 32) (hBa : ∀ x ∈ xa, |x| ≤ 2 ^ 399)
+    (hBb : ∀ x ∈ xb, |x| ≤ 2 ^ 399) {t s : ℕ × ℝ × ℝ} (ht : TInv xa t) (hs : TInv xb s) :
+    TInv (xa ++ xb) (M.dMerge t s) :=
+  tInv_merge_of M.dMerge_spec ha hb hN hBa hBb ht hs
 
 /-- A plan of DuckDB's parallel aggregation: each leaf a thread's run of
 Welford's updates over its values, each node a merge of a target (left) and
@@ -1195,21 +1275,18 @@ theorem StdModel.tInv_plan : ∀ p : VPlan, p.vals ≠ [] → p.vals.length ≤ 
       (StdModel.tInv_plan t ht (by omega) (fun x hx => hB x (Or.inl hx)) (fun x hx => hrep x (Or.inl hx)))
       (StdModel.tInv_plan s hs (by omega) (fun x hx => hB x (Or.inr hx)) (fun x hx => hrep x (Or.inr hx)))
 
-/-- **DuckDB's parallel variance, to first order in the spread**: for any
-plan of Welford's updates and Chan's merges over `n ≤ 2³²` doubles at most
-`2³⁹⁹` in magnitude, the computed co-moment `Ŝ` is within
+/-- **The tree invariant's bound, to first order in the spread**: a state
+meeting `TInv` over `n ≤ 2³²` values has its co-moment `Ŝ` within
 `148 n u √(Q' S) + 3961 n² u² Q' + 793 n u · tiny` of `S = Σ (x − x̄)²`,
 where `Q' = Σ (|x| + tiny)²`. -/
-theorem StdModel.chanVar_rel (p : VPlan) (hne : p.vals ≠ []) (hN : p.vals.length ≤ 2 ^ 32)
-    (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 399) (hrep : ∀ x ∈ p.vals, M.fl x = x) :
-    |(M.vEval p).2.2 - comoment (dupL p.vals)|
-      ≤ 148 * p.vals.length * u
-          * √((p.vals.map fun x => (|x| + tiny) ^ 2).sum * comoment (dupL p.vals))
-        + 3961 * p.vals.length ^ 2 * u ^ 2 * (p.vals.map fun x => (|x| + tiny) ^ 2).sum
-        + 793 * p.vals.length * u * tiny := by
+theorem TInv.rel {xs : List ℝ} {s : ℕ × ℝ × ℝ} (hne : xs ≠ []) (hN : xs.length ≤ 2 ^ 32)
+    (h : TInv xs s) :
+    |s.2.2 - comoment (dupL xs)|
+      ≤ 148 * xs.length * u * √((xs.map fun x => (|x| + tiny) ^ 2).sum * comoment (dupL xs))
+        + 3961 * xs.length ^ 2 * u ^ 2 * (xs.map fun x => (|x| + tiny) ^ 2).sum
+        + 793 * xs.length * u * tiny := by
   obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
-  obtain ⟨-, -, Ds, hDs0, hDs, hC⟩ := M.tInv_plan p hne hN hB hrep
-  generalize p.vals = xs at hne hN hB hrep hDs hC ⊢
+  obtain ⟨-, -, Ds, hDs0, hDs, hC⟩ := h
   have hL := Lw_le hN
   unfold tBound at hC
   set n : ℝ := (xs.length : ℝ) with hn
@@ -1290,6 +1367,21 @@ theorem StdModel.chanVar_rel (p : VPlan) (hne : p.vals ≠ []) (hN : p.vals.leng
   have e3 : 793 * n * u * tiny = 793 * (n * u * tiny) := by ring
   rw [e1, e2, e3]
   linarith
+
+
+/-- **DuckDB's parallel variance, to first order in the spread**: for any
+plan of Welford's updates and Chan's merges over `n ≤ 2³²` doubles at most
+`2³⁹⁹` in magnitude, the computed co-moment `Ŝ` is within
+`148 n u √(Q' S) + 3961 n² u² Q' + 793 n u · tiny` of `S = Σ (x − x̄)²`,
+where `Q' = Σ (|x| + tiny)²` (`TInv.rel`). -/
+theorem StdModel.chanVar_rel (p : VPlan) (hne : p.vals ≠ []) (hN : p.vals.length ≤ 2 ^ 32)
+    (hB : ∀ x ∈ p.vals, |x| ≤ 2 ^ 399) (hrep : ∀ x ∈ p.vals, M.fl x = x) :
+    |(M.vEval p).2.2 - comoment (dupL p.vals)|
+      ≤ 148 * p.vals.length * u
+          * √((p.vals.map fun x => (|x| + tiny) ^ 2).sum * comoment (dupL p.vals))
+        + 3961 * p.vals.length ^ 2 * u ^ 2 * (p.vals.map fun x => (|x| + tiny) ^ 2).sum
+        + 793 * p.vals.length * u * tiny :=
+  (M.tInv_plan p hne hN hB hrep).rel hne hN
 
 end FloatBounds
 

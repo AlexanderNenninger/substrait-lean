@@ -19,6 +19,8 @@ from sverify.cli import _contract, _explain, _findings, _formats
 from sverify.cli._common import (  # noqa: F401  (re-exported)
     BUDGET,
     ERROR,
+    HELD,
+    NO_ROUTE,
     NOT_PROVED,
     OK,
     QUARANTINED,
@@ -41,10 +43,12 @@ exit codes:
   0  proved; a refresh committed every row
   1  not proved
   2  usage error: a flag, a missing file, a node the file lacks
-  3  unsupported or refused: a construct outside sverify's model, or no route
+  3  unsupported: a construct outside sverify's model
   4  time or memory budget exceeded
-  5  a refresh committed with rows quarantined, or held a node
-  6  error: the file raised, I/O, a crash"""
+  5  a refresh committed with rows quarantined
+  6  error: the file raised, I/O, a crash
+  7  refused: no route takes the proved node to the engine
+  8  a refresh held a node"""
 STATUS = {
     OK: "proved",
     NOT_PROVED: "not_proved",
@@ -53,6 +57,8 @@ STATUS = {
     BUDGET: "budget_exceeded",
     QUARANTINED: "quarantined",
     ERROR: "error",
+    NO_ROUTE: "refused",
+    HELD: "held",
 }
 #: The version of the JSON document every command prints (`schemas/cli.schema.json`).
 FORMAT = 1
@@ -78,6 +84,7 @@ def _item(c: Checked) -> dict[str, Any]:
         "name": c.name,
         "nodes": c.nodes,
         "status": c.status,
+        "relaxations": c.relaxations,
         "summary": r._plain_contract(c.params) if r is not None else None,
         "links": c.links,
         "report": json.loads(r.to_json()) if r is not None else None,
@@ -123,8 +130,11 @@ def _classify(e: BaseException) -> tuple[int, str]:
 class Check:
     """A check of a file: what `check` prints in every format."""
 
-    def __init__(self, d: Discovery, target: str | None, budget: Budget):
+    def __init__(
+        self, d: Discovery, target: str | None, budget: Budget, require_proved: bool = False
+    ):
         self.d, self.target, self.budget = d, target, budget
+        self.require_proved = require_proved
         self.checked = d.checked if target is None else d.select(target)
         unchecked = d.unchecked if target is None else [t for t in d.unchecked if t == target]
         self.unchecked = unchecked
@@ -150,7 +160,11 @@ class Check:
             self.code = USAGE
         elif any(c.status == "unfinished" for c in self.checked):
             self.code = BUDGET
-        elif unchecked or any(c.status == "not_proved" for c in self.checked):
+        elif (
+            unchecked
+            or any(c.status == "not_proved" for c in self.checked)
+            or (require_proved and any(c.status == "checked" for c in self.checked))
+        ):
             self.code = NOT_PROVED
         else:
             self.code = OK
@@ -188,6 +202,8 @@ class Check:
 
     def findings(self) -> list[dict[str, Any]]:
         out = [f for c in self.checked for f in _findings.of(c)]
+        if self.require_proved:
+            out += [_findings.checked_only(c) for c in self.checked if c.status == "checked"]
         out += [_findings.unchecked(t, self.d) for t in self.unchecked]
         return out + _findings.credentials(self.credential_uses()) + self._drift_findings
 
@@ -372,7 +388,7 @@ def _check_file(
     if not path.is_file():
         raise UsageError(f"{path}: no such file")
     _load(path, budget, d)
-    return d, Check(d, target, budget)
+    return d, Check(d, target, budget, getattr(args, "require_proved", False))
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -465,7 +481,7 @@ def _dbt(args: argparse.Namespace, path: Path) -> int:
 
 
 def _outcome_code(outcome: str) -> int:
-    return QUARANTINED if outcome in ("quarantined", "held") else OK
+    return {"quarantined": QUARANTINED, "held": HELD}.get(outcome, OK)
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
@@ -508,7 +524,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         if isinstance(e, RouteError):
             # Not proved, or proved with no route to the engine (refused).
             unproved = any(c.status == "not_proved" for c in d.select(target))
-            code, kind = (NOT_PROVED, "not_proved") if unproved else (UNSUPPORTED, "refused")
+            code, kind = (NOT_PROVED, "not_proved") if unproved else (NO_ROUTE, "refused")
         result["error"] = _error(kind, e)
         result["items"] = [_item(c) for c in d.select(target)]
         message = f"{kind}: {e}  [{kind}]"
@@ -571,7 +587,6 @@ def parser() -> argparse.ArgumentParser:
     common = _Parser(add_help=False)
     common.add_argument(
         "--format",
-        "--output-format",
         dest="format",
         choices=FORMATS,
         default="text",
@@ -620,12 +635,18 @@ def parser() -> argparse.ArgumentParser:
     )
     fix.add_argument("--diff", action="store_true", help="show what --fix would write")
     c.add_argument(
+        "--require-proved",
+        action="store_true",
+        help="exit 1 for a node whose postconditions are only checked on the data "
+        '(`on_unproved="check"`), as for one that is not proved',
+    )
+    c.add_argument(
         "--against-sink",
         action="store_true",
         help="compare each stored node's contract with the one its sink last committed: "
         "a committed promise the node no longer proves is contract_weakened (exit 1)",
     )
-    c.set_defaults(run=cmd_check, against_sink=False)
+    c.set_defaults(run=cmd_check, against_sink=False, require_proved=False)
     r = sub.add_parser(
         "refresh",
         parents=[common],
@@ -664,8 +685,9 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the `sverify` command with `argv` (default: `sys.argv[1:]`) and
     return its exit code: 0 proved (a refresh committed every row), 1 not
-    proved, 2 usage error, 3 unsupported or refused, 4 time or memory budget
-    exceeded, 5 a refresh quarantined rows or held a node, 6 error."""
+    proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded,
+    5 a refresh quarantined rows, 6 error, 7 refused (no route to the
+    engine), 8 a refresh held a node."""
     try:
         args = parser().parse_args(argv)
     except SystemExit as e:

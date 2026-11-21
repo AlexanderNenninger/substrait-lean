@@ -139,7 +139,7 @@ class Feed(Source):
     def read(self, since):
         if since is None:
             rows = pa.table({"id": [1, 2], "amount": [5, 50]})
-            return Batch(rows, cursor=os.environ["SVLEAK_CURSOR"])
+            return Batch(table=rows, cursor=os.environ["SVLEAK_CURSOR"])
         return None
 
     def restore(self, cursor):

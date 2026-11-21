@@ -169,11 +169,13 @@ class Dialect:
     finite: Finite = True
     """Write the check that an operation on finite doubles does not give
     `±∞` (`Issue.infinite`, #575), with or without `guards`: the reference's
-    precondition. `"aggregates"` (`to_sql(..., finite="aggregates")`) for a plan
-    verified under an engine's semantics (`verify(semantics="duckdb")`): an
-    operation's `±∞` is the engine's value there, but an aggregate's running sum
-    overflows where the model's exact one does not (ruling 200 A4(2)), so
-    only the aggregates keep the check. `False` writes none."""
+    precondition. An expression the checker marked (`to_sql`'s `unchecked`)
+    goes without it, since it meets no issue (ruling 223). `"aggregates"`
+    (`to_sql(..., finite="aggregates")`) for a plan verified under an
+    engine's semantics (`verify(semantics="duckdb")`): an operation's `±∞` is
+    the engine's value there, but an aggregate's running sum overflows where
+    the model's exact one does not (ruling 200 A4(2)), so only the aggregates
+    keep the check. `False` writes none."""
 
     def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
         """A refusal of this dialect for `reason`, where DuckDB's writer
@@ -2752,11 +2754,6 @@ class _Parser:
                         e if keep_int(k) else self._as_double(a, e)
                         for k, (a, e) in enumerate(zip(arg_js, parsed, strict=True))
                     ]
-                # DataFusion's simplifier makes `power(x, 0)` a constant 1, even
-                # for a NULL `x` (as `Parse.parseExpr`).
-                exponent = parsed[1] if name == "power" and len(parsed) == 2 else None
-                if isinstance(exponent, Lit) and repr(exponent.value) in ("0", "0.0"):
-                    return Lit(1.0, "float") if float_call else Lit(1, "int")
                 # Substrait's typed `greatest`/`least` are NULL if any argument is.
                 if name in ("greatest", "least") and ":" in full_name:
                     out_e = _call(name, parsed)
@@ -4510,12 +4507,14 @@ class _Writer:
 
     @contextmanager
     def slot(self, r: Rel, i: int) -> Iterator[None]:
-        """Write slot `i` of node `r` without its checks if it is unchecked."""
-        if i not in self.unchecked.get(id(r), ()) or not self.d.guards:
+        """Write slot `i` of node `r` without its checks if it is unchecked:
+        its guards and its check against `±∞`, which never fire on data
+        that meets the preconditions (`Expr.issues_nil_of_safe`)."""
+        if i not in self.unchecked.get(id(r), ()) or not (self.d.guards or self.d.finite):
             yield
             return
         d = self.d
-        self.d = replace(d, guards=False)
+        self.d = replace(d, guards=False, finite=False)
         try:
             yield
         finally:
@@ -4837,8 +4836,9 @@ class _Writer:
         # A DISTINCT measure's argument on the first row of each of its values.
         d_cols = [d.quote(f"d{k}") for k in range(len(measures))]
         g_kinds = [expr_kind(g, ks) for g in groups]
+        # The aggregate's own checks stay (a measure has no mark).
         if unchecked:
-            self.d = replace(d, guards=False)
+            self.d = replace(d, guards=False, finite=False)
         # A `VAR_*`'s values shifted by their group's mean, where the dialect
         # asks for it (`stat_input`): column `t{k}` beside the measure's own.
         t_cols: dict[int, str] = {}
@@ -6274,10 +6274,11 @@ def to_sql(
     pass it for a plan whose contract report is `guard_free`, and run the
     SQL on data that meets the contract's preconditions.
 
-    `unchecked` leaves them out of some expressions only: pass a contract
-    report's `unchecked` for the same plan, and run the SQL on data that
-    meets its preconditions (`Rel.evalG_marks`). The other expressions, and
-    every aggregate, keep their checks.
+    `unchecked` leaves them out of some expressions only, the check against
+    `±∞` included: pass a contract report's `unchecked` for the same plan,
+    and run the SQL on data that meets its preconditions (`Rel.evalG_marks`;
+    `Expr.issues_nil_of_safe` for `±∞`). The other expressions, and every
+    aggregate's own checks, keep theirs.
 
     Args:
         plan: A Substrait JSON plan, as a string or parsed (`json.loads`),
@@ -6289,7 +6290,7 @@ def to_sql(
             BY and ORDER BY columns (`Report.deterministic`). Default: False.
         guards: Write the run-time checks. Default: True.
         unchecked: The expressions to write without checks, as a contract
-            report's `unchecked` (`sverify.Report.unchecked`) for this plan.
+            report's `unchecked` (`sverify.Report._unchecked`) for this plan.
             Default: None (all of them keep their checks).
         finite: Write the check that finite doubles do not overflow to
             `±∞` (`Dialect.finite`), the reference's precondition (#575).

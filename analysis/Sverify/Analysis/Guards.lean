@@ -646,6 +646,31 @@ theorem Expr.evalI_of_safe {s : Rel} (hwf : s.WF cat) (hsm : s.Small cat) {e : E
       (Rel.facts_sound hcat hF hT hwf row hrow) (KsHold.nil row) e p hp
     simp [List.isEmpty_iff.mp he] at this)
 
+include hcat hA hF hT in
+/-- **A marked expression meets no issue** (ruling 223, M3): an expression
+without abstract issues on `s`, as `Rel.marks` marks it, raises nothing and
+overflows to `±∞` nowhere on `s`'s rows. `Rel.evalG_marks` gives the value
+without the checks; this gives that the checks, `Issue.infinite`'s among them,
+never fire there, so the writer may leave them out. -/
+theorem Expr.issues_nil_of_safe {s : Rel} (hwf : s.WF cat) (hsm : s.Small cat) {e : Expr}
+    (he : (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty = true) {row : Row}
+    (hrow : row ∈ s.eval cat) : e.issues row = [] :=
+  List.eq_nil_iff_forall_not_mem.mpr fun p hp => by
+    have := Expr.mayIssues_sound (Rel.aeval_sound hcat hA hF hT (sz := true) hwf (fun _ => hsm) row hrow)
+      (Rel.facts_sound hcat hF hT hwf row hrow) (KsHold.nil row) e p hp
+    simp [List.isEmpty_iff.mp he] at this
+
+include hcat hA hF hT in
+/-- The same for a marked join condition, on the pairs of loose rows. -/
+theorem Expr.issues_nil_of_safe_cond {a b : Rel} (ha : a.WF cat) (hb : b.WF cat)
+    (hsa : a.Small cat) (hsb : b.Small cat) {on : Expr}
+    (he : (on.mayIssues ((Rel.cross a.loose b.loose).aeval cat A F T true)
+      ((Rel.cross a.loose b.loose).facts cat F T)).isEmpty = true) {x y : Row}
+    (hx : x ∈ a.loose.eval cat) (hy : y ∈ b.loose.eval cat) : on.issues (x ++ y) = [] :=
+  List.eq_nil_iff_forall_not_mem.mpr fun _ hp => by
+    have := condIssue_sound hcat hA hF hT ha hb hsa hsb hx hy hp
+    simp [List.isEmpty_iff.mp he] at this
+
 include hcat hA hF hT hI in
 /-- A join condition without abstract issues runs unchecked on the pairs of
 loose rows. -/

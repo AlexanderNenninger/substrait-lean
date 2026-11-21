@@ -21,7 +21,7 @@ lake build                                                  # proofs + CLI
 tests/run.sh                                                # golden tests for the CLI
 ```
 
-The core package depends on Lean core alone, so the build takes seconds. Mathlib is used only by the separate [`float-bounds/`](float-bounds.md) project.
+The core package depends on Lean core alone. Mathlib is used only by the separate [`float-bounds/`](float-bounds.md) project.
 
 ## Checking real plans
 
@@ -233,6 +233,18 @@ rewritten files as deleted and added, which nets to the change.
 `python/tests/test_io_engine_sinks.py` writes the same nodes through DuckDB
 and through delta-rs and pyiceberg, and compares the tables after every
 refresh and the statistics both record.
+
+Other engines read what the sinks write (#861).
+`python/tests/test_io_sink_readers.py` writes a merged, a maintained and a
+replaced table in each format. delta-rs, pyiceberg, DuckDB's `delta_scan`
+and `iceberg_scan`, and sverify's own sources each read the rows the writes
+call for, and the contract record survives each library's own maintenance.
+`python/tests/test_delta_dat.py` reads the Delta Acceptance Testing suite
+through `DeltaSource`. Spark's own readers are outside these tests: sverify
+pins pyspark 4.3, and on Maven Central (2026-11-21) the newest delta-spark,
+4.4.1, builds against Spark 4.2, and the newest iceberg-spark-runtime,
+1.12.0, against Spark 4.1
+([#2140](https://github.com/AlexanderNenninger/substrait-lean/issues/2140)).
 
 #### Doubles under the reference profile
 

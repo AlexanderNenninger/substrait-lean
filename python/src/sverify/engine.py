@@ -731,6 +731,23 @@ def run_plan(
             assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
         ```
     """
+    return _run_plan(con, plan_json, engine, keep=keep, finite=finite, tie_free=tie_free, asof=asof)
+
+
+def _run_plan(
+    con: Connection,
+    plan_json: str,
+    engine: Engine | Any = None,
+    *,
+    keep: bool = False,
+    finite: Finite = True,
+    tie_free: bool = False,
+    asof: Sequence[dict] = (),
+    unchecked: dict | None = None,
+) -> pa.Table | Resident:
+    """`run_plan`, and with `unchecked` the plan's marks (`Rel.marks`):
+    `Report.run` passes them on a checked run, to an engine the checker names
+    a `"marks_theorem"` for (ruling 223), whose runner takes the keyword."""
     from sverify import profiles
 
     engine = engine or con.engine
@@ -740,7 +757,9 @@ def run_plan(
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
-    extra = {"asof": asof} if asof else {}
+    extra: dict[str, Any] = {"asof": asof} if asof else {}
+    if unchecked is not None:
+        extra["unchecked"] = unchecked
     out = plugin.runner(
         con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
     )

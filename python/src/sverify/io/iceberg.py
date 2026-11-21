@@ -474,7 +474,7 @@ class IcebergSource(_TableSource):
         v = _version(s)
         self._read_at(t, v)
         rows, files = self._rows(t, s)
-        return Snapshot(v, rows, self._facts(t, files, f"file stats @v{v}"))
+        return Snapshot(version=v, table=rows, facts=self._facts(t, files, f"file stats @v{v}"))
 
     def _native(self, version: int | None = None) -> ScanSnapshot | None:
         """The snapshot at `version` as the Parquet files DuckDB reads
@@ -1588,7 +1588,13 @@ class IcebergSink(_TableSink[Table]):
             with self._transaction(t) as tx:
                 tx.set_properties({KEY: contract.to_json()})
                 _commit_rows(tx, t, data_file(_engine.rows_sql(rows, schema)), [], props)
-            return SinkWrite("created", None, contract, _engine.rows_count(rows), 0)
+            return SinkWrite(
+                mode="created",
+                version=None,
+                contract=contract,
+                inserted=_engine.rows_count(rows),
+                deleted=0,
+            )
         inserted, deleted = _engine.counts(delta)
         deletes: list[DataFile] = []
         if deleted:
@@ -1605,7 +1611,13 @@ class IcebergSink(_TableSink[Table]):
         with self._transaction(t) as tx:
             tx.set_properties({KEY: contract.to_json()})
             _commit_rows(tx, t, added, deletes, props)
-        return SinkWrite("row_level" if deleted else "append", None, contract, inserted, deleted)
+        return SinkWrite(
+            mode="row_level" if deleted else "append",
+            version=None,
+            contract=contract,
+            inserted=inserted,
+            deleted=deleted,
+        )
 
     def _write_arrow(self, table: Table, created: bool, change: SinkChange) -> SinkWrite:
         """Create or overwrite the table, or write the change as position
@@ -1645,4 +1657,6 @@ class IcebergSink(_TableSink[Table]):
                     _commit_rows(tx, t, rows, [], props)
             else:
                 _commit_rows(tx, t, rows, deletes, props)
-        return SinkWrite(mode, None, contract, rows.num_rows, deleted)
+        return SinkWrite(
+            mode=mode, version=None, contract=contract, inserted=rows.num_rows, deleted=deleted
+        )

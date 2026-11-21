@@ -184,6 +184,17 @@
           "note": "constructs int-pow-doubles: INTEGER and BIGINT powers are doubles, past 64 bits a large double, `0 ** -1` is `inf`; nothing raises (rows int.pow overflow i32, on_domain_error i64)"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-21",
+      "method": "probe",
+      "checked_by": "D71 session (power is strict), duckdb 2.0.0 Python package",
+      "evidence": [
+        {
+          "sql": "SELECT power(NULL::DOUBLE, 0), power(NULL::BIGINT, 0), NULL::DOUBLE ** 0",
+          "observed": "NULL, NULL, NULL: a NULL base with a zero exponent is NULL, not 1 (D71)"
+        }
+      ]
     }
   ]
 }

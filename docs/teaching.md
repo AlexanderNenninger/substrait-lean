@@ -120,7 +120,7 @@ on 2026-11-07.
 | "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
 | Spark's POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |
-| Spark decimal negation, division, double to DECIMAL | Engines | A cast to fewer digits (to DOUBLE for an AVG), or `engine="duckdb"`; lifted by [#27] |
+| Spark decimal negation, an AVG past 12 decimal places or 32 integer digits, double to DECIMAL | Engines | A cast to fewer digits, or `engine="duckdb"`; lifted by [#27] |
 | Snowflake's libm, MOD, VAR, decimals, intervals | Engines | `engine="duckdb"`; Snowflake behaviour recorded privately; lifted by [#852] |
 | "Snowflake SQL is written only for plans verified under the reference" | SQL for an engine | `semantics="reference"` |
 | Polars decimals, categorical strings, type mismatches, refused functions | Engines | `engine="duckdb"`, which every Polars refusal names |

@@ -70,7 +70,7 @@ class Events(Source):
 
     def read(self, since):
         new = self.log[since or 0 :]
-        return Batch(pa.Table.from_pylist(new), cursor=len(self.log)) if new else None
+        return Batch(table=pa.Table.from_pylist(new), cursor=len(self.log)) if new else None
 
     def restore(self, cursor):
         if cursor > len(self.log):
@@ -86,7 +86,7 @@ class Prices(Source):
         self.fetch = fetch
 
     def read(self, since):
-        return Batch(self.fetch(), kind="snapshot")
+        return Batch(table=self.fetch(), kind="snapshot")
 
 
 prices = Prices(lambda: pa.table({"sku": ["a", "b"], "price": [3, 4]}))
