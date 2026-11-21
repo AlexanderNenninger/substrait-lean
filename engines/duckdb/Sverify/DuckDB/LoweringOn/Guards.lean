@@ -57,6 +57,14 @@ theorem Substrait.duckdbOn.fround_guards : ∀ (x : Substrait.Value),
   guards_un_tac Substrait.duckdbOn.fround_agree
 
 set_option maxHeartbeats 1600000 in
+theorem Substrait.duckdbOn.froundEven_guards : ∀ (x : Substrait.Value),
+  Substrait.Expr.GuardsAt
+    (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.froundEven x) [x]
+    Substrait.Lowering.froundEvenTemplate := by
+  guards_un_tac Substrait.duckdbOn.froundEven_agree
+
+set_option maxHeartbeats 1600000 in
 theorem Substrait.duckdbOn.fmath_sqrt_guards : ∀ (x : Substrait.Value),
   Substrait.Expr.GuardsAt
     (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
@@ -675,6 +683,7 @@ theorem Substrait.duckdbOn.guardsUn : ∀ f : Substrait.UnFn,
     | Substrait.UnFn.ffloor  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.fceil  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.fceil_guards⟩
     | Substrait.UnFn.fround  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.fround_guards⟩
+    | Substrait.UnFn.froundEven  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.froundEven_guards⟩
     | Substrait.UnFn.froundTo _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.ftoi  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.narrow _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩

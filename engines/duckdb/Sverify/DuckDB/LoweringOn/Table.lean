@@ -11,6 +11,7 @@ import Init.Data.List.Nat.Range
 import Sverify.Core.Profile
 import Sverify.DuckDB.LoweringOn.Native
 import Sverify.DuckDB.LoweringOn.Math
+import Sverify.DuckDB.LoweringOn.Other
 import Sverify.DuckDB.LoweringOn.Integers
 import Sverify.DuckDB.LoweringOn.Arith
 import Sverify.DuckDB.LoweringOn.Powers
@@ -48,6 +49,7 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.ffloor  => some (Substrait.duckdbOn.ffloor )
     | Substrait.UnFn.fceil  => some (Substrait.duckdbOn.fceil )
     | Substrait.UnFn.fround  => some (Substrait.duckdbOn.fround )
+    | Substrait.UnFn.froundEven  => some (Substrait.duckdbOn.froundEven )
     | Substrait.UnFn.froundTo a0 => some (Substrait.duckdbOn.froundTo a0)
     | Substrait.UnFn.ftoi  => some (Substrait.duckdbOn.ftoi )
     | Substrait.UnFn.narrow a0 => some (Substrait.duckdbOn.narrow a0)
@@ -170,6 +172,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.ffloor", "native", 0),
   ("UnFn.fceil", "hand-written schema: ceil: 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.fround", "hand-written schema: round: 0.0 for a negative value that rounds to zero", 0),
+  ("UnFn.froundEven", "hand-written schema: round_even: 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.froundTo", "native", 0),
   ("UnFn.ftoi", "native", 0),
   ("UnFn.narrow", "native", 0),
