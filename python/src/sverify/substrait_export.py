@@ -715,6 +715,16 @@ class _Typer:
             return cols
         if kind == "set":
             outs = [self.rel(i) for i in b["inputs"]]
+            if any(o != outs[0] for o in outs[1:]):
+                # Substrait asks every input of a set relation for one schema (#1904).
+                # A cast of the narrower decimals would give it, but the checker
+                # reads an aggregate's decimal column untyped and refuses the
+                # cast on the import, so the export would not read back.
+                raise ExportError(
+                    "the inputs of a set relation differ in their column types (for example "
+                    "decimals of two precisions), which Substrait does not allow (#1904); "
+                    f"{_TO_SQL}"
+                )
             return outs[0]
         raise ExportError(
             f"the plan has a {kind} relation, which to_substrait does not write for "

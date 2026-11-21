@@ -501,13 +501,13 @@ class Report:
     _guard_free: bool = field(default=False, repr=False)
     """The only issues are assumed ones (`SUM`s that may overflow, double
     operations that may give `±∞`, which keep their checks): on data that meets
-    the preconditions, the transformation's SQL (`sverify.engines.to_sql`)
+    the preconditions, the transformation's SQL (`sverify.engines.plan.to_sql`)
     and Polars plan give the same result with `guards=False`, without
     per-row checks (`Rel.guardFree_sound`)."""
     _unchecked: dict | None = field(default=None, repr=False)
     """The expressions that run correctly without their checks, on data that
     meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
-    plan the checker writes; pass it to `sverify.engines.to_sql(...,
+    plan the checker writes; pass it to `sverify.engines.plan.to_sql(...,
     unchecked=...)` with `written_plan`'s output, and only the other
     expressions keep their checks (ruling 228). None when
     Lean found none (a left join with a filter on its right side, for one)."""
@@ -516,7 +516,7 @@ class Report:
     and keys of the preconditions (`Rel.optimize` in
     `analysis/Sverify/Analysis/Semantic.lean`): for example a `DISTINCT` over a key is
     gone. On data that meets the preconditions it gives the same rows
-    (`Rel.optimize_sound`); pass it to `sverify.engines.to_sql`, or as JSON
+    (`Rel.optimize_sound`); pass it to `sverify.engines.plan.to_sql`, or as JSON
     to `sverify.engines.run`, instead of the transformation. None if Lean
     did not return one."""
     _rewrites: list[str] = field(default_factory=list, repr=False)
