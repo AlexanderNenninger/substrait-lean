@@ -38,7 +38,7 @@ for engine in duckdb polars; do
   if [ "$engine" = duckdb ]; then
     actual=$("$bin" --lowering-coverage 2>&1; echo "[exit $?]")
   else
-    actual=$("$bin" --lowering-coverage "$engine" 2>&1; echo "[exit $?]")
+    actual=$("$bin" --lowering-coverage-"$engine" 2>&1; echo "[exit $?]")
   fi
   if [ "${1:-}" = "--update" ]; then
     printf '%s\n' "$actual" > "$expected"
