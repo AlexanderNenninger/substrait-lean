@@ -21,6 +21,12 @@ QUANTILE_OF_DECIMAL = (
     "is not supported: no engine gives one value for it (DuckDB truncates a double "
     "interpolation, Spark and Polars return doubles)"
 )
+#: Why DuckDB refuses the text of a `DECIMAL(38, 38)` (D72, ruling 245): it prints a
+#: `DECIMAL(p, p)` without its integer part, and has no wider type to print this one from.
+DECIMAL_38_38 = (
+    "a DECIMAL(38, 38) cast to VARCHAR is not supported on DuckDB: DuckDB prints it without its "
+    "integer part and has no wider decimal to print it from; cast it to DECIMAL(38, 37) first"
+)
 #: The end of a refusal of what only DuckDB runs: its exit.
 DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 

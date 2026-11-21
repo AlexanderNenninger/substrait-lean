@@ -1446,6 +1446,7 @@ def choose(
         )
     try:
         _support.check(plan, e)
+        _support.check_decimal_text(plan, e)
     except ValueError as err:
         return refuse(str(err))
 

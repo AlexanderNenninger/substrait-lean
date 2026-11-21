@@ -1331,6 +1331,10 @@ class Exprs:
             if t == pl.Int64 or is_decimal(t):
                 return decimal_rescale(v, p, s, f"CAST to DECIMAL({p}, {s})")
             raise Unsupported(f"unsupported cast from {t} to DECIMAL({p}, {s})")
+        if kind == "str":
+            # `UnFn.dtext` (D72): the scale's digits, with a leading zero; Polars's own text
+            # (polars-cast-decimal-timestamp-text).
+            return Val(v.expr.cast(pl.String), pl.String, v.issues)
         if kind == "float" and "fp64" in target:
             # Correctly rounded, as `FloatCode.ofDecimal` (polars-decimal-casts).
             return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
