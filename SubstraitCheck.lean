@@ -1,77 +1,15 @@
 import SubstraitLean
 
 /-!
-`substrait-check plan.json`: parse a Substrait JSON plan, check it is
-well-formed, and evaluate it.
-
-`substrait-check --eval-spec plan.json`: the same, evaluated with `Rel.eval`
-(the specification) in place of `Rel.evalFast` (`core/Sverify/Core/EvalFast.lean`),
-which is faster and proved equal; for tests.
-
-`substrait-check --delta plan.json`: print the Substrait JSON plan an engine
-runs to maintain `plan.json` incrementally, on one line. It reads the old
-tables `t` and change tables `t$delta` (the same columns plus a trailing
-`__weight`); its output is the change to the result, with a trailing
-`__weight` column.
-
-`substrait-check --reads plan.json`: for each table the plan reads, the
-0-based columns of it the plan's output needs (`Rel.colsOf`), as JSON
-`{"t": [0, 2]}`, or `"all"` outside the incremental fragment. A store that
-keeps those columns of the table, consolidated, gives the view
-(`Rel.zeval_prune`, #1329).
-
-`substrait-check --contract contract.json`: try to prove postconditions from
-preconditions (see `SubstraitLean/ContractCheck.lean` for the input format)
-and print a JSON report.
-
-`substrait-check --shard request.json`: split a plan for evaluation on
-shards of some of its tables (see `SubstraitLean/ShardCheck.lean`), or say
-why it cannot be split.
-
-`substrait-check --write plan.json`: print the plan in Lean's written form
-(the plan `Rel.eval` runs, as Substrait JSON).
-
-`substrait-check --lowering-coverage`: print how each construct is lowered to
-DuckDB under each setting of `error_on_division_by_zero`, one per line:
-natively, or the generated template (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
-
-`substrait-check --lowering-table`: print, as JSON, the DuckDB lowering's
-templates that are not the native call, for `sverify.sql.lowering`.
-
-`substrait-check --lowering-cache`: print a new `engines/duckdb/Sverify/DuckDB/LoweringCache.lean`
-from this build's coverage, the templates the next build tries first.
-
-`substrait-check --lift-table`: print, as JSON, what each DuckDB SQL function
-lifts to under each semantics, generated and proved (`engines/duckdb/Sverify/DuckDB/Lift.lean`).
-
-`substrait-check --outcomes plan.json`: for a plan that projects expressions
-over a `VALUES`, each row's outcomes under the reference profile
-(`Expr.evalP`): the value (doubles as their codes) or the error raised, one
-JSON list per row. `sverify_dev.probe` compares them with DuckDB (#242).
-
-`substrait-check --raises plan.json`: the first error the reference raises
-anywhere in the plan, its name on one line, or nothing: every filter,
-projection, join and aggregate evaluates its expressions on the rows its
-input gives. What `sverify.testing.lean_values` reads to raise `LeanRaised`.
-
-`substrait-check --assumed plan.json`: the first assumed issue (a `SUM` that
-leaves its type, an operation on finite doubles that gives `±∞`) the plan
-runs into on its data, as `Rel.HasIssue` states it, or nothing. The oracle of
-the assumed check's tests (`tests/test_assumed_check.py`, #2018).
-
-`substrait-check --rows plan.json`: the default check's well-formedness
-verdict and rows only, without the plan, its round trip or its other
-facts: what the counterexample search reads (#825).
-
-`substrait-check --version`: print `substrait-check protocol <n>` (see
-`protocol`).
-
-`substrait-check --serve`: answer requests for the modes above on stdin, one
-process for many plans (see `serve`).
+`substrait-check`: Sverify's Lean checker. `substrait-check plan.json` parses
+a Substrait JSON plan, checks it is well-formed, and evaluates it; the other
+modes and commands, each with its line of `--help`, are `modes` and
+`commands` below, and `--serve` answers the modes' requests on stdin.
 
 Exit codes: 0 ok (for `--contract`: every postcondition proved), 1
-parse/unsupported error, 2 ill-formed plan, 3 not incrementally maintainable,
-4 some postcondition not proved, 5 the plan cannot be split into shards.
+parse/unsupported error, 2 ill-formed plan or a usage error (an unknown
+flag, a file that can't be read), 3 not incrementally maintainable, 4 some
+postcondition not proved, 5 the plan cannot be split into shards.
 -/
 
 open Substrait Parse
@@ -107,6 +45,10 @@ def blockedMessage (bs : List (String × List String)) : String :=
   s!"not incrementally maintainable: no delta rule for {"; ".intercalate (bs.map one)}"
 
 variable [Boxes.Ambient]
+/-- `--delta`: the Substrait JSON plan an engine runs to maintain the plan
+incrementally, on one line. It reads the old tables `t` and change tables
+`t$delta` (the same columns plus a trailing `__weight`); its output is the
+change to the result, with a trailing `__weight` column. -/
 def delta (plan : Plan) : IO UInt32 := do
   if let some (code, msg) := checkPlan plan then
     IO.eprintln msg; return code
@@ -350,6 +292,8 @@ def evalChoices (plan : Plan) : IO UInt32 := do
   IO.println (Lean.Json.mkObj [("rows", out)]).compress
   return 0
 
+/-- `--write`: the plan in Lean's written form (the plan `Rel.eval` runs, as
+Substrait JSON). -/
 def write (plan : Plan) : IO UInt32 := do
   -- Decimals (#27) are written back as Substrait's own calls and casts where
   -- that parses back to the same plan.
@@ -447,91 +391,141 @@ def lawBreakRow : BlackBox.Scalar where
   sample := .int 0
   eval _ := .null
 
+/-- `--contract`: try to prove a contract request's postconditions from its
+preconditions (`SubstraitLean/ContractCheck.lean` has the input format) and
+print a JSON report; exit 4 when one is not proved. The request is parsed once
+for the report, the plan an engine runs and the black boxes. -/
+def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
+  match (do
+      let j ← Lean.Json.parse input
+      let R ← ContractCheck.parse j
+      return (j, R, ← R.check) : Except String _) with
+  | .error e => IO.eprintln s!"error: {e}"; return 1
+  | .ok (j, R, report) =>
+    -- The profile it was checked under (`underProfile`), and the options
+    -- the transformation meets (#444).
+    let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
+    -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
+    let eps := (Epsilon.epsilon es j).toOption.getD (Lean.Json.mkObj [])
+    -- The same carried through the arithmetic, per engine.
+    let byEngine := (Epsilon.epsilonByEngine es j).toOption.getD
+      (Lean.Json.mkObj [])
+    -- Per engine, whether filters, keys and sorts keep the same rows under ε.
+    let rowsExact := (Epsilon.rowsExactByEngine es j).toOption.getD
+      (Lean.Json.mkObj [])
+    -- Per postcondition, whether it holds on every engine's doubles (#1045).
+    let robust := (EngineRobust.robust es j).toOption.getD (Lean.Json.arr #[])
+    -- The margin checks of threshold filters on double sums (#929).
+    let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
+    -- The pair counts of its as-of joins (#1447).
+    let asofs := (Epsilon.asofChecksJson j).toOption.getD (Lean.Json.arr #[])
+    -- Per engine, the plan's class, evidence and what refuses it (#1166).
+    let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
+    -- The plan an engine runs, or the gate that keeps the plan as
+    -- written (#1787, `SubstraitLean/RunPlan.lean`).
+    let runPlan := R.runPlanJson ++ [("assumed_check", R.assumedCheckJson R.kenv)]
+    let withRun := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
+    -- A decision on a marked value (D52, ruling 104): an error issue.
+    let source := (EngineRobust.sourceIssues es j).toOption.getD []
+    let issues := ((withRun.getObjValAs? (Array Lean.Json) "issues").toOption.getD #[]) ++
+      source.toArray
+    let base := withRun |>.setObjVal! "issues" (Lean.Json.arr issues)
+        |>.setObjVal! "depends" depends
+        |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
+        |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
+        |>.setObjVal! "margin_checks" margins
+        |>.setObjVal! "asof_checks" asofs
+        -- The black boxes the transformation calls, with their laws (#1484).
+        |>.setObjVal! "black_boxes"
+          ((R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[]))
+    match underProfile es j (engines.foldl (fun r (k, v) => r.setObjVal! k v) base)
+        (report.allProved && source.isEmpty) with
+    | .error e => IO.eprintln s!"error: {e}"; return 1
+    | .ok (out, proved) =>
+      IO.println out.compress
+      return if proved then 0 else 4
+
+/-- `--shard`: split a plan for evaluation on shards of some of its tables
+(`SubstraitLean/ShardCheck.lean`), or say why it cannot be split (exit 5). -/
+def shard (input : String) : IO UInt32 := do
+  match Lean.Json.parse input with
+  | .error e => IO.eprintln s!"error: {e}"; return 1
+  | .ok j => match ShardCheck.check j with
+    | .error e => IO.eprintln e; return 5
+    | .ok out => IO.println out.compress; return 0
+
+/-- `mode` on the plan the input parses to. -/
+def onPlan (mode : Plan → IO UInt32) (input : String) : IO UInt32 :=
+  match parsePlan input with
+  | .ok plan => mode plan
+  | .error e => do IO.eprintln s!"error: {e}"; return 1
+
+/-- Where a flag goes on `--help`'s page. -/
+inductive Group | check | diagnostics | serve | tables
+  deriving BEq
+
+def Group.title : Group → String
+  | .check => "Checking a plan"
+  | .diagnostics => "Diagnostics"
+  | .serve => "Serving"
+  | .tables => "Tables and coverage"
+
+/-- A flag of `substrait-check`: what it does (`run`) and its line on the
+`--help` page, side by side, so the two can't drift. -/
+structure Flag (α : Type) where
+  flag : String
+  group : Group
+  /-- What it reads, as the help page writes it: `<plan.json>`, `< report.json`. -/
+  arg : String := ""
+  help : String
+  run : α
+
+/-- The flag and its argument, the help page's left column. -/
+def Flag.usage (f : Flag α) : String :=
+  if f.flag.isEmpty then f.arg else if f.arg.isEmpty then f.flag else s!"{f.flag} {f.arg}"
+
+/-- A mode that reads a plan. -/
+def planMode (flag : String) (group : Group) (help : String) (mode : Plan → IO UInt32) :
+    Flag (String → IO UInt32) :=
+  { flag, group, arg := "<plan.json>", help, run := onPlan mode }
+
+/-- The modes that read an input: from the file named after the flag, or as a
+`--serve` request. The default check's flag is empty. -/
+def modes (es : List EngineProfile) : List (Flag (String → IO UInt32)) := [
+  planMode "" .check "parse the plan, check it is well-formed, and evaluate it" (check · false),
+  planMode "--eval-spec" .check "the same, evaluated with Rel.eval (the specification)"
+    (check · true),
+  planMode "--rows" .check "the well-formedness verdict and the rows only (#825)"
+    (check · false false),
+  planMode "--eval-choices" .check "the rows with every value the ties allow, as JSON"
+    evalChoices,
+  planMode "--write" .check "the plan Rel.eval runs, as Substrait JSON" write,
+  planMode "--delta" .check "the plan an engine runs to maintain this one incrementally" delta,
+  planMode "--reads" .check "per table, the columns the output needs (#1329), as JSON" reads,
+  { flag := "--contract", group := .check, arg := "<contract.json>",
+    help := "prove a contract's postconditions; a JSON report, exit 4 if one fails",
+    run := contract es },
+  { flag := "--shard", group := .check, arg := "<request.json>",
+    help := "split a plan for evaluation on shards, or say why not (exit 5)", run := shard },
+  planMode "--dependencies" .check "the options the plan meets and the transfer check (#444)"
+    fun plan => do IO.println (plan.root.dependenciesJson es).compress; return 0,
+  planMode "--outcomes" .diagnostics "per VALUES row, the reference's value or error (#242)"
+    (outcomes Profile.reference),
+  -- Internal stopgap; converges to `semantics="duckdb"` (#1288).
+  planMode "--outcomes-duckdb-stopgap" .diagnostics "--outcomes under DuckDB's profile (internal)"
+    (outcomes (Profile.duckdb {})),
+  planMode "--raises" .diagnostics "the first error the reference raises in the plan" raises,
+  planMode "--assumed" .diagnostics "the first assumed issue the plan runs into (#2018)" assumed,
+  { flag := "--law-break-selftest", group := .diagnostics, arg := "<text>",
+    help := "call a law-breaking black box, which must be refused (internal)",
+    run := fun input => do IO.println (repr (lawBreakRow.call [.str input])); return 0 }]
+
 /-- One request of `--serve`: the mode flag (empty for the default check)
 and the input text. -/
 def runModes (es : List EngineProfile) (flag : String) (input : String) : IO UInt32 := do
-  -- Internal: a law-breaking black box on the input, which must be refused.
-  if flag == "--law-break-selftest" then
-    IO.println (repr (lawBreakRow.call [.str input]))
-    return 0
-  if flag == "--contract" then
-    match Lean.Json.parse input with
-    | .error e => IO.eprintln s!"error: {e}"; return 1
-    | .ok j => match ContractCheck.check j with
-      | .error e => IO.eprintln s!"error: {e}"; return 1
-      | .ok report =>
-        -- The profile it was checked under (`underProfile`), and the options
-        -- the transformation meets (#444).
-        let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
-        -- Per double SUM or AVG output, the plan's #85 bound (`Epsilon.lean`).
-        let eps := (Epsilon.epsilon es j).toOption.getD (Lean.Json.mkObj [])
-        -- The same carried through the arithmetic, per engine.
-        let byEngine := (Epsilon.epsilonByEngine es j).toOption.getD
-          (Lean.Json.mkObj [])
-        -- Per engine, whether filters, keys and sorts keep the same rows under ε.
-        let rowsExact := (Epsilon.rowsExactByEngine es j).toOption.getD
-          (Lean.Json.mkObj [])
-        -- Per postcondition, whether it holds on every engine's doubles (#1045).
-        let robust := (EngineRobust.robust es j).toOption.getD (Lean.Json.arr #[])
-        -- The margin checks of threshold filters on double sums (#929).
-        let margins := (Epsilon.marginChecksJson es j).toOption.getD (Lean.Json.arr #[])
-        -- The pair counts of its as-of joins (#1447).
-        let asofs := (Epsilon.asofChecksJson j).toOption.getD (Lean.Json.arr #[])
-        -- Per engine, the plan's class, evidence and what refuses it (#1166).
-        let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
-        -- The plan an engine runs, or the gate that keeps the plan as
-        -- written (#1787, `SubstraitLean/RunPlan.lean`).
-        let runPlan := match ContractCheck.parse j with
-          | .ok R => R.runPlanJson ++ [("assumed_check", R.assumedCheckJson R.kenv)]
-          | .error _ => []
-        let withRun := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
-        -- A decision on a marked value (D52, ruling 104): an error issue.
-        let source := (EngineRobust.sourceIssues es j).toOption.getD []
-        let issues := ((withRun.getObjValAs? (Array Lean.Json) "issues").toOption.getD #[]) ++
-          source.toArray
-        let base := withRun |>.setObjVal! "issues" (Lean.Json.arr issues)
-            |>.setObjVal! "depends" depends
-            |>.setObjVal! "epsilon" eps |>.setObjVal! "epsilon_by_engine" byEngine
-            |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
-            |>.setObjVal! "margin_checks" margins
-            |>.setObjVal! "asof_checks" asofs
-            -- The black boxes the transformation calls, with their laws (#1484).
-            |>.setObjVal! "black_boxes" (match ContractCheck.parse j with
-              | .ok R => (R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[])
-              | .error _ => Lean.Json.arr #[])
-        match underProfile es j (engines.foldl (fun r (k, v) => r.setObjVal! k v) base)
-            (report.allProved && source.isEmpty) with
-        | .error e => IO.eprintln s!"error: {e}"; return 1
-        | .ok (out, proved) =>
-          IO.println out.compress
-          return if proved then 0 else 4
-  if flag == "--shard" then
-    match Lean.Json.parse input with
-    | .error e => IO.eprintln s!"error: {e}"; return 1
-    | .ok j => match ShardCheck.check j with
-      | .error e => IO.eprintln e; return 5
-      | .ok out => IO.println out.compress; return 0
-  let mode ← match flag with
-    | "" => pure (check · false)
-    | "--eval-spec" => pure (check · true)
-    | "--rows" => pure (check · false false)
-    | "--eval-choices" => pure evalChoices
-    | "--delta" => pure delta
-    | "--reads" => pure reads
-    | "--write" => pure write
-    | "--outcomes" => pure (outcomes Profile.reference)
-    | "--raises" => pure raises
-    | "--assumed" => pure assumed
-    -- Internal stopgap; converges to `semantics="duckdb"` (#1288).
-    | "--outcomes-duckdb-stopgap" => pure (outcomes (Profile.duckdb {}))
-    | "--dependencies" => pure fun plan => do
-        -- The options the plan meets and the transfer check (#444).
-        IO.println (plan.root.dependenciesJson es).compress
-        return 0
-    | _ => IO.eprintln s!"unknown mode {flag}"; return 1
-  match parsePlan input with
-  | .ok plan => mode plan
-  | .error e => IO.eprintln s!"error: {e}"; return 1
+  match (modes es).find? (·.flag == flag) with
+  | some m => m.run input
+  | none => IO.eprintln s!"unknown mode {flag}"; return 1
 
 /-- `act` with stdout and stderr captured. -/
 def capture (act : IO UInt32) : IO (UInt32 × ByteArray × ByteArray) := do
@@ -610,83 +604,107 @@ def blackBoxJson : Lean.Json :=
       ("args", Lean.Json.arr #[ty f.arg]), ("result", ty f.result),
       ("empty", Write.writeValue f.empty), ("laws", laws f.laws)])).toArray
 
+/-- A command that prints `out` and exits 0. -/
+def prints (flag : String) (group : Group) (help : String) (out : Unit → String) :
+    Flag (Unit → IO UInt32) :=
+  { flag, group, help, run := fun _ => do IO.print (out ()); return 0 }
+
+/-- The commands that take no file. -/
+def commands (entries : List EngineEntry) : List (Flag (Unit → IO UInt32)) :=
+  let es := entries.map (·.rows)
+  [{ flag := "--serve", group := .serve,
+     help := "answer requests for the modes above on stdin, one process for many plans",
+     run := fun _ => serve es },
+   { flag := "--transfer", group := .serve, arg := "< report.json",
+     help := "the option-wise transfer check on a dependency report (#444)",
+     run := fun _ => do
+       let input ← (← IO.getStdin).readToEnd
+       match Lean.Json.parse input >>= transferJson es with
+       | .ok out => IO.println out.compress; return 0
+       | .error e => IO.eprintln s!"error: {e}"; return 1 },
+   prints "--version" .serve "the protocol of what the checker prints and reads" fun _ =>
+     s!"substrait-check protocol {protocol}\n",
+   -- Without `check_generated`, the theorems over the generated entries rest on
+   -- `sorryAx` (docs/trusted-base.md).
+   prints "--build" .diagnostics "whether this build checked the generated entries' proofs"
+     fun _ => s!"generated proofs {if generatedChecked then "checked" else "unchecked"}\n",
+   { flag := "--lowering-coverage", group := .tables,
+     help := "how each construct is lowered to DuckDB (#241), one per line",
+     run := fun _ => do
+       for (c, how, _) in duckdbOn.coverage do
+         IO.println s!"error_on_division_by_zero=on\t{c}\t{how}"
+       return 0 },
+   prints "--lowering-table" .tables "the DuckDB lowering's templates, as JSON (#241)" fun _ =>
+     Lowering.duckdbTableJson.compress ++ "\n",
+   prints "--lowering-cache" .tables "a new LoweringCache.lean from this build's coverage (#242)"
+     fun _ => loweringCacheSource,
+   prints "--lift-table" .tables "what each DuckDB SQL function lifts to, as JSON (#268)" fun _ =>
+     Lift.tableJson.pretty ++ "\n",
+   prints "--lift-cache" .tables "a new LiftCache.lean from this build's tables (#268)" fun _ =>
+     Lift.cacheSource,
+   prints "--black-boxes" .tables "the black boxes and their laws, as JSON (#325)" fun _ =>
+     blackBoxJson.compress ++ "\n",
+   prints "--rules" .tables "the rewrite rules and the gate's defaults, as JSON (#1787)" fun _ =>
+     ContractCheck.rulesJson.compress ++ "\n",
+   prints "--functions" .tables "the function tables, as JSON (#544)" fun _ =>
+     Functions.tableJson.compress ++ "\n",
+   prints "--options" .tables "the options, profiles' choices and observations, as JSON (#444)"
+     fun _ => (tablesJson es).compress ++ "\n",
+   prints "--realizability" .tables "per engine, the reference's obligations, as JSON (#444)"
+     fun _ => (realizabilityJson entries).compress ++ "\n",
+   prints "--profile-diff" .tables "where Substrait's choices and the reference's differ (#444)"
+     fun _ => substraitDiffJson.compress ++ "\n"]
+
+/-- `--help`'s page, from the flags' own lines. -/
+def helpPage (modes : List (Flag (String → IO UInt32))) (cmds : List (Flag (Unit → IO UInt32))) :
+    String :=
+  let rows := modes.map (fun f => (f.group, f.usage, f.help)) ++
+    cmds.map (fun f => (f.group, f.usage, f.help))
+  let width := rows.foldl (fun n (_, u, _) => max n u.length) "-h, --help".length
+  let line := fun (u h : String) => s!"  {u.pushn ' ' (width - u.length)}  {h}"
+  let group := fun (g : Group) =>
+    s!"{g.title}:\n" ++ "\n".intercalate ((rows.filter (·.1 == g)).map fun (_, u, h) => line u h)
+  "substrait-check: Sverify's Lean checker. It parses a Substrait JSON plan, checks\n" ++
+  "it and evaluates it under the reference semantics, and answers sverify's requests.\n\n" ++
+  "usage: substrait-check [MODE] <plan.json>\n" ++
+  "       substrait-check COMMAND\n\n" ++
+  "\n\n".intercalate ([Group.check, .diagnostics, .serve, .tables].map group) ++ "\n\n" ++
+  line "-h, --help" "print this page" ++ "\n\n" ++
+  "Example:\n  substrait-check --rows tests/fixtures/filter_project.json\n\n" ++
+  "Exit codes: 0 ok, 1 parse error or unsupported plan, 2 ill-formed plan or usage error,\n" ++
+  "3 not incrementally maintainable, 4 some postcondition not proved, 5 no split into shards.\n"
+
+/-- A usage error: `msg` and a pointer to `--help` on stderr, exit 2. -/
+def usageError (msg : String) : IO UInt32 := do
+  IO.eprintln s!"substrait-check: {msg}\nRun substrait-check --help for the flags."
+  return 2
+
 /-- The checker over the engines `entries`: `substrait-check`'s `main` with
 `builtinEntries`, or a package's own checker with its engine added. -/
 def checkerMain (entries : List EngineEntry) (args : List String) : IO UInt32 := do
   let es := entries.map (·.rows)
+  let ms := modes es
+  let cs := commands entries
+  -- A mode on the file `path`, or one line naming it when it can't be read.
+  let onFile := fun (flag path : String) => do
+    match ← (IO.FS.readFile path).toBaseIO with
+    | .ok input => runOn es flag input
+    | .error e =>
+      IO.eprintln s!"substrait-check: cannot read {path}: {(toString e).splitOn "\n" |>.headD ""}"
+      return 2
   match args with
-  | ["--serve"] => serve es
-  | ["--version"] => do
-    IO.println s!"substrait-check protocol {protocol}"
-    return 0
-  -- Whether this build checked the generated entries' proofs (`check_generated`):
-  -- without it, the theorems over them rest on `sorryAx` (docs/trusted-base.md).
-  | ["--build"] => do
-    IO.println s!"generated proofs {if generatedChecked then "checked" else "unchecked"}"
-    return 0
-  | ["--lift-cache"] => do
-    -- A new engines/duckdb/Sverify/DuckDB/LiftCache.lean from this build's tables (#268).
-    IO.print Lift.cacheSource
-    return 0
-  | ["--lift-table"] => do
-    -- What DuckDB SQL lifts to, generated and proved (#268).
-    IO.println Lift.tableJson.pretty
-    return 0
-  | ["--lowering-cache"] => do
-    -- A new engines/duckdb/Sverify/DuckDB/LoweringCache.lean from this build's coverage (#242).
-    IO.print loweringCacheSource
-    return 0
-  | ["--lowering-table"] => do
-    -- The DuckDB lowering's templates, for sverify.sql.lowering (#241).
-    IO.println Lowering.duckdbTableJson.compress
-    return 0
-  | ["--black-boxes"] => do
-    -- The black boxes' table (#325), for sverify.black_box's test.
-    IO.println blackBoxJson.compress
-    return 0
-  | ["--rules"] => do
-    -- The rewrite rules and the gate's defaults (#1787), for
-    -- `docs/optimizations.md`'s table test.
-    IO.println ContractCheck.rulesJson.compress
-    return 0
-  | ["--functions"] => do
-    -- The function tables (#544, #269), for the Python mirror's agreement test.
-    IO.println Functions.tableJson.compress
-    return 0
-  | ["--transfer"] => do
-    -- The option-wise transfer check on a dependency report, from stdin (#444).
-    let input ← (← IO.getStdin).readToEnd
-    match Lean.Json.parse input >>= transferJson es with
-    | .ok out => IO.println out.compress; return 0
-    | .error e => IO.eprintln s!"error: {e}"; return 1
-  | ["--profile-diff"] => do
-    -- Where Substrait's choices and the reference's differ (#444 step 2).
-    IO.println substraitDiffJson.compress
-    return 0
-  | ["--options"] => do
-    -- The options, the groups' options, the profiles' choices and
-    -- observations, and the reference's tools (#444).
-    IO.println (tablesJson es).compress
-    return 0
-  | ["--realizability"] => do
-    -- `obligations reference E` per engine: the realizability table (#444, step 3b).
-    IO.println (realizabilityJson entries).compress
-    return 0
-  | ["--lowering-coverage"] => do
-    -- How each construct is lowered to DuckDB (#241); a golden test.
-    for (c, how, _) in duckdbOn.coverage do
-      IO.println s!"error_on_division_by_zero=on\t{c}\t{how}"
-    return 0
-  | [path] => runOn es "" (← IO.FS.readFile path)
+  | [] => IO.eprint (helpPage ms cs); return 2
+  | ["--help"] | ["-h"] => IO.print (helpPage ms cs); return 0
+  | [arg] =>
+    if let some c := cs.find? (·.flag == arg) then return ← c.run ()
+    if let some m := ms.find? (·.flag == arg) then
+      return ← usageError s!"{arg} needs a file: {m.usage}"
+    if arg.startsWith "-" then return ← usageError s!"unknown option {arg}"
+    onFile "" arg
   | [flag, path] =>
-    if ["--delta", "--reads", "--contract", "--write", "--shard", "--outcomes", "--raises", "--assumed",
-        "--outcomes-duckdb-stopgap", "--eval-spec", "--eval-choices", "--rows", "--dependencies"].contains flag then
-      return ← runOn es flag (← IO.FS.readFile path)
-    usage
-  | _ => usage
-where
-  usage := do
-    IO.eprintln "usage: substrait-check [--delta | --reads | --contract | --write | --shard | --outcomes | --raises | --assumed | --eval-spec | --eval-choices | --rows | --dependencies] <file.json> | --serve | --version | --build | --lowering-coverage | --lowering-cache | --lowering-table | --lift-table | --lift-cache | --black-boxes | --rules | --functions | --options | --realizability | --profile-diff | --transfer"
-    return 1
+    if ms.any (·.flag == flag) then return ← onFile flag path
+    if cs.any (·.flag == flag) then return ← usageError s!"{flag} takes no file"
+    usageError s!"unknown option {flag}"
+  | _ => usageError s!"too many arguments: {" ".intercalate args}"
 
 end Substrait.Checker
