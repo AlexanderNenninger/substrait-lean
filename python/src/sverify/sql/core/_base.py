@@ -4863,17 +4863,17 @@ class _Writer:
             items = [f"{x} AS {c}" for x, c in zip(g_sql, g_cols, strict=True)]
             # Measures of one argument (`SUM(x)` and `AVG(x)`) read one column:
             # the engine then shares their aggregation.
-            first: dict[str, str] = {}
+            column_of: dict[str, str] = {}
             for j, (ms, c) in enumerate(zip(measures, m_cols, strict=True)):
                 k = expr_kind(ms.arg, ks)
                 x = self.expr(ms.arg, ref, ks, k)
                 if ms.filter is not None:
                     keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
                     x = d.case_when(keep, x, d.null(k))
-                if x in first:
-                    m_cols[j] = first[x]
+                if x in column_of:
+                    m_cols[j] = column_of[x]
                 else:
-                    first[x] = c
+                    column_of[x] = c
                     items.append(f"{x} AS {c}")
                 if ms.fn in VAR_FNS and not ms.distinct:
                     shifted = d.stat_input(x, g_sql)

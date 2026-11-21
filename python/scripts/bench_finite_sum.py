@@ -18,7 +18,8 @@ import ibis
 from ibis import _
 
 import sverify as sv
-from sverify.engines import to_sql
+from sverify.sql import to_sql
+from sverify_duckdb.dialect import DUCKDB
 
 ROWS = int(sys.argv[1]) if len(sys.argv) > 1 else 10_000_000
 THREADS = int(sys.argv[2]) if len(sys.argv) > 2 else 4
@@ -70,8 +71,8 @@ def main() -> None:
         plan = report._plan_to_run("translated", checked=True, engine="duckdb")
         marks = report._marks_of(plan)
         assert marks is not None, name
-        two = to_sql(plan, "duckdb", unchecked=without_measures(marks))
-        one = to_sql(plan, "duckdb", unchecked=marks)
+        two = to_sql(plan, DUCKDB, unchecked=without_measures(marks))
+        one = to_sql(plan, DUCKDB, unchecked=marks)
         a, b = seconds(con, two), seconds(con, one)
         print(f"| {name} | {a:.3f} ({len(two)}) | {b:.3f} ({len(one)}) | {a / b:.2f}× |")
 
