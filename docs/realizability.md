@@ -49,7 +49,7 @@ Rows per evidence level:
 |---|---|---|---|---|---|---|---|
 | DuckDB | 14 | 5 | 22 | 3 | 0 | 0 | 15 |
 | Polars | 30 | 1 | 17 | 0 | 0 | 0 | 17 |
-| Spark | 17 | 17 | 14 | 0 | 0 | 0 | 16 |
+| Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -243,7 +243,7 @@ Refused on Polars, with no expression there:
 | agg.isum | `overflow` | raise | `ERROR` | `ERROR` | shim `int_sum_decimal` (expression) | proof | proved `Shim.sum_empty_null`; [spark-sum-int](../engines/spark/facts/spark-sum-int.json), [spark-exec-parallel](../engines/spark/facts/spark-exec-parallel.json) |
 | int.div | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json), [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
-| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | fuzz | tested: [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
+| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | proof | proved `Rel.spark_sound`; [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
 | every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
 | int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
