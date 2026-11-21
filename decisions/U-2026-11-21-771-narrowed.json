@@ -4,9 +4,10 @@
   "decided_by": "user",
   "scope": "release",
   "status": "in-force",
-  "summary": "#771 is narrowed for 1.0.",
+  "summary": "#771 is narrowed for 1.0: the demo flow (steps 1-5) and its acceptance run stay; item 9 narrows to the existing alerts.yml plus a phone-friendly status page per pipeline; item 10 narrows to the HTTP, JSON and CSV sources the Eurostat template uses; general connectors, public-API catalogues, databases and refresh cost and time limits move After 1.0.",
   "issues": [
     771
   ],
-  "source": "coordinator's relay, 2026-11-21"
+  "source": "coordinator's relay, 2026-11-21",
+  "note": "The maintainer's words: first '#771 is after 1.0', then 'Actually, I like the narrowing approach'. The narrowing is stated in the comment on #771."
 }
