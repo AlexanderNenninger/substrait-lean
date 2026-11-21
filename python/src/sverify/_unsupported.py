@@ -14,6 +14,13 @@ from typing import ClassVar
 ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
 #: Where #1725 is: an engine that has no map for a UTC-zoned timestamp (an instant) yet.
 ISSUE_1725 = "see #1725, https://github.com/AlexanderNenninger/substrait-lean/issues/1725"
+#: Why a quantile of a DECIMAL is refused (by design, ruling 191, #1921): both
+#: frontends say it, each adding its own way out (`CAST(x AS DOUBLE)`,
+#: `x.cast('float64')`).
+QUANTILE_OF_DECIMAL = (
+    "is not supported: no engine gives one value for it (DuckDB truncates a double "
+    "interpolation, Spark and Polars return doubles)"
+)
 #: The end of a refusal of what only DuckDB runs: its exit.
 DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 
