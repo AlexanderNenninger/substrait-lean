@@ -1,0 +1,16 @@
+{
+  "id": "F214",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#2089: the dev fixture set at unreleased formats is replaced (L10); the sink record gets no format bump and no name map, and a 0.8 record reads with no profile (L7).",
+  "prs": [
+    2089
+  ],
+  "amends": [
+    "F192"
+  ],
+  "source": "fable-ruling-214-2089-fixtures-and-sink-record.md",
+  "note": "Folds in ruling 213, which has no entry of its own: its conclusion (no bump) stands and its S1-S3 are replaced. No D-number."
+}

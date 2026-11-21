@@ -92,7 +92,6 @@ from sverify.engine import (
     plan_json,
     quote,
     run_plan,
-    written_plan,
 )
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import StaticSource, arrow_rows
@@ -280,6 +279,8 @@ class _Target:
 
 
 def _target(subject: Any) -> _Target:
+    from sverify.engine import written_plan  # the plan layer stays out of this namespace
+
     if isinstance(subject, ir.Table):
         prov = _lookup(subject.op())
         if prov is None:

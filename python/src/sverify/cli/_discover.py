@@ -149,8 +149,8 @@ def load(path: str | Path, out: Discovery | None = None) -> Discovery:
         raise FileNotFoundError(f"{path}: no such file")
     if path.suffix != ".py":
         raise UsageError(
-            f"{path}: sverify check reads Python files; check SQL through `sv.sql` in a "
-            "`.py` file, or a dbt project through `sverify-dbt check`"
+            f"{path}: sverify check reads Python and SQL files; check a dbt project "
+            "through `sverify-dbt check`"
         )
     name = f"_sverify_cli_{abs(hash(str(path.resolve())))}"
     spec = importlib.util.spec_from_file_location(name, path)
@@ -199,7 +199,7 @@ def _check_declared(out: Discovery) -> None:
         if id(t) in applied or t.schemas is None:
             continue
         try:
-            t.check(*(t.schemas[p] for p in t.signature.parameters))
+            t.verify(*(t.schemas[p] for p in t.signature.parameters))
         except Exception as e:  # noqa: BLE001 - reported, with what was found before it
             out.error = e
             return

@@ -534,14 +534,15 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
 
 def _builtin_schema(n: sge.Expr) -> sge.Expr:
     """A call qualified by its built-in schema (`main.lower(x)`,
-    `pg_catalog.lower(x)`, `system.main.lower(x)`) read as the bare function
-    (#328). SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
+    `system.main.lower(x)`) read as the bare function (#328). DuckDB reads
+    no other qualifier of a built-in function (`pg_catalog.lower(x)` and
+    `memory.main.lower(x)` are binder errors), so neither does the lift.
+    SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
     anonymous one, so the call is parsed again without its qualifier."""
     if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
-        schema = n.this
-        if isinstance(schema, sge.Dot):
-            schema = schema.expression
-        if isinstance(schema, sge.Identifier) and schema.name.lower() in ("main", "pg_catalog"):
+        path = [n.this] if not isinstance(n.this, sge.Dot) else [n.this.this, n.this.expression]
+        names = [p.name.lower() if isinstance(p, sge.Identifier) else None for p in path]
+        if names in (["main"], ["system", "main"]):
             return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
     return n
 
@@ -572,13 +573,9 @@ def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
                 construct="FROM",
             )
         by_full[full] = key
-    ctes = {_normalized(c.alias) for c in tree.find_all(sge.CTE)}
-    for node in tree.find_all(sge.Table):
-        if not isinstance(node.this, sge.Identifier):
-            continue
+
+    def table(node: sge.Table) -> None:
         qualified = bool(node.args.get("db") or node.args.get("catalog"))
-        if not qualified and _normalized(node.name) in ctes:
-            continue
         key = by_full.get(full_name(node))
         if key is None and qualified:
             raise SqlUnsupported(
@@ -588,12 +585,34 @@ def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
                 construct="FROM",
             )
         if key is None or (not qualified and key == node.name):
-            continue
+            return
         alias = node.args.get("alias") or sge.TableAlias(this=sge.to_identifier(node.name))
         node.set("catalog", None)
         node.set("db", None)
         node.set("this", sge.to_identifier(key, quoted=True))
         node.set("alias", alias)
+
+    def walk(node: sge.Expression, scope: frozenset[str]) -> None:
+        # A CTE's body sees the CTEs before it, as `_Lift.query` scopes them (#2166).
+        with_ = node.args.get("with_")
+        if with_ is not None:
+            inner = scope
+            for cte in with_.expressions:
+                walk(cte.this, inner)
+                inner = inner | {_normalized(cte.alias)}
+            scope = inner
+        if isinstance(node, sge.Table) and isinstance(node.this, sge.Identifier):
+            qualified = node.args.get("db") or node.args.get("catalog")
+            if qualified or _normalized(node.name) not in scope:
+                table(node)
+        for key, value in list(node.args.items()):
+            if key == "with_":
+                continue
+            for child in value if isinstance(value, list) else [value]:
+                if isinstance(child, sge.Expression):
+                    walk(child, scope)
+
+    walk(tree, frozenset())
 
 
 def _check_aliases(tree: Any, schemas: Mapping[str, Any]) -> None:

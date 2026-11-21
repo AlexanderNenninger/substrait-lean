@@ -5,7 +5,7 @@ surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
 * guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report._guard_free`,
-  and `guards=False` in `sverify.engines.to_sql` (and in
+  and `guards=False` in `sverify.engines.plan.to_sql` (and in
   `sverify_polars.engine.run` and `duckdb_engine.run`);
 * sharded evaluation: `analysis/Sverify/Analysis/Partition.lean`,
   `substrait-check --shard` and `sverify.engines.run_sharded`
@@ -140,6 +140,47 @@ It now multiplies the corners of two finite intervals (`Bound.mem_corners`),
 so such products go guard-free; a half-open range still gives ⊤. The
 elimination was also all or nothing per plan; `Rel.evalG_marks` now decides
 per expression.
+
+### The row ordinal
+
+To give the rows in Lean's order (`to_sql`'s `rows="sequence"`), DuckDB's
+and Polars's runners number them. DuckDB reads `rowid` for it and first copies
+each input into a temporary table, Parquet scans included. Where the checker
+proved that the observation can't see the order the numbering keeps
+(`Report._ordinal_free`), a checked run leaves it out (#1787 item 2,
+ruling 223 O1–O4):
+
+* Under a multiset lens, the report is exact: every result the reference
+  allows is one up to row order (`check_deterministic_sound`). DuckDB's
+  windows then drop their tiebreak too (`to_sql`'s `deterministic`).
+* Under `rows="sequence"`, the report is sequence-determined: the plan's last
+  sort orders the result on a key, so every result the reference allows is
+  the same row by row (`check_sequence_determined_sound`).
+
+Both rest on the preconditions, declared keys included, so `Report.run` takes
+them only where it checked the preconditions on its tables, on the translated
+route under the reference (O2). `Report.to_sql` and `Node.to_sql` already
+wrote a multiset lens's SQL this way. That rests on the lens alone and needs
+no data (`Report._rows`). `python/tests/test_ordinal_free.py` compares each
+run with the run that keeps the ordinal, as the lens compares, on DuckDB and
+Polars (O4).
+
+Benchmark (`python/scripts/bench_ordinal.py`, homelab, DuckDB 2.0.1, 10⁷
+rows in a shuffled key order, 4 threads, the median of 5, seconds):
+
+| Plan | Engine, input | With the ordinal | Without | |
+|---|---|---|---|---|
+| top-N by the key | DuckDB, Arrow | 0.039 | 0.008 | 4.7× |
+| top-N by the key | DuckDB, Parquet | 0.083 | 0.045 | 1.8× |
+| top-N by the key | Polars, Arrow | 0.016 | 0.017 | 0.9× |
+| window ordered by the key | DuckDB, Arrow | 1.574 | 0.596 | 2.6× |
+| window ordered by the key | DuckDB, Parquet | 1.663 | 0.648 | 2.6× |
+| window ordered by the key | Polars, Arrow | 0.351 | 0.337 | 1.0× |
+| grouped sum | DuckDB, Arrow | 0.028 | 0.024 | 1.2× |
+| grouped sum | DuckDB, Parquet | 0.035 | 0.034 | 1.0× |
+| grouped sum | Polars, Arrow | 0.031 | 0.025 | 1.2× |
+
+Polars numbers rows cheaply, so it gains little.
 
 ## 2. Sharded evaluation
 

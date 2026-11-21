@@ -19,7 +19,7 @@ import duckdb
 import ibis
 
 import sverify as sv
-from sverify.engines import to_sql
+from sverify.engines.plan import to_sql
 
 ROWS = int(sys.argv[1]) if len(sys.argv) > 1 else 10_000_000
 THREADS = int(sys.argv[2]) if len(sys.argv) > 2 else 4
