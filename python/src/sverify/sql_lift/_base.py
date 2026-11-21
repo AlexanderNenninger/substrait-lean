@@ -1755,6 +1755,12 @@ class _Lift:
         its columns (each grouping key, each aggregate and each
         `GROUPING(…)`)."""
         keys, sets = _grouping_sets(group, outputs)
+        if any(isinstance(k, sge.Star) for k in keys):
+            raise SqlUnsupported(
+                "GROUP BY ALL over `*` (which is also what a query that starts with FROM selects) "
+                "is not supported yet; name the columns in a SELECT",
+                construct="GROUP BY ALL",
+            )
         groups = [self.expr(k, scope) for k in keys]
         measures = [self.measure(a, scope) for a in aggs]
         parts = [p for ms, _ in measures for p in ms]
