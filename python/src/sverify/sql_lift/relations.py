@@ -9,6 +9,7 @@ from typing import Any
 import ibis
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
+from sqlglot.transforms import eliminate_qualify
 
 from sverify.plan_json import (
     Json,
@@ -486,4 +487,62 @@ def _series(tree: sge.Expr) -> sge.Expr:
 
 SOURCES[sge.Values] = _values
 JOIN_METHODS["ASOF"] = _asof
-PARSE_REWRITES.extend([_series, _values_names, _unpivot, _unnest_columns])
+
+
+def _group_all(tree: sge.Expr) -> sge.Expr:
+    """`GROUP BY ALL` (#1991): DuckDB groups by the select items that hold no
+    aggregate; none left is one group for the whole input. A select item with
+    a window function is refused: DuckDB's reading of it is not probed."""
+    for sel in list(tree.find_all(sge.Select)):
+        group = sel.args.get("group")
+        if group is None or not group.args.get("all"):
+            continue
+        keys: list[sge.Expression] = []
+        for item in sel.expressions:
+            if item.find(sge.Window):
+                raise SqlUnsupported(
+                    "GROUP BY ALL with a window function in the SELECT", construct="GROUP BY ALL"
+                )
+            if not item.find(sge.AggFunc):
+                keys.append(item.unalias().copy())
+        sel.set("group", sge.Group(expressions=keys) if keys else None)
+    return tree
+
+
+_QUALIFY_COLUMN = "_sverify_qualify"
+
+
+def _qualify(tree: sge.Expr) -> sge.Expr:
+    """`QUALIFY` (#319) as the filter of a subquery over the window columns
+    (SQLGlot's `eliminate_qualify`, the form its dialects without QUALIFY
+    print). The columns it adds (`_w`, `_w_2`, …) are renamed so no table's
+    column collides, and a star of the outer select leaves them out."""
+    for sel in list(tree.find_all(sge.Select)):
+        if sel.args.get("qualify") is not None:
+            if any(
+                i.name.startswith(("_w", _QUALIFY_COLUMN)) for i in sel.find_all(sge.Identifier)
+            ):
+                raise SqlUnsupported(
+                    "QUALIFY in a query that names a column `_w…` or `_sverify_qualify…`",
+                    construct="QUALIFY",
+                )
+            own = len(sel.expressions)
+            new = eliminate_qualify(sel)  # a new outer SELECT around `sel`
+            if new is not sel:
+                inner = new.args["from_"].this.this
+                added = [e.alias for e in inner.expressions[own:]]
+                renamed = {a: _QUALIFY_COLUMN + a.removeprefix("_w") for a in added}
+                for i in new.find_all(sge.Identifier):
+                    if i.name in renamed:
+                        i.set("this", renamed[i.name])
+                for star in new.args["expressions"]:
+                    if isinstance(star, sge.Star):
+                        star.set("except_", [sge.column(n) for n in renamed.values()])
+            if sel is tree:
+                tree = new
+            elif new is not sel:
+                sel.replace(new)
+    return tree
+
+
+PARSE_REWRITES.extend([_series, _group_all, _qualify, _values_names, _unpivot, _unnest_columns])

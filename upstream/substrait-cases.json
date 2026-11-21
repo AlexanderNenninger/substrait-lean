@@ -156,10 +156,10 @@
       "checker: nullif: a DECIMAL result of non-decimal arguments is not supported": 1
     },
     "datetime": {
-      "checker: gte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
-      "checker: lte with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 7,
-      "checker: gt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
-      "checker: lt with an interval of days or months is not supported: DataFusion compares durations with it as (months, days, nanoseconds); write it in hours or seconds": 5,
+      "checker: gte with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 7,
+      "checker: lte with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 7,
+      "checker: gt with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 5,
+      "checker: lt with an interval of days or months is not supported: durations compare as microseconds; write the interval in hours or seconds": 5,
       "checker: unsupported function add_intervals/N": 4,
       "checker: a date plus an interval typed as a timestamp is not supported": 2,
       "checker: missing field 'value' in {\"enum\":\"DAY\"}": 2,
