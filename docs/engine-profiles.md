@@ -569,7 +569,7 @@ through Ibis's Polars backend, which would compile a different plan. The
 translator pins the semantics and takes no Polars defaults:
 
 * Filters and join conditions keep a row only when it is TRUE. `and`/`or` are
-  written out as Kleene `and3`/`or3`. Equi-join keys never match on NULL.
+  Polars's `&` and `|`, which are Kleene's ([`polars-kleene`](../engines/polars/facts/polars-kleene.json)). Equi-join keys never match on NULL.
   Semi and anti joins keep the left rows with (without) a TRUE match, so an
   anti join keeps a row whose key is NULL. Lean writes an outer join as a
   left join plus the unmatched right rows (an anti join), padded with NULLs.
