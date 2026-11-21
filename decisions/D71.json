@@ -1,0 +1,9 @@
+{
+  "id": "D71",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "power is strict in both arguments: a NULL base or exponent gives NULL, and power(x, 0) is 1 for every non-NULL x; the parser, the SQL plan reader and the Polars engine fold nothing.",
+  "note": "Theory advisor ruling 209 section 1d, approved by the maintainer; the section was written in the D71 PR."
+}

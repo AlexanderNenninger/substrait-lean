@@ -101,6 +101,17 @@
         "int_pow[0]: 300 rows, `power(a, b)`, 1200 of 1200 results as the fact says; Spark differs from Rel.eval on 37 of 300.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-21",
+      "method": "probe",
+      "checked_by": "D71 session (power is strict), Spark 4.3.0 local[1]",
+      "evidence": [
+        {
+          "sql": "SELECT power(CAST(NULL AS DOUBLE), 0), power(CAST(NULL AS BIGINT), 0), power(CAST(NULL AS DOUBLE), 0.0)",
+          "observed": "NULL, NULL, NULL: a NULL base with a zero exponent is NULL, not 1 (D71)"
+        }
+      ]
     }
   ],
   "issues": [

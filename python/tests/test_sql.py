@@ -423,13 +423,21 @@ def test_remainder_by_minus_one_is_zero(width):
     assert check_three_ways(sql, {"r": rest}) == [(0,), (None,)]
 
 
+def test_a_lens_power_with_a_zero_exponent_is_strict():
+    """D71: `power(x, 0)` is 1 for a value and NULL for a NULL `x`, as DuckDB
+    gives it; the lift folds nothing under `semantics="duckdb"`."""
+    r = pa.table({"x": pa.array([2.5, float("nan"), float("inf"), None], pa.float64())})
+    rows = check_three_ways("SELECT power(x, 0) AS z, x ** 0.0 AS w FROM r", {"r": r})
+    assert rows == [(1.0, 1.0)] * 3 + [(None, None)]
+
+
 def test_integer_powers_are_exact():
     r = ints(a=[-3, 2, 0, 1, -1, None, 3037000499])
     rows = check_three_ways("SELECT power(a, 2) AS s FROM r", {"r": r})
     assert rows[-1][0] == 3037000499**2
-    # `power(NULL, 0)` is 1; Lean and the SQL agree.
+    # `power` is strict (D71): a NULL base gives NULL for a zero exponent too.
     zero = check_three_ways("SELECT power(a, 0) AS z FROM r", {"r": r})
-    assert zero == [(1,)] * 7
+    assert zero == [(1,)] * 5 + [(None,)] + [(1,)]
     check_three_ways("SELECT power(a, 3) AS c FROM r", {"r": ints(a=[-3, 2, 0, 1, -1, None])})
     # Beyond 64, only -1, 0 and 1 have powers that fit.
     units = ints(a=[0, 1, -1, None])

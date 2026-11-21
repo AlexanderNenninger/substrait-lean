@@ -2042,3 +2042,30 @@ floors), so the reference picks the floor, which is `date_trunc`
 [polars-ts-us-to-ns-range](../engines/polars/facts/polars-ts-us-to-ns-range.json)).
 Nanoseconds get kinds of their own so that every `.time` pattern keeps meaning
 microseconds, and a function that does not name the new kinds refuses them.
+
+### D71. `power` is strict in both arguments
+
+Decided 2026-11-21 (maintainer, on theory advisor ruling 209 section 1d, [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+Section text written in the D71 PR from ruling 209's draft; the ruling's record is kept by the theory advisor.
+
+`power` is strict in both arguments: a NULL base or a NULL exponent gives NULL.
+The parser, the SQL plan reader and the Polars engine fold nothing: `power(x, 0)`
+evaluates `x` and is 1 for every non-NULL `x`, integer or double, NaN and `±∞`
+included ([D40](#d40-power1--is-cs-pow)). Before, a literal exponent `0` or `0.0`
+made the call the constant 1, also for a NULL `x`.
+
+What a user sees: a NULL base with a literal zero exponent turns from 1 to NULL, and a
+proof that `power(x, 0)` is not NULL now needs `x` not NULL. On Spark, a double
+`power(x, 0.0)` is refused with the other double powers
+([reference-semantics](reference-semantics.md)), where the fold used to write the
+literal. For a non-NULL `x` both sides are 1.
+
+Recomputes sinks: no
+
+Why: no tier-1 engine gives 1 natively. DuckDB 2.0.0, Polars 2.1.0 (in-memory and
+streaming) and Spark 4.3.0 give NULL for a NULL base with a zero exponent
+([duckdb-int-pow](../engines/duckdb/facts/duckdb-int-pow.json),
+[polars-int-pow-exponent](../engines/polars/facts/polars-int-pow-exponent.json),
+[spark-int-pow](../engines/spark/facts/spark-int-pow.json)). A literal and a column
+holding it evaluate alike, and `x` is no longer dropped, so an error inside it stays.
+The lift of DuckDB's SQL needs no special case, so `semantics="duckdb"` gives DuckDB's NULL ([D54](#d54-sql-lift-refines-the-dialect)).
