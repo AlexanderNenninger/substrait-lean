@@ -505,8 +505,9 @@ class Report:
     _unchecked: dict | None = field(default=None, repr=False)
     """The expressions that run correctly without their checks, on data that
     meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
-    plan; pass it to `sverify.engines.to_sql(..., unchecked=...)` with the
-    same plan, and only the other expressions keep their checks. None when
+    plan the checker writes; pass it to `sverify.engines.to_sql(...,
+    unchecked=...)` with `written_plan`'s output, and only the other
+    expressions keep their checks (ruling 228). None when
     Lean found none (a left join with a filter on its right side, for one)."""
     _optimized: dict | None = field(default=None, repr=False)
     """The transformation as a Substrait JSON plan, rewritten with the facts
@@ -532,10 +533,7 @@ class Report:
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`, as the checker writes it: the marks of
     its expressions (ruling 226)."""
-    _written_unchecked: dict | None = field(default=None, repr=False)
-    """`_unchecked` for the plan as the checker writes it (`written_plan`),
-    which binds operands in projections of its own: the marks a run reads
-    when it runs the plan as written (ruling 226)."""
+
     _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
     """The check of the assumed issues (#2018, ruling 195): a plan of one row
     whose columns say where an issue of `assumed` occurs on the data, on the
@@ -961,17 +959,17 @@ class Report:
     def _marks_of(self, plan: str) -> dict | None:
         """The checker's marks (`Rel.marks`) of `plan`, the plan a run runs:
         `_run_unchecked` for the rewrite, `_unchecked` for the plan as
-        written (`_written_unchecked`), both marked on the checker's own
-        parse of the JSON it wrote; None where the checker gave none (ruling
-        223, M2), and where they are of another shape than the plan the
-        writer reads, so every check stays (ruling 226, N1-N3)."""
+        written (`_unchecked`), each the marks of the root the checker
+        writes (ruling 228); None where the checker gave none (ruling 223,
+        M2), and where they are of another shape than the plan the writer
+        reads, so every check stays (ruling 226, N1-N3)."""
         from sverify.sql.core._base import WriterUnsupported, parse_plan, unchecked_slots
 
         marks = None
         if self._run_plan is not None and plan == json.dumps(self._run_plan):
             marks = self._run_unchecked
         elif self.internal_plan is not None and plan == written_plan(self.internal_plan):
-            marks = self._written_unchecked
+            marks = self._unchecked
         if marks is None:
             return None
         try:
@@ -2173,7 +2171,6 @@ _REPORT_PRIVATE = [
     "run_plan",
     "run_gate",
     "run_unchecked",
-    "written_unchecked",
     "run_gates",
     "asof_checks",
     "asof_max_pairs",

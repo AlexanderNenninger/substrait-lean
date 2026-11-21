@@ -52,7 +52,7 @@ def test_a_checked_run_drops_the_marked_checks(seen):
     written SQL drops the guards and the check against `±∞` of the marked
     expression, and gives the rows the fully checked SQL gives."""
     report = sv.verify(PLAN, requires=BOUNDED, ensures=[sv.equivalent(floats="exact")])
-    assert (report._engines or {})["duckdb"]["marks_theorem"] == "Rel.duckdb_marks"
+    assert (report._engines or {})["duckdb"]["marks_theorem"] == "Rel.duckdb_marks_written"
     con = _con([1.0, -2.5, 1e6], [1.0, 2.0, 1e6])
     out = report.run(con, "duckdb")
     assert seen[-1] is not None
@@ -123,7 +123,7 @@ def test_catalogue_runs_give_the_same_rows_with_marks():
         if report.verdict == sv.Verdict.UNPROVED:
             continue
         plan = report._plan_to_run("translated", checked=True, engine="duckdb")
-        given = report._run_unchecked if report._run_plan is not None else report._written_unchecked
+        given = report._run_unchecked if report._run_plan is not None else report._unchecked
         marks = report._marks_of(plan)
         if given is not None and marks is None:
             dropped.add(q.id)
@@ -146,3 +146,58 @@ def test_catalogue_runs_give_the_same_rows_with_marks():
         ran += 1
     assert ran > 10
     assert dropped == DROPPED
+
+
+@needs_repo
+def test_the_checkers_marks_fit_the_plans_it_writes():
+    """B6 (a): for the contract goldens, the marks the checker gives fit the
+    plan it writes (`written_plan`), so a run never falls back on them; the
+    catalogue's plans are the slow test above, decimal `AVG` excepted."""
+    import json
+
+    from _repo import ROOT
+    from sverify._checker import run_checker
+    from sverify.engine import written_plan
+    from sverify.sql.core._base import parse_plan, unchecked_slots
+
+    fit = 0
+    for path in sorted((ROOT / "tests" / "contracts").glob("*.json")):
+        request = json.loads(path.read_text())
+        code, out, _ = run_checker(("--contract",), path.read_text())
+        marks = json.loads(out).get("unchecked") if code == 0 else None
+        if marks is None:
+            continue
+        plan = written_plan(json.dumps(request["transform"]))
+        unchecked_slots(parse_plan(json.loads(plan)).root, marks)
+        fit += 1
+    assert fit > 0
+
+
+def test_the_marks_stay_on_their_slots_across_a_bound_layer():
+    """B6 (b): the checker writes `x * y + a / b` with the product and the
+    quotient bound as columns of their own; the product (`x`, `y` bounded) is
+    marked and the quotient (`b` free) is not. The marked SQL drops only the
+    product's checks, and on data where the quotient raises it raises as the
+    SQL without marks does."""
+    import duckdb
+
+    from sverify.engine import written_plan
+
+    u = ibis.table({"x": "float64", "y": "float64", "a": "float64", "b": "float64"}, name="u")
+    q = u.select(v=u.x * u.y + u.a / u.b)
+    report = sv.verify(
+        q, requires={"u": [ibis._.x.between(0, 10), ibis._.y.between(0, 10)]}, on_inferred="off"
+    )
+    marks = report._unchecked
+    assert marks is not None
+    bound = marks["inputs"][0]["inputs"][0]
+    assert bound["node"] == "Project" and bound["slots"] == [0]
+    plan = written_plan(report.internal_plan)
+    marked, full = to_sql(plan, "duckdb", unchecked=marks), to_sql(plan, "duckdb")
+    assert marked.count("sverify: ") < full.count("sverify: ")
+    assert "division by zero" in marked
+    con = duckdb.connect()
+    con.register("u", pa.table({"x": [1.0], "y": [2.0], "a": [1.0], "b": [0.0]}))
+    for sql in (full, marked):
+        with pytest.raises(duckdb.Error, match="division by zero"):
+            con.execute(sql).fetchall()

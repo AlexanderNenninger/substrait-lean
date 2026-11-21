@@ -103,7 +103,8 @@ row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
 `MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
 `sverify_polars.engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
-`to_sql(plan, dialect, unchecked=report._unchecked)` drops the checks of the
+`to_sql(written_plan(report.internal_plan), dialect, unchecked=report._unchecked)`
+drops the checks of the
 expressions `unchecked` lists, the check against `±∞` included, and keeps the
 others, and every aggregate's own. A marked expression meets no issue on data
 that meets the preconditions (`Expr.issues_nil_of_safe`), so its `finite`
@@ -112,9 +113,9 @@ check, which `guards=False` keeps, would never fire there (ruling 223).
 under the reference, to an engine the checker names a `"marks_theorem"` for:
 DuckDB (`Rel.duckdb_marks`). It rests on `check_inputs` deciding the contract
 on the data the run reads, as Polars's guard-free run does. The marks are
-those of the plan as the checker writes it (`written_unchecked`, with the
-arguments of nested calls bound as columns), and a run passes them only where
-they fit the plan the writer reads. A plan with a decimal `AVG` keeps every
+those of the plan as the checker writes it, with the arguments of nested calls
+bound as columns (`Rel.duckdb_marks_written`, ruling 228), and a run passes
+them only where they fit the plan the writer reads. A plan with a decimal `AVG` keeps every
 check for now: the checker reads it as a sum and a count, which the writer
 folds back (ruling 226).
 The writer checks that the tree's nodes are the plan's, so a report on

@@ -1,6 +1,7 @@
 import Sverify.DuckDB.Functions
 import Sverify.Analysis.ProfileImpl
 import Sverify.Analysis.Knowledge
+import Sverify.Frontend.Bind
 
 /-!
 # DuckDB's profile (#185)
@@ -90,6 +91,22 @@ theorem Rel.duckdb_marks (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : 
     {u : Bool} {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true) :
     r.evalG (Profile.duckdbWritten s).impl cat (r.marks cat A F T u) = r.eval cat :=
   Rel.evalG_marks hcat hA hF hT (Profile.duckdbWritten_faithful s hieee) hwf hsmall hs
+
+/-- **DuckDB runs the plan the checker writes with its marks unchecked**
+(ruling 228, B4): the checker writes `r` with the arguments of its nested calls
+bound as columns (`Parse.Plan.writtenRoot`, `Rel.bindArgs`), and marks that
+root. With the root's own marks unchecked, under DuckDB's IEEE operations, it
+gives the rows of the plan the report is about (`Rel.duckdb_marks`,
+`Rel.eval_bindArgs`). The size hypothesis is stated on the root as written. -/
+theorem Rel.duckdb_marks_written (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}
+    (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {u : Bool} {r : Rel} (hr : r.WF cat) (hwf : (r.bindArgs cat).WF cat)
+    (hsmall : (r.bindArgs cat).Small cat) (hs : (r.bindArgs cat).looseSub = true) :
+    (r.bindArgs cat).evalG (Profile.duckdbWritten s).impl cat
+      ((r.bindArgs cat).marks cat A F T u) = r.eval cat := by
+  rw [Rel.duckdb_marks s hieee hcat hA hF hT hwf hsmall hs, Rel.eval_bindArgs hcat hr]
 
 /-- `Rel.duckdb_sound` on one hypothesis. -/
 theorem Knowledge.duckdb_sound (s : DuckDBSettings) (hieee : s.ieeeOps = true) {cat : Catalog}

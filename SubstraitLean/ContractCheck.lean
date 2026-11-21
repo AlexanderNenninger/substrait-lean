@@ -336,11 +336,11 @@ structure Report where
   /-- The transformation runs correctly without row-level checks
   (`Rel.guardFree_sound`): every issue is an integer `SUM`. -/
   guardFree : Bool := false
-  /-- The expressions that run correctly without their checks
-  (`Rel.evalG_marks`), as `Rel.marksJson`; `.null` when none is known. -/
+  /-- The expressions that run correctly without their checks, in the root
+  the checker writes (`Parse.Plan.writtenRoot`; `Rel.evalG_marks`,
+  `Rel.duckdb_marks_written`), as `Rel.marksJson`; `.null` when none is
+  known. -/
   unchecked : Json := .null
-  /-- `unchecked` for the plan as the checker writes it (`Parse.Plan.writtenRoot`). -/
-  writtenUnchecked : Json := .null
   /-- The transformation after `Rel.optimize`, as Substrait JSON. -/
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
@@ -478,7 +478,6 @@ def Report.json (r : Report) : Json :=
         Json.arr (E.map fun (j, b) => need (t, j, b)).toArray).toArray)]).toArray),
     ("guard_free", Lean.toJson r.guardFree),
     ("unchecked", r.unchecked),
-    ("written_unchecked", r.writtenUnchecked),
     ("optimized", r.optimized),
     ("rewrites", Lean.toJson r.rewrites)]
 
@@ -1431,18 +1430,18 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
         (Infer.Rel.bounds cat A F T false p.root).map fun (i, e, b) =>
           (i, e, { b with needs := Infer.trim A b.needs })
     | none => []
+  -- The marks of the root the checker writes (`--write`), the plan a run
+  -- sends (ruling 228, `Rel.duckdb_marks_written`): given where the theorem's
+  -- decidable hypotheses hold on that root and on the transform (B2), and where
+  -- the root is the transform or the transform bound at this catalog (B3).
   let unchecked := match transform with
     | some p =>
-      if p.root.checkWF cat && p.root.looseSub then
-        p.root.marksJson (p.root.marks cat A F T false)
+      if p.root.checkWF cat then
+        let w := p.writtenRoot
+        if w.checkWF cat && w.looseSub && (w == p.root || w == p.root.bindArgs cat) then
+          w.marksJson (w.marks cat A F T false)
+        else .null
       else .null
-    | none => .null
-  -- The marks of the plan as the checker writes it, the one a run sends
-  -- (ruling 226).
-  let writtenUnchecked := match transform with
-    | some p =>
-      let w := p.writtenRoot
-      if w.checkWF cat && w.looseSub then w.marksJson (w.marks cat A F T false) else .null
     | none => .null
   let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre
   return {
@@ -1472,8 +1471,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
     guardFree
     constant
     underAndOr := issuesUnderAndOr transform issues
-    unchecked
-    writtenUnchecked }
+    unchecked }
 
 /-- The report of a parsed request. Each postcondition is analysed once
 (`ensureEnv`); its verdicts are read from that analysis (`ensureResults`,

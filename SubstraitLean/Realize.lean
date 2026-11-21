@@ -137,10 +137,10 @@ example := @Rel.polars_sound
 checker marked (`Rel.marks`) without their checks, the one against `±∞`
 included, on a checked run (ruling 223). An engine not listed keeps every
 check of every expression; Polars runs all or none (`guardFreeTheorems`). -/
-def marksTheorems : List (String × String) := [("duckdb", "Rel.duckdb_marks")]
+def marksTheorems : List (String × String) := [("duckdb", "Rel.duckdb_marks_written")]
 
 /-- The names in `marksTheorems` are theorems. -/
-example := @Rel.duckdb_marks
+example := @Rel.duckdb_marks_written
 
 def where_ (d : Dep) : List (String × Json) := [("group", toJson d.group), ("option", toJson d.option)]
 
