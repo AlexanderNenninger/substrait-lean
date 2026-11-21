@@ -2314,7 +2314,7 @@ def _const_literal(j: dict) -> Const:
         case "interval":
             months, micros = v
             if months != 0:
-                raise Unsupported(
+                raise WriterUnsupported(
                     "month and year intervals are only supported added to a date or timestamp"
                 )
             return Const("int", micros, kind="interval")
@@ -2595,7 +2595,7 @@ class _Parser:
         ):
             return _list_lit(lit)
         if lit is not None:
-            raise Unsupported(
+            raise WriterUnsupported(
                 "month and year intervals are only supported added to a date or timestamp"
             )
         key, v = _oneof(
@@ -2641,7 +2641,10 @@ class _Parser:
                             raise WriterUnsupported("regexp_match with flags is not supported")
                         pat = self.const(gargs[1])
                         if pat is None or pat.tag != "str":
-                            raise Unsupported("regular expressions must be constants")
+                            raise WriterUnsupported(
+                                "regular expressions must be constants",
+                                "use a literal, or write each case with ifelse",
+                            )
                         return Un("regex_match", self.expr(gargs[0], cols), param=pat.value)
                 out_kind = _lean_type_kind(_field(v, "outputType"))
                 if (t := self.temporal_arith(name, arg_js, cols, out_kind)) is not None:
@@ -2669,11 +2672,17 @@ class _Parser:
                     iv = _interval_lit(arg_js[0])
                     origin = self.const(arg_js[2])
                     if iv is None or iv[0] != 0 or iv[1] <= 0:
-                        raise Unsupported("date_bin needs a constant interval of days or less")
+                        raise WriterUnsupported(
+                            "date_bin needs a constant interval of days or less",
+                            "use a literal, or write each case with ifelse",
+                        )
                     if origin is None or origin.tag != "int":
-                        raise Unsupported("date_bin needs a constant origin")
+                        raise WriterUnsupported(
+                            "date_bin needs a constant origin",
+                            "use a literal, or write each case with ifelse",
+                        )
                     if _arg_kind(cols.lean, arg_js[1], parsed[1]) != "time":
-                        raise Unsupported("date_bin is only supported on timestamps")
+                        raise WriterUnsupported("date_bin is only supported on timestamps")
                     return Un("bucket", parsed[1], digits=iv[1], origin=origin.value)
                 if name in ("strftime", "to_char", "date_format"):
                     first = parsed[0] if parsed else Lit(None, None)
@@ -2936,8 +2945,9 @@ class _Parser:
             # Lean's `timeOfDay (a + c)`, `c` brought into one day.
             iv = _interval_lit(bj)
             if iv is None:
-                raise Unsupported(
-                    "a time of day plus an interval is only supported for constant intervals"
+                raise WriterUnsupported(
+                    "a time of day plus an interval is only supported for constant intervals",
+                    "use a literal, or write each case with ifelse",
                 )
             if iv[0] != 0:
                 raise WriterUnsupported("a time of day plus months or years is not supported")
@@ -2974,14 +2984,15 @@ class _Parser:
                 if us % US_PER_DAY or us == 0:
                     raise WriterUnsupported("a date plus a part of a day is not supported")
                 if lean_expr_kind(n, cols.lean) != "int" and _reads_field(n):
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         "a date plus an interval is only supported with an integer count of days"
                     )
                 n = replace(n, kind="int") if isinstance(n, Lit) else n
                 days = n if us == US_PER_DAY else Bin("mul", n, Lit(us // US_PER_DAY, "int"))
             case _:
-                raise Unsupported(
-                    "a date plus an interval is only supported for constants, or a count of days"
+                raise WriterUnsupported(
+                    "a date plus an interval is only supported for constants, or a count of days",
+                    "use a literal, or write each case with ifelse",
                 )
         if sub:
             days = Lit(-days.value, "int") if isinstance(days, Lit) else Un("neg", days)
@@ -3146,9 +3157,9 @@ class _Parser:
         lo, hi = bound(_field(w, "lowerBound")), bound(_field(w, "upperBound"))
         if rng and any(b[0] != "unbounded" and b[1] != 0 for b in (lo, hi)):
             if len(sort) != 1:
-                raise Unsupported("RANGE frames with offsets need exactly one sort key")
+                raise WriterUnsupported("RANGE frames with offsets need exactly one sort key")
             if _get(cols.lean, sort[0].col) not in ("int", "time", "instant", "date"):
-                raise Unsupported(
+                raise WriterUnsupported(
                     "RANGE frames with offsets need an integer, timestamp or date sort key"
                 )
         return Frame(rng, lo, hi)
@@ -3347,7 +3358,7 @@ class _Parser:
                     needle = self.expr(needles[0], cols)
                     hay = self.rel(_req(ip, "haystack"))
                     if len(lean_kinds(hay)) != 1:
-                        raise Unsupported("IN subquery must return one column")
+                        raise WriterUnsupported("IN subquery must return one column")
                     base = Semi(base, hay, False, Bin("eq", needle, Field(len(cols.lean))))
                 if not rest:
                     core = base
@@ -3491,7 +3502,7 @@ class _Parser:
             return Distinct(inp)
         if not measures:
             if not groups:
-                raise Unsupported("an aggregate without groupings needs measures")
+                raise WriterUnsupported("an aggregate without groupings needs measures")
             if all(isinstance(e, Field) for e in groups):
                 keys = tuple(e.index for e in groups if isinstance(e, Field))
                 if keys == tuple(range(len(cols.lean))):
@@ -3548,7 +3559,9 @@ class _Parser:
                 # sverify's own: a decimal by an integer at the declared scale,
                 # rounded half away from zero (a decimal AVG over a window).
                 if not isinstance(declared, Dec) or declared.s < s1:
-                    raise Unsupported("sverify_decimal_div needs a DECIMAL type of a larger scale")
+                    raise WriterUnsupported(
+                        "sverify_decimal_div needs a DECIMAL type of a larger scale"
+                    )
                 return DecOp("div", (a, b), declared.p, declared.s)
             case _, [a, b], _ if name in _COMPARISONS:
                 # SQL compares decimals of any scales, and with integers, exactly.
@@ -3596,7 +3609,10 @@ class _Parser:
             # A constant separator (`Parse.parseMeasure`, #55).
             arg, s = (self.expr(a, cols) for a in args)
             if not (isinstance(s, Lit) and isinstance(s.value, str)):
-                raise Unsupported("string_agg needs a constant separator")
+                raise WriterUnsupported(
+                    "string_agg needs a constant separator",
+                    "use a literal, or write each case with ifelse",
+                )
             sep = s.value
         elif len(args) == 2 and name in ("quantile_cont", "quantile_disc", "arg_min", "arg_max"):
             arg = self.expr(args[0], cols)
@@ -4195,7 +4211,7 @@ def parse_plan(plan: dict, asof: Sequence[dict] = ()) -> Plan:
     rel = p.rel(top)
     names = _arr(root, "names")
     if not all(isinstance(n, str) for n in names):
-        raise Unsupported("root names must be strings")
+        raise WriterUnsupported("root names must be strings")
     return Plan(rel, names, p.native)
 
 
@@ -5260,7 +5276,7 @@ class _Writer:
                 # Lean sorts with a stable merge sort: ties keep their input order.
                 return partition, peers, peers + [self.asc(self.ordinal(a))]
             if ordered and not peers and self.tie_free:
-                raise Unsupported(
+                raise WriterUnsupported(
                     "without ORDER BY a window keeps its input's order, which needs ordinals"
                 )
             return partition, peers, peers
@@ -5396,7 +5412,7 @@ class _Writer:
         order = peers if fr.range else keys
         if fr.range and any(b[0] != "unbounded" and b[1] != 0 for b in (fr.lo, fr.hi)):
             if self.tie_free is False and len(peers) != 1:
-                raise Unsupported("RANGE frames with offsets need one sort key")
+                raise WriterUnsupported("RANGE frames with offsets need one sort key")
             k = sort[0]
             if ks[k.col] == "time" and (us := d.range_time_key(col(k.col))) is not None:
                 order = [d.sort_key(us, k.desc, k.nulls_first, "int")]

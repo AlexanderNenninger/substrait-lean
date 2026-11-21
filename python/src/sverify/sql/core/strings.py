@@ -70,7 +70,10 @@ def call(name: str, args: list[Expr]) -> Expr | None:
                 )
             return Bin("substr", a, b, length=n)
         case "substring", [_, _, _]:
-            raise Unsupported("substring lengths must be constants")
+            raise WriterUnsupported(
+                "substring lengths must be constants",
+                "use a literal, or write each case with ifelse",
+            )
         case (("btrim" | "ltrim" | "rtrim"), [a, *rest]) if len(rest) <= 1:
             chars = rest[0] if rest else Lit(" ", "str")
             sides = {"btrim": (True, True), "ltrim": (True, False), "rtrim": (False, True)}[name]
@@ -87,7 +90,9 @@ def call(name: str, args: list[Expr]) -> Expr | None:
                 "or starts_with on lower(…)"
             )
         case "regexp_match", _:
-            raise Unsupported("regexp_match is only supported as array_length(regexp_match(s, p))")
+            raise WriterUnsupported(
+                "regexp_match is only supported as array_length(regexp_match(s, p))"
+            )
         # A constant pattern (#50); `Text.simpleRegex` is checked in Lean.
         case "regexp_extract", [a, Lit(value=str(pattern))]:
             return Un("regex_extract", a, param=pattern)
@@ -96,14 +101,18 @@ def call(name: str, args: list[Expr]) -> Expr | None:
         ):
             return Un("regex_extract", a, param=pattern, digits=g)
         case "regexp_extract", _:
-            raise Unsupported("regexp_extract needs a constant pattern and group")
+            raise WriterUnsupported(
+                "regexp_extract needs a constant pattern and group",
+                "use a literal, or write each case with ifelse",
+            )
         case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r))]:
             return Un("regex_replace", a, param=pattern, replacement=r)
         case "regexp_replace", [a, Lit(value=str(pattern)), Lit(value=str(r)), Lit(value="g")]:
             return Un("regex_replace", a, param=pattern, replacement=r, flags="g")
         case "regexp_replace", [_, _, _, *_]:
-            raise Unsupported(
-                "regexp_replace needs a constant pattern and replacement, and no flags but 'g'"
+            raise WriterUnsupported(
+                "regexp_replace needs a constant pattern and replacement, and no flags but 'g'",
+                "use a literal, or write each case with ifelse",
             )
     return None
 
