@@ -38,6 +38,12 @@ QUERIES = [
     # Booleans and dates to text (#346): DuckDB's own `true`/`false` and `YYYY-MM-DD`, NULLs kept.
     "SELECT id, CAST(qty > 3 AS VARCHAR) AS b, CAST(NOT (qty > 3) AS VARCHAR) AS n,"
     " CAST(day AS VARCHAR) AS d FROM orders",
+    # A decimal's text (D72): the scale's digits, a sign for a negative value.
+    "SELECT id, CAST(cost AS VARCHAR) AS c, CAST(CAST(cost AS DECIMAL(8, 5)) AS VARCHAR) AS w,"
+    " CAST(CAST(cost AS DECIMAL(20, 0)) AS VARCHAR) AS z FROM orders",
+    "SELECT CAST(CAST('-0.05' AS DECIMAL(10, 2)) AS VARCHAR) AS a,"
+    " CAST(CAST('12' AS DECIMAL(10, 0)) AS VARCHAR) AS b,"
+    " CAST(CAST('0.0000001' AS DECIMAL(20, 10)) AS VARCHAR) AS c",
     "SELECT CAST(TRUE AS VARCHAR) AS t, CAST(FALSE AS VARCHAR) AS f,"
     " CAST(DATE '0001-01-01' AS VARCHAR) AS lo, CAST(DATE '9999-12-31' AS VARCHAR) AS hi,"
     " CAST(DATE '1970-01-01' AS VARCHAR) AS epoch",
