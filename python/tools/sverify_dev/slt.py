@@ -1551,10 +1551,74 @@ def replay_files(
                 _stop_worker(conn, proc)
 
 
+def refresh_ledger(
+    old: dict | None,
+    files: Sequence[str],
+    version: str,
+    results: list[dict],
+    skipped: dict[str, str],
+) -> tuple[list[dict], dict[str, str], dict | None]:
+    """The ledger of an area after `files` (relative to `test/sql`) were replayed
+    alone at `version`: their entries replace the ones of the same files, every
+    other entry stays, and the head says which files are newer than the area's run
+    (`"refreshed"`). Without an `old` ledger the area is new: its run is at
+    `version`, whole, and nothing is refreshed. Returns the entries, the skipped
+    files and the head's overrides for `write_ledger`."""
+    if old is None:
+        return results, skipped, None
+    named = set(files)
+    kept = [r for r in old["results"] if r["file"] not in named]
+    gone = {k: v for k, v in old.get("skipped_files", {}).items() if k not in named}
+    head = {
+        "duckdb": old["duckdb"],
+        "source": old["source"],
+        "refreshed": {**old.get("refreshed", {}), **{f: version for f in sorted(named)}},
+    }
+    return kept + results, gone | skipped, head
+
+
+def refresh_files(
+    root: Path, version: str, files: Sequence[str], out: Path, jobs: int
+) -> list[Path]:
+    """Replay the named `.test` files (relative to `test/sql`) at `version`, and
+    merge each area's entries into its committed ledger with `write_ledger`
+    (`refresh_ledger`), so a changed file of an area too large to replay whole
+    is replayed alone (#2045, ruling 225 A5)."""
+    base = root / "test" / "sql"
+    by_area: dict[str, list[str]] = {}
+    for rel in files:
+        if not (base / rel).is_file():
+            raise SystemExit(f"{rel}: no such test file at {version}")
+        by_area.setdefault(area_of(rel), []).append(rel)
+    written = []
+    for area, rels in sorted(by_area.items()):
+        path = out / f"{area.replace('/', '__')}.json"
+        old = json.loads(path.read_text()) if path.exists() else None
+        results: list[dict] = []
+        skipped: dict[str, str] = {}
+        for rel, res, skip in replay_files([(str(base / r), r) for r in rels], jobs):
+            results += res
+            if skip:
+                skipped[rel] = skip
+        results, skipped, head = refresh_ledger(old, rels, version, results, skipped)
+        written.append(
+            write_ledger(area, old["duckdb"] if old else version, results, skipped, out, head=head)
+        )
+        print(f"{area}: {len(rels)} file(s) replayed at {version} -> {written[-1]}", flush=True)
+    return written
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("areas", nargs="*", help="areas under test/sql (default: all)")
     parser.add_argument("--version", help="DuckDB version (default: uv.lock's)")
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        metavar="TEST",
+        help="replay only these .test files (relative to test/sql) and merge their entries into "
+        'their areas\' ledgers, which keep the version of their own run ("refreshed")',
+    )
     parser.add_argument(
         "--out",
         type=Path,
@@ -1585,6 +1649,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         return
     version = args.version or duckdb_version()
     root = fetch(version)
+    if args.files:
+        refresh_files(root, version, args.files, args.out, args.jobs)
+        write_summary(args.out)
+        return
     for area, files in test_files(root, args.areas).items():
         path = args.out / f"{area.replace('/', '__')}.json"
         if args.resume and path.exists():
