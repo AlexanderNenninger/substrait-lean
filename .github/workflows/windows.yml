@@ -72,6 +72,10 @@ jobs:
       - name: Test the installed wheel (fast set)
         id: tests
         continue-on-error: true
+        # Python reads files as cp1252 on Windows by default; sverify and its
+        # tests read UTF-8 without saying so (the trial's first finding, #183).
+        env:
+          PYTHONUTF8: "1"
         run: |
           bash python/scripts/wheel_tests.sh --wheel dist/*.whl \
             --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl \
