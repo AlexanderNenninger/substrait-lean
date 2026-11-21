@@ -225,6 +225,7 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
     node.refresh(engine=engine)
     seconds = time.perf_counter() - started
     gc.collect()
+    peak = peak_mb()  # before the measurement below reads the state
     if sampler is not None:
         for label, added, secs in calls:
             if added > 5:
@@ -246,8 +247,8 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
         "connection_is": type(held).__name__,
         "store_mb": store_held(pipe) / 2**20,
         "peak_after_first_mb": first,
-        "peak_after_change_mb": peak_mb(),
-        "added_by_change_mb": peak_mb() - first,
+        "peak_after_change_mb": peak,
+        "added_by_change_mb": peak - first,
         "change_refresh_s": seconds,
     }
     print(json.dumps(out))
