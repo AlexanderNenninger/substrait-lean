@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import gc
 import json
+import os
 import resource
 import sys
 import tempfile
@@ -125,28 +126,34 @@ def rss_mb() -> float:
 
 
 class Sampler:
-    """The high-water resident memory of the process since `reset`, sampled
-    from a thread (Linux)."""
+    """The resident memory of the process, sampled from a thread (Linux):
+    where the main thread was each time it passed a new high above `floor`."""
 
     def __init__(self) -> None:
+        self.floor = 0.0
         self.high = 0.0
-        self.where = ""
+        self.steps: list[tuple[float, str]] = []
         self.on = True
         self.main = threading.main_thread().ident
         threading.Thread(target=self._run, daemon=True).start()
 
+    def start(self) -> None:
+        self.floor = self.high = rss_mb()
+
     def _run(self) -> None:
         while self.on:
             now = rss_mb()
-            if now > self.high:
+            if now > self.high and self.floor:
                 self.high = now
                 frame = sys._current_frames().get(self.main)
                 names = []
-                while frame is not None and len(names) < 14:
+                while frame is not None and len(names) < 40:
                     code = frame.f_code
-                    names.append(f"{code.co_name}:{frame.f_lineno}")
+                    if "sverify" in code.co_filename or "polars" in code.co_filename:
+                        base = os.path.basename(code.co_filename)
+                        names.append(f"{base}:{code.co_name}:{frame.f_lineno}")
                     frame = frame.f_back
-                self.where = " < ".join(names)
+                self.steps.append((now, " < ".join(names[:7])))
             time.sleep(0.002)
 
 
@@ -157,7 +164,6 @@ def profiled(owner: object, name: str, label: str, sampler: Sampler, out: list) 
 
     def call(*args, **kwargs):
         start, t0 = rss_mb(), time.perf_counter()
-        sampler.high = start
         who = ">".join(sys._getframe(i).f_code.co_name for i in (1, 2, 3))
         rows = [getattr(a, "num_rows", None) for a in args if hasattr(a, "num_rows")]
         try:
@@ -214,7 +220,7 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
     sampler = Sampler() if profile else None
     if sampler is not None:
         profile_calls(engine, calls, sampler)
-        sampler.high = rss_mb()
+        sampler.start()
         base = rss_mb()
     node.refresh(engine=engine)
     seconds = time.perf_counter() - started
@@ -223,8 +229,12 @@ def main(engine: str, kind: str, n: int, profile: bool = False) -> dict:
         for label, added, secs in calls:
             if added > 5:
                 print(f"PROFILE {engine} {kind} {label} +{added:.0f} MB {secs:.2f}s")
-        print(f"PROFILE {engine} {kind} refresh total high +{sampler.high - base:.0f} MB")
-        print(f"PROFILE {engine} {kind} at the high: {sampler.where}")
+        print(f"PROFILE {engine} {kind} refresh high +{sampler.high - base:.0f} MB over {base:.0f}")
+        last = 0.0
+        for rss, where in sampler.steps:
+            if rss - last >= 40:
+                print(f"PROFILE {engine} {kind} reached {rss:.0f} MB in {where}")
+                last = rss
     pipe = node._stage.pipe
     held = pipe.con.get("t")
     out = {
