@@ -1,0 +1,16 @@
+{
+  "id": "F215",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "#1998 merges; incremental maintenance is not reported 1.0-ready until a small change to an Arrow-fed source stops costing a refresh the size of the input (gate items P1-P7).",
+  "issues": [
+    1329
+  ],
+  "prs": [
+    1998
+  ],
+  "source": "fable-ruling-215-1998-refresh-peak-gate.md",
+  "note": "No D-number."
+}

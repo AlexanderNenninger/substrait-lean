@@ -1,0 +1,20 @@
+{
+  "id": "F217",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1787 after the maintainer's ruling to reproduce the user's SQL closely: native routes run the plan as written, with no rewrite opt-in at 1.0, and text sverify adds is removed on every route.",
+  "issues": [
+    824,
+    1787
+  ],
+  "amends": [
+    "F152"
+  ],
+  "amended_by": [
+    "F-optimize-name-final"
+  ],
+  "source": "fable-ruling-217-1787-user-sql-stays-close.md",
+  "note": "Applies U-2026-11-20-user-sql-close. Ruling 152's R1 and R3 move to After 1.0; closes ruling 150's U2. No D-number."
+}
