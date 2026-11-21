@@ -270,6 +270,7 @@ that build as the guard. Engine packages may import it, as
 | Module | Job |
 |---|---|
 | `Guard.lean` | D50: `AND`/`OR` over a raising operand as a nested `CASE` chain (`Expr.andLift`, `Expr.orLift`), with the proofs that the guard protects and an error still surfaces |
+| `GuardedColumns.lean` | D50-d: a filter's and a projection's chains bound as guarded columns below it, one level per operand that may raise (`Rel.guardedFilter`, `Rel.guardedProject`), with the proofs that they keep the lift's rows (`Rel.guardedFilter_eval`, `Rel.guardedProject_eval`) and raise where the lift raises (`Rel.guardedFilter_raises`, `Rel.guardedProject_raises`) |
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `SubstraitJson.lean` | Builders of Substrait's JSON: references, types, casts, literals, calls and measures by anchor, the functions templates call, and the options the parser accepts |
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |

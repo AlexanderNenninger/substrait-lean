@@ -1616,8 +1616,9 @@ aggregate's `FILTER` and a window's argument are tested in
 Interim limits, until step D50-d (a gate for 1.0):
 
 - Only the top three levels of a nest of `AND` and `OR` are lifted
-  (`LIFT_LEVELS`, `plan_json.py`; a connective's level is one more than the lifted
-  ones enclosing it). Below that the connective is the eager `AND` or `OR`: a
+  (`Parse.liftLevels`; a connective's level is one more than the lifted
+  ones enclosing it). Below that a filter's chains are bound (D50-d, 2026-11-20,
+  `Rel.guardedFilter`), and elsewhere the connective is the eager `AND` or `OR`: a
   guard there does not protect the next operand, so the guarded operation is
   reported as an inferred precondition, as before D50. The cap exists because a
   lift nested in a lift multiplies the size: with a guarded leaf, depth 3 of
