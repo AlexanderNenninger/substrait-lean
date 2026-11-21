@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-21-m2-keep",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "#2008, #886, #1130 and #271 are needed for 1.0.",
+  "issues": [
+    271,
+    886,
+    1130,
+    2008
+  ],
+  "source": "coordinator's relay, 2026-11-21",
+  "note": "Answers ruling 243's confirm calls; #2008 takes the proof route."
+}

@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-21-2245-steps",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Steps 0 and 1 of the proposer-API epic #2245 (#2246, #2247) are in 1.0, and the rest of the epic is After 1.0.",
+  "issues": [
+    2245,
+    2246,
+    2247
+  ],
+  "source": "coordinator's relay, 2026-11-21"
+}
