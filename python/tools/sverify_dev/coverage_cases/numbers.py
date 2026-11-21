@@ -32,7 +32,7 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
-    # The date's text is the timestamp's `strftime`; the engines have no Date to timestamp cast (#271).
+    # The date's text goes through a Date to timestamp cast the engines lack (#271).
     "cast date → string": DUCKDB_ONLY,
 }
 
