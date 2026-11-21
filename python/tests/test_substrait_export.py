@@ -378,6 +378,27 @@ def test_a_report_read_back_does_not_drop_guards_on_unchecked_data(engine):
         back.run(_o([(1, 5), (2, 0)]), engine)
 
 
+RP = ibis.table({"a": "int64", "b": "int64"}, name="p")
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_report_read_back_checks_a_composite_foreign_key(engine):
+    """The key's parts travel together and are checked together: (1, 5) has
+    each part in `p`, in different rows (#2223)."""
+    fk = sv.references("id", "amt", to=("p", ["a", "b"]))
+    report, back = _imported([fk], [], RO.join(RP, RO.id == RP.a).select(RO.id))
+    assert fk in back._conditions["o"]
+    p = pa.table({"a": pa.array([1, 2], pa.int64()), "b": pa.array([6, 5], pa.int64())})
+    bad = _o([(1, 5)])
+    put_table(bad, "p", p)
+    for r in (report, back):
+        with pytest.raises(PreconditionError, match="refused before the run"):
+            r.run(bad, engine)
+    good = _o([(1, 6), (3, None)])
+    put_table(good, "p", p)
+    assert back.run(good, engine).num_rows == 1
+
+
 def test_every_report_with_requires_has_a_check_for_each():
     for case, (expr, requires, ensures) in ROUND_TRIPS.items():
         report = _verify(expr, requires, ensures)
