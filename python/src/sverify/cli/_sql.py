@@ -4,15 +4,13 @@ contract (it reports what the query computes and what it can raise)."""
 
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 from typing import Any
 
 from sverify.cli._common import UsageError
 from sverify.cli._discover import Checked, Discovery
-
-DIALECTS = ("duckdb",)
-SEMANTICS = ("reference", "duckdb")
 
 
 def read_schemas(path: Path) -> dict[str, dict[str, str]]:
@@ -51,6 +49,8 @@ def read_query(path: Path, dialect: str) -> str:
     text = path.read_text()
     try:
         statements = [s for s in sqlglot.parse(text, read=dialect) if s is not None]
+    except ValueError as e:  # an unknown dialect name
+        raise UsageError(f"dialect {dialect!r}: {e}") from None
     except sqlglot.errors.ParseError as e:
         raise UsageError(f"{path}: cannot parse the SQL: {str(e).splitlines()[0]}") from e
     if len(statements) != 1:
@@ -69,15 +69,17 @@ def load_sql(
     `dialect` and `semantics` are `sverify.sql`'s, with its defaults."""
     import sverify as sv
 
-    dialect = dialect or DIALECTS[0]
-    semantics = semantics or SEMANTICS[0]
-    if dialect not in DIALECTS:
-        raise UsageError(f"dialect must be 'duckdb', not {dialect!r}")
-    if semantics not in SEMANTICS:
-        raise UsageError(f"semantics must be 'reference' or 'duckdb', not {semantics!r}")
+    # `sverify.sql`'s own defaults, and its own check of both names.
+    defaults = inspect.signature(sv.sql).parameters
+    dialect = dialect or defaults["dialect"].default
+    semantics = semantics or defaults["semantics"].default
     if schema is None:
         raise UsageError(f"{path}: a .sql file needs --schema FILE, the types of its tables")
     query = read_query(path, dialect)
+    try:
+        step: Any = sv.sql(query, dialect=dialect, semantics=semantics)  # type: ignore[arg-type]
+    except ValueError as e:
+        raise UsageError(str(e)) from None
     schemas = read_schemas(Path(schema))
     from sverify.sql_model import query_tables
 
@@ -90,6 +92,5 @@ def load_sql(
         counterexamples=0,
         semantics=semantics,  # type: ignore[arg-type]
     )
-    step: Any = sv.sql(query, dialect=dialect, semantics=semantics)  # type: ignore[arg-type]
     out.checked.append(Checked(path.stem, [], report, [], {}, step))
     return out

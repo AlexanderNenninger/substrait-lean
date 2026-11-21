@@ -732,7 +732,7 @@ The verdict is the one `verify` gives with no contract: what the query
 computes and what it can raise, with the preconditions it needs. A table the
 file does not describe is a usage error, and a construct the lift does not read is
 exit 3, by name. `--dialect` and `--semantics` take `sverify.sql`'s values and
-defaults (`duckdb`; `reference`). `--fix`, `--diff` and `--against-sink` read
+defaults (`sverify.sql` documents them). `--fix`, `--diff` and `--against-sink` read
 Python files only.
 
 A `DeltaSource` or `IcebergSource` opens its table to learn its schema, which

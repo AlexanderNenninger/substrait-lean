@@ -36,7 +36,7 @@ from sverify.cli._limits import (
     memory_limit_from,
     timeout_from,
 )
-from sverify.cli._sql import DIALECTS, SEMANTICS, load_sql
+from sverify.cli._sql import load_sql
 from sverify.cli._suggest import place
 
 EXIT_CODES = """\
@@ -637,11 +637,10 @@ def parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="for a .sql file: the types of its tables, YAML or JSON, {table: {column: type}}",
     )
-    c.add_argument("--dialect", choices=DIALECTS, help="for a .sql file: duckdb (the default)")
+    c.add_argument("--dialect", help="for a .sql file: `sverify.sql`'s dialect (its default)")
     c.add_argument(
         "--semantics",
-        choices=SEMANTICS,
-        help="for a .sql file: reference (the default) or duckdb, as in sverify.sql",
+        help="for a .sql file: `sverify.sql`'s semantics (its default)",
     )
     c.add_argument("--full", action="store_true", help="print each node's full report")
     fix = c.add_mutually_exclusive_group()
