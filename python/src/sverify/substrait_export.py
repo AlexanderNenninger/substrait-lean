@@ -1543,7 +1543,7 @@ def _table_condition(j: Mapping[str, Any]) -> Any:
     fields = dict(j.get("fields") or {})
     if cls == "ArrivesWithin":
         fields["lateness"] = timedelta(seconds=fields["lateness"])
-    for k in ("cols",):
+    for k in ("cols", "others"):
         if k in fields:
             fields[k] = tuple(fields[k])
     if "n" in fields:
