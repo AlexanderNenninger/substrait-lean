@@ -260,13 +260,6 @@ def negInfT : Tm := namedFloat FloatCode.negInf (Lean.mkConst ``FloatCode.negInf
 def nanT : Tm := namedFloat FloatCode.nan (Lean.mkConst ``FloatCode.nan) "'nan'"
 
 
-/-- The elementary function as a Lean term. -/
-def fmathTerm (f : FMath) : Lean.Expr :=
-  Lean.mkConst (match f with
-    | .sqrt => ``FMath.sqrt | .exp => ``FMath.exp | .ln => ``FMath.ln | .log10 => ``FMath.log10
-    | .log2 => ``FMath.log2 | .sin => ``FMath.sin | .cos => ``FMath.cos | .tan => ``FMath.tan
-    | .asin => ``FMath.asin | .acos => ``FMath.acos | .atan => ``FMath.atan)
-
 /-- `#i = ±∞`. -/
 def isInfT (x : Tm) : Tm := orFn (eqFn x posInfT) (eqFn x negInfT)
 

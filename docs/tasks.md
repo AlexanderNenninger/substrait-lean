@@ -563,7 +563,7 @@ assert report.verdict == sv.Verdict.PROVED
 Lean gives each order at most one version when the join condition equates the
 `by` columns, tests `valid_from <= x` and `x < valid_to` (or `valid_to IS NULL OR
 x < valid_to`) for one expression `x` of the order's columns; the join keeps the
-orders' keys (`Rel.keys`). A closed end (`x <= valid_to`) matches two versions at a
+orders' keys. A closed end (`x <= valid_to`) matches two versions at a
 boundary and has no rule. `dbt_utils.mutually_exclusive_ranges` is the same test
 in dbt.
 
@@ -948,21 +948,21 @@ A node that ends in `COUNT` and integer `SUM` per group, or in `DISTINCT`,
 over an input with delta rules, is maintained from a count and a sum per
 group, which each batch's change adds to
 (`LinearAgg.aggregate_maintained` in
-[`SubstraitLean/IncrementalAgg.lean`](../SubstraitLean/IncrementalAgg.lean),
+[`analysis/Sverify/Analysis/IncrementalAgg.lean`](../analysis/Sverify/Analysis/IncrementalAgg.lean),
 [section 6 of the optimizations note](optimizations.md#6-incremental-maintenance)).
 `DECIMAL` `SUM` and `AVG` keep the same state, `SUM`, `AVG`, `VAR`,
 `STDDEV`, `COVAR` and `CORR` of doubles an exact one, rounded once, with no
 drift
 (`LinearAgg.fsum_no_drift` in
-[`SubstraitLean/IncrementalFloat.lean`](../SubstraitLean/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
+[`analysis/Sverify/Analysis/IncrementalFloat.lean`](../analysis/Sverify/Analysis/IncrementalFloat.lean)), and `MIN` and `MAX` keep each
 group's extreme: a batch that only inserts into a group merges, and the
 groups it deletes from are recomputed from the new input
 (`ExtremeAgg.extreme_maintained` in
-[`SubstraitLean/IncrementalMinMax.lean`](../SubstraitLean/IncrementalMinMax.lean)).
+[`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)).
 A node that ends in a semi or anti join on equal keys keeps a count of
 matches per key and reads the left input only for the keys whose count
 leaves or returns to 0 (`SemiDelta.semi_maintained` in
-[`SubstraitLean/IncrementalSemi.lean`](../SubstraitLean/IncrementalSemi.lean)).
+[`analysis/Sverify/Analysis/IncrementalSemi.lean`](../analysis/Sverify/Analysis/IncrementalSemi.lean)).
 A node without delta rules (left join, other aggregates, window, `LIMIT`) is
 recomputed and diffed instead, and `status()` says so. An
 aggregate whose input has delta rules recomputes only the groups a batch
@@ -2088,8 +2088,13 @@ reads the settings the plan will run under and compares them:
 - Polars: an engine affinity that forces another engine than streaming
   (`pl.Config.set_engine_affinity("in-memory")`) refuses the run, since
   sverify runs Polars's streaming engine.
-- Another engine version warns (`EngineVersionWarning`), and another major
-  version is refused (`EngineVersionError`) until the probes are re-run.
+- An unprobed patch of the probed minor warns (`EngineVersionWarning`) and
+  is recorded on the route (`Route.unprobed_version`); another minor or
+  major is refused (`EngineVersionError`) until the probes are re-run, and
+  runs with `run(..., unverified=True)`
+  ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)). To
+  refuse every unprobed version, turn the warning into an error:
+  `warnings.simplefilter("error", sverify.errors.EngineVersionWarning)`.
 
 `lines.get_backend()`, the backend of a table of the connection, is its Ibis
 DuckDB backend, for SQL of your own, such as

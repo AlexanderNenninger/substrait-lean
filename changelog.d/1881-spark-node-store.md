@@ -1,0 +1,1 @@
+A pipeline node refreshed on Spark keeps its view's state in Spark's store from its first state on (#1881). Before, the view was built on the DuckDB connection the stage reads its sources through, so its state was a DuckDB table and every merge moved the view's rows through DuckDB in the driver.

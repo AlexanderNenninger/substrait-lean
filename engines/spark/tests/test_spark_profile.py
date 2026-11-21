@@ -132,10 +132,15 @@ def test_a_legacy_setting_refuses_only_the_plans_it_changes() -> None:
 
 
 def test_another_spark_version() -> None:
+    """D70: an unprobed 4.3 patch warns; another minor or major is refused."""
     with pytest.warns(EngineVersionWarning):
-        routes.check_version("spark", "4.2.0")
-    with pytest.raises(EngineVersionError, match="probed at 4.3.0"):
-        routes.check_version("spark", "3.5.4")
+        routes.check_version("spark", "4.3.9")
+    for v in ("4.2.0", "4.4.0", "3.5.4"):
+        with pytest.raises(
+            EngineVersionError,
+            match=r"probed at 4\.3\.0: install a version of spark in >=4\.3\.0,<4\.4",
+        ):
+            routes.check_version("spark", v)
 
 
 def test_semantics_is_checked() -> None:
@@ -204,6 +209,30 @@ def test_refresh_on_spark(spark, tmp_path) -> None:
     assert route is not None and (route.kind, route.engine) == ("translated", "spark")
     rows = DeltaTable(str(tmp_path / "totals")).to_pyarrow_table().to_pylist()
     assert sorted((r["customer"], r["total"]) for r in rows) == [("ada", 12), ("bob", 2)]
+
+
+@pytest.mark.backend("spark")
+def test_a_spark_node_keeps_its_view_in_the_spark_store(spark, tmp_path) -> None:
+    """A node refreshed on Spark keeps its view's state in Spark's store from
+    the first state on, not in DuckDB's, whose connection the stage reads its
+    sources through (#1881)."""
+    from sverify._scan import Resident
+    from sverify_spark.store import SparkStore
+
+    @sv.transform(requires={"t": [_.amount >= 0, _.amount < 1_000_000_000]})
+    def totals(t):
+        return t.group_by("customer").aggregate(total=t.amount.sum())
+
+    orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7), (3, "bob", 2)])
+    node = totals(paid(orders))
+    node.refresh(engine="spark")
+    view = node._view()
+    assert isinstance(view.store, SparkStore)
+    assert not isinstance(view.state, Resident)
+    assert sorted((r["customer"], r["total"]) for r in node.to_arrow().to_pylist()) == [
+        ("ada", 12),
+        ("bob", 2),
+    ]
 
 
 @pytest.mark.backend("spark")

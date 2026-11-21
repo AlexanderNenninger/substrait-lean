@@ -59,7 +59,8 @@
     "`SUM(DOUBLE)` adds each value to the state in turn (`state.value += input`), and partial states merge by plain addition. The order of the values depends on the parallel plan.",
     "Order class: (a) each state adds its values in turn, in the order they reach it; partial states combine by one addition each, in the order threads finish (ungrouped: each thread's state into the global one under a lock; grouped: per-thread hash tables, and abandoned or spilled partitions, merged partition by partition). With more than one thread, or a spilled hash table, the sum is a tree of unknown shape whose leaves are sequential runs. A constant vector (a constant argument, or a constant-compressed segment of a stored table) adds fl(k·x) for its k ≤ 2048 rows in one multiplication (`RepeatedStateValue::Multiply`). (b) With u = 2⁻⁵³ and γ_k = ku/(1 − ku): sequential |ŝ − s| ≤ γ_{n−1} Σ|x_i|, to first order (n − 1)u Σ|x_i| (Higham §4.2); any tree γ_h Σ|x_i|, h the most additions on one value's path to the root, at most n − 1 (§4.2); with P partials merged in a chain h ≤ m − 1 + P, m the largest partial's count. A constant run's product adds at most u·k|x| for its k values, so every path stays within γ_{n−1} Σ|x_i| and within #85's `sumTolScaled`. (c) The source below; duckdb-float-sum-order's round-4 thread runs (one result at 1 thread, several at 2 and 8); the constant-argument probe below (`sum(0.1)` over 10 rows is 1.0, the same values from a table 0.9999999999999999). (d) At one thread, with no constant vector and no spilled partial, SEQUENTIAL. Otherwise the tree shape of ANY (`FloatSums.split` over `seq` leaves), so `sum_order`'s `extra` entry (SEQUENTIAL, citing this fact) holds at threads = 1 only. A constant run's fl(k·x) is no sequential sum (1.0 against 0.9999999999999999 for ten 0.1); a search found it among the tree sums of k copies for each k ≤ 40 over 300 random x, but its membership in `FloatSums` is unproved: the Lean side needs that lemma, or a behaviour that allows a product step.",
     "`SUM` and `AVG` of no rows, or of NULLs only, are NULL for DOUBLE, FLOAT and integer arguments (`sum-empty`): the clustered sum's state starts unset and finalizes to NULL.",
-    "The docs are silent on the algorithm and on the constant run's product: a docs gap. No upstream test pins the constant run's product or the dependence on thread order; it may change between versions."
+    "The docs are silent on the algorithm and on the constant run's product: a docs gap. No upstream test pins the constant run's product or the dependence on thread order; it may change between versions.",
+    "A sum with a NaN or an infinity among its values is not finite, in every order this fact records, the constant run's fl(k·x) (`SCALED_CONSTANT`) included: NaN gives NaN, one kind of infinity gives it, and both give NaN (`sum-constant-run-nonfinite`: grouped, from constant-compressed segments of a checkpointed table and from a constant argument, at 1 and 4 threads on the laptop). The writer's two-stage double `SUM` and `AVG` reads this where the Lean lemma `SumOrder.isFinCode` has no shape to prove it from (ruling 212, A2)."
   ],
   "reference": "`AggFn.fsum` is `floatSumCR` (D25): the exact sum of the doubles, rounded once to nearest with ties to even; a NaN, or `+∞` with `-∞`, gives NaN, and one kind of infinity gives it. NULL without values. An engine's own order of additions is within the plan's bound (`sum_order`, `StdModel.epsilon_sum_cr`).",
   "status": "open",
@@ -214,6 +215,18 @@
         }
       ],
       "notes": "Exactness on small integers: where every value is an integer-valued double and the magnitudes sum to at most 2^53, the engine's sum is the exact sum and its mean the exact mean rounded once (python/tests/_int_sums.py's cases). This is the evidence for D35's amendment on this engine's sum_order row."
+    },
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "optimizer session (#1608 item 7, ruling 212 A2), duckdb 2.0.0 Python package, macOS arm64",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/probes.json",
+          "probe": "sum-constant-run-nonfinite"
+        }
+      ],
+      "notes": "Runs of 130,000 rows of +inf, -inf and NaN, alone, with 5,000 finite rows, and both infinities in one group; the table's three runs that fill a row group are constant-compressed segments (`pragma_storage_info`). Every sum and mean is NaN or the run's infinity."
     }
   ],
   "issues": [

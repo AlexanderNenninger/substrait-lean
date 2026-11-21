@@ -659,11 +659,11 @@ def test_read_lists_what_it_cannot_read_with_reasons():
     assert caps == [2, 10, 20]
     assert any(isinstance(x, Unique) and x.cols == ("code", "n") for x in c.tables["t"])
     assert not any(isinstance(x, References) for x in c.tables["t"])
+    assert "REGEXP_MATCHES(\"code\", '^[a-z]+$')" in " ".join(labels)  # logicalTypeOptions.pattern
     assert 'NOT "n" IS NULL' in labels  # missingValues: [null]
     assert "NOT COALESCE((n > 5), FALSE)" in labels
     reasons = [u.reason for u in c.unread]
     expect = [
-        "logicalTypeOptions.pattern",
         "logicalTypeOptions.multipleOf",
         "a share of rows",
         "metric 'averageValue' sverify does not read",
@@ -671,7 +671,7 @@ def test_read_lists_what_it_cannot_read_with_reasons():
         "a relationship sverify does not read",
         "a relationship sverify does not read",
         "a minimum sverify cannot read for boolean",
-        "a relationship on the object",
+        "a relationship sverify does not read",
         "a key over columns the object lacks",
         "metric 'nullValues' on a whole object",
         "reads columns the object lacks",
@@ -749,3 +749,89 @@ def test_export_writes_row_rates_references_and_keys():
     back = odcs.read(doc, strict=True).conditions()
     assert any(isinstance(c, RowsPer) and c.cols == ("customer",) and c.n == 5 for c in back)
     assert any(isinstance(c, References) and c.col == "customer" for c in back)
+
+
+def _fk_doc() -> dict:
+    return {
+        "apiVersion": "v3.2.0",
+        "kind": "DataContract",
+        "id": "fk",
+        "version": "1",
+        "status": "active",
+        "schema": [
+            {"id": "c", "name": "customers", "properties": [{"id": "cid", "name": "id"}]},
+            {
+                "id": "o",
+                "name": "orders",
+                "properties": [
+                    {"id": "oc", "name": "cust"},
+                    {"id": "oc2", "name": "cust2"},
+                    {
+                        "name": "code",
+                        "logicalTypeOptions": {"pattern": "ACC[0-9]{8}"},
+                    },
+                    {"name": "odd", "logicalTypeOptions": {"pattern": "(?=x)"}},
+                ],
+                "relationships": [
+                    {"type": "foreignKey", "from": "orders.cust", "to": "customers.id"},
+                    {
+                        "type": "foreignKey",
+                        "from": "/schema/o/properties/oc2",
+                        "to": "schema/c/properties/cid",
+                    },
+                    {
+                        "type": "foreignKey",
+                        "from": ["orders.cust", "orders.cust2"],
+                        "to": ["customers.id", "customers.id"],
+                    },
+                ],
+            },
+        ],
+    }
+
+
+def test_read_foreign_keys_on_the_object_and_by_id():
+    """Object-level relationships, shorthand or by id path, read as
+    `references` (#1956); a composite key is listed as unread."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    refs = [x for x in c.tables["orders"] if isinstance(x, References)]
+    assert [(r.col, r.table, r.other) for r in refs] == [
+        ("cust", "customers", "id"),
+        ("cust2", "customers", "id"),
+    ]
+    assert any(u.reason.startswith("a composite foreign key") for u in c.unread)
+
+
+def test_read_pattern_is_a_search_condition_inside_the_regex_subset():
+    """`logicalTypeOptions.pattern` reads inside the subset all engines agree on
+    and stays unread outside it, with that reason (#1957)."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    assert any("ACC[0-9]{8}" in str(x) for x in c.tables["orders"])
+    assert any(u.reason.startswith("a pattern outside") for u in c.unread)
+
+
+def test_a_pattern_condition_with_braces_is_a_requirement():
+    """`ACC[0-9]{8}` is no `str.format` field: the condition is read as a requirement."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    t = ibis.table(
+        {"code": "string", "cust": "string", "cust2": "string", "odd": "string"}, name="orders"
+    )
+    pattern = [x for x in c.tables["orders"] if isinstance(x, str) and "ACC" in x]
+    report = sv.verify(
+        t.select(n=t.code.length()),
+        requires={"orders": pattern},
+        ensures=[ibis._.n.isnull() | (ibis._.n >= 0)],
+    )
+    assert report.verdict == sv.Verdict.PROVED, report.details()
+
+
+def test_an_unanchored_pattern_is_a_search():
+    """ODCS patterns are ECMA-262 and unanchored: `ACC[0-9]{8}` holds of
+    'xACC12345678y'; the condition is a search, not a full match."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    cond = [x for x in c.tables["orders"] if isinstance(x, str) and "ACC" in x]
+    assert cond and "REGEXP_MATCHES" in cond[0].upper() and "FULL" not in cond[0].upper()

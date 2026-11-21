@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from sverify import _plan_read, black_box
-from sverify._unsupported import DUCKDB_ONLY, ISSUE_271  # noqa: F401  (re-exported)
+from sverify._unsupported import DUCKDB_ONLY, ISSUE_271, MIN_MOD_GUARD  # noqa: F401  (re-exported)
 
 
 def _engines() -> dict[str, Any]:
@@ -52,6 +52,16 @@ def _guard_engines(call: dict) -> frozenset[str] | None:
             if found:
                 return found
     return None
+
+
+def _guard_text(call: dict) -> str:
+    """What a refusal calls the guard `call`: the integer `%` under
+    `semantics="duckdb"` (`MIN_MOD_GUARD`), else a RANGE frame."""
+    for arg in call.get("arguments", [])[1:]:
+        msg = (arg.get("value") or {}).get("literal", {}).get("string")
+        if isinstance(msg, str) and msg.startswith(MIN_MOD_GUARD):
+            return 'an integer % under semantics="duckdb" (it raises at MIN % -1)'
+    return "a RANGE frame with offsets over an integer"
 
 
 #: What a refusal calls a function: the Ibis and SQL names users write,
@@ -150,8 +160,8 @@ def check(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
                         if engine.lower() not in guard:
                             runs = " and ".join(sorted(guard))
                             raise err(
-                                f"a RANGE frame with offsets over an integer runs on {runs} "
-                                f"only: {engine} has no way to raise its guard ({ISSUE_271})"
+                                f"{_guard_text(call)} runs on {runs} only: {engine} has "
+                                f"no way to raise its guard ({ISSUE_271})"
                             )
                     elif name is not None and not ok(name, engine):
                         raise err(refusal(_plan_read.base_name(name), engine, window))

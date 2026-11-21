@@ -11,6 +11,7 @@ import Sverify.Core.Decomposable
 import Sverify.Core.Dedup
 import Sverify.Core.Digest
 import Sverify.Core.EvalFast
+import Sverify.Core.ExactBound
 import Sverify.Core.Expr
 import Sverify.Core.Float
 import Sverify.Core.FloatArith
@@ -47,6 +48,5 @@ import Sverify.Core.Ties
 import Sverify.Core.Time
 import Sverify.Core.Value
 import Sverify.Core.Window
-
 /-! The core (#1189): the reference's semantics. It imports nothing but
 Lean, which the standalone build of this package checks. -/

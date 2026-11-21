@@ -39,13 +39,14 @@ import math
 import re
 import uuid
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import sqlglot as sg
 
+from sverify._plan_read import simple_regex
 from sverify.io._common import public_uri
 
 if TYPE_CHECKING:
@@ -663,10 +664,40 @@ def _rows_per(query: str, cols: set[str]) -> Any | None:
     return rows_per(*keys, at_most=int(cond.expression.this))
 
 
+def _resolver(doc: Mapping[str, Any]) -> Callable[[Any], tuple[str, str] | None]:
+    """Reads a reference of a relationship as `(table, column)`: the shorthand
+    `table.column`, or an id path `[/]schema/<object id>/properties/<property
+    id>` through the `id`s of the objects and their properties (#1956)."""
+    objects = {o["id"]: o for o in doc.get("schema") or [] if "id" in o and "name" in o}
+
+    def resolve(ref: Any) -> tuple[str, str] | None:
+        if not isinstance(ref, str):
+            return None
+        parts = ref.lstrip("/").split("/")
+        if len(parts) == 4 and parts[0] == "schema" and parts[2] == "properties":
+            obj = objects.get(parts[1])
+            for p in (obj or {}).get("properties") or []:
+                if p.get("id") == parts[3] and "name" in p:
+                    return obj["name"], p["name"]  # type: ignore[index]
+            return None
+        if ref.count(".") == 1 and "/" not in ref:
+            table, col = ref.split(".")
+            return table, col
+        return None
+
+    return resolve
+
+
 class _Reader:
-    def __init__(self, table: str, cols: Mapping[str, Mapping[str, Any]]):
+    def __init__(
+        self,
+        table: str,
+        cols: Mapping[str, Mapping[str, Any]],
+        resolve: Callable[[Any], tuple[str, str] | None] = lambda ref: None,
+    ):
         self.table = table
         self.cols = cols
+        self.resolve = resolve
         self.out: list[Any] = []
         self.unread: list[Unread] = []
         self.valued: set[str] = set()
@@ -789,6 +820,27 @@ class _Reader:
         else:
             self.skip(column, rule, f"metric {metric!r} sverify does not read")
 
+    def relationship(self, rel: Any) -> None:
+        """A relationship on the object: a foreign key from one of its columns
+        (`from` and `to` as one reference each, or lists of one)."""
+        from sverify.contracts import references
+
+        def refs(v: Any) -> list[tuple[str, str] | None]:
+            return [self.resolve(r) for r in (v if isinstance(v, list) else [v])]
+
+        if not (isinstance(rel, Mapping) and rel.get("type", "foreignKey") == "foreignKey"):
+            self.skip(None, rel, "a relationship that is not a foreign key")
+            return
+        src, dst = refs(rel.get("from")), refs(rel.get("to"))
+        if None in src or None in dst or len(src) != len(dst):
+            self.skip(None, rel, "a relationship sverify does not read")
+        elif len(src) > 1:
+            self.skip(None, rel, "a composite foreign key: references() takes one column")
+        elif src[0][0] != self.table:  # type: ignore[index]
+            self.skip(None, rel, "a foreign key from another table")
+        else:
+            self.out.append(references(src[0][1], to=dst[0]))  # type: ignore[index, arg-type]
+
     def rule(self, column: str | None, rule: Any) -> None:
         if not isinstance(rule, Mapping):
             self.skip(column, rule, "not a rule")
@@ -860,19 +912,24 @@ class _Reader:
             if key in opts:
                 e = op(this=sg.exp.Length(this=_ident(col)), expression=_lit(int(opts[key])))
                 self.out.append(_or_null(col, e, self.required(col)))
-        for key in ("pattern", "format", "multipleOf"):
+        if "pattern" in opts:
+            pat = opts["pattern"]
+            if isinstance(pat, str) and simple_regex(pat):
+                e = sg.exp.RegexpLike(this=_ident(col), expression=_lit(pat))
+                self.out.append(_or_null(col, e, self.required(col)))
+            else:
+                self.skip(
+                    col,
+                    {"pattern": pat},
+                    "a pattern outside the regular expressions all engines agree on",
+                )
+        for key in ("format", "multipleOf"):
             if key in opts:
                 self.skip(col, {key: opts[key]}, f"logicalTypeOptions.{key}")
         for rel in p.get("relationships") or []:
-            to = rel.get("to") if isinstance(rel, Mapping) else None
-            if (
-                isinstance(rel, Mapping)
-                and rel.get("type", "foreignKey") == "foreignKey"
-                and isinstance(to, str)
-                and to.count(".") == 1
-            ):
-                table, other = to.split(".")
-                self.out.append(references(col, to=(table, other)))
+            to = self.resolve(rel.get("to")) if isinstance(rel, Mapping) else None
+            if isinstance(rel, Mapping) and rel.get("type", "foreignKey") == "foreignKey" and to:
+                self.out.append(references(col, to=to))
             else:
                 self.skip(col, rel, "a relationship sverify does not read")
         for r in p.get("quality") or []:
@@ -925,10 +982,11 @@ def read(
     from sverify.conditions import key
 
     out = OdcsContract(doc)
+    resolve = _resolver(doc)
     for obj in doc.get("schema") or []:
         name = obj.get("name")
         props = {p["name"]: p for p in obj.get("properties") or [] if "name" in p}
-        r = _Reader(name, props)
+        r = _Reader(name, props, resolve)
         pk = sorted(
             (p for p in props.values() if p.get("primaryKey")),
             key=lambda p: p.get("primaryKeyPosition", -1),
@@ -938,7 +996,7 @@ def read(
         for p in props.values():
             r.property(p)
         for rel in obj.get("relationships") or []:
-            r.skip(None, rel, "a relationship on the object")
+            r.relationship(rel)
         for rule in obj.get("quality") or []:
             r.rule(None, rule)
         out.tables[name] = _dedupe(r.out)

@@ -1,4 +1,4 @@
-import SubstraitLean.Lipschitz.Basic
+import Sverify.Analysis.Lipschitz.Basic
 
 /-!
 # Tolerance composition: the `SUM` and `AVG` rows (#929)

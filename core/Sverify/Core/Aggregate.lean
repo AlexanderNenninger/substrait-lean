@@ -143,11 +143,6 @@ theorem intSum_cons (v : Value) (vs : List Value) :
     intSum (v :: vs) = v.unscaled?.getD 0 + intSum vs := by
   cases v <;> simp [intSum]
 
-/-- Is the value a decimal? -/
-def Value.isDec : Value → Bool
-  | .dec _ _ => true
-  | _ => false
-
 /-- Is the value a decimal of scale `s`? -/
 def Value.isDecOf (s : Nat) : Value → Bool
   | .dec t _ => t == s
