@@ -6,6 +6,7 @@ import Sverify.DuckDB.AvgSet
 import Sverify.Core.Rewrites
 import Sverify.Analysis.Incremental
 import Sverify.Analysis.Weighted
+import Sverify.Analysis.Zone
 import Sverify.Analysis.Terms
 import Sverify.Analysis.Contracts
 import Sverify.Analysis.Retention
@@ -217,6 +218,7 @@ end Substrait.Examples
 -- Proofs rely only on Lean's standard axioms (no `sorry`).
 #print axioms Substrait.Rel.eval_arity
 #print axioms Substrait.Rel.kinds_sound
+#print axioms Substrait.Expr.robust_of_kinds
 #print axioms Substrait.filter_project_pushdown
 #print axioms Substrait.filter_cross_pushdown_left
 #print axioms Substrait.emit_project_identity
@@ -441,6 +443,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.floatOpenSafe_of_closed
 #print axioms Substrait.contract_sound_allowed_closed
 #print axioms Substrait.Engine.duckdb_sound
+#print axioms Substrait.Rel.polars_sound
+#print axioms Substrait.Rel.spark_sound
 #print axioms Substrait.Engine.polars_sound
 #print axioms Substrait.Engine.spark_sound
 #print axioms Substrait.Engine.contract_sound
@@ -457,3 +461,6 @@ end Substrait.Examples
 #print axioms Substrait.UnFn.apply_approx
 #print axioms Substrait.DuckAgg.avgBigint_nearRel
 #print axioms Substrait.Lift.duckdb_marked
+#print axioms Substrait.Zone.close_sat
+#print axioms Substrait.Zone.add_sat
+#print axioms Substrait.Zone.empty?_sound

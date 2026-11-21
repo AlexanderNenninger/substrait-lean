@@ -71,8 +71,7 @@ def test_sink_and_source_internals(tmp_path):
     node = StaticSource(pa.table({"id": [1]}), name="t").pipe(lambda t: t)
     node.write(sink).refresh()
     source = DeltaSource(str(tmp_path / "out"))
-    with pytest.warns(DeprecationWarning, match="hi_slack is internal"):
-        assert source.hi_slack == source._hi_slack  # type: ignore[attr-defined]
+    assert not hasattr(source, "hi_slack")
     assert not hasattr(SinkChange, "native") and hasattr(SinkChange, "_native")
 
 

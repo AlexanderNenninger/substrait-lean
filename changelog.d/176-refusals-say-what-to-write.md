@@ -1,0 +1,1 @@
+Refusals of the Ibis and SQL frontends end with what to write instead: a literal in place of a column where a constant is needed, a column to order by, or a rewrite with a supported operation. A test checks that every frontend refusal does.

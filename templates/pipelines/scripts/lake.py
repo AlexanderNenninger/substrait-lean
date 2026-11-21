@@ -42,7 +42,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -125,20 +125,23 @@ def annotate(level: str, file: str, line: int, title: str, message: str) -> None
     print(f"::{level} file={file},line={line},title={title}::{message}")
 
 
+#: The exit codes in words.
+STATUS = {
+    0: "proved",
+    1: "not proved",
+    2: "usage error",
+    3: "unsupported",
+    4: "budget exceeded",
+    5: "quarantined",
+    6: "error",
+    7: "refused",
+    8: "held",
+}
+
+
 def comment(docs: list[dict[str, Any]], code: int) -> str:
     """The PR comment: the contract of every file in plain words."""
-    status = {
-        0: "proved",
-        1: "not proved",
-        2: "usage error",
-        3: "unsupported",
-        4: "budget exceeded",
-        5: "quarantined",
-        6: "error",
-        7: "refused",
-        8: "held",
-    }
-    lines = ["<!-- sverify-check -->", f"## Contract: {status.get(code, 'error')}", ""]
+    lines = ["<!-- sverify-check -->", f"## Contract: {STATUS.get(code, 'error')}", ""]
     for doc in docs:
         items = doc.get("items", [])
         lines.append(f"### `{doc.get('file')}`: {doc.get('status', 'error').replace('_', ' ')}")
@@ -251,12 +254,19 @@ def cmd_check(args: argparse.Namespace) -> int:
 # refresh
 
 
+def run_url() -> str:
+    """The link to this workflow run, on GitHub Actions; empty elsewhere."""
+    if not os.environ.get("GITHUB_RUN_ID"):
+        return ""
+    server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+    return (
+        f"{server}/{os.environ.get('GITHUB_REPOSITORY')}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    )
+
+
 def alert(runs: list[dict[str, Any]]) -> str:
     """The text of the issue a failed refresh opens."""
-    run_url = ""
-    if os.environ.get("GITHUB_RUN_ID"):
-        server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-        run_url = f"{server}/{os.environ.get('GITHUB_REPOSITORY')}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    run = run_url()
     lines = ["<!-- sverify-alert -->", "The scheduled refresh failed.", ""]
     for r in runs:
         if r["exit"] == 0:
@@ -289,8 +299,8 @@ def alert(runs: list[dict[str, Any]]) -> str:
         "",
         f"{EXPLAIN} This issue closes on the next refresh that succeeds.",
     ]
-    if run_url:
-        lines.append(f"\nRun: {run_url}")
+    if run:
+        lines.append(f"\nRun: {run}")
     return "\n".join(lines) + "\n"
 
 
@@ -315,7 +325,12 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                     "error", p["file"], 1, f"sverify [{err.get('code')}]", str(err.get("message"))
                 )
     code = worst(codes)
-    out = {"exit": code, "at": datetime.now(UTC).isoformat(timespec="seconds"), "runs": runs}
+    out = {
+        "exit": code,
+        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "run": run_url(),
+        "runs": runs,
+    }
     if args.out:
         Path(args.out).write_text(json.dumps(out, indent=2))
     lines = [f"## Refresh: {'ok' if code == 0 else f'failed (exit {code})'}", ""]
@@ -633,8 +648,12 @@ def cmd_catalog(args: argparse.Namespace) -> int:
                 indent=2,
             )
         )
-    (out / "index.html").write_text(index_page(entries, refreshed, args))
-    print(f"catalog: {len(entries)} table(s) in {out}")
+    pipelines = config().get("pipeline", [])
+    now = datetime.now(UTC)
+    for p in pipelines:
+        (out / status_name(p)).write_text(status_page(p, entries, refreshed, checks, now, args))
+    (out / "index.html").write_text(index_page(entries, pipelines, refreshed, args))
+    print(f"catalog: {len(entries)} table(s), {len(pipelines)} status page(s) in {out}")
     return 0
 
 
@@ -697,8 +716,14 @@ attach({json.dumps(e["name"])}, {json.dumps(e["files"])});
 
 
 def index_page(
-    entries: list[dict[str, Any]], refreshed: dict[str, Any] | None, args: argparse.Namespace
+    entries: list[dict[str, Any]],
+    pipelines: list[dict[str, Any]],
+    refreshed: dict[str, Any] | None,
+    args: argparse.Namespace,
 ) -> str:
+    status_links = "".join(
+        f'<li><a href="{status_name(p)}">{html.escape(p["file"])}</a></li>' for p in pipelines
+    )
     rows = "".join(
         f'<li><a href="{html.escape(e["name"])}.html">{html.escape(e["title"])}</a>'
         f'<span class="muted"> · {e["rows"]:,} rows · updated {e["updated"]}</span></li>'
@@ -710,8 +735,149 @@ def index_page(
         status = f'<p class="{"ok" if ok else "bad"}">Last refresh {html.escape(refreshed.get("at", ""))}: {"ok" if ok else "failed"}</p>'
     body = f"""<h1>{html.escape(args.title)}</h1>{status}
 <ul class="tables">{rows or "<li>No tables yet: run the refresh workflow.</li>"}</ul>
+{f'<h2>Pipeline status</h2><ul class="tables">{status_links}</ul>' if status_links else ""}
 <p class="muted">Built by sverify at {datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")}.</p>"""
     return page(args.title, body, args.banner)
+
+
+# status
+
+#: The schedules of the refresh workflow (`on.schedule`), read without a YAML parser.
+CRON = re.compile(r"""^\s*-\s*cron:\s*["']([^"']+)["']""", re.M)
+
+
+def cron_values(field: str, lo: int, hi: int) -> set[int]:
+    """One cron field's values: `*`, `a`, `a-b`, each with an optional `/step`,
+    and lists of them."""
+    out: set[int] = set()
+    for part in field.split(","):
+        base, _, step = part.partition("/")
+        start, _, end = base.partition("-")
+        first, last = (lo, hi) if base == "*" else (int(start), int(end or start))
+        out |= set(range(first, last + 1, int(step or 1)))
+    return out
+
+
+def next_run(cron: str, now: datetime) -> datetime | None:
+    """The first time after `now` that `cron` names, in UTC as GitHub reads it;
+    None when it isn't a five-field expression of numbers."""
+    fields = cron.split()
+    if len(fields) != 5:
+        return None
+    try:
+        minutes, hours, days, months, weekdays = (
+            cron_values(f, lo, hi)
+            for f, (lo, hi) in zip(
+                fields, ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7)), strict=True
+            )
+        )
+    except ValueError:
+        return None
+    weekdays = {d % 7 for d in weekdays}  # 7 is Sunday too
+    day = now.date()
+    for _ in range(400):
+        on_day, on_weekday = day.day in days, (day.weekday() + 1) % 7 in weekdays
+        # Cron: with both day fields restricted, either one matches.
+        both = fields[2] != "*" and fields[4] != "*"
+        if day.month in months and ((on_day or on_weekday) if both else (on_day and on_weekday)):
+            for h in sorted(hours):
+                for m in sorted(minutes):
+                    t = datetime(day.year, day.month, day.day, h, m, tzinfo=UTC)
+                    if t > now:
+                        return t
+        day += timedelta(days=1)
+    return None
+
+
+def schedules() -> list[str]:
+    path = ROOT / ".github" / "workflows" / "refresh.yml"
+    return CRON.findall(path.read_text()) if path.exists() else []
+
+
+def status_name(p: dict[str, Any]) -> str:
+    """A pipeline's status page: `status-<file stem>.html`, apart from the
+    tables' pages, which may share the stem."""
+    return f"status-{Path(p['file']).stem}.html"
+
+
+def status_page(
+    p: dict[str, Any],
+    entries: list[dict[str, Any]],
+    refreshed: dict[str, Any] | None,
+    checks: list[dict[str, Any]],
+    now: datetime,
+    args: argparse.Namespace,
+) -> str:
+    """One pipeline at a glance, for a phone: the last run, the rows each node
+    wrote and stores, the contract, and the next scheduled run. Everything
+    comes from the files the refresh and the check already write."""
+    file, refreshed = p["file"], refreshed or {}
+    runs = [r for r in refreshed.get("runs", []) if r["target"].split(":")[0] == file]
+    if not runs:
+        last = '<p class="muted">No refresh recorded yet.</p>'
+    else:
+        code = worst([r["exit"] for r in runs])
+        link = (
+            f' · <a href="{html.escape(refreshed["run"])}">run</a>' if refreshed.get("run") else ""
+        )
+        word = "ok" if code == 0 else f"failed: {STATUS.get(code, 'error')} (exit {code})"
+        last = f'<p class="{"ok" if code == 0 else "bad"}">{word}</p>'
+        at = datetime.fromisoformat(refreshed["at"]).strftime("%Y-%m-%d %H:%M UTC")
+        last += f'<p class="muted">{at}{link}</p>'
+        for r in runs:
+            if err := r["result"].get("error"):
+                last += f"<p><code>[{html.escape(str(err.get('code')))}]</code> {html.escape(str(err.get('message')))}</p>"
+    stored = {(e["contract"] or {}).get("node"): e for e in entries}
+    rows = []
+    for r in runs:
+        for n in r["result"].get("nodes", []):
+            w, e = n.get("write") or {}, stored.get(n["node"])
+            wrote = f"+{w.get('inserted', 0):,} −{w.get('deleted', 0):,}" if w else "no write"
+            table = f'<a href="{html.escape(e["name"])}.html">{e["rows"]:,}</a>' if e else ""
+            rows.append(
+                f"<tr><td>{html.escape(n['node'])}</td><td>{wrote}</td><td>{table}</td></tr>"
+            )
+    rows_table = (
+        '<div class="scroll"><table><thead><tr><th>node</th><th>last run</th>'
+        f"<th>rows stored</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+        if rows
+        else '<p class="muted">No rows recorded yet.</p>'
+    )
+    doc = next((d for d in checks if d.get("file") == file), None)
+    if doc is None:
+        contract = '<p class="muted">No check recorded.</p>'
+    else:
+        items = []
+        for item in doc.get("items", []):
+            proved = item["status"] == "proved"
+            guarantees = "".join(
+                f"<li>{html.escape(g)}</li>"
+                for g in (item.get("summary") or {}).get("guarantees", [])
+            )
+            items.append(
+                f'<li><b>{html.escape(item["name"])}</b>: <span class="{"ok" if proved else "bad"}">'
+                f"{html.escape(item['status'].replace('_', ' '))}</span>"
+                f"{f'<ul>{guarantees}</ul>' if guarantees else ''}</li>"
+            )
+        contract = f"<ul>{''.join(items)}</ul>" if items else '<p class="muted">No nodes.</p>'
+    times = sorted((t, c) for c in schedules() if (t := next_run(c, now)))
+    nxt = (
+        f"<p>{times[0][0].strftime('%Y-%m-%d %H:%M UTC')}</p>"
+        f'<p class="muted">Schedule <code>{html.escape(times[0][1])}</code>; '
+        "GitHub may start a scheduled run some minutes late.</p>"
+        if times
+        else '<p class="muted">No schedule: the refresh runs by hand.</p>'
+    )
+    body = f"""
+<p><a href="index.html">All tables</a></p>
+<h1>{html.escape(file)}</h1>
+<h2>Last run</h2>{last}
+<h2>Rows</h2>{rows_table}
+<h2>Contract</h2>{contract}
+<h2>Next run</h2>{nxt}
+<p class="muted">Built at {now.strftime("%Y-%m-%d %H:%M UTC")}.</p>
+"""
+    return page(f"{file}: status", body, args.banner)
 
 
 def main(argv: list[str] | None = None) -> int:

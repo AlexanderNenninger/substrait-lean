@@ -873,6 +873,18 @@ Note (2026-11-09, theory advisor): a zero in an option's scope is either zero
 a `-0.0` argument or result too, and `fp.elem` takes `zero_sign` for `atan2`
 (Spark's reads `-0.0` as `0.0`). No reference value or allowed set changes.
 
+**Amendment, 2026-11-21** (ruling 248, #271): the reference's doubles are
+values of binary64. Every integer magnitude up to the largest has a code, but
+only those with at most 53 significant bits are doubles (`FloatFormat.Dbl`).
+On a catalog of doubles, with doubles for the plan's constants, every double
+the reference computes is one (`Rel.eval_dbl`, `core/Sverify/Core/EvalDbl.lean`):
+rounding gives 53 bits (`FloatCode.dbl_ofExactDiv`), the arithmetic above needs
+no hypothesis, and `floor`, `ceil`, `round` and `fmod` keep doubles
+(`core/Sverify/Core/FloatDbl.lean`). The casts of integers and decimals state it
+of their results (`IntConv.dbl`, `DecToDouble.dbl`). No result changes. A
+lowering entry may rely on it where the engine's function differs from the
+reference's only on codes that are no doubles (Spark's `floor` and `ceil`).
+
 ### D32. Calendar functions work on the reference's timestamps, 0001 to 9999
 
 Decided 2026-11-08 (signed off by the maintainer, reviewed by the theory
@@ -1616,8 +1628,9 @@ aggregate's `FILTER` and a window's argument are tested in
 Interim limits, until step D50-d (a gate for 1.0):
 
 - Only the top three levels of a nest of `AND` and `OR` are lifted
-  (`LIFT_LEVELS`, `plan_json.py`; a connective's level is one more than the lifted
-  ones enclosing it). Below that the connective is the eager `AND` or `OR`: a
+  (`Parse.liftLevels`; a connective's level is one more than the lifted
+  ones enclosing it). Below that a filter's chains are bound (D50-d, 2026-11-20,
+  `Rel.guardedFilter`), and elsewhere the connective is the eager `AND` or `OR`: a
   guard there does not protect the next operand, so the guarded operation is
   reported as an inferred precondition, as before D50. The cap exists because a
   lift nested in a lift multiplies the size: with a guarded leaf, depth 3 of

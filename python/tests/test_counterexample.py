@@ -137,3 +137,15 @@ def test_a_date_in_a_sql_output_prints_as_a_date_too():
         ensures=["d >= DATE '2024-06-01'"],
     )
     assert str(report.unproved[0].counterexample).count("datetime.date(1970, 1, 1)") == 2
+
+
+def test_a_counterexample_meets_a_composite_foreign_key_on_one_row():
+    """The search reads the checker's entries, lists of positions: a row
+    meets the key when one referenced row has all its parts, or one part is
+    NULL (#2223)."""
+    from sverify.counterexample import _Search
+
+    s = _Search({}, [], {}, {}, lambda t: True, {}, {"o": [[[0, 1], "p", [0, 1]]]})
+    p = [(1, "a"), (2, "b")]
+    assert s.admissible({"o": [(1, "a"), (None, "b")], "p": p})
+    assert not s.admissible({"o": [(1, "b")], "p": p})

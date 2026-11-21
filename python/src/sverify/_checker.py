@@ -18,7 +18,6 @@ import subprocess
 import sys
 import threading
 import time
-import warnings
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -106,27 +105,13 @@ def generated_proofs() -> bool | None:
     return _generated_proofs(str(_checker_file()))
 
 
-def checker_env() -> str | None:
-    """`$SVERIFY_CHECKER`, else the deprecated `$SVERIFY_CHECK` with a
-    `DeprecationWarning`, else None."""
-    if env := os.environ.get("SVERIFY_CHECKER"):
-        return env
-    if env := os.environ.get("SVERIFY_CHECK"):
-        warnings.warn(
-            "SVERIFY_CHECK is deprecated; set SVERIFY_CHECKER", DeprecationWarning, stacklevel=3
-        )
-        return env
-    return None
-
-
 def checker_path() -> Path:
     """`$SVERIFY_CHECKER` if set, else the checker an installed engine
     profile from outside names (`sverify.profiles`), else the
     `substrait-check` the wheel ships with (a symlink to the lake build in
     an editable install). The first call for a path checks that the checker
     speaks this sverify's protocol
-    (`CheckerVersionError` if not). `SVERIFY_CHECK`, its name before 1.0, is
-    read with a `DeprecationWarning`."""
+    (`CheckerVersionError` if not)."""
     path = _checker_file()
     _check_protocol(str(path))
     return path
@@ -136,7 +121,7 @@ def _checker_file() -> Path:
     """`checker_path` without the protocol check: the cache's answers were
     given by a checker of this protocol (`sverify._proof_cache`), so a hit
     needs no process."""
-    if env := checker_env():
+    if env := os.environ.get("SVERIFY_CHECKER"):
         return Path(env)
     from sverify import profiles
 

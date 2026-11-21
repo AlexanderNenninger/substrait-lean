@@ -1,0 +1,34 @@
+{
+  "id": "F243",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Scope triage of the M2 and M3 milestones: an issue is kept for 1.0 when without it a word the user reads (proved, the version range, the public API, incremental's gate) is false or unbacked; refactors, trust-base reductions and proofs the report does not claim are nice to have or After 1.0.",
+  "issues": [
+    185,
+    271,
+    886,
+    904,
+    928,
+    929,
+    1130,
+    1196,
+    1285,
+    1329,
+    1484,
+    1719,
+    1808,
+    1985,
+    2008,
+    2045,
+    2052,
+    2054,
+    2081
+  ],
+  "amended_by": [
+    "U-2026-11-21-complete-lowerings"
+  ],
+  "source": "fable-ruling-243-m2-triage.md",
+  "note": "The maintainer confirmed #2008 (the proof route), #886 and #1130 and followed the ruling on #1719 and #929; for #271 the fallback of listing rows as tested is withdrawn. No D-number."
+}

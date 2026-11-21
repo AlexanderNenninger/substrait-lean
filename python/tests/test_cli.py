@@ -622,6 +622,17 @@ def test_sarif(tmp_path, capsys):
     assert fixed == path.read_bytes()
 
 
+def test_sarif_is_valid(tmp_path, capsys):
+    from _sarif import jsonschema, valid_sarif
+
+    path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
+    code, out = run(capsys, "check", str(path), "--format", "sarif")
+    assert code == 1
+    assert valid_sarif(out)["runs"][0]["results"]
+    with pytest.raises(jsonschema.ValidationError):  # the schema is not vacuous
+        valid_sarif('{"version": "2.1.0", "runs": 1}')
+
+
 def test_help_lists_the_exit_codes(capsys):
     assert main(["--help"]) == 0
     out = capsys.readouterr().out
@@ -665,13 +676,14 @@ def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     assert got == code and "### paid" in out and "| id |" not in out
 
 
-def test_a_sql_file_is_a_usage_error_that_says_where_sql_goes(tmp_path, capsys):
-    """`sverify check revenue.sql` used to exit 6 with "not a Python file" (#1485)."""
+def test_a_sql_file_without_schemas_is_a_usage_error_that_names_the_flag(tmp_path, capsys):
+    """`sverify check revenue.sql` used to exit 6 with "not a Python file" (#1485); it needs
+    `--schema` (#1362)."""
     sql = tmp_path / "revenue.sql"
     sql.write_text("select 1")
     code, out = run(capsys, "check", str(sql))
     assert code == 2
-    assert "sv.sql" in out and "not a Python file" not in out
+    assert "--schema" in out and "not a Python file" not in out
 
 
 def test_the_double_cast_is_not_shown_around_an_aggregate(tmp_path, capsys):

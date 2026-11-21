@@ -244,7 +244,7 @@ class Node:
                 proved.
             sverify.errors.RouteError: No route takes the plan to the
                 dialect's engine.
-            sverify.errors.Unsupported: The dialect cannot express the plan.
+            sverify.errors.UnsupportedError: The dialect cannot express the plan.
 
         Examples:
             ```python
@@ -262,7 +262,7 @@ class Node:
             self.internal_plan,
             d,
             deterministic=report._exact,
-            rows="sequence" if report.lenses.rows == "sequence" else "multiset",
+            rows=report._rows,
         )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
@@ -414,8 +414,7 @@ class Node:
                 applying it. Default False.
             route: `"auto"` (the default) chooses a route for each node
                 with a contract; `"native"`, `"translated"`, `"transfer"` or
-                `"recheck"` takes that one or refuses (`"reference"` is a
-                deprecated alias of `"translated"`).
+                `"recheck"` takes that one or refuses.
             unverified: Refresh nodes whose contract is not proved anyway;
                 their route is `"unverified"`, with what was not proved, and
                 an `UnverifiedRunWarning` says so. Default False: such a

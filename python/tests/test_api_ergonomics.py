@@ -68,11 +68,60 @@ def test_transform_takes_a_list_of_requires_for_one_parameter():
 
 
 def test_references_takes_an_ibis_column():
-    assert sv.references("cust", to=CUSTOMERS.id) == References("cust", "customers", "id")
+    assert sv.references("cust", to=CUSTOMERS.id) == References(("cust",), "customers", ("id",))
 
 
 def test_references_takes_a_pair_of_names():
-    assert sv.references("cust", to=("customers", "id")) == References("cust", "customers", "id")
+    assert sv.references("cust", to=("customers", "id")) == References(
+        ("cust",), "customers", ("id",)
+    )
+    assert sv.references("cust", to=("customers", "id")).label == "references(cust, customers.id)"
+
+
+# #2223: composite foreign keys
+
+ADDRESSES = ibis.table({"street": "string", "zip": "string", "n": "int64"}, name="addresses")
+
+
+def test_references_takes_several_columns_of_one_table():
+    want = References(("street", "zip"), "addresses", ("street", "zip"))
+    assert sv.references("street", "zip", to=[ADDRESSES.street, ADDRESSES.zip]) == want
+    assert sv.references("street", "zip", to=("addresses", ["street", "zip"])) == want
+    assert want.label == "references((street, zip), addresses.(street, zip))"
+
+
+@pytest.mark.parametrize(
+    ("cols", "to", "error", "match"),
+    [
+        ((), ("addresses", ["street"]), ValueError, "at least one column"),
+        (("street",), ("addresses", ["street", "zip"]), ValueError, "1 column.* and 2 referenced"),
+        (("a", "a"), ("addresses", ["street", "zip"]), ValueError, r"column\(s\) \['a'\]"),
+        (("a", "b"), ("addresses", ["zip", "zip"]), ValueError, "repeats"),
+        (("a", "b"), [ADDRESSES.street, CUSTOMERS.id], TypeError, "columns of one table"),
+        (("a", "b"), [ADDRESSES.street, ADDRESSES.n + 1], TypeError, "a column of a named table"),
+    ],
+)
+def test_references_refuses_a_malformed_key(cols, to, error, match):
+    with pytest.raises(error, match=match):
+        sv.references(*cols, to=to)
+
+
+def test_a_pair_of_columns_that_do_not_compare_is_refused_at_verify():
+    o = ibis.table({"street": "string", "zip": "int64"}, name="o")
+    with pytest.raises(TypeError, match=r"o.zip is int64 and addresses.street is string"):
+        sv.verify(
+            o.join(ADDRESSES, o.street == ADDRESSES.zip).select(o.zip),
+            requires={"o": [sv.references("street", "zip", to=("addresses", ["zip", "street"]))]},
+        )
+
+
+def test_the_rows_violating_a_composite_foreign_key_are_those_of_no_pair():
+    """MATCH SIMPLE: a row with a NULL part is exempt; (1, 'b') breaks the key
+    though 1 and 'b' each occur in `p` (the counts: test_table_conditions_as_plans)."""
+    p = [{"a": 1, "b": "a"}, {"a": 2, "b": "b"}]
+    rows = [{"x": x, "y": y} for x, y in [(1, "a"), (2, "b"), (1, "b"), (None, "z")]]
+    fk = sv.references("x", "y", to=("p", ["a", "b"]))
+    assert fk.violating(rows, lambda v: v, lambda t: p) == [{"x": 1, "y": "b"}]
 
 
 def test_references_needs_the_referenced_column():
