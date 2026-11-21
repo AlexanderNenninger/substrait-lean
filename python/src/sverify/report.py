@@ -1410,9 +1410,7 @@ class Report:
                 out = self._with_plan(
                     plan,
                     run_engine,
-                    lambda plan: run_guard_free(
-                        con, plan, name, theorem, finite=finite, rows=rows
-                    ),
+                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite, rows=rows),
                     recheck,
                 )
             else:

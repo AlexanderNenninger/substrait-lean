@@ -15,11 +15,13 @@ import statistics
 import sys
 import tempfile
 import time
+from functools import partial
 from pathlib import Path
+from typing import Literal
 
 import ibis
+import numpy as np
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from ibis import _
 
@@ -28,6 +30,8 @@ from sverify._scan import Scan
 from sverify.engine import written_plan
 from sverify_duckdb import engine as duckdb_engine
 from sverify_polars import engine as polars_engine
+
+BOTH: tuple[Literal["sequence", "multiset"], ...] = ("sequence", "multiset")
 
 ROWS = int(sys.argv[1]) if len(sys.argv) > 1 else 10_000_000
 THREADS = int(sys.argv[2]) if len(sys.argv) > 2 else 4
@@ -57,11 +61,10 @@ def main() -> None:
     from sverify import _duckdb
 
     _duckdb.cursor().execute(f"SET threads = {THREADS}")
-    ids = pc.random(ROWS)  # a shuffled key: the input is not in key order
-    order = pc.sort_indices(ids)
     t = pa.table(
         {
-            "id": pc.take(pa.array(range(ROWS), pa.int64()), order),
+            # A shuffled key: the input is not in key order.
+            "id": pa.array(np.random.default_rng(0).permutation(ROWS), pa.int64()),
             "g": pa.array([i % 1000 for i in range(ROWS)], pa.int64()),
             "v": pa.array([i % 97 for i in range(ROWS)], pa.int64()),
         }
@@ -79,17 +82,14 @@ def main() -> None:
             plan = written_plan(report.internal_plan)
             for src, tables in sources.items():
                 runs = [
-                    lambda rows=rows, plan=plan, tables=tables: duckdb_engine.run(
-                        plan, tables, rows=rows, deterministic=rows == "multiset"
+                    partial(
+                        duckdb_engine.run, plan, tables, rows=rows, deterministic=rows == "multiset"
                     )
-                    for rows in ("sequence", "multiset")
+                    for rows in BOTH
                 ]
                 a, b = seconds(runs[0]), seconds(runs[1])
                 print(f"| {name} | DuckDB, {src} | {a:.3f} | {b:.3f} | {a / b:.1f}× |")
-            runs = [
-                lambda rows=rows, plan=plan: polars_engine.run(plan, {"t": t}, rows=rows)
-                for rows in ("sequence", "multiset")
-            ]
+            runs = [partial(polars_engine.run, plan, {"t": t}, rows=rows) for rows in BOTH]
             a, b = seconds(runs[0]), seconds(runs[1])
             print(f"| {name} | Polars, Arrow | {a:.3f} | {b:.3f} | {a / b:.1f}× |")
 
