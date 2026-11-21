@@ -643,7 +643,7 @@ def _rewrite(sql: str, inputs: dict[str, str], own: str | None = None) -> str:
     table name)."""
     try:
         tree = sg.parse_one(sql, read="duckdb")
-    except sg.errors.ParseError as e:
+    except sg.errors.SqlglotError as e:  # a ParseError, or a TokenError
         raise _Unreadable(f"the compiled SQL does not parse: {_first_line(e)}") from e
     wanted = {}
     for rel, name in inputs.items():

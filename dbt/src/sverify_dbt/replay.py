@@ -196,6 +196,10 @@ def _run_suite(source: Source) -> dict[str, Any]:
             except (ProjectError, ValueError) as e:
                 unextracted[case.name] = f"not replayed: {normalize(str(e))}"
                 continue
+            except Exception as e:  # noqa: BLE001 - one project's crash must not end the replay
+                # A sverify-dbt bug: listed, to be fixed.
+                unextracted[case.name] = f"crashed: {type(e).__name__}: {normalize(str(e))}"
+                continue
             for key, rec in records.items():
                 results[f"{label}::{key}"] = rec
     return {"packages": [], "results": results, "unextracted": dict(sorted(unextracted.items()))}
