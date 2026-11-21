@@ -1,4 +1,4 @@
-import SubstraitLean.IncrementalAgg
+import Sverify.Analysis.IncrementalAgg
 
 /-!
 # Delta rules for semi and anti joins (#248, stage 2)

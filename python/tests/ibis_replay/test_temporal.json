@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_temporal",
   "summary": {
-    "agree": 80,
+    "agree": 82,
     "disagree": 0,
-    "refused": 68,
+    "refused": 66,
     "unproved": 6,
     "skipped": 11
   },
@@ -618,9 +618,7 @@
       "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-ms-ms]": {
-      "outcome": "refused",
-      "construct": "Unsupported: truncating to milliseconds is not supported; truncate to a second or coarser",
-      "issue": 1929
+      "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-ns-ns]": {
       "outcome": "skipped",
@@ -633,9 +631,7 @@
       "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-us-us]": {
-      "outcome": "refused",
-      "construct": "Unsupported: truncating to microseconds is not supported; truncate to a second or coarser",
-      "issue": 1929
+      "outcome": "agree"
     },
     "test_timestamp_truncate[duckdb-year]": {
       "outcome": "agree"

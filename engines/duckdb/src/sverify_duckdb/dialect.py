@@ -65,9 +65,17 @@ class DuckDBDialect(Dialect):
     # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
     orders_text: bool = True
+    # Measured on homelab (ruling 212 C6, #1608 item 7): 10M rows, 4 threads,
+    # 3.5× on a table, 2.0× behind a join, 1.9× with many groups, and 0.98× where
+    # every group's sum is infinite. ANY is proved and SCALED_CONSTANT probed
+    # (duckdb-sum-double).
+    two_stage_sums: ClassVar[bool] = True
 
     def type_name(self, kind: Kind) -> str:
         return "DOUBLE" if kind == "float" else super().type_name(kind)
+
+    def cte_hint(self, materialized: bool) -> str:
+        return "MATERIALIZED " if materialized else "NOT MATERIALIZED "
 
     def interval_lit(self, micros: int) -> str:
         return f"to_microseconds({self.int_lit(micros)})"
@@ -251,6 +259,10 @@ class DuckDBDialect(Dialect):
 
     def window_pick(self, fn: str, v: str, w: str) -> str:
         return f"{'FIRST' if fn == 'first' else 'LAST'}_VALUE({v} IGNORE NULLS) {w}"
+
+    def window_string_agg(self, v: str, sep: str, order: Sequence[str], w: str) -> str:
+        # Its own ORDER BY: DuckDB orders an aggregate's inputs only then.
+        return f"string_agg({v}, {sep}{_order_by(order)}) {w}"
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         return f"string_agg({v}, {sep}{_order_by(order)})"

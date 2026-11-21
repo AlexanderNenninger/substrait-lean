@@ -4605,7 +4605,7 @@ run = [
 
 [package.metadata]
 requires-dist = [
-    { name = "duckdb", marker = "extra == 'run'", specifier = ">=2.0.0" },
+    { name = "duckdb", marker = "extra == 'run'", specifier = ">=2.0.0,<2.1" },
     { name = "sverify", editable = "." },
 ]
 provides-extras = ["run"]
@@ -4627,7 +4627,7 @@ run = [
 [package.metadata]
 requires-dist = [
     { name = "numpy", marker = "extra == 'run'", specifier = ">=2.5.4" },
-    { name = "polars", marker = "extra == 'run'", specifier = ">=2.1.0" },
+    { name = "polars", marker = "extra == 'run'", specifier = ">=2.1.0,<2.2" },
     { name = "sverify", editable = "." },
 ]
 provides-extras = ["run"]
@@ -4647,7 +4647,7 @@ run = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pyspark", marker = "extra == 'run'", specifier = ">=4.0" },
+    { name = "pyspark", marker = "extra == 'run'", specifier = ">=4.3.0,<4.4" },
     { name = "sverify", editable = "." },
 ]
 provides-extras = ["run"]

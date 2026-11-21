@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import pyarrow as pa
 
-from sverify import _deprecated
 from sverify._scan import Resident
 from sverify._state import arrow_of
 from sverify._unsupported import SverifyWarning
@@ -220,7 +219,7 @@ class Sink:
     reproducible: Observation = PLAN_BOUND
     _view: IncrementalView | None = None
     _written: int | None = None
-    _keeps_retired = False
+    keeps_retired: ClassVar[bool] = False
     """Whether the sink keeps the rows a view drops from its state
     (`sverify.arrives_within`): it writes each change, and the whole table
     only when `SinkChange.replace`. A view with a sink that does not retires
@@ -441,9 +440,6 @@ class Sink:
 
 _UNREAD = object()
 """`_TableSink._read` before `contract` ran."""
-
-
-_deprecated.add(Sink, {"keeps_retired": "_keeps_retired"})
 
 
 class _TableSink[T](Sink, ABC):
