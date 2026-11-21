@@ -495,9 +495,8 @@ def check(
     except Exception as e:  # noqa: BLE001 - recorded below
         df_table, df, df_error = None, None, e
 
-    if "runtime" in oracles and df_error is not None:
-        if not reports_runtime_error(s, query.sql):
-            found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
+    if "runtime" in oracles and df_error is not None and not reports_runtime_error(s, query.sql):
+        found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
     if "rows" in oracles and df is not None and not same_rows(lean, df, query.ordered):
         found("rows", f"Lean:   {lean!r}\nDuckDB: {df!r}")
     if "engines" in oracles and df_error is None:
