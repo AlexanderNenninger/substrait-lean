@@ -191,7 +191,7 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   `UNION ALL`, which proves `accepted_values` there;
   what is inside a string (`LIKE`, regexes, lengths) is not tracked, so those
   tests are proved where the same test holds upstream and the column passes
-  through ([the guide](../docs/guide.md#contracts)). Sverify reads no regex
+  through ([the guide](../docs/how-to-contracts.md#contracts)). Sverify reads no regex
   flags, so a regex test with `flags` is not checked.
 - Python models, and models whose inputs have no column types, are refused.
 - What each materialization gets: a table or view is checked; an incremental

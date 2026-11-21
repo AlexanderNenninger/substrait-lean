@@ -38,7 +38,7 @@ how much a real project saves is [still to be measured](https://github.com/Alexa
   transformation ([review finding 6](https://github.com/AlexanderNenninger/substrait-lean/issues/1485)).
   Great Expectations, Soda and Deequ stay the tools for them.
 - Its preconditions are not proved. They are checked on each batch before the
-  run, as dbt's source tests are ([guide](guide.md)).
+  run, as dbt's source tests are ([guide](tasks.md)).
 - It proves what the model states. Tests that hold by construction gain little
   from a proof ([review finding 6](https://github.com/AlexanderNenninger/substrait-lean/issues/1485)).
 - Its proofs and code need a human audit before anyone relies on them

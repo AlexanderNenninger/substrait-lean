@@ -765,7 +765,7 @@ Environment variables (J1, J2):
   `SVERIFY_SPILL_DIRECTORY` (0.6), which still works with a
   `DeprecationWarning`.
 - The guide lists every variable with its flag and its Python keyword
-  ([environment variables](docs/guide.md#environment-variables)).
+  ([environment variables](docs/how-to-command-line.md#environment-variables)).
 
 ### Breaking: `Report` before 1.0: one record for needed preconditions, internal fields, `reproducible=` (1.0 API review B1, B4, B5, E1, F6)
 
@@ -2859,7 +2859,7 @@ branch, the disjuncts that cannot be TRUE drop out and the rest narrows the
 columns: under `t.filter(_.a > 0)` the implication gives `b <= -1`, also
 when `a` or `b` may be NULL. Before, these postconditions were reported as
 "TRUE or FALSE". Filter conditions are kept whole the same way. Steps 1 and
-2 of #597; see `docs/guide.md`.
+2 of #597; see `docs/tasks.md`.
 
 ### `AND` and `OR` evaluate both operands, and the report says so (#604)
 
@@ -3036,7 +3036,7 @@ export back and proves its contract again; `report.substrait_contract()`
 gives the contract as JSON for a sidecar, and `sverify.errors.ExportError`
 names the gap a refusal meets
 ([#664](https://github.com/AlexanderNenninger/substrait-lean/issues/664),
-[docs/guide.md](docs/guide.md#exporting-to-substrait)).
+[docs/tasks.md](docs/how-to-export.md#exporting-to-substrait)).
 
 ### Proved file pruning: Iceberg, string bounds, NaN and implied predicates
 
@@ -3197,7 +3197,7 @@ catalogue accepts any order the reference allows (`substrait-check
 ### Reading a contract's proof without running it
 
 For tools that read a proof, such as an editor, a CI step or dbt
-([guide](docs/guide.md#checking-without-running), #682):
+([guide](docs/how-to-command-line.md#checking-without-running), #682):
 
 - `ContractedTransform.check(**schemas)` proves a transform's contract for
   input schemas and returns the `Report`. It raises no `VerificationError`
@@ -3792,7 +3792,7 @@ and switched off by `infer=False`:
 
 Where no single bound exists (`∞ / ∞`, `substring` offsets counted from
 either end, the sum of two unbounded decimals), the hint suggests one and
-nothing is assumed ([docs/guide.md](docs/guide.md#inferred-bounds)).
+nothing is assumed ([docs/tasks.md](docs/how-to-bounds.md#inferred-bounds)).
 
 ### Suggested preconditions for unproved postconditions
 
@@ -4064,7 +4064,7 @@ batches the source still keeps (#374).
 Arrow Flight server: each refresh streams the batches after the last one
 read, registers them with the engine without a copy, and reads the batches
 the server dropped past its retention as deletes. `FlightLog` is a small
-in-memory server for that log, and the [guide](docs/guide.md) documents the
+in-memory server for that log, and the [guide](docs/tasks.md) documents the
 protocol for other servers. `pip install 'sverify[flight]'` (#375).
 
 ### A source with `schema=` proves contracts without reading

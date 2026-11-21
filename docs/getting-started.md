@@ -99,7 +99,7 @@ print(unit_prices.report)
 #   orders: no two rows share id
 ```
 
-[How to](tasks.md#contracts) has the rest of the report and what
+[How to](how-to-contracts.md#contracts) has the rest of the report and what
 happens when a postcondition doesn't follow.
 
 ## 2. SQL through `sv.verify`
@@ -208,7 +208,7 @@ SQL's `//` truncates under the reference and Polars's integer division floors,
 so the translation writes a shim, proved in Lean
 (`engines/polars/Sverify/Polars/Shims.lean`). Ibis's `//` is `FloorDivide` and floors under
 every semantics, and its `%` truncates under the reference
-([the table](tasks.md#integer-division-in-ibis-and-sql)).
+([the table](how-to-engines-and-sql.md#integer-division-in-ibis-and-sql)).
 The [realizability table](realizability.md) lists every option's class on
 each engine.
 
@@ -276,7 +276,7 @@ Three helpers state what a postcondition observes:
 
 A sink commits each epoch once, so a rerun must give the same result. The
 sink says what "the same" means (`reproducible=`,
-[two observations per output](tasks.md#reproducible-sinks)), and a refresh is
+[two observations per output](how-to-production.md#reproducible-sinks)), and a refresh is
 refused where the engine's run-to-run variation does not refine it. Polars's
 streaming `SUM` of doubles may add in another order each run, so a sink that
 asks for exact bits, `reproducible=sv.equivalent()`, is refused there, and
@@ -481,7 +481,7 @@ except ExportError as e:
 `"apply"`, the default, rewrites the plan so that every conforming consumer
 gives the reference's result; `"annotate"` leaves the plan as written and
 ships the choice as an assumption; `"refuse"` refuses. The
-[How to](tasks.md#exporting-to-substrait) lists what the export carries.
+[How to](how-to-export.md#exporting-to-substrait) lists what the export carries.
 
 ## Three complete jobs
 
@@ -513,7 +513,7 @@ The most common, and what sverify does about each:
 | Integer overflow | Polars wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; at the probed versions DuckDB and Spark raise there ([DuckDB](../engines/duckdb/facts/duckdb-R15-int-arith.json), [Spark](../engines/spark/facts/spark-int-arith.json)) and Sverify guards Polars ([Polars](../engines/polars/facts/polars-int-arith.json)). A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows | refused; write an anti join |
-| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](tasks.md#guards)); a constant that raises makes the whole plan raise |
+| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](how-to-guards.md#guards)); a constant that raises makes the whole plan raise |
 | NULL ordering | PostgreSQL and Snowflake put NULLs last ascending and first descending, DuckDB last both ways, Spark first ascending, a Polars sort first | every `ORDER BY` says where NULLs go |
 
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's

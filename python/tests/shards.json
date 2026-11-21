@@ -1376,7 +1376,6 @@
 "tests/test_raising_constants.py::test_duckdb_raises_on_the_issues_query_on_any_data[rows0]": 1,
 "tests/test_raising_constants.py::test_duckdb_raises_on_the_issues_query_on_any_data[rows1]": 3,
 "tests/test_readme.py::test_readme_examples_run[docs/examples.md]": 2,
-"tests/test_readme.py::test_readme_examples_run[docs/guide.md]": 2,
 "tests/test_readme.py::test_readme_examples_run[docs/how-it-works.md]": 1,
 "tests/test_readme.py::test_readme_examples_run[python/README.md]": 2,
 "tests/test_realizability.py::test_doc_renders": 1,

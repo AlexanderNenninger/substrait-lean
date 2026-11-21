@@ -8,7 +8,7 @@
 
 [tie_order]
 description = "The result depends on how ties are broken: ROW_NUMBER, LIMIT or first/last over non-unique sort keys."
-engines = "No engine promises an order among ties; sorts are not stable across partitions. Snowflake and Spark tables have no row order, so sverify writes such plans for them only when the ties are proved absent. reproducible=sv.equivalent() on report.run or a sink asks for a reproducible result, which refuses a plan whose ties stay open and names the sv.unique(...) that would close them (docs/guide.md, D24)."
+engines = "No engine promises an order among ties; sorts are not stable across partitions. Snowflake and Spark tables have no row order, so sverify writes such plans for them only when the ties are proved absent. reproducible=sv.equivalent() on report.run or a sink asks for a reproducible result, which refuses a plan whose ties stay open and names the sv.unique(...) that would close them (docs/tasks.md, D24)."
 quirks = []
 
 [null_ordering]
