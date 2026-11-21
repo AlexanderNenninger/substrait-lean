@@ -182,9 +182,6 @@ def obligations (t : ProfileTable) (obs : ObsTable) : List Obligation :=
 def shimNames (os : List Obligation) : List String :=
   (os.filterMap fun r => match r.case with | .shim s => some s | _ => none).eraseDups
 
-/-- The shim count (D9's measure of few shims). -/
-def shimTotal (os : List Obligation) : Nat := (shimNames os).length
-
 /-! ## Checks -/
 
 /-- Every row of `e` is consistent: no engine differs silently from the reference. -/

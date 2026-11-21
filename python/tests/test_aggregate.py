@@ -1048,3 +1048,33 @@ def test_group_concat_with_a_constant_expression_as_separator():
     expr = Q.group_by("k").aggregate(c=Q.s.group_concat(sep, where=Q.i > 0))
     plan = json.loads(to_substrait_json(expr))
     assert '"string": "::"' in json.dumps(plan)
+
+
+DEC = ibis.table({"k": "int64", "d": "decimal(10, 2)"}, name="t")
+
+
+def test_quantile_of_a_decimal_is_refused_with_the_way_out():
+    """No engine gives one value for it (#1921): the message names the cast."""
+    for agg in (DEC.d.median(), DEC.d.quantile(0.5)):
+        with pytest.raises(
+            Exception, match=r"no engine gives one value.*cast the column to float64"
+        ):
+            to_substrait_json(DEC.group_by("k").aggregate(q=agg))
+
+
+def test_quantile_of_a_decimal_cast_to_float64_verifies_and_runs():
+    from decimal import Decimal
+
+    expr = DEC.group_by("k").aggregate(q=DEC.d.cast("float64").quantile(0.5))
+    report = sv.verify(
+        expr,
+        requires={"t": [_.d >= 0, _.d <= 10]},
+        ensures=[_.q.isnull() | ((_.q >= 0.0) & (_.q <= 10.0))],
+    )
+    assert report.verdict == sv.Verdict.PROVED, report.details()
+    con = connect()
+    con.create(
+        "t", DEC.schema(), [(1, Decimal("1.25")), (1, Decimal("2.50")), (1, Decimal("4.75"))]
+    )
+    got = run_plan(con, written_plan(to_substrait_json(expr)), "duckdb").to_pylist()
+    assert got == [{"k": 1, "q": 2.5}]
