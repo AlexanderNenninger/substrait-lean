@@ -16,6 +16,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
+from _repo import needs_repo
 from sverify import odcs
 from sverify.cli import main
 from sverify.contracts import Key, MaxRows, References, RowsPer, Unique, label
@@ -420,6 +421,127 @@ def test_cli_contract_export(tmp_path, capsys):
     assert main(["contract", "export", f"{path}:nope"]) != 0
 
 
+# -- ODCS's own published examples (#864) ---------------------------------------
+
+
+def _examples() -> list[Path]:
+    """The vendored examples; none outside the repository (`needs_repo`)."""
+    try:
+        from sverify_dev import odcs_examples
+    except ImportError:
+        return []
+    return sorted(odcs_examples.EXAMPLES.rglob("*.odcs.yaml"))
+
+
+@needs_repo
+@pytest.mark.parametrize("path", _examples(), ids=lambda p: p.name)
+def test_a_published_example_reads_as_the_ledger_says(path: Path) -> None:
+    """`read` gives each example's conditions and unread rules as the ledger
+    records them, and an export of the conditions reads back the same."""
+    from sverify_dev import odcs_examples
+
+    ledger = json.loads(odcs_examples.LEDGER.read_text())
+    key = str(path.relative_to(odcs_examples.EXAMPLES))
+    assert odcs_examples.entry(path) == ledger["results"][key]
+
+
+@needs_repo
+def test_every_unread_example_rule_waits_on_an_issue_or_is_by_design() -> None:
+    from sverify_dev import odcs_examples
+
+    ledger = json.loads(odcs_examples.LEDGER.read_text())
+    assert len(ledger["results"]) == len(_examples()) == 42
+    for key, r in ledger["results"].items():
+        assert "objects" in r, key
+        for table, o in r["objects"].items():
+            for u in o["unread"]:
+                assert u["reason"] and (u.get("issue") or u.get("design")), (key, table, u)
+            rt = o["round_trip"]
+            assert (
+                rt in ("same", "no conditions")
+                or "not tried" in rt
+                or (rt.get("issue") or rt.get("design"))
+            ), (key, table, rt)
+
+
+def test_a_sql_rule_may_name_its_object() -> None:
+    """ODCS's examples write a rule's table by name, in any case (#864)."""
+    rule = {"type": "sql", "query": 'select count(*) from "Orders" where amount < 0', "mustBe": 0}
+    contract = odcs.read(
+        {
+            "apiVersion": "v3.2.0",
+            "kind": "DataContract",
+            "id": "x",
+            "version": "1",
+            "status": "active",
+            "schema": [
+                {
+                    "name": "Orders",
+                    "properties": [{"name": "amount", "logicalType": "integer"}],
+                    "quality": [rule],
+                }
+            ],
+        },
+        strict=True,
+    )
+    assert [label(c) for c in contract.conditions()] == ["NOT COALESCE((amount < 0), FALSE)"]
+    # A quoted name matches with its case: "orders" is another table.
+    other = {**rule, "query": 'select count(*) from "orders" where amount < 0'}
+    doc = {**contract.document, "schema": [{**contract.document["schema"][0], "quality": [other]}]}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        back = odcs.read(doc)
+    assert back.conditions() == [] and len(back.unread) == 1
+
+
+def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
+    """A bound with a time zone on a column with one is a TIMESTAMPTZ. On a
+    column without one it stays unread, since DuckDB's cast to TIMESTAMP
+    drops the offset, and so does a bound without one on a column with one,
+    which DuckDB would read in the session's time zone (D53, #864)."""
+    props = [
+        {"name": "a", "logicalType": "timestamp", "physicalType": "timestamptz",
+         "logicalTypeOptions": {"minimum": "2020-01-01 00:00:00+10:00"}},
+        {"name": "e", "logicalType": "timestamp", "physicalType": "timestamp",
+         "logicalTypeOptions": {"maximum": "2020-01-01 00:00:00Z"}},
+        {"name": "b", "logicalType": "date", "logicalTypeOptions": {"minimum": "2020-01-01"}},
+        {"name": "d", "logicalType": "timestamp", "physicalType": "timestamp",
+         "logicalTypeOptions": {"minimum": "2020-01-01"}},
+        {"name": "z", "logicalType": "timestamp", "physicalType": "timestamptz",
+         "logicalTypeOptions": {"minimum": "2020-01-01 00:00:00"}},
+    ]  # fmt: skip
+    doc = {"apiVersion": "v3.2.0", "kind": "DataContract", "id": "x", "version": "1",
+           "status": "active", "schema": [{"name": "t", "properties": props}]}  # fmt: skip
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        contract = odcs.read(doc)
+    assert [label(c) for c in contract.conditions()] == [
+        '("a" >= CAST(\'2020-01-01 00:00:00+10:00\' AS TIMESTAMPTZ)) OR "a" IS NULL',
+        '("b" >= CAST(\'2020-01-01\' AS DATE)) OR "b" IS NULL',
+        '("d" >= CAST(\'2020-01-01\' AS TIMESTAMP)) OR "d" IS NULL',
+    ]
+    assert [u.reason for u in contract.unread] == [
+        "a maximum with a time zone on a timestamp without one",
+        "a minimum without a time zone on a timestamp with one",
+    ]
+
+
+def test_a_physical_array_type_needs_a_logical_array() -> None:
+    """`varchar[3]`, which DuckDB reads as an array, is a string where the
+    logical type says `string`, as in ODCS's AdventureWorks example (#864);
+    with `array`, or no logical type, it stays an array."""
+    props = [
+        {"name": "s", "logicalType": "string", "physicalType": "varchar[3]"},
+        {"name": "a", "logicalType": "array", "physicalType": "varchar[3]"},
+        {"name": "n", "physicalType": "varchar[]"},
+    ]
+    doc = {"apiVersion": "v3.2.0", "kind": "DataContract", "id": "x", "version": "1",
+           "status": "active", "schema": [{"name": "t", "properties": props}]}  # fmt: skip
+    schema = odcs.read(doc).schema("t")
+    assert schema["s"].is_string()
+    assert schema["a"].is_array() and schema["n"].is_array()
+
+
 READ_MORE = {
     "apiVersion": "v3.1.0",
     "kind": "DataContract",
@@ -537,11 +659,11 @@ def test_read_lists_what_it_cannot_read_with_reasons():
     assert caps == [2, 10, 20]
     assert any(isinstance(x, Unique) and x.cols == ("code", "n") for x in c.tables["t"])
     assert not any(isinstance(x, References) for x in c.tables["t"])
+    assert "REGEXP_MATCHES(\"code\", '^[a-z]+$')" in " ".join(labels)  # logicalTypeOptions.pattern
     assert 'NOT "n" IS NULL' in labels  # missingValues: [null]
     assert "NOT COALESCE((n > 5), FALSE)" in labels
     reasons = [u.reason for u in c.unread]
     expect = [
-        "logicalTypeOptions.pattern",
         "logicalTypeOptions.multipleOf",
         "a share of rows",
         "metric 'averageValue' sverify does not read",
@@ -549,7 +671,7 @@ def test_read_lists_what_it_cannot_read_with_reasons():
         "a relationship sverify does not read",
         "a relationship sverify does not read",
         "a minimum sverify cannot read for boolean",
-        "a relationship on the object",
+        "a relationship sverify does not read",
         "a key over columns the object lacks",
         "metric 'nullValues' on a whole object",
         "reads columns the object lacks",
@@ -627,3 +749,89 @@ def test_export_writes_row_rates_references_and_keys():
     back = odcs.read(doc, strict=True).conditions()
     assert any(isinstance(c, RowsPer) and c.cols == ("customer",) and c.n == 5 for c in back)
     assert any(isinstance(c, References) and c.col == "customer" for c in back)
+
+
+def _fk_doc() -> dict:
+    return {
+        "apiVersion": "v3.2.0",
+        "kind": "DataContract",
+        "id": "fk",
+        "version": "1",
+        "status": "active",
+        "schema": [
+            {"id": "c", "name": "customers", "properties": [{"id": "cid", "name": "id"}]},
+            {
+                "id": "o",
+                "name": "orders",
+                "properties": [
+                    {"id": "oc", "name": "cust"},
+                    {"id": "oc2", "name": "cust2"},
+                    {
+                        "name": "code",
+                        "logicalTypeOptions": {"pattern": "ACC[0-9]{8}"},
+                    },
+                    {"name": "odd", "logicalTypeOptions": {"pattern": "(?=x)"}},
+                ],
+                "relationships": [
+                    {"type": "foreignKey", "from": "orders.cust", "to": "customers.id"},
+                    {
+                        "type": "foreignKey",
+                        "from": "/schema/o/properties/oc2",
+                        "to": "schema/c/properties/cid",
+                    },
+                    {
+                        "type": "foreignKey",
+                        "from": ["orders.cust", "orders.cust2"],
+                        "to": ["customers.id", "customers.id"],
+                    },
+                ],
+            },
+        ],
+    }
+
+
+def test_read_foreign_keys_on_the_object_and_by_id():
+    """Object-level relationships, shorthand or by id path, read as
+    `references` (#1956); a composite key is listed as unread."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    refs = [x for x in c.tables["orders"] if isinstance(x, References)]
+    assert [(r.col, r.table, r.other) for r in refs] == [
+        ("cust", "customers", "id"),
+        ("cust2", "customers", "id"),
+    ]
+    assert any(u.reason.startswith("a composite foreign key") for u in c.unread)
+
+
+def test_read_pattern_is_a_search_condition_inside_the_regex_subset():
+    """`logicalTypeOptions.pattern` reads inside the subset all engines agree on
+    and stays unread outside it, with that reason (#1957)."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    assert any("ACC[0-9]{8}" in str(x) for x in c.tables["orders"])
+    assert any(u.reason.startswith("a pattern outside") for u in c.unread)
+
+
+def test_a_pattern_condition_with_braces_is_a_requirement():
+    """`ACC[0-9]{8}` is no `str.format` field: the condition is read as a requirement."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    t = ibis.table(
+        {"code": "string", "cust": "string", "cust2": "string", "odd": "string"}, name="orders"
+    )
+    pattern = [x for x in c.tables["orders"] if isinstance(x, str) and "ACC" in x]
+    report = sv.verify(
+        t.select(n=t.code.length()),
+        requires={"orders": pattern},
+        ensures=[ibis._.n.isnull() | (ibis._.n >= 0)],
+    )
+    assert report.verdict == sv.Verdict.PROVED, report.details()
+
+
+def test_an_unanchored_pattern_is_a_search():
+    """ODCS patterns are ECMA-262 and unanchored: `ACC[0-9]{8}` holds of
+    'xACC12345678y'; the condition is a search, not a full match."""
+    with pytest.warns(odcs.UnreadRuleWarning):
+        c = odcs.read(_fk_doc())
+    cond = [x for x in c.tables["orders"] if isinstance(x, str) and "ACC" in x]
+    assert cond and "REGEXP_MATCHES" in cond[0].upper() and "FULL" not in cond[0].upper()

@@ -3,6 +3,7 @@
 
 import json
 
+import duckdb
 import ibis
 import pyarrow as pa
 import pytest
@@ -25,6 +26,11 @@ def test_nested_values_have_no_order_yet():
 # C, #94).
 LISTS = ibis.schema({"a": "int64", "l": "array<int64>"})
 LIST_ROWS = [(1, [1, 2, 3]), (2, []), (3, None), (4, [5, None]), (None, [7])]
+LIST_HAS_NULL = (
+    "SELECT a, len(l) AS n, array_length(l) AS m, list_contains(l, 5) AS c,"
+    " list_contains(l, a) AS ca, list_has(l, NULL) AS h, list_position(l, 2) AS p,"
+    " list_position(l, NULL) AS pn, array_position(l, a + 1) AS pa FROM t"
+)
 LIST_QUERIES = [
     "SELECT [1, 2, 3] AS x",
     "SELECT [[1], [2, 3]] AS x",
@@ -38,9 +44,7 @@ LIST_QUERIES = [
     "SELECT UNNEST(l) AS x, UNNEST(l) * 10 AS y FROM t",
     # #812: lengths, membership, positions, concatenation and lists of
     # computed elements, NULLs as DuckDB has them.
-    "SELECT a, len(l) AS n, array_length(l) AS m, list_contains(l, 5) AS c,"
-    " list_contains(l, a) AS ca, list_has(l, NULL) AS h, list_position(l, 2) AS p,"
-    " list_position(l, NULL) AS pn, array_position(l, a + 1) AS pa FROM t",
+    LIST_HAS_NULL,
     "SELECT a, [a, 1] AS x, [a, NULL, a + 1] AS y, list_concat(l, [a]) AS z,"
     " list_concat(l, NULL) AS w, array_cat(NULL, l) AS v FROM t",
     "SELECT a FROM t WHERE list_contains(l, 2) OR len(l) > 1",
@@ -66,8 +70,12 @@ def test_lists_lift_as_duckdb_reads_them(sql):
     plan = json.dumps(lift(sql, {"t": LISTS}, "duckdb").plan)
     lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": LIST_ROWS})))
     want = [tuple(r.values()) for r in duckdb_sql(con, sql).to_pylist()]
-    assert sorted(map(repr, lean)) == sorted(map(repr, want))
     got = [tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()]
+    if sql == LIST_HAS_NULL and duckdb.__version__ != "2.0.0":
+        # DuckDB's own `list_has([], NULL)` is FALSE from 2.0.1, not NULL (D54's listed
+        # exception); the written plan guards the needle and keeps the model's NULL.
+        want = [(*r[:5], None if r[1] == 0 else r[5], *r[6:]) for r in want]
+    assert sorted(map(repr, lean)) == sorted(map(repr, want))
     assert sorted(map(repr, got)) == sorted(map(repr, want))
 
 
@@ -106,3 +114,35 @@ def test_decimals_in_lists_and_structs_keep_their_scale():
     plan = lift("SELECT l, s FROM t", schemas).plan
     got = lean_values(json.dumps(inline_tables(plan, {"t": [row]})))
     assert got == [([Decimal("1.0"), None, Decimal("-2.5")], ["x", Decimal("1.500")])]
+
+
+#: The grid of `duckdb-list-contains-null`: DuckDB's `list_contains` of a NULL needle is NULL
+#: at 2.0.0 and FALSE for an empty list from 2.0.1. The written plan gives the model's NULL.
+CONTAINS_GRID = [
+    (n, xs, x) for n, xs in enumerate([None, [], [1], [None], [1, None]]) for x in (None, 1, 2)
+]
+
+
+def test_list_contains_of_a_null_needle_is_null_at_every_list():
+    from sverify.engine import connect, put_table, run_plan, written_plan
+    from sverify.testing import inline_tables, lean_values
+
+    schema = {"n": "int64", "l": "array<int64>", "x": "int64"}
+    con = connect()
+    put_table(
+        con,
+        "g",
+        pa.table(
+            {
+                "n": pa.array([r[0] for r in CONTAINS_GRID], pa.int64()),
+                "l": pa.array([r[1] for r in CONTAINS_GRID], pa.list_(pa.int64())),
+                "x": pa.array([r[2] for r in CONTAINS_GRID], pa.int64()),
+            }
+        ),
+    )
+    sql = "SELECT n, l, x, list_contains(l, x) AS c FROM g"
+    plan = json.dumps(lift(sql, {"g": ibis.schema(schema)}, "duckdb").plan)
+    lean = lean_values(json.dumps(inline_tables(json.loads(plan), {"g": CONTAINS_GRID})))
+    got = [tuple(r.values()) for r in run_plan(con, written_plan(plan), "duckdb").to_pylist()]
+    assert sorted(map(repr, got)) == sorted(map(repr, lean))
+    assert all(c is None for *_, x, c in got if x is None)

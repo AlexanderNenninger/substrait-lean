@@ -38,9 +38,12 @@ choice-table row the plan depends on reads refuses the run
 NULLS LAST); another warns (`EngineSettingsWarning`).
 
 Each engine profile records the engine versions its facts were probed at
-(the checker's `--options`, "profiles"). A run on another version warns
-(`EngineVersionWarning`); a run on another major version is refused
-(`EngineVersionError`) until the probes are re-run.
+(the checker's `--options`, "profiles"), and one range around them (D70):
+the minor releases that hold a probed version. A run on an unprobed version
+in the range warns (`EngineVersionWarning`) and records the version on its
+route (`Route.unprobed_version`); outside the range it is refused
+(`EngineVersionError`) until the probes are re-run, unless the caller runs
+it with `unverified=True`.
 
 A plan whose result is not determined up to row order
 (`Report.deterministic`) runs natively, with the engine's own order of the
@@ -57,6 +60,7 @@ from __future__ import annotations
 
 import functools
 import json
+import re
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -173,19 +177,23 @@ def observed_text(obs: Observation) -> str:
 
 
 class UnverifiedRunWarning(SverifyWarning):
-    """A plan that is not proved runs, because the caller passed
-    `unverified=True`, or the transform says `on_unproved="warn"`: nothing
+    """A plan runs unverified, because the caller passed `unverified=True`
+    for a plan that is not proved or an engine version outside its
+    profile's range, or the transform says `on_unproved="warn"`: nothing
     the report says holds of its result."""
 
 
 class EngineVersionWarning(SverifyWarning):
     """The engine's version is not one its profile's facts were probed at,
-    but the major version is the same."""
+    but in the profile's range (D70): the run assumes it computes what the
+    probed version does."""
 
 
 class EngineVersionError(SverifyError, RuntimeError):
-    """The engine's major version differs from the one its profile's facts
-    were probed at: re-run the probes (`engines/<engine>/`) first."""
+    """The engine's version is outside its profile's range, the minor
+    releases its facts were probed at (D70): install a version in the range,
+    re-run the probes (`engines/<engine>/facts/`) first, or run with
+    `unverified=True`."""
 
     code = "engine_version"
 
@@ -236,7 +244,7 @@ class Route:
     """Whether the plan's result is determined up to row order
     (`Report.deterministic`)."""
     warnings: tuple[str, ...] = ()
-    """What the run should know: another engine version, an open choice in
+    """What the run should know: a setting that differs, an open choice in
     the output."""
     failures: tuple[dict, ...] = field(default=(), compare=False)
     """For a failed transfer check: the options where the engine's choices
@@ -275,7 +283,7 @@ class Route:
     the plan's bound, …). None for the other classes."""
     bound_proved: bool | None = None
     """Whether the tolerance in `observation` rests on a bound Lean proves
-    (`Report.epsilon`); False where it rests on a test; None without one."""
+    (`Report._epsilon`); False where it rests on a test; None without one."""
     suggested: dict[str, list[str]] = field(default_factory=dict, compare=False)
     """For a refusal, what to declare to make the plan verify, as condition
     labels per input table: an `sv.unique(...)` that determines a result
@@ -288,6 +296,10 @@ class Route:
     """The Lean theorems that prove those choices, where they are proved."""
     version: str | None = None
     """The engine version the facts were probed at."""
+    unprobed_version: str | None = None
+    """The engine version the run is on where it is in the profile's range
+    but not probed (D70): the proof stands, and the engine step assumes this
+    version computes what the probed one does. None on a probed version."""
     issues: tuple[int, ...] = ()
     """The issues that track the tested choices (`"issue"` of a tested row)."""
     proved_facts: tuple[str, ...] = ()
@@ -341,6 +353,14 @@ def installed_version(engine: str) -> str | None:
         return None
 
 
+def session_version(engine: Any) -> str | None:
+    """The engine version of a session of the caller's (a Spark session's
+    `version`), None for an engine given by name: that one is installed
+    (`installed_version`)."""
+    v = None if isinstance(engine, str) else getattr(engine, "version", None)
+    return v if isinstance(v, str) else None
+
+
 def probed_version(engine: str) -> str | None:
     """The engine version `engine`'s facts were probed at (its profile's
     first), None for an engine without a profile."""
@@ -357,32 +377,67 @@ def evidence_text(x: Route | Realized, engine: str) -> str:
         out = "proved" + (f" by {', '.join(x.theorems)}" if x.theorems else "")
         if x.proved_facts:
             out += f" on {engine}'s model (facts {', '.join(x.proved_facts)})"
-        return out
-    out = "tested"
-    if x.version:
-        out += f" at {x.version}"
-    cited = [f"facts {', '.join(x.facts)}"] if x.facts else []
-    cited += [f"#{i}" for i in x.issues]
-    if cited:
-        out += f" ({'; '.join(cited)})"
+    else:
+        out = "tested"
+        if x.version:
+            out += f" at {x.version}"
+        cited = [f"facts {', '.join(x.facts)}"] if x.facts else []
+        cited += [f"#{i}" for i in x.issues]
+        if cited:
+            out += f" ({'; '.join(cited)})"
+    if unprobed := getattr(x, "unprobed_version", None):
+        # D70: the engine step assumes this version computes what the probed one does.
+        out += f"; this run is on {unprobed}, unprobed"
     return out
 
 
-def _major(v: str) -> str:
-    return v.removeprefix("py-").removeprefix("v").split(".")[0]
+def _release(v: str) -> tuple[int, int, int] | None:
+    """A version's (major, minor, patch): `(2, 0, 1)` for "2.0.1", "v2.0.1"
+    or "py-2.0.1rc1"; None where it has no major and minor. A pre-release
+    reads as its release, so "2.0.0rc1" is in range and warns as unprobed."""
+    m = re.match(r"(?:py-|v)?(\d+)\.(\d+)(?:\.(\d+))?", v)
+    return None if m is None else (int(m[1]), int(m[2]), int(m[3] or 0))
+
+
+def _version_range(versions: Sequence[str]) -> tuple[str, str] | None:
+    """The range of engine versions a profile probed at `versions` covers
+    (D70): the minor releases that hold a probed version, from the lowest
+    probed patch up, as the bounds `(">=", "<")` of the engine package's
+    dependency, `("2.0.0", "2.1")` for `("2.0.0",)`. None without versions.
+    The bounds are exact for probes in one minor, as D70 fixes each engine
+    at 1.0 (`test_the_package_bound_is_the_profiles_range` holds it): with
+    probes at 2.0.0 and 2.2.0 they would span 2.1, which `_in_range` refuses."""
+    found = sorted(r for v in versions if (r := _release(v)) is not None)
+    if not found:
+        return None
+    major, minor = found[-1][:2]
+    return ".".join(map(str, found[0])), f"{major}.{minor + 1}"
+
+
+def _in_range(version: str, versions: Sequence[str]) -> bool:
+    """Whether `version` is in the range of a profile probed at `versions`
+    (`_version_range`): a minor release that holds a probed version, at or
+    above that minor's lowest probed patch."""
+    r = _release(version)
+    if r is None:
+        return False
+    floors = [p for v in versions if (p := _release(v)) is not None and p[:2] == r[:2]]
+    return bool(floors) and r >= min(floors)
 
 
 def check_version(engine: str, version: str | None = None) -> str | None:
     """Check `engine`'s version (the installed one by default) against its
-    profile's.
+    profile's (D70).
 
     Returns:
-        A warning when the version differs within the major version, also
-        issued as an `EngineVersionWarning`; None when it is one the facts
-        were probed at, or the engine has no profile.
+        None on a version the facts were probed at, or for an engine without
+        a profile. On an unprobed version in the profile's range
+        (`_version_range`), what the run assumes, also issued as an
+        `EngineVersionWarning`; `warnings.simplefilter("error",
+        EngineVersionWarning)` makes it a refusal.
 
     Raises:
-        EngineVersionError: The major version differs.
+        EngineVersionError: The version is outside the range.
     """
     prof = profiles().get(engine)
     if prof is None or not prof.versions:
@@ -391,16 +446,19 @@ def check_version(engine: str, version: str | None = None) -> str | None:
     if version is None or version in prof.versions:
         return None
     probed = ", ".join(prof.versions)
-    if all(_major(version) != _major(v) for v in prof.versions):
+    floor, ceiling = _version_range(prof.versions) or (prof.versions[0], "")
+    if not _in_range(version, prof.versions):
         raise EngineVersionError(
-            f"{engine} {version} is another major version than the facts of "
-            f'semantics="{engine}", probed at {probed}: install a '
-            f"{_major(prof.versions[0])}.x release of {engine}; "
-            f"running {version} needs its facts probed again (engines/{engine}/facts/)"
+            f'{engine} {version} is outside the range of semantics="{engine}", '
+            f"whose facts were probed at {probed}: install a version of {engine} in "
+            f">={floor},<{ceiling}, "
+            f"or run(..., unverified=True) to run it anyway; running {version} verified "
+            f"needs its facts probed again (engines/{engine}/facts/)"
         )
     msg = (
         f'{engine} {version} is not a version the facts of semantics="{engine}" were '
-        f"probed at ({probed}); they may no longer hold"
+        f"probed at ({probed}): the run assumes it computes what {prof.versions[0]} does, "
+        f"and an unproved run relies on {version}'s own errors"
     )
     warnings.warn(msg, EngineVersionWarning, stacklevel=3)
     return msg
@@ -418,7 +476,7 @@ def check_settings(
     Args:
         engine: The engine's name.
         values: The settings to check; the engine's current ones by default.
-        depends: The options the plan depends on (`Report.depends`); None
+        depends: The options the plan depends on (`Report._depends`); None
             when unknown, which relies on every setting.
 
     Returns:
@@ -598,7 +656,7 @@ def _plan_bound(
     meets the postcondition rests on an unproved bound.
 
     The contract's result gives each double output column's `ε`
-    (`Report.epsilon`): bounds of several kinds, each of which holds on its
+    (`Report._epsilon`): bounds of several kinds, each of which holds on its
     own. The postcondition's tolerance (`sv.within`) is met when one of
     them is no larger than the stated bound of the same kind (#568's
     propagation, B1)."""
@@ -882,7 +940,7 @@ def _with_bound(
 
 def plan_bound(epsilon: Mapping[str, Mapping[str, Any]] | None) -> Within | None:
     """The plan's bound on its doubles as one tolerance: per kind every
-    column has, the largest of the columns' `ε` (`Report.epsilon`). None
+    column has, the largest of the columns' `ε` (`Report._epsilon`). None
     where no double column has a bound above zero, or one has none."""
     if not epsilon or any(e["unbounded"] for e in epsilon.values()):
         return None
@@ -1031,7 +1089,7 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
 
 def max_rows_fix(report: Report, engine: str, required: Observation | None) -> dict[str, list[str]]:
     """The `sv.max_rows(N)` under which the plan's bound on its doubles
-    (`Report.epsilon`) meets the tolerance `required` states, by the input
+    (`Report._epsilon`) meets the tolerance `required` states, by the input
     table that has a row cap now: the bound grows linearly with the rows,
     so `N` is the cap scaled by the tightest ratio of tolerance to bound.
     Empty where there is no stated tolerance, no single capped input, or
@@ -1277,11 +1335,13 @@ def not_verified(report: Report) -> str:
     )
 
 
-def unverified(report: Report, engine: Any) -> Route:
-    """The route of a plan that is not proved, run with `unverified=True`:
-    no proof reaches the engine, and the reason says what was not proved."""
+def unverified(report: Report, engine: Any, reason: str | None = None) -> Route:
+    """The route of a plan run with `unverified=True`: no proof reaches the
+    engine, and the reason says what was not proved, or (`reason`) why the
+    engine's version was refused (D70)."""
     e = engine_name(engine)
-    reason = not_verified(report).removesuffix("; run(..., unverified=True) runs it anyway")
+    if reason is None:
+        reason = not_verified(report).removesuffix("; run(..., unverified=True) runs it anyway")
     return Route(e, "unverified", report.semantics, reason, report.deterministic)
 
 
@@ -1314,7 +1374,8 @@ def choose(
         (`Route.refused`) with the reason when no route applies.
 
     Raises:
-        EngineVersionError: The engine's major version is not its profile's.
+        EngineVersionError: The engine's version is outside its profile's
+            range (D70).
         EngineSettingsError: A setting the engine's profile depends on
             differs from its facts' (`check_settings`).
         ValueError: `route` is unknown.
@@ -1325,8 +1386,8 @@ def choose(
         raise ValueError(f"route must be 'auto' or one of {', '.join(ROUTES)}, not {route!r}")
     e = engine_name(engine)
     notes: list[str] = []
-    if w := check_version(e, version):
-        notes.append(w)
+    version = version or session_version(engine) or installed_version(e)
+    unprobed = version if check_version(e, version) else None
     plan = json.loads(report.internal_plan) if report.internal_plan else {}
     depends = report._depends
     from sverify import _engine_settings
@@ -1338,7 +1399,17 @@ def choose(
     det = report.deterministic
 
     def refuse(reason: str, failures: Sequence[dict] = ()) -> Route:
-        return Route(e, None, source, reason, det, tuple(notes), tuple(failures), "refused")
+        return Route(
+            e,
+            None,
+            source,
+            reason,
+            det,
+            tuple(notes),
+            tuple(failures),
+            "refused",
+            unprobed_version=unprobed,
+        )
 
     if not verified(report):
         if report.floats_unmet:
@@ -1392,6 +1463,7 @@ def choose(
                 cls="exact",
                 reproducible=reproducible,
                 rerun_evidence=rerun_evidence,
+                unprobed_version=unprobed,
             )
         seen, held = observed(report)
         v = verdict(report, e)
@@ -1421,6 +1493,7 @@ def choose(
             facts=got.facts,
             theorems=got.theorems,
             version=got.version or probed_version(e),
+            unprobed_version=unprobed,
             issues=got.issues,
             proved_facts=got.proved_facts,
         )

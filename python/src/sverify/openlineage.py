@@ -59,6 +59,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sverify._unsupported import SverifyWarning
 from sverify.io._common import public_uri
 from sverify.io._secrets import Secret
 
@@ -112,7 +113,7 @@ _FACET_URLS = {
 _FACET = "sverify_contract"
 
 
-class LineageWarning(UserWarning):
+class LineageWarning(SverifyWarning):
     """An event could not be sent (the server is down, the file is not
     writable): the refresh goes on, and the warning says why."""
 

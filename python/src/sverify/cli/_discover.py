@@ -60,6 +60,20 @@ class Checked:
         missing = rest or r.errors or r.needs or r._transfer or r.floats_unmet
         return "not_proved" if missing else "checked"
 
+    @property
+    def relaxations(self) -> list[str]:
+        """The settings of the transform that weaken its gate, as written in
+        the file: `on_unproved="check"` or `"warn"`, `on_inferred="warn"`,
+        `"ignore"` or `"off"` (the default is `"error"`), and
+        `check_requires=False`. A CI step diffs them between base and head."""
+        t = self.transform
+        out = [f'on_unproved="{t.on_unproved}"'] if t.on_unproved != "error" else []
+        if t.on_inferred != "error":
+            out.append(f'on_inferred="{t.on_inferred}"')
+        if not t.check_requires:
+            out.append("check_requires=False")
+        return out
+
 
 @dataclass
 class Discovery:

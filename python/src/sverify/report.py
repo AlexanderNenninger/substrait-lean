@@ -27,7 +27,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _duckdb, _hooks
+from sverify import _decimals, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -38,6 +38,7 @@ from sverify.black_box import Law
 from sverify.engine import (
     Connection,
     Engine,
+    _run_plan,
     connection_of,
     plan_json,
     read_tables,
@@ -138,7 +139,7 @@ class TiePlace:
     total on the input's keys, or a value picked from a class of doubles."""
 
     relation: int
-    """The relation's index in the plan, in pre-order (`Report.relations`)."""
+    """The relation's index in the plan, in pre-order (`Report._relations`)."""
     op: str
     """The relation's operator: `window`, `aggregate` or `fetch`."""
     what: str
@@ -251,9 +252,8 @@ _DECIMAL_ARG = re.compile(r"DECIMAL_(\d+)_(\d+)\(")
 
 #: How a report explains an operation it assumes stays finite (#575).
 FINITE_ASSUMED = (
-    "stays finite on finite inputs (checked at run time: the data is checked "
-    'before the run, which is refused if it overflows to ±inf; on_inferred="off" '
-    "makes it an error)"
+    "stays finite on finite inputs (checked at run time: the plan raises and "
+    'commits nothing if it overflows to ±inf; on_inferred="off" makes it an error)'
 )
 
 
@@ -437,7 +437,7 @@ class Verdict(StrEnum):
         raise TypeError("a Verdict is not a bool: compare it with Verdict.PROVED, ...")
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Report:
     """What the checker proved about a transformation, returned by `verify` and kept
     in `ContractedTransform.report`.
@@ -445,6 +445,9 @@ class Report:
     `str(report)` lists each postcondition with its status, the possible
     runtime errors and warnings, and what is known about each output column;
     in a notebook the report renders as tables.
+
+    sverify builds it; user code reads it and does not construct one
+    (`Report.from_json` reads one back). Its fields are keyword-only.
     """
 
     requires: dict[str, list[str]]
@@ -504,13 +507,14 @@ class Report:
     _unchecked: dict | None = field(default=None, repr=False)
     """The expressions that run correctly without their checks, on data that
     meets the preconditions (`Rel.evalG_marks`), as a tree parallel to the
-    plan; pass it to `sverify.engines.to_sql(..., unchecked=...)` with the
-    same plan, and only the other expressions keep their checks. None when
+    plan the checker writes; pass it to `sverify.engines.to_sql(...,
+    unchecked=...)` with `written_plan`'s output, and only the other
+    expressions keep their checks (ruling 228). None when
     Lean found none (a left join with a filter on its right side, for one)."""
     _optimized: dict | None = field(default=None, repr=False)
     """The transformation as a Substrait JSON plan, rewritten with the facts
     and keys of the preconditions (`Rel.optimize` in
-    `SubstraitLean/Semantic.lean`): for example a `DISTINCT` over a key is
+    `analysis/Sverify/Analysis/Semantic.lean`): for example a `DISTINCT` over a key is
     gone. On data that meets the preconditions it gives the same rows
     (`Rel.optimize_sound`); pass it to `sverify.engines.to_sql`, or as JSON
     to `sverify.engines.run`, instead of the transformation. None if Lean
@@ -529,7 +533,9 @@ class Report:
     `"functions"`, or `"writer"` where an engine's writer refused the
     rewrite), or None where the plan to run is the rewrite."""
     _run_unchecked: dict | None = field(default=None, repr=False)
-    """`_unchecked` for `_run_plan`: the marks of its expressions."""
+    """`_unchecked` for `_run_plan`, as the checker writes it: the marks of
+    its expressions (ruling 226)."""
+
     _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
     """The check of the assumed issues (#2018, ruling 195): a plan of one row
     whose columns say where an issue of `assumed` occurs on the data, on the
@@ -550,7 +556,7 @@ class Report:
     _implied: dict[str, str] = field(default_factory=dict, repr=False)
     """A SQL condition per input table that every row reaching the result
     passes, given `requires` (#81, `Rel.need_eval` in
-    `SubstraitLean/Implied.lean`): the transformation gives the same result
+    `analysis/Sverify/Analysis/Implied.lean`): the transformation gives the same result
     on the table's rows that pass it. `sverify.io` sources read only those,
     and skip the files whose statistics rule it out."""
     assumed: list[Issue] = field(default_factory=list)
@@ -952,6 +958,28 @@ class Report:
         self._run_gates.pop(engine, None)
         return json.dumps(self._run_plan)
 
+    def _marks_of(self, plan: str) -> dict | None:
+        """The checker's marks (`Rel.marks`) of `plan`, the plan a run runs:
+        `_run_unchecked` for the rewrite, `_unchecked` for the plan as
+        written (`_unchecked`), each the marks of the root the checker
+        writes (ruling 228); None where the checker gave none (ruling 223,
+        M2), and where they are of another shape than the plan the writer
+        reads, so every check stays (ruling 226, N1-N3)."""
+        from sverify.sql.core._base import WriterUnsupported, parse_plan, unchecked_slots
+
+        marks = None
+        if self._run_plan is not None and plan == json.dumps(self._run_plan):
+            marks = self._run_unchecked
+        elif self.internal_plan is not None and plan == written_plan(self.internal_plan):
+            marks = self._unchecked
+        if marks is None:
+            return None
+        try:
+            unchecked_slots(parse_plan(json.loads(plan)).root, marks)
+        except WriterUnsupported:
+            return None
+        return marks
+
     def _with_plan(
         self,
         plan: str,
@@ -1179,8 +1207,9 @@ class Report:
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or
                 refuses (`"reference"` is a deprecated alias of
                 `"translated"`).
-            unverified: Run a plan that is not proved, without a route.
-                Default False: such a plan is refused.
+            unverified: Run a plan that is not proved, or an engine version
+                outside its profile's range (D70), without a route. Default
+                False: such a run is refused.
             reproducible: What a rerun must reproduce: the
                 engine's run-to-run variation must refine it, as a sink's
                 `reproducible=` states it; `sv.equivalent()` asks for the
@@ -1226,8 +1255,8 @@ class Report:
             sverify.errors.RouteError: No route takes the plan to `engine`,
                 or, with `streaming="require"`, a node of its Polars plan
                 runs on the in-memory engine.
-            sverify.routes.EngineVersionError: The engine's major version is
-                not the one its profile's facts were probed at.
+            sverify.routes.EngineVersionError: The engine's version is
+                outside its profile's range (D70), and `unverified` is False.
             sverify.errors.PreconditionError: With `check_inputs`, a
                 precondition does not hold on the data: nothing ran.
 
@@ -1263,7 +1292,18 @@ class Report:
                 stacklevel=2,
             )
         else:
-            chosen = routes.choose(self, target, route, reproducible=reproducible)
+            try:
+                chosen = routes.choose(self, target, route, reproducible=reproducible)
+            except routes.EngineVersionError as err:
+                if not unverified:
+                    raise
+                # A proved plan on a version outside the range (D70).
+                chosen = routes.unverified(self, target, str(err))
+                warnings.warn(
+                    f"running on {chosen.engine} unverified: {chosen.reason}",
+                    routes.UnverifiedRunWarning,
+                    stacklevel=2,
+                )
             self.routes[chosen.engine] = chosen
             kind = chosen.kind
             if chosen.refused:
@@ -1319,6 +1359,16 @@ class Report:
         # names it (`"guard_free_theorem"`); the assumed issues keep theirs.
         name = chosen.engine if chosen is not None else ""
         theorem = ((self._engines or {}).get(name) or {}).get("guard_free_theorem")
+        # Short of a guard-free plan, the expressions the checker marked run
+        # without their checks, the one against `±∞` included, on an engine
+        # whose writer a theorem covers so (`"marks_theorem"`, ruling 223), on
+        # the same gate: the preconditions were checked on these tables.
+        marked = (
+            check_requires
+            and kind == "translated"
+            and self.semantics == "reference"
+            and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
+        )
 
         def recheck(written: str) -> None:
             """The run's checks of the plan it runs, again for the plan as
@@ -1345,7 +1395,7 @@ class Report:
                 out = self._with_plan(
                     plan,
                     run_engine,
-                    lambda plan: run_plan(
+                    lambda plan: _run_plan(
                         con,
                         plan,
                         engine,
@@ -1354,6 +1404,7 @@ class Report:
                         # A proved report's exact level justifies Spark's windows
                         # without a row-order tiebreak (`to_sql`'s `deterministic`).
                         tie_free=self._exact and kind != "unverified",
+                        unchecked=self._marks_of(plan) if marked else None,
                     ),
                     recheck,
                 )
@@ -1722,42 +1773,6 @@ class Report:
                 have.append(c)
         return {t: cs for t, cs in out.items() if cs}
 
-    @property
-    def needed(self) -> dict[str, list[str]]:
-        """Deprecated: `needs`. Their labels per input table."""
-        warnings.warn(
-            "Report.needed is deprecated; read Report.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return {t: list(labs) for t, labs in _labels_by_table(self.needs).items()}
-
-    @property
-    def needed_text(self) -> list[str]:
-        """Deprecated: `Needed.text` of each of `needs`."""
-        warnings.warn(
-            "Report.needed_text is deprecated; read Needed.text of report.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._needs_lines()
-
-    @property
-    def needed_conditions(self) -> dict[str, list[Condition]]:
-        """Deprecated: `Needed.condition` of each of `needs`, or the whole
-        mapping as `suggested_requires`."""
-        warnings.warn(
-            "Report.needed_conditions is deprecated; read Needed.condition of report.needs, "
-            "or report.suggested_requires",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        out: dict[str, list[Condition]] = {}
-        for n in self.needs:
-            if n.condition is not None:
-                out.setdefault(n.table, []).append(n.condition)
-        return out
-
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
@@ -1836,8 +1851,8 @@ class Report:
             proved is refused, with `reason` saying so.
 
         Raises:
-            EngineVersionError: The installed engine is another major
-                version than its profile's.
+            EngineVersionError: The engine's version is outside its
+                profile's range (D70).
             EngineSettingsError: A setting the engine's profile depends on
                 differs from its facts'.
         """
@@ -2113,61 +2128,6 @@ class Report:
                 *facts,
             ]
         )
-
-
-#: Private fields that never had a public name: no deprecated alias.
-_REPORT_PRIVATE = [
-    "assumed_check",
-    "table_params",
-    "run_plan",
-    "run_gate",
-    "run_unchecked",
-    "run_gates",
-    "asof_checks",
-    "asof_max_pairs",
-    "stated_facts",
-    "sequence_determined",
-]
-
-_REPORT_INTERNAL = [
-    "windows_total",
-    "tie_places",
-    "exact",
-    "class_places",
-    "guard_free",
-    "unchecked",
-    "optimized",
-    "rewrites",
-    "inferred",
-    "implied",
-    "params",
-    "hints",
-    "bounds",
-    "relations",
-    "stated",
-    "floats_on",
-    "depends",
-    "contract",
-    "transfer",
-    "epsilon",
-    "rows_exact",
-    "margin_checks",
-    "margin_flags",
-    "engines",
-    "sorted",
-    "generated_proofs",
-    "conditions",
-    "dialect",
-    "on_inferred",
-    "inferred_from",
-    "postconditions",
-]
-"""`Report`'s fields that are internal (B4 of the 1.0 API review): each has
-an underscore, and its old name reads it with a `DeprecationWarning` for a
-release. `plan` is `internal_plan`."""
-
-
-_deprecated.add(Report, {**{old: "_" + old for old in _REPORT_INTERNAL}, "plan": "internal_plan"})
 
 
 def _would_hold(c: CheckedCondition) -> str | None:
@@ -2588,13 +2548,14 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
     otherwise (a SQL condition on an Ibis table is a SQL model over it, with
     `semantics`)."""
     if isinstance(cond, str):
-        query = f'SELECT ({cond}) AS "c" FROM {{}} AS "t"'
+        # Not `str.format`: a regular expression's `{8}` is no placeholder.
+        select = f'SELECT ({cond}) AS "c" FROM '
         if isinstance(table, str):
-            return query.format(f"({table})")
+            return f'{select}({table}) AS "t"'
         from sverify.ibis_substrait import SQLModel, Unsupported, sql_model_schema
         from sverify.ibis_substrait.prune import prune_unmentioned
 
-        query = query.format('"t"')
+        query = f'{select}"t" AS "t"'
         # The SQL model hides `table` from the producer's pruning: its unread
         # columns of types sverify does not read go first (#1958).
         inner: Any = prune_unmentioned(table).op()
@@ -2633,14 +2594,18 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     `unique`, rows beyond the first for each repeated key.
 
     With an engine named, the condition's plan runs there, over the tables of
-    the connection `table` is bound to; otherwise Ibis counts on that
-    connection."""
+    the connection `table` is bound to, and counts the rows in the engine
+    (no row reaches Python); otherwise Ibis counts on that connection."""
     if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
             raise ValueError("checking a condition on an engine needs a table of sverify.connect()")
-        plan = written_plan(plan_json(con, condition_query(table, cond)))
-        return sum(v is not True for v in run_plan(con, plan, engine).column(0).to_pylist())
+        q = condition_query(table, cond)
+        assert isinstance(q, ir.Table)  # an Ibis table's condition query is Ibis
+        broken = q.filter(~q.c.fill_null(False))
+        broken = broken.aggregate(n=broken.count())
+        plan = written_plan(plan_json(con, broken))
+        return int(run_plan(con, plan, engine).column(0)[0].as_py())
     if isinstance(cond, TableCondition):
         return _table_violations(table, cond, engine)
     if isinstance(cond, str):

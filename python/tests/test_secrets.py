@@ -250,3 +250,130 @@ def test_each_node_lists_its_credentials(tmp_path, monkeypatch):
     schema = Path(sv.__file__).parent / "schemas" / "refresh.schema.json"
     jsonschema.validate(doc, json.loads(schema.read_text()))
     assert "outside its scope" in str(uses[-1])
+
+
+def _session(policy: dict):
+    """moto: a role with `policy` inline, assumed; its session as Storage options."""
+    import boto3
+
+    iam = boto3.client("iam", region_name="us-east-1")
+    trust = {
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Principal": {"AWS": "*"}, "Action": "sts:AssumeRole"}],
+    }
+    iam.create_role(RoleName="staging", AssumeRolePolicyDocument=json.dumps(trust))
+    iam.put_role_policy(RoleName="staging", PolicyName="p", PolicyDocument=json.dumps(policy))
+    got = boto3.client("sts", region_name="us-east-1").assume_role(
+        RoleArn="arn:aws:iam::123456789012:role/staging", RoleSessionName="ci"
+    )["Credentials"]
+    return {
+        "AWS_ACCESS_KEY_ID": got["AccessKeyId"],
+        "AWS_SECRET_ACCESS_KEY": got["SecretAccessKey"],
+        "AWS_SESSION_TOKEN": got["SessionToken"],
+    }
+
+
+def _grant(action, resource, effect="Allow", **extra):
+    return {"Effect": effect, "Action": action, "Resource": resource, **extra}
+
+
+def test_storage_reports_the_scope_of_an_aws_session(monkeypatch):
+    """#778: an STS session's scope is read from its role's policies, so a sink
+    outside `staging/` is flagged without `writes=`; the lookup is one STS
+    call per credential."""
+    pytest.importorskip("boto3")
+    moto = pytest.importorskip("moto")
+    from types import SimpleNamespace
+
+    from sverify.io import _aws_scope
+    from sverify.io._credentials import uses
+
+    for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+        monkeypatch.setenv(k, "testing")
+    monkeypatch.setattr(_aws_scope, "_CACHE", {})
+    calls = []
+    real = _aws_scope._lookup
+    monkeypatch.setattr(_aws_scope, "_lookup", lambda *a: calls.append(a) or real(*a))
+    policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            _grant(["s3:ListBucket", "s3:GetObject"], ["arn:aws:s3:::lake", "arn:aws:s3:::lake/*"]),
+            _grant(["s3:PutObject", "s3:DeleteObject"], "arn:aws:s3:::lake/staging/*"),
+        ],
+    }
+    with moto.mock_aws():
+        opts = _session(policy)
+        lake = Storage(opts)
+        assert lake.reads == ("s3://lake/",) and lake.writes == ("s3://lake/staging/",)
+        # declared scope wins; another Storage on the same key asks nothing more
+        assert Storage(opts, writes=["s3://lake/x/"]).writes == ("s3://lake/x/",)
+        Storage(opts).writes  # noqa: B018
+        assert len(calls) == 1
+        inside = SimpleNamespace(name="a", uri="s3://lake/staging/a", storage_options=lake)
+        outside = SimpleNamespace(name="b", uri="s3://lake/marts/b", storage_options=lake)
+        assert uses(inside, "write")[0].in_scope is True
+        assert uses(outside, "write")[0].in_scope is False
+        assert uses(outside, "read")[0].in_scope is True
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        _grant("s3:PutObject", "arn:aws:s3:::lake/*", "Deny"),
+        _grant("s3:PutObject", "arn:aws:s3:::lake/*", Condition={"StringEquals": {"s3:x": "y"}}),
+        _grant("s3:PutObject", "arn:aws:s3:::lake/*/raw/*"),
+    ],
+)
+def test_a_scope_the_policies_do_not_state_plainly_stays_unknown(monkeypatch, statement):
+    pytest.importorskip("boto3")
+    moto = pytest.importorskip("moto")
+    from sverify.io import _aws_scope
+
+    for k in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+        monkeypatch.setenv(k, "testing")
+    monkeypatch.setattr(_aws_scope, "_CACHE", {})
+    with moto.mock_aws():
+        s = Storage(_session({"Version": "2012-10-17", "Statement": [statement]}))
+        assert s.writes is None and s.reads is None
+
+
+def test_a_users_scope_includes_its_groups_policies(monkeypatch):
+    """Most users reach S3 through a group: its grants are part of the scope."""
+    boto3 = pytest.importorskip("boto3")
+    moto = pytest.importorskip("moto")
+    from sverify.io import _aws_scope
+
+    monkeypatch.setattr(_aws_scope, "_CACHE", {})
+    with moto.mock_aws():
+        iam = boto3.client("iam", region_name="us-east-1")
+        iam.create_user(UserName="ci")
+        iam.create_group(GroupName="writers")
+        iam.add_user_to_group(GroupName="writers", UserName="ci")
+        iam.put_user_policy(
+            UserName="ci",
+            PolicyName="own",
+            PolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [_grant("s3:GetObject", "arn:aws:s3:::lake/*")],
+                }
+            ),
+        )
+        iam.put_group_policy(
+            GroupName="writers",
+            PolicyName="g",
+            PolicyDocument=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [_grant("s3:PutObject", "arn:aws:s3:::lake/marts/*")],
+                }
+            ),
+        )
+        key = iam.create_access_key(UserName="ci")["AccessKey"]
+        s = Storage(
+            {
+                "AWS_ACCESS_KEY_ID": key["AccessKeyId"],
+                "AWS_SECRET_ACCESS_KEY": key["SecretAccessKey"],
+            }
+        )
+        assert s.reads == ("s3://lake/",) and s.writes == ("s3://lake/marts/",)

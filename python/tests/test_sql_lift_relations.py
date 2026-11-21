@@ -60,6 +60,34 @@ QUERIES = [
     "SELECT c FROM (SELECT customer AS c FROM orders INTERSECT SELECT name FROM customers)",
     "WITH c AS (SELECT name FROM customers UNION ALL SELECT name FROM customers)"
     " SELECT name, count(*) AS n FROM c GROUP BY name",
+    # #2166: a CTE's body sees the base tables and the CTEs before it, never itself
+    # or a later one: a CTE named like a table reads that table, and later
+    # queries read the CTE.
+    "WITH orders AS (SELECT id, amount FROM orders WHERE amount > 1) SELECT id FROM orders",
+    "WITH a AS (SELECT id, amount FROM orders), b AS (SELECT id FROM a WHERE amount > 1)"
+    " SELECT id FROM b",
+    "WITH a AS (SELECT id FROM orders), orders AS (SELECT id FROM a WHERE id > 1),"
+    " c AS (SELECT id FROM orders) SELECT id FROM c",
+    # #1939: a WITH in front of a set operation covers its branches.
+    "WITH c AS (SELECT name FROM customers) SELECT name FROM c UNION ALL"
+    " SELECT customer FROM orders",
+    "WITH c AS (SELECT name FROM customers) SELECT name FROM c EXCEPT SELECT customer FROM orders"
+    " ORDER BY name",
+    # #1991: GROUP BY ALL groups by the items without an aggregate; QUALIFY filters a window.
+    "SELECT customer, sum(amount) AS s FROM orders GROUP BY ALL",
+    "SELECT customer, qty, count(*) AS n, max(price) AS m FROM orders GROUP BY ALL ORDER BY 1, 2",
+    "SELECT sum(amount) AS s, count(*) AS n FROM orders GROUP BY ALL",
+    "SELECT customer, qty + 1 AS q FROM orders GROUP BY ALL HAVING count(*) > 0",
+    "SELECT id, customer, amount FROM orders QUALIFY row_number() OVER"
+    " (PARTITION BY customer ORDER BY amount DESC, id) = 1",
+    "SELECT customer, amount, rank() OVER (PARTITION BY customer ORDER BY amount) AS r FROM orders"
+    " QUALIFY r <= 2",
+    # A star keeps the table's columns, without the rewrite's window column.
+    "SELECT * FROM orders QUALIFY row_number() OVER"
+    " (PARTITION BY customer ORDER BY amount, id) = 1",
+    "SELECT * FROM orders QUALIFY rank() OVER (ORDER BY amount, id) <= 2"
+    " AND row_number() OVER (ORDER BY id) = 1",
+    "SELECT o.* FROM orders o QUALIFY rank() OVER (PARTITION BY customer ORDER BY amount, id) = 1",
     "TABLE customers EXCEPT ALL SELECT name, region FROM customers WHERE region = 'eu'",
     # #803: VALUES in FROM and as a CTE, typed across rows.
     "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (NULL, 'c')) v(k, s)",
@@ -272,6 +300,10 @@ def test_sorts_put_nulls_last_unless_told():
         ("SELECT id FROM elsewhere", "cannot resolve"),
         ("SELECT * FROM orders o JOIN orders p ON o.id = p.id", "two output columns named id"),
         ("SELECT id FROM orders LIMIT qty", "LIMIT"),
+        (
+            "SELECT customer, sum(amount) OVER () AS s FROM orders GROUP BY ALL",
+            "GROUP BY ALL with a window function",
+        ),
     ],
 )
 def test_refusals_say_what(query, message):
@@ -478,3 +510,10 @@ def test_a_bigint_sum_over_a_series_keeps_its_64_bit_check():
     )
     report = sv.verify(sql, on_inferred="ignore")
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
+
+
+def test_a_query_nested_beyond_the_recursion_limit_is_refused_not_a_crash():
+    """#2166: a RecursionError in the lift is an Unsupported."""
+    query = "SELECT " + "(" * 3000 + "1" + ")" * 3000 + " AS x"
+    with pytest.raises(Refused, match="nested too deeply"):
+        lift(query, SCHEMAS)

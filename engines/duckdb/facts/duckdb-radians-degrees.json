@@ -1,0 +1,37 @@
+{
+  "id": "duckdb-radians-degrees",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`radians(x)` is `x * (pi / 180)` and `degrees(x)` is `x * (180 / pi)`, the constants multiplied",
+  "verdict": "no finding: the constants are rounded first, then one multiplication",
+  "area": "doubles",
+  "options": [],
+  "constructs": [
+    "radians",
+    "degrees"
+  ],
+  "settings": {},
+  "description": [
+    "`radians(x)` equals `x * (pi() / 180)` and `degrees(x)` equals `x * (180 / pi())` for every one of 100,000 random doubles in [-500, 500). The other orders differ: `x * pi() / 180` equals `radians(x)` for 70,736 of them, `x * 180 / pi()` equals `degrees(x)` for 73,772. The SQL lift writes the first form (the constants of `math.pi / 180` and `180 / math.pi`)."
+  ],
+  "reference": "The reference's elementary functions of doubles (`Functions.lean`) have no `radians` or `degrees`; the lift writes DuckDB's product (D54).",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "manual-repro",
+      "checked_by": "lift-dates session (duckdb 2.0.0, Python, macOS arm64)",
+      "evidence": [
+        {
+          "sql": "select count(*) filter (radians(x)=x*(pi()/180)), count(*) filter (radians(x)=x*pi()/180), count(*) from (select random()*1000-500 x from range(100000))",
+          "observed": "(100000, 70736, 100000)"
+        },
+        {
+          "sql": "select count(*) filter (degrees(x)=x*(180/pi())), count(*) filter (degrees(x)=x*180/pi()), count(*) from (select random()*1000-500 x from range(100000))",
+          "observed": "(100000, 73772, 100000)"
+        }
+      ]
+    }
+  ]
+}

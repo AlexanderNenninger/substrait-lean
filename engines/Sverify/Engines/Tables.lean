@@ -45,7 +45,9 @@ def floatBoundsTheorems : List String :=
    "FloatBounds.StdModel.core_corr_chan", "FloatBounds.StdModel.epsilon_sum_cr",
    "FloatBounds.StdModel.epsilon_avg_cr", "FloatBounds.StdModel.epsilon_var_cr",
    "FloatBounds.StdModel.epsilon_stddev_cr",
-   "FloatBounds.StdModel.epsilon_cov_cr", "FloatBounds.StdModel.TreeSum.sign",
+   "FloatBounds.StdModel.epsilon_cov_cr", "FloatBounds.StdModel.core_var_polars",
+   "FloatBounds.StdModel.epsilon_var_polars", "FloatBounds.StdModel.epsilon_stddev_polars",
+   "FloatBounds.StdModel.TreeSum.sign",
    "FloatBounds.StdModel.TreeSum.avg_sign"]
 
 /-- Evidence from the facts or tests `ids`, none where empty. -/
@@ -166,7 +168,7 @@ structure EngineProfile where
   `acos` and `atan`, S + R in ulps, the engine's distance from the exact value
   (from its source) plus the reference's (ruling 132). The plan's bound adds
   twice this per call, tested and never proved. -/
-  elemUlps : List (String × Float) := []
+  elemUlps : List (String × Rat) := []
 
 def EngineProfile.name (e : EngineProfile) : String := e.table.name
 

@@ -1,5 +1,5 @@
 """Delta rules for semi and anti joins (`sverify._semi`,
-`SubstraitLean/IncrementalSemi.lean`, #248): the view keeps a count of
+`analysis/Sverify/Analysis/IncrementalSemi.lean`, #248): the view keeps a count of
 matches per key and changes with each batch of either side, and its rows
 equal a full recompute over random change streams."""
 

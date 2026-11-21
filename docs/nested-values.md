@@ -116,7 +116,9 @@ per element of its list in column `col`, with the element in that column's
 place (Ibis `t.unnest("xs")` keeps the column where it was); an empty list or
 NULL gives no rows. That is `UNNEST` in DuckDB. Polars'
 `explode` gives one row of NULL for both, so the Polars engine filters those
-rows first. `keep_empty=True` and `offset=` are refused.
+rows first. `keep_empty=True` is a project in front of the unnest that
+replaces an empty or NULL list by `[NULL]` (ruling 181), so the row keeps its
+other columns and the input is read once. `offset=` is refused.
 
 It is a new `Rel` constructor, so every analysis gets a case:
 

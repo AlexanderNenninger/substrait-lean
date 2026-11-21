@@ -9,8 +9,8 @@
     "format": {"description": "The version of this format.", "const": 1},
     "sverify": {"description": "The version of sverify that wrote the document.", "type": "string"},
     "command": {"description": "The command.", "enum": ["check", "refresh", "explain"]},
-    "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported or refused, 4 time or memory budget exceeded, 5 a refresh quarantined rows or held a node, 6 error.", "type": "integer", "minimum": 0, "maximum": 6},
-    "status": {"description": "The exit code in words. 1.x may add values.", "type": "string", "examples": ["proved", "not_proved", "usage", "unsupported", "budget_exceeded", "quarantined", "held", "error"]},
+    "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh quarantined rows, 6 error, 7 refused (no route to the engine), 8 a refresh held a node.", "type": "integer", "minimum": 0, "maximum": 8},
+    "status": {"description": "The exit code in words. 1.x may add values.", "type": "string", "examples": ["proved", "not_proved", "usage", "unsupported", "budget_exceeded", "quarantined", "error", "refused", "held"]},
     "file": {"description": "The pipeline's file, as given.", "type": "string"},
     "target": {"description": "The node or transform asked for (file.py:<target>); null for the whole file.", "type": ["string", "null"]},
     "items": {
@@ -122,6 +122,7 @@
       "properties": {
         "name": {"description": "The transform's name.", "type": "string"},
         "nodes": {"description": "The file's variables that hold the node this application built.", "type": "array", "items": {"type": "string"}},
+        "relaxations": {"description": "The settings of this transform that weaken its gate, as written in the file: on_unproved=\"check\" or \"warn\", on_inferred=\"warn\", \"ignore\" or \"off\", check_requires=False. Empty when the gate is the default. A CI step can diff them between base and head.", "type": "array", "items": {"type": "string"}},
         "status": {"description": "proved; checked (every postcondition it does not prove is checked on the data at each refresh); not_proved; unfinished (the time budget ran out first); or refused (sverify-dbt: sverify cannot read the model).", "enum": ["proved", "checked", "not_proved", "unfinished", "refused"]},
         "summary": {
           "description": "The contract in plain words; null when unfinished.",

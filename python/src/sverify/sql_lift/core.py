@@ -3,15 +3,19 @@ arithmetic and math."""
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from decimal import Decimal
 from typing import Any
 
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
+from ibis.common.temporal import IntervalUnit
 
 from sverify import _functions
+from sverify._unsupported import MIN_MOD_GUARD
 from sverify.plan_json import (
     Json,
     SqlUnsupported,
@@ -19,6 +23,7 @@ from sverify.plan_json import (
     between,
     if_then,
     in_values,
+    interval_json,
     literal,
     logical,
 )
@@ -113,11 +118,44 @@ def _neg(lf: _Lift, node: sge.Neg, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("negate", [a.json], a.type, _overflow(lf, a.type)), a.type)
 
 
+def _date_plus_days(name: str, a: E, b: E) -> E:
+    """`DATE ± INTEGER`: DuckDB adds days and the result is a DATE (#319). A
+    constant count is the interval of that many days; a column's is not read."""
+    if name == "add" and b.type.is_date():
+        a, b = b, a
+    if not a.type.is_date() or a.midnight or not (b.type.is_integer() or b.type.is_null()):
+        raise SqlUnsupported(
+            f"{name} of {a.type} and {b.type} is not supported yet", construct=name.upper()
+        )
+    if not b.constant or b.value is None:
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} an integer that is not a constant is not "
+            "supported yet (#319); write the interval, DATE + INTERVAL 1 DAY",
+            construct=name.upper(),
+        )
+    if abs(int(b.value)) > 3_000_000:  # a date's range is about 5.8 million years
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} {b.value} days leaves DuckDB's date range",
+            construct=name.upper(),
+        )
+    micros = int(b.value) * 86_400_000_000
+    day = E(interval_json(0, micros), dt.Interval(unit=IntervalUnit.MICROSECOND), (0, micros))
+    try:
+        return replace(_temporal_plus(name, a, day), midnight=False)
+    except OverflowError:
+        raise SqlUnsupported(
+            f"DATE {'+' if name == 'add' else '-'} {b.value} days leaves the dates sverify reads",
+            construct=name.upper(),
+        ) from None
+
+
 def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _ARITHMETIC[type(node)]
     a, b = sub(node.this), sub(node.expression)
     if a.type.is_interval() or b.type.is_interval():
         return _temporal_plus(name, a, b)
+    if name in ("add", "subtract") and a.type.is_date() != b.type.is_date():
+        return _date_plus_days(name, a, b)
     if name == "subtract" and a.type.is_date() and b.type.is_date():
         # DuckDB's DATE - DATE is a BIGINT of days.
         if a.midnight or b.midnight:
@@ -210,7 +248,20 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
         _option("on_division_by_zero", lf.profile.on_division_by_zero),
         _option("division_type", "TRUNCATE"),
     ]
-    return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
+    x, y = lf.to(a, t).json, lf.to(b, t).json
+    mod = _fn("modulus", [x, y], t, opts)
+    positive = isinstance(node.expression, sge.Literal) and node.expression.is_int
+    if lf.profile.min_mod_neg_one == "ERROR" and not positive:
+        # DuckDB raises at `MIN % -1` (`duckdb-R15-int-modulus`), where the
+        # reference's remainder, 0, fits: an in-plan raise, so a bound on
+        # either operand discharges it (D54, #2058).
+        low = -(1 << (8 * t.nbytes - 1))
+        hit = logical("and", [_fn("equal", [y, literal(-1, t)], dt.boolean),
+                              _fn("equal", [x, literal(low, t)], dt.boolean)],
+                      eager=True)  # fmt: skip
+        msg = literal(MIN_MOD_GUARD, dt.string)
+        mod = if_then([(hit, _fn("sverify_raise", [hit, msg], t))], mod)
+    return E(mod, t)
 
 
 def _has_struct(t: Any) -> bool:
@@ -469,6 +520,21 @@ def _pow(lf: _Lift, node: sge.Pow, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("power", args, dt.float64, opts), dt.float64)
 
 
+def _angle(factor: float) -> Callable[..., E]:
+    """`radians(x)` is `x * (pi / 180)` and `degrees(x)` `x * (180 / pi)`,
+    DuckDB's own constants (`duckdb-radians-degrees`, #1938), so the product is
+    the generated `DOUBLE * DOUBLE`."""
+
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        (x,) = _doubles(lf, [sub(node.this)], type(node).__name__.lower())
+        k = E(literal(factor, dt.float64), dt.float64, factor)
+        if g := _generated(lf, "DOUBLE * DOUBLE", [E(x, dt.float64), k]):
+            return g
+        return E(_fn("multiply", [x, k.json], dt.float64, _overflow(lf, dt.float64)), dt.float64)
+
+    return rule
+
+
 def _abs(lf: _Lift, node: sge.Abs, sub: Sub, scope: list[Column]) -> E:
     a = sub(node.this)
     if not (_numeric(a.type) or a.type.is_null()):
@@ -610,6 +676,8 @@ register(
         sge.Coalesce: _coalesce,
         sge.Pow: _pow,
         sge.Abs: _abs,
+        sge.Radians: _angle(math.pi / 180),
+        sge.Degrees: _angle(180 / math.pi),
         sge.Log: _log,
         sge.Floor: _rounding("floor"),
         sge.Ceil: _rounding("ceil"),

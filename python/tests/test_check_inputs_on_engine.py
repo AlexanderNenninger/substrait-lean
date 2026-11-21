@@ -64,14 +64,14 @@ def test_a_duckdb_run_with_assumptions_runs_the_plan_once(monkeypatch):
     assert report.assumed and report.internal_plan
     main = written_plan(report.internal_plan)
     runs: list[str] = []
-    real = report_module.run_plan
+    real = report_module._run_plan
 
     def spy(con, plan, engine, **kw):
         if plan == main:
             runs.append(engine)
         return real(con, plan, engine, **kw)
 
-    monkeypatch.setattr(report_module, "run_plan", spy)
+    monkeypatch.setattr(report_module, "_run_plan", spy)
     report.run(_con([1, 2, 3]), "duckdb")
     assert runs == ["duckdb"]
 
@@ -88,13 +88,13 @@ def test_a_polars_or_spark_run_with_assumptions_does_not_run_on_duckdb(engine, m
     )
     assert report.assumed and report.internal_plan
     runs: list[str] = []
-    real = report_module.run_plan
+    real = report_module._run_plan
 
     def spy(con, plan, eng, **kw):
         runs.append(eng if isinstance(eng, str) else "session")
         return real(con, plan, eng, **kw)
 
-    monkeypatch.setattr(report_module, "run_plan", spy)
+    monkeypatch.setattr(report_module, "_run_plan", spy)
     out = report.run(_con([1, 2, 3]), engine)
     assert out.to_pylist() == [{"s": 6}]
     assert "duckdb" not in runs

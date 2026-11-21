@@ -378,6 +378,21 @@ def test_null_ordering_in_windows(order):
     assert not re.search(r"\b(ASC|DESC)\b(?! NULLS (FIRST|LAST))", text)
 
 
+def test_sum_of_both_infinities_is_nan_under_the_duckdb_lens():
+    """`SUM` of +inf and -inf: NaN in DuckDB and in the lifted plan, so under
+    `semantics="duckdb"` the written plan gives NaN and the report lists no
+    domain issue; the reference lists it (#341, ruling 234)."""
+    inf, nan = float("inf"), float("nan")
+    con = sv.connect()
+    con.put("floats", pa.table({"f": [inf, inf, -inf, nan, nan, -inf]}))
+    query = "SELECT sum(f) AS s FROM floats"
+    lens = sv.verify(query, tables={"floats": con.table("floats")}, semantics="duckdb")
+    assert "domain error" not in lens.details()
+    assert [math.isnan(r["s"]) for r in lens.run(con).to_pylist()] == [True]
+    ref = sv.verify(query, tables={"floats": con.table("floats")}, semantics="reference")
+    assert "may fail: domain error: sum(f)" in ref.details()
+
+
 def test_integer_division_truncates():
     """DuckDB's `//` on integers truncates, as Substrait's integer `divide`
     does, and so does every engine running the plan."""
@@ -407,19 +422,37 @@ def test_runtime_errors_raise(sql, a, b):
         duckdb_rows(plan_json, {"r": r})
 
 
-def test_remainder_by_minus_one_is_zero():
-    """`MIN % -1` is 0 in Lean; DuckDB's `%` raises there, so it is special-cased."""
-    r = ints(a=[-(2**63), 5, None], b=[-1, -1, -1])
-    assert check_three_ways("SELECT a % b AS m FROM r", {"r": r}) == [(0,), (0,), (None,)]
+@pytest.mark.parametrize("width", [pa.int64(), pa.int32(), pa.int16()], ids=str)
+def test_remainder_by_minus_one_is_zero(width):
+    """`MIN % -1` is 0 in the reference; DuckDB's `%` raises there, so it is
+    written out. Under DuckDB's semantics the plan raises as DuckDB does, at
+    each width's own MIN (#2058)."""
+    low = -(2 ** (width.bit_width - 1))
+    r = pa.table({"a": pa.array([low, 5, None], width), "b": pa.array([-1, -1, -1], width)})
+    sql = "SELECT a % b AS m FROM r"
+    assert check_three_ways(sql, {"r": r}, "reference") == [(0,), (0,), (None,)]
+    with pytest.raises(duckdb.Error, match="MIN % -1"):
+        duckdb_rows(plan_of(sql, {"r": r}), {"r": r})
+    # Without the MIN row the lens runs and agrees with Lean.
+    rest = r.slice(1)
+    assert check_three_ways(sql, {"r": rest}) == [(0,), (None,)]
+
+
+def test_a_lens_power_with_a_zero_exponent_is_strict():
+    """D71: `power(x, 0)` is 1 for a value and NULL for a NULL `x`, as DuckDB
+    gives it; the lift folds nothing under `semantics="duckdb"`."""
+    r = pa.table({"x": pa.array([2.5, float("nan"), float("inf"), None], pa.float64())})
+    rows = check_three_ways("SELECT power(x, 0) AS z, x ** 0.0 AS w FROM r", {"r": r})
+    assert rows == [(1.0, 1.0)] * 3 + [(None, None)]
 
 
 def test_integer_powers_are_exact():
     r = ints(a=[-3, 2, 0, 1, -1, None, 3037000499])
     rows = check_three_ways("SELECT power(a, 2) AS s FROM r", {"r": r})
     assert rows[-1][0] == 3037000499**2
-    # `power(NULL, 0)` is 1; Lean and the SQL agree.
+    # `power` is strict (D71): a NULL base gives NULL for a zero exponent too.
     zero = check_three_ways("SELECT power(a, 0) AS z FROM r", {"r": r})
-    assert zero == [(1,)] * 7
+    assert zero == [(1,)] * 5 + [(None,)] + [(1,)]
     check_three_ways("SELECT power(a, 3) AS c FROM r", {"r": ints(a=[-3, 2, 0, 1, -1, None])})
     # Beyond 64, only -1, 0 and 1 have powers that fit.
     units = ints(a=[0, 1, -1, None])

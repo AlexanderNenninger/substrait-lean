@@ -59,12 +59,12 @@ _OLD_FACTS = re.compile(r"characterization/(<engine>|\*/facts)")
 
 
 def test_no_page_names_the_old_place_of_the_engine_facts():
-    # `CLAUDE.md` is not read: its line waits on the user's decision (#1448).
     files = [
         *DOCS,
         *(ROOT / ".claude" / "skills").rglob("*.md"),
         *(ROOT / ".claude" / "skills").rglob("*.py"),
         ROOT / "README.md",
+        ROOT / "CLAUDE.md",
         ROOT / "python" / "great-docs.yml",
     ]
     named = [
@@ -74,3 +74,29 @@ def test_no_page_names_the_old_place_of_the_engine_facts():
         if _OLD_FACTS.search(line)
     ]
     assert not named, named
+
+
+#: Pages that keep Lean names: the reference pages (#1448) and the records for contributors
+#: (`docs/README.md`). `nested-values.md` describes the model's Lean constructors; whether it is a
+#: reference page is the maintainer's call.
+_KEEP_LEAN_NAMES = {
+    "trusted-base", "reference-semantics", "engine-profiles", "float-bounds", "optimizations",
+    "proved-theorems", "nested-values", "core-semantics", "decisions", "ledger", "proofs",
+    "realizability", "coverage-targets", "layers", "teaching", "build-performance",
+    "how-this-is-built",
+}  # fmt: skip
+_LEAN_NAME = re.compile(r"\b(Rel|Profile|Engine|Expr)\.(?!lean)[A-Za-z]|_sound\b")
+
+
+@pytest.mark.parametrize(
+    "page", [p for p in DOCS if p.stem not in _KEEP_LEAN_NAMES], ids=lambda p: p.name
+)
+def test_a_user_page_names_no_lean_theorem(page: Path):
+    """The checker's own output, quoted as it prints (`proved by Rel.polars_sound`), is not a name
+    the page introduces."""
+    named = [
+        f"{n}: {line.strip()[:70]}"
+        for n, line in enumerate(page.read_text().splitlines(), 1)
+        if _LEAN_NAME.search(line) and "proved by" not in line
+    ]
+    assert not named, f"{page.name}: {named}"

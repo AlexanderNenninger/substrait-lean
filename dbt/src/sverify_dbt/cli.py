@@ -63,7 +63,6 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--select", "-s", nargs="+", metavar="MODEL", help="models to report on")
     c.add_argument(
         "--format",
-        "--output-format",
         dest="format",
         choices=["text", "json", "github", "sarif", "junit"],
         default="text",
