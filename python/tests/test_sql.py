@@ -378,6 +378,21 @@ def test_null_ordering_in_windows(order):
     assert not re.search(r"\b(ASC|DESC)\b(?! NULLS (FIRST|LAST))", text)
 
 
+def test_sum_of_both_infinities_is_nan_under_the_duckdb_lens():
+    """`SUM` of +inf and -inf: NaN in DuckDB and in the lifted plan, so under
+    `semantics="duckdb"` the written plan gives NaN and the report lists no
+    domain issue; the reference lists it (#341, ruling 234)."""
+    inf, nan = float("inf"), float("nan")
+    con = sv.connect()
+    con.put("floats", pa.table({"f": [inf, inf, -inf, nan, nan, -inf]}))
+    query = "SELECT sum(f) AS s FROM floats"
+    lens = sv.verify(query, tables={"floats": con.table("floats")}, semantics="duckdb")
+    assert "domain error" not in lens.details()
+    assert [math.isnan(r["s"]) for r in lens.run(con).to_pylist()] == [True]
+    ref = sv.verify(query, tables={"floats": con.table("floats")}, semantics="reference")
+    assert "may fail: domain error: sum(f)" in ref.details()
+
+
 def test_integer_division_truncates():
     """DuckDB's `//` on integers truncates, as Substrait's integer `divide`
     does, and so does every engine running the plan."""
