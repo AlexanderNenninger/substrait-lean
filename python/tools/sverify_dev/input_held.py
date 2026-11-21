@@ -123,7 +123,7 @@ def peak_mb() -> float:
 
 
 def rss_mb() -> float:
-    with open("/proc/self/statm") as f:
+    with open("/proc/self/statm", encoding="utf-8") as f:
         return int(f.read().split()[1]) * 4096 / 2**20
 
 

@@ -415,7 +415,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     if not (args.fix or args.diff):
         return _show(args, check)
     plan = place(path, check.checked)
-    before = path.read_text()
+    before = path.read_text(encoding="utf-8")
     diff = ""
     if plan.text is not None:
         diff = "".join(
@@ -429,7 +429,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     applied = bool(args.fix and plan.text is not None)
     if applied:
         assert plan.text is not None
-        path.write_text(plan.text)
+        path.write_text(plan.text, encoding="utf-8")
         _, check = _check_file(args, path, target)
     extra = {
         "fixes": [

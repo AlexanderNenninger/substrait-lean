@@ -573,33 +573,56 @@ def okSlots (es : List Expr) (ok : Expr → Bool) : List Nat :=
     | some e => ok e
     | none => false
 
+/-- The indices of the measures `ok` accepts. -/
+def okMeasures (ms : List Measure) (ok : Measure → Bool) : List Nat :=
+  (List.range ms.length).filter fun i => match ms[i]? with
+    | some m => ok m
+    | none => false
+
 /-- The expressions without abstract issues, on the inputs `Rel.mayIssues`
-analyses them on. -/
-def Rel.marks (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
-    Bool → Rel → Marks
+analyses them on, by slot (`Marks.slots`): a filter's, join's or semi-join's
+condition is slot 0, a projection's expressions are slots 0, 1, …, and an
+aggregate's grouping expressions and measures' arguments and filters are slot
+0 and its measure `i` slot `i + 1`. -/
+def Rel.marks (cat : Catalog) (A : String → List AVal) (F : String → List Fact) (T : WindowKeys)
+    (caps : String → Option Nat) : Bool → Rel → Marks
   | _, .read _ | _, .values _ _ => .checked
   | _, .filter r c =>
     .mk (if (c.mayIssues (r.loose.aeval cat A F T true) (r.loose.facts cat F T)).isEmpty
-      then [0] else []) [r.marks cat A F T true]
+      then [0] else []) [r.marks cat A F T caps true]
   | u, .project r es =>
     let s := if u then r.loose else r
     .mk (okSlots es fun e => (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty)
-      [r.marks cat A F T u]
+      [r.marks cat A F T caps u]
   | u, .emit r _ | u, .fetch r _ _ | u, .orderBy r _ | u, .distinct r
-  | u, .unnest r _ | u, .window r _ _ _ => .mk [] [r.marks cat A F T u]
-  | u, .cross a b | u, .unionAll a b => .mk [] [a.marks cat A F T u, b.marks cat A F T u]
+  | u, .unnest r _ | u, .window r _ _ _ => .mk [] [r.marks cat A F T caps u]
+  | u, .cross a b | u, .unionAll a b => .mk [] [a.marks cat A F T caps u, b.marks cat A F T caps u]
   | _, .join a b _ on | _, .semi a b _ on =>
     let ab := Rel.cross a.loose b.loose
     .mk (if (on.mayIssues (ab.aeval cat A F T true) (ab.facts cat F T)).isEmpty then [0] else [])
-      [a.marks cat A F T true, b.marks cat A F T true]
+      [a.marks cat A F T caps true, b.marks cat A F T caps true]
   | u, .aggregate r gs ms =>
     let s := if u then r.loose else r
-    .mk (if (gs ++ ms.flatMap Measure.exprs).all
+    -- Slot 0: the grouping expressions and the measures' arguments and
+    -- filters. Slot `i + 1`: measure `i`'s own check against `±∞`, where no
+    -- summation order overflows (`Measure.finiteAnyOrder`, ruling 238).
+    .mk ((if (gs ++ ms.flatMap Measure.exprs).all
         (fun e => (e.mayIssues (s.aeval cat A F T true) (s.facts cat F T)).isEmpty)
-      then [0] else []) [r.marks cat A F T u]
+      then [0] else []) ++
+      (okMeasures ms fun m => m.finiteAnyOrder
+        (·.absD (s.aeval cat A F T true) (s.facts cat F T)) (r.capReads caps).maxRows).map (· + 1))
+      [r.marks cat A F T caps u]
 
 omit [Boxes.Ambient] in
 theorem contains_zero_ite {c : Bool} (h : (if c = true then [0] else ([] : List Nat)).contains 0 = true) :
+    c = true := by
+  cases c <;> simp_all
+
+omit [Boxes.Ambient] in
+/-- An aggregate's slot 0 is marked only by its own test: the measure slots
+are at least 1. -/
+theorem contains_zero_ite_append {c : Bool} {xs : List Nat}
+    (h : ((if c = true then [0] else ([] : List Nat)) ++ xs.map (· + 1)).contains 0 = true) :
     c = true := by
   cases c <;> simp_all
 
@@ -632,6 +655,7 @@ theorem okSlots_mem {es : List Expr} {ok : Expr → Bool} {i : Nat} (hi : i < es
 
 section
 variable {cat : Catalog} (hcat : cat.WF) {A : String → List AVal} {F : String → List Fact}
+  {caps : String → Option Nat}
   (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
   (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
   {I : Impl} (hI : I.Faithful)
@@ -703,7 +727,7 @@ preconditions and the size hypothesis, the plan with the expressions
 `Rel.marks` lists unchecked gives `Rel.eval`. -/
 theorem Rel.evalG_marks :
     ∀ {u : Bool} {r : Rel}, r.WF cat → r.Small cat → r.looseSub = true →
-      r.evalG I cat (r.marks cat A F T u) = r.eval cat
+      r.evalG I cat (r.marks cat A F T caps u) = r.eval cat
   | _, .read _, _, _, _ | _, .values _ _, _, _, _ => rfl
   | _, .filter r c, hwf, hsm, hs => by
     have ih := evalG_marks (u := true) (r := r) hwf.1 hsm hs
@@ -785,7 +809,7 @@ theorem Rel.evalG_marks :
     have ih := evalG_marks (u := u) (r := r) hwf.1 hsm.2 hs
     simp only [evalG, marks, Marks.input, Marks.slots, List.getD_cons_zero, eval, ih]
     refine ite_eq_right_of fun hc => ?_
-    have hall := contains_zero_ite hc
+    have hall := contains_zero_ite_append hc
     exact aggregateEvalI_eq fun row hr e he =>
       Expr.evalI_of_safe hcat hA hF hT hI (loose_if_wf hwf.1) (loose_if_small hsm.2)
         (List.all_eq_true.mp hall e he) (mem_loose_if (r := r) hs u hr)

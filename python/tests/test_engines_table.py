@@ -210,7 +210,7 @@ _NAME_TESTS = {
 
 def _name_tests(path: Path) -> int:
     n = 0
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, ast.Compare):
             for side in [node.left, *node.comparators]:
                 consts = side.elts if isinstance(side, (ast.Tuple, ast.Set, ast.List)) else [side]
@@ -255,7 +255,7 @@ _NAME_LISTS = {
 
 def _name_lists(path: Path) -> int:
     n = 0
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
             elts: list = node.elts
         elif isinstance(node, ast.Dict):

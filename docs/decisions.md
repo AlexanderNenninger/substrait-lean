@@ -873,6 +873,18 @@ Note (2026-11-09, theory advisor): a zero in an option's scope is either zero
 a `-0.0` argument or result too, and `fp.elem` takes `zero_sign` for `atan2`
 (Spark's reads `-0.0` as `0.0`). No reference value or allowed set changes.
 
+**Amendment, 2026-11-21** (ruling 248, #271): the reference's doubles are
+values of binary64. Every integer magnitude up to the largest has a code, but
+only those with at most 53 significant bits are doubles (`FloatFormat.Dbl`).
+On a catalog of doubles, with doubles for the plan's constants, every double
+the reference computes is one (`Rel.eval_dbl`, `core/Sverify/Core/EvalDbl.lean`):
+rounding gives 53 bits (`FloatCode.dbl_ofExactDiv`), the arithmetic above needs
+no hypothesis, and `floor`, `ceil`, `round` and `fmod` keep doubles
+(`core/Sverify/Core/FloatDbl.lean`). The casts of integers and decimals state it
+of their results (`IntConv.dbl`, `DecToDouble.dbl`). No result changes. A
+lowering entry may rely on it where the engine's function differs from the
+reference's only on codes that are no doubles (Spark's `floor` and `ceil`).
+
 ### D32. Calendar functions work on the reference's timestamps, 0001 to 9999
 
 Decided 2026-11-08 (signed off by the maintainer, reviewed by the theory
@@ -1057,6 +1069,14 @@ are bounded. `SumOrder.bound` reads the bound as a range the abstract domain
 computes (finite, in `[sumLo, sumHi]`), which cuts `nan_creation`,
 `float_overflow` and the NaN cases of a comparison downstream (D34), and the
 margin check's theorem over its plan reads the same set.
+
+Amended 2026-11-21 (#1787, ruling 242): the bound also holds of the canonical
+codes. `SumBound` is `SumBoundRaw` of the codes as they are and of the
+canonical codes (`-0.0` read as `+0.0`). IEEE 754 addition treats the two
+zeros alike but for the sign of a zero result, so an engine's sum of a group
+is, up to `canon`, a sum in the same order of its canonical values. A group
+holding `-0.0` meets the second clause's premise where it fails the first's.
+No axiom is added, and the reference does not change.
 
 Amended 2026-11-19 (#1608 12b-1): in `SumOrder`, the behaviours with no
 shape (`SCALED_CONSTANT`, `COMPENSATED`) are the bound and exactness on small

@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-21-composite-keys-1-0",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Composite foreign keys (#2223) are in 1.0.",
+  "issues": [
+    2223
+  ],
+  "source": "coordinator's relay, 2026-11-21",
+  "note": "In the maintainer's words: 'Composite keys are quite common.' Ruling 246 designs them."
+}

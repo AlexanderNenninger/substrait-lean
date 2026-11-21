@@ -6,6 +6,7 @@ change in any release.
 
 from typing import Any
 
+from sverify import _engines
 from sverify._engines import DIALECTS
 from sverify.sql.core import Dialect, Kind, Unsupported, parse_plan, to_sql
 
@@ -24,7 +25,9 @@ def dialect_of(dialect: Any) -> Dialect:
 
     p = profiles.find(dialect) if isinstance(dialect, str) else None
     if p is None or p.dialect is None:
-        raise ValueError(f"unknown dialect {dialect!r}; expected one of {DIALECTS} or a Dialect")
+        raise _engines.not_installed(dialect) or ValueError(
+            f"unknown dialect {dialect!r}; expected one of {DIALECTS} or a Dialect"
+        )
     return p.dialect()
 
 

@@ -420,7 +420,7 @@ class _File:
 
     def emit(self, event: Mapping[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a") as f:
+        with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event, sort_keys=True) + "\n")
 
 
@@ -1010,7 +1010,7 @@ def read(source: str | Path | Iterable[Mapping[str, Any]]) -> Events:
         The `Events`.
     """
     if isinstance(source, str | Path):
-        text = Path(source).read_text()
+        text = Path(source).read_text(encoding="utf-8")
         stripped = text.lstrip()
         if stripped.startswith("["):
             return Events(json.loads(text))

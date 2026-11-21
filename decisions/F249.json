@@ -1,0 +1,17 @@
+{
+  "id": "F249",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#271: Spark's IEEE division gets a one-sided lowering entry: where the engine gives a value it is the reference's, where the reference raises the engine raises, and the engine may raise where the reference has a value (D70); it rests on ANSI mode.",
+  "issues": [
+    271,
+    1130
+  ],
+  "amended_by": [
+    "F250"
+  ],
+  "source": "fable-ruling-249-271-spark-fdiv-one-sided.md",
+  "note": "Ruling 161 already decided the behaviour for Spark's `/`. H4: Spark's session sets spark.sql.ansi.enabled for every run until #1130's obligation 2 lands. H1-H3 replaced by ruling 250. No D-number."
+}

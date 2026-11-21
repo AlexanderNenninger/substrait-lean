@@ -85,7 +85,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _decimals, _hooks, _pipe, _stages
+from sverify import _decimals, _engines, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._dialect import DialectDifference
@@ -143,7 +143,7 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
+from sverify.observation import Observation
 from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DECIMAL_ARG,
     _EPOCH_DAY,
@@ -248,7 +248,7 @@ def semantics_names() -> tuple[str, ...]:
 def _checked_semantics(semantics: str) -> Semantics:
     if semantics not in semantics_names():
         named = ", ".join(map(repr, semantics_names()))
-        raise ValueError(
+        raise _engines.not_installed(semantics) or ValueError(
             f"semantics must be one of {named} (each installed engine profile, "
             f"sverify.profiles), not {semantics!r}"
         )
@@ -544,7 +544,6 @@ def _text_condition(col: str, fact: TextFact) -> Inferred:
     (`Text.upperRaises`, `lowerRaises`, D51).
     Its SQL is the writers' guard in the default engine's dialect, the one the data is
     checked on; its Ibis form is one regular expression with the same characters."""
-    from sverify import _engines
     from sverify.sql.core import ascii_text, case_class
 
     dialect = _engines.sql_dialect()
@@ -1070,17 +1069,6 @@ class UnprovedWarning(SverifyWarning):
         self.report = report
 
 
-def __getattr__(name: str) -> Any:
-    if name == "InferredPreconditionWarning":
-        warnings.warn(
-            "InferredPreconditionWarning is deprecated; catch sverify.errors.InferredWarning",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return InferredWarning
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[str, Any]:
     """The output's types, not nullable where `facts` proves a column never
     NULL: one value for both (ruling 184, F2)."""
@@ -1179,7 +1167,9 @@ def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
         return list(cond.cols)
     if isinstance(cond, NonOverlapping):
         return [cond.lo, cond.hi, *cond.by]
-    if isinstance(cond, References | ArrivesWithin):
+    if isinstance(cond, References):
+        return list(cond.cols)
+    if isinstance(cond, ArrivesWithin):
         return [cond.col]
     if isinstance(cond, MaxRows):
         return []
@@ -1658,6 +1648,8 @@ def _prove_once(
         for c in cs:
             if isinstance(c, NonOverlapping) and t in schemas:
                 c.check_types(t, schemas[t])
+            elif isinstance(c, References):
+                c.check_types(t, schemas)
 
     unreadable: dict[str, _Unsupported] = {}
 
@@ -2994,16 +2986,6 @@ class ContractedTransform:
         self._counterexamples: int | None = None
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
-
-    @property
-    def last_report(self) -> Report | None:
-        """Deprecated: `report`."""
-        warnings.warn(
-            "ContractedTransform.last_report is deprecated; read .report",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.report
 
     def to_substrait(
         self,

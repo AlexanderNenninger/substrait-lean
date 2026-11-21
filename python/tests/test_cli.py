@@ -622,6 +622,17 @@ def test_sarif(tmp_path, capsys):
     assert fixed == path.read_bytes()
 
 
+def test_sarif_is_valid(tmp_path, capsys):
+    from _sarif import jsonschema, valid_sarif
+
+    path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
+    code, out = run(capsys, "check", str(path), "--format", "sarif")
+    assert code == 1
+    assert valid_sarif(out)["runs"][0]["results"]
+    with pytest.raises(jsonschema.ValidationError):  # the schema is not vacuous
+        valid_sarif('{"version": "2.1.0", "runs": 1}')
+
+
 def test_help_lists_the_exit_codes(capsys):
     assert main(["--help"]) == 0
     out = capsys.readouterr().out

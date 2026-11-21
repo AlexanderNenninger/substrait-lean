@@ -54,7 +54,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
@@ -692,10 +691,8 @@ class StaticSource(Pipeable):
     Args:
         table: The table's contents.
         name: The table's name in the plans that read it. Required: two
-            sources of one name in a pipeline would collide. (Before 1.0 it
-            defaulted to `"table"`, which warns for one release.)
-        version: The version of these contents, by keyword (positional
-            warns for one release). Default: 0.
+            sources of one name in a pipeline would collide.
+        version: The version of these contents. Default: 0.
         on_violation: What a refresh does with a batch that breaks a
             precondition on this source, for transforms that set no
             `on_violation` of their own: `"error"`, `"quarantine"` or
@@ -715,27 +712,11 @@ class StaticSource(Pipeable):
     def __init__(
         self,
         table: pa.Table,
-        *args: int,
-        name: str | None = None,
+        *,
+        name: str,
         version: int = 0,
         on_violation: Policy | None = None,
     ) -> None:
-        if args:
-            warnings.warn(
-                "StaticSource(table, version) is deprecated; write "
-                "StaticSource(table, name=..., version=...)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            (version,) = args
-        if name is None:
-            warnings.warn(
-                'StaticSource without name= is deprecated (it defaulted to "table"); '
-                "name the table as the plans read it",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            name = "table"
         self.name = name
         self.on_violation = _quarantine.check_policy(on_violation)
         self._log: ChangeLog[pa.Table] = ChangeLog()
