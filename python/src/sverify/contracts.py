@@ -1179,7 +1179,9 @@ def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
         return list(cond.cols)
     if isinstance(cond, NonOverlapping):
         return [cond.lo, cond.hi, *cond.by]
-    if isinstance(cond, References | ArrivesWithin):
+    if isinstance(cond, References):
+        return list(cond.cols)
+    if isinstance(cond, ArrivesWithin):
         return [cond.col]
     if isinstance(cond, MaxRows):
         return []
@@ -1658,6 +1660,8 @@ def _prove_once(
         for c in cs:
             if isinstance(c, NonOverlapping) and t in schemas:
                 c.check_types(t, schemas[t])
+            elif isinstance(c, References):
+                c.check_types(t, schemas)
 
     unreadable: dict[str, _Unsupported] = {}
 

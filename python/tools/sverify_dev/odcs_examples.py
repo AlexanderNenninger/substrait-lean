@@ -46,7 +46,10 @@ WAITS_ON: tuple[tuple[str, dict[str, Any]], ...] = (
         {"design": "it names nothing, or two columns, for sverify to check"},
     ),
     ("a foreign key from another table", {"design": "it constrains the table it starts from"}),
-    ("a composite foreign key", {"issue": 2223}),
+    (
+        "a foreign key to the columns of several tables",
+        {"design": "a foreign key references one table"},
+    ),
     ("is not supported; cast the column", {"issue": 1958}),
     ("sverify reads no binary values", {"issue": 1958}),
     ("logicalTypeOptions.format", {"design": "a format for text, which no row breaks"}),
