@@ -59,6 +59,12 @@ def _lookup(options: Mapping[str, str], key: str, secret: str, endpoint: str) ->
         }
         if endpoint:
             kw["endpoint_url"] = endpoint
+        from botocore.config import Config  # pyrefly: ignore
+
+        # An offline or firewalled check must not stall on boto3's defaults.
+        kw["config"] = Config(
+            connect_timeout=3, read_timeout=5, retries={"max_attempts": 1, "mode": "standard"}
+        )
         arn = boto3.client("sts", **kw).get_caller_identity()["Arn"]
         docs = _policies(boto3.client("iam", **kw), arn)
     except Exception:  # noqa: BLE001 - any failure means the store reports nothing
@@ -73,29 +79,26 @@ def _policies(iam: Any, arn: str) -> list[dict[str, Any]] | None:
         return None
     kind, path = m[1], m[2].split("/")
     name = path[0] if kind == "assumed-role" else path[-1]  # assumed-role/NAME/SESSION
-    role = kind != "user"
-    attached = (
-        iam.list_attached_role_policies(RoleName=name)
-        if role
-        else iam.list_attached_user_policies(UserName=name)
-    )["AttachedPolicies"]
-    names = (
-        iam.list_role_policies(RoleName=name) if role else iam.list_user_policies(UserName=name)
-    )["PolicyNames"]
+    if kind == "user":
+        groups = [g["GroupName"] for g in iam.list_groups_for_user(UserName=name)["Groups"]]
+        return _documents(iam, "User", name) + [
+            d for g in groups for d in _documents(iam, "Group", g)
+        ]
+    return _documents(iam, "Role", name)
+
+
+def _documents(iam: Any, kind: str, name: str) -> list[dict[str, Any]]:
+    """The attached and inline policy documents of a role, user or group."""
+    ident = {f"{kind}Name": name}
     docs = []
-    for p in attached:
-        version = iam.get_policy(PolicyArn=p["PolicyArn"])["Policy"]["DefaultVersionId"]
+    for p in getattr(iam, f"list_attached_{kind.lower()}_policies")(**ident)["AttachedPolicies"]:
+        arn = p["PolicyArn"]
+        version = iam.get_policy(PolicyArn=arn)["Policy"]["DefaultVersionId"]
         docs.append(
-            iam.get_policy_version(PolicyArn=p["PolicyArn"], VersionId=version)["PolicyVersion"][
-                "Document"
-            ]
+            iam.get_policy_version(PolicyArn=arn, VersionId=version)["PolicyVersion"]["Document"]
         )
-    for n in names:
-        got = (
-            iam.get_role_policy(RoleName=name, PolicyName=n)
-            if role
-            else iam.get_user_policy(UserName=name, PolicyName=n)
-        )
+    for n in getattr(iam, f"list_{kind.lower()}_policies")(**ident)["PolicyNames"]:
+        got = getattr(iam, f"get_{kind.lower()}_policy")(**ident, PolicyName=n)
         docs.append(got["PolicyDocument"])
     return [json.loads(d) if isinstance(d, str) else d for d in docs]
 
@@ -119,7 +122,7 @@ def _prefixes(docs: list[dict[str, Any]]) -> Scope | None:
             uris = [_uri(r) for r in _as_list(s.get("Resource"))]
             if None in uris:
                 return None
-            found = [u for u in uris if u is not None]
+            found = [u for u in uris if u]  # "" is a bucket itself: no object access
             reads += found if read else []
             writes += found if write else []
     return tuple(dict.fromkeys(reads)), tuple(dict.fromkeys(writes))
@@ -130,9 +133,12 @@ def _as_list(v: Any) -> list[Any]:
 
 
 def _uri(resource: str) -> str | None:
-    """`arn:aws:s3:::bucket/prefix/*` as `s3://bucket/prefix/`; None for a
-    pattern that is not a prefix (a `*` or `?` inside it, a bucket's own ARN)."""
+    """`arn:aws:s3:::bucket/prefix/*` as `s3://bucket/prefix/`; "" for a
+    bucket's own ARN, which grants no object access; None for a pattern that
+    is not a prefix (a `*` or `?` inside it)."""
     if resource == "*":
         return "s3://"
+    if re.fullmatch(r"arn:aws[\w-]*:s3:::[^/*?]+", resource):
+        return ""
     m = re.fullmatch(r"arn:aws[\w-]*:s3:::([^/*?]+)/([^*?]*)\*?", resource)
     return None if m is None else f"s3://{m[1]}/{m[2]}"

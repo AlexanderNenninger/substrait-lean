@@ -1427,7 +1427,8 @@ per credential. A `Deny`, a condition, a `NotAction`, `NotResource` or
 a pattern that is not a prefix leaves the scope unknown, as does a session that
 cannot read its own policies. Session policies, permissions boundaries and
 bucket policies are not in the identity's policies, so the scope is what they
-grant. Other stores (GCS, Azure, a vended catalog credential) report nothing
+grant: a session policy or boundary can narrow the session below it, and a
+bucket policy can widen it, so neither `in_scope` value is a guarantee. Other stores (GCS, Azure, a vended catalog credential) report nothing
 yet and need `reads=` and `writes=`.
 Every URI sverify records, reports, exports or sends is written without
 userinfo, query string or fragment: a sink's `location`, `started`,
