@@ -47,15 +47,6 @@ def test_a_literal_column_keeps_its_declared_width(engine, ty):
 
 @pytest.mark.parametrize("engine", ENGINES)
 def test_a_case_of_literals_keeps_their_declared_width(engine):
-    """A `CASE` of int64 literals is an int64 column: `e * e` cannot overflow."""
-    q = T.mutate(e=ibis.cases((T.x > 0, lit(100, "int64")), else_=lit(0, "int64")))
-    report = sv.verify(q.select(e=q.e * q.e))
-    assert report.issues == [], report.issues
-    assert run(report, engine) == [10_000, 0]
-
-
-@pytest.mark.parametrize("engine", ENGINES)
-def test_a_case_of_literals_keeps_their_declared_width(engine):
     """A `CASE` of int64 literals is an int64 column: `e * e` cannot overflow (#1968)."""
     q = T.mutate(e=ibis.cases((T.x > 0, lit(100, "int64")), else_=lit(0, "int64")))
     report = sv.verify(q.select(e=q.e * q.e))

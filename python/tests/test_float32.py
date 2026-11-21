@@ -11,9 +11,9 @@ import duckdb
 import ibis
 import pyarrow as pa
 import pytest
+from ibis import _
 
 import sverify as sv
-from ibis import _
 from sverify._unsupported import Unsupported
 
 ENGINES = ["duckdb", "polars", "spark"]
@@ -207,7 +207,7 @@ def test_an_integer_constant_rounds_to_float32_as_duckdb():
 def test_a_negative_zero_constant_meets_zero_at_a_key(engine):
     """A `-0.0` constant stays `-0.0` (ruling 186 P4, D31), and a key compares
     it equal to `0.0`: one group, and every row joins."""
-    zero = T.d * 0.0
+    zero = ibis.literal(0.0)
     flip = ibis.ifelse(T.i % 2 == 0, ibis.literal(-0.0), zero)
     grouped = sv.verify(T.mutate(k=flip).group_by("k").agg(x=T.i.count()))
     assert grouped.issues == [], grouped.issues
