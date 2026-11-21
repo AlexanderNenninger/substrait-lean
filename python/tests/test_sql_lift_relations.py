@@ -60,6 +60,14 @@ QUERIES = [
     "SELECT c FROM (SELECT customer AS c FROM orders INTERSECT SELECT name FROM customers)",
     "WITH c AS (SELECT name FROM customers UNION ALL SELECT name FROM customers)"
     " SELECT name, count(*) AS n FROM c GROUP BY name",
+    # #2166: a CTE's body sees the base tables and the CTEs before it, never itself
+    # or a later one: a CTE named like a table reads that table, and later
+    # queries read the CTE.
+    "WITH orders AS (SELECT id, amount FROM orders WHERE amount > 1) SELECT id FROM orders",
+    "WITH a AS (SELECT id, amount FROM orders), b AS (SELECT id FROM a WHERE amount > 1)"
+    " SELECT id FROM b",
+    "WITH a AS (SELECT id FROM orders), orders AS (SELECT id FROM a WHERE id > 1),"
+    " c AS (SELECT id FROM orders) SELECT id FROM c",
     # #1939: a WITH in front of a set operation covers its branches.
     "WITH c AS (SELECT name FROM customers) SELECT name FROM c UNION ALL"
     " SELECT customer FROM orders",
@@ -502,3 +510,10 @@ def test_a_bigint_sum_over_a_series_keeps_its_64_bit_check():
     )
     report = sv.verify(sql, on_inferred="ignore")
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
+
+
+def test_a_query_nested_beyond_the_recursion_limit_is_refused_not_a_crash():
+    """#2166: a RecursionError in the lift is an Unsupported."""
+    query = "SELECT " + "(" * 3000 + "1" + ")" * 3000 + " AS x"
+    with pytest.raises(Refused, match="nested too deeply"):
+        lift(query, SCHEMAS)

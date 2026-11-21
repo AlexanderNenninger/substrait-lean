@@ -251,9 +251,11 @@ def test_route_lines_lead_with_the_class_in_plain_words() -> None:
     report.run(con, "duckdb")
     text = report.details()
     assert "route on polars: shim (integer division rewritten to truncate); evidence" in text
-    assert "route on duckdb: exact; evidence" in text
+    assert "route on duckdb: exact; evidence proved by Lowering.duckdb_exact" in text
+    # The evidence cites its theorems by name; the prose around them stays in the user's terms.
+    prose = re.sub(r"proved by [\w.]+(, [\w.]+)*", "proved by", text)
     for internal in ("Lowering", "lower_correct", "polars_engine", "Rel.eval", "Lean"):
-        assert internal not in text
+        assert internal not in prose
     assert "DuckDB lowering" in report.routes["duckdb"].reason
 
 

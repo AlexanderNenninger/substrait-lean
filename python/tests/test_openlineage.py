@@ -116,7 +116,9 @@ def test_off_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENLINEAGE_URL", "http://127.0.0.1:9")  # nothing listens
     n = orders().pipe(paid).write(DeltaSink(str(tmp_path / "paid")))
     with warnings.catch_warnings():
-        warnings.simplefilter("error")
+        # A failed emit is what this test is about; the engine-version warning of an unprobed
+        # DuckDB (#2045) is not.
+        warnings.simplefilter("error", ol.LineageWarning)
         n.refresh()
 
 

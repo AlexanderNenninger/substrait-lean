@@ -37,6 +37,14 @@ QUERIES = [
     " cume_dist() OVER (ORDER BY id) AS cd, lag(amount * 2) OVER (ORDER BY id) AS l2 FROM orders",
     "SELECT customer, sum(amount) AS s, rank() OVER (ORDER BY sum(amount) DESC) AS r,"
     " avg(sum(amount)) OVER () AS a FROM orders GROUP BY customer",
+    # A named WINDOW is written out where it is used (#319): alone, extended
+    # with an ORDER BY or a frame the named one lacks, and one per function.
+    "SELECT id, sum(amount) OVER w AS s, rank() OVER (w ORDER BY id) AS r,"
+    " max(id) OVER (w ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS m"
+    " FROM orders WINDOW w AS (PARTITION BY customer)",
+    "SELECT id, sum(id) OVER a AS s, sum(id) OVER b AS t FROM orders"
+    " WINDOW a AS (ORDER BY id), b AS (PARTITION BY customer ORDER BY id"
+    " ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)",
     # A plain ranking ignores the frame, empty or not (#625).
     "SELECT id, rank() OVER (ORDER BY customer ROWS BETWEEN 1 PRECEDING AND 2 PRECEDING) AS r,"
     " cume_dist() OVER (ORDER BY customer ROWS BETWEEN 3 FOLLOWING AND 1 FOLLOWING) AS c"
@@ -79,7 +87,19 @@ def test_the_reference_lift_is_checked_too(query):
 @pytest.mark.parametrize(
     ("query", "message"),
     [
-        ("SELECT sum(id) OVER w FROM orders WINDOW w AS (ORDER BY id)", "WINDOW"),
+        (
+            "SELECT sum(id) OVER (w PARTITION BY customer) FROM orders"
+            " WINDOW w AS (PARTITION BY customer)",
+            "adds a PARTITION BY",
+        ),
+        (
+            "SELECT sum(id) OVER (w ORDER BY qty) FROM orders WINDOW w AS (ORDER BY id)",
+            "adds an ORDER BY",
+        ),
+        (
+            "SELECT sum(id) OVER w FROM orders WINDOW v AS (ORDER BY id), w AS (v)",
+            "defined from another named window",
+        ),
         ("SELECT count(DISTINCT id) OVER () FROM orders", "DISTINCT in a window"),
         ("SELECT sum(id) OVER (ORDER BY id GROUPS 1 PRECEDING) FROM orders", "GROUPS frames"),
         (

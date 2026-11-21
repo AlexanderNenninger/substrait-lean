@@ -32,10 +32,20 @@ else:
 
 
 @functools.lru_cache(maxsize=4096)
-def _sql(plan: str, guards: bool = True, finite: Finite = True, asof: str = "[]") -> str:
+def _sql(
+    plan: str, guards: bool = True, finite: Finite = True, asof: str = "[]", unchecked: str = "null"
+) -> str:
     """`to_sql` of a JSON plan, memoized: an incremental view runs the same
-    delta plans on every batch. `asof`: the plan's as-of join sites, as JSON."""
-    return to_sql(json.loads(plan), DUCKDB, guards=guards, finite=finite, asof=json.loads(asof))
+    delta plans on every batch. `asof`: the plan's as-of join sites, and
+    `unchecked`: its marks, as JSON."""
+    return to_sql(
+        json.loads(plan),
+        DUCKDB,
+        guards=guards,
+        finite=finite,
+        asof=json.loads(asof),
+        unchecked=json.loads(unchecked),
+    )
 
 
 _DB: duckdb.DuckDBPyConnection | None = None
@@ -85,6 +95,7 @@ def run(
     keep: Literal[False] = False,
     finite: Finite = True,
     asof: Sequence[dict] = (),
+    unchecked: dict | None = None,
 ) -> pa.Table: ...
 
 
@@ -97,6 +108,7 @@ def run(
     keep: Literal[True],
     finite: Finite = True,
     asof: Sequence[dict] = (),
+    unchecked: dict | None = None,
 ) -> Resident: ...
 
 
@@ -108,6 +120,7 @@ def run(
     keep: bool = False,
     finite: Finite = True,
     asof: Sequence[dict] = (),
+    unchecked: dict | None = None,
 ) -> pa.Table | Resident:
     """Run a Substrait JSON plan on DuckDB over `tables`: Arrow tables, or
     tables DuckDB reads where they are (`sverify._scan.Native`: Parquet
@@ -117,12 +130,13 @@ def run(
     The process's database serves every call (`sverify._duckdb`; opening
     one costs ~10 ms), through a cursor of the engine's own; the tables are
     created for the call, as temporary tables, and dropped after it.
-    `guards=False`, `finite=False`, `asof`: see `sverify.sql.to_sql`."""
+    `guards=False`, `finite=False`, `asof`, `unchecked`: see
+    `sverify.sql.to_sql`."""
     global _DB
     sql = (
-        _sql(plan, guards, finite, json.dumps(asof))
+        _sql(plan, guards, finite, json.dumps(asof), json.dumps(unchecked))
         if isinstance(plan, str)
-        else to_sql(plan, DUCKDB, guards=guards, finite=finite, asof=asof)
+        else to_sql(plan, DUCKDB, guards=guards, finite=finite, asof=asof, unchecked=unchecked)
     )
     # `to_sql` numbers a table's rows with `rowid` where the plan needs their order.
     ordered = DUCKDB.row_ordinal() in sql

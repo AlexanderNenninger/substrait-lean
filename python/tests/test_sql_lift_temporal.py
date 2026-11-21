@@ -19,6 +19,9 @@ pytestmark = pytest.mark.backend("duckdb")
 
 #: Queries of the subset, each through oracles A and C.
 QUERIES = [
+    # `DATE ± INTEGER` adds days and is a DATE (#319); a constant count.
+    "SELECT id, day + 3 AS a, day - 10 AS b, 2 + day AS c, DATE '2024-02-28' + 2 AS d,"
+    " DATE '2024-03-01' - 1 AS e FROM orders",
     # #1991: strftime with a constant format, of a timestamp and of a date.
     "SELECT id, strftime(placed, '%Y-%m') AS ym, strftime(placed, '%Y-%m-%d %H:%M:%S') AS t,"
     " strftime(day, '%Y/%m/%d') AS d, strftime(placed, '%j %%') AS j FROM orders",
@@ -94,6 +97,9 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT INTERVAL 2 DAYS AS x", "INTERVAL output column"),
         ("SELECT date_diff('decade', day, day) FROM orders", "datediff in decade"),
         ("SELECT dayname(customer) FROM orders", "not a date or a timestamp"),
+        ("SELECT day + qty FROM orders", "not a constant"),
+        ("SELECT 1 - day FROM orders", "not supported yet"),
+        ("SELECT day + 9999999999 FROM orders", "date range"),
         ("SELECT make_date(2024, 2, 30) AS d", "DuckDB raises"),
         ("SELECT make_date(2024, price, 1) AS d FROM orders", "make_date of a float64"),
         ("SELECT placed + INTERVAL 'a while' FROM orders", "integers, each with a unit"),
