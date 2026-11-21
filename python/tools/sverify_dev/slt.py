@@ -1252,7 +1252,8 @@ KNOWN: tuple[Known, ...] = (
         r"\blist_sum\(",
     ),
     # A NULL element in a list comparison: DuckDB orders it last, the reference
-    # gives NULL.
+    # gives NULL (D54's listed exception `list_null_order`, #2163: the lift lists it under every
+    # semantics, so under `--semantics reference` the record counts as explained).
     Known("duckdb-R11", ("types/nested/list/list_comparison_stale_positions.test",), r" [<>]=? "),
     # `list_contains` of an empty list and a NULL needle: FALSE in DuckDB 2.0.1, NULL in the
     # model and the written plan (D54's listed exception).

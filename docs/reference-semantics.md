@@ -380,9 +380,14 @@ construct or lists it:
   on DuckDB 2.0.1 (NULL at 2.0.0); every other list gives NULL. The report lists
   each `list_contains` whose needle is not a literal, under every semantics: the plan
   gives NULL, and the SQL run natively on 2.0.1 gives FALSE.
+- `list_null_order`: an ordering comparison of lists (`<`, `<=`, `>`, `>=`, `greatest`, `least`)
+  is lexicographic, and a NULL element against a value makes it NULL here; DuckDB orders the NULL
+  last. `[1,2] < [1,NULL,3]` is NULL here and TRUE on DuckDB (R11, #2163). The report lists each
+  such comparison, under every semantics, unless every operand is a constant list without a NULL
+  element.
 
 The verdict is unchanged by the list. The list is empty for an Ibis transformation, and
-under `semantics="duckdb"` it holds only `list_contains`.
+under `semantics="duckdb"` it holds only `list_contains` and `list_null_order`.
 
 ## Aggregates
 

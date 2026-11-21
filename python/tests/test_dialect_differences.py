@@ -133,6 +133,29 @@ def test_the_report_lists_a_list_contains() -> None:
     assert Report.from_json(r.to_json()).dialect_differences == r.dialect_differences
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT l < CAST([1, NULL, 3] AS BIGINT[]) AS c FROM t",
+        "SELECT l >= l AS c FROM t",
+        "SELECT [1, 2] < [1, NULL, 3] AS c FROM t",
+        "SELECT greatest(l, CAST([1] AS BIGINT[])) AS c FROM t",
+    ],
+)
+def test_an_ordering_of_lists_that_may_hold_a_null_element_is_listed(sql: str) -> None:
+    # D54, ruling 232 (#2163): the plan gives NULL where a NULL element decides the order.
+    assert _found_lists(sql) == ["list_null_order"]
+    assert _found_lists(sql, "duckdb") == ["list_null_order"]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["SELECT [1, 2] < [1, 3] AS c FROM t", "SELECT l = l AS c FROM t", "SELECT x < 1 AS c FROM t"],
+)
+def test_other_comparisons_are_not_listed_as_list_orders(sql: str) -> None:
+    assert _found_lists(sql) == []
+
+
 def test_a_construct_is_listed_once() -> None:
     assert _found("SELECT corr(x, y) AS a, corr(x, y) AS b FROM t") == ["corr_degenerate"]
 
