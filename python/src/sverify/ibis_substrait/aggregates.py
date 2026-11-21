@@ -12,6 +12,7 @@ from typing import Any
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
+from sverify._unsupported import QUANTILE_OF_DECIMAL
 from sverify.ibis_substrait._base import Exprs, _sort_key
 from sverify.ibis_substrait._constructs import op_construct
 from sverify.plan_json import Json, ProducerUnsupported, Unsupported, call, decimal_literal
@@ -222,8 +223,16 @@ def quantile(x: Exprs, op: Any) -> Json:
         )
     t = op.arg.dtype
     cont = t.is_integer() or t.is_floating()
+    if t.is_decimal():
+        # No engine computes one value for it: DuckDB truncates a double
+        # interpolation, Spark and Polars return doubles (D68 is reserved).
+        raise ProducerUnsupported(
+            f"{type(op).__name__.lower()} of {t} {QUANTILE_OF_DECIMAL}; "
+            "cast the column to float64 first: x.cast('float64').quantile(q)",
+            construct=op_construct(op),
+        )
     if not (cont or t.is_string() or t.is_date()):
-        # DuckDB interpolates decimals and timestamps in their own types.
+        # DuckDB interpolates timestamps in their own type.
         raise ProducerUnsupported(
             f"{type(op).__name__.lower()} of {t} is not supported yet",
             construct=op_construct(op),

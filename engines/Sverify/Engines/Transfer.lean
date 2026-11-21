@@ -646,7 +646,4 @@ open Lean (Json toJson) in
 and option it meets, with the reference's behaviours there (`deps`). -/
 def readsJson (reads : List Read) : Json := Json.arr ((deps reads).map Dep.json).toArray
 
-/-- The dependency report of a contract's transformation, from `Rel.reads`. -/
-def Rel.dependsJson (r : Rel) : Lean.Json := readsJson r.reads
-
 end Substrait
