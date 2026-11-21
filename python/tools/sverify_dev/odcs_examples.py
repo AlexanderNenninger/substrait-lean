@@ -43,7 +43,7 @@ WAITS_ON: tuple[tuple[str, dict[str, Any]], ...] = (
     ("a relationship", {"issue": 1956}),
     ("logicalTypeOptions.pattern", {"issue": 1957}),
     ("is not supported; cast the column", {"issue": 1958}),
-    ("float32 is not supported", {"issue": 1908}),
+    ("sverify reads no binary values", {"issue": 1958}),
     ("logicalTypeOptions.format", {"design": "a format for text, which no row breaks"}),
     ("a SQL rule of another shape", {"design": "a template the contract's runner fills in"}),
     ("a rule for engine", {"design": "another tool's own rule language"}),

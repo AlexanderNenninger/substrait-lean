@@ -6,8 +6,8 @@
     "examples read": 42,
     "round trip no conditions": 8,
     "round trip not tried": 4,
-    "round trip refused": 5,
-    "round trip same": 95,
+    "round trip refused": 4,
+    "round trip same": 96,
     "unread": 22
   },
   "results": {
@@ -101,7 +101,7 @@
           ],
           "unread": [],
           "round_trip": {
-            "refused": "ConditionError: 1 condition(s) cannot be read: \"addressid\" IS NOT NULL: condition '\"addressid\" IS NOT NULL': column 'spatiallocation' of 't': type binary is not supported; cast the column to a supported type in the source query; only a column the query never reads is left out",
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"addressid\" IS NOT NULL: condition '\"addressid\" IS NOT NULL': column 'spatiallocation' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is lef",
             "issue": 1958
           }
         },
@@ -209,7 +209,7 @@
           ],
           "unread": [],
           "round_trip": {
-            "refused": "ConditionError: 1 condition(s) cannot be read: \"documentnode\" IS NOT NULL: condition '\"documentnode\" IS NOT NULL': column 'document' of 't': type binary is not supported; cast the column to a supported type in the source query; only a column the query never reads is left out",
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"documentnode\" IS NOT NULL: condition '\"documentnode\" IS NOT NULL': column 'document' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is left",
             "issue": 1958
           }
         },
@@ -303,7 +303,7 @@
           ],
           "unread": [],
           "round_trip": {
-            "refused": "ConditionError: 1 condition(s) cannot be read: \"productphotoid\" IS NOT NULL: condition '\"productphotoid\" IS NOT NULL': column 'thumbnailphoto' of 't': type binary is not supported; cast the column to a supported type in the source query; only a column the query never reads is left out",
+            "refused": "ConditionError: 1 condition(s) cannot be read: \"productphotoid\" IS NOT NULL: condition '\"productphotoid\" IS NOT NULL': column 'thumbnailphoto' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never rea",
             "issue": 1958
           }
         },
@@ -682,10 +682,7 @@
             "NOT COALESCE((DataValue <= 0 OR DataValue >= 500), FALSE)"
           ],
           "unread": [],
-          "round_trip": {
-            "refused": "ConditionError: 1 condition(s) cannot be read: NOT COALESCE((DataValue <= 0 OR DataValue >= 500), FALSE): condition 'NOT COALESCE((DataValue <= 0 OR DataValue >= 500), FALSE)': column 'DataValue' of 't': float32 is not supported; use float64; only a column the query never reads is left out",
-            "issue": 1908
-          }
+          "round_trip": "same"
         }
       }
     },
