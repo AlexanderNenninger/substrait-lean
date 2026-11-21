@@ -142,11 +142,18 @@ class SparkDialect(Dialect):
                 "Spark has no map for a timestamp with a time zone yet", ISSUE_1725
             )
         if kind not in _TYPES:
-            raise self.to_duckdb(f"spark has no {kind} type (TIME needs Spark 4.1)")
+            raise self._no_time()
         return _TYPES[kind]
 
     def time_of_day_lit(self, micros: int) -> str:
-        raise self.to_duckdb("spark has no tod type (TIME needs Spark 4.1)")
+        raise self._no_time()
+
+    def _no_time(self) -> Unsupported:
+        # `tod`, the one kind `_TYPES` lacks.
+        return self.to_duckdb(
+            "a time of day (TIME) on Spark: Spark 4.3 reads TIME only with "
+            "spark.sql.timeType.enabled on and refuses it by default (spark-time-type)"
+        )
 
     def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS STRING))"
