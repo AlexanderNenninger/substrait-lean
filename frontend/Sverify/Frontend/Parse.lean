@@ -2224,6 +2224,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if orNull then throw "TRY_CAST of a DECIMAL to an integer is not supported yet"
         return .un (.narrow bits) (.un (.dtrunc s₀) e)
       | .float => return .un (.dtof s₀) e
+      -- A decimal's text: its scale's digits, exact (D72, #346).
+      | .str => return .un (if p₀ == s₀ then .dtextFull else .dtext) e
       | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
     -- A duration (`ts - ts`) compared with an interval compares as
     -- microseconds; comparisons with intervals of days or months are refused
@@ -2260,11 +2262,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
     if target == .str && k == .int then return .un .itos e
-    -- A decimal's text: its scale's digits, exact (D72, #346).
+    -- DuckDB and Spark trim the fraction's trailing zeros and Polars prints six digits
+    -- (D72, ruling 244); a format that states the text is the same on every engine.
     if target == .str then
-      if let .dec p s := k then return .un (if p == s then .dtextFull else .dtext) e
-      -- DuckDB and Spark trim the fraction's trailing zeros and Polars prints six digits
-      -- (D72, ruling 244); a format that states the text is the same on every engine.
       if k == .time || k == .timeTz then
         throw ("casts of timestamps to strings are not supported: the engines print the fraction " ++
           "differently; write strftime with an explicit format, for example '%Y-%m-%d %H:%M:%S'")
