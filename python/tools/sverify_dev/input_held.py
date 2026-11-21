@@ -180,9 +180,8 @@ def profile_calls(engine: str, out: list, sampler: Sampler) -> None:
     view = incremental.IncrementalView
     for m in ("_delta", "_linear_change", "_touched_change", "_semi_change", "_diff"):
         profiled(view, m, f"IncrementalView.{m}", sampler, out)
-    profiled(incremental.DuckDBStore, "apply", "DuckDBStore.apply", sampler, out)
     for store in {type(store_for(engine))}:
-        for m in ("expanded", "kept", "has_negative", "merge", "negated"):
+        for m in ("expanded", "kept", "has_negative", "merge", "negated", "apply"):
             profiled(store, m, f"{store.__name__}.{m}", sampler, out)
 
 
