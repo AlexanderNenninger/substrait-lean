@@ -594,6 +594,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     obj [("cast", obj [("type", kindType (if inst then .timeTz else .time)),
       ("input", writeExpr cols (if inst then .time else .instant) a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | .un .dtext a | .un .dtextFull a =>
+    castTo (obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])])
+      (writeExpr cols (wkind cols a) a)
+  -- The decimal at one more digit of precision (D72); the argument as it is otherwise.
+  | .un .dwiden a => match (wkind cols a).toKind with
+    | .dec p s => castTo (decType (p + 1) s) (writeExpr cols (wkind cols a) a)
+    | _ => writeExpr cols (wkind cols a) a
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>
@@ -802,7 +809,8 @@ def _root_.Substrait.Expr.decimalOps : Expr → Bool
   | .lit _ | .field _ => false
   | .un f a =>
     (match f with
-      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => true
+      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ | .dtext
+      | .dtextFull | .dwiden => true
       | _ => false) ||
       a.decimalOps
   | .bin f a b =>

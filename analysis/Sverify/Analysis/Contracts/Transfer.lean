@@ -617,6 +617,8 @@ def UnFn.abs : UnFn → AVal → AVal
   | .dtof s, a => convAbs intOrDec (FloatCode.decConv s) a
   | .ftod s, a => ftodAbs s a
   | .itos, a => { null := a.nonNum .int, str := a.int.isSome }
+  | .dtext, a | .dtextFull, a => { null := a.nonNumP isDec, str := a.int.isSome }
+  | .dwiden, a => a
   | .widen, a => a
   | .atUtc _, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a

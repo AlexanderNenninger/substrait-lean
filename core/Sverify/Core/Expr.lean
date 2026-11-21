@@ -124,6 +124,16 @@ inductive UnFn where
   | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
+  /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, s)` with `s < p` (D72, #346): `decText` of its
+  unscaled integer at its scale, exact and total. -/
+  | dtext
+  /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, p)`. The reference's text is `dtext`'s (`0.500`);
+  DuckDB prints it without the integer part (`.500`, `Profile.duckdb`), and its lowering
+  widens the decimal first (`dwiden`). -/
+  | dtextFull
+  /-- A decimal of precision `p`, written at precision `p + 1`: the same value, as `widen` is for
+  a `FLOAT`. It marks where a written plan widens (D72). -/
+  | dwiden
   /-- `CAST(x AS DOUBLE)` of a `FLOAT` (fp32): the same value, which a double
   holds exactly; it marks where a 32-bit double becomes a 64-bit one (#208). -/
   | widen
@@ -410,6 +420,19 @@ unscaled value (`Parse.decimalCall` brings both to one scale first). -/
   | .int i | .dec _ i => some i
   | _ => none
 
+/-- The text of the decimal `i / 10 ^ s` (D72): `-` for a negative value, the integer part with
+at least one digit, then `.` and exactly `s` digits (none for `s = 0`). `omitZero` drops an
+integer part of `0` instead, as DuckDB prints a `DECIMAL(p, p)` (`.500`). -/
+def decText (omitZero : Bool) (s : Nat) (i : Int) : String :=
+  let sign := if i < 0 then "-" else ""
+  let a := i.natAbs
+  if s = 0 then sign ++ toString a
+  else
+    let whole := a / 10 ^ s
+    let frac := toString (a % 10 ^ s)
+    sign ++ (if omitZero && whole == 0 then "" else toString whole) ++ "." ++
+      "".pushn '0' (s - frac.length) ++ frac
+
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
   | .isNull, .null => .bool true
@@ -435,6 +458,8 @@ def UnFn.apply : UnFn → Value → Value
   | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
+  | .dtext, .dec s i | .dtextFull, .dec s i => .str (decText false s i)
+  | .dwiden, v => v
   | .widen, v => v
   | .atUtc _, v => v
   | .upper, .str s => .str (Text.upper s)

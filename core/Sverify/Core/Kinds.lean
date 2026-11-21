@@ -169,6 +169,8 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
     | .kind .other => some (.kind .other)
     | _ => none
   | .itos => need (t.okI Kind.isInt) (.kind .str)
+  | .dtext | .dtextFull => need (t.okI Kind.isIntOrDec) (.kind .str)
+  | .dwiden => need (t.okI Kind.isIntOrDec) t
   | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 => need (t.okK .str) (.kind .str)
   | .length | .ascii | .regexMatch _ => need (t.okK .str) (.kind .int)
@@ -348,7 +350,7 @@ theorem KT.has_join_right {a b : KT} {v : Value} (h : b.has v = true) : (a.join 
 has one kind; `other` for the rest. -/
 def UnFn.out : UnFn → Kind
   | .not | .isNull | .isNum _ => .bool
-  | .itos | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
+  | .itos | .dtext | .dtextFull | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 | .strftime _ => .str
   | .neg | .ftoi | .ftoiOrNull | .narrow _ | .narrowOrNull _ | .length | .ascii | .regexMatch _
   | .datePart _ | .dayPart _ | .epochUs | .dround _ | .dtrunc _ | .ftod _ | .cardinality => .int
@@ -357,7 +359,7 @@ def UnFn.out : UnFn → Kind
   | .addMonths _ true | .bucket _ _ | .asTime | .dateTime => .time
   | .timeOfDay => .tod
   | .decimal p s | .dkind p s => .dec p s
-  | .wrap _ | .widen | .atUtc _ | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _
+  | .wrap _ | .widen | .dwiden | .atUtc _ | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _
   | .flatten | .raise _ | .bbox _ | .approx _ => .other
 
 theorem UnFn.apply_out (f : UnFn) (v : Value) : (f.apply v).hasKind f.out = true := by
