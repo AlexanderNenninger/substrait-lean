@@ -47,7 +47,7 @@ class TestResult:
 @dataclass
 class Needed:
     """A test an input needs before sverify can prove anything of the model:
-    a precondition sverify inferred (`Report.needed`)."""
+    a precondition sverify inferred (`Report.needs`)."""
 
     on: str
     """The input, as `source('app', 'orders')` or `ref('stg_orders')`."""

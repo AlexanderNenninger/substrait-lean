@@ -188,10 +188,10 @@ class FlightSource(Source):
         table = pa.Table.from_batches([b for _, b in got]) if got else None
         cursor = {"seq": got[-1][0] if got else after, "floor": floor}
         if not deletes:
-            return Batch(table, cursor=cursor)
+            return Batch(table=table, cursor=cursor)
         empty = pa.Table.from_batches([], schema=deletes[0].schema)
         return Batch(
-            empty if table is None else table,
+            table=empty if table is None else table,
             cursor=cursor,
             kind="changes",
             deletes=pa.Table.from_batches(deletes),

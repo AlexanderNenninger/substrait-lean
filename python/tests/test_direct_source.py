@@ -36,7 +36,9 @@ class Direct:
         return self.n
 
     def snapshot(self, version: int | None = None) -> Snapshot:
-        return Snapshot(self.n if version is None else version, self.make(1, self.n), [])
+        return Snapshot(
+            version=self.n if version is None else version, table=self.make(1, self.n), facts=[]
+        )
 
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         end = self.n if until is None else until
