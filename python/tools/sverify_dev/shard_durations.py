@@ -5,12 +5,13 @@ Maintainer tooling (`sverify_dev`): not in the wheel.
 CI splits the `core` tests three ways and the `spark` tests two
 (`SVERIFY_SHARD`, `tests/_suite.py`), and oracle A's replay two ways
 (`--shard`, `sverify_dev.oracle`). Without a table, the tests go by a hash
-of their node id and the files round-robin, which leaves shards unequal. This reads the durations a run records,
-`$SVERIFY_TEST_TIMINGS` (one line per test phase) and `$SVERIFY_SLT_TIMINGS`
-(one line per replayed file, and the benchmarks shard 1 runs), and writes
-each item's shard: longest first, to the shard with the least so far. A test
-or file the table doesn't list keeps the old rule, so the table only needs
-refreshing when the shards drift apart.
+of their node id and the files round-robin, which leaves shards unequal.
+This reads the durations a run records, `$SVERIFY_TEST_TIMINGS` (one line
+per test phase) and `$SVERIFY_SLT_TIMINGS` (one line per replayed file, and
+the benchmarks shard 1 runs), and writes each item's shard: longest first,
+to the shard with the least so far. A test or file the table doesn't list
+keeps the old rule, so the table only needs refreshing when the shards
+drift apart.
 
     uv run python -m sverify_dev.shard_durations --tests t1.jsonl t2.jsonl t3.jsonl
     uv run python -m sverify_dev.shard_durations --spark s1.jsonl s2.jsonl
