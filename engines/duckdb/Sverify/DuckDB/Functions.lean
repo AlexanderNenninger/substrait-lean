@@ -144,12 +144,9 @@ around each operation, `TRUNC` before a cast to an integer, the exact cast to a
 double), not DuckDB's own decimal functions: those compensations are tested,
 and the decimal rows of `Profile.duckdb.obs` stay tracking #1985 (ruling 185). -/
 def Profile.duckdb (s : DuckDBSettings) : Profile where
-  un f v := match f, v with
-    -- A `DECIMAL(p, p)` prints without its integer part (`.500`; D72,
-    -- duckdb-cast-decimal-timestamp-text).
-    | .dtextFull, .dec sc i => .ok (.str (decText true sc i))
-    | f, .float x => (duckUn s f x).getD (Profile.reference.un f v)
-    | f, v => Profile.reference.un f v
+  un f v := match v with
+    | .float x => (duckUn s f x).getD (Profile.reference.un f v)
+    | _ => Profile.reference.un f v
   bin f v w := match v, w with
     | .float x, .float y =>
       if f.onFloats then (duckBin s f x y).getD (Profile.reference.bin f v w)

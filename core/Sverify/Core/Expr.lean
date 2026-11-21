@@ -127,9 +127,9 @@ inductive UnFn where
   /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, s)` with `s < p` (D72, #346): `decText` of its
   unscaled integer at its scale, exact and total. -/
   | dtext
-  /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, p)`. The reference's text is `dtext`'s (`0.500`);
-  DuckDB prints it without the integer part (`.500`, `Profile.duckdb`), and its lowering
-  widens the decimal first (`dwiden`). -/
+  /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, p)`: `dtext`'s text (`0.500`, `UnFn.apply_dtextFull`).
+  DuckDB's own cast prints it without the integer part (`.500`), so its only lowering is the
+  template that widens the decimal first (`dwiden`, ruling 245). -/
   | dtextFull
   /-- A decimal of precision `p`, written at precision `p + 1`: the same value, as `widen` is for
   a `FLOAT`. It marks where a written plan widens (D72). -/
@@ -525,6 +525,10 @@ def UnFn.apply : UnFn → Value → Value
   | .fit _ _, v => v
   | .bbox n, v => BlackBox.callScalar Boxes.Ambient.boxes n [v]
   | _, _ => .null
+
+/-- One definition of a decimal's text (ruling 245, E1): the text of a `DECIMAL(p, p)` is `dtext`'s. -/
+theorem UnFn.apply_dtextFull (v : Value) : UnFn.apply .dtextFull v = UnFn.apply .dtext v := by
+  cases v <;> rfl
 
 /-- D52: the mark changes no value. -/
 @[simp] theorem UnFn.apply_approx (k : Nat) (v : Value) : UnFn.apply (.approx k) v = v := rfl
