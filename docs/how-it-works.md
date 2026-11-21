@@ -21,7 +21,7 @@ lake build                                                  # proofs + CLI
 tests/run.sh                                                # golden tests for the CLI
 ```
 
-The core package depends on Lean core alone, so the build takes seconds. Mathlib is used only by the separate [`float-bounds/`](float-bounds.md) project.
+The core package depends on Lean core alone. Mathlib is used only by the separate [`float-bounds/`](float-bounds.md) project.
 
 ## Checking real plans
 

@@ -591,7 +591,7 @@ def test_github_annotations(tmp_path, capsys):
 
 def test_sarif(tmp_path, capsys):
     path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
-    code, out = run(capsys, "check", str(path), "--output-format", "sarif")
+    code, out = run(capsys, "check", str(path), "--format", "sarif")
     assert code == 1
     log = json.loads(out)
     assert log["version"] == "2.1.0"

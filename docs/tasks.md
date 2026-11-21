@@ -693,8 +693,9 @@ the profile), sverify's version and a hash of the checker binary, so a
 change to any of them proves again
 ([test_proof_cache.py](../python/tests/test_proof_cache.py)). The cache is
 in `SVERIFY_CACHE_DIR`, else `$XDG_CACHE_HOME/sverify`, else
-`~/.cache/sverify`; processes share it, and `SVERIFY_CACHE=off` turns it
-off. Within a Python process or a command, one checker process answers
+`~/.cache/sverify`; processes share it. `SVERIFY_CACHE_DIR` moves the cache
+and `SVERIFY_CACHE=off` (or `0`, `false`, `no`) turns it off; the two are
+independent, and `off` wins when both are set. Within a Python process or a command, one checker process answers
 every request. A request that a time budget or an interrupt stops ends that
 process, and the next request starts another.
 
@@ -714,7 +715,9 @@ sverify refresh pipelines/orders.py:paid     # run a node and report what change
 sverify explain may_be_false                 # what a [code] of check's output means
 ```
 
-`check` imports the file without running it. Every contracted transform
+`check` imports the file without running it, so a pull request from a fork is
+untrusted code under `pull_request_target`; use `pull_request` for it, or
+check out only the base branch. Every contracted transform
 the file applies is proved, a node's on its sources' schemas, and a proof
 that fails is reported where a call would raise, so one unproved node does
 not hide the next. A `refresh()` in the file belongs under
@@ -760,7 +763,7 @@ conditions is no drift, and a changed plan or profile is a `plan_changed`
 note ([test_drift.py](../python/tests/test_drift.py)). The preconditions a
 contract added are not compared: the sink's record does not store them.
 
-`--format` (or `--output-format`) chooses the output:
+`--format` chooses the output:
 
 - `text`, the default, as above;
 - `json` (`--json` for short), one document for tools in the format of
