@@ -521,6 +521,7 @@ Every field but `engine` is optional:
 | `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
 | `run_tables` | runs a written plan over Arrow tables by name: `run_tables(plan_json, tables, *, guard_free=False, finite=True)`; `sverify.engines.run_sharded` runs its shards with it |
 | `guard_free_theorem` | the theorem that covers `run_tables(..., guard_free=True)`, the run without the checks a `guard_free` contract report discharged |
+| `sql` | `SqlFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
 | `fallbacks` | the nodes of a written plan the engine runs outside its chosen executor (Polars's in-memory nodes of a streaming plan), which a route records and `streaming="require"` refuses |
 
 Entries for one engine are merged field by field, so one package can add a
