@@ -1,0 +1,18 @@
+{
+  "id": "F187",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D67 signed: opaque columns as a new Kind.opaque with no new Value; the kind checker refuses every use but carrying (and IS NULL), lowerings write plain column references, facts first.",
+  "issues": [
+    1918,
+    1919,
+    1958
+  ],
+  "amends": [
+    "F186"
+  ],
+  "source": "fable-ruling-187-opaque-columns.md",
+  "note": "Narrower form of option A'. Answers ruling 186's B2 (unread columns pruned, carried ones opaque); 186's B and B1 stand. D65, D66 stay reserved; next free D68. Ruling 192 records D67 in 1.0 after #1968."
+}

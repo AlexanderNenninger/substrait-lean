@@ -1,0 +1,18 @@
+{
+  "id": "F97",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D53: a UTC-zoned timestamp is an instant (Kind.timeTz); the reference computes with it where no zone is read and refuses calendar functions, the mix with naive timestamps and other zones; written back as an instant. Options A and B not built.",
+  "issues": [
+    1485,
+    1725
+  ],
+  "amended_by": [
+    "F101",
+    "F99"
+  ],
+  "source": "fable-ruling-utc-timestamps.md",
+  "note": "Assigns D53. Z3 replaced by F99's Z3a-Z3h; Z4's 'needs no new function' corrected by F101 (D53's last sentence reworded)."
+}

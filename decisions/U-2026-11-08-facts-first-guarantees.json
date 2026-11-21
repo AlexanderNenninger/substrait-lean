@@ -1,0 +1,9 @@
+{
+  "id": "U-2026-11-08-facts-first-guarantees",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Engine guarantees follow the engine's known behaviour, read from its source and recorded as facts, rather than assuming it cannot match the reference.",
+  "source": "memory:no-python-in-engine-paths.md"
+}

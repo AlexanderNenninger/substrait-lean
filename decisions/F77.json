@@ -1,0 +1,20 @@
+{
+  "id": "F77",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "DuckDB, Spark and Polars run D50's lifted plan on recorded CASE-laziness facts (Polars with CSE off); a shape or engine without such a fact refuses; Snowflake per its private facts. Two Polars shapes (aggregate FILTER, window) get tests.",
+  "prs": [
+    1681
+  ],
+  "supersedes": [
+    "F76.R4"
+  ],
+  "amends": [
+    "D50",
+    "F76"
+  ],
+  "source": "fable-ruling-1681-engine-probes.md",
+  "note": "Replaces R4 and the probe bullet of R5 of ruling 76; narrows step D50-c; rewrites D50's engine sentence (P3)."
+}

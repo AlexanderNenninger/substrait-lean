@@ -1,0 +1,13 @@
+{
+  "id": "U-2026-11-19-engine-profiles-pending",
+  "date": "2026-11-19",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Engine profiles that are not yet stated are marked as pending before 1.0, so an engine's requests report pending and not the reference's report under the engine's name.",
+  "issues": [
+    1443
+  ],
+  "source": "fable-ruling-143-1443-registry.md",
+  "note": "Relayed in ruling 143 ('the user ruled \"mark as pending\" for engine profiles before 1.0'); the date of the user's ruling is not given, file date used."
+}

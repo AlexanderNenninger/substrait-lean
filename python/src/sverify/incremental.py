@@ -87,6 +87,7 @@ from sverify._weighted import (
     inserted_count,
     matching,
     missing,
+    negated,
     negative,
     positive,
     rows_of,
@@ -106,6 +107,7 @@ from sverify.contracts import (
     References,
     TableCondition,
     Unique,
+    _mentioned_names,
     discharge,
     label,
     register_facts,
@@ -131,8 +133,8 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     to_arrow,
     written_plan,
 )
+from sverify.ibis_substrait.prune import mentioning
 from sverify.report import refuse_schema
-from sverify_duckdb import DuckDBStore
 
 Row = tuple
 
@@ -937,8 +939,8 @@ class RefreshReport:
     """For each window view maintained by touched frames (`sverify._touched`):
     how many output rows near the change were recomputed
     (`TouchedFrames.framed_batch`)."""
-    diffed: list[str] = field(default_factory=list)
-    """The views the batch recomputed in full and diffed."""
+    diffed: dict[str, str] = field(default_factory=dict)
+    """The views the batch recomputed in full and diffed, each with why."""
     quarantine: list[QuarantineReport] = field(default_factory=list)
     """For each source with rows set aside (`on_violation="quarantine"`,
     #184): what the batch set aside, released and deleted, and how many
@@ -967,7 +969,7 @@ class RefreshReport:
         lines += [
             f"view {v}: {n} row(s) in touched frames recomputed" for v, n in self.framed.items()
         ]
-        lines += [f"view {v}: recomputed and diffed" for v in self.diffed]
+        lines += [f"view {v}: recomputed and diffed ({why})" for v, why in self.diffed.items()]
         lines += [
             f"quarantine: {q}" for q in self.quarantine if q.quarantined or q.released or q.deleted
         ]
@@ -1035,12 +1037,17 @@ class IncrementalView:
         self.record_changes: dict[str, tuple[str | None, str | None]] = {}
         """What a resumed record says differently from this run: by field, the
         record's value and this run's (`Contract.engine` …)."""
-        self._plan(query, standalone=pipeline is None)
+        # The plans of the view's strategies read the columns the view and its
+        # conditions mention, as `verify` writes them (`contracts._verify_once`).
+        conditions = [*(contract.guarantees + contract.checked)] if contract else []
+        names = _mentioned_names(query, contract.requires if contract else {}, conditions)
+        with mentioning(names):
+            self._plan(query, standalone=pipeline is None)
         self.requires: dict[str, list[Condition]] = contract.requires if contract else {}
         self.guarantees: list[Condition] = contract.guarantees if contract else []
         self.not_null: list[str] = contract.not_null if contract else []
         """The columns the view's proved report shows never NULL, in every
-        state (`Report.not_null`)."""
+        state (not nullable in `Report.output`)."""
         self.checked: list[Condition] = contract.checked if contract else []
         """Postconditions that were not proved, checked on every state
         instead (`on_unproved="check"`): on the first in full, then on the
@@ -1166,16 +1173,25 @@ class IncrementalView:
 
     @property
     def strategy(self) -> str:
-        """How a batch changes the view: "delta rules" (also for `COUNT`,
-        `SUM` and `DISTINCT` kept from a state per group), "touched groups"
-        (the groups or partitions the batch touches, recomputed), "touched
-        frames" (window rows near the change, recomputed) or "recompute and
-        diff"."""
+        """How a batch changes the view, one of "delta rules", "state per
+        group" (`COUNT`, `SUM`, `MIN`, `MAX`, `DISTINCT` or a semi join kept
+        from a state per group), "touched groups" (the groups or partitions
+        the batch touches, recomputed), "touched frames" (window rows near
+        the change, recomputed) or "recompute and diff"."""
         if self.fallback is None:
-            return "delta rules"
+            return "state per group" if self.linear or self.semi else "delta rules"
         if self.touched is None:
             return "recompute and diff"
         return "touched frames" if self.touched.framed is not None else "touched groups"
+
+    @property
+    def cause(self) -> str | None:
+        """Why the view has no delta rules, or None where it has them (or
+        a state per group). For a recompute, the operator that causes it."""
+        if self.fallback is None:
+            return None
+        off = f"; no touched groups: {self.touched_off}" if self.touched_off else ""
+        return f"{self.fallback}{off}" if self.touched is None else self.fallback
 
     @property
     def recomputed(self) -> bool:
@@ -1740,6 +1756,10 @@ class Pipeline:
         seen, keyed `(t, col)`: the watermark is it minus the lateness."""
         self.on_violation: dict[str, Policy | None] = {}
         """Each source's own `on_violation` (#184)."""
+        self.inputs: dict[str, tuple[State, Merger]] = {}
+        """Each sealed Arrow-fed source's rows as the store of the pipeline's
+        engine holds them (a weighted state, and what adds to it): the
+        connection holds a view of it, and no Arrow table (`seal`)."""
         self.policies: dict[str, dict[str, Policy]] = {}
         """What a batch that breaks each precondition does, by table and
         label: the strictest of the views' and the source's settings."""
@@ -1773,6 +1793,26 @@ class Pipeline:
         self.on_violation[name] = _quarantine.check_policy(getattr(source, "on_violation", None))
         return self.con.table(name)
 
+    def seal(self) -> None:
+        """Move the rows of every Arrow-fed source into the store of the
+        views' engine (#1329, A1): the state that changes are added to and
+        deletes are checked against, held where the engine keeps it. The
+        connection then holds the store's rows, not an Arrow table. A source
+        already sealed, held as files (`Scan`) or without a view to read it
+        stays as it is."""
+        if not self._views:
+            return
+        store = self._views[0].store
+        for t in self.sources:
+            table = self.con.get(t)
+            if t in self.inputs or not isinstance(table, pa.Table):
+                continue
+            table = arrow_of(table)  # instants in UTC, as the store reads them
+            schema = pa.schema([*table.schema, pa.field(WEIGHT, pa.int64())])
+            state = store.kept(weighted(table, 1))
+            self.inputs[t] = (state, Merger(self.con, schema, store))
+            put_table(self.con, t, store.expanded(state))
+
     def _native(self, source: VersionedSource, version: int | None) -> ScanSnapshot | None:
         """The snapshot of `source` as files the engine reads itself, where
         the plans run on a local engine and the source can give one; else None."""
@@ -1782,16 +1822,25 @@ class Pipeline:
         return native(version)
 
     def view(
-        self, name: str, query: ir.Table | str, *, resume: Stored | None = None
+        self,
+        name: str,
+        query: ir.Table | str,
+        *,
+        resume: Stored | None = None,
+        engine: Engine | None = None,
     ) -> IncrementalView:
         """Add a view. With `resume` (what a sink stored, e.g.
         `DeltaSource(uri).stored()`), its first state is the stored one
         instead of a computation, if the plan is the same and the pipeline
         holds the view's sources at the stored versions (`pipe.source(...,
-        version=stored.sources[name])`); `view.resumed` says which."""
+        version=stored.sources[name])`); `view.resumed` says which. With
+        `engine`, the view's plans run there and its state is kept in that
+        engine's store (`store_for`), else on the pipeline's engine."""
         if name in self.views or name in self.sources:
             raise ValueError(f"the pipeline already has a view {name!r}")
-        return IncrementalView(self.con, query, name, self.engine, pipeline=self, resume=resume)
+        return IncrementalView(
+            self.con, query, name, engine or self.engine, pipeline=self, resume=resume
+        )
 
     @property
     def views(self) -> dict[str, IncrementalView]:
@@ -1887,6 +1936,7 @@ class Pipeline:
         )
         self._judge(t, list(q.entries.values()))
         put_table(self.con, t, kept)
+        self.inputs.pop(t, None)  # sealed again at the next refresh
         # Statistics of the files describe the source's rows, not the kept ones.
         register_facts(self.con, t, None)
         self.quarantined[t] = q
@@ -2153,6 +2203,7 @@ class Pipeline:
         With `retire` (the default), the views that retire time buckets drop
         the final ones afterwards (`retire`); a node passes False and retires
         once its sink has written."""
+        self.seal()
         changes: dict[str, pa.Table] = {}
         facts: dict[str, list[Fact]] = {}
         versions: dict[str, int] = {}
@@ -2171,12 +2222,14 @@ class Pipeline:
                 if audit and hasattr(src, "_reread"):
                     # A source that reads its table itself may have missed
                     # rows its batches assume away: read it again in full.
-                    current = _as_arrow(self.con.get(t))
-                    _audit_source(t, current, src._reread(start), start, start)
+                    reread = src._reread(start)
+                    _audit_source(t, self._diff(t, reread), start, start)
                 report.append(SourceRefresh(t, start, start, "unchanged"))
                 continue
             schema = self.con.schema(t)
-            evolved = SchemaChange.of(schema, batch.schema or schema)
+            evolved = SchemaChange.of(
+                instants_schema(schema), instants_schema(batch.schema or schema)
+            )
             note = schema_note = ""
             if evolved:
                 try:
@@ -2226,7 +2279,7 @@ class Pipeline:
                     reason = f"{batch.fallback}; " if batch.fallback else ""
                     detail = f"{reason}the files of v{start} are gone; Δ = snapshot v{batch.end}"
                 else:
-                    ch = snapshot_diff(self._with_quarantined(t, current), new)
+                    ch = self._diff(t, new)
                     if native is not None:
                         whole[t] = native.scan
                     detail = f"{batch.fallback}; Δ = snapshot v{batch.end} − state"
@@ -2240,13 +2293,12 @@ class Pipeline:
                         raise ValueError(f"cannot delete {row!r} from {t}: no such row")
                     whole[t] = native.scan
             if audit and batch.changes is not None and not gone:
-                got = _apply_change(self._with_quarantined(t, current), ch, t)
                 # A source that reads its table itself reads it again in full.
                 reread = getattr(src, "_reread", None)
                 want = reread(batch.end) if reread else src.snapshot(batch.end).table
                 if evolved:
                     want = _conform(want, schema)
-                _audit_source(t, got, want, start, batch.end)
+                _audit_source(t, self._diff(t, want, applying=ch), start, batch.end)
             counts = inserted_count(ch), deleted_count(ch)
             if self._quarantining(t):
                 moves = self._split_batch(t, ch, batch.end)
@@ -2314,6 +2366,7 @@ class Pipeline:
             try:
                 for t, (snap, _) in rebuild.items():
                     put_table(self.con, t, snap)
+                    self.inputs.pop(t, None)
                 changed = set(rebuild)
                 for v in replan:
                     v._replan(changed)
@@ -2342,6 +2395,32 @@ class Pipeline:
             diffed=pending.diffed,
             quarantine=[_quarantine.report(t, m) for t, m in moved.items()],
         )
+
+    def _diff(self, t: str, new: pa.Table, applying: pa.Table | None = None) -> pa.Table:
+        """The change turning the rows of source `t` (with `applying`, a change,
+        added) into `new`, as a weighted table. A sealed source's rows are in the
+        store: the store's merge adds `new` to their negation on the engine, and
+        only the change comes back (#1329, C3 and C4); one held as files, or set
+        aside by a quarantine, is read as Arrow."""
+        if t not in self.inputs:
+            current = self._with_quarantined(t, self.con.get(t))
+            if applying is not None:
+                current = _apply_change(current, applying, t)
+            return snapshot_diff(current, new)
+        state, merge = self.inputs[t]
+        store = self._views[0].store
+        if applying is not None:
+            state = merge(state, store.kept(applying.cast(merge.schema)), keep=True)
+        q = self.quarantined.get(t)
+        aside = q is not None and bool(q.entries)
+        diff = merge(
+            store.kept(weighted(arrow_of(new), 1).cast(merge.schema)),
+            store.negated(state),
+            keep=aside,
+        )
+        if q is not None and aside:
+            diff = merge(diff, store.kept(negated(q.weighted()).cast(merge.schema)))
+        return diff
 
     def _with_quarantined(self, t: str, current: pa.Table | Native) -> pa.Table:
         """The source's rows as the pipeline holds them: the base table's,
@@ -2386,13 +2465,13 @@ class Pipeline:
             saved["_log"] = list(v._log)
             if isinstance(v.state, Resident):
                 # A refresh updates the state in place: keep a copy.
-                saved["state"] = DuckDBStore().copy(v.state)
+                saved["state"] = v.store.copy(v.state)
                 tables[v.name] = v.store.expanded(saved["state"])
             views[v.name] = saved
-        return tables, views, dict(self.versions), dict(self.latest)
+        return tables, views, dict(self.versions), dict(self.latest), dict(self.inputs)
 
     def _restore(self, backup: tuple) -> None:
-        tables, views, versions, latest = backup
+        tables, views, versions, latest, inputs = backup
         for t, table in tables.items():
             if self.con.get(t) is not table:
                 put_table(self.con, t, table)
@@ -2400,7 +2479,7 @@ class Pipeline:
             state = views[v.name]
             v.__dict__.clear()
             v.__dict__.update(state)
-        self.versions, self.latest = versions, latest
+        self.versions, self.latest, self.inputs = versions, latest, inputs
 
     def _audit(self, pending: _Commit) -> None:
         """Compare every view's new state with its recomputation on the new
@@ -2455,15 +2534,26 @@ class Pipeline:
         caller checked that the change's deletes exist.
 
         A view whose state DuckDB holds is updated in place at the commit,
-        at the cost of its change (`DuckDBStore.apply`), unless its new
+        at the cost of its change (`Store.apply`), unless its new
         contents are read before then: by a view recomputed on the new
         tables, or by the `audit`. Then its new state is a full merge."""
         self._check_changed(changes)
         # New base tables first: this also checks that every delete exists.
         new_tables: dict[str, pa.Table | Native] = {}
+        new_inputs: dict[str, tuple[State, Merger]] = {}
         for t, ch in changes.items():
             given = (whole or {}).get(t)
-            if given is None:
+            if given is None and t in self.inputs:
+                # A sealed source: the store adds the change to its rows,
+                # and a delete that finds no row leaves a negative weight.
+                state, merge = self.inputs[t]
+                store = self._views[0].store
+                new = merge(state, store.kept(ch.cast(merge.schema)), keep=True)
+                if store.has_negative(new):
+                    raise ValueError(f"cannot delete rows from {t}: no such row")
+                new_inputs[t] = (new, merge)
+                given = store.expanded(new)
+            elif given is None:
                 given = _apply_change(_as_arrow(self.con.get(t)), ch, t)
             new_tables[t] = given
         arrived, latest = self._arrivals(changes)
@@ -2479,7 +2569,7 @@ class Pipeline:
         read_new: set[str] = set()
         touched: dict[str, int] = {}
         framed: dict[str, int] = {}
-        diffed: list[str] = []
+        diffed: dict[str, str] = {}
         groups: dict[str, pa.Table] = {}
         for v in self._views:
             if v.recomputed or rerun & set(v.tables):
@@ -2496,7 +2586,7 @@ class Pipeline:
             rerun = v.recomputed or any(t in stale for t in v.tables)
             if rerun:
                 stale.add(v.name)
-                diffed.append(v.name)
+                diffed[v.name] = v.cause or "it reads a view that is recomputed"
                 delta = v._diff(new_tables)
                 if (g := v._groups_on(new_tables)) is not None:
                     groups[v.name] = g
@@ -2511,7 +2601,7 @@ class Pipeline:
             elif v.touched is not None:
                 delta, n, how = v._touched_change(deltas, new_tables)
                 if how == "diff":
-                    diffed.append(v.name)
+                    diffed[v.name] = v.cause or "its touched groups fall back to a diff"
                 else:
                     (framed if how == "frames" else touched)[v.name] = n
             else:
@@ -2544,6 +2634,7 @@ class Pipeline:
             found,
             in_place,
             changed,
+            inputs=new_inputs,
             before=before,
             latest=latest,
             checked=checked,
@@ -2567,6 +2658,7 @@ class Pipeline:
         touched = [*pending.changes, *pending.in_place, *pending.states]
         tables = {t: self.con.get(t) for t in touched}
         versions, latest = dict(self.versions), dict(self.latest)
+        inputs = dict(self.inputs)
         names = {*pending.in_place, *pending.states, *pending.deltas, *pending.groups}
         saved = {
             n: (views[n].state, views[n].serial, views[n]._log, views[n].groups) for n in names
@@ -2574,6 +2666,7 @@ class Pipeline:
         try:
             for t in pending.changes:
                 put_table(self.con, t, pending.new_tables[t])
+            self.inputs.update(pending.inputs)
             self.versions.update(pending.versions)
             self.latest.update(pending.latest)
             for name, state in pending.states.items():
@@ -2594,12 +2687,14 @@ class Pipeline:
                     state = views[name].state
                     assert isinstance(state, Resident)
                     updates.append((state, pending.deltas[name], merged))
+                # Every state in place is a `Resident`, so one store holds them all.
+                store = views[next(iter(pending.in_place))].store
                 try:
-                    DuckDBStore().apply(updates)
+                    store.apply(updates)
                 except BaseException:
                     # Committed or not, the rows the change touches go back
                     # to the ones `_prepare` read.
-                    DuckDBStore().apply(
+                    store.apply(
                         [
                             (s, d, pending.before[n])
                             for n, (s, d, _) in zip(pending.in_place, updates, strict=True)
@@ -2609,7 +2704,7 @@ class Pipeline:
         except BaseException:
             for t, table in tables.items():
                 put_table(self.con, t, table)
-            self.versions, self.latest = versions, latest
+            self.versions, self.latest, self.inputs = versions, latest, inputs
             for n, (state, serial, log, groups) in saved.items():
                 v = views[n]
                 v.state, v.serial, v._log, v.groups = state, serial, log, groups
@@ -2642,16 +2737,18 @@ class _Commit:
     """The groups each view maintained by touched groups recomputed."""
     framed: dict[str, int] = field(default_factory=dict)
     """The output rows each framed window view recomputed (tested only)."""
-    diffed: list[str] = field(default_factory=list)
-    """The views recomputed and diffed."""
+    diffed: dict[str, str] = field(default_factory=dict)
+    """The views recomputed and diffed, each with why."""
     groups: dict[str, pa.Table] = field(default_factory=dict)
     """The new state per group of each view kept from one (`sverify._linear`)."""
+    inputs: dict[str, tuple[Any, Any]] = field(default_factory=dict)
+    """The new rows of each sealed source, in the store (`Pipeline.seal`)."""
 
 
-def _audit_source(t: str, got: pa.Table, want: pa.Table, start: int, end: int) -> None:
-    """Raise unless `got` (the state after the change) has the rows of
-    `want` (the source's snapshot at `end`)."""
-    if snapshot_diff(got, want).num_rows:
+def _audit_source(t: str, difference: pa.Table, start: int, end: int) -> None:
+    """Raise unless `difference` (the change from the state after the change to
+    the source's snapshot at `end`) is empty."""
+    if difference.num_rows:
         if start == end:
             raise AuditError(
                 f"{t}@v{start} differs from the table read again in full: its batches missed "

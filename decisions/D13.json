@@ -1,0 +1,13 @@
+{
+  "id": "D13",
+  "date": "2026-11-04",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "verify and run choose the route by default (native, translated, transfer check), name it in the result, and semantics= or an explicit route overrides.",
+  "prs": [
+    562,
+    586
+  ],
+  "note": "Amended 2026-11-07: a fourth route, recheck (#586)."
+}

@@ -358,8 +358,8 @@ part of a condition that always runs may run on the rows of the join inputs
 it reads alone, even when another input is empty, as DuckDB's filter pushdown
 and hash joins do (#1484). These assumptions are stated in
 [`Safety.lean`](../analysis/Sverify/Analysis/Safety.lean)'s header, and
-`Rel.mayIssues_sound_all` proves that every issue they allow on every order of
-the ties is reported.
+the checker proves that every issue they allow on every order of the ties is
+reported ([proved-theorems.md](proved-theorems.md#runtime-errors)).
 
 ## Modelling choices
 

@@ -24,7 +24,7 @@ def test_a_filtered_list_keeps_its_length_bound():
         ensures=[_.tags.length() <= 5, _.tags.length() >= 0],
     )
     assert report.verdict == sv.Verdict.PROVED, report.unproved
-    assert report.facts["tags"] == "a list (length ≤ 5; of a string or NULL)"
+    assert str(report.facts["tags"]) == "a list (length ≤ 5; of a string or NULL)"
 
 
 def test_elements_are_not_null_after_fill_null():
@@ -75,3 +75,21 @@ def test_a_position_in_a_list_depends_on_the_order_of_its_elements():
     assert not exact.ensures[0].ignores
     sized = sv.verify(expr, requires={"t": [_.xs.notnull()]}, ensures=[_.xs.length() >= 0])
     assert sized.verdict == sv.Verdict.PROVED, sized.unproved
+
+
+def test_unnest_keep_empty_gives_an_empty_or_null_list_one_row_of_null():
+    # #1917: a project replaces such a list by `[NULL]` before the unnest.
+    from sverify.engine import connect
+
+    t = ibis.table({"id": "int64", "xs": "array<int64>", "ss": "array<string>"}, name="t")
+    rows = [(1, [1, 2], ["a"]), (2, [], []), (3, None, None), (4, [None, 5], [None])]
+    con = connect()
+    con.create("t", t.schema(), rows)
+    for col, ids in (("xs", [1, 1, 2, 3, 4, 4]), ("ss", [1, 2, 3, 4])):
+        report = sv.verify(t.unnest(col, keep_empty=True))
+        duck = report.run(con, engine="duckdb").to_pylist()
+        assert {r["id"]: r[col] for r in duck if r["id"] in (2, 3)} == {2: None, 3: None}
+        assert sorted(r["id"] for r in duck) == ids
+        assert sorted(map(str, report.run(con, engine="polars").to_pylist())) == sorted(
+            map(str, duck)
+        )

@@ -252,7 +252,7 @@ def test_rollup_contract_is_proved():
         on_inferred="ignore",  # the truncated ts's bound
     )
     assert report.verdict == sv.Verdict.PROVED, report.details()
-    assert report.facts["mx"] == "an integer in [0, 1000]"
+    assert str(report.facts["mx"]) == "an integer in [0, 1000]"
     # The reference rounds the exact mean once (D25), so it stays within the
     # inputs' bound (#1160). Its relation to the group's own max is not tracked.
     report = sv.verify(
@@ -316,7 +316,7 @@ def test_a_sum_of_a_flag_fits_by_the_row_bound():
     t = jobs.group_by("workflow").aggregate(passed=flag.sum())
     for report in (sv.verify(t), sv.verify(t, on_inferred="off")):
         assert report.verdict == sv.Verdict.PROVED, report.details()
-        assert not report.issues and not report.assumed and not report.warnings
+        assert not report.issues and not report.assumed
         assert not any(h.startswith("SUM of") for h in report._hints)
     sign = (jobs.conclusion == "success").ifelse(1, -1)
     report = sv.verify(jobs.group_by("workflow").aggregate(net=sign.sum()), on_inferred="off")
@@ -403,9 +403,9 @@ def test_aggregate_postconditions_are_proved():
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS, report.details()
     # Nothing bounds a group's rows (#219): the SUM is assumed to fit.
     assert [i.kind for i in report.assumed] == ["SUM overflow"]
-    assert report.facts["n"] == "an integer ≥ 1"
+    assert str(report.facts["n"]) == "an integer ≥ 1"
     # `amount >= 0` rules out NULL, so each group has a maximum (#372).
-    assert report.facts["top"] == "an integer ≥ 0"
+    assert str(report.facts["top"]) == "an integer ≥ 0"
 
 
 def test_sum_has_no_upper_bound():
@@ -551,9 +551,9 @@ def test_variance_meaning():
         for g, e in zip(got, expected, strict=True):
             assert all(near(x, y) for x, y in zip(g, e, strict=True)), (engine, g, e)
     report = sv.verify(var_expr())
-    assert all(report.facts[c] == "a double ≥ 0.0 or NULL" for c in ("vs", "vp", "ss", "sp")), (
-        report.facts
-    )
+    assert all(
+        str(report.facts[c]) == "a double ≥ 0.0 or NULL" for c in ("vs", "vp", "ss", "sp")
+    ), report.facts
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
@@ -1040,3 +1040,33 @@ def test_quantiles_are_refused_on_other_engines(agg):
 def test_quantile_refusals_say_what(agg, message):
     with pytest.raises(Exception, match=message):
         to_substrait_json(Q.group_by("k").aggregate(v=agg))
+
+
+DEC = ibis.table({"k": "int64", "d": "decimal(10, 2)"}, name="t")
+
+
+def test_quantile_of_a_decimal_is_refused_with_the_way_out():
+    """No engine gives one value for it (#1921): the message names the cast."""
+    for agg in (DEC.d.median(), DEC.d.quantile(0.5)):
+        with pytest.raises(
+            Exception, match=r"no engine gives one value.*cast the column to float64"
+        ):
+            to_substrait_json(DEC.group_by("k").aggregate(q=agg))
+
+
+def test_quantile_of_a_decimal_cast_to_float64_verifies_and_runs():
+    from decimal import Decimal
+
+    expr = DEC.group_by("k").aggregate(q=DEC.d.cast("float64").quantile(0.5))
+    report = sv.verify(
+        expr,
+        requires={"t": [_.d >= 0, _.d <= 10]},
+        ensures=[_.q.isnull() | ((_.q >= 0.0) & (_.q <= 10.0))],
+    )
+    assert report.verdict == sv.Verdict.PROVED, report.details()
+    con = connect()
+    con.create(
+        "t", DEC.schema(), [(1, Decimal("1.25")), (1, Decimal("2.50")), (1, Decimal("4.75"))]
+    )
+    got = run_plan(con, written_plan(to_substrait_json(expr)), "duckdb").to_pylist()
+    assert got == [{"k": 1, "q": 2.5}]

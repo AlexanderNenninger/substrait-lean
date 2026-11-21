@@ -174,6 +174,38 @@ def _(mo):
     out of reach of the analysis (the list at the end of this section says
     what it tracks), so a refusal means "not proved".
 
+    The refusal's "would hold with" line is the other half of the answer: a
+    precondition on one input column under which Lean proves the promise.
+    Sverify proves it before suggesting it. Each postcondition in
+    `report.ensures` carries these as `needs`, ready for `requires=`, so we
+    can take the suggestion and verify again:
+    """)
+    return
+
+
+@app.cell
+def _(mo, orders, sv):
+    from ibis import _
+
+    _plus_one = orders.select(orders.id, total=orders.amount + 1)
+    _requires = [_.amount >= 0, _.amount < 1_000_000_000]
+    _first = sv.verify(_plus_one, requires={"orders": _requires}, ensures=[_.total > 5])
+    [_suggested] = _first.ensures[0].needs
+    _fixed = sv.verify(
+        _plus_one, requires={"orders": [*_requires, _suggested.condition]}, ensures=[_.total > 5]
+    )
+    assert _first.verdict == sv.Verdict.UNPROVED and _fixed.verdict == sv.Verdict.PROVED
+    mo.md(f"Suggested: `{_suggested.code}`. With it stated, the verdict is `{_fixed.verdict}`.")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Stating it moves the question upstream, where it belongs: each run now
+    checks `amount >= 5` on the data, and an order of 3 is refused at the
+    input, before it can break the promise at the output.
+
     ## Contracts on real data
 
     So far the table had no data, and the proof covered every possible

@@ -116,6 +116,7 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
     it cannot be."""
     from sverify.engine import NotIncrementalError, delta_plans, plan_json, written_plan
     from sverify.ibis_substrait.core import DecimalDiv
+    from sverify.ibis_substrait.prune import narrowed
 
     if isinstance(query, str):
         return SQL
@@ -125,7 +126,7 @@ def plan(name: str, query: ir.Table | str) -> Linear | str:
     node, groups, measures, names, what = found
     if missing := [g for g in groups if g not in names]:
         return f"the view does not output the key {missing[0]} unchanged"
-    parent = node.parent.to_expr()
+    parent = narrowed(node.parent.to_expr())
     try:
         deltas = delta_plans(plan_json(None, parent))  # type: ignore[arg-type]
     except NotIncrementalError as e:

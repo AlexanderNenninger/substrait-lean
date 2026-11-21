@@ -179,7 +179,7 @@ class Observation:
     without an order); `"sequence"`: it counts."""
     bound: Within | None = field(default=None, compare=False)
     """With `floats="plan"`, the plan's bound as a tolerance, where the
-    report knows it (`Report.observation`): printed beside `floats=plan`,
+    report knows it (`Report.lenses`): printed beside `floats=plan`,
     and used by `equal`. Equality of observations ignores it. Without it,
     `equal` compares doubles under `"plan"` exactly, one zero and one NaN
     (`reads_members`, D48)."""
@@ -378,7 +378,7 @@ def _holds_floats(t: pa.DataType) -> bool:
 
 
 def _bound_text(w: Within) -> str:
-    """A plan's bound as `observes:` prints it: `2.0e-07` where it has only
+    """A plan's bound as `lenses:` prints it: `2.0e-07` where it has only
     an absolute bound, the kinds otherwise."""
     kinds = [(n, getattr(w, n)) for n in ("abs", "rel", "ulps") if getattr(w, n) is not None]
     if [n for n, _ in kinds] == ["abs"]:
@@ -425,7 +425,7 @@ EXACT = Observation(rows="sequence")
 EXACT_MULTISET = Observation()
 #: Rows and list elements as multisets, one zero and one NaN, doubles within
 #: the plan's bound (`Report.epsilon`), other values exact: what `ensures`
-#: observes where it names no observation (`Report.observation`), and what a
+#: observes where it names no observation (`Report.lenses`), and what a
 #: sink's rerun must reproduce by default.
 PLAN_BOUND = Observation(floats="plan", zeros="canon", elements="multiset")
 

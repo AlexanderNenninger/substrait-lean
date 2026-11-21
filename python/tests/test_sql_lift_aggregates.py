@@ -129,7 +129,7 @@ def test_the_reference_lift_is_checked_too(query):
             "over a window is not supported",
         ),
         ("SELECT mode(qty) FROM orders", "breaks ties in the engine's order"),
-        ("SELECT median(cost) FROM orders", "of a DECIMAL is not supported yet"),
+        ("SELECT median(cost) FROM orders", "no engine gives one value for it"),
         ("SELECT quantile_cont(amount, -0.5) FROM orders", "between 0 and 1"),
         ("SELECT quantile_cont(amount, [0.25, 0.5]) FROM orders", "one number"),
         ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),
@@ -220,7 +220,7 @@ def test_stddev_samp_of_an_integer_is_proved_as_ibiss():
     jobs = ibis.table({"workflow": "!string", "duration_s": "int64"}, name="jobs")
     query = "SELECT workflow, stddev_samp(duration_s) AS sd FROM jobs GROUP BY workflow"
     report = sv.verify(query, tables={"jobs": jobs})
-    assert report.facts["sd"] == "a double ≥ 0.0 or NULL", report
+    assert str(report.facts["sd"]) == "a double ≥ 0.0 or NULL", report
     ibis_report = sv.verify(jobs.group_by("workflow").aggregate(sd=jobs.duration_s.std()))
     assert report.facts == ibis_report.facts
     plan = lift(query, {"jobs": jobs.schema()}).plan
@@ -282,15 +282,56 @@ def test_sum_of_both_infinities_is_no_domain_error_under_duckdbs_semantics():
         assert [i for i in ref.issues if "domain error" in str(i)], (fn, ref)
 
 
-def test_sum_of_an_expression_is_proved_under_duckdbs_semantics():
-    """The guarded sum's argument is the expression itself (`SUM(f + 1.0)`), not only a column."""
+def test_sum_of_an_expression_keeps_its_overflow_check_under_duckdbs_semantics():
+    """The guarded sum's argument is the expression itself (`SUM(f + 1.0)`), not only a column.
+    An unbounded column no longer gives `PROVED` with no issues: DuckDB's running
+    sum overflows where the exact sum, which the model gives, does not (ruling
+    200 A4(2)); the check is assumed, and the run makes it."""
     import ibis
 
     import sverify as sv
 
     t = ibis.table({"f": "float64"}, name="f")
     report = sv.verify(sv.sql("SELECT sum(f + 1.0) AS v FROM f", f=t, semantics="duckdb"))
-    assert report.verdict == Verdict.PROVED and not report.issues, report
+    assert report.verdict == Verdict.PROVED_WITH_CHECKS, report
+
+
+@pytest.mark.parametrize(
+    ("fn", "values"),
+    [("avg", [1e308, 1e308]), ("sum", [1e308, 1e308, -1e308])],
+)
+def test_a_double_sum_that_overflows_is_refused_under_duckdbs_semantics(fn, values):
+    """DuckDB's `avg(1e308, 1e308)` is `inf` where the model gives `1e308`: the run
+    refuses the batch instead of returning DuckDB's value (ruling 200 A4(2), R3)."""
+    import ibis
+
+    import sverify as sv
+    from sverify import connect
+    from sverify.conditions import PreconditionError
+
+    t = ibis.table({"f": "float64"}, name="f")
+    report = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="duckdb"))
+    con = connect()
+    con.create("f", t.schema(), [(v,) for v in values])
+    with pytest.raises(PreconditionError, match="overflows"):
+        report.run(con)
+
+
+@pytest.mark.parametrize("fn", ["sum", "avg"])
+def test_a_double_sum_checks_for_a_nan_total_with_no_nan_input(fn):
+    """Finite inputs whose partial sums overflow in both directions give NaN: no
+    input is infinite, so the `±∞` test passes. The written SQL tests the total for
+    NaN where no input is NaN (ruling 200 A4(3))."""
+    import ibis
+
+    import sverify as sv
+    from sverify.sql import to_sql
+
+    t = ibis.table({"f": "float64"}, name="f")
+    plan = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="reference"))
+    assert plan.internal_plan is not None
+    written = to_sql(plan.internal_plan, "duckdb")
+    assert "isnan" in written.lower() and "overflow to infinity" in written, written
 
 
 def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measures_for_duckdb():
@@ -306,3 +347,18 @@ def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measure
     }
     assert len(aggregates[("reference", "sum(DOUBLE)")]["measures"]) == 1
     assert len(aggregates[("duckdb", "sum(DOUBLE)")]["measures"]) == 3
+
+
+def test_quantile_disc_of_a_decimal_beyond_2_pow_53_selects_exactly():
+    """`quantile_disc` of a DECIMAL whose unscaled value exceeds 2^53 is an
+    exact selection from the group (#1921)."""
+    from decimal import Decimal
+
+    import pyarrow as pa
+
+    from _pipelines import arrow_table
+
+    rows = [(Decimal("9007199254740993.01"),), (Decimal("9007199254740993.03"),), (None,)]
+    tables = {"t": arrow_table(pa.schema([pa.field("d", pa.decimal128(20, 2))]), rows)}
+    result = check("SELECT quantile_disc(d, 0.5) AS q, quantile_disc(d, 1) AS top FROM t", tables)
+    assert result.ok, f"{result.stage}: {result.detail}"

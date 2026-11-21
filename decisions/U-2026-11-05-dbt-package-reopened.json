@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-05-dbt-package-reopened",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "dbt integration is wanted now, as its own Python package that uses sverify to check dbt contracts and tests statically.",
+  "issues": [
+    177
+  ],
+  "amends": [
+    "U-2026-11-02-backlog-close-177-179"
+  ],
+  "source": "github:#177 comment 6652440334"
+}

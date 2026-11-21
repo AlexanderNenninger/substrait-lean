@@ -71,9 +71,7 @@ def test_streaming_engine_collects_lazily_on_streaming(monkeypatch):
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(
-    not probe_polars.OUT.is_file(), reason="characterization/ of the repository is not here"
-)
+@pytest.mark.skipif(not probe_polars.OUT.is_file(), reason="the repository's probes are not here")
 def test_probes_json_is_current():
     """`probes.json` is what the harness finds now (rerun
     `python -m sverify_dev.probe_polars --write` after a model or Polars change)."""
@@ -181,7 +179,7 @@ LARGE = {
 @pytest.mark.slow
 @pytest.mark.skipif(
     not probe_polars.OUT_STREAMING.is_file(),
-    reason="characterization/ of the repository is not here",
+    reason="the repository's probes are not here",
 )
 def test_probes_streaming_json_is_current():
     """`probes-streaming.json` is what `engine_diff` finds now (rerun

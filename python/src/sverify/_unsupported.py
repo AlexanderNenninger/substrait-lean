@@ -14,6 +14,13 @@ from typing import ClassVar
 ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
 #: Where #1725 is: an engine that has no map for a UTC-zoned timestamp (an instant) yet.
 ISSUE_1725 = "see #1725, https://github.com/AlexanderNenninger/substrait-lean/issues/1725"
+#: Why a quantile of a DECIMAL is refused (by design, ruling 191, #1921): both
+#: frontends say it, each adding its own way out (`CAST(x AS DOUBLE)`,
+#: `x.cast('float64')`).
+QUANTILE_OF_DECIMAL = (
+    "is not supported: no engine gives one value for it (DuckDB truncates a double "
+    "interpolation, Spark and Polars return doubles)"
+)
 #: The end of a refusal of what only DuckDB runs: its exit.
 DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 
@@ -21,6 +28,10 @@ DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
 #: leaves its integer key's type. An engine whose dialect raises writes it
 #: (`ProfilePlugin.guards`).
 RANGE_GUARD = "Overflow in a RANGE frame bound"
+#: The message of the integer `%` guard under `semantics="duckdb"` (#2058): DuckDB
+#: raises at `MIN % -1`, where the reference's remainder, 0, fits. DuckDB,
+#: Spark and Polars run it (`ProfilePlugin.guards`).
+MIN_MOD_GUARD = "integer overflow: MIN % -1"
 
 
 #: The exit of a refusal of data that breaks a stated condition.
@@ -67,7 +78,9 @@ class UnsupportedError(SverifyError, ValueError):
         name as the user writes it) and otherwise the SQL keywords in upper case
         (`"WITH RECURSIVE"`, `"IS DISTINCT FROM"`); None where the refusal names none."""
         self.sql = sql
-        """The SQL fragment the SQL lift refused; None for the Ibis producer."""
+        """The SQL fragment the SQL lift refused, as the lift writes it (shortened): the
+        innermost node being read, or the node a whole-query check found. None for the Ibis
+        producer, and for a refusal about the query as a whole (its syntax, a clause)."""
 
 
 Unsupported = UnsupportedError
@@ -97,6 +110,26 @@ class ConditionError(UnsupportedError):
             f"{len(self.errors)} condition(s) cannot be read:{listed}\n"
             "fix or drop them; the query is not refused"
         )
+
+
+class MemoryLimitError(SverifyError, MemoryError):
+    """A step ran out of the memory sverify or the engine allows it (#783):
+    the checker past its cap during a proof, or DuckDB past its
+    `memory_limit` during a run or a refresh. A refresh that raises it
+    commits nothing. The engine's own exception is the `__cause__`.
+    A `MemoryError`."""
+
+    code = "memory_limit"
+
+    def __init__(self, message: str, *, stage: str, limit: str, setting: str):
+        super().__init__(message)
+        self.stage = stage
+        """Where it ran out: `"proof"`, `"run"` or `"refresh"`."""
+        self.limit = limit
+        """The limit in force, as text (`"2.0 GiB"`, `"4096 MB"`)."""
+        self.setting = setting
+        """The setting that raises the limit: `SVERIFY_MEMORY_LIMIT` (the data's
+        engine) or `SVERIFY_CHECKER_MEMORY_MB` (the checker)."""
 
 
 class SverifyWarning(UserWarning):

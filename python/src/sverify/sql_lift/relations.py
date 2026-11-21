@@ -3,9 +3,13 @@ EXISTS), `VALUES` in FROM, `UNPIVOT` and `ASOF` joins."""
 
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta
+from typing import Any
+
 import ibis
 import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
+from sqlglot.transforms import eliminate_qualify
 
 from sverify.plan_json import (
     Json,
@@ -18,6 +22,7 @@ from sverify.plan_json import (
     values_rel,
 )
 from sverify.sql_lift._base import (
+    DIALECT,
     JOIN_METHODS,
     PARSE_REWRITES,
     SOURCES,
@@ -39,7 +44,7 @@ def _scalar_subquery(lf: _Lift, node: sge.Subquery, sub: Sub, scope: list[Column
     # groups, LIMIT 1); no row is NULL.
     rel, cols = lf.nested(node.this, scope)
     if len(cols) != 1:
-        raise Unsupported("a scalar subquery must return one column")
+        raise Unsupported("a scalar subquery must return one column", construct="SCALAR SUBQUERY")
     return E({"subquery": {"scalar": {"input": rel}}}, cols[0].type.copy(nullable=True))
 
 
@@ -68,11 +73,17 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     alias names them."""
     rows = [list(r.expressions) if isinstance(r, sge.Tuple) else [r] for r in node.expressions]
     if not rows or len({len(r) for r in rows}) != 1:
-        raise Unsupported(f"{_shown(node)}: every row of VALUES needs the same number of values")
+        raise Unsupported(
+            f"{_shown(node)}: every row of VALUES needs the same number of values",
+            construct="VALUES",
+        )
     cells = [[lf.expr(c, [], Bound()) for c in r] for r in rows]
     for c in (c for r in cells for c in r):
         if not c.constant:
-            raise SqlUnsupported(f"{_shown(node)}: VALUES of computed values is not supported yet")
+            raise SqlUnsupported(
+                f"{_shown(node)}: VALUES of computed values is not supported yet",
+                construct="VALUES",
+            )
     width = len(rows[0])
     types = []
     for i in range(width):
@@ -87,7 +98,8 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     given = [c.name for c in alias.columns] if alias is not None else []
     if len(given) > width:
         raise Unsupported(
-            f"{_shown(node)} names {len(given)} columns of {width}; name at most {width}"
+            f"{_shown(node)} names {len(given)} columns of {width}; name at most {width}",
+            construct="VALUES",
         )
     names = [_normalized(n) for n in given] + [f"col{i}" for i in range(len(given), width)]
     out = [[literal(lf.to(c, t).value, t) for c, t in zip(r, types, strict=True)] for r in cells]
@@ -126,16 +138,20 @@ def _unpivot(tree: sge.Expr) -> sge.Expr:
         p = pivots[0]
         values, fields = p.expressions, p.args.get("fields") or []
         if len(values) != 1 or len(fields) != 1 or not isinstance(fields[0], sge.In):
-            raise SqlUnsupported("UNPIVOT of several value columns is not supported yet")
+            raise SqlUnsupported(
+                "UNPIVOT of several value columns is not supported yet", construct="UNPIVOT"
+            )
         if any(p.args.get(k) for k in ("group", "columns", "default_on_null")):
-            raise SqlUnsupported(f"{_shown(p)} is not supported yet")
+            raise SqlUnsupported(f"{_shown(p)} is not supported yet", construct="UNPIVOT")
         value, name = values[0].name, fields[0].this.name
         cols: list[tuple[sge.Expression, str]] = []
         for c in fields[0].expressions:
             label = c.args.get("alias") if isinstance(c, sge.PivotAlias) else None
             col = c.this if isinstance(c, sge.PivotAlias) else c
             if not isinstance(col, sge.Column):
-                raise Unsupported(f"UNPIVOT of {_shown(col)} is not supported; only columns")
+                raise Unsupported(
+                    f"UNPIVOT of {_shown(col)} is not supported; only columns", construct="UNPIVOT"
+                )
             text = label.name if isinstance(label, sge.Expression) else col.name
             cols.append((col, text))
         src = n.copy()
@@ -209,11 +225,12 @@ def _unnest_columns(tree: sge.Expr) -> sge.Expr:
         ):
             raise Unsupported(
                 "UNNEST of lists written out, next to GROUP BY, ORDER BY, LIMIT or DISTINCT, "
-                "is not supported yet; unpivot in a subquery"
+                "is not supported yet; unpivot in a subquery",
+                construct="UNNEST",
             )
         (size,) = sizes
         if size == 0:
-            raise SqlUnsupported("UNNEST of an empty list is not supported")
+            raise SqlUnsupported("UNNEST of an empty list is not supported", construct="UNNEST")
         branches = []
         for i in range(size):
             b = n.copy()
@@ -242,10 +259,15 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     native ASOF JOIN rests on too (#1447)."""
     side, kind = (join.side or "").upper(), (join.kind or "").upper()
     if kind or side not in ("", "LEFT"):
-        raise Unsupported(f"ASOF {side} {kind} JOIN is not supported; only ASOF [LEFT] JOIN")
+        raise Unsupported(
+            f"ASOF {side} {kind} JOIN is not supported; only ASOF [LEFT] JOIN",
+            construct="ASOF JOIN",
+        )
     on = join.args.get("on")
     if on is None or join.args.get("using"):
-        raise Unsupported("ASOF JOIN needs an ON condition (USING is not supported yet)")
+        raise Unsupported(
+            "ASOF JOIN needs an ON condition (USING is not supported yet)", construct="ASOF JOIN"
+        )
     right, cols = lf.source(join.this)
     n, m = len(scope), len(cols)
     left_names = {(c.table, c.name) for c in scope}
@@ -263,11 +285,16 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     conjuncts = list(on.flatten()) if isinstance(on, sge.And) else [on]
     ineqs = [c for c in conjuncts if isinstance(c, sge.GTE | sge.GT | sge.LTE | sge.LT)]
     if len(ineqs) != 1:
-        raise Unsupported("ASOF JOIN needs exactly one of >=, >, <= and < in its ON")
+        raise Unsupported(
+            "ASOF JOIN needs exactly one of >=, >, <= and < in its ON", construct="ASOF JOIN"
+        )
     ineq = ineqs[0]
     lhs, rhs = is_right(ineq.this), is_right(ineq.expression)
     if {lhs, rhs} != {True, False}:
-        raise Unsupported(f"ASOF JOIN: {_shown(ineq)} must compare a left and a right expression")
+        raise Unsupported(
+            f"ASOF JOIN: {_shown(ineq)} must compare a left and a right expression",
+            construct="ASOF JOIN",
+        )
     # Is the right side's time at or before the left's (keep the latest)?
     right_below = isinstance(ineq, sge.GTE | sge.GT) == (rhs is True)
     right_time = ineq.expression if rhs else ineq.this
@@ -302,6 +329,220 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     return emit_rel(out, [*range(n), *range(n + 1, width)]), scope + cols
 
 
+#: The most rows a `range` or `generate_series` input is written as (#321).
+_SERIES_ROWS = 10_000
+
+_STEP_UNITS = {
+    "WEEK": timedelta(weeks=1),
+    "DAY": timedelta(days=1),
+    "HOUR": timedelta(hours=1),
+    "MINUTE": timedelta(minutes=1),
+    "SECOND": timedelta(seconds=1),
+}
+
+
+def _constant(node: sge.Expr) -> int | datetime | None:
+    """A constant bound of a series: an integer literal, or a string literal
+    cast to DATE or TIMESTAMP (`DATE '2024-01-01'`); None for anything else."""
+    while isinstance(node, sge.Paren):
+        node = node.this
+    if isinstance(node, sge.Neg):
+        inner = _constant(node.this)
+        return -inner if isinstance(inner, int) else None
+    if isinstance(node, sge.Literal) and not node.is_string and node.name.isdigit():
+        return int(node.name)
+    if isinstance(node, sge.Cast) and isinstance(node.this, sge.Literal) and node.this.is_string:
+        kind = node.to.this
+        try:
+            if kind == sge.DataType.Type.DATE:
+                return datetime.combine(
+                    date.fromisoformat(node.this.name.strip()), datetime.min.time()
+                )
+            if kind in (sge.DataType.Type.TIMESTAMP, sge.DataType.Type.TIMESTAMPNTZ):
+                return datetime.fromisoformat(node.this.name.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _ascending(step: Any) -> bool:
+    return bool(step > (timedelta(0) if isinstance(step, timedelta) else 0))
+
+
+def _series(tree: sge.Expr) -> sge.Expr:
+    """`range(a, b[, step])` and `generate_series(a, b[, step])` in FROM with
+    constant bounds (#321) as the `VALUES` they list, one row per value: the
+    usual date spine. `range` excludes `b`, `generate_series` includes it. Over
+    dates DuckDB's values are timestamps. Bounds that depend on the data are
+    refused: the relation's size would depend on it."""
+
+    def node(n: sge.Expr) -> sge.Expr:
+        if isinstance(n, sge.Table) and isinstance(n.this, sge.GenerateSeries):
+            series = n.this
+        elif (
+            isinstance(n, sge.Unnest)
+            and len(n.expressions) == 1
+            and isinstance(n.expressions[0], sge.GenerateSeries)
+            and not n.args.get("offset")
+        ):
+            series = n.expressions[0]  # FROM UNNEST(generate_series(…)) AS t(d)
+        else:
+            return n
+        name = "range" if series.args.get("is_end_exclusive") else "generate_series"
+        if n.args.get("sample"):
+            raise SqlUnsupported(
+                f"{name} with TABLESAMPLE is not supported",
+                hint="sample the input before sverify reads it; write this step in Ibis",
+                construct=f"function {name}",
+            )
+        start, end = _constant(series.args["start"]), _constant(series.args["end"])
+        step_node = series.args.get("step")
+        if start is None or end is None:
+            raise SqlUnsupported(
+                f"{name} with bounds that depend on the data is not supported",
+                hint="write constant bounds: the relation's size cannot depend on the data",
+                issue=321,
+                construct=f"function {name}",
+            )
+        temporal = isinstance(start, datetime)
+        if temporal != isinstance(end, datetime):
+            raise SqlUnsupported(
+                f"{name} of an integer and a date or timestamp is not supported",
+                construct=f"function {name}",
+            )
+        step: Any
+        if step_node is None:
+            if temporal:
+                # DuckDB: "No function matches" `range(DATE, DATE)`; it wants an INTERVAL.
+                raise SqlUnsupported(
+                    f"{name} of dates or timestamps needs an INTERVAL step in DuckDB",
+                    hint="add the step, for example INTERVAL 1 DAY",
+                    construct=f"function {name}",
+                )
+            step = 1
+        elif isinstance(step_node, sge.Interval):
+            unit = step_node.args.get("unit")
+            count = step_node.this
+            if not (temporal and unit is not None and unit.name.upper() in _STEP_UNITS) or not (
+                isinstance(count, sge.Literal) and count.name.isdigit()
+            ):
+                raise SqlUnsupported(
+                    f"{name} with the step {step_node.sql(DIALECT)} is not supported",
+                    hint="use a step of whole weeks, days, hours, minutes or seconds",
+                    issue=321,
+                    construct=f"function {name}",
+                )
+            step = _STEP_UNITS[unit.name.upper()] * int(count.name)
+        else:
+            step = _constant(step_node)
+            if not isinstance(step, int) or temporal:
+                raise SqlUnsupported(
+                    f"{name} with the step {step_node.sql(DIALECT)} is not supported",
+                    construct=f"function {name}",
+                )
+        if not step:
+            raise SqlUnsupported(
+                f"{name} with a step of 0 raises in DuckDB", construct=f"function {name}"
+            )
+        values: list[Any] = []
+        at: Any = start
+        forward = _ascending(step)
+        while (at < end if forward else at > end) or (
+            not series.args.get("is_end_exclusive") and at == end
+        ):
+            values.append(at)
+            at += step
+            if len(values) > _SERIES_ROWS:
+                raise SqlUnsupported(
+                    f"{name} lists more than {_SERIES_ROWS} rows, which is not supported",
+                    issue=321,
+                    construct=f"function {name}",
+                )
+        if not values:
+            raise SqlUnsupported(
+                f"{name} lists no rows, which is not supported yet",
+                issue=321,
+                construct=f"function {name}",
+            )
+        if temporal:
+            cells = [
+                sge.Cast(
+                    this=sge.Literal.string(v.isoformat(sep=" ")),
+                    to=sge.DataType.build("TIMESTAMP"),
+                )
+                for v in values
+            ]
+        else:
+            cells = [
+                sge.Cast(this=sge.Literal.number(v), to=sge.DataType.build("BIGINT"))
+                for v in values
+            ]
+        alias = n.args.get("alias") or sge.TableAlias(this=sge.to_identifier(name))
+        if not alias.columns:
+            alias.set("columns", [sge.to_identifier(name)])
+        return sge.Values(expressions=[sge.Tuple(expressions=[c]) for c in cells], alias=alias)
+
+    return tree.transform(node, copy=False)
+
+
 SOURCES[sge.Values] = _values
 JOIN_METHODS["ASOF"] = _asof
-PARSE_REWRITES.extend([_values_names, _unpivot, _unnest_columns])
+
+
+def _group_all(tree: sge.Expr) -> sge.Expr:
+    """`GROUP BY ALL` (#1991): DuckDB groups by the select items that hold no
+    aggregate; none left is one group for the whole input. A select item with
+    a window function is refused: DuckDB's reading of it is not probed."""
+    for sel in list(tree.find_all(sge.Select)):
+        group = sel.args.get("group")
+        if group is None or not group.args.get("all"):
+            continue
+        keys: list[sge.Expression] = []
+        for item in sel.expressions:
+            if item.find(sge.Window):
+                raise SqlUnsupported(
+                    "GROUP BY ALL with a window function in the SELECT", construct="GROUP BY ALL"
+                )
+            if not item.find(sge.AggFunc):
+                keys.append(item.unalias().copy())
+        sel.set("group", sge.Group(expressions=keys) if keys else None)
+    return tree
+
+
+_QUALIFY_COLUMN = "_sverify_qualify"
+
+
+def _qualify(tree: sge.Expr) -> sge.Expr:
+    """`QUALIFY` (#319) as the filter of a subquery over the window columns
+    (SQLGlot's `eliminate_qualify`, the form its dialects without QUALIFY
+    print). The columns it adds (`_w`, `_w_2`, …) are renamed so no table's
+    column collides, and a star of the outer select leaves them out."""
+    for sel in list(tree.find_all(sge.Select)):
+        if sel.args.get("qualify") is not None:
+            if any(
+                i.name.startswith(("_w", _QUALIFY_COLUMN)) for i in sel.find_all(sge.Identifier)
+            ):
+                raise SqlUnsupported(
+                    "QUALIFY in a query that names a column `_w…` or `_sverify_qualify…`",
+                    construct="QUALIFY",
+                )
+            own = len(sel.expressions)
+            new = eliminate_qualify(sel)  # a new outer SELECT around `sel`
+            if new is not sel:
+                inner = new.args["from_"].this.this
+                added = [e.alias for e in inner.expressions[own:]]
+                renamed = {a: _QUALIFY_COLUMN + a.removeprefix("_w") for a in added}
+                for i in new.find_all(sge.Identifier):
+                    if i.name in renamed:
+                        i.set("this", renamed[i.name])
+                for star in new.args["expressions"]:
+                    if isinstance(star, sge.Star):
+                        star.set("except_", [sge.column(n) for n in renamed.values()])
+            if sel is tree:
+                tree = new
+            elif new is not sel:
+                sel.replace(new)
+    return tree
+
+
+PARSE_REWRITES.extend([_series, _group_all, _qualify, _values_names, _unpivot, _unnest_columns])

@@ -1,0 +1,21 @@
+{
+  "id": "F184",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "API-5 Report members: drop Report.warnings (and likely Report.errors); CheckedCondition.needs replaces suggested (#701 law under on_inferred=error); Report.facts as ColumnFacts data (#704); items 5-6 accepted.",
+  "issues": [
+    701,
+    704,
+    1285,
+    1288,
+    1795,
+    1873
+  ],
+  "amended_by": [
+    "F192"
+  ],
+  "source": "fable-ruling-184-api5-report-members.md",
+  "note": "Item 1 (the name) is superseded; see F184.1. Ruling 192: 'The rest of ruling 184 stands.'"
+}

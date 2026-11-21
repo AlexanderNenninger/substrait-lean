@@ -78,6 +78,7 @@ reference:
       - types.CheckedCondition
       - types.Discharged
       - types.Counterexample
+      - types.ColumnFacts
       - types.Observation
       - types.Within
       - types.Route
@@ -266,6 +267,7 @@ reference:
       - errors.UnsupportedError
       - errors.SqlError
       - errors.ExportError
+      - errors.MemoryLimitError
       - errors.CheckerVersionError
       - errors.EngineVersionError
       - errors.EngineSettingsError

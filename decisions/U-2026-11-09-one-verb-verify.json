@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-09-one-verb-verify",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "verify is the one verb for plans built in Python or loaded from Substrait, recheck is dropped, and from_substrait is a constructor.",
+  "issues": [
+    1288
+  ],
+  "amends": [
+    "U-2026-11-03-reference-default-semantics"
+  ],
+  "source": "memory:api-decisions-1-0.md"
+}

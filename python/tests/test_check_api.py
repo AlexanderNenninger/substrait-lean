@@ -122,8 +122,7 @@ def test_issue_suggested_is_the_hint_as_data() -> None:
     zero = by_kind["division by zero"]
     assert [(n.table, n.label) for n in zero.needs] == [("t", "(_.b != 0)")]
     assert repr(zero.needs[0].condition) == repr(_["b"].isnull() | (_["b"] != 0))
-    with pytest.warns(DeprecationWarning, match="Issue.needs"):
-        assert zero.suggested == {"t": ("(_.b != 0)",)}
+    assert not hasattr(zero, "suggested")
     assert zero.hint == "state `(_.b != 0)` in the requires of 't'"
     fixed = sv.verify(
         t.select(r=t.a // t.b),

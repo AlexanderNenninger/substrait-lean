@@ -4,8 +4,8 @@
 reference's. The reference gives a value DuckDB does not in the fields of
 `Profile` below. The lift refuses the casts (`REFUSED`, with a hint) and the
 report lists `corr` (`Report.dialect_differences`). The raises of the reference (`domain_error`,
-`log_zero`) are not here: a raise is visible and the inferred preconditions
-name its inputs.
+`log_zero`) and of DuckDB (`min_mod_neg_one`, listed as a guard's issue) are not
+here: a raise is visible and the inferred preconditions name its inputs.
 
 One table, keyed by the `Profile` field. `tests/test_dialect_differences.py`
 derives the key set from `REFERENCE` and `DUCKDB` and fails when a field joins
@@ -22,9 +22,11 @@ class DialectDifference:
     """A construct of the SQL text whose reference reading differs from DuckDB's."""
 
     key: str
-    """The `Profile` field the lift read: `float_to_int`, `decimal_to_int` or
-    `corr_degenerate`."""
+    """The `Profile` field the lift read: `float_to_int` or `corr_degenerate`."""
     construct: str
+    """The construct's category, as `UnsupportedError.construct` spells it:
+    `function corr`, `CAST`."""
+    sql: str
     """The construct as written."""
     where: str
     """`"the query"`, or the SQL condition the construct is in."""
@@ -39,7 +41,7 @@ class DialectDifference:
 
     def __str__(self) -> str:
         out = (
-            f"{self.construct} in {self.where}: {self.here} here, "
+            f"{self.sql} in {self.where}: {self.here} here, "
             f"{self.dialect} on DuckDB ({self.example})"
         )
         return f"{out}; {self.spellings}" if self.spellings else out
@@ -53,7 +55,6 @@ REFUSED: dict[str, str] = {
         "write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
         "which mean the same on both"
     ),
-    "decimal_to_int": "see #322: the model has no rounding cast of a decimal yet",
 }
 
 #: Each `Profile` field the lift lists: how the two readings differ, with an
@@ -68,6 +69,6 @@ TABLE: dict[str, dict[str, str]] = {
 }
 
 
-def difference(key: str, construct: str, where: str = "the query") -> DialectDifference:
-    """The entry for `key`, at `construct`."""
-    return DialectDifference(key, construct, where, **TABLE[key])
+def difference(key: str, construct: str, sql: str, where: str = "the query") -> DialectDifference:
+    """The entry for `key`, at the construct `construct` that the SQL `sql` writes."""
+    return DialectDifference(key, construct, sql, where, **TABLE[key])

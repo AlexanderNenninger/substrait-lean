@@ -1,0 +1,14 @@
+{
+  "id": "D32",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Calendar functions work on the reference's timestamps, 0001-01-01 to 9999-12-31.",
+  "issues": [
+    251
+  ],
+  "prs": [
+    1190
+  ]
+}

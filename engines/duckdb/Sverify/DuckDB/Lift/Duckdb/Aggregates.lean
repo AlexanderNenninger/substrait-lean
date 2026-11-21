@@ -30,9 +30,10 @@ theorem Substrait.liftDuckDB.avgBigint_agree : ∀ (vs : List Substrait.Value),
               [],
             Substrait.Measure.mk Substrait.AggFn.count (Substrait.Expr.field 0) Bool.false
               Option.none []])
-        (Substrait.Expr.bin Substrait.BinFn.fdiv
-          (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-          (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))))
+        (Substrait.Expr.un (Substrait.UnFn.approx 17)
+          (Substrait.Expr.bin Substrait.BinFn.fdiv
+            (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
+            (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)))))
       (Except.ok (Substrait.DuckAgg.eval Substrait.Semantics.duckdb Substrait.DuckAgg.avgBigint vs)) := by
   lift_agg
 
@@ -52,11 +53,12 @@ theorem Substrait.liftDuckDB.avgBigint_noNan : Substrait.Semantics.duckdb = Subs
   lift_noNan
 
 abbrev Substrait.liftDuckDB.avgBigint : Substrait.AggEntry Substrait.Semantics.duckdb Substrait.DuckAgg.avgBigint :=
-  ⟨"{\"finish\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":2,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":39,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}},{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":41,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.sum (Substrait.Expr.field 0) Bool.false Option.none [],
+  ⟨"{\"finish\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}}],\"functionReference\":2,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}},{\"value\":{\"literal\":{\"i64\":\"17\"}}}],\"functionReference\":49,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"measures\":[{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":39,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}},{\"measure\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":41,\"invocation\":\"AGGREGATION_INVOCATION_ALL\",\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}},\"phase\":\"AGGREGATION_PHASE_INITIAL_TO_RESULT\"}}]}", [Substrait.Measure.mk Substrait.AggFn.sum (Substrait.Expr.field 0) Bool.false Option.none [],
   Substrait.Measure.mk Substrait.AggFn.count (Substrait.Expr.field 0) Bool.false Option.none []],
-    Substrait.Expr.bin Substrait.BinFn.fdiv
-  (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
-  (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)), Substrait.liftDuckDB.avgBigint_agree, Substrait.liftDuckDB.avgBigint_noNan⟩
+    Substrait.Expr.un (Substrait.UnFn.approx 17)
+  (Substrait.Expr.bin Substrait.BinFn.fdiv
+    (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0))
+    (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))), Substrait.liftDuckDB.avgBigint_agree, Substrait.liftDuckDB.avgBigint_noNan⟩
 
 theorem Substrait.liftDuckDB.sumDouble_agree : ∀ (vs : List Substrait.Value),
   (∀ (v : Substrait.Value),

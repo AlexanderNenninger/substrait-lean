@@ -1,0 +1,19 @@
+{
+  "id": "F66",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Spark's case mapping: no locale precondition; Spark's writer pins the case locale in the plan by lowering non-ASCII UPPER/LOWER to collate(upper(collate(x,'UNICODE')),'UTF8_BINARY'); the guard narrows once facts L1-L4 are recorded. No D-number.",
+  "prs": [
+    1649
+  ],
+  "amends": [
+    "F62"
+  ],
+  "amended_by": [
+    "F68"
+  ],
+  "source": "fable-ruling-d51-spark-locale.md",
+  "note": "Answers C2's second gap of the D51 raise-set ruling (F62). A user statement of the cluster locale is ruled out; would be the user's decision only if L1 or L3 fails."
+}

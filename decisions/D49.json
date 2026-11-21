@@ -1,0 +1,8 @@
+{
+  "id": "D49",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "A value known from DuckDB's facts alone is DuckDB-defined: it runs on DuckDB only until other engines are probed."
+}

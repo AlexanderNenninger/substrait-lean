@@ -3,6 +3,7 @@ arithmetic and math."""
 
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Callable
 from decimal import Decimal
@@ -12,6 +13,7 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 
 from sverify import _functions
+from sverify._unsupported import MIN_MOD_GUARD
 from sverify.plan_json import (
     Json,
     SqlUnsupported,
@@ -78,7 +80,8 @@ def _number(text: str, negative: bool = False) -> E:
                 return E(literal(v, t), t, v, literal=True)
         raise Unsupported(
             f"the integer {sign}{text} is a HUGEINT, which is not supported; "
-            f"write it as a decimal literal ({sign}{text}.0, up to 38 digits)"
+            f"write it as a decimal literal ({sign}{text}.0, up to 38 digits)",
+            construct="HUGEINT",
         )
     m = re.fullmatch(r"(\d*)\.(\d*)", text)
     if m and len(m.group(1)) + len(m.group(2)) <= 38:
@@ -108,7 +111,7 @@ def _neg(lf: _Lift, node: sge.Neg, sub: Sub, scope: list[Column]) -> E:
         return _number(inner.this, negative=True)
     a = sub(inner)
     if not _numeric(a.type):
-        raise SqlUnsupported(f"-{a.type} is not supported")
+        raise SqlUnsupported(f"-{a.type} is not supported", construct="NEGATION")
     return E(_fn("negate", [a.json], a.type, _overflow(lf, a.type)), a.type)
 
 
@@ -121,11 +124,15 @@ def _arith(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         # DuckDB's DATE - DATE is a BIGINT of days.
         if a.midnight or b.midnight:
             raise SqlUnsupported(
-                "a TIMESTAMP minus a DATE (an interval) is not supported yet", issue=342
+                "a TIMESTAMP minus a DATE (an interval) is not supported yet",
+                issue=342,
+                construct="SUBTRACT",
             )
         return E(_fn("date_diff", [a.json, b.json], dt.int64), dt.int64)
     if not (_numeric(a.type) or a.type.is_null()) or not (_numeric(b.type) or b.type.is_null()):
-        raise SqlUnsupported(f"{name} of {a.type} and {b.type} is not supported yet")
+        raise SqlUnsupported(
+            f"{name} of {a.type} and {b.type} is not supported yet", construct=name.upper()
+        )
     t = lf.common([a, b], name, sum_digits=name != "multiply")
     if t.is_null():
         t = dt.int32
@@ -154,11 +161,13 @@ def _div(lf: _Lift, node: sge.Div, sub: Sub, scope: list[Column]) -> E:
     a, b = sub(node.this), sub(node.expression)
     for x in (a, b):
         if not (_numeric(x.type) or x.type.is_null()):
-            raise SqlUnsupported(f"/ of {a.type} and {b.type} is not supported")
+            raise SqlUnsupported(
+                f"/ of {a.type} and {b.type} is not supported", construct="DIVISION"
+            )
     # `typed` is another dialect's integer division; `safe` is not checked: up
     # to SQLGlot 30.8 the DuckDB dialect sets it on every `/`.
     if node.args.get("typed"):
-        raise SqlUnsupported("typed division is not DuckDB's /")
+        raise SqlUnsupported("typed division is not DuckDB's /", construct="DIVISION")
     # DuckDB's `/` divides as doubles (F1): integers as BIGINTs, decimals as
     # doubles; by zero it gives ±inf or NaN.
     ints = all(x.type.is_integer() or x.type.is_null() for x in (a, b))
@@ -173,7 +182,10 @@ def _int_div(lf: _Lift, node: sge.IntDiv, sub: Sub, scope: list[Column]) -> E:
     a, b = sub(node.this), sub(node.expression)
     t = lf.common([a, b], "//")
     if not t.is_integer():
-        raise Unsupported(f"// of {a.type} and {b.type} is not supported; it divides integers")
+        raise Unsupported(
+            f"// of {a.type} and {b.type} is not supported; it divides integers",
+            construct="INTEGER DIVISION",
+        )
     opts = [
         _option("overflow", lf.profile.overflow),
         _option("on_division_by_zero", lf.profile.on_division_by_zero),
@@ -193,14 +205,27 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
         opt = _option("on_division_by_zero", "ERROR")
         return E(_fn("sverify_fmod", [lf.to(a, t).json, lf.to(b, t).json], t, [opt]), t)
     elif not t.is_integer():
-        raise SqlUnsupported(f"% of {a.type} and {b.type} is not supported yet")
+        raise SqlUnsupported(f"% of {a.type} and {b.type} is not supported yet", construct="MODULO")
     # The remainder takes the dividend's sign (`division_type` TRUNCATE, #209
     # R3), in DuckDB and the model.
     opts = [
         _option("on_division_by_zero", lf.profile.on_division_by_zero),
         _option("division_type", "TRUNCATE"),
     ]
-    return E(_fn("modulus", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
+    x, y = lf.to(a, t).json, lf.to(b, t).json
+    mod = _fn("modulus", [x, y], t, opts)
+    positive = isinstance(node.expression, sge.Literal) and node.expression.is_int
+    if lf.profile.min_mod_neg_one == "ERROR" and not positive:
+        # DuckDB raises at `MIN % -1` (`duckdb-R15-int-modulus`), where the
+        # reference's remainder, 0, fits: an in-plan raise, so a bound on
+        # either operand discharges it (D54, #2058).
+        low = -(1 << (8 * t.nbytes - 1))
+        hit = logical("and", [_fn("equal", [y, literal(-1, t)], dt.boolean),
+                              _fn("equal", [x, literal(low, t)], dt.boolean)],
+                      eager=True)  # fmt: skip
+        msg = literal(MIN_MOD_GUARD, dt.string)
+        mod = if_then([(hit, _fn("sverify_raise", [hit, msg], t))], mod)
+    return E(mod, t)
 
 
 def _has_struct(t: Any) -> bool:
@@ -247,7 +272,8 @@ def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> 
         # DuckDB orders structs field by field, NULLs last; the model's order
         # of structs is not that one yet. (Lists it orders as DuckDB does.)
         raise SqlUnsupported(
-            f"{_shown(node)}: ordering comparisons of {a.type} are not supported yet"
+            f"{_shown(node)}: ordering comparisons of {a.type} are not supported yet",
+            construct="COMPARISON",
         )
     args = _operands(lf, [a, b], name)
     return E(_fn(name, args, dt.boolean), dt.boolean)
@@ -269,7 +295,9 @@ def _logical(name: str) -> Callable[..., E]:
         args = [sub(o) for o in _chain_operands(node, kind)]
         for a in args:
             if not (a.type.is_boolean() or a.type.is_null()):
-                raise SqlUnsupported(f"{name.upper()} of a {a.type} is not supported")
+                raise SqlUnsupported(
+                    f"{name.upper()} of a {a.type} is not supported", construct=name.upper()
+                )
         eager = lf.profile is DUCKDB
         return E(logical(name, [lf.to(a, dt.boolean).json for a in args], eager), dt.boolean)
 
@@ -282,7 +310,7 @@ def _not(lf: _Lift, node: sge.Not, sub: Sub, scope: list[Column]) -> E:
         return E(_fn("is_not_null", [sub(inner.this).json], dt.boolean), dt.boolean)
     a = sub(inner)
     if not (a.type.is_boolean() or a.type.is_null()):
-        raise SqlUnsupported(f"NOT of a {a.type} is not supported")
+        raise SqlUnsupported(f"NOT of a {a.type} is not supported", construct="NOT")
     return E(_fn("not", [lf.to(a, dt.boolean).json], dt.boolean), dt.boolean)
 
 
@@ -295,14 +323,15 @@ def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
         return sub(sge.Coalesce(this=test, expressions=[sge.false()]))
     if not isinstance(node.expression, sge.Null):
         raise Unsupported(
-            f"IS {_shown(node.expression)} is not supported; only IS [NOT] NULL, TRUE or FALSE is"
+            f"IS {_shown(node.expression)} is not supported; only IS [NOT] NULL, TRUE or FALSE is",
+            construct="IS",
         )
     return E(_fn("is_null", [sub(node.this).json], dt.boolean), dt.boolean)
 
 
 def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("symmetric"):
-        raise SqlUnsupported("BETWEEN SYMMETRIC is not supported")
+        raise SqlUnsupported("BETWEEN SYMMETRIC is not supported", construct="BETWEEN SYMMETRIC")
     x, lo, hi = _operands(
         lf, [sub(node.this), sub(node.args["low"]), sub(node.args["high"])], "BETWEEN"
     )
@@ -311,12 +340,13 @@ def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
 
 def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("unnest") is not None:
-        raise SqlUnsupported("IN UNNEST is not supported yet")
+        raise SqlUnsupported("IN UNNEST is not supported yet", construct="IN UNNEST")
     if (field := node.args.get("field")) is not None:
         # `x IN map(…)` is key membership, `x IN [..]` a list's (#626); with
         # the field dropped, the IN would be over no values: FALSE.
         raise SqlUnsupported(
-            f"IN {_shown(field)} (a list or map, not a list of values) is not supported yet"
+            f"IN {_shown(field)} (a list or map, not a list of values) is not supported yet",
+            construct="IN",
         )
     if (query := node.args.get("query")) is not None:
         # SQL's NULLs: NULL when no value matches and the needle or a value
@@ -324,10 +354,13 @@ def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
         needle = sub(node.this)
         rel, cols = lf.nested(query, scope)
         if len(cols) != 1:
-            raise Unsupported("an IN subquery must return one column")
+            raise Unsupported("an IN subquery must return one column", construct="IN SUBQUERY")
         t = cols[0].type
         if not needle.type.is_null() and not _same(lf.common([needle, E({}, t)], "IN"), t):
-            raise SqlUnsupported(f"IN of a {needle.type} in a subquery of {t} is not supported yet")
+            raise SqlUnsupported(
+                f"IN of a {needle.type} in a subquery of {t} is not supported yet",
+                construct="IN SUBQUERY",
+            )
         x = lf.to(needle, t).json
         return E({"subquery": {"inPredicate": {"needles": [x], "haystack": rel}}}, dt.boolean)
     es = [sub(node.this), *(sub(o) for o in node.expressions)]
@@ -366,7 +399,10 @@ def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
         else:
             c = sub(i.this)
             if not (c.type.is_boolean() or c.type.is_null()):
-                raise SqlUnsupported(f"CASE WHEN {_shown(i.this)}: a {c.type}, not a condition")
+                raise SqlUnsupported(
+                    f"CASE WHEN {_shown(i.this)}: a {c.type}, not a condition",
+                    construct="CASE WHEN",
+                )
             conds.append(lf.to(c, dt.boolean).json)
     pairs = [(c, lf.to(r, t).json) for c, r in zip(conds, results, strict=True)]
     midnight = t.is_date() and any(r.midnight for r in [*results, dflt])
@@ -398,7 +434,9 @@ def _doubles(lf: _Lift, es: list[E], what: str) -> list[Json]:
     """Numbers as doubles, as DuckDB's elementary functions take them."""
     for e in es:
         if not (_numeric(e.type) or e.type.is_null()):
-            raise SqlUnsupported(f"{what} of a {e.type} is not supported")
+            raise SqlUnsupported(
+                f"{what} of a {e.type} is not supported", construct=f"function {what}"
+            )
     return [lf.to(e, dt.float64).json for e in es]
 
 
@@ -446,10 +484,25 @@ def _pow(lf: _Lift, node: sge.Pow, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("power", args, dt.float64, opts), dt.float64)
 
 
+def _angle(factor: float) -> Callable[..., E]:
+    """`radians(x)` is `x * (pi / 180)` and `degrees(x)` `x * (180 / pi)`,
+    DuckDB's own constants (`duckdb-radians-degrees`, #1938), so the product is
+    the generated `DOUBLE * DOUBLE`."""
+
+    def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
+        (x,) = _doubles(lf, [sub(node.this)], type(node).__name__.lower())
+        k = E(literal(factor, dt.float64), dt.float64, factor)
+        if g := _generated(lf, "DOUBLE * DOUBLE", [E(x, dt.float64), k]):
+            return g
+        return E(_fn("multiply", [x, k.json], dt.float64, _overflow(lf, dt.float64)), dt.float64)
+
+    return rule
+
+
 def _abs(lf: _Lift, node: sge.Abs, sub: Sub, scope: list[Column]) -> E:
     a = sub(node.this)
     if not (_numeric(a.type) or a.type.is_null()):
-        raise SqlUnsupported(f"abs of a {a.type} is not supported")
+        raise SqlUnsupported(f"abs of a {a.type} is not supported", construct="function abs")
     t = dt.int32 if a.type.is_null() else a.type
     return E(_fn("abs", [lf.to(a, t).json], t, _overflow(lf, t)), t)
 
@@ -462,7 +515,9 @@ def _rounding(name: str) -> Callable[..., E]:
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         a = sub(node.this)
         if a.type.is_decimal():
-            raise SqlUnsupported(f"{name} of a DECIMAL is not supported yet")
+            raise SqlUnsupported(
+                f"{name} of a DECIMAL is not supported yet", construct=f"function {name}"
+            )
         digits = node.args.get("decimals") if name == "round" else None
         if name == "round" and a.type.is_integer() and digits is None:
             return a  # DuckDB's `round` of an integer is itself
@@ -470,9 +525,13 @@ def _rounding(name: str) -> Callable[..., E]:
         if digits is not None:
             d = sub(digits)
             if not (d.constant and isinstance(d.value, int)):
-                raise Unsupported("round needs a constant number of digits")
+                raise Unsupported(
+                    "round needs a constant number of digits", construct="function round"
+                )
             if a.type.is_integer():
-                raise SqlUnsupported("round of an integer to digits is not supported yet")
+                raise SqlUnsupported(
+                    "round of an integer to digits is not supported yet", construct="function round"
+                )
             args.append(literal(d.value, dt.int32))
         return E(_fn(name, args, dt.float64), dt.float64)
 
@@ -519,7 +578,7 @@ def _sign(lf: _Lift, node: sge.Sign, sub: Sub, scope: list[Column]) -> E:
     # A TINYINT: -1, 0 or 1; 0 for NaN, as DuckDB's.
     a = sub(node.this)
     if not (_numeric(a.type) or a.type.is_null()) or a.type.is_decimal():
-        raise SqlUnsupported(f"sign of a {a.type} is not supported yet")
+        raise SqlUnsupported(f"sign of a {a.type} is not supported yet", construct="function sign")
     sql = "DOUBLE" if a.type.is_float64() else "BIGINT"
     if g := _generated(lf, f"sign({sql})", [a]):
         return g
@@ -581,6 +640,8 @@ register(
         sge.Coalesce: _coalesce,
         sge.Pow: _pow,
         sge.Abs: _abs,
+        sge.Radians: _angle(math.pi / 180),
+        sge.Degrees: _angle(180 / math.pi),
         sge.Log: _log,
         sge.Floor: _rounding("floor"),
         sge.Ceil: _rounding("ceil"),

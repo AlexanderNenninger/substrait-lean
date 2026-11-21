@@ -1,0 +1,21 @@
+{
+  "id": "F70",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "#1664 may merge with the exit described in words; step 12e (COUNT bound) is a follow-up and must be on main before the next release carrying #1664's text.",
+  "issues": [
+    1608
+  ],
+  "prs": [
+    1664
+  ],
+  "supersedes": [
+    "F69.HOLD"
+  ],
+  "amends": [
+    "F69"
+  ],
+  "source": "fable-ruling-1664-exact-exit-amended.md"
+}

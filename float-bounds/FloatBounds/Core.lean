@@ -7,8 +7,9 @@ public import FloatBounds.Moments
 
 The contract checker in `SubstraitLean` has no Mathlib and no real numbers.
 It works with *scaled* values: a double `x` is `x · 2¹⁰⁷⁴`, an integer, the
-magnitude part of `FloatCode`. `core/Sverify/Core/Float.lean` states two trusted
-facts in that form (`FloatCode.fsum_mem`, `FloatCode.avg_mem`), with the
+magnitude part of `FloatCode`. The core states two facts in that form,
+once trusted and now theorems of `core/Sverify/Core/FloatExact.lean` (#916:
+`floatSumCR_mem`, `floatAvgCR_mem`), with the
 tolerances `sumTolScaled` and `avgTolScaled` below, defined the same way
 there. This file proves them for the standard model, over the reals:
 
@@ -159,7 +160,7 @@ theorem sumTol_le {n N Bs : ℕ} (hnN : n ≤ N) (hN : N ≤ 2 ^ 32) :
   push_cast at c1 c2
   gcongr
 
-/-- **The `SUM` the core trusts** (`FloatCode.fsum_mem`). -/
+/-- **The `SUM` the core states** (`floatSumCR_mem`). -/
 theorem StdModel.core_sum {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps ≠ [])
     {lo hi : ℝ} (hx : ∀ p ∈ ps, lo ≤ p.2 ∧ p.2 ≤ hi) {N Bs : ℕ} (hN : ps.length ≤ N)
     (hN32 : N ≤ 2 ^ 32) (hBs : (Bs : ℝ) ≤ 2 ^ 1474) (hlo : |lo| * 2 ^ 1074 ≤ Bs)
@@ -266,7 +267,7 @@ theorem avgTol_le {n N Bs : ℕ} (hnN : n ≤ N) (hN : N ≤ 2 ^ 32) :
   push_cast at c1 c2
   gcongr
 
-/-- **The `AVG` the core trusts** (`FloatCode.avg_mem`). -/
+/-- **The `AVG` the core states** (`floatAvgCR_mem`). -/
 theorem StdModel.core_avg {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne : ps ≠ [])
     {lo hi : ℝ} (hx : ∀ p ∈ ps, lo ≤ p.2 ∧ p.2 ≤ hi) {N Bs : ℕ} (hN : ps.length ≤ N)
     (hN32 : N ≤ 2 ^ 32) (hBs : (Bs : ℝ) ≤ 2 ^ 1474) (hlo : |lo| * 2 ^ 1074 ≤ Bs)
