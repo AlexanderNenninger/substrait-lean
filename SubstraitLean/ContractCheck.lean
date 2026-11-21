@@ -695,10 +695,11 @@ def colKindOf : Kind → ColKind
   | .dec _ _ => .decimal
   | _ => .other
 
-/-- Might a column of this kind hold a list (at any depth)? `other` counts: the
-checker does not know its type. -/
+/-- Might a column of this kind hold a list (at any depth)? `other` and
+`opaque` count: the checker does not know their type, and an opaque map holds
+one (D67). -/
 def mayHoldList : Kind → Bool
-  | .list _ | .struct _ | .other => true
+  | .list _ | .struct _ | .other | .opaque => true
   | _ => false
 
 -- The two theorems belong to `Substrait`, beside the ones they extend.
