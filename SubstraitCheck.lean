@@ -97,6 +97,9 @@ def checkPlan (plan : Plan) : Option (UInt32 × String) :=
     some (2, s!"well-formed: no (root names {plan.names} do not match arity {arity})")
   -- `Rel.kinds_sound`: a well-kinded plan evaluates to its kinds.
   else if (plan.root.inferKinds cat plan.tableKinds).isNone then some (2, "well-kinded: no")
+  -- D67: an opaque column is carried, and nothing reads it.
+  else if let some use := plan.root.opaqueUse? cat plan.tableKinds then
+    some (2, s!"well-kinded: no ({opaqueRefusal use})")
   else none
 
 /-- Why a plan has no delta rule: each operator that blocks it (`Rel.blockers`)

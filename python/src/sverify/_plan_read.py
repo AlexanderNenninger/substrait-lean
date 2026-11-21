@@ -81,16 +81,33 @@ def function_names(plan: Any, err: Err = ValueError) -> dict[int, str]:
 # --- Types ------------------------------------------------------------------
 
 
+#: The types sverify carries and never reads (`opaqueTypes` in
+#: `frontend/Sverify/Frontend/Parse.lean`).
+OPAQUE_TYPES = ("binary", "fixedBinary", "map", "uuid", "userDefined")
+
+
+def holds_opaque(t: Any) -> bool:
+    """Does the Substrait type `t` hold an opaque type anywhere? A list or
+    struct that holds one is opaque as a whole."""
+    if isinstance(t, dict):
+        return any(k in OPAQUE_TYPES or holds_opaque(v) for k, v in t.items())
+    if isinstance(t, list):
+        return any(holds_opaque(x) for x in t)
+    return False
+
+
 def type_kind(t: Any) -> tuple[str, Any] | None:
     """A Substrait type as a kind and its payload, `None` for one Lean does
     not write:
 
     `int` (its key), `float` (its key), `str`, `bool`, `date`, `interval`,
     `time`, `instant` and `tod` (their precision, `None` if malformed), `decimal`
-    (precision and scale), `list` (the element type) and `struct` (the field
-    types)."""
+    (precision and scale), `list` (the element type), `struct` (the field
+    types) and `opaque` (an opaque column's type, D67: carried, never read)."""
     if not isinstance(t, dict):
         return None
+    if holds_opaque(t):
+        return "opaque", t
     if key := next((k for k in _INTS if k in t), None):
         return "int", key
     if key := next((k for k in ("fp32", "fp64") if k in t), None):

@@ -38,6 +38,9 @@ def checker_refusal(mode: str, err: str) -> UnsupportedError:
     """A plan the checker refuses (`mode`, its message `err`), with its exit
     (`sverify.engine.checker_failed` adds the stale-build check)."""
     msg = err.strip().removeprefix("error: ") or "(no message)"
+    if "by design" in msg:
+        # A refusal by design (an opaque column's use) waits on no issue.
+        return UnsupportedError(f"substrait-check {mode} refuses the plan: {msg}")
     return UnsupportedError(
         f"substrait-check {mode} refuses the plan: {msg}. Lean's model does not cover it "
         f"yet: rewrite the step, or find its issue among the open coverage issues "

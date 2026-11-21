@@ -107,6 +107,11 @@ def spark_type(t: pa.DataType) -> str:
         return SPARK.type_name("str")
     if pa.types.is_list(t) or pa.types.is_large_list(t):
         return f"ARRAY<{spark_type(t.value_type)}>"
+    # Opaque columns (D67): carried, never read (`spark-opaque-carry`).
+    if pa.types.is_binary(t) or pa.types.is_large_binary(t):
+        return "BINARY"
+    if pa.types.is_map(t):
+        return f"MAP<{spark_type(t.key_type)}, {spark_type(t.item_type)}>"
     raise TypeError(f"no Spark type for {t}")
 
 
@@ -123,6 +128,10 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
         return pa.string()
     if pa.types.is_list(t) or pa.types.is_large_list(t):
         return pa.list_(arrow_type(t.value_type))
+    if pa.types.is_large_binary(t):
+        return pa.binary()
+    if pa.types.is_map(t):
+        return pa.map_(arrow_type(t.key_type), arrow_type(t.item_type))
     return t
 
 

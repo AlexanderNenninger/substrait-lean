@@ -20,6 +20,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from sverify._checker import decode_double, run_checker
 from sverify._decimals import scaled
+from sverify._plan_read import holds_opaque
 
 EPOCH = dt.datetime(1970, 1, 1)
 
@@ -109,6 +110,12 @@ def inline_tables(plan: dict, rows: Mapping[str, list[tuple]]) -> dict:
                 # A decimal takes its column's type (`baseSchema`).
                 types = node.get("baseSchema", {}).get("struct", {}).get("types", [])
                 decs = [t.get("decimal") if isinstance(t, dict) else None for t in types]
+                # The model holds no value of an opaque column, so the reference
+                # evaluates no plan that reads a table with one.
+                if any(holds_opaque(t) for t in types):
+                    raise TypeError(
+                        f"the reference evaluator reads no opaque column (binary, map, ...): {name}"
+                    )
 
                 def cell(i: int, v: object) -> dict:
                     d = decs[i] if i < len(decs) else None

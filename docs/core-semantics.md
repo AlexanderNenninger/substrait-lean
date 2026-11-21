@@ -590,6 +590,10 @@ runs.
 The core needs every value any profile gives, so each must be at least as
 fine as Substrait's. `Value` has a constructor per kind ([D29](decisions.md#d29-a-value-has-its-kind)):
 `null | bool | int | float | date | ts | tod | dec | str | list | struct`.
+An opaque column (a type the model does not read: binary, a map) has the kind
+`Kind.opaque` and holds an image of the engine's value among these
+constructors; the plan carries it and reads nothing from it
+([D67](decisions.md#d67-opaque-columns-a-kind-with-no-operations)).
 A double is a `float` code, `-0.0` and the negative NaN among them
 (`core/Sverify/Core/FloatFormat.lean`), which the reference profile reads raw, with
 one zero and one NaN at the identity boundaries through `canon`; a decimal is its scale and unscaled
