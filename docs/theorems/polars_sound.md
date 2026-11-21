@@ -4,8 +4,9 @@ A plan Sverify has proved returns the reference's rows when it runs on Polars as
 
 Lean: `Substrait.Rel.polars_sound`, in
 [`engines/polars/Sverify/Polars/Shims.lean`](../../engines/polars/Sverify/Polars/Shims.lean).
-Layer: `eval`, the reference's result for the plan. Axioms: not yet listed;
-`#print axioms Substrait.Rel.polars_sound` is the check ([trusted-base.md](../trusted-base.md)).
+Layer: `eval`, the reference's result for the plan. Axioms: `propext`, `Classical.choice`, `Quot.sound` and
+`Substrait.FloatCode.exp_fin`, a float fact that [trusted-base.md](../trusted-base.md)
+lists as trusted.
 
 ## What it says
 
