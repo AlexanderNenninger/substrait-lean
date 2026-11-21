@@ -784,12 +784,14 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 0 | proved, or every postcondition it does not prove is checked on the data at each refresh; a refresh committed every row |
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
-| 3 | refused: a construct outside sverify's model (`sverify.errors.UnsupportedError`), or no route takes a proved node to the engine |
+| 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 4 | time or memory budget exceeded |
-| 5 | a refresh committed with rows quarantined, or held a node |
+| 5 | a refresh committed with rows quarantined |
 | 6 | error: the file raised, I/O, a crash |
+| 7 | refused: no route takes a proved node to the engine |
+| 8 | a refresh held a node |
 
-With 5, `refresh` prints `Refresh.alert()` after the summary, and its
+With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
 data that otherwise stay out of CI artifacts and issues.
