@@ -1,4 +1,4 @@
-import SubstraitLean.Lipschitz.Measures
+import Sverify.Analysis.Lipschitz.Measures
 
 /-!
 # Tolerance composition: arithmetic, `MIN`, `MAX` and groups (#929)
