@@ -41,7 +41,7 @@ LEDGER = ROOT / "python" / "tests" / "odcs_examples.json"
 #: that would read it, or why sverify does not by design.
 WAITS_ON: tuple[tuple[str, dict[str, Any]], ...] = (
     ("a relationship", {"issue": 1956}),
-    ("logicalTypeOptions.pattern", {"issue": 1957}),
+    ("a composite foreign key", {"issue": 1956}),
     ("is not supported; cast the column", {"issue": 1958}),
     ("sverify reads no binary values", {"issue": 1958}),
     ("logicalTypeOptions.format", {"design": "a format for text, which no row breaks"}),

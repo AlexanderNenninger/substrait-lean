@@ -2,13 +2,13 @@
   "source": "https://github.com/bitol-io/open-data-contract-standard/tree/v3.2.0/docs/examples",
   "license": "Apache-2.0",
   "summary": {
-    "conditions": 151,
+    "conditions": 153,
     "examples read": 42,
     "round trip no conditions": 8,
-    "round trip not tried": 4,
+    "round trip not tried": 5,
     "round trip refused": 4,
-    "round trip same": 96,
-    "unread": 22
+    "round trip same": 95,
+    "unread": 20
   },
   "results": {
     "all/full-example.odcs.yaml": {
@@ -23,7 +23,7 @@
           "unread": [
             {
               "column": null,
-              "reason": "a relationship on the object",
+              "reason": "a composite foreign key: references() takes one column",
               "issue": 1956
             },
             {
@@ -579,6 +579,7 @@
           "conditions": [
             "(LENGTH(\"account_id\") >= 11) OR \"account_id\" IS NULL",
             "(LENGTH(\"account_id\") <= 11) OR \"account_id\" IS NULL",
+            "(REGEXP_MATCHES(\"account_id\", 'ACC[0-9]{8}')) OR \"account_id\" IS NULL",
             "(\"txn_ref_date\" > CAST('2020-01-01' AS DATE)) OR \"txn_ref_date\" IS NULL",
             "(\"txn_ref_date\" <= CAST('2021-01-01' AS DATE)) OR \"txn_ref_date\" IS NULL",
             "(\"txn_timestamp\" >= CAST('2020-01-01 00:00:00' AS TIMESTAMP)) OR \"txn_timestamp\" IS NULL",
@@ -590,11 +591,6 @@
             "(\"age\" < 100) OR \"age\" IS NULL"
           ],
           "unread": [
-            {
-              "column": "account_id",
-              "reason": "logicalTypeOptions.pattern",
-              "issue": 1957
-            },
             {
               "column": "txn_ref_date",
               "reason": "logicalTypeOptions.format",
@@ -766,7 +762,7 @@
           "unread": [
             {
               "column": null,
-              "reason": "a relationship on the object",
+              "reason": "a composite foreign key: references() takes one column",
               "issue": 1956
             }
           ],
@@ -932,7 +928,7 @@
             },
             {
               "column": null,
-              "reason": "a relationship on the object",
+              "reason": "a composite foreign key: references() takes one column",
               "issue": 1956
             }
           ],
@@ -943,21 +939,19 @@
             "Key(cols=('order_id', 'product_id'))",
             "NOT \"order_id\" IS NULL",
             "NOT \"product_id\" IS NULL",
-            "NOT \"quantity\" IS NULL"
+            "NOT \"quantity\" IS NULL",
+            "references(order_id, orders.id)"
           ],
           "unread": [
             {
               "column": null,
-              "reason": "a relationship on the object",
-              "issue": 1956
-            },
-            {
-              "column": null,
-              "reason": "a relationship on the object",
+              "reason": "a relationship sverify does not read",
               "issue": 1956
             }
           ],
-          "round_trip": "same"
+          "round_trip": {
+            "not tried": "a foreign key: the round trip reads one object"
+          }
         }
       }
     },
@@ -968,7 +962,7 @@
           "unread": [
             {
               "column": null,
-              "reason": "a relationship on the object",
+              "reason": "a relationship sverify does not read",
               "issue": 1956
             }
           ],
