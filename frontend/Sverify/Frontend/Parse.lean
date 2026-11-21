@@ -1950,7 +1950,17 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if typeKind ((field? c "type").getD .null) != .time then return j
         if argKind cols inp (← parseExpr fns cols bits inp) == .date then return inp
         return j
-    let parsed ← argJs.mapM (parseExpr fns cols bits)
+    -- Typed decimal NULLs have their declared decimal kind where no other argument gives the
+    -- call one, so a call of only such NULLs (`negate(null::dec?<38,0>)`) is a decimal call
+    -- (#2026): `DECIMAL(p, s)` of NULL is NULL. Next to a decimal argument they are left alone.
+    let raw ← argJs.mapM (parseExpr fns cols bits)
+    let parsed := if raw.any (·.kind cols matches .dec _ _) then raw else
+      (argJs.zip raw).map fun (a, e) =>
+        match (field? a "literal").bind (field? · "null") with
+        | some t => match typeKind t with
+          | .dec p s => .un (.decimal p s) e
+          | _ => e
+        | none => e
     if baseName name == "date_diff" then
       if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
         throw "date_diff takes two dates"
