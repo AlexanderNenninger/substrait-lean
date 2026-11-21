@@ -1,0 +1,13 @@
+{
+  "id": "F236",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "An inferred precondition the report states announces the check (ruling 230's class), matched to the same operation; `list_sum`'s narrowing is written as sverify's tagged check, after which its replay cases join the class.",
+  "issues": [
+    2175
+  ],
+  "source": "fable-ruling-236-2175-announced-checks.md",
+  "note": "Unannounced tagged raises still go to the theory advisor (C2). No D-number."
+}

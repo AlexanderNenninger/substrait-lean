@@ -1,0 +1,28 @@
+{
+  "id": "F237",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Scope triage of the 1.0 features milestone under 'comfortably usable over extensive': 13 issues stay 1.0, 13 are nice to have and 12 move After 1.0.",
+  "issues": [
+    27,
+    177,
+    229,
+    322,
+    323,
+    346,
+    741,
+    814,
+    1808,
+    1930,
+    1958,
+    1991,
+    1992,
+    1993,
+    2026,
+    2180
+  ],
+  "source": "fable-ruling-237-m4-triage.md",
+  "note": "The maintainer confirmed #177, #323, #814 and #27 for 1.0; #1930 and #322 were explained to the maintainer, and #1808 is open."
+}
