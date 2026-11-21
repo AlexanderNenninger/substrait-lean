@@ -21,6 +21,7 @@ from __future__ import annotations
 #: Lean checker reports for it.
 TAGS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     ("integer overflow in SUM", ("SUM overflow",), ("sumWraps", "SUM overflow")),
+    ("list_sum out of range", ("domain error",), ("domain",)),
     ("CAST to", ("overflow", "cast out of range"), ("wraps", "badCast")),
     ("overflow", ("overflow",), ("overflow", "wraps")),
 )

@@ -180,7 +180,7 @@ TABLE: tuple[BlackBox, ...] = (
         "int",
         "list_transform([list_sum({0})], lambda s: CASE"
         " WHEN s NOT BETWEEN -9223372036854775808 AND 9223372036854775807"
-        " THEN CAST(error(concat('sverify: CAST to a 64-bit integer out of range: ',"
+        " THEN CAST(error(concat('sverify: list_sum out of range: ',"
         " CAST(s AS VARCHAR))) AS BIGINT)"
         " ELSE CAST(s AS BIGINT) END)[1]",
         raises=True,

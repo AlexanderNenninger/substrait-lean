@@ -33,9 +33,9 @@ def _timeout_asked(arg: float | None) -> bool:
     return arg is not None or bool(os.environ.get("SVERIFY_TIMEOUT", "").strip())
 
 
-def _render(result: CheckResult, fmt: str) -> str:
+def _render(result: CheckResult, fmt: str, code: int = 0) -> str:
     if fmt == "json":
-        return json.dumps(result.to_dict(), indent=2)
+        return json.dumps(result.to_dict(code), indent=2)
     if fmt == "github":
         return formats.github(result)
     if fmt == "sarif":
@@ -139,30 +139,25 @@ def main(argv: list[str] | None = None) -> int:
                 counterexamples=args.counterexamples,
             )
     except _limits.BudgetExceeded as e:
-        print(f"sverify-dbt: {e}", file=sys.stderr)
-        return BUDGET
+        return _fail(BUDGET, "timeout", e, args)
     except UnsupportedError as e:
-        print(f"sverify-dbt: {e}", file=sys.stderr)
-        return REFUSED
+        return _fail(REFUSED, "unsupported", e, args)
     except (ProjectError, ValueError) as e:
-        print(f"sverify-dbt: {e}", file=sys.stderr)
-        return USAGE
+        return _fail(USAGE, "usage", e, args)
     except Exception as e:
         # sverify raises MemoryLimitError; the project's own DuckDB connection,
         # which describes the project's models, raises DuckDB's error.
         if isinstance(e, MemoryLimitError):
-            print(f"sverify-dbt: {e}", file=sys.stderr)
-            return BUDGET
+            return _fail(BUDGET, "memory", e, args)
         if memory_limit_error(e, "run") is not None:
-            print(
-                f"sverify-dbt: DuckDB ran out of memory describing the project's models "
-                f"({e}): raise SVERIFY_MEMORY_LIMIT or --memory-limit (such as 4GB)",
-                file=sys.stderr,
+            msg = (
+                f"DuckDB ran out of memory describing the project's models ({e}): "
+                "raise SVERIFY_MEMORY_LIMIT or --memory-limit (such as 4GB)"
             )
-            return BUDGET
-        print(f"sverify-dbt: error: {type(e).__name__}: {e}", file=sys.stderr)
-        return ERROR
-    print(_render(result, args.format))
+            return _fail(BUDGET, "memory", e, args, msg)
+        return _fail(ERROR, "error", e, args, f"error: {type(e).__name__}: {e}")
+    code = _exit_code(result, args.fail_on)
+    print(_render(result, args.format, code))
     if args.fail_on != "never":
         for m in result.refused_contracts:
             print(
@@ -178,7 +173,33 @@ def main(argv: list[str] | None = None) -> int:
             "`dbt build --exclude selector:sverify_proved` to skip them",
             file=sys.stderr,
         )
-    return _exit_code(result, args.fail_on)
+    return code
+
+
+def _fail(
+    code: int, kind: str, e: BaseException, args: argparse.Namespace, message: str | None = None
+) -> int:
+    """Report a failed check: a line on stderr and, under `--format json`, the
+    envelope with its `error` (`cli.schema.json`) on stdout."""
+    message = message or str(e)
+    print(f"sverify-dbt: {message}", file=sys.stderr)
+    if args.format == "json":
+        from importlib.metadata import version
+
+        from sverify_dbt.result import EXIT_STATUS
+
+        err = {"code": kind, "type": type(e).__name__, "message": message}
+        doc = {
+            "format": 1,
+            "sverify": version("sverify"),
+            "command": "check",
+            "exit": code,
+            "status": EXIT_STATUS[code],
+            "file": args.project,
+            "error": err,
+        }
+        print(json.dumps(doc, indent=2))
+    return code
 
 
 def _exit_code(result: CheckResult, fail_on: str) -> int:
