@@ -1,0 +1,24 @@
+{
+  "id": "U-2026-11-21-ibis-replay-by-design",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1956 is split, and the Ibis replay issues #1910, #1912, #1914, #1915, #1920, #1921, #1923 and #1931 close; only #1921 and #1923 are recorded by design.",
+  "issues": [
+    1910,
+    1912,
+    1914,
+    1915,
+    1920,
+    1921,
+    1923,
+    1931,
+    1956
+  ],
+  "prs": [
+    2236
+  ],
+  "source": "coordinator's relay, 2026-11-21",
+  "note": "The maintainer's words: 'Split #1956, and close the replay issues by design'. #2236 closes them."
+}

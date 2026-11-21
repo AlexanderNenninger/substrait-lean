@@ -11,6 +11,10 @@
   "amends": [
     "F218"
   ],
+  "amended_by": [
+    "F247",
+    "U-2026-11-21-complete-lowerings"
+  ],
   "source": "fable-ruling-235-271-polars-generated-lowering.md",
   "note": "Withdraws ruling 218's recommendation on #271; the rest of ruling 218 stands. Modelling NaN and infinities under semantics=\"polars\" is After 1.0."
 }
