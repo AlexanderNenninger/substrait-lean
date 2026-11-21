@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _fail(
-    code: int, kind: str, e: Exception, args: argparse.Namespace, message: str | None = None
+    code: int, kind: str, e: BaseException, args: argparse.Namespace, message: str | None = None
 ) -> int:
     """Report a failed check: a line on stderr and, under `--format json`, the
     envelope with its `error` (`cli.schema.json`) on stdout."""
