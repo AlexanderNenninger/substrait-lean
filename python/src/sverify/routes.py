@@ -1300,15 +1300,17 @@ def not_verified(report: Report) -> str:
     """Why a plan is not verified, in the user's terms: each runtime error
     that may happen and each postcondition that is not proved, with where
     the report keeps them, and how to run it anyway."""
+    from sverify._user_text import plain
+
     parts = [f"may fail: {i}" for i in report.errors]
     see = ["report.errors"] if report.errors else []
     for c in report._unmet_ensures():
         if not c.proved:
-            parts.append(f"ensures {c.label} is not proved: {c.why}")
+            parts.append(f"ensures {plain(c.label)} is not proved: {c.why}")
         else:
             from sverify import observation as _observation
 
-            parts.append(f"ensures {c.label} {_observation.why(c.ignores)}")
+            parts.append(f"ensures {plain(c.label)} {_observation.why(c.ignores)}")
         if "report.unproved" not in see:
             see.append("report.unproved")
     parts += [f"needs {n}" for n in report._needs_lines()]

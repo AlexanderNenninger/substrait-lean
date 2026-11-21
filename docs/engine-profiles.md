@@ -57,7 +57,7 @@ checked on the data ([What strictness buys](core-semantics.md#what-strictness-bu
 DuckDB is the first engine characterized this way:
 [`engines/duckdb/facts/`](../engines/duckdb/facts/)
 judges DuckDB's own sqllogictests and the fuzzer's findings against
-Substrait's definitions and options, not against ISO SQL or DuckDB
+Substrait's definitions and options, and takes neither ISO SQL nor DuckDB as the standard
 ([how facts are judged](../characterization/README.md)). Polars and Spark
 followed, each with its profile and shims in Lean
 ([Polars as a profile](#polars-as-a-profile),
@@ -169,7 +169,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   search is the same for every engine; an engine's hand-written schemas are an
   argument of `generate_lowering` (DuckDB's in
   `engines/duckdb/Sverify/DuckDB/LoweringSchemas.lean`). Equality saturation (lean-egg) was
-  considered and not used: it proves equalities rather than finding terms,
+  considered and set aside: it proves equalities and finds no terms,
   it is deprecated, and it needs Lean 4.30 and Rust.
 
 * The lift is generated too: the lowering search run backwards.
@@ -197,7 +197,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   (`Arith`, `Math`, `Compare`, `Casts`, `Aggregates`) and a `Table`, which
   `lake build` checks in parallel; an entry that no longer fits fails there.
   The parser is `partial`, so its reading of an entry is computed when the
-  entries are generated rather than proved.
+  entries are generated, and no theorem covers it.
 
 For a plan `verify` proves error-free from its contract, no shim is needed:
 `Profile.duckdbWritten_faithful` shows that DuckDB's profile, with IEEE
@@ -809,7 +809,7 @@ as the reference does. Its translation compensates where DuckDB differs:
 
 `Profile.duckdb` is the reference on decimals: these compensations are what
 make that true of the SQL, and they are tested against `Rel.eval`
-(`tests/test_ibis_decimal.py`), not proved.
+(`tests/test_ibis_decimal.py`), and no theorem covers them.
 
 #### Decimals on Polars
 

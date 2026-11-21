@@ -17,12 +17,13 @@ against the comment under it.
 
 ```bash
 # skip: installs software on the reader's machine
-pip install sverify                 # or: uv add sverify
 pip install 'sverify[duckdb,polars,delta]' # the steps below use DuckDB, Polars and Delta Lake
+pip install sverify                 # verifies only, runs no engine
 ```
 
-The core runs on DuckDB: contracts, incremental maintenance, and SQL for
-DuckDB, Snowflake and Spark. The extras add `polars`, `spark` (needs Java 17
+The `duckdb` extra runs plans on DuckDB and maintains views incrementally;
+the core verifies contracts and writes SQL for DuckDB, Snowflake and Spark.
+The other extras add `polars`, `spark` (needs Java 17
 or 21), `delta`, `iceberg`, `flight`, `testing`, `odcs` and `openlineage`;
 `all` brings every one of them. `polars` and `spark` install the engine packages `sverify-polars`
 and `sverify-spark` with their runtimes. Wheels bundle the Lean checker as a

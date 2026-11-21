@@ -109,7 +109,7 @@ def revenue(orders, customers):
 
 
 def events(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text().splitlines()]
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
 def test_off_by_default(tmp_path, monkeypatch):

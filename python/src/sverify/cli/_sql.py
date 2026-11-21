@@ -19,7 +19,7 @@ def read_schemas(path: Path) -> dict[str, dict[str, str]]:
     strings `sverify.verify(tables=)` reads (`"BIGINT"`, `"VARCHAR NOT NULL"`)."""
     if not path.is_file():
         raise UsageError(f"{path}: no such schema file")
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     try:
         if path.suffix == ".json":
             raw = json.loads(text)
@@ -47,7 +47,7 @@ def read_query(path: Path, dialect: str) -> str:
     """The one statement of the file."""
     import sqlglot
 
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     try:
         statements = [s for s in sqlglot.parse(text, read=dialect) if s is not None]
     except ValueError as e:  # an unknown dialect name

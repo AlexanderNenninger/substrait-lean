@@ -29,7 +29,7 @@ TOOLTIP = re.compile(r'data-tippy-content="<code>[^<]*</code><br>[^"]*"')
 
 
 def version(pyproject: Path = HERE / "pyproject.toml") -> str:
-    return tomllib.loads(pyproject.read_text())["project"]["version"]
+    return tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
 
 
 def label(ver: str, *, release: bool) -> tuple[str, str]:

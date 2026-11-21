@@ -150,7 +150,7 @@ def batch(suite: str, seed: int, seconds: float, out: Path, timeout: float, rss_
     env = {**env, "SVERIFY_FUZZ_PROGRESS": str((out / "progress.json").resolve())}
     start = time.monotonic()
     peak, status = 0, "ok"
-    with open(out / "log.txt", "w") as log:
+    with open(out / "log.txt", "w", encoding="utf-8") as log:
         proc = subprocess.Popen(
             argv,
             cwd=PYTHON_DIR,
@@ -348,7 +348,7 @@ def covered_by_verify(r: dict[str, Any]) -> bool:
 
 
 def load_rules(path: Path = EXPLAINED) -> list[dict[str, Any]]:
-    return json.loads(path.read_text())["rules"] if path.exists() else []
+    return json.loads(path.read_text(encoding="utf-8"))["rules"] if path.exists() else []
 
 
 def rule_problems(rules: list[dict[str, Any]], repo: Path = REPO) -> list[str]:

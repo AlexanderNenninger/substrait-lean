@@ -58,7 +58,7 @@ def balance(durations: dict[str, float], n: int, fixed: dict[int, float] | None 
 
 
 def write(path: Path, table: dict) -> None:
-    path.write_text(json.dumps(table, indent=0, sort_keys=True) + "\n")
+    path.write_text(json.dumps(table, indent=0, sort_keys=True) + "\n", encoding="utf-8")
     print(
         f"{path.relative_to(ROOT)}: {len(table['shard'])} items, estimated loads {table['loads']} s"
     )
