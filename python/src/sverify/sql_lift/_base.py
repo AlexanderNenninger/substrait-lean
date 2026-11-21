@@ -457,6 +457,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     _check_numbers(query)
     _check_intervals(query)
     _check_regex_operators(query)
+    _check_date_bin(query)
     query = expand_table_shorthand(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
@@ -2903,6 +2904,27 @@ def _check_regex_operators(query: str) -> None:
                 "the regular expression operator ~ is not supported yet: SQLGlot reads it as "
                 "regexp_full_match, DuckDB as regexp_matches; write regexp_matches(s, p)",
                 construct="REGULAR EXPRESSION OPERATOR",
+            )
+
+
+def _check_date_bin(query: str) -> None:
+    """Refuse `date_bin(...)`: DuckDB 2.0.0 has no such function, but SQLGlot reads it as the
+    node of `time_bucket`, so the tree cannot tell them apart."""
+    from sqlglot.tokens import TokenType
+
+    try:
+        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
+    except sg.errors.TokenError:
+        return  # the parser reports it
+    for tok, after in zip(tokens, tokens[1:], strict=False):
+        if (
+            tok.token_type == TokenType.VAR
+            and tok.text.lower() == "date_bin"
+            and after.token_type == TokenType.L_PAREN
+        ):
+            raise Unsupported(
+                "DuckDB has no function date_bin; write time_bucket(width, ts[, origin])",
+                construct="function date_bin",
             )
 
 

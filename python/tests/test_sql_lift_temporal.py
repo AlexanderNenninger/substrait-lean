@@ -116,6 +116,8 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT time_bucket(INTERVAL 1 MONTH, placed) FROM orders", "constant width of days"),
         ("SELECT time_bucket(INTERVAL 1 DAY, day) FROM orders", "time_bucket of a DATE"),
         ("SELECT time_bucket(INTERVAL 1 DAY, placed, placed) FROM orders", "not supported yet"),
+        # DuckDB 2.0.0 has no date_bin; SQLGlot reads it as time_bucket's node.
+        ("SELECT date_bin(INTERVAL 1 DAY, placed, placed) FROM orders", "no function date_bin"),
         # `ago` negates; SQLGlot drops it from one unit (#626, SG-8).
         ("SELECT placed + INTERVAL '1 day ago' AS p FROM orders", "ago"),
         ("SELECT placed + INTERVAL '-3 microseconds ago' AS p FROM orders", "ago"),
