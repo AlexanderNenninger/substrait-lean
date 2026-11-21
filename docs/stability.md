@@ -172,8 +172,8 @@ The engines in the promise are those [Engines](#engines) lists.
 
 A minor release may break the public API only when the break is:
 
-- loud: a call that used the old form raises, or warns with a
-  `DeprecationWarning`, and the message names the replacement;
+- loud: a call that used the old form raises, and the changelog names the
+  replacement;
 - caught by a unit test that uses the old form;
 - listed under "Breaking changes" in the changelog;
 - given a migration note in that entry: what to write instead, with an

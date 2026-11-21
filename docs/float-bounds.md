@@ -363,9 +363,12 @@ manual states and the probes measured (0.502 ulp on macOS,
 [duckdb-ulp-libm](../engines/duckdb/facts/duckdb-ulp-libm.json)), and
 `rule_exp` bounds `exp a`, `a ≤ ha`, by
 `εa · exp(ha + εa)(1 + 2u) + 4u (exp ha + tiny)`. The other elementary
-functions stay tested. The checker evaluates the formulas in
-doubles; every term is nonnegative, so each rounding is relative, and a
-factor `1 + 2⁻⁴⁰` covers them.
+functions stay tested. The checker evaluates the formulas exactly, in
+rationals (`core/Sverify/Core/ExactBound.lean`, [#660](https://github.com/AlexanderNenninger/substrait-lean/issues/660)):
+square roots are rounded outward (`sqrtUp_sq`, `sqrtDown_sq`), `exp` is
+bounded above by `(1 - x/2⁶⁰)^(-2⁶⁰)` for `x ≥ 0` and `1 / (1 + |x|/2⁶⁰)^(2⁶⁰)`
+below 0, and a bound is written as a decimal at least `ε · (1 + 2⁻⁵⁰) + 2⁻¹⁰⁷⁴`
+(`upDecimal_ge`), so the double a JSON reader takes from it is at least `ε`.
 
 ### One operation's bounds and overflow
 

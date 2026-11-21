@@ -2,7 +2,7 @@ import Sverify.Analysis.Keys
 import Sverify.Analysis.Partition
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Analysis.Rows
-import SubstraitLean.Semantic
+import Sverify.Analysis.Semantic
 
 /-!
 # The analyses read only the catalog's arities (#1088)

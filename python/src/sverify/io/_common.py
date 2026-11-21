@@ -39,7 +39,7 @@ else:
 @dataclass(frozen=True)
 class ColumnStats:
     """One file's statistics for one column; None is unknown (`ColStats` in
-    `SubstraitLean/TableFormat.lean`)."""
+    `analysis/Sverify/Analysis/TableFormat.lean`)."""
 
     lo: Any
     hi: Any
@@ -127,7 +127,7 @@ def stats_facts(
     hi_slack: timedelta = timedelta(0),
 ) -> list[Fact]:
     """Facts about every row of a table made of `files`, from the join of
-    the files' statistics (`stats_table` in `SubstraitLean/TableFormat.lean`):
+    the files' statistics (`stats_table` in `analysis/Sverify/Analysis/TableFormat.lean`):
     a column without NULLs is NOT NULL; a bounded column lies between the
     least minimum and the greatest maximum, or is NULL if some file has NULLs
     (`stats_fact`); a column of files of NULLs is NULL (`stats_all_null`).
@@ -213,7 +213,7 @@ def str_may_true(where: sg.exp.Expr, bounds: Mapping[str, tuple[Any, Any]]) -> b
     """Whether `where` may be TRUE on a row of a file whose string columns
     lie within `bounds` (column -> (minimum, maximum), either None), where
     either bound may be cut to a prefix (`StrStats.mayTrue` in
-    `SubstraitLean/Pruning.lean`, proved by `strPrune_sound`): every value
+    `analysis/Sverify/Analysis/Pruning.lean`, proved by `strPrune_sound`): every value
     is at least the minimum, and every value cut to the maximum's length is
     at most the maximum. `AND` needs both sides, `OR` and `IN` one, and a
     comparison of a string column with a string literal its bounds; anything
@@ -284,11 +284,11 @@ def prune(
 ) -> set[str]:
     """The files that may hold rows passing `where`. A file is skipped only
     if its string bounds rule `where` out (`str_may_true`, `strStats_prune`
-    in `SubstraitLean/Pruning.lean`), or if Lean proves from the facts its
+    in `analysis/Sverify/Analysis/Pruning.lean`), or if Lean proves from the facts its
     statistics give that `where` is not TRUE on any of its rows
     (`contract_sound`, `stats_prune`). Then filtering the table reads the
     same rows as filtering the other files (`prune_sound` in
-    `SubstraitLean/TableFormat.lean`), and every plan linear in the source
+    `analysis/Sverify/Analysis/TableFormat.lean`), and every plan linear in the source
     gives the same result (`Rel.eval_pruned`)."""
     table = ibis.table(ibis.Schema.from_pyarrow(schema), name="file")
     try:
@@ -862,7 +862,7 @@ class _TableSource(Pipeable, ABC):
         """A copy that reads only the rows that also pass `implied`, a
         predicate a node's view implies on this table (#81): the view gives
         the same result on them (`Rel.need_eval` in
-        `SubstraitLean/Implied.lean`), and files whose statistics rule it
+        `analysis/Sverify/Analysis/Implied.lean`), and files whose statistics rule it
         out are skipped."""
         out = copy.copy(self)
         out.where = implied if self.where is None else f"({self.where}) AND ({implied})"

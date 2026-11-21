@@ -1093,7 +1093,7 @@ def _(mo):
 
     > `{P} g {Q}` and `{Q} f {S}` give `{P} f ∘ g {S}`
 
-    is theorem `Triple.compose` in `SubstraitLean/Compose.lean`.
+    is theorem `Triple.compose` in `analysis/Sverify/Analysis/Compose.lean`.
 
     ### When the link breaks
 

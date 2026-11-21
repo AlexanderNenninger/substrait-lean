@@ -1,4 +1,4 @@
-import SubstraitLean.IncrementalAgg
+import Sverify.Analysis.IncrementalAgg
 
 /-!
 # Delta rules for `MIN`, `MAX` and exact `AVG` (#248, stage 2)

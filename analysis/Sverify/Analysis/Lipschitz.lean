@@ -1,4 +1,4 @@
-import SubstraitLean.Lipschitz.Arith
+import Sverify.Analysis.Lipschitz.Arith
 import Sverify.Analysis.AllowedAnalysis
 
 /-!

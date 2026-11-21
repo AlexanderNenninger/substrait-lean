@@ -1,4 +1,4 @@
-import SubstraitLean.Pruning
+import Sverify.Analysis.Pruning
 
 /-!
 # Implied predicates on base tables (#81)
@@ -11,7 +11,7 @@ customers' preconditions or CHECK constraints saying
 only orders with `ts >= DATE '2026-01-01'` can reach the view's output.
 Engines push down the predicates a query states; this one they do not
 derive. `sverify.io` adds it to the source's condition, so it prunes the
-data files of older orders (`SubstraitLean/Pruning.lean`).
+data files of older orders (`analysis/Sverify/Analysis/Pruning.lean`).
 
 `Rel.need` finds it. It pushes a demand, a condition on a node's output
 rows, down the plan: a filter adds its condition, an emit or a projection
