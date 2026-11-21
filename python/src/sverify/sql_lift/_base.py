@@ -2972,9 +2972,20 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
     `semantics` profile ("duckdb" or "reference").
 
     Raises:
-        Unsupported: The query is outside the subset, saying what.
+        Unsupported: The query is outside the subset, saying what; also a
+            query nested deeper than Python's recursion limit.
         ValueError: `semantics` is not a profile.
     """
+    try:
+        return _lift(query, schemas, semantics)
+    except RecursionError:
+        raise Unsupported(
+            "the query is nested too deeply to lift; split it into CTEs",
+            construct="NESTING DEPTH",
+        ) from None
+
+
+def _lift(query: str, schemas: Mapping[str, Any], semantics: str) -> Lifted:
     profile = PROFILES.get(semantics)
     if profile is None:
         raise ValueError(f"semantics must be one of {', '.join(PROFILES)}, not {semantics!r}")

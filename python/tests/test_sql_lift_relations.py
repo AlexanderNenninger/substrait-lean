@@ -510,3 +510,10 @@ def test_a_bigint_sum_over_a_series_keeps_its_64_bit_check():
     )
     report = sv.verify(sql, on_inferred="ignore")
     assert report.verdict == sv.Verdict.PROVED_WITH_CHECKS
+
+
+def test_a_query_nested_beyond_the_recursion_limit_is_refused_not_a_crash():
+    """#2166: a RecursionError in the lift is an Unsupported."""
+    query = "SELECT " + "(" * 3000 + "1" + ")" * 3000 + " AS x"
+    with pytest.raises(Refused, match="nested too deeply"):
+        lift(query, SCHEMAS)
