@@ -466,6 +466,11 @@ class Dialect:
         """To an integer, halves away from zero; NaN/±inf stay."""
         return f"ROUND({x})"
 
+    def float_round_even(self, x: str) -> str:
+        """`UnFn.froundEven` (D55): to an integer, halves to the even one;
+        NaN/±inf stay. A dialect writes it once its engine's facts say how."""
+        raise self.not_written("ROUND with rounding TIE_TO_EVEN")
+
     def float_round_to(self, x: str, digits: int) -> str:
         """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
         `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m`
@@ -1210,7 +1215,7 @@ class Field:
 
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
-    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
+    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo", "ftoi",
     "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
     "black_box", "raise",
 ]  # fmt: skip
@@ -1713,7 +1718,7 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 #: it (`register`).
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
-    "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
+    "froundEven": "float", "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
     "narrow": "int", "fit": "int", "itos": "str", **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
@@ -2786,6 +2791,12 @@ class _Parser:
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                         op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
                         return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
+                    if name == "round" and _option(v, "rounding", "TIE_AWAY_FROM_ZERO") == "TIE_TO_EVEN":
+                        # D55: half to even, at zero digits only (`Parse`'s `round` arm).
+                        match parsed:
+                            case [a] | [a, Lit(value=0, kind="int")]:
+                                return Un("froundEven", a)
+                        raise Unsupported("round: rounding TIE_TO_EVEN is only modelled at zero digits")
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
                 if name in ("divide", "modulus") and len(parsed) == 2:
@@ -5593,6 +5604,8 @@ class _Writer:
             case Un(op="ffloor" | "fceil" | "fround" as op, arg=a):
                 f = {"ffloor": d.float_floor, "fceil": d.float_ceil, "fround": d.float_round}[op]
                 return f(self.float_operand(a, ref, cols))
+            case Un(op="froundEven", arg=a):
+                return d.float_round_even(self.float_operand(a, ref, cols))
             case Un(op="froundTo", arg=a, digits=digits):
                 return d.float_round_to(self.float_operand(a, ref, cols), digits)
             case Un(op="ftoi", arg=a):

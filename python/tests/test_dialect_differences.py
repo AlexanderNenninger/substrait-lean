@@ -37,17 +37,16 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
         and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
         and "ERROR" not in (getattr(REFERENCE, f.name), getattr(DUCKDB, f.name))
     }
-    assert keys | _dialect.NATIVE == set(_dialect.TABLE) | set(_dialect.REFUSED)
-    assert not set(_dialect.TABLE) & set(_dialect.REFUSED)
+    assert keys | _dialect.NATIVE == set(_dialect.TABLE)
 
 
 @pytest.mark.parametrize(
     ("sql", "spelling"),
     [
-        ("SELECT CAST(x AS BIGINT) AS a FROM t", "CAST(round(x) AS BIGINT)"),
+        ("SELECT CAST(x AS INTEGER) AS a FROM t", "CAST(x AS BIGINT)"),
     ],
 )
-def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
+def test_a_narrower_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
     with pytest.raises(UnsupportedError) as e:
         lift(sql, SCHEMA, "reference")
     assert spelling in str(e.value)
@@ -61,10 +60,9 @@ def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str
         "SELECT CAST((round(x, 2)) AS BIGINT) AS a FROM t",
     ],
 )
-def test_a_round_with_digits_is_not_integral_and_is_refused(sql: str) -> None:
-    """`round(2.567, 2)` is 2.57, which DuckDB's cast rounds to 3 and the plan truncates to 2."""
-    with pytest.raises(UnsupportedError, match="DuckDB's cast"):
-        lift(sql, SCHEMA, "reference")
+def test_a_round_with_digits_casts_as_any_double(sql: str) -> None:
+    """`round(2.567, 2)` is 2.57, which DuckDB's cast rounds to 3: the lift states that rounding."""
+    assert _found(sql) == []
 
 
 def test_a_parenthesised_round_lifts() -> None:

@@ -492,7 +492,7 @@ def Profile.reference.table : ProfileTable where
     -- Native doubles round to nearest, ties to even (D5); `ROUND` rounds
     -- halves away from zero (`core/Sverify/Core/Rounding.lean`, #335).
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
-    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
+    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"] ["TIE_AWAY_FROM_ZERO"]),
     -- Outside their domains the elementary functions raise (`Numeric.lean`,
     -- #215); no operation creates a NaN (#257). Integers have no domain error.
     (none, "on_domain_error", .asked ["ERROR"] ["ERROR"]),

@@ -196,7 +196,12 @@ def Lowering.zeroTemplate (f : UnFn) : Expr :=
     (.lit (.float 0)) (.un f (.field 0))
 
 def Lowering.froundTemplate : Expr := Lowering.zeroTemplate .fround
+def Lowering.froundEvenTemplate : Expr := Lowering.zeroTemplate .froundEven
 def Lowering.fceilTemplate : Expr := Lowering.zeroTemplate .fceil
+
+omit [Boxes.Ambient] in
+theorem Lowering.froundEvenTemplate_must : 0 ∈ Lowering.froundEvenTemplate.must := by
+  simp [Expr.must, Lowering.froundEvenTemplate, Lowering.zeroTemplate]
 
 omit [Boxes.Ambient] in
 /-- The templates read their argument, for the entries' strictness. -/
@@ -249,6 +254,16 @@ theorem Lowering.fround_agree (s : DuckDBSettings) (x : Value) :
   case float c =>
     exact Lowering.zeroTemplate_float (fun _ => rfl) (fun _ => rfl) FloatCode.round_negZero
       FloatCode.round_negNan (fun _ h => FloatCode.canon_round h) c
+  all_goals rfl
+
+/-- `round_even` on DuckDB, through `zeroTemplate`, agrees with the reference. -/
+theorem Lowering.froundEven_agree (s : DuckDBSettings) (x : Value) :
+    (Lowering.froundEvenTemplate.evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un .froundEven x) := by
+  cases x
+  case float c =>
+    exact Lowering.zeroTemplate_float (fun _ => rfl) (fun _ => rfl) FloatCode.roundEven_negZero
+      FloatCode.roundEven_negNan (fun _ h => FloatCode.canon_roundEven h) c
   all_goals rfl
 
 /-- `ceil` on DuckDB, through `zeroTemplate`, agrees with the reference. -/

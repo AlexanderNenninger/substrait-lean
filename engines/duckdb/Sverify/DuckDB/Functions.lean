@@ -132,6 +132,8 @@ def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
   -- `ceil(-0.4)`; duckdb-R15-round), where the reference gives `0.0`: the
   -- `round_zero_sign` option, which the reference leaves open.
   | .fround, x => if x < 0 ∧ FloatCode.round x = 0 then some (.ok (.float FloatCode.negZero)) else none
+  | .froundEven, x =>
+    if x < 0 ∧ FloatCode.roundEven x = 0 then some (.ok (.float FloatCode.negZero)) else none
   | .fceil, x => if x < 0 ∧ FloatCode.ceil x = 0 then some (.ok (.float FloatCode.negZero)) else none
   | _, _ => none
 
@@ -171,10 +173,10 @@ def BinFn.duckdbWritten : BinFn → Bool
   | .imod | .bit .shl => true
   | _ => false
 
-/-- `round` and `ceil`, whose IEEE `-0.0` the SQL printer makes `0.0` through
+/-- `round`, `round_even` and `ceil`, whose IEEE `-0.0` the SQL printer makes `0.0` through
 the proved template (`Lowering.zeroTemplate`, `round_zero_sign`). -/
 def UnFn.duckdbWritten : UnFn → Bool
-  | .fround | .fceil => true
+  | .fround | .froundEven | .fceil => true
   | _ => false
 
 /-- DuckDB's profile with the functions of `BinFn.duckdbWritten` and

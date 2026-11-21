@@ -392,6 +392,22 @@ theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.ne
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
 
 omit [Boxes.Ambient] in
+theorem FloatCode.roundEven_negZero : FloatCode.roundEven FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.roundEven FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+omit [Boxes.Ambient] in
+theorem FloatCode.roundEven_negNan : FloatCode.roundEven FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.roundEven FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+omit [Boxes.Ambient] in
 theorem FloatCode.ceil_negZero : FloatCode.ceil FloatCode.negZero = FloatCode.negZero := by
   have h := FloatCode.negZero_eq'
   unfold FloatCode.ceil FloatCode.onMag

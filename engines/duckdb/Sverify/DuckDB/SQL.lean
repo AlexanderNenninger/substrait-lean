@@ -164,13 +164,6 @@ theorem FloatCode.ofInt_ne_negInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.ne
 
 namespace FloatCode
 
-/-- `m / K` rounded to the nearest integer, halves to the even one: the
-integer part of a double's magnitude `m` as DuckDB's cast takes it. -/
-def evenQuot (m : Nat) : Nat :=
-  if 2 * (m % K) < K then m / K
-  else if K < 2 * (m % K) then m / K + 1
-  else if m / K % 2 = 0 then m / K else m / K + 1
-
 /-- DuckDB's `CAST(x AS BIGINT)` of a double, before its range check: half to
 even (duckdb-R9), `none` for NaN and `±∞`. `toInt?` truncates. -/
 def toIntEven? (c : Int) : Option Int :=
@@ -196,6 +189,32 @@ theorem mag_code (m : Nat) : mag (code m) = m := by
   unfold mag code; split <;> omega
 
 theorem mag_neg (x : Int) : mag (-x) = mag x := by simp [mag]
+
+/-- **DuckDB's cast is the model's cast of the half-even round** (D55): the lift reads
+`CAST(x AS BIGINT)` as `ftoi (froundEven x)`. -/
+theorem toIntEven?_eq_toInt?_roundEven (c : Int) : toIntEven? c = toInt? (roundEven c) := by
+  by_cases hb : maxMag < mag c
+  · rw [onMag_of_big hb |> fun h => show roundEven c = c from h]
+    simp [toIntEven?, toInt?, hb]
+  · have hb' := evenMag_bound (mag c) (by omega)
+    have hq : evenMag (mag c) / K = evenQuot (mag c) := Nat.mul_div_cancel _ K_pos
+    have hr : roundEven c = if c < 0 then -code (evenMag (mag c)) else code (evenMag (mag c)) := by
+      unfold roundEven onMag; simp [hb]
+    have hm : mag (roundEven c) = evenMag (mag c) := by
+      rw [hr]; split <;> simp [mag_neg, mag_code]
+    unfold toIntEven? toInt?
+    simp only [hb, hm, show ¬ maxMag < evenMag (mag c) from by omega, ↓reduceIte, hq]
+    by_cases hc : c < 0
+    · rw [hr]; simp only [hc, ↓reduceIte]
+      by_cases h0 : evenMag (mag c) = 0
+      · have : evenQuot (mag c) = 0 := by
+          have := hq; rw [h0] at this; simpa using this.symm
+        simp [h0, code, this]
+      · have : -code (evenMag (mag c)) < 0 := by unfold code; simp [h0]; omega
+        simp [this]
+    · rw [hr]; simp only [hc, ↓reduceIte]
+      have : ¬ code (evenMag (mag c)) < 0 := by have := code_nonneg (evenMag (mag c)); omega
+      simp [this]
 
 theorem dvd_floorMag (m : Nat) : K ∣ floorMag m := Nat.dvd_mul_left _ _
 theorem dvd_ceilMag (m : Nat) : K ∣ ceilMag m := Nat.dvd_mul_left _ _
@@ -710,6 +729,16 @@ theorem DuckDBSQL.ref_ftoi_null : Profile.reference.un .ftoi .null = .ok .null :
 theorem DuckDBSQL.ref_fround_float (c : Int) :
     Profile.reference.un .fround (.float c) = .ok (.float (FloatCode.round c)) := rfl
 theorem DuckDBSQL.ref_fround_null : Profile.reference.un .fround .null = .ok .null := rfl
+theorem DuckDBSQL.ref_froundEven_float (c : Int) :
+    Profile.reference.un .froundEven (.float c) = .ok (.float (FloatCode.roundEven c)) := rfl
+theorem DuckDBSQL.ref_froundEven_null : Profile.reference.un .froundEven .null = .ok .null := rfl
+/-- **DuckDB's cast is the model's cast of the half-even round** (D55). -/
+theorem DuckDBSQL.duckCast_eq_castOut_roundEven (c : Int) :
+    duckCastBigint (.float c) = DuckDBSQL.castOut (FloatCode.roundEven c) := by
+  simp only [duckCastBigint, DuckDBSQL.castOut]
+  rw [← FloatCode.canon_roundEven_canon, FloatCode.canon_roundEven (FloatCode.canon_idem c),
+    FloatCode.toIntEven?_eq_toInt?_roundEven]
+theorem DuckDBSQL.duckCast_null : duckCastBigint .null = .ok .null := rfl
 theorem DuckDBSQL.ref_fceil_float (c : Int) :
     Profile.reference.un .fceil (.float c) = .ok (.float (FloatCode.ceil c)) := rfl
 theorem DuckDBSQL.ref_fceil_null : Profile.reference.un .fceil .null = .ok .null := rfl
@@ -819,7 +848,8 @@ def DuckFn.evalOwn : Semantics → DuckFn → List Value → Outcome
     | .float a, .float b => .float (if FloatCode.canon b < FloatCode.canon a then b else a)
     | .null, v | v, .null => v
     | _, _ => .null)
-  | .reference, .castDoubleBigint, [a] => Profile.reference.un .ftoi a
+  -- DuckDB's cast (R9) under both semantics: the lifted text means DuckDB's value (D54, D55).
+  | _, .castDoubleBigint, [a] => duckCastBigint a
   -- DuckDB's cast (R9) of DuckDB's rounding, which may give `-0.0` (R15).
   | .duckdb, .castRoundedBigint r, [a] => (Profile.duckdb {}).un r.fn a >>= duckCastBigint
   | .reference, .castRoundedBigint r, [a] => Profile.reference.un r.fn a >>= Profile.reference.un .ftoi

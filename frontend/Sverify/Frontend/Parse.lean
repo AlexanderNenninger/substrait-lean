@@ -278,7 +278,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
   | .field i => cols.getD i .other
   | .un .neg a => a.kind cols
-  | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
+  | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _ | .un .froundEven _
   | .un (.froundTo _) _ => .float
   | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ | .un .ftoiOrNull _
   | .un (.narrowOrNull _) _ => .int
@@ -1190,7 +1190,7 @@ private def optionAcceptsBefore (base : String) (float : Bool) : String → Opti
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
     else if !float then none
     -- `ROUND` rounds halves away from zero (`core/Sverify/Core/Rounding.lean`).
-    else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
+    else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"])
     -- Native doubles round to nearest, ties to even.
     else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg", "variance",
         "std_dev"].contains base then
@@ -2104,6 +2104,15 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       | "modulus", [a, b] =>
         let floor := divisionTypeMode fopts == "FLOOR"
         return divByZero mode true (if floor then Expr.floorFmodOf else .bin .fmod) a b
+      -- D55: `rounding: TIE_TO_EVEN` at zero digits is half-to-even; the model has no
+      -- other digits for it.
+      | "round", [a] | "round", [a, .lit (.int 0)] =>
+        return if optionPref "rounding" "TIE_AWAY_FROM_ZERO" fopts == "TIE_TO_EVEN"
+          then .un .froundEven a else .un .fround a
+      | "round", _ =>
+        if optionPref "rounding" "TIE_AWAY_FROM_ZERO" fopts == "TIE_TO_EVEN" then
+          throw "round: rounding TIE_TO_EVEN is only modelled at zero digits"
+        else mkFloatCall (baseName name) args
       | _, _ => mkFloatCall (baseName name) args
     else
       let mode := divByZeroMode fopts

@@ -2,14 +2,14 @@
 
 `sv.verify(sql)` reads the text as DuckDB's and the functions as the
 reference's. The reference gives a value DuckDB does not in the fields of
-`Profile` below. The lift refuses the casts (`REFUSED`, with a hint) and the
-report lists `corr` and `list_contains` (`Report.dialect_differences`). The raises of the
+`Profile` below. The report lists `corr` and `list_contains` (`Report.dialect_differences`).
+The raises of the
 reference (`domain_error`, `log_zero`) and of DuckDB (`min_mod_neg_one`, listed as a guard's
 issue) are not here: a raise is visible and the inferred preconditions name its inputs.
 
 One table, keyed by the `Profile` field. `tests/test_dialect_differences.py`
 derives the key set from `REFERENCE` and `DUCKDB` and fails when a field joins
-it neither refused nor listed.
+it not listed.
 """
 
 from __future__ import annotations
@@ -47,16 +47,6 @@ class DialectDifference:
         )
         return f"{out}; {self.spellings}" if self.spellings else out
 
-
-#: The `Profile` fields the lift refuses under the reference instead of listing
-#: (D54, the user's choice on #1484): the message names the spellings that lift for
-#: the source type and mean the same under both semantics.
-REFUSED: dict[str, str] = {
-    "float_to_int": (
-        "write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), "
-        "which mean the same on both"
-    ),
-}
 
 #: The listed differences that are no `Profile` field: DuckDB's own reading of a construct differs
 #: from the plan's under every semantics, at the engine versions named (D54, ruling 208).

@@ -95,9 +95,6 @@ class Profile:
             0, fits).
         float_division_by_zero: `/` by zero, which divides doubles:
             `"ERROR"` (reference). DuckDB's `/` is the generated lift's.
-        float_to_int: A cast of a double to an integer: `"TIE_TO_EVEN"`
-            (DuckDB rounds, `CAST(2.5 AS INT)` is 2) or `"TRUNCATE"`
-            (reference, #209 R9).
         domain_error: Elementary functions and `power` outside their domain
             (`sqrt(-1)`, `power(-8, 1/3)`): `"NAN"` (DuckDB) or `"ERROR"`
             (reference, #257).
@@ -117,7 +114,6 @@ class Profile:
     on_division_by_zero: str = "ERROR"
     min_mod_neg_one: str = "ZERO"
     float_division_by_zero: str = "ERROR"
-    float_to_int: str = "TRUNCATE"
     domain_error: str = "ERROR"
     log_zero: str = "ERROR"
     corr_degenerate: str = "NULL"
@@ -126,7 +122,6 @@ class Profile:
 DUCKDB = Profile(
     "duckdb",
     min_mod_neg_one="ERROR",
-    float_to_int="TIE_TO_EVEN",
     domain_error="NAN",
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",

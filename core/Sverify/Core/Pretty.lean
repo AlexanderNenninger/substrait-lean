@@ -39,7 +39,7 @@ def Row.render (row : Row) : String :=
 those without a row (casts), by an arm of their own. -/
 
 def UnFn.render : UnFn → String
-  | .itof => "DOUBLE" | .froundTo d => s!"ROUND_{d}"
+  | .itof => "DOUBLE" | .froundTo d => s!"ROUND_{d}" | .froundEven => "ROUND_EVEN"
   | .ftoi => "BIGINT" | .narrow n => s!"INT{n}" | .ftoiOrNull => "TRY_BIGINT"
   | .narrowOrNull n => s!"TRY_INT{n}" | .wrap n => s!"WRAP{n}" | .itos => "VARCHAR" | .widen => "DOUBLE"
   | .atUtc true => "AT TIME ZONE UTC" | .atUtc false => "AT TIME ZONE UTC (naive)"

@@ -479,7 +479,7 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
     let d := if s > 0 then min d1 (ea / s) else d1
     let u := unitRound
     return (d * (1 + u) + 2 * u * (sqrtUp ha + tiny), pa)
-  | .un .ffloor a | .un .fceil a | .un .fround a => do
+  | .un .ffloor a | .un .fceil a | .un .fround a | .un .froundEven a => do
     -- `rule_floor`, `rule_ceil`, `rule_round`: a step of one.
     let (ea, pa) ← exprEps es engine env cols a
     if ea == 0 then return (0, pa)
