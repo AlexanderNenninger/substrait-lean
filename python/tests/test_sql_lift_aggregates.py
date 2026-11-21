@@ -80,6 +80,8 @@ QUERIES = [
     # does; bool_and and bool_or are min and max of booleans.
     "SELECT customer, string_agg(customer, '-' ORDER BY id) AS s, list(qty ORDER BY id) AS l,"
     " bool_and(amount > 2) AS ba, bool_or(qty > 3) AS bo FROM orders GROUP BY customer",
+    # `arbitrary` is DuckDB's other name of `first` (#328).
+    "SELECT id, arbitrary(customer) AS a FROM orders GROUP BY id",
     "SELECT first(qty ORDER BY id) AS f, last(qty ORDER BY id DESC) AS l,"
     " first(price ORDER BY placed) AS fp, last(customer ORDER BY day) AS lc,"
     " list(customer ORDER BY id) AS lst, array_agg(qty ORDER BY amount DESC) AS aa,"

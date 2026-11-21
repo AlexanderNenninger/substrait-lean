@@ -40,6 +40,8 @@ QUERIES = [
     "SELECT id, amount / qty AS r, price / 2 AS p FROM orders",
     "SELECT id FROM orders WHERE price > 1.5 AND qty BETWEEN 2 AND 4 OR customer IS NULL",
     "SELECT id FROM orders WHERE NOT (customer IN ('ada', 'cy')) AND customer IS NOT NULL",
+    # DuckDB's `if(c, a, b)` is a CASE with one branch (#328).
+    "SELECT id, if(qty > 3, 'big', 'small') AS k, if(qty IS NULL, 0, price / qty) AS p FROM orders",
     "SELECT id, CASE WHEN qty > 3 THEN 'big' WHEN qty IS NULL THEN NULL ELSE 'small' END AS k,"
     " CASE qty WHEN 3 THEN 1.5 ELSE 2 END AS c, coalesce(qty, 0) AS z FROM orders",
     "SELECT id, cost * cost AS c2, cost + 1 AS c1, cost * 2 AS cd, cost > 3.5 AS big FROM orders",
