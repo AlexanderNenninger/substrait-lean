@@ -145,6 +145,26 @@ def _concat(lf: _Lift, node: sge.ArrayConcat, sub: Sub, scope: list[Column]) -> 
     return E(out, lt)
 
 
+def _push(lf: _Lift, node: sge.ArrayAppend | sge.ArrayPrepend, sub: Sub, scope: list[Column]) -> E:
+    """`list_append(l, x)` and `list_prepend(x, l)` (`array_append`, …): `l`
+    with `x` at the end (front); a NULL `l` is empty and a NULL `x` an
+    element, as `list_concat` of `l` and `[x]` (#327)."""
+    one = sge.Array(expressions=[node.expression])
+    parts = [node.this, one] if isinstance(node, sge.ArrayAppend) else [one, node.this]
+    return _concat(lf, sge.ArrayConcat(this=parts[0], expressions=[parts[1]]), sub, scope)
+
+
+def _flatten(lf: _Lift, node: sge.Flatten, sub: Sub, scope: list[Column]) -> E:
+    """`flatten(l)`: the lists of a list of lists in a row, a NULL inner list
+    left out (`BinFn.flatten`, #327)."""
+    x = sub(node.this)
+    if not (x.type.is_array() and x.type.value_type.is_array()):
+        raise SqlUnsupported(
+            f"flatten of a {x.type} is not supported", issue=327, construct="function flatten"
+        )
+    return E(_fn("flatten", [x.json], x.type.value_type), x.type.value_type)
+
+
 class ListPosition(sge.Expression, sge.Func):
     """DuckDB's `list_position(l, x)`, which SQLGlot reads as an unknown
     function (`_rewrite` gives it this node)."""
@@ -227,6 +247,15 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
                 )
             lst, x = (e.transform(node, copy=False) for e in n.expressions)
             return ListPosition(this=lst, expression=x)
+        if name in ("list_first", "list_last") and len(n.expressions) == 1:
+            # `l[1]` and `l[-1]`: NULL for an empty or NULL list.
+            lst = n.expressions[0].transform(node, copy=False)
+            k = (
+                sge.Literal.number(1)
+                if name == "list_first"
+                else sge.Neg(this=sge.Literal.number(1))
+            )
+            return sge.Bracket(this=lst, expressions=[_index(k)])
         if name == "array_value":
             if any(
                 isinstance(e, sge.Anonymous) and e.name.lower() == "array_value"
@@ -245,7 +274,9 @@ def _rewrite(tree: sge.Expr) -> sge.Expr:
     return tree.transform(node, copy=False)
 
 
-_KNOWN.update({"list_extract", "list_element", "array_extract", "array_value"})
+_KNOWN.update(
+    {"list_extract", "list_element", "array_extract", "array_value", "list_first", "list_last"}
+)
 PARSE_REWRITES.append(_rewrite)
 
 register(
@@ -255,6 +286,9 @@ register(
         sge.ArraySize: _len,
         sge.ArrayContains: _contains,
         sge.ArrayConcat: _concat,
+        sge.ArrayAppend: _push,
+        sge.ArrayPrepend: _push,
+        sge.Flatten: _flatten,
         ListPosition: _position,
         sge.ArrayPosition: _position,
     }
