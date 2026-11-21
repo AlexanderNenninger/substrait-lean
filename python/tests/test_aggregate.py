@@ -1134,6 +1134,14 @@ def test_arbitrary_is_one_of_the_groups_values():
     assert report.verdict == sv.Verdict.PROVED, report.details()
 
 
+def test_group_concat_with_a_constant_expression_as_separator():
+    """`sep=ibis.literal(":") + ":"` folds to `"::"` (#1914)."""
+    sep = ibis.literal(":") + ":"  # pyrefly: ignore
+    expr = Q.group_by("k").aggregate(c=Q.s.group_concat(sep, where=Q.i > 0))
+    plan = json.loads(to_substrait_json(expr))
+    assert '"string": "::"' in json.dumps(plan)
+
+
 DEC = ibis.table({"k": "int64", "d": "decimal(10, 2)"}, name="t")
 
 

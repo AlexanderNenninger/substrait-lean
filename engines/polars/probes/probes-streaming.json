@@ -974,6 +974,14 @@
    "streaming": "[(nan, nan, nan)]"
   },
   {
+   "construct": "float-sum-grouped-nonfinite",
+   "area": "aggregates",
+   "code": "(lambda gs: df(g=[k for k, v in gs for _ in v], x=[e for _, v in gs for e in v]).group_by('g', maintain_order=True).agg(pl.col('x').sum().alias('sum'), pl.col('x').mean().alias('mean')).sort('g').rows())([('nan+f', [nan, 1.0, 2.0]), ('f+nan', [1.0, nan]), ('inf+f', [inf, 1.0]), ('f+inf', [1.0, inf]), ('ninf+f', [-inf, 1.0]), ('f+ninf', [1.0, -inf]), ('both', [inf, -inf]), ('both-rev', [-inf, 1.0, inf]), ('long-inf', [1.0] * 200 + [inf] + [1.0] * 200), ('long-nan', [1.0] * 200 + [nan] + [1.0] * 200), ('long-both', [1.0] * 200 + [inf, -inf] + [1.0] * 200)])",
+   "differ": 0,
+   "in-memory": "[('both', nan, nan), ('both-rev', nan, nan), ('f+inf', inf, inf), ('f+nan', nan, nan), ('f+ninf', -inf, -inf), ('inf+f', inf, inf), ('long-both', nan, nan), ('long-inf', inf, inf), ('long-nan', nan, nan), ('nan+f', nan, nan), ('ninf+f', -inf, -inf)]",
+   "streaming": "[('both', nan, nan), ('both-rev', nan, nan), ('f+inf', inf, inf), ('f+nan', nan, nan), ('f+ninf', -inf, -inf), ('inf+f', inf, inf), ('long-both', nan, nan), ('long-inf', inf, inf), ('long-nan', nan, nan), ('nan+f', nan, nan), ('ninf+f', -inf, -inf)]"
+  },
+  {
    "construct": "float-std-inf",
    "area": "aggregates",
    "code": "df(x=[inf, 1.0]).select(pl.col('x').std().alias('std'), pl.col('x').var().alias('var')).rows()",

@@ -38,9 +38,10 @@ test-chaos`). A run collects it only when its `-m` expression names
 `chaos`, so `poe test`, `poe test-all` and CI leave it out.
 
 `SVERIFY_SHARD=2/3` keeps the second of three shards of the selected tests
-(CI splits `core` this way); the shards together are the whole run.
-`shards.json` assigns the tests CI has timed, balanced by their durations
-(`sverify_dev.shard_durations`); the others go by a hash of the node id.
+(CI splits `core` three ways and `spark` two); the shards together are the
+whole run. `shards.json` (`core`) and `spark_shards.json` assign the tests CI
+has timed, balanced by their durations (`sverify_dev.shard_durations`); the
+others go by a hash of the node id.
 """
 
 import hashlib
@@ -168,16 +169,21 @@ def backend(item: pytest.Item) -> str:
     return "core"
 
 
-SHARDS = Path(__file__).with_name("shards.json")
+#: The shard tables, one per split: `core` three ways, `spark` two.
+SHARDS = [Path(__file__).with_name(name) for name in ("shards.json", "spark_shards.json")]
 
 
 def _shard_table(n: int) -> dict[str, int]:
-    """`shards.json`'s shard of each test, when it splits `n` ways."""
-    try:
-        table = json.loads(SHARDS.read_text())
-    except (OSError, ValueError):
-        return {}
-    return table["shard"] if table.get("n") == n else {}
+    """The shard of each test, from the tables that split `n` ways."""
+    found: dict[str, int] = {}
+    for path in SHARDS:
+        try:
+            table = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if table.get("n") == n:
+            found |= table["shard"]
+    return found
 
 
 def _shard(config: pytest.Config, items: list[pytest.Item]) -> None:

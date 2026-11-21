@@ -196,6 +196,11 @@ def window(x: Exprs, op: Any) -> Json:
             name, args = "nth_value", [x(func.arg), literal(nth + 1, dt.int64)]
     elif isinstance(func, ops.Reduction):
         m = measure(x, func)
+        if m["measure"].get("sorts"):
+            raise ProducerUnsupported(
+                "window aggregates with their own order_by are not supported",
+                construct=op_construct(func),
+            )
         if "filter" in m or m["measure"]["invocation"] != "AGGREGATION_INVOCATION_ALL":
             raise ProducerUnsupported(
                 "window aggregates with where= or DISTINCT are not supported", construct="WINDOW"

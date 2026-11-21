@@ -400,6 +400,8 @@ def route_json(r: Route) -> Json:
         "semantics": r.profile,
         "reason": r.reason,
         "deterministic": r.deterministic,
+        # D70: only on a run that is on an unprobed version in the range.
+        **({"unprobed_version": r.unprobed_version} if r.unprobed_version else {}),
         "warnings": list(r.warnings),
         "shims": list(r.shims),
         "failures": [dict(f) for f in r.failures],
@@ -432,6 +434,7 @@ def route(d: Mapping[str, Any]) -> Route:
         facts=tuple(d.get("facts", ())),
         theorems=tuple(d.get("theorems", ())),
         version=d.get("version"),
+        unprobed_version=d.get("unprobed_version"),
         issues=tuple(d.get("issues", ())),
         proved_facts=tuple(d.get("proved_facts", ())),
         shims=tuple(d.get("shims", ())),

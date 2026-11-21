@@ -6,16 +6,16 @@ import Sverify.Analysis.Keys
 import Sverify.Core.Check
 import Sverify.Frontend.Parse
 import Sverify.Core.Pretty
-import SubstraitLean.Semantic
+import Sverify.Analysis.Semantic
 import Sverify.Frontend.Write
 import Sverify.Analysis.Infer
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Knowledge
-import SubstraitLean.Implied
+import Sverify.Analysis.Implied
 import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
-import SubstraitLean.AnalysisCongr
+import Sverify.Analysis.AnalysisCongr
 
 /-!
 # Checking a contract

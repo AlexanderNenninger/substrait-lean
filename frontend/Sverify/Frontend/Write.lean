@@ -473,6 +473,8 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   -- Decimals (#27): see above. The operands of `+`, `-` and comparisons
   -- are written without their `upscale`.
   | .un (.decimal p s) (.lit (.int m)) => decimalLit p s m
+  -- A typed decimal `NULL` (#2026): `Parse` gives it its declared kind.
+  | .un (.decimal p s) (.lit .null) => writeLit (.dec p s) .null
   -- `abs(a)`: `Parse.decimalCall` makes it `CASE WHEN a < 0 THEN 0 - a ELSE a END`.
   | .un (.decimal p s) (.ifThen (.bin .lt a (.lit z)) (.bin .dsub (.lit z') a') a'') =>
     let wa := writeExpr cols (wkind cols a) a
@@ -904,7 +906,9 @@ def writeWindow (cols : List WKind) (part : List Nat) (sort : List SortKey) (f :
     | .percentRank _ => (fn "percent_rank", [], .all)
     | .cumeDist _ => (fn "cume_dist", [], .all)
     | .ntile k => (fn "ntile", [writeLit .int (.int k)], .all)
-    | .agg m _ fr => (Write.AggFn.anchor m.fn, [measureArg cols m], fr)
+    | .agg m _ fr => (Write.AggFn.anchor m.fn, measureArg cols m ::
+        -- `STRING_AGG`'s separator is its second argument (#1915).
+        (match m.fn with | .concat sep => [writeLit .str (.str sep)] | _ => []), fr)
     | .firstValue c _ fr => (fn "first_value", [col c], fr)
     | .lastValue c _ fr => (fn "last_value", [col c], fr)
     | .nthValue c n _ fr => (fn "nth_value", [col c, writeLit .int (.int n)], fr)

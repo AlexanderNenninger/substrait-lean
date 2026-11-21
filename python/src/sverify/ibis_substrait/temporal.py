@@ -44,9 +44,9 @@ def _date(x: Exprs, op: Any) -> Json:
 
 def _truncate(x: Exprs, op: Any) -> Json:
     unit = op.unit.name.lower()
-    if unit in ("millisecond", "microsecond", "nanosecond"):
+    if unit == "nanosecond":
         raise Unsupported(
-            f"truncating to {unit}s is not supported; truncate to a second or coarser",
+            "truncating to nanoseconds is not supported; timestamps have microseconds",
             construct="function truncate",
         )
     return call("date_trunc", [literal(unit, dt.string), x(op.arg)])

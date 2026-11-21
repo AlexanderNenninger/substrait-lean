@@ -1,4 +1,4 @@
-import SubstraitLean.Lipschitz
+import Sverify.Analysis.Lipschitz
 
 /-!
 # The `M₁` fold (#929)
