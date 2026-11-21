@@ -100,7 +100,7 @@ stated against `HasIssue`, so it does not cover them. Strengthening
 Wiring. `Report._guard_free`. `to_sql(plan, dialect, guards=False)` drops
 the division-by-zero `CASE`s, the `date_trunc` range check, Snowflake's
 row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
-`MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
+`MIN % -1 = 0`, which is part of the semantics and no check, and every `SUM` check.
 `sverify_polars.engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
 `to_sql(written_plan(report.internal_plan), dialect, unchecked=report._unchecked)`
@@ -235,7 +235,7 @@ Proved (`analysis/Sverify/Analysis/Partition.lean`, all without `sorry`):
   and empty-group cases come out right because both phases skip NULLs. A
   shard without the group, or with only NULL values in it, contributes a
   NULL partial (`SUM`, `MIN`, `MAX`) or `0` (`COUNT`), and both are neutral.
-  A global aggregate over zero shards would give NULL instead of `COUNT = 0`,
+  A global aggregate over zero shards would give NULL where `COUNT = 0` is due,
   so at least one shard is required.
 * `Rel.eval_algebraic`. An algebraic aggregate is a final expression
   over a tuple of distributive partials: each shard computes the partials,
@@ -354,11 +354,11 @@ hold:
 Wiring. `Rel.optimize` (`analysis/Sverify/Analysis/Semantic.lean`) applies the
 rewrites bottom-up, deciding each from the analyses of the already rewritten
 inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
-is well-formed, has the same arity and gives the same list of rows (not just
-the same bag). `substrait-check --contract` reports the rewritten plan as
+is well-formed, has the same arity and gives the same list of rows (the same bag,
+in the same order). `substrait-check --contract` reports the rewritten plan as
 `optimized`, in Lean's written form, with the names of the rewrites applied
 (`rewrites`); the report keeps them as `_optimized` and `_rewrites`.
-Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
+Run `optimized` in place of the transformation (`to_sql`, `duckdb_engine.run`,
 `sverify_polars.engine.run`) only on data that meets the preconditions, as with
 `guards=False`.
 * Outer-to-inner join conversion. A filter above a left
