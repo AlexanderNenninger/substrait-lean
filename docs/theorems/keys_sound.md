@@ -45,7 +45,7 @@ theorem Rel.keys_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal
 - `K`, `hK`: the table conditions you stated: keys (`sv.unique("id")`,
   `sv.key`) and non-overlapping ranges (`sv.non_overlapping`), and the
   assumption that the data meets both. The keys are what the derivation
-  starts from, and the ranges are what keep a key through an as-of join.
+  starts from, and the ranges are what keep a key through a join on ranges.
 - `r`, `hwf`: the plan, and the assumption that it is well formed.
 - The conclusion: every key `k` in the list `r.keys` the checker derives is
   a key of the plan's result, `KeyOn k (r.eval cat)`: no two rows have the
