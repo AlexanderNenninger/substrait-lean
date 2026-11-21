@@ -3,7 +3,8 @@
 `sv.verify(sql)` reads the text as DuckDB's and the functions as the
 reference's. The reference gives a value DuckDB does not in the fields of
 `Profile` below. The lift refuses the casts (`REFUSED`, with a hint) and the
-report lists `corr`, `list_contains` and the order of lists (`Report.dialect_differences`).
+report lists `corr`, `list_contains` and the order of lists, BETWEEN
+included (`Report.dialect_differences`).
 The raises of the reference (`domain_error`, `log_zero`) and of DuckDB (`min_mod_neg_one`,
 listed as a guard's issue) are not here: a raise is visible and the inferred preconditions name
 its inputs.
