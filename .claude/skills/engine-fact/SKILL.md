@@ -45,3 +45,12 @@ does too). The JSON documents are the record: there is no generated overview. Th
 DuckDB diff table are in `engines/duckdb/facts/README.md`.
 
 Snowflake's facts are private: they live in `AlexanderNenninger/sverify-snowflake-evidence`, never in this repository. This repository gets only sverify's own Snowflake SQL fixes, citing "Snowflake behaviour recorded privately".
+
+## The probe grid (ruling 199, R3)
+
+A fact's rule is no wider than its probe. Probe each argument over its type's degenerate
+values: NULL, the empty value, a list holding NULL, NaN, both zeros, the bounds. A rule
+stated from a probe that left one out is wider than its evidence: `list_contains` of a NULL
+needle was recorded as NULL from `([1], NULL)`, and the empty list differed at 2.0.1
+(`duckdb-list-contains-null`). `sverify_dev.canary` (#2053) runs these probes on each new
+engine release; each drift it finds adds its input to the fact's probe.
