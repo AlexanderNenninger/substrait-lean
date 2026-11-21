@@ -1,0 +1,9 @@
+{
+  "id": "D58",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A timestamp's delta counts the unit boundaries crossed.",
+  "note": "Theory advisor ruling 137."
+}

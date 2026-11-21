@@ -63,6 +63,10 @@ class Declared:
             return pa.bool_()
         if kind == "date":
             return pa.date32()
+        if kind == "time":
+            # The plan reads microseconds (`Parse.typeKind`, #2004); a column of another unit
+            # is refused by the checker, and the engine never reads it as a count of µs.
+            return pa.timestamp("us")
         if kind == "decimal" and isinstance(payload, tuple):
             return pa.decimal128(*payload)
         return actual

@@ -1,0 +1,18 @@
+{
+  "id": "D50",
+  "date": "2026-11-18",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The frontends lift AND and OR so a guard protects the next operand; the core stays eager.",
+  "amends": [
+    "D19"
+  ],
+  "amended_by": [
+    "F102",
+    "F76",
+    "F77",
+    "F89",
+    "F94"
+  ]
+}

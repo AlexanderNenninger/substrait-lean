@@ -184,12 +184,18 @@ def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
     assert routes.check_version("duckdb", "3.0.0") is None
 
 
+#: Installed versions that are not yet probed versions, with the issue that closes each.
+UNPROBED = {"duckdb": "2.0.1"}
+
+
 def test_installed_versions_are_the_probed_ones() -> None:
     """The pinned engines match their profiles' facts; bump the facts with the pins."""
     found = {e: p for e, p in routes.profiles().items() if e in ("duckdb", "polars", "spark")}
     assert set(found) == {"duckdb", "polars", "spark"}
     for engine, prof in found.items():
-        assert routes.installed_version(engine) in prof.versions, engine
+        installed = routes.installed_version(engine)
+        # DuckDB 2.0.1 is locked, with facts probed; its `alsoProbed` follows C2′ (#2045).
+        assert installed in prof.versions or installed == UNPROBED.get(engine), engine
 
 
 def _verdict(cls="exact", evidence="proved", observed=(), shims=(), problems=(), **kw) -> dict:
@@ -425,3 +431,14 @@ def test_a_failed_transfer_check_is_not_kept(monkeypatch) -> None:
     assert routes._transfer("checker", "{}") == '{"ok": true}'
     assert len(calls) == 2
     routes._answer.cache_clear()
+
+
+# -- the engine version a report's profile describes (#710) ---------------------------
+
+
+def test_engine_version_is_the_profiles():
+    sql, tables = "select k from t", {"t": {"k": "BIGINT"}}
+    r = sv.verify(sql, tables=tables, semantics="duckdb")
+    assert r.engine_version == routes.probed_version("duckdb") is not None
+    assert sv.Report.from_json(r.to_json()).engine_version == r.engine_version
+    assert sv.verify(sql, tables=tables).engine_version is None

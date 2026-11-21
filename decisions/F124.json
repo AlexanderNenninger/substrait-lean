@@ -1,0 +1,16 @@
+{
+  "id": "F124",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1744 at 9a2b6fad accepted: decimal hint points at #322, one _rounding predicate refuses round with a digit count, tests and where path in, CI green.",
+  "issues": [
+    322
+  ],
+  "prs": [
+    1744
+  ],
+  "source": "fable-ruling-1744-accepted.md",
+  "note": "Checked against rulings 109 and 111."
+}

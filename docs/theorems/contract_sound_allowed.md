@@ -97,10 +97,10 @@ report = sv.verify(
 )
 print(report.verdict)
 # proved
-print(report.observation.floats)
+print(report.lenses.floats)
 # plan
 ```
 
-The observation is the plan's own bound: `report.observation` prints the
+The observation is the plan's own bound: `report.lenses` prints the
 tolerance (`≤ abs=1.1e-07, rel=2.2e-13`) within which every allowed sum
 lies of the reference's.

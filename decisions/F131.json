@@ -1,0 +1,15 @@
+{
+  "id": "F131",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "DuckDB implicit coercions: lift implements DuckDB's integer-literal width rule on a probed allowlist; NULLIF returns `a` itself; decimal +/- gets a checked operand rescale (D56 drafted, held for user); TIMESTAMPTZ mixes refused in the lift; facts PR first.",
+  "issues": [
+    1484,
+    1498,
+    1725
+  ],
+  "source": "fable-ruling-131-duckdb-coercions.md",
+  "note": "D56 drafted here (new raise for decimal operand rescale), held for the user; approval later logged as ruling 138."
+}

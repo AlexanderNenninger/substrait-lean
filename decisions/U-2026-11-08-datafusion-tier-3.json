@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-08-datafusion-tier-3",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "superseded",
+  "summary": "DataFusion is a tier-3 backend whose limits no longer shape other engines' plans; its bugs behind workarounds are recorded so each skip can cite an id.",
+  "prs": [
+    1158,
+    1165,
+    1167
+  ],
+  "superseded_by": [
+    "U-2026-11-09-drop-datafusion"
+  ],
+  "source": "github:#1165 body; #1167 body"
+}

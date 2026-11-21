@@ -1,0 +1,21 @@
+{
+  "id": "F186",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Binary values (#1918) and struct casts (#1919) refused by design at 1.0, list casts proceed; float32 constants read under P1-P5; boolean casts and #1934 need no decision; interval casts under T1-T4; D65 and D66 reserved.",
+  "issues": [
+    1908,
+    1911,
+    1918,
+    1919,
+    1926,
+    1934
+  ],
+  "amended_by": [
+    "F187"
+  ],
+  "source": "fable-ruling-186-binary-struct-cast-float32.md",
+  "note": "D65 (binary values) and D66 (struct constructor) reserved; next free D67. B2 answered by ruling 187."
+}

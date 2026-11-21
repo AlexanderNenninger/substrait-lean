@@ -361,7 +361,7 @@ def _parts_of(z: Any, schema: pa.Schema, backend: Backend) -> tuple[Part, ...]:
 class PartsStore(Store[Any]):
     """A view's state as parts of Parquet files that the engine writes
     (`PartsState`). A weighted table that is an Arrow table (a change, the
-    state per group) is handled as the Arrow store does. An engine's store
+    state per group) is handled in memory. An engine's store
     names its `Backend` in `default_backend`."""
 
     keep = True

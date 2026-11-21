@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/report.schema.json",
   "title": "sverify report",
-  "description": "A report as Report.to_json writes it and Report.from_json reads it (#736). Format 2. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Conditions appear as their labels, the text str(report) prints. Postconditions, issues and assumptions are findings in the shape of a SARIF 2.1.0 result (#793): ruleId, level, kind, message.text, and sverify's own fields under properties.",
+  "description": "A report as Report.to_json writes it and Report.from_json reads it (#736). Format 4. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Conditions appear as their labels, the text str(report) prints. Postconditions, issues and assumptions are findings in the shape of a SARIF 2.1.0 result (#793): ruleId, level, kind, message.text, and sverify's own fields under properties.",
   "type": "object",
   "required": [
     "format",
@@ -20,10 +20,11 @@
   ],
   "properties": {
     "format": {
-      "description": "The version of this format. Format 3 gave verdict the Verdict's value and added summary; format 2 is still read.",
+      "description": "The version of this format. Format 3 gave verdict the Verdict's value and added summary; format 4 named equivalence lenses and made facts and a postcondition's needs objects; formats 2 and 3 are still read.",
       "enum": [
         2,
-        3
+        3,
+        4
       ]
     },
     "sverify": {
@@ -41,6 +42,13 @@
     "summary": {
       "description": "The report's first line, for display: \"proved\", or \"NOT proved: \" and what is missing, counted. Tools read verdict and the findings.",
       "type": "string"
+    },
+    "engine_version": {
+      "description": "The engine version the profile of semantics describes, the version its facts were probed at (Report.engine_version); null under the reference and substrait.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "semantics": {
       "description": "The semantics the report is under. 1.x may add values.",
@@ -70,7 +78,8 @@
         "off"
       ]
     },
-    "equivalence": {
+    "lenses": {
+      "description": "What the result's consumer observes (Report.lenses); a report written before the name lenses calls it equivalence.",
       "$ref": "#/$defs/equivalence"
     },
     "deterministic": {
@@ -189,14 +198,35 @@
       }
     },
     "facts": {
-      "description": "What the checker established about each output column, in words.",
+      "description": "What the checker established about each output column (Report.facts): in words, whether it may be NULL, and inclusive bounds on its non-NULL values, written as counterexample values are. A report written before #704 has the words alone.",
       "type": "object",
       "additionalProperties": {
-        "type": "string"
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "nullable"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "nullable": {
+                "type": "boolean"
+              },
+              "lower": {},
+              "upper": {}
+            }
+          }
+        ]
       }
     },
     "not_null": {
-      "description": "The output columns the checker proved never NULL (Report.not_null), in the output's order.",
+      "description": "The output columns the checker proved never NULL (not nullable in Report.output), in the output's order.",
       "type": "array",
       "items": {
         "type": "string"
@@ -260,14 +290,15 @@
       }
     },
     "dialect_differences": {
-      "description": "For SQL, where the reference reads the text differently from DuckDB: the construct, where it is, both readings, an example and the spellings that mean the same under both semantics.",
+      "description": "For SQL, where the reference reads the text differently from DuckDB: the construct (its category and the SQL as written), where it is, both readings, an example and the spellings that mean the same under both semantics.",
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["key", "construct", "where", "here", "dialect", "example", "spellings"],
+        "required": ["key", "construct", "sql", "where", "here", "dialect", "example", "spellings"],
         "properties": {
           "key": {"enum": ["corr_degenerate", "list_contains_null_needle"]},
           "construct": {"type": "string"},
+          "sql": {"type": "string"},
           "where": {"type": "string"},
           "here": {"type": "string"},
           "dialect": {"type": "string"},
@@ -389,7 +420,8 @@
             "ruleId": {
               "examples": [
                 "proved",
-                "equivalence",
+                "lenses",
+                "needs",
                 "not_a_key",
                 "ties",
                 "always_false",
@@ -451,7 +483,7 @@
                   "type": "boolean"
                 },
                 "needs": {
-                  "description": "Preconditions under which it would hold.",
+                  "description": "For an unproved condition, preconditions requires does not state under which it is proved (CheckedCondition.needs): those its proof used where sverify inferred them (reason needs), or those the checker suggests. A sufficient set, not claimed minimal.",
                   "type": "array",
                   "items": {
                     "$ref": "#/$defs/needed"
@@ -750,7 +782,7 @@
           "description": "The semantics the proof the run relies on is under.",
           "type": "string"
         },
-        "equivalence": {
+        "lenses": {
           "oneOf": [
             {
               "$ref": "#/$defs/equivalence"

@@ -1,0 +1,15 @@
+{
+  "id": "U-2026-11-09-incremental-store-gate",
+  "date": "2026-11-09",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Incremental maintenance ships in 1.0 only if its engine-held store meets a measured size bar for aggregates, joins, windows and distinct.",
+  "issues": [
+    1329
+  ],
+  "amended_by": [
+    "U-2026-11-20-io-source-gate"
+  ],
+  "source": "memory:incremental-store-1-0-gate.md"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "F75",
+  "date": "2026-11-18",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Spark store refresh (#1680): a SparkState is a list of parts; merge with keep writes the change as a part and consolidates later via the Lean merge plan; (c) two stores declined; acceptance at most 2x main's refresh time, else (a) with a 1.0-list line.",
+  "issues": [
+    173,
+    1329
+  ],
+  "prs": [
+    1680
+  ],
+  "amended_by": [
+    "F87"
+  ],
+  "source": "fable-ruling-1680-spark-store-refresh.md",
+  "note": "The 2x gate was later judged mis-set by ruling 87."
+}

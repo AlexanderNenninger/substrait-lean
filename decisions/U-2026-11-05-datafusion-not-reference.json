@@ -1,0 +1,21 @@
+{
+  "id": "U-2026-11-05-datafusion-not-reference",
+  "date": "2026-11-05",
+  "decided_by": "user",
+  "scope": "engines",
+  "status": "superseded",
+  "summary": "DataFusion is buggy and never a reference implementation; it becomes an optional engine, last in order.",
+  "issues": [
+    185,
+    271,
+    868
+  ],
+  "superseded_by": [
+    "U-2026-11-09-drop-datafusion"
+  ],
+  "amends": [
+    "U-2026-11-01-frontends-sqlglot-ibis"
+  ],
+  "source": "github:#868 body",
+  "note": "Then tier 3 on 2026-11-08 (#1165, #1158), dropped on 2026-11-09."
+}

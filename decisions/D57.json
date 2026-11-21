@@ -1,0 +1,12 @@
+{
+  "id": "D57",
+  "date": "2026-11-19",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "The reference's double abs is IEEE: it clears the sign, so abs(-0.0) is +0.0.",
+  "issues": [
+    1796
+  ],
+  "note": "Signed in ruling 133; its section is not yet in decisions.md."
+}

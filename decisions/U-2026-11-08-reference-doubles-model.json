@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-08-reference-doubles-model",
+  "date": "2026-11-08",
+  "decided_by": "user",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Reference doubles have one NaN, two infinities and one zero, and creating a NaN or overflowing from finite values is an error.",
+  "source": "memory:reference-generic-algorithms.md",
+  "note": "Confirms Fable's D31 clarification; D37 and D38."
+}

@@ -152,8 +152,6 @@ def test_rows_per_is_not_proved_in_ensures():
 def test_rows_per_checks_its_arguments():
     with pytest.raises(ValueError, match="needs at_most="):
         sv.rows_per("customer")
-    with pytest.warns(DeprecationWarning, match=r"rows_per\(\*cols, at_most=\.\.\.\)"):
-        assert sv.rows_per(["a", "b"], 3) == sv.rows_per("a", "b", at_most=3)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="0 or more"):
         sv.rows_per("customer", at_most=-1)
     assert label(sv.rows_per("a", "b", at_most=3)) == "rows_per(a, b, at_most=3)"

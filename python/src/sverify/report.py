@@ -16,7 +16,7 @@ import re
 import warnings
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal, overload
@@ -27,7 +27,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 from ibis.common.deferred import Deferred
 
-from sverify import _decimals, _deprecated, _hooks
+from sverify import _decimals, _deprecated, _duckdb, _hooks
 from sverify import observation as _observation
 from sverify._checker import decode_double
 from sverify._dialect import DialectDifference
@@ -49,6 +49,7 @@ from sverify.observation import Observation, _deterministic_arg
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
+    from sverify.profiles import Finite
     from sverify.routes import Route, RouteKind
 from sverify.conditions import (
     DATA_CHECK,
@@ -78,6 +79,13 @@ default), DuckDB's, whose SQL also means what DuckDB computes, or an
 installed engine's profile (`ProfilePlugin.profile`): Polars's or Spark's,
 or Substrait's own, as its extension YAMLs state it.
 `sverify.contracts.semantics_names` lists them."""
+
+
+def _finite(strict: bool) -> Finite:
+    """A run's `finite`: every overflow to ±∞ where the reference's precondition
+    applies (`strict`), else only an aggregate's, whose engine sum overflows
+    where the exact one does not (#2057)."""
+    return True if strict else "aggregates"
 
 
 def _transfer_failure(f: Mapping[str, Any]) -> str:
@@ -110,7 +118,8 @@ Transform = ir.Table | str
 
 
 UnprovedReason = Literal[
-    "observation",
+    "lenses",
+    "needs",
     "not_a_key",
     "ties",
     "always_false",
@@ -259,6 +268,20 @@ INFINITE_HINT = (
 )
 
 
+#: The kind of a decision on an `AVG` of integers that DuckDB may take the other way
+#: (#1735, D52): the query's own `avg` is within a band of the value verified.
+SOURCE_THRESHOLD = "source_threshold"
+
+#: What a report says of such a decision (ruling 104): the construct, the consequence
+#: and the ways out. 12b-2 restores the comparisons of the mean with integers.
+SOURCE_THRESHOLD_HINT = (
+    "DuckDB's AVG of integers returns a double within a band of the value sverify verified, "
+    "so on DuckDB this query may keep other rows than the verified plan, or the column has "
+    "no bound. Keep the mean away from the threshold with a precondition, or compare exact "
+    "columns: SUM(y) > c * COUNT(y) for an integer c"
+)
+
+
 #: What a report says of a constant that raises (#609, D21).
 CONSTANT_HINT = (
     "this operation reads no column and raises: DuckDB evaluates it when it "
@@ -316,16 +339,18 @@ class Issue:
     """"division by zero", "overflow" (an integer result that does not fit its
     declared width, `MIN / -1`, …), "cast out of range", "negative exponent",
     "domain error", "SUM overflow" (a `SUM` leaving its type: 64 bits for
-    integers, the result's precision for decimals), or "overflow to infinity"
+    integers, the result's precision for decimals), "overflow to infinity"
     (an operation on finite doubles, or their `SUM` or `AVG`, giving
-    `±∞`)."""
+    `±∞`), or "source_threshold" (a decision on DuckDB's `AVG` of integers,
+    which DuckDB may take the other way, #1735)."""
     expr: str
     """The operation, in Lean's notation (`$i` is the operation's i-th input
     column)."""
     error: bool
     """True if a proof must rule it out. Every issue is one; a "SUM overflow"
-    or an "overflow to infinity" is also checked while the job runs, where
-    the transformation's SQL raises too."""
+    or an "overflow to infinity" is also checked on the data before the job
+    runs, by a plan whose result is the verdict (`Report._check_assumed`),
+    and the transformation's SQL raises too where an engine evaluates it."""
     hint: str | None = None
     """For an overflow: the bound that would rule it out, as code to add to
     a contract, or why no bound on a column does (`infer_bounds`). None if
@@ -366,16 +391,6 @@ class Issue:
     that may give `±∞`."""
 
     @property
-    def suggested(self) -> dict[str, tuple[str, ...]]:
-        """Deprecated: `needs`. Its labels per input table."""
-        warnings.warn(
-            "Issue.suggested is deprecated; read Issue.needs",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return _labels_by_table(self.needs)
-
-    @property
     def what(self) -> str:
         """The column, or else the expression, a report names the issue by."""
         return self.column or self.shown or self.expr
@@ -406,8 +421,10 @@ class Verdict(StrEnum):
     """
 
     PROVED = "proved"
-    """Every postcondition holds on every run of the model, and no run raises. That
-    the model matches an engine rests on tests (`docs/trusted-base.md`)."""
+    """Every postcondition holds on every result the reference allows for the
+    transformation, and no run raises (`verdict_proved_sound`). On an engine
+    they hold by its evidence line: that the model matches the engine rests on
+    tests (`docs/trusted-base.md`)."""
     PROVED_WITH_CHECKS = "proved_with_checks"
     """Every run that finishes satisfies the postconditions. A run stops where
     a check of `Report.assumed` fails on the data."""
@@ -436,12 +453,12 @@ class Report:
     """Each postcondition, in the order given: its label, whether it was
     proved, what the checker established about it, and a counterexample if one was
     found."""
-    facts: dict[str, str] = field(default_factory=dict)
-    """What the checker established about each output column."""
-    not_null: list[str] = field(default_factory=list)
-    """The output columns the checker proved never NULL, from what it
-    established about them (`facts`), in the output's order. A stored node
-    of a proved report writes them as NOT NULL columns."""
+    facts: dict[str, ColumnFacts] = field(default_factory=dict)
+    """What the checker established about each output column, as data
+    (`ColumnFacts`: whether it may be NULL, and bounds on its values) and in
+    words (`str(report.facts["c"])`). Under `on_inferred="error"`, where the
+    proof needs a precondition `requires` does not state, they rest on the
+    stated preconditions alone (#701)."""
     deterministic: bool = True
     """True when every result the reference allows is one up to row order
     and up to the member of each class of doubles (`-0.0` and `0.0`; every
@@ -513,6 +530,12 @@ class Report:
     rewrite), or None where the plan to run is the rewrite."""
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`: the marks of its expressions."""
+    _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
+    """The check of the assumed issues (#2018, ruling 195): a plan of one row
+    whose columns say where an issue of `assumed` occurs on the data, on the
+    plan as written (`assumedCheck`, `Sverify/Analysis/AssumedCheck.lean`),
+    and the issue each column checks, by the checker's kind and expression.
+    None without assumed issues."""
     _run_gates: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
     """Per engine (or `"to_sql"`), why its last run took the plan as written
     where the checker gave a rewrite (`_run_gate` is None): `"route"` (a route
@@ -567,19 +590,24 @@ class Report:
     """The profile the report is under (`verify(semantics=...)`):
     `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
     computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
+    engine_version: str | None = None
+    """The engine version the profile of `semantics` describes: the version
+    its facts were probed at (the first, where they were probed at several).
+    None under the reference and `"substrait"`, which describe no engine.
+    A tool that runs the plan's SQL on its own engine (dbt) compares it with
+    the installed version; `run` checks it itself (`EngineVersionError`)."""
     internal_plan: str | None = field(default=None, repr=False, compare=False)
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
     `params` bound and the SQL lifted with `semantics`. `run` runs it."""
-    observation: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
+    lenses: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
     """What the result's consumer observes (`sv.equivalent` in `ensures`).
     When `ensures` names none: rows and list elements as multisets, one zero
     and one NaN (`zeros="canon"`), doubles within the plan's bound
     (`floats="plan"`, printed with the bound, `epsilon`) and other values
     exact (`sverify.observation.PLAN_BOUND`). Under
     the plan's bound a run holds the double columns a postcondition reads
-    to their exact value (`sverify.routes.observed`). `equivalence` is the same, by the
-    concept's name."""
+    to their exact value (`sverify.routes.observed`)."""
     _stated: bool = field(default=False, repr=False, compare=False)
     """Whether `ensures` names the observation (`sv.equivalent`)."""
     _floats_on: dict[str, list[str]] = field(default_factory=dict, repr=False, compare=False)
@@ -609,7 +637,10 @@ class Report:
     output: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """The output's columns with their Ibis types, a decimal's precision and
     scale as the reference types them (`docs/reference-semantics.md`, Decimals):
-    the checker's, which a run returns, not Ibis's."""
+    the checker's, which a run returns, not Ibis's. A column is not nullable
+    where the checker proves it never NULL (`count(*)`, a key, a column of
+    a NOT NULL input), from what it established about it (`facts`); a stored
+    node of a proved report writes those as NOT NULL columns."""
     _epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
@@ -684,6 +715,9 @@ class Report:
     covers."""
     # What an inferred precondition does (`verify(on_inferred=...)`): an error
     # unless the caller says otherwise (D23).
+    _stated_facts: dict[str, ColumnFacts] | None = field(default=None, repr=False, compare=False)
+    """`facts` under the stated preconditions alone, before sverify inferred
+    any (#701); None where it inferred none."""
     _on_inferred: OnInferred = field(default="error", repr=False, compare=False)
     """What the inferred preconditions (`inferred`) do to the proof
     (`verify(on_inferred=...)`): with `"error"`, a plan that needs one is
@@ -893,7 +927,7 @@ class Report:
             d,
             deterministic=self._exact,
             finite=finite,
-            rows="sequence" if self.observation.rows == "sequence" else "multiset",
+            rows="sequence" if self.lenses.rows == "sequence" else "multiset",
         )
 
     def _plan_to_run(self, kind: str | None, *, checked: bool, engine: str) -> str:
@@ -942,7 +976,7 @@ class Report:
                 recheck(written)
             return f(written)
 
-    def _sql_route(self, dialect: Any) -> tuple[Any, bool]:
+    def _sql_route(self, dialect: Any) -> tuple[Any, Finite]:
         """The dialect `dialect` names, and whether its SQL checks the
         reference's `±∞` precondition, for this report's plan; refused as
         `run` refuses it."""
@@ -978,34 +1012,29 @@ class Report:
             if not routes.verified(self):
                 raise UnverifiedRunError(self, chosen)
             raise routes.RouteError(chosen)
-        return d, self.semantics == "reference" or chosen.kind == "translated"
+        return d, _finite(self.semantics == "reference" or chosen.kind == "translated")
 
     def check_inputs(
         self,
         con: Connection,
         engine: str | None = None,
-        *,
-        assumed_checked: bool = False,
-        _plan: str | None = None,
     ) -> None:
         """Check the tables of `con` against the schema the plan was verified
         for (`_check_schema`), the preconditions (`requires`, the inferred
-        bounds among them) and the `SUM`s assumed to fit (`assumed`), before
-        anything runs: a batch that breaks one is refused before the run, with
-        the schema difference or the precondition as the message.
+        bounds among them) and the issues assumed not to occur (`assumed`),
+        before anything runs: a batch that breaks one is refused before the
+        run, with the schema difference or the precondition as the message.
 
         With an `engine`, each table's conditions run there, as one plan the
         checker wrote (`condition_query`): a result that is not TRUE, or a
         plan that raises, is a violation, and a condition the engine's writer
         refuses refuses the check. Without one, Ibis counts on the table's own
-        backend.
+        backend. The assumed issues are checked by a plan of their own
+        (`_check_assumed`), on `engine` or the connection's.
 
         Args:
             con: The connection holding the tables.
             engine: The engine to check the conditions on.
-            assumed_checked: The run's engine checks the assumed issues as it
-                runs its translation (`ProfilePlugin.checks_assumed`), so they
-                are not run once more here on DuckDB.
 
         Raises:
             PreconditionError: A precondition or an assumed `SUM` does not
@@ -1029,20 +1058,42 @@ class Report:
                         condition=c,
                         rows=violating_rows(table, c),
                     )
-        if self.assumed and self.internal_plan is not None and not assumed_checked:
-            # On the plan that runs (`_plan`, #1787); the plan as written for
-            # a caller outside `run`.
-            self._check_assumed(con, _plan or written_plan(self.internal_plan))
+        if self.assumed:
+            self._check_assumed(con, engine if engine is not None else con.engine)
 
-    def _check_assumed(self, con: Connection, plan: str) -> None:
-        """Check the assumptions on `plan` before an engine whose translation
-        does not check them as it runs (a route or an engine without
-        `checks_assumed`): the proved DuckDB translation checks a SUM as it
-        adds up, an operation on finite doubles as it gives its result (#575)."""
-        try:
-            run_plan(con, plan, "duckdb")
-        except Exception as e:
-            raise self._broken_assumption(e) or e from None
+    def _check_assumed(self, con: Connection, engine: str) -> None:
+        """Check the assumed issues on the data, on `engine` (#2018, ruling
+        195): the checker's plan (`_assumed_check`) returns one row, one
+        column per place in the plan as written where an issue may occur, `1`
+        where it occurs on some row that place evaluates. Its verdict is a
+        value in the result, which every engine computes: a guard inside the
+        plan that runs is a side effect an engine skips where it needs no
+        value (a column nothing reads, a filter or limit pushed below it, a
+        join to an empty input). Those guards stay, for data that changes
+        between the check and the run.
+
+        Raises:
+            PreconditionError: An assumed issue occurs on the data.
+        """
+        if self._assumed_check is None:
+            labels = ", ".join(_assumption(i) for i in self.assumed)
+            raise PreconditionError(
+                f"no check of the assumed precondition(s) {labels} for this report: "
+                "refused before the run"
+            )
+        plan, issues = self._assumed_check
+        # The flags read the values the guards would stop at, so the check
+        # runs without the guard against `±∞` (`finite`): its verdict is a value.
+        out = run_plan(con, json.dumps(plan), engine, finite=False)
+        row = list(out.to_pylist()[0].values()) if out.num_rows else []
+        if any(row):
+            found = {issues[j] for j, v in enumerate(row) if v}
+            # An issue the report shows folded with others names them all.
+            broken = [i for i in self.assumed if (i.kind, i.expr) in found] or self.assumed
+            labels = ", ".join(dict.fromkeys(_assumption(i) for i in broken))
+            raise PreconditionError(
+                f"the batch breaks an assumed precondition, {labels}: refused before the run"
+            )
 
     def _check_schema(self, con: Connection, engine: str | None) -> None:
         """Refuse a table that differs from the schema the plan was verified
@@ -1063,25 +1114,6 @@ class Report:
                 else:
                     out.append(f"{t}: {lab}")
         return out
-
-    def _broken_assumption(self, e: Exception) -> PreconditionError | None:
-        """The refusal for an error of an engine's translation that says an
-        assumed `SUM` or operation on finite doubles failed on the data; None
-        for any other error."""
-        message = str(e)
-        issues = ("SUM overflow", "overflow to infinity")  # a Polars guard's `issue`
-        if not (
-            getattr(e, "issue", None) in issues
-            or "overflow in SUM" in message
-            or "overflow to infinity" in message
-        ):
-            return None
-        broken = ", ".join(_assumption(i) for i in self.assumed)
-        err = PreconditionError(
-            f"the batch breaks an assumed precondition, {broken}: refused before the run"
-        )
-        err.__cause__ = e
-        return err
 
     def _source(self, table: str, c: Condition) -> str:
         """Where a precondition the data breaks came from, and what to do,
@@ -1238,12 +1270,6 @@ class Report:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
                 raise routes.RouteError(chosen)
-        # The engine's translation of the plan checks each assumption as it
-        # runs (`ProfilePlugin.checks_assumed`).
-        run_on = profiles.find(chosen.engine) if chosen is not None else None
-        assumed_checked = (
-            check_requires and run_on is not None and run_on.checks_assumed and kind == "translated"
-        )
         # The plan this run runs, decided once: the checks below and the run
         # read the same one.
         run_engine = chosen.engine if chosen is not None else str(target)
@@ -1264,7 +1290,7 @@ class Report:
                     + ", ".join(unchecked)
                     + " of this report: refused before the run (check_requires=False skips them)"
                 )
-            self.check_inputs(con, target, assumed_checked=assumed_checked, _plan=plan)
+            self.check_inputs(con, target)
         else:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
@@ -1280,10 +1306,12 @@ class Report:
             and (chosen is not None or streaming == "require")
         ):
             self._streaming(con, chosen, streaming, plugin.engine, fallbacks, plan)
-        # The check of an overflow to ±∞ is the reference's precondition
-        # (#575): it is written for a plan verified under the reference, and
-        # for one that reaches the engine through the reference's route.
-        finite = self.semantics == "reference" or kind == "translated"
+        # The check of an operation's overflow to ±∞ is the reference's
+        # precondition (#575): it is written for a plan verified under the
+        # reference, and for one that reaches the engine through the
+        # reference's route. An aggregate's keeps it on every route: the
+        # engine's running sum overflows where the exact one does not.
+        finite = _finite(self.semantics == "reference" or kind == "translated")
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
         # translation, a guard-free plan runs without its per-row checks on an
@@ -1294,9 +1322,8 @@ class Report:
 
         def recheck(written: str) -> None:
             """The run's checks of the plan it runs, again for the plan as
-            written after a writer refused the rewrite."""
-            if check_requires and self.assumed and not assumed_checked:
-                self._check_assumed(con, written)
+            written after a writer refused the rewrite (the assumed issues are
+            checked on the plan as written already)."""
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
@@ -1331,10 +1358,8 @@ class Report:
                     recheck,
                 )
         except Exception as e:
-            # The translation's own checks of the assumptions, which `check_inputs`
-            # did not run first, refuse the batch as that run would have.
-            if assumed_checked and (refusal := self._broken_assumption(e)) is not None:
-                raise refusal from e
+            if (oom := _duckdb.memory_limit_error(e, "run")) is not None:
+                raise oom from e
             raise
         out = self._declared_widths(out)
         if kind == "unverified":
@@ -1343,15 +1368,20 @@ class Report:
         return out
 
     def _declared_widths(self, out: pa.Table) -> pa.Table:
-        """`out` with each integer column at the width `output` states: a
-        passed-through narrow column Polars widened to int64 goes back to its
+        """`out` with each integer or float column at the width `output` states:
+        a passed-through narrow column Polars widened to int64 goes back to its
         declared width (a native cast, exact: the values came from that width,
-        ruling 121)."""
+        ruling 121). A float32 column is the same (#1908): the checker refuses
+        arithmetic on float32, so a float32 result holds float32 values, and a
+        double the plan widened from one stays a double."""
         want = dict(self.output)
         fields = []
         for f in out.schema:
             ty = want.get(f.name)
-            if ty is not None and ty.is_integer() and pa.types.is_integer(f.type):
+            if ty is not None and (
+                (ty.is_integer() and pa.types.is_integer(f.type))
+                or (ty.is_floating() and pa.types.is_floating(f.type))
+            ):
                 f = f.with_type(ty.to_pyarrow())
             fields.append(f)
         schema = pa.schema(fields, metadata=out.schema.metadata)
@@ -1598,15 +1628,15 @@ class Report:
         return lines
 
     def _observes_lines(self) -> list[str]:
-        """The `observes:` line: the observation, the plan's bound beside a
+        """The `lenses:` line: the lenses, the plan's bound beside a
         stated tolerance, and which engines' doubles meet it."""
         from sverify import routes as _routes
 
-        obs = self.observation
+        obs = self.lenses
         bound = _routes.plan_bound(self._epsilon)
         if obs == _observation.PLAN_BOUND and bound is None:
             return []
-        line = f"observes: {obs}"
+        line = f"lenses: {obs}"
         if obs.floats != "plan" and bound is not None:
             line += f"; the plan's bound on its doubles is {_observation._bound_text(bound)}"
         if not self._floats_on:
@@ -1728,12 +1758,6 @@ class Report:
                 out.setdefault(n.table, []).append(n.condition)
         return out
 
-    @property
-    def equivalence(self) -> Observation:
-        """The equivalence the result is proved up to: `sv.equivalent(...)` in
-        `ensures`, or rows as a multiset with exact values (`observation`)."""
-        return self.observation
-
     def _needs_text(self, table: str, labs: Sequence[str]) -> str:
         """Needed preconditions on one table that come from one operation,
         where they come from, and the fixes."""
@@ -1768,27 +1792,6 @@ class Report:
     def errors(self) -> list[Issue]:
         """The `issues` an engine fails on at run time (`Issue.error` is true)."""
         return [i for i in self.issues if i.error]
-
-    @property
-    def warnings(self) -> list[Issue]:
-        """The `issues` that do not count against a proof. None do: an
-        `SUM` that may leave its type is an error (`errors`)."""
-        return [i for i in self.issues if not i.error]
-
-    @property
-    def suggestions(self) -> dict[str, list[Needed]]:
-        """For each unproved postcondition with one, the preconditions under
-        which it would be proved, one `Needed` each, by the postcondition's
-        label (`{"(_.y <= 100)": [Needed(table="orders", label="(_.x <= 50)", …)]}`)."""
-        return {
-            c.label: [
-                _needed(t, x, self._dialect, text=f"{label(x)} on {t} would prove {c.label}")
-                for t, cs in c.suggested.items()
-                for x in cs
-            ]
-            for c in self.ensures
-            if c.suggested
-        }
 
     @property
     def unproved(self) -> list[CheckedCondition]:
@@ -1858,7 +1861,8 @@ class Report:
     @property
     def _summary(self) -> str:
         """The report's first line, by the verdict: "proved"; "proved with
-        checks: " and the assumptions that run time checks ("2 assumptions");
+        checks: " and how many each run checks on the data ("2 run-time
+        checks", the lines `while it runs:` lists, #1997);
         or "NOT proved: " and what is missing, counted ("1 of 2
         postconditions not proved, 1 possible runtime error")."""
         match self.verdict:
@@ -1866,7 +1870,7 @@ class Report:
                 return "proved"
             case Verdict.PROVED_WITH_CHECKS:
                 k = len(self.assumed)
-                return f"proved with checks: {k} assumption{'' if k == 1 else 's'}"
+                return f"proved with checks: {k} run-time check{'' if k == 1 else 's'}"
             case _:
                 return f"NOT proved: {', '.join(self._counts())}"
 
@@ -1993,8 +1997,8 @@ class Report:
             more = []
             if c.counterexample is not None:
                 more.append(f"counterexample: {c.counterexample}")
-            if c.suggested:
-                more.append(_would_hold(c))
+            if w := _would_hold(c):
+                more.append(w)
             why = c.why if not c.proved else _observation.why(c.ignores)
             out.append((f"{plain(c.label)}: {why}", more))
         out += [(n, []) for n in self._needs_lines()]
@@ -2029,8 +2033,8 @@ class Report:
             lines.append(f"ensures {c.label}: {c.message}")
             if c.counterexample is not None:
                 lines.append(f"  counterexample: {c.counterexample}")
-            if c.suggested:
-                lines.append(f"  {_would_hold(c)}")
+            if w := _would_hold(c):
+                lines.append(f"  {w}")
         lines += [f"assumes: {i.assumption}" for i in self._assumed()]
         lines += self._trusts_lines()
         lines += [f"checks at run time: {c['label']}" for c in self._margin_checks]
@@ -2065,8 +2069,8 @@ class Report:
         rows = []
         for c in self.ensures:
             rows.append(f"| `{c.label}` | {status(c)} |")
-            if c.suggested:
-                rows.append(f"| suggestion | {_would_hold(c).replace('|', '\\|')} |")
+            if w := _would_hold(c):
+                rows.append(f"| suggestion | {w.replace('|', '\\|')} |")
         for n in self._needs_lines():
             rows.append(f"| needs | ❌ {n.replace('|', '\\|')} |")
         # Issues quote expressions, which may contain `|` (a regex, an OR).
@@ -2113,6 +2117,7 @@ class Report:
 
 #: Private fields that never had a public name: no deprecated alias.
 _REPORT_PRIVATE = [
+    "assumed_check",
     "table_params",
     "run_plan",
     "run_gate",
@@ -2120,6 +2125,7 @@ _REPORT_PRIVATE = [
     "run_gates",
     "asof_checks",
     "asof_max_pairs",
+    "stated_facts",
     "sequence_determined",
 ]
 
@@ -2164,11 +2170,14 @@ release. `plan` is `internal_plan`."""
 _deprecated.add(Report, {**{old: "_" + old for old in _REPORT_INTERNAL}, "plan": "internal_plan"})
 
 
-def _would_hold(c: CheckedCondition) -> str:
-    """The suggestion line of an unproved postcondition."""
+def _would_hold(c: CheckedCondition) -> str | None:
+    """The suggestion line of an unproved postcondition; None where it has
+    no suggestion, or where `why` names what it needs already."""
+    if not c.needs or c.reason == "needs":
+        return None
     parts = [
-        f"{', '.join(f'`{label(x)}`' for x in cs)} in the requires of {t!r}"
-        for t, cs in c.suggested.items()
+        f"{', '.join(f'`{lab}`' for lab in labs)} in the requires of {t!r}"
+        for t, labs in _labels_by_table(c.needs).items()
     ]
     return "would hold with " + " and ".join(parts)
 
@@ -2221,8 +2230,8 @@ def error_text(report: Report) -> str:
             if c.counterexample is not None:
                 line += f" (counterexample: {c.counterexample})"
             lines.append(line)
-            if c.suggested:
-                lines.append(f"    {_would_hold(c)}")
+            if w := _would_hold(c):
+                lines.append(f"    {w}")
         elif c.ignores:
             lines.append(f"  not proved: {c.label}: {_observation.why(c.ignores)}")
     hints: list[str] = []
@@ -2272,9 +2281,85 @@ class PostconditionError(SverifyError):
 
 
 _EPOCH_DAY = date(1970, 1, 1)
+_EPOCH = datetime(1970, 1, 1)
 
 
 _MICROSECOND = timedelta(microseconds=1)
+# What a Python datetime and date hold, the years 1 to 9999, as the checker's
+# codes (microseconds and days from 1970-01-01): the reference's own range
+# (D32). Bounds at or past them say nothing the type does not.
+_TIMESTAMP_SPAN = (datetime.min - _EPOCH) // _MICROSECOND, (datetime.max - _EPOCH) // _MICROSECOND
+_DATE_SPAN = (date.min - _EPOCH_DAY).days, (date.max - _EPOCH_DAY).days
+# An interval as long as two of the reference's timestamps apart.
+_WIDEST = (datetime.max - datetime.min) // _MICROSECOND
+
+
+@dataclass(frozen=True)
+class ColumnFacts:
+    """What the checker proved about one output column (`Report.facts`), as
+    data. `str()` gives it in words: "an integer ≥ 1"."""
+
+    nullable: bool
+    """Whether the column may be NULL; False where the checker proves it
+    never NULL, as `Report.output` types it."""
+    lower: Any = None
+    """A bound every non-NULL value is at least (`col IS NULL OR col >=
+    lower` holds), in the column's Python type (`int`, `Decimal`, `float`,
+    `date`, `datetime`, `timedelta`); None where the checker proves none
+    the type does not. A double column gets a finite bound only."""
+    upper: Any = None
+    """A bound every non-NULL value is at most, as `lower`."""
+    _text: str = field(default="", repr=False, compare=False)
+
+    def __str__(self) -> str:
+        return self._text
+
+
+def _beyond(k: int, span: tuple[int, int], upper: bool) -> bool:
+    """Whether a bound reaches the edge of `span` on its own side."""
+    return k >= span[1] if upper else k <= span[0]
+
+
+def _bound_value(k: int | None, abstract: Mapping[str, Any], dtype: Any, upper: bool) -> Any:
+    """The checker's integer code `k` of a lower (or `upper`) bound as a
+    value of `dtype` (`render_fact` reads the same codes); None where it has
+    none, or where the bound says nothing the type does not."""
+    if k is None or dtype is None:
+        return None
+    if (dec := abstract.get("decimal")) is not None:
+        widest = 10 ** dec["precision"] - 1
+        return None if _beyond(k, (-widest, widest), upper) else _decimals.scaled(k, -dec["scale"])
+    if dtype.is_floating():
+        # A code between two doubles (even, but not 0) is a strict bound,
+        # which `col >= lower` does not state; such a bound is left out.
+        x = decode_double(k)
+        return x if (k == 0 or k % 2 == 1) and math.isfinite(x) else None
+    if dtype.is_timestamp():
+        if _beyond(k, _TIMESTAMP_SPAN, upper):
+            return None
+        at = _EPOCH + timedelta(microseconds=k)
+        # A timestamp with a time zone holds instants, which the codes count in UTC.
+        return at if dtype.timezone is None else at.replace(tzinfo=UTC)
+    if dtype.is_date():
+        return None if _beyond(k, _DATE_SPAN, upper) else _EPOCH_DAY + timedelta(days=k)
+    if dtype.is_interval():
+        return None if _beyond(k, (-_WIDEST, _WIDEST), upper) else timedelta(microseconds=k)
+    if not dtype.is_integer():
+        return None
+    # A bound at or past the type's own limits says nothing the type does not.
+    return None if _beyond(k, dtype.bounds, upper) else k
+
+
+def column_facts(abstract: Mapping[str, Any], dtype: Any, text: str) -> ColumnFacts:
+    """A column's `ColumnFacts` from the checker's abstract value of it."""
+    rng = abstract.get("int") or {}
+    lo, hi = (None if rng.get(e) is None else int(rng[e]) for e in ("lo", "hi"))
+    return ColumnFacts(
+        abstract.get("null") is not False,
+        _bound_value(lo, abstract, dtype, upper=False),
+        _bound_value(hi, abstract, dtype, upper=True),
+        text,
+    )
 
 
 def render_fact(abstract: dict, dtype: Any) -> str | None:
@@ -2298,16 +2383,15 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         show: Callable[[int], str] = lambda k: repr(decode_double(k))  # noqa: E731
         noun = "a double"
     elif dtype.is_timestamp():
-        epoch = datetime(1970, 1, 1)
-        span = (datetime.min - epoch) // _MICROSECOND, (datetime.max - epoch) // _MICROSECOND
+        span = _TIMESTAMP_SPAN
         show = lambda k: (  # noqa: E731
-            (epoch + timedelta(microseconds=k)).isoformat(sep=" ")
+            (_EPOCH + timedelta(microseconds=k)).isoformat(sep=" ")
             if span[0] <= k <= span[1]
             else f"{k:+} µs from 1970-01-01"
         )
         noun = "a timestamp"
     elif dtype.is_date():
-        span = (date.min - _EPOCH_DAY).days, (date.max - _EPOCH_DAY).days
+        span = _DATE_SPAN
         show = lambda k: (  # noqa: E731
             (_EPOCH_DAY + timedelta(days=k)).isoformat()
             if span[0] <= k <= span[1]
@@ -2337,9 +2421,8 @@ def render_fact(abstract: dict, dtype: Any) -> str | None:
         if dtype.is_interval():
             # And an interval as long as two of the reference's timestamps
             # apart, or longer.
-            widest = (datetime.max - datetime.min) // _MICROSECOND
-            lo = None if lo is not None and lo <= -widest else lo
-            hi = None if hi is not None and hi >= widest else hi
+            lo = None if lo is not None and lo <= -_WIDEST else lo
+            hi = None if hi is not None and hi >= _WIDEST else hi
         if lo is None and hi is None:
             parts.append(f"any {noun.split(' ', 1)[1]}")
         elif lo is not None and hi is not None and lo == hi:
@@ -2388,8 +2471,8 @@ class Needed:
     """A precondition a proof needs that `requires` does not state: a bound
     on one input column. `Report.needs` lists those the proof needs
     (`on_inferred="error"` does not assume them), `Issue.needs` those that
-    rule out one runtime error, and `Report.suggestions` those under which
-    an unproved postcondition would be proved."""
+    rule out one runtime error, and `CheckedCondition.needs` those under
+    which an unproved postcondition is proved."""
 
     table: str
     """The input table."""
@@ -2405,7 +2488,7 @@ class Needed:
     """The whole condition as DuckDB's SQL, NULL passing where the column
     is nullable: `"qty" IS NULL OR "qty" < 9000000000000000000`."""
     label: str
-    """The condition as `Report.needed` lists it: `(_.qty < 9 * 10**18)`."""
+    """The condition as `str(report)` lists it: `(_.qty < 9 * 10**18)`."""
     code: str
     """The condition as the Python a user writes in `requires`, for an
     editor's quick fix: `_.qty < 9 * 10**18`, `_.qty != 0`,
@@ -2439,6 +2522,21 @@ def _needed(
     n = Needed(table, column, op, value, sql, lab, _unparen(lab), issue, text=text)
     cond = _needed_deferred(n) if dialect == "ibis" else None
     return replace(n, condition=cond if cond is not None else n.sql)
+
+
+def proved_not_null(report: Report) -> list[str]:
+    """The output columns `report` proves never NULL, in the output's order:
+    those `Report.output` types as not nullable."""
+    return [c for c, t in report.output.items() if not getattr(t, "nullable", True)]
+
+
+def _by_table(needs: Sequence[Needed]) -> dict[str, list[Condition]]:
+    """The conditions of `needs` per input table, in order, ready for `requires=`."""
+    out: dict[str, list[Condition]] = {}
+    for n in needs:
+        if n.condition is not None:
+            out.setdefault(n.table, []).append(n.condition)
+    return out
 
 
 def _labels_by_table(needs: Sequence[Needed]) -> dict[str, tuple[str, ...]]:
@@ -2494,13 +2592,17 @@ def condition_query(table: Transform, cond: Condition, semantics: str = "referen
         if isinstance(table, str):
             return query.format(f"({table})")
         from sverify.ibis_substrait import SQLModel, Unsupported, sql_model_schema
+        from sverify.ibis_substrait.prune import prune_unmentioned
 
         query = query.format('"t"')
+        # The SQL model hides `table` from the producer's pruning: its unread
+        # columns of types sverify does not read go first (#1958).
+        inner: Any = prune_unmentioned(table).op()
         try:
-            schema = sql_model_schema(query, {"t": table.schema()}, semantics)
+            schema = sql_model_schema(query, {"t": inner.schema}, semantics)
         except Unsupported as e:
             raise Unsupported(f"condition {cond!r}: {e}") from e
-        return SQLModel(query, (table.op(),), ("t",), schema, "duckdb", semantics).to_expr()
+        return SQLModel(query, (inner,), ("t",), schema, "duckdb", semantics).to_expr()
     if isinstance(table, str):
         raise TypeError("Ibis conditions need an Ibis transformation; use a SQL string instead")
     if isinstance(table, ir.Join):

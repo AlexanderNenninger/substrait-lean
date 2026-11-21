@@ -1,0 +1,19 @@
+{
+  "id": "F188",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Decimal % is refused where max(p1-s1, p2-s2)+max(s1,s2) > 38 (DuckDB yields DOUBLE there); D56's operand check does not apply; conditions X1-X6.",
+  "issues": [
+    1941
+  ],
+  "prs": [
+    1951
+  ],
+  "amends": [
+    "F181"
+  ],
+  "source": "fable-ruling-188-dmod-past-38-digits.md",
+  "note": "Settles ruling 181's M4 branch (D62's text states the bound)."
+}

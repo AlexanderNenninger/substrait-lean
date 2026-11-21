@@ -1,7 +1,7 @@
 # Configuration of the batch merge queue service (mergeq) for this repository
 # (homelab: mergeq/README.md, docs/decisions.md D17 and D20). Read from main every minute.
-# dry_run: true makes the service only log and record what it would do, beside the laptop
-# queue (agentic-tools/merge-queue), which stays in charge until the owner's cutover.
+# The service is in charge of merging (cutover 2026-11-20); the laptop queue
+# (agentic-tools/merge-queue) is stopped. Setting dry_run to true makes it only log and record.
 # Durations are in seconds.
 base: main
 ready_label: reviewed
@@ -22,4 +22,4 @@ stuck_runner_labels: [aws]
 stuck_after: 600
 base_moved_ignore_prefix: "Regenerate generated"
 merge_method: merge
-dry_run: true
+dry_run: false

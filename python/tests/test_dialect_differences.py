@@ -45,8 +45,6 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
     ("sql", "spelling"),
     [
         ("SELECT CAST(x AS BIGINT) AS a FROM t", "CAST(round(x) AS BIGINT)"),
-        ("SELECT CAST(2.7 AS BIGINT) AS a FROM t", "#322"),
-        ("SELECT CAST(d AS BIGINT) AS a FROM t", "#322"),
     ],
 )
 def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
@@ -82,7 +80,7 @@ def test_the_where_of_each_plan_is_named(monkeypatch: pytest.MonkeyPatch) -> Non
 
     def stub(schemas, query, semantics):
         text, _ = real(schemas, query, semantics)
-        return text, (difference("corr_degenerate", "corr(x, y)"),)
+        return text, (difference("corr_degenerate", "function corr", "corr(x, y)"),)
 
     monkeypatch.setattr(contracts, "plan_and_differences", stub)
     r = sv.verify(
@@ -184,3 +182,30 @@ def test_the_docs_name_each_key() -> None:
     section = text.split("## DuckDB SQL under the reference", 1)[1].split("\n## ", 1)[0]
     for key in _dialect.TABLE:
         assert f"`{key}`" in section, key
+
+
+def test_a_difference_has_the_refusal_category_and_the_sql_as_written() -> None:
+    """#700, ruling 126: `construct` is the category `UnsupportedError.construct` uses;
+    `sql` is the text, and what `str` prints."""
+    r = sv.verify("SELECT corr(x, y) AS c FROM t", tables={"t": {"x": "DOUBLE", "y": "DOUBLE"}})
+    (d,) = r.dialect_differences
+    assert d.construct == "function corr"
+    assert d.sql == "CORR(t.x, t.y)"
+    assert str(d).startswith("CORR(t.x, t.y) in the query")
+
+
+@pytest.mark.parametrize("semantics", ["reference", "duckdb"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CAST(d AS BIGINT) AS a FROM t",
+        "SELECT CAST(2.5 AS BIGINT) AS a FROM t",
+        "SELECT CAST(d AS DECIMAL(10, 0)) AS a FROM t",
+    ],
+)
+def test_a_cast_of_a_decimal_rounds_half_away_under_both_semantics(
+    sql: str, semantics: str
+) -> None:
+    """#322: DuckDB's cast of a decimal rounds half away from zero, as the model's rescale
+    does, so the lift reads it as that rescale and the exact cast, whichever the semantics."""
+    assert _found(sql, semantics) == []
