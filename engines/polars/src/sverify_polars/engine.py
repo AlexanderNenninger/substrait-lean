@@ -13,7 +13,8 @@ any plan the checker accepts into that form). Anything outside it raises
 Semantics are pinned to `Rel.eval` rather than left to Polars:
 
 * Filters and join conditions keep a row only when the condition is TRUE
-  (`Value.isTrue`); `and`/`or` are Kleene's `and3`/`or3`, written out.
+  (`Value.isTrue`); `and`/`or` are Polars's `&` and `|`, which are Kleene's
+  (`and3`/`or3`).
 * Rows come out in `Rel.eval`'s list order: joins are left-major (each left
   row with its matches in right order, a left join's unmatched row in its
   place), unions concatenate and windows emit rows in their sort order.
@@ -236,9 +237,13 @@ def _float_key(e: pl.Expr) -> pl.Expr:
     """A double with the model's order and equality: `-0.0` is `0.0`, and
     every NaN is the one positive NaN, which Polars puts above `inf` and
     makes equal to itself in sorts, comparisons, groups and joins
-    (polars-nan-order, polars-nan-equality, on both engines). Each step names
-    `e` once."""
-    return canon(e).fill_nan(math.nan)
+    (polars-nan-order, polars-nan-equality, on both engines). `e` appears three
+    times, where `canon(e).fill_nan(nan)` wrote it six: the plan Polars collects
+    has no common-subexpression elimination (`_OPTIMIZATIONS`), so every copy
+    of a nested operand is computed (#2210)."""
+    return (
+        pl.when(e == 0.0).then(pl.lit(0.0, pl.Float64)).when(e.is_nan()).then(math.nan).otherwise(e)
+    )
 
 
 #: `BinFn.greatest`/`least`, as Lean writes them.
@@ -614,25 +619,18 @@ def ipow(a: Val, b: Val) -> Val:
 
 
 def and3(a: pl.Expr, b: pl.Expr) -> pl.Expr:
-    """Kleene conjunction: FALSE dominates, otherwise any NULL gives NULL."""
-    return (
-        pl.when(a.eq_missing(False) | b.eq_missing(False))
-        .then(False)
-        .when(a.eq_missing(True) & b.eq_missing(True))
-        .then(True)
-        .otherwise(pl.lit(None, pl.Boolean))
-    )
+    """Kleene conjunction: FALSE dominates, otherwise any NULL gives NULL
+    (Polars's `&`, fact `polars-kleene`). Each operand appears once: a
+    `when`/`then` form wrote it twice, so a nest of depth d was 2ᵈ times the
+    size, and Polars's collect of a CASE over such a nest took 5 GB of
+    memory on 64 rows (#2210)."""
+    return a.cast(pl.Boolean) & b.cast(pl.Boolean)
 
 
 def or3(a: pl.Expr, b: pl.Expr) -> pl.Expr:
-    """Kleene disjunction: TRUE dominates, otherwise any NULL gives NULL."""
-    return (
-        pl.when(a.eq_missing(True) | b.eq_missing(True))
-        .then(True)
-        .when(a.eq_missing(False) & b.eq_missing(False))
-        .then(False)
-        .otherwise(pl.lit(None, pl.Boolean))
-    )
+    """Kleene disjunction: TRUE dominates, otherwise any NULL gives NULL
+    (Polars's `|`, fact `polars-kleene`); each operand once, as `and3`."""
+    return a.cast(pl.Boolean) | b.cast(pl.Boolean)
 
 
 def is_true(e: pl.Expr) -> pl.Expr:
@@ -1864,9 +1862,15 @@ def guard(lf: pl.LazyFrame, vals: list[Val], checks: frozenset[str] = ALL_GUARDS
     """Raise if any row of `lf` runs into an issue of `vals`, which an operator
     evaluates on exactly these rows. A filter is never pruned, and `collect`
     keeps it in place (no predicate pushdown), so it sees the same rows."""
-    found = tuple(i for i in issues(*vals) if i.kind.issue in checks)
+    found = tuple(
+        {
+            (str(i.flag), i.kind, i.message): i for i in issues(*vals) if i.kind.issue in checks
+        }.values()
+    )
     if not found:
         return lf
+    # An operand an operation reads twice reports its issues twice: the same
+    # flag, once per read, so each distinct flag is checked once (#2210).
     # Each flag is a column of its own: one expression holding all of them
     # can outgrow what Polars's plan formatter takes (`fallback_nodes`).
     names = [f"__sv_flag{next(_FLAG_IDS)}" for _ in found]
