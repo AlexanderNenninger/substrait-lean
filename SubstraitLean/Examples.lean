@@ -17,6 +17,7 @@ import Sverify.Analysis.IncrementalFloat
 import Sverify.Analysis.IncrementalMinMax
 import Sverify.Analysis.IncrementalSemi
 import Sverify.Analysis.Safety
+import Sverify.Analysis.MarginSound
 import Sverify.Analysis.Keys
 import Sverify.Analysis.Rows
 import Sverify.Core.Completeness
@@ -462,3 +463,4 @@ end Substrait.Examples
 #print axioms Substrait.Zone.close_sat
 #print axioms Substrait.Zone.add_sat
 #print axioms Substrait.Zone.empty?_sound
+#print axioms Substrait.Rel.marks_measure_finite
