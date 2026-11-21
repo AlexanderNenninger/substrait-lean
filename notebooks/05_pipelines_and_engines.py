@@ -993,7 +993,7 @@ def _(mo):
     keys, NaN, integer overflow, the rounding of integer division and the
     order of ties. Plans come from one producer: the vendored Ibis
     producer, or sverify's lift of DuckDB's SQL (SQLGlot) for SQL strings.
-    DuckDB (the default), Polars on its streaming engine and Spark 4.x run
+    DuckDB (the default), Polars on its streaming engine and Spark 4.3 run
     plans, each with a proved profile, and sverify writes DuckDB, Spark and
     Snowflake SQL; Snowflake's profile and running plans on it come before
     1.0.

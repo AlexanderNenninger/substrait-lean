@@ -55,3 +55,41 @@ def test_an_element_in_range_is_not_null():
     # Without the length, the list may be empty.
     report = sv.verify(expr, requires={"t": [_.xs.notnull()]}, ensures=[_.first.notnull()])
     assert report.verdict == sv.Verdict.UNPROVED
+
+
+def test_a_position_in_a_list_depends_on_the_order_of_its_elements():
+    """An element access (`xs[0]`) reads where an element sits: `[b, a]` and `[a, b]`
+    are equal under the default lens (`elements="multiset"`), so the postcondition
+    is not proved there; with `elements="sequence"` it is, and a length read
+    through `cardinality` is (#2005)."""
+    expr = T.select(T.id, xs=T.xs.map(lambda x: x.fill_null(0)))
+    first = _.xs[0] == _.id
+    default = sv.verify(expr, requires={"t": [_.xs.notnull(), _.xs.length() >= 1]}, ensures=[first])
+    assert "elements" in default.ensures[0].ignores, default.ensures[0]
+    assert default.verdict != sv.Verdict.PROVED
+    exact = sv.verify(
+        expr,
+        requires={"t": [_.xs.notnull(), _.xs.length() >= 1]},
+        ensures=[sv.equivalent(elements="sequence"), first],
+    )
+    assert not exact.ensures[0].ignores
+    sized = sv.verify(expr, requires={"t": [_.xs.notnull()]}, ensures=[_.xs.length() >= 0])
+    assert sized.verdict == sv.Verdict.PROVED, sized.unproved
+
+
+def test_unnest_keep_empty_gives_an_empty_or_null_list_one_row_of_null():
+    # #1917: a project replaces such a list by `[NULL]` before the unnest.
+    from sverify.engine import connect
+
+    t = ibis.table({"id": "int64", "xs": "array<int64>", "ss": "array<string>"}, name="t")
+    rows = [(1, [1, 2], ["a"]), (2, [], []), (3, None, None), (4, [None, 5], [None])]
+    con = connect()
+    con.create("t", t.schema(), rows)
+    for col, ids in (("xs", [1, 1, 2, 3, 4, 4]), ("ss", [1, 2, 3, 4])):
+        report = sv.verify(t.unnest(col, keep_empty=True))
+        duck = report.run(con, engine="duckdb").to_pylist()
+        assert {r["id"]: r[col] for r in duck if r["id"] in (2, 3)} == {2: None, 3: None}
+        assert sorted(r["id"] for r in duck) == ids
+        assert sorted(map(str, report.run(con, engine="polars").to_pylist())) == sorted(
+            map(str, duck)
+        )

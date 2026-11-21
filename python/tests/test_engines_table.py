@@ -239,6 +239,7 @@ _NAME_LISTS = {
     "sverify/engine.py": 1,
     "sverify/report.py": 1,
     "sverify_dev/bugs.py": 2,
+    "sverify_dev/canary.py": 1,
     "sverify_dev/catalogue.py": 3,
     "sverify_dev/coverage.py": 1,
     "sverify_dev/coverage_cases/_common.py": 3,

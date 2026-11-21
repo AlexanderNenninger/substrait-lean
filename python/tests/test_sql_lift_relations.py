@@ -60,6 +60,26 @@ QUERIES = [
     "SELECT c FROM (SELECT customer AS c FROM orders INTERSECT SELECT name FROM customers)",
     "WITH c AS (SELECT name FROM customers UNION ALL SELECT name FROM customers)"
     " SELECT name, count(*) AS n FROM c GROUP BY name",
+    # #1939: a WITH in front of a set operation covers its branches.
+    "WITH c AS (SELECT name FROM customers) SELECT name FROM c UNION ALL"
+    " SELECT customer FROM orders",
+    "WITH c AS (SELECT name FROM customers) SELECT name FROM c EXCEPT SELECT customer FROM orders"
+    " ORDER BY name",
+    # #1991: GROUP BY ALL groups by the items without an aggregate; QUALIFY filters a window.
+    "SELECT customer, sum(amount) AS s FROM orders GROUP BY ALL",
+    "SELECT customer, qty, count(*) AS n, max(price) AS m FROM orders GROUP BY ALL ORDER BY 1, 2",
+    "SELECT sum(amount) AS s, count(*) AS n FROM orders GROUP BY ALL",
+    "SELECT customer, qty + 1 AS q FROM orders GROUP BY ALL HAVING count(*) > 0",
+    "SELECT id, customer, amount FROM orders QUALIFY row_number() OVER"
+    " (PARTITION BY customer ORDER BY amount DESC, id) = 1",
+    "SELECT customer, amount, rank() OVER (PARTITION BY customer ORDER BY amount) AS r FROM orders"
+    " QUALIFY r <= 2",
+    # A star keeps the table's columns, without the rewrite's window column.
+    "SELECT * FROM orders QUALIFY row_number() OVER"
+    " (PARTITION BY customer ORDER BY amount, id) = 1",
+    "SELECT * FROM orders QUALIFY rank() OVER (ORDER BY amount, id) <= 2"
+    " AND row_number() OVER (ORDER BY id) = 1",
+    "SELECT o.* FROM orders o QUALIFY rank() OVER (PARTITION BY customer ORDER BY amount, id) = 1",
     "TABLE customers EXCEPT ALL SELECT name, region FROM customers WHERE region = 'eu'",
     # #803: VALUES in FROM and as a CTE, typed across rows.
     "SELECT * FROM (VALUES (1, 'a'), (2, 'b'), (NULL, 'c')) v(k, s)",
@@ -272,6 +292,10 @@ def test_sorts_put_nulls_last_unless_told():
         ("SELECT id FROM elsewhere", "cannot resolve"),
         ("SELECT * FROM orders o JOIN orders p ON o.id = p.id", "two output columns named id"),
         ("SELECT id FROM orders LIMIT qty", "LIMIT"),
+        (
+            "SELECT customer, sum(amount) OVER () AS s FROM orders GROUP BY ALL",
+            "GROUP BY ALL with a window function",
+        ),
     ],
 )
 def test_refusals_say_what(query, message):

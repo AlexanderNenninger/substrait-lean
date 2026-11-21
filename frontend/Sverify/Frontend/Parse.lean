@@ -445,8 +445,10 @@ def floatOfScientific (m : Int) (e : Nat) : Float :=
   let f := Float.ofScientific m.natAbs true e
   if m < 0 then -f else f
 
-/-- `CAST(c AS DOUBLE)` of a constant. A string is read as DataFusion reads it,
-with no spaces around the number (DataFusion fails on those). -/
+/-- `CAST(c AS DOUBLE)` of a constant. A string is read strictly: no spaces
+around the number, the spellings of infinity and NaN, or a JSON number. These
+spellings give one value on every engine; others split them (`' 12'` is 12 on
+DuckDB and refused by Polars), so they are refused. -/
 def Const.toFloat? : Const → Option Float
   | .int i => some (Float.ofInt i)
   | .flt f => some f
@@ -467,8 +469,9 @@ def Const.toFloat? : Const → Option Float
       | _ => none
   | _ => none
 
-/-- An integer written as DataFusion's casts accept one: an optional sign
-and ASCII digits, nothing else (no spaces, no `_` separators). -/
+/-- An integer written as every engine reads one: an optional sign and ASCII
+digits, nothing else. Spaces and `_` separators split the engines (`'1_000'`
+is 1000 on DuckDB and refused by Polars), so they are refused. -/
 def parseInt? (s : String) : Option Int :=
   let (neg, ds) := match s.toList with
     | '-' :: r => (true, r)
@@ -479,8 +482,8 @@ def parseInt? (s : String) : Option Int :=
     let n : Nat := ds.foldl (fun n c => 10 * n + (c.toNat - '0'.toNat)) 0
     some (if neg then -(n : Int) else n)
 
-/-- `CAST(c AS BIGINT)` of a constant, as DataFusion casts a column
-(`FloatCode.toInt?`): doubles and decimals truncate toward zero, and NaN, ±∞
+/-- `CAST(c AS BIGINT)` of a constant, as the reference casts a column
+(`FloatCode.toInt?`), so a constant and a column holding it cast alike: doubles and decimals truncate toward zero, and NaN, ±∞
 and doubles outside 64 bits have no value. -/
 def Const.toInt? : Const → Option Int
   | .int i => some i
@@ -550,29 +553,30 @@ def _root_.Substrait.Expr.bits (cols : List Nat) : Expr → Nat
 /-- The width of a column computed by `e`. A literal column is a `BIGINT`, the
 model's and the written plan's integer: `Expr.bits`'s 8 for a literal only keeps
 it from widening the arithmetic around it, and a column has none (#1934). A
-narrower declared type is a `narrow` mark (`declaredNarrow`). -/
+narrower declared type is recorded per projection (`recordDeclaredBits`). -/
 def _root_.Substrait.Expr.colBits (cols : List Nat) : Expr → Nat
   | .lit _ => 64
   | e => e.bits cols
 
-def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables) : Rel → List Nat
+def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Tables)
+    (proj : List Nat → List Expr → List Nat := fun bs es => es.map (eb bs)) : Rel → List Nat
   | .read t => match tables.lookup t with
     | some (_, s) => schemaBits s
     | none => []
   | .values n rows => match tables.lookup (valuesKey n rows) with
     | some (_, s) => schemaBits s
     | none => List.replicate n 64
-  | .filter r _ | .fetch r _ _ => r.bitsBy eb tables
+  | .filter r _ | .fetch r _ _ => r.bitsBy eb tables proj
   | .project r es =>
-      let bs := r.bitsBy eb tables
-      bs ++ es.map (eb bs)
+      let bs := r.bitsBy eb tables proj
+      bs ++ proj bs es
   | .emit r m =>
-      let bs := r.bitsBy eb tables
+      let bs := r.bitsBy eb tables proj
       m.map (bs.getD · 64)
-  | .cross a b | .join a b _ _ => a.bitsBy eb tables ++ b.bitsBy eb tables
-  | .unionAll a _ => a.bitsBy eb tables
+  | .cross a b | .join a b _ _ => a.bitsBy eb tables proj ++ b.bitsBy eb tables proj
+  | .unionAll a _ => a.bitsBy eb tables proj
   | .window r _ _ fns =>
-      let bs := r.bitsBy eb tables
+      let bs := r.bitsBy eb tables proj
       bs ++ fns.map fun
         | .lag c _ _ | .lead c _ _ | .firstValue c _ _ | .lastValue c _ _ | .nthValue c _ _ _ =>
           bs.getD c 64
@@ -580,18 +584,40 @@ def _root_.Substrait.Rel.bitsBy (eb : List Nat → Expr → Nat) (tables : Table
           | .min | .max => eb bs m.arg
           | _ => 64
         | _ => 64
-  | .semi a _ _ _ => a.bitsBy eb tables
-  | .orderBy r _ | .distinct r => r.bitsBy eb tables
+  | .semi a _ _ _ => a.bitsBy eb tables proj
+  | .orderBy r _ | .distinct r => r.bitsBy eb tables proj
   -- A list element's width is not tracked.
-  | .unnest r c => (r.bitsBy eb tables).set c 64
+  | .unnest r c => (r.bitsBy eb tables proj).set c 64
   | .aggregate r gs ms =>
-      let bs := r.bitsBy eb tables
+      let bs := r.bitsBy eb tables proj
       gs.map (eb bs) ++ ms.map fun m => match m.fn with
         | .min | .max => eb bs m.arg
         | _ => 64
 
+/-- The entry in `Tables` of the integer widths a projection's source plan
+declares where `Expr.colBits` cannot see them (a `CASE` of literals, #1968):
+one type per expression, `{}` where `colBits` holds (`recordDeclaredKinds`).
+The expressions are encoded as `projectKey` encodes them: `reprStr` at every
+`Rel.bits` call made a deep plan quadratic (#1952). -/
+def projectBitsKey (es : List Expr) : String :=
+  s!"$projectBits {es.length}:" ++ String.join (es.map projectKey.exprKey)
+
+/-- The widths of a projection's columns: the declared one where the source
+plan recorded one, `colBits` elsewhere. A plan without such an entry never
+prints its expressions (as `declaredProjectKinds`). -/
+def declaredProjectBits (tables : Tables) (bs : List Nat) (es : List Expr) : List Nat :=
+  let declared : List Json :=
+    if tables.any (·.1.startsWith "$projectBits ") then
+      match tables.lookup (projectBitsKey es) with
+      | some (_, s) => ((s.getObjValAs? Json "struct").toOption.bind
+          (·.getObjValAs? (Array Json) "types" |>.toOption)).map Array.toList |>.getD []
+      | none => []
+    else []
+  es.zipIdx.map fun (e, i) => ((declared[i]?).bind intTagBits?).getD (e.colBits bs)
+
 /-- The width of each column of a relation's rows as the parser tracks it. -/
-def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat := r.bitsBy Expr.colBits tables
+def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat :=
+  r.bitsBy Expr.colBits tables (declaredProjectBits tables)
 
 /-- An expression's width in the plan the writer writes: a column keeps its declared width,
 every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
@@ -648,16 +674,6 @@ def singleTie (f : Float) : Bool :=
 
 #guard singleTie (1.0 + 2.0 ^ (-24 : Float)) && singleTie (-(1.0 + 2.0 ^ (-24 : Float)))
 #guard !singleTie 0.1 && !singleTie 1.5
-
-/-- A projected integer constant `e`, written as `j`, at its declared width
-(`argBits`: a literal's tag, or the target of a cast the parser folded,
-`CAST(5 AS INTEGER)`). Narrower than 64 bits, the column keeps that width
-through a `narrow` mark, which changes no value: the parser has checked that
-the constant fits. -/
-def declaredNarrow (j : Json) (e : Expr) : Expr :=
-  match e with
-  | .lit (.int _) => let n := argBits [] j e; if n < 64 then .un (.narrow n) e else e
-  | e => e
 
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
@@ -767,10 +783,11 @@ def intervalLit? (j : Json) : J (Option (Int × Int)) := do
     return some (m, us)
   return none
 
-/-- An interval literal with days or months. DataFusion compares a duration
-(`ts - ts`, `d - d`) with an interval as `(months, days, nanoseconds)`, so
-`d - e > INTERVAL '3 days'` is false for any `d - e`: comparisons with these
-are refused. Written in hours or seconds, it compares as a number. -/
+/-- An interval literal with days or months. A duration (`ts - ts`, `d - d`)
+is a number of microseconds, a total order, and a month has no place in it
+that every engine gives (DuckDB reads a month as 30 days; Polars has no
+duration of months): comparisons with these are refused. Written in hours or
+seconds, it compares as a number. -/
 def calendarInterval (l : Json) : J Bool := do
   let days (d : Json) : J Bool := do return (← (field? d "days").elim (pure 0) getInt) != 0
   if let some d := field? l "intervalDayToSecond" then return ← days d
@@ -1304,7 +1321,11 @@ def argKind (cols : List Kind) (j : Json) (e : Expr) : Kind :=
     | .time => .time
     | .timeTz => .timeTz
     | _ => .other
-  | none, none => .other
+  -- A constant computed from literals (`DATE '2024-12-30' + 3 days`) has the
+  -- kind of its operation; only a literal's own kind is lost (`litKind`).
+  | none, none => match e with
+    | .lit _ => .other
+    | _ => e.kind cols
 
 /-- `x ± interval` where `x` is a DATE, or a timestamp and the interval has
 months. `none` for other calls, which `mkCall` reads. -/
@@ -1919,8 +1940,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if let some l := field? a "literal" then
           if ← calendarInterval l then
             throw s!"{baseName name} with an interval of days or months is not supported: \
-              DataFusion compares durations with it as (months, days, nanoseconds); \
-              write it in hours or seconds"
+              durations compare as microseconds; write the interval in hours or seconds"
     -- DataFusion casts a DATE argument of `date_part`/`date_trunc` to a
     -- timestamp (midnight); the model has these functions of dates.
     let argJs ← if !["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name)
@@ -1930,7 +1950,17 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if typeKind ((field? c "type").getD .null) != .time then return j
         if argKind cols inp (← parseExpr fns cols bits inp) == .date then return inp
         return j
-    let parsed ← argJs.mapM (parseExpr fns cols bits)
+    -- Typed decimal NULLs have their declared decimal kind where no other argument gives the
+    -- call one, so a call of only such NULLs (`negate(null::dec?<38,0>)`) is a decimal call
+    -- (#2026): `DECIMAL(p, s)` of NULL is NULL. Next to a decimal argument they are left alone.
+    let raw ← argJs.mapM (parseExpr fns cols bits)
+    let parsed := if raw.any (·.kind cols matches .dec _ _) then raw else
+      (argJs.zip raw).map fun (a, e) =>
+        match (field? a "literal").bind (field? · "null") with
+        | some t => match typeKind t with
+          | .dec p s => .un (.decimal p s) e
+          | _ => e
+        | none => e
     if baseName name == "date_diff" then
       if (argJs.zip parsed).any fun (j, e) => argKind cols j e != .date then
         throw "date_diff takes two dates"
@@ -2193,10 +2223,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         return .un (.narrow bits) (.un (.dtrunc s₀) e)
       | .float => return .un (.dtof s₀) e
       | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
-    -- DataFusion casts a duration (`ts - ts`) compared with an interval to an
-    -- interval, which it orders as (months, days, nanoseconds); comparisons
-    -- with intervals of days or months are refused (`calendarInterval`), so
-    -- the order is the duration's.
+    -- A duration (`ts - ts`) compared with an interval compares as
+    -- microseconds; comparisons with intervals of days or months are refused
+    -- (`calendarInterval`), so the order is the duration's.
     let ty ← field c "type"
     if k == .time && ["intervalDayToSecond", "intervalCompound"].any
         fun t => (ty.getObjVal? t).toOption.isSome then return e
@@ -2224,7 +2253,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- A struct casts field by field, which needs a struct the core cannot build
     -- (ruling 186: refused by design for 1.0, D66 reserved).
     if k matches .struct _ then
-      throw "casts of structs are not supported: sverify cannot build a struct (D66); cast its fields"
+      throw "casts of structs are not supported: sverify cannot build a struct value yet; cast its fields"
     if target == .float && k == .int then return .un .itof e
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
@@ -2551,7 +2580,7 @@ def parseFrame (cols : List Kind) (sort : List SortKey) (w : Json) : J Frame := 
     ← parseBound false (field? w "upperBound")⟩
   if range && ([fr.lo.offset, fr.hi.offset].any fun o => o.any (· != 0)) then
     let [k] := sort | throw "RANGE frames with offsets need exactly one sort key"
-    if ![Kind.int, .time, .date].contains (cols.getD k.col .other) then
+    if ![Kind.int, .time, .timeTz, .date].contains (cols.getD k.col .other) then
       throw "RANGE frames with offsets need an integer, timestamp or date sort key"
   return fr
 
@@ -2629,7 +2658,8 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
       -- `first`/`last` over a frame take its first (last) non-NULL value in
       -- the window's order (the frame's rows are in it, and the measure has
       -- no sort of its own): `FIRST_VALUE(x IGNORE NULLS)` (#811).
-      if !["count", "sum", "avg", "min", "max", "variance", "std_dev", "first", "last"].contains n
+      if !["count", "sum", "avg", "min", "max", "variance", "std_dev", "first", "last",
+        "string_agg"].contains n
       then
         throw s!"unsupported window function: {n}"
       -- The window's own sort keys order the frame, not the aggregate.
@@ -2898,9 +2928,10 @@ def atMostOneRow (tables : Tables) (r : Rel) : Bool :=
 
 /-- `inp` with one more column: the value of the subquery `sq` on each row.
 
-* `(SELECT …)`: a left join on `TRUE`. DataFusion fails when the subquery
-  has several rows, so it must provably have at most one (`atMostOneRow`);
-  with none, the value is `NULL`.
+* `(SELECT …)`: a left join on `TRUE`. A scalar subquery is one value, and
+  the reference gives several rows no value; no guarantee of a verified run
+  rests on an engine raising (D70), so the subquery must provably have at
+  most one row (`atMostOneRow`). With none, the value is `NULL`.
 * `x IN (SELECT y …)`: `TRUE` if some `y = x`; otherwise `NULL` if `x` is
   `NULL` (and there are `y`s) or some `y` is, else `FALSE`. A left join with
   the distinct non-`NULL` `y`s finds the match (at most one per row), and a
@@ -2967,6 +2998,45 @@ def kindSchemaType : Kind → Json
 
 #guard [Kind.float, .time, .date, .tod, .str, .bool, .int].all fun k =>
   typeKind (kindSchemaType k) == k
+
+/-- The integer width the source plan declares for an expression where
+`Expr.colBits` cannot see it: a literal's tag, a cast's target, and for a
+`CASE` the widest of its branches' (a `NULL` branch says nothing); `none` where
+a branch is anything else (#1968). -/
+partial def declaredIntBits? (j : Json) : Option Nat :=
+  if let some l := field? j "literal" then
+    if (field? l "null").isSome then some 0 else intTagBits? l
+  else if let some c := field? j "cast" then intTagBits? ((field? c "type").getD .null)
+  else if let some i := field? j "ifThen" then do
+    let ifs := (((field? i "ifs").bind (·.getArr? |>.toOption)).getD #[]).toList
+    let bs ← (ifs.filterMap (field? · "then") ++ (field? i "else").toList).mapM declaredIntBits?
+    let n := bs.foldl max 0
+    if n == 0 then none else some n
+  else none
+
+/-- Record the integer widths a projection's source plan declares where
+`Expr.colBits` gives another (`projectBitsKey`): a `TINYINT` constant is 8
+bits and a `CASE` of `BIGINT` literals 64, where the literals alone say
+nothing (#1934, #1968). Projections with the same
+expressions share an entry; where their widths differ, `colBits` holds. -/
+def recordDeclaredBits (bits : List Nat) (ejs : List Json) (es : List Expr) : P Unit := do
+  let key := projectBitsKey es
+  let prev := (← get).lookup key
+  let ds : List (Option Nat) := (ejs.zip es).map fun (j, e) =>
+    (declaredIntBits? j).filter (· != e.colBits bits)
+  if prev.isNone && ds.all (·.isNone) then return
+  let ds := match prev with
+    | some (_, s) =>
+      let pk : List Json := ((s.getObjValAs? Json "struct").toOption.bind
+        (·.getObjValAs? (Array Json) "types" |>.toOption)).map Array.toList |>.getD []
+      ds.zipIdx.map fun ((d : Option Nat), (i : Nat)) =>
+        if (pk[i]?).bind intTagBits? == d then d else none
+    | none => ds
+  let ty : Option Nat → Json
+    | some n => Json.mkObj [(intTagFor n, Json.mkObj [])]
+    | none => Json.mkObj []
+  modify ((key, es.length, Json.mkObj [("struct", Json.mkObj [
+    ("types", Json.arr (ds.map ty).toArray)])]) :: ·)
 
 /-- Record the kinds a projection's source plan declares (`projectKey`)
 where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
@@ -3042,14 +3112,15 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         parseWindowProject fns inp cols bits ejs
       else if k != 0 then
         let (lifted, es) ← parseLifted fns (parseRel fns) inp ejs
-        let es := (ejs.zip es).map fun (j, e) => declaredNarrow j e
+        recordDeclaredBits (lifted.bits (← get)) ejs es
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else
-        let es ← ejs.mapM fun e => do return declaredNarrow e (← parseExpr fns cols bits e)
+        let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
         if es.isEmpty then pure inp else
           recordDeclaredKinds fns cols ejs es
+          recordDeclaredBits bits ejs es
           pure (.project inp es)
     | "cross" => pure (.cross (← input "left") (← input "right"))
     | "join" =>

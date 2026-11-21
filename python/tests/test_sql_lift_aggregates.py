@@ -129,7 +129,7 @@ def test_the_reference_lift_is_checked_too(query):
             "over a window is not supported",
         ),
         ("SELECT mode(qty) FROM orders", "breaks ties in the engine's order"),
-        ("SELECT median(cost) FROM orders", "of a DECIMAL is not supported yet"),
+        ("SELECT median(cost) FROM orders", "no engine gives one value for it"),
         ("SELECT quantile_cont(amount, -0.5) FROM orders", "between 0 and 1"),
         ("SELECT quantile_cont(amount, [0.25, 0.5]) FROM orders", "one number"),
         ("SELECT arg_min(id, amount + 1) FROM orders", "orders by a column only"),
@@ -347,3 +347,18 @@ def test_the_lift_table_states_the_plain_sum_for_the_reference_and_three_measure
     }
     assert len(aggregates[("reference", "sum(DOUBLE)")]["measures"]) == 1
     assert len(aggregates[("duckdb", "sum(DOUBLE)")]["measures"]) == 3
+
+
+def test_quantile_disc_of_a_decimal_beyond_2_pow_53_selects_exactly():
+    """`quantile_disc` of a DECIMAL whose unscaled value exceeds 2^53 is an
+    exact selection from the group (#1921)."""
+    from decimal import Decimal
+
+    import pyarrow as pa
+
+    from _pipelines import arrow_table
+
+    rows = [(Decimal("9007199254740993.01"),), (Decimal("9007199254740993.03"),), (None,)]
+    tables = {"t": arrow_table(pa.schema([pa.field("d", pa.decimal128(20, 2))]), rows)}
+    result = check("SELECT quantile_disc(d, 0.5) AS q, quantile_disc(d, 1) AS top FROM t", tables)
+    assert result.ok, f"{result.stage}: {result.detail}"

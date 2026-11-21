@@ -533,9 +533,12 @@ def _component(dtype: Any) -> str | None:
         return "strings"
     if dtype.is_decimal():
         return "decimals"
-    if dtype.is_array() or dtype.is_struct() or dtype.is_map():
-        return "elements"
-    return None
+    if dtype.is_integer() or dtype.is_boolean() or dtype.is_date() or dtype.is_time():
+        return None
+    # Every other type is a kind `mayHoldList` (`ContractCheck.lean`) counts:
+    # a list or struct, and `Kind.other`, which `Parse.typeKind` gives a map,
+    # an interval, NULL, JSON, a UUID and any type it does not know (#2005).
+    return "elements"
 
 
 class Tolerant:

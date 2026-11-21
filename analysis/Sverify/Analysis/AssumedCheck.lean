@@ -116,9 +116,8 @@ def Measure.widens (m : Measure) : Bool :=
   | none => true
 
 /-- `m` summed in 38 digits where it widens (`Measure.widens`): its argument
-as a `DECIMAL(38, s + 1)` of the same value (one more digit of scale, so that
-no reader takes a wide decimal of scale 0 for the integer it holds,
-`Parse.wideIntDecimal`). No `SUM` of fewer than `10¹⁸` 64-bit values leaves
+as a `DECIMAL(38, s + 1)` of the same value (one more digit of scale: until
+#1876 a reader took a wide decimal of scale 0 for the integer it held). No `SUM` of fewer than `10¹⁸` 64-bit values leaves
 it. -/
 def Measure.wide (m : Measure) : Measure :=
   if m.widens then

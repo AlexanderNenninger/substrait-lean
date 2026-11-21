@@ -318,7 +318,7 @@ print(totals.refresh(engine="polars", route="auto"))
 
 The second refresh adds the insert to its group's exact sum and rounds it
 once, without reading the input
-([`LinearAgg.fsum_no_drift`](../SubstraitLean/IncrementalFloat.lean)). A result
+([`LinearAgg.fsum_no_drift`](../analysis/Sverify/Analysis/IncrementalFloat.lean)). A result
 not determined up to row order, such as a `LIMIT` over ties, is refused by
 every sink.
 

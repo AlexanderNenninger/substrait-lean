@@ -24,7 +24,7 @@ how much a real project saves is [still to be measured](https://github.com/Alexa
 
 | Bug class | Where a sample-data test falls short | What sverify does |
 |---|---|---|
-| Late or reversed rows in an incremental job | A watermark job misses a late duplicate and keeps a reversed one | Refreshes from the change feed with delta plans proved equal to a full recompute ([`Rel.delta_correct`](proved-theorems.md#incremental-view-maintenance); [the tour's first notebook](../notebooks/01_duplicate_payments.py)) |
+| Late or reversed rows in an incremental job | A watermark job misses a late duplicate and keeps a reversed one | Refreshes from the change feed with delta plans proved equal to a full recompute ([the incremental-view theorems](proved-theorems.md#incremental-view-maintenance); [the tour's first notebook](../notebooks/01_duplicate_payments.py)) |
 | Integer overflow, division by zero, bad casts | A test passes until the row that overflows arrives | The proof fails, and the report names the bound to declare ([runtime-error theorems](proved-theorems.md#runtime-errors); [test](../python/tests/test_refresh_overflow.py)) |
 | Ties and NaN in windows and sorts | The result depends on the engine's tie order, which sample data rarely shows | The contract is proved `deterministic` or the plan is refused on engines that need it ([window theorems](proved-theorems.md#contracts); [test](../python/tests/test_ties.py); [the tour's second notebook](../notebooks/02_sensor_alerts.py)) |
 | Left join NULL padding | A `not_null` or range test on the right side's columns breaks on unmatched rows | The facts a left join keeps and drops are proved ([proved facts](proved-theorems.md#contracts)) |

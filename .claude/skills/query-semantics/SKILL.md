@@ -82,7 +82,7 @@ uv run python ../.claude/skills/query-semantics/probe.py --catalogue win-top-n-p
 Inputs: `--table NAME COLS ROWS` (repeatable; `ROWS` a Python list of tuples, timestamps and dates as ISO strings, doubles as `"nan"`, `"inf"`, `"-inf"`), `--sql`, `--ibis` (an expression, or statements that assign `q`), `--catalogue ID`, `--requires`/`--ensures` as in the lookup, `--spark`.
 
 Output:
-1. Environment: package versions, each profile's fact versions against the installed engine (D14), the DuckDB settings the facts depend on (#598), and how Polars runs.
+1. Environment: package versions, each profile's fact versions against the installed engine (D70), the DuckDB settings the facts depend on (#598), and how Polars runs.
 2. Frontends: the lift's and the Ibis producer's plans, the checker's verdict under the reference, the `Rel`, and `Rel.eval` on the rows.
 3. Profiles: as in the lookup.
 4. Engines on the written plan: DuckDB and Polars, each `= Rel.eval`, `DIFFERS`, `raises` or `refused`, with the route and class under it; Spark with `--spark`, which the probe runs without a route; Snowflake as SQL text only.
@@ -97,7 +97,7 @@ Polars runs on its streaming engine, as sverify does (#605), with sverify's flag
 - `raises` on an engine running the plan is by design where the reference raises: division by zero, i64 overflow, a double overflowing to ±∞ (#575). `Report.issues` and `Safety.lean` say where that can happen; a guard (`CASE WHEN b <> 0`) or a precondition removes it.
 - A float `SUM` or `AVG` verifies only once the inputs are bounded and NaN-free (`between` gives both, with `max_rows`); otherwise the report says `may fail: domain error`. Its order is the open option `sum_order`. Where an engine's row bounds the difference per plan (Polars streaming), the route checks that bound against the postcondition's tolerance (`sv.equivalent(floats=sv.within(...))`), and a rerun may differ in the last bits (D20).
 - Polars SQL and the Polars expression API differ, and Ibis is not SQL (`row_number()` is 0-based, `== ibis.null()` becomes `IS NULL`). Give both `--sql` and `--ibis` when the question is about Ibis. `semantics="polars"` checks Ibis expressions only: integer `//` and `%` floor and state `division_type: FLOOR`, which Polars runs natively and DuckDB refuses.
-- A run on a DuckDB or Polars version other than the profile's warns, another major version refuses (D14). A DuckDB setting a choice depends on (`default_null_order`, `integer_division`, …) refuses a routed run (#598).
+- A run on an unprobed patch of a probed minor (DuckDB, Polars or Spark) warns, and records the version as the route's `unprobed_version`; another minor refuses, and `unverified=True` runs a proved plan anyway (D70). A DuckDB setting a choice depends on (`default_null_order`, `integer_division`, …) refuses a routed run (#598).
 - `catalogue/status.json` is a snapshot. Re-probe one query from `python/` with `uv run python -m sverify_dev.catalogue <query-id>`.
 
 ## Troubleshooting

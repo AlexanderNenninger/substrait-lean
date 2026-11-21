@@ -61,7 +61,7 @@ this model (`docs/proofs.md`, "What is trusted"). `Rel.HasIssue` assumes:
   raising `WHEN` while planning (`upstream/bugs/DD-7.json`).
 
 The engines' behaviour is recorded as facts in
-`characterization/<engine>/facts/`. `Rel.HasIssue` states this model on the
+`engines/<engine>/facts/`. `Rel.HasIssue` states this model on the
 rows `Rel.eval` gives; `Rel.HasIssueAll` states it on every order of the ties
 the reference allows (`Rel.OrderAllowed`), so an engine that breaks a
 window's ties another way is covered too (#1484). `Rel.mayIssues`
