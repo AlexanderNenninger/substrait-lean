@@ -17,5 +17,5 @@
     "F85"
   ],
   "source": "fable-ruling-197-int-sum-proved.md",
-  "note": "'Amends the scope of ruling 85.' Addendum (same day) accepts the S3 deviation with T1-T3 and corrects the user notice (SUM columns are not in Report.epsilon). No D-number."
+  "note": "'Amends the scope of ruling 85.' Addendum (same day) accepts the S3 deviation with T1-T3 and corrects the user notice (SUM columns are not in Report.epsilon). No D-number. Its T1 control failed in batch #2049; #2003's sign-off was conditional on N1-N3, which ruling 207 finds met."
 }

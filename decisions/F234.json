@@ -1,0 +1,14 @@
+{
+  "id": "F234",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The double `SUM`'s domain raise in `nan_aggregate` under `semantics=\"duckdb\"` is a writer defect: the written SQL loses the lifted entry's argument guard; the fix is in the writer, and #341's acceptance is restated.",
+  "issues": [
+    341,
+    747
+  ],
+  "source": "fable-ruling-233-234-replay-cast-and-sum.md",
+  "note": "A correctness bug for 1.0 M2 (C1-C3, S1)."
+}
