@@ -6103,7 +6103,7 @@ def to_sql(
             BY and ORDER BY columns (`Report.deterministic`). Default: False.
         guards: Write the run-time checks. Default: True.
         unchecked: The expressions to write without checks, as a contract
-            report's `unchecked` (`sverify.Report.unchecked`) for this plan.
+            report's `unchecked` (`sverify.Report._unchecked`) for this plan.
             Default: None (all of them keep their checks).
         finite: Write the check that finite doubles do not overflow to
             `±∞` (`Dialect.finite`), the reference's precondition (#575).

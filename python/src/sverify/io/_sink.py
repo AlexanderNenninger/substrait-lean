@@ -160,7 +160,7 @@ class Sink:
             (`sv.equivalent(...)`): the sink commits each epoch
             once, so a rerun has to give the same rows up to this. Default:
             rows as a multiset, doubles within the bound the checker proves
-            for the plan (`Report.epsilon`, `sv.equivalent(floats="plan")`),
+            for the plan (the bound `report.lenses` prints, `sv.equivalent(floats="plan")`),
             other values exact. A sink whose consumers need the same bits
             on a rerun states `sv.equivalent()`; one with a fixed tolerance
             states it, for example `sv.equivalent(floats=sv.within(rel=1e-12))`.

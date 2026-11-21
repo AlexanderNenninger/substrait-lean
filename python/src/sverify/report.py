@@ -138,7 +138,7 @@ class TiePlace:
     total on the input's keys, or a value picked from a class of doubles."""
 
     relation: int
-    """The relation's index in the plan, in pre-order (`Report.relations`)."""
+    """The relation's index in the plan, in pre-order (`Report._relations`)."""
     op: str
     """The relation's operator: `window`, `aggregate` or `fetch`."""
     what: str

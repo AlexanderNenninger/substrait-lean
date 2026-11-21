@@ -834,13 +834,13 @@ def verify(
             `"substrait"` checks an Ibis transformation under Substrait's
             own semantics (`Profile.substrait`): the proof under the
             reference holds there where Substrait allows nothing more at
-            the options the plan meets, and `Report.transfer` names the
-            options where it allows more.
+            the options the plan meets, and the report lists the options
+            where it allows more.
         on_inferred: What a precondition sverify infers does. sverify
             infers the bounds on input columns that rule out integer
             overflow (`infer_bounds`: `amount * 2` on BIGINT needs
             `_.amount < 2**62`) and the `IS NOT NULL`s a postcondition
-            needs (`Report.inferred`). `"error"` (the default): the plan is
+            needs (`Report.needs`). `"error"` (the default): the plan is
             not proved without it, and the report says where it came from
             and how to state it (`Report.needs`). `"warn"`: it is assumed,
             checked on the data before each run, and a warning names it

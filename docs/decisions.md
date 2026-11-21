@@ -708,7 +708,7 @@ hold of every engine's result. The bounds differ in kind: `VAR_*` and
 `STDDEV_*` are relative to the spread, the deviation's half the variance's;
 `CORR`'s is absolute, about `c · n · u`; `COVAR`'s is absolute, scaled by
 `√(Sxx · Syy)`, or relative only under a sign-definite precondition.
-`Report.epsilon` reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
+`Report.epsilon` (since 1.0 the bound `report.lenses` prints) reports `VAR_*`, `STDDEV_*` and `COVAR_*` columns
 (`Epsilon.statEps`). `CORR` has no data-free bound (decided 2026-11-08,
 #918): its distance to the reference is bounded only under a lower bound on
 both sides' variances (`core_corr_chan`'s `L`), stated by the user and
