@@ -170,7 +170,20 @@ and `AVG` lose both stages and give the rows of the checked run, groups of
 `-0.0` included, and that a contract whose reference bound passes but whose
 margin does not keeps both stages.
 
-BENCH_FINITE
+`python/scripts/bench_finite_sum.py` times a grouped `SUM` and `AVG` of a
+bounded double over 10⁷ rows and 10⁵ groups on DuckDB 2.0.1 with 4 threads
+(homelab, median of 5, seconds; the SQL's length in characters):
+
+| input | two stages | as a checked run writes it | speed-up |
+|---|---|---|---|
+| table | 0.099 (3115) | 0.082 (456) | 1.21× |
+| join | 0.178 (3407) | 0.181 (3407) | 0.98× |
+
+A `SUM(x)` and an `AVG(x)` of the same argument read one projected column of
+the aggregate's input; read twice, DuckDB aggregates the column twice and the
+table's speed-up drops to 1.14×. The join is not marked: `Rel.maxRows` bounds
+a join by the product of its inputs' caps, past `2³²`. A bound that reads a
+unique key would mark it.
 
 ## 2. Sharded evaluation
 
