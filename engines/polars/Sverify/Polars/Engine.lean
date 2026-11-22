@@ -190,21 +190,26 @@ theorem Profile.polars_bin_ok {f : BinFn} {t : Expr} (ht : f.polarsTmpl = some t
   simp only [Profile.polars, ht] at h
   exact Expr.evalP_reference_ok h
 
-omit [Boxes.Ambient] in
 theorem Polars.apply_lt_int (x y : Int) :
     BinFn.apply .lt (.int x) (.int y) = .bool (decide (x < y)) := rfl
-omit [Boxes.Ambient] in
 theorem Polars.apply_add_int (x y : Int) : BinFn.apply .add (.int x) (.int y) = .int (x + y) := rfl
-omit [Boxes.Ambient] in
 theorem Polars.apply_sub_int (x y : Int) : BinFn.apply .sub (.int x) (.int y) = .int (x - y) := rfl
-omit [Boxes.Ambient] in
 theorem Polars.apply_idiv_ne {x y : Int} (hy : y ≠ 0) :
     BinFn.apply .idiv (.int x) (.int y) = .int (x.tdiv y) := by
   simp [BinFn.apply, hy]
-omit [Boxes.Ambient] in
 theorem Polars.apply_imod_ne {x y : Int} (hy : y ≠ 0) :
     BinFn.apply .imod (.int x) (.int y) = .int (x.tmod y) := by
   simp [BinFn.apply, hy]
+theorem Polars.apply_idiv_zero (x : Int) : BinFn.apply .idiv (.int x) (.int 0) = .null := by
+  simp [BinFn.apply]
+theorem Polars.apply_imod_zero (x : Int) : BinFn.apply .imod (.int x) (.int 0) = .null := by
+  simp [BinFn.apply]
+theorem Polars.apply_add_null_l (v : Value) : BinFn.apply .add .null v = .null := by
+  cases v <;> rfl
+theorem Polars.apply_add_null_r (v : Value) : BinFn.apply .add v .null = .null := by
+  cases v <;> rfl
+theorem Polars.apply_sub_null_r (v : Value) : BinFn.apply .sub v .null = .null := by
+  cases v <;> rfl
 
 /-- The floored quotient of integers, in Lean's functions: `NULL` by zero, else
 `fdiv`. -/
@@ -213,8 +218,8 @@ theorem Polars.floorDivT_eval (a b : Int) :
   by_cases hb : b = 0
   · subst hb
     simp only [Polars.floorDivT, Expr.floorDivOf, Expr.eval, List.getD, List.getElem?_cons_zero,
-      List.getElem?_cons_succ, Option.getD_some, ↓reduceIte]
-    split <;> (try split) <;> (try split) <;> rfl
+      List.getElem?_cons_succ, Option.getD_some, ↓reduceIte, Polars.apply_add_int,
+      Polars.apply_sub_int, Polars.apply_idiv_zero, Polars.apply_add_null_l, ite_self]
   · simp only [hb, ↓reduceIte, Polars.floorDivT, Expr.floorDivOf, Expr.eval, List.getD,
       List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Polars.apply_lt_int,
       Polars.apply_add_int, Polars.apply_sub_int, Polars.apply_idiv_ne hb, Polars.isTrue_bool,
@@ -234,8 +239,9 @@ theorem Polars.floorModT_eval (a b : Int) :
   by_cases hb : b = 0
   · subst hb
     simp only [Polars.floorModT, Expr.floorModOf, Expr.eval, List.getD, List.getElem?_cons_zero,
-      List.getElem?_cons_succ, Option.getD_some, ↓reduceIte]
-    split <;> (try split) <;> (try split) <;> rfl
+      List.getElem?_cons_succ, Option.getD_some, ↓reduceIte, Polars.apply_add_int,
+      Polars.apply_sub_int, Polars.apply_imod_zero, Polars.apply_add_null_l,
+      Polars.apply_sub_null_r, ite_self]
   · simp only [hb, ↓reduceIte, Polars.floorModT, Expr.floorModOf, Expr.eval, List.getD,
       List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Polars.apply_lt_int,
       Polars.apply_add_int, Polars.apply_sub_int, Polars.apply_imod_ne hb, Polars.isTrue_bool,
