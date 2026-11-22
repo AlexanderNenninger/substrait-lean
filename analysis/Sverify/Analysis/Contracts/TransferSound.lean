@@ -1469,6 +1469,7 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
       (fun v w => by cases v <;> cases w <;> hf_top_tac) (fun _ _ _ _ _ _ _ _ _ _ hr => by cases hr) ha hb
   case idiv => exact divAbs_sound divBound_sound (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
   case imod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
+  case dmod => exact divAbs_sound modBound_sound (fun v w => by cases v <;> cases w <;> hf_tac) ha hb
   case ipow => exact powAbs_sound ha hb
   case fatan2 =>
     refine mapAbs₂_top_sound (g := atan2?) (fun v w => ?_) (fun x y k k' ko i j htb hi hj hr => ?_) ha hb
