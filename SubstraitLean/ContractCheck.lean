@@ -875,7 +875,7 @@ may coarsen it: `none` for integers, booleans, dates and times of day, whose val
 exactly. A list, a struct and `other` count as `"elements"` (`mayHoldList`). -/
 def kindComponent : Kind → Option String
   | .float => some "floats"
-  | .time | .timeTz => some "timestamps"
+  | .time | .timeTz | .timeNs | .timeTzNs => some "timestamps"
   | .str => some "strings"
   | .dec _ _ => some "decimals"
   | .int | .bool | .date | .tod => none

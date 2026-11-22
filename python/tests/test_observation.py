@@ -343,6 +343,20 @@ def test_a_table_condition_depends_on_the_open_columns_it_reads() -> None:
     assert counted.ignores == ()
 
 
+def test_a_table_condition_on_a_nanosecond_timestamp_depends_on_the_timestamps() -> None:
+    """A nanosecond timestamp falls under `timestamps` as a microsecond one does
+    (`ContractCheck.kindComponent`, #1071)."""
+    n = ibis.table({"k": "int64", "ts": "timestamp(9)"}, name="n")
+    report = sv.verify(
+        n.group_by("k").aggregate(last=n.ts.max()),
+        requires={"n": [sv.max_rows(1000)]},
+        ensures=[sv.equivalent(timestamps="s"), sv.unique("last")],
+        counterexamples=0,
+    )
+    (cond,) = report.ensures
+    assert cond.ignores == ("timestamps",)
+
+
 def test_a_proved_table_condition_keeps_the_order_of_the_lists_it_reads() -> None:
     """`unique(k, xs)` is proved by the key `k`, but reads a list column whose element order the
     default observation ignores: it depends on "elements" whether or not `xs` is also an open
