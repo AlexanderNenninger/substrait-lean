@@ -109,6 +109,7 @@ A page of this kind runs its Python examples in `tests/test_readme.py`, and the 
 | [layers.md](layers.md) | The layers of the Python package |
 | [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit |
 | [build-performance.md](build-performance.md) | The Lean build's time and memory per module, how they are measured, and the budget CI checks |
+| [dbt-measurements.md](dbt-measurements.md) | sverify-dbt on jaffle_shop and Cal-ITP's warehouse: models read, tests proved, test queries skipped |
 
 ## Where each topic lives
 
