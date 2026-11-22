@@ -109,6 +109,7 @@ theorem UnFn.apply_dbl (f : UnFn) {v : Value} (h : v.dbl = true) :
          | exact FloatCode.dbl_floor h
          | exact FloatCode.dbl_ceil h
          | exact FloatCode.dbl_round h
+         | exact FloatCode.dbl_roundEven h
          | exact FloatCode.dbl_roundTo _ h
          | exact FloatCode.dbl_ofInt _)
     | (simp only [Value.dbl_struct, Value.dbl_list] at h
