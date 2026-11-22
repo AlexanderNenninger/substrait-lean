@@ -260,5 +260,6 @@ def parse_sql(spark: Any, sql: str) -> Any:
         raise Unsupported(
             f"Spark {spark.version}'s parser refused the SQL sverify wrote for this plan "
             f"({len(sql):,} bytes) as too complex to parse; nothing ran. The plan nests its "
-            "expressions deeper than the parser's stack takes (fact spark-exec-parser-depth)"
+            "expressions deeper than the parser's stack takes (fact spark-exec-parser-depth); "
+            "split the query into steps, or run it with engine='duckdb'"
         ) from e
