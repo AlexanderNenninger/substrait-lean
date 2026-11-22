@@ -386,8 +386,29 @@ jobs:
           m=$(matrix "$backends" "$(flag "$skip_spark")")
           echo "matrix: $m"
           out "matrix=$m"
-          if grep -qE '^(float-bounds/|core/Sverify/Core/Float(Exact|Format)?\.lean$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
-             <<< "$files"; then
+          # float-bounds' bridge imports the core's modules (`import Sverify.*`
+          # in float-bounds/), and those import others: the closure of the
+          # imports is what a change to must rebuild it, read from the
+          # sources.
+          float_deps() {
+            local todo seen="" m f p
+            todo=$(grep -rhoE '^((public|meta|private) )*import Sverify\.[A-Za-z0-9_.]+' float-bounds --include='*.lean' | awk '{print $NF}' | sort -u)
+            while [ -n "$todo" ]; do
+              m=${todo%%$'\n'*}
+              case "$todo" in *$'\n'*) todo=${todo#*$'\n'} ;; *) todo= ;; esac
+              case $'\n'"$seen"$'\n' in *$'\n'"$m"$'\n'*) continue ;; esac
+              seen="$seen"$'\n'"$m"
+              f=
+              for p in core analysis; do [ -f "$p/${m//.//}.lean" ] && f="$p/${m//.//}.lean"; done
+              [ -n "$f" ] || continue
+              echo "$f"
+              todo="$todo"$'\n'$(grep -hoE '^((public|meta|private) )*import Sverify\.[A-Za-z0-9_.]+' "$f" | awk '{print $NF}' || true)
+            done
+          }
+          float_deps > "$RUNNER_TEMP/float-deps"
+          echo "float-bounds reads $(wc -l < "$RUNNER_TEMP/float-deps") core files"
+          if grep -qE '^(float-bounds/|core/(lakefile\.toml|lake-manifest\.json)$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' <<< "$files" \
+             || grep -qxFf "$RUNNER_TEMP/float-deps" <<< "$files"; then
             out floats=true
           else
             out floats=false
