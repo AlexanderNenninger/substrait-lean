@@ -9,6 +9,9 @@
     2345,
     2351
   ],
+  "amended_by": [
+    "F264"
+  ],
   "source": "fable-ruling-263-2345-naming-list.md",
   "note": "The keys follow the attributes in F192's way, because renaming an attribute and keeping its key would freeze two names for one concept at 1.0. Conditions: F1, one bump per affected format, each with a reader for the previous format and a test on a stored record of it; the schemas follow, and the PR lists every key that moves. F2, `suggested_requires` only where the value has `Report.suggested_requires`' type, a mapping usable as `requires=`. F3, no aliases or deprecation shims, and one changelog fragment lists every old → new name, flag and key. F4, sverify-dbt, the notebooks, docs and templates move in the same PR set, and `dbt/API-NOTES.md` records any rename dbt reads. F5, one casing rule for acronyms in public names (`SQL`), with a grep for any other `Sql`/`Json`/`Csv` casing. F6, messages follow the renames. This carries out the naming sweep (row 32) that ruling 261 called for; `Postcondition` keeps \"checked\" for data (F219), and `Lenses` matches U-2026-11-09-lenses-in-contract."
 }
