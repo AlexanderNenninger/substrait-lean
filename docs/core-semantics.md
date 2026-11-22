@@ -293,7 +293,8 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `int.bit` | `bitwise_and`, `bitwise_or`, `bitwise_xor` | none |
 | core | `int.shift` | `bitwise_shift_left`, `bitwise_shift_right` | `shift_range` |
 | core | `dec.arith` | `add`, `subtract`, `multiply`, `negate`, `abs` on decimals | `overflow` (`ERROR` only), `decimal_rescale` |
-| core | `dec.div` | `divide`, `modulus` on decimals, `sverify_decimal_div` | `divide` and `modulus` refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27); `sverify_decimal_div`, a decimal by an integer (how a windowed `AVG` is written), is read ([reference-semantics.md](reference-semantics.md#decimals)) |
+| core | `dec.div` | `divide` on decimals, `sverify_decimal_div` | `divide` refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27); `sverify_decimal_div`, a decimal by an integer (how a windowed `AVG` is written), is read ([reference-semantics.md](reference-semantics.md#decimals)) |
+| core | `dec.mod` | `modulus` on decimals | `division_type` (`FLOOR` on Polars), `on_division_by_zero` ([D62](decisions.md#d62--of-decimals-is-the-truncated-remainder-at-the-common-scale)) |
 | core | `fp.arith` | `add`, `subtract`, `multiply` on doubles | `rounding`, `nan_creation`, `zero_sign` |
 | core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
 | core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |

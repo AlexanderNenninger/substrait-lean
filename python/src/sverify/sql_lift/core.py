@@ -14,9 +14,9 @@ import ibis.expr.datatypes as dt
 import sqlglot.expressions as sge
 from ibis.common.temporal import IntervalUnit
 
-from sverify import _functions
+from sverify import _decimals, _functions
 from sverify._dialect import difference
-from sverify._unsupported import MIN_MOD_GUARD
+from sverify._unsupported import DECIMAL_MOD_38, MIN_MOD_GUARD
 from sverify.plan_json import (
     Json,
     SqlUnsupported,
@@ -228,8 +228,33 @@ def _int_div(lf: _Lift, node: sge.IntDiv, sub: Sub, scope: list[Column]) -> E:
     return E(_fn("divide", [lf.to(a, t).json, lf.to(b, t).json], t, opts), t)
 
 
+def _decimal_mod(lf: _Lift, a: E, b: E) -> E:
+    """`a % b` with a decimal operand (D62): the reference's remainder, with
+    the dividend's sign, widened to DuckDB's type, its operands' common decimal
+    (duckdb-decimal-modulus, ruling 188 X3), by an exact cast at the same scale.
+    An integer operand is the decimal DuckDB widens it to. Past 38 digits
+    DuckDB computes a DOUBLE: refused."""
+    ts = [x.type if not x.type.is_null() else y.type for x, y in ((a, b), (b, a))]
+    d1, d2 = (_digits(t) for t in ts)
+    if (ref := _decimals.mod(d1, d2)) is None:
+        raise SqlUnsupported(DECIMAL_MOD_38, construct="MODULO")
+    s = ref[1]
+    duck = _decimal(max(d1[0] - d1[1], d2[0] - d2[1]) + s, s)
+    args = [lf.to(x, _decimal(*d)).json for x, d in ((a, d1), (b, d2))]
+    opts = [
+        _option("on_division_by_zero", lf.profile.on_division_by_zero),
+        _option("division_type", "TRUNCATE"),
+    ]
+    mod = E(_fn("modulus", args, _decimal(*ref), opts), _decimal(*ref))
+    return lf.to(mod, duck)
+
+
 def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
     a, b = sub(node.this), sub(node.expression)
+    ts = (a.type, b.type)
+    if any(t.is_decimal() for t in ts) and all(t.is_decimal() or t.is_integer() or t.is_null()
+                                               for t in ts):  # fmt: skip
+        return _decimal_mod(lf, a, b)
     t = lf.common([a, b], "%")
     if t.is_float64():
         # DuckDB's: NaN by zero or of an infinity.

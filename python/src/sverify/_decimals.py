@@ -53,6 +53,17 @@ def mul(a: Digits, b: Digits) -> Digits:
     return capped(p1 + p2 + 1, s1 + s2)
 
 
+def mod(a: Digits, b: Digits) -> Digits | None:
+    """The type of `a % b` (D62): the larger scale and the fewer integer digits, as the
+    remainder is smaller than either operand. None where an operand at the larger scale
+    needs more than 38 digits, which the reference refuses."""
+    (p1, s1), (p2, s2) = a, b
+    s = max(s1, s2)
+    if max(p1 - s1, p2 - s2) + s > MAX_DIGITS:
+        return None
+    return min(p1 - s1, p2 - s2) + s, s
+
+
 def sum_of(a: Digits) -> Digits:
     """The type of a decimal `SUM`: ten more digits (`Measure.kind`)."""
     return capped(a[0] + 10, a[1])

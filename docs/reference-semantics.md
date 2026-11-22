@@ -264,6 +264,7 @@ exact, and a result of more than `p` digits is an overflow error
 | `a × b` | `DECIMAL(p₁ + p₂ + 1, s₁ + s₂)`, at most 38 digits | Exact. A scale over 38 is refused. | ✓ |
 | negate, `abs` | the argument's type | | ✓ |
 | comparisons | — | At the larger scale. | ✓ |
+| `a % b` | `DECIMAL(min(p₁−s₁, p₂−s₂) + max(s₁, s₂), max(s₁, s₂))` | The truncated remainder at the larger scale: it takes the dividend's sign (`-7.50 % 2.0` is `-1.50`). A zero divisor raises. Refused where `max(p₁−s₁, p₂−s₂) + max(s₁, s₂)` passes 38, where DuckDB computes a `DOUBLE`: cast an operand to fewer digits ([D62](decisions.md#d62--of-decimals-is-the-truncated-remainder-at-the-common-scale), [#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941)). DuckDB gives it in its operands' common type, and Polars with the divisor's sign; the translations cast and shim ([duckdb-decimal-modulus](../engines/duckdb/facts/duckdb-decimal-modulus.json), [polars-decimal-modulus](../engines/polars/facts/polars-decimal-modulus.json)). | ✓ |
 | `/` | — | Refused (apart from sverify's own `sverify_decimal_div`, a decimal by an integer, which is how a windowed `AVG` is written). | ✓ |
 | declared output type | If the plan declares a precision, it is used. A declared scale that differs from the exact one is refused. | | ✓ |
 | mixed with a double | Refused; cast one side. | | ✓ |

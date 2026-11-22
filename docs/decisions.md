@@ -1946,8 +1946,10 @@ where `max(p₁ − s₁, p₂ − s₂) + max(s₁, s₂) > 38`: an operand wou
 digits at the common scale. The refusal reads the types, and a cast of an operand to a
 narrower type guards it. D56's operand check does not apply.
 
-The engines' facts are in [#1951](https://github.com/AlexanderNenninger/substrait-lean/pull/1951). The function is tracked in
-[#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941); until it closes every profile refuses decimal `%`.
+The engines' facts are in [#1951](https://github.com/AlexanderNenninger/substrait-lean/pull/1951). Implemented in
+[#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941) as `BinFn.dmod`, on DuckDB (natively, cast to the
+reference's type), Spark (natively) and Polars (`int_mod_trunc` on the unscaled values; its own floored remainder under
+`semantics="polars"`), and in the DuckDB SQL lift, which widens the remainder to DuckDB's type.
 
 Recomputes sinks: no
 

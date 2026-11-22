@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
-from sverify._unsupported import DECIMAL_38_38, ISSUE_1725
+from sverify._unsupported import DECIMAL_38_38, DECIMAL_MOD_38, ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -869,6 +869,12 @@ class Dialect:
             a = self.cast(a, Dec(38, sa))
         return self.cast(f"({a} {op} {b})", k)
 
+    def decimal_mod(self, a: str, b: str, k: Dec) -> str:
+        """`a % b` of decimals or integers, the remainder with the dividend's sign
+        (D62), as a `DECIMAL(p, s)`. The engine's own result type may be wider: the
+        cast never raises, as the remainder fits the reference's type."""
+        return self.cast(f"({a} % {b})", k)
+
     def decimal_neg(self, a: str, k: Dec | None = None) -> str:
         """`-a` of a `DECIMAL` of type `k`, exactly."""
         return f"(-{a})"
@@ -1357,12 +1363,13 @@ def _null_safe_eq(e: If) -> tuple[Expr, Expr] | None:
 @dataclass(frozen=True)
 class DecOp:
     """A `DECIMAL(p, s)` (#27), as `Parse.decimalCall` and decimal casts make
-    them. `lit` is the unscaled `value`; `add`, `sub` and `mul` of two decimals
-    or integers, `neg` and `abs` of one, are exact; `cast` of a decimal, an
+    them. `lit` is the unscaled `value`; `add`, `sub`, `mul` and `mod` (the
+    remainder with the dividend's sign, D62) of two decimals or integers, `neg`
+    and `abs` of one, are exact; `cast` of a decimal, an
     integer or a double rounds half away from zero to a smaller scale. The
     result has `p` digits, else the reference raises (`UnFn.decimal`)."""
 
-    op: Literal["lit", "add", "sub", "mul", "neg", "abs", "cast", "div"]
+    op: Literal["lit", "add", "sub", "mul", "mod", "neg", "abs", "cast", "div"]
     args: tuple[Expr, ...]
     p: int
     s: int
@@ -3625,6 +3632,11 @@ class _Parser:
                 check_scale(sc)
                 p = dp if dp is not None else _decimals.mul((p1, s1), (p2, s2))[0]
                 return DecOp("mul", (a, b), p, sc)
+            case "modulus", [a, b], [d1, d2]:
+                if (t := _decimals.mod(d1, d2)) is None:
+                    raise WriterUnsupported(DECIMAL_MOD_38)
+                check_scale(t[1])
+                return DecOp("mod", (a, b), dp if dp is not None else t[0], t[1])
             case (("negate" | "subtract"), [a], [(p, sc)]):
                 return DecOp("neg", (a,), p, sc)
             case "abs", [a], [(p, sc)]:
@@ -5968,6 +5980,8 @@ class _Writer:
             case "div", [a, b]:
                 ka = expr_kind(e.args[0], cols)
                 return d.decimal_div(a, b, ka.s if isinstance(ka, Dec) else 0, k)
+            case "mod", [a, b]:
+                return d.decimal_mod(a, b, k)
         raise WriterUnsupported(f"decimal {e.op} of {len(xs)} arguments")
 
     def operand(
