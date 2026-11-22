@@ -120,10 +120,6 @@
     {
       "match": "strftime formats must be constants",
       "issue": 347
-    },
-    {
-      "match": "IndexError: list index out of range",
-      "issue": 2155
     }
   ]
 }
