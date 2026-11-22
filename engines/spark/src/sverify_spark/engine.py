@@ -80,12 +80,38 @@ def session() -> SparkSession:
     for k, v in conf.items():
         builder = builder.config(k, v)
     spark = builder.getOrCreate()
+    check_pinned(spark)
     spark.sparkContext.setLogLevel("OFF")
     if not os.environ.get("PYSPARK_PYTHON"):
         # Python workers run this interpreter, not whichever `python3` is
         # first on `PATH` (a virtual environment need not be on it).
         spark.sparkContext.pythonExec = sys.executable
     return spark
+
+
+def check_pinned(spark: Any) -> None:
+    """Read `SPARK_CONF` back from `spark`, the session sverify started, and
+    refuse it where a setting did not take (#1130): `getOrCreate` hands back
+    a session this process already had, whose settings may differ. A caller's
+    session is checked when its run chooses a route (`routes.check_settings`).
+
+    Raises:
+        EngineSettingsError: A setting of `SPARK_CONF` reads otherwise.
+    """
+    from sverify.routes import EngineSettingsError
+
+    found = {k: spark.conf.get(k, None) for k in SPARK_CONF}
+    off = [
+        f"{k} is {v!r}, and sverify's session sets {SPARK_CONF[k]!r}"
+        for k, v in found.items()
+        if v is None or str(v).strip().lower() != SPARK_CONF[k].lower()
+    ]
+    if off:
+        raise EngineSettingsError(
+            "Spark's session did not take the settings the Spark profile is proved under "
+            f"({'; '.join(off)}): stop the session this process started, or pass one "
+            "configured with sverify_spark.dialect.SPARK_CONF"
+        )
 
 
 #: Why Spark refuses a column of nanosecond timestamps (D61).

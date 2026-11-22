@@ -345,7 +345,11 @@ Sverify's words claim no more than these theorems give
      `list_null_order` and `avg_int_result`).
 
   An engine that raises commits nothing: a runtime obligation of the sink,
-  beside `Engine.Runs`. Raising only where the reference may is a separate claim
+  beside `Engine.Runs`, tested for the Delta, Iceberg and custom sinks, on an
+  engine error and on a check that fires
+  (`python/tests/test_raise_commits_nothing.py`). The Spark session sverify
+  starts is read back against `SPARK_CONF` before it runs anything
+  (`sverify_spark.engine.check_pinned`). Raising only where the reference may is a separate claim
   (`Rel.duckdb_refines`' second part), outside this chain.
 
   Beside `Engine.Runs`, the margin check of a threshold filter on a double `SUM` or
