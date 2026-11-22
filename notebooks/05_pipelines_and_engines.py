@@ -1628,7 +1628,7 @@ def _(mo):
 @app.cell
 def _(ibis, sv):
     from ibis import _
-    from sverify import routes as _routes
+    from sverify.routes import choose as _choose
 
     _readings = ibis.table({"sensor": "int64", "temp": "float64"}, name="readings")
     _sums = _readings.group_by("sensor").aggregate(total=_readings.temp.sum())
@@ -1640,8 +1640,8 @@ def _(ibis, sv):
         ensures=[_.total >= 0.0, sv.equivalent(floats=sv.within(rel=1e-6))],
     )
     assert sign_claim.verdict == sv.Verdict.PROVED and tolerant.verdict != sv.Verdict.PROVED
-    print(_routes.choose(sign_claim, "duckdb").why)
-    print(_routes.choose(tolerant, "duckdb").why)
+    print(_choose(sign_claim, "duckdb").why)
+    print(_choose(tolerant, "duckdb").why)
     return
 
 
