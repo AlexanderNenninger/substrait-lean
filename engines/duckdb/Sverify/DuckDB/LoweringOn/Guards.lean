@@ -57,6 +57,14 @@ theorem Substrait.duckdbOn.fround_guards : ∀ (x : Substrait.Value),
   guards_un_tac Substrait.duckdbOn.fround_agree
 
 set_option maxHeartbeats 1600000 in
+theorem Substrait.duckdbOn.dtextFull_guards : ∀ (x : Substrait.Value),
+  Substrait.Expr.GuardsAt
+    (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.dtextFull x) [x]
+    Substrait.Lowering.dtextFullTemplate := by
+  guards_un_tac Substrait.duckdbOn.dtextFull_agree
+
+set_option maxHeartbeats 1600000 in
 theorem Substrait.duckdbOn.fmath_sqrt_guards : ∀ (x : Substrait.Value),
   Substrait.Expr.GuardsAt
     (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
@@ -682,6 +690,9 @@ theorem Substrait.duckdbOn.guardsUn : ∀ f : Substrait.UnFn,
     | Substrait.UnFn.narrowOrNull _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.wrap _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.itos  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.dtext  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.dtextFull  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.dtextFull_guards⟩
+    | Substrait.UnFn.dwiden  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.widen  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.atUtc _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.upper  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩

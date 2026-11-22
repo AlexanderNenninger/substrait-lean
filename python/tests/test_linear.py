@@ -4,6 +4,7 @@ and adds each batch's change to it, and its rows equal a full recompute over
 random change streams."""
 
 import random
+import re
 
 import pyarrow as pa
 import pytest
@@ -189,16 +190,17 @@ def test_other_measures_keep_touched_groups():
     assert view(node).strategy == "touched groups"
 
 
-def test_a_maintained_sum_that_leaves_64_bits_raises_and_changes_nothing():
+def test_a_maintained_sum_that_leaves_64_bits_holds_the_node():
     big = 2**62
     src = StaticSource(samples([("a", 1, big)]), name="samples")
     node = src.pipe(per_minute)
     node.refresh()
-    before = rows(node)
     src.apply(Changes(inserts=samples([("a", 1, big), ("b", 1, 1)])))
-    with pytest.raises(Exception, match="(?i)overflow|out of range|64"):
-        node.refresh()
-    assert rows(node) == before
+    # The sum leaves 64 bits: a run-time check fires and the node holds (ruling 258).
+    held = node.refresh()
+    assert held.outcome == "held"
+    assert re.search(r"(?i)overflow|out of range|64", str(held.nodes[0].held))
+    # The stage was dropped (the run stopped part-way); the next refresh rebuilds it.
     # Deleting the first value brings the sum back within 64 bits.
     src.apply(Changes(deletes=samples([("a", 1, big)])))
     node.refresh(audit=True)

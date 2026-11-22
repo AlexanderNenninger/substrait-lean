@@ -1,7 +1,7 @@
 """Casts to VARCHAR of booleans and dates (#346): `true`/`false` and `YYYY-MM-DD`, the text every
 tier-1 engine gives, from Ibis and from DuckDB SQL. Booleans run on DuckDB and Polars, dates on
 DuckDB: Polars has no cast from a date to a timestamp (#271) and refuses the plan. Timestamps and
-decimals stay refused until their text is decided."""
+decimals have `test_decimal_text.py`; timestamps stay refused."""
 
 import datetime as dt
 
@@ -64,17 +64,3 @@ def test_constant_casts_fold_to_their_text():
     assert out.column("a")[0].as_py() == "true"
     assert out.column("b")[0].as_py() == "false"
     assert out.column("c")[0].as_py() == "2024-01-05"
-
-
-@pytest.mark.parametrize(
-    "expr",
-    [
-        lambda t: t.select(x=t.ts.cast("string")),
-        lambda t: t.select(x=t.dec.cast("string")),
-    ],
-    ids=["timestamp", "decimal"],
-)
-def test_timestamps_and_decimals_stay_refused(expr):
-    t = ibis.table({"ts": "timestamp", "dec": "decimal(10, 2)"}, name="t")
-    with pytest.raises(Exception, match="cast"):
-        sv.verify(expr(t), counterexamples=0)

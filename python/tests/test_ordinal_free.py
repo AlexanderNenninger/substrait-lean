@@ -107,3 +107,38 @@ def test_duckdb_reads_its_inputs_without_numbering_them():
     plan = written_plan(report.internal_plan)
     assert DUCKDB.row_ordinal() in to_sql(plan, DUCKDB)
     assert DUCKDB.row_ordinal() not in to_sql(plan, DUCKDB, rows="multiset", deterministic=True)
+
+
+#: Each case and the place of its sort key, `g`, in the output.
+SORTED = {
+    "sort": (T.order_by("g"), 1),
+    "sort, selected": (T.order_by(ibis.desc("g")).select("g", "v"), 0),
+    "top-n": (T.order_by("g").limit(4, offset=1), 1),
+}
+
+
+@pytest.mark.parametrize("case", SORTED, ids=list(SORTED))
+def test_a_sorted_root_sorts_by_its_keys_under_a_multiset(case):
+    """Under `rows="multiset"` a root sort, or a top-N, sorts the result by its
+    own keys and numbers no rows, in every dialect (#2186, ruling 217 S3);
+    ties stay open, so on DuckDB the rows are the sequence run's up to ties."""
+    from sverify.sql.snowflake import SNOWFLAKE
+    from sverify_spark.dialect import SPARK
+
+    expr, key = SORTED[case]
+    report = sv.verify(expr)
+    assert report.internal_plan is not None
+    plan = written_plan(report.internal_plan)
+    for d in (DUCKDB, SPARK, SNOWFLAKE):
+        sql = to_sql(plan, d, rows="multiset")
+        assert "ROW_NUMBER" not in sql.upper(), (d.name, sql)
+    import duckdb
+
+    con = duckdb.connect()
+    con.register("rows", ROWS)
+    con.execute("CREATE TABLE t AS SELECT * FROM rows")
+    multiset = con.execute(to_sql(plan, DUCKDB, rows="multiset")).fetchall()
+    sequence = con.execute(to_sql(plan, DUCKDB, rows="sequence")).fetchall()
+    if case != "top-n":  # a top-N keeps any of its ties
+        assert sorted(multiset) == sorted(sequence)
+    assert [r[key] for r in multiset] == [r[key] for r in sequence]  # ties may differ

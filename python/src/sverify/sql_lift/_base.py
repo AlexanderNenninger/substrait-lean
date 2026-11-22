@@ -137,6 +137,10 @@ DUCKDB = Profile(
 PORTABLE = Profile("portable")
 PROFILES = {p.name: p for p in (DUCKDB, PORTABLE)}
 
+#: The lift table's name of each profile's semantics: Lean's `Semantics.reference`
+#: is the portable profile (`engines/duckdb/Sverify/DuckDB/SQL.lean`).
+_TABLE_NAME = {"duckdb": "duckdb", "portable": "reference"}
+
 
 # --------------------------------------------------------------------------
 # The generated lift (#268)
@@ -150,19 +154,19 @@ PROFILES = {p.name: p for p in (DUCKDB, PORTABLE)}
 
 @dataclasses.dataclass(frozen=True)
 class LiftTable:
-    """The DuckDB semantics' part of `substrait-check --lift-table`.
+    """`substrait-check --lift-table`: the generated lift, by semantics.
 
     Attributes:
         functions: The templates' function anchors: the functions' names.
-        scalars: By construct (`"DOUBLE / DOUBLE"`): the entry, with its
-            `args` and `result` types and its `template` or why it is
-            `refused`.
-        aggregates: By construct (`"avg(BIGINT)"`): its `measures` and the
-            `finish` over them.
+        scalars: By semantics (`"duckdb"`, `"portable"`), then by construct
+            (`"DOUBLE / DOUBLE"`): the entry, with its `args` and `result`
+            types and its `template` or why it is `refused`.
+        aggregates: DuckDB's semantics' aggregates, by construct
+            (`"avg(BIGINT)"`): its `measures` and the `finish` over them.
     """
 
     functions: Mapping[int, str]
-    scalars: Mapping[str, Json]
+    scalars: Mapping[str, Mapping[str, Json]]
     aggregates: Mapping[str, Json]
 
 
@@ -216,7 +220,10 @@ def lift_table() -> LiftTable:
         _LIFT_TABLE.append(
             LiftTable(
                 {f["anchor"]: f["name"].split(":")[0] for f in raw["functions"]},
-                {e["construct"]: e for e in raw["lift"] if e["semantics"] == "duckdb"},
+                {
+                    p: {e["construct"]: e for e in raw["lift"] if e["semantics"] == _TABLE_NAME[p]}
+                    for p in PROFILES
+                },
                 {
                     e["construct"]: e["aggregate"]
                     for e in raw["aggregates"]
@@ -252,14 +259,15 @@ def _instantiate(template: Any, args: Sequence[Json]) -> Any:
     return out
 
 
-def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
-    """`construct` of `args` as the generated table lifts it with DuckDB's
-    semantics (the arguments brought to its types first), or None with the
-    reference's semantics, whose rules are written by hand. Raises
-    `Unsupported` where the table refuses it."""
-    if lf.profile is not DUCKDB:
-        return None
-    entry = lift_table().scalars[construct]
+def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E:
+    """`construct` of `args` as the generated table lifts it under the lift's
+    semantics (the arguments brought to its types first). Each entry is proved
+    to mean the function under that semantics; under the reference's it also
+    gives DuckDB's value wherever it gives a value (D54,
+    `liftReference_refines_duckdb`, #2008). Raises `Unsupported` where the
+    table refuses it."""
+    semantics = lf.profile.name
+    entry = lift_table().scalars[semantics][construct]
     if "refused" in entry:
         raise SqlUnsupported(
             f"{construct}: {entry['refused']}", construct=f"function {construct.lower()}"
@@ -268,18 +276,18 @@ def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
     js = [lf.to(a, t).json for a, t in zip(args, ts, strict=True)]
     # An argument the template names more than once, and evaluates on every
     # row, is bound to a column first (#1952).
-    shared = _shareable(construct)
+    shared = _shareable(semantics, construct)
     js = [lf.share(j) if i in shared else j for i, j in enumerate(js)]
     return E(_instantiate(entry["template"], js), _TABLE_TYPES[entry["result"]])
 
 
 @functools.cache
-def _shareable(construct: str) -> frozenset[int]:
+def _shareable(semantics: str, construct: str) -> frozenset[int]:
     """The arguments of `construct`'s template that it names more than once
     and evaluates on every row: those in its first condition or outside any
     `CASE`, and the first operand of an `and` or `or` (the second is
     evaluated only where the first does not decide)."""
-    template = lift_table().scalars[construct]["template"]
+    template = lift_table().scalars[semantics][construct]["template"]
     functions = lift_table().functions
     refs: list[int] = []
 

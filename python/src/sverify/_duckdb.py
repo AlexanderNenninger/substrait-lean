@@ -116,12 +116,18 @@ def memory_limit_error(e: BaseException, stage: str, db: Any = None) -> MemoryLi
 
 
 def cursor() -> duckdb.DuckDBPyConnection:
-    """A new connection to the process's database, under `limits`."""
+    """A new connection to the process's database, under `limits`, at the
+    time zone UTC: an instant (a UTC-zoned timestamp, #1725) then comes back
+    to Arrow zoned UTC as it went in, and not in the host's zone, which the
+    plans sverify writes refuse. The values are the same; no plan reads the
+    zone (`sverify_duckdb`)."""
     global _DB
     with _LOCK:
         if _DB is None:
             _DB = module().connect(config=limits())
-        return _DB.cursor()
+        c = _DB.cursor()
+    c.execute("SET TimeZone = 'UTC'")
+    return c
 
 
 def apply_limits() -> None:

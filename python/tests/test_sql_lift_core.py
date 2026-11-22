@@ -131,9 +131,10 @@ def test_division_states_its_meaning():
     query = "SELECT amount / qty AS r, amount // qty AS q FROM orders"
     duck, ref = (lift(query, SCHEMAS, s).plan for s in ("duckdb", "portable"))
     zero = {"name": "on_division_by_zero"}
-    # `/` divides doubles: by zero DuckDB gives inf, the reference raises.
+    # `/` divides doubles: by zero DuckDB gives inf, the reference raises (its
+    # proved template keeps the function's default, an error).
     assert options(duck, "divide")[0] == [{**zero, "preference": ["IEEE"]}]
-    assert options(ref, "divide")[0] == [{**zero, "preference": ["ERROR"]}]
+    assert options(ref, "divide")[0] == []
     # `//` divides integers, and raises by zero in both.
     for plan in (duck, ref):
         assert {**zero, "preference": ["ERROR"]} in options(plan, "divide")[1]
