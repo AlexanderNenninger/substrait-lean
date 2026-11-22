@@ -190,10 +190,10 @@ jobs:
       # wheel fails shows up before the tag.
       - name: Test installed wheel
         # A pull request builds the wheels and checks the packages; its
-        # tests from the wheel run on a release's pull request, on the tag
+        # tests from the wheel run on a release's pull request, in a merge batch, on the tag
         # and in the schedules (CI's `outside-repo` runs them from the source
         # when the packaging, the tests or the data files change).
-        if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release/')
+        if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release/') || startsWith(github.head_ref, 'batch/')
         run: |
           bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl \
             --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl \

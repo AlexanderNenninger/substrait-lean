@@ -53,8 +53,8 @@ permissions:
 # `outside-repo` (the tests from a copy outside the repository) runs when the
 # packaging, the tests or a data file of the package change; `evidence` (the
 # Ibis and validator replays) and the dbt packages' replay step (`dbt`) run
-# when the Ibis producer, the lift, the exporter, the lock files, their own
-# ledgers or a Lean input change. All three report and never fail a run, or
+# when the package's code (not its I/O, CLI, skills or schemas) or an engine
+# package's code, the lock files, their own ledgers or a Lean input change. All three report and never fail a run, or
 # (`outside-repo`) repeat what `test` runs from the source.
 #
 # The other pull requests run `test (core)` and `test (duckdb)` always, and
@@ -311,7 +311,7 @@ jobs:
           # jobs run the same tests from the source. A pull request runs it
           # for what can differ between the two: the packaging, the tests
           # (one may read a repository file) and the data files of the package.
-          if [ "$batch" = true ] || grep -qE '^(python/(pyproject\.toml|uv\.lock|hatch_build\.py|scripts/wheel_tests\.sh|tests/)|python/src/.*\.(json|proto|md|toml|txt|ya?ml)$|engines/[^/]+/(pyproject\.toml$|tests/)|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          if [ "$batch" = true ] || grep -qE '^(python/(pyproject\.toml|uv\.lock|hatch_build\.py|scripts/wheel_tests\.sh|tests/|tools/)|python/src/.*\.(json|proto|md|toml|txt|ya?ml)$|engines/[^/]+/(pyproject\.toml$|tests/|src/)|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out python=true
           else
             out python=false
@@ -333,11 +333,15 @@ jobs:
           # a file they read changes, the Lean inputs included (`proofs`), and
           # always in a batch, on main and on release branches.
           lean='\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$'
-          sv=python/src/sverify
-          ibis_in="^(python/tools/sverify_dev/(ibis_replay|substrait_validator)\.py$|python/tests/(ibis_replay/|substrait_validator\.json$)|python/uv\.lock$|$sv/(ibis_substrait/|substrait_export\.py$|plan_json\.py$)|\.github/workflows/ci\.yml$)|$lean"
-          dbt_in="^(dbt/|python/uv\.lock$|$sv/(sql_lift/|sql_model\.py$|substrait_export\.py$)|\.github/workflows/ci\.yml$)|$lean"
-          out "evidence=$({ [ "$batch" = true ] || grep -qE "$ibis_in" <<< "$files"; } && echo true || echo false)"
-          out "dbtreplay=$({ [ "$batch" = true ] || grep -qE "$dbt_in" <<< "$files"; } && echo true || echo false)"
+          # Both replays call `verify`, so any change to the package's own
+          # code can move them; its I/O, CLI, skills and schemas cannot.
+          vsrc=$(grep -E '^python/src/sverify/' <<< "$files" | grep -vE '^python/src/sverify/(io|cli|skills|schemas)/' || true)
+          engsrc=$(grep -E '^engines/[^/]+/src/' <<< "$files" || true)
+          ibis_in="^(python/tools/sverify_dev/(ibis_replay|substrait_validator)\.py$|python/tests/(ibis_replay/|substrait_validator\.json$)|python/uv\.lock$|\.github/workflows/ci\.yml$)|$lean"
+          dbt_in="^(dbt/|python/uv\.lock$|\.github/workflows/ci\.yml$)|$lean"
+          gate() { [ "$batch" = true ] || [ -n "$vsrc" ] || [ -n "$engsrc" ] || grep -qE "$1" <<< "$files"; }
+          out "evidence=$(gate "$ibis_in" && echo true || echo false)"
+          out "dbtreplay=$(gate "$dbt_in" && echo true || echo false)"
           backends='"duckdb"'
           [ "$(flag "$skip_polars")" = true ] && backends="$backends,\"polars snowflake\""
           m=$(matrix "$backends" "$(flag "$skip_spark")")
