@@ -186,6 +186,14 @@ def test_written_typed_null():
     )
 
 
+@pytest.mark.parametrize("cast", ["DOUBLE", "BOOLEAN", "BIGINT"])
+def test_written_typed_null_beside_a_bound_projection(cast):
+    """#2102: a projection whose chains the plan binds (`-(d + d)`) keeps the
+    declared type of a typed NULL beside it."""
+    sql = f"SELECT (- (d + d)) AS c0, CAST(NULL AS {cast}) AS c1 FROM t AS q"
+    assert not finding(sql, "engines", {"t": [T_ROW]})
+
+
 @pytest.mark.parametrize("fn", ["upper", "lower"])
 def test_written_string_null(fn):
     """#96: a NULL under a string function is written as a string NULL."""
