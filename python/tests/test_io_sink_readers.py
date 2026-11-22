@@ -14,6 +14,7 @@ sverify pins (`docs/how-it-works.md`, #2140)."""
 
 from __future__ import annotations
 
+import sys
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -178,9 +179,7 @@ def _iceberg_tables(root: Path) -> dict[str, Any]:
     from sverify.io import IcebergSink, IcebergSource
 
     warnings.filterwarnings("ignore", module="pyiceberg")
-    # `as_uri`: DuckDB's `iceberg_scan` reads the metadata location as a URI,
-    # and an f-string of a Windows path is none (`file://C:\\...`).
-    cat = SqlCatalog("t", uri=f"sqlite:///{root}/catalog.db", warehouse=Path(root).as_uri())
+    cat = SqlCatalog("t", uri=f"sqlite:///{root}/catalog.db", warehouse=f"file://{root}")
     cat.create_namespace("db")
     cat.create_table("db.orders", schema=SCHEMA).append(_batch(FIRST))
     src = IcebergSource(cat, "db.orders")
@@ -236,6 +235,13 @@ def test_pyiceberg_reads_the_sinks_rows(iceberg, name) -> None:
     assert _rows(t.scan().to_arrow()) == EXPECTED[name]
 
 
+#: On Windows pyiceberg writes `file://C:\\...` locations (it cannot open
+#: `file:///C:/...`), and DuckDB's iceberg extension refuses a host in a file
+#: URI, so it reads no table pyiceberg wrote there (#183).
+DUCKDB_READS_PYICEBERG = sys.platform != "win32"
+
+
+@pytest.mark.skipif(not DUCKDB_READS_PYICEBERG, reason="DuckDB reads no pyiceberg table on Windows")
 @pytest.mark.parametrize("name", NAMES)
 def test_duckdb_iceberg_scan_reads_the_sinks_rows(iceberg, name) -> None:
     meta = iceberg["catalog"].load_table(iceberg["idents"][name]).metadata_location
@@ -255,5 +261,6 @@ def test_the_contract_survives_pyiceberg_maintenance(tmp_path_factory) -> None:
     assert IcebergSource(cat, ident).contract() == before is not None
     t = cat.load_table(ident)
     assert _rows(t.scan().to_arrow()) == EXPECTED["merged"]
-    got = _duckdb("iceberg").execute(f"SELECT * FROM iceberg_scan('{t.metadata_location}')")
-    assert _rows(got.to_arrow_table()) == EXPECTED["merged"]
+    if DUCKDB_READS_PYICEBERG:
+        got = _duckdb("iceberg").execute(f"SELECT * FROM iceberg_scan('{t.metadata_location}')")
+        assert _rows(got.to_arrow_table()) == EXPECTED["merged"]
