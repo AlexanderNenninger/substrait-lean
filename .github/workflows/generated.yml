@@ -36,6 +36,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # Pruned: the cache keeps the wheels uv built and not the rest
+          # (455 MB against 2.1 GB, which crowded the Lean cache out).
+          prune-cache: true
+          cache-suffix: pruned
       - working-directory: python
         run: |
           uv run --locked python -m sverify_dev.catalogue --write-tables
