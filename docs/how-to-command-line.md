@@ -203,8 +203,8 @@ steps:
 ```
 
 The inputs are `targets`, `version` (default the latest release), `extras`
-(`delta,iceberg`), `timeout`, `require-proved`, `python-version`, `upload`
-and `sarif-file`; the outputs are `exit-code` and `sarif-file`. A pull request
+(`delta,iceberg`), `source`, `timeout`, `require-proved` (it needs sverify
+0.9.0 or later), `python-version`, `upload` and `sarif-file`; the outputs are `exit-code` and `sarif-file`. A pull request
 from a fork has no token to upload with: set `upload: "false"`. The action
 imports the targets without running them, so use `pull_request`, not
 `pull_request_target`, for a fork.

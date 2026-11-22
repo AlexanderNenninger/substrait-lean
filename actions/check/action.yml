@@ -10,6 +10,9 @@ inputs:
   version:
     description: The sverify version to install from PyPI, such as 0.8.0 (default, the latest).
     default: ""
+  source:
+    description: "What pip installs in place of sverify (version and extras are then unused): arguments such as ./wheel.whl, or -e ./engines/duckdb -e ./python for a checkout. For testing a build."
+    default: ""
   extras:
     description: Extras of the package, such as delta,iceberg.
     default: ""
@@ -17,7 +20,7 @@ inputs:
     description: Seconds for proof, planning and checking of each target (sverify's default is 30; 0 turns it off).
     default: "30"
   require-proved:
-    description: Fail for a node whose postconditions are only checked on the data, as for one that is not proved.
+    description: "Fail for a node whose postconditions are only checked on the data, as for one that is not proved. Needs sverify 0.9.0 or later: with an older install the step fails once, naming the minimum."
     default: "false"
   python-version:
     description: The Python the action installs (3.12 or later).
@@ -46,9 +49,32 @@ runs:
       env:
         VERSION: ${{ inputs.version }}
         EXTRAS: ${{ inputs.extras }}
+        SOURCE: ${{ inputs.source }}
       run: |
-        spec="sverify${EXTRAS:+[$EXTRAS]}${VERSION:+==$VERSION}"
-        python -m pip install --quiet "$spec"
+        if [ -n "$SOURCE" ]; then
+          # shellcheck disable=SC2086 # arguments, split on purpose
+          python -m pip install --quiet $SOURCE
+        else
+          python -m pip install --quiet "sverify${EXTRAS:+[$EXTRAS]}${VERSION:+==$VERSION}"
+        fi
+    - name: Check the version for require-proved
+      if: inputs.require-proved == 'true'
+      shell: bash
+      run: |
+        python - <<'PY'
+        import sys
+        from importlib.metadata import version
+        from packaging.version import Version
+
+        have = version("sverify")
+        # `--require-proved` came after 0.8.0; the development builds of 0.9.0 have it.
+        if Version(have) < Version("0.9.0.dev0"):
+            print(
+                f"::error::require-proved needs sverify 0.9.0 or later; {have} is installed. "
+                "Set `version: 0.9.0` or later, or drop require-proved."
+            )
+            sys.exit(2)
+        PY
     - name: Check
       id: check
       shell: bash
