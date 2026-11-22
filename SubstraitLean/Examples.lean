@@ -476,4 +476,6 @@ end Substrait.Examples
 #print axioms Substrait.FloatCode.fdiv_fin_of_one_le
 #print axioms Substrait.FloatCode.fmul_fin_of_le_one
 #print axioms Substrait.BinFn.shrinks_fin
+#print axioms Substrait.decQuotFinite_sound
+#print axioms Substrait.FloatCode.ofDecimal_zero
 #print axioms Substrait.Expr.mayIssues_sound
