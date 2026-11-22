@@ -105,13 +105,13 @@ theorem UnFn.apply_dbl (f : UnFn) {v : Value} (h : v.dbl = true) :
     | exact Boxes.dblOut.1 _ _
     | (simp only [Value.dbl_float] at h ⊢
        first
-         | exact FloatCode.dbl_negI h
-         | exact FloatCode.dbl_floor h
-         | exact FloatCode.dbl_ceil h
+         | with_reducible exact FloatCode.dbl_negI h
+         | with_reducible exact FloatCode.dbl_floor h
+         | with_reducible exact FloatCode.dbl_ceil h
          | with_reducible exact FloatCode.dbl_round h
          | with_reducible exact FloatCode.dbl_roundEven h
-         | exact FloatCode.dbl_roundTo _ h
-         | exact FloatCode.dbl_ofInt _)
+         | with_reducible exact FloatCode.dbl_roundTo _ h
+         | with_reducible exact FloatCode.dbl_ofInt _)
     | (simp only [Value.dbl_struct, Value.dbl_list] at h
        first
          | exact Value.dbl_getD h _
