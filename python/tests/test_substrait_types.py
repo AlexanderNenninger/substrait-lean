@@ -88,6 +88,8 @@ def ev(text: str, **env):
         ("2 <= 2 && 3 >= 4", False),
         # #2452: `!` and `!=` used to read as names.
         ("1 == 2 || 2 != 3", True),
+        ("P1!=P2", True),
+        ("P1!=10", False),
         ("!true", False),
         ("!(1 > 2)", True),
         ("1 > 2 ? 10 : 20", 20),
@@ -97,7 +99,7 @@ def ev(text: str, **env):
     ],
 )
 def test_an_integer_expression(text, value) -> None:
-    assert ev(text, P1=10) == value
+    assert ev(text, P1=10, P2=11) == value
 
 
 def test_a_type_expression() -> None:
@@ -163,4 +165,5 @@ def test_matching_binds_type_and_integer_variables() -> None:
     assert not se._match(se._decl("decimal<38,0>"), Ty("decimal", (10, 0)), {})
     assert not se._match(se._decl("i64"), Ty("i32"), {})
     assert not se._match(se._decl("u!geometry"), Ty("u!geometry"), {})
+    assert se._tokens("a!=b") == ["a", "!=", "b"] and se._tokens("u!geo!x") == ["u!geo!x"]
     assert not se._match(se._decl("map<any1,any2>"), Ty("map", (I64,)), {})
