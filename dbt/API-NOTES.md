@@ -440,3 +440,12 @@ would give suggestions for more kinds of postcondition.
 ### sverify's 1.0 names (#2345, ruling 263)
 
 sverify-dbt reads one name the 1.0 naming sweep changed: `sverify.types.CheckedCondition`, the type of `Report.ensures`' items, is `sverify.types.Postcondition`, with the same fields (`reason`, `why`, `needs`, `condition`, `proved`). `check.py`, `mapping.py` and `result.py` follow. The other renames (`Lenses`, a route's `taken` and `why`, `SinkWrite.inserts`, the sink record's `semantics`) are not read here.
+
+### sverify-dbt's own 1.0 names (#891 2.6)
+
+sverify-dbt's result types moved before 1.0 freezes them:
+
+- A status is `sverify_dbt.result.Status`, snake_case: `"pending"`, `"proved"`, `"not_proved"` or `"not_checked"`.
+- `sverify_dbt.Needed` is `NeededTest`, with `why` where it said `because`. A `Needed` in the table above (rows 5 and 55) is sverify's, `sverify.types.Needed`. `Suggestion.because` is `Suggestion.why` too: `why` is words (ruling 264).
+- `TestResult`, `NeededTest`, `ContractIssue`, `ModelResult`, `CheckResult` and `Suggestion` take keyword arguments only.
+- `CheckResult.tests` and `.relations`, the manifest's nodes, are internal: `_tests` and `_relations`.

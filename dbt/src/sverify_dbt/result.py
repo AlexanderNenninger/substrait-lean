@@ -110,7 +110,7 @@ class ModelResult:
                 t.skip("the model was refused")
         return self
 
-    def by_status(self, status: str) -> list[TestResult]:
+    def by_status(self, status: Status) -> list[TestResult]:
         return [t for t in self.tests + self.constraints if t.status == status]
 
 
@@ -146,9 +146,9 @@ class CheckResult:
                 return
             key = (r.unique_id, column, test)
             if key in out:
-                out[key].because.append(why)
+                out[key].why.append(why)
             else:
-                out[key] = Suggestion(r, column, test, [why])
+                out[key] = Suggestion(relation=r, column=column, test=test, why=[why])
 
         for m in self.models:
             for n in m.needed:
@@ -384,7 +384,7 @@ def _unproved(t: TestResult, status: str = "") -> list[str]:
     return out
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Suggestion:
     """A test to add to a relation (`CheckResult.suggestions`)."""
 
@@ -393,8 +393,8 @@ class Suggestion:
     """The column it goes on; None for a test on the relation."""
     test: str
     """The test as YAML: `dbt_utils.accepted_range: {arguments: {...}}`."""
-    because: list[str]
-    """What it lets sverify prove, or which runtime error it rules out."""
+    why: list[str]
+    """What it lets sverify prove, or which runtime error it rules out, in words."""
 
 
 def suggestions_yaml(suggestions: list[Suggestion]) -> str:
@@ -451,7 +451,7 @@ def _relation_lines(g: dict[str, Any], pad: str) -> list[str]:
 def _test_lines(tests: list[Suggestion], pad: str) -> list[str]:
     out = []
     for s in tests:
-        out += [f"{pad}# {why}" for why in s.because]
+        out += [f"{pad}# {why}" for why in s.why]
         out.append(f"{pad}- {s.test}")
     return out
 

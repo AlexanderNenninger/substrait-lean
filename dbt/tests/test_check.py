@@ -706,4 +706,4 @@ def test_suggest_names_the_source_test_for_a_null_that_comes_through_an_expressi
     assert statuses(res["fct"]) == {"not_null(order_day)": "not_proved"}
     [s] = res.suggestions()
     assert (s.relation.name, s.column, s.test) == ("orders", "ordered_at", "not_null")
-    assert "fct: proves not_null(order_day)" in s.because
+    assert "fct: proves not_null(order_day)" in s.why
