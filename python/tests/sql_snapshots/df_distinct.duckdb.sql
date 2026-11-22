@@ -1,0 +1,1 @@
+SELECT s1."c0" AS "customer", s1."c1" AS "amount" FROM (SELECT s2."c0" AS "c0", s2."c1" AS "c1" FROM (SELECT s3."c3" AS "c0", s3."c4" AS "c1" FROM (SELECT s4."c0" AS "c0", s4."c1" AS "c1", s4."c2" AS "c2", s4."c1" AS "c3", s4."c2" AS "c4" FROM (SELECT "id" AS "c0", "customer" AS "c1", "amount" AS "c2" FROM "orders") AS s4) AS s3) AS s2 GROUP BY s2."c0", s2."c1") AS s1

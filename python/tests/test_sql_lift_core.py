@@ -46,6 +46,10 @@ QUERIES = [
     " CASE qty WHEN 3 THEN 1.5 ELSE 2 END AS c, coalesce(qty, 0) AS z FROM orders",
     "SELECT id, cost * cost AS c2, cost + 1 AS c1, cost * 2 AS cd, cost > 3.5 AS big FROM orders",
     "SELECT 1 + 1 AS two, 7 // 2 AS q, 1 // 1 AS one",
+    # A BETWEEN of a BETWEEN: the operand is bound once (#2338).
+    "SELECT id, (((qty BETWEEN 1 AND 3)::INT BETWEEN 0 AND 1)::INT BETWEEN 0 AND 2) AS b,"
+    " ((price + 1 BETWEEN 0 AND 5)::INT + qty BETWEEN 2 AND 6) AS c FROM orders",
+    "SELECT (((1 BETWEEN 0 AND 2)::INT BETWEEN 0 AND 2)::INT BETWEEN 0 AND 2) AS nested",
     # IS [NOT] TRUE/FALSE, never NULL: COALESCE of the test (#177).
     "SELECT id, (qty > 2) IS TRUE AS t, (qty > 2) IS NOT TRUE AS nt,"
     " (price > 1.5) IS FALSE AS f, (price > 1.5) IS NOT FALSE AS nf FROM orders",
@@ -126,9 +130,10 @@ def test_division_states_its_meaning():
     query = "SELECT amount / qty AS r, amount // qty AS q FROM orders"
     duck, ref = (lift(query, SCHEMAS, s).plan for s in ("duckdb", "portable"))
     zero = {"name": "on_division_by_zero"}
-    # `/` divides doubles: by zero DuckDB gives inf, the reference raises.
+    # `/` divides doubles: by zero DuckDB gives inf, the reference raises (its
+    # proved template keeps the function's default, an error).
     assert options(duck, "divide")[0] == [{**zero, "preference": ["IEEE"]}]
-    assert options(ref, "divide")[0] == [{**zero, "preference": ["ERROR"]}]
+    assert options(ref, "divide")[0] == []
     # `//` divides integers, and raises by zero in both.
     for plan in (duck, ref):
         assert {**zero, "preference": ["ERROR"]} in options(plan, "divide")[1]
@@ -147,6 +152,61 @@ def test_nested_double_arithmetic_lifts_to_a_linear_plan():
     assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
 
 
+#: A BETWEEN whose operand or bound divides by `y`, written so that the lift
+#: binds the division below the SELECT list (#2338) or leaves it in place, under
+#: a `CASE` that every row takes.
+BETWEEN_DIVISIONS = [
+    "x BETWEEN 1 // y AND 2",
+    "(1 // y) BETWEEN 0 AND 2",
+    "((1 // y) BETWEEN 0 AND 2)::INT BETWEEN 0 AND 1",
+    "CASE WHEN x IS NOT NULL THEN (1 // y) BETWEEN 0 AND 2 END",
+]
+
+
+def _duckdb_and_lean(query: str, rows: list[tuple]) -> tuple[list | None, list | None]:
+    """The values of `query` over `t(x, y)` in DuckDB and in the Lean evaluator
+    of the lifted plan; None where it raises."""
+    table = pa.table({"x": [r[0] for r in rows], "y": [r[1] for r in rows]})
+    try:
+        expected: list | None = duckdb_result(query, {"t": table}).column("b").to_pylist()
+    except duckdb.Error:
+        expected = None
+    plan = json.dumps(lift(query, {"t": ibis.Schema.from_pyarrow(table.schema)}).plan)
+    inlined = json.dumps(slt._typed_inline(json.loads(plan), {"t": rows}, None))
+    try:
+        got: list | None = [r[0] for r in lean_values(inlined)]
+    except LeanRaised:
+        got = None
+    return expected, got
+
+
+@pytest.mark.parametrize("operand", BETWEEN_DIVISIONS)
+def test_a_division_by_zero_in_a_between_raises_shared_or_in_place(operand):
+    """A divisor of zero raises in DuckDB and in Lean whether the lift binds the
+    division to a column or writes it in place; the other rows agree (#2338)."""
+    query = f"SELECT {operand} AS b FROM t"
+    zero = _duckdb_and_lean(query, [(1, 1), (5, 0)])
+    assert zero == (None, None), query
+    ok = _duckdb_and_lean(query, [(1, 1), (5, 2), (None, 1)])
+    assert ok[0] is not None and ok[0] == ok[1], query
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [[(1, 0), (2, 0)], [(-1, 0), (-2, 0)], [(1, 0), (-1, 0), (None, 0)], [(-1, 1), (3, 1)]],
+    ids=["lower passes", "lower is false", "mixed, with NULL", "no zero divisor"],
+)
+def test_a_division_by_zero_in_the_upper_bound_agrees_with_duckdb(rows):
+    """The upper bound is lifted without sharing (#2339): it is not bound below
+    the SELECT list, where it would be evaluated on rows the `AND` may not reach.
+    DuckDB and Lean give the same answer on every row set. Both raise by a zero
+    divisor even where the lower comparison is FALSE (neither short-circuits)."""
+    query = "SELECT x BETWEEN 0 AND 1 // y AS b FROM t"
+    duck, lean = _duckdb_and_lean(query, rows)
+    assert duck == lean
+    assert (duck is None) == any(y == 0 for _, y in rows)
+
+
 def test_nested_double_arithmetic_checks_quickly():
     # The check end to end, in a subprocess with a timeout: six divisions took
     # 193 s before #1952, ten now take a few seconds.
@@ -155,6 +215,38 @@ def test_nested_double_arithmetic_checks_quickly():
         "cols = {f'c{i}': 'float64' for i in range(10)}\n"
         "sv.verify('SELECT ' + ' / '.join(cols) + ' AS s FROM t',"
         " tables={'t': ibis.table(cols, name='t')}, semantics='duckdb', on_inferred='warn')\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
+
+
+def _nested_between(depth: int) -> str:
+    q = "qty"
+    for _ in range(depth):
+        q = f"({q} BETWEEN 0 AND 2)::INT"
+    return f"SELECT {q} AS c FROM orders"
+
+
+def test_nested_between_lifts_to_a_linear_plan():
+    # A BETWEEN names its operand in both bounds; the lift binds it to a column
+    # once, so every further level adds the same size (#2338). Copied, the plan
+    # doubled per level, and 30 levels were about 2^24 times 6.
+    def size(n: int) -> int:
+        return len(json.dumps(lift(_nested_between(n), SCHEMAS).plan))
+
+    assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
+    assert size(30) < 100_000
+
+
+def test_nested_between_checks_quickly():
+    # The check end to end, in a subprocess with a timeout: ten levels did not
+    # finish in 100 s before #2338.
+    script = (
+        "import ibis, sverify as sv\n"
+        "q = 'qty'\n"
+        "for _ in range(12):\n"
+        "    q = f'({q} BETWEEN 0 AND 2)::INT'\n"
+        "sv.verify(f'SELECT {q} AS c FROM t', tables={'t': ibis.table({'qty': 'int32'}, name='t')},"
+        " semantics='duckdb', on_inferred='warn')\n"
     )
     subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
 

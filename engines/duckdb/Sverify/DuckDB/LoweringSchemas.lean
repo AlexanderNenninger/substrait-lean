@@ -48,6 +48,11 @@ def schema? : UnFn → Option Tm
       "round_even: 0.0 for a negative value that rounds to zero")
   | .fceil => some (.expr Lowering.fceilTemplate (Lean.mkConst ``Lowering.fceilTemplate)
       "ceil: 0.0 for a negative value that rounds to zero")
+  -- A `DECIMAL(p, p)` prints without its integer part (`.500`), so `dtextFull` has no native
+  -- symbol: its only lowering is the text of the decimal widened by one digit (D72, ruling 245
+  -- E2, `Lowering.dtextFull_agree`). The regen excludes it from the native search.
+  | .dtextFull => some (.expr Lowering.dtextFullTemplate (Lean.mkConst ``Lowering.dtextFullTemplate)
+      "dtext of the decimal widened by one digit")
   | _ => none
 
 /-- **DuckDB's binary schemas** (#242), for its IEEE operations:

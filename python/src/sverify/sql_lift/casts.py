@@ -99,7 +99,7 @@ def _rounding(node: sge.Cast) -> sge.Expression | None:
 
 def _rounded_to_bigint(lf: _Lift, node: sge.Cast, a: E, t: Any, sub: Sub) -> E | None:
     """`CAST(round(x) AS BIGINT)`, and of `floor(x)` and `ceil(x)`, of a double
-    under DuckDB's semantics: the argument is integral, so DuckDB's half-to-even
+    under either semantics: the argument is integral, so DuckDB's half-to-even
     cast is the model's truncating one (the generated table's
     `CAST(round(DOUBLE) AS BIGINT)`, #1655). None for any other cast."""
     r = _rounding(node)
@@ -120,6 +120,9 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         ) from e
     if node.to.this == sge.DataType.Type.NULL:
         raise SqlUnsupported(f"CAST to {node.to.sql(DIALECT)} is not supported", construct="CAST")
+    if t.is_decimal() and len(node.to.expressions) == 1:
+        # `DECIMAL(p)` is `DECIMAL(p, 0)` in DuckDB; Ibis reads it with scale 3.
+        t = t.copy(scale=0)
     if node.to.is_type(*sge.DataType.TEMPORAL_TYPES) and [
         p.sql(DIALECT) for p in node.to.expressions
     ] not in ([], ["4"], ["5"], ["6"]):
@@ -149,8 +152,28 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             issue=323,
             construct="CAST",
         )
+    if isinstance(t, dt.Timestamp) and t.scale == 9:
+        # Nanoseconds (D61) are read from a column; a cast or a literal into them waits.
+        raise SqlUnsupported(
+            f"CAST to {node.to.sql(DIALECT)}: a timestamp in nanoseconds (1677-09-21 to "
+            "2262-04-11) is read from a column, and meets microseconds only through a cast, "
+            "which is not supported yet",
+            issue=2318,
+            construct="CAST",
+        )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
+    if t.is_string() and a.type.is_decimal() and a.type.precision == a.type.scale:
+        # DuckDB prints a DECIMAL(p, p) without its integer part (`.500`), the reference with
+        # it (`0.500`): neither reading is the SQL's, so the lift refuses it (D72, ruling 245).
+        p, s = a.type.precision, a.type.scale
+        wide = f"DECIMAL({p + 1}, {s})" if p < 38 else f"DECIMAL(38, {s - 1})"
+        raise SqlUnsupported(
+            f"{node.sql(DIALECT)} is a DECIMAL({p}, {s}) as text: DuckDB prints it without its "
+            f"integer part (.500) and the reference with it (0.500)",
+            hint=f"cast it to {wide} first",
+            construct="CAST",
+        )
     # DuckDB casts to and from a timestamp with a time zone in the session's zone (D53).
     in_tz = a.type.is_timestamp() and a.type.timezone is not None
     to_tz = t.is_timestamp() and t.timezone is not None
@@ -205,8 +228,8 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             (dt.float64, dt.int64, "DOUBLE AS BIGINT"),
             (dt.int64, dt.float64, "BIGINT AS DOUBLE"),
         ):
-            if _same(a.type, src) and _same(t, to) and (g := _generated(lf, f"CAST({sql})", [a])):
-                return g
+            if _same(a.type, src) and _same(t, to):
+                return _generated(lf, f"CAST({sql})", [a])
     if t.is_integer() and a.type.is_decimal():
         # DuckDB rounds a decimal half away from zero, as the reference's rescale to
         # scale 0 does (`decimal_rescale`); the exact cast of that is the value (#322). One digit

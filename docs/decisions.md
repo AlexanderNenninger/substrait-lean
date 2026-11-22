@@ -1801,6 +1801,12 @@ proof covers, and proved stays proved. An Ibis transformation lists nothing, and
 a SQL query with `semantics="duckdb"` lists only `list_contains` and the order of lists (2026-11-20; amended 2026-11-21: `list_null_order`, ordering comparisons of lists, whose NULL elements DuckDB orders last, ruling 232, [#2163](https://github.com/AlexanderNenninger/substrait-lean/issues/2163)). `semantics="reference"` stays the
 default for raw SQL ("verify two paths" and "portable everywhere" keep it).
 
+Since 2026-11-21 (#2008, ruling 243) the lift reads the scalar functions it
+proves under `semantics="reference"` from the generated `liftReference` table,
+and `liftReference_refines_duckdb` (`DuckDB/LiftRefines.lean`) proves L for
+each of its entries: where the template gives a value, DuckDB's function gives
+the same.
+
 Recomputes sinks: no
 
 Why: a proof is about the plan the lift writes. A user reads it as a statement
@@ -2069,6 +2075,43 @@ sverify reached only by rewriting the plan. The fold also dropped `x`, and with
 it an error inside `x`, and under `semantics="duckdb"` it claimed 1 where
 DuckDB's own SQL gives `NULL` ([D54](#d54-the-lift-refines-the-dialect)).
 
+### D72. Decimal text
+
+Decided 2026-11-21 (theory advisor, rulings 244 and 245; [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346)).
+
+`CAST(x AS VARCHAR)` of a `DECIMAL(p, s)` is the text of its exact value: `-` for a
+negative value, the integer part with at least one digit, then `.` and exactly `s`
+digits, none for `s = 0` (`10.50`, `-0.05`, `0.00`, `12`, `0.500`). It is total: no
+rounding, no overflow. `UnFn.dtext` computes it on the unscaled integer and the
+scale (`decText`), and `UnFn.dtextFull` is the same function for a `DECIMAL(p, p)`
+(`UnFn.apply_dtextFull`). Constants fold through the same definition, except a
+`DECIMAL(p, p)`, which stays a call.
+
+DuckDB prints a `DECIMAL(p, p)` without its integer part (`.500`); Polars and Spark
+print `0.500`
+([duckdb-cast-decimal-timestamp-text](../engines/duckdb/facts/duckdb-cast-decimal-timestamp-text.json),
+[polars-cast-decimal-timestamp-text](../engines/polars/facts/polars-cast-decimal-timestamp-text.json),
+[spark-cast-string](../engines/spark/facts/spark-cast-string.json)). The reference takes the common text and adds no option.
+DuckDB's only lowering of `dtextFull` is the template that widens the decimal by one digit of
+precision first (`dwiden`, `Lowering.dtextFullTemplate`); no plan puts a
+`DECIMAL(p, p)` into DuckDB's own text cast, so `Profile.duckdb` states nothing false. At
+`DECIMAL(38, 38)` there is no wider type: `verify` refuses the plan on DuckDB, naming the cast
+to `DECIMAL(38, 37)`. The SQL lift refuses `CAST(DECIMAL(p, p) AS VARCHAR)` under both
+semantics, naming the cast to `DECIMAL(p + 1, p)`
+([D54](#d54-the-lift-refines-the-dialect)). A `decimal_text` option waits until someone needs
+`semantics="duckdb"` to state DuckDB's native text for `DECIMAL(p, p)` (After 1.0).
+
+Timestamp text stays refused at 1.0: DuckDB and Spark trim trailing zeros of the fraction and
+Polars prints six digits, and the shim's value moves with the nanosecond work of
+[D61](#d61-timestamp-precisions). The refusal names `strftime` with an explicit format.
+
+Recomputes sinks: no
+
+Why: every tier-1 engine prints the scale's digits, so a decimal's text is a reference value
+and an exact one: composing it from integer parts overflows past 18 digits and loses the sign
+of `-0.05`. A refusal at plan read would put DuckDB's one quirk into the reference for every
+engine.
+
 ### D61. Timestamp precisions
 
 Decided 2026-11-19 (theory advisor, ruling 142; #323).
@@ -2084,10 +2127,11 @@ result leaves 64 bits. Calendar functions take microsecond timestamps. A
 microsecond and a nanosecond timestamp meet only through a written cast.
 
 Where it stands: the second and millisecond reads, the narrowing cast and the
-refusals are built (#323, PR a). The nanosecond kinds and the two casts are
-the next step (PR b); until then a plan column of a precision other than
-microseconds is refused when the plan is read (#2004), since reading it as a
-count of microseconds would compare raw counts of different units.
+refusals are built (#323, PR a). The nanosecond kinds are built for reading
+(#323): a column is read, compared with its own kind, used as a key, counted
+and its `MIN` and `MAX` taken, and Spark refuses it. The casts between
+microseconds and nanoseconds wait until after 1.0 (maintainer, ruling 237);
+until then the two kinds never meet.
 
 Recomputes sinks: no
 

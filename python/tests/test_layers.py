@@ -24,6 +24,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_stages",
             "_cursor",
             "_unsupported",
+            "_fired",
             "_asof_cap",
             "_plan_read",
             "_user_text",
@@ -62,7 +63,7 @@ LAYERS: list[tuple[str, list[str]]] = [
         "report",
         ["routes", "report", "_verdict", "report_json", "substrait_export", "_substrait_shims"],
     ),
-    ("transform", ["contracts"]),
+    ("transform", ["proposers", "contracts"]),
     (
         "incremental",
         ["_state", "_retention", "_exact_sum", "_linear", "_semi", "_touched", "incremental"],

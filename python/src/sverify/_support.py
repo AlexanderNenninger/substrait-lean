@@ -14,7 +14,11 @@ from __future__ import annotations
 from typing import Any
 
 from sverify import _plan_read, black_box
-from sverify._unsupported import DUCKDB_ONLY, ISSUE_271, MIN_MOD_GUARD  # noqa: F401  (re-exported)
+from sverify._unsupported import (  # noqa: F401  (re-exported)
+    DUCKDB_ONLY,
+    ISSUE_271,
+    MIN_MOD_GUARD,
+)
 
 
 def _engines() -> dict[str, Any]:

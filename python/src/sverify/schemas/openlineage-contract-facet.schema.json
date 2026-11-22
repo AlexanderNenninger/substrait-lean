@@ -62,7 +62,7 @@
     "quarantined": {"description": "Rows of the node's sources quarantined after the refresh, in all.", "type": "integer"},
     "held": {"description": "Why the node did not take the batch.", "type": "string"},
     "substrait": {
-      "description": "The verified plan exported to Substrait (Report.to_substrait, protobuf JSON), which sv.from_substrait proves again. Absent where the plan has no export.",
+      "description": "The verified plan exported to Substrait (Report.to_substrait, protobuf JSON), which Report.from_substrait proves again. Absent where the plan has no export.",
       "type": "object"
     }
   },

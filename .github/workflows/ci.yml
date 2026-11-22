@@ -35,8 +35,8 @@ permissions:
 # the shared checker.
 #
 # A pull request that changes only docs (`docs/`, `.claude/`, `changelog.d/`,
-# Markdown at the root other than README.md, which tests run, and
-# docs/tasks.md and docs/how-it-works.md, which tests run too) skips
+# Markdown at the root), other than a page whose examples
+# python/tests/test_readme.py runs (its `READMES`), skips
 # everything but `static`, and float-bounds runs only when its own package
 # changes. The TLA+ models (`models/`) count as docs for the other jobs:
 # `refresh-model` checks them, when they change.
@@ -80,21 +80,38 @@ permissions:
 # a batch branch `batch/*`, pushes, merge queue entries or dispatches, whose
 # `qa` the merge tooling waits for: a job queued for lack of a spot instance
 # would stall it), and only when `aws-probe` starts within 3 minutes;
-# otherwise ubuntu-latest. `changes`, `qa`, the Spark tests, `bench` (its budgets assume
+# otherwise ubuntu-latest. The repository variable `AWS_RUNNERS` set to `off`
+# skips the probe, so every job runs on GitHub's runners (`gh variable set
+# AWS_RUNNERS --body off`; delete it, or set it to anything else, to use AWS
+# again): with no runners left, the probe would queue for good.
+#
+# The longest jobs (`lean`, `evidence`, `dbt`, `outside-repo`) may run on the
+# fixed Hetzner hosts instead (agentic-tools/hetzner-runner: two x86 servers
+# in Helsinki, six slots of 4 vCPU and about 7.5 GB, each job in a fresh
+# container, label `hetzner`), when the repository variable `HETZNER_RUNNERS`
+# is `on` and `hetzner-probe` starts within the same 3 minutes; otherwise
+# they go where the other jobs go. Only those four: a whole run would take
+# every slot at once. `gh variable set HETZNER_RUNNERS --body on` turns it
+# on, `off` (or deleting it) off. (The checker and cache steps still handle
+# an ARM runner, from the first plan; on x86 those branches never run.)
+#
+# `changes`, `qa`, the Spark tests, `bench` (its budgets assume
 # GitHub's CPUs), `float-bounds` and `refresh-model` always run on GitHub's
 # runners.
 jobs:
   # Where the jobs below run (see the header): GitHub's runners, or the
-  # self-hosted AWS runners when one picks `aws-probe` up in time. `light` is
-  # a JSON `runs-on`; every job that may run on AWS takes it from here. This job never
-  # fails: any doubt answers GitHub's runners.
+  # self-hosted AWS runners when one picks `aws-probe` up in time (`runner`),
+  # and for the four longest jobs the Hetzner host when it picks
+  # `hetzner-probe` up in time (`heavy`, else the same as `runner`). Both are
+  # a JSON `runs-on`. This job never fails: any doubt answers GitHub's runners.
   route:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      actions: read # to read `aws-probe`'s status
+      actions: read # to read the probes' status
     outputs:
       runner: ${{ steps.pick.outputs.runner }}
+      heavy: ${{ steps.pick.outputs.heavy }}
     steps:
       - id: pick
         continue-on-error: true
@@ -102,35 +119,60 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # GitHub's runners unless the loop below finds an AWS one.
+          # GitHub's runners unless the loop below finds a self-hosted one.
           echo 'runner="ubuntu-latest"' >> "$GITHUB_OUTPUT"
-          # `aws-probe` runs only for this repository's own pull requests (it is
-          # skipped for forks, batch branches and other events). Spot launch and boot
-          # take about a minute; past 3 minutes the probe is still queued
-          # (no capacity, runners busy with other runs) and GitHub's runners
-          # take the light jobs.
+          echo 'heavy="ubuntu-latest"' >> "$GITHUB_OUTPUT"
+          # The probes run only for this repository's own pull requests (they
+          # are skipped for forks, batch branches and other events, and when
+          # their repository variable is off). Spot launch and boot take about
+          # a minute; past 3 minutes a probe is still queued (no capacity,
+          # runners busy with other runs) and GitHub's runners take its jobs.
           url="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs"
-          for _ in $(seq 36); do
-            st=$(gh api "$url" --jq '.jobs[]|select(.name=="aws-probe")|.status+" "+(.conclusion//"")') || st=
-            case "$st" in
-              "in_progress "*|"completed success") echo "AWS runner picked up the probe."
-                echo 'runner=["self-hosted","linux","x64","aws"]' >> "$GITHUB_OUTPUT"; exit 0;;
-              "completed "*) echo "Probe skipped or failed ($st): GitHub's runners."; exit 0;;
+          state() { # up, no or wait for probe $1, from $jobs
+            case "$(sed -n "s/^$1 //p" <<<"$jobs")" in
+              "in_progress "*|"completed success") echo up;;
+              "completed "*) echo no;;
+              *) echo wait;;
             esac
+          }
+          aws=wait hz=wait
+          for _ in $(seq 36); do
+            jobs=$(gh api "$url" --jq '.jobs[]|select(.name=="aws-probe" or .name=="hetzner-probe")|.name+" "+.status+" "+(.conclusion//"")') || jobs=
+            [ "$aws" = wait ] && aws=$(state aws-probe)
+            [ "$hz" = wait ] && hz=$(state hetzner-probe)
+            [ "$aws" != wait ] && [ "$hz" != wait ] && break
             sleep 5
           done
-          echo "::warning::No AWS runner picked up the probe in 3 minutes: those jobs run on GitHub's runners."
+          echo "AWS probe: $aws; Hetzner probe: $hz."
+          light='"ubuntu-latest"'
+          [ "$aws" = up ] && light='["self-hosted","linux","x64","aws"]'
+          heavy=$light
+          [ "$hz" = up ] && heavy='["self-hosted","linux","X64","hetzner"]'
+          echo "runner=$light" >> "$GITHUB_OUTPUT"
+          echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
+          [ "$aws" != wait ] || echo "::warning::No AWS runner picked up the probe in 3 minutes: those jobs run on GitHub's runners."
+          [ "$hz" != wait ] || echo "::warning::No Hetzner runner picked up the probe in 3 minutes: the long jobs run on $light."
 
   # Starts an AWS runner (ephemeral: one job each) so `route` can tell whether
   # one is available; it queues until one starts, and a run with no runner
   # leaves it queued (GitHub has no queue timeout) until the next push to the
   # branch cancels the run. No other job needs it.
   aws-probe:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/')
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/') && vars.AWS_RUNNERS != 'off'
     runs-on: [self-hosted, linux, x64, aws]
     timeout-minutes: 2
     steps:
       - run: echo "AWS runner $(hostname) is up"
+
+  # The same for the Hetzner hosts (fixed servers, each job in a fresh
+  # container): it queues until a slot is free. Off unless the repository
+  # variable `HETZNER_RUNNERS` is `on`.
+  hetzner-probe:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/') && vars.HETZNER_RUNNERS == 'on'
+    runs-on: [self-hosted, linux, x64, hetzner]
+    timeout-minutes: 2
+    steps:
+      - run: echo "Hetzner runner $(hostname) is up"
 
   changes:
     runs-on: ubuntu-latest
@@ -251,8 +293,19 @@ jobs:
           printf '%s\n' "$files"
           # Here-strings, not pipes: under `pipefail` an early exit of `grep -q`
           # could fail the pipe.
-          if ! grep -qvE "$docs|$ledger" <<< "$files" \
-             && ! grep -qxE 'README\.md|docs/(guide|how-it-works)\.md' <<< "$files"; then
+          # A page test_readme.py runs: its `ROOT / "docs" / "x.md"` entry,
+          # or a page of docs/theorems/, which it globs.
+          runs_examples() {
+            local f
+            while read -r f; do
+              case "$f" in
+                docs/theorems/*.md) return 0 ;;
+                *.md) grep -qF "ROOT / \"${f//\//\" / \"}\"" python/tests/test_readme.py && return 0 ;;
+              esac
+            done <<< "$files"
+            return 1
+          }
+          if ! grep -qvE "$docs|$ledger" <<< "$files" && ! runs_examples; then
             out code=false
             if grep -qE "$ledger" <<< "$files"; then
               out ledger=true
@@ -373,7 +426,7 @@ jobs:
   lean:
     needs: [route, changes]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -430,6 +483,8 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: python/uv.lock
           # The cache keeps the wheels uv built, and the rest come from PyPI:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.
@@ -624,7 +679,7 @@ jobs:
   outside-repo:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -636,6 +691,8 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: python/pyproject.toml
           # The cache keeps the wheels uv built, and the rest come from PyPI:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.
@@ -839,7 +896,7 @@ jobs:
   evidence:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -850,6 +907,8 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: python/uv.lock
           prune-cache: true
           cache-suffix: pruned
@@ -923,7 +982,14 @@ jobs:
         run: |
           f=python/tools/sverify_dev/ibis_replay.py
           echo "key=$(sed -n 's/^IBIS_TAG = "\(.*\)"$/\1/p' $f)-$(sed -n 's/^DATA_COMMIT = "\(.*\)"$/\1/p' $f)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # 233 MB: an ARM (Hetzner) run restores it only (setup-lean says why).
+      - if: runner.arch == 'X64'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/ibis-replay
+          key: ibis-replay-${{ steps.ibis.outputs.key }}-${{ runner.environment }}
+      - if: runner.arch != 'X64'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/sverify/ibis-replay
           key: ibis-replay-${{ steps.ibis.outputs.key }}-${{ runner.environment }}
@@ -942,7 +1008,7 @@ jobs:
   dbt:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 30
     permissions:
       contents: read
@@ -959,6 +1025,8 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: dbt/uv.lock
           # The cache keeps the wheels uv built, and the rest come from PyPI:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.

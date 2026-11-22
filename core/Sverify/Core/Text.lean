@@ -180,8 +180,11 @@ def repeatOnto (s : String) : Nat → String → String
 /-- `repeat(s, n)`: `s` `n` times. It writes the result into one string
 (`repeatStr_eq` gives the plain form): the plain form's list of `n` pieces
 took about 32 bytes a piece, so `repeat(' ', 10⁹)`, a 1 GB result within
-`repeatFits`, took over 30 GB of the checker's memory (#1074). -/
-def repeatStr (s : String) (n : Int) : String := repeatOnto s n.toNat ""
+`repeatFits`, took over 30 GB of the checker's memory (#1074). The empty string is `""`
+whatever `n` is, so it never loops: `repeatFits` holds for it at every `n`, and
+`n = 2⁶³ - 1` would spin forever (#2278). -/
+def repeatStr (s : String) (n : Int) : String :=
+  if s.isEmpty then "" else repeatOnto s n.toNat ""
 
 theorem repeatOnto_eq (s : String) :
     ∀ k acc, repeatOnto s k acc = acc ++ String.join (List.replicate k s)
@@ -191,7 +194,15 @@ theorem repeatOnto_eq (s : String) :
 
 theorem repeatStr_eq (s : String) (n : Int) :
     repeatStr s n = String.join (List.replicate n.toNat s) := by
-  simp [repeatStr, repeatOnto_eq]
+  by_cases h : s.isEmpty
+  · have : s = "" := String.isEmpty_iff.mp h
+    subst this
+    have hj : ∀ k, String.join (List.replicate k "") = "" := by
+      intro k; induction k with
+      | zero => simp
+      | succ k ih => simp [List.replicate_succ, ih]
+    simp [repeatStr, hj]
+  · simp [repeatStr, h, repeatOnto_eq]
 
 def reverse (s : String) : String := String.ofList s.toList.reverse
 
@@ -482,6 +493,7 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard trim true true "  ab  " " " == "ab" && trim true true "xyabyx" "xy" == "ab"
 #guard repeatStr "ab" 3 == "ababab" && repeatStr "ab" (-1) == "" && repeatStr "ab" 0 == ""
 #guard repeatFits "ab" (2 ^ 30 - 1) && !repeatFits "ab" (2 ^ 30) && !repeatFits "é" (2 ^ 30)
+#guard repeatStr "" (2 ^ 63 - 1) == "" && repeatStr "ab" (2 ^ 63 - 1 - 2 ^ 63) == ""
 #guard repeatFits "" (2 ^ 62) && repeatFits "ab" (-(2 ^ 62))
 #guard reverse "héllo" == "olléh" && reverse "" == ""
 #guard replace "ab" "" "x" == "ab" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"

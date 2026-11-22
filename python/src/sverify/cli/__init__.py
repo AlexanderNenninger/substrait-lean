@@ -34,7 +34,8 @@ sink commits.
 Exit codes: 0 proved (a refresh committed every row), 1 not proved, 2 usage
 error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh
 committed with rows quarantined, 6 error, 7 refused (no route to the
-engine), 8 a refresh held a node. A `refresh` that exits 5 or 8 prints
+engine), 8 a refresh held a node (a condition failed, or a run-time check
+fired). A `refresh` that exits 5 or 8 prints
 `Refresh.alert()`'s text after the summary; its JSON's `status` says
 `"quarantined"` or `"held"`, with
 `"outcome"` and `"alert"`. Rows of your data, the quarantine's

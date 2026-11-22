@@ -193,6 +193,23 @@ omit [Boxes.Ambient] in
 theorem Lowering.froundEvenTemplate_must : 0 ∈ Lowering.froundEvenTemplate.must := by
   simp [Expr.must, Lowering.froundEvenTemplate, Lowering.zeroTemplate]
 
+/-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, p)` on DuckDB (D72, ruling 245 E2): DuckDB's own cast
+prints it without the integer part (`.500`), so its only lowering is the text of the decimal
+widened by one digit of precision, which has an integer part (`0.500`). -/
+def Lowering.dtextFullTemplate : Expr := .un .dtext (.un .dwiden (.field 0))
+
+omit [Boxes.Ambient] in
+/-- The template reads its argument, for the entry's strictness. -/
+theorem Lowering.dtextFullTemplate_must : 0 ∈ Lowering.dtextFullTemplate.must := by
+  simp [Expr.must, Lowering.dtextFullTemplate]
+
+/-- `dtextFullTemplate` agrees with the reference on every value: widening keeps the value, and
+DuckDB's `dtext` is the reference's. -/
+theorem Lowering.dtextFull_agree (s : DuckDBSettings) (x : Value) :
+    (Lowering.dtextFullTemplate.evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un .dtextFull x) := by
+  cases x <;> rfl
+
 /-- `round` on DuckDB, through `zeroTemplate`, agrees with the reference. -/
 theorem Lowering.fround_agree (s : DuckDBSettings) (x : Value) :
     (Lowering.froundTemplate.evalP (Profile.duckdb s) [x]).Agree
