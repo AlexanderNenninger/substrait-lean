@@ -24,8 +24,8 @@ holds the order (`LAYERS`) and fails on an import against it.
 | integrations | `odcs`, `openlineage` | Data contracts (ODCS) and OpenLineage events |
 | public | `cli`, `testing`, `pytest_plugin`, `display`, `engines`, `errors`, `types`, `sverify` | The public modules and the `sverify` command |
 
-`sverify.contracts` re-exports the names that moved to `conditions` and
-`report`, so code that imports them from there keeps working.
+Code imports each name from the module that defines it: `sverify.contracts`
+re-exports nothing of `conditions` or `report` (#2081).
 
 ## Where a lower layer needs a higher one
 

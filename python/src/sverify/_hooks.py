@@ -40,8 +40,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from sverify.contracts import CompositionError, ContractedTransform, Report
+    from sverify.contracts import CompositionError, ContractedTransform
     from sverify.nodes import Node
+    from sverify.report import Report
 
 
 @dataclass

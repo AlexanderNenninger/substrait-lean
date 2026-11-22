@@ -95,28 +95,26 @@ from sverify._weighted import (
     split_matching,
     weighted,
 )
-from sverify.contracts import (
+from sverify.conditions import (
     ON_DATA,
     ROWS_SHOWN,
     ArrivesWithin,
-    Condition,
     Discharged,
-    Fact,
-    PostconditionError,
     PreconditionError,
     References,
     TableCondition,
     Unique,
+    label,
+    show_duration,
+)
+from sverify.contracts import (
+    Fact,
     _mentioned_names,
     discharge,
-    label,
     register_facts,
     register_view,
-    show_duration,
     table_facts,
     view_contract,
-    violating_rows,
-    violations,
 )
 from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: re-exported)
     Connection,
@@ -134,7 +132,7 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     written_plan,
 )
 from sverify.ibis_substrait.prune import mentioning
-from sverify.report import refuse_schema
+from sverify.report import Condition, PostconditionError, refuse_schema, violating_rows, violations
 
 Row = tuple
 

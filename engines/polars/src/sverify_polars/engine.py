@@ -1605,8 +1605,8 @@ class Exprs:
                     "% of doubles on Polars: Polars's % floors (polars-double-modulus), "
                     "where the reference's truncates as C's fmod; run it on DuckDB or Spark"
                 )
-            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
-            # in-memory engine (polars-zero-sign): a sum or difference gets
+            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on a morsel
+            # of two rows or more (polars-zero-sign-streaming): a sum or difference gets
             # IEEE's zero sign by a shim.
             ops = {"add": shims.ieee_zero_sum(x + y, x, y, False),
                    "subtract": shims.ieee_zero_sum(x - y, x, y, True), "multiply": x * y,

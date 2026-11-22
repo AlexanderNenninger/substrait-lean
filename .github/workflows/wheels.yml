@@ -363,6 +363,12 @@ jobs:
           dbt --no-use-colors deps --project-dir shop --profiles-dir shop
           dbt --no-use-colors compile --project-dir shop --profiles-dir shop
           sverify-dbt check shop --selectors
+          # dbt runs the project on DuckDB: the models the checker did not
+          # prove build, and the proved ones are tested (as the `dbt` job of
+          # `ci.yml` does from a checkout).
+          dbt --no-use-colors seed --project-dir shop --profiles-dir shop
+          dbt --no-use-colors build --project-dir shop --profiles-dir shop --exclude selector:sverify_proved
+          dbt --no-use-colors test --project-dir shop --profiles-dir shop --select selector:sverify_proved
 
   # Each extra of an I/O format or a tool, installed alone in a fresh venv
   # from the run's wheel with no engine, imports what it brings and makes one

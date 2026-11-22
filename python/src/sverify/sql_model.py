@@ -40,10 +40,11 @@ from typing import Any, cast, overload
 import ibis.expr.types as ir
 import sqlglot as sg
 
-from sverify.contracts import ContractedTransform, Semantics
+from sverify.contracts import ContractedTransform
 from sverify.engine import checker_failed, run_checker
 from sverify.ibis_substrait import SQLModel, sql_model_schema, to_substrait_json
 from sverify.ibis_substrait import Unsupported as ProducerRefused
+from sverify.report import Semantics
 
 
 @overload

@@ -92,7 +92,7 @@ Polars runs on its streaming engine, as sverify does (#605), with sverify's flag
 
 ## Gotchas
 
-- Give tables of at least 2 rows. Polars rewrites arithmetic with literals differently on a one-row frame (PL-3, `polars-zero-sign`), so a one-row probe can hide a difference. The probe warns.
+- Give tables of at least 2 rows. Polars rewrites arithmetic with literals differently on a one-row frame (PL-3, `polars-zero-sign-streaming`), so a one-row probe can hide a difference. The probe warns.
 - A difference under a window or `LIMIT` may be allowed. Where sort keys tie, the reference leaves `tie_order` open; an engine that orders ties differently refines it up to the observation "ties permuted". Check whether the differing rows tie.
 - `raises` on an engine running the plan is by design where the reference raises: division by zero, i64 overflow, a double overflowing to ±∞ (#575). `Report.issues` and `Safety.lean` say where that can happen; a guard (`CASE WHEN b <> 0`) or a precondition removes it.
 - A float `SUM` or `AVG` verifies only once the inputs are bounded and NaN-free (`between` gives both, with `max_rows`); otherwise the report says `may fail: domain error`. Its order is the open option `sum_order`. Where an engine's row bounds the difference per plan (Polars streaming), the route checks that bound against the postcondition's tolerance (`sv.equivalent(floats=sv.within(...))`), and a rerun may differ in the last bits (D20).

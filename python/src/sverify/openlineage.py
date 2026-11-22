@@ -66,8 +66,8 @@ from sverify.io._secrets import Secret
 if TYPE_CHECKING:
     import ibis
 
-    from sverify.contracts import Condition, Report
     from sverify.nodes import Node, StageRefresh
+    from sverify.report import Condition, Report
 
 __all__ = [
     "Assertion",
@@ -343,7 +343,7 @@ def contract_facet(
     refresh `entry`; None for a node without one. With `plan`, it carries
     the verified plan exported to Substrait, so a downstream job can prove
     the contract again."""
-    from sverify.contracts import MaxRows, Unique
+    from sverify.conditions import MaxRows, Unique
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql
     from sverify.report import proved_not_null
@@ -852,7 +852,8 @@ class Upstream:
             self._why = "the facet carries no plan to prove again"
             self._claims(c)
             return
-        from sverify.contracts import Report, max_rows, unique
+        from sverify.conditions import max_rows, unique
+        from sverify.report import Report
 
         try:
             report = Report.from_substrait(export)
@@ -1012,9 +1013,16 @@ def read(source: str | Path | Iterable[Mapping[str, Any]]) -> Events:
     """
     if isinstance(source, str | Path):
         text = Path(source).read_text(encoding="utf-8")
-        stripped = text.lstrip()
-        if stripped.startswith("["):
-            return Events(json.loads(text))
+        if text.lstrip().startswith(("[", "{")):
+            # One JSON document: a list, or one event over any number of lines.
+            try:
+                whole = json.loads(text)
+            except ValueError:
+                whole = None  # JSON lines, read below
+            if isinstance(whole, list):
+                return Events(whole)
+            if isinstance(whole, dict):
+                return Events([whole])
         events = []
         for line in text.splitlines():
             if line.strip():

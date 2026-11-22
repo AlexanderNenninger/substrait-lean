@@ -9,8 +9,8 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.contracts import Report
 from sverify.io import DeltaSink, DeltaSource, SinkChange, StaticSource
+from sverify.report import Report
 
 #: What `Report` keeps public (B4), besides its methods.
 PUBLIC = {

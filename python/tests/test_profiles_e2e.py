@@ -168,7 +168,7 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
     for e in ("duckdb", "spark"):
         assert route_of(report, e).cls == "exact"
     # Polars is observed for any double product, proved outright or not: its
-    # route reads `-0.0` as `0.0` (facts polars-zero-sign, polars-zero-add).
+    # route reads `-0.0` as `0.0` (facts polars-zero-sign-streaming, polars-zero-add).
     proved = sv.verify(
         u.select(z=u.x * u.y),
         requires={"u": [_.x.between(-1e150, 1e150), _.y.between(-1e150, 1e150)]},

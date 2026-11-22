@@ -1,0 +1,3 @@
+### A sink refuses a commit over a state read from another source
+
+Two nodes that shared a sink and an `app_id` could read different sources under one name, and a source with no table id (a Flight source) left only its versions to tell them apart: the second writer skipped or replaced the other's rows without a word. The contract now records what identifies such a source (`fingerprints`, an optional key of the sink's contract record; a Flight source's is its server and table), and a commit over a state with another fingerprint raises an error naming both sources. A record written before this release has none and is not compared ([#2441](https://github.com/AlexanderNenninger/substrait-lean/issues/2441)).
