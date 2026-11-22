@@ -122,6 +122,9 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         ) from e
     if node.to.this == sge.DataType.Type.NULL:
         raise SqlUnsupported(f"CAST to {node.to.sql(DIALECT)} is not supported", construct="CAST")
+    if t.is_decimal() and len(node.to.expressions) == 1:
+        # `DECIMAL(p)` is `DECIMAL(p, 0)` in DuckDB; Ibis reads it with scale 3.
+        t = t.copy(scale=0)
     if node.to.is_type(*sge.DataType.TEMPORAL_TYPES) and [
         p.sql(DIALECT) for p in node.to.expressions
     ] not in ([], ["4"], ["5"], ["6"]):
