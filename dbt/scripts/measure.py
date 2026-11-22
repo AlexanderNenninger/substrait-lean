@@ -26,6 +26,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from sverify_dbt import check
 from sverify_dbt.manifest import load
 from sverify_dbt.replay import Source, _dbt, _statuses, extract, normalize
@@ -71,6 +73,29 @@ def _run_results(project: Path) -> dict[str, float]:
     return {r["unique_id"]: float(r["execution_time"]) for r in data}
 
 
+#: `dbt_utils.get_column_values` asks the warehouse for the values of a column
+#: at compile time, and the warehouse here has no data: the stub answers with
+#: one placeholder value, so the models that pivot on it still compile.
+_STUB = """{% macro duckdb__get_column_values(table, column, order_by='count(*) desc',
+    max_records=none, default=none, where=none) %}
+  {{ return(['placeholder']) }}
+{% endmacro %}
+"""
+
+
+def _stub_column_values(project: Path) -> None:
+    (project / "macros").mkdir(exist_ok=True)
+    (project / "macros" / "sverify_measure_stub.sql").write_text(_STUB, encoding="utf-8")
+    path = project / "dbt_project.yml"
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    name = config["name"]
+    config["dispatch"] = [
+        *config.get("dispatch", []),
+        {"macro_namespace": "dbt_utils", "search_order": [name, "dbt_utils"]},
+    ]
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+
 def _compile(project: Path, limit: int = 150) -> list[str]:
     """`dbt compile`, leaving out each model whose compilation asks the
     warehouse for data it does not have here (`dbt_utils.get_column_values`
@@ -109,6 +134,7 @@ def measure(name: str) -> dict[str, Any]:
         started = time.monotonic()
         left_out: list[str] = []
         if build_args is None:
+            _stub_column_values(project)
             left_out = _compile(project)
         else:
             _dbt(project, "build", *build_args)
