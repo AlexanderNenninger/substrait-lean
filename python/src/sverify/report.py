@@ -647,7 +647,10 @@ class Report:
     the checker's, which a run returns, not Ibis's. A column is not nullable
     where the checker proves it never NULL (`count(*)`, a key, a column of
     a NOT NULL input), from what it established about it (`facts`); a stored
-    node of a proved report writes those as NOT NULL columns."""
+    node of a proved report writes those as NOT NULL columns. These are the
+    plan's types, which `run` and `to_sql` give. Under `semantics="duckdb"`,
+    DuckDB running the SQL as written may type a column wider: a `SUM` of
+    integers is a `HUGEINT` there, and `BIGINT` here (#703)."""
     _epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
