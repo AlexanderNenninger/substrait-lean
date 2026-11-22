@@ -1,5 +1,6 @@
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Analysis.AnalysisCongr
+import Sverify.Analysis.AsofExact
 import Sverify.Analysis.AsofSite
 import Sverify.Analysis.AssumedCheck
 import Sverify.Analysis.Choices

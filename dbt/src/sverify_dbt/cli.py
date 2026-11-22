@@ -190,7 +190,7 @@ def _fail(
 
         err = {"code": kind, "type": type(e).__name__, "message": message}
         doc = {
-            "format": 1,
+            "format": 2,
             "sverify": version("sverify"),
             "command": "check",
             "exit": code,
@@ -213,7 +213,7 @@ def _exit_code(result: CheckResult, fail_on: str) -> int:
     failed = bool(result.contract_errors or result.unproved_constraints or result.refused_contracts)
     if fail_on in ("unproved", "refused"):
         failed = failed or any(
-            m.by_status("not proved") or (not m.refused and m.by_status("not checked"))
+            m.by_status("not_proved") or (not m.refused and m.by_status("not_checked"))
             for m in result.models
         )
     if failed:

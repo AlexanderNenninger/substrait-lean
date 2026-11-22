@@ -97,7 +97,7 @@ MISSING_BUILTINS = (
 
 
 @dataclass(frozen=True)
-class SqlFrontEnd:
+class SQLFrontEnd:
     """The SQL an engine's package reads (#1362): the dialect's SQLGlot name and
     the lift of its text to a plan. The front-end decides what the SQL means, so
     it is part of the trusted base (`docs/trusted-base.md`), and the package that
@@ -233,7 +233,7 @@ class ProfilePlugin:
     default: bool = False
     """The engine that runs plans where none is named (`sv.connect()`,
     `Node.refresh()`, `sverify refresh`): `sverify._engines.default`."""
-    sql: SqlFrontEnd | None = None
+    sql: SQLFrontEnd | None = None
     """The SQL the engine's package reads (`sverify.sql`, `sverify check
     query.sql`). The semantics of the dialect is the engine's own (`engine`),
     accepted only where this plugin brings the checker's profile (`verifiable`);
@@ -306,12 +306,12 @@ def plugins() -> dict[str, ProfilePlugin]:
     return {e: _merged(ps) for e, ps in sorted(found.items())}
 
 
-def sql_front_ends() -> dict[str, tuple[ProfilePlugin, SqlFrontEnd]]:
-    """The installed SQL front-ends by dialect name (`SqlFrontEnd.read`)."""
+def sql_front_ends() -> dict[str, tuple[ProfilePlugin, SQLFrontEnd]]:
+    """The installed SQL front-ends by dialect name (`SQLFrontEnd.read`)."""
     return {p.sql.read: (p, p.sql) for p in plugins().values() if p.sql is not None}
 
 
-def sql_front_end(dialect: str) -> tuple[ProfilePlugin, SqlFrontEnd]:
+def sql_front_end(dialect: str) -> tuple[ProfilePlugin, SQLFrontEnd]:
     """The plugin and front-end of `dialect`.
 
     Raises:

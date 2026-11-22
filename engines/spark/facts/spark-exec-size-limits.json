@@ -25,7 +25,7 @@
   "description": [
     "`DECIMAL` precision is at most 38; `DECIMAL(39,0)` raises `DECIMAL_PRECISION_EXCEEDS_MAX_PRECISION` when the query is analysed, and a value past its precision raises (ANSI) or is NULL (spark-decimal-arith): `NUMERIC_VALUE_OUT_OF_RANGE` when it fits 38 digits but not the type, `NUMERIC_OUT_OF_SUPPORTED_RANGE` when its text has more than 38 digits before the point (a long fraction is rounded to the type first). A string or binary is a byte array indexed by `int`, so it holds less than 2 GB; an array holds at most `Integer.MAX_VALUE - 15` elements; a row must fit a task's memory. Past those, Spark raises (e.g. `COLLECTION_SIZE_LIMIT_EXCEEDED`)."
   ],
-  "reference": "The reference caps decimals at 38 digits and raises past them; it has no limit on string, blob or list lengths.",
+  "reference": "The reference caps decimals at 38 digits and raises past them, and raises when `repeat` would write more than `Text.repeatMax` = 2³¹ − 1 bytes (ruling 267); it has no other limit on string, blob or list lengths.",
   "status": "open",
   "evidence": "fuzz",
   "provenance": [
@@ -120,6 +120,22 @@
         "size_limits[0]: 300 rows, `CAST(x AS DECIMAL(38,2))`, 964 of 964 results as the fact says (raised: NUMERIC_OUT_OF_SUPPORTED_RANGE 8, NUMERIC_VALUE_OUT_OF_RANGE.WITH_SUGGESTION 22).",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
       ]
+    },
+    {
+      "checked_at": "2026-11-22",
+      "method": "source-reading",
+      "checked_by": "the #2081 cleanup session (ruling 267, R2)",
+      "evidence": [
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/unsafe/types/UTF8String.java#L1190-L1215",
+          "note": "`UTF8String.repeat(int times)`: `new byte[Math.multiplyExact(numBytes, times)]`, so a byte count past `Integer.MAX_VALUE` raises `ArithmeticException` and never wraps; a one-byte string allocates `new byte[times]`"
+        },
+        {
+          "url": "https://github.com/apache/spark/blob/v4.3.0/common/unsafe/src/main/java/org/apache/spark/unsafe/array/ByteArrayMethods.java#L45",
+          "note": "`MAX_ROUNDED_ARRAY_LENGTH` is `ByteArrayUtils.MAX_ROUNDED_ARRAY_LENGTH`, `Integer.MAX_VALUE - 15`; `repeat` does not use it"
+        }
+      ],
+      "notes": "Read at tag v4.3.0 (commit 98bc0212). `repeat`'s result is one Java byte array, at most 2³¹ − 1 bytes, which a JVM may refuse a few bytes below that (OutOfMemoryError); its product of length and count is checked. So the reference's 2³¹ − 1 lies at or above Spark's limit by a few bytes at most, and the writers' guard raises first everywhere else (ruling 267)."
     }
   ]
 }

@@ -75,11 +75,11 @@ reference:
     contents:
       - types.Issue
       - types.Needed
-      - types.CheckedCondition
+      - types.Postcondition
       - types.Discharged
       - types.Counterexample
       - types.ColumnFacts
-      - types.Observation
+      - types.Lenses
       - types.Within
       - types.Route
       - types.DialectDifference
@@ -99,7 +99,7 @@ reference:
       - types.Group
       - types.Refresh
       - types.StageRefresh
-      - types.RefreshReport
+      - types.BatchRefresh
       - types.SourceRefresh
       - types.QuarantineReport
       - types.RetentionReport
@@ -231,7 +231,7 @@ reference:
       - odcs.export
       - odcs.write
       - odcs.read
-      - odcs.OdcsContract
+      - odcs.ODCSContract
       - odcs.Unread
       - odcs.UnreadRuleWarning
 
@@ -266,7 +266,7 @@ reference:
       - errors.NotIncrementalError
       - errors.ConcurrentWriteError
       - errors.UnsupportedError
-      - errors.SqlError
+      - errors.SQLError
       - errors.ExportError
       - errors.MemoryLimitError
       - errors.CheckerVersionError
@@ -300,6 +300,8 @@ skill:
       file: src/sverify/skills/sverify-pipelines/SKILL.md
     - name: sverify-engines
       file: src/sverify/skills/sverify-engines/SKILL.md
+    - name: sverify-patterns
+      file: src/sverify/skills/sverify-patterns/SKILL.md
 
 # Pages beyond the API reference, written before each build by
 # `scripts/docs_pages.py` (`poe docs` runs it) into directories git ignores:

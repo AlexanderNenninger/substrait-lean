@@ -24,7 +24,7 @@ Every command takes `--format`: `text` (the default) or
 that embeds each node's `Report.to_json()`; `check` also writes `github`
 (workflow commands that annotate a pull request's lines) and `sarif`
 (SARIF 2.1.0, for code scanning).
-`--json` is `--format json`. `--timeout` (default 30 s, `SVERIFY_TIMEOUT`;
+`--timeout` (default 30 s, `SVERIFY_TIMEOUT`;
 0 turns it off) bounds proof, planning and checking, never a refresh moving
 data; `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, such as `2GB`) is DuckDB's
 `memory_limit`, past which it spills to a temporary directory
@@ -34,7 +34,8 @@ sink commits.
 Exit codes: 0 proved (a refresh committed every row), 1 not proved, 2 usage
 error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh
 committed with rows quarantined, 6 error, 7 refused (no route to the
-engine), 8 a refresh held a node. A `refresh` that exits 5 or 8 prints
+engine), 8 a refresh held a node (a condition failed, or a run-time check
+fired). A `refresh` that exits 5 or 8 prints
 `Refresh.alert()`'s text after the summary; its JSON's `status` says
 `"quarantined"` or `"held"`, with
 `"outcome"` and `"alert"`. Rows of your data, the quarantine's

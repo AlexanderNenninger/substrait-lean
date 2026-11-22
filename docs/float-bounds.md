@@ -203,6 +203,36 @@ A metrics rollup states its contract this way:
 )
 ```
 
+### What a postcondition on a double asks of the route
+
+A route to an engine checks each postcondition that reads a double against the
+bound the checker proves on that column (`ε`, below). Three cases:
+
+- The column has a finite bound and the postcondition reads its value
+  (`_.avg <= 100`): the claim is proved of the reference's exact value, which
+  the engine's is only near. The route refuses and names the exits:
+  `sv.approx(...)` for the claim, or `sv.equivalent(floats=sv.within(...))`
+  for the engines' tolerance.
+- The column has no bound (a double `SUM` without a row cap, a value computed
+  from one, a window aggregate of doubles): the checker knows only its sign,
+  which a sum of values of one sign keeps in every order the engines use, and
+  the route lets the postcondition run. A tolerance stated with
+  `sv.within` finds nothing to meet and refuses the whole plan, naming the
+  column and its exits: `sv.max_rows(n)` in `requires`, `sv.equivalent(floats="plan")`,
+  or no tolerance. Polars's compensated sum (`COMPENSATED`) is tested for the sign;
+  its proof is open ([#1045](https://github.com/AlexanderNenninger/substrait-lean/issues/1045)).
+- A filter, grouping key or sort on a double may keep other rows on an engine than
+  on the reference where its threshold lies within the bound of the doubles' range
+  (#568's threshold rule). The route refuses the whole plan, whether or not a
+  postcondition reads the double. For a constant threshold, state a precondition
+  that keeps the values away from it. For a threshold computed from the data,
+  compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`.
+
+The first two cases treat a column with a bound more strictly than one without,
+which [#1045](https://github.com/AlexanderNenninger/substrait-lean/issues/1045)
+tracks. The notebook
+[05](../notebooks/05_pipelines_and_engines.py) ("Averages round") runs both.
+
 <a id="the-engines-orders-and-epsilon-444"></a>
 
 ## The engines' orders and `epsilon`
@@ -359,7 +389,14 @@ core's codes with no trusted link; `NativeLink` remains the link for Lean's
 a `FloatSums` sum (`ANY`, `PAIRWISE`, `SEQUENTIAL`) of finite doubles is a
 `TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's
 `SumBound` (`FloatSums.sumBound`), which `Rel.AllowedP` otherwise takes as
-given.
+given. `float-bounds/FloatBridge/Orders.lean` does the same for the two orders
+without a shape in `SumOrder`. Kahan's sum on codes (`kahanSum`) is `Rnd.kahan`
+step by step, so it meets `SumOrder` under `COMPENSATED`
+(`KahanSums.sumOrder`). A tree of sums whose constant runs enter as one
+product (`FloatSumsK`) is a `TreeSum` with `const` nodes, so it meets it under
+`SCALED_CONSTANT` (`FloatSumsK.sumOrder`). Both take the values to be doubles'
+codes (`FloatCode.Dbl`, ruling 268), which the reference keeps
+(`Rel.eval_dbl`, `Expr.eval_dbl`).
 
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's

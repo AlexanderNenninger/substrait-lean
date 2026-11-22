@@ -40,7 +40,7 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
     Lowering.ref_bin_nondouble_l, Lowering.ref_bin_nondouble_r,
     BinFn.apply_eq_nondouble_l, BinFn.apply_eq_nondouble_r, BinFn.apply_lt_nondouble_l,
     BinFn.apply_lt_nondouble_r, Value.isNum_float_nondouble]
-  excluding [UnFn.fit]
+  excluding [UnFn.fit, UnFn.dtextFull]
   hand_written LoweringSearch.duckdbSchemas
   cache loweringCache
   writing "engines/duckdb/Sverify/DuckDB/LoweringOn"

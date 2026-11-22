@@ -1,7 +1,7 @@
 """Conditions on a whole table and their checks on data: `unique`, `key`,
 `references`, `arrives_within`, `max_rows`, `rows_per`, `approx`, how a
 condition reads (`label`, `resolve`), and what a check established
-(`CheckedCondition`, `Discharged`, `PreconditionError`).
+(`Postcondition`, `Discharged`, `PreconditionError`).
 
 Internal: not part of sverify's public API (`docs/stability.md`); it may
 change in any release. The
@@ -27,7 +27,7 @@ from sverify import observation as _observation
 from sverify._duration import Duration, duration
 from sverify._unsupported import ROWS_ASIDE, ROWS_HELD, SverifyError
 from sverify.counterexample import Counterexample
-from sverify.observation import Observation
+from sverify.observation import Lenses
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -97,7 +97,7 @@ class TableCondition:
         """A table of at most `rows` rows meets it."""
         return False
 
-    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+    def ensured(self, out: dict, key: _KeyResult) -> Postcondition:
         """What the checker's output `out` proved of it as a postcondition;
         `key` gives the next key result and its counterexample."""
         raise NotImplementedError
@@ -156,10 +156,10 @@ class Unique(TableCondition):
     def per_key(self) -> tuple[tuple[str, ...], int] | None:
         return self.cols, 1
 
-    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+    def ensured(self, out: dict, key: _KeyResult) -> Postcondition:
         ok, cex = key()
         value = "a key" if ok else "not shown to be a key"
-        return CheckedCondition(self.label, ok, value, cex)
+        return Postcondition(self.label, ok, value, cex)
 
     def check_batch(self, t: str, inserts: pa.Table, new: pa.Table | Any) -> Discharged | None:
         from sverify._weighted import duplicate_keys
@@ -298,8 +298,8 @@ class References(TableCondition):
                     "which do not compare"
                 )
 
-    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
-        return CheckedCondition(self.label, False, "foreign keys are not proved")
+    def ensured(self, out: dict, key: _KeyResult) -> Postcondition:
+        return Postcondition(self.label, False, "foreign keys are not proved")
 
 
 def references(
@@ -402,8 +402,8 @@ class ArrivesWithin(TableCondition):
     def violating(self, rows: list[dict], key: Callable[[Any], Any], other: _Rows) -> list[dict]:
         return [r for r in rows if r[self.col] is None]
 
-    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
-        return CheckedCondition(self.label, False, "lateness is checked on a source's batches")
+    def ensured(self, out: dict, key: _KeyResult) -> Postcondition:
+        return Postcondition(self.label, False, "lateness is checked on a source's batches")
 
 
 def arrives_within(col: str, within: Duration) -> ArrivesWithin:
@@ -471,10 +471,10 @@ class MaxRows(TableCondition):
     def capped_by(self, rows: int) -> bool:
         return rows <= self.n
 
-    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
+    def ensured(self, out: dict, key: _KeyResult) -> Postcondition:
         n = out.get("rows")
         value = "no bound on the rows" if n is None else f"at most {n:,} rows"
-        return CheckedCondition(self.label, n is not None and n <= self.n, value)
+        return Postcondition(self.label, n is not None and n <= self.n, value)
 
     def check_batch(self, t: str, inserts: pa.Table, new: pa.Table | Any) -> Discharged | None:
         from sverify._weighted import row_count
@@ -571,8 +571,8 @@ class RowsPer(TableCondition):
     def capped_by(self, rows: int) -> bool:
         return rows <= self.n
 
-    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
-        return CheckedCondition(self.label, False, "rows per key are checked on inputs only")
+    def ensured(self, out: dict, key: _KeyResult) -> Postcondition:
+        return Postcondition(self.label, False, "rows per key are checked on inputs only")
 
 
 def rows_per(*cols: str, at_most: int | None = None) -> RowsPer:
@@ -703,8 +703,8 @@ class NonOverlapping(TableCondition):
             "hi": list(cols).index(self.hi),
         }
 
-    def ensured(self, out: dict, key: _KeyResult) -> CheckedCondition:
-        return CheckedCondition(self.label, False, "ranges are checked on inputs only")
+    def ensured(self, out: dict, key: _KeyResult) -> Postcondition:
+        return Postcondition(self.label, False, "ranges are checked on inputs only")
 
 
 def non_overlapping(lo: str, hi: str, *, by: str | Sequence[str] = ()) -> NonOverlapping:
@@ -929,7 +929,7 @@ _DATA_ONLY = frozenset(
 
 
 @dataclass
-class CheckedCondition:
+class Postcondition:
     """One postcondition in a `Report`, and what became of its proof."""
 
     label: str
@@ -970,7 +970,7 @@ class CheckedCondition:
     `lenses:` line prints) and, for a sum, an average or a variance, kept to
     its sign
     (`EngineRobust.robust`, #1045). Such a condition needs no `sv.approx`."""
-    checker_ignores: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
+    _checker_ignores: tuple[str, ...] | None = field(default=None, repr=False, compare=False)
     """What the checker reports the condition ignores (#1071), the same
     components as `ignores`, decided in Lean: None where the checker does not
     report them (a table condition, or a plan shape `Expr.depends` does not
@@ -1168,7 +1168,7 @@ class Inferred(str):
 
     text: str
     column: str | None = None
-    """The input column it bounds (set by `_render_needs`)."""
+    """The input column it bounds (set by `sverify.proposers.Infer`)."""
     fact: TextFact | None = None
     """For a text column's condition (#1506, D51): `"plain"` also rules out the vertical
     tab, `"upper_agreed"` and `"lower_agreed"` the scalars `UPPER` and `LOWER` raise on
@@ -1203,7 +1203,7 @@ def label(cond: Condition) -> str:
         tol = (("rel", cond.rel), ("abs", cond.abs), ("ulps", cond.ulps))
         given = ", ".join(f"{k}={v:g}" for k, v in tol if v is not None)
         return f"approx({label(cond.cond)}, {given})"
-    if isinstance(cond, Observation):
+    if isinstance(cond, Lenses):
         return cond.label
     if isinstance(cond, str):
         return cond

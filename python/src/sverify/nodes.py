@@ -45,15 +45,16 @@ import ibis.expr.types as ir
 import pyarrow as pa
 
 from sverify import _duckdb, _engines, _hooks, _quarantine, _stages
+from sverify._fired import fired_check
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
-from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
+from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Stored, VersionedSource
 from sverify.io._credentials import CredentialUse
 from sverify.io._credentials import uses as credential_uses
-from sverify.observation import PLAN_BOUND, Observation
+from sverify.observation import PLAN_BOUND, Lenses
 from sverify.steps import Step, as_transform
 
 if TYPE_CHECKING:
@@ -376,7 +377,7 @@ class Node:
         audit: bool = False,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
         lineage: Any = None,
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
@@ -694,6 +695,16 @@ class Node:
             out.held, out.held_error = _held_text(h, self._stage), h.error
             if self._stage is None:
                 return out
+        except Exception as e:
+            if (check := fired_check(e)) is None:
+                raise
+            # A run-time check fired: the node holds, as for a failed condition
+            # (ruling 258). The run stopped part-way, so the stage is dropped; the
+            # next refresh resumes from the sink's state.
+            out.held = _fired_text(check, self._stage)
+            out.held_error = e
+            self._stage = None
+            return out
         stage = self._stage
         if out.report is not None:
             out.quarantine += out.report.quarantine
@@ -715,7 +726,7 @@ class Node:
 class _Source(Node):
     """A source as a node: the leaf of a stage."""
 
-    def __init__(self, source: Source):
+    def __init__(self, source: VersionedSource):
         schema = ibis.Schema.from_pyarrow(plain_schema(source.schema()))
         super().__init__(source.name, ibis.table(schema, name=source.name), [])
         self.source = source
@@ -746,7 +757,7 @@ class _Stored(Node):
         super().__init__(sink.name, expr, [upstream])
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
-        self._reader: Source = sink._source()
+        self._reader: VersionedSource = sink._source()
         if quarantine is True:
             raise TypeError(
                 "quarantine= takes a sink, None (a table next to the sink's) or False "
@@ -888,7 +899,7 @@ class _Stage:
             self.pipe.con.engine = engine
         self.view.engine = engine
 
-    def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
+    def refresh(self, versions: dict[str, int], audit: bool) -> BatchRefresh:
         return self.pipe.refresh(until=versions, audit=audit, retire=False)
 
 
@@ -930,7 +941,7 @@ class StageRefresh:
 
     node: str
     """The node's name."""
-    report: RefreshReport | None
+    report: BatchRefresh | None
     """The batch: the source versions it went from and to, the changes,
     how they were applied and the preconditions checked on them. None on a
     first refresh that computed or resumed the state at the latest
@@ -980,7 +991,8 @@ class StageRefresh:
     a condition no row rule covers), or "waiting for <node>" when a stored
     node it reads has no state yet; None if it took it."""
     held_error: Exception | None = None
-    """The `PreconditionError` that held it, with `.rows`."""
+    """The `PreconditionError` that held it, with `.rows`; or, for a run-time
+    check that fired, the engine's error."""
     credentials: list[CredentialUse] = field(default_factory=list)
     """The credentials the node's stage used, by name, for reading its
     sources and writing its sink; never a value."""
@@ -1107,8 +1119,8 @@ class StageRefresh:
             else {
                 "mode": self.write.mode,
                 "version": self.write.version,
-                "inserted": self.write.inserted,
-                "deleted": self.write.deleted,
+                "inserts": self.write.inserts,
+                "deletes": self.write.deletes,
             },
             "credentials": [c.to_dict() for c in self.credentials],
         }
@@ -1211,7 +1223,14 @@ class Refresh:
                 held = getattr(s.held_error, "rows", None)
                 if rows and held is not None and held.num_rows:
                     lines.append(_markdown_rows(held))
-                lines.append("Fix the rows upstream: the next refresh reads the batch again.")
+                if s.held_error is not None and fired_check(s.held_error) is not None:
+                    lines.append(
+                        "State what the check needs on the node's inputs in `requires=` "
+                        "(`sverify check --fix` suggests it where it can; a bound such as "
+                        "`_.value < …` removes an overflow check), or fix the data upstream."
+                    )
+                else:
+                    lines.append("Fix the rows upstream: the next refresh reads the batch again.")
             for q in s.quarantine:
                 if not (q.quarantined or q.released or q.deleted):
                     continue
@@ -1253,9 +1272,10 @@ class Refresh:
         return "\n".join(str(s) for s in self.nodes)
 
 
-REFRESH_FORMAT = 1
-"""The version of `Refresh.to_json`'s format."""
-REFRESH_SCHEMA = "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/1.json"
+REFRESH_FORMAT = 2
+"""The version of `Refresh.to_json`'s format. Format 1, before 1.0, named a
+write's `inserts` and `deletes` `inserted` and `deleted` (#2345)."""
+REFRESH_SCHEMA = "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/2.json"
 """The `$schema` of `Refresh.to_json`'s documents: its schema's `$id`."""
 
 
@@ -1367,7 +1387,7 @@ class Group:
         audit: bool = False,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
         lineage: Any = None,
     ) -> Refresh:
         """Refresh every node against the same source versions (each
@@ -1498,7 +1518,7 @@ def _write_text(w: SinkWrite) -> str:
     if w.mode == "skipped":
         return "already committed"
     at = "" if w.version is None else f" v{w.version}"
-    return f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}"
+    return f"{w.mode.replace('_', ' ')}{at}: +{w.inserts} −{w.deletes}"
 
 
 def _held_text(h: Held, stage: _Stage | None) -> str:
@@ -1509,6 +1529,16 @@ def _held_text(h: Held, stage: _Stage | None) -> str:
         else "it stays at " + ", ".join(f"{t}@v{n}" for t, n in stage.view.versions.items())
     )
     return f"{h.error} ({h.policy}); nothing was committed, {at}"
+
+
+def _fired_text(check: str, stage: _Stage | None) -> str:
+    """Why a stage holds when a run-time check fired, and where it stays."""
+    at = (
+        "it has no state yet"
+        if stage is None
+        else "it stays at " + ", ".join(f"{t}@v{n}" for t, n in stage.view.versions.items())
+    )
+    return f"a run-time check fired: {check}; nothing was committed, {at}"
 
 
 def _write_quarantine(name: str, stage: _Stage, target: Sink, first: bool) -> None:
@@ -1598,7 +1628,7 @@ def _routes(
     order: Sequence[Node],
     engine: Any,
     route: RouteKind | Literal["auto"],
-    reproducible: Observation | None = None,
+    reproducible: Lenses | None = None,
     unverified: bool = False,
 ) -> dict[int, Route]:
     """Each node's route to `engine` (by `id`), checked before anything runs.
@@ -1646,7 +1676,7 @@ def _routes(
             chosen = routes.unverified(report, engine)
             why = " (on_unproved='warn')" if warns else ""
             warnings.warn(
-                f"refreshing {name} on {e} unverified{why}: {chosen.reason}",
+                f"refreshing {name} on {e} unverified{why}: {chosen.why}",
                 routes.UnverifiedRunWarning,
                 stacklevel=4,
             )
@@ -1660,21 +1690,21 @@ def _routes(
             # A proved plan on a version outside the range (D70), as `Report.run`.
             chosen = routes.unverified(report, engine, str(err))
             warnings.warn(
-                f"refreshing {name} on {e} unverified: {chosen.reason}",
+                f"refreshing {name} on {e} unverified: {chosen.why}",
                 routes.UnverifiedRunWarning,
                 stacklevel=4,
             )
             out[id(n)] = chosen
             continue
         if chosen.refused:
-            refused = replace(chosen, reason=f"{name}: {chosen.reason}")
+            refused = replace(chosen, why=f"{name}: {chosen.why}")
             if not routes.verified(report):
-                reason = refused.reason.replace(
+                reason = refused.why.replace(
                     "run(..., unverified=True) runs it anyway",
                     "refresh(unverified=True), or on_unproved='warn' on the transform, "
                     "runs it anyway",
                 )
-                raise UnverifiedRunError(report, replace(refused, reason=reason))
+                raise UnverifiedRunError(report, replace(refused, why=reason))
             raise routes.RouteError(refused)
         out[id(n)] = chosen
     return out
@@ -1750,7 +1780,7 @@ def wants_node(args: Sequence[Any], kwargs: dict[str, Any]) -> bool:
     return any(isinstance(v, Node) or is_source(v) for v in [*args, *kwargs.values()])
 
 
-def _source_node(source: Source) -> _Source:
+def _source_node(source: VersionedSource) -> _Source:
     """The node of a source: one per source, so that every transform reading
     it reads the same table."""
     node = getattr(source, "_sverify_node", None)

@@ -226,6 +226,27 @@ rows in a shuffled key order, 4 threads, the median of 5, seconds):
 
 Polars numbers rows cheaply, so it gains little.
 
+Under a multiset observation the writer numbers no rows of its own (#2186,
+ruling 217). A root sort, or a top-N, under column selections sorts the result
+by its own keys, where it numbered the rows by them and sorted by the number:
+ties are open under `rows="multiset"`, so any order the keys give is one
+`Rel.Allowed` allows. The SQL then holds no `ROW_NUMBER` beyond the plan's own
+window functions, which `tests/test_plan_size.py` checks for every coverage case
+and catalogue query in DuckDB, Spark and Snowflake. Under `rows="sequence"` the
+SQL is as it was (the DuckDB snapshots in `tests/sql_snapshots/`).
+
+Benchmark (homelab, DuckDB 2.0.1, 10⁷ rows, 4 threads, the median of 5
+`CREATE TABLE … AS` runs, seconds; the SQL as main and this change write it
+under `rows="multiset"`):
+
+| Plan | Numbered, then sorted | Sorted by the keys | |
+|---|---|---|---|
+| sort by two keys | 1.009 | 0.549 | 1.8× |
+| sort by a key, two columns selected | 0.668 | 0.463 | 1.4× |
+| top-1000 by a key | 0.044 | 0.046 | 1.0× |
+
+A top-N numbered only the rows it kept, so it gains nothing.
+
 ## 2. Sharded evaluation
 
 Setting. The sharded tables `S` are split over shards `cs`, and every
@@ -477,6 +498,9 @@ engine's model the statement is `verified_holds_run_plan_duckdb`, `_polars` or `
 SQL runs on, take the plan as written (ruling 150). The report says which
 plan an engine ran: `run_gate` names the checker's gate, and
 `Report._run_gates` the engine's own (`"route"`, `"unchecked"`, `"writer"`).
+A native route runs the plan as written, so that the SQL stays the user's: "No,
+we want to reproduce the user-written SQL closely" (maintainer, 2026-11-20,
+ruling 217).
 
 A rule is on by default only with a measured gain on one engine, in run time
 or written SQL, and no loss beyond the bench's run-to-run spread on DuckDB,

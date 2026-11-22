@@ -103,7 +103,7 @@ division truncates, and the route names the theorem and the lowering's:
 
 ```python
 route = routes.choose(report, "polars")
-print(route.kind, route.cls)
+print(route.taken, route.cls)
 # translated shim
 print(route.theorems)
 # ('Rel.polars_sound', 'Lowering.polars_exact')

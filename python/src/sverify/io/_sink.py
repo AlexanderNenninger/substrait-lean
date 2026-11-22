@@ -35,7 +35,7 @@ from sverify.io._common import (
 )
 from sverify.io._credentials import declared
 from sverify.io._secrets import Secret
-from sverify.observation import PLAN_BOUND, Observation
+from sverify.observation import PLAN_BOUND, Lenses
 from sverify_duckdb import DuckDBStore
 
 if TYPE_CHECKING:
@@ -67,6 +67,7 @@ class SinkChange:
 
     def __init__(
         self,
+        *,
         view: IncrementalView,
         contract: Contract,
         schema: pa.Schema,
@@ -216,7 +217,7 @@ class Sink:
     name: str
     app_id: str
     location: str
-    reproducible: Observation = PLAN_BOUND
+    reproducible: Lenses = PLAN_BOUND
     _view: IncrementalView | None = None
     _written: int | None = None
     keeps_retired: ClassVar[bool] = False
@@ -242,7 +243,7 @@ class Sink:
         *,
         app_id: str | None = None,
         location: str | None = None,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
     ):
         self.name = name
         self.app_id = app_id or f"sverify:{name}"
@@ -393,7 +394,12 @@ class Sink:
             # of a crashed one). Replace the rows (#963).
             self._written = None
         since = None if self._written is None else view.changes_since(self._written)
-        change = SinkChange(view, contract, sink_schema(view, contract.not_null), since)
+        change = SinkChange(
+            view=view,
+            contract=contract,
+            schema=sink_schema(view, contract.not_null),
+            change=since,
+        )
         self._pending = (view.serial, contract)
         try:
             out = self.write(change)
@@ -413,7 +419,7 @@ class Sink:
             mode = "overwrite" if change.replace else "update"
             n_in, n_out = change.inserts.num_rows, change.deletes.num_rows
             out = SinkWrite(
-                mode=mode, version=self._version(), contract=contract, inserted=n_in, deleted=n_out
+                mode=mode, version=self._version(), contract=contract, inserts=n_in, deletes=n_out
             )
         self._written = view.serial
         self._last = contract
@@ -467,7 +473,7 @@ class _TableSink[T](Sink, ABC):
         app_id: str | None,
         location: str,
         compact_every: int | None,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
     ):
         super().__init__(name, app_id=app_id, location=location, reproducible=reproducible)
         if compact_every is not None and compact_every < 1:
@@ -762,7 +768,7 @@ class _Kept:
         writes = self.log.since(since)
         if writes is None:
             return SourceBatch.from_snapshot(
-                since, self.version, table, reason=f"{self.name} was rewritten since v{since}"
+                since, self.version, table, why=f"{self.name} was rewritten since v{since}"
             )
         empty = table.schema.empty_table()
 
@@ -775,7 +781,7 @@ class _Kept:
             self.version,
             inserts=rows([w.inserts for w in writes]),
             deletes=rows([w.deletes for w in writes]),
-            trusted=f"Δ as written to {self.name} v{since}→v{self.version}",
+            assumes=f"Δ as written to {self.name} v{since}→v{self.version}",
             schema=table.schema,
         )
 
@@ -792,8 +798,8 @@ class _FnSink(Sink):
             mode="overwrite",
             version=None,
             contract=change.contract,
-            inserted=change.table.num_rows,
-            deleted=0,
+            inserts=change.table.num_rows,
+            deletes=0,
         )
 
 

@@ -53,7 +53,7 @@ Running:
   `ensures` cannot be read (an unknown column, SQL the lift does not read, a
   type error); `.condition` names it and `.reason` says why. An
   `UnsupportedError`.
-* `SqlError` (`sql_refused`): a SQL producer refused a query.
+* `SQLError` (`sql_refused`): a SQL producer refused a query.
 * `ExportError` (`export_refused`): a plan has no conforming Substrait form
   that keeps its proof (`Report.to_substrait`); the message names the
   reason and the spec gap.
@@ -110,7 +110,7 @@ from sverify.contracts import (
     UnverifiedRunError,
     VerificationError,
 )
-from sverify.engine import CheckerVersionError, SqlError
+from sverify.engine import CheckerVersionError, SQLError
 from sverify.incremental import AuditError, NotIncrementalError, SchemaError
 from sverify.io._common import ConcurrentWriteError
 from sverify.io._secrets import SecretError
@@ -144,7 +144,7 @@ __all__ = [
     "RouteError",
     "SchemaError",
     "SecretError",
-    "SqlError",
+    "SQLError",
     "SverifyError",
     "ProfilePendingWarning",
     "ProfilePluginWarning",

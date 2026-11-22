@@ -74,7 +74,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
-from sverify._unsupported import ISSUE_1725
+from sverify._unsupported import DUCKDB_ONLY, ISSUE_1725
 from sverify.sql.core import (
     I64_MAX,
     I64_MIN,
@@ -118,7 +118,7 @@ def _digits(k: Kind) -> tuple[int, int]:
         return k.p, k.s
     if k == "int":
         return 20, 0
-    raise Unsupported(f"decimal arithmetic with a {k} operand on Spark")
+    raise Unsupported(f"decimal arithmetic with a {k} operand on Spark; {DUCKDB_ONLY}")
 
 
 @dataclass(frozen=True)
@@ -128,6 +128,8 @@ class SparkDialect(Dialect):
     # A `MIN` or `MAX` of mixed zeros depends on order and partitioning
     # (spark-zero-order); its keys are canonical already.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme"})
+    # NaN equals NaN and sorts above `+inf` (spark-nan-order, spark-nan-equality).
+    nan_orders: ClassVar[bool] = True
 
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
@@ -248,12 +250,6 @@ class SparkDialect(Dialect):
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
 
-    def float_eq(self, a: str, b: str) -> str:
-        return f"({a} = {b})"
-
-    def float_lt(self, a: str, b: str) -> str:
-        return f"({a} < {b})"
-
     # Temporal
 
     def date_part(self, part: str, ts: str) -> str:
@@ -339,7 +335,7 @@ class SparkDialect(Dialect):
         self, op: str, a: str, b: str, sa: int, k: Dec, kinds: tuple[Kind, Kind] | None = None
     ) -> str:
         if kinds is None:
-            raise Unsupported(f"decimal {op} of operands of unknown types on Spark")
+            raise Unsupported(f"decimal {op} of operands of unknown types on Spark; {DUCKDB_ONLY}")
         (p1, s1), (p2, s2) = (_digits(x) for x in kinds)
         if op == "*":
             p, sc = p1 + p2 + 1, s1 + s2

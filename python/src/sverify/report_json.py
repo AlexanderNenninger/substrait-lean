@@ -22,21 +22,23 @@ from typing import TYPE_CHECKING, Any
 from sverify._meta import VERSION
 
 if TYPE_CHECKING:
-    from sverify.conditions import CheckedCondition
-    from sverify.observation import Observation
+    from sverify.conditions import Postcondition
+    from sverify.observation import Lenses
     from sverify.report import ColumnFacts, Issue, Needed, Report
     from sverify.routes import Route
 
 #: The version of the report's JSON format (`format` in the document).
 #: Format 1 was on main between #788 and the 1.0 renames, in no release:
 #: `from_json` refuses it.
-FORMAT = 4
+FORMAT = 5
 #: The oldest format `from_json` reads. Format 3 gave `verdict` the `Verdict`'s
 #: value and moved the first line of `str(report)` to `summary`; a report of
 #: format 2 has no `summary`, and its `verdict` is that line. Format 4 named
 #: `equivalence` `lenses` (in a route too), made each of `facts` an object
 #: (text, nullable, bounds) and each of a postcondition's `needs` a whole
-#: `needed` object; formats 2 and 3 are still read.
+#: `needed` object. Format 5 named a route's `kind`, `reason`, `facts`,
+#: `version` and `proved_facts` `taken`, `why`, `engine_facts`,
+#: `probed_version` and `theorem_facts` (#2345); formats 2 to 4 are still read.
 OLDEST = 2
 
 Json = dict[str, Any]
@@ -132,7 +134,7 @@ def _facts(
     return out
 
 
-def lenses_json(obs: Observation) -> Json:
+def lenses_json(obs: Lenses) -> Json:
     """Lenses (`sv.equivalent`, `Report.lenses`): their text and its components, with
     a tolerance on doubles as `{"abs", "rel", "ulps"}`."""
     components: Json = {}
@@ -144,17 +146,17 @@ def lenses_json(obs: Observation) -> Json:
     return {"text": str(obs), "components": components}
 
 
-def lenses(d: Mapping[str, Any]) -> Observation:
+def lenses(d: Mapping[str, Any]) -> Lenses:
     """The lenses `lenses_json` wrote; components this version
     does not know are left out."""
-    from sverify.observation import Observation, Within
+    from sverify.observation import Lenses, Within
 
-    known = {f.name for f in dataclasses.fields(Observation)} - {"bound"}
+    known = {f.name for f in dataclasses.fields(Lenses)} - {"bound"}
     comps = {k: v for k, v in (d.get("components") or {}).items() if k in known}
     if isinstance(comps.get("floats"), dict):
         w = comps["floats"]
         comps["floats"] = Within(w.get("abs"), w.get("rel"), w.get("ulps"))
-    return Observation(**comps)
+    return Lenses(**comps)
 
 
 # -- needed preconditions (B1) --------------------------------------------------
@@ -325,7 +327,7 @@ def issue(d: Mapping[str, Any], assumed: bool = False) -> Issue:
     )
 
 
-def checked_json(c: CheckedCondition) -> Json:
+def checked_json(c: Postcondition) -> Json:
     """A postcondition, as a finding: `pass` where it is proved, `fail`
     where it is not. Its rule is `reason`, or `proved`."""
     cx = c.counterexample
@@ -358,13 +360,13 @@ def checked_json(c: CheckedCondition) -> Json:
     )
 
 
-def checked(d: Mapping[str, Any]) -> CheckedCondition:
-    from sverify.conditions import CheckedCondition
+def checked(d: Mapping[str, Any]) -> Postcondition:
+    from sverify.conditions import Postcondition
     from sverify.counterexample import Counterexample
 
     p = d.get("properties") or {}
     cx = p.get("counterexample")
-    return CheckedCondition(
+    return Postcondition(
         p["label"],
         d.get("kind") == "pass",
         p["value"],
@@ -394,25 +396,27 @@ def route_json(r: Route) -> Json:
     cited = {
         k: v
         for k, v in (
-            ("facts", list(r.facts)),
+            ("engine_facts", list(r.engine_facts)),
             ("theorems", list(r.theorems)),
-            ("version", r.version),
+            ("probed_version", r.probed_version),
             ("issues", list(r.issues)),
-            ("proved_facts", list(r.proved_facts)),
+            ("theorem_facts", list(r.theorem_facts)),
         )
         if v
     }
     return {
         "engine": r.engine,
-        "kind": r.kind,
+        "taken": r.taken,
         "class": r.cls,
         "evidence": r.evidence,
         **cited,
         "semantics": r.profile,
-        "reason": r.reason,
+        "why": r.why,
         "deterministic": r.deterministic,
         # D70: only on a run that is on an unprobed version in the range.
         **({"unprobed_version": r.unprobed_version} if r.unprobed_version else {}),
+        # #1130: the settings read, where the engine has any to read.
+        **({"settings": dict(r.settings)} if r.settings else {}),
         "warnings": list(r.warnings),
         "shims": list(r.shims),
         "failures": [dict(f) for f in r.failures],
@@ -425,29 +429,44 @@ def route_json(r: Route) -> Json:
     }
 
 
+#: A route's keys before format 5, which named them as `Route`'s fields did
+#: before 1.0 (#2345).
+ROUTE_KEYS_4 = {
+    "kind": "taken",
+    "reason": "why",
+    "facts": "engine_facts",
+    "version": "probed_version",
+    "proved_facts": "theorem_facts",
+}
+
+
 def route(d: Mapping[str, Any], fmt: int = FORMAT) -> Route:
     from sverify.routes import Route
 
-    def eq(key: str) -> Observation | None:
+    if fmt < 5:
+        d = {ROUTE_KEYS_4.get(k, k): v for k, v in d.items()}
+
+    def eq(key: str) -> Lenses | None:
         v = d.get(key)
         return None if v is None else lenses(v)
 
     return Route(
         d["engine"],
-        d["kind"],
+        d["taken"],
         _portable(d["semantics"], fmt < 4),
-        d["reason"],
+        d["why"],
         deterministic=d.get("deterministic", True),
         warnings=tuple(d.get("warnings", ())),
         failures=tuple(d.get("failures", ())),
         cls=d.get("class"),
         evidence=d.get("evidence"),
-        facts=tuple(d.get("facts", ())),
+        engine_facts=tuple(d.get("engine_facts", ())),
         theorems=tuple(d.get("theorems", ())),
-        version=d.get("version"),
+        probed_version=d.get("probed_version"),
         unprobed_version=d.get("unprobed_version"),
+        settings=tuple(sorted((d.get("settings") or {}).items())),
         issues=tuple(d.get("issues", ())),
-        proved_facts=tuple(d.get("proved_facts", ())),
+        theorem_facts=tuple(d.get("theorem_facts", ())),
         shims=tuple(d.get("shims", ())),
         reproducible=eq("reproducible"),
         rerun_evidence=d.get("rerun_evidence"),
@@ -602,7 +621,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
     )
 
 
-def _plan_bound() -> Observation:
+def _plan_bound() -> Lenses:
     from sverify.observation import PLAN_BOUND
 
     return PLAN_BOUND

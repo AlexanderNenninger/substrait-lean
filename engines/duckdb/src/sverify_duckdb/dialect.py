@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import ClassVar
 
+from sverify._unsupported import DECIMAL_38_38
 from sverify.black_box import BlackBox
 from sverify.sql.core import (
     I64_MAX,
@@ -64,6 +65,8 @@ class DuckDBDialect(Dialect):
     decimals: bool = True
     # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
+    # NaN equals NaN and sorts above `+inf` (duckdb-nan-order).
+    nan_orders: ClassVar[bool] = True
     orders_text: bool = True
     # Measured on homelab (ruling 212 C6, #1608 item 7): 10M rows, 4 threads,
     # 3.5× on a table, 2.0× behind a join, 1.9× with many groups, and 0.98× where
@@ -101,12 +104,6 @@ class DuckDBDialect(Dialect):
 
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
-
-    def float_eq(self, a: str, b: str) -> str:
-        return f"({a} = {b})"
-
-    def float_lt(self, a: str, b: str) -> str:
-        return f"({a} < {b})"
 
     def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"
@@ -179,6 +176,16 @@ class DuckDBDialect(Dialect):
             return f"CAST({x} AS HUGEINT)"
         whole = f"CAST(TRUNC({x}) AS HUGEINT) * {10**s}"
         return f"({whole} + CAST(({x} - TRUNC({x})) * {10**s} AS HUGEINT))"
+
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        """DuckDB prints a `DECIMAL(p, p)` without its integer part (`.500`): the text of the
+        decimal at one more digit of precision has it (D72, `UnFn.dwiden`, ruling 245). A
+        `DECIMAL(38, 38)` has no wider type."""
+        if p != s:
+            return super().decimal_to_str(a, p, s)
+        if p >= 38:
+            raise Unsupported(DECIMAL_38_38)
+        return self.cast(self.cast(a, Dec(p + 1, s)), "str")
 
     def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
         """As the base writes it, with the quotient `⌊(2·|u|·10ᵏ + |n|) / 2|n|⌋`

@@ -62,3 +62,35 @@ def test_sverify_names_exist() -> None:
     for m, n in _used():
         if m in PUBLIC:
             assert hasattr(importlib.import_module(m), n), (m, n)
+
+
+def test_the_result_types_take_keywords_and_say_snake_case():
+    """#891 2.6: the result types are keyword-only, a status is one of four
+    snake_case values, `NeededTest` is not sverify's `Needed`, and the
+    manifest's nodes stay internal."""
+    import dataclasses
+    import typing
+
+    import pytest
+
+    import sverify_dbt
+    from sverify_dbt import result
+    from sverify_dbt.result import (
+        CheckResult,
+        ContractIssue,
+        ModelResult,
+        NeededTest,
+        Suggestion,
+        TestResult,
+    )
+
+    for cls in (TestResult, NeededTest, ContractIssue, ModelResult, CheckResult, Suggestion):
+        assert all(f.kw_only for f in dataclasses.fields(cls)), cls.__name__
+    with pytest.raises(TypeError):
+        TestResult(None, None, "x", "test")  # type: ignore[misc]
+    assert typing.get_args(result.Status) == ("pending", "proved", "not_proved", "not_checked")
+    assert "Needed" not in sverify_dbt.__all__ and "NeededTest" in sverify_dbt.__all__
+    for cls in (NeededTest, Suggestion):
+        assert "why" in {f.name for f in dataclasses.fields(cls)}, cls.__name__
+    public = {f.name for f in dataclasses.fields(CheckResult) if not f.name.startswith("_")}
+    assert not {"tests", "relations"} & public
