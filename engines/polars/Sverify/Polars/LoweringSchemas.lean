@@ -23,6 +23,8 @@ def polarsSchemas : Schemas where
   un
     | .fround => some (.expr Lowering.froundTemplate (mkConst ``Lowering.froundTemplate)
         "round: 0.0 for a negative value that rounds to zero")
+    | .froundEven => some (.expr Lowering.froundEvenTemplate (mkConst ``Lowering.froundEvenTemplate)
+        "round(mode='half_to_even'): 0.0 for a negative value that rounds to zero")
     | .fceil => some (.expr Lowering.fceilTemplate (mkConst ``Lowering.fceilTemplate)
         "ceil: 0.0 for a negative value that rounds to zero")
     | _ => none

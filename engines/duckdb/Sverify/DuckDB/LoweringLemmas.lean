@@ -187,12 +187,6 @@ omit [Boxes.Ambient] in
 theorem Lowering.shlTemplate_must : 0 ∈ Lowering.shlTemplate.must ∧ 1 ∈ Lowering.shlTemplate.must := by
   simp [Expr.must, Lowering.shlTemplate]
 
-def Lowering.froundEvenTemplate : Expr := Lowering.zeroTemplate .froundEven
-
-omit [Boxes.Ambient] in
-theorem Lowering.froundEvenTemplate_must : 0 ∈ Lowering.froundEvenTemplate.must := by
-  simp [Expr.must, Lowering.froundEvenTemplate, Lowering.zeroTemplate]
-
 /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, p)` on DuckDB (D72, ruling 245 E2): DuckDB's own cast
 prints it without the integer part (`.500`), so its only lowering is the text of the decimal
 widened by one digit of precision, which has an integer part (`0.500`). -/
