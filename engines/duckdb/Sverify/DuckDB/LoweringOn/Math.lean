@@ -43,7 +43,9 @@ theorem Substrait.duckdbOn.fceil_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fceil : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.UnFn.fceil :=
-  ⟨Substrait.Lowering.fceilTemplate, by exact Substrait.Lowering.fceilTemplate_must, Substrait.duckdbOn.fceil_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.fceilTemplate)
+  (by exact Substrait.Lowering.fceilTemplate_must) Substrait.duckdbOn.fceil_agree
 
 theorem Substrait.duckdbOn.fround_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
@@ -55,7 +57,9 @@ theorem Substrait.duckdbOn.fround_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fround : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.UnFn.fround :=
-  ⟨Substrait.Lowering.froundTemplate, by exact Substrait.Lowering.froundTemplate_must, Substrait.duckdbOn.fround_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.froundTemplate)
+  (by exact Substrait.Lowering.froundTemplate_must) Substrait.duckdbOn.fround_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fmath_sqrt_agree : ∀ (x : Substrait.Value),
@@ -72,11 +76,13 @@ theorem Substrait.duckdbOn.fmath_sqrt_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_sqrt : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.sqrt) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.float 0)))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_sqrt_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_sqrt_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_exp_agree : ∀ (x : Substrait.Value),
@@ -89,7 +95,9 @@ theorem Substrait.duckdbOn.fmath_exp_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_exp : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.exp) :=
-  ⟨Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_exp_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_exp_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_ln_agree : ∀ (x : Substrait.Value),
@@ -109,14 +117,16 @@ theorem Substrait.duckdbOn.fmath_ln_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_ln : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.ln) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float 0)))
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float 0))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_ln_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_ln_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_log10_agree : ∀ (x : Substrait.Value),
@@ -137,14 +147,16 @@ theorem Substrait.duckdbOn.fmath_log10_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_log10 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.log10) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float 0)))
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float 0))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_log10_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_log10_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_log2_agree : ∀ (x : Substrait.Value),
@@ -164,14 +176,16 @@ theorem Substrait.duckdbOn.fmath_log2_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_log2 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.log2) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float 0)))
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float 0))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_log2_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_log2_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fmath_sin_agree : ∀ (x : Substrait.Value),
@@ -196,7 +210,8 @@ theorem Substrait.duckdbOn.fmath_sin_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_sin : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.sin) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float (Substrait.FloatCode.negInf + 1))))
@@ -208,7 +223,8 @@ abbrev Substrait.duckdbOn.fmath_sin : Substrait.UnEntry (Substrait.Profile.duckd
         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_sin_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_sin_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fmath_cos_agree : ∀ (x : Substrait.Value),
@@ -233,7 +249,8 @@ theorem Substrait.duckdbOn.fmath_cos_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_cos : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.cos) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float (Substrait.FloatCode.negInf + 1))))
@@ -245,7 +262,8 @@ abbrev Substrait.duckdbOn.fmath_cos : Substrait.UnEntry (Substrait.Profile.duckd
         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_cos_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_cos_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fmath_tan_agree : ∀ (x : Substrait.Value),
@@ -270,7 +288,8 @@ theorem Substrait.duckdbOn.fmath_tan_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_tan : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.tan) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float (Substrait.FloatCode.negInf + 1))))
@@ -282,7 +301,8 @@ abbrev Substrait.duckdbOn.fmath_tan : Substrait.UnEntry (Substrait.Profile.duckd
         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_tan_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_tan_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fmath_asin_agree : ∀ (x : Substrait.Value),
@@ -307,7 +327,8 @@ theorem Substrait.duckdbOn.fmath_asin_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_asin : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.asin) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negOne)))
@@ -319,7 +340,8 @@ abbrev Substrait.duckdbOn.fmath_asin : Substrait.UnEntry (Substrait.Profile.duck
         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_asin_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_asin_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fmath_acos_agree : ∀ (x : Substrait.Value),
@@ -344,7 +366,8 @@ theorem Substrait.duckdbOn.fmath_acos_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_acos : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.acos) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.or
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negOne)))
@@ -356,7 +379,8 @@ abbrev Substrait.duckdbOn.fmath_acos : Substrait.UnEntry (Substrait.Profile.duck
         (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
           (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 0))
-  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_acos_agree⟩
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_acos_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fmath_atan_agree : ∀ (x : Substrait.Value),
@@ -369,5 +393,7 @@ theorem Substrait.duckdbOn.fmath_atan_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fmath_atan : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fmath Substrait.FMath.atan) :=
-  ⟨Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fmath_atan_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fmath_atan_agree
 
