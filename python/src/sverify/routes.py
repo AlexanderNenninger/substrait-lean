@@ -305,6 +305,12 @@ class Route:
     theorem_facts: tuple[str, ...] = ()
     """The facts the theorems rest on, where they prove the engine's model
     (`Rel.polars_sound` of `Polars.written`): those facts say the engine is it."""
+    settings: tuple[tuple[str, Any], ...] = ()
+    """The engine settings the route was checked under, by name, as read
+    from the session the run uses (`check_settings`): the settings its
+    profile's facts assume. Empty where the engine has none to read, and on
+    Spark before sverify's own session starts, which is read back when it
+    does (`sverify_spark.engine.check_pinned`)."""
 
     @property
     def refused(self) -> bool:
@@ -1390,9 +1396,11 @@ def choose(
     depends = report._depends
     from sverify import _engine_settings
 
-    # A session of the caller's (Spark's): its own settings.
-    values = None if isinstance(engine, str) else _engine_settings.current(e, engine)
+    # Read once, on a caller's session (Spark's) or the one the run uses, and
+    # recorded on the route (#1130).
+    values = _engine_settings.current(e, None if isinstance(engine, str) else engine)
     notes += check_settings(e, values, depends=depends)
+    read = tuple(sorted(values.items()))
     source = report.semantics
     det = report.deterministic
 
@@ -1407,6 +1415,7 @@ def choose(
             tuple(failures),
             "refused",
             unprobed_version=unprobed,
+            settings=read,
         )
 
     if not verified(report):
@@ -1464,6 +1473,7 @@ def choose(
                 reproducible=reproducible,
                 rerun_evidence=rerun_evidence,
                 unprobed_version=unprobed,
+                settings=read,
             )
         seen, held = observed(report)
         v = verdict(report, e)
@@ -1496,6 +1506,7 @@ def choose(
             unprobed_version=unprobed,
             issues=got.issues,
             theorem_facts=got.theorem_facts,
+            settings=read,
         )
 
     translated = translations()

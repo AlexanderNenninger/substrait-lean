@@ -131,6 +131,33 @@ def test_a_legacy_setting_refuses_only_the_plans_it_changes() -> None:
         routes.check_settings("spark", values, [{"group": "agg.var", "option": "stat_degenerate"}])
 
 
+class _Conf:
+    def __init__(self, values: dict[str, str]) -> None:
+        self.values = values
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        return self.values.get(key, default)
+
+
+class _Session:
+    def __init__(self, values: dict[str, str]) -> None:
+        self.conf = _Conf(values)
+
+
+def test_sverifys_session_is_read_back() -> None:
+    """#1130: the session sverify starts is read back against `SPARK_CONF`;
+    one that did not take a setting (an older session `getOrCreate` handed
+    back) is refused."""
+    from sverify_spark.engine import check_pinned
+
+    check_pinned(_Session({k: v.upper() for k, v in SPARK_CONF.items()}))
+    with pytest.raises(EngineSettingsError, match="spark.sql.ansi.enabled is 'false'"):
+        check_pinned(_Session({**SPARK_CONF, "spark.sql.ansi.enabled": "false"}))
+    unset = {k: v for k, v in SPARK_CONF.items() if k != "spark.sql.session.timeZone"}
+    with pytest.raises(EngineSettingsError, match="timeZone is None"):
+        check_pinned(_Session(unset))
+
+
 def test_another_spark_version() -> None:
     """D70: an unprobed 4.3 patch warns; another minor or major is refused."""
     with pytest.warns(EngineVersionWarning):
