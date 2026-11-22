@@ -4,12 +4,16 @@
   "decided_by": "user",
   "scope": "api",
   "status": "in-force",
-  "summary": "verify is the one verb for plans built in Python or loaded from Substrait, recheck is dropped, and from_substrait is a constructor.",
+  "summary": "verify is the one verb for plans built in Python, recheck is dropped, and from_substrait is the constructor for a plan loaded from Substrait.",
   "issues": [
     1288
   ],
   "amends": [
     "U-2026-11-03-reference-default-semantics"
   ],
-  "source": "memory:api-decisions-1-0.md"
+  "amended_by": [
+    "F261"
+  ],
+  "source": "memory:api-decisions-1-0.md",
+  "note": "Narrowed 2026-11-22 by ruling 261: verify no longer takes a stored Substrait plan, and substrait_export.recheck becomes private (#2344, PR #2352). The ruling first read: \"verify is the one verb for plans built in Python or loaded from Substrait, recheck is dropped, and from_substrait is a constructor.\""
 }
