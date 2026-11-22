@@ -1416,14 +1416,14 @@ through it (`cInv_merge_of`): the merged count is `n_a + n_b`, each merged
 mean is within `6 u (n_b A_a + n_a A_b) / n` of the weighted mean of the
 computed ones, and the merged co-moment is within the sides' bounds, grown by
 `(1 + u)²`, and `cMergeNew` of the exact one, for any `R` at least
-`|C_a + C_b|`, `|C|` after the merge and the merge's term. DuckDB's merge
+`|C_a| + |C_b|`, `|C|` after the merge and the merge's term. DuckDB's merge
 (`chan_spec`) meets it. -/
 def CMergeSpec (C : CConst) (mg : WState → WState → WState) : Prop :=
   ∀ ⦃na nb : ℕ⦄ ⦃mxa mya mxb myb Mxa Mya Mxb Myb Axa Aya Axb Ayb Ca Cb Sha Shb Ea Eb : ℝ⦄,
     na + nb ≤ 2 ^ 32 →
     CMergeSide na mxa mya Mxa Mya Axa Aya Ca Sha Ea →
     CMergeSide nb mxb myb Mxb Myb Axb Ayb Cb Shb Eb → ∀ R : ℝ,
-    |Ca + Cb| ≤ R →
+    |Ca| + |Cb| ≤ R →
     |Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * ((na : ℝ) * nb / ((na : ℝ) + nb))| ≤ R →
     (na : ℝ) * nb / ((na : ℝ) + nb) * (|Mxa - Mxb| * |Mya - Myb|) ≤ R →
     (mg ⟨na, mxa, mya, Sha⟩ ⟨nb, mxb, myb, Shb⟩).n = na + nb ∧
@@ -1541,7 +1541,7 @@ theorem StdModel.chan_spec : CMergeSpec CConst.chan M.chan := by
     have hty : tiny ≤ Aya + Ayb := by
       have := sa.Ayt; have := sb.Ay0; have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
     exact cmerge_step_com (by positivity) hh0 sa.Ax0 sb.Ax0 sa.Ay0 sb.Ay0 htx hty hMxaA hMxbA hMyaA hMybA
-      sa.ex sb.ex sa.ey sb.ey eDx eDy eT hR1 (by rw [hh]; exact hR2) (by rw [hh]; exact hY)
+      sa.ex sb.ex sa.ey sb.ey eDx eDy eT (le_trans (abs_add_le _ _) hR1) (by rw [hh]; exact hR2) (by rw [hh]; exact hY)
       sa.com sb.com e1 e2
 
 set_option maxHeartbeats 2000000 in
@@ -1680,7 +1680,7 @@ theorem cInv_merge_of {C : CConst} {mg : WState → WState → WState} (hmg : CM
   have hmagy : mag ((a ++ b).map Prod.snd) = mag (a.map Prod.snd) + mag (b.map Prod.snd) := by
     rw [List.map_append, mag_append]
   have hlen : ((a ++ b).length : ℝ) = na + nb := by rw [List.length_append, hna, hnb]; push_cast; ring
-  obtain ⟨hn', hmx', hmy', hc'⟩ := hsp R hR1 hRn hY
+  obtain ⟨hn', hmx', hmy', hc'⟩ := hsp R (by linarith) hRn hY
   refine ⟨by rw [hn', List.length_append], ?_, ?_, Dxa + Dxb + h * |mx a - mx b|,
     Dya + Dyb + h * |my a - my b|, by positivity, by positivity, ?_, ?_, ?_⟩
   · -- the mean of the `x`s
