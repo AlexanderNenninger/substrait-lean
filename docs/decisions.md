@@ -1796,6 +1796,12 @@ proof covers, and proved stays proved. An Ibis transformation lists nothing, and
 a SQL query with `semantics="duckdb"` lists only `list_contains` and the order of lists (2026-11-20; amended 2026-11-21: `list_null_order`, ordering comparisons of lists, whose NULL elements DuckDB orders last, ruling 232, [#2163](https://github.com/AlexanderNenninger/substrait-lean/issues/2163)). `semantics="reference"` stays the
 default for raw SQL ("verify two paths" and "portable everywhere" keep it).
 
+Since 2026-11-21 (#2008, ruling 243) the lift reads the scalar functions it
+proves under `semantics="reference"` from the generated `liftReference` table,
+and `liftReference_refines_duckdb` (`DuckDB/LiftRefines.lean`) proves L for
+each of its entries: where the template gives a value, DuckDB's function gives
+the same.
+
 Recomputes sinks: no
 
 Why: a proof is about the plan the lift writes. A user reads it as a statement

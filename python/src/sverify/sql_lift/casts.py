@@ -101,7 +101,7 @@ def _rounding(node: sge.Cast) -> sge.Expression | None:
 
 def _rounded_to_bigint(lf: _Lift, node: sge.Cast, a: E, t: Any, sub: Sub) -> E | None:
     """`CAST(round(x) AS BIGINT)`, and of `floor(x)` and `ceil(x)`, of a double
-    under DuckDB's semantics: the argument is integral, so DuckDB's half-to-even
+    under either semantics: the argument is integral, so DuckDB's half-to-even
     cast is the model's truncating one (the generated table's
     `CAST(round(DOUBLE) AS BIGINT)`, #1655). None for any other cast."""
     r = _rounding(node)
@@ -221,8 +221,8 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             (dt.float64, dt.int64, "DOUBLE AS BIGINT"),
             (dt.int64, dt.float64, "BIGINT AS DOUBLE"),
         ):
-            if _same(a.type, src) and _same(t, to) and (g := _generated(lf, f"CAST({sql})", [a])):
-                return g
+            if _same(a.type, src) and _same(t, to):
+                return _generated(lf, f"CAST({sql})", [a])
     if t.is_integer() and a.type.is_decimal():
         # DuckDB rounds a decimal half away from zero, as the reference's rescale to
         # scale 0 does (`decimal_rescale`); the exact cast of that is the value (#322). One digit

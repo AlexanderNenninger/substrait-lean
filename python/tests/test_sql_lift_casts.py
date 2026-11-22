@@ -263,11 +263,15 @@ def test_a_cast_of_a_rounded_double_raises_where_duckdb_does(fn):
     assert bounded.verdict == "proved", bounded
 
 
-def test_a_bare_double_cast_stays_refused():
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
+def test_a_bare_double_cast_stays_refused(semantics):
     """The bare `CAST(x AS BIGINT)` needs DuckDB's half-to-even cast, which the
-    model does not state yet; the refusal names the casts that lift (#1655)."""
-    with pytest.raises(Refused, match=r"round\(x\), floor\(x\) or ceil\(x\)"):
-        lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, "duckdb")
+    model does not state yet, under either semantics (D55); the refusal names
+    the casts that lift (#1655, #2008)."""
+    with pytest.raises(
+        Refused, match=r"CAST\(round\(x\) AS BIGINT\), CAST\(floor\(x\) AS BIGINT\)"
+    ):
+        lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, semantics)
 
 
 #: `cast/float_integer_cast.test` (DuckDB 2.0.0): DuckDB rounds a REAL to the
