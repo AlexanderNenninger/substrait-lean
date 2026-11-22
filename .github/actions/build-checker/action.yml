@@ -4,6 +4,10 @@ description: >-
   on a miss, uploaded as the run's `substrait-check` artifact that
   `./.github/actions/checker` downloads. The lake build skips the generated
   proofs (`lean` checks them), so it restores the lake cache without saving it.
+inputs:
+  upload:
+    description: Upload the checker as the run's artifact (false on an ARM runner, which builds its own; see ./.github/actions/checker)
+    default: "true"
 outputs:
   cache-hit:
     description: Whether the checker came from the cache (no lake build ran)
@@ -26,7 +30,8 @@ runs:
         lake build substrait-check
         mkdir -p checker-bin
         cp .lake/build/bin/substrait-check checker-bin/
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+    - if: inputs.upload == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: substrait-check
         path: checker-bin/substrait-check

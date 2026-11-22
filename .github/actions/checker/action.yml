@@ -3,13 +3,24 @@ description: >-
   Download the substrait-check the `checker` job built to .lake/build/bin, and
   have sverify use it: the editable install links it (SVERIFY_PREBUILT_CHECKER,
   python/hatch_build.py) without running lake, and SVERIFY_CHECKER names it.
+  On an ARM runner (the Hetzner hosts) that x86-64 binary cannot run, so it
+  takes the ARM checker from the cache (`arm-cache.yml` warms it on main) or
+  builds it, as `checker` does.
 runs:
   using: composite
   steps:
-    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+    - if: runner.arch == 'X64'
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         name: substrait-check
         path: .lake/build/bin
+    - if: runner.arch != 'X64'
+      uses: ./.github/actions/build-checker
+      with:
+        upload: "false"
+    - if: runner.arch != 'X64'
+      shell: bash
+      run: mkdir -p .lake/build/bin && cp checker-bin/substrait-check .lake/build/bin/
     - shell: bash
       run: |
         bin="$PWD/.lake/build/bin/substrait-check"
