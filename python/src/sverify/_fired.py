@@ -12,10 +12,16 @@ import re
 
 from sverify.errors import SverifyError
 
-#: The text a SQL engine's guard raises: `sverify: <message>: <value>`
-#: (`Dialect.raise_` of DuckDB, Spark and Snowflake). The value is data, so
-#: only the message is kept.
-_GUARD = re.compile(r"sverify: (?P<message>[^:\n]+): ")
+#: What each SQL engine raises for the writer's guard, anchored at the start of
+#: the error's text: the guard writes `sverify: <message>: <value>` and the
+#: engine puts its own prefix before it (`Dialect.raise_`). Anchoring matters:
+#: DuckDB quotes the SQL around another error's position, and that SQL contains
+#: the guard's literal. The value is data, so only the message is kept.
+_GUARDS = (
+    re.compile(r"\AInvalid Input Error: sverify: (?P<message>[^:\n]+): "),  # DuckDB
+    re.compile(r"\A\[USER_RAISED_EXCEPTION\] sverify: (?P<message>[^:\n]+): "),  # Spark
+    re.compile(r"\A[^\n]{0,120}?\bvalue 'sverify: (?P<message>[^:\n']+): "),  # Snowflake's cast
+)
 
 
 def fired_check(error: BaseException) -> str | None:
@@ -23,8 +29,8 @@ def fired_check(error: BaseException) -> str | None:
     or None where `error` is not one (a crash, I/O, a sverify error).
 
     Polars raises `sverify_polars.RuntimeIssue`, whose `issue` names the check;
-    the SQL engines raise their own error whose text carries the writer's
-    `sverify: ` message.
+    the SQL engines raise their own error whose text starts with the writer's
+    `sverify: ` message behind the engine's prefix.
     """
     for e in (error, error.__cause__):
         if e is None or isinstance(e, SverifyError):
@@ -32,6 +38,7 @@ def fired_check(error: BaseException) -> str | None:
         for cls in type(e).__mro__:
             if cls.__name__ == "RuntimeIssue" and cls.__module__.startswith("sverify_polars"):
                 return str(getattr(e, "issue", "a run-time check"))
-        if m := _GUARD.search(str(e)):
-            return m["message"]
+        for guard in _GUARDS:
+            if m := guard.match(str(e)):
+                return m["message"]
     return None
