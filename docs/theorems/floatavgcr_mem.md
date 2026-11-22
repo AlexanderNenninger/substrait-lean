@@ -11,12 +11,14 @@ Layer: `eval`, the reference's value of the aggregate. Axioms: `propext`, `Class
 
 The reference's `AVG` of doubles is the exact sum divided by the count,
 rounded once (D25). A mean of values in `[lo, hi]` lies in `[lo, hi]`, and the
-rounded mean lies within the checker's tolerance `avgTolScaled N` of that
-range. The checker's own bound for a mean (`floatBound`, with `crBound`) is
-the range rounded once, with no row count, so a mean needs no row cap. This
-theorem is #85's statement of the tolerance around the exact result, which
-adds nothing to that bound where the bounds are finite; `N` is the cap it
-takes, and the proof does not use `N ≤ 2³²`.
+rounded mean lies within the tolerance `avgTolScaled N` of that range. The
+range does not move with the count, and the checker's own bound for an `AVG`
+(`floatBound`, with `crBound`, D25) needs no row cap: it is the range rounded
+once. This theorem is #85's statement of a tolerance around the exact result,
+and that tolerance does grow with `N`: the theorem takes a count `N ≤ 2³²`
+(`_h32`, unused in the proof but in the statement), which a row cap or the
+plan's shape supplies. Where the bounds are finite the checker's bound
+already contains it.
 
 ## The statement, line by line
 
@@ -33,9 +35,10 @@ with its sign, so a bound on doubles becomes a bound on integers the checker
 can compute with. 
 - `cs`, `hne`: the codes of the doubles averaged, and the assumption that
   there is at least one.
-- `N`, `hN`, `_h32`: a cap on how many there are, which the tolerance
-  `avgTolScaled N` depends on. The checker's bound for a mean uses no count,
-  so a plan without `sv.max_rows` needs no `N`.
+- `N`, `hN`, `_h32`: a count of at most 2³² that bounds the rows, which the
+  tolerance `avgTolScaled N` grows with. It comes from `sv.max_rows` or from
+  the plan's shape (a `LIMIT`, `VALUES`). The checker's bound for an `AVG`
+  uses no count, so a plan with neither is still proved.
 - `lo`, `hi`, `hlo`, `hhi`: bounds in scaled units, finite doubles'.
 - `hb`: every value lies between them, in canonical form.
 - The conclusion: the scaled mean, `floatAvgCR`, lies between `lo` and `hi`
@@ -60,8 +63,8 @@ can compute with.
 ## Its side conditions
 
 `hne` is the group being non-empty (the mean of no rows is NULL). `hN` is a
-row count the tolerance is stated for, from `sv.max_rows` where a cap is
-stated; the checker's bound for a mean uses none. `hlo`, `hhi` and `hb` are
+row count the tolerance is stated for, from `sv.max_rows` or the plan's
+shape; the checker's bound for a mean uses none. `hlo`, `hhi` and `hb` are
 the column's range, a precondition checked on the data on each run.
 
 ## Example

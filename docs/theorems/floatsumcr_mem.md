@@ -34,8 +34,8 @@ with its sign, so a bound on doubles becomes a bound on integers the checker
 can compute with. 
 - `cs`, `hne`: the codes of the doubles summed, and the assumption that there
   is at least one.
-- `N`, `hN`, `h32`: a cap on how many there are, and `N ≤ 2³²`, which a row
-  cap (`sv.max_rows`) supplies.
+- `N`, `hN`, `h32`: a count of at most 2³² that bounds the rows, from
+  `sv.max_rows` or the plan's shape (a `LIMIT`, `VALUES`).
 - `lo`, `hi`, `hlo`, `hhi`: bounds in scaled units, finite doubles' (below
   2¹⁴⁷⁴).
 - `hb`: every value lies between them, after the canonical form of its code
@@ -53,8 +53,9 @@ can compute with.
 
 ## What it does not cover
 
-- A sum without a row cap: `N` is the cap, and with none the bound is not
-  there. The report names the cap to declare.
+- A sum with no row count: `N` is the count, and with none the tolerance
+  bound is not there, though the sign bound is. The report names the cap to
+  declare.
 - The order of the sum. The reference's `SUM` is order-free; an engine that
   adds in another order is within the plan's bound of it, which
   [`float-bounds.md`](../float-bounds.md) proves over the reals.
@@ -64,7 +65,7 @@ can compute with.
 ## Its side conditions
 
 `hne` is the group being non-empty (the `SUM` of no rows is NULL). `hN` and
-`h32` are the row cap the contract states, which the checker checks on the
+`h32` are the row count the contract states or the plan's shape gives, which the checker checks on the
 data on each run. `hlo`, `hhi` and `hb` are the column's
 range, a precondition checked on the data. The checker computes `sumTolScaled`
 from `N` and the bound.
