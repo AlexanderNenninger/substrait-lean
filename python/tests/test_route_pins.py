@@ -9,11 +9,9 @@ in the pull request. An engine that is not installed is left out of the comparis
 
 import json
 
-import pytest
-
 from _repo import needs_repo
 
-pytestmark = [needs_repo, pytest.mark.slow]
+pytestmark = needs_repo
 
 
 def test_every_route_is_as_pinned() -> None:
