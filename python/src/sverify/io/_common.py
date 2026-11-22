@@ -380,6 +380,8 @@ class Contract:
             one (`Source.restore`), at its version in `sources`.
         table_ids: The id of every source table that has one (a Delta
             table's `metaData.id`), at its version in `sources`.
+        fingerprints: What identifies every source that names its place
+            where it has no table id (a Flight server and table), by name.
     """
 
     node: str
@@ -407,6 +409,11 @@ class Contract:
     `metaData.id`), at its version in `sources`. A table dropped and created
     again at the same location has a new id, and versions that start over:
     a state recorded from the old table is not one of the new table's."""
+    fingerprints: dict[str, str] = field(default_factory=dict)
+    """What identifies each source that names its place and has no table id
+    (`Source._fingerprint`: a Flight server and table). Two writers of one
+    sink that read different sources under one name show it here; a record
+    without it (written before it) names none."""
     engine: str | None = None
     """The engine that computed the state (`sverify.engines`), None where the
     record does not say: one written before these fields."""
@@ -641,6 +648,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
         digests=view.pipeline.digests(view.name),
         cursors=_cursors(view, versions),
         table_ids=_table_ids(view, versions),
+        fingerprints=_fingerprints(view, versions),
         semantics=view.profile,
         engine=(rt := profiles.runtime(view.engine))["engine"],
         engine_version=rt["engine_version"],
@@ -671,6 +679,18 @@ def _table_ids(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, 
         src = view.pipeline.sources.get(t)
         if isinstance(src, _TableSource) and (table_id := src._table_id(n)) is not None:
             out[t] = table_id
+    return out
+
+
+def _fingerprints(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, str]:
+    """What identifies every source of `view` without a table id that names
+    its place (`Source._fingerprint`)."""
+    out: dict[str, str] = {}
+    for t in versions:
+        src = view.pipeline.sources.get(t)
+        fp = None if isinstance(src, _TableSource) else getattr(src, "_fingerprint", None)
+        if fp is not None and (value := fp()) is not None:
+            out[t] = value
     return out
 
 
@@ -733,6 +753,25 @@ def other_tables(committed: Contract, contract: Contract) -> list[str]:
         elif n < committed.sources.get(t, n):
             out.append(t)
     return sorted(out)
+
+
+def check_same_sources(uri: str, committed: Contract, contract: Contract) -> None:
+    """Refuse a commit over a state computed from another source: where both
+    records fingerprint a source and the fingerprints differ, the two writers
+    read different sources under one name, and versions say nothing about
+    which is ahead. A source without a fingerprint on either side is not
+    compared."""
+    for t in sorted(contract.fingerprints):
+        was, now = committed.fingerprints.get(t), contract.fingerprints[t]
+        if was is not None and was != now:
+            raise ValueError(
+                f"{uri} holds a state of `{contract.node}` computed from the source "
+                f"`{t}` at {was!r} (as `{committed.node}`, plan {committed.plan[:8]}), and this "
+                f"node reads `{t}` at {now!r}. Two writers with one app_id read different "
+                "sources under one name; versions cannot tell which is ahead, so nothing is "
+                "written. Write to a sink of its own, or give the writers different "
+                "app_ids and names."
+            )
 
 
 def check_same_state(uri: str, committed: Contract | None, contract: Contract) -> None:

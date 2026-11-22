@@ -136,6 +136,9 @@ class FlightSource(Source):
     def __repr__(self) -> str:
         return f"FlightSource({self.location!r}, {self.table!r})"
 
+    def _fingerprint(self) -> str:
+        return f"flight:{self.location}/{self.table}"
+
     def _get(
         self, after: int | None, until: int | None = None
     ) -> tuple[list[tuple[int, pa.RecordBatch]], int]:

@@ -268,3 +268,74 @@ def test_a_drop_while_down_recomputes(server, tmp_path):
     w = restarted.refresh().writes[0]
     assert w.mode == "overwrite"
     assert stored_ts(path) == [2]
+
+
+# -- two writers of one sink that read different servers (#2441) --------------------
+
+
+def test_a_second_writer_reading_another_server_is_refused(server, tmp_path):
+    """Two nodes share a sink and its app id, and read different servers
+    under one source name. A Flight source has no table id, so versions were
+    all that told them apart; the contract names the source now."""
+    path = str(tmp_path / "busy")
+    other = FlightLog()
+    try:
+        put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)], [sample("a", 3, 0.7)])
+        put(other, "samples", [sample("b", 1, 0.5)])
+        first = busy(FlightSource(location(server), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        first.refresh()
+        recorded = DeltaSource(path).contract()
+        assert recorded is not None
+        assert recorded.fingerprints == {"samples": f"flight:{location(server)}/samples"}
+        # The second writer is at a lower version (1 against 3), and refused.
+        second = busy(FlightSource(location(other), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        with pytest.raises(ValueError, match="Two writers with one app_id") as e:
+            second.refresh()
+        assert location(server) in str(e.value) and location(other) in str(e.value)
+        # And one at a higher version (5 against 3).
+        put(other, "samples", *[[sample("b", i, 0.5)] for i in range(2, 6)])
+        third = busy(FlightSource(location(other), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        with pytest.raises(ValueError, match="Two writers with one app_id"):
+            third.refresh()
+        assert stored_ts(path) == [1, 2, 3]  # nothing of the other server was written
+        # The first writer goes on.
+        put(server, "samples", [sample("a", 4, 0.8)])
+        first.refresh()
+        assert stored_ts(path) == [1, 2, 3, 4]
+    finally:
+        other.shutdown()
+
+
+def test_a_record_without_fingerprints_is_not_compared():
+    from sverify.io._common import Contract, check_same_sources
+
+    def record(**kw):
+        return Contract(
+            node="n",
+            plan="p" * 64,
+            sources={"t": 1},
+            epoch=1,
+            not_null=[],
+            checks={},
+            unique=[],
+            **kw,
+        )
+
+    old = record()  # written before fingerprints
+    check_same_sources("sink", old, record(fingerprints={"t": "flight:x/t"}))
+    check_same_sources("sink", record(fingerprints={"t": "flight:x/t"}), old)
+    check_same_sources(
+        "sink", record(fingerprints={"t": "flight:x/t"}), record(fingerprints={"t": "flight:x/t"})
+    )
+    with pytest.raises(ValueError, match="Two writers"):
+        check_same_sources(
+            "sink",
+            record(fingerprints={"t": "flight:x/t"}),
+            record(fingerprints={"t": "flight:y/t"}),
+        )
