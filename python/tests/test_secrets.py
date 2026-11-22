@@ -601,6 +601,10 @@ def test_resolve_values_replaces_only_secrets(monkeypatch):
 def test_openbao_without_an_address_names_the_setting(monkeypatch):
     for var in ("BAO_ADDR", "VAULT_ADDR"):
         monkeypatch.delenv(var, raising=False)
+    # A token, so the read gets as far as the address, with or without a
+    # `~/.vault-token` on this machine.
+    for var in ("BAO_TOKEN", "VAULT_TOKEN"):
+        monkeypatch.setenv(var, "sv-test-bao-token")
     with pytest.raises(SecretError, match="no address: set `BAO_ADDR`"):
         Secret("bao:kv/lake#key").value()
     with pytest.raises(SecretError, match="no address: set `VAULT_ADDR`"):
