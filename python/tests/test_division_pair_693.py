@@ -9,7 +9,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.contracts import Semantics
+from sverify.report import Semantics
 
 pytestmark = pytest.mark.filterwarnings("ignore::sverify.errors.ProfilePendingWarning")
 

@@ -84,7 +84,7 @@ def test_precondition_error_attributes():
     err = e.value
     assert err.source == "orders"
     assert err.condition is not None
-    assert sv.contracts.label(err.condition) == "(_.amount >= 0)"
+    assert sv.conditions.label(err.condition) == "(_.amount >= 0)"
     assert err.rows is not None
     assert sorted(err.rows.column("amount").to_pylist()) == [-7, -5]
 
@@ -275,7 +275,7 @@ def test_suggested_requires_keeps_the_stated_ones():
     expr = t.select(u=t.total // t.qty)
     r = sv.verify(expr, requires={"orders": [_.total >= 0]})
     conds = r.suggested_requires["orders"]
-    assert sv.contracts.label(conds[0]) == "(_.total >= 0)" and len(conds) == 2
+    assert sv.conditions.label(conds[0]) == "(_.total >= 0)" and len(conds) == 2
     assert sv.verify(expr, requires=r.suggested_requires).verdict == sv.Verdict.PROVED
 
 

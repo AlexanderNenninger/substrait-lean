@@ -10,10 +10,6 @@
       "design": "a lower bound on distinct values is not a condition sverify proves; dbt still runs it"
     },
     {
-      "match": "unsupported cast from Substrait.Kind.bool",
-      "issue": 2180
-    },
-    {
       "match": "% of decimal",
       "issue": 1941
     },

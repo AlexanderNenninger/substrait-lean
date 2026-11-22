@@ -30,7 +30,8 @@ from _pipelines import (
     spy_on,
 )
 from sverify._weighted import WEIGHT
-from sverify.contracts import ON_DATA, SCHEMA, label
+from sverify.conditions import ON_DATA, label
+from sverify.contracts import SCHEMA
 from sverify.engine import Engine
 from sverify.errors import AuditError, PreconditionError, SchemaError
 from sverify.incremental import IncrementalView, Pipeline, arrow_rows
