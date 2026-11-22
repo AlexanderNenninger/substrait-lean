@@ -1,4 +1,5 @@
 import Sverify.Engines.Lowering
+import Sverify.Engines.Transfer
 
 /-!
 # Where a lowered plan raises
@@ -167,39 +168,40 @@ theorem Lowering.lowerRel?_raises {p : Profile} {L : Lowering p} (hX : L.AllExac
 
 /-- Each expression of a mapped plan is the map of one of the plan's own (a
 measure's sort keys stay columns). -/
+omit [Boxes.Ambient] in
 theorem Rel.mem_mappedExprs_mapExprs {f : Expr → Expr} (hf : ∀ i, f (.field i) = .field i) :
-    ∀ {r : Rel} {e' : Expr}, e' ∈ (r.mapExprs f).mappedExprs → ∃ e ∈ r.mappedExprs, f e = e'
+    ∀ (r : Rel) {e' : Expr}, e' ∈ (r.mapExprs f).mappedExprs → ∃ e ∈ r.mappedExprs, f e = e'
   | .read _, _, h | .values _ _, _, h => by simp [mapExprs, mappedExprs] at h
   | .filter r c, _, h => by
     simp only [mapExprs, mappedExprs, List.mem_cons] at h
     rcases h with rfl | h
     · exact ⟨c, List.mem_cons_self .., rfl⟩
-    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf h
+    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf _ h
       exact ⟨e, List.mem_cons_of_mem _ he, rfl⟩
   | .project r es, _, h => by
     simp only [mapExprs, mappedExprs, List.mem_append, List.mem_map] at h
     rcases h with ⟨e, he, rfl⟩ | h
     · exact ⟨e, List.mem_append_left _ he, rfl⟩
-    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf h
+    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf _ h
       exact ⟨e, List.mem_append_right _ he, rfl⟩
   | .emit r _, _, h | .fetch r _ _, _, h | .orderBy r _, _, h | .distinct r, _, h
   | .unnest r _, _, h | .window r _ _ _, _, h => by
     simp only [mapExprs, mappedExprs] at h
-    exact mem_mappedExprs_mapExprs hf h
+    exact mem_mappedExprs_mapExprs hf _ h
   | .cross a b, _, h | .unionAll a b, _, h => by
     simp only [mapExprs, mappedExprs, List.mem_append] at h
     rcases h with h | h
-    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf h
+    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf _ h
       exact ⟨e, List.mem_append_left _ he, rfl⟩
-    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf h
+    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf _ h
       exact ⟨e, List.mem_append_right _ he, rfl⟩
   | .join a b _ on, _, h | .semi a b _ on, _, h => by
     simp only [mapExprs, mappedExprs, List.mem_cons, List.mem_append] at h
     rcases h with rfl | h | h
     · exact ⟨on, List.mem_cons_self .., rfl⟩
-    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf h
+    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf _ h
       exact ⟨e, List.mem_cons_of_mem _ (List.mem_append_left _ he), rfl⟩
-    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf h
+    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf _ h
       exact ⟨e, List.mem_cons_of_mem _ (List.mem_append_right _ he), rfl⟩
   | .aggregate r gs ms, _, h => by
     simp only [mapExprs, mappedExprs, List.mem_append, List.mem_flatMap, List.mem_map] at h
@@ -208,7 +210,7 @@ theorem Rel.mem_mappedExprs_mapExprs {f : Expr → Expr} (hf : ∀ i, f (.field 
     · obtain ⟨e, he, rfl⟩ := Measure.mem_mapExpr_exprs hf he'
       exact ⟨e, List.mem_append_left _ (List.mem_append_right _ (List.mem_flatMap.mpr ⟨m, hm, he⟩)),
         rfl⟩
-    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf h
+    · obtain ⟨e, he, rfl⟩ := mem_mappedExprs_mapExprs hf _ h
       exact ⟨e, List.mem_append_right _ he, rfl⟩
 
 /-- The expressions of a plan the partial table lowers are lowered ones. -/
@@ -219,7 +221,7 @@ theorem Lowering.mem_lowerRel? {p : Profile} {L : Lowering p} {r r' : Rel}
   split at hr
   · rename_i hall
     cases hr
-    obtain ⟨e, he, rfl⟩ := Rel.mem_mappedExprs_mapExprs (f := L.lowerE) (fun _ => rfl) he'
+    obtain ⟨e, he, rfl⟩ := Rel.mem_mappedExprs_mapExprs (f := L.lowerE) (fun _ => rfl) _ he'
     obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (List.all_eq_true.mp hall e he)
     exact ⟨e, t, ht, by simp [lowerE, ht]⟩
   · cases hr
@@ -283,7 +285,7 @@ theorem Lowering.lower_not_mem_ctors {p : Profile} {L : Lowering p} {c : Functio
       cases ha : L.lowerWith (fun _ => true) a with
       | none => simp [hen, ha] at h
       | some a' =>
-        simp only [hen, ha, Option.bind_some, Option.some.injEq] at h
+        simp [hen, ha] at h
         subst h
         exact Expr.not_mem_ctors_subst (hu f en hen)
           (by simpa using lower_not_mem_ctors hu hb (e := a) ha)
@@ -298,7 +300,7 @@ theorem Lowering.lower_not_mem_ctors {p : Profile} {L : Lowering p} {c : Functio
         cases hb' : L.lowerWith (fun _ => true) b with
         | none => simp [hen, ha, hb'] at h
         | some b' =>
-          simp only [hen, ha, hb', Option.bind_some, Option.some.injEq] at h
+          simp [hen, ha, hb'] at h
           subst h
           refine Expr.not_mem_ctors_subst (hb f en hen) fun s hs => ?_
           simp only [List.mem_cons, List.mem_nil_iff, or_false] at hs
@@ -316,7 +318,7 @@ theorem Lowering.lower_not_mem_ctors {p : Profile} {L : Lowering p} {c : Functio
         cases he : L.lowerWith (fun _ => true) e' with
         | none => simp [hc, ht, he] at h
         | some e1 =>
-          simp only [hc, ht, he, Option.bind_some, Option.some.injEq] at h
+          simp [hc, ht, he] at h
           subst h
           simp only [Expr.ctors, List.mem_append, not_or]
           exact ⟨⟨lower_not_mem_ctors hu hb (e := c') hc, lower_not_mem_ctors hu hb (e := t') ht⟩,
@@ -329,7 +331,7 @@ theorem Lowering.lower_not_mem_ctors {p : Profile} {L : Lowering p} {c : Functio
       cases hb' : L.lowerWith (fun _ => true) b with
       | none => simp [hl, hb'] at h
       | some b1 =>
-        simp only [hl, hb', Option.bind_some, Option.some.injEq] at h
+        simp [hl, hb'] at h
         subst h
         simp only [Expr.ctors, List.mem_append, not_or]
         exact ⟨lower_not_mem_ctors hu hb (e := l) hl, lower_not_mem_ctors hu hb (e := b) hb'⟩
