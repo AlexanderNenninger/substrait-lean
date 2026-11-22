@@ -1,4 +1,4 @@
-"""Other engines read what sverify's Delta and Iceberg sinks write (#861).
+"""Other engines read what sverify's Delta and Iceberg sinks write (#861, #2423).
 
 Each format's sink writes one set of tables per module from one orders
 table: a table merged after a delete and appends (a row removed, duplicates
@@ -14,6 +14,7 @@ sverify pins (`docs/how-it-works.md`, #2140)."""
 
 from __future__ import annotations
 
+import json
 import sys
 import warnings
 from datetime import datetime, timedelta
@@ -24,9 +25,13 @@ import duckdb
 import pyarrow as pa
 import pytest
 from deltalake import DeltaTable, write_deltalake
+from ibis import _
 
+import sverify as sv
 from _pipelines import make_orders, orders_table
-from sverify.io import DeltaSink, DeltaSource
+from sverify import _quarantine
+from sverify.incremental import Changes
+from sverify.io import DeltaSink, DeltaSource, StaticSource
 
 pytestmark = pytest.mark.filterwarnings("ignore::UserWarning")
 
@@ -264,3 +269,84 @@ def test_the_contract_survives_pyiceberg_maintenance(tmp_path_factory) -> None:
     if DUCKDB_READS_PYICEBERG:
         got = _duckdb("iceberg").execute(f"SELECT * FROM iceberg_scan('{t.metadata_location}')")
         assert _rows(got.to_arrow_table()) == EXPECTED["merged"]
+
+
+# -- The quarantine table ----------------------------------------------------------
+
+#: A node that sets aside the rows with a negative amount: id 2 and id 4.
+ROWS = [(1, 30), (2, -5), (3, 7)]
+SET_ASIDE = [{"id": 2, "amount": -5}]
+
+
+def _quarantining() -> Any:
+    @sv.transform(
+        requires={"orders": [_.amount >= 0]},
+        ensures=[_.amount >= 0],
+        on_violation="quarantine",
+    )
+    def paid(orders):
+        return orders.select("id", "amount")
+
+    return paid
+
+
+def _orders(rows: list[tuple]) -> StaticSource:
+    t = pa.Table.from_pylist([{"id": i, "amount": a} for i, a in rows])
+    return StaticSource(t, name="orders")
+
+
+def _held(table: Any) -> list[dict]:
+    """The rows a reader got from the quarantine table, decoded; the record
+    columns are the format's, in order."""
+    t = pa.table(table)
+    assert t.column_names == _quarantine.TABLE_SCHEMA.names
+    return sorted((_quarantine.decode_row(r["row"]) for r in t.to_pylist()), key=repr)
+
+
+def test_other_engines_read_the_delta_quarantine_table(tmp_path) -> None:
+    """delta-rs and DuckDB's `delta_scan` read the table the sink writes next
+    to its own, with the rows set aside, and the record is in the commit."""
+    orders = _orders(ROWS)
+    node = orders.pipe(_quarantining()).write(DeltaSink(str(tmp_path / "paid")))
+    node.refresh()
+    uri = str(tmp_path / "paid_quarantine")
+    assert _held(DeltaTable(uri).to_pyarrow_table()) == SET_ASIDE
+    assert _held(
+        _duckdb("delta").execute(f"SELECT * FROM delta_scan('{uri}')").to_arrow_table()
+    ) == (SET_ASIDE)
+    records = [
+        json.loads(c[_quarantine.RECORD_KEY])
+        for c in DeltaTable(uri).history()
+        if _quarantine.RECORD_KEY in c
+    ]
+    assert [(r["node"], r["format"]) for r in records] == [("paid", 1)]
+    # Fixed upstream: every reader sees the table empty.
+    orders.apply(Changes(deletes=pa.Table.from_pylist([{"id": 2, "amount": -5}])))
+    node.refresh()
+    assert DeltaTable(uri).to_pyarrow_table().num_rows == 0
+    assert _duckdb("delta").execute(f"SELECT * FROM delta_scan('{uri}')").fetchall() == []
+
+
+def test_other_engines_read_the_iceberg_quarantine_table(tmp_path) -> None:
+    """pyiceberg and DuckDB's `iceberg_scan` read the quarantine table of an
+    Iceberg sink, and the record is in the snapshot summary."""
+    pytest.importorskip("pyiceberg")
+    from pyiceberg.catalog.sql import SqlCatalog
+
+    from sverify.io import IcebergSink
+
+    warnings.filterwarnings("ignore", module="pyiceberg")
+    cat = SqlCatalog("q", uri=f"sqlite:///{tmp_path}/catalog.db", warehouse=f"file://{tmp_path}")
+    cat.create_namespace("db")
+    orders = _orders(ROWS)
+    node = orders.pipe(_quarantining()).write(IcebergSink(cat, "db.paid"))
+    node.refresh()
+    t = cat.load_table("db.paid_quarantine")
+    assert _held(t.scan().to_arrow()) == SET_ASIDE
+    snap = t.current_snapshot()
+    assert snap is not None and snap.summary is not None
+    record = json.loads(str(snap.summary[_quarantine.RECORD_KEY]))
+    assert (record["node"], record["format"]) == ("paid", 1)
+    if DUCKDB_READS_PYICEBERG:
+        got = _duckdb("iceberg").execute(f"SELECT * FROM iceberg_scan('{t.metadata_location}')")
+        assert _held(got.to_arrow_table()) == SET_ASIDE
