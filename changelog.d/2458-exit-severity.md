@@ -11,8 +11,8 @@ template's `lake.py` read it.
 | not proved | 1 | 1 |
 | usage | 2 | 2 |
 | unsupported | 3 | 3 |
-| refused (no route to the engine) | new | 4 |
+| refused (no route to the engine) | 3 (with unsupported) | 4 |
 | budget exceeded | 4 | 5 |
 | quarantined | 5 | 6 |
-| held | new | 7 |
+| held | 5 (with quarantined) | 7 |
 | error | 6 | 8 |
