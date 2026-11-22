@@ -890,10 +890,16 @@ class Report:
         """The verified plan as SQL whose meaning is the proof's, in
         `dialect`.
 
-        The SQL keeps every run-time check, as `run` does. Where the report
-        is determined up to row order with no class pick (no window ties on
-        data that meets the preconditions), windows need no row-order tiebreak, so Snowflake and
-        Spark take them. A plan verified under an engine's semantics
+        The SQL keeps every run-time check, as `run` does. Under the default
+        observation (`rows="multiset"`) a window over ties is written with its
+        own sort keys alone for every dialect: which tied row gets which number
+        is open in the reference, so any engine's choice is allowed, and
+        `deterministic` is False. Under `rows="sequence"` the numbering must
+        follow the input's order, which no dialect can write for ties: the
+        window is refused (`RouteError` on DuckDB and Spark, `UnsupportedError`
+        on Snowflake, whose tables have no row order). On Snowflake a
+        `deterministic` report lifts it.
+        A plan verified under an engine's semantics
         (`semantics="duckdb"`) is written only for an engine its route
         reaches (`sverify.routes.choose`). Snowflake takes plans verified
         under the reference. Run the SQL on data that meets the
