@@ -43,5 +43,7 @@ theorem Substrait.duckdbOn.dtextFull_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.dtextFull : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.UnFn.dtextFull :=
-  ⟨Substrait.Lowering.dtextFullTemplate, by exact Substrait.Lowering.dtextFullTemplate_must, Substrait.duckdbOn.dtextFull_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.dtextFullTemplate)
+  (by exact Substrait.Lowering.dtextFullTemplate_must) Substrait.duckdbOn.dtextFull_agree
 
