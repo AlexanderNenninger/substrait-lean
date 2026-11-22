@@ -91,7 +91,7 @@
                           }
                         ],
                         "input": {
-                          "project": {
+                          "filter": {
                             "common": {
                               "emit": {
                                 "outputMapping": [
@@ -100,80 +100,76 @@
                                 ]
                               }
                             },
-                            "input": {
-                              "filter": {
-                                "condition": {
-                                  "scalarFunction": {
-                                    "arguments": [
-                                      {
-                                        "value": {
-                                          "selection": {
-                                            "directReference": {
-                                              "structField": {
-                                                "field": 2
-                                              }
-                                            },
-                                            "rootReference": {}
+                            "condition": {
+                              "scalarFunction": {
+                                "arguments": [
+                                  {
+                                    "value": {
+                                      "selection": {
+                                        "directReference": {
+                                          "structField": {
+                                            "field": 2
                                           }
+                                        },
+                                        "rootReference": {}
+                                      }
+                                    }
+                                  },
+                                  {
+                                    "value": {
+                                      "literal": {
+                                        "fp64": 1.5
+                                      }
+                                    }
+                                  }
+                                ],
+                                "functionReference": 1,
+                                "outputType": {
+                                  "bool": {
+                                    "nullability": "NULLABILITY_NULLABLE"
+                                  }
+                                }
+                              }
+                            },
+                            "input": {
+                              "read": {
+                                "baseSchema": {
+                                  "names": [
+                                    "id",
+                                    "amount",
+                                    "x",
+                                    "region"
+                                  ],
+                                  "struct": {
+                                    "nullability": "NULLABILITY_REQUIRED",
+                                    "types": [
+                                      {
+                                        "i64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
                                         }
                                       },
                                       {
-                                        "value": {
-                                          "literal": {
-                                            "fp64": 1.5
-                                          }
+                                        "i64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "fp64": {
+                                          "nullability": "NULLABILITY_NULLABLE"
+                                        }
+                                      },
+                                      {
+                                        "string": {
+                                          "nullability": "NULLABILITY_NULLABLE"
                                         }
                                       }
-                                    ],
-                                    "functionReference": 1,
-                                    "outputType": {
-                                      "bool": {
-                                        "nullability": "NULLABILITY_NULLABLE"
-                                      }
-                                    }
+                                    ]
                                   }
                                 },
-                                "input": {
-                                  "read": {
-                                    "baseSchema": {
-                                      "names": [
-                                        "id",
-                                        "amount",
-                                        "x",
-                                        "region"
-                                      ],
-                                      "struct": {
-                                        "nullability": "NULLABILITY_REQUIRED",
-                                        "types": [
-                                          {
-                                            "i64": {
-                                              "nullability": "NULLABILITY_NULLABLE"
-                                            }
-                                          },
-                                          {
-                                            "i64": {
-                                              "nullability": "NULLABILITY_NULLABLE"
-                                            }
-                                          },
-                                          {
-                                            "fp64": {
-                                              "nullability": "NULLABILITY_NULLABLE"
-                                            }
-                                          },
-                                          {
-                                            "string": {
-                                              "nullability": "NULLABILITY_NULLABLE"
-                                            }
-                                          }
-                                        ]
-                                      }
-                                    },
-                                    "namedTable": {
-                                      "names": [
-                                        "orders"
-                                      ]
-                                    }
-                                  }
+                                "namedTable": {
+                                  "names": [
+                                    "orders"
+                                  ]
                                 }
                               }
                             }
@@ -193,6 +189,7 @@
           }
         ],
         "manifest": {
+          "asof_max_pairs": null,
           "assumptions": [],
           "checker_contract": {
             "ensures_keys": [],
@@ -200,10 +197,14 @@
               "orders": []
             },
             "max_rows": {},
+            "ranges": {},
             "references": {
               "orders": []
             },
-            "rows_per": {}
+            "rows_per": {},
+            "text": {
+              "orders": {}
+            }
           },
           "class": "observed",
           "deterministic": true,
@@ -232,7 +233,7 @@
           "params": [],
           "pinned": [],
           "rows": null,
-          "semantics": "reference",
+          "semantics": "portable",
           "shims": [
             {
               "gap": "ST-4",
@@ -399,6 +400,9 @@
       }
     ]
   },
+  "expectedTypeUrls": [
+    "type.googleapis.com/io.sverify.substrait.v1.Contract"
+  ],
   "extensionUrns": [
     {
       "extensionUrnAnchor": 1,
@@ -454,7 +458,7 @@
     {
       "root": {
         "input": {
-          "project": {
+          "filter": {
             "common": {
               "emit": {
                 "outputMapping": [
@@ -463,19 +467,71 @@
                 ]
               }
             },
-            "input": {
-              "filter": {
-                "condition": {
-                  "scalarFunction": {
-                    "arguments": [
-                      {
-                        "value": {
-                          "scalarFunction": {
-                            "arguments": [
-                              {
-                                "value": {
-                                  "ifThen": {
-                                    "else": {
+            "condition": {
+              "scalarFunction": {
+                "arguments": [
+                  {
+                    "value": {
+                      "scalarFunction": {
+                        "arguments": [
+                          {
+                            "value": {
+                              "ifThen": {
+                                "else": {
+                                  "scalarFunction": {
+                                    "arguments": [
+                                      {
+                                        "value": {
+                                          "scalarFunction": {
+                                            "arguments": [
+                                              {
+                                                "value": {
+                                                  "selection": {
+                                                    "directReference": {
+                                                      "structField": {
+                                                        "field": 2
+                                                      }
+                                                    },
+                                                    "rootReference": {}
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "value": {
+                                                  "literal": {
+                                                    "fp64": 0.0
+                                                  }
+                                                }
+                                              }
+                                            ],
+                                            "functionReference": 1,
+                                            "outputType": {
+                                              "fp64": {
+                                                "nullability": "NULLABILITY_NULLABLE"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "value": {
+                                          "literal": {
+                                            "fp64": 0.0
+                                          }
+                                        }
+                                      }
+                                    ],
+                                    "functionReference": 1,
+                                    "outputType": {
+                                      "fp64": {
+                                        "nullability": "NULLABILITY_NULLABLE"
+                                      }
+                                    }
+                                  }
+                                },
+                                "ifs": [
+                                  {
+                                    "if": {
                                       "scalarFunction": {
                                         "arguments": [
                                           {
@@ -484,13 +540,34 @@
                                                 "arguments": [
                                                   {
                                                     "value": {
-                                                      "selection": {
-                                                        "directReference": {
-                                                          "structField": {
-                                                            "field": 2
+                                                      "scalarFunction": {
+                                                        "arguments": [
+                                                          {
+                                                            "value": {
+                                                              "selection": {
+                                                                "directReference": {
+                                                                  "structField": {
+                                                                    "field": 2
+                                                                  }
+                                                                },
+                                                                "rootReference": {}
+                                                              }
+                                                            }
+                                                          },
+                                                          {
+                                                            "value": {
+                                                              "literal": {
+                                                                "fp64": 0.0
+                                                              }
+                                                            }
                                                           }
-                                                        },
-                                                        "rootReference": {}
+                                                        ],
+                                                        "functionReference": 1,
+                                                        "outputType": {
+                                                          "fp64": {
+                                                            "nullability": "NULLABILITY_NULLABLE"
+                                                          }
+                                                        }
                                                       }
                                                     }
                                                   },
@@ -510,345 +587,268 @@
                                                 }
                                               }
                                             }
-                                          },
-                                          {
-                                            "value": {
-                                              "literal": {
-                                                "fp64": 0.0
-                                              }
-                                            }
                                           }
                                         ],
-                                        "functionReference": 1,
+                                        "functionReference": 2,
                                         "outputType": {
-                                          "fp64": {
+                                          "bool": {
                                             "nullability": "NULLABILITY_NULLABLE"
                                           }
                                         }
                                       }
                                     },
-                                    "ifs": [
-                                      {
-                                        "if": {
-                                          "scalarFunction": {
-                                            "arguments": [
-                                              {
-                                                "value": {
-                                                  "scalarFunction": {
-                                                    "arguments": [
-                                                      {
-                                                        "value": {
-                                                          "scalarFunction": {
-                                                            "arguments": [
-                                                              {
-                                                                "value": {
-                                                                  "selection": {
-                                                                    "directReference": {
-                                                                      "structField": {
-                                                                        "field": 2
-                                                                      }
-                                                                    },
-                                                                    "rootReference": {}
-                                                                  }
-                                                                }
-                                                              },
-                                                              {
-                                                                "value": {
-                                                                  "literal": {
-                                                                    "fp64": 0.0
-                                                                  }
-                                                                }
-                                                              }
-                                                            ],
-                                                            "functionReference": 1,
-                                                            "outputType": {
-                                                              "fp64": {
-                                                                "nullability": "NULLABILITY_NULLABLE"
-                                                              }
-                                                            }
-                                                          }
-                                                        }
-                                                      },
-                                                      {
-                                                        "value": {
-                                                          "literal": {
-                                                            "fp64": 0.0
-                                                          }
-                                                        }
-                                                      }
-                                                    ],
-                                                    "functionReference": 1,
-                                                    "outputType": {
-                                                      "fp64": {
-                                                        "nullability": "NULLABILITY_NULLABLE"
-                                                      }
-                                                    }
-                                                  }
-                                                }
-                                              }
-                                            ],
-                                            "functionReference": 2,
-                                            "outputType": {
-                                              "bool": {
-                                                "nullability": "NULLABILITY_NULLABLE"
-                                              }
-                                            }
-                                          }
-                                        },
-                                        "then": {
-                                          "literal": {
-                                            "fp64": "NaN"
-                                          }
-                                        }
+                                    "then": {
+                                      "literal": {
+                                        "fp64": "NaN"
                                       }
-                                    ]
+                                    }
                                   }
-                                }
-                              },
-                              {
-                                "value": {
-                                  "ifThen": {
-                                    "else": {
-                                      "scalarFunction": {
-                                        "arguments": [
-                                          {
-                                            "value": {
-                                              "scalarFunction": {
-                                                "arguments": [
-                                                  {
-                                                    "value": {
-                                                      "literal": {
-                                                        "fp64": 1.5
-                                                      }
-                                                    }
-                                                  },
-                                                  {
-                                                    "value": {
-                                                      "literal": {
-                                                        "fp64": 0.0
-                                                      }
-                                                    }
-                                                  }
-                                                ],
-                                                "functionReference": 1,
-                                                "outputType": {
-                                                  "fp64": {
-                                                    "nullability": "NULLABILITY_NULLABLE"
-                                                  }
-                                                }
-                                              }
-                                            }
-                                          },
-                                          {
-                                            "value": {
-                                              "literal": {
-                                                "fp64": 0.0
-                                              }
-                                            }
-                                          }
-                                        ],
-                                        "functionReference": 1,
-                                        "outputType": {
-                                          "fp64": {
-                                            "nullability": "NULLABILITY_NULLABLE"
-                                          }
-                                        }
-                                      }
-                                    },
-                                    "ifs": [
-                                      {
-                                        "if": {
-                                          "scalarFunction": {
-                                            "arguments": [
-                                              {
-                                                "value": {
-                                                  "scalarFunction": {
-                                                    "arguments": [
-                                                      {
-                                                        "value": {
-                                                          "scalarFunction": {
-                                                            "arguments": [
-                                                              {
-                                                                "value": {
-                                                                  "literal": {
-                                                                    "fp64": 1.5
-                                                                  }
-                                                                }
-                                                              },
-                                                              {
-                                                                "value": {
-                                                                  "literal": {
-                                                                    "fp64": 0.0
-                                                                  }
-                                                                }
-                                                              }
-                                                            ],
-                                                            "functionReference": 1,
-                                                            "outputType": {
-                                                              "fp64": {
-                                                                "nullability": "NULLABILITY_NULLABLE"
-                                                              }
-                                                            }
-                                                          }
-                                                        }
-                                                      },
-                                                      {
-                                                        "value": {
-                                                          "literal": {
-                                                            "fp64": 0.0
-                                                          }
-                                                        }
-                                                      }
-                                                    ],
-                                                    "functionReference": 1,
-                                                    "outputType": {
-                                                      "fp64": {
-                                                        "nullability": "NULLABILITY_NULLABLE"
-                                                      }
-                                                    }
-                                                  }
-                                                }
-                                              }
-                                            ],
-                                            "functionReference": 2,
-                                            "outputType": {
-                                              "bool": {
-                                                "nullability": "NULLABILITY_NULLABLE"
-                                              }
-                                            }
-                                          }
-                                        },
-                                        "then": {
-                                          "literal": {
-                                            "fp64": "NaN"
-                                          }
-                                        }
-                                      }
-                                    ]
-                                  }
-                                }
+                                ]
                               }
-                            ],
-                            "functionReference": 3,
-                            "outputType": {
-                              "bool": {
-                                "nullability": "NULLABILITY_NULLABLE"
+                            }
+                          },
+                          {
+                            "value": {
+                              "ifThen": {
+                                "else": {
+                                  "scalarFunction": {
+                                    "arguments": [
+                                      {
+                                        "value": {
+                                          "scalarFunction": {
+                                            "arguments": [
+                                              {
+                                                "value": {
+                                                  "literal": {
+                                                    "fp64": 1.5
+                                                  }
+                                                }
+                                              },
+                                              {
+                                                "value": {
+                                                  "literal": {
+                                                    "fp64": 0.0
+                                                  }
+                                                }
+                                              }
+                                            ],
+                                            "functionReference": 1,
+                                            "outputType": {
+                                              "fp64": {
+                                                "nullability": "NULLABILITY_NULLABLE"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                      {
+                                        "value": {
+                                          "literal": {
+                                            "fp64": 0.0
+                                          }
+                                        }
+                                      }
+                                    ],
+                                    "functionReference": 1,
+                                    "outputType": {
+                                      "fp64": {
+                                        "nullability": "NULLABILITY_NULLABLE"
+                                      }
+                                    }
+                                  }
+                                },
+                                "ifs": [
+                                  {
+                                    "if": {
+                                      "scalarFunction": {
+                                        "arguments": [
+                                          {
+                                            "value": {
+                                              "scalarFunction": {
+                                                "arguments": [
+                                                  {
+                                                    "value": {
+                                                      "scalarFunction": {
+                                                        "arguments": [
+                                                          {
+                                                            "value": {
+                                                              "literal": {
+                                                                "fp64": 1.5
+                                                              }
+                                                            }
+                                                          },
+                                                          {
+                                                            "value": {
+                                                              "literal": {
+                                                                "fp64": 0.0
+                                                              }
+                                                            }
+                                                          }
+                                                        ],
+                                                        "functionReference": 1,
+                                                        "outputType": {
+                                                          "fp64": {
+                                                            "nullability": "NULLABILITY_NULLABLE"
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  },
+                                                  {
+                                                    "value": {
+                                                      "literal": {
+                                                        "fp64": 0.0
+                                                      }
+                                                    }
+                                                  }
+                                                ],
+                                                "functionReference": 1,
+                                                "outputType": {
+                                                  "fp64": {
+                                                    "nullability": "NULLABILITY_NULLABLE"
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        ],
+                                        "functionReference": 2,
+                                        "outputType": {
+                                          "bool": {
+                                            "nullability": "NULLABILITY_NULLABLE"
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "then": {
+                                      "literal": {
+                                        "fp64": "NaN"
+                                      }
+                                    }
+                                  }
+                                ]
                               }
                             }
                           }
+                        ],
+                        "functionReference": 3,
+                        "outputType": {
+                          "bool": {
+                            "nullability": "NULLABILITY_NULLABLE"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "value": {
+                      "scalarFunction": {
+                        "arguments": [
+                          {
+                            "value": {
+                              "scalarFunction": {
+                                "arguments": [
+                                  {
+                                    "value": {
+                                      "selection": {
+                                        "directReference": {
+                                          "structField": {
+                                            "field": 2
+                                          }
+                                        },
+                                        "rootReference": {}
+                                      }
+                                    }
+                                  }
+                                ],
+                                "functionReference": 2,
+                                "outputType": {
+                                  "bool": {
+                                    "nullability": "NULLABILITY_NULLABLE"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "value": {
+                              "scalarFunction": {
+                                "arguments": [
+                                  {
+                                    "value": {
+                                      "literal": {
+                                        "fp64": 1.5
+                                      }
+                                    }
+                                  }
+                                ],
+                                "functionReference": 2,
+                                "outputType": {
+                                  "bool": {
+                                    "nullability": "NULLABILITY_NULLABLE"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "functionReference": 4,
+                        "outputType": {
+                          "bool": {
+                            "nullability": "NULLABILITY_NULLABLE"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "functionReference": 5,
+                "outputType": {
+                  "bool": {
+                    "nullability": "NULLABILITY_NULLABLE"
+                  }
+                }
+              }
+            },
+            "input": {
+              "read": {
+                "baseSchema": {
+                  "names": [
+                    "id",
+                    "amount",
+                    "x",
+                    "region"
+                  ],
+                  "struct": {
+                    "nullability": "NULLABILITY_REQUIRED",
+                    "types": [
+                      {
+                        "i64": {
+                          "nullability": "NULLABILITY_NULLABLE"
                         }
                       },
                       {
-                        "value": {
-                          "scalarFunction": {
-                            "arguments": [
-                              {
-                                "value": {
-                                  "scalarFunction": {
-                                    "arguments": [
-                                      {
-                                        "value": {
-                                          "selection": {
-                                            "directReference": {
-                                              "structField": {
-                                                "field": 2
-                                              }
-                                            },
-                                            "rootReference": {}
-                                          }
-                                        }
-                                      }
-                                    ],
-                                    "functionReference": 2,
-                                    "outputType": {
-                                      "bool": {
-                                        "nullability": "NULLABILITY_NULLABLE"
-                                      }
-                                    }
-                                  }
-                                }
-                              },
-                              {
-                                "value": {
-                                  "scalarFunction": {
-                                    "arguments": [
-                                      {
-                                        "value": {
-                                          "literal": {
-                                            "fp64": 1.5
-                                          }
-                                        }
-                                      }
-                                    ],
-                                    "functionReference": 2,
-                                    "outputType": {
-                                      "bool": {
-                                        "nullability": "NULLABILITY_NULLABLE"
-                                      }
-                                    }
-                                  }
-                                }
-                              }
-                            ],
-                            "functionReference": 4,
-                            "outputType": {
-                              "bool": {
-                                "nullability": "NULLABILITY_NULLABLE"
-                              }
-                            }
-                          }
+                        "i64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "fp64": {
+                          "nullability": "NULLABILITY_NULLABLE"
+                        }
+                      },
+                      {
+                        "string": {
+                          "nullability": "NULLABILITY_NULLABLE"
                         }
                       }
-                    ],
-                    "functionReference": 5,
-                    "outputType": {
-                      "bool": {
-                        "nullability": "NULLABILITY_NULLABLE"
-                      }
-                    }
+                    ]
                   }
                 },
-                "input": {
-                  "read": {
-                    "baseSchema": {
-                      "names": [
-                        "id",
-                        "amount",
-                        "x",
-                        "region"
-                      ],
-                      "struct": {
-                        "nullability": "NULLABILITY_REQUIRED",
-                        "types": [
-                          {
-                            "i64": {
-                              "nullability": "NULLABILITY_NULLABLE"
-                            }
-                          },
-                          {
-                            "i64": {
-                              "nullability": "NULLABILITY_NULLABLE"
-                            }
-                          },
-                          {
-                            "fp64": {
-                              "nullability": "NULLABILITY_NULLABLE"
-                            }
-                          },
-                          {
-                            "string": {
-                              "nullability": "NULLABILITY_NULLABLE"
-                            }
-                          }
-                        ]
-                      }
-                    },
-                    "namedTable": {
-                      "names": [
-                        "orders"
-                      ]
-                    }
-                  }
+                "namedTable": {
+                  "names": [
+                    "orders"
+                  ]
                 }
               }
             }

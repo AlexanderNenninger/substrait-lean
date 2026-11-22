@@ -1271,8 +1271,8 @@ def _(mo):
     engine, and refuse the plan with the reason where nothing does
     ([how a route is chosen](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/verifying.md)).
     The route names the plan's class on the engine: `exact` (every result
-    the engine gives, the reference allows), `observed` (equal under an
-    observation the postcondition states, a float tolerance included),
+    the engine gives, the reference allows), `observed` (equal under
+    lenses the postcondition states, a float tolerance included),
     `shim` (after a proved translation) or `refused`. Before the plan runs, its preconditions
     are checked on the data. We take the join to Polars:
     """)

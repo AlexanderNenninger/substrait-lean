@@ -1645,7 +1645,7 @@ def _refuse_unverified(report: Report) -> None:
             reasons.append("the proof does not carry over to Substrait (see report.details())")
         reasons += [f"needs {n}" for n in report._needs_lines()]
         if report.floats_unmet:
-            reasons.append(f"no engine meets the observation's doubles: {report.floats_unmet}")
+            reasons.append(f"no engine meets the lenses' doubles: {report.floats_unmet}")
         raise ExportError(
             "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
         )
@@ -1668,14 +1668,14 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     typer.run()
     if report.semantics == "substrait":
         handling = Handling()
-    elif report.semantics == "reference":
+    elif report.semantics == "portable":
         handling = _pin(report, typer, shims)
         # Shims add calls: type the plan again, for their URNs and types.
         _Typer(plan).run()
     else:
         raise ExportError(
             f"a plan verified with semantics={report.semantics!r} holds on that engine only; "
-            "verify it with semantics='reference' or 'substrait' to export it"
+            "verify it with semantics='portable' or 'substrait' to export it"
         )
     major, minor, patch = SUBSTRAIT_VERSION
     plan["version"] = {
@@ -1806,8 +1806,9 @@ _RENAMED = {
 
 
 def _manifest(m: Mapping[str, Any]) -> Json:
-    """The manifest in this version's format: a format 1 manifest's keys
-    renamed, `rows` an integer (a Struct holds every number as a double).
+    """The manifest in this version's format: an earlier format's keys
+    renamed and its `"reference"` semantics `"portable"`, `rows` an integer
+    (a Struct holds every number as a double).
 
     Raises:
         ValueError: The manifest's format is newer than this version reads.
@@ -1825,6 +1826,10 @@ def _manifest(m: Mapping[str, Any]) -> Json:
             {_RENAMED.get(k, k): v for k, v in u.items()} for u in out.get("up_to") or []
         ]
         out["format"] = FORMAT
+    if "semantics" in out:
+        from sverify.report_json import _portable
+
+        out["semantics"] = _portable(out["semantics"], fmt < FORMAT)
     if isinstance(out.get("rows"), float) and out["rows"].is_integer():
         out["rows"] = int(out["rows"])
     if isinstance(out.get("format"), float):
@@ -1991,7 +1996,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
             Issue(i["kind"], i["expr"], i["error"] or i["assumed"], assumed=i["assumed"])
             for i in out["issues"]
         ],
-        semantics=m.get("semantics", "reference"),
+        semantics=m.get("semantics", "portable"),
         requires=requires,
         ensures=checked,
         facts={

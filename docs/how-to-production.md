@@ -24,7 +24,7 @@ per_line = sv.verify(kept.select(kept.id, per=kept.total // kept.n), requires={"
 
 A stored node's sink commits each epoch once, so a rerun must give the same
 result. The sink states what "the same" means (`reproducible=`,
-[two observations per output](how-to-production.md#reproducible-sinks)): `sv.equivalent()` asks for exact
+[two lenses per output](how-to-production.md#reproducible-sinks)): `sv.equivalent()` asks for exact
 bits, and `sv.equivalent(floats=sv.within(...))` accepts doubles within a
 tolerance. A refresh whose engine may give another result on a rerun is
 refused with a `RouteError`; so is a plan whose ties stay open, since the

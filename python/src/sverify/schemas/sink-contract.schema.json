@@ -70,7 +70,7 @@
       "type": "string"
     },
     "profile": {
-      "description": "The profile the plan was verified under (verify(semantics=...)). The plan's digest includes it unless it is \"reference\".",
+      "description": "The profile the plan was verified under (verify(semantics=...)). The plan's digest includes it unless it is \"portable\".",
       "type": "string"
     },
     "package": {

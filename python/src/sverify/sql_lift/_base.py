@@ -53,7 +53,7 @@ from sverify.plan_json import (
 from sverify.plan_json import decimal_dtype as _decimal
 from sverify.plan_json import same_type as _same
 
-__all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
+__all__ = ["DUCKDB", "PORTABLE", "PROFILES", "Lifted", "Profile", "lift", "parse"]
 
 DIALECT = "duckdb"
 
@@ -78,7 +78,7 @@ class Profile:
     in both profiles; the second is what the functions do.
 
     Attributes:
-        name: `"duckdb"` or `"reference"`, as `sv.sql`'s `semantics`.
+        name: `"duckdb"` or `"portable"`, as `sv.sql`'s `semantics`.
         divide: SQL `/` on integers and decimals: `"double"`, both operands
             cast to `fp64` and divided (DuckDB's `/` without
             `integer_division`, F1).
@@ -134,8 +134,8 @@ DUCKDB = Profile(
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
 )
-REFERENCE = Profile("reference")
-PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
+PORTABLE = Profile("portable")
+PROFILES = {p.name: p for p in (DUCKDB, PORTABLE)}
 
 
 # --------------------------------------------------------------------------
@@ -3042,7 +3042,7 @@ def _normalized(name: str) -> str:
 def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> Lifted:
     """The plan of the DuckDB SQL `query` over input tables of the Ibis
     schemas `schemas` (by table name), read as named tables, with the
-    `semantics` profile ("duckdb" or "reference").
+    `semantics` profile ("duckdb" or "portable").
 
     Raises:
         Unsupported: The query is outside the subset, saying what; also a

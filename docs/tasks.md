@@ -95,7 +95,7 @@ first.to_sql("snowflake")
 * `report.run(con, engine, route="auto")` runs a proved plan on an
   engine by a route (`report.routes` records it, with its class), and
   `refresh(engine=..., route="auto")` does the same for each node.
-  `sv.equivalent(...)` in `ensures` names the observation, and
+  `sv.equivalent(...)` in `ensures` names the lenses, and
   `reproducible=` on a sink what a rerun must reproduce.
 * `sverify.engines` has the engines, SQL dialects and plans
   (`run_sharded` runs a plan per shard and combines the results, with a

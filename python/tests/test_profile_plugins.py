@@ -121,7 +121,7 @@ def _toy_lift(query, schemas, semantics):
     """A toy dialect that reads DuckDB's text, as an engine's package would read its own."""
     from sverify.sql_lift import lift
 
-    return lift(query, schemas, "reference" if semantics == "toy" else semantics)
+    return lift(query, schemas, "portable" if semantics == "toy" else semantics)
 
 
 TOY = ProfilePlugin(engine="toy", profile=True, sql=SqlFrontEnd("toy", _toy_lift))
