@@ -20,6 +20,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,20 @@ class Case:
     """What `project_config_update` adds to `dbt_project.yml`."""
     also: list[str] = field(default_factory=list)
     """The other classes with the same project."""
+
+    @property
+    def has_tests(self) -> bool:
+        """Whether the project can hold a test: a file under `tests/`, or a
+        YAML file or project config that says `tests`, `data_tests` or
+        `unit_tests`. A project without one has nothing to build and check."""
+        if any(rel.startswith("tests/") for rel in self.files):
+            return True
+        texts = [t for rel, t in self.files.items() if rel.endswith((".yml", ".yaml"))]
+        texts.append(json.dumps(self.config, default=str))
+        return any(_TESTS_KEY.search(t) for t in texts)
+
+
+_TESTS_KEY = re.compile(r"\b(data_|unit_)?tests\b")
 
 
 def _function(value: Any) -> Any:
