@@ -35,8 +35,8 @@ permissions:
 # the shared checker.
 #
 # A pull request that changes only docs (`docs/`, `.claude/`, `changelog.d/`,
-# Markdown at the root other than README.md, which tests run, and
-# docs/tasks.md and docs/how-it-works.md, which tests run too) skips
+# Markdown at the root), other than a page whose examples
+# python/tests/test_readme.py runs (its `READMES`), skips
 # everything but `static`, and float-bounds runs only when its own package
 # changes. The TLA+ models (`models/`) count as docs for the other jobs:
 # `refresh-model` checks them, when they change.
@@ -254,8 +254,19 @@ jobs:
           printf '%s\n' "$files"
           # Here-strings, not pipes: under `pipefail` an early exit of `grep -q`
           # could fail the pipe.
-          if ! grep -qvE "$docs|$ledger" <<< "$files" \
-             && ! grep -qxE 'README\.md|docs/(guide|how-it-works)\.md' <<< "$files"; then
+          # A page test_readme.py runs: its `ROOT / "docs" / "x.md"` entry,
+          # or a page of docs/theorems/, which it globs.
+          runs_examples() {
+            local f
+            while read -r f; do
+              case "$f" in
+                docs/theorems/*.md) return 0 ;;
+                *.md) grep -qF "ROOT / \"${f//\//\" / \"}\"" python/tests/test_readme.py && return 0 ;;
+              esac
+            done <<< "$files"
+            return 1
+          }
+          if ! grep -qvE "$docs|$ledger" <<< "$files" && ! runs_examples; then
             out code=false
             if grep -qE "$ledger" <<< "$files"; then
               out ledger=true
