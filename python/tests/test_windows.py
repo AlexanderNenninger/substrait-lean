@@ -69,7 +69,6 @@ def test_lean_semantics_match_duckdb(sql, rows):
 
 
 readings = ibis.table({"sensor": "int64", "ts": "timestamp", "value": "float64"}, name="readings")
-by_sensor = ibis.window(group_by=readings.sensor, order_by=readings.ts)
 #: `ts - prev_ts` fits in 64 bits for timestamps since 1970 (#202).
 SINCE_1970 = _.ts >= ibis.timestamp("1970-01-01 00:00:00")
 KEYED = {"readings": [sv.unique("sensor", "ts"), _.sensor.notnull(), _.ts.notnull(), SINCE_1970]}

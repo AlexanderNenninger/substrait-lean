@@ -192,10 +192,6 @@ def test_a_delta_table_of_instants_and_naive_timestamps_round_trips_through_a_si
         assert schema.field("ts").type == UTC and schema.field("naive").type == NTZ, engine
 
 
-def _naive_other(t):
-    return ibis.table({"id": "int64", "naive": "timestamp"}, name="o")
-
-
 REFUSED = {
     "a naive column compared with an instant": lambda t: t.filter(t.ts <= t.naive),
     "a naive literal compared with an instant": lambda t: t.filter(

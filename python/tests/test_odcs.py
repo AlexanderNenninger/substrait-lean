@@ -412,7 +412,7 @@ def test_cli_contract_export(tmp_path, capsys):
             """
         )
     )
-    assert main(["contract", "export", f"{path}:p", "--format", "odcs"]) == 0
+    assert main(["contract", "export", f"{path}:p"]) == 0
     doc = valid(yaml.safe_load(capsys.readouterr().out))
     assert prop(doc, "id")["primaryKey"]
     out = tmp_path / "paid.json"

@@ -805,7 +805,7 @@ class Report:
         The plan goes to the checker as it was exported, pinned options,
         shims and all, with the preconditions and postconditions it
         carries; the report says what the checker proves of it now. For an
-        export of a verified plan, `proved` is true again, with the same
+        export of a verified plan, the verdict is `PROVED` again, with the same
         postconditions.
 
         Args:
@@ -1215,7 +1215,7 @@ class Report:
         runs on `engine` as `sverify.engines.run` runs a plan, with the
         meaning `Rel.eval` gives it.
 
-        A plan that is not proved (`proved` is False) is refused
+        A plan whose verdict is not `PROVED` is refused
         (`UnverifiedRunError`), with what was not proved in the message;
         `unverified=True` runs it anyway, and
         says so: a warning (`UnverifiedRunWarning`), the route `"unverified"`

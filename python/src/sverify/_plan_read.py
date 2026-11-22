@@ -21,7 +21,12 @@ from typing import Any
 #: `Text.substrMax`: `substring`'s offsets lie in `[-SUBSTR_MAX, SUBSTR_MAX)`,
 #: its lengths below `SUBSTR_MAX` (#336).
 SUBSTR_MAX = 2**32
-#: `Text.repeatMax`: the longest string DataFusion's `repeat` writes, in bytes.
+#: `Text.repeatMax`: the longest string `repeat` writes, in bytes; past it the
+#: reference raises. It lies below every engine's own limit on a string (DuckDB
+#: raises past 2^32 - 1 bytes, `duckdb-exec-size-limits`; Polars panics past
+#: u32::MAX, `polars-exec-size-limits`; Spark holds a string in one JVM byte
+#: array, `spark-exec-size-limits`), so the writers' guard raises before an
+#: engine fails on its own (ruling 267).
 REPEAT_MAX = 2**31 - 1
 US_PER_DAY = 86_400_000_000
 
