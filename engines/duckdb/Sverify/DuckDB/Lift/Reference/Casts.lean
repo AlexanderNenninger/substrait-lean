@@ -25,12 +25,14 @@ theorem Substrait.liftReference.castDoubleBigint_agree : ∀ (x : Substrait.Valu
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
       (Substrait.Expr.evalP Substrait.Profile.reference [x]
-        (Substrait.Expr.un Substrait.UnFn.ftoi (Substrait.Expr.field 0)))
+        (Substrait.Expr.un Substrait.UnFn.ftoi
+          (Substrait.Expr.un Substrait.UnFn.froundEven (Substrait.Expr.field 0))))
       (Substrait.DuckFn.eval Substrait.Semantics.reference Substrait.DuckFn.castDoubleBigint [x]) := by
   lift_tac1
 
 abbrev Substrait.liftReference.castDoubleBigint : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.castDoubleBigint :=
-  ⟨"{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un Substrait.UnFn.ftoi (Substrait.Expr.field 0),
+  ⟨"{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":47,\"options\":[{\"name\":\"rounding\",\"preference\":[\"TIE_TO_EVEN\"]}],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un Substrait.UnFn.ftoi
+  (Substrait.Expr.un Substrait.UnFn.froundEven (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.castDoubleBigint_agree⟩
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.castDoubleBigint)
