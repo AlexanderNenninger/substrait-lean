@@ -88,6 +88,11 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # Pruned (455 MB against 2.1 GB); a pull request's run restores it
+          # and saves none.
+          prune-cache: true
+          cache-suffix: pruned
+          save-cache: ${{ github.event_name != 'pull_request' }}
       - env:
           SUITE: ${{ matrix.suite }}
           INDEX: ${{ strategy.job-index }}

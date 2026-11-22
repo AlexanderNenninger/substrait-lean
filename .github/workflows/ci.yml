@@ -48,6 +48,15 @@ permissions:
 # tests that read them. The replay ledgers `engines/duckdb/replay/<area>.json`
 # and `characterization/oracle-a/` feed oracle A, so they run everything.
 #
+# Three jobs read fewer files than the others on a pull request, and run in
+# full in a merge batch (`batch/*`), on main and on release branches:
+# `outside-repo` (the tests from a copy outside the repository) runs when the
+# packaging, the tests or a data file of the package change; `evidence` (the
+# Ibis and validator replays) and the dbt packages' replay step (`dbt`) run
+# when the package's code (not its I/O, CLI, skills or schemas) or an engine
+# package's code, the lock files, their own ledgers or a Lean input change. All three report and never fail a run, or
+# (`outside-repo`) repeat what `test` runs from the source.
+#
 # The other pull requests run `test (core)` and `test (duckdb)` always, and
 # skip a job when every file they change is one the job cannot read: the
 # table of areas in `changes` lists, for each job, the areas it skips. A file
@@ -189,6 +198,8 @@ jobs:
       oracle: ${{ steps.diff.outputs.oracle }}
       notebooks: ${{ steps.diff.outputs.notebooks }}
       dbt: ${{ steps.diff.outputs.dbt }}
+      dbtreplay: ${{ steps.diff.outputs.dbtreplay }}
+      evidence: ${{ steps.diff.outputs.evidence }}
       python: ${{ steps.diff.outputs.python }}
       models: ${{ steps.diff.outputs.models }}
       matrix: ${{ steps.diff.outputs.matrix }}
@@ -205,6 +216,7 @@ jobs:
           REPO: ${{ github.repository }}
           BASE: ${{ github.event.pull_request.base.sha }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           out() { echo "$1" >> "$GITHUB_OUTPUT"; }
           docs='^(docs/|\.claude/|changelog\.d/|models/|[^/]+\.md$)'
@@ -253,6 +265,8 @@ jobs:
             out oracle=true
             out notebooks=true
             out dbt=true
+            out dbtreplay=true
+            out evidence=true
             out python=true
             out models=true
             out "matrix=$(matrix '"duckdb","polars snowflake"' true)"
@@ -275,7 +289,7 @@ jobs:
           }
           if [ "$EVENT" != pull_request ]; then
             if tested; then
-              for o in code floats proofs oracle notebooks dbt python models; do out "$o=false"; done
+              for o in code floats proofs oracle notebooks dbt dbtreplay evidence python models; do out "$o=false"; done
               out 'matrix={"backends":["duckdb"]}'
               exit 0
             fi
@@ -327,10 +341,16 @@ jobs:
           fi
           out "oracle=$(flag "$skip_oracle")"
           out "notebooks=$(flag "$skip_notebooks")"
-          # The tests outside the repository (`outside-repo`) read python/,
-          # the engine packages' Python and tests, and the dependencies; the
-          # workflow itself.
-          if grep -qE '^(python/|engines/[^/]+/(src|tests)/|engines/[^/]+/pyproject\.toml$|\.github/workflows/ci\.yml$)' <<< "$files"; then
+          # A merge batch (`batch/*`) runs every gate; a pull request runs the
+          # ones below only when a file they read changes.
+          batch=false
+          [[ "$HEAD_REF" == batch/* ]] && batch=true
+          # The tests outside the repository (`outside-repo`) run the fast set
+          # from a copy of the tests, as the wheel's test does; the `test`
+          # jobs run the same tests from the source. A pull request runs it
+          # for what can differ between the two: the packaging, the tests
+          # (one may read a repository file) and the data files of the package.
+          if [ "$batch" = true ] || grep -qE '^(python/(pyproject\.toml|uv\.lock|hatch_build\.py|scripts/wheel_tests\.sh|tests/|tools/)|python/src/.*\.(json|proto|md|toml|txt|ya?ml)$|engines/[^/]+/(pyproject\.toml$|tests/|src/)|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out python=true
           else
             out python=false
@@ -348,6 +368,19 @@ jobs:
           else
             out dbt=false
           fi
+          # The replay gates (they warn and never fail) on a pull request: when
+          # a file they read changes, the Lean inputs included (`proofs`), and
+          # always in a batch, on main and on release branches.
+          lean='\.lean$|^(core/|analysis/|engines/)?(lakefile\.(lean|toml)|lake-manifest\.json|lean-toolchain)$'
+          # Both replays call `verify`, so any change to the package's own
+          # code can move them; its I/O, CLI, skills and schemas cannot.
+          vsrc=$(grep -E '^python/src/sverify/' <<< "$files" | grep -vE '^python/src/sverify/(io|cli|skills|schemas)/' || true)
+          engsrc=$(grep -E '^engines/[^/]+/src/' <<< "$files" || true)
+          ibis_in="^(python/tools/sverify_dev/(ibis_replay|substrait_validator)\.py$|python/tests/(ibis_replay/|substrait_validator\.json$)|python/uv\.lock$|\.github/workflows/ci\.yml$)|$lean"
+          dbt_in="^(dbt/|python/uv\.lock$|\.github/workflows/ci\.yml$)|$lean"
+          gate() { [ "$batch" = true ] || [ -n "$vsrc" ] || [ -n "$engsrc" ] || grep -qE "$1" <<< "$files"; }
+          out "evidence=$(gate "$ibis_in" && echo true || echo false)"
+          out "dbtreplay=$(gate "$dbt_in" && echo true || echo false)"
           backends='"duckdb"'
           [ "$(flag "$skip_polars")" = true ] && backends="$backends,\"polars snowflake\""
           m=$(matrix "$backends" "$(flag "$skip_spark")")
@@ -895,7 +928,7 @@ jobs:
   # another (GitHub's /home/runner, the AWS runners' /opt/actions-runner).
   evidence:
     needs: [route, changes, checker]
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && needs.changes.outputs.evidence == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 30
     steps:
@@ -1068,11 +1101,13 @@ jobs:
       # dbt packages' integration projects (#859): built with dbt on DuckDB
       # and checked with sverify-dbt, against the ledgers in dbt/replay/.
       # A gate: it reports a change as a warning and never fails the job.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - if: needs.changes.outputs.dbtreplay == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/sverify/dbt-replay
           key: dbt-replay-${{ hashFiles('dbt/src/sverify_dbt/replay.py') }}
       - name: dbt packages' integration projects (#859)
+        if: needs.changes.outputs.dbtreplay == 'true'
         env:
           DO_NOT_TRACK: "1"
           GH_TOKEN: ${{ github.token }}  # the closed-issue check asks `gh`
