@@ -135,7 +135,6 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     unique,
 )
 from sverify.counterexample import Counterexample
-from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
     Connection,
     Engine,
@@ -144,6 +143,7 @@ from sverify.engine import (
     run_checker,
 )
 from sverify.observation import Observation
+from sverify.proposers import INFER, SEARCH, Obligation
 from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DECIMAL_ARG,
     _EPOCH_DAY,
@@ -605,37 +605,9 @@ def _suggested(
     tables whose `requires` the caller states; none for a split or a why."""
     if bound is None or bound["why"] is not None or bound["split"]:
         return {}
-    conds = _render_needs(bound["needs"], schemas)
+    proposal = INFER.propose(Obligation("precondition", schemas, {"needs": bound["needs"]}))
+    conds = {} if proposal is None else proposal.value
     return {t: list[Condition](cs) for t, cs in conds.items() if t in assumable and cs}
-
-
-def _render_needs(
-    needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
-) -> dict[str, list[Inferred]]:
-    """The conditions of a list of `{table, col, lo, hi}`, `{table, col,
-    ne}` or `{table, col, not_null}` (column positions, integer codes as
-    strings), per table."""
-    out: dict[str, list[Inferred]] = {}
-    for n in needs:
-        schema = schemas.get(n["table"])
-        if schema is None or n["col"] >= len(schema):
-            continue
-        col = list(schema)[n["col"]]
-        have = out.setdefault(n["table"], [])
-        if "text" in n:
-            new = [_text_condition(col, n["text"])]
-        elif n.get("not_null"):
-            new = [_not_null_condition(col)] if schema[col].nullable else []
-        elif "ne" in n:
-            c = _ne_condition(col, schema[col], int(n["ne"]))
-            new = [] if c is None else [c]
-        else:
-            lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
-            new = _bound_conditions(col, schema[col], lo, hi)
-        for c in new:
-            c.column = col
-        have += [c for c in new if c not in have]
-    return {t: cs for t, cs in out.items() if cs}
 
 
 def _why_hint(why: str, show: Callable[[str], str]) -> str:
@@ -662,7 +634,7 @@ def _hint(
         return None
     if bound["why"] is not None:
         return _why_hint(bound["why"], show)
-    conds = _render_needs(bound["needs"], schemas)
+    conds = INFER.conditions(bound["needs"], schemas)
     if not conds:
         return None
 
@@ -1236,7 +1208,7 @@ def _infer_bounds(
     stated = [c.proved for c in report.ensures]
     stated_facts = report.facts
     extra = {
-        t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
+        t: cs for t, cs in INFER.conditions(raw, schemas).items() if inputs is None or t in inputs
     }
     if extra:
         guarded = and_or_hints(report.issues, transform)
@@ -1795,16 +1767,22 @@ def _prove_once(
         if not counterexamples:
             return None
         with _stages.stage("counterexamples"):
-            return search_counterexample(
-                schemas,
-                req_named,
-                keys,
-                transform_plan,
-                target,
-                budget=counterexamples,
-                references=foreign_keys,
-                output_types=out_types,
+            found = SEARCH.propose(
+                Obligation(
+                    "counterexample",
+                    schemas,
+                    {
+                        "requires": req_named,
+                        "keys": keys,
+                        "transform": transform_plan,
+                        "ensures": target,
+                        "budget": counterexamples,
+                        "references": foreign_keys,
+                        "output_types": out_types,
+                    },
+                )
             )
+            return None if found is None else found.value
 
     def next_key() -> tuple[bool, Counterexample | None]:
         ok = next(key_results)["proved"]
@@ -1883,7 +1861,7 @@ def _prove_once(
             # reference's form (`floorDivOf`), as does a FLOOR option.
             floor=dialect == "ibis" or '"FLOOR"' in plan_text,
             hint=lambda b: _hint(b, schemas, assumable, show),
-            needs=lambda b: _render_needs(b["needs"], schemas),
+            needs=lambda b: INFER.conditions(b["needs"], schemas),
             column=lambda e: _sum_column(transform, e),
             shown=shown,
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
