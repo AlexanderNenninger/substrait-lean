@@ -1615,6 +1615,51 @@ def _(approx_claim):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    Drop the row cap and the sum has no bound at all: with the number of rows
+    open, Lean cannot say how far an engine's sum is from the reference's. A
+    claim that reads only the sign of the total still goes through, since
+    adding values of one sign keeps the sign in every order. A tolerance you
+    state is another matter. There is nothing to meet it with, so the route
+    refuses and names the exits, a row cap or `floats="plan"`:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from ibis import _
+    from sverify import routes as _routes
+
+    _readings = ibis.table({"sensor": "int64", "temp": "float64"}, name="readings")
+    _sums = _readings.group_by("sensor").aggregate(total=_readings.temp.sum())
+    _requires = {"readings": [_.temp >= 0.0, _.temp <= 60.0]}
+    sign_claim = sv.verify(_sums, requires=_requires, ensures=[_.total >= 0.0])
+    tolerant = sv.verify(
+        _sums,
+        requires=_requires,
+        ensures=[_.total >= 0.0, sv.equivalent(floats=sv.within(rel=1e-6))],
+    )
+    assert sign_claim.verdict == sv.Verdict.PROVED and tolerant.verdict != sv.Verdict.PROVED
+    print(_routes.choose(sign_claim, "duckdb").reason)
+    print(_routes.choose(tolerant, "duckdb").reason)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    With `sv.max_rows(1_000_000)` in `requires` the sum has a bound
+    (`abs=0.0067, rel=2.2e-10`). Now a claim about the value of the total,
+    such as `total <= 6e7`, is refused with the exit `sv.approx`, as the
+    average above was: the reference's total may sit at the limit where an
+    engine's lands a hair beyond it.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ### Timestamps and intervals
 
     Timestamps are microseconds since 1970 (UTC) in the model, and
