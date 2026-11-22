@@ -157,14 +157,19 @@ Every type a public name returns, holds or takes is public too, so
 `sverify.types` names the types a report and a refresh hold. The
 [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents each public name, and `tests/test_public_api.py` holds the
-reference, the `__all__`s and that closure equal. In the Python API "verify" proves
+reference, the `__all__`s and that closure equal. `sv.connect()` returns a
+`sverify.engines.Connection`, public there. In the Python API "verify" proves
 (`sv.verify`, `ContractedTransform.verify`) and "check" reads data
 (`check_requires`, `Report.check_inputs`, `proved_with_checks`); the
 commands named `check` (`sverify check`, `sverify-dbt check`) verify a
 project. A `reason` is a code and `why` is words, in the Python API and the JSON
 sverify writes per run (`Postcondition.reason` and `Postcondition.why`,
 `Route.why`); a stored table's columns and record keys keep their names (the
-quarantine table's `_reason`). Every other module is
+quarantine table's `_reason`).
+project. A check on data of a table of `sv.connect()` runs the plan the checker
+wrote for the condition. A check through Ibis, on a table of the caller's own
+Ibis backend, reads the condition as that backend does, and which rows it
+flags where backends differ is outside the 1.x promise (F219). Every other module is
 internal, whether or not its name starts with an underscore, and so are
 the maintainer tooling `sverify_dev` and the printed text of a report
 (`str(report)`); tools read the report through its attributes or its JSON.

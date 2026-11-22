@@ -26,7 +26,7 @@ The report (`sverify.verify`, `Report`):
 Refresh and status (`Node.refresh()`, `Node.status()`, `sv.group`):
 
 * `Refresh` holds a `StageRefresh` per node, each with its
-  `RefreshReport` (a `SourceRefresh` per source, `QuarantineReport`s and
+  `BatchRefresh` (a `SourceRefresh` per source, `QuarantineReport`s and
   `RetentionReport`s).
 * `Status` holds a `NodeStatus` per node; `Group` is what `sv.group`
   returns.
@@ -52,7 +52,7 @@ from sverify.conditions import (
     Unique,
 )
 from sverify.counterexample import Counterexample
-from sverify.incremental import RefreshReport, SourceRefresh
+from sverify.incremental import BatchRefresh, SourceRefresh
 from sverify.nodes import Group, NodeStatus, Refresh, StageRefresh, Status
 from sverify.observation import Lenses, Within
 from sverify.report import ColumnFacts, Issue, Needed
@@ -62,6 +62,7 @@ from sverify.sql_model import SQLStep
 __all__ = [
     "Approx",
     "ArrivesWithin",
+    "BatchRefresh",
     "Postcondition",
     "ColumnFacts",
     "Counterexample",
@@ -79,7 +80,6 @@ __all__ = [
     "QuarantineReport",
     "References",
     "Refresh",
-    "RefreshReport",
     "RetentionReport",
     "Route",
     "RowsPer",

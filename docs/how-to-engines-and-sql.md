@@ -50,6 +50,11 @@ not proved, as `refresh` and `run` refuse it.
 
 `refresh(engine=...)` picks where a node's plans run; `sv.connect(engine=...)`
 and `engine=` on a transform pick where checks on data run.
+`semantics=` and `engine=` pair up: `semantics=` names the profile a plan is
+proved under, `engine=` the engine that runs it, and a
+[route](#routes-classes-and-profiles) carries the proof from the one to the
+other: `native` for `semantics="duckdb"` on `engine="duckdb"`, `translated`
+from the default `semantics="portable"`.
 `run(con, plan, "spark")` runs the Spark SQL on a local session, and
 `run(con, plan, session)` on one you pass (the `spark` extra). The generated SQL assumes
 the following about the warehouse:

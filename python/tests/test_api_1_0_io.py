@@ -38,6 +38,12 @@ def test_from_substrait_is_a_classmethod_of_report() -> None:
     exported = _quiet(sv.verify, t.select("k")).to_substrait()
     assert _quiet(sv.Report.from_substrait, exported).verdict == sv.Verdict.PROVED
     assert not hasattr(sv, "from_substrait")
+    # The one way to read a stored plan back (#2344): no module-level twin.
+    from sverify import substrait_export
+
+    assert not {"recheck", "from_substrait"} & set(substrait_export.__all__)
+    assert not hasattr(substrait_export, "recheck")
+    assert not hasattr(substrait_export, "from_substrait")
 
 
 # -- A2: condition arguments --------------------------------------------------------

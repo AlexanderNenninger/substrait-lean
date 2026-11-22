@@ -17,6 +17,7 @@ import Sverify.DuckDB.Lift.Reference.Math
 import Sverify.DuckDB.Lift.Reference.Table
 import Sverify.DuckDB.LiftCache
 import Sverify.DuckDB.LiftHint
+import Sverify.DuckDB.LiftRefines
 import Sverify.DuckDB.LiftSearch
 import Sverify.DuckDB.Lowering
 import Sverify.DuckDB.LoweringCache
@@ -27,6 +28,7 @@ import Sverify.DuckDB.LoweringOn.Guards
 import Sverify.DuckDB.LoweringOn.Integers
 import Sverify.DuckDB.LoweringOn.Math
 import Sverify.DuckDB.LoweringOn.Native
+import Sverify.DuckDB.LoweringOn.Other
 import Sverify.DuckDB.LoweringOn.Powers
 import Sverify.DuckDB.LoweringOn.Table
 import Sverify.DuckDB.LoweringSchemas

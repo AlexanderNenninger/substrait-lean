@@ -99,7 +99,7 @@ reference:
       - types.Group
       - types.Refresh
       - types.StageRefresh
-      - types.RefreshReport
+      - types.BatchRefresh
       - types.SourceRefresh
       - types.QuarantineReport
       - types.RetentionReport

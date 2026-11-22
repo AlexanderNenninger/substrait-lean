@@ -3,7 +3,7 @@ plan it was given, for every verified coverage case and catalogue query, in
 every SQL dialect (#821)."""
 
 from _repo import needs_repo
-from sverify_dev.plan_size import BOUND, over, plan_nodes, sizes, sql_size
+from sverify_dev.plan_size import BOUND, over, plan_nodes, plan_windows, sizes, sql_size, sql_sorts
 
 
 @needs_repo
@@ -25,3 +25,10 @@ def test_measures():
     tokens, depth = sql_size("SELECT CASE WHEN a THEN CASE WHEN b THEN 1 END END FROM t", "duckdb")
     assert depth == 2
     assert tokens == 14
+
+
+def test_sorts_and_windows():
+    assert sql_sorts("SELECT ROW_NUMBER() OVER (ORDER BY a) FROM t ORDER BY b", "duckdb") == (2, 1)
+    window = {"windowFunction": {"sorts": [{}]}}
+    rel = {"window": {"windowFunctions": [{}, {}]}}
+    assert plan_windows({"project": {"expressions": [window, window]}, "input": rel}) == 4

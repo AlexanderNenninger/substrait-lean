@@ -18,7 +18,7 @@ admission:
 ignore_own_ci: true
 cancel_workflows: [ci.yml]
 on_failure: bisect
-stuck_runner_labels: [aws]
+stuck_runner_labels: [aws, hetzner]
 stuck_after: 600
 base_moved_ignore_prefix: "Regenerate generated"
 merge_method: merge

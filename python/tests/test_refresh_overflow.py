@@ -22,8 +22,11 @@ def test_a_node_whose_batch_overflows_writes_nothing(tmp_path) -> None:
     down = scaled(up).write(DeltaSink(str(tmp_path / "down")))
     report = scaled.report
     assert report is not None and [i.kind for i in report.assumed] == ["overflow to infinity"]
-    with pytest.raises(Exception, match="overflow to infinity"):
-        sv.group(up, down).refresh()
+    # The batch overflows: the node holds (ruling 258) and `down` writes nothing.
+    r = sv.group(up, down).refresh()
+    held = {s.node: s.held for s in r.nodes}
+    assert r.outcome == "held"
+    assert "a run-time check fired: overflow to infinity" in str(held[down.name])
     assert DeltaTable(str(tmp_path / "up")).to_pyarrow_table().num_rows == 1
     with pytest.raises(Exception):  # noqa: B017 - nothing was written
         DeltaTable(str(tmp_path / "down"))

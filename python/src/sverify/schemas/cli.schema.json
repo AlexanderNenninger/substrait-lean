@@ -9,7 +9,7 @@
     "format": {"description": "The version of this format. Format 1, before 1.0, named a write's inserts and deletes inserted and deleted, and a fix's why reason.", "const": 2},
     "sverify": {"description": "The version of sverify that wrote the document.", "type": "string"},
     "command": {"description": "The command.", "enum": ["check", "refresh", "explain"]},
-    "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh quarantined rows, 6 error, 7 refused (no route to the engine), 8 a refresh held a node.", "type": "integer", "minimum": 0, "maximum": 8},
+    "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh quarantined rows, 6 error, 7 refused (no route to the engine), 8 a refresh held a node (a condition failed, or a run-time check fired).", "type": "integer", "minimum": 0, "maximum": 8},
     "status": {"description": "The exit code in words. 1.x may add values.", "type": "string", "examples": ["proved", "not_proved", "usage", "unsupported", "budget_exceeded", "quarantined", "error", "refused", "held"]},
     "file": {"description": "The pipeline's file, as given.", "type": "string"},
     "target": {"description": "The node or transform asked for (file.py:<target>); null for the whole file.", "type": ["string", "null"]},

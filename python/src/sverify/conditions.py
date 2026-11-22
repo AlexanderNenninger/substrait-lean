@@ -1168,7 +1168,7 @@ class Inferred(str):
 
     text: str
     column: str | None = None
-    """The input column it bounds (set by `_render_needs`)."""
+    """The input column it bounds (set by `sverify.proposers.Infer`)."""
     fact: TextFact | None = None
     """For a text column's condition (#1506, D51): `"plain"` also rules out the vertical
     tab, `"upper_agreed"` and `"lower_agreed"` the scalars `UPPER` and `LOWER` raise on

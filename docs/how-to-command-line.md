@@ -193,9 +193,9 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 4 | time or memory budget exceeded |
 | 5 | a refresh committed with rows quarantined |
-| 6 | error: the file raised, I/O, a crash |
+| 6 | error: the file raised outside a run-time check, I/O, a crash |
 | 7 | refused: no route takes a proved node to the engine |
-| 8 | a refresh held a node |
+| 8 | a refresh held a node: a condition failed on the batch, or a run-time check fired, and the node committed nothing |
 
 With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](how-to-quarantine.md#bad-rows-quarantine-and-hold)).

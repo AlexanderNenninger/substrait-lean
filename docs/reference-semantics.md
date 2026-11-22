@@ -311,6 +311,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `date` | Days since 1970-01-01, proleptic Gregorian. | ✓ |
 | `timestamp` | Microseconds since 1970-01-01 00:00, no time zone. | ✓ |
 | `timestampTz` (an instant) | A timestamp with the time zone UTC: microseconds since 1970-01-01 00:00 UTC, its own kind ([D53](decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)). Compared, ordered, grouped, joined on and aggregated (`MIN`, `MAX`, `COUNT`) as an instant, and written back as one; calendar functions, interval arithmetic, casts to a date or a string, a naive timestamp in the same comparison and other zones are refused ([#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725)). The conversion with a naive timestamp at UTC keeps the microseconds (`UnFn.atUtc`), and a literal with an offset is an instant. DuckDB and Polars. | ✓ |
+| `timestamp(9)`, `timestampTz(9)` (nanoseconds) | Nanoseconds since 1970-01-01 00:00, which 64 bits bound to 1677-09-21 to 2262-04-11: kinds of their own ([D61](decisions.md#d61-timestamp-precisions)). Compared, ordered, grouped, joined on and aggregated (`MIN`, `MAX`, `COUNT`) among their kind, and written back with every digit; calendar functions, interval arithmetic, casts and a microsecond timestamp or a literal in the same comparison are refused ([#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323)). Seconds and milliseconds are read as microseconds. DuckDB and Polars; Spark holds microseconds ([`spark-timestamp-precision`](../engines/spark/facts/spark-timestamp-precision.json)) and refuses the column. | ✓ |
 | Timestamp delta | `a.delta(b, unit)` is the number of unit boundaries crossed from `b` to `a` ([D58](decisions.md#d58-a-timestamps-delta-counts-the-unit-boundaries-crossed)): each side floored to its unit, the difference divided by the unit. Units from microsecond to day; week, month, quarter, year and nanosecond are refused. DuckDB. | ✓ on DuckDB |
 | Intervals | Day-to-second intervals are microseconds; year-to-month intervals are months. Adding months keeps the day of month. | ✓ |
 | An integer's count of an interval | `n.as_interval(unit)` and `n.cast("interval(unit)")` of weeks, days, hours, minutes or seconds, added to or subtracted from a date or a timestamp, are `n` times the unit's microseconds, a checked multiplication: past ±106,751,991 days (64 bits of microseconds) it raises overflow, and the report shows the issue; a NULL count gives NULL ([#1926](https://github.com/AlexanderNenninger/substrait-lean/issues/1926)). A count of months or years, and other uses of the interval, are refused. | ✓ |
@@ -374,6 +375,9 @@ construct or lists it:
 - A cast of a decimal to an integer rounds half away from zero on DuckDB. The
   lift reads it, under both semantics, as the rescale to scale 0 (which rounds
   half away from zero) and the exact cast (#322).
+- `CAST(DECIMAL(p, p) AS VARCHAR)`: DuckDB prints `.500` and the reference `0.500`, so the lift
+  refuses it, under both semantics. The message names the cast to `DECIMAL(p + 1, p)` first
+  ([D72](decisions.md#d72-decimal-text), ruling 245).
 - `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
   is NULL here and NaN on DuckDB. `Report.dialect_differences` lists it.
 - `list_contains_null_needle`: `list_contains([], NULL)` is NULL here and FALSE
