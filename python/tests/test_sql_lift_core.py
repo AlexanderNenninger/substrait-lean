@@ -148,6 +148,45 @@ def test_nested_double_arithmetic_lifts_to_a_linear_plan():
     assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
 
 
+#: A BETWEEN whose operand or bound divides by `y`, written so that the lift
+#: binds the division below the SELECT list (#2338) or leaves it in place, under
+#: a `CASE` that every row takes.
+BETWEEN_DIVISIONS = [
+    "x BETWEEN 1 // y AND 2",
+    "(1 // y) BETWEEN 0 AND 2",
+    "((1 // y) BETWEEN 0 AND 2)::INT BETWEEN 0 AND 1",
+    "CASE WHEN x IS NOT NULL THEN (1 // y) BETWEEN 0 AND 2 END",
+]
+
+
+def _duckdb_and_lean(query: str, rows: list[tuple]) -> tuple[list | None, list | None]:
+    """The values of `query` over `t(x, y)` in DuckDB and in the Lean evaluator
+    of the lifted plan; None where it raises."""
+    table = pa.table({"x": [r[0] for r in rows], "y": [r[1] for r in rows]})
+    try:
+        expected: list | None = duckdb_result(query, {"t": table}).column("b").to_pylist()
+    except duckdb.Error:
+        expected = None
+    plan = json.dumps(lift(query, {"t": ibis.Schema.from_pyarrow(table.schema)}).plan)
+    inlined = json.dumps(slt._typed_inline(json.loads(plan), {"t": rows}, None))
+    try:
+        got: list | None = [r[0] for r in lean_values(inlined)]
+    except LeanRaised:
+        got = None
+    return expected, got
+
+
+@pytest.mark.parametrize("operand", BETWEEN_DIVISIONS)
+def test_a_division_by_zero_in_a_between_raises_shared_or_in_place(operand):
+    """A divisor of zero raises in DuckDB and in Lean whether the lift binds the
+    division to a column or writes it in place; the other rows agree (#2338)."""
+    query = f"SELECT {operand} AS b FROM t"
+    zero = _duckdb_and_lean(query, [(1, 1), (5, 0)])
+    assert zero == (None, None), query
+    ok = _duckdb_and_lean(query, [(1, 1), (5, 2), (None, 1)])
+    assert ok[0] is not None and ok[0] == ok[1], query
+
+
 def test_nested_double_arithmetic_checks_quickly():
     # The check end to end, in a subprocess with a timeout: six divisions took
     # 193 s before #1952, ten now take a few seconds.
