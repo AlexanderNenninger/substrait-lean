@@ -155,11 +155,51 @@ def classify(refusal: str | None) -> str:
     return CLASSES[4]
 
 
-def measure(name: str) -> dict[str, Any]:
+def apply_types(project: Path, types: Path, origins: set[str]) -> int:
+    """Give the project's sources the column types in `types` (a sources YAML
+    whose columns say where each type comes from: `catalog`, `declared` or
+    `inferred`), for the columns whose origin is in `origins`. The number of
+    columns typed."""
+    wanted: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for src in yaml.safe_load(types.read_text(encoding="utf-8")).get("sources", []):
+        for table in src.get("tables", []):
+            cols = [c for c in table.get("columns", []) if c.get("origin") in origins]
+            wanted[(src["name"], table["name"])] = cols
+    typed = 0
+    for path in sorted(project.rglob("*.y*ml")):
+        if "dbt_packages" in path.parts or "target" in path.parts:
+            continue
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            continue
+        if not isinstance(data, dict) or not isinstance(data.get("sources"), list):
+            continue
+        changed = False
+        for src in data["sources"]:
+            for table in src.get("tables") or []:
+                cols = wanted.get((src.get("name"), table.get("name")))
+                if not cols:
+                    continue
+                have = {c["name"]: c for c in table.get("columns") or []}
+                for c in cols:
+                    have.setdefault(c["name"], {"name": c["name"]})["data_type"] = c["data_type"]
+                    typed += 1
+                table["columns"] = list(have.values())
+                changed = True
+        if changed:
+            path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return typed
+
+
+def measure(
+    name: str, types: Path | None = None, origins: frozenset[str] = frozenset()
+) -> dict[str, Any]:
     source, build_args = PROJECTS[name]
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / name)
         _dbt(project, "deps")
+        typed = apply_types(project, types, set(origins)) if types else 0
         started = time.monotonic()
         left_out: list[str] = []
         if build_args is None:
@@ -195,6 +235,7 @@ def measure(name: str) -> dict[str, Any]:
         "repo": source.repo,
         "commit": source.commit,
         "dbt": result.dbt_version,
+        "source_columns_typed": {"origins": sorted(origins), "columns": typed},
         "models": {
             "total": len(models),
             "read": sum(1 for m in models if not m.refused),
@@ -228,12 +269,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("project", nargs="?", choices=sorted(PROJECTS))
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--types", type=Path, help="a sources YAML with column types to apply")
+    parser.add_argument(
+        "--origins",
+        nargs="+",
+        default=["catalog", "declared", "inferred"],
+        help="which origins of the types file to apply",
+    )
     args = parser.parse_args(argv)
     if args.list or not args.project:
         for name, (src, _) in PROJECTS.items():
             print(f"{name}  {src.repo}@{src.commit[:12]}")
         return 0
-    print(json.dumps(measure(args.project), indent=2))
+    print(json.dumps(measure(args.project, args.types, frozenset(args.origins)), indent=2))
     return 0
 
 
