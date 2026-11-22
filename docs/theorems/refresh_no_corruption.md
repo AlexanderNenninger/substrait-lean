@@ -28,11 +28,11 @@ theorem Refresh.no_corruption {s : World} (h : Reachable s) : s.tbl ≠ .corrupt
 - `s`, `h`: a state of the protocol, and the assumption that it is
   reachable (`Reachable`): the empty state, or a state a step of the protocol
   or of its environment leads to from a reachable one. The steps are a
-  process starting, stopping or refreshing, preparing a write, landing it
-  (with the acknowledgement lost, or failing, or finding a conflict), a
-  crash, the late landing of a crashed process's write, the source changing
-  (`sourceChanges`), another application writing the sink (`foreignWrite`)
-  and a deploy.
+  process starting, stopping or refreshing, preparing a write, landing it,
+  landing it with the acknowledgement lost, a write failing, a write meeting
+  a conflict (the log moved on), a crash, the late landing of a crashed
+  process's write, the source changing (`sourceChanges`), another
+  application writing the sink (`foreignWrite`) and a deploy.
 - The conclusion: the sink's table `s.tbl` is not `corrupt`, the state a
   change written on the wrong table leaves.
 

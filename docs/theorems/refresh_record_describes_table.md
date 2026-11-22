@@ -28,11 +28,11 @@ theorem Refresh.record_describes_table {s : World} (h : Reachable s) (hk : kept 
 - `s`, `h`: a state of the protocol, and the assumption that it is
   reachable (`Reachable`): the empty state, or a state a step of the protocol
   or of its environment leads to from a reachable one. The steps are a
-  process starting, stopping or refreshing, preparing a write, landing it
-  (with the acknowledgement lost, or failing, or finding a conflict), a
-  crash, the late landing of a crashed process's write, the source changing
-  (`sourceChanges`), another application writing the sink (`foreignWrite`)
-  and a deploy.
+  process starting, stopping or refreshing, preparing a write, landing it,
+  landing it with the acknowledgement lost, a write failing, a write meeting
+  a conflict (the log moved on), a crash, the late landing of a crashed
+  process's write, the source changing (`sourceChanges`), another
+  application writing the sink (`foreignWrite`) and a deploy.
 - `hk`: the newest commit of the sink's log is the node's own (`kept`).
 - The conclusion: the sink has a record `r`, the one the log reports
   (`record s.log`), and the table is the rows of that record's plan and
@@ -63,8 +63,9 @@ theorem Refresh.record_describes_table {s : World} (h : Reachable s) (hk : kept 
 
 ## Its side conditions
 
-Reachability is the only hypothesis. That the writers decide as `Refresh.next`
-and that the source is durable are the assumptions the model is built on;
+Reachability and `hk` are the hypotheses. The run decides `hk` from the sink's
+log (`last_record(...).kept`). That the writers decide as `Refresh.next` and
+that the source is durable are the assumptions the model is built on;
 `Refresh.lean`'s header lists them.
 
 ## Example
