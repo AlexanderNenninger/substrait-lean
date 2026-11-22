@@ -222,7 +222,7 @@ def _(mo):
     frames the frames it touches. Left joins (a left join's NULL-padded rows
     must be retracted when a match turns up later), `LIMIT` (it depends on
     row order) and the rest are recomputed and diffed on every refresh
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). Contracts work on all of them, and the result is
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-nodes.md#nodes-composing-storing-refreshing)). Contracts work on all of them, and the result is
     correct; a recomputed node costs a full run per refresh. `node.status()`
     says which kind of node you have:
     """)
@@ -279,7 +279,7 @@ def _(mo):
     any other: `view.table` is an Ibis table to query further, and
     `to_arrow()`, `to_polars()` and `to_pandas()` return its rows. Nodes
     are built from Ibis transforms, or from a SQL string with `sv.sql(query)`
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-nodes.md#nodes-composing-storing-refreshing)).
 
     ### Delta rules in brief
 
@@ -698,7 +698,7 @@ def _(mo):
     rest through. With `on_violation="quarantine"` on the transform (or on
     the source), the refresh sets aside the rows that break a precondition,
     with the reason, and the node runs on the others
-    ([quarantine and hold](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#bad-rows-quarantine-and-hold)).
+    ([quarantine and hold](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-quarantine.md#bad-rows-quarantine-and-hold)).
     A row is set aside when a row condition is not TRUE on it, or when
     another row shares its key: both rows of a repeated `id` go, so the rule
     needs no order between them. Every precondition holds on the rows that
