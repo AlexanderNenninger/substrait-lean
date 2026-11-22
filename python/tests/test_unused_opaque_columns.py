@@ -2,6 +2,7 @@
 as `verify` does (`ibis_substrait.prune`): refresh and a transform with
 `requires` need not model a column no step mentions."""
 
+import ibis
 import pyarrow as pa
 import pytest
 from deltalake import write_deltalake
@@ -11,6 +12,9 @@ import sverify as sv
 from _pipelines import rows
 from sverify._unsupported import Unsupported
 from sverify.io import DeltaSource, StaticSource
+
+#: Ibis types of the opaque columns `verify` reads (D67).
+OPAQUE_DTYPES = {"map": "map<string, string>", "binary": "binary"}
 
 OPAQUE = {
     "map": pa.array([[("a", "b")], []], pa.map_(pa.string(), pa.string())),
@@ -82,3 +86,16 @@ def test_a_carried_opaque_column_refreshes(kind):
 def test_a_read_opaque_column_is_still_refused():
     with pytest.raises(Unsupported, match="ORDER BY it"):
         StaticSource(table("map"), name="t").pipe(lambda t: t.order_by("extra")).refresh()
+
+
+@pytest.mark.parametrize("kind", list(OPAQUE_DTYPES))
+def test_a_sql_condition_ignores_an_opaque_column_it_does_not_read(kind):
+    """#1958: a SQL `requires` or `ensures` is lifted over the whole table, and
+    proves over one with a map or binary column it does not read."""
+    t = ibis.table({"id": "int64", "amt": "int64", "extra": OPAQUE_DTYPES[kind]}, name="t")
+    report = sv.verify(
+        t.select("id", "amt", "extra"),
+        requires={"t": ['"id" IS NOT NULL', '"amt" >= 0']},
+        ensures=['"id" IS NOT NULL', '"amt" >= 0'],
+    )
+    assert report.verdict == sv.Verdict.PROVED
