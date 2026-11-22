@@ -198,7 +198,7 @@ def Profile.polars.obs : ObsTable := [
   -- (polars-scalar-divisor).
   (some "fp.mod", "division_type", ({ ObsRow.native ["polars-double-modulus", "polars-scalar-divisor"] with
     cls := .refused
-    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
+    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference, and Polars's lowering refuses it (`Lowering.polars_no_fmod`: no lowered plan calls it). Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
