@@ -36,7 +36,7 @@ def _tables(
         "choice": {"kind": "oneOf", "behaviours": ["ANY"]},
         "class": "refines",
         "evidence": "proved",
-        "facts": ["polars-sum-float"],
+        "facts": ["polars-sum-float-streaming"],
     }
     if rerun is not None:
         row["rerun"] = rerun

@@ -201,7 +201,7 @@ def test_float_sum_and_avg_match_lean(measure):
             or math.isclose(want, got, abs_tol=1e-6)
             or (math.isnan(want) and math.isnan(got))
         ), (lean, polars)
-    # One zero: Polars keeps -0.0 for a group of one (polars-zero-sign).
+    # One zero: Polars keeps -0.0 for a group of one (polars-zero-sign-streaming).
     zeros = [m for g, m in polars if g in (3, 4)]
     assert all(math.copysign(1.0, z) == 1.0 for z in zeros)
 
@@ -384,7 +384,7 @@ def test_substring_with_a_negative_start_matches_lean(start):
 
 def test_double_group_keys_have_one_zero_and_one_nan():
     """B2: Polars groups `-0.0` with `0.0` but keeps the first zero it sees
-    as the key (polars-zero-sign); the reference has one zero."""
+    as the key (polars-zero-sign-streaming); the reference has one zero."""
     df = pl.DataFrame({"x": [-0.0, 0.0, math.nan, -math.nan]})
     keys = df.group_by("x", maintain_order=True).len()["x"].to_list()
     assert math.copysign(1.0, keys[0]) == -1.0
@@ -682,7 +682,7 @@ def test_a_subnormal_divisor_is_refused():
 
 
 def test_a_difference_of_zeros_is_the_one_zero():
-    """polars-zero-sign: with more than one row, the in-memory engine
+    """polars-zero-sign-streaming: on a morsel of two rows or more, Polars
     computes `0.0 - x` as `-x`; the sum and difference go through `canon`."""
     rows = [(0, 0.0), (1, 0.0), (2, 0.0)]
     con = connect()
