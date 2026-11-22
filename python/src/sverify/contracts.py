@@ -85,7 +85,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _decimals, _engines, _hooks, _pipe, _stages
+from sverify import _engines, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._dialect import DialectDifference
@@ -135,7 +135,6 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     unique,
 )
 from sverify.counterexample import Counterexample
-from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
     Connection,
     Engine,
@@ -144,6 +143,13 @@ from sverify.engine import (
     run_checker,
 )
 from sverify.observation import Observation
+from sverify.proposers import (
+    _EPOCH,
+    INFER,
+    SEARCH,
+    Obligation,
+    _text_condition,
+)
 from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DECIMAL_ARG,
     _EPOCH_DAY,
@@ -321,250 +327,6 @@ def _implied_sql(raw: Sequence[dict], schemas: Mapping[str, Any]) -> dict[str, s
     return out
 
 
-def _nice(x: int, up: bool) -> tuple[int, str]:
-    """A round number near `x`, at or above it if `up`, else at or below,
-    and how to write it: `2**62`, `3 * 10**18` or `1_000`."""
-    if x < 0:
-        v, text = _nice(-x, not up)
-        return -v, f"-{text}" if v else "0"
-    if x < 10**6:
-        return x, f"{x:_}"
-    k = x.bit_length() - 1
-    two = 2 ** (k + 1 if up and 2**k < x else k)
-    e = len(str(x)) - 1
-    d = x // 10**e + (1 if up and x % 10**e else 0)
-    ten = d * 10**e
-    better = min if up else max
-    v = better(two, ten)
-    if v == two:
-        return v, f"2**{v.bit_length() - 1}"
-    d, e = (v // 10**e, e) if v // 10**e < 10 else (1, e + 1)
-    return v, (f"10**{e}" if d == 1 else f"{d} * 10**{e}")
-
-
-_EPOCH = datetime(1970, 1, 1)
-
-
-_US_MIN = (datetime.min - _EPOCH) // timedelta(microseconds=1)
-
-
-_US_MAX = (datetime.max - _EPOCH) // timedelta(microseconds=1)
-
-
-def _year_of(code: int, per_year_unit: timedelta) -> int:
-    """The year of a timestamp (microseconds) or date (days) code, clamped to
-    Python's years."""
-    us = code * (per_year_unit // timedelta(microseconds=1))
-    if us < _US_MIN:
-        return 1
-    if us > _US_MAX:
-        return 9999
-    return (_EPOCH + timedelta(microseconds=us)).year
-
-
-def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> list[Inferred]:
-    """`lo <= col <= hi` as conditions, rounded inward to round numbers (or
-    whole years), each side its own condition. Empty for a type the
-    inference does not write bounds for."""
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    sql = '"' + col.replace('"', '""') + '"'
-    # NULL cannot overflow, so a bound lets it pass.
-    null = f"{sql} IS NULL OR " if dtype.nullable else ""
-    out = []
-    if dtype.is_integer():
-        # A side at or past 64 bits holds for every integer column, and its
-        # constant (2**63) would be a HUGEINT, which the lift refuses (#616).
-        # A narrower column's own limits stay, the proof needs them stated,
-        # each a constant of the column's type, so it is a fact about the
-        # column (`v <= 127` on a TINYINT, not `v < 128`).
-        if lo is not None and lo <= -(2**63):
-            lo = None
-        if hi is not None and hi >= 2**63 - 1:
-            hi = None
-        if lo is not None:
-            if lo <= dtype.bounds.lower:
-                v, text = dtype.bounds.lower, f"{dtype.bounds.lower:_}"
-            else:
-                v, text = _nice(lo, up=True)
-            out.append(Inferred(f"{null}{sql} >= {v}", f"({ref} >= {text})"))
-        if hi is not None:
-            if hi >= dtype.bounds.upper:
-                top = dtype.bounds.upper
-                out.append(Inferred(f"{null}{sql} <= {top}", f"({ref} <= {top:_})"))
-            else:
-                v, text = _nice(hi + 1, up=False)
-                out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
-        return out
-    if dtype.is_floating():
-        return _double_conditions(ref, sql, null, lo, hi)
-    if dtype.is_decimal() and dtype.scale is not None:
-        scale = dtype.scale
-
-        def dec(k: int) -> str:
-            text = f"{_decimals.scaled(k, -scale):.{scale}f}"
-            if scale == 0 and abs(k) >= 2**63:
-                # A whole number past 64 bits reads as a HUGEINT, which the
-                # lift refuses (#1252); cast from a string it stays a decimal.
-                return f"CAST('{text}' AS DECIMAL(38, 0))"
-            return text
-
-        # Large bounds as round whole numbers (`5 * 10**35`), small ones exactly.
-        if lo is not None:
-            if abs(lo) >= 10 ** (scale + 6):
-                v, text = _nice(-((-lo) // 10**scale), up=True)
-                out.append(Inferred(f"{null}{sql} >= {dec(v * 10**scale)}", f"({ref} >= {text})"))
-            else:
-                out.append(Inferred(f"{null}{sql} >= {dec(lo)}", f"({ref} >= {dec(lo)})"))
-        if hi is not None:
-            if abs(hi) >= 10 ** (scale + 6):
-                v, text = _nice(hi // 10**scale + 1, up=False)
-                out.append(Inferred(f"{null}{sql} < {dec(v * 10**scale)}", f"({ref} < {text})"))
-            else:
-                out.append(Inferred(f"{null}{sql} <= {dec(hi)}", f"({ref} <= {dec(hi)})"))
-        return out
-    if dtype.is_timestamp() and dtype.timezone is None:
-        unit, kind, py = timedelta(microseconds=1), "TIMESTAMP", "datetime"
-    elif dtype.is_date():
-        unit, kind, py = timedelta(days=1), "DATE", "date"
-    else:
-        return []
-
-    def code(year: int) -> int:
-        return (datetime(year, 1, 1) - _EPOCH) // unit
-
-    def lit(year: int) -> str:
-        day = date(year, 1, 1)
-        return f"{kind} '{day.isoformat()}{' 00:00:00' if kind == 'TIMESTAMP' else ''}'"
-
-    if lo is not None and hi is not None and lo > hi:
-        return []  # no value meets it: nothing to suggest
-    if lo is not None:
-        y = _year_of(lo, unit)
-        if code(y) < lo:
-            y += 1
-        if y > 9999 and lo > (datetime.max - _EPOCH) // unit:
-            return []  # past Python's last datetime: no value meets it
-        if y > 9999:
-            # Inside the last year: no whole year to round up to, so the bound
-            # itself, as Python's last datetime or date allows.
-            exact = _EPOCH + lo * unit
-            text = exact.isoformat(sep=" ") if kind == "TIMESTAMP" else exact.date().isoformat()
-            args = (
-                ", ".join(map(str, exact.timetuple()[:6]))
-                if kind == "TIMESTAMP"
-                else (f"{exact.year}, {exact.month}, {exact.day}")
-            )
-            out.append(Inferred(f"{null}{sql} >= {kind} '{text}'", f"({ref} >= {py}({args}))"))
-        else:
-            out.append(Inferred(f"{null}{sql} >= {lit(y)}", f"({ref} >= {py}({y}, 1, 1))"))
-    if hi is not None:
-        last = (
-            datetime(9999, 12, 31, 23, 59, 59, 999999)
-            if kind == "TIMESTAMP"
-            else datetime(9999, 12, 31)
-        )
-        if hi >= (last - _EPOCH) // unit:
-            # Up to the reference's last one (D32): 9999-12-31 itself holds.
-            if kind == "TIMESTAMP":
-                text, args = "9999-12-31 23:59:59.999999", "9999, 12, 31, 23, 59, 59, 999999"
-            else:
-                text, args = "9999-12-31", "9999, 12, 31"
-            out.append(Inferred(f"{null}{sql} <= {kind} '{text}'", f"({ref} <= {py}({args}))"))
-        else:
-            y = _year_of(hi + 1, unit)
-            out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
-    return out
-
-
-# Codes of the smallest positive and the largest finite double.
-_TINY_CODE = 1
-
-
-_MAX_CODE = 2 * MAX_MAG + 1
-
-
-def _double_conditions(
-    ref: str, sql: str, null: str, lo: int | None, hi: int | None
-) -> list[Inferred]:
-    """`lo <= col <= hi` on double codes: `> 0` for the smallest positive
-    double, round powers of two near ±2⁶³ (a cast to BIGINT), and the
-    decoded doubles otherwise."""
-
-    def num(x: float) -> str:
-        if x.is_integer() and abs(x) >= 1e6:
-            return _nice(int(x), up=x < 0)[1]
-        return repr(x)
-
-    out = []
-    if lo is not None:
-        if lo == _TINY_CODE:
-            out.append(Inferred(f"{null}{sql} > 0", f"({ref} > 0)"))
-        elif lo > -_MAX_CODE:
-            x = decode_double(lo)
-            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {num(x)})"))
-        else:
-            x = decode_double(-_MAX_CODE)
-            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {x!r})"))
-    if hi is not None:
-        nxt = decode_double(hi + 1)
-        if hi < _MAX_CODE and nxt.is_integer() and abs(nxt) >= 1e6:
-            # Just below a round number: `< 2**63`.
-            out.append(Inferred(f"{null}{sql} < {nxt!r}", f"({ref} < {num(nxt)})"))
-        else:
-            x = decode_double(min(hi, _MAX_CODE))
-            out.append(Inferred(f"{null}{sql} <= {x!r}", f"({ref} <= {x!r})"))
-    return out
-
-
-def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
-    """`col != k`, for a code `k` of the column's type (a divisor's 0)."""
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    sql = '"' + col.replace('"', '""') + '"'
-    null = f"{sql} IS NULL OR " if dtype.nullable else ""
-    if dtype.is_integer():
-        v = str(k)
-    elif dtype.is_floating():
-        v = repr(decode_double(k))
-    elif dtype.is_decimal() and dtype.scale is not None:
-        v = f"{_decimals.scaled(k, -dtype.scale):.{dtype.scale}f}"
-    else:
-        return None
-    return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
-
-
-def _not_null_condition(col: str) -> Inferred:
-    """`col IS NOT NULL` (a divisor's `COUNT` of the column)."""
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    sql = '"' + col.replace('"', '""') + '"'
-    return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
-
-
-def _text_condition(col: str, fact: TextFact) -> Inferred:
-    """`col` holds text of the declared `fact` (NULL passes): `"ascii"`, the precondition
-    under which `ILIKE`, `reverse`, `ascii` and `levenshtein` agree across engines
-    (#1506); `"plain"` for a regular expression with `\\w`, `\\d`, `\\s` or `\\b`, no
-    vertical tab either (`Text.classesDiffer`); `"upper_agreed"` and `"lower_agreed"`,
-    in the agreed alphabet of `UPPER` or `LOWER`: no scalar the engines map differently
-    (`Text.upperRaises`, `lowerRaises`, D51).
-    Its SQL is the writers' guard in the default engine's dialect, the one the data is
-    checked on; its Ibis form is one regular expression with the same characters."""
-    from sverify.sql.core import ascii_text, case_class
-
-    dialect = _engines.sql_dialect()
-    sql = '"' + col.replace('"', '""') + '"'
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    if fact in ("upper_agreed", "lower_agreed"):
-        which: Literal["upper", "lower"] = "upper" if fact == "upper_agreed" else "lower"
-        bad = case_class(which)
-        cond = f"NOT {dialect().case_differs(sql, which)}"
-    else:
-        bad = r"[^\x00-\x7f]|\x0b" if fact == "plain" else r"[^\x00-\x7f]"
-        cond = ascii_text(dialect(), sql, fact == "plain")
-    out = Inferred(f"{sql} IS NULL OR {cond}", f"(~{ref}.re_search({bad!r}))")
-    out.fact = fact
-    return out
-
-
 def _squeeze(code: str) -> str:
     """Ibis code without spaces or one pair of outer parentheses."""
     code = "".join(code.split())
@@ -605,37 +367,9 @@ def _suggested(
     tables whose `requires` the caller states; none for a split or a why."""
     if bound is None or bound["why"] is not None or bound["split"]:
         return {}
-    conds = _render_needs(bound["needs"], schemas)
+    proposal = INFER.propose(Obligation("precondition", schemas, {"needs": bound["needs"]}))
+    conds = {} if proposal is None else proposal.value
     return {t: list[Condition](cs) for t, cs in conds.items() if t in assumable and cs}
-
-
-def _render_needs(
-    needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
-) -> dict[str, list[Inferred]]:
-    """The conditions of a list of `{table, col, lo, hi}`, `{table, col,
-    ne}` or `{table, col, not_null}` (column positions, integer codes as
-    strings), per table."""
-    out: dict[str, list[Inferred]] = {}
-    for n in needs:
-        schema = schemas.get(n["table"])
-        if schema is None or n["col"] >= len(schema):
-            continue
-        col = list(schema)[n["col"]]
-        have = out.setdefault(n["table"], [])
-        if "text" in n:
-            new = [_text_condition(col, n["text"])]
-        elif n.get("not_null"):
-            new = [_not_null_condition(col)] if schema[col].nullable else []
-        elif "ne" in n:
-            c = _ne_condition(col, schema[col], int(n["ne"]))
-            new = [] if c is None else [c]
-        else:
-            lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
-            new = _bound_conditions(col, schema[col], lo, hi)
-        for c in new:
-            c.column = col
-        have += [c for c in new if c not in have]
-    return {t: cs for t, cs in out.items() if cs}
 
 
 def _why_hint(why: str, show: Callable[[str], str]) -> str:
@@ -662,7 +396,7 @@ def _hint(
         return None
     if bound["why"] is not None:
         return _why_hint(bound["why"], show)
-    conds = _render_needs(bound["needs"], schemas)
+    conds = INFER.conditions(bound["needs"], schemas)
     if not conds:
         return None
 
@@ -1236,7 +970,7 @@ def _infer_bounds(
     stated = [c.proved for c in report.ensures]
     stated_facts = report.facts
     extra = {
-        t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
+        t: cs for t, cs in INFER.conditions(raw, schemas).items() if inputs is None or t in inputs
     }
     if extra:
         guarded = and_or_hints(report.issues, transform)
@@ -1795,16 +1529,22 @@ def _prove_once(
         if not counterexamples:
             return None
         with _stages.stage("counterexamples"):
-            return search_counterexample(
-                schemas,
-                req_named,
-                keys,
-                transform_plan,
-                target,
-                budget=counterexamples,
-                references=foreign_keys,
-                output_types=out_types,
+            found = SEARCH.propose(
+                Obligation(
+                    "counterexample",
+                    schemas,
+                    {
+                        "requires": req_named,
+                        "keys": keys,
+                        "transform": transform_plan,
+                        "ensures": target,
+                        "budget": counterexamples,
+                        "references": foreign_keys,
+                        "output_types": out_types,
+                    },
+                )
             )
+            return None if found is None else found.value
 
     def next_key() -> tuple[bool, Counterexample | None]:
         ok = next(key_results)["proved"]
@@ -1883,7 +1623,7 @@ def _prove_once(
             # reference's form (`floorDivOf`), as does a FLOOR option.
             floor=dialect == "ibis" or '"FLOOR"' in plan_text,
             hint=lambda b: _hint(b, schemas, assumable, show),
-            needs=lambda b: _render_needs(b["needs"], schemas),
+            needs=lambda b: INFER.conditions(b["needs"], schemas),
             column=lambda e: _sum_column(transform, e),
             shown=shown,
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
