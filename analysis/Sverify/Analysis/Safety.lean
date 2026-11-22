@@ -512,11 +512,16 @@ def Bound.atLeastOne (y : Bound) : Bool :=
 /-- Does a bound show its doubles at most `1` in magnitude? -/
 def Bound.atMostOne (y : Bound) : Bool := y.within (FloatCode.exactCode (-1)) (FloatCode.exactCode 1)
 
-/-- Is the result at most the first argument in magnitude: a quotient by a
-double of at least `1`, or a product with one of at most `1` (#1787)? -/
+/-- Does a bound show its doubles zero? -/
+def Bound.isZero (y : Bound) : Bool := y.within 0 0
+
+/-- Is the result at most an argument in magnitude: a quotient by a double of
+at least `1`, a product with one of at most `1`, or a sum or difference with a
+zero, such as the `+ 0.0` that canonicalises a zero's sign (#1787)? -/
 def BinFn.shrinks : BinFn → Bound → Bound → Bool
   | .fdiv, _, y | .fdivIeee, _, y => y.atLeastOne
   | .fmul, x, y => x.atMostOne || y.atMostOne
+  | .fadd, x, y | .fsub, x, y => x.isZero || y.isZero
   | _, _, _ => false
 
 /-- Do the arguments' bounds show the result finite (#582)? Their bounds
@@ -556,6 +561,14 @@ theorem Bound.atLeastOne_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.atLe
   · have := FloatCode.scaled_mono (Bound.le_allLe h hy); omega
 
 omit [Boxes.Ambient] in
+theorem Bound.isZero_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.isZero = true) :
+    FloatCode.scaled c = 0 := by
+  simp only [Bound.isZero, Bound.within, Bool.and_eq_true] at h
+  have h1 := Bound.allGe_le h.1 hy
+  have h2 := Bound.le_allLe h.2 hy
+  rw [show c = 0 by omega]; rfl
+
+omit [Boxes.Ambient] in
 theorem Bound.atMostOne_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.atMostOne = true) :
     (FloatCode.scaled c).natAbs ≤ FloatCode.unitK := by
   have e1 := FloatCode.scaled_exactCode 1
@@ -583,6 +596,16 @@ theorem BinFn.shrinks_fin {f : BinFn} {x y : Bound} {a b r : Int} (hx : x.Mem (F
     simp only [Bool.or_eq_true] at hs
     exact FloatCode.fmul_fin_of_le_one fa fb
       (hs.imp (Bound.atMostOne_scaled hx) (Bound.atMostOne_scaled hy))
+  case fadd =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fadd_canon]
+    simp only [Bool.or_eq_true] at hs
+    exact FloatCode.fadd_fin_of_zero fa fb (hs.imp (Bound.isZero_scaled hx) (Bound.isZero_scaled hy))
+  case fsub =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fsub_canon]
+    simp only [Bool.or_eq_true] at hs
+    exact FloatCode.fsub_fin_of_zero fa fb (hs.imp (Bound.isZero_scaled hx) (Bound.isZero_scaled hy))
   case fdiv =>
     simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
     rw [← FloatCode.fdiv_canon_left]
