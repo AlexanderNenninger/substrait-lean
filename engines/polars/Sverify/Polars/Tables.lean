@@ -51,6 +51,7 @@ def Profile.polars.table : ProfileTable where
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
     -- target): pairwise, Kahan over groups.
     -- `COMPENSATED`: in memory, Kahan's sum over groups (polars-sum-float, #633).
+    -- Sverify runs the streaming engine only; dropping it is #2411.
     (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY", "COMPENSATED"]),
     -- What Polars computes for the operations the lowering emits
     -- (polars-window-agg): a frame from UNBOUNDED PRECEDING reads
@@ -105,7 +106,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "rounding", (ObsRow.native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]).proved "Lowering.polars_exact"),
   (none, "nan_creation", (ObsRow.native ["polars-double-arith", "polars-nonfinite-aggregates"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
-  (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
+  (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign-streaming", "polars-zero-order"]
     with shim := some "one_zero" }).proved "Shim.one_zero"),
   -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
   -- exactly through the generated lowering's template (`Lowering.zeroTemplate`).
@@ -134,7 +135,7 @@ def Profile.polars.obs : ObsTable := [
   -- This row now holds for `COVAR_*` and `CORR` (`agg.stat`): Polars's `CovState`
   -- has no theorem yet, a fuzzed bound on the co-moment (polars-var-bound;
   -- #1808, its proof #2114). `VAR_*` and `STDDEV_*` read the `agg.var` row below.
-  (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std", "polars-cov", "polars-corr", "polars-var-bound"] with
+  (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std-streaming", "polars-cov", "polars-corr", "polars-var-bound"] with
     rerun := some { floats := .within "plan" } }).tracking 1808),
   -- Two-pass blocks, Welford's update and Schubert and Gertz's merge in any
   -- tree meet `StatProps`: `float-bounds` proves `VAR_*` within `varTol`
@@ -143,7 +144,7 @@ def Profile.polars.obs : ObsTable := [
   -- NaN (polars-var-pop-one-nan), where the reference gives NaN; the run returns
   -- NaN for a NaN among the values, as DuckDB's SQL does (`Stat.nanGuard_varStat`).
   (some "agg.var", "stat_algo", ({ ObsRow.approxWithin "plan"
-      ["polars-var-std", "polars-var-std-streaming", "polars-var-bound", "polars-var-pop-one-nan"] with
+      ["polars-var-std-streaming", "polars-var-bound", "polars-var-pop-one-nan"] with
     shim := some "nan_through",
     rerun := some { floats := .within "plan" },
     note := "Two-pass blocks of at most 128 values (CHUNK_SIZE in crates/polars-compute/src/moment.rs at py-2.1.0, a hypothesis of the theorem), Welford's update and Schubert and Gertz's merge, over every partition of the values into blocks, every summation order and every merge tree, meet StatProps on finite values (FloatBounds.StdModel.core_var_polars, #1808; polars-var-bound fuzzes it); Polars's streaming group_by of a one-row frame gives VAR and STDDEV 0 for NaN (polars-var-pop-one-nan), so the run returns NaN where a value is NaN (_polars_shims.nan_through, the guard Stat.nanGuard_varStat proves)." }).proved
@@ -175,7 +176,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Shim.null_order"),
   (none, "clustered", (ObsRow.shimmed "sort on the keys" ["polars-clustered"]).tracking 271),
   -- A streaming sort of a large input does not keep ties in input order.
-  (none, "tie_order", ({ ObsRow.native ["polars-sort-stability", "polars-first-last"] with
+  (none, "tie_order", ({ ObsRow.native ["polars-sort-stability-streaming", "polars-first-last"] with
     rerun := some { rows := .tiesPermuted } }).proved "Polars.tie_order"),
   -- `first` and `last` follow input order on streaming, run after run.
   (none, "tie_pick", ({ ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }).tracking 271),
@@ -200,7 +201,7 @@ def Profile.polars.obs : ObsTable := [
     cls := .refused
     note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference, and Polars's lowering refuses it (`Lowering.polars_no_fmod`: no lowered plan calls it). Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
-    ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
+    ["polars-zero-sign-streaming", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
   (none, "negative_start", (ObsRow.native ["polars-substring"]).proved "Lowering.polars_exact"),
   (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).proved "Lowering.polars_exact"),

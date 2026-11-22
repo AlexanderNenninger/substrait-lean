@@ -342,7 +342,7 @@ theorem substring_wrap (s : String) (a : Int) (n : Option Nat) :
 
 omit [Boxes.Ambient] in
 /-- **`Polars.tie_order`**: Polars's sort with `maintain_order=True` is
-stable (polars-sort-stability): its rows, each with its input position, are a
+stable (polars-sort-stability-streaming): its rows, each with its input position, are a
 permutation of the input sorted by the keys and, among ties, by position
 (`zipIdxLE`). Any such result is `Rel.eval`'s, `List.mergeSort`, for a total
 preorder of the keys (`sortLe`'s, `sortLe_totalPre`). -/
@@ -478,7 +478,7 @@ def aggMakesInfinite (result : Value) (vs : List Value) : Bool :=
 
 /-- **`Polars.agg_makes_infinite`** (A4): on the aggregate the reference
 computes, the guard flags a group exactly where `Measure.makesInf` does.
-Polars sums in its own order (`sum_order = ANY`, polars-sum-float), so on
+Polars sums in its own order (`sum_order = ANY`, polars-sum-float-streaming), so on
 Polars it flags the groups whose own sum overflows: the same groups but at
 the edge, where one order's rounding overflows and another's does not. -/
 theorem agg_makes_infinite (m : Measure) (hm : m.fn.infAgg = true) (grp : Relation) :

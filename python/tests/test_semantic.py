@@ -12,8 +12,8 @@ from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
-from sverify.contracts import violations
 from sverify.engine import connect, plan_json, run_checker
+from sverify.report import violations
 from sverify.sql import to_sql
 from sverify.sql.snowflake import SNOWFLAKE
 from sverify.testing import canonical

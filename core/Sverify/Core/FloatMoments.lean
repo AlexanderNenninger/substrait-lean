@@ -201,8 +201,8 @@ def sqSumOf (cs : List Int) : Int := (cs.map fun c => scaled c * scaled c).foldr
 def prodSumOf (ps : List (Int × Int)) : Int :=
   (ps.map fun p => scaled p.1 * scaled p.2).foldr (· + ·) 0
 
-/-- `n · Σx² − (Σx)²`: `n²` times the population variance's numerator, in
-units of `2⁻²¹⁴⁸`; exact. -/
+/-- `n · Σx² − (Σx)²`: `n` times the population variance's numerator
+`Σ(x − x̄)²`, which is `n²` times `VAR_POP`, in units of `2⁻²¹⁴⁸`; exact. -/
 def comomentNum (cs : List Int) : Int := cs.length * sqSumOf cs - scaledSum cs * scaledSum cs
 
 /-- `n · Σxy − Σx · Σy` of the pairs. -/

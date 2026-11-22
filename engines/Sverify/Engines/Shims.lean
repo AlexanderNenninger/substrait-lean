@@ -31,7 +31,7 @@ open FloatCode
 
 /-- `one_zero`: `-0.0` as `0.0`, on the full set of codes
 (`FloatFormat.negZero`, #444 step 1b). An engine that compares IEEE doubles,
-where `-0.0 = 0.0`, writes it as Polars's `one_zero` (polars-zero-sign); the
+where `-0.0 = 0.0`, writes it as Polars's `one_zero` (polars-zero-sign-streaming); the
 DuckDB and Spark writers print no canon (D31, #1461). -/
 def oneZero (c : Int) : Int := if c = 0 ∨ c = FloatCode.negZero then 0 else c
 
