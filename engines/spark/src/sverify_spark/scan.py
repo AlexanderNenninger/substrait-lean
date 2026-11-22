@@ -226,7 +226,7 @@ def _renaming(file: str, scan: Scan, connect: bool) -> tuple[dict[str, str], tup
         if not widens(f.type, want) and not _strings(f.type, want):
             raise Unsupported(
                 f"{file}: column {logical!r} is {f.type} in the file and {want} in the table; "
-                f"declare the table's column as {f.type}, or rewrite the file"
+                f"declare the table's column with the file's type ({f.type}), or rewrite the file"
             )
         out[f.name] = logical
         kinds.append(f"{f.name}:{f.type}")
