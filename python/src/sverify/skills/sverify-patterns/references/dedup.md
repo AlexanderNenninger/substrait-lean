@@ -66,10 +66,14 @@ def latest_events(events):
     return events.mutate(rn=ibis.row_number().over(w)).filter(_.rn == 0).drop("rn")
 
 
-source = StaticSource(pa.table({"id": [1, 1, 2], "ts": [1, 2, 1], "v": [10, 20, 30]}), name="events")
+source = StaticSource(
+    pa.table({"id": [1, 1, 2], "ts": [1, 2, 1], "v": [10, 20, 30]}), name="events"
+)
 node = latest_events(source)
 node.refresh()
-print(sorted(node.to_arrow().to_pylist(), key=str))  # [{'id': 1, 'ts': 2, 'v': 20}, {'id': 2, 'ts': 1, 'v': 30}]
+print(
+    sorted(node.to_arrow().to_pylist(), key=str)
+)  # [{'id': 1, 'ts': 2, 'v': 20}, {'id': 2, 'ts': 1, 'v': 30}]
 ```
 
 Sinks and scheduled refreshes are in `sverify-pipelines`.

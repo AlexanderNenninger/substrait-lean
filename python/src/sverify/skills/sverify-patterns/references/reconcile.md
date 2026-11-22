@@ -16,7 +16,9 @@ import sverify as sv
 ledger = ibis.table({"id": "int64", "amt": "int64"}, name="ledger")
 bank = ibis.table({"id": "int64", "amt": "int64"}, name="bank")
 joined = ledger.join(bank, ledger.id == bank.id, how="outer", rname="{name}_bank")
-rows = joined.select(id=ibis.coalesce(joined.id, joined.id_bank), ledger=joined.amt, bank=joined.amt_bank)
+rows = joined.select(
+    id=ibis.coalesce(joined.id, joined.id_bank), ledger=joined.amt, bank=joined.amt_bank
+)
 labelled = rows.mutate(
     status=ibis.cases(
         (rows.ledger.isnull(), "missing_in_ledger"),
@@ -48,7 +50,9 @@ requires = {
     "bank": [_.id.notnull(), _.amt.notnull(), sv.unique("id")],
 }
 statuses = ["matched", "amount_differs", "missing_in_bank", "missing_in_ledger"]
-report = sv.verify(labelled, requires=requires, ensures=[_.status.notnull(), _.status.isin(statuses)])
+report = sv.verify(
+    labelled, requires=requires, ensures=[_.status.notnull(), _.status.isin(statuses)]
+)
 assert report.verdict == sv.Verdict.PROVED
 only = sv.verify(exceptions, requires=requires, ensures=[_.status != "matched"])
 assert only.verdict == sv.Verdict.PROVED
@@ -61,7 +65,10 @@ sql = sv.sql(
     ledger=ledger,
     bank=bank,
 )
-assert sv.verify(sql, requires=requires, ensures=[_.status.isin(statuses)]).verdict == sv.Verdict.PROVED
+assert (
+    sv.verify(sql, requires=requires, ensures=[_.status.isin(statuses)]).verdict
+    == sv.Verdict.PROVED
+)
 ```
 
 ## Double entries
@@ -70,7 +77,9 @@ A transfer posts a debit and a credit of the same amount: two rows of a signed
 `amount`, one per side.
 
 ```python
-transfers = ibis.table({"id": "int64", "src": "string", "dst": "string", "amount": "int64"}, name="transfers")
+transfers = ibis.table(
+    {"id": "int64", "src": "string", "dst": "string", "amount": "int64"}, name="transfers"
+)
 debit = transfers.select("id", acct=transfers.src, amount=-transfers.amount)
 credit = transfers.select("id", acct=transfers.dst, amount=transfers.amount)
 entries = debit.union(credit, distinct=False)
@@ -83,7 +92,9 @@ posted = {
         _.amount <= 10**9,
     ]
 }
-report = sv.verify(entries, requires=posted, ensures=[_.acct.notnull(), _.amount.between(-(10**9), 10**9)])
+report = sv.verify(
+    entries, requires=posted, ensures=[_.acct.notnull(), _.amount.between(-(10**9), 10**9)]
+)
 assert report.verdict == sv.Verdict.PROVED
 ```
 

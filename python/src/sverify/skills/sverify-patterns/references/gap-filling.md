@@ -36,7 +36,10 @@ requires = {
 }
 ensures = [_.filled.isnull() | _.filled.between(0, 10**6)]
 assert sv.verify(filled, requires=requires, ensures=ensures).verdict == sv.Verdict.PROVED
-assert sv.verify(filled, requires=requires, ensures=[sv.unique("sensor", "ts")]).verdict == sv.Verdict.PROVED
+assert (
+    sv.verify(filled, requires=requires, ensures=[sv.unique("sensor", "ts")]).verdict
+    == sv.Verdict.PROVED
+)
 ```
 
 ## Refusals and suggestions
