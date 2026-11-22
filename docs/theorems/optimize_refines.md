@@ -4,8 +4,8 @@ The plan `optimize` gives refines the original, up to the order of rows, when it
 
 Lean: `Substrait.Rel.optimize_refines`, in
 [`analysis/Sverify/Analysis/Semantic.lean`](../../analysis/Sverify/Analysis/Semantic.lean).
-Layer: `RefinesBag`, every result the optimized plan allows is one the original allows, up to the order of rows. Axioms: not yet listed;
-`#print axioms Substrait.Rel.optimize_refines` is the check ([trusted-base.md](../trusted-base.md)).
+Layer: `RefinesBag`, every result the optimized plan allows is one the original allows, up to the order of rows. Axioms: `propext`, `Classical.choice`, `Quot.sound`
+([trusted-base.md](../trusted-base.md)).
 
 ## What it says
 

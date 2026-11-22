@@ -4,8 +4,8 @@ A profile whose choices are within another's allows no more results.
 
 Lean: `Substrait.Rel.AllowedP_mono`, in
 [`core/Sverify/Core/AllowedP.lean`](../../core/Sverify/Core/AllowedP.lean).
-Layer: `AllowedP`, the results a profile allows, option by option. Axioms: not yet listed;
-`#print axioms Substrait.Rel.AllowedP_mono` is the check ([trusted-base.md](../trusted-base.md)).
+Layer: `AllowedP`, the results a profile allows, option by option. Axioms: `propext`, `Classical.choice`, `Quot.sound`
+([trusted-base.md](../trusted-base.md)).
 
 ## What it says
 
