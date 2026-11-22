@@ -2,7 +2,7 @@
   "id": "polars-struct-cast-by-name",
   "engine": "polars",
   "engine_version": "py-2.1.0",
-  "title": "A cast between struct types pairs the fields by name; a target name the source lacks is NULL, a source name the target lacks is dropped",
+  "title": "A cast between struct types pairs the fields by name when no field narrows; a reorder with a narrowing field raises",
   "area": "casts",
   "constructs": [
     "CAST"
@@ -18,11 +18,11 @@
     2376
   ],
   "description": [
-    "Polars casts a struct column to another struct dtype by field name. A reordered target takes each value from the field of its name (`{a: 100000, b: 1}` to `Struct(b: Int32, a: Int32)` is `{b: 1, a: 100000}`), a target field the source lacks is NULL, a source field the target lacks is dropped, and a nested struct is paired the same way at every level. A renamed target (`Struct(x, y)` of a source `(a, b)`) has no matching name: every field is NULL, with no error, where DuckDB refuses the cast (binder error: no matching member) and Spark pairs by position. A field that does not fit raises (`InvalidOperationError: conversion from i32 to i16 failed in column 'a'`).",
+    "Polars casts a struct column to another struct dtype by field name. A reordered target takes each value from the field of its name (`{a: 100000, b: 1}` to `Struct(b: Int32, a: Int32)` is `{b: 1, a: 100000}`), a target field the source lacks is NULL, a source field the target lacks is dropped, and a nested struct is paired the same way at every level. A renamed target (`Struct(x, y)` of a source `(a, b)`) has no matching name: every field is NULL, with no error, where DuckDB refuses the cast (binder error: no matching member) and Spark pairs by position. A field that does not fit raises (`InvalidOperationError: conversion from i32 to i16 failed in column 'a'`). A reorder pairs by name only where every field keeps or widens its type: when a reordered target narrows any field, Polars raises `structs field name mismatch: a vs b` even where every value fits (`{a: i64, b: i64}` to `Struct(b: Int32, a: Int32)`), at every nesting level, and the same narrowing in the source's order succeeds. The narrowing path is positional. A list of structs is cast the same way: `List(Struct(a: Int32, b: Int16))` to `List(Struct(b: Int32, a: Int32))` is `[{b: 1, a: 100000}]`, and the narrowing target raises the conversion error.",
     "Same behaviour as DuckDB's (`duckdb-struct-cast-by-name`) for reorder, missing, extra and nested fields; the engines differ on a rename (DuckDB error, Polars NULLs) and Spark differs on everything (`spark-struct-cast-by-position`)."
   ],
   "reference": "The core's struct kind carries no field names; a struct cast is refused at 1.0 (ruling 186) and a cast of a list of structs between the same field kinds is the identity, refused by #2376.",
-  "verdict": "Polars pairs struct-cast fields by name, as DuckDB does, and gives NULL for a rename.",
+  "verdict": "Polars pairs struct-cast fields by name where no field narrows, and raises a name mismatch on a reorder that narrows.",
   "rows": [],
   "provenance": [
     {
@@ -53,6 +53,30 @@
         {
           "sql": "{'a': 1, 'b': {'c': 2, 'd': 3}} cast to Struct({'b': Struct({'d': Int32, 'c': Int32}), 'a': Int32})",
           "observed": "[{'b': {'d': 3, 'c': 2}, 'a': 1}]"
+        },
+        {
+          "sql": "{'a': 1, 'b': 1} (Int64, Int64) cast to Struct({'b': Int32, 'a': Int32})",
+          "observed": "InvalidOperationError: structs field name mismatch: a vs b"
+        },
+        {
+          "sql": "{'a': 1, 'b': 1} (Int64, Int64) cast to Struct({'a': Int32, 'b': Int32})",
+          "observed": "[{'a': 1, 'b': 1}]"
+        },
+        {
+          "sql": "{'a': 1, 'b': 1} (Int32, Int16) cast to Struct({'b': Int64, 'a': Int64})",
+          "observed": "[{'b': 1, 'a': 1}]"
+        },
+        {
+          "sql": "{'a': 1, 'b': {'c': 1, 'd': 1}} (Int64 inside) cast to Struct({'a': Int32, 'b': Struct({'d': Int32, 'c': Int32})})",
+          "observed": "InvalidOperationError: structs field name mismatch: c vs d"
+        },
+        {
+          "sql": "[{'a': 100000, 'b': 1}] List(Struct(a Int32, b Int16)) cast to List(Struct(b Int32, a Int32))",
+          "observed": "[[{'b': 1, 'a': 100000}]]"
+        },
+        {
+          "sql": "... cast to List(Struct(b Int16, a Int16))",
+          "observed": "InvalidOperationError: conversion from `i32` to `i16` failed in column 'a'"
         }
       ]
     }

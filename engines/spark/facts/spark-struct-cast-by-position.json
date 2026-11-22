@@ -20,7 +20,7 @@
     2376
   ],
   "description": [
-    "Spark casts a struct to another struct type field by field in position order and takes the target's names. `CAST(named_struct('a', 100000, 'b', 1S) AS STRUCT<b: INT, a: INT>)` is `{b: 100000, a: 1}`, a rename (`STRUCT<x: INT, y: INT>`) keeps the values in order, and a nested struct is paired the same way at every level (`STRUCT<x: INT, y: STRUCT<q, r>>` of `(a, b: (c, d))` is `{x: 1, y: {q: 2, r: 3}}`). A target with another field count (a missing or an extra field) fails at analysis, `DATATYPE_MISMATCH.CAST_WITHOUT_SUGGESTION`, and so does a position whose types cannot be cast (a nested reorder that puts a struct where an INT is). Each field is cast by the scalar cast of its types: an overflow raises `CAST_OVERFLOW` under ANSI, wraps without it (100000 to SMALLINT is -31072), and `TRY_CAST` turns it into NULL for that field.",
+    "Spark casts a struct to another struct type field by field in position order and takes the target's names. `CAST(named_struct('a', 100000, 'b', 1S) AS STRUCT<b: INT, a: INT>)` is `{b: 100000, a: 1}`, a rename (`STRUCT<x: INT, y: INT>`) keeps the values in order, and a nested struct is paired the same way at every level (`STRUCT<x: INT, y: STRUCT<q, r>>` of `(a, b: (c, d))` is `{x: 1, y: {q: 2, r: 3}}`). A target with another field count (a missing or an extra field) fails at analysis, `DATATYPE_MISMATCH.CAST_WITHOUT_SUGGESTION`, and so does a position whose types cannot be cast (a nested reorder that puts a struct where an INT is). Each field is cast by the scalar cast of its types: an overflow raises `CAST_OVERFLOW` under ANSI, wraps without it (100000 to SMALLINT is -31072), and `TRY_CAST` turns it into NULL for that field. Inside an array it is positional too: `CAST(array(s) AS ARRAY<STRUCT<b: INT, a: INT>>)` is `[{b: 100000, a: 1}]`.",
     "The same SQL gives other values on DuckDB and Polars, which pair by name (`duckdb-struct-cast-by-name`, `polars-struct-cast-by-name`)."
   ],
   "reference": "The core's struct kind carries no field names; a struct cast is refused at 1.0 (ruling 186) and a cast of a list of structs between the same field kinds is the identity, refused by #2376. Substrait's struct type has no field names (names belong to a schema's `NamedStruct`), so a cast between two struct types is positional by construction.",
@@ -63,6 +63,10 @@
         {
           "sql": "SELECT CAST(s AS STRUCT<b: STRUCT<d: INT, c: INT>, a: INT>) FROM n",
           "observed": "DATATYPE_MISMATCH.CAST_WITHOUT_SUGGESTION"
+        },
+        {
+          "sql": "SELECT CAST(array(s) AS ARRAY<STRUCT<b: INT, a: INT>>) FROM t",
+          "observed": "[{'b': 100000, 'a': 1}] (reviewer re-probe, pyspark 4.3.0 local[1])"
         }
       ]
     }
