@@ -59,6 +59,18 @@ pitfalls = ["percentile_method: median of an even count interpolates in SQL (PER
 ibis = '''
 q = x.group_by(["id4", "id5"]).aggregate(median_v3=_.v3.median(), sd_v3=_.v3.std())
 '''
+requires = '''
+{
+    'x': [_.v3.between(0, 100)],
+}
+'''
+ensures = '''
+[
+    _.median_v3.isnull() | _.median_v3.between(0, 100),
+    _.sd_v3.isnull() | (_.sd_v3 >= 0),
+    sv.unique('id4', 'id5'),
+]
+'''
 
 [[query]]
 id = "h2o-groupby-q7"
