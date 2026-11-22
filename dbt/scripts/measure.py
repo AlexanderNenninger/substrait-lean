@@ -18,6 +18,8 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -57,7 +59,7 @@ PROJECTS: dict[str, tuple[Source, list[str] | None]] = {
         None,
     ),
 }
-TOP = 10
+TOP = 40
 
 
 def _run_results(project: Path) -> dict[str, float]:
@@ -69,14 +71,38 @@ def _run_results(project: Path) -> dict[str, float]:
     return {r["unique_id"]: float(r["execution_time"]) for r in data}
 
 
+def _compile(project: Path, limit: int = 150) -> list[str]:
+    """`dbt compile`, leaving out each model whose compilation asks the
+    warehouse for data it does not have here (`dbt_utils.get_column_values`
+    on a table nothing built), until the rest compile. The models left out."""
+    left_out: list[str] = []
+    for _ in range(limit):
+        args = ["compile", "--exclude", *left_out] if left_out else ["compile"]
+        done = subprocess.run(
+            [str(Path(sys.executable).with_name("dbt")), *args, "--profiles-dir", str(project)],
+            cwd=project,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if done.returncode == 0:
+            break
+        found = re.search(r"Compilation Error in model (\w+)", done.stdout + done.stderr)
+        if not found or found[1] in left_out:
+            break
+        left_out.append(found[1])
+    return left_out
+
+
 def measure(name: str) -> dict[str, Any]:
     source, build_args = PROJECTS[name]
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / name)
         _dbt(project, "deps")
         started = time.monotonic()
+        left_out: list[str] = []
         if build_args is None:
-            _dbt(project, "compile")
+            left_out = _compile(project)
         else:
             _dbt(project, "build", *build_args)
         build_seconds = time.monotonic() - started
@@ -105,6 +131,7 @@ def measure(name: str) -> dict[str, Any]:
             "total": len(models),
             "read": sum(1 for m in models if not m.refused),
             "refused": sum(1 for m in models if m.refused),
+            "left_out_of_compile": len(left_out),
             "top_refusals": refused.most_common(TOP),
         },
         "tests": {
