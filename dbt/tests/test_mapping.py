@@ -470,3 +470,16 @@ def test_mutually_exclusive_ranges_with_where_is_not_mapped() -> None:
     test = ranges(lower_bound_column="lo", upper_bound_column="hi")
     test.where = "k > 0"
     assert conds(test, "requires") == []
+
+
+@pytest.mark.parametrize("raw", [[None], "test", ["a", None], [""]])
+def test_a_column_list_that_names_no_columns_is_not_read(raw) -> None:
+    """#2414: dbt-core's `TestInvalidModelCombinationOfColumns` writes
+    `combination_of_columns: [null]` and `combination_of_columns: "test"`.
+    sverify-dbt names the test and leaves it not checked, with a reason, where
+    it crashed joining `None` into the test's label."""
+    test = t("dbt_utils.unique_combination_of_columns", None, combination_of_columns=raw)
+    assert test.columns == ()
+    assert test.short == "dbt_utils.unique_combination_of_columns"
+    got = mapping.test_conditions(test, side="ensures", table_of=lambda _: None)
+    assert got.conditions == [] and got.reason == "its columns are no list of column names"
