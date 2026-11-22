@@ -5234,6 +5234,44 @@ class _Writer:
         )
         return self.select(items, d.subquery(top, b))
 
+    def sorted_root(self, root: Rel, names: Sequence[str]) -> str | None:
+        """Under a multiset observation, a root that is a sort, or a top-N, under
+        column selections: the result sorted by the sort's own keys, where it
+        would otherwise number the rows and sort them by the number (#2186).
+        Ties are open (`rows="multiset"`), so the keys alone give an order
+        `Rel.Allowed` allows. `None` for any other root."""
+        cols = list(range(len(names)))
+        r = root
+        while isinstance(r, Emit) and id(r) not in self.native:
+            cols = [r.mapping[j] for j in cols]
+            r = r.input
+        if id(r) in self.native:
+            return None
+        d = self.d
+        match r:
+            case OrderBy(input=src, keys=sort) if sort:
+                a = self.alias()
+                n = arity(src)
+                if any(k.col >= n for k in sort):
+                    return None
+                inner = self.rel(src, False)
+            case Fetch(input=OrderBy(input=src, keys=sort) as o, offset=off, count=cnt) if (
+                sort and id(o) not in self.native
+            ):
+                n = arity(src)
+                if any(k.col >= n for k in sort):
+                    return None
+                inner = self.top_n(src, sort, off, cnt, n, False)
+                a = self.alias()
+            case _:
+                return None
+        items = [
+            f"{self.ref(a, self.c(j))} AS {d.quote(name)}"
+            for j, name in zip(cols, names, strict=True)
+        ]
+        keys = self.sort_keys(a, sort, kinds(src))
+        return self.select(items, d.subquery(inner, a), "ORDER BY " + ", ".join(keys))
+
     def sort_keys(self, a: str, sort: Sequence[SortKey], ks: list[Kind | None]) -> list[str]:
         """ORDER BY keys for `sortLe sort` over subquery `a`, ties broken by its
         ordinal (Lean's merge sort is stable) unless the caller promised none."""
@@ -6423,6 +6461,8 @@ def to_sql(
     w.native = p.native
     if unchecked is not None:
         w.unchecked = unchecked_slots(p.root, unchecked)
+    if not w.seq and (sorted_root := w.sorted_root(p.root, names)) is not None:
+        return sorted_root
     ordered = order_matters(p.root) if w.seq else chain_orders(p.root)
     a = w.alias()
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
