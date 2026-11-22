@@ -148,6 +148,33 @@ abbrev Substrait.sparkOn.itos : Substrait.UnEntry Substrait.Profile.spark Substr
   Substrait.UnEntry.native Substrait.UnFn.itos
   (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.itos_native)
 
+theorem Substrait.sparkOn.dtext_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un Substrait.Profile.spark Substrait.UnFn.dtext x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dtext x := by
+  native_tac
+
+abbrev Substrait.sparkOn.dtext : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.dtext :=
+  Substrait.UnEntry.native Substrait.UnFn.dtext
+  (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.dtext_native)
+
+theorem Substrait.sparkOn.dtextFull_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un Substrait.Profile.spark Substrait.UnFn.dtextFull x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dtextFull x := by
+  native_tac
+
+abbrev Substrait.sparkOn.dtextFull : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.dtextFull :=
+  Substrait.UnEntry.native Substrait.UnFn.dtextFull
+  (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.dtextFull_native)
+
+theorem Substrait.sparkOn.dwiden_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un Substrait.Profile.spark Substrait.UnFn.dwiden x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dwiden x := by
+  native_tac
+
+abbrev Substrait.sparkOn.dwiden : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.dwiden :=
+  Substrait.UnEntry.native Substrait.UnFn.dwiden
+  (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.dwiden_native)
+
 theorem Substrait.sparkOn.widen_native : ∀ (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.spark Substrait.UnFn.widen x =
     Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.widen x := by

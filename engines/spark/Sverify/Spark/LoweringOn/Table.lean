@@ -49,6 +49,9 @@ def Substrait.sparkOn : Substrait.Lowering (Substrait.Profile.spark) :=
     | Substrait.UnFn.narrowOrNull a0 => some (Substrait.sparkOn.narrowOrNull a0)
     | Substrait.UnFn.wrap a0 => some (Substrait.sparkOn.wrap a0)
     | Substrait.UnFn.itos  => some (Substrait.sparkOn.itos )
+    | Substrait.UnFn.dtext  => some (Substrait.sparkOn.dtext )
+    | Substrait.UnFn.dtextFull  => some (Substrait.sparkOn.dtextFull )
+    | Substrait.UnFn.dwiden  => some (Substrait.sparkOn.dwiden )
     | Substrait.UnFn.widen  => some (Substrait.sparkOn.widen )
     | Substrait.UnFn.atUtc a0 => some (Substrait.sparkOn.atUtc a0)
     | Substrait.UnFn.upper  => some (Substrait.sparkOn.upper )
@@ -164,6 +167,9 @@ def Substrait.sparkOn.coverage : List (String × String × Nat) := [
   ("UnFn.narrowOrNull", "native", 0),
   ("UnFn.wrap", "native", 0),
   ("UnFn.itos", "native", 0),
+  ("UnFn.dtext", "native", 0),
+  ("UnFn.dtextFull", "native", 0),
+  ("UnFn.dwiden", "native", 0),
   ("UnFn.widen", "native", 0),
   ("UnFn.atUtc", "native", 0),
   ("UnFn.upper", "native", 0),
