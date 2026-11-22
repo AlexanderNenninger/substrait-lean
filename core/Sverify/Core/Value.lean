@@ -180,6 +180,12 @@ inductive Kind where
   depends on a time zone the plan does not state (the session's, duckdb-timestamptz-session-zone
   and spark-timestamp-session-zone, or the column's, polars-datetime-zone), so it is refused. -/
   | timeTz
+  /-- A timestamp in nanoseconds (D61): the count of nanoseconds since 1970,
+  which 64 bits bound to 1677-09-21 … 2262-04-11. It meets a microsecond
+  timestamp only through a written cast, and calendar functions refuse it. -/
+  | timeNs
+  /-- A timestamp with a time zone in nanoseconds (D61), as `timeNs`. -/
+  | timeTzNs
   /-- A list of values of the element kind. -/
   | list (elem : Kind)
   /-- A struct of fields of these kinds, in order. Its value is the list of
@@ -208,6 +214,8 @@ def Kind.decEq : (a b : Kind) → Decidable (a = b)
   | .tod, .tod => isTrue rfl
   | .other, .other => isTrue rfl
   | .timeTz, .timeTz => isTrue rfl
+  | .timeNs, .timeNs => isTrue rfl
+  | .timeTzNs, .timeTzNs => isTrue rfl
   | .opaque, .opaque => isTrue rfl
   | .list a, .list b => match Kind.decEq a b with
     | isTrue h => isTrue (h ▸ rfl)
@@ -218,37 +226,47 @@ def Kind.decEq : (a b : Kind) → Decidable (a = b)
   | .dec p s, .dec q t =>
     if h : p = q ∧ s = t then isTrue (by obtain ⟨rfl, rfl⟩ := h; rfl)
     else isFalse (by simp only [Kind.dec.injEq]; exact h)
-  | .int, .float | .int, .time | .int, .date | .int, .str | .int, .bool | .int, .tod
-  | .int, .other | .int, .timeTz | .int, .list _ | .int, .struct _ | .int, .dec _ _
-  | .float, .int | .float, .time | .float, .date | .float, .str | .float, .bool | .float, .tod
-  | .float, .other | .float, .timeTz | .float, .list _ | .float, .struct _ | .float, .dec _ _
+  | .int, .float | .int, .time | .int, .date | .int, .str | .int, .bool | .int, .tod | .int, .other
+  | .int, .timeTz | .int, .timeNs | .int, .timeTzNs | .int, .list _ | .int, .struct _
+  | .int, .dec _ _ | .int, .opaque | .float, .int | .float, .time | .float, .date | .float, .str
+  | .float, .bool | .float, .tod | .float, .other | .float, .timeTz | .float, .timeNs
+  | .float, .timeTzNs | .float, .list _ | .float, .struct _ | .float, .dec _ _ | .float, .opaque
   | .time, .int | .time, .float | .time, .date | .time, .str | .time, .bool | .time, .tod
-  | .time, .other | .time, .timeTz | .time, .list _ | .time, .struct _ | .time, .dec _ _
-  | .date, .int | .date, .float | .date, .time | .date, .str | .date, .bool | .date, .tod
-  | .date, .other | .date, .timeTz | .date, .list _ | .date, .struct _ | .date, .dec _ _
-  | .str, .int | .str, .float | .str, .time | .str, .date | .str, .bool | .str, .tod
-  | .str, .other | .str, .timeTz | .str, .list _ | .str, .struct _ | .str, .dec _ _
-  | .bool, .int | .bool, .float | .bool, .time | .bool, .date | .bool, .str | .bool, .tod
-  | .bool, .other | .bool, .timeTz | .bool, .list _ | .bool, .struct _ | .bool, .dec _ _
-  | .tod, .int | .tod, .float | .tod, .time | .tod, .date | .tod, .str | .tod, .bool
-  | .tod, .other | .tod, .timeTz | .tod, .list _ | .tod, .struct _ | .tod, .dec _ _
-  | .other, .int | .other, .float | .other, .time | .other, .date | .other, .str | .other, .bool
-  | .other, .tod | .other, .timeTz | .other, .list _ | .other, .struct _ | .other, .dec _ _
-  | .timeTz, .int | .timeTz, .float | .timeTz, .time | .timeTz, .date | .timeTz, .str
-  | .timeTz, .bool | .timeTz, .tod | .timeTz, .other | .timeTz, .list _ | .timeTz, .struct _
-  | .timeTz, .dec _ _ | .list _, .int | .list _, .float | .list _, .time | .list _, .date
-  | .list _, .str | .list _, .bool | .list _, .tod | .list _, .other | .list _, .timeTz
-  | .list _, .struct _ | .list _, .dec _ _ | .struct _, .int | .struct _, .float
-  | .struct _, .time | .struct _, .date | .struct _, .str | .struct _, .bool | .struct _, .tod
-  | .struct _, .other | .struct _, .timeTz | .struct _, .list _ | .struct _, .dec _ _
-  | .dec _ _, .int | .dec _ _, .float | .dec _ _, .time | .dec _ _, .date | .dec _ _, .str
-  | .dec _ _, .bool | .dec _ _, .tod | .dec _ _, .other | .dec _ _, .timeTz | .dec _ _, .list _
-  | .dec _ _, .struct _
-  | .opaque, .int | .opaque, .float | .opaque, .time | .opaque, .date | .opaque, .str
-  | .opaque, .bool | .opaque, .tod | .opaque, .other | .opaque, .timeTz | .opaque, .list _
-  | .opaque, .struct _ | .opaque, .dec _ _ | .int, .opaque | .float, .opaque | .time, .opaque
-  | .date, .opaque | .str, .opaque | .bool, .opaque | .tod, .opaque | .other, .opaque
-  | .timeTz, .opaque | .list _, .opaque | .struct _, .opaque | .dec _ _, .opaque
+  | .time, .other | .time, .timeTz | .time, .timeNs | .time, .timeTzNs | .time, .list _
+  | .time, .struct _ | .time, .dec _ _ | .time, .opaque | .date, .int | .date, .float | .date, .time
+  | .date, .str | .date, .bool | .date, .tod | .date, .other | .date, .timeTz | .date, .timeNs
+  | .date, .timeTzNs | .date, .list _ | .date, .struct _ | .date, .dec _ _ | .date, .opaque
+  | .str, .int | .str, .float | .str, .time | .str, .date | .str, .bool | .str, .tod | .str, .other
+  | .str, .timeTz | .str, .timeNs | .str, .timeTzNs | .str, .list _ | .str, .struct _
+  | .str, .dec _ _ | .str, .opaque | .bool, .int | .bool, .float | .bool, .time | .bool, .date
+  | .bool, .str | .bool, .tod | .bool, .other | .bool, .timeTz | .bool, .timeNs | .bool, .timeTzNs
+  | .bool, .list _ | .bool, .struct _ | .bool, .dec _ _ | .bool, .opaque | .tod, .int | .tod, .float
+  | .tod, .time | .tod, .date | .tod, .str | .tod, .bool | .tod, .other | .tod, .timeTz
+  | .tod, .timeNs | .tod, .timeTzNs | .tod, .list _ | .tod, .struct _ | .tod, .dec _ _
+  | .tod, .opaque | .other, .int | .other, .float | .other, .time | .other, .date | .other, .str
+  | .other, .bool | .other, .tod | .other, .timeTz | .other, .timeNs | .other, .timeTzNs
+  | .other, .list _ | .other, .struct _ | .other, .dec _ _ | .other, .opaque | .timeTz, .int
+  | .timeTz, .float | .timeTz, .time | .timeTz, .date | .timeTz, .str | .timeTz, .bool
+  | .timeTz, .tod | .timeTz, .other | .timeTz, .timeNs | .timeTz, .timeTzNs | .timeTz, .list _
+  | .timeTz, .struct _ | .timeTz, .dec _ _ | .timeTz, .opaque | .timeNs, .int | .timeNs, .float
+  | .timeNs, .time | .timeNs, .date | .timeNs, .str | .timeNs, .bool | .timeNs, .tod
+  | .timeNs, .other | .timeNs, .timeTz | .timeNs, .timeTzNs | .timeNs, .list _ | .timeNs, .struct _
+  | .timeNs, .dec _ _ | .timeNs, .opaque | .timeTzNs, .int | .timeTzNs, .float | .timeTzNs, .time
+  | .timeTzNs, .date | .timeTzNs, .str | .timeTzNs, .bool | .timeTzNs, .tod | .timeTzNs, .other
+  | .timeTzNs, .timeTz | .timeTzNs, .timeNs | .timeTzNs, .list _ | .timeTzNs, .struct _
+  | .timeTzNs, .dec _ _ | .timeTzNs, .opaque | .list _, .int | .list _, .float | .list _, .time
+  | .list _, .date | .list _, .str | .list _, .bool | .list _, .tod | .list _, .other
+  | .list _, .timeTz | .list _, .timeNs | .list _, .timeTzNs | .list _, .struct _
+  | .list _, .dec _ _ | .list _, .opaque | .struct _, .int | .struct _, .float | .struct _, .time
+  | .struct _, .date | .struct _, .str | .struct _, .bool | .struct _, .tod | .struct _, .other
+  | .struct _, .timeTz | .struct _, .timeNs | .struct _, .timeTzNs | .struct _, .list _
+  | .struct _, .dec _ _ | .struct _, .opaque | .dec _ _, .int | .dec _ _, .float | .dec _ _, .time
+  | .dec _ _, .date | .dec _ _, .str | .dec _ _, .bool | .dec _ _, .tod | .dec _ _, .other
+  | .dec _ _, .timeTz | .dec _ _, .timeNs | .dec _ _, .timeTzNs | .dec _ _, .list _
+  | .dec _ _, .struct _ | .dec _ _, .opaque | .opaque, .int | .opaque, .float | .opaque, .time
+  | .opaque, .date | .opaque, .str | .opaque, .bool | .opaque, .tod | .opaque, .other
+  | .opaque, .timeTz | .opaque, .timeNs | .opaque, .timeTzNs | .opaque, .list _ | .opaque, .struct _
+  | .opaque, .dec _ _
     =>
     isFalse (by simp)
 

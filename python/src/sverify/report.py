@@ -491,6 +491,9 @@ class Report:
     _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
+    _table_ignores: list[tuple[list[str], list[str]]] = field(default_factory=list, repr=False)
+    """For each table condition of the postconditions, the open aggregate columns it reads and the
+    components the observation ignores that it depends on, as the checker reports them (#1071)."""
     _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
     """Where the plan leaves its result open, one entry per window, ordered
     aggregate, `LIMIT` or value the reference leaves open, class picks
@@ -816,7 +819,7 @@ class Report:
             ValueError: The plan carries no sverify contract, or the
                 checker rejects the plan.
         """
-        return _hooks.export().recheck(data)
+        return _hooks.export()._recheck(data)
 
     @overload
     def to_substrait(
@@ -887,10 +890,16 @@ class Report:
         """The verified plan as SQL whose meaning is the proof's, in
         `dialect`.
 
-        The SQL keeps every run-time check, as `run` does. Where the report
-        is determined up to row order with no class pick (no window ties on
-        data that meets the preconditions), windows need no row-order tiebreak, so Snowflake and
-        Spark take them. A plan verified under an engine's semantics
+        The SQL keeps every run-time check, as `run` does. Under the default
+        observation (`rows="multiset"`) a window over ties is written with its
+        own sort keys alone for every dialect: which tied row gets which number
+        is open in the reference, so any engine's choice is allowed, and
+        `deterministic` is False. Under `rows="sequence"` the numbering must
+        follow the input's order, which no dialect can write for ties: the
+        window is refused (`RouteError` on DuckDB and Spark, `UnsupportedError`
+        on Snowflake, whose tables have no row order). On Snowflake a
+        `deterministic` report lifts it.
+        A plan verified under an engine's semantics
         (`semantics="duckdb"`) is written only for an engine its route
         reaches (`sverify.routes.choose`). Snowflake takes plans verified
         under the reference. Run the SQL on data that meets the
@@ -2624,9 +2633,12 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
     `unique`, rows beyond the first for each repeated key.
 
-    With an engine named, the condition's plan runs there, over the tables of
-    the connection `table` is bound to, and counts the rows in the engine
-    (no row reaches Python); otherwise Ibis counts on that connection."""
+    The condition's plan, as the checker wrote it, runs on `engine`, or with
+    none named on the engine of the connection `table` is bound to, over that
+    connection's tables, and counts the rows in the engine (no row reaches
+    Python; F219). A table of another Ibis backend is counted by Ibis there."""
+    if engine is None:
+        engine = _own_engine(table)
     if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
@@ -2650,6 +2662,14 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def _own_engine(table: ir.Table) -> Engine | None:
+    """The engine of the `sverify.connect()` connection `table` is bound to,
+    which runs its data checks when none is named; None for a table of
+    another Ibis backend."""
+    con = connection_of(table)
+    return None if con is None else con.engine
 
 
 def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None) -> int:
@@ -2708,8 +2728,10 @@ def violation_counts(
     per table where each condition had one. A plan that raises is a violation
     of the first condition that raises alone. A condition the writer refuses
     for the engine refuses the check (`SverifyError`), with no fallback to
-    Ibis. Without an `engine`, Ibis counts each condition on the table's own
-    backend (`violations`)."""
+    Ibis. Without an `engine`, the connection's engine runs them; Ibis counts
+    each condition on a table of another backend (`violations`)."""
+    if engine is None:
+        engine = _own_engine(table)
     counts: dict[int, tuple[int, str | None]] = {}
     on_table = [i for i, c in enumerate(conds) if isinstance(c, TableCondition)]
     if on_table:

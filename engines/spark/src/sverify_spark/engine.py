@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
 
-from sverify._unsupported import Unsupported
+from sverify._unsupported import DUCKDB_ONLY, Unsupported
 from sverify.profiles import Finite
 from sverify.sql import to_sql
 from sverify_spark.dialect import SPARK, SPARK_CONF
@@ -88,6 +88,13 @@ def session() -> SparkSession:
     return spark
 
 
+#: Why Spark refuses a column of nanosecond timestamps (D61).
+NANOS = (
+    "nanosecond timestamps are not supported on Spark, which holds microseconds only "
+    "(spark-timestamp-precision); cast the column to microseconds, or run on DuckDB or Polars"
+)
+
+
 def spark_type(t: pa.DataType) -> str:
     """The Spark type of an Arrow column, as `sverify_spark.dialect` writes it."""
     if pa.types.is_integer(t):
@@ -97,6 +104,8 @@ def spark_type(t: pa.DataType) -> str:
     if pa.types.is_floating(t):
         return SPARK.type_name("float")
     if pa.types.is_timestamp(t):
+        if t.unit == "ns":
+            raise TypeError(f"{t}: {NANOS}")
         if t.tz is not None:
             raise TypeError(f"{t}: only timestamps without a time zone (TIMESTAMP_NTZ; #1725)")
         return SPARK.type_name("time")
@@ -124,6 +133,8 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
     if pa.types.is_floating(t):
         return pa.float64()
     if pa.types.is_timestamp(t):
+        if t.unit == "ns":
+            raise TypeError(f"{t}: {NANOS}")
         return pa.timestamp("us")
     if pa.types.is_string(t) or pa.types.is_large_string(t):
         return pa.string()
@@ -260,5 +271,6 @@ def parse_sql(spark: Any, sql: str) -> Any:
         raise Unsupported(
             f"Spark {spark.version}'s parser refused the SQL sverify wrote for this plan "
             f"({len(sql):,} bytes) as too complex to parse; nothing ran. The plan nests its "
-            "expressions deeper than the parser's stack takes (fact spark-exec-parser-depth)"
+            "expressions deeper than the parser's stack takes (fact spark-exec-parser-depth); "
+            + DUCKDB_ONLY
         ) from e

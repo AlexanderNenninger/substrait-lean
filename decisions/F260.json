@@ -1,0 +1,17 @@
+{
+  "id": "F260",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#2335 meets F258's E2. On a fired run-time check the stage is dropped, dependents wait and the next refresh resumes from the sink. That is the held state users and the pipeline see: `held`, exit 8, nothing committed, the same batch next time. A fired check holds whatever `on_violation` says, because there are no rows to quarantine.",
+  "issues": [
+    2335,
+    2331
+  ],
+  "prs": [
+    2335
+  ],
+  "source": "fable-ruling-260-2335-fired-check-held-state.md",
+  "note": "A failed condition raises `Held` before anything is applied and keeps its stage. A fired check raises part-way through the plan, so rebuilding the stage from the sink avoids applying part of a batch twice. Conditions: T1, the sink's version and the quarantine table are unchanged after a fired check. T2, a later refresh over a batch that no longer fires commits it, and the sink equals a fresh full run. T3, independent nodes in the same refresh still commit. `docs/how-to-quarantine.md` says so in one sentence."
+}

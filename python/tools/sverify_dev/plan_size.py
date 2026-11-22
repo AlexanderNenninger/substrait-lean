@@ -10,17 +10,22 @@ measures it:
 * `chars`: the SQL's length;
 * `nodes`: its SQL tokens (SQLGlot's tokenizer);
 * `depth`: how deeply its `CASE`s nest;
+* `sorts` and `numbered`: its `ORDER BY`s and `ROW_NUMBER()`s, as written
+  under a multiset observation (`rows="multiset"`);
 
 and the input:
 
 * `in_nodes`: the nodes of the Substrait plan sverify was given: its
   expressions (field references, literals, calls, casts, `IF`s), its
   relations, and the columns its tables have (the SQL names each);
+* `windows`: the plan's window functions;
 
 with their ratio, `ratio = nodes / in_nodes`. A shim that copies its argument
 makes the ratio grow with the depth of nested calls (#821: three copies,
 three levels deep, is 27). `tests/test_plan_size.py` bounds the ratio, the
 depth and the length (`BOUND`), so a new shim cannot blow up the SQL unnoticed.
+Under a multiset observation it also bounds `numbered` by `windows`: the
+writer numbers no rows beyond the plan's own windows (#2186, ruling 217 S3).
 
     uv run python -m sverify_dev.plan_size              # the worst 25 per dialect
     uv run python -m sverify_dev.plan_size --all --json # every measurement
@@ -64,6 +69,12 @@ class Size:
     chars: int
     nodes: int
     depth: int
+    sorts: int
+    """`ORDER BY`s, written under `rows="multiset"`."""
+    numbered: int
+    """`ROW_NUMBER()`s, written under `rows="multiset"`."""
+    windows: int
+    """The plan's window functions."""
 
     @property
     def ratio(self) -> float:
@@ -84,6 +95,30 @@ def plan_nodes(plan: Any) -> int:
     if isinstance(plan, list):
         return sum(plan_nodes(v) for v in plan)
     return 0
+
+
+def plan_windows(plan: Any) -> int:
+    """The window functions of a Substrait plan: its `windowFunction`
+    expressions and the functions of its window relations."""
+    if isinstance(plan, dict):
+        here = int("windowFunction" in plan)
+        if isinstance(rel := plan.get("window"), dict):
+            here += len(rel.get("windowFunctions", []))
+        return here + sum(plan_windows(v) for v in plan.values())
+    if isinstance(plan, list):
+        return sum(plan_windows(v) for v in plan)
+    return 0
+
+
+def sql_sorts(sql: str, read: str) -> tuple[int, int]:
+    """The `ORDER BY`s and the `ROW_NUMBER`s of `sql`."""
+    import sqlglot
+    from sqlglot.tokens import TokenType
+
+    tokens = sqlglot.Dialect.get_or_raise(read).tokenize(sql)
+    sorts = sum(t.token_type == TokenType.ORDER_BY for t in tokens)
+    numbered = sum(t.text.upper() == "ROW_NUMBER" for t in tokens)
+    return sorts, numbered
 
 
 def sql_size(sql: str, read: str) -> tuple[int, int]:
@@ -116,17 +151,27 @@ def measure(source: str, label: str, plan_json: str) -> Iterator[Size]:
         plan = json.loads(written_plan(plan_json))
     except ValueError:
         return  # the checker or `--write` refuses it (decimals, #27)
-    for name in _engines.DIALECTS:
-        dialect = profiles.plugins()[name].dialect()  # pyrefly: ignore[not-callable]
+    windows = plan_windows(plan)
+
+    def write(dialect: Any, **kw: Any) -> str | None:
         try:
-            sql = plan_sql(plan, dialect)
+            return plan_sql(plan, dialect, **kw)
         except Unsupported:
             try:
-                sql = plan_sql(plan, dialect, deterministic=True)
+                return plan_sql(plan, dialect, deterministic=True, **kw)
             except Unsupported:
-                continue
+                return None
+
+    for name in _engines.DIALECTS:
+        plugin = profiles.plugins()[name]
+        dialect = plugin.dialect()  # pyrefly: ignore[not-callable]
+        if (sql := write(dialect)) is None:
+            continue
+        # The runner's own `rows` is the default; the sorts are counted under a multiset.
+        multiset = sql if plugin.rows == "multiset" else write(dialect, rows="multiset")
+        sorts, numbered = sql_sorts(multiset, name) if multiset is not None else (0, 0)
         nodes, depth = sql_size(sql, name)
-        yield Size(source, label, name, in_nodes, len(sql), nodes, depth)
+        yield Size(source, label, name, in_nodes, len(sql), nodes, depth, sorts, numbered, windows)
 
 
 def coverage_sizes() -> Iterator[Size]:
@@ -180,6 +225,8 @@ def over(s: Size, bound: dict[str, float] = BOUND) -> list[str]:
         out.append(f"CASE depth {s.depth} > {bound['depth']}")
     if s.chars > bound["chars"]:
         out.append(f"{s.chars} chars > {bound['chars']}")
+    if s.numbered > s.windows:
+        out.append(f"{s.numbered} ROW_NUMBERs under a multiset > the plan's {s.windows} windows")
     return out
 
 
@@ -190,12 +237,13 @@ def report(ss: list[Size], n: int | None) -> str:
         lines += [
             f"## {dialect}: {len(rows)} plans",
             "",
-            "| source | query | in nodes | chars | tokens | ratio | CASE depth |",
-            "|---|---|---:|---:|---:|---:|---:|",
+            "| source | query | in nodes | chars | tokens | ratio | CASE depth | sorts "
+            "| ROW_NUMBERs |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|",
         ]
         lines += [
             f"| {s.source} | {s.label} | {s.in_nodes} | {s.chars:,} | {s.nodes:,} "
-            f"| {s.ratio:.1f} | {s.depth} |"
+            f"| {s.ratio:.1f} | {s.depth} | {s.sorts} | {s.numbered} |"
             for s in rows[:n]
         ]
         lines.append("")

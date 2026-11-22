@@ -743,25 +743,33 @@ def test_contract_checks_on_duckdb():
 # --------------------------------------------------------------------------
 # Snapshots of the generated SQL
 
-SNAPSHOT_FIXTURES = [
-    "filter_project",
-    "virtual_left_join",
-    "union_fetch",
-    "df_window",
-    "df_float_timestamp",
-]
+#: Three plans and every fixture the checker accepts (`[exit 0]`).
+SNAPSHOT_FIXTURES = sorted(
+    {"filter_project", "virtual_left_join", "union_fetch"}
+    | {
+        p.stem
+        for p in (FIXTURES.glob("*.json") if FIXTURES.is_dir() else [])
+        if p.with_suffix(".expected").read_text().rstrip().endswith("[exit 0]")
+    }
+)
 
 
 @needs_fixtures
 @pytest.mark.parametrize("name", SNAPSHOT_FIXTURES)
 def test_sql_snapshot(name):
-    """Set SVERIFY_UPDATE_SNAPSHOTS=1 to re-record."""
-    sql = to_sql(fixture(name), DUCKDB) + "\n"
+    """DuckDB's SQL, in Lean's row order (`rows="sequence"`, its default): the
+    multiset writer's shortcuts leave it as it was (#2186, ruling 217 S2). Set
+    SVERIFY_UPDATE_SNAPSHOTS=1 to re-record."""
+    try:
+        sql = to_sql(fixture(name), DUCKDB) + "\n"
+    except Unsupported as e:
+        sql = f"-- Unsupported: {e}\n"
     path = SNAPSHOTS / f"{name}.duckdb.sql"
+    # As bytes: a `\r` in a string literal stays one (`read_text` reads it as `\n`).
     if os.environ.get("SVERIFY_UPDATE_SNAPSHOTS"):
         SNAPSHOTS.mkdir(exist_ok=True)
-        path.write_text(sql)
-    assert path.read_text() == sql
+        path.write_bytes(sql.encode())
+    assert path.read_bytes().decode() == sql
 
 
 EVENTS = pa.table(

@@ -83,6 +83,12 @@ sverify = "sverify.pytest_plugin"
 snowflake = "sverify._builtin.snowflake:PLUGIN"
 substrait = "sverify._builtin.substrait:PLUGIN"
 
+# sverify's own proposers (`sverify.proposers`, #2247), registered as a package
+# from outside registers one.
+[project.entry-points."sverify.proposers"]
+infer = "sverify.proposers:INFER"
+search = "sverify.proposers:SEARCH"
+
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
 Documentation = "https://alexandernenninger.github.io/substrait-lean/"

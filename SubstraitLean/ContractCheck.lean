@@ -273,6 +273,12 @@ structure Report where
   `contract_sound_all`). `none` where `depends` is, or without an
   observation in the request. -/
   ignores : List (Option (List String)) := []
+  /-- For each table condition of the request's observation (`table_reads`), the open aggregate
+  columns it reads and the components the observation ignores that its columns' kinds fall
+  under (#1071): a table condition (`unique`, `references`, `max_rows`, `rows_per`) is no
+  expression, so `ignores` has no entry for it. The open ones apply where the condition is
+  unproved, as for `ignores`. -/
+  tableIgnores : List (List String × List String) := []
   /-- For each postcondition: proved on every result the reference allows,
   every order and grouping of a double `SUM` or `AVG` among them
   (`contract_sound_allowed`, `postAllowed`), beside `proved`'s every order. -/
@@ -445,6 +451,8 @@ def Report.json (r : Report) : Json :=
           | none => .null)]).toArray),
     ("facts", Json.arr (r.facts.map fun (n, v, a) =>
       Json.mkObj [("name", Lean.toJson n), ("value", Lean.toJson v), ("abstract", a)]).toArray),
+    ("table_ignores", Json.arr (r.tableIgnores.map fun (o, g) =>
+      Json.mkObj [("opened", Lean.toJson o), ("ignored", Lean.toJson g)]).toArray),
     ("outputKinds", Json.arr r.outputKinds.toArray),
     ("keys", Json.arr (r.keys.map fun (k, ok) =>
       Json.mkObj [("cols", Lean.toJson k), ("proved", Lean.toJson ok)]).toArray),
@@ -862,6 +870,32 @@ def combineIgnores (noOpen : Bool) (pre : List (Option (List String × List Stri
     let op : List String := if noOpen then [] else p.1
     op ++ p.2.filter fun c => !op.contains c
 
+/-- The component of an observation that a column of this kind falls under, where the observation
+may coarsen it: `none` for integers, booleans, dates and times of day, whose values it compares
+exactly. A list, a struct and `other` count as `"elements"` (`mayHoldList`). -/
+def kindComponent : Kind → Option String
+  | .float => some "floats"
+  | .time | .timeTz | .timeNs | .timeTzNs => some "timestamps"
+  | .str => some "strings"
+  | .dec _ _ => some "decimals"
+  | .int | .bool | .date | .tod => none
+  | _ => some "elements"
+
+/-- What a table condition reading columns `reads` of the transformation `r` depends on (#1071):
+the open aggregate columns among them (none where `noOpen`: windows order totally, or the
+transformation is SQL), and, apart from those, the components the observation ignores that their kinds fall under:
+not `"rows"`, `"zeros"` or `"errors"`, and not `"floats"` under the plan's bound or a
+tolerance (`floatsOk`). `none` reads every column. -/
+def tableIgnores (cat : Catalog) (tables : Tables) (r : Rel) (coarsens : List String)
+    (floatsOk noOpen : Bool) (reads : Option (List Nat)) : List String × List String :=
+  let ks := r.kinds tables
+  let cols := reads.getD (List.range ks.length)
+  let opened : List String := if noOpen then [] else (cols.filterMap (r.openCol cat)).eraseDups
+  let ignored := (cols.filterMap fun j => kindComponent (ks.getD j .other)).eraseDups.filter fun c =>
+    coarsens.contains c && c != "rows" && c != "zeros" && c != "errors" &&
+      !(c == "floats" && floatsOk)
+  (opened, ignored)
+
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan
 `T.select(…)` from every order to every allowed result: `T` is closed
 (`Rel.closedB`, `contract_sound_allowed_closed`: no `QUANTILE_CONT`; a double
@@ -972,6 +1006,9 @@ def outputKindJson (k : Write.WKind) (bits : Nat) : Json := match k with
   | .date => Json.mkObj [("kind", "date")]
   | .time => Json.mkObj [("kind", "time")]
   | .instant => Json.mkObj [("kind", "instant")]
+  -- Nanoseconds (D61): the run's types keep their precision.
+  | .timeNs => Json.mkObj [("kind", "timeNs")]
+  | .instantNs => Json.mkObj [("kind", "instantNs")]
   | .interval => Json.mkObj [("kind", "interval")]
   | .tod => Json.mkObj [("kind", "tod")]
   | .list _ => Json.mkObj [("kind", "list")]
@@ -1501,6 +1538,14 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
       else .null
     | none => .null
   let ignores := if obsJ.isNone then [] else combineIgnores (sqlT || windowsDet) ignoresPre
+  let tableReads : List (Option (List Nat) × Bool) :=
+    ((obsJ.bind (·.getObjValAs? (Array Json) "table_reads" |>.toOption)).getD #[]).toList.map fun j =>
+      (((j.getObjValAs? (Array Nat) "reads").toOption).map (·.toList),
+        (j.getObjValAs? Bool "tolerant").toOption.getD false)
+  let tableIgnores := match transform.map (·.root) with
+    | some r => tableReads.map fun (rd, tol) =>
+        ContractCheck.tableIgnores cat tables r coarsens (floatsPlan || tol) (sqlT || windowsDet) rd
+    | none => []
   return {
     implied
     ensures := []
@@ -1508,6 +1553,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
     tiesOnly
     depends
     ignores
+    tableIgnores
     allowed
     facts
     outputKinds

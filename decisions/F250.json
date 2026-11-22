@@ -12,6 +12,9 @@
     "F248",
     "F249"
   ],
+  "amended_by": [
+    "F254"
+  ],
   "source": "fable-ruling-250-271-one-entry-relation.md",
   "note": "Amends ruling 248's G4 and ruling 249's H1-H3 (J1-J4); `Pre` goes unless an entry needs another precondition. D31's amendment says every lowering entry is stated on double arguments. No D-number."
 }
