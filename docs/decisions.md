@@ -463,8 +463,8 @@ contract holds on all of them: `contract_sound_all` for postconditions,
 so it runs natively.
 
 `Rel.eval` computes one allowed order: a stable sort (`List.mergeSort`) and
-rows in list order (`Rel.eval_orderAllowed`). Determinism is a property the
-checker proves of a plan, not a profile: a plan is determined when every
+rows in list order (`Rel.eval_orderAllowed`). Determinism is a property of a
+plan, which the checker proves: a plan is determined when every
 result the reference allows is `Rel.eval`'s up to row order (`Rel.detPlan`). A
 consumer that needs a rerun to give the same rows asks for it, through
 `run(reproducible=sv.equivalent())` or a sink's `reproducible=`
@@ -810,7 +810,7 @@ exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
 
-**Correction, 2026-11-09** (approved by the maintainer, via the theory advisor):
+Correction, 2026-11-09 (approved by the maintainer, via the theory advisor):
 "The reference is IEEE on the full float code set, signed zeros and signed
 NaNs included; `canon` applies only at identity boundaries; the reference
 raises or leaves the result open where engines disagree."
@@ -873,7 +873,7 @@ Note (2026-11-09, theory advisor): a zero in an option's scope is either zero
 a `-0.0` argument or result too, and `fp.elem` takes `zero_sign` for `atan2`
 (Spark's reads `-0.0` as `0.0`). No reference value or allowed set changes.
 
-**Amendment, 2026-11-21** (ruling 248, #271): the reference's doubles are
+Amendment, 2026-11-21 (ruling 248, #271): the reference's doubles are
 values of binary64. Every integer magnitude up to the largest has a code, but
 only those with at most 53 significant bits are doubles (`FloatFormat.Dbl`).
 On a catalog of doubles, with doubles for the plan's constants, every double
@@ -1120,7 +1120,7 @@ Polars and Spark compare NaN so (`nan_equality` `NAN_IS_NAN` in their
 tables); IEEE's NaN, unequal to itself,
 would split `GROUP BY` and `DISTINCT` and drop rows from joins.
 
-**Correction, 2026-11-15** ([#1446](https://github.com/AlexanderNenninger/substrait-lean/issues/1446)),
+Correction, 2026-11-15 ([#1446](https://github.com/AlexanderNenninger/substrait-lean/issues/1446)),
 by the theory advisor, applying D31's correction:
 as first written, this decision had the reference apply `canon` "to every
 input and output" and give `1.0 / -0.0 = inf`. D31's correction of
@@ -1179,7 +1179,7 @@ divisor's raw sign as a scalar operation does (D31), with no comparison of
 `y` with zero. `0 / 0` and `±∞ / ±∞` create a NaN, so they raise under D37
 (`nanCase`); only a profile with `nan_creation = NAN` gives the NaN, as
 DuckDB's run profile does. An overflow of finite operands to `±∞` raises as
-D38 says; a quotient by zero is the option's value, not an overflow
+D38 says; a quotient by zero takes the option's value and raises no overflow
 (`BinFn.infIssue`). The reference keeps `ERROR` and D37 unchanged: a portable plan raises at
 any zero divisor and creates no NaN. DuckDB's IEEE operations are this
 division, so the lift of DuckDB's `/` with `semantics="duckdb"` writes the

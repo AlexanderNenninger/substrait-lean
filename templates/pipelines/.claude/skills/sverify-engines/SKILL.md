@@ -73,8 +73,8 @@ any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused
 
-`to_sql` and the engines raise `UnsupportedError` (with the reason) instead of
-answering differently from the model:
+`to_sql` and the engines raise `UnsupportedError`, with the reason, wherever
+their answer would differ from the model's:
 
 ```python
 from sverify.engines import UnsupportedError
@@ -103,14 +103,14 @@ print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is 
 # SELECT
 ```
 
-* **Snowflake and Spark tables have no row order**, so sorts, `LIMIT` and
+* Snowflake and Spark tables have no row order, so sorts, `LIMIT` and
   windows are refused unless the report is `deterministic` (a key on the
   partition and order columns rules out ties), and so is `SUM` or `AVG` of
   doubles (the rounding depends on the order of additions). `node.to_sql` and
   `report.to_sql` read it from the report; `sverify.engines.plan.to_sql` takes
   `deterministic=True`, which you pass only when a report says so.
-* **Snowflake has no interval type**: interval-valued expressions are refused.
-* **Warehouse setup the SQL assumes:** Snowflake time columns are
+* Snowflake has no interval type: interval-valued expressions are refused.
+* Warehouse setup the SQL assumes: Snowflake time columns are
   `TIMESTAMP_NTZ`, strings have no collation, names are quoted lower case;
   Spark sessions use `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time
   zone, NTZ timestamps) and the `UTF8_BINARY` collation.

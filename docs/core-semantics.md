@@ -912,7 +912,7 @@ Two limits of the per-option view:
 - A shim's own calls must be native in `Q`, or be discharged in turn. The
   generator checks this; a shim that needs a refused behaviour makes its row
   refused.
-- Relational options act on operators, not calls: `null_order` is
+- Relational options act on whole operators: `null_order` is
   discharged by writing the sort key's NULL placement, `tie_order` and
   `tie_pick` natively (any engine's pick is one the reference allows), or,
   for a plan that must be determined, by a total order or a refusal
