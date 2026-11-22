@@ -33,9 +33,10 @@ Input (JSON):
   "ranges": {"<table>": [{"by": [<col>, ...], "lo": <col>, "hi": <col>}, ...]},
       -- non-overlapping ranges (`sv.non_overlapping`, #814, `RangeOn`)
   "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
-  "references": {"<table>": [[<col>, "<table>", <col>], ...]},
-      -- input foreign keys: every non-NULL value of the column occurs in the
-      -- other table's column (`ForeignKeys.Hold`)
+  "references": {"<table>": [[[<col>, ...], "<table>", [<col>, ...]], ...]},
+      -- input foreign keys: every row whose parts are all non-NULL has a row of
+      -- the other table with equal parts; one-column ones are `ForeignKeys.Hold`
+      -- (a bare <col> reads as a list of one)
   "max_rows": {"<table>": <n>},
       -- row caps (`sv.max_rows`): the postconditions, facts and issues are
       -- checked on the plan with these reads capped (`Rel.capReads`), which is the plan
@@ -498,12 +499,29 @@ def rangeConds (j : Json) : List RangeCond :=
     pure ⟨(← (r.getObjValAs? (Array Nat) "by").toOption).toList,
       ← (r.getObjValAs? Nat "lo").toOption, ← (r.getObjValAs? Nat "hi").toOption⟩
 
+/-- One side of a foreign key: its column positions, or a bare position as
+0.x manifests wrote it. -/
+def fkParts (j : Json) : Option (List Nat) :=
+  match j.getNat?.toOption with
+  | some n => some [n]
+  | none => j.getArr?.toOption.bind (·.toList.mapM (·.getNat?.toOption))
+
+/-- The foreign keys of one-column entries. `ForeignKeys` states one column per
+key, so a composite entry (#2223) is skipped: it is still checked on the
+data, and a hypothesis left out assumes less. -/
 def foreignKeys (j : Json) : ForeignKeys := fun t =>
   (((j.getObjVal? t).toOption.bind (·.getArr?.toOption)).getD #[]).toList.filterMap fun fk =>
     match fk.getArr?.toOption.map Array.toList with
-    | some [c, s, p] => do
-      pure ((← c.getNat?.toOption), (← s.getStr?.toOption), (← p.getNat?.toOption))
+    | some [c, s, p] =>
+      match fkParts c, s.getStr?.toOption, fkParts p with
+      | some [c], some s, some [p] => some (c, s, p)
+      | some (_ :: _ :: _), some _, some (_ :: _ :: _) => none  -- composite: skipped
+      | _, _, _ => none
     | _ => none
+
+#guard foreignKeys ((Json.parse
+    "{\"t\": [[[0], \"u\", [1]], [2, \"u\", 3], [[0, 1], \"u\", [1, 2]]]}").toOption.getD .null)
+    "t" == [(0, "u", 1), (2, "u", 3)]
 
 variable [Boxes.Ambient]
 /-- The predicates `r` implies on each base table it reads (`Rel.need` from
@@ -695,10 +713,11 @@ def colKindOf : Kind → ColKind
   | .dec _ _ => .decimal
   | _ => .other
 
-/-- Might a column of this kind hold a list (at any depth)? `other` counts: the
-checker does not know its type. -/
+/-- Might a column of this kind hold a list (at any depth)? `other` and
+`opaque` count: the checker does not know their type, and an opaque map holds
+one (D67). -/
 def mayHoldList : Kind → Bool
-  | .list _ | .struct _ | .other => true
+  | .list _ | .struct _ | .other | .opaque => true
   | _ => false
 
 -- The two theorems belong to `Substrait`, beside the ones they extend.
@@ -1477,7 +1496,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
       if p.root.checkWF cat then
         let w := p.writtenRoot
         if w.checkWF cat && w.looseSub && (w == p.root || w == p.root.bindArgs cat) then
-          w.marksJson (w.marks cat A F T false)
+          w.marksJson (w.marks cat A F T caps false)
         else .null
       else .null
     | none => .null
@@ -1520,6 +1539,10 @@ def Request.check (R : Request) : Except String Report :=
     throw "a postcondition plan is not well-formed"
   else if !R.transform.all fun T => T.root.checkWF R.cat then
     throw "the transformation plan is not well-formed"
+  -- An opaque column is carried, and no plan reads it (`checkPlan`, D67).
+  else if let some use := (R.transform.toList ++ R.ensures).findSome? fun p =>
+      p.root.opaqueUse? p.catalog p.tableKinds then
+    throw (opaqueRefusal use)
   else
     -- `R.kenv`, with every table's knowledge evaluated once (`knowsTable`):
     -- `R.kenv` itself would evaluate it again at each read.
@@ -1594,6 +1617,8 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
     split at hc
     · cases hc
     · rename_i htw
+      split at hc
+      · cases hc
       simp only at hc
       split at hc
       · cases hc

@@ -290,7 +290,7 @@ FAITHFUL = [
 def translated(con, sql: str) -> tuple[list[tuple], list[tuple]]:
     # The translators against each other: any plan will do, and the
     # reference's semantics reads the most (`%` of doubles, casts to integers).
-    plan = written_plan(substrait_json(con, sql, "reference"))
+    plan = written_plan(substrait_json(con, sql, "portable"))
     tabs = {n: TABLES[n] for n in read_tables(json.loads(plan))}
     return positional(polars_engine.run(plan, tabs)), positional(duckdb_engine.run(plan, tabs))
 
@@ -324,7 +324,7 @@ REMAINDERS = [
 
 @pytest.mark.parametrize("sql", REMAINDERS)
 def test_a_remainder_of_doubles_runs_on_duckdb_and_is_refused_on_polars(con, sql):
-    plan = written_plan(substrait_json(con, sql, "reference"))
+    plan = written_plan(substrait_json(con, sql, "portable"))
     tabs = {n: TABLES[n] for n in read_tables(json.loads(plan))}
     assert positional(duckdb_engine.run(plan, tabs))
     with pytest.raises(polars_engine.Unsupported, match="% of doubles"):
@@ -381,7 +381,7 @@ def test_polars_translator_keeps_duplicate_output_names(con):
 def proves(sql: str, ensures: str) -> bool:
     # The reference's casts truncate (#209 R9); DuckDB's round.
     j = ibis.table({"a": "int64"}, name="j")
-    r = sv.verify(sv.sql(sql, semantics="reference", j=j), ensures=[ensures])
+    r = sv.verify(sv.sql(sql, semantics="portable", j=j), ensures=[ensures])
     return r.verdict == sv.Verdict.PROVED and r.ensures[0].proved
 
 

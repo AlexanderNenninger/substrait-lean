@@ -219,7 +219,7 @@ def bench_notebooks(cache: Path) -> dict[str, dict[str, Run]]:
                 argv = [sys.executable, "-c", NOTEBOOK_RUNNER, str(nb), f.name]
                 run = _process(argv, env, cwd=nb.parent)
                 if run.error is None:
-                    data = json.loads(Path(f.name).read_text())
+                    data = json.loads(Path(f.name).read_text(encoding="utf-8"))
                     stages = {s: data["seconds"].get(s, 0.0) for s in STAGES if s != "other"}
                     stages["other"] = max(0.0, data["total"] - sum(stages.values()))
                     run = Run(run.seconds, stages, data["hits"])
@@ -328,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
     text = report(results)
     print(text)
     if summary_file := os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(summary_file, "a") as f:
+        with open(summary_file, "a", encoding="utf-8") as f:
             f.write(text)
     if args.json is not None:
         args.json.write_text(json.dumps(to_json(results), indent=2) + "\n")

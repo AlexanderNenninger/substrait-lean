@@ -603,7 +603,7 @@ def note(case: tuple) -> None:
     still names the case it was on. Written whole, then renamed into place."""
     if path := os.environ.get("SVERIFY_FUZZ_PROGRESS"):
         tmp = f"{path}.tmp"
-        Path(tmp).write_text(json.dumps(case_json(case)))
+        Path(tmp).write_text(json.dumps(case_json(case)), encoding="utf-8")
         os.replace(tmp, path)
 
 

@@ -13,6 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import (
+    CONSTANT_FIX,
     Exprs,
     _common,
     _unary,
@@ -98,8 +99,9 @@ def _array_contains(x: Exprs, op: Any) -> Json:
     # value, as Polars has it: `any_match` with that predicate (#94). The
     # lambda is closed, so the value is a constant.
     if not isinstance(op.other, ops.Literal):
-        raise Unsupported(
+        raise ProducerUnsupported(
             "contains needs a constant value (a lambda reading a column is not supported yet)",
+            CONSTANT_FIX,
             construct="function contains",
         )
     elem = op.arg.dtype.value_type
@@ -129,7 +131,9 @@ def _table_unnest(op: Any) -> Json:
     if op.offset is not None:
         raise ProducerUnsupported("unnest(offset=) is not supported", construct="function unnest")
     if op.column_name != op.column.name or not isinstance(op.column, ops.Field):
-        raise Unsupported("unnest must unnest a column in place", construct="function unnest")
+        raise ProducerUnsupported(
+            "unnest must unnest a column in place", construct="function unnest"
+        )
     col = list(op.parent.schema.names).index(op.column.name)
     source = rel(op.parent)
     if op.keep_empty:

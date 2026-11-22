@@ -62,10 +62,6 @@
       "issue": 417
     },
     {
-      "match": "unknown function ARBITRARY()",
-      "issue": 1920
-    },
-    {
       "match": "unknown function LIST_AGGR()",
       "issue": 348
     },

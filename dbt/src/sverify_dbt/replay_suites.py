@@ -20,6 +20,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,22 @@ class Case:
     """What `project_config_update` adds to `dbt_project.yml`."""
     also: list[str] = field(default_factory=list)
     """The other classes with the same project."""
+
+    @property
+    def has_tests(self) -> bool:
+        """Whether the project can hold a test: a file under `tests/`, or a
+        YAML file or project config that says `tests`, `data_tests` or
+        `unit_tests`, or a file under a `test-paths` the config sets. A project
+        without one has nothing to build and check."""
+        paths = self.config.get("test-paths") or ["tests"]
+        if any(rel.startswith(f"{p.rstrip('/')}/") for rel in self.files for p in paths):
+            return True
+        texts = [t for rel, t in self.files.items() if rel.endswith((".yml", ".yaml"))]
+        texts.append(json.dumps(self.config, default=str))
+        return any(_TESTS_KEY.search(t) for t in texts)
+
+
+_TESTS_KEY = re.compile(r"\b(data_|unit_)?tests\b")
 
 
 def _function(value: Any) -> Any:
@@ -135,10 +152,13 @@ def write(case: Case, project: Path, profile: str = "replay") -> None:
     for rel, text in case.files.items():
         target = project / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
+        target.write_text(text, encoding="utf-8")
     base = {"name": "replay", "version": "1.0", "config-version": 2, "profile": profile}
-    (project / "dbt_project.yml").write_text(yaml.safe_dump({**base, **case.config}))
+    (project / "dbt_project.yml").write_text(
+        yaml.safe_dump({**base, **case.config}), encoding="utf-8"
+    )
     (project / "profiles.yml").write_text(
         f"{profile}:\n  target: duckdb\n  outputs:\n"
-        f'    duckdb: {{type: duckdb, path: "{project / "replay.duckdb"}", threads: 2}}\n'
+        f'    duckdb: {{type: duckdb, path: "{project / "replay.duckdb"}", threads: 2}}\n',
+        encoding="utf-8",
     )

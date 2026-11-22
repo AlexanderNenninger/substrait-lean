@@ -53,7 +53,7 @@ from sverify.plan_json import (
 from sverify.plan_json import decimal_dtype as _decimal
 from sverify.plan_json import same_type as _same
 
-__all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
+__all__ = ["DUCKDB", "PORTABLE", "PROFILES", "Lifted", "Profile", "lift", "parse"]
 
 DIALECT = "duckdb"
 
@@ -63,6 +63,9 @@ _KNOWN = {"date_part", "datepart", "prefix", "suffix"}
 
 # --------------------------------------------------------------------------
 # Profiles
+
+#: What a refusal says where a constant is needed (#176).
+CONSTANT_FIX = "use a literal, or write each case with CASE WHEN"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -75,7 +78,7 @@ class Profile:
     in both profiles; the second is what the functions do.
 
     Attributes:
-        name: `"duckdb"` or `"reference"`, as `sv.sql`'s `semantics`.
+        name: `"duckdb"` or `"portable"`, as `sv.sql`'s `semantics`.
         divide: SQL `/` on integers and decimals: `"double"`, both operands
             cast to `fp64` and divided (DuckDB's `/` without
             `integer_division`, F1).
@@ -131,8 +134,8 @@ DUCKDB = Profile(
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
 )
-REFERENCE = Profile("reference")
-PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
+PORTABLE = Profile("portable")
+PROFILES = {p.name: p for p in (DUCKDB, PORTABLE)}
 
 
 # --------------------------------------------------------------------------
@@ -457,6 +460,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     _check_numbers(query)
     _check_intervals(query)
     _check_regex_operators(query)
+    _check_date_bin(query)
     query = expand_table_shorthand(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
@@ -1441,8 +1445,10 @@ class _Lift:
             if isinstance(f, sge.Ntile):
                 n = arg(f.this)
                 if not (n.constant and isinstance(n.value, int) and n.value > 0):
-                    raise Unsupported(
-                        "ntile needs a positive integer constant", construct="function ntile"
+                    raise SqlUnsupported(
+                        "ntile needs a positive integer constant",
+                        CONSTANT_FIX,
+                        construct="function ntile",
                     )
                 args = [literal(n.value, dt.int64)]
         elif isinstance(f, sge.Lag | sge.Lead):
@@ -1452,8 +1458,9 @@ class _Lift:
             offset = f.args.get("offset")
             k = arg(offset) if offset is not None else E({}, dt.int64, 1)
             if not (k.constant and isinstance(k.value, int) and k.value >= 0):
-                raise Unsupported(
+                raise SqlUnsupported(
                     f"{name} needs a non-negative integer constant offset",
+                    CONSTANT_FIX,
                     construct=f"function {name}",
                 )
             args = [column(x), literal(k.value, dt.int64)]
@@ -1488,8 +1495,9 @@ class _Lift:
             if isinstance(f, sge.NthValue):
                 k = arg(f.args["offset"])
                 if not (k.constant and isinstance(k.value, int) and k.value > 0):
-                    raise Unsupported(
+                    raise SqlUnsupported(
                         "nth_value needs a positive integer constant",
+                        CONSTANT_FIX,
                         construct="function nth_value",
                     )
                 args.append(literal(k.value, dt.int64))
@@ -1714,7 +1722,7 @@ class _Lift:
                     construct="CORRELATED SUBQUERY",
                 )
         if what == "IN" and (len(sub.expressions) != 1 or isinstance(sub.expressions[0], sge.Star)):
-            raise Unsupported("an IN subquery must return one column", construct="IN")
+            raise SqlUnsupported("an IN subquery must return one column", construct="IN")
         for e in sub.expressions if what == "EXISTS" else []:
             if not isinstance(e.unalias(), sge.Star | sge.Literal | sge.Column):
                 raise SqlUnsupported(
@@ -1755,6 +1763,12 @@ class _Lift:
         its columns (each grouping key, each aggregate and each
         `GROUPING(…)`)."""
         keys, sets = _grouping_sets(group, outputs)
+        if any(isinstance(k, sge.Star) for k in keys):
+            raise SqlUnsupported(
+                "GROUP BY ALL over `*` (which is also what a query that starts with FROM selects) "
+                "is not supported yet; name the columns in a SELECT",
+                construct="GROUP BY ALL",
+            )
         groups = [self.expr(k, scope) for k in keys]
         measures = [self.measure(a, scope) for a in aggs]
         parts = [p for ms, _ in measures for p in ms]
@@ -1989,8 +2003,9 @@ class _Lift:
         for o in order.expressions if order is not None else []:
             key = self.expr(o.this, scope, bound).json
             if "selection" not in key or "expression" in key["selection"]:
-                raise Unsupported(
+                raise SqlUnsupported(
                     f"{_shown(node)}: ORDER BY a column only",
+                    "order by a column: compute the expression in an earlier select",
                     construct=_function(node),
                 )
             desc = bool(o.args.get("desc"))
@@ -2011,8 +2026,9 @@ class _Lift:
             sep = node.args.get("separator")
             s_ = self.expr(sep, scope, bound) if sep is not None else E({}, dt.string, ",")
             if not (s_.constant and isinstance(s_.value, str)):
-                raise Unsupported(
+                raise SqlUnsupported(
                     f"{_shown(node)} needs a constant separator",
+                    CONSTANT_FIX,
                     construct=_function(node),
                 )
             args.append(literal(s_.value, dt.string))
@@ -2113,7 +2129,7 @@ class _Lift:
                 )
             arg = arg.expressions[0]
         if arg is None:
-            raise Unsupported(f"{_shown(node)} needs an argument", construct=_function(node))
+            raise SqlUnsupported(f"{_shown(node)} needs an argument", construct=_function(node))
         a = self.expr(arg, scope, bound)
         if a.midnight:
             a = self.timestamp_of(a)  # DuckDB's TIMESTAMP (#807)
@@ -2138,17 +2154,17 @@ class _Lift:
         elif name in ("quantile_cont", "quantile_disc"):
             if isinstance(q, sge.Neg):
                 # DuckDB reads a negative fraction from the largest value.
-                raise Unsupported(
+                raise SqlUnsupported(
                     f"{_shown(node)}: the fraction must be between 0 and 1",
                     construct=_function(node),
                 )
             if not (isinstance(q, sge.Literal) and not q.is_string):
-                raise Unsupported(
+                raise SqlUnsupported(
                     f"{_shown(node)}: the fraction must be one number",
                     construct=_function(node),
                 )
             if not 0 <= Decimal(q.this) <= 1:
-                raise Unsupported(
+                raise SqlUnsupported(
                     f"{_shown(node)}: the fraction must be between 0 and 1",
                     construct=_function(node),
                 )
@@ -2177,8 +2193,9 @@ class _Lift:
             for o in order.expressions:
                 key = self.expr(o.this, scope, bound).json
                 if "selection" not in key:
-                    raise Unsupported(
+                    raise SqlUnsupported(
                         f"{_shown(node)}: ORDER BY a column only",
+                        "order by a column: compute the expression in an earlier select",
                         construct=_function(node),
                     )
                 desc = bool(o.args.get("desc"))
@@ -2208,8 +2225,9 @@ class _Lift:
                 )
             by = self.expr(node.expression, scope, bound).json
             if "selection" not in by:
-                raise Unsupported(
+                raise SqlUnsupported(
                     f"{_shown(node)} orders by a column only",
+                    "order by a column: compute the expression in an earlier select",
                     construct=_function(node),
                 )
             args.append(by)
@@ -2259,7 +2277,7 @@ class _Lift:
             finally:
                 self.shared = saved
         if getattr(bound, "grouped", False) and isinstance(node, sge.Column):
-            raise Unsupported(
+            raise SqlUnsupported(
                 f"column {_shown(node)} must be in GROUP BY or inside an aggregate",
                 construct="GROUP BY",
             )
@@ -2655,7 +2673,7 @@ def _interval_offset(lf: _Lift, value: sge.Interval, kind: str, key: Any) -> int
     """A RANGE frame's `INTERVAL` offset in the unit of its sort key (#811):
     microseconds for a timestamp, days for a date."""
     if kind != "RANGE" or key is None or not (key.is_timestamp() or key.is_date()):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"frame offset {_shown(value)} needs a RANGE frame over one timestamp or date",
             construct="WINDOW FRAME",
         )
@@ -2669,7 +2687,7 @@ def _interval_offset(lf: _Lift, value: sge.Interval, kind: str, key: Any) -> int
         )
     if key.is_date():
         if micros % day:
-            raise Unsupported(
+            raise SqlUnsupported(
                 f"frame offset {_shown(value)} over a DATE must be whole days",
                 construct="WINDOW FRAME",
             )
@@ -2925,6 +2943,27 @@ def _check_regex_operators(query: str) -> None:
             )
 
 
+def _check_date_bin(query: str) -> None:
+    """Refuse `date_bin(...)`: DuckDB 2.0.0 has no such function, but SQLGlot reads it as the
+    node of `time_bucket`, so the tree cannot tell them apart."""
+    from sqlglot.tokens import TokenType
+
+    try:
+        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
+    except sg.errors.TokenError:
+        return  # the parser reports it
+    for tok, after in zip(tokens, tokens[1:], strict=False):
+        if (
+            tok.token_type == TokenType.VAR
+            and tok.text.lower() == "date_bin"
+            and after.token_type == TokenType.L_PAREN
+        ):
+            raise Unsupported(
+                "DuckDB has no function date_bin; write time_bucket(width, ts[, origin])",
+                construct="function date_bin",
+            )
+
+
 def _check_intervals(query: str) -> None:
     """Refuse `INTERVAL '… ago'`, which negates the interval in DuckDB.
     SQLGlot drops the `ago` of a single unit (`'1 day ago'` reads as
@@ -2983,7 +3022,11 @@ def _check_using_stars(tree: Any) -> None:
 def _count(node: sge.Expression, what: str) -> int:
     if isinstance(node, sge.Literal) and not node.is_string and node.this.isdigit():
         return int(node.this)
-    raise Unsupported(f"{what} must be a non-negative integer constant", construct=f"{what}")
+    raise SqlUnsupported(
+        f"{what} must be a non-negative integer constant",
+        CONSTANT_FIX,
+        construct=f"{what}",
+    )
 
 
 def _normalized(name: str) -> str:
@@ -2999,7 +3042,7 @@ def _normalized(name: str) -> str:
 def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> Lifted:
     """The plan of the DuckDB SQL `query` over input tables of the Ibis
     schemas `schemas` (by table name), read as named tables, with the
-    `semantics` profile ("duckdb" or "reference").
+    `semantics` profile ("duckdb" or "portable").
 
     Raises:
         Unsupported: The query is outside the subset, saying what; also a

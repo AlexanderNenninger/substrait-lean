@@ -90,9 +90,9 @@ end
 
 mutual
 /-- A kind whose values may hold a double: a double, a kind the parser does
-not know, or a list or struct of such kinds. -/
+not know, an opaque column (any image), or a list or struct of such kinds. -/
 def Kind.mayDouble : Kind → Bool
-  | .float | .other => true
+  | .float | .other | .opaque => true
   | .list k => k.mayDouble
   | .struct ks => Kind.anyMayDouble ks
   | _ => false

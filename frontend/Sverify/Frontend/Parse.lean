@@ -175,42 +175,58 @@ def narrowIntBits? (ty : Json) : Option Nat := (intTagBits? ty).filter (· < 64)
 /-- The smallest integer type holding `n` bits (`i64` for more than 32). -/
 def intTagFor (n : Nat) : String := ((intTags.find? fun (_, b) => n ≤ b).map (·.1)).getD "i64"
 
+/-- The types the model does not read: a column of one is opaque (D67),
+carried and never read. -/
+def opaqueTypes : List String := ["binary", "fixedBinary", "map", "uuid", "userDefined"]
+
+/-- A type's kind. A type the model does not read is opaque (D67), and so is a
+list or struct that holds one, as a whole (K5); a timestamp or time at a precision other
+than microseconds too (#2004). A JSON that names no type (an absent output
+type) is `.other`, the kind checker's unknown. -/
 partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
+  let micros (t : Json) (k : Kind) : Kind :=
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then k else .opaque
   if intTags.any (fun (k, _) => has k) then .int
   else if ["fp32", "fp64"].any has then .float
+  else if opaqueTypes.any has then .opaque
   -- Times are microseconds: a coarser precision (Calcite's `TIMESTAMP` is seconds) would
   -- truncate, and a finer one (nanoseconds) would be read as a count of microseconds, which
-  -- compares raw counts of different units (#2004). Neither is modelled.
+  -- compares raw counts of different units (#2004). Neither is modelled: such a column is
+  -- carried only.
   else if has "timestamp" then .time
-  else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .time else .other
+  else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then micros t .time
   -- An instant (#1725): microseconds, as the naive kind.
-  else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .timeTz else .other
+  else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then micros t .timeTz
   else if has "timestampTz" then .timeTz
   else if has "date" then .date
   else if has "time" then .tod
-  else if let some t := (ty.getObjVal? "precisionTime").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .tod else .other
+  else if let some t := (ty.getObjVal? "precisionTime").toOption then micros t .tod
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
-    .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
+    match typeKind ((l.getObjVal? "type").toOption.getD .null) with
+    | .opaque => .opaque
+    | k => .list k
   else if let some t := (ty.getObjVal? "struct").toOption then
-    .struct (((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind)
+    let ks := ((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind
+    if ks.contains .opaque then .opaque else .struct ks
   -- A scale of 0 is left out of the JSON.
   else if let some d := (ty.getObjVal? "decimal").toOption then
     .dec ((d.getObjValAs? Nat "precision").toOption.getD 38) ((d.getObjValAs? Nat "scale").toOption.getD 0)
   else .other
 
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
-#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .opaque
 -- Nanoseconds are not microseconds (#2004).
 #guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 6)])]) == .time
-#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .other
-#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .other
-#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .opaque
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .opaque
+#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .opaque
+#guard typeKind (Json.mkObj [("binary", Json.mkObj [])]) == .opaque
+#guard typeKind (Json.mkObj [("list", Json.mkObj [("type", Json.mkObj [("binary", Json.mkObj [])])])])
+  == .opaque
+#guard typeKind .null == .other
 
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -836,7 +852,10 @@ def parseConstLiteral (j : Json) : J Const := do
     let s ← (← field v "value").getStr?
     if s.length > (← natD v "length") then throw "VARCHAR literal longer than its type"
     return .str s
-  | ("null", _) => return .null
+  | ("null", t) =>
+    -- No constant of an opaque column's type, not even NULL (D67 K6).
+    if typeKind t == .opaque then throw (opaqueRefusal "a constant of its type")
+    return .null
   | ("fp32", n) | ("fp64", n) =>
     -- An `fp32` literal is the single-precision value its digits round to,
     -- which a double holds exactly (#208).
@@ -2187,6 +2206,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if unsignedType target then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
+    if k == .opaque || target == .opaque then throw (opaqueRefusal "a cast of it")
     -- An instant (`.timeTz`) is read, compared and ordered; the conversions and
     -- the calendar's casts wait for #1725.
     if k == .time && target == .timeTz then return .un (.atUtc true) e
@@ -2995,9 +3015,10 @@ def kindSchemaType : Kind → Json
   | .str => Json.mkObj [("string", Json.mkObj [])]
   | .bool => Json.mkObj [("bool", Json.mkObj [])]
   | .int => Json.mkObj [("i64", Json.mkObj [])]
+  | .dec p s => Json.mkObj [("decimal", Json.mkObj [("precision", p), ("scale", s)])]
   | _ => Json.mkObj []
 
-#guard [Kind.float, .time, .date, .tod, .str, .bool, .int].all fun k =>
+#guard [Kind.float, .time, .date, .tod, .str, .bool, .int, .dec 27 2, .dec 38 0].all fun k =>
   typeKind (kindSchemaType k) == k
 
 /-- The integer width the source plan declares for an expression where
@@ -3041,7 +3062,7 @@ def recordDeclaredBits (bits : List Nat) (ejs : List Json) (es : List Expr) : P 
 
 /-- Record the kinds a projection's source plan declares (`projectKey`)
 where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
-or typed `NULL` (#96). Projections with the same expressions share an entry;
+or typed `NULL` (#96), a decimal one included (#1904). Projections with the same expressions share an entry;
 where their kinds differ, `Expr.kind` holds. -/
 def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : List Json)
     (es : List Expr) : P Unit := do
@@ -3051,6 +3072,9 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
     let k := declaredKind fns j
     if [Kind.int, .other].contains (e.kind cols) &&
         [Kind.float, .time, .date, .tod, .str, .bool].contains k then k
+    -- A typed `NULL` of a decimal type, which the writer pads a set's input with
+    -- (a full outer join's branch, #1904): a cast of the column reads back.
+    else if e.kind cols == .other && (match k with | .dec .. => true | _ => false) then k
     -- A typed `NULL` of an integer type, which engines otherwise read as
     -- untyped (`CAST(NULL AS BIGINT)` under `DISTINCT`).
     else if e.kind cols == .other && k == .int then k

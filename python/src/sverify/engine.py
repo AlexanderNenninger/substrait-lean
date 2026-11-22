@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import warnings
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -37,7 +36,6 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     CheckerVersionError,
     _checker_file,
     _run_checker,
-    checker_env,
     checker_path,
     checker_refusal,
     run_checker,
@@ -112,7 +110,7 @@ class _Refusal:
 
 
 class _Arrow(MutableMapping[str, pa.Table]):
-    """`Connection.arrow`: the connection's tables as Arrow tables. A table
+    """`Connection._arrow`: the connection's tables as Arrow tables. A table
     DuckDB reads where it is (a `Scan` or `Resident`) is read into Arrow
     when it is first looked up here, and is held as that Arrow table from
     then on."""
@@ -169,10 +167,6 @@ class Connection:
 
     Attributes:
         engine: The engine that runs plans unless a call names another.
-        arrow: Deprecated: the tables by name, as Arrow tables; `get`,
-            `rows` and `put` read and write them.
-        ibis: Deprecated: the Ibis DuckDB backend the bound tables read
-            through; `table(name).get_backend()` is the same backend.
 
     Raises:
         ValueError: `engine` is unknown.
@@ -182,15 +176,10 @@ class Connection:
         from sverify import profiles
 
         plugin = profiles.find(engine if engine is not None else _engines.default())
-        if plugin is not None and plugin.runner is not None and not plugin.local:
-            missing = [m for m in plugin.modules or (plugin.engine,) if not _importable(m)]
-            if missing:
-                raise ImportError(
-                    f"engine {plugin.engine!r} cannot run plans here: {', '.join(missing)} "
-                    f"is not installed (pip install 'sverify[{plugin.engine}]')"
-                )
         if plugin is None or not plugin.local:
-            raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+            raise _engines.not_installed(plugin.engine if plugin else engine) or ValueError(
+                f"unknown engine {engine!r}; expected one of {ENGINES}"
+            )
         self.engine: Engine = plugin.engine  # type: ignore[assignment] - an installed engine's name
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
@@ -219,27 +208,6 @@ class Connection:
         """
         schema = ibis.Schema.from_pyarrow(self.schema(name))
         return ops.DatabaseTable(name, schema=schema, source=self._source).to_expr()
-
-    @property
-    def arrow(self) -> MutableMapping[str, pa.Table]:
-        """Deprecated: the tables by name, as Arrow tables."""
-        warnings.warn(
-            "Connection.arrow is deprecated; read a table with con.get(name) or "
-            "con.rows(name), and write one with con.put(name, table)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._arrow
-
-    @property
-    def ibis(self) -> Any:
-        """Deprecated: the Ibis DuckDB backend the bound tables read through."""
-        warnings.warn(
-            "Connection.ibis is deprecated; con.table(name).get_backend() is the same Ibis backend",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._ibis
 
     @property
     def _ibis(self) -> Any:
@@ -382,7 +350,7 @@ def connection_of(table: ir.Table) -> Connection | None:
     return getattr(backend, "_sverify_connection", None)
 
 
-def plan_json(con: Connection, query: ir.Table | str, semantics: str = "reference") -> str:
+def plan_json(con: Connection, query: ir.Table | str, semantics: str = "portable") -> str:
     """The Substrait plan of a query, as protobuf JSON: an Ibis expression
     through the vendored producer, SQL through sverify's lift
     (`substrait_json`) with `semantics`."""
@@ -395,7 +363,7 @@ def plan_json(con: Connection, query: ir.Table | str, semantics: str = "referenc
 
 
 def plan_json_over(
-    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "reference"
+    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "portable"
 ) -> str:
     """`plan_json` for a query over the tables `schemas` names, with no
     connection: the verifier holds no table, only schemas."""
@@ -403,7 +371,7 @@ def plan_json_over(
 
 
 def plan_and_differences(
-    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "reference"
+    schemas: Mapping[str, ibis.Schema], query: ir.Table | str, semantics: str = "portable"
 ) -> tuple[str, tuple[DialectDifference, ...]]:
     """`plan_json_over`, and for SQL where the reference reads the text
     differently from DuckDB (`Report.dialect_differences`)."""
@@ -414,7 +382,7 @@ def plan_and_differences(
         return to_substrait_json(query, semantics), ()
 
 
-def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> str:
+def substrait_json(con: Connection, sql: str, semantics: str = "portable") -> str:
     """Compile DuckDB's SQL to a Substrait plan with sverify's lift
     (`sverify.sql_lift`, SQLGlot), as protobuf JSON.
 
@@ -425,7 +393,7 @@ def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> s
     Args:
         con: The connection whose tables the SQL reads.
         sql: A query in DuckDB's SQL dialect.
-        semantics: `"reference"` (the default, as for `sv.verify` and
+        semantics: `"portable"` (the default, as for `sv.verify` and
             `sv.sql`): what sverify's reference model computes; or
             `"duckdb"`: what DuckDB computes where the two differ. Before
             0.6 the default was `"duckdb"`.
@@ -442,15 +410,13 @@ def substrait_json(con: Connection, sql: str, semantics: str = "reference") -> s
     return lift_sql(schemas, sql, semantics)
 
 
-def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference") -> str:
+def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "portable") -> str:
     """`substrait_json` over the tables `schemas` names: those the SQL reads
     are the lift's inputs."""
     return json.dumps(lift_sql_plan(schemas, sql, semantics).plan)
 
 
-def lift_sql_plan(
-    schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference"
-) -> Any:
+def lift_sql_plan(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "portable") -> Any:
     """The lift of `sql`, DuckDB's SQL (`sverify.sql_lift.Lifted`), over the
     tables of `schemas` it reads. A string of `verify` is DuckDB's; `sverify.sql`
     reads other dialects through their front-ends (`ProfilePlugin.sql`)."""
@@ -634,6 +600,7 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table: ...
 
 
@@ -647,6 +614,7 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table | Resident: ...
 
 
@@ -659,23 +627,28 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. `"spark"` runs it
     on the local Spark session (`sverify_spark.engine.session`), and a Spark
-    session as `engine` runs it there.
+    session as `engine` runs it there. Any other engine an installed package
+    registers (`sverify.profiles`, `ProfilePlugin.runner`) runs by its name,
+    or on a session of it, through that package's runner.
 
     DuckDB runs the SQL `sverify.engines.plan.to_sql` writes for the plan, Polars
     a translation to a lazy frame, Spark the Spark SQL
     `sverify.engines.plan.to_sql` writes in Spark's dialect
     (`sverify_spark.dialect.SPARK`); each gives the result `Rel.eval` gives.
+    A plugin engine runs what its package's runner writes.
     This is `sverify.engines.run`.
 
     Args:
         con: The connection whose tables the plan reads.
         plan_json: A plan in Lean's written form (a node's `plan`, or
             `sverify.engines.plan.written_plan`'s output).
-        engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session.
+        engine: `"duckdb"`, `"polars"`, `"spark"`, a Spark session, or
+            the name or a session of an engine a plugin package registers.
             Default: the connection's engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
@@ -694,13 +667,20 @@ def run_plan(
             (`asof_checks`): on DuckDB, the plan's as-of joins run as its
             ASOF JOIN where the writer can (`to_sql`'s `asof`). Other
             engines are not given any. Default: none.
+        credentials: For an engine whose runner takes secrets
+            (`ProfilePlugin.credentials`): a secret's name or reference
+            (`sverify.io.Secret`) by keyword, in place of the plugin's
+            default name. The runner gets each as a `Secret`, never a
+            value. Default: the plugin's names, which `Report.run` and a
+            refresh always use.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
         `keep` on DuckDB, a `Resident` table.
 
     Raises:
-        ValueError: `engine` is unknown, or the checker rejects the plan.
+        ValueError: `engine` is unknown, the checker rejects the plan, or
+            `credentials` names a secret the engine's runner does not take.
         ImportError: The engine is an extra that is not installed.
         sverify.engines.UnsupportedError: The plan uses something the engine's
             SQL dialect cannot express (DuckDB, Spark). Polars refuses what
@@ -732,7 +712,16 @@ def run_plan(
             assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
         ```
     """
-    return _run_plan(con, plan_json, engine, keep=keep, finite=finite, tie_free=tie_free, asof=asof)
+    return _run_plan(
+        con,
+        plan_json,
+        engine,
+        keep=keep,
+        finite=finite,
+        tie_free=tie_free,
+        asof=asof,
+        credentials=credentials,
+    )
 
 
 def _run_plan(
@@ -746,6 +735,7 @@ def _run_plan(
     asof: Sequence[dict] = (),
     unchecked: dict | None = None,
     rows: Literal["sequence", "multiset"] | None = None,
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table | Resident:
     """`run_plan`, and with `unchecked` the plan's marks (`Rel.marks`):
     `Report.run` passes them on a checked run, to an engine the checker names
@@ -758,7 +748,9 @@ def _run_plan(
     engine = engine or con.engine
     plugin = profiles.find(engine)
     if plugin is None or plugin.runner is None:
-        raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+        raise _engines.not_installed(engine) or ValueError(
+            f"unknown engine {engine!r}; expected one of {ENGINES}"
+        )
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
@@ -767,10 +759,31 @@ def _run_plan(
         extra["unchecked"] = unchecked
     if rows is not None:
         extra["rows"] = rows
+    if plugin.credentials or credentials:
+        extra["credentials"] = _credentials(plugin, credentials or {})
     out = plugin.runner(
         con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
     )
     return instants_in_utc(out) if isinstance(out, pa.Table) else out
+
+
+def _credentials(plugin: Any, given: Mapping[str, Any]) -> dict[str, Any]:
+    """The secrets `plugin`'s runner takes, as `Secret` references: the
+    caller's where given, else the plugin's default names."""
+    from sverify import _hooks
+
+    as_secret = _hooks.secrets().as_secret
+    unknown = sorted(set(given) - set(plugin.credentials))
+    if unknown:
+        takes = ", ".join(repr(k) for k in sorted(plugin.credentials)) or "none"
+        raise ValueError(
+            f"engine {plugin.engine!r} takes no secret {', '.join(map(repr, unknown))}; "
+            f"its runner takes {takes} (ProfilePlugin.credentials)"
+        )
+    return {
+        k: as_secret(given.get(k, name), f"{plugin.engine}'s {k}")
+        for k, name in plugin.credentials.items()
+    }
 
 
 def run_guard_free(

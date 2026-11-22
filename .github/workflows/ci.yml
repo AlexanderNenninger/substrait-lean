@@ -36,7 +36,7 @@ permissions:
 #
 # A pull request that changes only docs (`docs/`, `.claude/`, `changelog.d/`,
 # Markdown at the root other than README.md, which tests run, and
-# docs/guide.md and docs/how-it-works.md, which tests run too) skips
+# docs/tasks.md and docs/how-it-works.md, which tests run too) skips
 # everything but `static`, and float-bounds runs only when its own package
 # changes. The TLA+ models (`models/`) count as docs for the other jobs:
 # `refresh-model` checks them, when they change.
@@ -943,7 +943,7 @@ jobs:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: read  # the replay's closed-issue check (`gh issue view`)
@@ -970,6 +970,9 @@ jobs:
       - run: uv sync
       - run: |
           uv run --no-sync ruff check .
+          # Text files name their encoding (PLW1514, a preview rule, alone), as
+          # sverify's `poe lint` checks: Windows reads cp1252 otherwise (#183).
+          uv run --no-sync ruff check --preview --select PLW1514 .
           uv run --no-sync ruff format --check .
           uv run --no-sync pyrefly check
       # The sample project's packages once: the tests' copies of it take

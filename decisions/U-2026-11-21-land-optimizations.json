@@ -1,0 +1,16 @@
+{
+  "id": "U-2026-11-21-land-optimizations",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Optimizations land wherever they can: #1787's item 4 lands before 1.0.",
+  "issues": [
+    1787
+  ],
+  "amends": [
+    "F238"
+  ],
+  "source": "coordinator's relay, 2026-11-21",
+  "note": "In the maintainer's words: 'We should always try to land optimizations where we can.' Replaces ruling 238's K7, which placed item 4 After 1.0 (ruling 242)."
+}

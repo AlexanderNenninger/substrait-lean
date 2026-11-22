@@ -21,7 +21,17 @@ from sverify.plan_json import (
     logical,
     substring_left,
 )
-from sverify.sql_lift._base import Column, E, Sub, _fn, _Lift, _option, _shown, register
+from sverify.sql_lift._base import (
+    CONSTANT_FIX,
+    Column,
+    E,
+    Sub,
+    _fn,
+    _Lift,
+    _option,
+    _shown,
+    register,
+)
 
 # -- strings ---------------------------------------------------------------
 
@@ -109,7 +119,7 @@ def _substring(lf: _Lift, node: sge.Substring, sub: Sub, scope: list[Column]) ->
             )
         args.append(lf.to(e, dt.int64).json)
     if start is None:
-        raise Unsupported("substring needs a start", construct="function substring")
+        raise SqlUnsupported("substring needs a start", construct="function substring")
     opt = _option("negative_start", "WRAP_FROM_END")
     return E(_fn("substring", args, dt.string, [opt]), dt.string)
 
@@ -201,7 +211,11 @@ def _left(lf: _Lift, node: sge.Left, sub: Sub, scope: list[Column]) -> E:
     # The first `n` characters; a negative `n` is not supported.
     n = sub(node.expression)
     if not (n.constant and isinstance(n.value, int) and n.value >= 0):
-        raise Unsupported("left needs a constant count of 0 or more", construct="function left")
+        raise SqlUnsupported(
+            "left needs a constant count of 0 or more",
+            CONSTANT_FIX,
+            construct="function left",
+        )
     (s_,) = _strings(lf, [sub(node.this)], "left")
     args = [s_, literal(1, dt.int64), literal(n.value, dt.int64)]
     return E(_fn("substring", args, dt.string), dt.string)
@@ -233,13 +247,15 @@ def _sha2(lf: _Lift, node: sge.SHA2, sub: Sub, scope: list[Column]) -> E:
 def _const(e: E, what: str, kind: type) -> Any:
     """The value of a constant argument of type `kind` (None for NULL)."""
     if not e.constant or not (e.value is None or isinstance(e.value, kind)):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"{what} needs a constant {kind.__name__}",
+            CONSTANT_FIX,
             construct=f"function {what.partition(chr(39))[0]}",
         )
     if isinstance(e.value, bool):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"{what} needs a constant {kind.__name__}",
+            CONSTANT_FIX,
             construct=f"function {what.partition(chr(39))[0]}",
         )
     return e.value
@@ -249,7 +265,11 @@ def _pattern(lf: _Lift, node: sge.Expression, sub: Sub, what: str) -> tuple[Json
     """The string and the constant pattern of a regular expression function."""
     p = sub(node.expression)
     if not (p.constant and isinstance(p.value, str)):
-        raise Unsupported(f"{what} needs a constant pattern", construct=f"function {what}")
+        raise SqlUnsupported(
+            f"{what} needs a constant pattern",
+            CONSTANT_FIX,
+            construct=f"function {what}",
+        )
     if not simple_regex(p.value):
         raise SqlUnsupported(
             f"the regular expression {p.value!r} is outside the supported subset",
@@ -301,7 +321,7 @@ def _regexp_extract(lf: _Lift, node: sge.RegexpExtract, sub: Sub, scope: list[Co
     g = 0 if group is None else _const(sub(group), "regexp_extract's group", int)
     if g is None or g < 0 or g > 9:
         # DuckDB raises past group 9 ("Group index must be between 0 and 9").
-        raise Unsupported(
+        raise SqlUnsupported(
             "regexp_extract needs a group number from 0 to 9", construct="function regexp_extract"
         )
     args = [s_, literal(p, dt.string), literal(g, dt.int64)]
@@ -318,15 +338,17 @@ def _regexp_replace(lf: _Lift, node: sge.RegexpReplace, sub: Sub, scope: list[Co
     flags = node.args.get("modifiers")
     flag = None if flags is None else _const(sub(flags), "regexp_replace's options", str)
     if flag not in (None, "g"):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"regexp_replace with the options {flag!r} is not supported (only 'g')",
             construct="function regexp_replace",
         )
     s_, p = _pattern(lf, node, sub, "regexp_replace")
     r = sub(node.args["replacement"])
     if not (r.constant and isinstance(r.value, str)):
-        raise Unsupported(
-            "regexp_replace needs a constant replacement", construct="function regexp_replace"
+        raise SqlUnsupported(
+            "regexp_replace needs a constant replacement",
+            CONSTANT_FIX,
+            construct="function regexp_replace",
         )
     args = [s_, literal(p, dt.string), literal(r.value, dt.string)]
     if flag == "g":
@@ -386,7 +408,7 @@ def _pad(lf: _Lift, node: sge.Pad, sub: Sub, scope: list[Column]) -> E:
     what = "lpad" if left else "rpad"
     fill = node.args.get("fill_pattern")
     if fill is None:
-        raise Unsupported(f"{what} needs a fill", construct=f"function {what}")
+        raise SqlUnsupported(f"{what} needs a fill", construct=f"function {what}")
     n = _const(sub(node.expression), what, int)
     p = _const(sub(fill), f"{what}'s fill", str)
     (s_,) = _strings(lf, [sub(node.this)], what)
@@ -417,7 +439,7 @@ def _concat_ws(lf: _Lift, node: sge.ConcatWs, sub: Sub, scope: list[Column]) -> 
     NULL `a`; the first `sep` is dropped."""
     sep, *rest = _strings(lf, [sub(a) for a in node.expressions], "concat_ws")
     if not rest:
-        raise Unsupported("concat_ws needs a value to join", construct="function concat_ws")
+        raise SqlUnsupported("concat_ws needs a value to join", construct="function concat_ws")
     empty = literal("", dt.string)
     parts = [call("coalesce", [call("str_concat", [sep, a]), empty]) for a in rest]
     start = call("add", [call("character_length", [sep]), literal(1, dt.int64)])

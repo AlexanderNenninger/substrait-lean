@@ -10,6 +10,8 @@ it:
     python scripts/check_packages.py spark        # sverify[spark] (brings DuckDB)
     python scripts/check_packages.py spark-light  # sverify[duckdb] and sverify-spark, no PySpark
     python scripts/check_packages.py dbt          # sverify and sverify-dbt
+    python scripts/check_packages.py delta        # sverify[delta], and each other
+                                                  # extra in EXTRAS alone (#183)
 
 Each checks the engines sverify finds (`sverify.profiles`), that every
 installed sverify distribution is at sverify's version, a `verify` of a small
@@ -22,7 +24,10 @@ the extra.
 from __future__ import annotations
 
 import argparse
+import importlib
 import importlib.util
+import sys
+from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, version
 
 #: The distributions released at sverify's version.
@@ -130,10 +135,119 @@ def spark_light() -> None:
         raise AssertionError("a run on Spark without PySpark did not refuse")
 
 
+def _delta(tmp: str) -> None:
+    import pyarrow as pa
+    from deltalake import write_deltalake
+
+    from sverify.io import DeltaSource
+
+    write_deltalake(f"{tmp}/t", pa.table({"a": [1, 2]}))
+    assert DeltaSource(f"{tmp}/t").schema().names == ["a"]
+
+
+def _iceberg(tmp: str) -> None:
+    import pyarrow as pa
+    from pyiceberg.catalog.sql import SqlCatalog
+
+    from sverify.io import IcebergSource
+
+    catalog = SqlCatalog("c", uri=f"sqlite:///{tmp}/c.db", warehouse=f"file://{tmp}")
+    catalog.create_namespace("n")
+    catalog.create_table("n.t", schema=pa.schema([("a", pa.int64())]))
+    assert IcebergSource(catalog, "n.t").schema().names == ["a"]
+
+
+def _flight(tmp: str) -> None:
+    import sverify.io.flight  # noqa: F401 - its import needs pyarrow.flight
+
+
+def _testing(tmp: str) -> None:
+    import pyarrow as pa
+    from ibis import _
+
+    import sverify as sv
+    from sverify.io import StaticSource
+    from sverify.testing import cases
+
+    @sv.transform(requires={"t": [_.a > 0]})
+    def kept(t):
+        return t
+
+    node = StaticSource(pa.table({"a": [1]}), name="t").pipe(kept)
+    # `cases` checks the preconditions on an engine, which the extra leaves to
+    # the user (`sverify[testing,duckdb]`); alone, it names the engine's extra.
+    try:
+        cases(node, max_rows=3).example()
+    except ValueError as e:
+        assert "sverify[duckdb]" in str(e), e
+    else:
+        raise AssertionError("cases() drew an example with no engine installed")
+
+
+def _odcs(tmp: str) -> None:
+    from sverify import odcs
+
+    path = f"{tmp}/c.odcs.yaml"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(
+            "apiVersion: v3.2.0\nkind: DataContract\nid: c\nversion: '1'\nstatus: active\n"
+            "schema:\n  - name: t\n    properties:\n      - name: a\n        required: true\n"
+        )
+    assert odcs.read(path).conditions("t")
+
+
+def _openlineage(tmp: str) -> None:
+    from sverify.openlineage import Lineage
+
+    Lineage()  # without a target it configures the OpenLineage client
+
+
+def _secrets(*modules: str) -> Callable[[str], None]:
+    """A secrets backend reads its service through `modules`, imported on
+    first use (`sverify.io._secrets`); a lookup would need credentials."""
+
+    def check(tmp: str) -> None:
+        for m in modules:
+            importlib.import_module(m)
+
+    return check
+
+
+#: The extras of I/O formats and tools, each checked alone (#183).
+EXTRAS: dict[str, Callable[[str], None]] = {
+    "delta": _delta,
+    "iceberg": _iceberg,
+    "flight": _flight,
+    "testing": _testing,
+    "odcs": _odcs,
+    "openlineage": _openlineage,
+    "secrets-aws": _secrets("boto3"),
+    "secrets-gcp": _secrets("google.cloud.secretmanager"),
+    "secrets-azure": _secrets("azure.identity", "azure.keyvault.secrets"),
+    "secrets-keychain": _secrets("keyring"),
+}
+
+
+def extra(name: str) -> None:
+    """sverify[`name`] alone: no engine runs plans, and its call works."""
+    import tempfile
+
+    from sverify import profiles
+
+    assert not [e for e, p in profiles.plugins().items() if p.local], "an engine is installed"
+    with tempfile.TemporaryDirectory() as tmp:
+        EXTRAS[name](tmp)
+    print(f"sverify[{name}]: works alone; pinned {pinned()}")
+
+
 def main() -> None:
+    if sys.argv[1:] == ["--list-extras"]:  # for the workflow's loop, before sverify is installed
+        print(" ".join(EXTRAS))
+        return
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "combination", choices=["base", "duckdb", "polars", "spark", "spark-light", "dbt"]
+        "combination",
+        choices=["base", "duckdb", "polars", "spark", "spark-light", "dbt", *EXTRAS],
     )
     which = parser.parse_args().combination
     if which == "base":
@@ -147,6 +261,8 @@ def main() -> None:
         check({"duckdb", "spark"}, absent=("polars",))
     elif which == "spark-light":
         spark_light()
+    elif which in EXTRAS:
+        extra(which)
     else:
         check({"duckdb"}, absent=("polars", "pyspark"))
         assert "sverify-dbt" in pinned()

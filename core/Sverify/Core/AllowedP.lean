@@ -62,14 +62,27 @@ a sum `c` is finite and within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of th
 `u = 2⁻⁵³`, `γₙ = nu / (1 − nu)`: in units of `2⁻¹⁰⁷⁴` and multiplied out,
 an exact inequality on integers. `float-bounds` proves it of every order the
 engines' facts record (`StdModel.Summed.near`: trees, a sequential sum,
-Kahan's, a constant run's `fl(k · x)`); that the engines' algorithms meet it
-is trusted (docs/proofs.md) until #1196 proves it. -/
-def SumBound (vs : List Value) (c : Int) : Prop :=
+Kahan's, a constant run's `fl(k · x)`). For the orders with a shape
+(`FloatSums`) `float-bounds/FloatBridge/Sums.lean` proves it
+(`FloatSums.sumBound`); for Kahan's and a constant run it is trusted
+(docs/trusted-base.md) until #1196 writes those algorithms on codes.
+`SumBound` states it of the codes as they are and of the canonical codes
+(ruling 242). -/
+def SumBoundRaw (vs : List Value) (c : Int) : Prop :=
   (∀ x, Value.float x ∈ vs → FloatCode.IsFin x) → vs.length ≤ 2 ^ 32 →
     2 * (scaledAbsSum vs + vs.length * 2 ^ 52) ≤ FloatCode.maxMag →
     FloatCode.IsFin c ∧
       (FloatCode.scaled c - exactSum vs).natAbs * (2 ^ 53 * (2 ^ 53 - vs.length)) ≤
         (vs.length * 2 ^ 53 + (2 ^ 53 - vs.length)) * (scaledAbsSum vs + vs.length * 2 ^ 52)
+
+/-- D35's bound of a sum `c` of `vs`, of the codes as they are and of the
+canonical codes (D35, amended 2026-11-21, ruling 242): IEEE addition treats
+`-0.0` and `+0.0` alike but for the sign of a zero result, so an engine's sum
+of `vs` is, up to `canon`, a sum in the same order of the canonical values,
+which `SumBoundRaw` bounds. A group holding `-0.0` meets the second clause's
+premise where it fails the first's (`IsFin` excludes `-0.0`'s code). -/
+def SumBound (vs : List Value) (c : Int) : Prop :=
+  SumBoundRaw vs c ∧ SumBoundRaw (vs.map Value.canonV) (FloatCode.canon c)
 
 /-- Every value of `vs` a finite double that is an integer, and
 `Σ |vᵢ| ≤ 2⁵³`: a sum of them, in any order, adds exactly (D35, amended
