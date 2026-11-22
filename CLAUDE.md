@@ -352,8 +352,8 @@ Don't commit regenerated tables on a feature branch. They are rewritten on
 (`.github/workflows/generated.yml`), so committing them only causes merge
 conflicts with other PRs:
 
-- `README.md`'s coverage table (`<!-- coverage:start -->` … `<!-- coverage:end -->`),
-  from `sverify_dev.coverage --write-readme`;
+- `docs/coverage.md`'s coverage table (`<!-- coverage:start -->` … `<!-- coverage:end -->`),
+  from `sverify_dev.coverage --write`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`;
 - `docs/realizability.md`, from `sverify_dev.realizability --write`;
