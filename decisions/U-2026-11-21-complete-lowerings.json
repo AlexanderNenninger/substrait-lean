@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-21-complete-lowerings",
+  "date": "2026-11-21",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "#271 is complete for 1.0, with no tested-only rows: every `.tracking #271` row of the Polars, Spark and DuckDB tables reaches 0.",
+  "issues": [
+    271
+  ],
+  "amends": [
+    "F235",
+    "F243"
+  ],
+  "source": "coordinator's relay, 2026-11-21",
+  "note": "In the maintainer's words: 'We should really have complete polars and spark lifts for 1.0', corrected to lowerings. Withdraws ruling 243's fallback and ruling 235's After-1.0 call on the relational Polars rows (ruling 247)."
+}

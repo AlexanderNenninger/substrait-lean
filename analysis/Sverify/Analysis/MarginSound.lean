@@ -2,6 +2,7 @@ import Sverify.Core.MarginCheck
 import Sverify.Core.SumBound
 import Sverify.Core.FloatArith
 import Sverify.Analysis.Partition
+import Sverify.Analysis.Guards
 
 /-!
 # The margin check is sound, in codes (#929)
@@ -165,22 +166,61 @@ theorem exactSum_abs {cs : List Int} (hf : ∀ c ∈ cs, IsFin c) :
     simp only [List.map_map] at ih ⊢
     rw [ih fun x hx => hf x (List.mem_cons_of_mem _ hx)]; push_cast; rfl
 
+/-- **D35's bound in `SumOrder.near`'s form**: on `n ≤ 2³²` finite doubles
+whose `T = Σ|xᵢ| + n · 2⁻¹⁰²²` stays below half the largest double, a sum
+`SumBoundRaw` bounds is finite and within `2(n + 1) · T · 2⁻⁵³` of the exact
+sum, its `γₙ + u` taken as `2(n + 1) · 2⁻⁵³`. -/
+theorem SumBoundRaw.near {cs : List Int} {v : Int}
+    (h : SumBoundRaw (cs.map .float) v) (hf : ∀ c ∈ cs, IsFin c) (hn : cs.length ≤ 2 ^ 32)
+    (hov : 2 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤ maxMag) :
+    IsFin v ∧ (scaled v - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤
+      2 * (cs.length * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52)) +
+        2 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) := by
+  have hlen : (cs.map Value.float).length = cs.length := List.length_map _
+  obtain ⟨hfin, hineq⟩ := h
+    (fun x hx => by
+      obtain ⟨y, hy, e⟩ := List.mem_map.1 hx
+      injection e with e; subst e; exact hf _ hy)
+    (by rw [hlen]; omega)
+    (by rw [hlen]; omega)
+  generalize hB : scaledAbsSum (cs.map .float) = B at hov hineq ⊢
+  generalize hT : B + cs.length * 2 ^ 52 = T at hov ⊢
+  rw [hlen, hT] at hineq
+  refine ⟨hfin, ?_⟩
+  generalize (scaled v - exactSum (cs.map .float)).natAbs = e at hineq ⊢
+  generalize cs.length = n at hineq hn ⊢
+  clear hov hB hT hfin hf h
+  have hk : 2 ^ 52 ≤ 2 ^ 53 - n := by omega
+  have h1 : e * (2 ^ 53 * 2 ^ 52) ≤ e * (2 ^ 53 * (2 ^ 53 - n)) :=
+    Nat.mul_le_mul_left e (Nat.mul_le_mul_left _ hk)
+  have h2 : (n * 2 ^ 53 + (2 ^ 53 - n)) * T ≤ (n * 2 ^ 53 + 2 ^ 53) * T :=
+    Nat.mul_le_mul_right T (Nat.add_le_add_left (Nat.sub_le _ _) _)
+  have h3 : (n * 2 ^ 53 + 2 ^ 53) * T = 2 ^ 53 * (n * T) + 2 ^ 53 * T := by
+    rw [Nat.add_mul, Nat.mul_comm n, Nat.mul_assoc]
+  have h4 : e * (2 ^ 53 * 2 ^ 52) = e * 2 ^ 53 * 2 ^ 52 := by rw [Nat.mul_assoc]
+  have h5 := Nat.le_trans h1 (Nat.le_trans hineq h2)
+  rw [h3, h4] at h5
+  have h6 : 2 ^ 53 * (n * T) + 2 ^ 53 * T = (2 * (n * T) + 2 * T) * 2 ^ 52 := by
+    grind
+  rw [h6] at h5
+  exact Nat.le_of_mul_le_mul_right h5 (Nat.two_pow_pos 52)
+
 /-- **A sum `SumOrder` allows is near the exact sum**: on `1 ≤ n ≤ 2³²`
 finite doubles whose `T = Σ|xᵢ| + n · 2⁻¹⁰²²` stays below half the largest
 double, every behaviour's sum is finite and within `2(n + 1) · T · 2⁻⁵³` of
 the exact sum. `EXACT` by `ofExact_rel`; every other behaviour by `SumBound`
-(D35), whose `γₙ + u` this takes as `2(n + 1) · 2⁻⁵³`. -/
+(D35), through `SumBoundRaw.near`. -/
 theorem SumOrder.near {b : Behaviour} {cs : List Int} {v : Int}
     (h : SumOrder b (cs.map .float) v) (hf : ∀ c ∈ cs, IsFin c) (hn : cs.length ≤ 2 ^ 32)
     (hov : 2 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤ maxMag) :
     IsFin v ∧ (scaled v - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤
       2 * (cs.length * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52)) +
         2 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) := by
-  have hS := natAbs_exactSum_le hf
-  generalize hB : scaledAbsSum (cs.map .float) = B at hS hov ⊢
-  generalize hT : B + cs.length * 2 ^ 52 = T at hov ⊢
   by_cases hb : b = "EXACT"
   · simp only [SumOrder, hb, ↓reduceIte] at h
+    have hS := natAbs_exactSum_le hf
+    generalize hB : scaledAbsSum (cs.map .float) = B at hS hov ⊢
+    generalize hT : B + cs.length * 2 ^ 52 = T at hov ⊢
     rw [h, floatSumCR, nonFinite_of_fin (fun c hc => by rw [fin_canon (hf c hc)]; exact hf c hc), Option.getD_none]
     have hmax : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
     obtain ⟨hfin, he⟩ := ofExact_rel (S := exactSum (cs.map .float)) (by omega)
@@ -188,32 +228,7 @@ theorem SumOrder.near {b : Behaviour} {cs : List Int} {v : Int}
     have : cs.length * T ≥ 0 := Nat.zero_le _
     omega
   · simp only [SumOrder, hb, ↓reduceIte] at h
-    have hlen : (cs.map Value.float).length = cs.length := List.length_map _
-    obtain ⟨hfin, hineq⟩ := h.1
-      (fun x hx => by
-        obtain ⟨y, hy, e⟩ := List.mem_map.1 hx
-        injection e with e; subst e; exact hf _ hy)
-      (by rw [hlen]; omega)
-      (by rw [hlen, hB]; omega)
-    rw [hlen, hB, hT] at hineq
-    refine ⟨hfin, ?_⟩
-    generalize (scaled v - exactSum (cs.map .float)).natAbs = e at hineq ⊢
-    generalize cs.length = n at hineq hn ⊢
-    clear hov hS hB hT hfin hf h
-    have hk : 2 ^ 52 ≤ 2 ^ 53 - n := by omega
-    have h1 : e * (2 ^ 53 * 2 ^ 52) ≤ e * (2 ^ 53 * (2 ^ 53 - n)) :=
-      Nat.mul_le_mul_left e (Nat.mul_le_mul_left _ hk)
-    have h2 : (n * 2 ^ 53 + (2 ^ 53 - n)) * T ≤ (n * 2 ^ 53 + 2 ^ 53) * T :=
-      Nat.mul_le_mul_right T (Nat.add_le_add_left (Nat.sub_le _ _) _)
-    have h3 : (n * 2 ^ 53 + 2 ^ 53) * T = 2 ^ 53 * (n * T) + 2 ^ 53 * T := by
-      rw [Nat.add_mul, Nat.mul_comm n, Nat.mul_assoc]
-    have h4 : e * (2 ^ 53 * 2 ^ 52) = e * 2 ^ 53 * 2 ^ 52 := by rw [Nat.mul_assoc]
-    have h5 := Nat.le_trans h1 (Nat.le_trans hineq h2)
-    rw [h3, h4] at h5
-    have h6 : 2 ^ 53 * (n * T) + 2 ^ 53 * T = (2 * (n * T) + 2 * T) * 2 ^ 52 := by
-      grind
-    rw [h6] at h5
-    exact Nat.le_of_mul_le_mul_right h5 (Nat.two_pow_pos 52)
+    exact SumBoundRaw.near h.1.1 hf hn hov
 
 /-! ## Roundings as integer bounds -/
 
@@ -1047,5 +1062,246 @@ theorem AvgOrder.int_exact {b : Behaviour} {vs : List Value} {c : Int} (h : AvgO
   simp only [hneg, ↓reduceIte]
   rw [hsE, hnat, Int.mul_comm (exactSum vs), ofExactDiv_mul_mul _ hU, floatAvgCR, hnf,
     Option.getD_none, fin_canon hfin]
+
+/-! ## Sums of bounded doubles in every order (#1787 item 4, rulings 238 and 242)
+
+Where every value of a group of at most `2³²` doubles has a finite canonical
+code at most `M` in magnitude and `2 · (n · M + n · 2⁵²)` stays within the
+largest double, no sum a `sum_order` behaviour allows overflows: its canonical
+code is finite. With `4` in place of `2`, no mean overflows. This is L1 of
+ruling 238 in ruling 242's form (K3′): the writer's check against `±∞` fires
+on `±∞` and NaN, never on a zero's sign, so the canonical code is what it
+reads. A `-0.0` among the values meets D35's canonical clause (`SumBound`). -/
+
+omit [Boxes.Ambient] in
+theorem maxMag_le_2098 : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
+
+omit [Boxes.Ambient] in
+theorem scaledAbsSum_le_mul {cs : List Int} {M : Nat} (hM : ∀ c ∈ cs, (scaled c).natAbs ≤ M) :
+    scaledAbsSum (cs.map .float) ≤ cs.length * M := by
+  induction cs with
+  | nil => simp [scaledAbsSum]
+  | cons c cs ih =>
+    simp only [List.map_cons, scaledAbsSum, List.length_cons, Nat.succ_mul]
+    have := hM c List.mem_cons_self
+    have := ih fun x hx => hM x (List.mem_cons_of_mem _ hx)
+    omega
+
+omit [Boxes.Ambient] in
+theorem anyCode_canonV (p : Int → Bool) (vs : List Value) :
+    anyCode p (vs.map Value.canonV) = anyCode p vs := by
+  induction vs with
+  | nil => rfl
+  | cons v vs ih =>
+    simp only [anyCode, List.map_cons, List.any_cons] at ih ⊢
+    rw [ih]; cases v <;> simp [Value.canonV, canon_idem]
+
+omit [Boxes.Ambient] in
+theorem exactSum_canonV (vs : List Value) : exactSum (vs.map Value.canonV) = exactSum vs := by
+  induction vs with
+  | nil => rfl
+  | cons v vs ih => cases v <;> simp [exactSum, Value.canonV, canon_idem, ih]
+
+omit [Boxes.Ambient] in
+/-- The reference's `SUM` and `AVG` read the canonical codes only. -/
+theorem floatSumCR_canonV (vs : List Value) : floatSumCR (vs.map Value.canonV) = floatSumCR vs := by
+  simp only [floatSumCR, nonFinite, anyCode_canonV, exactSum_canonV]
+
+omit [Boxes.Ambient] in
+theorem floatAvgCR_canonV (vs : List Value) : floatAvgCR (vs.map Value.canonV) = floatAvgCR vs := by
+  simp only [floatAvgCR, nonFinite, anyCode_canonV, exactSum_canonV, List.length_map]
+
+omit [Boxes.Ambient] in
+/-- A group of doubles whose canonical codes are finite and at most `M` in
+magnitude, as its list of canonical codes. -/
+theorem canonV_codes {vs : List Value} {M : Nat}
+    (hv : ∀ v ∈ vs, ∃ x, v = .float x ∧ IsFin (canon x) ∧ (scaled (canon x)).natAbs ≤ M) :
+    ∃ cs : List Int, vs.map Value.canonV = cs.map .float ∧ cs.length = vs.length ∧
+      ∀ c ∈ cs, IsFin c ∧ (scaled c).natAbs ≤ M := by
+  induction vs with
+  | nil => exact ⟨[], rfl, rfl, by simp⟩
+  | cons v vs ih =>
+    obtain ⟨x, rfl, hx, hm⟩ := hv _ List.mem_cons_self
+    obtain ⟨cs, he, hl, hc⟩ := ih fun w hw => hv w (List.mem_cons_of_mem _ hw)
+    refine ⟨canon x :: cs, by simp [Value.canonV, he], by simp [hl], ?_⟩
+    intro c hc'
+    rcases List.mem_cons.1 hc' with rfl | h
+    · exact ⟨hx, hm⟩
+    · exact hc c h
+
+omit [Boxes.Ambient] in
+/-- **A sum of bounded doubles is finite in every order** (rulings 238 and 242,
+L1, K3′). -/
+theorem SumOrder.canon_fin_of_bound {b : Behaviour} {vs : List Value} {c : Int} {M : Nat}
+    (h : SumOrder b vs c)
+    (hv : ∀ v ∈ vs, ∃ x, v = .float x ∧ IsFin (canon x) ∧ (scaled (canon x)).natAbs ≤ M)
+    (hn : vs.length ≤ 2 ^ 32) (hov : 2 * (vs.length * M + vs.length * 2 ^ 52) ≤ maxMag) :
+    IsFin (canon c) := by
+  obtain ⟨cs, he, hl, hc⟩ := canonV_codes hv
+  have hf : ∀ c ∈ cs, IsFin c := fun c h => (hc c h).1
+  have hA := scaledAbsSum_le_mul fun c h => (hc c h).2
+  rw [← hl] at hn hov
+  have hov' : 2 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤ maxMag := by omega
+  by_cases hb : b = "EXACT"
+  · simp only [SumOrder, hb, ↓reduceIte] at h
+    have hr : SumOrder "EXACT" (cs.map .float) (floatSumCR (cs.map .float)) := by simp [SumOrder]
+    have hfin := (SumOrder.near hr hf hn hov').1
+    rw [h, ← floatSumCR_canonV, he, fin_canon hfin]
+    exact hfin
+  · simp only [SumOrder, hb, ↓reduceIte] at h
+    have h2 := h.1.2
+    rw [he] at h2
+    exact (SumBoundRaw.near h2 hf hn hov').1
+
+omit [Boxes.Ambient] in
+/-- **A mean of bounded doubles is finite in every order** (rulings 238 and
+242, L1, K3′ and K8): `AvgOrder.near`'s factor `4`. Outside `EXACT` the mean
+is a sum `SumOrder` allows divided by the count, and its canonical code is
+that of the canonical sum divided (`fdiv_canon_left`). -/
+theorem AvgOrder.canon_fin_of_bound {b : Behaviour} {vs : List Value} {c : Int} {M : Nat}
+    (h : AvgOrder b vs c)
+    (hv : ∀ v ∈ vs, ∃ x, v = .float x ∧ IsFin (canon x) ∧ (scaled (canon x)).natAbs ≤ M)
+    (hn1 : 1 ≤ vs.length) (hn : vs.length ≤ 2 ^ 32)
+    (hov : 4 * (vs.length * M + vs.length * 2 ^ 52) ≤ maxMag) : IsFin (canon c) := by
+  obtain ⟨cs, he, hl, hc⟩ := canonV_codes hv
+  have hf : ∀ c ∈ cs, IsFin c := fun c h => (hc c h).1
+  have hA := scaledAbsSum_le_mul fun c h => (hc c h).2
+  by_cases hb : b = "EXACT"
+  · simp only [AvgOrder, hb, ↓reduceIte] at h
+    rw [← hl] at hn1 hn hov
+    have hr : AvgOrder "EXACT" (cs.map .float) (floatAvgCR (cs.map .float)) := by simp [AvgOrder]
+    have := (AvgOrder.near hr hf hn1 hn (by omega)).1
+    rw [h, ← floatAvgCR_canonV, he]
+    exact this
+  · simp only [AvgOrder, hb, ↓reduceIte] at h
+    obtain ⟨s, hs, rfl⟩ := h
+    simp only [SumOrder, hb, ↓reduceIte] at hs
+    have h2 := hs.1.2
+    rw [he] at h2
+    rw [← hl] at hn1 hn hov
+    obtain ⟨fs, es⟩ := SumBoundRaw.near h2 hf hn (by omega)
+    have hS := natAbs_exactSum_le hf
+    have hmax := maxMag_le_2098
+    have hnT : cs.length * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) ≤
+        2 ^ 32 * (scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52) := Nat.mul_le_mul_right _ hn
+    generalize hT : scaledAbsSum (cs.map .float) + cs.length * 2 ^ 52 = T at es hnT
+    generalize cs.length * T = W at es hnT
+    have hsz : (scaled (canon s)).natAbs ≤ 2 ^ 2097 := by
+      have h1 := natAbs_tri (scaled (canon s)) (exactSum (cs.map .float)) 0
+      simp only [Int.sub_zero] at h1
+      have : (scaled (canon s) - exactSum (cs.map .float)).natAbs ≤ T := by
+        have : (scaled (canon s) - exactSum (cs.map .float)).natAbs * 2 ^ 53 ≤ T * 2 ^ 53 := by
+          clear h1 hS hf hs fs; omega
+        exact Nat.le_of_mul_le_mul_right this (Nat.two_pow_pos _)
+      clear es hnT hf hs fs; omega
+    rw [← hl, ← fdiv_canon_left]
+    exact (div_n fs hn1 (by omega) hsz).1
+
+omit [Boxes.Ambient] in
+/-- A non-NULL value of an abstract value holding doubles only is a double
+whose canonical code the bound holds. -/
+theorem AVal.float_of_kindOnly {a : AVal} {v : Value} (hk : a.kindOnly .float = true)
+    (hm : a.Mem v) (hn : v ≠ .null) : ∃ x, v = .float x ∧ a.MemNum .float x := by
+  simp only [AVal.kindOnly, AVal.intsOnly, AVal.nested, Bool.and_eq_true, Bool.not_eq_true',
+    Bool.or_eq_false_iff, beq_iff_eq] at hk
+  obtain ⟨⟨⟨⟨htt, hff⟩, hstr⟩, hl, hs⟩, hnk⟩ := hk
+  cases v with
+  | float x => exact ⟨x, rfl, hm⟩
+  | null => exact absurd rfl hn
+  | bool b => cases b <;> simp_all [AVal.Mem, AVal.MemR]
+  | str _ => simp_all [AVal.Mem, AVal.MemR]
+  | list _ => simp_all [AVal.Mem, AVal.MemR]
+  | struct _ => simp_all [AVal.Mem, AVal.MemR]
+  | _ => obtain ⟨_, _, _, h⟩ := hm; simp [hnk] at h
+
+/-- `Measure.finiteAnyOrder`'s bound, read as the hypotheses of
+`SumOrder.canon_fin_of_bound` and `AvgOrder.canon_fin_of_bound`. -/
+theorem finiteSumBound_inputs {m : Measure} {abs : Expr → AVal} {grp : Relation}
+    {lo hi : Int} {k c : Nat} (hsound : ∀ y ∈ grp, (abs m.arg).Mem (m.arg.eval y))
+    (hk : (abs m.arg).kindOnly .float = true) (hint : (abs m.arg).int = some ⟨some lo, some hi⟩)
+    (hb : finiteSumBound c lo hi k = true) (hlen : grp.length ≤ k) :
+    ∃ M : Nat, (∀ v ∈ m.inputs grp, ∃ x, v = .float x ∧ IsFin (canon x) ∧
+        (scaled (canon x)).natAbs ≤ M) ∧ (m.inputs grp).length ≤ 2 ^ 32 ∧
+      c * ((m.inputs grp).length * M + (m.inputs grp).length * 2 ^ 52) ≤ maxMag := by
+  simp only [finiteSumBound, Bool.and_eq_true, decide_eq_true_eq] at hb
+  obtain ⟨⟨⟨hlo, hhi⟩, h32⟩, hov⟩ := hb
+  have hl := Nat.le_trans (Measure.inputs_length_le m grp) hlen
+  refine ⟨max (scaled lo).natAbs (scaled hi).natAbs, fun v hv => ?_, by omega,
+    Nat.le_trans (Nat.mul_le_mul_left c (Nat.add_le_add (Nat.mul_le_mul_right _ hl)
+      (Nat.mul_le_mul_right _ hl))) hov⟩
+  obtain ⟨hnn, y, hy, rfl⟩ := Measure.mem_inputs hv
+  obtain ⟨x, hx, b, hb', hmem, -⟩ := AVal.float_of_kindOnly hk (hsound y hy) hnn
+  rw [hint] at hb'
+  cases hb'
+  rw [NumKind.norm_float] at hmem
+  have h1 := hmem.1 lo rfl
+  have h2 := hmem.2 hi rfl
+  have s1 := scaled_mono h1
+  have s2 := scaled_mono h2
+  exact ⟨x, hx, ⟨by omega, by omega⟩, by omega⟩
+
+/-- **A marked double `SUM` or `AVG` is finite in every order** (#1787 item 4,
+rulings 238 and 242, K3′): where `Measure.finiteAnyOrder` holds of a group
+whose argument values its abstract value holds, every sum and mean a
+`sum_order` behaviour allows of its inputs has a finite canonical code. The
+writer's check against `±∞` fires on nothing else, so a marked measure is
+written without it. -/
+theorem Measure.finiteAnyOrder_sound {m : Measure} {abs : Expr → AVal} {n : Option Nat}
+    {grp : Relation} (hsound : ∀ y ∈ grp, (abs m.arg).Mem (m.arg.eval y))
+    (hlen : ∀ k, n = some k → grp.length ≤ k) (h : m.finiteAnyOrder abs n = true) :
+    (m.fn = .fsum → ∀ b c, SumOrder b (m.inputs grp) c → IsFin (canon c)) ∧
+      (m.fn = .avg → m.inputs grp ≠ [] → ∀ b c, AvgOrder b (m.inputs grp) c → IsFin (canon c)) := by
+  unfold Measure.finiteAnyOrder at h
+  split at h
+  next x0 lo hi k hfn hint =>
+    simp only [Bool.and_eq_true] at h
+    obtain ⟨M, hv, h32, hov⟩ := finiteSumBound_inputs hsound h.1 hint h.2 (hlen k rfl)
+    refine ⟨fun _ b c hs => SumOrder.canon_fin_of_bound hs hv h32 hov, fun ha => ?_⟩
+    rw [hfn] at ha; cases ha
+  next x0 lo hi k hfn hint =>
+    simp only [Bool.and_eq_true] at h
+    obtain ⟨M, hv, h32, hov⟩ := finiteSumBound_inputs hsound h.1 hint h.2 (hlen k rfl)
+    refine ⟨fun hs => ?_, fun _ hne b c hs => AvgOrder.canon_fin_of_bound hs hv
+      (Nat.one_le_iff_ne_zero.2 fun h0 => hne (List.length_eq_zero_iff.1 h0)) h32 hov⟩
+    rw [hfn] at hs; cases hs
+  · cases h
+
+omit [Boxes.Ambient] in
+theorem okMeasures_some {ms : List Measure} {ok : Measure → Bool} {i : Nat} (h : i ∈ okMeasures ms ok)
+    {m : Measure} (hm : ms[i]? = some m) : ok m = true := by
+  simp only [okMeasures, List.mem_filter, hm] at h
+  exact h.2
+
+/-- **A measure `Rel.marks` marks is finite in every order** (#1787 item 4,
+rulings 238 and 242, K3′): on every catalog that meets the preconditions,
+for each group of an aggregate's rows, every sum and mean a `sum_order`
+behaviour allows of a marked measure's inputs has a finite canonical code,
+DuckDB's (`ANY`, `SCALED_CONSTANT`) among them. The writer's check against
+`±∞` of that measure fires on nothing else, so a run writes it without. -/
+theorem Rel.marks_measure_finite {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact} (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {caps : String → Option Nat} (hcap : ∀ t n, caps t = some n → (cat t).rows.length ≤ n)
+    {u : Bool} {r : Rel} {gs : List Expr} {ms : List Measure} (hwf : r.WF cat)
+    (hsm : r.Small cat) (hs : r.looseSub = true) {i : Nat} {m : Measure}
+    (hi : i + 1 ∈ ((Rel.aggregate r gs ms).marks cat A F T caps u).slots) (hm : ms[i]? = some m)
+    {grp : Relation} (hg : grp ∈ aggGroups gs (r.eval cat)) :
+    (m.fn = .fsum → ∀ b c, SumOrder b (m.inputs grp) c → IsFin (canon c)) ∧
+      (m.fn = .avg → m.inputs grp ≠ [] → ∀ b c, AvgOrder b (m.inputs grp) c → IsFin (canon c)) := by
+  simp only [Rel.marks, Marks.slots, List.mem_append, List.mem_map] at hi
+  have hok : i ∈ okMeasures ms fun m => m.finiteAnyOrder
+      (·.absD ((if u then r.loose else r).aeval cat A F T true)
+        ((if u then r.loose else r).facts cat F T)) (r.capReads caps).maxRows := by
+    rcases hi with h | ⟨j, hj, e⟩
+    · split at h <;> simp at h
+    · rw [Nat.add_right_cancel e] at hj; exact hj
+  refine Measure.finiteAnyOrder_sound (fun y hy => ?_) (fun k hk => ?_) (okMeasures_some hok hm)
+  · have hrow := Rel.mem_loose_if hs u (mem_of_mem_aggGroups hg hy)
+    exact Expr.absD_sound
+      (Rel.aeval_sound hcat hA hF hT (sz := true) (Rel.loose_if_wf hwf) (fun _ => Rel.loose_if_small hsm) y hrow)
+      (Rel.facts_sound hcat hF hT (Rel.loose_if_wf hwf) y hrow) (KsHold.nil y) m.arg
+  · have := Rel.maxRows_sound_all hk ((r.capReads caps).eval_orderAllowed cat)
+    rw [Rel.capReads_eval hcap] at this
+    exact Nat.le_trans (length_le_of_mem_aggGroups hg) this
 
 end Substrait

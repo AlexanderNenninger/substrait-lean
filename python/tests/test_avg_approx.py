@@ -98,7 +98,7 @@ def test_the_plain_mean_is_proved_with_its_band_in_the_report():
 
 def test_the_reference_lift_has_no_mark():
     """The reference's mean is the engines' common one (12b-1): no band, no refusal."""
-    report = sv.verify(EDGE, tables=T, requires=REQUIRES, semantics="reference", on_inferred="warn")
+    report = sv.verify(EDGE, tables=T, requires=REQUIRES, semantics="portable", on_inferred="warn")
     assert not any(i.kind == KIND for i in report.errors)
 
 
@@ -211,7 +211,7 @@ def test_a_double_sum_over_more_than_2_32_rows_has_no_bound(cap, bounded):
         "SELECT k, SUM(d) AS ds FROM t GROUP BY k",
         tables=TS,
         requires={"t": [*RANGES, sv.max_rows(cap)]},
-        semantics="reference",
+        semantics="portable",
         on_inferred="warn",
     )
     assert ("value" in _abs_bound(report, "ds")) is bounded

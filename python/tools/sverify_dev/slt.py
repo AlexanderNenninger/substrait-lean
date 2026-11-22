@@ -80,7 +80,7 @@ REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
 FACTS_README = REPO / "engines" / "duckdb" / "facts" / "README.md"
 
 #: The semantics the lift reads the queries under: DuckDB's, or (L2 of #1484,
-#: `--semantics reference`) the reference's, where the replay checks that
+#: `--semantics portable`) the reference's, where the replay checks that
 #: the values agree with DuckDB's own or the reference raises. A worker
 #: process reads it from the environment.
 SEMANTICS_ENV = "SVERIFY_SLT_SEMANTICS"
@@ -118,7 +118,7 @@ TIMEOUT = 10.0
 def duckdb_version(lock: Path = REPO / "python" / "uv.lock") -> str:
     """The DuckDB version `uv.lock` pins (the installed one without a lock)."""
     if lock.exists():
-        for pkg in tomllib.loads(lock.read_text())["package"]:
+        for pkg in tomllib.loads(lock.read_text(encoding="utf-8"))["package"]:
             if pkg["name"] == "duckdb":
                 return pkg["version"]
     return duckdb.__version__
@@ -904,7 +904,7 @@ class Replay:
             lean_err = _error(e)
         if lean_err is not None:
             res.lean = lean_err
-        if lean_err is not None and semantics() == "reference":
+        if lean_err is not None and semantics() == "portable":
             if not raised:
                 # A crash or a timeout of this tool is no evidence either way.
                 res.cls, res.reason = "refused", f"tool: {_clip(lean_err, 200)}"
@@ -931,7 +931,7 @@ class Replay:
             flagged = not lean_ok
             lean_ok = outcome(None, res.reason, ordered)
 
-        if semantics() == "reference":
+        if semantics() == "portable":
             # L2 compares the reference's value with DuckDB's own on the same
             # text; the plan written back for DuckDB has the reference's
             # meaning, which is not what it is compared with.
@@ -1119,7 +1119,7 @@ def _as_table(values: list[tuple], schema: pa.Schema) -> pa.Table:
 
 def replay_file(path: Path, rel: str) -> tuple[list[Result], str | None]:
     """The results of one test file, and why it was skipped (if it was)."""
-    tf = parse(path.read_text(errors="replace"))
+    tf = parse(path.read_text(encoding="utf-8", errors="replace"))
     if tf.skip:
         return [], tf.skip
     if os.environ.get("SVERIFY_SLT_PROGRESS"):
@@ -1407,7 +1407,7 @@ def write_summary(out: Path = REPLAY_DIR, readme: Path | None = None) -> Path:
         top = ", ".join(f"{k} {n}" for k, n in reasons.most_common(2))
         d = led.get("disagree_sides", {})
         sides = ", ".join(f"{k} {n}" for k, n in sorted(d.items()))
-        link = os.path.relpath(p, readme.parent)
+        link = Path(os.path.relpath(p, readme.parent)).as_posix()
         rows.append(
             f"| [{led['area']}]({link}) | {s['agree']} | {_oracle_a_only(led['results'])} "
             f"| {s['disagree']} | {sides} "
@@ -1489,7 +1489,7 @@ def record_time(rel: str, seconds: float) -> None:
     """Append a file's replay time to `$SVERIFY_SLT_TIMINGS`, if set: what
     `sverify_dev.shard_durations` balances `oracle-a`'s shards by."""
     if path := os.environ.get("SVERIFY_SLT_TIMINGS"):
-        with open(path, "a") as f:
+        with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps({"file": rel, "s": round(seconds, 3)}) + "\n")
 
 
@@ -1552,8 +1552,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         "--out",
         type=Path,
         default=None,
-        help="the ledgers' directory (default: engines/duckdb/replay, or its reference/ "
-        "subdirectory under --semantics reference)",
+        help="the ledgers' directory (default: engines/duckdb/replay, or its portable/ "
+        "subdirectory under --semantics portable)",
     )
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
@@ -1564,15 +1564,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument(
         "--semantics",
-        choices=("duckdb", "reference"),
+        choices=("duckdb", "portable"),
         default="duckdb",
-        help="the semantics the lift reads the queries under; with reference, an agreement is "
+        help="the semantics the lift reads the queries under; with portable, an agreement is "
         "DuckDB's own value or the reference raising (#1484, L2)",
     )
     args = parser.parse_args(argv)
     os.environ[SEMANTICS_ENV] = args.semantics
     if args.out is None:
-        args.out = REPLAY_DIR / "reference" if args.semantics == "reference" else REPLAY_DIR
+        args.out = REPLAY_DIR / "portable" if args.semantics == "portable" else REPLAY_DIR
     if args.write_summary:
         write_summary(args.out)
         return
@@ -1589,7 +1589,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             if skip:
                 skipped[rel] = skip
         # Only a reference ledger says so: the committed ones stay as they are.
-        head = {"semantics": "reference"} if args.semantics == "reference" else None
+        head = {"semantics": "portable"} if args.semantics == "portable" else None
         path = write_ledger(area, version, results, skipped, args.out, head=head)
         counts = Counter(r["cls"] for r in results)
         print(f"{area}: {dict(counts)} ({len(skipped)} files skipped) -> {path}", flush=True)

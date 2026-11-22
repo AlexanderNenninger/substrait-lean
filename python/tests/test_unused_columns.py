@@ -1,6 +1,7 @@
 """A column no query mentions blocks nothing (#1484, #1485 item 22): a struct
-on the DuckDB writer, a `map` on a Delta source. A query that reads the column
-still refuses, and the message names the column."""
+on the DuckDB writer, a `map` on a Delta source. A query that reads a struct
+column still refuses, and the message names the column; a map column is
+opaque, carried and never read (D67)."""
 
 import ibis
 import pyarrow as pa
@@ -10,7 +11,6 @@ from ibis import _
 
 import sverify as sv
 from sverify.engine import connect, plan_json, put_table, run_plan, written_plan
-from sverify.ibis_substrait import Unsupported
 from sverify.incremental import arrow_rows
 from sverify.io import DeltaSource
 
@@ -96,23 +96,23 @@ def test_an_unused_map_column_does_not_refuse_a_delta_table(delta):
     delta.pipe(lambda t: t.group_by("id").agg(total=t.amt.sum()))
 
 
-def test_a_map_column_the_query_reads_is_refused_naming_it(delta):
-    with pytest.raises(Unsupported, match=r"column 'm' of '.*': type map<!string, string>"):
-        delta.pipe(lambda t: t.select("id", "m"))
+def test_a_map_column_the_query_carries_is_read(delta):
+    """An opaque column (D67) passes through; nothing reads its values."""
+    delta.pipe(lambda t: t.select("id", "m"))
 
 
 @pytest.mark.parametrize(
     "build",
     [
-        lambda t: t.select("x"),
         lambda t: t.select(y=ibis.literal(b"A")),
         lambda t: t.select(y=ibis.literal(None, type="binary")),
     ],
-    ids=["column", "constant", "null"],
+    ids=["constant", "null"],
 )
-def test_binary_values_are_refused_by_design(build):
+def test_a_binary_constant_is_refused_by_design(build):
     """Ruling 186 (#1918): sverify reads no binary values, and says how to get
-    around it without an engine's own text form of a BLOB."""
+    around it without an engine's own text form of a BLOB. A binary column is
+    carried (`test_opaque_columns.py`)."""
     t = ibis.table({"id": "int64", "x": "binary"}, name="t")
-    with pytest.raises(Exception, match="encode them as text at the source"):
+    with pytest.raises(Exception, match="encode it as text at the source"):
         sv.verify(build(t))

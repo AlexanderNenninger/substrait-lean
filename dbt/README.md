@@ -10,12 +10,11 @@ model's compiled SQL with [sverify](https://github.com/AlexanderNenninger/substr
 the models and sources it reads, and reports per model which tests hold on
 every run, which may fail and why, and which source tests would let it prove
 more. A test it proves can be left out of `dbt build`: it rests on
-`contract_sound` and `Rel.keys_sound`, applied to the model's compiled SQL
+[`contract_sound`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/theorems/contract_sound.md) and [`Rel.keys_sound`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/theorems/keys_sound.md), applied to the model's compiled SQL
 under `semantics="duckdb"` ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proofs.md)).
 
 It reads DuckDB projects (dbt-duckdb). The other adapters wait on sverify's
-other engines, which don't run every function DuckDB does yet
-([the issue that tracks them](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+other engines, which don't run every function DuckDB does yet.
 
 ## Installation
 
@@ -191,7 +190,7 @@ the test to add under `needs`, as YAML for the input's column (sverify's
   `UNION ALL`, which proves `accepted_values` there;
   what is inside a string (`LIKE`, regexes, lengths) is not tracked, so those
   tests are proved where the same test holds upstream and the column passes
-  through ([the guide](../docs/guide.md#contracts)). Sverify reads no regex
+  through ([the guide](../docs/how-to-contracts.md#contracts)). Sverify reads no regex
   flags, so a regex test with `flags` is not checked.
 - Python models, and models whose inputs have no column types, are refused.
 - What each materialization gets: a table or view is checked; an incremental
@@ -219,7 +218,7 @@ them with sverify-dbt and records every test beside dbt's own result, in
 |---|---|---|---|---|---|
 | dbt-utils 1.4.1 | 3 | 13 | 45 | 15 | 37 |
 | dbt-expectations 0.10.10 | 0 | 33 | 9 | 115 | 0 |
-| dbt-tests-adapter 1.20.0 | 8 | 11 | 85 | 11 | 13 |
+| dbt-tests-adapter 1.20.0 | 8 | 11 | 86 | 10 | 13 |
 
 These projects test macros more than they model data: most of their tests
 compare two relations or match patterns with flags, which sverify-dbt leaves

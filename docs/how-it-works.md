@@ -217,7 +217,7 @@ engines, a read after every refresh and a refresh that deletes a row pay the
 merge over the whole state each time.
 `SVERIFY_STATE_LOCATION` names where the parts live: a directory, or a URI
 that the driver and every executor read and write
-([Environment variables](tasks.md#environment-variables)).
+([Environment variables](how-to-command-line.md#environment-variables)).
 
 A node on DuckDB has DuckDB write its Delta and Iceberg sinks
 (`sverify.io._engine`). DuckDB writes the Parquet files of the state or of

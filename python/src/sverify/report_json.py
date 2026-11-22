@@ -42,6 +42,17 @@ OLDEST = 2
 Json = dict[str, Any]
 
 
+#: What a refusal of `semantics="reference"` adds: the name 1.0 gave it.
+RENAMED = "'reference' is called 'portable' since 1.0"
+
+
+def _portable(semantics: str, before_1_0: bool) -> str:
+    """`semantics` as 1.0 names it: a document of a format before 1.0's
+    (`before_1_0`) says `"reference"` for `"portable"`. 1.0's formats keep
+    no second name, so there the value reads as written (ruling 214)."""
+    return "portable" if before_1_0 and semantics == "reference" else semantics
+
+
 def _sverify_version() -> str:
     """The installed version, as `sverify` read it at import: reading the
     package metadata again took 88 % of `to_json`'s time."""
@@ -121,8 +132,8 @@ def _facts(
     return out
 
 
-def equivalence_json(obs: Observation) -> Json:
-    """An equivalence (`sv.equivalent`): its text and its components, with
+def lenses_json(obs: Observation) -> Json:
+    """Lenses (`sv.equivalent`, `Report.lenses`): their text and its components, with
     a tolerance on doubles as `{"abs", "rel", "ulps"}`."""
     components: Json = {}
     for f in dataclasses.fields(obs):
@@ -133,8 +144,8 @@ def equivalence_json(obs: Observation) -> Json:
     return {"text": str(obs), "components": components}
 
 
-def equivalence(d: Mapping[str, Any]) -> Observation:
-    """The equivalence `equivalence_json` wrote; components this version
+def lenses(d: Mapping[str, Any]) -> Observation:
+    """The lenses `lenses_json` wrote; components this version
     does not know are left out."""
     from sverify.observation import Observation, Within
 
@@ -405,26 +416,26 @@ def route_json(r: Route) -> Json:
         "warnings": list(r.warnings),
         "shims": list(r.shims),
         "failures": [dict(f) for f in r.failures],
-        "lenses": None if r.lenses is None else equivalence_json(r.lenses),
+        "lenses": None if r.lenses is None else lenses_json(r.lenses),
         "bound_proved": r.bound_proved,
-        "reproducible": None if r.reproducible is None else equivalence_json(r.reproducible),
+        "reproducible": None if r.reproducible is None else lenses_json(r.reproducible),
         "rerun_evidence": r.rerun_evidence,
         "fallbacks": list(r.fallbacks),
         "needs": suggested_json(r.suggested),
     }
 
 
-def route(d: Mapping[str, Any]) -> Route:
+def route(d: Mapping[str, Any], fmt: int = FORMAT) -> Route:
     from sverify.routes import Route
 
     def eq(key: str) -> Observation | None:
         v = d.get(key)
-        return None if v is None else equivalence(v)
+        return None if v is None else lenses(v)
 
     return Route(
         d["engine"],
         d["kind"],
-        d["semantics"],
+        _portable(d["semantics"], fmt < 4),
         d["reason"],
         deterministic=d.get("deterministic", True),
         warnings=tuple(d.get("warnings", ())),
@@ -465,7 +476,7 @@ def to_json(report: Report) -> Json:
         "engine_version": report.engine_version,
         "dialect": report._dialect,
         "on_inferred": report._on_inferred,
-        "lenses": equivalence_json(report.lenses),
+        "lenses": lenses_json(report.lenses),
         "deterministic": report.deterministic,
         "deterministic_exact": report._exact,
         "class_places": [dataclasses.asdict(t) for t in report._class_places],
@@ -566,12 +577,10 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _run_gate=d.get("run_gate"),
         dialect_differences=tuple(DialectDifference(**x) for x in d.get("dialect_differences", [])),
         rows=d.get("rows"),
-        semantics=d.get("semantics", "reference"),
+        semantics=_portable(d.get("semantics", "portable"), fmt < 4),
         engine_version=d.get("engine_version"),
         # A report written before the name `lenses` calls them `equivalence`.
-        lenses=equivalence(lens)
-        if (lens := d.get("lenses", d.get("equivalence")))
-        else _plan_bound(),
+        lenses=lenses(lens) if (lens := d.get("lenses", d.get("equivalence"))) else _plan_bound(),
         _floats_on={e: list(ps) for e, ps in (d.get("floats_on") or {}).items()},
         _engines=d.get("engines"),
         _sorted=d.get("sorted"),
@@ -582,7 +591,7 @@ def from_json(data: str | Mapping[str, Any]) -> Report:
         _asof_checks=list((d.get("run_checks") or {}).get("asof") or []),
         _asof_max_pairs=(d.get("run_checks") or {}).get("asof_max_pairs"),
         black_boxes=black_boxes_from_json(d.get("black_boxes")),
-        routes={e: route(r) for e, r in (d.get("routes") or {}).items()},
+        routes={e: route(r, fmt) for e, r in (d.get("routes") or {}).items()},
         _transfer=d.get("transfer"),
         output=output,
         _dialect=d.get("dialect", "ibis"),

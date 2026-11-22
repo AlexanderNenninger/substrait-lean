@@ -54,7 +54,7 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 
@@ -66,9 +66,9 @@ def test_a_double_cast_to_an_integer_depends_on_the_semantics():
     # The reference truncates (#209 R9), DuckDB rounds, so the lift refuses it and names
     # the spellings with one meaning under both (D54).
     with pytest.raises(Refused, match=r"CAST\(round\(x\) AS BIGINT\)"):
-        lift(query, SCHEMAS, "reference")
+        lift(query, SCHEMAS, "portable")
     spelled = "SELECT CAST(round(price) AS INTEGER) AS i FROM orders"
-    assert lift(spelled, SCHEMAS, "reference").schema == ibis.schema({"i": "int32"})
+    assert lift(spelled, SCHEMAS, "portable").schema == ibis.schema({"i": "int32"})
 
 
 @pytest.mark.parametrize(
@@ -254,7 +254,7 @@ def test_a_cast_of_a_rounded_double_raises_where_duckdb_does(fn):
     assert bounded.verdict == "proved", bounded
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 def test_a_bare_double_cast_stays_refused(semantics):
     """The bare `CAST(x AS BIGINT)` needs DuckDB's half-to-even cast, which the
     model does not state yet, under either semantics (D55); the refusal names
@@ -283,15 +283,15 @@ FLOAT_CASTS = [
 def test_a_float_cast_to_an_integer_is_refused_as_a_double_one(query):
     """The model's cast truncates: 0 for `0.55::FLOAT`, where DuckDB gives 1.
     A REAL is refused as a DOUBLE is, under both semantics (D54)."""
-    for semantics in ("duckdb", "reference"):
+    for semantics in ("duckdb", "portable"):
         with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
             lift(query, {}, semantics)
 
 
 def test_a_float_column_cast_to_an_integer_is_refused():
     schema = {"t": ibis.schema({"x": "float32"})}
-    for semantics in ("duckdb", "reference"):
+    for semantics in ("duckdb", "portable"):
         with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
             lift("SELECT CAST(x AS INTEGER) AS i FROM t", schema, semantics)
     # The hint's spelling lifts.
-    lift("SELECT CAST(round(CAST(x AS DOUBLE)) AS BIGINT) AS i FROM t", schema, "reference")
+    lift("SELECT CAST(round(CAST(x AS DOUBLE)) AS BIGINT) AS i FROM t", schema, "portable")

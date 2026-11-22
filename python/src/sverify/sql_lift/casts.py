@@ -173,7 +173,7 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
     if from_string and (lifted := _from_varchar(lf, a, t, try_)) is not None:
         return lifted
     if try_:
-        raise Unsupported("TRY_CAST is only supported of strings yet", construct="TRY CAST")
+        raise SqlUnsupported("TRY_CAST is only supported of strings yet", construct="TRY CAST")
     if a.constant and a.type.is_string() and (t.is_date() or t.is_timestamp() or t.is_time()):
         return _temporal(a, t)
     if a.constant and a.type.is_string() and t.is_decimal():

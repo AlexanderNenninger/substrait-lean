@@ -17,6 +17,7 @@ import Sverify.Analysis.IncrementalFloat
 import Sverify.Analysis.IncrementalMinMax
 import Sverify.Analysis.IncrementalSemi
 import Sverify.Analysis.Safety
+import Sverify.Analysis.MarginSound
 import Sverify.Analysis.Keys
 import Sverify.Analysis.Rows
 import Sverify.Core.Completeness
@@ -246,6 +247,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
+#print axioms Substrait.Rel.optimize_refines
+#print axioms Substrait.Rel.AllowedP_mono
 #print axioms Substrait.Rel.guardFree_allowed
 #print axioms Substrait.Rel.duckdb_shim_allowed
 #print axioms Substrait.Rel.eval_orderAllowed
@@ -377,6 +380,9 @@ end Substrait.Examples
 #print axioms Substrait.Lowering.lowerRelWith_sound
 #print axioms Substrait.Rel.duckdb_guardFree_sound
 #print axioms Substrait.Lowering.lower_correct
+#print axioms Substrait.Lowering.lower_agreeOrRaises
+#print axioms Substrait.Lowering.lowerRel_sound_dbl
+#print axioms Substrait.Lowering.lowerRel?_sound_dbl
 #print axioms Substrait.Lowering.duckdb_exact
 #print axioms Substrait.liftDuckDB.total
 #print axioms Substrait.liftReference.total
@@ -443,6 +449,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.floatOpenSafe_of_closed
 #print axioms Substrait.contract_sound_allowed_closed
 #print axioms Substrait.Engine.duckdb_sound
+#print axioms Substrait.Rel.polars_sound
+#print axioms Substrait.Rel.spark_sound
 #print axioms Substrait.Engine.polars_sound
 #print axioms Substrait.Engine.spark_sound
 #print axioms Substrait.Engine.contract_sound
@@ -462,3 +470,4 @@ end Substrait.Examples
 #print axioms Substrait.Zone.close_sat
 #print axioms Substrait.Zone.add_sat
 #print axioms Substrait.Zone.empty?_sound
+#print axioms Substrait.Rel.marks_measure_finite

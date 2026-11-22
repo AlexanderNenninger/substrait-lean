@@ -9,8 +9,8 @@
   "summary": {
     "proved": 8,
     "not proved": 11,
-    "not checked": 85,
-    "refused": 11,
+    "not checked": 86,
+    "refused": 10,
     "input": 13
   },
   "unsound": 0,
@@ -722,10 +722,10 @@
     "utils.test_any_value.BaseAnyValue::assert_equal_test_any_value_actual__expected.c7c4b759cc": {
       "test": "assert_equal",
       "model": "test_any_value",
-      "outcome": "refused",
-      "construct": "sverify cannot check it: unknown function ARBITRARY(): DuckDB SQL here has no such function; check the name against DuckDB's functions, or write the step in Ibi",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
       "dbt": "pass",
-      "issue": 1920
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
     },
     "utils.test_bool_or.BaseBoolOr::assert_equal_test_bool_or_actual__expected.5825e33c74": {
       "test": "assert_equal",
@@ -952,12 +952,7 @@
     }
   },
   "unextracted": {
-    "dbt.tests.adapter.aliases.test_aliases.BaseAliasErrors": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_aliases_test_aliases_BaseAliasErrors/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_aliases_test_aliase",
-    "dbt.tests.adapter.constraints.test_constraints.BaseIncrementalForeignKeyConstraint": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_constraints_test_constraints_BaseIncrementalForeignKeyConstraint/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests",
-    "dbt.tests.adapter.constraints.test_constraints.BaseModelConstraintsRuntimeEnforcement": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_constraints_test_constraints_BaseModelConstraintsRuntimeEnforcement/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_te",
-    "dbt.tests.adapter.dbt_debug.test_dbt_debug.BaseDebugProfileVariable": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_dbt_debug_test_dbt_debug_BaseDebugProfileVariable/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_dbt_de",
-    "dbt.tests.adapter.ephemeral.test_ephemeral.BaseEphemeralErrorHandling": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_ephemeral_test_ephemeral_BaseEphemeralErrorHandling/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_ephe",
-    "dbt.tests.adapter.ephemeral.test_ephemeral.BaseEphemeralMulti": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_ephemeral_test_ephemeral_BaseEphemeralMulti/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_ephemeral_te",
+    "dbt.tests.adapter.constraints.test_constraints.BaseModelConstraintsRuntimeEnforcement": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_constraints_test_constraints_BaseModelConstraintsRuntimeEnforcement/target/manifest.json: run … in /tmp/tmpogwwb_nv/dbt_te",
     "dbt.tests.adapter.functions.test_js_udfs.BasicJSAggregateUDF": "NotImplementedError: Subclass must provide functions fixture",
     "dbt.tests.adapter.functions.test_js_udfs.BasicJSUDF": "NotImplementedError: Subclass must provide functions fixture",
     "dbt.tests.adapter.functions.test_js_udfs.JSAggregateUDFBase": "NotImplementedError: Subclass must provide functions fixture",
@@ -969,19 +964,11 @@
     "dbt.tests.adapter.functions.test_js_udfs.JSUDFNonDeterministicVolatility": "NotImplementedError: Subclass must provide functions fixture",
     "dbt.tests.adapter.functions.test_js_udfs.JSUDFStableVolatilityWarns": "NotImplementedError: Subclass must provide functions fixture",
     "dbt.tests.adapter.functions.test_udafs.UDAFBase": "NotImplementedError: Test subclass must implement functions",
-    "dbt.tests.adapter.grants.test_incremental_grants.BaseIncrementalGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_incremental_grants_BaseIncrementalGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_gra",
-    "dbt.tests.adapter.grants.test_model_grants.BaseModelGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_model_grants_BaseModelGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_mod",
-    "dbt.tests.adapter.grants.test_seed_grants.BaseSeedGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_seed_grants_BaseSeedGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_seed_",
-    "dbt.tests.adapter.grants.test_snapshot_grants.BaseSnapshotGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_snapshot_grants_BaseSnapshotGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_te",
-    "dbt.tests.adapter.hooks.test_model_hooks.BaseDuplicateHooksInConfigs": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_model_hooks_BaseDuplicateHooksInConfigs/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks",
-    "dbt.tests.adapter.hooks.test_model_hooks.BaseHooksRefsOnSeeds": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_model_hooks_BaseHooksRefsOnSeeds/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_m",
-    "dbt.tests.adapter.hooks.test_run_hooks.BasePrePostRunHooks": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_run_hooks_BasePrePostRunHooks/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_run_",
+    "dbt.tests.adapter.hooks.test_model_hooks.BaseHooksRefsOnSeeds": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_hooks_test_model_hooks_BaseHooksRefsOnSeeds/target/manifest.json: run … in /tmp/tmpogwwb_nv/dbt_tests_adapter_hooks_test_m",
     "dbt.tests.adapter.incremental.test_incremental_microbatch.BaseMicrobatch": "LookupError: models needs the pytest fixture microbatch_model_sql, input_model_sql",
     "dbt.tests.adapter.python_model.test_python_model.BasePythonEmptyTests": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
-    "dbt.tests.adapter.python_model.test_python_model.BasePythonModelTests": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_python_model_test_python_model_BasePythonModelTests/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_pyth",
     "dbt.tests.adapter.python_model.test_python_model.BasePythonSampleTests": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
     "dbt.tests.adapter.python_model.test_python_model._BaseSkipRefFiltering": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
-    "dbt.tests.adapter.query_comment.test_query_comment.BaseMacroInvalidQueryComments": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_query_comment_test_query_comment_BaseMacroInvalidQueryComments/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_a",
     "dbt.tests.adapter.sample_mode.test_sample_mode.BaseSampleModeTest": "LookupError: models needs the pytest fixture model_that_samples_input_sql, input_model_sql",
     "dbt.tests.adapter.simple_seed.test_seed.BaseBasicSeedTests": "LookupError: seeds needs the pytest fixture test_data_dir",
     "dbt.tests.adapter.simple_seed.test_seed.BaseSeedConfigFullRefreshOff": "LookupError: seeds needs the pytest fixture test_data_dir",
@@ -1001,7 +988,7 @@
     "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithEmptyDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
     "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithUniqueDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
     "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithWrongDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.unit_testing.test_quoted_reserved_word_column_names.BaseUnitTestQuotedReservedWordColumnNames": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_unit_testing_test_quoted_reserved_word_column_names_BaseUnitTestQuotedReservedWordColumnNames/target/manifest.json: run … ",
-    "dbt.tests.adapter.unit_testing.test_types.BaseUnitTestingTypes": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_unit_testing_test_types_BaseUnitTestingTypes/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_unit_testin"
+    "dbt.tests.adapter.unit_testing.test_quoted_reserved_word_column_names.BaseUnitTestQuotedReservedWordColumnNames": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_unit_testing_test_quoted_reserved_word_column_names_BaseUnitTestQuotedReservedWordColumnNames/target/manifest.json: run … ",
+    "dbt.tests.adapter.unit_testing.test_types.BaseUnitTestingTypes": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_unit_testing_test_types_BaseUnitTestingTypes/target/manifest.json: run … in /tmp/tmpogwwb_nv/dbt_tests_adapter_unit_testin"
   }
 }

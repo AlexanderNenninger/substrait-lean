@@ -185,8 +185,11 @@ def store_for(engine: object) -> Store[Any]:
     plugin = profiles.find(engine)
     name = plugin.engine if plugin is not None else engine
     if plugin is None or plugin.store is None:
+        stores = sorted(p.engine for p in profiles.plugins().values() if p.store is not None)
         raise ValueError(
-            f"{name!r} keeps no pipeline state (its plugin has no ProfilePlugin.store): "
-            "it runs one-shot plans only; refresh the view on an engine that has one"
+            f"{name!r} keeps no pipeline state (its plugin has no ProfilePlugin.store), "
+            "so it refreshes no node: refresh on an engine with a store"
+            + (f" ({', '.join(map(repr, stores))})" if stores else "")
+            + f", or run the node's plan once with sverify.engines.run(con, plan, {name!r})"
         )
     return plugin.store()

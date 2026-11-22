@@ -370,17 +370,6 @@ theorem sumBoundScaled_mono {n N bs : Nat} (h : n ≤ N) (hN : N ≤ 2 ^ 32) :
   have h4 : 0 < K * (K - N) := Nat.mul_pos (by omega) (by omega)
   exact Nat.le_trans (Nat.div_le_div_left h3 h4) (Nat.div_le_div_right (Nat.mul_le_mul h1 h2))
 
-omit [Boxes.Ambient] in
-theorem scaledAbsSum_le_mul {bs : Nat} :
-    ∀ {cs : List Int}, (∀ c ∈ cs, (FloatCode.scaled c).natAbs ≤ bs) →
-      scaledAbsSum (cs.map .float) ≤ cs.length * bs
-  | [], _ => by simp [scaledAbsSum]
-  | c :: cs, h => by
-    have ih := scaledAbsSum_le_mul (cs := cs) fun x hx => h x (List.mem_cons_of_mem _ hx)
-    have hc := h c List.mem_cons_self
-    simp only [List.map_cons, scaledAbsSum, List.length_cons, Nat.succ_mul]
-    omega
-
 set_option exponentiation.threshold 2100 in
 omit [Boxes.Ambient] in
 /-- **An engine's `SUM` is within the checker's tolerance** of the correctly
@@ -395,7 +384,7 @@ theorem SumOrder.near_tol {b : Behaviour} {cs : List Int} {v : Int} {N bs : Nat}
       (FloatCode.scaled v - FloatCode.scaled (floatSumCR (cs.map .float))).natAbs ≤
         FloatCode.sumTolScaled N bs + FloatCode.ceilDiv (N * bs) (2 ^ 53) := by
   have hfin : ∀ c ∈ cs, FloatCode.IsFin c := fun c hc => (hf c hc).1
-  have hA := scaledAbsSum_le_mul (bs := bs) fun c hc => (hf c hc).2
+  have hA := scaledAbsSum_le_mul (M := bs) fun c hc => (hf c hc).2
   have hS := natAbs_exactSum_le hfin
   have hnb : cs.length * bs ≤ N * bs := Nat.mul_le_mul_right _ hnN
   have hmax : FloatCode.maxMag ≤ 2 ^ 2098 := by rw [FloatCode.maxMag_def]; omega
@@ -419,7 +408,7 @@ theorem SumOrder.near_tol {b : Behaviour} {cs : List Int} {v : Int} {N bs : Nat}
       FloatCode.sumTolScaled N bs := by
     simp only [SumOrder, hb, ↓reduceIte] at h
     have hlen : (cs.map Value.float).length = cs.length := List.length_map _
-    obtain ⟨hfv, hineq⟩ := h.1
+    obtain ⟨hfv, hineq⟩ := h.1.1
       (fun x hx => by
         obtain ⟨y, hy, e⟩ := List.mem_map.1 hx
         injection e with e; subst e; exact hfin _ hy)

@@ -1,0 +1,15 @@
+{
+  "id": "F246",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#2223: composite foreign keys as `sv.references(*cols, to=...)`, mirroring `sv.key(*cols)`, with MATCH SIMPLE (a row with any NULL part is exempt); one condition per pair is unsound and is never read that way.",
+  "issues": [
+    869,
+    1956,
+    2223
+  ],
+  "source": "fable-ruling-246-2223-composite-foreign-keys.md",
+  "note": "Refusals R1-R5 at build time. `References` fields become tuples with no aliases (a changelog break). Lean's ForeignKeys stays one-column, and the reader skips longer entries explicitly; the composite rewrite in fkMatch is nice to have. No D-number."
+}

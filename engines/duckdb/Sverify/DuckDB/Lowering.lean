@@ -1,4 +1,5 @@
 import Sverify.Engines.LoweringHint
+import Sverify.Engines.LoweringExport
 import Sverify.DuckDB.LoweringOn.Table
 import Sverify.DuckDB.LoweringOn.Guards
 import Sverify.Core.Allowed
@@ -45,80 +46,6 @@ def loweringCacheSource : String :=
   "after a build. See `engines/Sverify/Engines/LoweringHint.lean`.\n-/\n\nnamespace Substrait\n\n" ++
   "def loweringCache : List LoweringHint := [\n" ++ ",\n".intercalate rows ++ "\n]\n\nend Substrait\n"
 
-/-! ## The table, exported
-
-`substrait-check --lowering-table` prints the entries that are not native as
-JSON (and the core's `FLOOR` templates under `"floor"`), for the SQL printer's table interpreter (`sverify.sql.lowering`, #241),
-which writes each construct as its template says instead of by hand. -/
-
-namespace LoweringExport
-
-open Lean (Json)
-
-/-- A function's name in the export: the model's, with its parameters. -/
-def unName : UnFn → String
-  | .isNum _ => "isNum" | .isNull => "isNull" | .not => "not" | .ffloor => "ffloor"
-  | .raise _ => "raise" | .fmath f => s!"fmath:{f.name}"
-  | .fit m w => s!"fit:{m.name}:{w.bits}"
-  | f => reprStr f
-
-def binName : BinFn → String
-  | .eq => "eq" | .lt => "lt" | .and => "and" | .or => "or" | .add => "add" | .sub => "sub"
-  | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .imod => "imod" | .idiv => "idiv"
-  | .fadd => "fadd" | .fsub => "fsub" | .fmul => "fmul" | .fdiv => "fdiv" | .fmod => "fmod"
-  | .fdivIeee => "fdivIeee" | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
-  | f => reprStr f
-
-/-- A literal: a double by its code (`core/Sverify/Core/Float.lean`). -/
-def litJson : Value → Json
-  | .null => Json.mkObj [("null", true)]
-  | .bool b => Json.mkObj [("bool", b)]
-  | .int i => Json.mkObj [("int", toString i)]
-  | .float c => Json.mkObj [("code", toString c)]
-  | v => Json.mkObj [("unsupported", reprStr v)]
-
-/-- A template as JSON: fields, literals, calls and `CASE`s. -/
-def exprJson : Expr → Json
-  | .field i => Json.mkObj [("field", i)]
-  | .lit v => litJson v
-  | .un f a => Json.mkObj ([("fn", Json.str (unName f)), ("args", Json.arr #[exprJson a])] ++
-      match f with | .raise m => [("message", Json.str m)] | _ => [])
-  | .bin f a b => Json.mkObj [("fn", Json.str (binName f)),
-      ("args", Json.arr #[exprJson a, exprJson b])]
-  | .ifThen c t e => Json.mkObj [("if", exprJson c), ("then", exprJson t),
-      ("else", exprJson e)]
-  | .hof .. => Json.mkObj [("unsupported", "a higher-order function")]
-
-/-- The `FLOOR` templates of the core (`Expr.floorDivOf`, `Expr.floorModOf`,
-`Expr.floorFmodOf`), with the arguments as fields 0 and 1: the SQL writer's
-`division_type: FLOOR` renders these (#1202). -/
-def floorJson : Json :=
-  Json.mkObj [("div", exprJson (Expr.floorDivOf (.field 0) (.field 1))),
-    ("mod", exprJson (Expr.floorModOf (.field 0) (.field 1))),
-    ("fmod", exprJson (Expr.floorFmodOf (.field 0) (.field 1)))]
-
-/-- The constructs a table's export looks at: every function with finite
-parameters, from the types themselves (`finite_values%`). A function with an
-infinite parameter (a message, a decimal scale) is native in every table. -/
-def unFns : List UnFn := finite_values% UnFn
-def binFns : List BinFn := finite_values% BinFn
-
-variable [Boxes.Ambient]
-/-- The entries of a table that are not the native call. -/
-def tableJson {p : Profile} (L : Lowering p) : Json :=
-  let un := unFns.filterMap fun f => (L.un f).bind fun e =>
-    let native := Expr.un f (.field 0)
-    if e.tmpl == native then none
-    else some (Json.mkObj [("fn", Json.str (unName f)), ("arity", (1 : Nat)),
-      ("template", exprJson e.tmpl)])
-  let bin := binFns.filterMap fun f => (L.bin f).bind fun e =>
-    let native := Expr.bin f (.field 0) (.field 1)
-    if e.tmpl == native then none
-    else some (Json.mkObj [("fn", Json.str (binName f)), ("arity", (2 : Nat)),
-      ("template", exprJson e.tmpl)])
-  Json.arr (un ++ bin).toArray
-
-end LoweringExport
 
 variable [Boxes.Ambient]
 /-- The DuckDB table, exported. `"on"` names the setting of
@@ -130,11 +57,13 @@ def Lowering.duckdbTableJson : Lean.Json :=
 def Lowering.duckdb : Lowering (Profile.duckdb {}) := duckdbOn
 
 theorem Lowering.duckdb_total : Lowering.duckdb.Total := duckdbOn.total
+theorem Lowering.duckdb_allExact : Lowering.duckdb.AllExact := duckdbOn.allExact
+theorem Lowering.duckdb_noneOnDbl : Lowering.duckdb.NoneOnDbl := duckdbOn.noneOnDbl
 
 /-- **Every lowered expression is exact on DuckDB.** -/
 theorem Lowering.duckdb_exact (e : Expr) :
     Expr.Exact (Profile.duckdb {}) (Lowering.duckdb.lowerE e) e :=
-  Lowering.lowerE_exact Lowering.duckdb_total e
+  Lowering.lowerE_exact Lowering.duckdb_total Lowering.duckdb_noneOnDbl e
 
 /-- **The lowered plan runs correctly on DuckDB, or raises.** Unless one of
 its expressions raises on a row DuckDB evaluates it on, DuckDB's functions
@@ -144,7 +73,7 @@ that `Profile.duckdb` is DuckDB's, and that the SQL printer is faithful. -/
 theorem Rel.duckdb_shim_sound {cat : Catalog} {r : Rel}
     (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
     (Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).impl = r.eval cat :=
-  Lowering.lowerRel_sound Lowering.duckdb_total h
+  Lowering.lowerRel_sound Lowering.duckdb_total Lowering.duckdb_noneOnDbl h
 
 /-- The DuckDB shim: unless the shimmed plan raises, DuckDB returns an allowed
 result. -/
@@ -171,7 +100,8 @@ theorem Rel.duckdb_guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String �
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
     (h : ¬(Lowering.duckdb.lowerRelWith (fun _ => false) r).Raises (Profile.duckdb {}) cat) :
     (Lowering.duckdb.lowerRelWith (fun _ => false) r).eval cat (Profile.duckdb {}).impl = r.eval cat :=
-  Lowering.lowerRelWith_mayIssues_sound Lowering.duckdb_total Lowering.duckdb_guardsFor_none hcat hA hF
+  Lowering.lowerRelWith_mayIssues_sound Lowering.duckdb_total Lowering.duckdb_allExact
+    Lowering.duckdb_noneOnDbl Lowering.duckdb_guardsFor_none hcat hA hF
     hT hwf hsmall hs (by simpa using hm) h
 
 end Substrait

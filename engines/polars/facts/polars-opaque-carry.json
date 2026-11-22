@@ -1,0 +1,48 @@
+{
+  "id": "polars-opaque-carry",
+  "engine": "polars",
+  "engine_version": "2.1.0",
+  "title": "A binary or map column is carried unchanged through project, filter, join, sort, UNION ALL and LIMIT",
+  "verdict": "values and types arrive as read; IS NULL is exact",
+  "area": "nested",
+  "options": [],
+  "layer": "semantics",
+  "constructs": [
+    "project",
+    "filter",
+    "join",
+    "sort",
+    "UNION ALL",
+    "LIMIT",
+    "IS NULL"
+  ],
+  "settings": {
+    "engine": "streaming"
+  },
+  "description": [
+    "A binary column and a map column read from a table arrive unchanged after a projection, a filter on another column, an inner join on another column, a sort on another column, a UNION ALL and a LIMIT: every value equal, NULL included, for the binary values b'ab', NULL, the empty value, one zero byte and a 1 MiB value, and the maps [(a, 1)], NULL, the empty map, [('z\\x00', 0)] and one of 1,000 entries (map<string, int64>). IS NULL is true exactly for the NULL rows.",
+    "Polars reads them as Binary and Map(String, Int64): it has a map type. Its Arrow output is large_binary and map<large_string, int64>, the large variants of the input's types, the same values."
+  ],
+  "reference": [
+    "D67 (ruling 187): a column of a type the model does not read is opaque, carried and never read; the model holds an image of its value, and a well-kinded plan reads nothing from it. This fact is K7's evidence that the engine carries such a column unchanged."
+  ],
+  "status": "decided",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-20",
+      "method": "probe",
+      "checked_by": "types-casts session (polars 2.1.0 in Python 3.12, macOS arm64, LazyFrame collected with engine='streaming'), for ruling 187 K7",
+      "evidence": [
+        {
+          "sql": "lazy: select, filter(id > 0), join(on='id'), sort('id', descending=True), concat of two filters, head(10), each collected with engine='streaming'",
+          "observed": "all six operations: every row equal to the input row (by id); IS NULL true only for id 2"
+        }
+      ],
+      "notes": "Probe: id 1..5 with the binary and map values listed in the description, joined with u(id, x) on id."
+    }
+  ],
+  "issues": [
+    1958
+  ]
+}

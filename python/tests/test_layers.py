@@ -20,7 +20,6 @@ LAYERS: list[tuple[str, list[str]]] = [
         "base",
         [
             "_meta",
-            "_deprecated",
             "_duration",
             "_stages",
             "_cursor",
@@ -145,7 +144,7 @@ def _imports() -> list[tuple[str, str, int, bool]]:
             )
 
     for module, path in MODULES.items():
-        walk(module, ast.parse(path.read_text()), False)
+        walk(module, ast.parse(path.read_text(encoding="utf-8")), False)
     return edges
 
 
