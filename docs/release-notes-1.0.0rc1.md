@@ -79,6 +79,7 @@ complete list, and `changelog.d/2081-remove-deprecated-aliases.md` and
 | `sverify.engines.run(con, plan_json)` | `run(con, plan)` |
 | `sverify.from_substrait`, `substrait_export.recheck` | `sverify.Report.from_substrait` |
 | `sverify.Changes` | `sverify.io.Changes` |
+| `from sverify.contracts import unique, Report, ...` | `sverify` and `sverify.types` (`changelog.d/2410-contracts-reexports.md`) |
 | `sverify.io.FlightLog` | `sverify.testing.FlightLog` |
 | `Sink.committed()` | `Sink.contract(version=None)` |
 | `sverify.errors.Unsupported`, `NotIncremental` | `UnsupportedError`, `NotIncrementalError` |
@@ -157,5 +158,5 @@ new keys.
 
 - The fragments since 0.8.0 are the source. Fold them into `CHANGELOG.md`
   at the version bump, and check this page against them once more.
-- Some changes merged without a fragment. Where users notice one, add it
-  first.
+- The changes that merged without a fragment and that users notice have
+  one since this draft: #2410, #1950, #2306, #1359, #1786 and #1788.
