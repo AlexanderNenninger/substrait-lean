@@ -138,6 +138,14 @@ CLASSES = (
 )
 
 
+def _root(refusal: str) -> str:
+    """A refusal without the `ref(...) could not be read (` of the models
+    that read the refused one."""
+    while _CASCADE.match(refusal):
+        refusal = _CASCADE.sub("", refusal, count=1)
+    return refusal
+
+
 def _word(status: str) -> str:
     """A test status as one word, `not_proved`: sverify-dbt spells it with a
     space before its 0.x renames and with an underscore after."""
@@ -149,14 +157,12 @@ def classify(refusal: str | None) -> str:
     a refused model is refused for that model's reason."""
     if refusal is None:
         return CLASSES[0]
-    root = refusal
-    while _CASCADE.match(root):
-        root = _CASCADE.sub("", root, count=1)
+    root = _root(refusal)
     if "no column types" in root:
         return CLASSES[1]
     if "no compiled SQL" in root:
         return CLASSES[2]
-    if "does not parse" in root or "unknown function" in root or "DuckDB SQL here has no" in root:
+    if any(w in root for w in ("does not parse", "DuckDB cannot plan", "unknown function")):
         return CLASSES[3]
     return CLASSES[4]
 
@@ -222,13 +228,18 @@ def measure(
         result = check(proj, counterexamples=0)
 
     models = result.models
-    refused = collections.Counter(normalize(m.refused) for m in models if m.refused)
     classes = {m.unique_id: classify(m.refused) for m in models}
     model_classes = collections.Counter(classes.values())
+    roots = collections.Counter(normalize(_root(m.refused), 110) for m in models if m.refused)
+    status = {t.name: _word(t.status) for m in models for t in m.tests}
     test_classes: collections.Counter[str] = collections.Counter()
-    for m in models:
-        for t in m.tests:
-            test_classes[classes[m.unique_id] if m.refused else f"read, {_word(t.status)}"] += 1
+    for t in proj.tests.values():
+        if t.on in classes and classes[t.on] != CLASSES[0]:
+            test_classes[classes[t.on]] += 1
+        elif t.on in classes:
+            test_classes[f"read, {status.get(t.name, 'not_checked')}"] += 1
+        else:
+            test_classes["on a source or seed"] += 1
     skippable = {t.name for t in result.skippable if t.name}
     test_ids = list(proj.tests)
     declared = len(test_ids)
@@ -248,12 +259,11 @@ def measure(
             "refused": sum(1 for m in models if m.refused),
             "left_out_of_compile": len(left_out),
             "by_class": {c: model_classes.get(c, 0) for c in CLASSES},
-            "top_refusals": refused.most_common(TOP),
+            "top_root_causes": roots.most_common(TOP),
         },
         "tests": {
             "declared": declared,
             "by_class": dict(sorted(test_classes.items())),
-            "on_sources_or_seeds": declared - sum(test_classes.values()),
             "proved": len(result.proved_tests),
             "skippable": len(skippable),
             "not_proved": sum(
