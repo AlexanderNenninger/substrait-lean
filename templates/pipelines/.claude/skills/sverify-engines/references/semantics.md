@@ -15,9 +15,11 @@ the model on random tables.
   above every number, in comparisons, joins, grouping and sorts. `SUM` and
   `AVG` of doubles add in the model's order on DuckDB and Polars; on
   Snowflake and Spark, whose tables have no order, they are refused.
-* **Order.** Below a `LIMIT`, a window or a sort, an ordinal column carries
-  the model's row order, so ties break the same way on DuckDB and Polars.
-  Snowflake and Spark need `deterministic=True`.
+* **Order.** Ties and the rows of a `LIMIT` are open, as the reference leaves
+  them (`rows="multiset"`): the sort's keys order the rows, and a plan's last
+  sort orders its result. Lenses with `rows="sequence"` carry the
+  model's row order in an ordinal column on DuckDB and refuses on Snowflake
+  and Spark.
 * **Strings** count characters, not bytes, in lengths, positions and
   `substring`; `LIKE` names its escape character.
 * **Time.** Timestamps are microseconds without a time zone (`TIMESTAMP_NTZ`
