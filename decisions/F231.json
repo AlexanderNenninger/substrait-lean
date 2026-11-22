@@ -1,0 +1,17 @@
+{
+  "id": "F231",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "At 1.0, non-SUM issues are decided on the `capReads` plan; bounds for arithmetic over sums of a keyed join (the rest of TPC-DS Q89) are After 1.0, where the analysis over-reports and stays sound (`Rel.issuesCapped_sound`).",
+  "issues": [
+    1485,
+    2015
+  ],
+  "prs": [
+    2150
+  ],
+  "source": "fable-ruling-231-2015-q89-rest-after-1-0.md",
+  "note": "A tour notebook, README or template example with such a may-fail brings it back before 1.0. No D-number."
+}

@@ -25,7 +25,7 @@ message Contract {
   // verified under, its class (exact, observed or assumed), the observation
   // the postconditions hold up to, the pinned options, the shims applied,
   // the assumptions annotated, the choices no input meets (`unexercised`),
-  // and the checker's entries for the table conditions. docs/guide.md,
+  // and the checker's entries for the table conditions. docs/tasks.md,
   // "Exporting to Substrait", lists the keys.
   google.protobuf.Struct manifest = 1;
   // The preconditions: declared, inferred (`inferred`) and assumed (kind

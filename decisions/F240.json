@@ -1,0 +1,14 @@
+{
+  "id": "F240",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "A SQL dialect is `ProfilePlugin.sql = SqlFrontEnd(read, lift)`: its own semantics is the plugin's engine, any other semantics is the front-end's to lift or refuse, and the front-end is in the trusted base, named on the route.",
+  "issues": [
+    933,
+    1362
+  ],
+  "source": "fable-ruling-240-1362-sql-file-and-933.md",
+  "note": "#1362's PR A goes with U1-U3 and C1, PR B with S1, S2 and U4. #933 is After 1.0, for the maintainer to confirm. No D-number."
+}

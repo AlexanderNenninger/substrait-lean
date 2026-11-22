@@ -22,7 +22,7 @@ import ibis
 import pyarrow as pa
 import sqlglot as sg
 
-from sverify import _deprecated, profiles
+from sverify import profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
 from sverify._unsupported import MemoryLimitError, SverifyError
@@ -414,7 +414,7 @@ class Contract:
     those of the release."""
     profile: str | None = None
     """The profile the plan was verified under (`verify(semantics=...)`); the
-    plan's digest includes it unless it is `"reference"`."""
+    plan's digest includes it unless it is `"portable"`."""
     package: str | None = None
     """For an engine that comes from another package than sverify, that package
     as `name==version`: its facts ship with it."""
@@ -923,6 +923,3 @@ class _TableSource(Pipeable, ABC):
         return SourceBatch.from_snapshot(
             since, end, rows, reason=reason, snapshot_facts=facts, schema=schema
         )
-
-
-_deprecated.add(_TableSource, {"hi_slack": "_hi_slack"})

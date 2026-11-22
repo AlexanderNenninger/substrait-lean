@@ -148,8 +148,8 @@ Three kinds of semantics, each with one job.
   overrides Substrait in places ([Overrides](reference-semantics.md#overrides)),
   so neither of the two refines the other.
 
-A plan is verified up to an observation `o` when its verdict is one of the
-proved values and it is determined up to `o`: every result the reference
+A plan is verified when its verdict is one of the proved values and it is
+determined up to its profile's observation `o`: every result the reference
 allows is equal, up to `o`, to `Rel.eval`'s (`Rel.DeterminedUpTo`). A sound
 engine's model then gives that one observed answer (`Engine.Sound.equiv_eval`),
 and two sound engines agree on it (`Engine.sound_agree`). The proof outcome
@@ -590,6 +590,10 @@ runs.
 The core needs every value any profile gives, so each must be at least as
 fine as Substrait's. `Value` has a constructor per kind ([D29](decisions.md#d29-a-value-has-its-kind)):
 `null | bool | int | float | date | ts | tod | dec | str | list | struct`.
+An opaque column (a type the model does not read: binary, a map) has the kind
+`Kind.opaque` and holds an image of the engine's value among these
+constructors; the plan carries it and reads nothing from it
+([D67](decisions.md#d67-opaque-columns-a-kind-with-no-operations)).
 A double is a `float` code, `-0.0` and the negative NaN among them
 (`core/Sverify/Core/FloatFormat.lean`), which the reference profile reads raw, with
 one zero and one NaN at the identity boundaries through `canon`; a decimal is its scale and unscaled

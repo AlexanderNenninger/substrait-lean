@@ -46,8 +46,10 @@ theorem Substrait.duckdbOn.bit_and_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.bit_and : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.BinFn.bit Substrait.BitOp.and) :=
-  ⟨Substrait.Expr.bin (Substrait.BinFn.bit Substrait.BitOp.and) (Substrait.Expr.field 0)
-  (Substrait.Expr.field 1), by simp [Substrait.Expr.must], Substrait.duckdbOn.bit_and_agree⟩
+  Substrait.BinEntry.ofAgree
+  (Substrait.Expr.bin (Substrait.BinFn.bit Substrait.BitOp.and) (Substrait.Expr.field 0)
+  (Substrait.Expr.field 1))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.bit_and_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.bit_or_agree : ∀ (x y : Substrait.Value),
@@ -61,8 +63,10 @@ theorem Substrait.duckdbOn.bit_or_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.bit_or : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.BinFn.bit Substrait.BitOp.or) :=
-  ⟨Substrait.Expr.bin (Substrait.BinFn.bit Substrait.BitOp.or) (Substrait.Expr.field 0)
-  (Substrait.Expr.field 1), by simp [Substrait.Expr.must], Substrait.duckdbOn.bit_or_agree⟩
+  Substrait.BinEntry.ofAgree
+  (Substrait.Expr.bin (Substrait.BinFn.bit Substrait.BitOp.or) (Substrait.Expr.field 0)
+  (Substrait.Expr.field 1))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.bit_or_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.bit_xor_agree : ∀ (x y : Substrait.Value),
@@ -77,8 +81,10 @@ theorem Substrait.duckdbOn.bit_xor_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.bit_xor : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.BinFn.bit Substrait.BitOp.xor) :=
-  ⟨Substrait.Expr.bin (Substrait.BinFn.bit Substrait.BitOp.xor) (Substrait.Expr.field 0)
-  (Substrait.Expr.field 1), by simp [Substrait.Expr.must], Substrait.duckdbOn.bit_xor_agree⟩
+  Substrait.BinEntry.ofAgree
+  (Substrait.Expr.bin (Substrait.BinFn.bit Substrait.BitOp.xor) (Substrait.Expr.field 0)
+  (Substrait.Expr.field 1))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.bit_xor_agree
 
 theorem Substrait.duckdbOn.bit_shl_agree : ∀ (x y : Substrait.Value),
   Substrait.Outcome.Agree
@@ -91,7 +97,9 @@ theorem Substrait.duckdbOn.bit_shl_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.bit_shl : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.BinFn.bit Substrait.BitOp.shl) :=
-  ⟨Substrait.Lowering.shlTemplate, by exact Substrait.Lowering.shlTemplate_must, Substrait.duckdbOn.bit_shl_agree⟩
+  Substrait.BinEntry.ofAgree
+  (Substrait.Lowering.shlTemplate)
+  (by exact Substrait.Lowering.shlTemplate_must) Substrait.duckdbOn.bit_shl_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.bit_shr_agree : ∀ (x y : Substrait.Value),
@@ -116,7 +124,8 @@ theorem Substrait.duckdbOn.bit_shr_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.bit_shr : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.BinFn.bit Substrait.BitOp.shr) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.BinEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0))
     (Substrait.Expr.bin Substrait.BinFn.or
@@ -127,5 +136,6 @@ abbrev Substrait.duckdbOn.bit_shr : Substrait.BinEntry (Substrait.Profile.duckdb
           (Substrait.Expr.lit (Substrait.Value.int 64))))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 1))
   (Substrait.Expr.bin (Substrait.BinFn.bit Substrait.BitOp.shr) (Substrait.Expr.field 0)
-    (Substrait.Expr.field 1)), by simp [Substrait.Expr.must], Substrait.duckdbOn.bit_shr_agree⟩
+    (Substrait.Expr.field 1)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.bit_shr_agree
 

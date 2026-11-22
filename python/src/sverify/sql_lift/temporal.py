@@ -24,7 +24,18 @@ from sverify.plan_json import (
     literal,
     make_date_json,
 )
-from sverify.sql_lift._base import _KNOWN, DIALECT, Column, E, Sub, _fn, _Lift, _shown, register
+from sverify.sql_lift._base import (
+    _KNOWN,
+    CONSTANT_FIX,
+    DIALECT,
+    Column,
+    E,
+    Sub,
+    _fn,
+    _Lift,
+    _shown,
+    register,
+)
 from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
 
 
@@ -123,7 +134,7 @@ def _date_trunc(lf: _Lift, node: sge.TimestampTrunc, sub: Sub, scope: list[Colum
     unit = node.args.get("unit")
     name = unit.name.lower() if isinstance(unit, sge.Var | sge.Literal) else None
     if name not in _TRUNC_UNITS:
-        raise Unsupported(
+        raise SqlUnsupported(
             f"date_trunc to {_shown(unit) if unit is not None else '?'} is not supported; "
             f"the unit must be one of {', '.join(_TRUNC_UNITS)}",
             construct="function date_trunc",
@@ -205,7 +216,7 @@ def _interval(lf: _Lift, node: sge.Interval, sub: Sub, scope: list[Column]) -> E
     rest = re.sub(r"(-?\d+)\s*([a-z]+)", "", (text or "").lower()).strip()
     units = [u.removesuffix("s") for _, u in pairs]
     if not pairs or rest or any(u not in _INTERVAL_UNITS for u in units):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"{_shown(node)} is not supported yet; an interval is integers, each with a "
             f"unit ({', '.join(_INTERVAL_UNITS)})",
             construct="INTERVAL",
@@ -348,7 +359,11 @@ def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) ->
     if name in ("date_part", "datepart") and len(args) == 2:
         part = args[0]
         if not (isinstance(part, sge.Literal) and part.is_string):
-            raise Unsupported(f"{name} needs a constant part", construct=f"function {name.lower()}")
+            raise SqlUnsupported(
+                f"{name} needs a constant part",
+                CONSTANT_FIX,
+                construct=f"function {name.lower()}",
+            )
         return _date_part(lf, part.this, sub(args[1]))
     if name in ("isoyear", "epoch_us") and len(args) == 1:
         a = _when(sub(args[0]))
@@ -563,16 +578,70 @@ def _strftime(lf: _Lift, node: sge.TimeToStr, sub: Sub, scope: list[Column]) -> 
     `Time.parseFormat`; the checker refuses any other. A date is its midnight."""
     fmt = node.args.get("format")
     if not (isinstance(fmt, sge.Literal) and fmt.is_string):
-        raise Unsupported("strftime needs a constant format", construct="function strftime")
+        raise SqlUnsupported(
+            "strftime needs a constant format",
+            CONSTANT_FIX,
+            construct="function strftime",
+        )
     # `%F` and `%T` are the model's (chrono's), but DuckDB rejects them.
     if bad := [d for d in re.findall(r"%(.?)", fmt.this) if d not in "YmdHMSj%" or not d]:
-        raise Unsupported(
+        raise SqlUnsupported(
             f"strftime format '{fmt.this}': %{bad[0]} is not supported; "
             "only %Y %m %d %H %M %S %j and %% are",
             construct="function strftime",
         )
     a = lf.to(_when(sub(node.this)), _TS)
     return E(_fn("strftime", [a.json, literal(fmt.this, dt.string)], dt.string), dt.string)
+
+
+#: DuckDB's default origin of `time_bucket` (Monday 2000-01-03) in microseconds.
+_BUCKET_ORIGIN = 946_857_600_000_000
+
+
+def _time_bucket(lf: _Lift, node: sge.DateBin, sub: Sub, scope: list[Column]) -> E:
+    """`time_bucket(width, ts[, origin])` for a constant width of days or less: `date_bin` from
+    DuckDB's default origin (2000-01-03), a constant timestamp origin, or the default plus a
+    constant interval (#347). Months, dates and a computed origin are refused."""
+    width = sub(node.this)
+    if (
+        not (width.constant and isinstance(width.value, tuple))
+        or width.value[0]
+        or width.value[1] <= 0
+    ):
+        raise SqlUnsupported(
+            f"{_shown(node)}: time_bucket needs a constant width of days or less "
+            "(months are not supported yet)",
+            hint="use a width in days or less, such as INTERVAL 7 DAY, or write the step in Ibis",
+            construct="function time_bucket",
+        )
+    ts = _when(sub(node.expression))
+    if ts.type.is_date():
+        raise SqlUnsupported(
+            f"{_shown(node)}: time_bucket of a DATE is not supported yet; cast it to TIMESTAMP",
+            construct="function time_bucket",
+        )
+    origin = _BUCKET_ORIGIN
+    if (o := node.args.get("unit")) is not None:
+        o = sub(o)
+        if o.type.is_interval() and o.constant and not o.value[0]:
+            origin += o.value[1]
+        elif o.type.is_timestamp() and o.constant and (m := _timestamp_micros(o)) is not None:
+            origin = m
+        else:
+            raise SqlUnsupported(
+                f"{_shown(node)}: time_bucket needs a constant origin",
+                hint="give a constant timestamp or interval as the origin, or leave it out",
+                construct="function time_bucket",
+            )
+    origin_json = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(origin)}}}
+    a = lf.to(ts, _TS)
+    return E(_fn("date_bin", [interval_json(0, width.value[1]), a.json, origin_json], _TS), _TS)
+
+
+def _timestamp_micros(e: E) -> int | None:
+    """The microseconds of a constant timestamp, read from its literal."""
+    v = e.json.get("literal", {}).get("precisionTimestamp", {}).get("value")
+    return int(v) if v is not None else None
 
 
 def _to_unix(lf: _Lift, node: sge.TimeToUnix, sub: Sub, scope: list[Column]) -> E:
@@ -593,6 +662,7 @@ register(
         sge.DateDiff: _date_diff,
         sge.TimeToUnix: _to_unix,
         sge.TimeToStr: _strftime,
+        sge.DateBin: _time_bucket,
         sge.DayOfWeekIso: _isodow_rule,
         sge.Dayname: _named("dow", _DAY_NAMES, 0),
         sge.Monthname: _named("month", _MONTH_NAMES, 1),

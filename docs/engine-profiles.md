@@ -57,7 +57,7 @@ checked on the data ([What strictness buys](core-semantics.md#what-strictness-bu
 DuckDB is the first engine characterized this way:
 [`engines/duckdb/facts/`](../engines/duckdb/facts/)
 judges DuckDB's own sqllogictests and the fuzzer's findings against
-Substrait's definitions and options, not against ISO SQL or DuckDB
+Substrait's definitions and options, and takes neither ISO SQL nor DuckDB as the standard
 ([how facts are judged](../characterization/README.md)). Polars and Spark
 followed, each with its profile and shims in Lean
 ([Polars as a profile](#polars-as-a-profile),
@@ -74,7 +74,7 @@ runs proved sound against the reference (`Engine.duckdb_sound`,
 `Engine.polars_sound`, `Engine.spark_sound`).
 
 SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
-with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
+with `sv.sql(query, semantics="duckdb" | "portable")` (`sverify.sql_lift`),
 whose two profiles are generated Lean modules
 (`engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference`). The reference is
 Lean's reference profile, and DuckDB is the default oracle.
@@ -169,13 +169,13 @@ Lean's reference profile, and DuckDB is the default oracle.
   search is the same for every engine; an engine's hand-written schemas are an
   argument of `generate_lowering` (DuckDB's in
   `engines/duckdb/Sverify/DuckDB/LoweringSchemas.lean`). Equality saturation (lean-egg) was
-  considered and not used: it proves equalities rather than finding terms,
+  considered and set aside: it proves equalities and finds no terms,
   it is deprecated, and it needs Lean 4.30 and Rust.
 
 * The lift is generated too: the lowering search run backwards.
   `engines/duckdb/Sverify/DuckDB/SQL.lean` states what DuckDB's SQL functions mean
   (`DuckFn`, at one signature each) under `semantics="duckdb"` and
-  `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
+  `"portable"`: `/` of integers divides as doubles, `%` of doubles is C's
   `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where
   DuckDB gives them. It is trusted, like a profile, and tested against the
   engine (oracle A). `generate_lift` (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`)
@@ -197,7 +197,7 @@ Lean's reference profile, and DuckDB is the default oracle.
   (`Arith`, `Math`, `Compare`, `Casts`, `Aggregates`) and a `Table`, which
   `lake build` checks in parallel; an entry that no longer fits fails there.
   The parser is `partial`, so its reading of an entry is computed when the
-  entries are generated rather than proved.
+  entries are generated, and no theorem covers it.
 
 For a plan `verify` proves error-free from its contract, no shim is needed:
 `Profile.duckdbWritten_faithful` shows that DuckDB's profile, with IEEE
@@ -521,6 +521,7 @@ Every field but `engine` is optional:
 | `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
 | `run_tables` | runs a written plan over Arrow tables by name: `run_tables(plan_json, tables, *, guard_free=False, finite=True)`; `sverify.engines.run_sharded` runs its shards with it |
 | `guard_free_theorem` | the theorem that covers `run_tables(..., guard_free=True)`, the run without the checks a `guard_free` contract report discharged |
+| `sql` | `SqlFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
 | `fallbacks` | the nodes of a written plan the engine runs outside its chosen executor (Polars's in-memory nodes of a streaming plan), which a route records and `streaming="require"` refuses |
 
 Entries for one engine are merged field by field, so one package can add a
@@ -568,7 +569,7 @@ through Ibis's Polars backend, which would compile a different plan. The
 translator pins the semantics and takes no Polars defaults:
 
 * Filters and join conditions keep a row only when it is TRUE. `and`/`or` are
-  written out as Kleene `and3`/`or3`. Equi-join keys never match on NULL.
+  Polars's `&` and `|`, which are Kleene's ([`polars-kleene`](../engines/polars/facts/polars-kleene.json)). Equi-join keys never match on NULL.
   Semi and anti joins keep the left rows with (without) a TRUE match, so an
   anti join keeps a row whose key is NULL. Lean writes an outer join as a
   left join plus the unmatched right rows (an anti join), padded with NULLs.
@@ -808,7 +809,7 @@ as the reference does. Its translation compensates where DuckDB differs:
 
 `Profile.duckdb` is the reference on decimals: these compensations are what
 make that true of the SQL, and they are tested against `Rel.eval`
-(`tests/test_ibis_decimal.py`), not proved.
+(`tests/test_ibis_decimal.py`), and no theorem covers them.
 
 #### Decimals on Polars
 

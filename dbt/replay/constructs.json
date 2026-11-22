@@ -18,7 +18,7 @@
       "issue": 1941
     },
     {
-      "match": "no mapping for assert_equal",
+      "match": "sverify-dbt has no mapping for",
       "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
     },
     {
@@ -60,6 +60,30 @@
     {
       "match": "of float32",
       "issue": 417
+    },
+    {
+      "match": "unknown function LIST_AGGR()",
+      "issue": 348
+    },
+    {
+      "match": "multiply of int64 and interval",
+      "issue": 83
+    },
+    {
+      "match": "replace needs a constant pattern",
+      "issue": 319
+    },
+    {
+      "match": "not on a model sverify-dbt reports",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    {
+      "match": "the model has no column",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    {
+      "match": "the compiled SQL does not parse: Error tokenizing",
+      "design": "another adapter's SQL (a backslash-escaped quote) that DuckDB does not read either"
     }
   ]
 }

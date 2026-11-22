@@ -87,40 +87,23 @@ SQL string ─► SQLGlot lift ────────────────�
 
 ## Documents
 
-* [docs/getting-started.md](docs/getting-started.md): the install and ten
-  steps, each a step up: contracts, SQL, inferred preconditions, routes,
-  tolerances, reproducible sinks, engine profiles and Substrait's own
-  semantics.
-* [docs/tasks.md](docs/tasks.md): one section per task, from contracts to
-  Delta and Iceberg pipelines.
-* [docs/how-it-works.md](docs/how-it-works.md): the checker, incremental
-  maintenance, the producers and engines, what is proved and what is trusted.
-* [docs/reference-semantics.md](docs/reference-semantics.md): what `Rel.eval`
-  means, row by row, Ibis frontend included;
-  [docs/engine-profiles.md](docs/engine-profiles.md),
-  [docs/optimizations.md](docs/optimizations.md),
-  [docs/nested-values.md](docs/nested-values.md) and
-  [docs/float-bounds.md](docs/float-bounds.md) cover the engines,
-  proved optimizations, nested values and doubles.
-* [python/README.md](python/README.md): install, quick example and API overview.
-* [docs/prior-work.md](docs/prior-work.md): the work sverify builds on, with
-  citations, and related tools.
-* [docs/stability.md](docs/stability.md): what stays stable in 1.x: the formats
-  a running pipeline reads, the contracts proved, the Python API, and
-  [which engines](docs/stability.md#engines) sverify supports.
-* [docs/core-semantics.md](docs/core-semantics.md): the loose core, which
-  does a superset of operations, the profiles that refine it, the translations between them, and the
-  decisions behind the reference; [docs/realizability.md](docs/realizability.md): the
-  class of every option on each engine, generated.
-* [docs/proofs.md](docs/proofs.md): each guarantee with its theorem, what is
-  trusted, and one line per Lean module.
-* [docs/coverage-targets.md](docs/coverage-targets.md): the coverage list for
-  1.0 and where each target stands.
-* [characterization/README.md](characterization/README.md): how engine facts
-  are judged; [models/refresh/](models/refresh/README.md): the refresh
-  protocol, model-checked in TLA+.
-* [docs/layers.md](docs/layers.md): the order in which the Python modules
-  import each other, and the readings the frontends share.
+[docs/README.md](docs/README.md) maps every page by its kind: the tutorial
+([docs/getting-started.md](docs/getting-started.md), ten steps from a first
+contract to Substrait's own semantics), the how-to pages
+([docs/tasks.md](docs/tasks.md), one page per task), the reference
+([docs/reference-semantics.md](docs/reference-semantics.md),
+[docs/stability.md](docs/stability.md), which says what stays stable in 1.x
+and [which engines](docs/stability.md#engines) sverify supports), the
+explanations ([docs/how-it-works.md](docs/how-it-works.md),
+[docs/what-sverify-proves.md](docs/what-sverify-proves.md),
+[docs/prior-work.md](docs/prior-work.md)) and the pages for contributors
+([docs/core-semantics.md](docs/core-semantics.md),
+[docs/proofs.md](docs/proofs.md),
+[docs/coverage-targets.md](docs/coverage-targets.md),
+[docs/layers.md](docs/layers.md)).
+[python/README.md](python/README.md) is the user's entry. How engine facts
+are judged is in [characterization/README.md](characterization/README.md), and
+the refresh protocol, model-checked in TLA+, in [models/refresh/](models/refresh/README.md).
 
 ## The Lean project
 
@@ -187,7 +170,7 @@ ties and a `LIMIT`'s rows open, as the reference allows, and refuses
 `rows="sequence"` for them. A `SUM` or `AVG` of doubles runs natively on every engine, within the
 plan's bound of the reference's correctly rounded sum
 ([float-bounds.md](docs/float-bounds.md)). See
-[Engines and SQL](docs/tasks.md#engines-and-sql).
+[Engines and SQL](docs/how-to-engines-and-sql.md#engines-and-sql).
 
 ## Development
 

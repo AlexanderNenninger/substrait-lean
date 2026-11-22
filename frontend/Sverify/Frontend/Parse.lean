@@ -4,6 +4,7 @@ import Sverify.Core.Functions
 import Sverify.Core.Options
 import Sverify.Core.Kinds
 import Sverify.Frontend.Guard
+import Sverify.Frontend.GuardedColumns
 
 /-!
 # Parsing Substrait JSON plans
@@ -174,42 +175,58 @@ def narrowIntBits? (ty : Json) : Option Nat := (intTagBits? ty).filter (· < 64)
 /-- The smallest integer type holding `n` bits (`i64` for more than 32). -/
 def intTagFor (n : Nat) : String := ((intTags.find? fun (_, b) => n ≤ b).map (·.1)).getD "i64"
 
+/-- The types the model does not read: a column of one is opaque (D67),
+carried and never read. -/
+def opaqueTypes : List String := ["binary", "fixedBinary", "map", "uuid", "userDefined"]
+
+/-- A type's kind. A type the model does not read is opaque (D67), and so is a
+list or struct that holds one, as a whole (K5); a timestamp or time at a precision other
+than microseconds too (#2004). A JSON that names no type (an absent output
+type) is `.other`, the kind checker's unknown. -/
 partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
+  let micros (t : Json) (k : Kind) : Kind :=
+    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then k else .opaque
   if intTags.any (fun (k, _) => has k) then .int
   else if ["fp32", "fp64"].any has then .float
+  else if opaqueTypes.any has then .opaque
   -- Times are microseconds: a coarser precision (Calcite's `TIMESTAMP` is seconds) would
   -- truncate, and a finer one (nanoseconds) would be read as a count of microseconds, which
-  -- compares raw counts of different units (#2004). Neither is modelled.
+  -- compares raw counts of different units (#2004). Neither is modelled: such a column is
+  -- carried only.
   else if has "timestamp" then .time
-  else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .time else .other
+  else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then micros t .time
   -- An instant (#1725): microseconds, as the naive kind.
-  else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .timeTz else .other
+  else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then micros t .timeTz
   else if has "timestampTz" then .timeTz
   else if has "date" then .date
   else if has "time" then .tod
-  else if let some t := (ty.getObjVal? "precisionTime").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .tod else .other
+  else if let some t := (ty.getObjVal? "precisionTime").toOption then micros t .tod
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
-    .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
+    match typeKind ((l.getObjVal? "type").toOption.getD .null) with
+    | .opaque => .opaque
+    | k => .list k
   else if let some t := (ty.getObjVal? "struct").toOption then
-    .struct (((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind)
+    let ks := ((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind
+    if ks.contains .opaque then .opaque else .struct ks
   -- A scale of 0 is left out of the JSON.
   else if let some d := (ty.getObjVal? "decimal").toOption then
     .dec ((d.getObjValAs? Nat "precision").toOption.getD 38) ((d.getObjValAs? Nat "scale").toOption.getD 0)
   else .other
 
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
-#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .opaque
 -- Nanoseconds are not microseconds (#2004).
 #guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 6)])]) == .time
-#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .other
-#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .other
-#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .opaque
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .opaque
+#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .opaque
+#guard typeKind (Json.mkObj [("binary", Json.mkObj [])]) == .opaque
+#guard typeKind (Json.mkObj [("list", Json.mkObj [("type", Json.mkObj [("binary", Json.mkObj [])])])])
+  == .opaque
+#guard typeKind .null == .other
 
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -835,7 +852,10 @@ def parseConstLiteral (j : Json) : J Const := do
     let s ← (← field v "value").getStr?
     if s.length > (← natD v "length") then throw "VARCHAR literal longer than its type"
     return .str s
-  | ("null", _) => return .null
+  | ("null", t) =>
+    -- No constant of an opaque column's type, not even NULL (D67 K6).
+    if typeKind t == .opaque then throw (opaqueRefusal "a constant of its type")
+    return .null
   | ("fp32", n) | ("fp64", n) =>
     -- An `fp32` literal is the single-precision value its digits round to,
     -- which a double holds exactly (#208).
@@ -2186,6 +2206,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if unsignedType target then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
+    if k == .opaque || target == .opaque then throw (opaqueRefusal "a cast of it")
     -- An instant (`.timeTz`) is read, compared and ordered; the conversions and
     -- the calendar's casts wait for #1725.
     if k == .time && target == .timeTz then return .un (.atUtc true) e
@@ -2994,9 +3015,10 @@ def kindSchemaType : Kind → Json
   | .str => Json.mkObj [("string", Json.mkObj [])]
   | .bool => Json.mkObj [("bool", Json.mkObj [])]
   | .int => Json.mkObj [("i64", Json.mkObj [])]
+  | .dec p s => Json.mkObj [("decimal", Json.mkObj [("precision", p), ("scale", s)])]
   | _ => Json.mkObj []
 
-#guard [Kind.float, .time, .date, .tod, .str, .bool, .int].all fun k =>
+#guard [Kind.float, .time, .date, .tod, .str, .bool, .int, .dec 27 2, .dec 38 0].all fun k =>
   typeKind (kindSchemaType k) == k
 
 /-- The integer width the source plan declares for an expression where
@@ -3040,7 +3062,7 @@ def recordDeclaredBits (bits : List Nat) (ejs : List Json) (es : List Expr) : P 
 
 /-- Record the kinds a projection's source plan declares (`projectKey`)
 where `Expr.kind` gives an integer or nothing: a projected `0.0`, timestamp
-or typed `NULL` (#96). Projections with the same expressions share an entry;
+or typed `NULL` (#96), a decimal one included (#1904). Projections with the same expressions share an entry;
 where their kinds differ, `Expr.kind` holds. -/
 def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : List Json)
     (es : List Expr) : P Unit := do
@@ -3050,6 +3072,9 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
     let k := declaredKind fns j
     if [Kind.int, .other].contains (e.kind cols) &&
         [Kind.float, .time, .date, .tod, .str, .bool].contains k then k
+    -- A typed `NULL` of a decimal type, which the writer pads a set's input with
+    -- (a full outer join's branch, #1904): a cast of the column reads back.
+    else if e.kind cols == .other && (match k with | .dec .. => true | _ => false) then k
     -- A typed `NULL` of an integer type, which engines otherwise read as
     -- untyped (`CAST(NULL AS BIGINT)` under `DISTINCT`).
     else if e.kind cols == .other && k == .int then k
@@ -3062,6 +3087,125 @@ def recordDeclaredKinds (fns : List (Nat × String)) (cols : List Kind) (ejs : L
     | none => refined
   modify ((key, es.length, Json.mkObj [("struct", Json.mkObj [
     ("types", Json.arr (refined.map kindSchemaType).toArray)])]) :: ·)
+
+/-! ### Guarded columns beyond the cap (D50-d, #1719)
+
+The frontends write `AND` and `OR` as `sverify_and` and `sverify_or` at every
+depth. The parser lifts the top `liftLevels` levels of a nest with the chain
+(`Expr.andLift`). Deeper, a filter's condition is bound (`Rel.guardedFilter`,
+whose plan has the lift's rows and raises, `Rel.guardedFilter_eval` and
+`Rel.guardedFilter_raises`), and anywhere else the connectives below the cap are
+read eagerly, as before D50-d (`capChains`). -/
+
+/-- How many levels of nested `AND` and `OR` the chain lifts (ruling 183, O2). -/
+def liftLevels : Nat := 3
+
+/-- `sverify_and` (`true`) or `sverify_or` with its operands. -/
+def chainCall? (fns : List (Nat × String)) (j : Json) : Option (Bool × List Json) := do
+  let f ← field? j "scalarFunction"
+  let anchor ← (natD f "functionReference").toOption
+  let name ← fns.lookup anchor
+  let isAnd ← match baseName name with
+    | "sverify_and" => some true
+    | "sverify_or" => some false
+    | _ => none
+  let args ← (arrD f "arguments").toOption
+  let vs ← args.mapM fun a => field? a "value"
+  return (isAnd, vs)
+
+/-- The deepest nest of lifted connectives in `j`. -/
+partial def liftDepth (fns : List (Nat × String)) (j : Json) : Nat :=
+  match chainCall? fns j with
+  | some (_, args) => 1 + args.foldl (fun m a => max m (liftDepth fns a)) 0
+  | none => match j with
+    | .obj kvs => kvs.toList.foldl (fun m (_, v) => max m (liftDepth fns v)) 0
+    | .arr a => a.foldl (fun m v => max m (liftDepth fns v)) 0
+    | _ => 0
+
+/-- `j` with each outermost chain replaced by a reference to column `base + k`,
+`k` the chain's index in the state. A lambda's body and a subquery keep theirs. -/
+partial def extractChains (fns : List (Nat × String)) (base : Nat) (j : Json) :
+    StateM (Array (Bool × List Json)) Json := do
+  match chainCall? fns j with
+  | some c =>
+    let k := (← get).size
+    modify (·.push c)
+    return fieldJson (base + k)
+  | none => match j with
+    | .obj kvs =>
+      if (field? j "lambda").isSome || (field? j "subquery").isSome then return j
+      return Json.mkObj (← kvs.toList.mapM fun (k, v) => do return (k, ← extractChains fns base v))
+    | .arr a => return .arr (← a.mapM (extractChains fns base))
+    | _ => return j
+
+/-- A condition with its chains kept apart (`LExpr`): the body reads chain `k`
+at column `cols.length + k`, a boolean, and each operand is parsed as the
+parser parses it in place. -/
+partial def toLExpr (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat) (j : Json) :
+    J LExpr := do
+  let (body, cs) := (extractChains fns cols.length j).run #[]
+  let body ← parseExpr fns (cols ++ cs.toList.map fun _ => .bool) (bits ++ cs.toList.map fun _ => 64) body
+  let chains ← cs.toList.mapM fun (isAnd, ops) => do
+    return LChain.mk isAnd (← ops.mapM (toLExpr fns cols bits))
+  return .mk body chains
+
+/-- `j` with every chain at `liftLevels` or more lifted ones above it written as
+the eager `and` (`andA`) or `or` (`orA`), the frontends' reading before D50-d. -/
+partial def capChains (fns : List (Nat × String)) (andA orA : Nat) (level : Nat) (j : Json) : Json :=
+  match chainCall? fns j with
+  | some (isAnd, args) =>
+    let args := args.map (capChains fns andA orA (level + 1))
+    let anchor := if level ≥ liftLevels then (if isAnd then andA else orA)
+      else ((field? j "scalarFunction").bind fun f => (natD f "functionReference").toOption).getD 0
+    let f := (field? j "scalarFunction").getD (Json.mkObj [])
+    Json.mkObj [("scalarFunction", f.setObjVal! "functionReference" (Lean.toJson anchor)
+      |>.setObjVal! "arguments" (Json.arr (args.map fun a => Json.mkObj [("value", a)]).toArray))]
+  | none => match j with
+    | .obj kvs => Json.mkObj (kvs.toList.map fun (k, v) => (k, capChains fns andA orA level v))
+    | .arr a => .arr (a.map (capChains fns andA orA level))
+    | _ => j
+
+/-- A filter's condition the binder takes: deeper than the cap, with no subquery. -/
+def bindsCondition (fns : List (Nat × String)) (cond : Json) : Bool :=
+  liftLevels < liftDepth fns cond && (nodesIn "subquery" cond).isEmpty
+
+/-- A projection's expressions the binder takes: one deeper than the cap, and no
+subquery or window function. -/
+def bindsProject (fns : List (Nat × String)) (ejs : List Json) : Bool :=
+  ejs.any (fun e => liftLevels < liftDepth fns e) &&
+    (ejs.flatMap (nodesIn "subquery")).isEmpty && (ejs.flatMap (nodesIn "windowFunction")).isEmpty
+
+/-- The plan with every chain beyond the cap read eagerly (`capChains`), but in
+the filter conditions and projections the binder takes. -/
+partial def capPlan (fns : List (Nat × String)) (andA orA : Nat) (j : Json) : Json :=
+  match j with
+  | .obj kvs =>
+    -- A projection the binder takes keeps its expressions; its input is capped.
+    let keep : Option String := (field? j "project").bind fun pj =>
+      match (field? pj "expressions").bind (·.getArr?.toOption) with
+      | some ejs => if bindsProject fns ejs.toList then some "project" else none
+      | none => none
+    if let some key := keep then
+      let pj := (field? j key).getD (Json.mkObj [])
+      let pj' := Json.mkObj ((match pj with | .obj m => m.toList | _ => []).map fun (k, v) =>
+        (k, if k == "expressions" then v else capPlan fns andA orA v))
+      Json.mkObj (kvs.toList.map fun (k, v) => (k, if k == key then pj' else capPlan fns andA orA v))
+    else
+    match field? j "filter" with
+    | some f =>
+      match field? f "condition" with
+      | some c =>
+        if bindsCondition fns c then
+          let f' := Json.mkObj (((match f with | .obj m => m.toList | _ => []).map fun (k, v) =>
+            (k, if k == "condition" then v else capPlan fns andA orA v)))
+          Json.mkObj (kvs.toList.map fun (k, v) => (k, if k == "filter" then f' else capPlan fns andA orA v))
+        else Json.mkObj (kvs.toList.map fun (k, v) => (k, capPlan fns andA orA v))
+      | none => Json.mkObj (kvs.toList.map fun (k, v) => (k, capPlan fns andA orA v))
+    | none =>
+      if (chainCall? fns j).isSome then capChains fns andA orA 0 j
+      else Json.mkObj (kvs.toList.map fun (k, v) => (k, capPlan fns andA orA v))
+  | .arr a => .arr (a.map (capPlan fns andA orA))
+  | _ => j
 
 /-- The conjuncts of a condition, splitting top-level `and` calls. -/
 partial def conjuncts (fns : List (Nat × String)) (j : Json) : J (List Json) := do
@@ -3082,25 +3226,30 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       let inp ← input "input"
       let cols := inp.kinds (← get)
       let bits := inp.bits (← get)
-      -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter,
-      -- with other subqueries lifted into columns that an emit drops after.
-      let mut base := inp
-      let mut rest : List Json := []
-      for c in ← conjuncts fns (← field r "condition") do
-        match (field? c "subquery").bind (field? · "inPredicate") with
-        | some ip =>
-          let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
-          let needle ← parseExpr fns cols bits nj
-          let hay ← parseRel fns (← field ip "haystack")
-          if (hay.kinds (← get)).length != 1 then throw "IN subquery must return one column"
-          base := .semi base hay false (.bin .eq needle (.field cols.length))
-        | none => rest := rest ++ [c]
-      let (lifted, conds) ← parseLifted fns (parseRel fns) base rest
-      let filtered := match conds with
-        | [] => lifted
-        | e :: es => .filter lifted (es.foldl (.bin .and) e)
-      if (rest.flatMap (nodesIn "subquery")).isEmpty then pure filtered
-      else pure (.emit filtered (List.range cols.length))
+      -- Beyond the cap, the chains are bound below the filter (D50-d).
+      let cond ← field r "condition"
+      if bindsCondition fns cond then
+        pure (Rel.guardedFilter inp cols.length (← toLExpr fns cols bits cond))
+      else do
+        -- `x IN (subquery)` conjuncts become semi joins; the rest stays a filter,
+        -- with other subqueries lifted into columns that an emit drops after.
+        let mut base := inp
+        let mut rest : List Json := []
+        for c in ← conjuncts fns (← field r "condition") do
+          match (field? c "subquery").bind (field? · "inPredicate") with
+          | some ip =>
+            let [nj] ← arrD ip "needles" | throw "IN with several needles is not supported"
+            let needle ← parseExpr fns cols bits nj
+            let hay ← parseRel fns (← field ip "haystack")
+            if (hay.kinds (← get)).length != 1 then throw "IN subquery must return one column"
+            base := .semi base hay false (.bin .eq needle (.field cols.length))
+          | none => rest := rest ++ [c]
+        let (lifted, conds) ← parseLifted fns (parseRel fns) base rest
+        let filtered := match conds with
+          | [] => lifted
+          | e :: es => .filter lifted (es.foldl (.bin .and) e)
+        if (rest.flatMap (nodesIn "subquery")).isEmpty then pure filtered
+        else pure (.emit filtered (List.range cols.length))
     | "project" =>
       let inp ← input "input"
       let cols := inp.kinds (← get)
@@ -3115,6 +3264,9 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         recordDeclaredBits (lifted.bits (← get)) ejs es
         let n := cols.length
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
+      else if bindsProject fns ejs then
+        -- Beyond the cap, the chains are bound below the projection (D50-d).
+        pure (Rel.guardedProject inp cols.length (← ejs.mapM fun e => do return (← toLExpr fns cols bits e)))
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
@@ -3460,7 +3612,11 @@ def parsePlan (s : String) : J Plan := do
   let fns ← parseExtensions j
   let some root := (← arrD j "relations").findSome? (field? · "root")
     | throw "plan has no root relation"
-  let (rel, tables) ← (parseRel fns (← field root "input")).run []
+  -- The eager connectives the cap writes below `liftLevels`, at fresh anchors.
+  let fresh := fns.foldl (fun m (a, _) => max m (a + 1)) 0
+  let fns := fns ++ [(fresh, "and"), (fresh + 1, "or")]
+  let input := capPlan fns fresh (fresh + 1) (← field root "input")
+  let (rel, tables) ← (parseRel fns input).run []
   let rel := rel.settleDivs tables
   let names ← (← arrD root "names").mapM (·.getStr?)
   return { root := rel, names, tables }

@@ -338,6 +338,12 @@ def test_rewrite_reads_inputs_by_name() -> None:
     assert "FROM x" in out
 
 
+def test_rewrite_refuses_sql_that_does_not_tokenize() -> None:
+    """An unterminated string is a TokenError, not a ParseError: still a refusal."""
+    with pytest.raises(_Unreadable, match="does not parse"):
+        _rewrite("select 'unterminated from t", {})
+
+
 def test_rewrite_refuses_unknown_tables() -> None:
     with pytest.raises(_Unreadable, match="no ref or source"):
         _rewrite('select * from "db"."main"."other"', {'"db"."main"."orders"': "orders"})

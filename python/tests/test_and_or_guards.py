@@ -1,6 +1,9 @@
 """`AND` and `OR` read as guards (D50): in `p AND q` the raising operations of
 `q` run only where `p` is not FALSE, in `p OR q` only where `p` is not TRUE."""
 
+import json
+import time
+
 import ibis
 import pyarrow as pa
 import pytest
@@ -77,13 +80,76 @@ def _nest(wrappers: int):
     return t.filter(e)
 
 
-def test_the_lift_guards_the_top_levels_of_a_nest_and_no_more():
-    """D50 interim cap (`LIFT_LEVELS`): a guard at the deepest lifted level is proved,
-    one level further down is read eagerly and its division needs a precondition."""
-    from sverify.plan_json import LIFT_LEVELS
+#: The levels of a nest the parser lifts with the chain (`Parse.liftLevels`); deeper,
+#: a filter's chains are bound in levels below it (D50-d).
+LIFT_LEVELS = 3
 
+
+def test_the_lift_guards_the_top_levels_of_a_nest_and_binds_the_rest():
+    """A guard at the deepest lifted level is proved, and one level further down,
+    where the filter's chains are bound (D50-d), it is proved too: the guard stands
+    in the level's `CASE` condition, which the analysis refines."""
     inner = sv.verify(_nest(LIFT_LEVELS - 1), on_inferred="off")
     assert inner.verdict == sv.Verdict.PROVED, str(inner)
     outer = sv.verify(_nest(LIFT_LEVELS), on_inferred="off")
-    assert outer.verdict != sv.Verdict.PROVED
-    assert [e.kind for e in outer.errors] == ["division by zero"]
+    assert outer.verdict == sv.Verdict.PROVED, str(outer)
+
+
+@pytest.mark.parametrize("wrappers", [4, 5, 8])
+def test_a_deep_nest_is_bound_and_checks_in_time_linear_in_depth(wrappers):
+    """Beyond the cap a filter's chains are bound in levels below it (D50-d), each
+    operand written once: depth 8 checks as a depth 4 nest did before (5,171 s
+    with the chain, #1681), and the plan grows with the operands, not with 2^depth."""
+    start = time.perf_counter()
+    report = sv.verify(_nest(wrappers), on_inferred="off")
+    assert time.perf_counter() - start < 60
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+
+
+def test_a_bound_nest_grows_linearly_with_its_depth():
+    """Each chain reads its reach from one column (`BindSt.anchor`), so a level adds
+    the same bytes to the plan at any depth. Before, a chain's guard held every
+    enclosing chain's (608 KB at 40 levels from a 21 KB request, the check cubic)."""
+
+    def size(levels: int) -> int:
+        report = sv.verify(_nest(levels), on_inferred="off")
+        assert report.verdict == sv.Verdict.PROVED, str(report)
+        return len(json.dumps(report._optimized))
+
+    s20, s40, s80 = size(20), size(40), size(80)
+    # Linear: 40 more levels add twice what 20 do; quadratic: four times.
+    assert (s80 - s40) < 3 * (s40 - s20), (s20, s40, s80)
+
+
+def test_a_bound_filter_runs_as_the_lifted_one():
+    """The bound plan keeps the rows the lift keeps (`Rel.guardedFilter_eval`), on DuckDB."""
+    con = sv.connect()
+    rows = pa.table({"x": [0, 1, 2, 5, 20], "z": [0, 1, 0, 1, 0]})
+    con.put("t", rows)
+    t = con.table("t")
+    e = (t.x != 0) & ((10 // t.x) > 1)
+    for i in range(5):
+        e = ((t.z > 0) | e) if i % 2 == 0 else ((t.z > 0) & e)
+    report = sv.verify(t.filter(e), ensures=[], on_inferred="off")
+    got = sorted(report.run(con, unverified=True).to_pylist(), key=lambda r: (r["x"], r["z"]))
+    want = sorted(t.filter(e).to_pyarrow().to_pylist(), key=lambda r: (r["x"], r["z"]))
+    assert got == want
+
+
+def test_a_deep_nest_in_a_projection_is_bound_and_runs_as_the_lifted_one():
+    """A projected `AND`/`OR` nest deeper than the cap is bound below the projection
+    (`Rel.guardedProject_eval`): it checks in time and DuckDB computes the lifted values."""
+    con = sv.connect()
+    rows = pa.table({"x": [0, 1, 2, 5, 20], "z": [0, 1, 0, 1, 0]})
+    con.put("t", rows)
+    t = con.table("t")
+    e = (t.x != 0) & ((10 // t.x) > 1)
+    for i in range(8):
+        e = ((t.z > 0) | e) if i % 2 == 0 else ((t.z > 0) & e)
+    expr = t.select(t.x, flag=e)
+    start = time.perf_counter()
+    report = sv.verify(expr, ensures=[], on_inferred="off")
+    assert time.perf_counter() - start < 60
+    got = sorted(report.run(con, unverified=True).to_pylist(), key=lambda r: r["x"])
+    want = sorted(expr.to_pyarrow().to_pylist(), key=lambda r: r["x"])
+    assert got == want

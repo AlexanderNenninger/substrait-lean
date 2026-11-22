@@ -508,7 +508,7 @@ def runPlanJson : List (String × Json) :=
     let W := K.windows R.cat
     [("run_plan", Write.writePlan (Write.planSchemas p) R.cat s p.names),
       ("run_gate", .null),
-      ("run_unchecked", if s.looseSub then s.marksJson (s.marks R.cat A F W false) else .null)]
+      ("run_unchecked", if s.looseSub then s.marksJson (s.marks R.cat A F W R.caps false) else .null)]
   | _, .error g => [("run_plan", .null), ("run_gate", g.name), ("run_unchecked", .null)]
   | none, .ok _ => [("run_plan", .null), ("run_gate", RunGate.noRewrite.name),
       ("run_unchecked", .null)]
@@ -683,7 +683,8 @@ theorem run_plan_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
   intro r' hl hr
   cases hl
   obtain ⟨p, hp⟩ := Rel.hasIssue_of_raises false hloose
-    (Lowering.lowerRel_raises Lowering.duckdb_total hr)
+    (Lowering.lowerRel_raises Lowering.duckdb_total Lowering.duckdb_allExact
+      Lowering.duckdb_noneOnDbl hr)
   rcases (R.withRoot s).issuesIn_sound (hD.withRoot s) hT' hw hP (hss hsm) p hp with h | ⟨-, h, -⟩
   · exact absurd (show p ∈ (R.withRoot s).issuesIn R.kenv from h) (by rw [his.2]; simp)
   · exact absurd href (by rw [show (R.withRoot s).underReference = R.underReference from rfl] at h

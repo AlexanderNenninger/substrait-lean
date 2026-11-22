@@ -279,7 +279,7 @@ def _(mo):
     directions. The last chapter,
     [Your dbt project](?file=08_dbt.py), proves the tests of a dbt project
     before its models run. The
-    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
+    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md)
     covers every feature in more detail.
     """)
     return

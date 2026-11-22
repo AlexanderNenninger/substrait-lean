@@ -128,7 +128,7 @@ ties in any order. `Report.deterministic` is false where that happens, and
 it.
 
 `Rel.eval` fixes one order: a stable sort, rows in the order the model holds
-them. Determinism is a property the checker proves of a plan, not a profile.
+them. The checker proves determinism of a plan; no profile states it.
 A consumer that needs a rerun to give the same rows asks for it with
 `run(reproducible=sv.equivalent())` or a sink's `reproducible=`. Engines read
 tables in an order of their own, so the plan's order must be total, by a
@@ -223,7 +223,7 @@ fires, `Rel.eval`'s value is not the answer.
 
 | Topic | Reference | Status |
 |---|---|---|
-| Widths | `i8`, `i16`, `i32` and `i64` have their declared widths. A column's values lie in its width by its type, and the run refuses a source value outside it (D46). `Rel.eval`'s integers are mathematical; a result outside the declared width is an overflow error, not a wrapped value. | ✓ An overflow at the declared width is an error; a call's declared output type gives its width. |
+| Widths | `i8`, `i16`, `i32` and `i64` have their declared widths. A column's values lie in its width by its type, and the run refuses a source value outside it (D46). `Rel.eval`'s integers are mathematical; a result outside the declared width is an overflow error. | ✓ An overflow at the declared width is an error; a call's declared output type gives its width. |
 | `overflow` omitted or `ERROR` | `+ - *`, negate, `abs`, `sum`: an error when the result doesn't fit the declared width. | ✓ An integer `sum` that may overflow is an assumption checked on the data (above). |
 | `overflow: SILENT` / `SATURATE` | Wrap-around / clamp at the declared width, when the plan asks. | ✓ for integer `+ - *` and negation: `UnFn.fit` on the exact result. DuckDB runs them through the generated lowering (128-bit arithmetic); Polars, Spark and Snowflake refuse them. `sum`, `abs` and decimals accept only `ERROR`. |
 | `divide` | Truncates toward zero (`Int.tdiv`). | ✓ |
@@ -360,7 +360,7 @@ Design notes: [nested-values.md](nested-values.md).
 
 A SQL text reads as DuckDB's under both semantics: `/`, `//`, NULL order and
 `replace` mean what they mean on DuckDB. The semantics is what the functions
-then do. Under `semantics="reference"` the lift refines the dialect
+then do. Under `semantics="portable"` the lift refines the dialect
 ([D54](decisions.md#d54-the-lift-refines-the-dialect)): where the reference
 gives a value, DuckDB running the same text gives that value; where the
 reference raises, DuckDB may give a value, and the inferred preconditions name
@@ -550,7 +550,7 @@ the writers in `python/src/sverify/black_box.py`.
 What an Ibis expression means to `verify`.
 
 `sverify.verify(expr)` compiles an Ibis expression with the vendored producer
-(`sverify.ibis_substrait`), not with Ibis's SQL for some backend. A proof is
+(`sverify.ibis_substrait`); Ibis's SQL for a backend plays no part. A proof is
 about the plan that producer writes, under `Rel.eval`. So the meaning of an
 Ibis expression is the producer's, and it is the same whichever Ibis backend
 the expression came from.

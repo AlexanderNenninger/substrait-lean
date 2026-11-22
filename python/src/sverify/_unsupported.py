@@ -4,7 +4,7 @@ and `SverifyWarning`, the base of every warning sverify issues.
 
 Internal module (a leaf, so that every module can import it); the public
 names are in `sverify.errors`. `Unsupported` is the internal modules' short
-name for `UnsupportedError`; `sverify.errors.Unsupported` is deprecated.
+name for `UnsupportedError`.
 """
 
 from collections.abc import Mapping

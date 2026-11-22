@@ -305,23 +305,43 @@ def test_left_rows_that_share_a_key_each_keep_their_match():
         assert rows == {1: 101, 2: 101, 3: None, 4: 50}, engine
 
 
-def test_unique_by_on_is_not_proved_of_the_join():
-    """The output has one row per left row, but the key analysis does not carry
-    the left table's key through the join and the ranking (#1517): the plan
-    no longer claims `unique(by, on)`, with or without the key on `acc`."""
-    j = sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=TOL)
+@pytest.mark.parametrize("how", ["left", "inner"])
+def test_a_left_key_is_a_key_of_the_join(how):
+    """At most one output row per left row (#1992): the ranking keeps one row
+    per numbered left row, and a key of the left table determines that number,
+    so the left key is a key of the output. Without it nothing is claimed."""
+    j = sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=TOL, how=how)
     ensures = [sv.unique("device", "ts")]
     requires = {"acc": [_.device.notnull()]}
     assert (
         sv.verify(j, requires=requires, ensures=ensures, on_inferred="ignore").verdict
         == sv.Verdict.UNPROVED
     )
-    # With the left key in `requires` this is the line that flips when the key
-    # analysis carries a left key through the ranking (#1517).
     assert (
         sv.verify(j, requires=KEYS, ensures=ensures, on_inferred="ignore").verdict
-        == sv.Verdict.UNPROVED
+        == sv.Verdict.PROVED
     )
+
+
+@pytest.mark.parametrize("how", ["left", "inner"])
+def test_a_left_key_off_the_join_columns_survives(how):
+    """The issue's shape: facts keyed on `order_id`, a dimension keyed on
+    `(customer_id, ts)`; `unique(order_id)` holds after the as-of join."""
+    orders = ibis.table(
+        {"order_id": "int64", "customer_id": "int64", "ts": "int64", "qty": "int64"}, name="orders"
+    )
+    tiers = ibis.table({"customer_id": "int64", "ts": "int64", "tier": "string"}, name="tiers")
+    j = sv.asof_join(orders, tiers, on="ts", by="customer_id", how=how)
+    report = sv.verify(
+        j,
+        requires={
+            "orders": [sv.unique("order_id")],
+            "tiers": [sv.unique("customer_id", "ts")],
+        },
+        ensures=[sv.unique("order_id")],
+        on_inferred="ignore",
+    )
+    assert report.verdict == sv.Verdict.PROVED, str(report)
 
 
 @pytest.mark.parametrize(

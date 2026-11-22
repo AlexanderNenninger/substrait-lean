@@ -159,7 +159,7 @@ def test_rounding_and_remainders_polars_cannot_match_are_refused(sql, message):
     have no exact native form; the run is refused, never computed by Python."""
     con = connect()
     con.create("r", _FLOATS, [(1.5,), (-2.25,)])
-    _refused(_FLOATS, [(1.5,), (-2.25,)], substrait_json(con, sql, "reference"), message)
+    _refused(_FLOATS, [(1.5,), (-2.25,)], substrait_json(con, sql, "portable"), message)
 
 
 @pytest.mark.parametrize(

@@ -36,7 +36,7 @@ permissions:
 #
 # A pull request that changes only docs (`docs/`, `.claude/`, `changelog.d/`,
 # Markdown at the root other than README.md, which tests run, and
-# docs/guide.md and docs/how-it-works.md, which tests run too) skips
+# docs/tasks.md and docs/how-it-works.md, which tests run too) skips
 # everything but `static`, and float-bounds runs only when its own package
 # changes. The TLA+ models (`models/`) count as docs for the other jobs:
 # `refresh-model` checks them, when they change.
@@ -80,7 +80,10 @@ permissions:
 # a batch branch `batch/*`, pushes, merge queue entries or dispatches, whose
 # `qa` the merge tooling waits for: a job queued for lack of a spot instance
 # would stall it), and only when `aws-probe` starts within 3 minutes;
-# otherwise ubuntu-latest. `changes`, `qa`, the Spark tests, `bench` (its budgets assume
+# otherwise ubuntu-latest. The repository variable `AWS_RUNNERS` set to `off`
+# skips the probe, so every job runs on GitHub's runners (`gh variable set
+# AWS_RUNNERS --body off`; delete it, or set it to anything else, to use AWS
+# again): with no runners left, the probe would queue for good. `changes`, `qa`, the Spark tests, `bench` (its budgets assume
 # GitHub's CPUs), `float-bounds` and `refresh-model` always run on GitHub's
 # runners.
 jobs:
@@ -126,7 +129,7 @@ jobs:
   # leaves it queued (GitHub has no queue timeout) until the next push to the
   # branch cancels the run. No other job needs it.
   aws-probe:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/')
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/') && vars.AWS_RUNNERS != 'off'
     runs-on: [self-hosted, linux, x64, aws]
     timeout-minutes: 2
     steps:
@@ -943,7 +946,7 @@ jobs:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: read  # the replay's closed-issue check (`gh issue view`)
@@ -970,6 +973,9 @@ jobs:
       - run: uv sync
       - run: |
           uv run --no-sync ruff check .
+          # Text files name their encoding (PLW1514, a preview rule, alone), as
+          # sverify's `poe lint` checks: Windows reads cp1252 otherwise (#183).
+          uv run --no-sync ruff check --preview --select PLW1514 .
           uv run --no-sync ruff format --check .
           uv run --no-sync pyrefly check
       # The sample project's packages once: the tests' copies of it take

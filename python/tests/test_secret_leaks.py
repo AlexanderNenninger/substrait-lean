@@ -313,7 +313,7 @@ def test_no_secret_reaches_any_output(lake, capsys, caplog):
     # database, sverify's state.
     for f in root.rglob("*"):
         if f.is_file():
-            outputs[f"file {f.relative_to(root)}"] = f.read_bytes()
+            outputs[f"file {f.relative_to(root).as_posix()}"] = f.read_bytes()
 
     # A failed resolution, with its whole traceback.
     set_resolver(Resolver(backends={"leaky": _Leaky()}, default="leaky"))
@@ -348,4 +348,4 @@ class _Leaky:
 def test_the_gate_finds_a_planted_leak():
     """The grep itself works: a value in an output is found."""
     assert _found(f"x {SENTINELS['api']} y") == ["api"]
-    assert _found(Path(__file__).read_text()) == []
+    assert _found(Path(__file__).read_text(encoding="utf-8")) == []

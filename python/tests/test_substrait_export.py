@@ -94,7 +94,7 @@ def test_manifest() -> None:
     m = read(report.to_substrait()).manifest
     assert m["format"] == se.FORMAT
     assert m["substrait"] == "0.106.0"
-    assert m["semantics"] == "reference"
+    assert m["semantics"] == "portable"
     assert m["class"] == "exact"
     assert m["shims_mode"] == "apply"
     assert m["extension_urns"] == ["extension:io.substrait:functions_arithmetic"]
@@ -193,7 +193,7 @@ def test_unproved_plan_is_refused() -> None:
 
 def test_engine_profile_is_refused() -> None:
     report = sv.verify("SELECT id FROM orders", tables={"orders": orders}, semantics="duckdb")
-    with pytest.raises(ExportError, match="semantics='reference'"):
+    with pytest.raises(ExportError, match="semantics='portable'"):
         report.to_substrait()
 
 
@@ -376,6 +376,27 @@ def test_a_report_read_back_does_not_drop_guards_on_unchecked_data(engine):
     _unused, back = _imported([_.amt.notnull(), _.amt.between(1, 1000)], [_.q >= 0], expr)
     with pytest.raises(PreconditionError, match="refused before the run"):
         back.run(_o([(1, 5), (2, 0)]), engine)
+
+
+RP = ibis.table({"a": "int64", "b": "int64"}, name="p")
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+def test_a_report_read_back_checks_a_composite_foreign_key(engine):
+    """The key's parts travel together and are checked together: (1, 5) has
+    each part in `p`, in different rows (#2223)."""
+    fk = sv.references("id", "amt", to=("p", ["a", "b"]))
+    report, back = _imported([fk], [], RO.join(RP, RO.id == RP.a).select(RO.id))
+    assert fk in back._conditions["o"]
+    p = pa.table({"a": pa.array([1, 2], pa.int64()), "b": pa.array([6, 5], pa.int64())})
+    bad = _o([(1, 5)])
+    put_table(bad, "p", p)
+    for r in (report, back):
+        with pytest.raises(PreconditionError, match="refused before the run"):
+            r.run(bad, engine)
+    good = _o([(1, 6), (3, None)])
+    put_table(good, "p", p)
+    assert back.run(good, engine).num_rows == 1
 
 
 def test_every_report_with_requires_has_a_check_for_each():
@@ -561,14 +582,19 @@ def test_the_exported_ordering_agrees_with_the_reference_on_an_engine(
     assert got == want
 
 
-def test_set_inputs_of_two_decimal_precisions_are_refused() -> None:
+def test_set_inputs_of_two_decimal_precisions_are_cast_to_one() -> None:
     """A full outer join of two sums is written as a set relation whose inputs
     differ in decimal precision, which Substrait does not allow: the export
-    says so, and `to_sql` still writes the plan (#1904)."""
+    casts the narrower input to the wider precision, at the same scale, and
+    the plan reads back with the same verdict (#1904)."""
     a = ibis.table({"k": "int64", "d": "decimal(10,2)"}, name="a")
     b = ibis.table({"k": "int64", "d": "decimal(12,2)"}, name="b")
     ga, gb = (t.group_by("k").agg(s=t.d.sum()) for t in (a, b))
     report = _verify(ga.outer_join(gb, "k").select(ga.k, x=ga.s, y=gb.s))
-    with pytest.raises(ExportError, match=r"inputs of a set relation differ.*#1904"):
-        report.to_substrait(shims="annotate")
-    assert "SELECT" in report.to_sql("spark").upper()
+    plan = report.to_substrait(shims="annotate")
+    rel = json.loads(plan)["relations"][0]["root"]["input"]
+    while "set" not in rel:
+        [(_, body)] = rel.items()
+        rel = body["input"]
+    assert any("project" in i for i in rel["set"]["inputs"])
+    assert sv.Report.from_substrait(plan).verdict == report.verdict
