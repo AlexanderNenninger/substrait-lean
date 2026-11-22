@@ -589,9 +589,10 @@ def _time_bucket(lf: _Lift, node: sge.DateBin, sub: Sub, scope: list[Column]) ->
         or width.value[0]
         or width.value[1] <= 0
     ):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"{_shown(node)}: time_bucket needs a constant width of days or less "
             "(months are not supported yet)",
+            hint="use a width in days or less, such as INTERVAL 7 DAY, or write the step in Ibis",
             construct="function time_bucket",
         )
     ts = _when(sub(node.expression))
@@ -608,8 +609,9 @@ def _time_bucket(lf: _Lift, node: sge.DateBin, sub: Sub, scope: list[Column]) ->
         elif o.type.is_timestamp() and o.constant and (m := _timestamp_micros(o)) is not None:
             origin = m
         else:
-            raise Unsupported(
+            raise SqlUnsupported(
                 f"{_shown(node)}: time_bucket needs a constant origin",
+                hint="give a constant timestamp or interval as the origin, or leave it out",
                 construct="function time_bucket",
             )
     origin_json = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(origin)}}}
